@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createProject, workspaceNav } from './helpers';
+import { choose, createProject, workspaceNav } from './helpers';
 
 // Round 9: OAuth sign-in of a web MCP server, against the real Go core. The provider is a test double (internal/mcp/oauthfake: an
 // MCP server that wants a token, with discovery, dynamic client registration, PKCE, token and refresh); Drydock's side is the real
@@ -19,9 +19,9 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   const form = page.getByTestId('mcp-form');
   await form.getByLabel('Short id', { exact: false }).fill('lin');
   await form.getByLabel('Name', { exact: true }).fill('Hosted tracker');
-  await form.getByLabel('Kind').selectOption('http');
+  await choose(form.getByLabel('Kind'), 'http');
   await form.getByLabel('Address', { exact: false }).fill(provider);
-  await form.getByLabel('Sign-in').selectOption('oauth');
+  await choose(form.getByLabel('Sign-in'), 'oauth');
   await form.getByRole('button', { name: 'Connect server' }).click();
 
   const card = page.getByTestId('lib-mcp').filter({ hasText: 'Hosted tracker' });

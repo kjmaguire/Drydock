@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createProject, freshGreenRepo, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, freshGreenRepo, workspaceNav, projectNav } from './helpers';
 
 /** Open a project skill's panel from its row on the Skills page (one-line rows; the panel opens inside the row). */
 async function openSkill(page: Page, name: string) {
@@ -28,7 +28,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   const form = page.getByTestId('agent-form');
   await form.getByLabel('Agent name').fill('Ada');
   await form.getByLabel('Role', { exact: true }).fill('frontend');
-  await form.getByLabel('Adapter', { exact: true }).selectOption('claude');
+  await choose(form.getByLabel('Adapter', { exact: true }), 'claude');
   const box = form.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
   await expect(form.getByTestId('agent-skills')).toContainText('Now it goes to every Backend agent.');
   await box.check();
@@ -71,7 +71,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('UI dev');
   await tf.getByLabel('Role').fill('frontend');
-  await tf.getByLabel('Add a skill').selectOption({ label: 'frontend-design (anthropic-skills), from prebuilt UI Engineer' });
+  await choose(tf.getByLabel('Add a skill'), { label: 'frontend-design (anthropic-skills), from prebuilt UI Engineer' });
   await tf.getByRole('button', { name: 'Add skill' }).click();
   await expect(tf.getByTestId('template-skills')).toContainText('anthropic-skills, pinned at');
   await tf.getByRole('button', { name: 'Create template' }).click();

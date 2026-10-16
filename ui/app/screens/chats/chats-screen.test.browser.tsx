@@ -3,11 +3,12 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Chat, ChatHit, ChatListItem, ChatMessage } from '../../api/chatClient.ts';
 import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { lic } from '../../test/fixtures.ts';
 import { CommandPalette } from '../../shell/palette.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
 import { RETRY_TEXT } from './chats.ts';
+import { OTHER_MODEL } from '../shared/model-field.tsx';
 
 afterEach(cleanup);
 
@@ -290,11 +291,11 @@ describe('New chat dialog', () => {
     const created: unknown[] = [];
     const { r, navigated } = setup({ chatCreate: async (p) => (created.push(p), chat({ id: 'c_new' })) }, { newChat: true });
     const dlg = await waitFor(newChatDialog, r);
-    const project = byLabel<HTMLSelectElement>(dlg, 'Project');
-    await waitFor(() => expect(project.value).toBe('prj_1'), r);
-    const agent = byLabel<HTMLSelectElement>(dlg, 'Agent CLI');
-    expect(agent.value).toBe('claude');
-    const opts = Array.from(agent.options).map((o) => [o.textContent, o.disabled]);
+    const project = byLabel<HTMLElement>(dlg, 'Project');
+    await waitFor(() => expect(valueOf(project)).toBe('prj_1'), r);
+    const agent = byLabel<HTMLElement>(dlg, 'Agent CLI');
+    expect(valueOf(agent)).toBe('claude');
+    const opts = optionsOf(agent).map((o) => [o.label, o.disabled]);
     expect(opts).toEqual([
       ['Claude Code 2.1.295', false],
       ['Cline 3.0.70', false],
@@ -302,9 +303,9 @@ describe('New chat dialog', () => {
     ]);
     expect(byLabel<HTMLInputElement>(dlg, /^Let this chat read my other chats/).checked).toBe(true);
     // the model field offers the adapter's models
-    expect(Array.from(dlg.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'))).toEqual(['opus', 'sonnet', 'haiku']);
+    expect(optionsOf(byLabel<HTMLElement>(dlg, 'Model')).map((o) => o.value)).toEqual(['', 'opus', 'sonnet', 'haiku', OTHER_MODEL]);
     type(byLabel(dlg, 'Model'), 'opus');
-    type(byLabel<HTMLSelectElement>(dlg, 'Effort'), 'low');
+    type(byLabel<HTMLElement>(dlg, 'Effort'), 'low');
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
     await waitFor(() => expect(created).toEqual([{ projectId: 'prj_1', cwd: undefined, adapter: 'claude', model: 'opus', effort: 'low', permissionMode: undefined, readHistory: true }]), r);
     // one navigation, straight to the new chat (no extra trip to /chats on the way)
@@ -340,8 +341,8 @@ describe('New chat dialog', () => {
       { newChat: true },
     );
     const dlg = await waitFor(newChatDialog, r);
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Project').value).toBe('prj_1'), r);
-    type(byLabel<HTMLSelectElement>(dlg, 'Project'), '');
+    await waitFor(() => expect(valueOf(byLabel(dlg, 'Project'))).toBe('prj_1'), r);
+    type(byLabel<HTMLElement>(dlg, 'Project'), '');
     const folder = await waitFor(() => byLabel(dlg, 'Folder'), r);
     type(folder, 'notes\\weekly');
     // the browser does not guess the core's path rules: Start stays enabled and the core answers
@@ -359,10 +360,10 @@ describe('New chat dialog', () => {
   it('warns clearly when a permission mode that skips approvals is picked', async () => {
     const { r } = setup({}, { newChat: true });
     const dlg = await waitFor(newChatDialog, r);
-    const mode = await waitFor(() => byLabel<HTMLSelectElement>(dlg, 'Permission mode'), r);
-    await waitFor(() => expect(mode.value).toBe('default'), r);
+    const mode = await waitFor(() => byLabel<HTMLElement>(dlg, 'Permission mode'), r);
+    await waitFor(() => expect(valueOf(mode)).toBe('default'), r);
     expect(dlg.querySelector('[data-testid="skip-warning"]')).toBeNull();
-    expect(Array.from(mode.options).find((o) => o.value === 'bypassPermissions')!.textContent).toBe('bypassPermissions (skips approvals)');
+    expect(optionsOf(mode).find((o) => o.value === 'bypassPermissions')!.label).toBe('bypassPermissions (skips approvals)');
     type(mode, 'bypassPermissions');
     const warn = await waitFor(() => must(dlg.querySelector<HTMLElement>('[data-testid="skip-warning"]'), 'warning'), r);
     expect(warn.getAttribute('role')).toBe('alert');
@@ -385,12 +386,12 @@ describe('New chat dialog', () => {
       { newChat: true },
     );
     const dlg = await waitFor(newChatDialog, r);
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Project').value).toBe('prj_1'), r);
-    type(byLabel<HTMLSelectElement>(dlg, 'Project'), ''); // the owner's case: a chat with no project
-    const agent = byLabel<HTMLSelectElement>(dlg, 'Agent CLI');
+    await waitFor(() => expect(valueOf(byLabel(dlg, 'Project'))).toBe('prj_1'), r);
+    type(byLabel<HTMLElement>(dlg, 'Project'), ''); // the owner's case: a chat with no project
+    const agent = byLabel<HTMLElement>(dlg, 'Agent CLI');
     await waitFor(
       () =>
-        expect(Array.from(agent.options).map((o) => [o.textContent, o.disabled])).toEqual([
+        expect(optionsOf(agent).map((o) => [o.label, o.disabled])).toEqual([
           ['Claude Code on Windows 2.1.295', false],
           ['Claude Code in Debian (WSL) (not signed in)', true],
           ['Claude Code in Ubuntu (WSL) 2.1.296', false],
@@ -399,12 +400,12 @@ describe('New chat dialog', () => {
         ]),
       r,
     );
-    expect(agent.value).toBe('claude'); // Windows stays the default
+    expect(valueOf(agent)).toBe('claude'); // Windows stays the default
     type(agent, 'claude@wsl:Ubuntu');
     await waitFor(() => expect(dlg.textContent).toContain('Runs inside the WSL distro Ubuntu'), r);
     expect(byLabel<HTMLInputElement>(dlg, 'Folder').placeholder).toBe('/home/you/notes');
     // the WSL install has Claude Code's models and modes
-    expect(Array.from(dlg.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'))).toEqual(['opus', 'sonnet', 'haiku']);
+    expect(optionsOf(byLabel<HTMLElement>(dlg, 'Model')).map((o) => o.value)).toEqual(['', 'opus', 'sonnet', 'haiku', OTHER_MODEL]);
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
     await waitFor(() => expect(navigated).toEqual(['/chats/c_wsl']), r);
     expect(created).toEqual([{ projectId: undefined, cwd: undefined, adapter: 'claude', wslDistro: 'Ubuntu', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true }]);
@@ -419,7 +420,7 @@ describe('New chat dialog', () => {
   it('shows the error the core gave', async () => {
     const { r } = setup({ chatCreate: async () => Promise.reject(new Error('the adapter claude has unacknowledged gates')) }, { newChat: true });
     const dlg = await waitFor(newChatDialog, r);
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Agent CLI').value).toBe('claude'), r);
+    await waitFor(() => expect(valueOf(byLabel(dlg, 'Agent CLI'))).toBe('claude'), r);
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
     await waitFor(() => expect(dlg.querySelector('[role="alert"]')!.textContent).toContain('unacknowledged gates'), r);
   });
@@ -577,9 +578,9 @@ describe('Conversation', () => {
       if (!p.querySelector('form')) throw new Error('closed');
       return p;
     }, r);
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(pop, 'Permission mode').value).toBe('default'), r);
+    await waitFor(() => expect(valueOf(byLabel(pop, 'Permission mode'))).toBe('default'), r);
     type(byLabel(pop, 'Model'), 'opus');
-    type(byLabel<HTMLSelectElement>(pop, 'Permission mode'), 'bypassPermissions');
+    type(byLabel<HTMLElement>(pop, 'Permission mode'), 'bypassPermissions');
     await waitFor(() => expect(pop.querySelector('[data-testid="skip-warning"]')).not.toBeNull(), r);
     await r.act(() => byText(pop, 'button', 'Save').click());
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', model: 'opus', effort: 'high', permissionMode: 'bypassPermissions', readHistory: true }]), r);
@@ -591,7 +592,7 @@ describe('Conversation', () => {
     const btn = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'Chat settings'), r);
     await r.act(() => btn.click());
     const model = await waitFor(() => {
-      const el = must$(r, '[data-testid="chat-settings"]').querySelector('input');
+      const el = must$(r, '[data-testid="chat-settings"]').querySelector<HTMLElement>('[role="combobox"]');
       if (!el || document.activeElement !== el) throw new Error('not focused yet');
       return el;
     }, r);

@@ -10,6 +10,7 @@ import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select, selectOptions } from '../../ui/select.tsx';
 import { card } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ATTESTATIONS, emptyProviderForm, FLAVORS, newProviderRequest, type ProviderFormValues } from './providers.ts';
@@ -84,20 +85,15 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void 
   const select = <K extends 'kind' | 'dataClass' | 'tier' | 'flavor'>(label: string, key: K, options: Option[]) => (
     <Field label={label}>
       {(id) => (
-        <select
+        <Select
           id={id}
           value={v[key]}
-          mix={on('change', (e) => {
-            v[key] = e.currentTarget.value as ProviderFormValues[K];
+          options={selectOptions(options)}
+          onChange={(val) => {
+            v[key] = val as ProviderFormValues[K];
             redraw();
-          })}
-        >
-          {options.map(([val, l]) => (
-            <option key={val} value={val} selected={val === v[key]}>
-              {l}
-            </option>
-          ))}
-        </select>
+          }}
+        />
       )}
     </Field>
   );

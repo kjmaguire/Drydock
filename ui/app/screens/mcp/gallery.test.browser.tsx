@@ -165,7 +165,7 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(ml.querySelector('a[target="_blank"]')!.getAttribute('href')).toBe('https://github.com/MicrosoftDocs/mcp');
     // no project yet: connecting still works; there is nothing about projects on the card
     expect(byText<HTMLButtonElement>(ml, 'button', 'Connect Microsoft Learn').disabled).toBe(false);
-    expect(ml.querySelector('select')).toBeNull();
+    expect(ml.querySelector('[role="combobox"]')).toBeNull();
   });
 
   it('connects a server that needs no account with one click', async () => {
@@ -288,7 +288,7 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     const ml = await cardOf(r, 'mslearn');
     expect(ml.querySelector('[data-testid="connector-projects"]')!.textContent).toBe("In 2 projects. Add it to a project, and grant it to agents, on that project's Integrations page.");
     expect(ml.textContent).not.toContain('gocalc');
-    expect(ml.querySelector('select')).toBeNull();
+    expect(ml.querySelector('[role="combobox"]')).toBeNull();
     expect(ml.querySelector('input[type="checkbox"]')).toBeNull();
     for (const name of ['Add to project', 'Grant to agents']) expect(() => byText(ml, 'button', name)).toThrow();
     await r.act(() => byText(ml, 'button', 'Disconnect').click());

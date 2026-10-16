@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ChatCreate, ChatListItem } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
 afterEach(cleanup);
@@ -217,7 +217,7 @@ describe('Chat from Home', () => {
       if (!d) throw new Error('no dialog');
       return d;
     }, r);
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Project').value).toBe(''), r);
+    await waitFor(() => expect(valueOf(byLabel(dlg, 'Project'))).toBe(''), r);
     type(byLabel(dlg, 'Folder'), '/home/me/notes');
     const skill = await waitFor(() => dlg.querySelector<HTMLInputElement>('[data-testid="chat-skill-option"][data-name="wrangler"] input')!, r);
     await r.act(() => skill.click());

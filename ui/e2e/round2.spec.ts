@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
 
 test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
@@ -57,11 +57,11 @@ test('Providers: a fake key is stored by the core but never displayed; validatio
 
   // a loopback host is accepted
   await page.getByLabel('Provider name').fill('Local vLLM');
-  await page.getByLabel('Kind', { exact: true }).selectOption('host');
+  await choose(page.getByLabel('Kind', { exact: true }), 'host');
   await page.getByLabel('Base URL').fill('http://127.0.0.1:9/v1');
   await page.getByLabel(/API key/).fill(secret);
-  await page.getByLabel('Data class').selectOption('private');
-  await page.getByLabel('Tier', { exact: true }).selectOption('free');
+  await choose(page.getByLabel('Data class'), 'private');
+  await choose(page.getByLabel('Tier', { exact: true }), 'free');
   await page.getByRole('button', { name: 'Add provider' }).click();
   const card = page.locator('[data-testid=provider][data-name="Local vLLM"]');
   await expect(card).toBeVisible();
@@ -87,7 +87,7 @@ test('Providers: a fake key is stored by the core but never displayed; validatio
   await page.getByTestId('provider-add-tile').click();
   await page.getByLabel('Provider name').fill('Public docs only');
   await page.getByLabel('Base URL').fill('http://127.0.0.1:9/v1');
-  await page.getByLabel('Data class').selectOption('trainable');
+  await choose(page.getByLabel('Data class'), 'trainable');
   await page.getByRole('button', { name: 'Add provider' }).click();
   await expect(page.getByTestId('trainable-note')).toContainText('never receives repo content');
 });

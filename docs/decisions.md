@@ -475,3 +475,17 @@ Open, owner action:
   exchange, GitHub's device flow details and Notion's and Aikido's constraints are from memory (their documentation was
   unreachable from the development host); whether Sentry refreshes a device-flow token without a client secret (its docs show
   client_secret on refresh). The owner's first sign-in with a registered app proves each.
+
+**P72. Dropdowns are the kit's own control, never the native `<select>` (2026-10-16).** WebView2 draws the native option
+  and suggestion popups itself: they ignore the app's theme, and the model field's suggestion list appeared where the OS put
+  it, not under the field (the owner: "choosing model opus just goes far right"). Every dropdown is now `ui/app/ui/select.tsx`:
+  a combobox button over a themed, keyboard-complete listbox in an anchored popover, controlled by the form (`value` and
+  `onChange`, options as `{ value, label, hint?, disabled? }`), with `onChange` only for a different option (the agent form
+  relies on it: choosing the adapter again keeps the model and effort). A model name is chosen from the adapter's aliases
+  with "Another model..." for a typed full name (`ui/app/screens/shared/model-field.tsx`), so free text stays possible
+  without a native datalist. Two free-text fields keep a native suggestion list (`<input list>`): the agent's role and an
+  integration setting's choices, where the typed text is the value and the list only offers; they are the one place WebView2
+  still draws a popup. Tests drive dropdowns through `choose()`, `optionsOf()` and `valueOf()` (browser) and `choose()` plus
+  `data-value` (Playwright); a new screen that renders a native `<select>` is a review failure. **Not verified:** the look
+  on Windows/WebView2 (Linux host only); the diagnosis of the far-right list rests on how WebView2 places native popups,
+  and the fix removes every native option popup.

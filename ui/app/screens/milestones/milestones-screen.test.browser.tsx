@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Milestone } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, waitFor } from '../../test/render.tsx';
 import { MilestonesScreen } from './milestones-screen.tsx';
 
 afterEach(cleanup);
@@ -83,8 +83,8 @@ describe('MilestonesScreen', () => {
     await waitFor(() => byText(card, 'a', '#1 Task 1'), r);
     expect(byText(card, 'a', '#1 Task 1').getAttribute('href')).toBe('/task/t1');
     // a task already in the milestone is not offered again
-    expect(Array.from(byLabel<HTMLSelectElement>(card, 'Add a task to Beta').options).map((o) => o.value)).toEqual(['', 't2']);
-    type(byLabel<HTMLSelectElement>(card, 'Add a task to Beta'), 't2');
+    expect(optionsOf(byLabel(card, 'Add a task to Beta')).map((o) => o.value)).toEqual(['', 't2']);
+    type(byLabel<HTMLElement>(card, 'Add a task to Beta'), 't2');
     r.root.flush();
     await r.act(() => byText(card, 'button', 'Add').click());
     await waitFor(() => expect(set).toEqual([['ms_1', ['t2'], []]]), r);

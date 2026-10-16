@@ -199,6 +199,38 @@ export async function createProject(page: Page, name: string, repo?: string): Pr
   await expect(roomLink(page, 'general')).toBeVisible();
 }
 
+/**
+ * Choose an option in a dropdown: the kit's Select (ui/app/ui/select.tsx, a combobox button over a listbox) or a native
+ * <select>. By value, or by `{ label }` as Playwright's selectOption takes it. The chosen value is readable on the button as
+ * `data-value` (`toHaveAttribute('data-value', ...)` stands in for `toHaveValue`).
+ */
+export async function choose(control: Locator, option: string | { label: string }): Promise<void> {
+  const tag = await control.evaluate((el) => el.tagName);
+  if (tag === 'SELECT') {
+    await control.selectOption(option);
+    return;
+  }
+  await control.click();
+  const listId = await control.getAttribute('aria-controls');
+  const list = control.page().locator(`#${listId}`);
+  const item = typeof option === 'string' ? list.locator(`[role="option"][data-value="${option.replace(/"/g, '\\"')}"]`) : list.getByRole('option', { name: option.label, exact: true });
+  await item.click();
+  // the list has closed (or the control turned into something else, as the model field does for "Another model...")
+  await expect(control).not.toHaveAttribute('aria-expanded', 'true');
+}
+
+/**
+ * The options of a dropdown, as a locator, or the one option with `value`: the kit's Select keeps them in the page while the
+ * list is closed (hidden), so they can be counted and read without opening it; a native <select> gives its <option>s.
+ */
+export async function optionsOf(control: Locator, value?: string): Promise<Locator> {
+  const tag = await control.evaluate((el) => el.tagName);
+  const one = value === undefined ? '' : `[${tag === 'SELECT' ? 'value' : 'data-value'}="${value.replace(/"/g, '\\"')}"]`;
+  if (tag === 'SELECT') return control.locator(`option${one}`);
+  const listId = await control.getAttribute('aria-controls');
+  return control.page().locator(`#${listId} [role="option"]${one}`);
+}
+
 export async function createAgent(page: Page, name: string, role: string): Promise<void> {
   // The form can be replaced while the page is still settling after a project change (seen once: the field detached and the
   // test waited out its whole timeout), so open the page and fill the name as one step that is retried as a whole.
@@ -207,7 +239,7 @@ export async function createAgent(page: Page, name: string, role: string): Promi
     await page.getByLabel('Agent name').fill(name, { timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
   await page.getByLabel('Role', { exact: true }).fill(role);
-  await page.getByLabel('Adapter', { exact: true }).selectOption('claude');
+  await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   await page.getByRole('button', { name: 'Create agent' }).click();
   await expect(page.getByTestId('agent').filter({ hasText: name })).toBeVisible();
 }
@@ -220,8 +252,8 @@ export async function createAssignedTask(page: Page, title: string, worker: stri
   await page.getByLabel('Description').fill('Add a Multiply function to the gocalc package.');
   await page.getByRole('button', { name: 'Create task' }).click();
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(title) })).toBeVisible();
-  await page.getByLabel('Worker', { exact: true }).selectOption({ label: `${worker} (${workerRole})` });
-  await page.getByLabel('Reviewer', { exact: true }).selectOption({ label: `${reviewer} (${reviewerRole})` });
+  await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (${workerRole})` });
+  await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (${reviewerRole})` });
   await page.getByRole('button', { name: 'Assign' }).click();
   await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
 }
@@ -234,8 +266,8 @@ export async function createAndStartTask(page: Page, title: string, worker: stri
   await page.getByLabel('Acceptance criteria').fill('Given 5 and 3 When Subtract is called Then 2');
   await page.getByRole('button', { name: 'Create task' }).click();
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(title) })).toBeVisible();
-  await page.getByLabel('Worker', { exact: true }).selectOption({ label: `${worker} (backend)` });
-  await page.getByLabel('Reviewer', { exact: true }).selectOption({ label: `${reviewer} (reviewer)` });
+  await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (backend)` });
+  await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (reviewer)` });
   await page.getByRole('button', { name: 'Assign' }).click();
   await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
   await page.getByRole('button', { name: 'Start' }).click();

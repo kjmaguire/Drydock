@@ -10,6 +10,7 @@ import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { buildInput, formValues } from './server-input.ts';
 
@@ -81,14 +82,16 @@ export function McpServerForm(handle: Handle<{ initial?: McpLibraryServer; onDon
         <Field label="Name">{(id) => <input id={id} value={v.display} required mix={text('display')} />}</Field>
         <Field label="Kind">
           {(id) => (
-            <select id={id} aria-label="Kind" value={v.transport} mix={on('change', (e) => set('transport', e.currentTarget.value as 'stdio' | 'http'))}>
-              <option value="stdio" selected={v.transport === 'stdio'}>
-                A program on this computer (stdio)
-              </option>
-              <option value="http" selected={v.transport === 'http'}>
-                A web address (https)
-              </option>
-            </select>
+            <Select
+              id={id}
+              label="Kind"
+              value={v.transport}
+              options={[
+                { value: 'stdio', label: 'A program on this computer (stdio)' },
+                { value: 'http', label: 'A web address (https)' },
+              ]}
+              onChange={(val) => set('transport', val as 'stdio' | 'http')}
+            />
           )}
         </Field>
         {v.transport === 'http' ? (
@@ -98,17 +101,17 @@ export function McpServerForm(handle: Handle<{ initial?: McpLibraryServer; onDon
             </Field>
             <Field label="How Drydock proves who it is">
               {(id) => (
-                <select id={id} aria-label="Sign-in" value={v.auth} mix={on('change', (e) => set('auth', e.currentTarget.value as 'none' | 'token' | 'oauth'))}>
-                  <option value="none" selected={v.auth === 'none'}>
-                    Nothing (a public server)
-                  </option>
-                  <option value="token" selected={v.auth === 'token'}>
-                    A bearer token or API key I paste
-                  </option>
-                  <option value="oauth" selected={v.auth === 'oauth'}>
-                    Sign in with the server's account (OAuth)
-                  </option>
-                </select>
+                <Select
+                  id={id}
+                  label="Sign-in"
+                  value={v.auth}
+                  options={[
+                    { value: 'none', label: 'Nothing (a public server)' },
+                    { value: 'token', label: 'A bearer token or API key I paste' },
+                    { value: 'oauth', label: "Sign in with the server's account (OAuth)" },
+                  ]}
+                  onChange={(val) => set('auth', val as 'none' | 'token' | 'oauth')}
+                />
               )}
             </Field>
             {v.auth === 'token' ? (

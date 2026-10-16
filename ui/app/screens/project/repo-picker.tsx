@@ -9,6 +9,7 @@ import { query, services } from '../../state/services.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { cloneTarget, pushedAgo } from './wizard.ts';
@@ -108,13 +109,7 @@ export function RepoPicker(
         <div mix={barCss}>
           <Field label="Owner">
             {(id) => (
-              <select id={id} value={current} disabled={ownerList.length === 0} mix={on('change', (e) => ((owner = e.currentTarget.value), void handle.update()))}>
-                {ownerList.map((o) => (
-                  <option key={o} value={o} selected={o === current}>
-                    {o}
-                  </option>
-                ))}
-              </select>
+              <Select id={id} value={current} disabled={ownerList.length === 0} options={selectValues(ownerList)} onChange={(v) => ((owner = v), void handle.update())} />
             )}
           </Field>
           <Field label="Search repositories">

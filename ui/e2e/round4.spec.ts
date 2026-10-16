@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom } from './helpers';
+import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -102,7 +102,7 @@ test('export a project, preview what is in it, import it into a second project; 
   await workspaceNav(page, 'nav-data');
   await expect(page.getByRole('heading', { level: 1, name: 'Export and import' })).toBeVisible();
 
-  await page.getByLabel('Project to export').selectOption({ label: 'pkg-export-src' });
+  await choose(page.getByLabel('Project to export'), { label: 'pkg-export-src' });
   await page.getByRole('button', { name: 'Preview the export' }).click();
   const preview = page.getByTestId('export-preview');
   await expect(preview).toBeVisible();
@@ -300,7 +300,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.getByRole('button', { name: 'Back up now' }).click();
   await expect(page.getByTestId('backup-made')).toContainText('written');
   await workspaceNav(page, 'nav-data');
-  await page.getByLabel('Project to export').selectOption({ label: 'pkg-licensed' });
+  await choose(page.getByLabel('Project to export'), { label: 'pkg-licensed' });
   await page.getByRole('button', { name: 'Preview the export' }).click();
   await expect(page.getByTestId('export-preview')).toBeVisible();
   await page.getByRole('button', { name: 'Export', exact: true }).click();

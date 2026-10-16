@@ -12,8 +12,8 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   // new chat: the current project, Claude Code, reading other chats on by default
   await page.getByTestId('chat-new').click();
   const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await expect(dialog.getByLabel('Project', { exact: true })).toHaveValue(/prj_/);
-  await expect(dialog.getByLabel('Agent CLI', { exact: true })).toHaveValue('claude');
+  await expect(dialog.getByLabel('Project', { exact: true })).toHaveAttribute('data-value', /prj_/);
+  await expect(dialog.getByLabel('Agent CLI', { exact: true })).toHaveAttribute('data-value', 'claude');
   await expect(dialog.getByLabel(/Let this chat read my other chats/)).toBeChecked();
   await dialog.getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/chats\/chat_/);

@@ -13,6 +13,7 @@ import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, StatusChip, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
@@ -331,16 +332,13 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
             >
               <Field label="Task">
                 {(fid) => (
-                  <select id={fid} aria-label="Task to link" value={taskId} mix={on('change', (e) => set(() => (taskId = e.currentTarget.value)))}>
-                    <option value="" selected={taskId === ''}>
-                      Choose a task
-                    </option>
-                    {tasks.map((tk) => (
-                      <option key={tk.id} value={tk.id} selected={tk.id === taskId}>
-                        #{tk.seq} {tk.title}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id={fid}
+                    label="Task to link"
+                    value={taskId}
+                    options={[{ value: '', label: 'Choose a task' }, ...tasks.map((tk) => ({ value: tk.id, label: `#${tk.seq} ${tk.title}` }))]}
+                    onChange={(v) => set(() => (taskId = v))}
+                  />
                 )}
               </Field>
               <Field label="Criteria (one per line; they must appear in this requirement)">

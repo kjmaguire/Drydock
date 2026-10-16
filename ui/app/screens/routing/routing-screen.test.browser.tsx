@@ -140,10 +140,10 @@ describe('RoutingScreen', () => {
         { blocked: false, decision: { ID: '', Provider: 'or', Model: 'x/y', Effort: '', Reason: '', Confidence: 1, EstCostUSD: null, DecidedBy: 'rules' }, explain: '- Rule r1 applied' }
       ),
     });
-    type(byLabel<HTMLSelectElement>(r.container, 'Run kind'), 'review');
-    type(byLabel<HTMLSelectElement>(r.container, 'Level'), 'quality');
+    type(byLabel<HTMLElement>(r.container, 'Run kind'), 'review');
+    type(byLabel<HTMLElement>(r.container, 'Level'), 'quality');
     type(byLabel(r.container, 'Role'), 'reviewer');
-    type(byLabel<HTMLSelectElement>(r.container, 'Context'), 'public_docs');
+    type(byLabel<HTMLElement>(r.container, 'Context'), 'public_docs');
     await r.act(() => byText(r.container, 'button', 'Preview').click());
     const out = await waitFor(() => need(r, '[data-testid="route-preview"]'), r);
     expect(asked[0]).toEqual({ RunKind: 'review', Level: 'quality', Role: 'reviewer', ContextCeiling: 'public_docs' });

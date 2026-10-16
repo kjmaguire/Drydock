@@ -2,11 +2,13 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import { lic } from '../test/fixtures.ts';
-import { cleanup, mount, renderPlain, testServices, waitFor } from '../test/render.tsx';
+import { byLabel, cleanup, mount, renderPlain, testServices, waitFor } from '../test/render.tsx';
 import { adapterInfo, CATALOG, prebuilt } from '../screens/project/wizard-fixtures.ts';
 import { ownsKeys } from '../lib/keys.ts';
 import { Dialog } from '../ui/dialog.tsx';
 import { Loading } from '../ui/feedback.tsx';
+import { Field } from '../ui/form.tsx';
+import { Select } from '../ui/select.tsx';
 import { Tabs } from '../ui/tabs.tsx';
 import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
@@ -177,6 +179,40 @@ describe('the kit', () => {
   it('Loading is a status message', () => {
     const r = renderPlain(<Loading label="Loading messages..." />);
     expect(r.container.querySelector('[role="status"]')!.textContent).toContain('Loading messages...');
+  });
+
+  it('a Select is a combobox named by its Field, controlling a listbox of options with the chosen one selected', async () => {
+    const r = renderPlain(
+      <Field label="Effort">
+        {(id) => (
+          <Select
+            id={id}
+            value="high"
+            options={[
+              { value: 'low', label: 'low' },
+              { value: 'high', label: 'high' },
+            ]}
+            onChange={() => {}}
+          />
+        )}
+      </Field>,
+    );
+    const b = byLabel<HTMLButtonElement>(r.container, 'Effort');
+    expect(b.getAttribute('role')).toBe('combobox');
+    expect(b.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(b.getAttribute('aria-expanded')).toBe('false');
+    const list = document.getElementById(b.getAttribute('aria-controls')!)!;
+    expect(list.getAttribute('role')).toBe('listbox');
+    const options = Array.from(list.querySelectorAll('[role="option"]'));
+    expect(options.map((o) => o.getAttribute('aria-selected'))).toEqual(['false', 'true']);
+    // open: the list takes focus, the active option is named, Escape closes and gives focus back
+    await r.act(() => b.click());
+    expect(b.getAttribute('aria-expanded')).toBe('true');
+    expect(list.getAttribute('aria-activedescendant')).toBe(options[1]!.id);
+    await waitFor(() => expect(document.activeElement).toBe(list), r);
+    press(list, 'Escape');
+    await waitFor(() => expect(b.getAttribute('aria-expanded')).toBe('false'), r);
+    await waitFor(() => expect(document.activeElement).toBe(b), r);
   });
 });
 

@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { EngineResult, ScanCounts, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { WorkspaceSecurityScreen } from './workspace-security-screen.tsx';
 
 afterEach(cleanup);
@@ -175,15 +175,15 @@ describe('the workspace Security page', () => {
     const select = await waitFor(() => {
       const x = r.$('[data-testid="scan-project"]');
       if (!x) throw new Error('not yet');
-      return x as HTMLSelectElement;
+      return x as HTMLElement;
     }, r);
-    const options = Array.from(select.options);
+    const options = optionsOf(select);
     expect(options.map((o) => [o.value, o.disabled])).toEqual([
       ['p1', false],
       ['p2', true],
     ]);
-    expect(options[1]!.textContent).toContain('no repository yet');
-    expect(select.value).toBe('p1');
+    expect(options[1]!.label).toContain('no repository yet');
+    expect(valueOf(select)).toBe('p1');
     expect(r.$('[data-testid="scan-folder"]')).toBeNull();
     // the project's own rules folder and history, as on its Security page
     await waitFor(() => expect((r.$('[data-testid="rules-dir"]') as HTMLInputElement).value).toBe('C:\\rules\\gocalc'), r);

@@ -16,7 +16,9 @@ import { Icon } from '../../ui/icon.tsx';
 import { headerCss } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { Popover } from '../../ui/popover.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ModelField } from '../shared/model-field.tsx';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
@@ -563,7 +565,6 @@ function ChatSettings(
   let effort = c.effort;
   let mode = c.permissionMode;
   let readHistory = c.readHistory;
-  const listId = `chat-models-${handle.id}`;
   const set = (fn: () => void) => {
     fn();
     void handle.update();
@@ -585,41 +586,23 @@ function ChatSettings(
         <h2>Chat settings</h2>
         <Field label="Model" hint="Applies from the next message.">
           {(id) => (
-            <>
-              <input id={id} value={model} list={models.length ? listId : undefined} placeholder="adapter default" spellcheck={false} autocomplete="off" mix={on('input', (e) => void (model = e.currentTarget.value))} />
-              {models.length ? (
-                <datalist id={listId}>
-                  {models.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              ) : null}
-            </>
+            <ModelField id={id} value={model} models={models} emptyLabel="adapter default" placeholder="adapter default" onChange={(v) => set(() => (model = v))} />
           )}
         </Field>
         <Field label="Effort">
           {(id) => (
-            <select id={id} value={effort} disabled={efforts.length === 0 && !effort} mix={on('change', (e) => set(() => (effort = e.currentTarget.value)))}>
-              <option value="" selected={effort === ''}>
-                adapter default
-              </option>
-              {[...new Set([...efforts, ...(effort ? [effort] : [])])].map((x) => (
-                <option key={x} value={x} selected={x === effort}>
-                  {x}
-                </option>
-              ))}
-            </select>
+            <Select
+              id={id}
+              value={effort}
+              disabled={efforts.length === 0 && !effort}
+              options={[{ value: '', label: 'adapter default' }, ...selectValues([...new Set([...efforts, ...(effort ? [effort] : [])])])]}
+              onChange={(v) => set(() => (effort = v))}
+            />
           )}
         </Field>
         <Field label="Permission mode">
           {(id) => (
-            <select id={id} value={mode} mix={on('change', (e) => set(() => (mode = e.currentTarget.value)))}>
-              {[...new Set([...modes, ...(mode ? [mode] : [])])].map((x) => (
-                <option key={x} value={x} selected={x === mode}>
-                  {x}
-                </option>
-              ))}
-            </select>
+            <Select id={id} value={mode} options={selectValues([...new Set([...modes, ...(mode ? [mode] : [])])])} onChange={(v) => set(() => (mode = v))} />
           )}
         </Field>
         {skipsApprovals(mode) ? (

@@ -13,6 +13,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -258,13 +259,12 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
       {st.repo !== 'none' ? (
         <Field label="Delivery" hint={st.repo === 'github' ? 'How an approved task reaches your branch.' : 'Pull requests need a GitHub repository.'}>
           {(id) => (
-            <select id={id} value={effectiveMode(st)} mix={on('change', (e) => ((st.mode = e.currentTarget.value as ProjectMode), update()))}>
-              {MODES.map(([v, label]) => (
-                <option key={v} value={v} disabled={v === 'pr_flow' && st.repo !== 'github'} selected={v === effectiveMode(st)}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <Select
+              id={id}
+              value={effectiveMode(st)}
+              options={MODES.map(([v, label]) => ({ value: v, label, disabled: v === 'pr_flow' && st.repo !== 'github' }))}
+              onChange={(v) => ((st.mode = v as ProjectMode), update())}
+            />
           )}
         </Field>
       ) : null}

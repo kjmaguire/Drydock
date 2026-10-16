@@ -11,6 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, StatusChip } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -182,23 +183,15 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; onChanged: 
         ) : null}
         <ErrorNote error={act.error} />
         <div mix={addRow}>
-          <select
-            aria-label={`Add a task to ${m.title}`}
+          <Select
+            label={`Add a task to ${m.title}`}
             value={add}
-            mix={on('change', (e) => {
-              add = e.currentTarget.value;
+            options={[{ value: '', label: 'Add a task...' }, ...free.map((x) => ({ value: x.id, label: `#${x.seq} ${x.title}` }))]}
+            onChange={(v) => {
+              add = v;
               void handle.update();
-            })}
-          >
-            <option value="" selected={add === ''}>
-              Add a task...
-            </option>
-            {free.map((x) => (
-              <option key={x.id} value={x.id} selected={x.id === add}>
-                #{x.seq} {x.title}
-              </option>
-            ))}
-          </select>
+            }}
+          />
           <Button
             icon={Plus}
             disabled={!add || act.busy !== ''}

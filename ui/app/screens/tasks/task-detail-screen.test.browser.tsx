@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { WorkflowTemplate } from '../../api/extTypes.ts';
 import type { Evidence } from '../../api/types.ts';
 import { expiredLicense, usage } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, renderPlain, type, valueOf, waitFor } from '../../test/render.tsx';
 import { EvidenceList } from './evidence.tsx';
 import { UnifiedDiff } from './raw-diff.tsx';
 import { TaskDetailScreen } from './task-detail-screen.tsx';
@@ -33,7 +33,7 @@ function need<T>(v: T | null | undefined): T {
 }
 
 async function ready(r: ReturnType<typeof mount>) {
-  await waitFor(() => expect(byLabel<HTMLSelectElement>(r.container, 'Worker').value).toBe('a1'), r);
+  await waitFor(() => expect(valueOf(byLabel(r.container, 'Worker'))).toBe('a1'), r);
 }
 
 describe('Task view: header, properties and content', () => {
@@ -60,7 +60,7 @@ describe('Task view: header, properties and content', () => {
     expect(r.container.textContent).toContain('Given 3 and 4 When Multiply Then 12');
     expect(r.$('.md strong')!.textContent).toBe('Multiply');
     // while a run is active, only cancel is offered (no assignment)
-    expect(r.$('select[aria-label="Worker"]')).toBeNull();
+    expect(r.$('[role="combobox"][aria-label="Worker"]')).toBeNull();
     expect(buttonNames(r.container)).toContain('Cancel task');
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(1), r);
     // the step bar: the spec is done (one criterion), the code is being written on attempt 2
@@ -149,15 +149,15 @@ describe('Task view: assignment and control', () => {
     const taskAssign = recorder(() => task());
     const d = detail({ task: task({ assignee: undefined, reviewer: undefined }) });
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskAssign }));
-    await waitFor(() => expect(r.$('select[aria-label="Worker"] option[value="a1"]')).toBeTruthy(), r);
+    await waitFor(() => expect(optionsOf(byLabel<HTMLElement>(r.container, 'Worker')).some((o) => o.value === 'a1')).toBe(true), r);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Assign').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Start').disabled).toBe(true);
     expect(byText(r.container, 'button', 'Start').getAttribute('title')).toBe('Assign a worker and a reviewer first');
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Worker'), 'a1'));
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Reviewer'), 'a1'));
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Worker'), 'a1'));
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Reviewer'), 'a1'));
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Assign').disabled).toBe(true); // same agent twice
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Reviewer'), 'a2'));
-    expect(r.$('select[aria-label="Worker"]')!.querySelector('option[value="a1"]')!.textContent).toBe('Dana (backend)');
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Reviewer'), 'a2'));
+    expect(optionsOf(byLabel<HTMLElement>(r.container, 'Worker')).find((o) => o.value === 'a1')!.label).toBe('Dana (backend)');
     await r.act(() => byText(r.container, 'button', 'Assign').click());
     await waitFor(() => expect(taskAssign.calls).toEqual([['t1', 'a1', 'a2']]), r);
   });
@@ -167,8 +167,8 @@ describe('Task view: assignment and control', () => {
     const taskStart = recorder(() => 'run0');
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail(), templateList: async () => templates, taskStartTemplate, taskStart }));
     await ready(r);
-    await waitFor(() => expect(r.$('select[aria-label="Template"] option[value="feature"]')).toBeTruthy(), r);
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Template'), 'feature'));
+    await waitFor(() => expect(optionsOf(byLabel<HTMLElement>(r.container, 'Template')).some((o) => o.value === 'feature')).toBe(true), r);
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Template'), 'feature'));
     const info = r.$('[data-testid="template-info"]')!;
     expect(info.textContent).toContain('role pm');
     expect(info.textContent).toContain('required');

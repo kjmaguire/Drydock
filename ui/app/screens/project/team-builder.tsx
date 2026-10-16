@@ -10,6 +10,8 @@ import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar, Badge } from '../../ui/data.tsx';
 import { Empty } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
+import { ModelField } from '../shared/model-field.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
@@ -57,7 +59,6 @@ const tplCss = css({ display: 'flex', alignItems: 'flex-end', gap: t.s2, flexWra
 
 /** The CLI, model, effort and permission inputs of one agent (shared by the rows and the custom agent form). */
 function SetupFields(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adapters: AdapterInfo[]; onChange: (m: TeamMember) => void; withName?: boolean }>) {
-  const listId = `models-${handle.id}`;
   return () => {
     const { m, entry, adapters, onChange, withName = true } = handle.props;
     const caps = adapters.find((a) => a.id === m.adapter)?.capabilities;
@@ -76,47 +77,29 @@ function SetupFields(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adap
         ) : null}
         <Field label="Agent CLI">
           {(id) => (
-            <select id={id} value={m.adapter} mix={on('change', (e) => changeAdapter(e.currentTarget.value))}>
-              {m.adapter ? null : (
-                <option value="" selected>
-                  choose...
-                </option>
-              )}
-              {adapterChoices(adapters, entry, m.adapter).map((c) => (
-                <option key={c.id} value={c.id} disabled={c.disabled} selected={c.id === m.adapter} title={c.reason}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+            <Select
+              id={id}
+              value={m.adapter}
+              placeholder="choose..."
+              options={adapterChoices(adapters, entry, m.adapter).map((c) => ({ value: c.id, label: c.label, disabled: c.disabled, hint: c.disabled ? c.reason : undefined }))}
+              onChange={(v) => changeAdapter(v)}
+            />
           )}
         </Field>
         <Field label="Model">
           {(id) => (
-            <>
-              <input id={id} value={m.model} list={models.length ? listId : undefined} placeholder="CLI default" autocomplete="off" spellcheck={false} mix={on('input', (e) => set({ model: e.currentTarget.value }))} />
-              {models.length ? (
-                <datalist id={listId}>
-                  {models.map((x) => (
-                    <option key={x} value={x} />
-                  ))}
-                </datalist>
-              ) : null}
-            </>
+            <ModelField id={id} value={m.model} models={models} emptyLabel="CLI default" placeholder="CLI default" onChange={(v) => set({ model: v })} />
           )}
         </Field>
         <Field label="Effort">
           {(id) =>
             efforts.length ? (
-              <select id={id} value={m.effort} mix={on('change', (e) => set({ effort: e.currentTarget.value }))}>
-                <option value="" selected={m.effort === ''}>
-                  default
-                </option>
-                {[...new Set([...efforts, ...(m.effort ? [m.effort] : [])])].map((x) => (
-                  <option key={x} value={x} selected={x === m.effort}>
-                    {x}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id={id}
+                value={m.effort}
+                options={[{ value: '', label: 'default' }, ...selectValues([...new Set([...efforts, ...(m.effort ? [m.effort] : [])])])]}
+                onChange={(v) => set({ effort: v })}
+              />
             ) : (
               <input id={id} value={m.effort} placeholder="default" autocomplete="off" mix={on('input', (e) => set({ effort: e.currentTarget.value }))} />
             )
@@ -124,16 +107,12 @@ function SetupFields(handle: Handle<{ m: TeamMember; entry?: PrebuiltAgent; adap
         </Field>
         <Field label="Permissions">
           {(id) => (
-            <select id={id} value={m.permissionMode} mix={on('change', (e) => set({ permissionMode: e.currentTarget.value }))}>
-              <option value="" selected={m.permissionMode === ''}>
-                default
-              </option>
-              {[...new Set([...perms, ...(m.permissionMode ? [m.permissionMode] : [])])].map((x) => (
-                <option key={x} value={x} selected={x === m.permissionMode}>
-                  {x}
-                </option>
-              ))}
-            </select>
+            <Select
+              id={id}
+              value={m.permissionMode}
+              options={[{ value: '', label: 'default' }, ...selectValues([...new Set([...perms, ...(m.permissionMode ? [m.permissionMode] : [])])])]}
+              onChange={(v) => set({ permissionMode: v })}
+            />
           )}
         </Field>
       </>
@@ -297,16 +276,12 @@ export function TeamBuilder(
             <div mix={tplCss}>
               <Field label="From template">
                 {(id) => (
-                  <select id={id} value={template} mix={on('change', (e) => ((template = e.currentTarget.value), void handle.update()))}>
-                    <option value="" selected={template === ''}>
-                      choose a saved template...
-                    </option>
-                    {templates.map((tp) => (
-                      <option key={tp.id} value={tp.id} selected={tp.id === template}>
-                        {tp.name} ({tp.role}, {tp.adapter})
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id={id}
+                    value={template}
+                    options={[{ value: '', label: 'choose a saved template...' }, ...templates.map((tp) => ({ value: tp.id, label: `${tp.name} (${tp.role}, ${tp.adapter})` }))]}
+                    onChange={(v) => ((template = v), void handle.update())}
+                  />
                 )}
               </Field>
               <Button size="sm" variant="secondary" icon={BookTemplate} disabled={!template} mix={on('click', addTemplate)}>

@@ -14,6 +14,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -24,7 +25,7 @@ const askCss = css({
   alignItems: 'center',
   gap: t.s2,
   flexWrap: 'wrap',
-  '& select': { maxWidth: '260px' },
+  '& [role="combobox"]': { maxWidth: '260px' },
 });
 const listCss = css({
   listStyle: 'none',
@@ -189,13 +190,13 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
           <div mix={askCss}>
             <label>
               Ask{' '}
-              <select aria-label="Agent to ask" mix={on('change', (e) => set(() => (chosen = e.currentTarget.value)))}>
-                {agents.map((x) => (
-                  <option key={x.id} value={x.id} selected={x.id === a?.id}>
-                    {x.name} ({x.role})
-                  </option>
-                ))}
-              </select>
+              <Select
+                label="Agent to ask"
+                size="sm"
+                value={a?.id ?? ''}
+                options={agents.map((x) => ({ value: x.id, label: `${x.name} (${x.role})` }))}
+                onChange={(v) => set(() => (chosen = v))}
+              />
             </label>
             <Button size="sm" icon={Lightbulb} disabled={act.busy !== '' || running} data-testid="recommend-ask" mix={on('click', () => void ask(false))}>
               {running ? 'Thinking...' : 'Recommend'}

@@ -32,6 +32,7 @@ import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { card, Page, Section, stack } from '../../ui/layout.tsx';
@@ -399,13 +400,13 @@ function ConnectForm(
               mix={ref((n: HTMLInputElement) => (secrets[f.key] = n))}
             />
           ) : f.options && f.options.length > 0 ? (
-            <select id={id} aria-label={f.label} value={values[f.key] ?? f.options[0]!.value} mix={on('change', (e) => upd(() => (values = { ...values, [f.key]: e.currentTarget.value })))}>
-              {f.options.map((o) => (
-                <option key={o.value} value={o.value} selected={o.value === (values[f.key] ?? f.options![0]!.value)}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <Select
+              id={id}
+              label={f.label}
+              value={values[f.key] ?? f.options[0]!.value}
+              options={f.options.map((o) => ({ value: o.value, label: o.label }))}
+              onChange={(v) => upd(() => (values = { ...values, [f.key]: v }))}
+            />
           ) : (
             <input id={id} value={values[f.key] ?? ''} spellcheck={false} mix={on('input', (e) => upd(() => (values = { ...values, [f.key]: e.currentTarget.value })))} />
           )

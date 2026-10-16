@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import type { WSLStatus } from '../../api/wslClient.ts';
 import { lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { TeamScreen } from './team-screen.tsx';
 
 afterEach(cleanup);
@@ -68,11 +68,11 @@ describe('where an agent runs', () => {
     const calls: unknown[] = [];
     const r = show([], { agentCreate: async (spec) => (calls.push(spec), { ...agent(), ...spec } as Agent) });
     const runs = await waitFor(() => {
-      const sel = byLabel<HTMLSelectElement>(r.container, 'Runs');
-      if (sel.options.length < 4) throw new Error('no distros yet');
+      const sel = byLabel<HTMLElement>(r.container, 'Runs');
+      if (optionsOf(sel).length < 4) throw new Error('no distros yet');
       return sel;
     }, r);
-    expect(Array.from(runs.options).map((o) => o.textContent)).toEqual([
+    expect(optionsOf(runs).map((o) => o.label)).toEqual([
       'As the project says',
       'On Windows',
       'In WSL: Ubuntu (default distro)',
@@ -86,7 +86,7 @@ describe('where an agent runs', () => {
     await r.act(() => byText(r.container, 'button', 'Create agent').click());
     await waitFor(() => expect(calls).toEqual([{ projectId: 'prj_1', name: 'Linux', role: 'backend', purpose: '', adapter: 'claude', model: '', effort: '', practices: true, runMode: 'wsl', wslDistro: 'Ubuntu' }]), r);
     // an adapter that cannot run in WSL shows no such choice
-    type(byLabel<HTMLSelectElement>(r.container, 'Adapter'), 'opencode');
+    type(byLabel<HTMLElement>(r.container, 'Adapter'), 'opencode');
     r.root.flush();
     expect(r.$('[data-testid="run-mode"]')).toBe(null);
   });
@@ -107,11 +107,11 @@ describe('where an agent runs', () => {
       return e;
     }, r);
     const runs = await waitFor(() => {
-      const sel = byLabel<HTMLSelectElement>(ed, 'Runs');
-      if (sel.options.length < 4) throw new Error('no distros yet');
+      const sel = byLabel<HTMLElement>(ed, 'Runs');
+      if (optionsOf(sel).length < 4) throw new Error('no distros yet');
       return sel;
     }, r);
-    expect(runs.value).toBe('wsl:Ubuntu');
+    expect(valueOf(runs)).toBe('wsl:Ubuntu');
     await r.act(() => byText(ed, 'button', 'Save changes').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect('runMode' in calls[0]!).toBe(false);
@@ -122,8 +122,8 @@ describe('where an agent runs', () => {
       return e;
     }, r);
     const runs2 = await waitFor(() => {
-      const sel = byLabel<HTMLSelectElement>(ed2, 'Runs');
-      if (sel.options.length < 4) throw new Error('no distros yet');
+      const sel = byLabel<HTMLElement>(ed2, 'Runs');
+      if (optionsOf(sel).length < 4) throw new Error('no distros yet');
       return sel;
     }, r);
     type(runs2, 'native');
@@ -136,6 +136,6 @@ describe('where an agent runs', () => {
   it('says so when WSL has no distro, and offers nothing in WSL', async () => {
     const r = show([], { wslDistros: async () => ({ available: true, distros: [], message: '' }) });
     await waitFor(() => expect(r.container.textContent).toContain('No WSL distro is installed on this machine.'), r);
-    expect(Array.from(byLabel<HTMLSelectElement>(r.container, 'Runs').options).map((o) => o.value)).toEqual(['', 'native']);
+    expect(optionsOf(byLabel(r.container, 'Runs')).map((o) => o.value)).toEqual(['', 'native']);
   });
 });

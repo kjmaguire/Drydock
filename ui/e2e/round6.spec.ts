@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject, workspaceNav, projectNav, switchProject } from './helpers';
+import { choose, createAgent, createProject, workspaceNav, projectNav, switchProject } from './helpers';
 
 // Round 6: the Library, against the real Go core. An MCP server is connected once, for the workspace, in the Library (the dialog
 // lists the servers built into Drydock first, then a custom server); a project adds it from its own Integrations page and grants
@@ -25,11 +25,11 @@ test("Library: connect an MCP server once; a project adds it and grants it to an
   const form = page.getByTestId('mcp-form');
   await form.getByLabel('Short id', { exact: false }).fill('web');
   await form.getByLabel('Name', { exact: true }).fill('Remote');
-  await form.getByLabel('Kind').selectOption('http');
+  await choose(form.getByLabel('Kind'), 'http');
   await form.getByLabel('Address', { exact: false }).fill('http://example.com/mcp');
   await form.getByRole('button', { name: 'Connect server' }).click();
   await expect(form.getByRole('alert')).toContainText('plain http');
-  await form.getByLabel('Kind').selectOption('stdio');
+  await choose(form.getByLabel('Kind'), 'stdio');
   await form.getByLabel('Short id', { exact: false }).fill('tst');
   await form.getByLabel('Name', { exact: true }).fill('Test server');
   await form.getByLabel('Command, one argument per line', { exact: false }).fill(exe);
@@ -67,8 +67,8 @@ test("Library: connect an MCP server once; a project adds it and grants it to an
   await tf.getByLabel('Template name').fill('Payments dev');
   await tf.getByLabel('Role').fill('backend');
   await tf.getByRole('textbox', { name: /^Purpose/ }).fill('Own the payments service.');
-  await tf.getByLabel('Model', { exact: true }).fill('sonnet');
-  await tf.getByLabel('Effort', { exact: true }).selectOption('high');
+  await choose(tf.getByLabel('Model', { exact: true }), 'sonnet');
+  await choose(tf.getByLabel('Effort', { exact: true }), 'high');
   await tf.getByLabel('Template gets Test server').check();
   await tf.getByRole('button', { name: 'Create template' }).click();
   const tpl = page.getByTestId('lib-template').filter({ hasText: 'Payments dev' });

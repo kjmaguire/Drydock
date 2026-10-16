@@ -12,6 +12,8 @@ import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
+import { ModelField } from '../shared/model-field.tsx';
 import type { ChatMcpGrant, ChatSkillRef } from '../../api/chatClient.ts';
 import { ServerPicker, SkillPicker, useMcpLibrary, useSkillLibrary } from './chat-properties.tsx';
 import { chatChoices, pickChatChoice, skipsApprovals } from './chats.ts';
@@ -50,7 +52,6 @@ export function NewChatDialog(
   const library = useSkillLibrary(handle, () => handle.props.open);
   const mcpLib = useMcpLibrary(handle, () => handle.props.open);
   let wasOpen = false;
-  const listId = `new-chat-models-${handle.id}`;
 
   const reset = () => {
     project = undefined;
@@ -123,16 +124,12 @@ export function NewChatDialog(
           >
             <Field label="Project" hint={pid ? 'The chat runs in the project folder.' : 'The chat is not tied to a project.'}>
               {(id) => (
-                <select id={id} value={pid} mix={on('change', (e) => set(() => (project = e.currentTarget.value)))}>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id} selected={p.id === pid}>
-                      {p.name}
-                    </option>
-                  ))}
-                  <option value={NO_PROJECT} selected={pid === NO_PROJECT}>
-                    No project
-                  </option>
-                </select>
+                <Select
+                  id={id}
+                  value={pid}
+                  options={[...projects.map((p) => ({ value: p.id, label: p.name })), { value: NO_PROJECT, label: 'No project' }]}
+                  onChange={(v) => set(() => (project = v))}
+                />
               )}
             </Field>
             {pid === NO_PROJECT ? (
@@ -167,67 +164,48 @@ export function NewChatDialog(
               }
             >
               {(id) => (
-                <select id={id} value={chosen?.value ?? ''} mix={on('change', (e) => set(() => ((adapter = e.currentTarget.value), (model = ''), (effort = ''), (mode = ''))))}>
-                  {choices.map((c) => (
-                    <option key={c.value} value={c.value} disabled={!!c.why} selected={c.value === chosen?.value}>
-                      {c.text}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id={id}
+                  value={chosen?.value ?? ''}
+                  options={choices.map((c) => ({ value: c.value, label: c.text, disabled: !!c.why }))}
+                  placeholder="No agent CLI is installed"
+                  onChange={(v) => set(() => ((adapter = v), (model = ''), (effort = ''), (mode = '')))}
+                />
               )}
             </Field>
             <Field label="Model">
               {(id) => (
-                <>
-                  <input
-                    id={id}
-                    value={model}
-                    list={models.length ? listId : undefined}
-                    disabled={caps?.modelSelection === false && models.length === 0}
-                    placeholder="adapter default"
-                    spellcheck={false}
-                    autocomplete="off"
-                    mix={on('input', (e) => void (model = e.currentTarget.value))}
-                  />
-                  {models.length ? (
-                    <datalist id={listId}>
-                      {models.map((m) => (
-                        <option key={m} value={m} />
-                      ))}
-                    </datalist>
-                  ) : null}
-                </>
+                <ModelField
+                  id={id}
+                  value={model}
+                  models={models}
+                  emptyLabel="adapter default"
+                  placeholder="adapter default"
+                  disabled={caps?.modelSelection === false && models.length === 0}
+                  onChange={(v) => set(() => (model = v))}
+                />
               )}
             </Field>
             <Field label="Effort">
               {(id) => (
-                <select id={id} value={effort} disabled={efforts.length === 0} mix={on('change', (e) => set(() => (effort = e.currentTarget.value)))}>
-                  <option value="" selected={effort === ''}>
-                    adapter default
-                  </option>
-                  {efforts.map((x) => (
-                    <option key={x} value={x} selected={x === effort}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id={id}
+                  value={effort}
+                  disabled={efforts.length === 0}
+                  options={[{ value: '', label: 'adapter default' }, ...selectValues(efforts)]}
+                  onChange={(v) => set(() => (effort = v))}
+                />
               )}
             </Field>
             <Field label="Permission mode" hint={chosen?.adapter.id === 'claude' && modeNow === 'default' ? 'Tools outside the mode are refused and shown, with a rule you can allow.' : undefined}>
               {(id) => (
-                <select id={id} value={modeNow} disabled={modes.length === 0} mix={on('change', (e) => set(() => (mode = e.currentTarget.value)))}>
-                  {modes.length === 0 ? (
-                    <option value="" selected>
-                      agent default
-                    </option>
-                  ) : null}
-                  {modes.map((x) => (
-                    <option key={x} value={x} selected={x === modeNow}>
-                      {x}
-                      {skipsApprovals(x) ? ' (skips approvals)' : ''}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id={id}
+                  value={modeNow}
+                  disabled={modes.length === 0}
+                  options={modes.length === 0 ? [{ value: '', label: 'agent default' }] : modes.map((x) => ({ value: x, label: `${x}${skipsApprovals(x) ? ' (skips approvals)' : ''}` }))}
+                  onChange={(v) => set(() => (mode = v))}
+                />
               )}
             </Field>
             {skipsApprovals(modeNow) ? (

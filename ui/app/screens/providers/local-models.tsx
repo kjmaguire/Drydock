@@ -19,6 +19,7 @@ import { Button } from "../../ui/button.tsx";
 import { Badge, mono, muted } from "../../ui/data.tsx";
 import { ErrorNote, Loading, Notice } from "../../ui/feedback.tsx";
 import { Checkbox, Field } from "../../ui/form.tsx";
+import { Select, selectValues } from "../../ui/select.tsx";
 import { Section } from "../../ui/layout.tsx";
 import { t } from "../../ui/tokens.ts";
 import { Meter } from "../budgets/meter.tsx";
@@ -470,29 +471,24 @@ export function LocalModels(handle: Handle) {
                     hint={v.backends.find((b) => b.id === chosenBackend)?.for}
                   >
                     {(id) => (
-                      <select
+                      <Select
                         id={id}
-                        data-testid="local-backend"
+                        testId="local-backend"
                         value={chosenBackend}
                         disabled={busy || installing}
-                        mix={on("change", (e) => {
-                          backend = e.currentTarget.value as LocalBackend;
+                        options={v.backends.map((b) => ({
+                          value: b.id,
+                          label: b.label,
+                          hint:
+                            b.id === v.suggestedBackend
+                              ? "suggested for this PC"
+                              : undefined,
+                        }))}
+                        onChange={(val) => {
+                          backend = val as LocalBackend;
                           redraw();
-                        })}
-                      >
-                        {v.backends.map((b) => (
-                          <option
-                            key={b.id}
-                            value={b.id}
-                            selected={b.id === chosenBackend}
-                          >
-                            {b.label}
-                            {b.id === v.suggestedBackend
-                              ? " (suggested for this PC)"
-                              : ""}
-                          </option>
-                        ))}
-                      </select>
+                        }}
+                      />
                     )}
                   </Field>
                   <Field
@@ -500,26 +496,20 @@ export function LocalModels(handle: Handle) {
                     hint="The official weekly build is the default. The TurboQuant fork is a second build you can pick; it adds the turbo4 and turbo3 cache types."
                   >
                     {(id) => (
-                      <select
+                      <Select
                         id={id}
-                        data-testid="local-source"
+                        testId="local-source"
                         value={srcId}
                         disabled={busy || installing}
-                        mix={on("change", (e) => {
-                          source = e.currentTarget.value;
+                        options={v.sources.map((x) => ({
+                          value: x.id,
+                          label: x.name,
+                        }))}
+                        onChange={(val) => {
+                          source = val;
                           redraw();
-                        })}
-                      >
-                        {v.sources.map((x) => (
-                          <option
-                            key={x.id}
-                            value={x.id}
-                            selected={x.id === srcId}
-                          >
-                            {x.name}
-                          </option>
-                        ))}
-                      </select>
+                        }}
+                      />
                     )}
                   </Field>
                 </div>
@@ -891,30 +881,18 @@ export function LocalModels(handle: Handle) {
                 hint="q8_0: near-lossless, half the KV memory of f16. q4_0: a quarter, with llama.cpp's Hadamard rotation (most of TurboQuant's gain)"
               >
                 {(id) => (
-                  <select
+                  <Select
                     id={id}
-                    data-testid="local-cache"
+                    testId="local-cache"
                     value={v.settings.cacheType}
                     disabled={busy}
-                    mix={on(
-                      "change",
-                      (e) =>
-                        void setSetting({ cacheType: e.currentTarget.value }),
+                    options={selectValues(
+                      cacheTypes.includes(v.settings.cacheType)
+                        ? cacheTypes
+                        : [v.settings.cacheType, ...cacheTypes],
                     )}
-                  >
-                    {(cacheTypes.includes(v.settings.cacheType)
-                      ? cacheTypes
-                      : [v.settings.cacheType, ...cacheTypes]
-                    ).map((c) => (
-                      <option
-                        key={c}
-                        value={c}
-                        selected={c === v.settings.cacheType}
-                      >
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => void setSetting({ cacheType: val })}
+                  />
                 )}
               </Field>
               <Field

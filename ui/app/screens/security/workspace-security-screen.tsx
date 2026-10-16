@@ -11,6 +11,7 @@ import { projectHasRepo } from '../../api/types.ts';
 import { services, watch } from '../../state/services.tsx';
 import { Notice } from '../../ui/feedback.tsx';
 import { Page, card } from '../../ui/layout.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ScanPanel, introCss } from './scan-panel.tsx';
 import { folderScope, projectScope } from './scan-scope.ts';
@@ -145,21 +146,16 @@ export function WorkspaceSecurityScreen(handle: Handle) {
                 {projects.length === 0 ? (
                   <p class="hint">You have no projects yet: scan a folder instead.</p>
                 ) : (
-                  <select
+                  <Select
                     id={`scan-project-${handle.id}`}
-                    data-testid="scan-project"
+                    testId="scan-project"
                     value={projectId}
-                    mix={on('change', (e) => {
-                      chosen = e.currentTarget.value;
+                    options={projects.map((p) => ({ value: p.id, label: p.name, disabled: !projectHasRepo(p), hint: projectHasRepo(p) ? undefined : 'no repository yet' }))}
+                    onChange={(v) => {
+                      chosen = v;
                       void handle.update();
-                    })}
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id} selected={p.id === projectId} disabled={!projectHasRepo(p)}>
-                        {projectHasRepo(p) ? p.name : `${p.name} (no repository yet)`}
-                      </option>
-                    ))}
-                  </select>
+                    }}
+                  />
                 )}
                 <p class="hint">Scans the project's working tree, with the project's own rules folder and history, as its Security page does.</p>
               </div>

@@ -12,6 +12,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, row } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
@@ -542,23 +543,16 @@ export function PlanScreen(handle: Handle) {
         subtitle="PlanTeam proposes, you decide"
         actions={
           plans.length > 1 ? (
-            <select
-              aria-label="Plan"
+            <Select
+              label="Plan"
               value={current?.id ?? ''}
-              mix={[
-                planSelect,
-                on('change', (e) => {
-                  sel = e.currentTarget.value;
-                  void handle.update();
-                }),
-              ]}
-            >
-              {plans.map((p) => (
-                <option key={p.id} value={p.id} selected={p.id === current?.id}>
-                  {p.goal.slice(0, 60)} ({p.status.toLowerCase()})
-                </option>
-              ))}
-            </select>
+              mix={[planSelect]}
+              options={plans.map((p) => ({ value: p.id, label: p.goal.slice(0, 60), hint: p.status.toLowerCase() }))}
+              onChange={(v) => {
+                sel = v;
+                void handle.update();
+              }}
+            />
           ) : undefined
         }
       >
@@ -596,21 +590,13 @@ export function PlanScreen(handle: Handle) {
               </Field>
               <Field label="Planner agent">
                 {(id) => (
-                  <select
+                  <Select
                     id={id}
-                    aria-label="Planner agent"
+                    label="Planner agent"
                     value={planner}
-                    mix={on('change', (e) => ((planner = e.currentTarget.value), void handle.update()))}
-                  >
-                    <option value="" selected={planner === ''}>
-                      First agent with the pm or architect role
-                    </option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id} selected={a.id === planner}>
-                        {a.name} ({a.role})
-                      </option>
-                    ))}
-                  </select>
+                    options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
+                    onChange={(v) => ((planner = v), void handle.update())}
+                  />
                 )}
               </Field>
             </div>

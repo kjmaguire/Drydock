@@ -14,6 +14,7 @@ import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
@@ -229,13 +230,7 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projectId: string }>) 
           <div mix={formGrid}>
             <Field label="Operation">
               {(id) => (
-                <select id={id} aria-label="Operation" value={curOp} mix={on('change', (e) => ((op = e.currentTarget.value), void handle.update()))}>
-                  {ops.map((o) => (
-                    <option key={o.op} value={o.op} selected={o.op === curOp}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                <Select id={id} label="Operation" value={curOp} options={ops.map((o) => ({ value: o.op, label: o.label }))} onChange={(v) => ((op = v), void handle.update())} />
               )}
             </Field>
             <Field label="Target (the external id of the item or page)">

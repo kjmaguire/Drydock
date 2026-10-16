@@ -35,8 +35,8 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   // Options: the new chat dialog without a project, Claude Code, a private folder, one skill and one server
   await home.getByRole('button', { name: 'Options...' }).click();
   const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await expect(dialog.getByLabel('Project', { exact: true })).toHaveValue('');
-  await expect(dialog.getByLabel('Agent CLI', { exact: true })).toHaveValue('claude');
+  await expect(dialog.getByLabel('Project', { exact: true })).toHaveAttribute('data-value', '');
+  await expect(dialog.getByLabel('Agent CLI', { exact: true })).toHaveAttribute('data-value', 'claude');
   await expect(dialog.getByLabel('Folder', { exact: true })).toHaveValue('');
   await dialog.getByLabel('Filter skills').fill('wrangler');
   await dialog.locator('[data-testid=chat-skill-option][data-name=wrangler] input').check();

@@ -8,6 +8,7 @@ import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Page, Section } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -122,20 +123,16 @@ export function EvalsScreen(handle: Handle) {
             <div mix={toolbarCss}>
               <label class="window">
                 Window
-                <select
-                  aria-label="Window"
+                <Select
+                  label="Window"
+                  size="sm"
                   value={String(days)}
-                  mix={on('change', (e) => {
-                    days = Number(e.currentTarget.value);
+                  options={WINDOWS.map(([l, d]) => ({ value: String(d), label: l }))}
+                  onChange={(v) => {
+                    days = Number(v);
                     void handle.update();
-                  })}
-                >
-                  {WINDOWS.map(([l, d]) => (
-                    <option key={d} value={String(d)} selected={d === days}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
+                  }}
+                />
               </label>
               <Checkbox
                 label="This project only"

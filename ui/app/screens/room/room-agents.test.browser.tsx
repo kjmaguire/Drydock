@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { RoomTurn } from '../../api/extTypes.ts';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { RoomAgentsPanel } from './room-agents.tsx';
 
 afterEach(cleanup);
@@ -30,12 +30,12 @@ describe('RoomAgentsPanel', () => {
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} lastHumanMessageId="msg_1" />, s);
     const text = () => r.container.querySelector('[data-testid="mode-text"]')!.textContent;
     expect(text()).toContain('No model chooses the speaker');
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Mode'), 'moderator'));
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Mode'), 'moderator'));
     expect(text()).toContain('names who speaks next');
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Moderator'), 'a1'));
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Moderator'), 'a1'));
     await r.act(() => button(r, 'Save mode').click());
     await waitFor(() => expect(calls).toEqual([{ roomId: 'room_1', mode: 'moderator', order: [], moderator: 'a1', maxRounds: 3 }]), r);
-    await r.act(() => type(byLabel<HTMLSelectElement>(r.container, 'Mode'), 'sequential'));
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Mode'), 'sequential'));
     expect(text()).toContain('one turn each per round');
     await r.act(() => button(r, 'Add Dana').click());
     await r.act(() => button(r, 'Add kyle').click());
@@ -71,13 +71,13 @@ describe('RoomAgentsPanel', () => {
       roomTurns: async () => [turn],
     });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} lastHumanMessageId="msg_1" />, s);
-    const invite = byLabel<HTMLSelectElement>(r.container, 'Invite an agent');
-    expect(Array.from(invite.options).map((o) => o.textContent)).toEqual(['Invite an agent...', 'Rex (reviewer)']);
+    const invite = byLabel<HTMLElement>(r.container, 'Invite an agent');
+    expect(optionsOf(invite).map((o) => o.label)).toEqual(['Invite an agent...', 'Rex (reviewer)']);
     expect(button(r, 'Invite').disabled).toBe(true);
     await r.act(() => type(invite, 'a2'));
     await r.act(() => button(r, 'Invite').click());
     await waitFor(() => expect(invites).toEqual([['room_1', 'a2']]), r);
-    await waitFor(() => expect(invite.value).toBe(''), r);
+    await waitFor(() => expect(valueOf(invite)).toBe(''), r);
     await r.act(() => button(r, 'Remove').click());
     await waitFor(() => expect(removes).toEqual([['room_1', 'a1']]), r);
     await r.act(() => button(r, 'Ask agents to reply to my last message').click());

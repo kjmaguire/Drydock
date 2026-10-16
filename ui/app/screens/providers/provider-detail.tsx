@@ -12,6 +12,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select, selectOptions, selectValues } from '../../ui/select.tsx';
 import { tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
@@ -38,11 +39,10 @@ function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView;
       fn(e.currentTarget.value);
       void handle.update();
     });
-  const choose = (fn: (v: string) => void) =>
-    on('change', (e: Event & { currentTarget: HTMLSelectElement }) => {
-      fn(e.currentTarget.value);
-      void handle.update();
-    });
+  const choose = (fn: (v: string) => void) => (v: string) => {
+    fn(v);
+    void handle.update();
+  };
 
   return () => {
     const { d, uptime, busy, onSave } = handle.props;
@@ -73,25 +73,20 @@ function SettingsForm(handle: Handle<{ d: Provider; uptime?: EndpointUptimeView;
         <Field label="Base URL">{(id) => <input id={id} value={baseUrl} required spellcheck={false} mix={text((v) => (baseUrl = v))} />}</Field>
         <Field label="Tier">
           {(id) => (
-            <select id={id} value={tier} mix={choose((v) => (tier = v))}>
-              {['premium', 'cheap', 'free'].map((x) => (
-                <option key={x} value={x} selected={x === tier}>
-                  {x}
-                </option>
-              ))}
-            </select>
+            <Select id={id} value={tier} options={selectValues(['premium', 'cheap', 'free'])} onChange={choose((v) => (tier = v))} />
           )}
         </Field>
         <Field label="Data class">
           {(id) => (
-            <select id={id} value={dataClass} mix={choose((v) => (dataClass = v))}>
-              <option value="private" selected={dataClass === 'private'}>
-                private
-              </option>
-              <option value="trainable" selected={dataClass === 'trainable'}>
-                trainable (public documentation questions only)
-              </option>
-            </select>
+            <Select
+              id={id}
+              value={dataClass}
+              options={[
+                { value: 'private', label: 'private' },
+                { value: 'trainable', label: 'trainable', hint: 'public documentation questions only' },
+              ]}
+              onChange={choose((v) => (dataClass = v))}
+            />
           )}
         </Field>
         <Field label="Max concurrent agents (empty: unlimited)">{(id) => <input id={id} inputMode="numeric" value={maxc} mix={text((v) => (maxc = v))} />}</Field>
@@ -225,23 +220,8 @@ function QuotaForm(handle: Handle<{ models: string[]; onAdd: (model: string, kin
         }),
       ]}
     >
-      <select aria-label="Quota model" value={model} mix={on('change', (e) => ((model = e.currentTarget.value), redraw()))}>
-        <option value="" selected={model === ''}>
-          all models
-        </option>
-        {handle.props.models.map((m) => (
-          <option key={m} value={m} selected={m === model}>
-            {m}
-          </option>
-        ))}
-      </select>
-      <select aria-label="Quota window" value={kind} mix={on('change', (e) => ((kind = e.currentTarget.value), redraw()))}>
-        {QUOTA_KINDS.map(([k, l]) => (
-          <option key={k} value={k} selected={k === kind}>
-            {l}
-          </option>
-        ))}
-      </select>
+      <Select label="Quota model" size="sm" value={model} options={[{ value: '', label: 'all models' }, ...selectValues(handle.props.models)]} onChange={(v) => ((model = v), redraw())} />
+      <Select label="Quota window" size="sm" value={kind} options={selectOptions(QUOTA_KINDS)} onChange={(v) => ((kind = v), redraw())} />
       <input aria-label="Quota limit" inputMode="decimal" placeholder="limit" value={limit} mix={on('input', (e) => ((limit = e.currentTarget.value), redraw()))} />
       <Button type="submit" size="sm">
         Set limit

@@ -125,8 +125,8 @@ describe('RequirementsScreen', () => {
     expect(detail.querySelector('script')).toBe(null);
     await waitFor(() => expect(detail.textContent).toContain('Given a cart, when paid'), r);
     await waitFor(() => need(detail.querySelector('[data-testid="req-link"]')), r);
-    await waitFor(() => byText(r.container, 'option', '#1 Build checkout'), r);
-    type(byLabel<HTMLSelectElement>(r.container, 'Task to link'), 't1');
+    await waitFor(() => byText(r.container, '[role="option"]', '#1 Build checkout'), r);
+    type(byLabel<HTMLElement>(r.container, 'Task to link'), 't1');
     type(byLabel<HTMLTextAreaElement>(r.container, /^Criteria \(one per line/), 'Given a cart, when paid, then an order exists');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Link').click());

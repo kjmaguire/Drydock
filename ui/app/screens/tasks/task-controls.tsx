@@ -11,6 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
+import { Select, type SelectOption } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { isRunActive, isTerminal } from './tasks.ts';
 
@@ -30,11 +31,7 @@ const boxCss = css({
   '& .running': { flex: '1', minWidth: '200px', margin: '0', color: t.textMuted, fontSize: t.textMd },
 });
 
-const option = (a: Agent, selected: string) => (
-  <option key={a.id} value={a.id} selected={a.id === selected}>
-    {a.name} ({a.role})
-  </option>
-);
+const option = (a: Agent): SelectOption => ({ value: a.id, label: `${a.name} (${a.role})` });
 
 export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () => void }>) {
   const s = services(handle);
@@ -89,36 +86,23 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
           <div class="fields">
             <Field label="Worker">
               {(id) => (
-                <select id={id} aria-label="Worker" value={w} mix={on('change', (e) => set(() => (worker = e.currentTarget.value)))}>
-                  <option value="" selected={w === ''}>
-                    Choose a worker
-                  </option>
-                  {agents.map((a) => option(a, w))}
-                </select>
+                <Select id={id} label="Worker" value={w} options={[{ value: '', label: 'Choose a worker' }, ...agents.map(option)]} onChange={(v) => set(() => (worker = v))} />
               )}
             </Field>
             <Field label="Reviewer">
               {(id) => (
-                <select id={id} aria-label="Reviewer" value={r} mix={on('change', (e) => set(() => (reviewer = e.currentTarget.value)))}>
-                  <option value="" selected={r === ''}>
-                    Choose a reviewer
-                  </option>
-                  {agents.map((a) => option(a, r))}
-                </select>
+                <Select id={id} label="Reviewer" value={r} options={[{ value: '', label: 'Choose a reviewer' }, ...agents.map(option)]} onChange={(v) => set(() => (reviewer = v))} />
               )}
             </Field>
             <Field label="Template">
               {(id) => (
-                <select id={id} aria-label="Template" value={tpl} mix={on('change', (e) => set(() => (template = e.currentTarget.value)))}>
-                  <option value="" selected={tpl === ''}>
-                    Default (worker, checks, review, your approval)
-                  </option>
-                  {list.map((x) => (
-                    <option key={x.name} value={x.name} selected={x.name === tpl}>
-                      {x.title}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id={id}
+                  label="Template"
+                  value={tpl}
+                  options={[{ value: '', label: 'Default (worker, checks, review, your approval)' }, ...list.map((x) => ({ value: x.name, label: x.title }))]}
+                  onChange={(v) => set(() => (template = v))}
+                />
               )}
             </Field>
           </div>

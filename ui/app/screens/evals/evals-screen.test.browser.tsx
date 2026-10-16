@@ -63,7 +63,7 @@ describe('EvalsScreen', () => {
     const empty = { markdown: '# Evals', report: { quality: { started: 0, accepted: 0, failed: 0, cancelled: 0, active: 0, completion: { num: 0, den: 0 }, firstCheckTestPass: { num: 0, den: 0 }, finalTestPass: { num: 0, den: 0 } } } };
     const r = mount(<EvalsScreen />, servicesWith({ evalsReport: async (o) => (asked.push(o), empty) }));
     await waitFor(() => expect(need(r, '[data-testid="ratio-completion"]').textContent).toBe('n/a'), r);
-    type(byLabel<HTMLSelectElement>(r.container, 'Window'), '7');
+    type(byLabel<HTMLElement>(r.container, 'Window'), '7');
     await waitFor(() => expect(asked.length).toBe(2), r);
     expect(asked[1]!.projectId).toBe('prj_1');
     expect(typeof asked[1]!.sinceMs).toBe('number');

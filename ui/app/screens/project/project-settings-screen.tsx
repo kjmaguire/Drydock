@@ -9,6 +9,7 @@ import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
+import { Select, selectOptions } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
 import { RunModePanel } from './project-run-mode.tsx';
@@ -156,22 +157,10 @@ function Delivery(handle: Handle<{ project: Project }>) {
             </div>
           ) : null}
           <SettingRow label="Mode" for={modeId} description="Merge in this repository, or open a pull request on GitHub.">
-            <select id={modeId} aria-label="Mode" value={mode} disabled={noRepo} mix={on('change', (e) => ((mode = e.currentTarget.value), (saved = false), void handle.update()))}>
-              {MODES.map(([v, label]) => (
-                <option key={v} value={v} selected={v === mode}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <Select id={modeId} label="Mode" value={mode} disabled={noRepo} options={selectOptions(MODES)} onChange={(v) => ((mode = v), (saved = false), void handle.update())} />
           </SettingRow>
           <SettingRow label="Merge strategy" for={stratId} description="How the task branch is combined with the default branch.">
-            <select id={stratId} aria-label="Merge strategy" value={strategy} disabled={noRepo} mix={on('change', (e) => ((strategy = e.currentTarget.value), (saved = false), void handle.update()))}>
-              {STRATEGIES.map(([v, label]) => (
-                <option key={v} value={v} selected={v === strategy}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <Select id={stratId} label="Merge strategy" value={strategy} disabled={noRepo} options={selectOptions(STRATEGIES)} onChange={(v) => ((strategy = v), (saved = false), void handle.update())} />
           </SettingRow>
           <div mix={footerCss}>
             <span class="hint">Changing this affects tasks started afterwards. The core refuses pull request mode when the repository cannot do pull requests.</span>

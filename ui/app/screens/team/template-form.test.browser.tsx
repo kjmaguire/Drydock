@@ -5,7 +5,7 @@ import type { AgentTemplate, AgentTemplateInput, SkillChoice } from '../../api/l
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { TemplateForm } from './template-form.tsx';
 
 afterEach(cleanup);
@@ -52,16 +52,16 @@ describe('TemplateForm', () => {
     const { r, done } = setup({ agentTemplateSave: async (x) => (calls.push(x), saved(x)) });
     const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
     expect(form.getAttribute('aria-label')).toBe('New agent template');
-    const adapter = byLabel<HTMLSelectElement>(form, 'Adapter');
-    expect(Array.from(adapter.options).map((o) => o.value)).toEqual(['claude', 'codex']);
-    expect(adapter.value).toBe('claude');
+    const adapter = byLabel<HTMLElement>(form, 'Adapter');
+    expect(optionsOf(adapter).map((o) => o.value)).toEqual(['claude', 'codex']);
+    expect(valueOf(adapter)).toBe('claude');
     type(byLabel(form, 'Template name'), ' Payments dev ');
     type(byLabel(form, 'Role'), 'backend');
     type(byLabel<HTMLTextAreaElement>(form, 'Purpose (optional)'), 'Own the payments service.');
     type(byLabel(form, 'Model'), 'sonnet');
-    type(byLabel<HTMLSelectElement>(form, 'Effort'), 'high');
+    type(byLabel<HTMLElement>(form, 'Effort'), 'high');
     r.root.flush();
-    type(byLabel<HTMLSelectElement>(form, 'Permission mode'), 'plan');
+    type(byLabel<HTMLElement>(form, 'Permission mode'), 'plan');
     await r.act(() => byLabel<HTMLInputElement>(form, 'Template gets Docs server').click());
     await r.act(() => byText(form, 'button', 'Create template').click());
     await waitFor(() => expect(done.length).toBe(1), r);
@@ -88,7 +88,7 @@ describe('TemplateForm', () => {
     const { r } = setup({ agentTemplateSave: async (x) => (calls.push(x), saved(x)) }, { initial });
     const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
     expect(form.getAttribute('aria-label')).toBe('Edit Old');
-    expect(byLabel<HTMLSelectElement>(form, 'Adapter').value).toBe('codex');
+    expect(valueOf(byLabel(form, 'Adapter'))).toBe('codex');
     expect(byLabel<HTMLInputElement>(form, 'Model').disabled).toBe(true);
     await r.act(() => byText(form, 'button', 'Save template').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
@@ -123,9 +123,9 @@ describe('TemplateForm', () => {
     const initial: AgentTemplate = { ...tplOf('Edge'), skills: [wrangler] };
     const { r } = setup({ agentTemplateSave: async (x) => (calls.push(x), saved(x)), agentTemplateSkillChoices: async () => choices }, { initial, adapters: [claude] });
     const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
-    const pickList = await waitFor(() => byLabel<HTMLSelectElement>(form, 'Add a skill'), r);
+    const pickList = await waitFor(() => byLabel<HTMLElement>(form, 'Add a skill'), r);
     // a skill the template already has is not offered again
-    expect(Array.from(pickList.options).map((o) => o.textContent)).toEqual([
+    expect(optionsOf(pickList).map((o) => o.label)).toEqual([
       'frontend-design (anthropic-skills), from prebuilt UI Engineer',
       'web-design-guidelines (vercel-agent-skills), from prebuilt UI Engineer',
     ]);
@@ -133,7 +133,7 @@ describe('TemplateForm', () => {
     r.root.flush();
     await r.act(() => byText(form, 'button', 'Add skill').click());
     await r.act(() => byText(form, 'button', 'Remove wrangler').click());
-    expect(Array.from(byLabel<HTMLSelectElement>(form, 'Add a skill').options).map((o) => o.value)).toEqual([
+    expect(optionsOf(byLabel(form, 'Add a skill')).map((o) => o.value)).toEqual([
       `cloudflare-skills/wrangler@${wrangler.ref}`,
       `anthropic-skills/frontend-design@${choices[1]!.ref}`,
     ]);

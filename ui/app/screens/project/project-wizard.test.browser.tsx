@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { LicenseView } from '../../api/pkgTypes.ts';
 import type { Project, SetupRequest } from '../../api/types.ts';
 import { expiredLicense, lic, unconfiguredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ProjectCreateScreen } from './project-create-screen.tsx';
 import { adapterInfo, CATALOG, catalogServer, prebuilt } from './wizard-fixtures.ts';
 
@@ -85,8 +85,8 @@ describe('New project wizard', () => {
     r.root.flush();
     expect(btn(r, 'Next').disabled).toBe(false);
     // pull requests need GitHub
-    const delivery = byLabel<HTMLSelectElement>(r.container, 'Delivery');
-    expect(Array.from(delivery.options).find((o) => o.value === 'pr_flow')!.disabled).toBe(true);
+    const delivery = byLabel<HTMLElement>(r.container, 'Delivery');
+    expect(optionsOf(delivery).find((o) => o.value === 'pr_flow')!.disabled).toBe(true);
 
     await r.act(() => radio(r, 'Later').click());
     expect(r.$('[data-testid="repo-later"]')!.textContent).toContain('attach a repository later in Project settings');
@@ -179,16 +179,16 @@ describe('New project wizard', () => {
     await waitFor(() => expect(members(r).map((m) => m.getAttribute('data-ref'))).toEqual(['team-lead', 'backend-engineer', 'code-reviewer']), r);
     expect(r.$('[data-testid="team-list"]')!.getAttribute('data-ready')).toBe('true');
     const lead = members(r)[0]!;
-    const cli = byLabel<HTMLSelectElement>(lead, 'Agent CLI');
-    expect(cli.value).toBe('claude');
-    expect(byLabel<HTMLInputElement>(lead, 'Model').value).toBe('opus');
+    const cli = byLabel<HTMLElement>(lead, 'Agent CLI');
+    expect(valueOf(cli)).toBe('claude');
+    expect(valueOf(byLabel(lead, 'Model'))).toBe('opus');
     // the CLI that is not installed is offered disabled, with the reason
-    const codex = Array.from(cli.options).find((o) => o.value === 'codex')!;
+    const codex = optionsOf(cli).find((o) => o.value === 'codex')!;
     expect(codex.disabled).toBe(true);
-    expect(codex.textContent).toContain('not installed');
+    expect(codex.label).toContain('not installed');
     type(cli, 'gemini');
     r.root.flush();
-    expect(byLabel<HTMLInputElement>(members(r)[0]!, 'Model').value).toBe('gemini-2.5-pro');
+    expect(valueOf(byLabel(members(r)[0]!, 'Model'))).toBe('gemini-2.5-pro');
     // remove the reviewer, add the UI Engineer from the gallery
     await r.act(() => btn(r, 'Remove Code Reviewer from the team').click());
     expect(members(r)).toHaveLength(2);

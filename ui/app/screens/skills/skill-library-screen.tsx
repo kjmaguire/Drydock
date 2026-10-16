@@ -10,6 +10,7 @@ import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
+import { Select } from '../../ui/select.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section } from '../../ui/layout.tsx';
@@ -19,7 +20,7 @@ import { pickKey, SkillRows } from './skill-rows.tsx';
 import { newInLibrary, registryStatusText, registryTileText, skillBrand, syncChanges } from './skills.ts';
 
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
-const barCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& select': { maxWidth: '240px' } });
+const barCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& [role="combobox"]': { maxWidth: '240px' } });
 const panelCss = css({
   display: 'grid',
   gap: t.s3,
@@ -168,13 +169,13 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
                 <>
                   <label>
                     Project{' '}
-                    <select aria-label="Project to add skills to" mix={on('change', (e) => set(() => (project = e.currentTarget.value)))}>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id} selected={p.id === pid}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      label="Project to add skills to"
+                      size="sm"
+                      value={pid}
+                      options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                      onChange={(v) => set(() => (project = v))}
+                    />
                   </label>
                   <Button
                     variant="primary"

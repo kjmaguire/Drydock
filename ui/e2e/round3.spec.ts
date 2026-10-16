@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
+import { choose, createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
 
 // Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; this integrations test has no
 // vendor server, so only the refusal paths are exercised (integrations.spec.ts runs against a protocol fixture).
@@ -27,7 +27,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   // a budget with no limit is refused by the core and its words are shown
   await page.getByRole('button', { name: 'Add budget' }).first().click();
   await page.getByLabel('Scope id (an id, or * for every task, run or agent)').fill('*');
-  await page.getByLabel('Scope', { exact: true }).selectOption('task');
+  await choose(page.getByLabel('Scope', { exact: true }), 'task');
   await page.getByRole('button', { name: 'Add budget' }).last().click();
   await expect(page.getByRole('alert')).toContainText('set at least one of limitUsd, limitTokens, limitTurns');
   await page.reload();
@@ -47,7 +47,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
   // every agent turn kind can be previewed, with the signals a real turn of that kind gives the router (P63)
-  await page.getByLabel('Run kind').selectOption('room_reply');
+  await choose(page.getByLabel('Run kind'), 'room_reply');
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
 
@@ -135,7 +135,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await expect(page.getByRole('heading', { level: 1, name: /Build checkout/ })).toBeVisible();
   await projectNav(page, 'nav-requirements');
   await page.getByTestId('requirement').filter({ hasText: 'Checkout' }).getByRole('button', { name: 'Open' }).click();
-  await page.getByLabel('Task to link').selectOption({ label: '#1 Build checkout' });
+  await choose(page.getByLabel('Task to link'), { label: '#1 Build checkout' });
   await page.getByLabel(/^Criteria \(one per line/).fill('Given a paid cart, when the order is placed, then an order record exists');
   await page.getByRole('button', { name: 'Link' }).click();
   await expect(page.getByTestId('req-link')).toContainText('Given a paid cart');
@@ -149,7 +149,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await page.getByRole('button', { name: 'Create milestone' }).click();
   const ms = page.locator('[data-testid=milestone][data-title=Beta]');
   await expect(ms).toBeVisible();
-  await ms.getByLabel('Add a task to Beta').selectOption({ label: '#1 Build checkout' });
+  await choose(ms.getByLabel('Add a task to Beta'), { label: '#1 Build checkout' });
   await ms.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(ms).toContainText('0 of 1 completed');
 
@@ -209,7 +209,7 @@ test('development flow: the Feature template stops at the spec gate; reject with
   await createAgent(page, 'Dana', 'backend');
   await createAgent(page, 'Rex', 'reviewer');
   await createAssignedTask(page, 'Add Multiply', 'Dana', 'Rex');
-  await page.getByLabel('Template', { exact: true }).selectOption({ label: 'Feature' });
+  await choose(page.getByLabel('Template', { exact: true }), { label: 'Feature' });
   await expect(page.getByTestId('template-info')).toContainText('accept the spec before anything is built');
   await page.getByRole('button', { name: 'Start' }).click();
 
@@ -313,10 +313,10 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await page.getByTestId('agent').filter({ hasText: 'Rita' }).getByRole('button', { name: 'Edit Rita' }).click();
   const editor = page.getByTestId('agent-editor');
   await editor.getByLabel("Let the router choose this agent's model for each turn").check();
-  await editor.getByLabel('Routed model 1', { exact: true }).fill('haiku');
-  await editor.getByLabel('Tier of routed model 1', { exact: true }).selectOption('cheap');
-  await editor.getByLabel('Routed model 2', { exact: true }).fill('opus');
-  await editor.getByLabel('Tier of routed model 2', { exact: true }).selectOption('premium');
+  await choose(editor.getByLabel('Routed model 1', { exact: true }), 'haiku');
+  await choose(editor.getByLabel('Tier of routed model 1', { exact: true }), 'cheap');
+  await choose(editor.getByLabel('Routed model 2', { exact: true }), 'opus');
+  await choose(editor.getByLabel('Tier of routed model 2', { exact: true }), 'premium');
   await editor.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   await projectNav(page, 'nav-project');
@@ -343,7 +343,7 @@ test('room modes, the scheduler and previews report what the core says', async (
   await openRoom(page, 'general');
   const panel = page.getByTestId('room-agents');
   await panel.locator('summary').click();
-  await panel.getByLabel('Mode', { exact: true }).selectOption('sequential');
+  await choose(panel.getByLabel('Mode', { exact: true }), 'sequential');
   await expect(panel.getByTestId('mode-text')).toContainText('one turn each per round');
   await panel.getByRole('button', { name: 'Add Dana' }).click();
   await panel.getByRole('button', { name: 'Save mode' }).click();
@@ -353,7 +353,7 @@ test('room modes, the scheduler and previews report what the core says', async (
   await page.getByTestId('room-agents').locator('summary').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
   // moderator mode needs a moderator: the core refuses and says so
-  await page.getByTestId('room-agents').getByLabel('Mode', { exact: true }).selectOption('moderator');
+  await choose(page.getByTestId('room-agents').getByLabel('Mode', { exact: true }), 'moderator');
   await page.getByTestId('room-agents').getByRole('button', { name: 'Save mode' }).click();
   await expect(page.getByRole('alert')).toContainText('moderator');
 

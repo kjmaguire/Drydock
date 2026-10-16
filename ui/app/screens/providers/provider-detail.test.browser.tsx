@@ -53,7 +53,7 @@ describe('ProviderDetailPanel', () => {
     await r.act(() => byText(r.container, 'button', 'Save price').click());
     await waitFor(() => expect(prices[0]).toEqual(['prov_1', 'model-a', 2, 6, undefined, undefined]), r);
 
-    type(byLabel<HTMLSelectElement>(r.container, 'Quota window'), 'rpm');
+    type(byLabel<HTMLElement>(r.container, 'Quota window'), 'rpm');
     type(byLabel(r.container, 'Quota limit'), '30');
     await r.act(() => byText(r.container, 'button', 'Set limit').click());
     await waitFor(() => expect(quotas[0]).toEqual(['prov_1', '', 'rpm', 30]), r);

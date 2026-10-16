@@ -10,6 +10,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
@@ -307,13 +308,7 @@ export function MemoryScreen(handle: Handle) {
             <div mix={formGrid}>
               <Field label="Kind">
                 {(id) => (
-                  <select id={id} aria-label="Kind" value={kind} mix={on('change', (e) => ((kind = e.currentTarget.value), void handle.update()))}>
-                    {MEMORY_KINDS.map((k) => (
-                      <option key={k} value={k} selected={k === kind}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
+                  <Select id={id} label="Kind" value={kind} options={selectValues(MEMORY_KINDS)} onChange={(v) => ((kind = v), void handle.update())} />
                 )}
               </Field>
               <Field label="Title">

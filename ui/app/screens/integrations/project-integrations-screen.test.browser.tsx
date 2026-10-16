@@ -120,7 +120,7 @@ describe("a project's Integrations page: app sync", () => {
     await r.act(() => byText(card, 'button', 'Assign to gocalc').click());
     const form = await find(r, '[data-testid="assign-form"]');
     expect(form.getAttribute('aria-label')).toBe('Assign Linear to gocalc');
-    expect(form.querySelector('select')).toBeNull(); // no other project to choose from
+    expect(form.querySelector('[role="combobox"]')).toBeNull(); // no other project to choose from
     await r.act(() => byText(form, 'button', 'List the Team choices from Linear').click());
     await waitFor(() => expect(form.querySelectorAll('datalist option').length).toBe(2), r);
     expect(choices[0]!.slice(0, 2)).toEqual(['int_1', 'team']);

@@ -13,6 +13,7 @@ import { muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ClaudePracticesPanel, ModelEffortFields, claudePractices } from './fields.tsx';
 import { PURPOSE_HELP, sortAdapters } from './team.ts';
@@ -139,35 +140,27 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
         </Field>
         <Field label="Adapter">
           {(id) => (
-            <select
+            <Select
               id={id}
-              aria-label="Adapter"
+              label="Adapter"
               value={adapter}
-              required
-              mix={on('change', (e) => set(() => ((picked = e.currentTarget.value), (model = ''), (effort = ''), (mode = ''))))}
-            >
-              {list.map((a) => (
-                <option key={a.id} value={a.id} selected={a.id === adapter}>
-                  {a.id}
-                </option>
-              ))}
-            </select>
+              options={list.map((a) => ({ value: a.id, label: a.id }))}
+              placeholder="Choose an agent CLI"
+              onChange={(v) => set(() => ((picked = v), (model = ''), (effort = ''), (mode = '')))}
+            />
           )}
         </Field>
         <ModelEffortFields caps={chosen?.capabilities} model={model} effort={effort} onModel={(v) => set(() => (model = v))} onEffort={(v) => set(() => (effort = v))} />
         {modes.length > 0 ? (
           <Field label="Permission mode">
             {(id) => (
-              <select id={id} aria-label="Permission mode" value={mode} mix={on('change', (e) => set(() => (mode = e.currentTarget.value)))}>
-                <option value="" selected={mode === ''}>
-                  default for background agents (acceptEdits)
-                </option>
-                {modes.map((m) => (
-                  <option key={m} value={m} selected={m === mode}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id={id}
+                label="Permission mode"
+                value={mode}
+                options={[{ value: '', label: 'default for background agents (acceptEdits)' }, ...selectValues(modes)]}
+                onChange={(v) => set(() => (mode = v))}
+              />
             )}
           </Field>
         ) : null}
@@ -230,13 +223,12 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
             <div mix={addRow}>
               <Field label="Add a skill">
                 {(id) => (
-                  <select id={id} value={pick || keyOf(available()[0]!)} mix={on('change', (e) => set(() => (pick = e.currentTarget.value)))}>
-                    {available().map((c) => (
-                      <option key={keyOf(c)} value={keyOf(c)} title={c.description || undefined} selected={keyOf(c) === (pick || keyOf(available()[0]!))}>
-                        {choiceText(c)}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id={id}
+                    value={pick || keyOf(available()[0]!)}
+                    options={available().map((c) => ({ value: keyOf(c), label: choiceText(c) }))}
+                    onChange={(v) => set(() => (pick = v))}
+                  />
                 )}
               </Field>
               <Button size="sm" mix={on('click', () => addSkill())}>

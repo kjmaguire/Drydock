@@ -4,7 +4,7 @@
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { createProject, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, optionsOf, workspaceNav, projectNav } from './helpers';
 
 const distro = (): string => process.env.DRYDOCK_E2E_WSL ?? '';
 
@@ -96,14 +96,14 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   await workspaceNav(page, 'nav-chats');
   await page.getByTestId('chat-new').click();
   const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await dialog.getByLabel('Project', { exact: true }).selectOption('');
+  await choose(dialog.getByLabel('Project', { exact: true }), '');
   // the distro's install is its own choice, named as on the Connections page (its Connection is probed when the dialog opens)
   const agent = dialog.getByLabel('Agent CLI', { exact: true });
-  const choice = agent.locator(`option[value="claude@wsl:${distro()}"]`);
+  const choice = await optionsOf(agent, `claude@wsl:${distro()}`);
   await expect(choice).toHaveText(new RegExp(`^Claude Code in ${distro()} \\(WSL\\) 2\\.1\\.296$`), { timeout: 60_000 });
   await expect(choice).toBeEnabled();
-  await expect(agent.locator('option[value=claude]')).toContainText('Claude Code on Windows');
-  await agent.selectOption(`claude@wsl:${distro()}`);
+  await expect(await optionsOf(agent, 'claude')).toContainText('Claude Code on Windows');
+  await choose(agent, `claude@wsl:${distro()}`);
   await expect(dialog).toContainText(`Runs inside the WSL distro ${distro()}`);
   await dialog.getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
@@ -133,10 +133,10 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
     await page.getByLabel('Agent name').fill('Linux worker', { timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
   await page.getByLabel('Role', { exact: true }).fill('backend');
-  await page.getByLabel('Adapter', { exact: true }).selectOption('claude');
+  await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   const runs = page.getByLabel('Runs', { exact: true });
-  await expect(runs.locator('option')).toHaveCount(3);
-  await runs.selectOption(`wsl:${distro()}`);
+  await expect(await optionsOf(runs)).toHaveCount(3);
+  await choose(runs, `wsl:${distro()}`);
   await expect(page.getByTestId('run-mode')).toContainText('a repository inside the distro is fast');
   await page.getByRole('button', { name: 'Create agent' }).click();
   const card = page.getByTestId('agent').filter({ hasText: 'Linux worker' });
@@ -146,9 +146,9 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
   await projectNav(page, 'nav-project');
   const panel = page.getByTestId('run-mode-panel');
   await expect(panel).toBeVisible();
-  await panel.getByLabel('Agents run').selectOption(`wsl:${distro()}`);
+  await choose(panel.getByLabel('Agents run'), `wsl:${distro()}`);
   await expect(panel.getByLabel('Agents run')).toBeEnabled();
   await expect(panel.getByRole('alert')).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId('run-mode-panel').getByLabel('Agents run')).toHaveValue(`wsl:${distro()}`);
+  await expect(page.getByTestId('run-mode-panel').getByLabel('Agents run')).toHaveAttribute('data-value', `wsl:${distro()}`);
 });

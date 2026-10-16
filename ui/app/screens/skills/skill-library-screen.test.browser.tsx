@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LibrarySkill, SkillRegistry, SkillRegistryStatus } from '../../api/extTypes.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { SkillLibraryScreen } from './skill-library-screen.tsx';
 
 afterEach(cleanup);
@@ -111,11 +111,8 @@ describe('Library > Skills', () => {
     await r.act(() => byText(r.container, 'button', 'Pick all 2').click());
     await waitFor(() => expect((r.$('[data-testid="lib-skill-add-picked"]') as HTMLElement).textContent).toBe('Add 2 skills to gocalc'), r);
     // another project
-    const sel = r.$('select[aria-label="Project to add skills to"]') as HTMLSelectElement;
-    await r.act(() => {
-      sel.value = 'prj_2';
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    const sel = byLabel<HTMLElement>(r.container, 'Project to add skills to');
+    await r.act(() => choose(sel, 'prj_2'));
     await waitFor(() => expect((r.$('[data-testid="lib-skill-add-picked"]') as HTMLElement).textContent).toBe('Add 2 skills to shop'), r);
     await r.act(() => (r.$('[data-testid="lib-skill-add-picked"]') as HTMLButtonElement).click());
     expect(went).toEqual(['/skills']);

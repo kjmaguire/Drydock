@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -122,7 +122,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 test('project delivery settings and the Pull Requests view show the core\'s honest answers (no GitHub origin in this repo)', async ({ page }) => {
   await createProject(page, 'gocalc-pr');
   await projectNav(page, 'nav-project');
-  await page.getByLabel('Mode', { exact: true }).selectOption('pr_flow');
+  await choose(page.getByLabel('Mode', { exact: true }), 'pr_flow');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('pr_flow is not available');
   await projectNav(page, 'nav-pulls');

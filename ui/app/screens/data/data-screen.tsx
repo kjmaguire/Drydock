@@ -11,6 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Done, Group, intro, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
@@ -168,22 +169,17 @@ function ExportSection(handle: Handle) {
           <div mix={formCss}>
             <Field label="Project">
               {(id) => (
-                <select
+                <Select
                   id={id}
-                  aria-label="Project to export"
+                  label="Project to export"
                   value={projectId}
-                  mix={on('change', (e) => {
-                    picked = e.currentTarget.value;
+                  placeholder="No projects yet"
+                  options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                  onChange={(v) => {
+                    picked = v;
                     reset();
-                  })}
-                >
-                  {projects.length === 0 ? <option value="">No projects yet</option> : null}
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id} selected={p.id === projectId}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  }}
+                />
               )}
             </Field>
             <Checkbox

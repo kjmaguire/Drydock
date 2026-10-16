@@ -9,7 +9,7 @@ import type { LibrarySkill } from '../../api/extTypes.ts';
 import type { McpApproval, McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, Project } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
 
 afterEach(cleanup);
@@ -239,7 +239,7 @@ describe('Chat properties (decision P60)', () => {
     const { r } = setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [], hasMore: false }), chatUpdate: async (u) => (updates.push(u), c) }, { id: 'chat_a' });
     const dlg = await openProperties(r);
     expect(byLabel<HTMLInputElement>(dlg, 'Folder').readOnly).toBe(true);
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(dlg, 'Agent CLI').value).toBe('claude'), r);
+    await waitFor(() => expect(valueOf(byLabel(dlg, 'Agent CLI'))).toBe('claude'), r);
     await r.act(() => byText(dlg, 'button', 'Save').click());
     await waitFor(() => expect(doc$$('dialog[open]').filter((d) => d.querySelector('[data-testid="chat-properties-form"]'))).toHaveLength(0), r);
     expect(updates).toEqual([]);

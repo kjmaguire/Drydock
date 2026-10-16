@@ -93,11 +93,56 @@ export async function waitFor<T>(check: () => T, r?: { root: { flush(): void } }
 }
 
 /** Set an input's value the way typing does (fires input and change). */
-export function type(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): void {
+export function type(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLElement, value: string): void {
+  if (isDropdown(el)) return choose(el, value);
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, value);
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** The kit's Select (ui/select.tsx): a combobox button whose options live in the listbox it controls. */
+const isDropdown = (el: Element): el is HTMLButtonElement => el instanceof HTMLButtonElement && el.getAttribute('role') === 'combobox';
+
+/** The listbox of a kit Select. */
+function listboxOf(el: HTMLElement): HTMLElement {
+  const id = el.getAttribute('aria-controls');
+  const list = id ? el.ownerDocument.getElementById(id) : null;
+  if (!list) throw new Error(`the dropdown ${el.getAttribute('aria-label') ?? el.id} has no listbox`);
+  return list;
+}
+
+/** One option of a dropdown (a native <select> or the kit's Select), as a test sees it. */
+export interface DropdownOption {
+  value: string;
+  label: string;
+  disabled: boolean;
+}
+
+/** Choose an option by value in a native <select> or the kit's Select (the option is clicked; it need not be open). */
+export function choose(el: HTMLElement, value: string): void {
+  if (el instanceof HTMLSelectElement) return type(el, value);
+  if (!isDropdown(el)) throw new Error(`not a dropdown: <${el.tagName.toLowerCase()} role=${el.getAttribute('role')}>`);
+  const opt = Array.from(listboxOf(el).querySelectorAll<HTMLElement>('[role="option"]')).find((o) => o.getAttribute('data-value') === value);
+  if (!opt) throw new Error(`no option ${JSON.stringify(value)} in ${el.getAttribute('aria-label') ?? el.id} (have: ${optionsOf(el).map((o) => JSON.stringify(o.value)).join(', ')})`);
+  opt.click();
+}
+
+/** The options of a native <select> or the kit's Select, in order. */
+export function optionsOf(el: HTMLElement): DropdownOption[] {
+  if (el instanceof HTMLSelectElement) return Array.from(el.options).map((o) => ({ value: o.value, label: (o.textContent ?? '').trim(), disabled: o.disabled }));
+  if (!isDropdown(el)) throw new Error(`not a dropdown: <${el.tagName.toLowerCase()} role=${el.getAttribute('role')}>`);
+  return Array.from(listboxOf(el).querySelectorAll<HTMLElement>('[role="option"]')).map((o) => ({
+    value: o.getAttribute('data-value') ?? '',
+    label: (o.textContent ?? '').trim(),
+    disabled: o.getAttribute('aria-disabled') === 'true',
+  }));
+}
+
+/** The chosen value of a native <select>, the kit's Select, or any other control. */
+export function valueOf(el: HTMLElement): string {
+  if (isDropdown(el)) return el.getAttribute('data-value') ?? '';
+  return (el as HTMLInputElement).value;
 }
 
 /** Find a button (or link) by its accessible text. */

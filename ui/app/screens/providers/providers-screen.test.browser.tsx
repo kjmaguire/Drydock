@@ -156,13 +156,13 @@ describe('ProvidersScreen', () => {
     const add = () => byText<HTMLButtonElement>(r.container, 'button', 'Add provider');
     expect(add().disabled).toBe(true);
     type(byLabel(r.container, 'Provider name'), 'My Host');
-    type(byLabel<HTMLSelectElement>(r.container, 'Kind'), 'host');
+    type(byLabel<HTMLElement>(r.container, 'Kind'), 'host');
     type(byLabel(r.container, 'Base URL'), 'http://192.168.1.5:8000/v1');
     const key = byLabel(r.container, /API key/);
     expect(key.type).toBe('password');
     type(key, 'sk-secret-123');
-    type(byLabel<HTMLSelectElement>(r.container, 'Data class'), 'private');
-    type(byLabel<HTMLSelectElement>(r.container, 'Tier'), 'free');
+    type(byLabel<HTMLElement>(r.container, 'Data class'), 'private');
+    type(byLabel<HTMLElement>(r.container, 'Tier'), 'free');
     await r.act(() => byLabel(r.container, /accept plain http/).click());
     await waitFor(() => expect(add().disabled).toBe(false), r);
     await r.act(() => add().click());

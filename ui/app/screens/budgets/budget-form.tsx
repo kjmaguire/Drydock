@@ -7,6 +7,7 @@ import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
 import { budgetRequest, formValues, type BudgetFormValues } from './budgets.ts';
 
 const SCOPES = ['project', 'task', 'run', 'agent'];
@@ -64,21 +65,16 @@ export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget;
         </div>
         <Field label="Scope">
           {(id) => (
-            <select
+            <Select
               id={id}
               value={v.scope}
               disabled={editing}
-              mix={on('change', (e) => {
-                v.scope = e.currentTarget.value;
+              options={selectValues(SCOPES)}
+              onChange={(sc) => {
+                v.scope = sc;
                 void handle.update();
-              })}
-            >
-              {SCOPES.map((sc) => (
-                <option key={sc} value={sc} selected={sc === v.scope}>
-                  {sc}
-                </option>
-              ))}
-            </select>
+              }}
+            />
           )}
         </Field>
         {text('Scope id (an id, or * for every task, run or agent)', 'scopeId', { disabled: editing, required: true })}

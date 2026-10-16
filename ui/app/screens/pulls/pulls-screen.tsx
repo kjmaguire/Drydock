@@ -11,6 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { StatusChip, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { Page, Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { IssueItem, PullRequestPanel } from './pr-parts.tsx';
@@ -126,21 +127,16 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
               <div mix={pickerCss}>
                 <Field label="Task">
                   {(id) => (
-                    <select
+                    <Select
                       id={id}
-                      aria-label="Task"
+                      label="Task"
                       value={taskId ?? ''}
-                      mix={on('change', (e) => {
-                        selected = e.currentTarget.value;
+                      options={list.map((x) => ({ value: x.id, label: `#${x.seq} ${x.title} (${x.prRef})` }))}
+                      onChange={(v) => {
+                        selected = v;
                         void handle.update();
-                      })}
-                    >
-                      {list.map((x) => (
-                        <option key={x.id} value={x.id} selected={x.id === taskId}>
-                          #{x.seq} {x.title} ({x.prRef})
-                        </option>
-                      ))}
-                    </select>
+                      }}
+                    />
                   )}
                 </Field>
                 {current ? <StatusChip status={current.status} /> : null}

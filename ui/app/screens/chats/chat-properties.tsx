@@ -14,6 +14,7 @@ import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { chatChoices, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
@@ -229,19 +230,15 @@ export function ChatPropertiesDialog(handle: Handle<{ open: boolean; chat: Chat;
         >
           <Field label="Agent CLI" hint={picked?.wslDistro ? `Runs inside the WSL distro ${picked.wslDistro}, with the CLI installed and signed in there.` : undefined}>
             {(id) => (
-              <select id={id} value={choice} mix={on('change', (e) => set(() => (choice = e.currentTarget.value)))}>
-                {hasCurrent ? null : (
-                  <option value={current(chat)} selected={choice === current(chat)}>
-                    {chat.adapter}
-                    {chat.wslDistro ? ` in ${chat.wslDistro} (WSL)` : ''} (current)
-                  </option>
-                )}
-                {choices.map((c) => (
-                  <option key={c.value} value={c.value} disabled={!!c.why && c.value !== current(chat)} selected={c.value === choice}>
-                    {c.text}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id={id}
+                value={choice}
+                options={[
+                  ...(hasCurrent ? [] : [{ value: current(chat), label: `${chat.adapter}${chat.wslDistro ? ` in ${chat.wslDistro} (WSL)` : ''} (current)` }]),
+                  ...choices.map((c) => ({ value: c.value, label: c.text, disabled: !!c.why && c.value !== current(chat) })),
+                ]}
+                onChange={(v) => set(() => (choice = v))}
+              />
             )}
           </Field>
           {chat.projectId ? (

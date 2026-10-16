@@ -113,7 +113,7 @@ describe('Integrations', () => {
     const calls: Calls = [];
     const r = show({ integrationList: async () => [], integrationConnect: rec(calls, () => ({ connection: conn({ kind: 'aikido', name: 'Aikido' }) })) as never });
     const card = await open(r, 'aikido');
-    await r.act(() => type(byLabel<HTMLSelectElement>(card, 'Region'), 'us'));
+    await r.act(() => type(byLabel<HTMLElement>(card, 'Region'), 'us'));
     await r.act(() => type(byLabel(card, 'Client ID'), 'client-1'));
     const sec = byLabel<HTMLInputElement>(card, 'Client secret');
     sec.value = 'AIK_SECRET_VALUE';
@@ -351,7 +351,7 @@ describe('Integrations', () => {
     expect(r.$('[data-testid="mcp-server"]')).toBeNull();
     expect(r.$('[data-testid="mcp-approvals"]')).toBeNull();
     for (const name of ['Assign to project', 'Add to project', 'Grant to agents']) expect(() => byText(r.container, 'button', name)).toThrow();
-    expect(r.$('select[aria-label="Project"]')).toBeNull();
+    expect(r.$('[role="combobox"][aria-label="Project"]')).toBeNull();
   });
 
   it('is laid out like Home: a Services group and an Agent tools group of tiles with state badges, the open tile’s panel under its own group', async () => {

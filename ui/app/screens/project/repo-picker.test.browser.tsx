@@ -92,7 +92,7 @@ describe('the GitHub repository picker', () => {
     type(byLabel(r.container, 'Search repositories'), 'pa');
     type(byLabel(r.container, 'Search repositories'), 'pay');
     await waitFor(() => expect(calls).toEqual([['kyle', ''], ['kyle', 'pay']]), r, 3000);
-    type(byLabel<HTMLSelectElement>(r.container, 'Owner'), 'acme');
+    type(byLabel<HTMLElement>(r.container, 'Owner'), 'acme');
     await waitFor(() => expect(calls.at(-1)).toEqual(['acme', 'pay']), r);
     type(byLabel(r.container, 'Search repositories'), 'zzz');
     await waitFor(() => expect(r.container.textContent).toContain('Nothing matches "zzz" for acme.'), r, 3000);

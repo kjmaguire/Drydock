@@ -419,9 +419,9 @@ describe('Library page', () => {
       const f = await customForm(r);
       type(byLabel(f, 'Short id'), 'lin');
       type(byLabel(f, 'Name'), 'Linear');
-      await r.act(() => type(byLabel<HTMLSelectElement>(f, 'Kind'), 'http'));
+      await r.act(() => type(byLabel<HTMLElement>(f, 'Kind'), 'http'));
       type(byLabel(f, 'Address'), 'https://mcp.example.com/mcp');
-      await r.act(() => type(byLabel<HTMLSelectElement>(f, 'Sign-in'), 'oauth'));
+      await r.act(() => type(byLabel<HTMLElement>(f, 'Sign-in'), 'oauth'));
       expect(() => byLabel(f, /Bearer token/)).toThrow();
       expect(f.textContent).toContain('press Sign in');
       await r.act(() => byText(f, 'button', 'Connect server').click());

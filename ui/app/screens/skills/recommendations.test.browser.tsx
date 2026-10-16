@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Recommendation, Recommendations as Recs, SkillPick } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, mount, testServices, valueOf, waitFor } from '../../test/render.tsx';
 import { Recommendations } from './recommendations.tsx';
 
 afterEach(cleanup);
@@ -56,12 +56,9 @@ describe('Recommendations', () => {
       },
     });
     const ask = await waitFor(() => r.$('[data-testid="recommend-ask"]') as HTMLButtonElement, r);
-    const pick = r.$('select[aria-label="Agent to ask"]') as HTMLSelectElement;
-    expect(pick.value).toBe('agt_lead');
-    await r.act(() => {
-      pick.value = 'agt_dev';
-      pick.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    const pick = byLabel<HTMLElement>(r.container, 'Agent to ask');
+    expect(valueOf(pick)).toBe('agt_lead');
+    await r.act(() => choose(pick, 'agt_dev'));
     await r.act(() => ask.click());
     await waitFor(() => expect(started).toEqual([['prj_1', 'agt_dev', []]]), r);
     await waitFor(() => expect(r.$('[data-testid="recommend-running"]')!.textContent).toBe('Backend #1 is looking at the project (when you asked)...'), r);

@@ -4,7 +4,7 @@
 // the harness's own stand-in (internal/localllm/llamatest), which loads its model for a second. Nothing reaches GitHub or
 // Hugging Face; no llama.cpp runs. The core reports one CUDA device with 14 GB free and 20 GB of RAM available.
 import { expect, test } from '@playwright/test';
-import { appUrl, workspaceNav } from './helpers';
+import { choose, appUrl, workspaceNav } from './helpers';
 
 test('Models on this PC: install llama.cpp, find and download a model, serve it as a provider, stop', async ({ page }) => {
   test.setTimeout(240_000);
@@ -18,8 +18,8 @@ test('Models on this PC: install llama.cpp, find and download a model, serve it 
   // not installed: the backend and the source to choose, then Install
   const runtime = section.getByTestId('local-runtime');
   await expect(runtime).toHaveAttribute('data-installed', 'false');
-  await expect(section.getByTestId('local-source')).toHaveValue('official');
-  await section.getByTestId('local-backend').selectOption('vulkan');
+  await expect(section.getByTestId('local-source')).toHaveAttribute('data-value', 'official');
+  await choose(section.getByTestId('local-backend'), 'vulkan');
   await section.getByTestId('local-install').click();
   // the install runs in the background; the page follows it through local.changed until the newest build is in
   await expect(runtime).toHaveAttribute('data-installed', 'true', { timeout: 60_000 });
@@ -72,7 +72,7 @@ test('Models on this PC: install llama.cpp, find and download a model, serve it 
   await expect(server.getByTestId('local-log-lines')).toBeVisible();
 
   // a setting changed while the server runs asks for a restart
-  await section.getByTestId('local-cache').selectOption('q4_0');
+  await choose(section.getByTestId('local-cache'), 'q4_0');
   await expect(section.getByTestId('local-restart')).toContainText('Restart the server to apply');
 
   // Stop: the server is stopped, the provider row stays (and is now down)
@@ -84,6 +84,6 @@ test('Models on this PC: install llama.cpp, find and download a model, serve it 
   // the choices survive a reload
   await page.reload();
   await expect(page.getByTestId('local-runtime')).toHaveAttribute('data-installed', 'true');
-  await expect(page.getByTestId('local-cache')).toHaveValue('q4_0');
+  await expect(page.getByTestId('local-cache')).toHaveAttribute('data-value', 'q4_0');
   await expect(page.locator('[data-testid=local-model][data-id="acme/tiny-GGUF:Q4_0"]')).toBeVisible();
 });

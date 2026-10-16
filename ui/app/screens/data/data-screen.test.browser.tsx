@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ExportManifest, ExportPreview, ImportPreview, ImportResult, ImportStats } from '../../api/pkgTypes.ts';
 import type { Project } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, waitFor } from '../../test/render.tsx';
 import { DataScreen } from './data-screen.tsx';
 
 afterEach(cleanup);
@@ -145,8 +145,8 @@ describe('DataScreen', () => {
       [proj('prj_1', 'Alpha'), proj('prj_2', 'Beta')],
     );
     const sel = await waitFor(() => {
-      const el = byLabel<HTMLSelectElement>(r.container, 'Project to export');
-      if (el.options.length !== 2) throw new Error('not yet');
+      const el = byLabel<HTMLElement>(r.container, 'Project to export');
+      if (optionsOf(el).length !== 2) throw new Error('not yet');
       return el;
     }, r);
     await r.act(() => type(sel, 'prj_2'));

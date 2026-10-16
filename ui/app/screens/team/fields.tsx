@@ -10,18 +10,27 @@ import { Button, IconButton } from '../../ui/button.tsx';
 import { muted } from '../../ui/data.tsx';
 import { Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
+import { Select, selectValues, type SelectOption } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ModelField } from '../shared/model-field.tsx';
 import { CAP_LABEL, defaultRoutes, presetUntouched } from './team.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyHandle = Handle<any, any>;
 
+/** The effort levels an adapter accepts as options: adapter default first, then each level; a value outside the list is
+ *  kept visible and marked, so a saved agent's effort is never silently replaced. */
+export const effortOptions = (efforts: readonly string[], effort: string): SelectOption[] => [
+  { value: '', label: 'adapter default' },
+  ...selectValues(efforts),
+  ...(effort && !efforts.includes(effort) ? [{ value: effort, label: effort, hint: 'not accepted' }] : []),
+];
+
 /** Model and effort inputs. Effort is a list when the adapter is known to accept only certain levels (a wrong one would fail
- *  the run); model is free text with the adapter's aliases offered, because full model names are accepted too. */
+ *  the run); model is the adapter's aliases as a list with a typed entry, because full model names are accepted too. */
 export function ModelEffortFields(
   handle: Handle<{ caps: Capabilities | undefined; model: string; effort: string; onModel: (v: string) => void; onEffort: (v: string) => void }>,
 ) {
-  const listId = `models-${handle.id}`;
   return () => {
     const { caps, model, effort, onModel, onEffort } = handle.props;
     const canModel = caps?.modelSelection === true;
@@ -32,41 +41,21 @@ export function ModelEffortFields(
       <>
         <Field label="Model">
           {(id) => (
-            <>
-              <input
-                id={id}
-                value={model}
-                disabled={!canModel}
-                list={models.length > 0 ? listId : undefined}
-                spellcheck={false}
-                autocomplete="off"
-                placeholder={canModel ? 'adapter default' : 'model selection not verified for this adapter'}
-                mix={on('input', (e) => onModel(e.currentTarget.value))}
-              />
-              {models.length > 0 ? (
-                <datalist id={listId}>
-                  {models.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              ) : null}
-            </>
+            <ModelField
+              id={id}
+              value={model}
+              models={canModel ? models : []}
+              emptyLabel="adapter default"
+              disabled={!canModel}
+              placeholder={canModel ? 'adapter default' : 'model selection not verified for this adapter'}
+              onChange={onModel}
+            />
           )}
         </Field>
         <Field label="Effort">
           {(id) =>
             efforts.length > 0 ? (
-              <select id={id} aria-label="Effort" value={effort} disabled={!canEffort} mix={on('change', (e) => onEffort(e.currentTarget.value))}>
-                <option value="" selected={effort === ''}>
-                  adapter default
-                </option>
-                {efforts.map((x) => (
-                  <option key={x} value={x} selected={x === effort}>
-                    {x}
-                  </option>
-                ))}
-                {effort && !efforts.includes(effort) ? <option value={effort} selected>{effort} (not accepted)</option> : null}
-              </select>
+              <Select id={id} label="Effort" value={effort} disabled={!canEffort} options={effortOptions(efforts, effort)} onChange={onEffort} />
             ) : (
               <input
                 id={id}
@@ -203,7 +192,11 @@ const routesCss = css({
   '& legend': { display: 'inline-flex', alignItems: 'center', gap: '6px' },
   '& p': { margin: '0', fontSize: t.textSm },
 });
-const routeRow = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120px auto', gap: t.s2, alignItems: 'center' });
+const routeRow = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120px auto', gap: t.s2, alignItems: 'start' });
+const TIERS: SelectOption[] = [
+  { value: 'cheap', label: 'cheap' },
+  { value: 'premium', label: 'premium' },
+];
 
 /**
  * The models the router may choose between for every turn of this agent (internal/core/turnrouting.go, decision P63). Off (empty) by default:
@@ -211,7 +204,6 @@ const routeRow = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 120
  * the work gets stuck, always on this agent's own CLI.
  */
 export function RouteModelsField(handle: Handle<{ routes: RouteModel[]; onRoutes: (r: RouteModel[]) => void; suggestions: readonly string[] }>) {
-  const listId = `route-models-${handle.id}`;
   return () => {
     const { routes, onRoutes, suggestions } = handle.props;
     const enabled = routes.length > 0;
@@ -235,15 +227,13 @@ export function RouteModelsField(handle: Handle<{ routes: RouteModel[]; onRoutes
             </p>
             {routes.map((r, i) => (
               <div key={i} mix={routeRow}>
-                <input aria-label={`Routed model ${i + 1}`} value={r.model} list={listId} spellcheck={false} autocomplete="off" mix={on('input', (e) => edit(i, { model: e.currentTarget.value }))} />
-                <select aria-label={`Tier of routed model ${i + 1}`} value={r.tier} mix={on('change', (e) => edit(i, { tier: e.currentTarget.value as RouteModel['tier'] }))}>
-                  <option value="cheap" selected={r.tier === 'cheap'}>
-                    cheap
-                  </option>
-                  <option value="premium" selected={r.tier === 'premium'}>
-                    premium
-                  </option>
-                </select>
+                <ModelField label={`Routed model ${i + 1}`} value={r.model} models={suggestions} placeholder="Choose a model" onChange={(v) => edit(i, { model: v })} />
+                <Select
+                  label={`Tier of routed model ${i + 1}`}
+                  value={r.tier}
+                  options={TIERS}
+                  onChange={(v) => edit(i, { tier: v as RouteModel['tier'] })}
+                />
                 <IconButton icon={X} label={`Remove routed model ${i + 1}`} mix={on('click', () => onRoutes(routes.filter((_, j) => j !== i)))} />
               </div>
             ))}
@@ -254,11 +244,6 @@ export function RouteModelsField(handle: Handle<{ routes: RouteModel[]; onRoutes
                 </Button>
               </div>
             ) : null}
-            <datalist id={listId}>
-              {suggestions.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
           </>
         ) : null}
       </fieldset>

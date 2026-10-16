@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { MemoryEntry } from '../../api/extTypes.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { MemoryScreen } from './memory-screen.tsx';
 
 afterEach(cleanup);
@@ -77,8 +77,8 @@ describe('MemoryScreen', () => {
       }),
     );
     await waitFor(() => byText(r.container, 'h2', 'Nothing here.'), r);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Kind').value).toBe('convention');
-    type(byLabel<HTMLSelectElement>(r.container, 'Kind'), 'decision');
+    expect(valueOf(byLabel(r.container, 'Kind'))).toBe('convention');
+    type(byLabel<HTMLElement>(r.container, 'Kind'), 'decision');
     type(byLabel(r.container, 'Title'), 'Use SQLite');
     type(byLabel<HTMLTextAreaElement>(r.container, 'Body'), 'One writer');
     r.root.flush();

@@ -2,10 +2,11 @@
 // distro. Shown only where WSL is installed. The core refuses WSL while the project's sandbox is on, and says why. A new
 // project's default comes from the Connections (decision P58): when Drydock chose it, the panel says so and why.
 
-import { on, type Handle } from 'remix/component';
+import type { Handle } from 'remix/component';
 import type { ProjectRunMode, WSLStatus } from '../../api/wslClient.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
+import { Select } from '../../ui/select.tsx';
 import { distroLabel, parseRunMode, runModeValue, WSL_HELP } from '../team/run-mode.ts';
 import { SettingRow, SettingsGroup, errorPad, noteRow } from './settings-kit.tsx';
 
@@ -51,16 +52,13 @@ export function RunModePanel(handle: Handle<{ projectId: string }>) {
           </div>
         ) : null}
         <SettingRow label="Agents run" for={id}>
-          <select id={id} value={value} disabled={!!act.busy || !pr} mix={on('change', (e) => void choose(e.currentTarget.value))}>
-            <option value="native" selected={value === 'native'}>
-              On Windows
-            </option>
-            {st.distros.map((d) => (
-              <option key={d.name} value={`wsl:${d.name}`} selected={value === `wsl:${d.name}`}>
-                {distroLabel(d)}
-              </option>
-            ))}
-          </select>
+          <Select
+            id={id}
+            value={value}
+            disabled={!!act.busy || !pr}
+            options={[{ value: 'native', label: 'On Windows' }, ...st.distros.map((d) => ({ value: `wsl:${d.name}`, label: distroLabel(d) }))]}
+            onChange={(v) => void choose(v)}
+          />
         </SettingRow>
         {pr?.by === 'drydock' ? (
           <p mix={noteRow} data-testid="run-mode-auto">

@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { Plan, ProposedTask } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { PlanReview, PlanScreen } from './plan-screen.tsx';
 
 afterEach(cleanup);
@@ -182,7 +182,7 @@ describe('PlanScreen', () => {
     const r = mount(<PlanScreen />, s);
     await waitFor(() => byText(r.container, 'h2', 'No plans yet.'), r);
     expect(r.$('[data-testid="plan-stepper"]')!.getAttribute('data-stage')).toBe('GOAL');
-    await waitFor(() => byText(r.container, 'option', 'Priya (pm)'), r);
+    await waitFor(() => byText(r.container, '[role="option"]', 'Priya (pm)'), r);
     type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'Add arithmetic');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
@@ -205,13 +205,13 @@ describe('PlanScreen', () => {
     });
     const r = mount(<PlanScreen />, s);
     await waitFor(() => expect(r.$('[data-testid="plan"]')!.textContent).toContain('New goal'), r);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Plan').value).toBe('new');
-    type(byLabel<HTMLSelectElement>(r.container, 'Plan'), 'old');
+    expect(valueOf(byLabel(r.container, 'Plan'))).toBe('new');
+    type(byLabel<HTMLElement>(r.container, 'Plan'), 'old');
     await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('REJECTED'), r);
-    await waitFor(() => byText(r.container, 'option', 'Priya (pm)'), r);
+    await waitFor(() => byText(r.container, '[role="option"]', 'Priya (pm)'), r);
     type(byLabel<HTMLTextAreaElement>(r.container, 'Goal'), 'More');
     type(byLabel<HTMLTextAreaElement>(r.container, 'Requirements or constraints (optional)'), 'no deps');
-    type(byLabel<HTMLSelectElement>(r.container, 'Planner agent'), 'agt_pm');
+    type(byLabel<HTMLElement>(r.container, 'Planner agent'), 'agt_pm');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
     await waitFor(() => expect(proposed).toEqual([['prj_1', 'More', 'no deps', 'agt_pm']]), r);

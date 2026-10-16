@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LocalBackend, LocalModel, LocalSettingsEdit, LocalView, Variant } from '../../api/localClient.ts';
-import { cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { LocalModels } from './local-models.tsx';
 
 afterEach(cleanup);
@@ -77,7 +77,7 @@ const need = (r: ReturnType<typeof show>['r'], sel: string) => {
   if (!el) throw new Error(`no ${sel}`);
   return el;
 };
-const sel = (r: ReturnType<typeof show>['r'], s: string) => need(r, s) as HTMLSelectElement;
+const sel = (r: ReturnType<typeof show>['r'], s: string) => need(r, s) as HTMLElement;
 /** The control once the action before it has ended (a busy section disables its controls). */
 const enabled = <T extends HTMLButtonElement | HTMLInputElement>(r: ReturnType<typeof show>['r'], s: string) =>
   waitFor(() => {
@@ -118,9 +118,9 @@ describe('Models on this PC', () => {
     expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Drydock downloads and runs llama.cpp itself');
     expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Nothing has to be installed by hand');
     expect(need(r, '[data-testid="local-models"]').textContent).toContain('Drydock downloads and runs llama.cpp itself; nothing leaves the PC');
-    expect(sel(r, '[data-testid="local-backend"]').value).toBe('cuda');
-    expect(sel(r, '[data-testid="local-backend"]').selectedOptions[0]!.textContent).toContain('suggested for this PC');
-    expect(sel(r, '[data-testid="local-source"]').value).toBe('official');
+    expect(valueOf(sel(r, '[data-testid="local-backend"]'))).toBe('cuda');
+    expect(sel(r, '[data-testid="local-backend"]').textContent).toContain('suggested for this PC');
+    expect(valueOf(sel(r, '[data-testid="local-source"]'))).toBe('official');
     expect(q(r, '[data-testid="local-source-warning"]')).toBe(null);
 
     type(sel(r, '[data-testid="local-source"]'), 'turboquant');
@@ -414,8 +414,8 @@ describe('Models on this PC', () => {
     });
     await waitFor(() => need(r, '[data-testid="local-cache"]'), r);
     const cache = sel(r, '[data-testid="local-cache"]');
-    expect(Array.from(cache.options).map((o) => o.value)).toEqual(['q8_0', 'q4_0', 'f16']);
-    expect(cache.value).toBe('q8_0');
+    expect(optionsOf(cache).map((o) => o.value)).toEqual(['q8_0', 'q4_0', 'f16']);
+    expect(valueOf(cache)).toBe('q8_0');
     expect(need(r, '[data-testid="local-settings"]').textContent).toContain('q8_0: near-lossless, half the KV memory of f16');
     expect(q(r, '[data-testid="local-restart"]')).toBe(null);
 
@@ -441,8 +441,8 @@ describe('Models on this PC', () => {
   it('the fork offers the TurboQuant cache types once it is the installed source', async () => {
     const { r } = show({ localGet: async () => installed({ runtime: { ...installed().runtime, source: 'turboquant', sourceName: FORK.name }, settings: { ...installed().settings, source: 'turboquant', cacheType: 'turbo4' } }) });
     await waitFor(() => need(r, '[data-testid="local-cache"]'), r);
-    expect(Array.from(sel(r, '[data-testid="local-cache"]').options).map((o) => o.value)).toEqual(['turbo4', 'turbo3', 'q8_0', 'q4_0', 'f16']);
-    expect(sel(r, '[data-testid="local-cache"]').value).toBe('turbo4');
+    expect(optionsOf(sel(r, '[data-testid="local-cache"]')).map((o) => o.value)).toEqual(['turbo4', 'turbo3', 'q8_0', 'q4_0', 'f16']);
+    expect(valueOf(sel(r, '[data-testid="local-cache"]'))).toBe('turbo4');
   });
 
   it('the event local.changed reads the view again', async () => {

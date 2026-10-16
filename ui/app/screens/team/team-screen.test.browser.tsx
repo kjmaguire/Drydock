@@ -5,7 +5,7 @@ import type { Skill } from '../../api/extTypes.ts';
 import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts';
 import type { AdapterInfo, Agent, Project } from '../../api/types.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { CATALOG } from '../project/wizard-fixtures.ts';
 import { TeamScreen } from './team-screen.tsx';
 
@@ -67,7 +67,7 @@ function must<T>(x: T | null | undefined, msg: string): T {
 
 async function waitAdapters(r: ReturnType<typeof show>['r']) {
   await waitFor(() => {
-    if (byLabel<HTMLSelectElement>(r.container, 'Adapter').options.length === 0) throw new Error('no adapters yet');
+    if (optionsOf(byLabel(r.container, 'Adapter')).length === 0) throw new Error('no adapters yet');
   }, r);
 }
 
@@ -90,9 +90,9 @@ describe('Team: purpose, model and effort', () => {
     type(byLabel(r.container, 'Role'), 'backend');
     type(byLabel<HTMLTextAreaElement>(r.container, 'Purpose (optional)'), ' Own payments. ');
     type(byLabel(r.container, 'Model'), 'opus');
-    const effort = byLabel<HTMLSelectElement>(r.container, 'Effort');
-    expect(effort.tagName).toBe('SELECT');
-    expect(Array.from(effort.options).map((o) => o.value)).toEqual(['', 'low', 'medium', 'high', 'xhigh', 'max']);
+    const effort = byLabel<HTMLElement>(r.container, 'Effort');
+    expect(effort.getAttribute('role')).toBe('combobox');
+    expect(optionsOf(effort).map((o) => o.value)).toEqual(['', 'low', 'medium', 'high', 'xhigh', 'max']);
     type(effort, 'max');
     r.root.flush();
     const before = listed();
@@ -106,7 +106,7 @@ describe('Team: purpose, model and effort', () => {
   it('keeps effort free text for an adapter that does not list its levels', async () => {
     const { r } = show([]);
     await waitAdapters(r);
-    type(byLabel<HTMLSelectElement>(r.container, 'Adapter'), 'opencode');
+    type(byLabel<HTMLElement>(r.container, 'Adapter'), 'opencode');
     r.root.flush();
     expect(byLabel(r.container, 'Effort').tagName).toBe('INPUT');
   });
@@ -156,7 +156,7 @@ describe('Team: purpose, model and effort', () => {
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
     expect(ed.textContent).toContain('cannot change');
     type(byLabel(ed, 'Model'), 'haiku');
-    type(byLabel<HTMLSelectElement>(ed, 'Effort'), 'low');
+    type(byLabel<HTMLElement>(ed, 'Effort'), 'low');
     type(byLabel<HTMLTextAreaElement>(ed, 'Purpose'), 'Billing only.');
     r.root.flush();
     const before = listed();
@@ -188,8 +188,8 @@ describe('Team: purpose, model and effort', () => {
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
     const routing = ed.querySelector<HTMLElement>('[data-testid="route-models"]')!;
     await r.act(() => routing.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
-    expect(byLabel<HTMLInputElement>(ed, 'Routed model 1').value).toBe('haiku');
-    expect(byLabel<HTMLSelectElement>(ed, 'Tier of routed model 2').value).toBe('premium');
+    expect(valueOf(byLabel(ed, 'Routed model 1'))).toBe('haiku');
+    expect(valueOf(byLabel(ed, 'Tier of routed model 2'))).toBe('premium');
     await r.act(() => byText(ed, 'button', 'Save changes').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]!.routeModels).toEqual([
@@ -324,20 +324,20 @@ describe('Claude best practices', () => {
     await waitAdapters(r);
     type(byLabel(r.container, 'Role'), 'backend');
     const box = await waitFor(() => must(r.container.querySelector<HTMLElement>('[data-testid="claude-practices"]'), 'no box'), r);
-    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Model').value).toBe('sonnet'), r);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('medium');
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Model'))).toBe('sonnet'), r);
+    expect(valueOf(byLabel(r.container, 'Effort'))).toBe('medium');
     expect(box.textContent).toContain('Recommended for a backend (worker)');
     expect(box.querySelector('[data-testid="claude-practices-text"]')!.textContent).toContain('Never skip, delete or weaken a test');
     // a new role moves the recommendation while the fields are still the recommended ones
     type(byLabel(r.container, 'Role'), 'reviewer');
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('high'), r);
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Effort'))).toBe('high'), r);
     // once the human picks something else, the recommendation stops overwriting it
-    type(byLabel<HTMLSelectElement>(r.container, 'Effort'), 'low');
+    type(byLabel<HTMLElement>(r.container, 'Effort'), 'low');
     type(byLabel(r.container, 'Role'), 'backend');
     await waitFor(() => expect(asked.filter((x) => x === 'backend').length).toBe(2), r);
     // the answer for backend is on screen (the step that would have overwritten the effort has run)
     await waitFor(() => expect(box.textContent).toContain('Recommended for a backend (worker)'), r);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('low');
+    expect(valueOf(byLabel(r.container, 'Effort'))).toBe('low');
     // the switch is on by default and can be turned off
     const sw = byLabel<HTMLInputElement>(r.container, 'Follow Claude Code best practices');
     expect(sw.checked).toBe(true);
@@ -353,11 +353,11 @@ describe('Claude best practices', () => {
     const { r } = show([], { claudePractices: async (role) => practices(role) });
     await waitAdapters(r);
     type(byLabel(r.container, 'Role'), 'backend');
-    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Model').value).toBe('sonnet'), r);
-    type(byLabel<HTMLSelectElement>(r.container, 'Adapter'), 'claude');
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Model'))).toBe('sonnet'), r);
+    type(byLabel<HTMLElement>(r.container, 'Adapter'), 'claude');
     r.root.flush();
-    expect(byLabel<HTMLInputElement>(r.container, 'Model').value).toBe('sonnet');
-    expect(byLabel<HTMLSelectElement>(r.container, 'Effort').value).toBe('medium');
+    expect(valueOf(byLabel(r.container, 'Model'))).toBe('sonnet');
+    expect(valueOf(byLabel(r.container, 'Effort'))).toBe('medium');
   });
 
   it('shows nothing for an adapter that is not Claude Code', async (t) => {
@@ -366,7 +366,7 @@ describe('Claude best practices', () => {
     await waitAdapters(r);
     // the recommendation is asked 200 ms after the role changes (a timer): fake time runs past it
     const timers = t.useFakeTimers();
-    type(byLabel<HTMLSelectElement>(r.container, 'Adapter'), 'opencode');
+    type(byLabel<HTMLElement>(r.container, 'Adapter'), 'opencode');
     type(byLabel(r.container, 'Role'), 'backend');
     r.root.flush();
     timers.advance(1000);
@@ -382,8 +382,8 @@ describe('Claude best practices', () => {
     await r.act(() => byText(card, 'button', 'Edit Pay').click());
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
     await waitFor(() => must(ed.querySelector('[data-testid="claude-practices"]'), 'no box'), r);
-    expect(byLabel<HTMLInputElement>(ed, 'Model').value).toBe('opus');
-    expect(byLabel<HTMLSelectElement>(ed, 'Effort').value).toBe('max');
+    expect(valueOf(byLabel(ed, 'Model'))).toBe('opus');
+    expect(valueOf(byLabel(ed, 'Effort'))).toBe('max');
   });
 
   it('adds a prebuilt agent from the gallery dialog and re-reads the team', async () => {

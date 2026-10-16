@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ProjectRunMode, WSLStatus } from '../../api/wslClient.ts';
-import { byLabel, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { RunModePanel } from './project-run-mode.tsx';
 
 afterEach(cleanup);
@@ -29,16 +29,17 @@ describe('Where agents run (project settings)', () => {
       },
     });
     const sel = await waitFor(() => {
-      const s = byLabel<HTMLSelectElement>(r.container, 'Agents run');
-      if (s.options.length < 2) throw new Error('no distros yet');
+      const s = byLabel<HTMLElement>(r.container, 'Agents run');
+      if (optionsOf(s).length < 2) throw new Error('no distros yet');
       return s;
     }, r);
-    expect(Array.from(sel.options).map((o) => o.textContent)).toEqual(['On Windows', 'In WSL: Ubuntu (default distro)']);
+    expect(optionsOf(sel).map((o) => o.label)).toEqual(['On Windows', 'In WSL: Ubuntu (default distro)']);
     expect(r.container.textContent).toContain('A repository on a Windows drive is read across the WSL file share');
     type(sel, 'wsl:Ubuntu');
     await waitFor(() => expect(calls).toEqual(['prj_1:wsl:Ubuntu']), r);
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Agents run'))).toBe('wsl:Ubuntu'), r); // the answer is shown before the next choice
     refuse = true;
-    type(byLabel<HTMLSelectElement>(r.container, 'Agents run'), 'native');
+    type(byLabel<HTMLElement>(r.container, 'Agents run'), 'native');
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('sandbox'), r);
   });
 
@@ -48,7 +49,7 @@ describe('Where agents run (project settings)', () => {
       projectRunMode: async () => ({ runMode: 'wsl', wslDistro: 'Ubuntu-26.04', by: 'drydock', why: 'Claude Code is not usable on Windows; it is ready in the WSL distro Ubuntu-26.04' }),
     });
     await waitFor(() => expect(r.$('[data-testid="run-mode-auto"]')!.textContent).toContain('Drydock chose this when the project was made: Claude Code is not usable on Windows'), r);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Agents run').value).toBe('wsl:Ubuntu-26.04');
+    expect(valueOf(byLabel(r.container, 'Agents run'))).toBe('wsl:Ubuntu-26.04');
   });
 
   it('is not shown where WSL has no distro', async () => {

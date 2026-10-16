@@ -10,6 +10,7 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
+import { Select, selectOptions } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
@@ -34,20 +35,15 @@ function select(label: string, value: () => string, set: (v: string) => void, op
   return (
     <Field label={label}>
       {(id) => (
-        <select
+        <Select
           id={id}
           value={value()}
-          mix={on('change', (e) => {
-            set(e.currentTarget.value);
+          options={selectOptions(options)}
+          onChange={(v) => {
+            set(v);
             redraw();
-          })}
-        >
-          {options.map(([v, l]) => (
-            <option key={v} value={v} selected={v === value()}>
-              {l}
-            </option>
-          ))}
-        </select>
+          }}
+        />
       )}
     </Field>
   );

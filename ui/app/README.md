@@ -85,8 +85,14 @@ export function Thing(handle: Handle<{ id: string }>) {
   External links (`https://...`) need `target="_blank"` and `data-rmx-document`.
 - Forms: `on('submit', (e) => { e.preventDefault(); ... })`. The CSP has `form-action 'none'`: a native submission is blocked.
 - Imports use explicit extensions (`./x.ts`, `./y.tsx`), as Node ESM and the Remix repo do.
-- A controlled `<select value={x}>` does not select `x` on the first render (host props are applied before the options
-  exist). Also set `selected={o === x}` on each `<option>`.
+- Dropdowns are the kit's `Select` (`ui/select.tsx`), never a native `<select>`: WebView2 draws the native popup itself,
+  in the system style and where the OS puts it. Two free-text fields keep a native suggestion list (`<input list>`): the
+  agent's role and an integration setting's choices; they take typed text first. `Select` is controlled (`value` + `onChange`, the
+  options as `{ value, label, hint?, disabled? }`); a model name goes through `screens/shared/model-field.tsx` (the
+  adapter's aliases as a list, "Another model..." for a typed full name). In tests, `choose(control, value)` from
+  `test/render.tsx` picks an option (`type()` does the same on a dropdown), `optionsOf()` and `valueOf()` read it back; in
+  Playwright, `choose(locator, value | { label })` and `optionsOf(locator, value?)` from `e2e/helpers.ts`, and `data-value` on
+  the button carries the value.
 - Each `css()` rule sits in its own cascade layer and a later layer wins regardless of specificity: a parent's
   `&:hover .child` loses to the child's own `css()`. Put the ancestor selector in the child's rule (`':is(.msg:hover) &'`).
 - The design tokens (app.css) are not loaded in browser tests: assert on attributes, not computed colors.
@@ -131,7 +137,12 @@ Use the kit before writing CSS:
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).
 - `Field` (label tied by id; children receives the id), `formGrid`, `formStack`, `formActions`, `Checkbox`, `Switch`
-  (form.tsx). Native `input`, `select`, `textarea`, `button`, `table`, `kbd`, `code`, `pre` are styled by the base layer.
+  (form.tsx). Native `input`, `textarea`, `button`, `table`, `kbd`, `code`, `pre` are styled by the base layer.
+- `Select` (select.tsx): a themed dropdown, a `role="combobox"` button showing the chosen option with a chevron, over an
+  anchored `listbox` of `option`s drawn with the tokens in both themes (check on the chosen one, a quiet `hint`, disabled
+  options). Keyboard: arrows, Home, End, Enter, Space, Escape, letters jump to a match (and choose it while closed). The
+  `Field` id names it; `label` gives an accessible name without one; `size="sm"` for toolbars, `name` for a form value.
+  `selectValues(strings)` and `selectOptions(pairs)` build the options.
 - `ErrorNote` (role="alert"), `Notice`, `Loading`, `Spinner`, `Empty` (feedback.tsx).
 - `Badge`, `StatusChip`, `PresenceDot`, `Avatar`, `SourceBadge`, `kv`, `muted`, `faint`, `mono` (data.tsx).
 - `Dialog` (native `<dialog>`), `Tabs` (underlined; `pills` for a page's sections), `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.

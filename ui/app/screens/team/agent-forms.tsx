@@ -11,6 +11,7 @@ import { muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { noSkillChanges, type SkillChanges } from '../skills/skills.ts';
 import { ClaudePracticesPanel, ModelEffortFields, RouteModelsField, claudePractices } from './fields.tsx';
@@ -116,23 +117,15 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
         </Field>
         <Field label="Adapter">
           {(id) => (
-            <select
+            <Select
               id={id}
-              aria-label="Adapter"
+              label="Adapter"
               value={adapterId}
-              required
-              mix={on('change', (e) => {
-                // choosing the adapter that is already chosen keeps the model and effort (and Claude's recommendation)
-                const v = e.currentTarget.value;
-                if (v !== adapterId) set(() => ((adapter = v), (model = ''), (effort = '')));
-              })}
-            >
-              {adapters.map((x) => (
-                <option key={x.id} value={x.id} selected={x.id === adapterId}>
-                  {adapterOption(x)}
-                </option>
-              ))}
-            </select>
+              options={adapters.map((x) => ({ value: x.id, label: adapterOption(x) }))}
+              placeholder="Choose an agent CLI"
+              // another adapter starts the model and effort over (the Select is quiet when the same one is chosen again)
+              onChange={(v) => set(() => ((adapter = v), (model = ''), (effort = '')))}
+            />
           )}
         </Field>
         <ModelEffortFields
@@ -218,13 +211,13 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
         <div mix={templateRow}>
           <Field label="From a template">
             {(id) => (
-              <select id={id} aria-label="Template" value={chosen} mix={on('change', (e) => ((pick = e.currentTarget.value), void handle.update()))}>
-                {templates.map((x) => (
-                  <option key={x.id} value={x.id} selected={x.id === chosen}>
-                    {x.name} ({x.role}, {x.adapter})
-                  </option>
-                ))}
-              </select>
+              <Select
+                id={id}
+                label="Template"
+                value={chosen}
+                options={templates.map((x) => ({ value: x.id, label: `${x.name} (${x.role}, ${x.adapter})` }))}
+                onChange={(v) => ((pick = v), void handle.update())}
+              />
             )}
           </Field>
           <Field label="Name (optional)">

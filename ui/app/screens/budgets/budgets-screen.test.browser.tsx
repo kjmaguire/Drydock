@@ -123,7 +123,7 @@ describe('BudgetsScreen', () => {
     const card = await waitFor(() => need(r, '[data-testid="budget"]'), r);
     await r.act(() => byText(card, 'button', 'Edit limits').click());
     const form = await waitFor(() => need(r, 'form[aria-label="Edit budget"]'), r);
-    expect(byLabel<HTMLSelectElement>(form, 'Scope').disabled).toBe(true);
+    expect(byLabel<HTMLButtonElement>(form, 'Scope').disabled).toBe(true);
     expect(byLabel(form, 'Limit in USD').value).toBe('5');
     type(byLabel(form, 'Limit in USD'), '7.5');
     await r.act(() => byText(form, 'button', 'Save changes').click());

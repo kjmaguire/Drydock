@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { GitHubIssue, GitHubReview, PRState, Task } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, renderPlain, type, waitFor } from '../../test/render.tsx';
 import { recorder, svc, task } from '../tasks/testing.ts';
 import { CiList, IssueItem, PullRequestPanel, ReviewItem } from './pr-parts.tsx';
 import { PullsScreen } from './pulls-screen.tsx';
@@ -174,8 +174,8 @@ describe('PullsScreen', () => {
     const githubPullRequest = recorder((id: string) => (id === 't1' ? prState() : prState({ number: 4, title: 'Add Divide PR' })));
     const r = mount(<PullsScreen />, svc({ githubPullRequest }, { tasks }));
     await waitFor(() => expect(r.$('[data-testid="gh-pr"]')!.textContent).toContain('Add Subtract'), r);
-    const select = byLabel<HTMLSelectElement>(r.container, 'Task');
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['#1 Add Subtract (#3)', '#2 Add Divide (#4)']);
+    const select = byLabel<HTMLElement>(r.container, 'Task');
+    expect(optionsOf(select).map((o) => o.label)).toEqual(['#1 Add Subtract (#3)', '#2 Add Divide (#4)']);
     expect(r.$('[data-testid="task-status"]')!.textContent).toContain('Awaiting your approval');
     await r.act(() => type(select, 't2'));
     await waitFor(() => expect(r.$('[data-testid="gh-pr"]')!.textContent).toContain('Add Divide PR'), r);

@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import { DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
 import type { Project } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
 import { ProjectSettingsScreen } from './project-settings-screen.tsx';
 import { repo } from './wizard-fixtures.ts';
@@ -39,9 +39,9 @@ describe('Project settings', () => {
     expect(r.container.textContent).toContain('/r');
     expect(r.container.textContent).toContain('main');
     expect(save.disabled).toBe(true);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Mode').value).toBe('local_merge');
-    type(byLabel<HTMLSelectElement>(r.container, 'Mode'), 'pr_flow');
-    type(byLabel<HTMLSelectElement>(r.container, 'Merge strategy'), 'squash');
+    expect(valueOf(byLabel(r.container, 'Mode'))).toBe('local_merge');
+    type(byLabel<HTMLElement>(r.container, 'Mode'), 'pr_flow');
+    type(byLabel<HTMLElement>(r.container, 'Merge strategy'), 'squash');
     r.root.flush();
     expect(save.disabled).toBe(false);
     await r.act(() => save.click());
@@ -58,7 +58,7 @@ describe('Project settings', () => {
       projectAttachRepo: async (id, path) => (attached.push([id, path]), { ...project, hasRepo: true }),
     });
     await waitFor(() => expect(r.container.querySelector('[data-testid="no-repo"]')!.textContent).toBe('No repository yet'), r);
-    expect(byLabel<HTMLSelectElement>(r.container, 'Mode').disabled).toBe(true);
+    expect(byLabel<HTMLButtonElement>(r.container, 'Mode').disabled).toBe(true);
     expect(r.container.textContent).toContain('Attach a repository first');
     const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
     expect(attach.disabled).toBe(true);
@@ -130,8 +130,8 @@ describe('Project settings', () => {
 
   it('shows the stored strategy, and says Saved after the core accepts', async () => {
     const r = settings({ projectList: async () => [{ ...project, mergeStrategy: 'squash' }], projectUpdate: async () => ({ ...project, mergeStrategy: 'rebase' }) });
-    await waitFor(() => expect(byLabel<HTMLSelectElement>(r.container, 'Merge strategy').value).toBe('squash'), r);
-    type(byLabel<HTMLSelectElement>(r.container, 'Merge strategy'), 'rebase');
+    await waitFor(() => expect(valueOf(byLabel(r.container, 'Merge strategy'))).toBe('squash'), r);
+    type(byLabel<HTMLElement>(r.container, 'Merge strategy'), 'rebase');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Save').click());
     await waitFor(() => expect(Array.from(r.container.querySelectorAll('[role="status"]')).some((e) => e.textContent === 'Saved.')).toBe(true), r);

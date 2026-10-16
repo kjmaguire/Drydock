@@ -13,6 +13,7 @@ import { Avatar, Badge } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
+import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { memberKey, MODE_TEXT } from './messages.ts';
 
@@ -148,27 +149,16 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
               </p>
               <Field label="Mode">
                 {(id) => (
-                  <select
+                  <Select
                     id={id}
-                    aria-label="Mode"
+                    label="Mode"
                     value={mode}
-                    mix={[
-                      on('change', (e) => {
-                        mode = (e.currentTarget as HTMLSelectElement).value;
-                        update();
-                      }),
-                    ]}
-                  >
-                    <option value="auto" selected={mode === 'auto'}>
-                      auto
-                    </option>
-                    <option value="sequential" selected={mode === 'sequential'}>
-                      sequential
-                    </option>
-                    <option value="moderator" selected={mode === 'moderator'}>
-                      moderator
-                    </option>
-                  </select>
+                    options={selectValues(['auto', 'sequential', 'moderator'])}
+                    onChange={(v) => {
+                      mode = v;
+                      update();
+                    }}
+                  />
                 )}
               </Field>
               <p mix={modeText} data-testid="mode-text">
@@ -217,26 +207,16 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                   <div style={{ flex: '1', minWidth: '180px' }}>
                     <Field label="Moderator">
                       {(id) => (
-                        <select
+                        <Select
                           id={id}
-                          aria-label="Moderator"
+                          label="Moderator"
                           value={moderator}
-                          mix={[
-                            on('change', (e) => {
-                              moderator = (e.currentTarget as HTMLSelectElement).value;
-                              update();
-                            }),
-                          ]}
-                        >
-                          <option value="" selected={moderator === ''}>
-                            Choose a moderator
-                          </option>
-                          {memberKeys.map((k) => (
-                            <option key={k} value={k} selected={moderator === k}>
-                              {name(k)}
-                            </option>
-                          ))}
-                        </select>
+                          options={[{ value: '', label: 'Choose a moderator' }, ...memberKeys.map((k) => ({ value: k, label: name(k) }))]}
+                          onChange={(v) => {
+                            moderator = v;
+                            update();
+                          }}
+                        />
                       )}
                     </Field>
                   </div>
@@ -288,26 +268,16 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
                 ) : null}
               </ul>
               <div mix={inlineRow}>
-                <select
-                  aria-label="Invite an agent"
+                <Select
+                  label="Invite an agent"
                   value={invite}
                   style={{ flex: '1', minWidth: '160px', width: 'auto' }}
-                  mix={[
-                    on('change', (e) => {
-                      invite = (e.currentTarget as HTMLSelectElement).value;
-                      update();
-                    }),
-                  ]}
-                >
-                  <option value="" selected={invite === ''}>
-                    Invite an agent...
-                  </option>
-                  {invitable.map((a) => (
-                    <option key={a.id} value={a.id} selected={invite === a.id}>
-                      {a.name} ({a.role})
-                    </option>
-                  ))}
-                </select>
+                  options={[{ value: '', label: 'Invite an agent...' }, ...invitable.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
+                  onChange={(v) => {
+                    invite = v;
+                    update();
+                  }}
+                />
                 <Button
                   icon={UserPlus}
                   disabled={!invite || busy}
