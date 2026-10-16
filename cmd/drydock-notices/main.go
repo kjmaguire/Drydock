@@ -45,15 +45,17 @@ func run(check bool) error {
 		return fmt.Errorf("go env GOMODCACHE: %w", err)
 	}
 	src.ModCache = strings.TrimSpace(string(out))
-	doc, err := read("THIRD_PARTY_NOTICES.md")
+	raw, err := read("THIRD_PARTY_NOTICES.md")
 	if err != nil {
 		return err
 	}
-	got, err := notices.Generate(string(doc), src)
+	// a checkout on Windows may have turned the line ends into CRLF (core.autocrlf): the file is judged, and written, as git stores it
+	doc := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	got, err := notices.Generate(doc, src)
 	if err != nil {
 		return err
 	}
-	if got == string(doc) {
+	if got == doc {
 		fmt.Println("THIRD_PARTY_NOTICES.md is up to date")
 		return nil
 	}

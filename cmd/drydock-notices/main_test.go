@@ -73,3 +73,35 @@ func TestTheCommandRewritesAStaleFileAndCheckRefusesIt(t *testing.T) {
 		t.Fatal("the file was changed although the generation failed")
 	}
 }
+
+// A file whose line ends were turned into CRLF by a Windows checkout is still current when its text is.
+func TestAFileWithWindowsLineEndsIsJudgedByItsText(t *testing.T) {
+	repo, cache := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(repo, "go.mod"), "module example.com/x\n")
+	write(t, filepath.Join(repo, "cmd", "drydock-notices", "keep"), "")
+	write(t, filepath.Join(repo, "docs", "software-versions.json"), `{"items":[]}`)
+	write(t, filepath.Join(repo, "ui", "package-lock.json"), `{"packages":{"":{}}}`)
+	write(t, filepath.Join(repo, "ui", "package.json"), `{"dependencies":{}}`)
+	doc := "# Notices\n\n" + notices.GoBegin + "\n" + notices.GoEnd + "\n\n" + notices.MPLBegin + "\n" + notices.MPLEnd + "\n\n" + notices.NPMBegin + "\n" + notices.NPMEnd + "\n"
+	file := filepath.Join(repo, "THIRD_PARTY_NOTICES.md")
+	write(t, file, doc)
+	t.Setenv("GOMODCACHE", cache)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := run(false); err != nil {
+		t.Fatal(err)
+	}
+	generated, _ := os.ReadFile(file)
+	if err := os.WriteFile(file, []byte(strings.ReplaceAll(string(generated), "\n", "\r\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(true); err != nil {
+		t.Fatalf("-check on the same text with CRLF line ends: %v", err)
+	}
+}

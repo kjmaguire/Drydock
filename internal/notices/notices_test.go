@@ -371,7 +371,8 @@ func TestTheCommittedNoticesNameEveryModuleInTheBuildAtItsVersion(t *testing.T) 
 		}
 		return b
 	}
-	doc := string(read("THIRD_PARTY_NOTICES.md"))
+	// a checkout on Windows may have turned the file's line ends into CRLF (core.autocrlf): the text is compared as git stores it
+	doc := strings.ReplaceAll(string(read("THIRD_PARTY_NOTICES.md")), "\r\n", "\n")
 	between := func(begin, end string) string {
 		i, j := strings.Index(doc, begin), strings.Index(doc, end)
 		if i < 0 || j < i {
