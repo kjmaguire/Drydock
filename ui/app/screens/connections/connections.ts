@@ -1,5 +1,5 @@
-// Pure helpers of the Connections screen: badge tones, the overview tiles (name, what it is, state, which one opens first),
-// the capability matrix in order, and the plain sentences of a report.
+// Pure helpers of the Connections screen: badge tones, the overview tiles (name, what it is, state, which one opens first, their
+// order: Claude Code, the other vendors, custom manifests), the capability matrix in order, and the plain sentences of a report.
 
 import type { Connection, ConnectionReport, MatrixCell, Prereq } from '../../api/types.ts';
 import type { TileTone } from '../../ui/tiles.tsx';
@@ -75,6 +75,28 @@ export const needsAttention = (c: Pick<Connection, 'installed' | 'status' | 'usa
 export function defaultConnection(list: readonly Connection[]): string {
   const c = list.find(needsAttention) ?? list[0];
   return c ? connectionKey(c) : '';
+}
+
+/**
+ * The tiles in the order the page shows them (the core lists adapters by id with the WSL installs last): Claude Code first with
+ * its WSL installs right after it, then every other vendor's CLI by name with its WSL installs right after it, and the adapters
+ * of custom manifests (a CLI you described) last, in the same way. Within one CLI the Windows install comes before the WSL ones,
+ * which keep the core's order (its distro order). Stable: equal keys never swap.
+ */
+export function orderConnections<T extends Pick<Connection, 'adapter' | 'runMode' | 'custom'>>(list: readonly T[]): T[] {
+  const adapters: string[] = [];
+  for (const c of list) if (!adapters.includes(c.adapter)) adapters.push(c.adapter);
+  const custom = new Set(list.filter((c) => c.custom).map((c) => c.adapter));
+  adapters.sort((a, b) => {
+    const ra = custom.has(a) ? 2 : a === 'claude' ? 0 : 1;
+    const rb = custom.has(b) ? 2 : b === 'claude' ? 0 : 1;
+    return ra - rb || adapterLabel(a).localeCompare(adapterLabel(b)) || a.localeCompare(b);
+  });
+  const out: T[] = [];
+  for (const a of adapters) {
+    out.push(...list.filter((c) => c.adapter === a && !isWSL(c)), ...list.filter((c) => c.adapter === a && isWSL(c)));
+  }
+  return out;
 }
 
 /** The logo of a WSL distro's Linux: Ubuntu and Debian have their own, every other distro shows the Linux mark. */

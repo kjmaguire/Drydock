@@ -13,7 +13,9 @@ import (
 )
 
 // githubAdapter reads a repository's issues through the user's own GitHub CLI (gh api, internal/git/host): the gh sign-in is
-// the credential, and Drydock never stores or sees a GitHub token. Endpoint: GET /repos/{owner}/{repo}/issues (state=open on
+// the credential, and Drydock never stores or sees a GitHub token. With a Sign in with GitHub (the OAuth device flow of an app
+// the owner registered, oauthapps.go) the same REST API is called directly with that sign-in's token (host.HTTPAPI), which
+// lives in the credential store like the other vendors' tokens. Endpoint: GET /repos/{owner}/{repo}/issues (state=open on
 // the first sweep, state=all with since afterwards so a close arrives as an update; sort=updated, direction=desc, labels,
 // per_page at most 100, page numbers). Pull requests come back from that endpoint
 // too and are skipped. An imported issue becomes a task whose reference is "#<number>", so its pull request says "Closes #n".
@@ -29,8 +31,8 @@ func (githubAdapter) Endpoints() []string {
 
 func (githubAdapter) Ops() []OpInfo { return nil }
 
-// ghFailure maps a gh error to a plain-language failure.
-func ghFailure(err error) error {
+// ghFailure maps a GitHub API error (through gh, or direct with a Sign in with GitHub) to a plain-language failure.
+func ghFailure(c Connection, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -39,6 +41,9 @@ func ghFailure(err error) error {
 		return f
 	}
 	if errors.Is(err, host.ErrAuth) {
+		if !usesGH(c) {
+			return &Failure{Code: CodeUnauthorized, Cause: err, Message: "GitHub no longer accepts the sign-in (HTTP 401): it was revoked or has expired. Sign in with GitHub again on the Integrations page."}
+		}
 		return &Failure{Code: CodeUnauthorized, Cause: err, Message: "The GitHub CLI (gh) is not signed in. Run `gh auth login` (Connections shows its state); Drydock uses that sign-in and stores no GitHub token."}
 	}
 	var rl *host.RateLimitError
@@ -63,9 +68,9 @@ func (githubAdapter) Identity(ctx context.Context, a *API) (Identity, error) {
 	}
 	who, err := host.Viewer(ctx, a.GH)
 	if err != nil {
-		return Identity{}, ghFailure(err)
+		return Identity{}, ghFailure(a.Conn, err)
 	}
-	return Identity{Account: who.Login, Workspace: "github.com", WorkspaceURL: "https://github.com/" + url.PathEscape(who.Login), Method: "GitHub CLI (gh) sign-in"}, nil
+	return Identity{Account: who.Login, Workspace: "github.com", WorkspaceURL: "https://github.com/" + url.PathEscape(who.Login), Method: authMethod(a.Conn)}, nil
 }
 
 func (githubAdapter) Choices(ctx context.Context, a *API, key string, _ map[string]string) ([]Choice, error) {
@@ -77,7 +82,7 @@ func (githubAdapter) Choices(ctx context.Context, a *API, key string, _ map[stri
 	}
 	rs, err := host.ListRepos(ctx, a.GH, "", "")
 	if err != nil {
-		return nil, ghFailure(err)
+		return nil, ghFailure(a.Conn, err)
 	}
 	out := []Choice{}
 	for _, r := range rs {
@@ -129,7 +134,7 @@ func (githubAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 	}
 	var raw []rawIssue
 	if _, err := a.GH.Do(ctx, "GET", "/repos/"+repo+"/issues?"+v.Encode(), nil, &raw, ""); err != nil {
-		return Page{}, ghFailure(err)
+		return Page{}, ghFailure(a.Conn, err)
 	}
 	var pg Page
 	if len(raw) == limit {

@@ -400,3 +400,17 @@ func TestConnectionJSONShape(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 }
+
+// A custom manifest's adapter (Meta.Custom) is marked on its Connection, so the Connections page can list it after the vendors'
+// CLIs; a vendor's is not.
+func TestCustomManifestMarksTheConnection(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if c := check(t, "custom", connections.Options{}); !c.Custom {
+		t.Fatalf("custom: %+v", c)
+	}
+	for _, id := range []string{"claude", "codex", "gemini"} {
+		if c := check(t, id, connections.Options{}); c.Custom {
+			t.Errorf("%s is marked custom", id)
+		}
+	}
+}

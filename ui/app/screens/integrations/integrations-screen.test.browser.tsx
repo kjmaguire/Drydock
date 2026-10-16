@@ -122,7 +122,7 @@ describe('Integrations', () => {
     expect(sec.value).toBe('');
   });
 
-  it('a sign-in with the device code shows the code and connects once signed in; an unavailable sign-in cannot be picked', async () => {
+  it('a sign-in with the device code shows the code and connects once signed in; a sign-in without an app offers the registration instead', async () => {
     const calls: Calls = [];
     let state = 'waiting';
     const r = show({
@@ -132,8 +132,15 @@ describe('Integrations', () => {
       integrationConnect: rec(calls, () => ({ connection: conn({ kind: 'sentry', name: 'Sentry' }) })) as never,
     });
     const lin = await open(r, 'linear');
-    expect((lin.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).disabled).toBe(true);
+    // Linear's sign-in is off (no OAuth app), but it can be chosen: it then shows where to register one, not a Sign in button
+    expect((lin.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).disabled).toBe(false);
+    await r.act(() => (lin.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).click());
+    await waitFor(() => expect(lin.querySelector('[data-testid="oauth-app-setup"]')).not.toBeNull(), r);
+    expect(Array.from(lin.querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Sign in with Linear')).toBe(false);
     const card = await open(r, 'sentry');
+    // Sentry's app comes with the build: the sign-in is on and says so
+    await r.act(() => (card.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).click());
+    await waitFor(() => expect(card.querySelector('[data-testid="oauth-app-in-use"]')!.textContent).toContain('this build carries (client id sen_client_build)'), r);
     await r.act(() => (card.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).click());
     await r.act(() => byText(card, 'button', 'Sign in with Sentry (device code)').click());
     const code = await find(r, '[data-testid="oauth-user-code"]');
@@ -171,6 +178,102 @@ describe('Integrations', () => {
     await new Promise((res) => setTimeout(res, 4000)); // any overlapping poll would have answered by now
     expect(calls.length).toBe(1);
     expect(most).toBe(1);
+  });
+
+  it('a sign-in that needs an OAuth app: register it at the vendor, paste the client id, and the Sign in button appears', async () => {
+    const saves: Calls = [];
+    let registered = false;
+    const linearKinds = () =>
+      kinds.map((k) =>
+        k.kind !== 'linear'
+          ? k
+          : {
+              ...k,
+              auth: (k.auth ?? []).map((m) =>
+                m.id !== 'oauth' ? m : { ...m, available: registered, note: registered ? undefined : m.note, oauthApp: { ...m.oauthApp!, clientId: registered ? 'lin_client_pasted' : undefined, source: registered ? 'setting' : undefined } },
+              ),
+            },
+      );
+    const r = show({
+      integrationList: async () => [],
+      integrationKinds: async () => linearKinds(),
+      integrationOAuthAppSet: rec(saves, (kind, clientId) => ((registered = true), { kind: kind as string, clientId: clientId as string, source: 'setting', registerUrl: 'https://linear.app/settings/api/applications/new' })) as never,
+    });
+    const card = await open(r, 'linear');
+    await r.act(() => (card.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).click());
+    const setup = await find(r, '[data-testid="oauth-app-setup"]');
+    // one plain sentence: what is needed, where to register, what to paste; the redirect the app must allow
+    expect(setup.textContent).toContain('Sign in needs an OAuth app: register one at Linear and paste its client id here. A client id is not a secret');
+    expect(setup.textContent).toContain('Allow the redirect URL http://127.0.0.1:41739/callback.');
+    const link = setup.querySelector('[data-testid="oauth-app-register"]') as HTMLAnchorElement;
+    expect(link.href).toBe('https://linear.app/settings/api/applications/new');
+    expect(link.target).toBe('_blank');
+    // no Sentry URL field for Linear; the client id is a plain input (not a password: it is not a secret)
+    expect(Array.from(setup.querySelectorAll('label')).some((l) => l.textContent?.includes('Linear URL'))).toBe(false);
+    const input = byLabel<HTMLInputElement>(setup, 'Client ID');
+    expect(input.type).toBe('text');
+    await r.act(() => type(input, 'lin_client_pasted'));
+    await r.act(() => byText(setup, 'button', 'Save the client ID').click());
+    await waitFor(() => expect(saves.length).toBe(1), r);
+    expect(saves[0]).toEqual(['linear', 'lin_client_pasted', undefined]);
+    // the catalog is read again: the sign-in is on, with its button, and says which app it uses
+    const signIn = await waitFor(() => byText<HTMLButtonElement>(card, 'button', 'Sign in with Linear'), r);
+    expect(signIn.disabled).toBe(false);
+    expect(card.querySelector('[data-testid="oauth-app-setup"]')).toBeNull();
+    expect(card.querySelector('[data-testid="oauth-app-in-use"]')!.textContent).toContain('you registered (client id lin_client_pasted)');
+    // Change it brings the registration back, with the id filled in and a Cancel
+    await r.act(() => byText(card, 'button', 'Change it').click());
+    const again = await find(r, '[data-testid="oauth-app-setup"]');
+    expect(byLabel<HTMLInputElement>(again, 'Client ID').value).toBe('lin_client_pasted');
+    await r.act(() => byText(again, 'button', 'Cancel').click());
+    await waitFor(() => expect(card.querySelector('[data-testid="oauth-app-setup"]')).toBeNull(), r);
+  });
+
+  it('Sentry\'s OAuth app can carry a self-hosted URL; the client id is never typed as a password', async () => {
+    const saves: Calls = [];
+    const r = show({
+      integrationList: async () => [],
+      integrationOAuthAppSet: rec(saves, () => ({ kind: 'sentry', clientId: 'sen_client_mine', baseUrl: 'https://sentry.example.com', source: 'setting', registerUrl: '' })) as never,
+    });
+    const card = await open(r, 'sentry');
+    await r.act(() => (card.querySelector('input[type="radio"][value="oauth"]') as HTMLInputElement).click());
+    await r.act(() => byText(card, 'button', 'Change it').click());
+    const setup = await find(r, '[data-testid="oauth-app-setup"]');
+    expect(setup.textContent).toContain('Turn on its device flow.');
+    expect(setup.textContent).toContain('This build carries one already; yours replaces it.');
+    await r.act(() => type(byLabel<HTMLInputElement>(setup, 'Client ID'), 'sen_client_mine'));
+    await r.act(() => type(byLabel<HTMLInputElement>(setup, 'Sentry URL'), 'https://sentry.example.com'));
+    await r.act(() => byText(setup, 'button', 'Save the client ID').click());
+    await waitFor(() => expect(saves[0]).toEqual(['sentry', 'sen_client_mine', 'https://sentry.example.com']), r);
+    expect(card.querySelector('input[type="password"]')).toBeNull();
+  });
+
+  it('Notion and Aikido say in one visible sentence why there is no Sign in button', async () => {
+    const r = show({ integrationList: async () => [] });
+    const notion = await open(r, 'notion');
+    const why = await waitFor(() => notion.querySelector('[data-testid="integration-no-signin"]') as HTMLElement, r);
+    expect(why.textContent).toBe('There is no Sign in button for Notion: its public OAuth needs a client secret at the token exchange, which a desktop app cannot keep, so Notion connects with an internal integration secret.');
+    expect(notion.querySelector('input[type="radio"][value="oauth"]')).toBeNull();
+    const aikido = await open(r, 'aikido');
+    await waitFor(() => expect(aikido.querySelector('[data-testid="integration-no-signin"]')!.textContent).toContain('There is no Sign in button for Aikido: its API offers OAuth client credentials only'), r);
+    // Linear has a Sign in (when an app is registered): no such sentence
+    const linear = await open(r, 'linear');
+    expect(linear.querySelector('[data-testid="integration-no-signin"]')).toBeNull();
+  });
+
+  it('GitHub offers the gh sign-in first and a Sign in with GitHub beside it; the gh state shows only for the gh way', async () => {
+    const r = show({ integrationList: async () => [], githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }) });
+    const card = await open(r, 'github');
+    await waitFor(() => expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
+    const radios = Array.from(card.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
+    expect(radios.map((x) => x.value)).toEqual(['gh', 'oauth']);
+    expect(radios[0]!.checked).toBe(true);
+    await r.act(() => radios[1]!.click());
+    const setup = await find(r, '[data-testid="oauth-app-setup"]');
+    expect(setup.textContent).toContain('register one at GitHub and paste its client id here');
+    expect(setup.textContent).toContain('Turn on its device flow. Scopes: repo read:org.');
+    expect(card.querySelector('[data-testid="gh-status"]')).toBeNull();
+    expect(Array.from(card.querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Use the GitHub CLI sign-in')).toBe(false);
   });
 
   it('GitHub uses the gh sign-in: its state is shown and no token is asked for', async () => {

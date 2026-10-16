@@ -249,7 +249,7 @@ func TestIntegrationsWithoutACredentialStoreSayWhyAndAgentsCannotConnect(t *test
 	for _, m := range []string{"integration.list", "integration.connect", "integration.disconnect", "integration.test", "integration.sync", "integration.items", "integration.item",
 		"integration.rules.list", "integration.rules.set", "integration.import", "integration.notion.page", "integration.outbound.propose", "integration.outbound.decide",
 		"integration.outbound.execute", "integration.outbound.list", "integration.linkback", "integration.kinds", "integration.get", "integration.assign",
-		"integration.unassign", "integration.assignments", "integration.choices", "integration.oauthStart", "integration.oauthStatus", "integration.verify"} {
+		"integration.unassign", "integration.assignments", "integration.choices", "integration.oauthStart", "integration.oauthStatus", "integration.oauthApp.set", "integration.verify"} {
 		if _, ok := a.c.Methods()[m]; !ok {
 			t.Errorf("method %s is not registered", m)
 		}
@@ -259,5 +259,60 @@ func TestIntegrationsWithoutACredentialStoreSayWhyAndAgentsCannotConnect(t *test
 	}
 	if _, err := a.c.Integrations().Connect(context.Background(), "agent:claude", integrations.ConnectReq{Kind: "linear", Token: itLinearToken}); err == nil {
 		t.Fatal("an agent connected an integration")
+	}
+}
+
+// The owner registers an OAuth app with a vendor and pastes its public client id through the UI method: the catalog then
+// offers the sign-in, with the id shown (it is not a secret) and where it came from; an empty id turns it off again.
+func TestIntegrationOAuthAppSetThroughTheUIMethod(t *testing.T) {
+	a := openIntegrations(t, filepath.Join(t.TempDir(), "data"), providers.NewMemoryCredentialStoreForTests())
+	oauthOf := func(kind string) integrations.AuthMethod {
+		var kinds []integrations.KindInfo
+		a.call("integration.kinds", nil, &kinds)
+		for _, k := range kinds {
+			if k.Kind != kind {
+				continue
+			}
+			for _, m := range k.Auth {
+				if m.ID == integrations.AuthOAuth {
+					return m
+				}
+			}
+		}
+		t.Fatalf("%s has no OAuth method", kind)
+		return integrations.AuthMethod{}
+	}
+	if m := oauthOf("github"); m.Available || m.OAuthApp == nil || m.OAuthApp.RegisterURL == "" {
+		t.Fatalf("%+v", m)
+	}
+	var info integrations.OAuthAppInfo
+	a.call("integration.oauthApp.set", map[string]any{"kind": "github", "clientId": "Iv1.pasted_client_id"}, &info)
+	if info.ClientID != "Iv1.pasted_client_id" || info.Source != "setting" {
+		t.Fatalf("%+v", info)
+	}
+	if m := oauthOf("github"); !m.Available || m.OAuthApp.ClientID != "Iv1.pasted_client_id" || m.Note != "" {
+		t.Fatalf("%+v %+v", m, m.OAuthApp)
+	}
+	// Notion and Aikido say in one sentence why there is no Sign in button
+	var kinds []integrations.KindInfo
+	a.call("integration.kinds", nil, &kinds)
+	for _, k := range kinds {
+		switch k.Kind {
+		case "notion", "aikido":
+			if !strings.HasPrefix(k.NoSignIn, "There is no Sign in button for ") {
+				t.Errorf("%s: %q", k.Kind, k.NoSignIn)
+			}
+		default:
+			if k.NoSignIn != "" {
+				t.Errorf("%s: %q", k.Kind, k.NoSignIn)
+			}
+		}
+	}
+	a.call("integration.oauthApp.set", map[string]any{"kind": "github", "clientId": ""}, &info)
+	if m := oauthOf("github"); m.Available || m.OAuthApp.ClientID != "" {
+		t.Fatalf("%+v", m)
+	}
+	if _, err := a.c.Call(context.Background(), "integration.oauthApp.set", []byte(`{"kind":"notion","clientId":"x"}`)); err == nil {
+		t.Fatal("Notion has no OAuth app to register")
 	}
 }

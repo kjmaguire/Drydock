@@ -53,7 +53,7 @@ func hasWSL(m *manifests.Manifest) bool {
 // CheckWSL computes the Connection of m's install inside distro d, probing it through the person's login shell.
 func CheckWSL(ctx context.Context, m *manifests.Manifest, d wsl.Distro, o Options) Connection {
 	o.defaults()
-	c := Connection{Transport: m.Transports.Primary, Key: WSLKey(m.Meta.ID, d.Name), RunMode: agents.RunModeWSL, Distro: d.Name, Platform: "linux (WSL)"}
+	c := Connection{Transport: m.Transports.Primary, Key: WSLKey(m.Meta.ID, d.Name), RunMode: agents.RunModeWSL, Distro: d.Name, Platform: "linux (WSL)", Custom: m.Meta.Custom}
 	c.Adapter, c.InstallHint, c.Status = m.Meta.ID, m.WSLInstallHint(), agents.StatusNotInstalled
 	c.SignIn = signInText(m, m.Binaries.WSL)
 	for _, k := range m.Auth.WarnEnv {

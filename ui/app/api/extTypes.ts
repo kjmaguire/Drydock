@@ -919,6 +919,20 @@ export interface IntegrationAuthField {
   options?: IntegrationChoice[] | null;
   advanced?: boolean;
 }
+/** The OAuth app a sign-in uses, or where to register one (integrations.OAuthAppInfo). The client id is public, not a secret. */
+export interface IntegrationOAuthApp {
+  kind: string;
+  clientId?: string;
+  baseUrl?: string;
+  registerUrl: string;
+  /** setting: pasted on the Integrations page; build: the release or the environment; absent: none, the sign-in is off. */
+  source?: string;
+  /** The vendor can be self-hosted (Sentry): a base URL goes with the client id. */
+  baseUrlSetting?: boolean;
+  /** The loopback redirect the registered app must allow (the code flow). */
+  redirectUri?: string;
+  scopes?: string[] | null;
+}
 export interface IntegrationAuthMethod {
   id: string;
   label: string;
@@ -926,6 +940,8 @@ export interface IntegrationAuthMethod {
   available: boolean;
   note?: string;
   flow?: string;
+  /** oauth: the app this sign-in uses, or where to register one. */
+  oauthApp?: IntegrationOAuthApp | null;
 }
 export interface IntegrationSetting {
   key: string;
@@ -948,6 +964,8 @@ export interface IntegrationKindInfo {
   auth: IntegrationAuthMethod[] | null;
   settings: IntegrationSetting[] | null;
   ops: OpInfo[] | null;
+  /** One sentence on why there is no Sign in button (Notion, Aikido); absent when the kind has one. */
+  noSignIn?: string;
 }
 export interface IntegrationAssignReq {
   integrationId: string;

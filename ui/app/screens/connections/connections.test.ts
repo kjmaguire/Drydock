@@ -12,6 +12,7 @@ import {
   matrixRows,
   needsAttention,
   netModeText,
+  orderConnections,
   prereqText,
   provTone,
   reportMeta,
@@ -90,6 +91,46 @@ describe('connections helpers', () => {
     expect(distroBrand('Debian')).toBe('debian');
     expect(distroBrand('openSUSE-Tumbleweed')).toBe('linux');
     expect(distroBrand(undefined)).toBe('linux');
+  });
+
+  it('tiles are ordered: Claude Code and its WSL installs, the other vendors by name with theirs, custom manifests last', () => {
+    const c = (adapter: string, over: Partial<Connection> = {}): Connection => ({ adapter, installed: true, status: 'ready', usable: true, platform: 'windows', key: adapter, runMode: 'native', ...over }) as Connection;
+    // the core's order: adapters by id, then the WSL installs
+    const fromCore = [
+      c('antigravity'),
+      c('claude'),
+      c('cline'),
+      c('codex'),
+      c('custom', { custom: true }),
+      c('gemini'),
+      c('goose'),
+      c('opencode'),
+      c('claude', { key: 'claude@wsl:Debian', runMode: 'wsl', distro: 'Debian' }),
+      c('claude', { key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu' }),
+      c('codex', { key: 'codex@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu' }),
+    ];
+    expect(orderConnections(fromCore).map(connectionKey)).toEqual([
+      'claude',
+      'claude@wsl:Debian',
+      'claude@wsl:Ubuntu',
+      'antigravity',
+      'cline',
+      'codex',
+      'codex@wsl:Ubuntu',
+      'gemini',
+      'goose',
+      'opencode',
+      'custom',
+    ]);
+    // by the product name, not the id: "Gemini CLI" sorts under G, "OpenCode" under O; several custom manifests sort by name too
+    expect(orderConnections([c('zeta', { custom: true }), c('acme', { custom: true }), c('gemini'), c('claude')]).map((x) => x.adapter)).toEqual(['claude', 'gemini', 'acme', 'zeta']);
+    // a custom manifest's WSL install follows it; the input is never changed
+    const custom = [c('custom', { custom: true, key: 'custom@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', usable: false }), c('custom', { custom: true }), c('claude')];
+    expect(orderConnections(custom).map(connectionKey)).toEqual(['claude', 'custom', 'custom@wsl:Ubuntu']);
+    expect(custom.map(connectionKey)).toEqual(['custom@wsl:Ubuntu', 'custom', 'claude']);
+    expect(orderConnections([])).toEqual([]);
+    // the default connection is picked from the ordered list: Claude Code's WSL install before a vendor in need
+    expect(defaultConnection(orderConnections([c('codex', { usable: false }), c('claude', { key: 'claude@wsl:Ubuntu', runMode: 'wsl', usable: false })]))).toBe('claude@wsl:Ubuntu');
   });
 
   it('a WSL install is its own card, named by its distro', () => {

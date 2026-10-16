@@ -30,6 +30,27 @@ test("integrations: connect Linear without a project, see its fixed name and log
   await expect(page.getByTestId('integration-sync')).toContainText('Linear');
   await expect(page.getByTestId('integration-agents').locator('[data-testid="connector"][data-id="linear"]')).toBeVisible();
 
+  // a Sign in with Linear needs an OAuth app the owner registers with Linear (the vendors' own APIs have no dynamic client
+  // registration, unlike their MCP servers): choosing it shows where to register one and takes the app's public client id,
+  // kept by the core in its settings table; once saved the sign-in is on. Linear is not reached here (nothing signs in); the
+  // id is removed again so the next run starts clean.
+  await card.getByLabel('Sign in with Linear').check();
+  const setup = card.getByTestId('oauth-app-setup');
+  await expect(setup).toContainText('Sign in needs an OAuth app: register one at Linear and paste its client id here.');
+  await expect(setup).toContainText('Allow the redirect URL http://127.0.0.1:41739/callback.');
+  await expect(setup.getByTestId('oauth-app-register')).toHaveAttribute('href', 'https://linear.app/settings/api/applications/new');
+  await expect(card.getByRole('button', { name: 'Sign in with Linear' })).toHaveCount(0);
+  await setup.getByLabel('Client ID').fill('lin_client_e2e_made_up');
+  await setup.getByRole('button', { name: 'Save the client ID' }).click();
+  await expect(card.getByRole('button', { name: 'Sign in with Linear' })).toBeEnabled();
+  await expect(card.getByTestId('oauth-app-in-use')).toContainText('you registered (client id lin_client_e2e_made_up)');
+  await card.getByRole('button', { name: 'Change it' }).click();
+  await card.getByTestId('oauth-app-setup').getByLabel('Client ID').fill('');
+  await card.getByTestId('oauth-app-setup').getByRole('button', { name: 'Remove the client ID' }).click();
+  await expect(card.getByRole('button', { name: 'Sign in with Linear' })).toHaveCount(0);
+  await expect(card.getByTestId('oauth-app-setup')).toBeVisible(); // off again: the registration is offered once more
+  await card.getByLabel('Personal API key').check();
+
   // connect: an API key (cleared from the page) and, under Advanced, the fixture's address instead of api.linear.app
   const key = 'lin_api_e2e_made_up_key_123';
   await card.getByLabel('API key', { exact: true }).fill(key);

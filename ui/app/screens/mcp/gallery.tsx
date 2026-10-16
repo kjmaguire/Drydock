@@ -3,8 +3,8 @@
 // Connected, as whom, with the tools it offers, and Disconnect. Connecting is done once for the workspace and needs no project;
 // a connected server is added to a project and granted to its agents on that project's Integrations page. The cards sit on the
 // Integrations page, in the Agent tools section of their vendor's tile (decision P47), and first in the Library's "Connect an
-// MCP server" dialog (AddMcpServer, before the custom server form). Your own servers shows the servers you described yourself,
-// by what each says about itself.
+// MCP server" dialog (AddMcpServer, before the custom server form). "MCP servers you added" shows the servers you added yourself
+// (not from the catalog), by what each says about itself.
 
 import { css, on, type Handle } from 'remix/component';
 import { BookOpen, ExternalLink, FileUp, Plug, Plus, RefreshCw, Unplug } from 'lucide';
@@ -377,8 +377,9 @@ function OwnServerCard(handle: Handle<{ server: McpLibraryServer; onChanged: () 
 }
 
 /**
- * The servers the human described (not from the catalog), by what each says about itself, with Add your own server and Import
- * from a file. `linked` are the library ids the catalog cards already show, so a server is on one card only.
+ * "MCP servers you added": the servers the human added themselves (not from the catalog), by what each says about itself, with
+ * Add an MCP server and Import from a file. `linked` are the library ids the catalog cards already show, so a server is on one
+ * card only. The section's test id, own-servers, is unchanged.
  */
 export function OwnServers(handle: Handle<{ linked: readonly (string | undefined)[]; onChanged: () => void }>) {
   const s = services(handle);
@@ -401,17 +402,17 @@ export function OwnServers(handle: Handle<{ linked: readonly (string | undefined
     return (
       <>
         <Section
-          label="Your own servers"
+          label="MCP servers you added"
           testId="own-servers"
-          title="Your own servers"
-          description="A server that is not in the gallery: a web address or a program on this computer. Drydock shows it by what the server says about itself."
+          title="MCP servers you added"
+          description="Servers you added yourself: a web address or a program on this computer. Drydock shows each by what it says about itself."
           actions={
             <>
               <Button size="sm" variant="ghost" icon={FileUp} mix={[on('click', () => set(() => (importing = true)))]}>
                 Import from a file
               </Button>
               <Button size="sm" variant="primary" icon={Plus} mix={[on('click', () => set(() => (adding = true)))]}>
-                Add your own server
+                Add an MCP server
               </Button>
             </>
           }
@@ -419,8 +420,8 @@ export function OwnServers(handle: Handle<{ linked: readonly (string | undefined
           <div role="status" aria-live="polite">
             {note ? <Notice tone="ok">{note}</Notice> : null}
           </div>
-          <ErrorNote error={lib.error} what="Could not load your servers" />
-          {lib.loading && !lib.data ? <Loading label="Loading your servers..." /> : null}
+          <ErrorNote error={lib.error} what="Could not load the servers you added" />
+          {lib.loading && !lib.data ? <Loading label="Loading the servers you added..." /> : null}
           {lib.data && own.length === 0 ? (
             <p mix={faint}>
               <Icon icon={BookOpen} size={12} /> None yet. Add one by its address or command, or import the mcp.json or claude_desktop_config.json another app uses.
@@ -432,7 +433,7 @@ export function OwnServers(handle: Handle<{ linked: readonly (string | undefined
             ))}
           </ul>
         </Section>
-        <Dialog open={adding} title="Add your own server" wide onClose={() => set(() => (adding = false))}>
+        <Dialog open={adding} title="Add an MCP server" wide onClose={() => set(() => (adding = false))}>
           {adding ? (
             <McpServerForm
               onCancel={() => set(() => (adding = false))}

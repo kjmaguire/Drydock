@@ -60,8 +60,8 @@ func (s *Service) Test(ctx context.Context, id string) (TestReport, error) {
 	if !ok {
 		return rep, errf(ErrBadRequest, "unknown integration %q", conn.Kind)
 	}
-	// 1. a credential is stored (GitHub: gh holds it)
-	if conn.Kind != KindGitHub {
+	// 1. a credential is stored (GitHub through gh: gh holds it)
+	if !usesGH(conn) {
 		if !s.hasCredential(ctx, conn) {
 			if strings.HasPrefix(conn.CredentialRef, OAuthRefPrefix) {
 				step("credential", "Signed in", false, "The sign-in has no usable token. Reconnect "+v+".")

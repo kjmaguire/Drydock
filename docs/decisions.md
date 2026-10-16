@@ -457,3 +457,21 @@ Open, owner action:
   this folder. CI's Windows job runs the volume query against C: so the FSCTL path is exercised on a real Windows (never a Dev
   Drive, never a panic). **Not verified:** a real Dev Drive on the owner's PC; the Connections page saying "on your Dev Drive X:"
   after this build proves it.
+- **P71. OAuth apps the owner registers; the Connections order; "MCP servers you added" (2026-10-16, on the owner's words:
+  "Linear, Notion, Sentry, Aikido, GitHub don't have OAuth, can we fix that. It looks like we have OAuth for the MCP Server side
+  of things"; "Under connectors lets group both claudes together and put custom at the end"; "lets fix that to say MCP Servers
+  you added").** The vendors' MCP servers sign in without setup because they support dynamic client registration (P22); their
+  own APIs do not, so a sign-in needs an OAuth app registered with the vendor. Drydock now takes that app's public client id from
+  the owner (`integration.oauthApp.set`, kept in the `settings` table; a self-hosted Sentry's URL beside it; never a client
+  secret: Linear uses PKCE, Sentry and GitHub the device flow), offers the registration on the connect form whenever a sign-in
+  is off (one sentence, the vendor's registration page, the client id field), and turns the Sign in button on once saved; a
+  build's client id still works and a pasted one wins. GitHub gets a real second method, Sign in with GitHub (device code),
+  beside the gh way: its token goes to the credential store like the others and the same REST API gh speaks is called directly.
+  Notion (public OAuth needs a client secret at the token exchange) and Aikido (client credentials only) keep their keys and say
+  why in one visible sentence. Linear's loopback redirect port is fixed (41739) so the callback URL can be registered. The
+  Connections tiles are ordered Claude Code (with its WSL installs), the other vendors by name (with theirs), custom manifests
+  last (the core marks `custom` on the Connection). The section of servers added by hand is "MCP servers you added" with "Add
+  an MCP server". **Not verified:** any live vendor sign-in; Linear's acceptance of a loopback callback and a secret-less PKCE
+  exchange, GitHub's device flow details and Notion's and Aikido's constraints are from memory (their documentation was
+  unreachable from the development host); whether Sentry refreshes a device-flow token without a client secret (its docs show
+  client_secret on refresh). The owner's first sign-in with a registered app proves each.

@@ -705,6 +705,8 @@ export interface Connection extends Detection {
   signIn?: string;
   /** The account the CLI's own status command says it is signed in as (its "email"); absent when it names none. */
   account?: string;
+  /** The adapter of a custom manifest (a CLI you described, not a vendor's): listed after the vendors' CLIs. */
+  custom?: boolean;
 }
 
 /** connections.WSLFacts: the distro behind a WSL Connection. */

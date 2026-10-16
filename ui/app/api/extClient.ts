@@ -36,6 +36,7 @@ import type {
   IntegrationAssignReq,
   IntegrationChoice,
   IntegrationKindInfo,
+  IntegrationOAuthApp,
   IntegrationOAuthSession,
   MemoryEntry,
   Milestone,
@@ -223,6 +224,8 @@ export interface ExtClient {
   integrationChoices(integrationId: string, key: string, config?: Record<string, string>): Promise<IntegrationChoice[]>;
   integrationOAuthStart(kind: string, baseUrl?: string): Promise<IntegrationOAuthSession>;
   integrationOAuthStatus(id: string): Promise<IntegrationOAuthSession>;
+  /** The OAuth app you registered with a vendor: its public client id (and a self-hosted Sentry's URL); '' removes it. */
+  integrationOAuthAppSet(kind: string, clientId: string, baseUrl?: string): Promise<IntegrationOAuthApp>;
   integrationSyncAssignment(assignmentId: string, full?: boolean): Promise<IntegrationSyncResult>;
   integrationConnect(req: ConnectIntegrationReq): Promise<{ connection: IntegrationView; test?: IntegrationTestReport }>;
   integrationOAuthBegin(kind: string, baseUrl?: string): Promise<{ libraryId: string; oauthRef: string; status: { state: string; url?: string; error?: string; signedIn?: boolean } }>;
@@ -401,6 +404,7 @@ export function createExtClient(t: Transport): ExtClient {
     integrationChoices: async (integrationId, key, config = {}) => arr(await call<IntegrationChoice[] | null>('integration.choices', { integrationId, key, config })),
     integrationOAuthStart: (kind, baseUrl = '') => call('integration.oauthStart', { kind, baseUrl }),
     integrationOAuthStatus: (id) => call('integration.oauthStatus', { id }),
+    integrationOAuthAppSet: (kind, clientId, baseUrl = '') => call('integration.oauthApp.set', { kind, clientId, baseUrl }),
     integrationSyncAssignment: (assignmentId, full = false) => call('integration.sync', { assignmentId, full }),
     integrationConnect: (req) => call('integration.connect', req),
     integrationOAuthBegin: (kind, baseUrl = '') => call('integration.oauthBegin', { kind, baseUrl }),

@@ -27,16 +27,19 @@ func init() {
 }
 
 // The OAuth apps Drydock signs in with. A release build sets them (-ldflags "-X .../core.LinearOAuthClientID=..."); a
-// developer can set DRYDOCK_LINEAR_OAUTH_CLIENT_ID or DRYDOCK_SENTRY_OAUTH_CLIENT_ID. Empty: that sign-in is off and the
-// person pastes a key. These are public client ids (PKCE and the device flow need no secret).
+// developer can set DRYDOCK_LINEAR_OAUTH_CLIENT_ID, DRYDOCK_SENTRY_OAUTH_CLIENT_ID or DRYDOCK_GITHUB_OAUTH_CLIENT_ID. Empty:
+// that sign-in is off until the owner registers an app with the vendor and pastes its client id on the Integrations page
+// (integration.oauthApp.set, kept in the settings table), or the person pastes a key. These are public client ids (PKCE and
+// the device flow need no secret).
 var (
 	LinearOAuthClientID string
 	SentryOAuthClientID string
+	GitHubOAuthClientID string
 )
 
 func integrationOAuthApps() map[string]integrations.OAuthApp {
 	out := map[string]integrations.OAuthApp{}
-	for kind, id := range map[string]string{integrations.KindLinear: LinearOAuthClientID, integrations.KindSentry: SentryOAuthClientID} {
+	for kind, id := range map[string]string{integrations.KindLinear: LinearOAuthClientID, integrations.KindSentry: SentryOAuthClientID, integrations.KindGitHub: GitHubOAuthClientID} {
 		if v := strings.TrimSpace(os.Getenv("DRYDOCK_" + strings.ToUpper(kind) + "_OAUTH_CLIENT_ID")); v != "" {
 			id = v
 		}
@@ -136,6 +139,14 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 			return svc.OAuthStart(ctx, human(), p.Kind, p.BaseURL)
 		}),
 		"integration.oauthStatus": bind(func(ctx context.Context, p idParam) (any, error) { return svc.OAuthStatus(p.ID) }),
+		// the OAuth app the owner registered with a vendor: its public client id (and a self-hosted Sentry's URL); "" removes it
+		"integration.oauthApp.set": bind(func(ctx context.Context, p struct {
+			Kind     string `json:"kind"`
+			ClientID string `json:"clientId"`
+			BaseURL  string `json:"baseUrl"`
+		}) (any, error) {
+			return svc.SetOAuthApp(ctx, human(), p.Kind, p.ClientID, p.BaseURL)
+		}),
 		"integration.oauthBegin": bind(func(ctx context.Context, p struct {
 			Kind    string `json:"kind"`
 			BaseURL string `json:"baseUrl"`

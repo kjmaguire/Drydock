@@ -191,4 +191,17 @@ func (s *Service) Choices(ctx context.Context, integrationID, key string, cfg ma
 }
 
 // Kinds describes the integrations for the screen.
-func (s *Service) Kinds() []KindInfo { return Catalog(s.OAuthAvailable) }
+func (s *Service) Kinds() []KindInfo {
+	out := Catalog(s.OAuthAvailable)
+	for i := range out {
+		for j := range out[i].Auth {
+			if out[i].Auth[j].ID != AuthOAuth {
+				continue
+			}
+			if info, ok := s.OAuthAppInfo(out[i].Kind); ok {
+				out[i].Auth[j].OAuthApp = &info
+			}
+		}
+	}
+	return out
+}

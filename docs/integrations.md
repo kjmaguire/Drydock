@@ -243,7 +243,7 @@ servers, and a connection no longer carries a project.
   settings, API, version, rate limit, documentation), `integration.list`, `.get`, `.connect`, `.disconnect`, `.test`,
   `.assign`, `.unassign`, `.assignments`, `.choices` (the values of a setting, read from the vendor: Linear teams and projects,
   Notion data sources, Sentry organizations and projects, Aikido repositories, GitHub repositories), `.oauthStart`,
-  `.oauthStatus`, `.sync` (a connection, or one `assignmentId`), `.items` (by connection, assignment or project), and the item,
+  `.oauthStatus`, `.oauthApp.set` (the OAuth app the owner registered: its public client id, 2026-10-16), `.sync` (a connection, or one `assignmentId`), `.items` (by connection, assignment or project), and the item,
   rule, import and outbound methods as before. `integration.oauthBegin` (the MCP library sign-in) is kept for connections made
   with it.
 
@@ -284,10 +284,62 @@ copy in memory; since the stored refresh token is already spent, Drydock does no
 if the copy in memory is lost. Only the vendor refusing the refresh (`invalid_grant`, or HTTP 400 or 401 from its token
 endpoint) marks the connection `unauthenticated`; a network error, a time-out or a server error (5xx) while refreshing
 makes it `unreachable`, and it backs off and tries again like any other call. A kind
-signs in only when a build sets its public client id (`-ldflags "-X .../core.LinearOAuthClientID=..."`,
-`SentryOAuthClientID`, or `DRYDOCK_LINEAR_OAUTH_CLIENT_ID` / `DRYDOCK_SENTRY_OAUTH_CLIENT_ID`); no OAuth app is registered yet,
-so in the shipped build both are off and the screen says so. The redirect URI a registered Linear app must allow is the
-loopback callback.
+signs in only when an OAuth app is registered for it: a build's public client id (`-ldflags "-X .../core.LinearOAuthClientID=..."`,
+`SentryOAuthClientID`, `GitHubOAuthClientID`, or `DRYDOCK_LINEAR_OAUTH_CLIENT_ID` / `DRYDOCK_SENTRY_OAUTH_CLIENT_ID` /
+`DRYDOCK_GITHUB_OAUTH_CLIENT_ID`), or one the owner registers and pastes on the Integrations page (next section). No build
+carries one yet, so until the owner registers an app the sign-in is off and the screen says so and offers the registration.
+The redirect URI a registered Linear app must allow is the loopback callback `http://127.0.0.1:41739/callback`.
+
+### OAuth apps you register (2026-10-16)
+
+The owner's words: "Linear, Notion, Sentry, Aikido, GitHub don't have OAuth, can we fix that. It looks like we have OAuth for
+the MCP Server side of things." The MCP servers sign in without any setup because they support dynamic client registration
+(decision P22, `docs/mcp.md`); the vendors' own APIs do not: each needs an OAuth app registered with the vendor, and Drydock
+sends that app's public client id. There is no client secret anywhere (Linear: PKCE; Sentry and GitHub: the device flow).
+
+- **Setting.** `integration.oauthApp.set {kind, clientId, baseUrl?}` (`Service.SetOAuthApp`, `oauthapps.go`) keeps the client
+  id in the core's `settings` table under `integrations.oauth.<kind>.client_id` (and `.base_url` for a self-hosted Sentry);
+  an empty id removes it. Only a human may call it. A pasted id wins over the build's; `integration.kinds` shows each OAuth
+  method's app (`oauthApp`: client id, source `setting` or `build`, where to register, the redirect URI, the scopes). A client
+  id is public, not a secret, but it is never logged and the event `integration.oauth_app_changed` names only the kind.
+- **Page.** On the Integrations connect form the OAuth method can be chosen even while it is off; it then shows one sentence
+  ("Sign in needs an OAuth app: register one at Linear and paste its client id here. A client id is not a secret ...") with a
+  link to the vendor's registration page, a Client ID field (a Sentry URL field for a self-hosted Sentry) and Save. Saving
+  re-reads the catalog: the Sign in button appears and the form says which app it uses ("Signs in with the OAuth app you
+  registered (client id ...)", with Change it). Notion and Aikido have no Sign in button and the form says why in one
+  visible sentence (`noSignIn` on their `KindInfo`).
+- **How to register each app** (from the vendors' documentation as far as it was reachable; see "Documentation read" below):
+  - **Linear**: Settings > API > OAuth applications > Create new (`https://linear.app/settings/api/applications/new`). Name it,
+    set the callback URL to `http://127.0.0.1:41739/callback`, and copy the client id. Drydock uses the authorization code
+    flow with PKCE (S256) and exchanges the code without the client secret; scopes `read,write`; access tokens expire and
+    are refreshed with the rotating refresh token. The port is fixed so the callback URL can be registered; when it is
+    taken when you sign in, Drydock uses another port and Linear may refuse the redirect: close the program holding the port
+    and sign in again. Whether Linear's token endpoint accepts a PKCE exchange without the client secret, and allows a
+    loopback callback, is from Linear's documentation as remembered, not re-read (linear.app is unreachable from here).
+  - **Sentry**: Settings > Developer Settings > create an application that may use the device flow
+    (`https://sentry.io/settings/developer-settings/`); for a self-hosted Sentry, on that server, and paste its URL beside
+    the client id. Drydock uses the device authorization grant (`POST /oauth/device/code/`, then `POST /oauth/token/` with
+    the device code; scopes `org:read project:read event:read event:write`): the page shows a code to enter on the Sentry
+    page. Sentry's documentation (`docs/api/auth.mdx`, read today) shows the device code request and the polling with the
+    client id only, and says access tokens expire after 30 days; its refresh example sends `client_secret`, so whether a
+    device-flow token can be refreshed without a secret is **unverified**. If not, the connection shows `unauthenticated`
+    after 30 days and the person signs in again.
+  - **GitHub**: Settings > Developer settings > OAuth Apps > New OAuth App (`https://github.com/settings/applications/new`),
+    any homepage and callback URL, then **Enable Device Flow** on the app and copy the client id. Drydock uses the device flow
+    (`POST https://github.com/login/device/code`, `POST https://github.com/login/oauth/access_token`; scopes `repo
+    read:org`), which needs no client secret; the token does not expire unless the app opts into expiring tokens. From
+    memory of GitHub's documentation (docs.github.com is unreachable from here).
+  - **Notion**: no OAuth sign-in. Notion's public integrations exchange the code with HTTP basic auth of client id and
+    client secret; a desktop app cannot keep a secret, so Notion stays an internal integration secret (the user creates the
+    integration and shares pages with it). Notion's documentation is unreachable from here; this is as remembered.
+  - **Aikido**: no OAuth sign-in. Aikido's public API takes OAuth client credentials only (a workspace admin creates the
+    client id and secret); there is no authorization code or device flow for a person. As remembered; apidocs.aikido.dev is
+    unreachable from here.
+- **What Drydock stores**: the client id (and a self-hosted Sentry URL) in the `settings` table, never a client secret;
+  the sign-in's tokens as JSON in the credential store under the connection's reference, as before; nothing of either in
+  rows, events, logs or errors. Tested in `oauthapps_test.go` (the setting round trip and restart, the pasted id winning
+  over the build's, a Linear sign-in with the pasted id against the OAuth fixture, the GitHub device flow end to end) and
+  `internal/core/ext_integrations_test.go` (the UI method).
 
 Credentials for agents: `integrations.Credentials` (the MCP gateway's credential source for `mcp/<kind>`) still resolves a pasted
 token or an OAuth access token; Aikido's REST client credentials are never handed to its MCP server. Wiring a gateway for agent
@@ -296,7 +348,12 @@ runs is the MCP screen's work.
 ### GitHub
 
 The GitHub card shows the `gh` sign-in (the same check as the project wizard: `github.status`) and connects with nothing typed
-(`auth_kind` `gh`, no credential reference). Test reads the login. An assignment names the repository whose issues the project
+(`auth_kind` `gh`, no credential reference). Since 2026-10-16 a second way sits beside it, **Sign in with GitHub (device
+code)**: the OAuth device flow of an OAuth app the owner registered (previous section), `auth_kind` `oauth`, the token in
+the credential store; the same REST API `gh api` speaks is then called directly (`host.HTTPAPI`, `https://api.github.com`,
+or the `baseUrl` a test gives) for the identity (`GET /user`), the repository choices and the issues, and `gh` is not
+needed. A 401 reads "GitHub no longer accepts the sign-in; sign in with GitHub again", not a sentence about `gh`. Reconnecting
+with the gh way puts the connection back on `gh`. Test reads the login. An assignment names the repository whose issues the project
 imports (default: the project's origin remote; any repository `gh` can see can be listed with `integration.choices`). Issues
 sync into `external_items` like any other kind (cleaned, scored, quoted; a high-risk issue is never imported) and an import
 creates a BACKLOG task with the reference `#<number>`. The Pull Requests screen's direct issue import (`github.issues`,

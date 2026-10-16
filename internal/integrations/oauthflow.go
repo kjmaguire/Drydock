@@ -16,8 +16,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// OAuthApp is Drydock's registration with a vendor's OAuth server. A kind signs in only when its ClientID is set (the core
-// reads it from the build or the environment); without one, the person pastes an API key or token.
+// OAuthApp is Drydock's registration with a vendor's OAuth server. A kind signs in only when its ClientID is set: the core
+// reads it from the build or the environment, or the owner registers an app with the vendor and pastes its client id on the
+// Integrations page (oauthapps.go); without one, the person pastes an API key or token.
 //
 //   - Linear: authorization code with PKCE (S256) and a loopback redirect. Linear accepts a token exchange without the client
 //     secret for a PKCE sign-in, so a desktop app holds no secret. Access tokens expire and are refreshed with the rotating
@@ -25,8 +26,11 @@ import (
 //   - Sentry: the device authorization grant (RFC 8628): Drydock shows a code, the person approves it on sentry.io, Drydock
 //     polls the token endpoint; no secret and no redirect. Access tokens last 30 days and are refreshed
 //     (docs/api/auth.mdx, "Device Authorization Flow").
+//   - GitHub: the device authorization grant of an OAuth app with "Device flow" enabled (a public client id, no secret), scopes
+//     repo and read:org; the token does not expire unless the app opts in, and goes to the credential store like the others.
+//     Without one GitHub uses the person's gh sign-in.
 //   - Notion: its public OAuth needs a client secret at the token exchange, which a desktop app cannot keep, so Notion connects
-//     with an internal integration secret only. Aikido has client credentials only. GitHub uses gh.
+//     with an internal integration secret only. Aikido has client credentials only.
 type OAuthApp struct {
 	ClientID     string   `json:"-"`
 	AuthURL      string   `json:"-"` // authorization endpoint (code flow)
@@ -53,8 +57,11 @@ func (a OAuthApp) config(redirect string) *oauth2.Config {
 func DefaultOAuthApp(kind, baseURL string) (OAuthApp, bool) {
 	switch kind {
 	case KindLinear:
-		// Linear's scopes are comma-separated in one parameter
-		return OAuthApp{AuthURL: "https://linear.app/oauth/authorize", TokenURL: "https://api.linear.app/oauth/token", Scopes: []string{"read,write"}}, true
+		// Linear's scopes are comma-separated in one parameter; the redirect port is fixed so the registered app can allow it
+		return OAuthApp{AuthURL: "https://linear.app/oauth/authorize", TokenURL: "https://api.linear.app/oauth/token", Scopes: []string{"read,write"}, RedirectPort: linearRedirectPort}, true
+	case KindGitHub:
+		// GitHub answers the device endpoints as JSON when asked to (golang.org/x/oauth2 asks); scopes are space-separated
+		return OAuthApp{DeviceURL: "https://github.com/login/device/code", TokenURL: "https://github.com/login/oauth/access_token", Scopes: []string{"repo", "read:org"}}, true
 	case KindSentry:
 		base := "https://sentry.io"
 		if baseURL != "" {
@@ -65,17 +72,25 @@ func DefaultOAuthApp(kind, baseURL string) (OAuthApp, bool) {
 	return OAuthApp{}, false
 }
 
-// oauthApp is the registration a kind signs in with (Options.OAuth over the defaults), ok only with a client id.
+// oauthApp is the registration a kind signs in with (Options.OAuth over the defaults; the client id the owner pasted over the
+// build's, and for Sentry its self-hosted URL when the caller names none), ok only with a client id.
 func (s *Service) oauthApp(kind, baseURL string) (OAuthApp, bool) {
+	set, pasted := s.oauthAppSetting(kind)
+	if baseURL == "" && pasted {
+		baseURL = set.BaseURL
+	}
 	def, ok := DefaultOAuthApp(kind, baseURL)
 	if !ok {
 		return OAuthApp{}, false
 	}
 	o := s.o.OAuth[kind]
-	if o.ClientID == "" {
+	def.ClientID = o.ClientID
+	if pasted {
+		def.ClientID = set.ClientID
+	}
+	if def.ClientID == "" {
 		return OAuthApp{}, false
 	}
-	def.ClientID = o.ClientID
 	if o.AuthURL != "" {
 		def.AuthURL = o.AuthURL
 	}
@@ -88,11 +103,13 @@ func (s *Service) oauthApp(kind, baseURL string) (OAuthApp, bool) {
 	if len(o.Scopes) > 0 {
 		def.Scopes = o.Scopes
 	}
-	def.RedirectPort = o.RedirectPort
+	if o.RedirectPort != 0 {
+		def.RedirectPort = o.RedirectPort
+	}
 	return def, true
 }
 
-// OAuthAvailable reports whether a kind can sign in in this build.
+// OAuthAvailable reports whether a kind can sign in: an OAuth app is registered for it (the build's, or one the owner pasted).
 func (s *Service) OAuthAvailable(kind string) bool { _, ok := s.oauthApp(kind, ""); return ok }
 
 // OAuthSession is a sign-in in progress. Its token stays in memory until Connect stores it in the credential store.
@@ -133,7 +150,7 @@ func (s *Service) OAuthStart(ctx context.Context, by, kind, baseURL string) (OAu
 	app, ok := s.oauthApp(kind, baseURL)
 	if !ok {
 		if _, has := DefaultOAuthApp(kind, ""); has {
-			return OAuthSession{}, errf(ErrOAuthUnavailable, "this build has no %s OAuth app registered (set DRYDOCK_%s_OAUTH_CLIENT_ID); paste a %s instead", vendor(kind), strings.ToUpper(kind), tokenNoun(kind))
+			return OAuthSession{}, errf(ErrOAuthUnavailable, "no %s OAuth app is registered: register one with %s and paste its client id on the Integrations page, or paste a %s instead", vendor(kind), vendor(kind), tokenNoun(kind))
 		}
 		return OAuthSession{}, errf(ErrOAuthUnavailable, "%s has no sign-in Drydock can use; paste a %s instead", vendor(kind), tokenNoun(kind))
 	}
@@ -177,7 +194,12 @@ func (s *Service) OAuthStart(ctx context.Context, by, kind, baseURL string) (OAu
 			done(tok)
 		}()
 	default:
+		// the fixed port first (the redirect URI the registered app allows); when it is taken, any free port, and the vendor
+		// may then refuse the redirect: the person closes the program holding the port and signs in again
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", app.RedirectPort))
+		if err != nil && app.RedirectPort != 0 {
+			ln, err = net.Listen("tcp", "127.0.0.1:0")
+		}
 		if err != nil {
 			cancel()
 			return OAuthSession{}, fmt.Errorf("integrations: could not open the sign-in callback on this computer: %w", err)
@@ -291,6 +313,8 @@ func tokenNoun(kind string) string {
 		return "auth token"
 	case KindAikido:
 		return "REST API client ID and secret"
+	case KindGitHub:
+		return "gh sign-in"
 	}
 	return "token"
 }

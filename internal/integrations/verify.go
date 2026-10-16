@@ -227,8 +227,8 @@ func (s *Service) Verify(ctx context.Context, by, id string) (VerifyReport, erro
 	}
 	finish := func() (VerifyReport, error) { return s.finishVerify(ctx, conn, rep, tr), nil }
 
-	// 1. a credential is stored (GitHub: gh holds it)
-	if conn.Kind != KindGitHub {
+	// 1. a credential is stored (GitHub through gh: gh holds it)
+	if !usesGH(conn) {
 		if !s.hasCredential(ctx, conn) {
 			step("credential", "Credential stored", false, "No usable credential is stored for "+v+". Reconnect it, then check again.")
 			return finish()
@@ -383,7 +383,7 @@ func (s *Service) finishVerify(ctx context.Context, conn Connection, rep VerifyR
 	}
 	rep.OK = failedSteps == 0 && len(rep.Mismatches) == 0
 	calls := plural(len(rep.Calls), "call", "calls")
-	if conn.Kind == KindGitHub {
+	if usesGH(conn) {
 		calls = "through gh"
 	}
 	switch {

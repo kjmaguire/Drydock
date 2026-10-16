@@ -92,6 +92,8 @@ type Service struct {
 	locks map[string]*sync.Mutex // per-connection sync locks and per-item import locks
 	auth  authState
 	oauth oauthSessions
+	// oauthApps holds the OAuth apps the owner pasted (oauthapps.go)
+	oauthApps oauthAppSettings
 }
 
 // New builds a Service.
@@ -151,6 +153,7 @@ func New(o Options) (*Service, error) {
 	s.oauth.m = map[string]*OAuthSession{}
 	s.st = &Store{DB: o.DB, BodyDir: o.BodyDir, Now: func() int64 { return o.Now().UTC().UnixMilli() }}
 	s.san = Sanitizer{Scanner: o.Scanner}
+	s.loadOAuthApps(context.Background())
 	return s, nil
 }
 
@@ -340,7 +343,7 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 		base = b
 	}
 	if strings.TrimSpace(r.BaseURL) != "" {
-		if r.Kind == KindGitHub {
+		if r.Kind == KindGitHub && r.OAuthSession == "" {
 			return ConnectionView{}, errf(ErrBadRequest, "GitHub goes through gh; it has no API URL here")
 		}
 		b, err := CheckAPIBase(r.BaseURL)
@@ -356,9 +359,9 @@ func (s *Service) Connect(ctx context.Context, by string, r ConnectReq) (Connect
 	// the credential
 	var secret, authKind, oauthRef string
 	switch {
-	case r.Kind == KindGitHub:
-		if r.Token != "" || r.ClientSecret != "" || r.OAuthSession != "" || r.OAuthRef != "" {
-			return ConnectionView{}, errf(ErrBadRequest, "GitHub uses your gh sign-in; Drydock takes no GitHub token")
+	case r.Kind == KindGitHub && r.OAuthSession == "":
+		if r.Token != "" || r.ClientSecret != "" || r.OAuthRef != "" {
+			return ConnectionView{}, errf(ErrBadRequest, "GitHub uses your gh sign-in or a Sign in with GitHub; Drydock takes no pasted GitHub token")
 		}
 		authKind = AuthGH
 	case r.OAuthSession != "":
@@ -733,9 +736,9 @@ func validHTTPURL(raw string) string {
 	return raw
 }
 
-// hasCredential reports whether the connection's credential can be read now (GitHub: always, its sign-in is gh's).
+// hasCredential reports whether the connection's credential can be read now (GitHub through gh: always, its sign-in is gh's).
 func (s *Service) hasCredential(ctx context.Context, c Connection) bool {
-	if c.Kind == KindGitHub {
+	if usesGH(c) {
 		return true
 	}
 	if c.CredentialRef == "" {

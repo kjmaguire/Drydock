@@ -1,11 +1,11 @@
 // Integrations (decisions P42, P43, P47 and P59): one workspace page for everything Drydock connects to outside itself, laid out
 // like Home (P59): groups of tiles under a heading (Services, the vendors with app sync; Agent tools, the vendors that only have
-// MCP servers; then your own servers), a tile per vendor with its logo, name, what it is, its state and a state badge. A
+// MCP servers; then the MCP servers you added), a tile per vendor with its logo, name, what it is, its state and a state badge. A
 // vendor's tile opens its panel under its group, with up to three parts. App sync is Drydock's own connection to Linear, Notion,
 // Sentry, Aikido or GitHub (P42): connected once for the whole workspace; the name and logo are fixed, what a connection reaches
 // (account, workspace, scopes) is read from the service's API, never typed. Agent tools (MCP) are the vendor's connector cards
 // (P43, screens/mcp/gallery.tsx): connected once. Skills from this vendor names the vendor's skill registries and links to the
-// skill library. Below the tiles: your own MCP servers. Nothing of a single project is on this page (P51): assigning a
+// skill library. Below the tiles: the MCP servers you added. Nothing of a single project is on this page (P51): assigning a
 // connection to a project (what it imports, its items, rules and outbound writes), adding a server to a project, granting it to
 // the project's agents and the calls waiting for approval are on the project's Integrations page
 // (project-integrations-screen.tsx, /project/integrations). /mcp is an alias of this page.
@@ -14,6 +14,7 @@ import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import { Blocks, Check, Cpu, ExternalLink, KeyRound, LogIn, Minus, Server, ShieldAlert, ShieldCheck, Stethoscope, Trash2, Wrench, X } from 'lucide';
 import type {
   IntegrationAuthMethod,
+  IntegrationOAuthApp,
   IntegrationKindInfo,
   IntegrationOAuthSession,
   IntegrationTestReport,
@@ -101,6 +102,8 @@ const methodTile = css({
 });
 const identityGrid = css({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
 const codeCss = css({ fontFamily: t.mono, fontSize: t.textLg, fontWeight: '600', letterSpacing: '0.08em' });
+// the OAuth app registration inside the connect form: one sentence, the client id, Save
+const oauthAppCss = css({ padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& > p': { margin: '0', fontSize: t.textMd } });
 const regList = css({
   display: 'grid',
   gap: t.s2,
@@ -236,11 +239,77 @@ export function VerifyReportView(handle: Handle<{ r: IntegrationVerifyReport }>)
   };
 }
 
+/**
+ * A sign-in needs an OAuth app registered with the vendor (the vendors' own APIs have no dynamic client registration, unlike
+ * their MCP servers): where to register one, and the public client id to paste. Saving it turns the sign-in on; an empty id turns
+ * it off again. A client id is not a secret, so it is shown; it is never logged.
+ */
+function OAuthAppSetup(handle: Handle<{ kind: string; label: string; app: IntegrationOAuthApp; onSaved: () => void; onCancel?: () => void }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let clientId = handle.props.app.clientId ?? '';
+  let baseUrl = handle.props.app.baseUrl ?? '';
+  const upd = (f: () => void) => {
+    f();
+    void handle.update();
+  };
+  return () => {
+    const { kind, label, app, onSaved, onCancel } = handle.props;
+    const href = safeHref(app.registerUrl);
+    const save = async (e: SubmitEvent) => {
+      e.preventDefault();
+      const r = await act.run('save', () => s.client.integrationOAuthAppSet(kind, clientId.trim(), app.baseUrlSetting ? baseUrl.trim() || undefined : undefined));
+      if (r) onSaved();
+    };
+    return (
+      <form mix={[stack, oauthAppCss, on<HTMLFormElement, 'submit'>('submit', save)]} data-testid="oauth-app-setup" aria-label={`${label} OAuth app`} autocomplete="off">
+        <p>
+          Sign in needs an OAuth app: register one{' '}
+          {href ? (
+            <a href={href} target="_blank" rel="noreferrer noopener" data-rmx-document data-testid="oauth-app-register">
+              at {label}
+            </a>
+          ) : (
+            `with ${label}`
+          )}{' '}
+          and paste its client id here. A client id is not a secret; the app needs no client secret.
+          {app.redirectUri ? ` Allow the redirect URL ${app.redirectUri}.` : ' Turn on its device flow.'}
+          {(app.scopes ?? []).length > 0 ? ` Scopes: ${(app.scopes ?? []).join(' ')}.` : ''}
+        </p>
+        <ErrorNote error={act.error} what="Not saved" />
+        <div mix={formGrid}>
+          <Field label="Client ID" hint={app.source === 'build' ? 'This build carries one already; yours replaces it.' : undefined}>
+            {(id) => <input id={id} value={clientId} spellcheck={false} autocomplete="off" mix={on('input', (e) => upd(() => (clientId = e.currentTarget.value)))} />}
+          </Field>
+          {app.baseUrlSetting ? (
+            <Field label={`${label} URL`} hint={`Only for a self-hosted ${label} the app is registered with; empty for the vendor's own.`}>
+              {(id) => <input id={id} value={baseUrl} spellcheck={false} mix={on('input', (e) => upd(() => (baseUrl = e.currentTarget.value)))} />}
+            </Field>
+          ) : null}
+        </div>
+        <div mix={formActions}>
+          <Button variant="primary" type="submit" icon={KeyRound} disabled={act.busy !== ''}>
+            {act.busy === 'save' ? 'Saving...' : clientId.trim() ? 'Save the client ID' : app.clientId ? 'Remove the client ID' : 'Save the client ID'}
+          </Button>
+          {onCancel ? (
+            <Button variant="ghost" mix={[on('click', onCancel)]}>
+              Cancel
+            </Button>
+          ) : null}
+        </div>
+      </form>
+    );
+  };
+}
+
 /** Connect (or reconnect) one service. The secret fields are uncontrolled: read once, cleared before the request leaves. */
-function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; reconnectId?: string; onDone: (r: { test?: IntegrationTestReport }) => void }>) {
+function ConnectForm(
+  handle: Handle<{ kind: string; info?: IntegrationKindInfo; reconnectId?: string; onDone: (r: { test?: IntegrationTestReport }) => void; onKindsChanged?: () => void }>,
+) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
+  let editingApp = false; // the OAuth app's client id is being changed although the sign-in is on
   const secrets: Record<string, HTMLInputElement | undefined> = {};
   let method = '';
   let values: Record<string, string> = {};
@@ -289,11 +358,13 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
   };
 
   return () => {
-    const { kind, info, reconnectId } = handle.props;
+    const { kind, info, reconnectId, onKindsChanged } = handle.props;
     const ro = s.workspace.license;
     const label = info?.label ?? kindLabel(kind);
     const methods: IntegrationAuthMethod[] = info?.auth ?? [];
     const cur = methods.find((m) => m.id === method) ?? methods.find((m) => m.available) ?? methods[0];
+    // an OAuth method that is off can still be chosen when an app can be registered for it: it then shows the registration
+    const pickable = (m: IntegrationAuthMethod) => m.available || (m.id === 'oauth' && !!m.oauthApp);
     const fields = cur?.fields ?? [];
     const plain = fields.filter((f) => !f.advanced);
     const advanced = fields.filter((f) => f.advanced);
@@ -351,14 +422,19 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
             <legend>How to connect</legend>
             {methods.map((m) => (
               <label key={m.id} mix={methodTile} title={m.note}>
-                <input type="radio" name={`int-method-${kind}`} value={m.id} checked={cur?.id === m.id} disabled={!m.available} mix={on('change', () => upd(() => (method = m.id)))} />
+                <input type="radio" name={`int-method-${kind}`} value={m.id} checked={cur?.id === m.id} disabled={!pickable(m)} mix={on('change', () => upd(() => (method = m.id)))} />
                 {m.label}
               </label>
             ))}
           </fieldset>
         ) : null}
         {cur?.note ? <p mix={[full, faint]}>{cur.note}</p> : null}
-        {kind === 'github' ? (
+        {info?.noSignIn ? (
+          <p mix={[full, muted]} data-testid="integration-no-signin">
+            {info.noSignIn}
+          </p>
+        ) : null}
+        {kind === 'github' && cur?.id === 'gh' ? (
           <div mix={full} data-testid="gh-status">
             {gh.loading && !gh.data ? <Loading label="Checking gh" /> : null}
             {gh.data?.loggedIn ? (
@@ -368,8 +444,30 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
             ) : null}
           </div>
         ) : null}
-        {cur?.id === 'oauth' ? (
+        {cur?.id === 'oauth' && cur.oauthApp && (!cur.available || editingApp) ? (
+          <div mix={full}>
+            <OAuthAppSetup
+              kind={kind}
+              label={label}
+              app={cur.oauthApp}
+              onSaved={() => {
+                editingApp = false;
+                onKindsChanged?.();
+                void handle.update();
+              }}
+              onCancel={editingApp ? () => upd(() => (editingApp = false)) : undefined}
+            />
+          </div>
+        ) : cur?.id === 'oauth' ? (
           <div mix={[full, stack]}>
+            {cur.oauthApp?.clientId ? (
+              <p mix={faint} data-testid="oauth-app-in-use">
+                Signs in with the OAuth app {cur.oauthApp.source === 'build' ? 'this build carries' : 'you registered'} (client id {cur.oauthApp.clientId}).{' '}
+                <Button variant="link" size="sm" mix={[on('click', () => upd(() => (editingApp = true)))]}>
+                  Change it
+                </Button>
+              </p>
+            ) : null}
             {oauth?.state === 'failed' ? <ErrorNote error={new Error(oauth.error || 'the sign-in failed')} what={`Could not sign in to ${label}`} /> : null}
             {oauth?.userCode && oauth.state === 'waiting' ? (
               <Notice tone="info" title="Enter this code on the sign-in page">
@@ -432,7 +530,7 @@ function ConnectForm(handle: Handle<{ kind: string; info?: IntegrationKindInfo; 
  * One service, opened from its tile: its fixed name and logo and what the connection is, with Test, Reconnect and Disconnect.
  * How many projects it is assigned to is a count: assigning is done on a project's own Integrations page.
  */
-function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKindInfo; conn?: IntegrationView; onChanged: () => void }>) {
+function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKindInfo; conn?: IntegrationView; onChanged: () => void; onKindsChanged?: () => void }>) {
   const s = services(handle);
   const act = action(handle);
   let report: IntegrationTestReport | undefined;
@@ -440,7 +538,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
   let reconnect = false;
   let confirm = false;
   return () => {
-    const { kind, info, conn, onChanged } = handle.props;
+    const { kind, info, conn, onChanged, onKindsChanged } = handle.props;
     const label = info?.label ?? kind.label;
     const id = conn?.identity ?? {};
     const assigned = (conn?.assignments ?? []).length;
@@ -460,7 +558,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
           {info?.blurb ?? kind.blurb}. Drydock reads {info?.items ?? 'items'} through {info?.api ?? 'the service API'} and imports them into the projects you assign.
         </p>
         {!conn ? (
-          <ConnectForm kind={kind.kind} info={info} onDone={(r) => ((report = r.test), onChanged())} />
+          <ConnectForm kind={kind.kind} info={info} onDone={(r) => ((report = r.test), onChanged())} onKindsChanged={onKindsChanged} />
         ) : (
           <>
             {conn.statusDetail ? <p mix={muted}>{conn.statusDetail}</p> : null}
@@ -568,7 +666,13 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
             </div>
             {confirm ? <p mix={faint}>Disconnecting removes the credential, every project assignment and the items that never became tasks.</p> : null}
             {reconnect ? (
-              <ConnectForm kind={kind.kind} info={info} reconnectId={conn.id} onDone={(r) => ((report = r.test), (checked = undefined), (reconnect = false), onChanged())} />
+              <ConnectForm
+                kind={kind.kind}
+                info={info}
+                reconnectId={conn.id}
+                onDone={(r) => ((report = r.test), (checked = undefined), (reconnect = false), onChanged())}
+                onKindsChanged={onKindsChanged}
+              />
             ) : null}
             <section aria-label="Projects" mix={panel}>
               <h4>Projects</h4>
@@ -707,16 +811,17 @@ export function VendorPanel(
     registriesError?: Error;
     onSyncChanged: () => void;
     onAgentsChanged: () => void;
+    onKindsChanged?: () => void;
     footer?: RemixNode;
   }>,
 ) {
   return () => {
-    const { v, info, conn, registries, registriesLoading, registriesError, onSyncChanged, onAgentsChanged, footer } = handle.props;
+    const { v, info, conn, registries, registriesLoading, registriesError, onSyncChanged, onAgentsChanged, onKindsChanged, footer } = handle.props;
     return (
       <div mix={[card, detailCss]} data-testid="integration-panel" data-kind={v.key} role="region" aria-label={v.label}>
         {v.kind ? (
           <section aria-label="App sync" data-testid="integration-sync" mix={cardCss}>
-            <ServicePanel kind={v.kind} info={info} conn={conn} onChanged={onSyncChanged} />
+            <ServicePanel kind={v.kind} info={info} conn={conn} onChanged={onSyncChanged} onKindsChanged={onKindsChanged} />
           </section>
         ) : (
           <header mix={serviceHead}>
@@ -778,6 +883,7 @@ export function VendorDetail(handle: Handle<{ vendor: string }>) {
             registriesError={regs.error}
             onSyncChanged={q.reload}
             onAgentsChanged={gallery.reload}
+            onKindsChanged={kinds.reload}
           />
         ) : null}
       </div>
@@ -792,7 +898,8 @@ export function VendorDetail(handle: Handle<{ vendor: string }>) {
 export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
-  const kinds = query(handle, { load: () => s.client.integrationKinds() });
+  // the catalog changes when an OAuth app is registered or removed (integration.oauth_app_changed)
+  const kinds = query(handle, { load: () => s.client.integrationKinds(), when: (e) => e.type === 'integration.oauth_app_changed' });
   const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   // the registries are read once, and only when a vendor on the page publishes some
   const regs = query(handle, { load: () => s.client.skillRegistries(), enabled: () => (gallery.data ?? []).some((c) => (c.skillRegistries ?? []).length > 0) });
@@ -832,6 +939,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
           registriesError={regs.error}
           onSyncChanged={q.reload}
           onAgentsChanged={gallery.reload}
+          onKindsChanged={kinds.reload}
           footer={
             current.key === 'github' ? (
               <>

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/git/host"
 	"golang.org/x/oauth2"
 )
 
@@ -76,6 +77,8 @@ func defaultAPIBase(kind string) string {
 		return "https://sentry.io"
 	case KindAikido:
 		return AikidoRegions["eu"]
+	case KindGitHub:
+		return "https://api.github.com" // only a Sign in with GitHub calls it; gh knows its own host
 	}
 	return ""
 }
@@ -199,6 +202,18 @@ func (s *Service) forgetAuth(id string) {
 
 // api builds the authenticated client of a connection.
 func (s *Service) api(ctx context.Context, c Connection) (*API, *Failure) {
+	if c.Kind == KindGitHub && !usesGH(c) {
+		// a Sign in with GitHub: the same REST API gh api speaks, called directly with the sign-in's token
+		auth, err := s.authorization(ctx, c, false)
+		if err != nil {
+			var f *Failure
+			if errors.As(err, &f) {
+				return nil, f
+			}
+			return nil, &Failure{Code: CodeUnauthorized, Cause: err, Message: "The GitHub sign-in cannot be read. Sign in with GitHub again on the Integrations page."}
+		}
+		return &API{Conn: c, GH: host.HTTPAPI{BaseURL: apiBase(c), Token: strings.TrimPrefix(auth, "Bearer "), Client: s.hc}}, nil
+	}
 	if c.Kind == KindGitHub {
 		if s.o.GitHub == nil {
 			return nil, &Failure{Code: CodeUnreachable, Message: "The GitHub CLI (gh) is not installed. Install it from https://cli.github.com and run `gh auth login`."}
@@ -499,7 +514,7 @@ func (s *Service) credentialScopes(ctx context.Context, c Connection) []string {
 // authMethod describes how a connection's credential was made, in words.
 func authMethod(c Connection) string {
 	switch {
-	case c.Kind == KindGitHub:
+	case usesGH(c):
 		return "GitHub CLI (gh) sign-in"
 	case strings.HasPrefix(c.CredentialRef, OAuthRefPrefix):
 		return "OAuth sign-in through the vendor's MCP server (made before Drydock called the API directly)"

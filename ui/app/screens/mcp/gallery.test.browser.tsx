@@ -325,7 +325,7 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(rows[1]!.querySelector('[data-testid="vendor-selective"]')).toBeNull();
   });
 
-  it('shows your own servers by what they say about themselves, and imports a claude_desktop_config.json', async () => {
+  it('"MCP servers you added" shows them by what they say about themselves, offers Add an MCP server, and imports a claude_desktop_config.json', async () => {
     const saves: unknown[] = [];
     const discovered: unknown[] = [];
     const r = show({
@@ -342,6 +342,17 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     const own = await waitFor(() => must(r.$('[data-testid="own-servers"] [data-testid="own-server"][data-id="mine"]')) as HTMLElement, r);
     expect(own.querySelector('[data-testid="own-server-identity"]')!.textContent).toBe('Identifies itself as Acme Tracker (acme-tracker 3.2.1)');
     expect(own.textContent).toContain('Use search first.');
+    // the section is named for what it holds: the servers you added yourself (the owner's words), not "your own servers"
+    const section = r.$('[data-testid="own-servers"]')!;
+    expect(section.getAttribute('aria-label')).toBe('MCP servers you added');
+    expect(section.querySelector('h2')!.textContent).toBe('MCP servers you added');
+    expect(section.textContent).toContain('Servers you added yourself: a web address or a program on this computer. Drydock shows each by what it says about itself.');
+    expect(byText(section, 'button', 'Add an MCP server')).not.toBeNull();
+    expect(section.textContent).not.toContain('Your own servers');
+    await r.act(() => byText(section, 'button', 'Add an MCP server').click());
+    const dialog = await waitFor(() => must(Array.from(document.querySelectorAll('dialog[open]')).find((d) => d.textContent?.includes('Add an MCP server'))) as HTMLElement, r);
+    expect(dialog.querySelector('h2, h1, [role="heading"]')?.textContent ?? dialog.textContent).toContain('Add an MCP server');
+    await r.act(() => byText(dialog, 'button', 'Cancel').click());
 
     await r.act(() => byText(r.container, 'button', 'Import from a file').click());
     const panel = await waitFor(() => must(document.querySelector('[data-testid="mcp-import"]')) as HTMLElement, r);

@@ -268,7 +268,7 @@ describe('Connections page', () => {
       connectionList: async () => [
         conn({ adapter: 'codex', key: 'codex', installed: false, status: 'not_installed', version: undefined, gates: [], prereqs: [], warnings: [] }),
         conn({ adapter: 'gemini', key: 'gemini', usable: true, gates: [], prereqs: [], warnings: [], version: '0.9.0' }),
-        conn({ adapter: 'custom', key: 'custom', version: undefined }),
+        conn({ adapter: 'custom', key: 'custom', version: undefined, custom: true }),
       ],
     });
     const tiles = await waitFor(() => {
@@ -301,21 +301,42 @@ describe('Connections page', () => {
     let acked = false;
     const r = show({
       connectionList: async () => [
-        conn({ adapter: 'custom', key: 'custom', gates: [{ id: 'g1', text: 'custom notice', acked }], usable: acked }),
+        conn({ adapter: 'claude', key: 'claude', gates: [{ id: 'g1', text: 'claude notice', acked }], usable: acked }),
         conn({ adapter: 'cline', key: 'cline', gates: [{ id: 'g2', text: 'cline notice', acked: false }] }),
       ],
       connectionAcknowledge: async () => void (acked = true),
     });
     const c = await card(r);
-    expect(c.getAttribute('data-adapter')).toBe('custom');
+    expect(c.getAttribute('data-adapter')).toBe('claude');
     const gate = c.querySelector('[data-testid="gate"]')!;
     await r.act(() => byLabel(gate, 'I have read this and accept it').click());
     await r.act(() => byText(gate, 'button', 'Accept').click());
-    await waitFor(() => expect(r.$('[data-testid="connection-tile"][data-key="custom"]')!.textContent).toContain('Ready'), r);
-    expect(r.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('custom');
+    await waitFor(() => expect(r.$('[data-testid="connection-tile"][data-key="claude"]')!.textContent).toContain('Ready'), r);
+    expect(r.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('claude');
 
+    // the first tile is Claude Code, whatever order the core listed them in
     const r2 = show({ connectionList: async () => [conn({ adapter: 'gemini', key: 'gemini', usable: true, gates: [] }), conn({ adapter: 'claude', key: 'claude', usable: true, gates: [] })] });
-    await waitFor(() => expect(r2.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('gemini'), r2);
+    await waitFor(() => expect(r2.$('[data-testid="connection"]')!.getAttribute('data-adapter')).toBe('claude'), r2);
+  });
+
+  it('the tiles are grouped: Claude Code with its WSL install, then the other vendors with theirs, a custom manifest last', async () => {
+    const r = show({
+      connectionList: async () => [
+        // the core's order: adapters by id, the WSL installs last
+        conn({ adapter: 'claude', key: 'claude', usable: true, gates: [] }),
+        conn({ adapter: 'codex', key: 'codex', usable: true, gates: [] }),
+        conn({ adapter: 'custom', key: 'custom', usable: true, gates: [], custom: true }),
+        conn({ adapter: 'gemini', key: 'gemini', usable: true, gates: [] }),
+        conn({ adapter: 'codex', key: 'codex@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', usable: true, gates: [] }),
+        conn({ adapter: 'claude', key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', usable: true, gates: [] }),
+      ],
+    });
+    const tiles = await waitFor(() => {
+      const x = Array.from(r.$$('[data-testid="connection-tile"]')) as HTMLButtonElement[];
+      if (x.length !== 6) throw new Error('not yet');
+      return x;
+    }, r);
+    expect(tiles.map((t) => t.getAttribute('data-key'))).toEqual(['claude', 'claude@wsl:Ubuntu', 'codex', 'codex@wsl:Ubuntu', 'gemini', 'custom']);
   });
 
   it('says plainly when no CLI was found', async () => {

@@ -1,7 +1,8 @@
 // Connections: the agent CLIs found on this machine. Drydock uses the human's own installed CLI and its own sign-in; it never
 // reads or transmits credentials. A CLI is usable only when it is ready and every notice on it has been accepted by the human.
 // The overview is a grid of tiles (the shared kit in ui/tiles.tsx, as on Integrations): one per connection, the Windows install
-// and each WSL distro's own, with the CLI's logo, what it is and its state. The selected tile's full card opens below the grid.
+// and each WSL distro's own, with the CLI's logo, what it is and its state, Claude Code first and the CLIs of custom manifests
+// last (orderConnections). The selected tile's full card opens below the grid.
 // Then the MCP gateway (screens/mcp/cli-gateway.tsx): which agent CLIs receive the MCP servers given to an agent. Last, the
 // CI runners (ci-runners.tsx, decision P56).
 
@@ -32,6 +33,7 @@ import {
   isWSL,
   matrixRows,
   netModeText,
+  orderConnections,
   prereqText,
   provTone,
   reportMeta,
@@ -572,7 +574,8 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
   const q = query(handle, { load: () => s.client.connectionList(), when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started' });
   let selected = handle.props.initial ?? '';
   return () => {
-    const list = q.data ?? [];
+    // Claude Code first (its WSL installs right after it), then the other vendors by name, the custom manifests' CLIs last
+    const list = orderConnections(q.data ?? []);
     const usable = list.filter((c) => c.usable).length;
     // the chosen tile; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first.
     // It stays chosen: accepting its notice does not move the selection to the next one that needs attention.

@@ -79,6 +79,9 @@ type Connection struct {
 	// Account is the account the CLI's own status command says it is signed in as (its "email"), "" when it names none. It
 	// comes from the CLI's answer, never from a credential file (D1).
 	Account string `json:"account,omitempty"`
+	// Custom marks the adapter of a custom manifest (manifests Meta.Custom: a CLI the person described, not a vendor's), so
+	// the Connections page can list it after the vendors' CLIs.
+	Custom bool `json:"custom,omitempty"`
 
 	fallback string // the transport fallback checkPrereqs reported, for rate
 }
@@ -155,7 +158,7 @@ func Detect(ctx context.Context, m *manifests.Manifest, o Options) (agents.Detec
 // Check computes the full Connection for a manifest.
 func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	o.defaults()
-	c := Connection{Platform: runtime.GOOS, Transport: m.Transports.Primary, Key: m.Meta.ID, RunMode: agents.RunModeNative}
+	c := Connection{Platform: runtime.GOOS, Transport: m.Transports.Primary, Key: m.Meta.ID, RunMode: agents.RunModeNative, Custom: m.Meta.Custom}
 	c.Adapter, c.InstallHint, c.Status = m.Meta.ID, m.InstallHint(), agents.StatusNotInstalled
 	c.SignIn = signInText(m, m.Binaries.Native)
 
