@@ -127,6 +127,13 @@ func Run(assets fs.FS) error {
 			d = d.AttachToWindow(window)
 		}
 		return dialogResult(d.PromptForSingleSelection())
+	}, OpenURL: func(_ context.Context, rawURL string) error {
+		// a link in the window opens in the person's own browser (audit 2026-10-16, M23); the core has checked the address (a web
+		// address or a plain mail address), because what the system opens for an address is anything it has a handler for
+		if wa == nil {
+			return fmt.Errorf("the window is not open yet")
+		}
+		return wa.Browser.OpenURL(rawURL)
 	}})
 	if err != nil {
 		return fmt.Errorf("open Drydock: %w", err)

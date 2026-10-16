@@ -200,6 +200,8 @@ type bundleReq struct {
 	EventLimit     int    `json:"eventLimit"`
 	IncludeRun     string `json:"includeRun"`
 	AcknowledgeRun bool   `json:"acknowledgeRun"`
+	// Overwrite says a file already at Dest may be replaced; without it a bundle is never written over a file (audit 2026-10-16, L39)
+	Overwrite bool `json:"overwrite"`
 }
 
 func (p *packaging) toolVersions(ctx context.Context) map[string]string {
@@ -379,9 +381,26 @@ func (p *packaging) dataMethods(m map[string]Method) {
 			if err := needFullPath("the file to save to", dest); err != nil {
 				return nil, err
 			}
+			dest = filepath.Clean(dest)
+			// the data folder holds the database, the credential references and the logs: a bundle goes to its support folder or
+			// outside it, never over something of Drydock's own
+			if data := filepath.Clean(p.c.cfg.DataDir); withinFolder(dest, data) && !withinFolder(dest, filepath.Join(data, "support")) {
+				return nil, errors.New("a bundle saved in the app's own data folder could replace its database or its logs: leave the path empty to use the support folder there, or choose a folder outside it")
+			}
 		}
 		if dest == "" {
 			dest = filepath.Join(p.c.cfg.DataDir, "support", "drydock-support-"+p.bnow().UTC().Format("20060102-150405")+".zip")
+		}
+		replaced := false
+		if st, err := os.Lstat(dest); err == nil {
+			switch {
+			case st.IsDir():
+				return nil, fmt.Errorf("%s is a folder: give the name of the file to save to", dest)
+			case !r.Overwrite:
+				// nothing is written: the screen asks whether to replace it and sends the request again with overwrite set
+				return map[string]any{"exists": true, "path": dest, "size": st.Size()}, nil
+			}
+			replaced = true
 		}
 		if err := supportbundle.Write(b, dest); err != nil {
 			return nil, err
@@ -391,7 +410,7 @@ func (p *packaging) dataMethods(m map[string]Method) {
 		if st != nil {
 			size = st.Size()
 		}
-		p.audit(ctx, "supportbundle.create", filepath.Base(dest), map[string]any{"runIncluded": r.IncludeRun, "secretsRedacted": b.Report.TotalSecrets, "refused": len(b.Report.Refused)})
-		return map[string]any{"path": dest, "size": size, "files": b.Files, "report": b.Report, "notice": supportbundle.Notice}, nil
+		p.audit(ctx, "supportbundle.create", filepath.Base(dest), map[string]any{"runIncluded": r.IncludeRun, "secretsRedacted": b.Report.TotalSecrets, "refused": len(b.Report.Refused), "replaced": replaced})
+		return map[string]any{"path": dest, "size": size, "replaced": replaced, "files": b.Files, "report": b.Report, "notice": supportbundle.Notice}, nil
 	})
 }

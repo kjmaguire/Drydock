@@ -92,6 +92,10 @@ type Config struct {
 	// new project's "Choose folder..." (decision P58). The desktop app sets it (app/app_windows.go); without it a person types
 	// the path. The e2e harness sets a labelled stand-in.
 	PickFolder func(ctx context.Context, p FolderPick) (string, error)
+	// OpenURL opens a web or mail address in the person's own browser or mail program (audit 2026-10-16, M23): a link in the window
+	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
+	// it (the browser harness) the page uses the browser's own link.
+	OpenURL func(ctx context.Context, rawURL string) error
 	// DevDrives lists this computer's Dev Drives, or says why none was found, for the project folder's hint (decision P58) and
 	// the CI runners' Windows folder (decision P56). Default: runners.DevDrives on Windows (asked once, no administrator rights
 	// needed), none elsewhere; tests and the e2e harness set a labelled stand-in.

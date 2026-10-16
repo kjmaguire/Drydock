@@ -597,7 +597,7 @@ Open, owner action:
   Drydock checks `/props` with it before it calls the server ready; `llama-server --list-devices` runs in the same trimmed
   environment; a model folder name can no longer be `..`. The gateway's failure bookkeeping is bounded by the shape of a run id and a
   global ceiling. A staged restore is found again by name in the backup folder, as a plain file with the staged hash.
-  **Licence, the event bus and smaller edges (L1, L2, L3, L9, L11, L13, L16, L17, L38 core side):** `recommend.start` is a paid-work method like
+  **Licence, the event bus and smaller edges (L1, L2, L3, L9, L11, L13, L16, L17; the core side of L38, L39 and M23):** `recommend.start` is a paid-work method like
   `task.start` (`gatedMethods`, and `Core.Recommend` asks `RequireLicensed("start_work")` itself); keys that cannot be read leave
   Drydock read-only and say why, not "unlicensed" (`keysBroken`, fail closed), a licence file is read up to a limit (`maxLicenseFile`),
   and a licence is good only for the app versions it names (`min_app`, `max_app`; the unused `mid` claim is gone). Every event is
@@ -613,5 +613,10 @@ Open, owner action:
   looks again less and less often; the scheduler says why a task waits once, not at every pass. The text of an instruction
   file the repository brought is introduced as the repository's own, and a person's edit of a generated file is offered back
   to memory once, redacted and cut to what a person can read whole. The refusal of an environment variable name that is not one (a
-  pasted `NAME=value`) names the line and does not repeat what is on it (`agentenv.set`, `mcplib.save`). **Not verified:** nothing in this
-  batch is Windows-only.
+  pasted `NAME=value`) names the line and does not repeat what is on it (`agentenv.set`, `mcplib.save`). A support bundle is never written over a file unless the request says so (`supportbundle.create {overwrite}`; an
+  existing file is answered `{exists: true}` and left alone) and never into the app's own data folder outside its support folder
+  (L39 core side). A link the window shows is opened in the person's own browser through the shell: `shell.openExternal {url}`
+  passes only an http or https address with a host and no password and a plain mail address (`core.ExternalURL`) to
+  `Config.OpenURL` (Wails `Browser.OpenURL` in the desktop app, which hands anything to the system's handler and so must never
+  see a program path, a file or a protocol such as `ms-msdt:`), for a person only (M23 core side). **Not verified:** the Windows
+  shell's `OpenURL`; nothing else in this batch is Windows-only.

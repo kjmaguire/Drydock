@@ -168,6 +168,69 @@ func TestSupportBundleIsScrubbedAllowListed(t *testing.T) {
 	}
 }
 
+// A bundle is never written over a file nobody said could go (audit 2026-10-16, L39): a file already at the path is left alone and
+// the answer says so; the bundle replaces it only when the request says it may; a folder, and Drydock's own data folder, are
+// refused. The answer names what was replaced.
+func TestASupportBundleIsNeverWrittenOverAFileWithoutLeave(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	a := open(t, dataDir)
+	dest := filepath.Join(t.TempDir(), "bundle.zip")
+	const mine = "the person's own notes, not a zip"
+	if err := os.WriteFile(dest, []byte(mine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Path     string `json:"path"`
+		Exists   bool   `json:"exists"`
+		Replaced bool   `json:"replaced"`
+		Size     int64  `json:"size"`
+		Files    []any  `json:"files"`
+	}
+	a.call("supportbundle.create", map[string]any{"dest": dest}, &got)
+	if !got.Exists || got.Path != dest || len(got.Files) != 0 {
+		t.Fatalf("a file at the path: %+v", got)
+	}
+	if b, _ := os.ReadFile(dest); string(b) != mine {
+		t.Fatalf("the file was written over: %q", b)
+	}
+	got = struct {
+		Path     string `json:"path"`
+		Exists   bool   `json:"exists"`
+		Replaced bool   `json:"replaced"`
+		Size     int64  `json:"size"`
+		Files    []any  `json:"files"`
+	}{}
+	a.call("supportbundle.create", map[string]any{"dest": dest, "overwrite": true}, &got)
+	if got.Exists || !got.Replaced || len(got.Files) == 0 {
+		t.Fatalf("replaced with leave: %+v", got)
+	}
+	if files := readZipFiles(t, dest); len(files) == 0 {
+		t.Fatal("the replaced file is not a bundle")
+	}
+	// a folder is not a file to replace, even with leave
+	if err := a.callErr("supportbundle.create", map[string]any{"dest": t.TempDir(), "overwrite": true}); err == nil || !strings.Contains(err.Error(), "is a folder") {
+		t.Errorf("a folder as the destination: %v", err)
+	}
+	// the app's own data folder holds the database and the logs: not a place for a bundle, with or without leave
+	db := filepath.Join(dataDir, "drydock.db")
+	for _, over := range []bool{false, true} {
+		if err := a.callErr("supportbundle.create", map[string]any{"dest": db, "overwrite": over}); err == nil || !strings.Contains(err.Error(), "data folder") {
+			t.Errorf("the database as the destination (overwrite %v): %v", over, err)
+		}
+	}
+	if _, err := os.Stat(db); err != nil {
+		t.Fatalf("the database is gone: %v", err)
+	}
+	// its support folder is the place it uses itself
+	var in struct {
+		Path string `json:"path"`
+	}
+	a.call("supportbundle.create", map[string]any{"dest": filepath.Join(dataDir, "support", "mine.zip")}, &in)
+	if in.Path == "" {
+		t.Fatal("the support folder was refused")
+	}
+}
+
 func TestSupportBundleRunInclusionIsOptInAndScanned(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "data")
 	a := open(t, dataDir)
