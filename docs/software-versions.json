@@ -1,9 +1,9 @@
 {
-  "generated": "2026-10-16T15:24:28Z",
-  "commit": "403d843",
+  "generated": "2026-10-16T18:07:02Z",
+  "commit": "529cec5",
   "summary": {
-    "current": 168,
-    "minor": 4,
+    "current": 167,
+    "minor": 5,
     "patch": 5
   },
   "items": [
@@ -88,10 +88,11 @@
       "name": "goose (@aaif/goose-acp)",
       "kind": "cli",
       "used": "1.54.0",
-      "latest": "1.54.0",
-      "status": "current",
+      "latest": "1.55.0",
+      "status": "minor",
       "where": "internal/agents/manifests/cli/goose.yaml (recommended; minimum 1.53.0)",
       "role": "Goose: the open-source agent (reached through its ACP bridge).",
+      "hold": "1.55.0 was published on 2026-10-16, minutes before this audit. Decision P33 wants the contract suite to pass on a version before it is recommended, so the recommended 1.54.0 stays until the suite has run on 1.55.0 (the contract workflow runs on every push that touches internal/agents, and nightly).",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
     },
     {
@@ -6195,7 +6196,7 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11672",
-      "latest": "b11696",
+      "latest": "b11700",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
