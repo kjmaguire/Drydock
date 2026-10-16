@@ -130,7 +130,8 @@
     },
     "cli:goose": {
       "role": "Goose: the open-source agent (reached through its ACP bridge).",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
+      "hold": "1.55.0 was published on 2026-10-16, minutes before this audit. Decision P33 wants the contract suite to pass on a version before it is recommended, so the recommended 1.54.0 stays until the suite has run on 1.55.0 (the contract workflow runs on every push that touches internal/agents, and nightly)."
     },
     "cli:opencode": {
       "role": "OpenCode: an open-source agent that can use many providers.",
