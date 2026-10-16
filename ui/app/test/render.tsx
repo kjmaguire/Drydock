@@ -101,6 +101,31 @@ export function type(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElem
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+/**
+ * Type text the way a person does, one key at a time. Each key appends one character to what the field shows now, fires
+ * `input`, then lets the microtasks and the render that follow run before the next key. After every key the field must
+ * still show everything typed so far, or this throws: a controlled field whose handler only assigns a variable is put back to
+ * its old value by the runtime (it never re-rendered), and `type()`, which sets the whole text in one go, can not see that.
+ * Pass the render result so a render the handler asked for is applied before the check. A field whose whole text is selected
+ * (a rename box that selects itself when it opens) has that text replaced by the first key, as in a browser.
+ */
+export async function typeKeys(el: HTMLInputElement | HTMLTextAreaElement, text: string, r?: { root: { flush(): void } }): Promise<void> {
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setValue = Object.getOwnPropertyDescriptor(proto, 'value')!.set!;
+  let replace = el.value !== '' && el.selectionStart === 0 && el.selectionEnd === el.value.length;
+  let want = replace ? '' : el.value;
+  for (const ch of Array.from(text)) {
+    want += ch;
+    setValue.call(el, replace ? ch : el.value + ch);
+    replace = false;
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+    r?.root.flush();
+    await drain();
+    r?.root.flush();
+    if (el.value !== want) throw new Error(`after typing ${JSON.stringify(ch)} the field shows ${JSON.stringify(el.value)}, not ${JSON.stringify(want)}`);
+  }
+}
+
 /** The kit's Select (ui/select.tsx): a combobox button whose options live in the listbox it controls. */
 const isDropdown = (el: Element): el is HTMLButtonElement => el instanceof HTMLButtonElement && el.getAttribute('role') === 'combobox';
 

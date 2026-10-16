@@ -24,7 +24,7 @@
 //     core holding events the stream has still not delivered one heartbeat later (the Go forwarder stopped).
 // The event store then reopens the stream from the last seq it saw and, once Subscribe answers, re-reads (epoch).
 
-import type { DrydockEvent } from './types.ts';
+import { describeBadEvent, isDrydockEvent, LimitedWarn } from './guards.ts';
 import { RpcError, type EventStream, type RpcErrorKind, type StreamHandlers, type Transport } from './transport.ts';
 
 export const BRIDGE_FQN = 'github.com/kjmaguire/drydock/app.Bridge';
@@ -47,10 +47,13 @@ export interface WailsEvents {
   On(name: string, cb: (ev: { data: unknown }) => void): () => void;
 }
 
-/** Bridge methods called through the Wails runtime's binding-call mechanism. */
+/**
+ * Bridge methods called through the Wails runtime's binding-call mechanism. A reply is handed on as it came: the transport
+ * checks that it is text (a number or an object turned into text by String() would pass for a reply).
+ */
 export function bridgeFromRuntime(rt: WailsRuntimeModule): WailsBridge {
   return {
-    Call: async (method, params) => String(await rt.Call.ByName(`${BRIDGE_FQN}.Call`, method, params)),
+    Call: async (method, params) => (await rt.Call.ByName(`${BRIDGE_FQN}.Call`, method, params)) as string,
     Subscribe: async (after) => {
       await rt.Call.ByName(`${BRIDGE_FQN}.Subscribe`, after);
     },
@@ -125,6 +128,7 @@ export class WailsTransport implements Transport {
   readonly #timers: Timers;
   /** The open streams, told when a call finds the bridge unreachable. */
   readonly #streams = new Set<(err: unknown) => void>();
+  readonly #badEvents = new LimitedWarn();
 
   constructor(
     private readonly bridge: WailsBridge,
@@ -140,7 +144,7 @@ export class WailsTransport implements Transport {
   }
 
   async call<T>(method: string, params?: unknown): Promise<T> {
-    let out: string;
+    let out: unknown; // typed string by the bridge, checked below
     try {
       out = await this.bridge.Call(method, JSON.stringify(params ?? {}));
     } catch (err) {
@@ -150,7 +154,9 @@ export class WailsTransport implements Transport {
       if (kind === 'network') for (const fail of [...this.#streams]) fail(e);
       throw e;
     }
-    if (!out) return null as T;
+    if (out === undefined || out === null || out === '') return null as T;
+    // the bridge answers with JSON text; anything else is the shell and this UI disagreeing about the bridge
+    if (typeof out !== 'string') throw new RpcError(method, 'invalid_response', `The Drydock shell answered with ${typeof out}, not JSON text`);
     try {
       return JSON.parse(out) as T;
     } catch {
@@ -200,12 +206,11 @@ export class WailsTransport implements Transport {
 
     const off = this.events.On(WAILS_EVENT_NAME, (ev) => {
       if (closed) return;
-      const d = Array.isArray(ev.data) ? ev.data[0] : ev.data; // a single Emit argument arrives unwrapped
-      const e = d as DrydockEvent;
-      if (e && Number.isInteger(e.seq) && typeof e.type === 'string') {
-        if (e.seq > seen) seen = e.seq;
-        h.onEvent(e);
-      }
+      const d: unknown = Array.isArray(ev.data) ? ev.data[0] : ev.data; // a single Emit argument arrives unwrapped
+      if (isDrydockEvent(d)) {
+        if (d.seq > seen) seen = d.seq;
+        h.onEvent(d);
+      } else this.#badEvents.warn(`Ignored a malformed event from the Drydock shell: ${describeBadEvent(d)}`);
     });
     this.#streams.add(fail);
     // Subscribe restarts the Go-side stream from `after`; the store dedupes by seq, so overlap is harmless.

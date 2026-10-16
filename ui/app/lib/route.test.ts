@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from './route.ts';
+import { hashToPath, hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -108,5 +108,42 @@ describe('routes', () => {
     expect(hashToPath('#/')).toBe('/');
     expect(hashToPath('#main')).toBeUndefined();
     expect(hashToPath('')).toBeUndefined();
+  });
+
+  it('turns no hash into a path that names another place or that a browser would refuse (L42)', () => {
+    for (const hash of ['#//evil.example/x', '#///evil.example', '#/\\evil.example', '#/task/a\\b', '#/task/\u0000', '#/task/a\nb', '#/task/\u007f']) {
+      expect([hash, hashToPath(hash)]).toEqual([hash, undefined]);
+    }
+    // a bad percent escape is left as written: nothing decodes it here, and the router shows what it can
+    expect(hashToPath('#/task/%E0%A4%A')).toBe('/task/%E0%A4%A');
+    expect(hashToPath('#/task/%')).toBe('/task/%');
+    expect(parseRoute(hashToPath('#/task/%E0%A4%A')!)).toEqual({ name: 'task', id: '%E0%A4%A' });
+    expect(hashToPath('#/tasks?x=1')).toBe('/tasks?x=1');
+  });
+
+  it('moves to the screen an old link names and keeps the query, but never throws (L42)', () => {
+    // TEST DOUBLE: history.replaceState as a browser does it, refusing an address on another origin
+    const moves: string[] = [];
+    const history = {
+      replaceState: (_s: unknown, _t: string, url: string) => {
+        if (new URL(url, 'http://localhost').origin !== 'http://localhost') throw new DOMException('cross-origin', 'SecurityError');
+        moves.push(url);
+      },
+    };
+    expect(redirectLegacyHash({ hash: '#/task/x', search: '?token=abc' }, history)).toBe(true);
+    expect(moves).toEqual(['/task/x?token=abc']);
+    for (const hash of ['', '#main', '#//evil.example/x', '#/\\evil.example', '#/task/%E0%A4%A']) {
+      expect(() => redirectLegacyHash({ hash, search: '' }, history)).not.toThrow();
+    }
+    expect(moves).toEqual(['/task/x?token=abc', '/task/%E0%A4%A']);
+    // a browser that refuses an address it was given leaves the page where it is
+    const refusing = { replaceState: () => { throw new DOMException('no', 'SecurityError'); } };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      expect(redirectLegacyHash({ hash: '#/task/x', search: '' }, refusing)).toBe(false);
+    } finally {
+      console.warn = warn;
+    }
   });
 });

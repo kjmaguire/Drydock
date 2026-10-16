@@ -13,6 +13,7 @@
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import { Blocks, Check, Cpu, ExternalLink, KeyRound, LogIn, Minus, Server, ShieldAlert, ShieldCheck, Stethoscope, Trash2, Wrench, X } from 'lucide';
 import type {
+  ConnectIntegrationReq,
   IntegrationAuthMethod,
   IntegrationOAuthApp,
   IntegrationKindInfo,
@@ -41,6 +42,7 @@ import { t, tone } from '../../ui/tokens.ts';
 import { ConnectorCard, connectorGrid, OwnServers } from '../mcp/gallery.tsx';
 import { full, head, panel, push, toolbar } from './assignments.tsx';
 import {
+  connectReply,
   KINDS,
   kindLabel,
   statusTone,
@@ -328,8 +330,9 @@ function ConnectForm(
     f();
     void handle.update();
   };
-  const finish = async (req: Record<string, unknown>) => {
-    const r = await act.run('connect', () => s.client.integrationConnect({ kind: handle.props.kind, id: handle.props.reconnectId, ...req } as never));
+  const finish = async (req: Omit<ConnectIntegrationReq, 'kind' | 'id'>) => {
+    // the reply is checked in the action, so a wrong shape is the page's error note and not a crash in the report view
+    const r = await act.run('connect', async () => connectReply(await s.client.integrationConnect({ kind: handle.props.kind, id: handle.props.reconnectId, ...req })));
     if (r) handle.props.onDone(r);
   };
   // while a sign-in is open, ask the core how it went; once signed in, connect with it. One question at a time: the next is
@@ -373,7 +376,7 @@ function ConnectForm(
     const submit = async (e: SubmitEvent) => {
       e.preventDefault();
       if (!cur || cur.id === 'oauth') return;
-      const req: Record<string, unknown> = {};
+      const req: Record<string, unknown> = {}; // the fields of this service's form: token, clientId, region, config values...
       for (const f of fields) {
         if (f.secret) {
           const el = secrets[f.key];
@@ -384,7 +387,7 @@ function ConnectForm(
           req[f.key] = v || undefined;
         }
       }
-      await finish(req);
+      await finish(req as Omit<ConnectIntegrationReq, 'kind' | 'id'>);
     };
     const renderField = (f: NonNullable<IntegrationAuthMethod['fields']>[number]) => (
       <Field key={`${kind}-${cur?.id}-${f.key}`} label={f.label} hint={f.hint}>

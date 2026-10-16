@@ -144,6 +144,7 @@ Use the kit before writing CSS:
   `Field` id names it; `label` gives an accessible name without one; `size="sm"` for toolbars, `name` for a form value.
   `selectValues(strings)` and `selectOptions(pairs)` build the options.
 - `ErrorNote` (role="alert"), `Notice`, `Loading`, `Spinner`, `Empty` (feedback.tsx).
+- `ErrorBoundary` (error-boundary.tsx): guards the components in its children (a component that throws in setup or render is replaced by the error's text with Try again and Reload; one nested inside a guarded component is not caught, the runtime reports it). `ClippedText` (clipped-text.tsx): text a server wrote, clipped to about 300 characters with Show more.
 - `Badge`, `StatusChip`, `PresenceDot`, `Avatar`, `SourceBadge`, `kv`, `muted`, `faint`, `mono` (data.tsx).
 - `Dialog` (native `<dialog>`), `Tabs` (underlined; `pills` for a page's sections), `Menu`, `Popover` (an anchored panel: Escape and an outside click close it), `Markdown`.
 - `VirtualList` (virtual-list.tsx) for a long feed: create it in setup with `onChange: () => handle.update()`, render
@@ -182,3 +183,7 @@ it('saves', async () => {
 
 `testServices(partialClient)` builds services around a partial client (a labelled test double); `s.emit({ type })`
 delivers an event. Call `s.workspace.start(); s.project.start()` when the component reads project data.
+
+A controlled field (`value={x}`) whose `input` handler only assigns a variable is put back to its old value by the runtime: the handler
+must re-render (`void handle.update()`, or `set()`/`redraw()` helpers that do). `type()` sets a whole text at once and can not see
+that; `typeKeys(el, text, r)` types one key at a time, waits for the render and throws as soon as the field loses a key.

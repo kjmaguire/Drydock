@@ -223,6 +223,19 @@ describe('Library page', () => {
     expect(r.container.querySelectorAll('[data-testid="mcp-tool-flagged"]').length).toBe(1);
   });
 
+  it('clips a long tool description from a server, so one server can not fill the page (L48)', async () => {
+    const long = `${'Does everything a person could want. '.repeat(3000)}FINAL SENTENCE`;
+    const r = show({ mcpLibList: async () => [libServer({ projects: [], tools: [{ name: 'huge', description: long, readOnlyHint: false }] })] });
+    await pick(r, 'lib-mcp');
+    const row = await one(r, '[data-testid="mcp-tool"][data-tool="huge"]');
+    const box = row.querySelector<HTMLElement>('[data-testid="mcp-tool-description"]')!;
+    expect(box.textContent!.length).toBeLessThan(340);
+    expect(row.textContent).not.toContain('FINAL SENTENCE');
+    await r.act(() => byText(box, 'button', 'Show more').click());
+    expect(box.querySelector('.clip-full')!.textContent).toBe(long);
+    expect(getComputedStyle(box.querySelector('.clip-full')!).maxHeight).toBe('240px');
+  });
+
   it('connects a server once: arguments one per line, a secret field that is a password', async () => {
     const saves: Calls = [];
     const r = show({ mcpLibList: async () => [], mcpLibSave: rec(saves, () => libServer()) as never });

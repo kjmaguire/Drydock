@@ -30,11 +30,14 @@ const bodyCss = css({ padding: t.s5, overflow: 'auto', display: 'grid', gap: t.s
 
 /**
  * A modal dialog on the native <dialog> (focus trap, Escape and the top layer come from the browser). Controlled: render
- * it with open and handle onClose (Escape, the close button, a click on the backdrop). The dialog is named by its heading
- * (aria-labelledby), or by `label` when one is given.
+ * it with open and handle onClose (Escape, the close button, a click on the backdrop that was pressed on it too). The
+ * dialog is named by its heading (aria-labelledby), or by `label` when one is given.
  */
 export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose: () => void; wide?: boolean; children?: RemixNode; label?: string }>) {
   let node: HTMLDialogElement | undefined;
+  // a press that started on the backdrop (the <dialog> element itself, outside the panel): a drag that starts inside the panel
+  // (selecting text in a field) and ends on the backdrop is also a click on the dialog, and must not close it
+  let pressedBackdrop = false;
   const titleId = `dlg-${handle.id}-title`;
   const sync = () => {
     if (!node) return;
@@ -58,8 +61,13 @@ export function Dialog(handle: Handle<{ open: boolean; title: RemixNode; onClose
             e.preventDefault();
             onClose();
           }),
+          on('pointerdown', (e) => {
+            pressedBackdrop = e.target === e.currentTarget;
+          }),
           on('click', (e) => {
-            if (e.target === e.currentTarget) onClose();
+            const closing = pressedBackdrop && e.target === e.currentTarget;
+            pressedBackdrop = false;
+            if (closing) onClose();
           }),
           wide ? wideDialog : undefined,
         ]}

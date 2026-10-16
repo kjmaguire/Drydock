@@ -1,6 +1,7 @@
 // Typed client for the Chats section (docs/chats.md, decision P29): the human's own conversations with an agent CLI,
 // kept with every message, continued in the CLI's session, forked, searched and attached to later messages.
 
+import { isRecord } from './guards.ts';
 import type { Transport } from './transport.ts';
 
 export type ChatStatus = 'idle' | 'running' | 'error';
@@ -146,6 +147,14 @@ export interface ChatTurnEnd {
   fallback?: boolean;
   error?: string;
 }
+
+/** The checks the live feed makes on what chat.* events carry (audit 2026-10-16, L43): the fields the screens call methods on or sort by. */
+export const isChatMessage = (v: unknown): v is ChatMessage =>
+  isRecord(v) && typeof v.id === 'string' && typeof v.chatId === 'string' && Number.isInteger(v.seq) && typeof v.role === 'string' && typeof v.body === 'string';
+export const isChat = (v: unknown): v is Chat =>
+  isRecord(v) && typeof v.id === 'string' && typeof v.title === 'string' && typeof v.adapter === 'string' && typeof v.status === 'string' && (v.version === undefined || typeof v.version === 'number');
+export const isChatTurnEnd = (v: unknown): v is ChatTurnEnd =>
+  isRecord(v) && typeof v.chatId === 'string' && typeof v.turnId === 'string' && (v.status === 'done' || v.status === 'error' || v.status === 'stopped');
 
 export interface ChatClient {
   /** limit: at most this many (1-500; omitted = 500). */

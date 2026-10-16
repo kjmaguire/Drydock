@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { DiffFileContent, DiffFiles, LogSource, TerminalChunk, TerminalInfo } from '../../api/dockClient.ts';
 import type { UsageRow } from '../../api/types.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { byText, cleanup, drain, mount, testServices, waitFor } from '../../test/render.tsx';
 import { ActivityPanel } from './activity-panel.tsx';
 import { DiffViewer } from './diff-viewer.tsx';
 import { LogsPanel } from './logs-panel.tsx';
@@ -313,6 +313,71 @@ describe('the logs panel', () => {
     await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toBe('first\nhal'), r);
     has(r.container, 'running');
     await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toBe('first\nhalf done'), r, 3000);
+  });
+
+  it('polls without piling up listeners, rests while the window is hidden, and stops with the panel (L47)', async (t) => {
+    const timers = t.useFakeTimers();
+    const live = new Map<unknown, AbortSignal>(); // the abort listeners registered on signals and not removed
+    const add = EventTarget.prototype.addEventListener;
+    const remove = EventTarget.prototype.removeEventListener;
+    EventTarget.prototype.addEventListener = function (this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+      if (this instanceof AbortSignal && type === 'abort' && listener) live.set(listener, this);
+      return add.call(this, type, listener, options);
+    } as typeof add;
+    EventTarget.prototype.removeEventListener = function (this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions) {
+      if (this instanceof AbortSignal && type === 'abort' && listener) live.delete(listener);
+      return remove.call(this, type, listener, options);
+    } as typeof remove;
+    let visibility: DocumentVisibilityState = 'visible';
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+    const setVisibility = (v: DocumentVisibilityState) => {
+      visibility = v;
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    let reads = 0;
+    const r = mount(
+      <LogsPanel taskId="t1" />,
+      testServices({
+        logsList: async () => [{ id: 'nx:1', kind: 'agent', title: 'work', size: 0, created: 1, running: true } as LogSource],
+        logsRead: async (_t, _id, o) => {
+          reads++;
+          return o?.tail ? { text: 'first\n', start: 0, next: 6, size: 6 } : { text: '', start: 6, next: 6, size: 6 };
+        },
+      }),
+    );
+    const settle = async (ms: number) => {
+      await timers.advanceAsync(ms);
+      await drain();
+      await drain();
+    };
+    try {
+      await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toBe('first'), r);
+      await settle(0);
+      expect(reads).toBe(1);
+      const baseline = live.size;
+      for (let i = 0; i < 12; i++) await settle(1000); // a running source is read every second
+      expect(reads).toBe(13);
+      expect(live.size - baseline).toBeLessThanOrEqual(1); // it was one more listener per poll
+      // the window is hidden: nobody reads the tail, so nothing is asked for
+      setVisibility('hidden');
+      await settle(0);
+      const before = reads;
+      for (let i = 0; i < 5; i++) await settle(5000);
+      expect(reads).toBe(before);
+      // and it is read again as soon as the window is shown
+      setVisibility('visible');
+      await settle(0);
+      expect(reads).toBe(before + 1);
+      // the panel is closed: the poll ends with it
+      r.cleanup();
+      const closed = reads;
+      for (let i = 0; i < 5; i++) await settle(5000);
+      expect(reads).toBe(closed);
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      EventTarget.prototype.addEventListener = add;
+      EventTarget.prototype.removeEventListener = remove;
+    }
   });
 
   it('follows the end until the human scrolls up', async () => {

@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { RepoMapResult, RepoMapView } from '../../api/repomapClient.ts';
-import { byLabel, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, cleanup, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
 import { RepoMapScreen } from './repomap-screen.tsx';
 
 afterEach(cleanup);
@@ -76,6 +76,21 @@ describe('Repo map page', () => {
     await waitFor(() => expect(r.$('[data-testid="repomap-stats"]')!.textContent).toContain('Focus: java/Shop.java, java/.'), r);
     expect(r.$('[data-testid="repomap-ranking"] tbody tr:nth-child(2) td')!.textContent).toContain('focus');
     expect((byLabel(r.container, 'Token budget') as HTMLInputElement).value).toBe('8192');
+  });
+
+  it('keeps every key typed into the focus and budget boxes, and makes the map with them (H12)', async () => {
+    const calls: [string, string[], number][] = [];
+    const r = show(async (projectId, focus = [], budget = 2048) => (calls.push([projectId, focus, budget]), { available: true, languages: ['go'], result: result({ focus, budget }) }));
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    const focus = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Focus paths'), r);
+    const budget = byLabel<HTMLInputElement>(r.container, 'Token budget');
+    await typeKeys(focus, 'go/store, go/api', r);
+    await typeKeys(budget, '3', r); // 2048 stays; the keys follow it
+    expect(focus.value).toBe('go/store, go/api');
+    expect(budget.value).toBe('20483');
+    (r.$('[data-testid="repomap-make"]') as HTMLButtonElement).click();
+    await waitFor(() => expect(calls.length).toBe(2), r);
+    expect(calls[1]).toEqual(['p1', ['go/store', 'go/api'], 8192]);
   });
 
   it('says plainly when this build has no parser', async () => {

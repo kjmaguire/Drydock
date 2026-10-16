@@ -244,7 +244,7 @@ function HomeChat(handle: Handle<{ onNavigate?: (href: string) => void }>) {
             placeholder="Ask Claude Code anything. Ctrl+Enter starts the chat."
             value={text}
             mix={[
-              on('input', (e) => void (text = e.currentTarget.value)),
+              on('input', (e) => ((text = e.currentTarget.value), void handle.update())),
               on('keydown', (e) => {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();

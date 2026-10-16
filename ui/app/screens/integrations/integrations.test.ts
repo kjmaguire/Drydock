@@ -5,7 +5,9 @@ import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard } from '../mcp/fixtures.ts';
 import {
   agentsStateText,
+  connectReply,
   identityLine,
+  isTestReport,
   KINDS,
   kindLabel,
   outboxTone,
@@ -165,5 +167,33 @@ describe('integrations helpers', () => {
     const failing = { ...a, sync: { ...a.sync, state: 'forbidden' } };
     expect(projectConnState(kinds[0], view({ assignments: [failing] }), 'prj_1')).toEqual({ text: 'Team: ENG · sync: forbidden', tone: 'bad', badge: { text: 'sync failing', tone: 'err' } });
     expect(projectConnState(kinds[0], view({ status: 'unreachable', assignments: [a] }), 'prj_1').badge).toEqual({ text: 'needs attention', tone: 'warn' });
+  });
+});
+
+describe('the answer of integration.connect is checked (L43)', () => {
+  const report = { integrationId: 'int_1', ok: true, steps: [{ id: 'auth', name: 'Sign in', ok: true, detail: 'ok' }], summary: 'passed', at: 1 };
+
+  it('knows a test report by what the report view reads', () => {
+    expect(isTestReport(report)).toBe(true);
+    expect(isTestReport({ ...report, steps: null })).toBe(true); // Go's nil slice
+    expect(isTestReport({ ok: false, summary: 'no' })).toBe(true);
+    expect(isTestReport({ ...report, steps: [{ id: 'a', name: 'n', ok: true }] })).toBe(true);
+    for (const bad of [null, undefined, 'report', 7, [], {}, { ...report, ok: 'yes' }, { ...report, summary: 3 }, { ...report, steps: 'none' }, { ...report, steps: {} }, { ...report, steps: [null] }, { ...report, steps: [{ id: 'a', name: 'n', ok: 'y' }] }]) {
+      expect([bad, isTestReport(bad)]).toEqual([bad, false]);
+    }
+  });
+
+  it('takes a connection with or without a report', () => {
+    const c = view();
+    expect(connectReply({ connection: c })).toEqual({ connection: c });
+    expect(connectReply({ connection: c, test: null })).toEqual({ connection: c });
+    expect(connectReply({ connection: c, test: report })).toEqual({ connection: c, test: report });
+  });
+
+  it('says plainly what is wrong with a reply of another shape', () => {
+    for (const bad of [null, undefined, 'ok', 5, [], {}, { connection: 'x' }, { connection: null }]) expect(() => connectReply(bad)).toThrow(/no connection in it/);
+    for (const test of ['passed', 1, [], { ok: true }, { ok: 'yes', summary: 's' }, { ok: true, summary: 's', steps: 'x' }]) {
+      expect(() => connectReply({ connection: view(), test })).toThrow(/test report in a shape this page can not show/);
+    }
   });
 });

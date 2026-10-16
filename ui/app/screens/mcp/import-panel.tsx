@@ -79,7 +79,7 @@ export function ImportServers(handle: Handle<{ existingIds: readonly string[]; o
         <code>.vscode\mcp.json</code>. Environment values and bearer tokens in it go to the Windows credential store.
       </p>
       <Field label="Configuration (JSON)">
-        {(id) => <textarea id={id} spellcheck={false} value={text} mix={on('input', (e) => void (text = (e.currentTarget as HTMLTextAreaElement).value))} />}
+        {(id) => <textarea id={id} spellcheck={false} value={text} mix={on('input', (e) => ((text = (e.currentTarget as HTMLTextAreaElement).value), void handle.update()))} />}
       </Field>
       <div mix={formActions} style={{ justifyContent: 'flex-start' }}>
         <label>

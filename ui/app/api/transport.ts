@@ -2,6 +2,7 @@
 // event stream with replay from a sequence number. HttpTransport (dev server, HTTP + Server-Sent Events) is implemented
 // and tested here. WailsTransport (src/api/wails.ts) is the shape the Wails shell will provide; it has not run in WebView2.
 
+import { isDrydockEvent, LimitedWarn } from './guards.ts';
 import type { DrydockEvent } from './types.ts';
 
 export type RpcErrorKind =
@@ -68,6 +69,7 @@ export class HttpTransport implements Transport {
   private readonly base: string;
   private readonly fetchImpl: typeof fetch;
   private readonly esFactory: EventSourceFactory;
+  private readonly badEvents = new LimitedWarn();
 
   constructor(opts: HttpTransportOptions) {
     this.token = opts.token;
@@ -122,6 +124,7 @@ export class HttpTransport implements Transport {
       if (closed) return;
       const parsed = parseEvent(ev.data);
       if (parsed) h.onEvent(parsed);
+      else this.badEvents.warn('Ignored a malformed event from the core (not JSON, or without a seq and a type)');
     });
     return {
       close() {
@@ -143,8 +146,8 @@ function kindFor(status: number): RpcErrorKind {
 /** Parse one SSE data payload. Returns undefined for anything that is not an event with a positive integer seq. */
 export function parseEvent(data: string): DrydockEvent | undefined {
   try {
-    const e = JSON.parse(data) as DrydockEvent;
-    if (e && typeof e === 'object' && Number.isInteger(e.seq) && e.seq > 0 && typeof e.type === 'string') return e;
+    const e: unknown = JSON.parse(data);
+    if (isDrydockEvent(e)) return e;
   } catch {
     /* fall through */
   }

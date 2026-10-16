@@ -19,6 +19,7 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section } from '../../ui/layout.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
+import { ClippedText } from '../../ui/clipped-text.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AddMcpServer } from '../mcp/gallery.tsx';
 import { actionsRow, cardHead, confirmCss, serverLogo, ServerMark, subhead, whereCss } from '../mcp/mcp-screen.tsx';
@@ -193,7 +194,7 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; say: Say; fail: Fail; on
                             shown here as data.
                           </div>
                         ) : null}
-                        {tool.description ? <div>{tool.description}</div> : null}
+                        {tool.description ? <ClippedText text={tool.description} data-testid="mcp-tool-description" /> : null}
                       </td>
                       <td>
                         <label>

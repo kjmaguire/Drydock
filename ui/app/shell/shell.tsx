@@ -10,6 +10,7 @@ import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from '../lib/rou
 import { routes } from '../routes.ts';
 import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
 import { services, watch } from '../state/services.tsx';
+import { ErrorBoundary } from '../ui/error-boundary.tsx';
 import { ErrorNote, Loading } from '../ui/feedback.tsx';
 import { Page } from '../ui/layout.tsx';
 import { t } from '../ui/tokens.ts';
@@ -130,11 +131,22 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
             ) : null}
             {inProject && project && projectHasRepo(project) ? <RepoConfigBanner key={project.id} projectId={project.id} /> : null}
             <main id="main" tabIndex={-1} mix={mainCss}>
-              {center}
+              {/* a page that fails to draw shows what failed here and leaves the top bar, the dock and the panel working */}
+              <ErrorBoundary label="this page" resetKey={url.pathname}>
+                {center}
+              </ErrorBoundary>
             </main>
-            {project ? <Dock projectId={project.id} taskId={taskContext} /> : null}
+            {project ? (
+              <ErrorBoundary label="the dock">
+                <Dock projectId={project.id} taskId={taskContext} />
+              </ErrorBoundary>
+            ) : null}
           </div>
-          {inProject ? <Details taskId={taskContext} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} /> : null}
+          {inProject ? (
+            <ErrorBoundary label="the details panel">
+              <Details taskId={taskContext} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} />
+            </ErrorBoundary>
+          ) : null}
         </div>
         <CommandPalette onMessage={(id) => void openDM(id)} />
       </div>

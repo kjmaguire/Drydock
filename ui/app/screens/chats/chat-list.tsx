@@ -353,7 +353,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
             })}
           >
             <ErrorNote error={renameAct.error} what="Could not rename the chat" />
-            <Field label="Title">{(id) => <input id={id} value={renameText} maxLength={200} mix={[on('input', (e) => void (renameText = e.currentTarget.value)), ref((n) => queueMicrotask(() => (n as HTMLInputElement).select()))]} />}</Field>
+            <Field label="Title">{(id) => <input id={id} value={renameText} maxLength={200} mix={[on('input', (e) => ((renameText = e.currentTarget.value), void handle.update())), ref((n) => queueMicrotask(() => (n as HTMLInputElement).select()))]} />}</Field>
             <div mix={formActions} style={{ justifyContent: 'flex-end' }}>
               <Button variant="ghost" mix={[on('click', () => ((renaming = undefined), void handle.update()))]}>
                 Cancel

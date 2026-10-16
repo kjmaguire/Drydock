@@ -167,7 +167,19 @@ describe('event stream parsing', () => {
     expect(urls[0]).toBe('/events?after=12&token=a%20b');
     es.onopen?.({});
     listeners['drydock']!({ data: '{"seq":13,"type":"x"}' });
-    listeners['drydock']!({ data: 'garbage' });
+    const warnings: unknown[][] = [];
+    const warn = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(a);
+    try {
+      listeners['drydock']!({ data: 'garbage' });
+      listeners['drydock']!({ data: '{"seq":"15","type":"x","data":{"token":"secret-token"}}' });
+    } finally {
+      console.warn = warn;
+    }
+    // L43: what is not an event is ignored with a warning in the console that does not repeat its data
+    expect(warnings).toHaveLength(2);
+    expect(String(warnings[0]![0])).toContain('malformed event');
+    expect(JSON.stringify(warnings)).not.toContain('secret-token');
     es.onerror?.({});
     expect({ opened, errors, got }).toEqual({ opened: 1, errors: 1, got: [13] });
     stream.close();
@@ -232,7 +244,13 @@ describe('WailsTransport (against fakes; never run in WebView2)', () => {
     expect(Subscribe).toHaveBeenCalledWith(7);
     cb({ data: { seq: 8, type: 'a' } });
     cb({ data: [{ seq: 9, type: 'a' }] });
-    cb({ data: 'junk' });
+    const warn = console.warn;
+    console.warn = () => {}; // the junk is warned about (see wails.test.ts)
+    try {
+      cb({ data: 'junk' });
+    } finally {
+      console.warn = warn;
+    }
     expect(got).toEqual([8, 9]);
     s.close();
     expect(off).toHaveBeenCalled();

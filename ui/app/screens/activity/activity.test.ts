@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { DrydockEvent } from '../../api/types.ts';
-import { dataPreview, matchesFilter, selectRows, typeTone } from './activity.ts';
+import { matchesFilter, selectRows, typeTone } from './activity.ts';
 
 const ev = (seq: number, type: string, extra: Partial<DrydockEvent> = {}): DrydockEvent => ({ seq, time: '2026-01-01T00:00:00Z', type, ...extra });
 
@@ -21,12 +21,6 @@ describe('activity helpers', () => {
     expect(selectRows(events, { filter: '' }).map((e) => e.seq)).toEqual([4, 3, 2, 1]);
     expect(selectRows(events, { filter: 'task.*', projectId: 'p1' }).map((e) => e.seq)).toEqual([4, 1]);
     expect(selectRows(events, { filter: '', limit: 2 }).map((e) => e.seq)).toEqual([4, 3]);
-  });
-
-  it('previews data on one line, at most 200 characters', () => {
-    expect(dataPreview(undefined)).toBe('');
-    expect(dataPreview({ a: 1 })).toBe('{"a":1}');
-    expect(dataPreview('x'.repeat(500)).length).toBe(200);
   });
 
   it('colors failures, warnings and successes', () => {

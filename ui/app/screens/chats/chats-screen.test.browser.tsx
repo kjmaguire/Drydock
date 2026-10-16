@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Chat, ChatHit, ChatListItem, ChatMessage } from '../../api/chatClient.ts';
 import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, typeKeys, valueOf, waitFor } from '../../test/render.tsx';
 import { lic } from '../../test/fixtures.ts';
 import { CommandPalette } from '../../shell/palette.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
@@ -240,6 +240,20 @@ describe('Chats list', () => {
     expect(must(list.querySelector('[role="alert"]'), 'list alert').textContent).toContain('no valid license');
   });
 
+  it('keeps every key typed into the rename box, and renames to the whole title (H12)', async () => {
+    const updates: unknown[] = [];
+    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'Draft' })], chatUpdate: async (u) => (updates.push(u), chat({ id: 'c1', title: u.title })) });
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Draft']), r);
+    await pickMenu(r, 'Draft', 'Rename');
+    const dlg = await waitFor(() => dialogWith('Rename chat'), r);
+    const box = byLabel<HTMLInputElement>(dlg, 'Title');
+    await waitFor(() => expect(box.selectionStart === 0 && box.selectionEnd === box.value.length).toBe(true), r); // opens with the old title selected
+    await typeKeys(box, 'Release notes', r);
+    expect(box.value).toBe('Release notes');
+    await r.act(() => byText(dlg, 'button', 'Save').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'c1', title: 'Release notes' }]), r);
+  });
+
   it('shows a failed rename inside the dialog, not behind it', async () => {
     const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'Draft' })], chatUpdate: async () => Promise.reject(new Error('Drydock is read-only: no valid license')) });
     await waitFor(() => expect(rowTitles(r)).toEqual(['Draft']), r);
@@ -462,6 +476,31 @@ describe('Conversation', () => {
     await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', title: 'Multiply plan' }]), r);
     await waitFor(() => expect($(r, '[data-testid="chat-title"]')!.textContent).toBe('Multiply plan'), r);
+  });
+
+  it('keeps every key typed into the inline title box (H12)', async () => {
+    const updates: unknown[] = [];
+    const { r } = conv(chat(), [], { chatUpdate: async (u) => (updates.push(u), chat({ title: u.title })) });
+    const btn = await waitFor(() => must$(r, '[data-testid="chat-title"]'), r);
+    await r.act(() => btn.click());
+    const input = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Chat title'), r);
+    await waitFor(() => expect(input.selectionStart === 0 && input.selectionEnd === input.value.length).toBe(true), r);
+    await typeKeys(input, 'Multiply plan', r);
+    expect(input.value).toBe('Multiply plan');
+    await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', title: 'Multiply plan' }]), r);
+  });
+
+  it('keeps every key typed into the allow-rule box, and allows the whole rule (H12)', async () => {
+    const allowed: unknown[] = [];
+    const { r } = conv(chat(), [], { chatAllowTool: async (id, tool) => (allowed.push([id, tool]), chat({ allowedTools: [tool] })) });
+    const btn = await waitFor(() => byText(r.container, 'button', /^Allowed tools/), r);
+    await r.act(() => btn.click());
+    const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Rule to allow'), r);
+    await typeKeys(box, 'Bash(npm test)', r);
+    expect(box.value).toBe('Bash(npm test)');
+    await r.act(() => (box.form as HTMLFormElement).requestSubmit());
+    await waitFor(() => expect(allowed).toEqual([['chat_a', 'Bash(npm test)']]), r);
   });
 
   it('streams a turn: deltas fill the in-progress bubble outside the live region, the stored message replaces it, chat.turn ends it', async () => {

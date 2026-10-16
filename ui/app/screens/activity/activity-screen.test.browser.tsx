@@ -34,6 +34,27 @@ describe('ActivityScreen', () => {
     expect(r.container.textContent).toContain('The event log as the core persisted it (newest first).');
   });
 
+  it('shows the start of each payload from the ring, which holds a preview and not the payload (M22)', async () => {
+    const big = { diff: 'z'.repeat(300_000) };
+    const s = setup({ eventsReplay: async () => [ev(1, 'task.diff', { projectId: 'p1', taskId: 't1', data: big }), ev(2, 'agent.created', { projectId: 'p1', data: { name: 'Pay' } })] });
+    const r = mount(<ActivityScreen />, s);
+    await waitFor(() => expect(types(r.container)).toEqual(['agent.created', 'task.diff']), r);
+    const cell = r.$('[data-type="task.diff"] td.data')!;
+    expect(cell.textContent!.startsWith('{"diff":"zzzz')).toBe(true);
+    expect(cell.textContent!.length).toBe(200);
+    // the tooltip has the stored preview (2 KB at most) and says the rest is not here
+    const title = cell.getAttribute('title')!;
+    expect(title.length).toBeGreaterThan(2000);
+    expect(title.length).toBeLessThan(2200);
+    expect(title).toContain('cut here');
+    expect(r.$('[data-type="agent.created"] td.data')!.getAttribute('title')).toBe('{"name":"Pay"}');
+    for (const row of s.store.getSnapshot().events) expect('data' in row).toBe(false);
+    // a live event is kept the same way
+    s.emit({ type: 'task.completed', projectId: 'p1', data: big });
+    await waitFor(() => expect(types(r.container)[0]).toBe('task.completed'), r);
+    expect('data' in s.store.getSnapshot().events.at(-1)!).toBe(false);
+  });
+
   it('filters by type prefix', async () => {
     const s = setup({ eventsReplay: async () => [ev(1, 'task.created', { projectId: 'p1' }), ev(2, 'agent.created', { projectId: 'p1' }), ev(3, 'task.completed', { projectId: 'p1' })] });
     const r = mount(<ActivityScreen />, s);

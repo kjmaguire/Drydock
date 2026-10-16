@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
 import { IntegrationsScreen } from '../integrations/integrations-screen.tsx';
 import { devLicense, galleryCard, libServer, pay, rev } from './fixtures.ts';
 import { identityLine } from './gallery.tsx';
@@ -223,6 +223,27 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(r.container.innerHTML).not.toContain('ghp_secret_value_123');
   });
 
+  it('keeps every key typed into the token field, and sends the whole token (H12)', async () => {
+    const calls: unknown[][] = [];
+    let cards: McpGalleryCard[] = [GH];
+    const r = show({
+      mcpGallery: async () => cards,
+      mcpConnect: async (...a: unknown[]) => {
+        calls.push(a);
+        cards = [{ ...GH, status: 'connected', libraryId: 'gh', account: 'octocat' }];
+        return { card: cards[0]! };
+      },
+    });
+    await openVendor(r, 'github');
+    const gh = await cardOf(r, 'gh');
+    await r.act(() => byText(gh, 'button', 'Connect GitHub').click());
+    const field = byLabel<HTMLInputElement>(gh, 'Token for GitHub');
+    await typeKeys(field, 'ghp_typed_key_by_key', r);
+    expect(field.value).toBe('ghp_typed_key_by_key');
+    await r.act(() => (gh.querySelector('[data-testid="connector-token"] button[type="submit"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([['gh', 'ghp_typed_key_by_key']]), r);
+  });
+
   it('starts the browser sign-in for an OAuth server and links the sign-in page', async () => {
     let cards: McpGalleryCard[] = [LINEAR];
     const r = show({
@@ -366,6 +387,37 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
       { id: 'docs', display: 'docs', transport: 'http', url: 'https://learn.microsoft.com/api/mcp' },
       { id: 'gh', display: 'gh', transport: 'stdio', argv: ['github-mcp-server', 'stdio'], secretEnv: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_x' } },
     ]);
+  });
+
+  it('keeps every key typed into the import box, and reads the whole file (H12)', async () => {
+    const r = show({ mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker' })] });
+    await waitFor(() => must(r.$('[data-testid="own-servers"] [data-testid="own-server"][data-id="mine"]')), r);
+    await r.act(() => byText(r.container, 'button', 'Import from a file').click());
+    const panel = await waitFor(() => must(document.querySelector('[data-testid="mcp-import"]')) as HTMLElement, r);
+    const json = JSON.stringify({ mcpServers: { docs: { url: 'https://learn.microsoft.com/api/mcp' } } });
+    const box = byLabel<HTMLTextAreaElement>(panel, 'Configuration (JSON)');
+    await typeKeys(box, json, r);
+    expect(box.value).toBe(json);
+    await r.act(() => byText(panel, 'button', 'Read servers').click());
+    await waitFor(() => expect(panel.querySelectorAll('[data-testid="import-candidate"]').length).toBe(1), r);
+  });
+
+  it('clips the descriptions a server gives its tools and itself (L48)', async () => {
+    const long = `${'Reads and writes everything. '.repeat(3000)}LAST WORDS`;
+    const r = show({
+      mcpGallery: async () => [galleryCard({ id: 'gh', display: 'GitHub', publisher: 'GitHub', brand: 'github', auth: 'bearer', integration: 'github', tools: [{ name: 'huge', description: long, readOnlyHint: true }] })],
+      mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker', serverInfo: { name: 'acme', version: '1', description: long } })],
+    });
+    await openVendor(r, 'github');
+    const gh = await cardOf(r, 'gh');
+    await r.act(() => (gh.querySelector('details summary') as HTMLElement).click());
+    const tool = await waitFor(() => must(gh.querySelector('[data-testid="connector-tool-description"]')) as HTMLElement, r);
+    expect(tool.textContent!.length).toBeLessThan(340);
+    expect(gh.textContent).not.toContain('LAST WORDS');
+    const own = await waitFor(() => must(r.$('[data-testid="own-server"][data-id="mine"] [data-testid="own-server-description"]')) as HTMLElement, r);
+    expect(own.textContent!.length).toBeLessThan(340);
+    await r.act(() => byText(own, 'button', 'Show more').click());
+    expect(own.querySelector('.clip-full')!.textContent).toBe(long);
   });
 
   it('names identities as plain text', () => {

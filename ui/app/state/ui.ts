@@ -3,6 +3,7 @@
 
 import { applyTheme, loadTheme, type ThemeChoice } from '../lib/theme.ts';
 import type { SkillPick } from '../api/extTypes.ts';
+import { isRecord } from '../api/guards.ts';
 import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'task' | 'thread' | 'inspector';
@@ -19,13 +20,46 @@ interface DockState {
 const DOCK_KEY = 'drydock.dock';
 const DETAILS_KEY = 'drydock.details';
 
-function readJSON<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? ({ ...fallback, ...JSON.parse(raw) } as T) : fallback;
-  } catch {
-    return fallback;
+const DOCK_TABS: readonly DockTab[] = ['terminal', 'diff', 'logs', 'activity'];
+const DOCK_DEFAULT: DockState = { open: false, tab: 'diff', height: 280 };
+const DOCK_MIN_HEIGHT = 120;
+const DOCK_MAX_HEIGHT = 2400;
+const DETAILS_DEFAULT = { open: true, other: false };
+
+/**
+ * The dock states of the projects as stored in localStorage (audit 2026-10-16, L43). The stored text is whatever an older
+ * version, another tool or a person left there: each field is checked, a bad one is the default, and an entry that is not an
+ * object is left out. The keys are project ids, so the result has no prototype to collide with them.
+ */
+export function parseDock(raw: unknown): Record<string, DockState> {
+  const out: Record<string, DockState> = Object.create(null);
+  if (!isRecord(raw)) return out;
+  for (const [id, v] of Object.entries(raw)) {
+    if (!isRecord(v)) continue;
+    out[id] = {
+      open: typeof v.open === 'boolean' ? v.open : DOCK_DEFAULT.open,
+      tab: DOCK_TABS.includes(v.tab as DockTab) ? (v.tab as DockTab) : DOCK_DEFAULT.tab,
+      height: typeof v.height === 'number' && Number.isFinite(v.height) ? Math.min(DOCK_MAX_HEIGHT, Math.max(DOCK_MIN_HEIGHT, Math.round(v.height))) : DOCK_DEFAULT.height,
+    };
   }
+  return out;
+}
+
+/** Whether the details panel is open, per kind of page, as stored; a field that is not a boolean is the default. */
+export function parseDetails(raw: unknown): { open: boolean; other: boolean } {
+  const v = isRecord(raw) ? raw : {};
+  return { open: typeof v.open === 'boolean' ? v.open : DETAILS_DEFAULT.open, other: typeof v.other === 'boolean' ? v.other : DETAILS_DEFAULT.other };
+}
+
+function readStored<T>(key: string, parse: (raw: unknown) => T): T {
+  let raw: unknown;
+  try {
+    const text = localStorage.getItem(key);
+    raw = text ? JSON.parse(text) : undefined;
+  } catch {
+    raw = undefined; // unreadable storage, or text that is not JSON: the defaults
+  }
+  return parse(raw);
 }
 
 function writeJSON(key: string, v: unknown): void {
@@ -49,7 +83,7 @@ export class UiModel extends Model {
   // open or closed is remembered per kind of page: on a room, a task or a run the panel has the context of the page (the
   // task, the thread, who is talking) and starts open; elsewhere it only repeats the team, so it starts as the slim strip
   // and leaves the page its width (owner, 2026-10-13: pages read cramped at 1366-1536 px)
-  #open = readJSON(DETAILS_KEY, { open: true, other: false });
+  #open = readStored(DETAILS_KEY, parseDetails);
   #page: DetailsPage = 'conversation';
   paletteOpen = false;
   theme: ThemeChoice = 'system';
@@ -61,7 +95,7 @@ export class UiModel extends Model {
     super();
     if (opts.persist !== false) {
       this.theme = loadTheme();
-      this.#dock = readJSON<Record<string, DockState>>(DOCK_KEY, {});
+      this.#dock = readStored(DOCK_KEY, parseDock);
     }
   }
 
@@ -168,7 +202,7 @@ export class UiModel extends Model {
   }
 
   get dock(): DockState {
-    return { open: false, tab: 'diff', height: 280, ...this.#dock[this.#project] };
+    return { ...DOCK_DEFAULT, ...this.#dock[this.#project] };
   }
 
   setDock(p: Partial<DockState>, persist = true): void {

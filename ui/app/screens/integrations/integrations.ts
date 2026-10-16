@@ -2,7 +2,8 @@
 // (an integration kind, the MCP connector cards of the same brand, or both), the tones of the status badges, the parameter text
 // of an outbound write, the sentence a sync result becomes, and how a connection and an assignment are described in a line.
 
-import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationView } from '../../api/extTypes.ts';
+import { isRecord } from '../../api/guards.ts';
+import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { formatDate } from '../../lib/format.ts';
 import type { TileBadge, TileTone } from '../../ui/tiles.tsx';
@@ -206,4 +207,22 @@ export function vendorTone(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationV
   if (conn && conn.status !== 'ok' && conn.status !== 'untested') return 'warn';
   if (conn || cardStates.some((st) => st === 'connected')) return 'ok';
   return '';
+}
+
+const isTestStep = (v: unknown): boolean => isRecord(v) && typeof v.id === 'string' && typeof v.name === 'string' && typeof v.ok === 'boolean' && (v.detail === undefined || typeof v.detail === 'string');
+
+/** Whether `v` has the shape the test report view reads: a verdict, a summary and steps (null for none). */
+export const isTestReport = (v: unknown): v is IntegrationTestReport =>
+  isRecord(v) && typeof v.ok === 'boolean' && typeof v.summary === 'string' && (v.steps === undefined || v.steps === null || (Array.isArray(v.steps) && v.steps.every(isTestStep)));
+
+/**
+ * The answer of integration.connect, checked (audit 2026-10-16, L43): the connection, and a test report only in the shape the
+ * page draws. A reply of another shape is an error that says so, where it used to be cast and crash the report view later.
+ */
+export function connectReply(raw: unknown): { connection: IntegrationView; test?: IntegrationTestReport } {
+  if (!isRecord(raw) || !isRecord(raw.connection)) throw new Error('The core answered the connect request in a shape this page does not know: there is no connection in it.');
+  if (raw.test !== undefined && raw.test !== null && !isTestReport(raw.test)) throw new Error('The core connected the service but sent a test report in a shape this page can not show.');
+  const reply: { connection: IntegrationView; test?: IntegrationTestReport } = { connection: raw.connection as unknown as IntegrationView };
+  if (raw.test) reply.test = raw.test as IntegrationTestReport;
+  return reply;
 }

@@ -132,10 +132,39 @@ export function parseRoute(pathname: string): Route {
   }
 }
 
-/** Old hash links (#/task/x) from before the UI routed by path. */
+/**
+ * Old hash links (#/task/x) from before the UI routed by path: the path they name, or undefined for a hash that is not one
+ * or that could name another place. "#//host/x" and "#/\host" are cross-origin URLs once they are a path (history.replaceState
+ * throws a SecurityError for them), and a control character has no place in a link. A bad percent escape ("%E0%A4%A") is not
+ * a problem: the path is never decoded here, and parseRoute keeps it as written.
+ */
 export function hashToPath(hash: string): string | undefined {
   if (!hash.startsWith('#/')) return undefined;
-  return hash.slice(1) || '/';
+  const path = hash.slice(1);
+  // eslint-disable-next-line no-control-regex
+  if (path.startsWith('//') || path.includes('\\') || /[\u0000-\u001f\u007f]/.test(path)) return undefined;
+  try {
+    if (new URL(path, 'http://drydock.invalid').origin !== 'http://drydock.invalid') return undefined;
+  } catch {
+    return undefined;
+  }
+  return path;
+}
+
+/**
+ * Opens the screen an old hash link names, keeping the query (?token= for the dev transport). Never throws: a link it can not
+ * use is left alone, and so is a browser that refuses the new address. Returns whether it moved.
+ */
+export function redirectLegacyHash(loc: Pick<Location, 'hash' | 'search'>, history: Pick<History, 'replaceState'>): boolean {
+  const legacy = hashToPath(loc.hash);
+  if (!legacy) return false;
+  try {
+    history.replaceState(null, '', legacy + loc.search);
+    return true;
+  } catch (err) {
+    console.warn('An old link could not be opened; showing the start page instead.', err);
+    return false;
+  }
 }
 
 /**

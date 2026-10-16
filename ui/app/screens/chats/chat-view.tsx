@@ -276,7 +276,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                 mix={[
                   titleInput,
                   ref((n) => queueMicrotask(() => (n as HTMLInputElement).select())),
-                  on('input', (e) => void (draftTitle = e.currentTarget.value)),
+                  on('input', (e) => ((draftTitle = e.currentTarget.value), void handle.update())),
                   on('keydown', (e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -357,7 +357,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                     });
                   })}
                 >
-                  <input aria-label="Rule to allow" placeholder="Bash(npm test)" value={newRule} spellcheck={false} style={{ flex: '1', fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => void (newRule = e.currentTarget.value))} />
+                  <input aria-label="Rule to allow" placeholder="Bash(npm test)" value={newRule} spellcheck={false} style={{ flex: '1', fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => ((newRule = e.currentTarget.value), void handle.update()))} />
                   <Button type="submit" size="sm" disabled={!!act.busy}>
                     Allow
                   </Button>

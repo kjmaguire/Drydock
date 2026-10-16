@@ -1,6 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it, mock } from 'remix/test';
-import { EventStore } from './eventStore.ts';
+import type { DrydockEvent } from '../api/types.ts';
+import { EVENT_PREVIEW_CHARS, EventStore, rowOf } from './eventStore.ts';
 import { FakeTransport, ManualScheduler, ev } from '../test/fakes.ts';
 
 function setup(opts: ConstructorParameters<typeof EventStore>[1] = {}) {
@@ -157,8 +158,14 @@ describe('EventStore', () => {
       throw new Error('bad listener');
     });
     store.onEvent((e) => seen.push(e.seq));
-    store.ingest(ev(1));
-    store.ingest(ev(2));
+    const real = console.error;
+    console.error = () => {}; // reported, and checked below ("what the store does with bad input")
+    try {
+      store.ingest(ev(1));
+      store.ingest(ev(2));
+    } finally {
+      console.error = real;
+    }
     expect(seen).toEqual([1, 2]);
   });
 
@@ -195,5 +202,142 @@ describe('EventStore', () => {
     expect(seen).toEqual([101]);
     expect(store.getSnapshot().events.map((e) => e.seq)).toEqual([50, 51, 52, 101]);
     expect(store.getSnapshot().lastSeq).toBe(101);
+  });
+});
+
+/** Runs `fn` with console.warn / console.error recorded instead of printed. */
+function quiet<T>(fn: (calls: { warn: unknown[][]; error: unknown[][] }) => T): T {
+  const calls = { warn: [] as unknown[][], error: [] as unknown[][] };
+  const { warn, error } = console;
+  console.warn = (...a: unknown[]) => void calls.warn.push(a);
+  console.error = (...a: unknown[]) => void calls.error.push(a);
+  try {
+    return fn(calls);
+  } finally {
+    console.warn = warn;
+    console.error = error;
+  }
+}
+
+describe('the ring holds previews, not payloads (M22)', () => {
+  const big = { diff: 'x'.repeat(5_000_000), files: Array.from({ length: 1000 }, (_, i) => `file${i}.go`) };
+
+  it('keeps the envelope and at most about 2 KB of the payload, and tells the listeners the event whole', () => {
+    const { store } = setup();
+    const heard: DrydockEvent[] = [];
+    store.onEvent((e) => void heard.push(e));
+    const e = ev(1, 'task.diff', { projectId: 'p1', taskId: 't1', agentId: 'a1', runId: 'r1', data: big });
+    store.ingest(e);
+    const row = store.getSnapshot().events[0]!;
+    expect(row).toMatchObject({ seq: 1, type: 'task.diff', projectId: 'p1', taskId: 't1', agentId: 'a1', runId: 'r1', cut: true });
+    expect(row.preview.length).toBe(EVENT_PREVIEW_CHARS);
+    expect(row.preview.startsWith('{"diff":"xxxx')).toBe(true);
+    expect('data' in row).toBe(false); // the payload is not in the ring
+    expect(JSON.stringify(row).length).toBeLessThan(EVENT_PREVIEW_CHARS + 500);
+    expect(heard).toEqual([e]);
+    expect(heard[0]!.data).toBe(big); // a listener that needs the payload gets the one that arrived
+  });
+
+  it('keeps a small payload whole, and says nothing was cut', () => {
+    const { store } = setup();
+    store.ingest(ev(1, 'agent.created', { data: { name: 'Pay' } }));
+    store.ingest(ev(2, 'license.changed'));
+    const [a, b] = store.getSnapshot().events;
+    expect([a!.preview, a!.cut]).toEqual(['{"name":"Pay"}', false]);
+    expect([b!.preview, b!.cut]).toEqual(['', false]);
+    expect(rowOf(ev(3, 'x.y', { data: [1, 2] })).preview).toBe('[1,2]');
+  });
+
+  it('keeps previews of the events the Activity page backfills too', () => {
+    const { store } = setup();
+    store.backfill([ev(5, 'task.diff', { data: big }), ev(4, 'x.y')]);
+    const rows = store.getSnapshot().events;
+    expect(rows.map((r) => r.seq)).toEqual([4, 5]);
+    expect(rows[1]!.preview.length).toBe(EVENT_PREVIEW_CHARS);
+    expect('data' in rows[1]!).toBe(false);
+  });
+
+  it('holds a few KB per event however big the payloads, which is what bounds the ring by size and not only by count', () => {
+    const { store } = setup({ maxEvents: 50 });
+    for (let i = 1; i <= 200; i++) store.ingest(ev(i, 'task.diff', { data: { diff: 'y'.repeat(200_000) } }));
+    const rows = store.getSnapshot().events;
+    expect(rows).toHaveLength(50);
+    expect(JSON.stringify(rows).length).toBeLessThan(50 * (EVENT_PREVIEW_CHARS + 500));
+  });
+});
+
+describe('what the store does with bad input (L43)', () => {
+  it('ignores a malformed event with a console warning that does not repeat its data, and stops warning after a few', () => {
+    quiet((calls) => {
+      const { store } = setup();
+      const seen: number[] = [];
+      store.onEvent((e) => void seen.push(e.seq));
+      const bad = [null, undefined, 'event', 7, [], {}, { seq: 'x', type: 'a.b' }, { seq: 3 }, { seq: 0, type: 'a.b' }, { seq: 2.5, type: 'a.b' }, { seq: 4, type: 5, data: { secret: 'hunter2' } }];
+      for (const b of bad) expect(store.ingest(b as unknown as DrydockEvent)).toBe(false);
+      expect(store.ingest(ev(1))).toBe(true);
+      expect(seen).toEqual([1]);
+      expect(store.getSnapshot().events.map((e) => e.seq)).toEqual([1]);
+      expect(store.malformed).toBe(bad.length);
+      expect(calls.warn.length).toBe(5);
+      expect(String(calls.warn[0]![0])).toContain('malformed event');
+      expect(JSON.stringify(calls.warn)).not.toContain('hunter2');
+      expect(String(calls.warn[4]![0])).toContain('more of these are not reported');
+      // a duplicate is not malformed: it is the normal overlap after a reconnect
+      expect(store.ingest(ev(1))).toBe(false);
+      expect(store.malformed).toBe(bad.length);
+    });
+  });
+
+  it('a listener that throws is reported once for the same failure, and the other listeners are still told', () => {
+    quiet((calls) => {
+      const { store } = setup();
+      const seen: number[] = [];
+      store.onEvent(() => {
+        throw new Error('bad listener');
+      });
+      store.onEvent((e) => void seen.push(e.seq));
+      store.ingest(ev(1));
+      store.ingest(ev(2));
+      store.ingest(ev(3));
+      expect(seen).toEqual([1, 2, 3]);
+      expect(store.listenerErrors).toBe(3);
+      expect(calls.error).toHaveLength(1); // the same failure of the same listener is not repeated
+      expect(String(calls.error[0]![0])).toContain('event listener');
+      expect((calls.error[0]![1] as Error).message).toBe('bad listener');
+    });
+  });
+
+  it('reports a listener again when it fails differently, and each failing listener on its own', () => {
+    quiet((calls) => {
+      const { store } = setup();
+      let n = 0;
+      store.onEvent(() => {
+        throw new Error(`first ${n++ < 1 ? 'kind' : 'other kind'}`);
+      });
+      store.onEvent(() => {
+        throw new Error('second');
+      });
+      store.ingest(ev(1));
+      store.ingest(ev(2));
+      expect(calls.error.map((c) => (c[1] as Error).message)).toEqual(['first kind', 'second', 'first other kind']);
+    });
+  });
+
+  it('a subscriber that throws does not stop the others or the stream', () => {
+    quiet((calls) => {
+      const { store } = setup();
+      const told: number[] = [];
+      store.subscribe(() => {
+        throw new Error('bad subscriber');
+      });
+      store.subscribe(() => void told.push(store.getSnapshot().events.length));
+      expect(store.ingest(ev(1))).toBe(true);
+      expect(store.ingest(ev(2))).toBe(true);
+      expect(told).toEqual([1, 2]);
+      expect(calls.error).toHaveLength(1);
+      expect(String(calls.error[0]![0])).toContain('subscriber');
+      store.stop();
+      expect(store.getSnapshot().status).toBe('stopped');
+    });
   });
 });

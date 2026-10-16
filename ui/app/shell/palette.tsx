@@ -72,6 +72,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   let input: HTMLInputElement | undefined;
   let query = '';
   let active = 0;
+  let pressedBackdrop = false; // see ui/dialog.tsx: a drag from the input out to the backdrop is not a click on it
   // recent chats, read while the palette is open
   const chats = liveQuery(handle, {
     load: () => s.client.chatList({ limit: PALETTE_CHATS }),
@@ -194,8 +195,13 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
           on('close', () => {
             if (s.ui.paletteOpen) s.ui.setPalette(false);
           }),
+          on('pointerdown', (e) => {
+            pressedBackdrop = e.target === e.currentTarget;
+          }),
           on('click', (e) => {
-            if (e.target === e.currentTarget) s.ui.setPalette(false);
+            const closing = pressedBackdrop && e.target === e.currentTarget;
+            pressedBackdrop = false;
+            if (closing) s.ui.setPalette(false);
           }),
         ]}
       >

@@ -1,5 +1,6 @@
 // Browser entry: pick the transport (the Wails bridge in the desktop app, the HTTP dev transport elsewhere), read the
-// event log head, start the event store, build the services and hand the router to the Remix SPA runtime.
+// event log head, start the event store, build the services and hand the router to the Remix SPA runtime. If any of that
+// fails, the person sees why (lib/failure.ts) instead of a blank window; so do errors the running app does not handle.
 
 import '@fontsource-variable/inter';
 import './styles/app.css';
@@ -8,7 +9,8 @@ import { createClient } from './api/client.ts';
 import { HttpTransport, resolveToken, type Transport } from './api/transport.ts';
 import { isWailsHost, loadWailsRuntime, WailsTransport } from './api/wails.ts';
 import { applyTheme, loadTheme } from './lib/theme.ts';
-import { hashToPath } from './lib/route.ts';
+import { isAbort, showRuntimeFailure, startGuarded } from './lib/failure.ts';
+import { redirectLegacyHash } from './lib/route.ts';
 import { createAppRouter } from './router.tsx';
 import { EventStore } from './state/eventStore.ts';
 import { ProjectData } from './state/project.ts';
@@ -42,9 +44,8 @@ async function pickTransport(): Promise<Transport> {
 
 async function boot() {
   applyTheme(loadTheme());
-  // links from before the UI routed by path (#/task/x) still open the right screen
-  const legacy = hashToPath(window.location.hash);
-  if (legacy) window.history.replaceState(null, '', legacy + window.location.search); // keep ?token= for pickTransport
+  // links from before the UI routed by path (#/task/x) still open the right screen (the query stays: ?token= is for pickTransport)
+  redirectLegacyHash(window.location, window.history);
 
   const transport = await pickTransport();
   const client = createClient(transport);
@@ -72,8 +73,12 @@ async function boot() {
 
   if (!('navigation' in window)) console.warn('This browser has no Navigation API: links will load whole documents.');
   const app = run(createAppRouter(services), { fallback: <Loading label="Starting Drydock..." /> });
-  app.addEventListener('error', (e) => console.error('Drydock UI error:', (e as ErrorEvent).error));
+  app.addEventListener('error', (e) => {
+    const err = (e as ErrorEvent).error;
+    console.error('Drydock UI error:', err);
+    if (!isAbort(err)) showRuntimeFailure(document, err);
+  });
   await app.ready();
 }
 
-void boot();
+void startGuarded(document, boot);

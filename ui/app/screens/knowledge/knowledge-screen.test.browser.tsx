@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { MemoryEntry, Pack, RequirementTrace, TraceTask } from '../../api/extTypes.ts';
 import type { AuthorKind, Message, Room } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
-import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
 import { KnowledgeScreen } from './knowledge-screen.tsx';
 
 afterEach(cleanup);
@@ -129,6 +129,22 @@ describe('the Knowledge hub', () => {
       ['send', 'chat_1', 'where do we round currency?'],
     ]);
     expect(byLabel(r.container, 'Ask anything about gocalc').value).toBe('');
+  });
+
+  it('keeps every key typed into the ask box, and asks the whole question (H12)', async () => {
+    const calls: unknown[] = [];
+    const r = mount(
+      <KnowledgeScreen onNavigate={() => {}} />,
+      svc({
+        chatCreate: async () => ({ id: 'chat_k' }) as never,
+        chatSend: async (id, text) => (calls.push([id, text]), { turnId: 'tr1', version: 1 }),
+      }),
+    );
+    const box = await waitFor(() => byLabel(r.container, 'Ask anything about gocalc'), r);
+    await typeKeys(box, 'where do we round currency?', r);
+    expect(box.value).toBe('where do we round currency?');
+    await r.act(() => byText(r.container, 'button', 'Ask').click());
+    await waitFor(() => expect(calls).toEqual([['chat_k', 'where do we round currency?']]), r);
   });
 
   it('an empty question starts nothing; a question that could not be sent stays with the reason and a link to the chat', async () => {

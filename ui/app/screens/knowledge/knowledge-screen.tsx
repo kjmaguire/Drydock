@@ -234,7 +234,7 @@ export function KnowledgeScreen(handle: Handle<{ onNavigate?: (href: string) => 
               placeholder={`Ask anything about ${name}`}
               value={question}
               disabled={!project}
-              mix={on('input', (e) => void (question = e.currentTarget.value))}
+              mix={on('input', (e) => ((question = e.currentTarget.value), void handle.update()))}
             />
             <button type="submit" aria-label="Ask" disabled={!project || !!act.busy}>
               <Icon icon={ArrowUp} size={18} />

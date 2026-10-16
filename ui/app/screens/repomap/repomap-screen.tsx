@@ -109,6 +109,7 @@ export function RepoMapScreen(handle: Handle) {
                     data-testid="repomap-focus"
                     mix={on('input', (e) => {
                       focusText = e.currentTarget.value;
+                      void handle.update();
                     })}
                   />
                 )}
@@ -125,6 +126,7 @@ export function RepoMapScreen(handle: Handle) {
                     data-testid="repomap-budget"
                     mix={on('input', (e) => {
                       budgetText = e.currentTarget.value;
+                      void handle.update();
                     })}
                   />
                 )}

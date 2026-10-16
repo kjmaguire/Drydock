@@ -10,7 +10,8 @@
 
 import { TypedEventTarget } from 'remix/component';
 import type { Chat, ChatClient, ChatMessage, ChatTurnEnd } from '../../api/chatClient.ts';
-import { normalizeChat } from '../../api/chatClient.ts';
+import { isChat, isChatMessage, isChatTurnEnd, normalizeChat } from '../../api/chatClient.ts';
+import { LimitedWarn } from '../../api/guards.ts';
 import type { DrydockEvent } from '../../api/types.ts';
 import type { EventStore } from '../../state/eventStore.ts';
 import { mergeMessages } from './chats.ts';
@@ -52,6 +53,7 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
   /** A turn chat.send accepted that no snapshot shows yet, and the chat version that will show it. */
   #pending: { turnId: string; version: number } | undefined;
   #stopped = false;
+  readonly #badEvents = new LimitedWarn();
 
   constructor(client: FeedClient, store: EventStore, id: string) {
     super();
@@ -191,20 +193,23 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         break;
       }
       case 'chat.message': {
-        const m = d.message as ChatMessage | undefined;
-        if (!m || m.chatId !== this.id) return;
+        const m = d.message;
+        if (!isChatMessage(m)) return this.#ignore(e, 'message');
+        if (m.chatId !== this.id) return;
         this.messages = mergeMessages(this.messages, [m]);
         // the stored assistant block covers the text streamed so far (the core flushes deltas before it stores)
         if (m.role === 'assistant' && this.streaming) this.streaming = { ...this.streaming, text: '' };
         break;
       }
       case 'chat.updated': {
-        const c = d.chat as Chat | undefined;
-        if (!c || !this.#take(normalizeChat(c))) return;
+        const c = d.chat;
+        if (!isChat(c) || c.id !== this.id) return this.#ignore(e, 'chat');
+        if (!this.#take(normalizeChat(c))) return;
         break;
       }
       case 'chat.turn':
-        this.lastTurn = d as unknown as ChatTurnEnd;
+        if (!isChatTurnEnd(d)) return this.#ignore(e, 'turn');
+        this.lastTurn = d;
         this.streaming = undefined;
         if (this.#pending?.turnId === d.turnId) this.#pending = undefined;
         break;
@@ -223,6 +228,11 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         return;
     }
     this.#emit();
+  }
+
+  /** An event for this chat whose data is not the shape the feed reads: it is left out, and the console says which event. */
+  #ignore(e: DrydockEvent, field: string): void {
+    this.#badEvents.warn(`Ignored a ${e.type} event (seq ${e.seq}) whose ${field} is not what the chat feed reads`);
   }
 
   #emit(): void {

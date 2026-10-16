@@ -17,25 +17,15 @@ export function matchesFilter(type: string, filter: string): boolean {
  * The rows to show, newest first, at most `limit`: events of other projects are left out when `projectId` is given (an
  * event without a project, such as a workspace event, always shows), then the type filter applies.
  */
-export function selectRows(events: readonly DrydockEvent[], opts: { filter: string; projectId?: string; limit?: number }): DrydockEvent[] {
+export function selectRows<E extends Pick<DrydockEvent, 'type' | 'projectId'>>(events: readonly E[], opts: { filter: string; projectId?: string; limit?: number }): E[] {
   const limit = opts.limit ?? 500;
-  const out: DrydockEvent[] = [];
+  const out: E[] = [];
   for (let i = events.length - 1; i >= 0 && out.length < limit; i--) {
     const e = events[i]!;
     if (opts.projectId && e.projectId && e.projectId !== opts.projectId) continue;
     if (matchesFilter(e.type, opts.filter)) out.push(e);
   }
   return out;
-}
-
-/** A short, single-line view of an event's data (at most 200 characters); empty when there is none. */
-export function dataPreview(data: unknown, max = 200): string {
-  if (data === undefined) return '';
-  try {
-    return (JSON.stringify(data) ?? '').slice(0, max);
-  } catch {
-    return '';
-  }
 }
 
 /** The tone of an event type's family, so a long log can be scanned by color as well as by its words. */

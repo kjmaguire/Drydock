@@ -1,4 +1,5 @@
 import { expect } from 'remix/assert';
+import { createRoot } from 'remix/component';
 import { afterEach, describe, it } from 'remix/test';
 import { cleanup, renderPlain } from '../test/render.tsx';
 import { lex, Markdown, memoLex, safeHref } from './markdown.tsx';
@@ -147,5 +148,196 @@ describe('safeHref', () => {
     for (const bad of ['', 'javascript:1', 'file:///etc/passwd', 'ftp://x', 'blob:https://x/y', 'about:blank', '#frag', 'a.example', 'https://a\u0000.example']) {
       expect(safeHref(bad)).toBeUndefined();
     }
+  });
+});
+
+// --- H11: crafted text can neither freeze the window nor leave it blank ---
+
+const rep = (unit: string, n: number) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
+
+/** Mounts straight into a root of its own so that an error thrown while drawing is seen (the runtime reports it on the root). */
+function mountChecked(node: JSX.Element): { container: HTMLElement; errors: unknown[]; ms: number; flush: () => void; cleanup: () => void } {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const errors: unknown[] = [];
+  root.addEventListener('error', (e) => errors.push(e.error));
+  const t0 = performance.now();
+  root.render(node);
+  root.flush();
+  const ms = performance.now() - t0;
+  const out = {
+    container,
+    errors,
+    ms,
+    flush: () => root.flush(),
+    cleanup: () => {
+      root.dispose();
+      container.remove();
+    },
+  };
+  mountedChecked.push(out);
+  return out;
+}
+const mountedChecked: { cleanup: () => void }[] = [];
+afterEach(() => {
+  for (const m of mountedChecked.splice(0)) m.cleanup();
+});
+
+/** The inputs that took marked 18.1.1 seconds, or threw RangeError and left the message blank, at 20,000 characters (audit H11). */
+const HOSTILE: Record<string, string> = {
+  'unclosed em "*a *"': rep('*a *', 20000),
+  'unclosed em "_a _"': rep('_a _', 20000),
+  'unclosed strong "**a **"': rep('**a **', 20000),
+  'nested em "*a **b *c "': rep('*a **b *c ', 20000),
+  'underscores "a_b_c_"': rep('a_b_c_', 20000),
+  'star words "a*b*c*"': rep('a*b*c*', 20000),
+  'blockquote ">"': rep('>', 20000),
+  'blockquote "> "': rep('> ', 20000),
+  'ordered list "1. "': rep('1. ', 20000),
+  'nested lists "- - - a"': `${rep('- ', 8000)}a`,
+  'quote and list "> - "': `${rep('> - ', 8000)}x`,
+  'task list': rep('- [ ] a\n', 20000),
+  'list lines': rep('- a\n', 20000),
+  'links "[a](b)"': rep('[a](b)', 20000),
+  'images "![a](b)"': rep('![a](b)', 20000),
+  'paragraphs "a"': rep('a\n\n', 20000),
+  'headings "# a"': rep('# a\n', 20000),
+  'table rows': `|a|b|\n|-|-|\n${rep('|c|d|\n', 20000)}`,
+  'inline html "<b>x</b>"': rep('<b>x</b>', 20000),
+  'code spans': rep('`a` ', 20000),
+  'brackets "["': rep('[', 20000),
+  'one huge word': rep('a', 20000),
+};
+/** Drawing a hostile message takes a few milliseconds to a few tens; this is far above that and far below the seconds it took. */
+const MS_LIMIT = 500;
+
+describe('Markdown limits (H11)', () => {
+  it('draws every hostile 20,000-character message at once, with its text, and without an error', () => {
+    const slow: string[] = [];
+    for (const [name, src] of Object.entries(HOSTILE)) {
+      const m = mountChecked(<Markdown source={src} />);
+      expect(m.errors).toEqual([]);
+      const md = m.container.querySelector('.md');
+      // not blank: the text is there (formatted or as written), and the page it draws is small
+      expect(md?.textContent?.length ?? 0).toBeGreaterThan(1000);
+      expect(m.container.querySelectorAll('*').length).toBeLessThan(4000);
+      if (m.ms > MS_LIMIT) slow.push(`${name}: ${Math.round(m.ms)} ms`);
+      m.cleanup();
+    }
+    expect(slow).toEqual([]);
+  });
+
+  it('shows a block that opens more than 50 blockquotes or list items as the text that was written, in a plain block', () => {
+    for (const src of [rep('>', 20000), rep('1. ', 6666), `${rep('- ', 6000)}a`]) {
+      const m = mountChecked(<Markdown source={src} />);
+      expect(m.errors).toEqual([]);
+      const plain = m.container.querySelectorAll('pre.md-plain');
+      expect(plain).toHaveLength(1);
+      expect(plain[0]!.textContent).toBe(src);
+      expect(m.container.querySelector('blockquote, ul, ol')).toBeNull();
+    }
+  });
+
+  it('keeps the Markdown around a hostile block', () => {
+    const m = mountChecked(<Markdown source={`# Title\n\n**bold** text\n\n${rep('> ', 200)}x\n\n- one\n- two\n`} />);
+    expect(m.container.querySelector('h3')?.textContent).toBe('Title');
+    expect(m.container.querySelector('strong')?.textContent).toBe('bold');
+    expect(m.container.querySelectorAll('li')).toHaveLength(2);
+    expect(m.container.querySelectorAll('pre.md-plain')).toHaveLength(1);
+    expect(m.container.querySelector('blockquote')).toBeNull();
+  });
+
+  it('formats the first 4,000 characters of a long paragraph and holds the rest behind "Show more", as plain text', () => {
+    const para = `${rep('word ', 6000)}end`;
+    const m = mountChecked(<Markdown source={`**bold** ${para}`} />);
+    expect(m.container.querySelector('strong')?.textContent).toBe('bold'); // the part lexed as Markdown
+    const more = m.container.querySelector<HTMLButtonElement>('button.md-more')!;
+    expect(more.textContent).toMatch(/^Show \d+ more characters$/);
+    const hidden = Number(more.textContent!.match(/\d+/)![0]);
+    expect(hidden).toBeGreaterThan(2000);
+    const shown = m.container.querySelector('p')!.textContent!.replace(more.textContent!, '');
+    expect(shown.length + hidden).toBe(`bold ${para}`.length);
+    more.click();
+    m.flush();
+    expect(m.container.querySelector('button.md-more')).toBeNull();
+    expect(m.container.querySelector('p')!.textContent).toBe(`bold ${para}`); // all of it, once asked for
+  });
+
+  it('does not lex a run whose delimiters would cost seconds: it is the text that was written, its tail behind "Show more"', () => {
+    const src = rep('*a *', 20000);
+    const m = mountChecked(<Markdown source={src} />);
+    expect(m.container.querySelector('em, strong')).toBeNull();
+    expect(m.container.querySelectorAll('button.md-more')).toHaveLength(1);
+    expect(m.container.querySelector('p')!.textContent!.startsWith('*a **a *')).toBe(true);
+    expect(m.ms).toBeLessThan(MS_LIMIT);
+  });
+
+  it('spends the budget in order: the first costly runs are lexed, the later ones are text, none is dropped', () => {
+    const para = `**bold** ${rep('*a *', 980)}`;
+    const src = Array.from({ length: 10 }, () => para).join('\n\n');
+    const m = mountChecked(<Markdown source={src} />);
+    expect(m.container.querySelectorAll('strong')).toHaveLength(2);
+    const ps = Array.from(m.container.querySelectorAll('p'));
+    expect(ps).toHaveLength(10);
+    expect(ps[9]!.textContent).toBe(para);
+    expect(m.ms).toBeLessThan(MS_LIMIT);
+  });
+
+  it('draws at most about 3,000 elements: the blocks after that are one plain block with all of their text', () => {
+    const src = rep('a\n\n', 20000);
+    const m = mountChecked(<Markdown source={src} />);
+    const drawn = m.container.querySelectorAll('p').length;
+    expect(drawn).toBeGreaterThan(1000);
+    expect(drawn).toBeLessThan(2000);
+    const tail = m.container.querySelector('pre.md-plain')!;
+    expect(tail.textContent!.replace(/\s/g, '').length + drawn).toBe(src.replace(/\s/g, '').length);
+    expect(m.container.querySelectorAll('*').length).toBeLessThan(4000);
+  });
+
+  it('shows a body that is not text as what it is, and never throws: a malformed message must not blank the page', () => {
+    for (const [given, shown] of [
+      [null, ''],
+      [undefined, ''],
+      [42, '42'],
+      [['x', 'y'], 'x,y'],
+    ] as const) {
+      const m = mountChecked(<Markdown source={given as never} />);
+      expect(m.errors).toEqual([]);
+      expect([given, m.container.querySelector('.md')!.textContent]).toEqual([given, shown]);
+    }
+  });
+
+  it('says how many characters are behind "Show more", in the singular for one', () => {
+    const m = mountChecked(<Markdown source={rep('a', 4001)} />); // no space to cut at: the cut is at 4,000, one character is left
+    expect(m.container.querySelector('button.md-more')!.textContent).toBe('Show 1 more character');
+  });
+
+  it('shows the message as written, with the error, when lexing or drawing throws (TEST DOUBLE lexers)', () => {
+    const src = '# Title\n\nSome **text**';
+    const lexThrows = mountChecked(
+      <Markdown
+        source={src}
+        lexer={() => {
+          throw new RangeError('Maximum call stack size exceeded');
+        }}
+      />,
+    );
+    expect(lexThrows.errors).toEqual([]);
+    expect(lexThrows.container.querySelector('[data-testid="md-fallback"]')!.textContent).toBe(src);
+    expect(lexThrows.container.textContent).toContain('RangeError: Maximum call stack size exceeded');
+    // a token the drawing code can not take (a table without rows)
+    const drawThrows = mountChecked(<Markdown source={src} lexer={() => [{ type: 'table', raw: src } as never]} />);
+    expect(drawThrows.errors).toEqual([]);
+    expect(drawThrows.container.querySelector('[data-testid="md-fallback"]')!.textContent).toBe(src);
+    expect(drawThrows.container.querySelector('[role="note"]')!.textContent).toContain('TypeError');
+  });
+
+  it('leaves links and images exactly as they were: a run that is lexed still goes through safeHref', () => {
+    const m = mountChecked(<Markdown source={`[ok](https://example.com/a) [bad](javascript:alert(1)) ![x](https://evil.example/p.png)\n\n${rep('> ', 200)}[ok](https://example.com/b)`} />);
+    const anchors = Array.from(m.container.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(anchors).toEqual(['https://example.com/a']); // the hostile block is text: its link is not an anchor
+    expect(m.container.textContent).toContain('blocked link');
+    expect(m.container.querySelector('img')).toBeNull();
   });
 });

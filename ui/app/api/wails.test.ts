@@ -227,3 +227,49 @@ describe('Wails stream failure detection (F21)', () => {
     store.stop();
   });
 });
+
+describe('Wails replies and events are checked, not cast (L43)', () => {
+  const bridgeAnswering = (answer: (method: string) => unknown) =>
+    new WailsTransport({ Call: (async (method: string) => answer(method)) as never, Subscribe: async () => undefined }, { On: () => () => undefined });
+
+  it('a reply that is not JSON text is an invalid_response saying what came, not a value passed on', async () => {
+    const t = bridgeAnswering((m) => ({ num: 42, obj: { a: 1 }, flag: false, text: '{"ok":1}' })[m]);
+    for (const [method, kind] of [['num', 'number'], ['obj', 'object'], ['flag', 'boolean']] as const) {
+      const err = await t.call(method).catch((e: unknown) => e as RpcError);
+      expect(err).toMatchObject({ name: 'RpcError', kind: 'invalid_response', method });
+      expect((err as Error).message).toBe(`The Drydock shell answered with ${kind}, not JSON text`);
+    }
+    expect(await t.call('text')).toEqual({ ok: 1 });
+  });
+
+  it('keeps taking no answer, null and empty text for a call without a result', async () => {
+    const t = bridgeAnswering((m) => ({ none: undefined, nul: null, empty: '' })[m]);
+    for (const m of ['none', 'nul', 'empty']) expect(await t.call(m)).toBeNull();
+  });
+
+  it('through the runtime module, a reply that is not text is not turned into text first ("42" used to pass for 42)', async () => {
+    const rt = new FakeRuntime();
+    rt.Call.ByName = async (name: string) => (name === `${BRIDGE_FQN}.Call` ? 42 : null);
+    const t = WailsTransport.fromRuntime(rt);
+    expect(await t.call('events.head').catch((e: unknown) => e)).toMatchObject({ kind: 'invalid_response' });
+  });
+
+  it('ignores an event that is not one, with a console warning that does not repeat its data, and goes on', async () => {
+    const { rt, t, log, handlers } = setup();
+    const warnings: unknown[][] = [];
+    const real = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(a);
+    try {
+      t.openEventStream(0, handlers);
+      await tick();
+      for (const bad of ['junk', 7, null, [], {}, { seq: '3', type: 'a.b' }, { seq: 0, type: 'a.b' }, { seq: 4, type: 9, data: { token: 'secret-token' } }]) for (const l of [...rt.listeners]) l({ data: bad });
+      rt.emit(5);
+    } finally {
+      console.warn = real;
+    }
+    expect(log).toEqual(['open', 'event 5']);
+    expect(warnings.length).toBe(5); // the first few, then it stops
+    expect(String(warnings[0]![0])).toContain('malformed event');
+    expect(JSON.stringify(warnings)).not.toContain('secret-token');
+  });
+});

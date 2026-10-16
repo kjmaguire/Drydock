@@ -12,7 +12,7 @@ import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, tableCard } from '../../ui/layout.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
-import { dataPreview, selectRows, typeTone } from './activity.ts';
+import { selectRows, typeTone } from './activity.ts';
 
 const STATUS_TONE: Record<ConnectionState, Tone> = { open: 'ok', connecting: 'info', reconnecting: 'warn', idle: 'muted', stopped: 'err' };
 
@@ -126,7 +126,8 @@ export function ActivityScreen(handle: Handle) {
               </thead>
               <tbody>
                 {rows.map((e) => {
-                  const data = dataPreview(e.data);
+                  // the ring holds a preview of the payload (EVENT_PREVIEW_CHARS), not the payload: the row shows its start
+                  const data = e.preview.slice(0, 200);
                   return (
                     <tr key={e.seq} data-testid="event-row" data-type={e.type}>
                       <td class="seq">{e.seq}</td>
@@ -142,7 +143,7 @@ export function ActivityScreen(handle: Handle) {
                           <span key={id}>{id}</span>
                         ))}
                       </td>
-                      <td class="data" title={data || undefined}>
+                      <td class="data" title={e.preview ? `${e.preview}${e.cut ? ' … (cut here; the core has the rest)' : ''}` : undefined}>
                         <span mix={mono}>{data}</span>
                       </td>
                     </tr>

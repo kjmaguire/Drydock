@@ -244,6 +244,39 @@ describe('ChatFeed', () => {
     expect(f.lastTurn?.fallback).toBe(true);
   });
 
+  it('ignores a chat.* event whose data is not what the feed reads, with a console warning, and goes on with the next (L43)', async () => {
+    const { f, emit } = feed();
+    await settle();
+    const warnings: unknown[][] = [];
+    const warn = console.warn;
+    console.warn = (...a: unknown[]) => void warnings.push(a);
+    try {
+      emit('chat.message', { chatId: 'c1', message: { id: 'x', chatId: 'c1', role: 'assistant' } }); // no seq, no body
+      emit('chat.message', { chatId: 'c1', message: { id: 'y', chatId: 'c1', seq: 'nine', role: 'assistant', body: 'b' } });
+      emit('chat.message', { chatId: 'c1', message: 'text' });
+      emit('chat.message', { chatId: 'c1' });
+      emit('chat.updated', { chatId: 'c1', chat: { id: 'c1', status: 'running' } }); // no title, no adapter
+      emit('chat.updated', { chatId: 'c1', chat: 'x' });
+      emit('chat.updated', { chatId: 'c1', chat: chat({ id: 'c2', status: 'running', version: 9 }) }); // another chat's snapshot
+      emit('chat.turn', { chatId: 'c1', turnId: 7, status: 'done' });
+      emit('chat.turn', { chatId: 'c1', turnId: 't', status: 'weird' });
+      emit('chat.turn', { chatId: 'c1' });
+    } finally {
+      console.warn = warn;
+    }
+    expect(f.messages.map((m) => m.seq)).toEqual([1, 2]);
+    expect(f.chat?.status).toBe('idle');
+    expect(f.running).toBe(false);
+    expect(f.lastTurn).toBeUndefined();
+    expect(warnings.length).toBe(5); // the first few are reported, then it stops
+    expect(String(warnings[0]![0])).toContain('chat.message');
+    // and the feed still takes the events that are right
+    emit('chat.message', { chatId: 'c1', message: msg(3, 'assistant') });
+    emit('chat.turn', { chatId: 'c1', turnId: 't2', status: 'error', error: 'boom' });
+    expect(f.messages.map((m) => m.seq)).toEqual([1, 2, 3]);
+    expect(f.lastTurn?.error).toBe('boom');
+  });
+
   it('a chat that is running when opened shows the turn as in progress', async () => {
     const { f } = feed(true);
     await settle();

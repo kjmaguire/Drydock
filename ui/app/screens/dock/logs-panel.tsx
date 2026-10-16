@@ -5,6 +5,7 @@ import { css, on, ref, type Handle } from 'remix/component';
 import { ArrowUpToLine, Bot, FlaskConical, ScrollText } from 'lucide';
 import type { LogSource } from '../../api/dockClient.ts';
 import { formatTime } from '../../lib/format.ts';
+import { sleep, whenVisible } from '../../lib/wait.ts';
 import { query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
@@ -133,16 +134,12 @@ function LogView(handle: Handle<{ taskId: string; source: LogSource }>) {
       void handle.update();
     }
   };
+  // The poll ends with the component (the signal) and rests while the window is hidden; nothing it adds outlives one turn.
   const loop = async () => {
     await tick(true);
     while (!signal.aborted) {
-      await new Promise<void>((res) => {
-        const timer = setTimeout(res, handle.props.source.running ? 1000 : 4000);
-        signal.addEventListener('abort', () => {
-          clearTimeout(timer);
-          res();
-        });
-      });
+      await sleep(handle.props.source.running ? 1000 : 4000, signal);
+      await whenVisible(signal);
       if (signal.aborted) return;
       await tick(false);
     }

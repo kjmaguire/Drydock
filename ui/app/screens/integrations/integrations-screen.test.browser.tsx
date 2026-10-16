@@ -109,6 +109,24 @@ describe('Integrations', () => {
     expect(r.container.innerHTML).not.toContain('lin_api_SECRET123');
   });
 
+  it('a connect answer with a test report of another shape is an error on the page, not a crash later (L43)', async () => {
+    const calls: Calls = [];
+    const r = show({
+      integrationList: async () => [],
+      // TEST DOUBLE: the core's answer with a report whose steps are not a list
+      integrationConnect: rec(calls, () => ({ connection: conn(), test: { integrationId: 'int_1', ok: true, summary: 'passed', steps: 'none', at: 1 } })) as never,
+    });
+    const card = await open(r, 'linear');
+    const tok = await waitFor(() => byLabel<HTMLInputElement>(card, 'API key'), r);
+    tok.value = 'lin_api_KEY12345';
+    await r.act(() => byText(card, 'button', 'Connect Linear').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    await waitFor(() => expect(card.querySelector('[role="alert"]')!.textContent).toContain('test report in a shape this page can not show'), r);
+    expect(r.$('[data-testid="int-report"]')).toBeNull();
+    // the page still works
+    expect(byText(card, 'button', 'Connect Linear')).not.toBeNull();
+  });
+
   it('Aikido connects with its region, client id and secret; the secret is cleared', async () => {
     const calls: Calls = [];
     const r = show({ integrationList: async () => [], integrationConnect: rec(calls, () => ({ connection: conn({ kind: 'aikido', name: 'Aikido' }) })) as never });

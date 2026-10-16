@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ChatCreate, ChatListItem } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, typeKeys, valueOf, waitFor } from '../../test/render.tsx';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
 afterEach(cleanup);
@@ -165,6 +165,20 @@ describe('Chat from Home', () => {
     expect(created).toEqual([{}]);
     expect(sent).toEqual([['chat_new', 'What is in this folder?']]);
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code').value).toBe('');
+  });
+
+  it('keeps every key typed into the message box and sends the whole text (H12)', async () => {
+    const sent: [string, string][] = [];
+    const { r, navigated } = show({
+      chatCreate: async () => homeChat({ id: 'chat_k' }),
+      chatSend: async (id, text) => (sent.push([id, text]), { turnId: 'cturn_k', version: 2 }),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to Claude Code'), r);
+    await typeKeys(box, 'fix the failing test', r);
+    expect(box.value).toBe('fix the failing test');
+    await r.act(() => byText(chatForm(r), 'button', 'Start chat').click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/chat_k']), r);
+    expect(sent).toEqual([['chat_k', 'fix the failing test']]);
   });
 
   it('starts with Ctrl+Enter, and an empty message just opens the new chat', async () => {

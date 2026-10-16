@@ -13,6 +13,7 @@ import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { ClippedText } from '../../ui/clipped-text.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -98,7 +99,7 @@ function TokenForm(handle: Handle<{ card: McpGalleryCard; busy: boolean; onSubmi
         <label for={id}>
           {what} for {card.display}
         </label>
-        <input id={id} type="password" autocomplete="off" spellcheck={false} required={!card.authOptional} value={value} mix={on('input', (e) => void (value = (e.currentTarget as HTMLInputElement).value))} />
+        <input id={id} type="password" autocomplete="off" spellcheck={false} required={!card.authOptional} value={value} mix={on('input', (e) => ((value = (e.currentTarget as HTMLInputElement).value), void handle.update()))} />
         {card.tokenHelp ? <span class="hint">{card.tokenHelp}</span> : null}
         <span class="hint">It goes to the Windows credential store. Drydock never shows it again, logs it or stores it anywhere else.</span>
         <div class="row">
@@ -211,7 +212,7 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
               {card.tools.map((tool) => (
                 <li key={tool.name} data-testid="connector-tool" data-tool={tool.name}>
                   <code>{tool.name}</code> {card.readOnlyTools.includes(tool.name) ? <span mix={faint}>reads only</span> : <span mix={faint}>asks you first</span>}
-                  {tool.description ? <div mix={faint}>{tool.description}</div> : null}
+                  {tool.description ? <ClippedText text={tool.description} mix={[faint]} data-testid="connector-tool-description" /> : null}
                 </li>
               ))}
             </ul>
@@ -326,7 +327,7 @@ function OwnServerCard(handle: Handle<{ server: McpLibraryServer; onChanged: () 
             'Its identity is learned when Drydock first reaches it.'
           )}
         </p>
-        {x.serverInfo?.description ? <p mix={faint}>{x.serverInfo.description}</p> : null}
+        {x.serverInfo?.description ? <ClippedText text={x.serverInfo.description} mix={[faint]} data-testid="own-server-description" /> : null}
         <ErrorNote error={act.error} what="Not reached" />
         {x.lastError ? (
           <p mix={errCss} role="alert">

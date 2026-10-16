@@ -3,16 +3,52 @@
 // only jobs are: dedupe by seq, remember the highest seq seen, reopen the stream from that seq after a break, and tell
 // listeners about each newly accepted event exactly once.
 
+import { describeBadEvent, isDrydockEvent, LimitedWarn } from '../api/guards.ts';
 import type { DrydockEvent } from '../api/types.ts';
 import type { EventStream, Transport } from '../api/transport.ts';
+import { previewOf } from '../lib/preview.ts';
 
 export type ConnectionState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'stopped';
+
+/** The most characters of an event's payload the ring keeps, as JSON text. */
+export const EVENT_PREVIEW_CHARS = 2048;
+
+/**
+ * What the ring keeps of an event (audit 2026-10-16, M22): its envelope and a preview of its payload, never the payload. A
+ * payload can be megabytes (a diff, a tool result) and the ring holds thousands of events, so it was bounded by count and
+ * not by size. The listeners of onEvent still get the event whole, as it arrived; a row that needs more than the preview asks
+ * the core (events.replay).
+ */
+export interface EventRow {
+  seq: number;
+  time: string;
+  type: string;
+  projectId?: string;
+  runId?: string;
+  taskId?: string;
+  agentId?: string;
+  /** The payload as JSON text, cut at EVENT_PREVIEW_CHARS; empty when the event carried none. */
+  preview: string;
+  /** The payload was longer than the preview. */
+  cut: boolean;
+}
+
+/** The row for an event: no reference to its payload is kept. */
+export function rowOf(e: DrydockEvent): EventRow {
+  const p = previewOf(e.data, EVENT_PREVIEW_CHARS);
+  const row: EventRow = { seq: e.seq, time: e.time, type: e.type, preview: p.text, cut: p.cut };
+  if (e.projectId !== undefined) row.projectId = e.projectId;
+  if (e.runId !== undefined) row.runId = e.runId;
+  if (e.taskId !== undefined) row.taskId = e.taskId;
+  if (e.agentId !== undefined) row.agentId = e.agentId;
+  return row;
+}
 
 export interface StoreSnapshot {
   readonly status: ConnectionState;
   readonly lastSeq: number;
-  /** Accepted events, ascending by seq, capped to maxEvents (the newest are kept). */
-  readonly events: readonly DrydockEvent[];
+  /** Accepted events as rows (envelope and payload preview), ascending by seq, capped to maxEvents (the newest are kept). */
+  readonly events: readonly EventRow[];
   /** Number of times the stream has been (re)opened; useful to tests and the status line. */
   readonly connects: number;
   /** Bumped when the stream opens again after a break, so readers re-read the core once it is reachable again. */
@@ -46,7 +82,7 @@ export class EventStore {
   private readonly notifyEveryMs: number;
   private readonly sched: Scheduler;
 
-  private events: DrydockEvent[] = [];
+  private events: EventRow[] = [];
   private seen = new Set<number>();
   /** Everything at or below this has been trimmed from memory and counts as already seen. */
   private floor = 0;
@@ -62,6 +98,11 @@ export class EventStore {
   private snap: StoreSnapshot;
   private listeners = new Set<() => void>();
   private eventListeners = new Set<(e: DrydockEvent) => void>();
+  private readonly badEvents = new LimitedWarn();
+  /** The message each listener last failed with, so one that fails on every event is reported when it changes, not every time. */
+  private readonly lastFailure = new WeakMap<object, string>();
+  /** Listener failures seen (reported or not). */
+  listenerErrors = 0;
 
   constructor(transport: Transport, opts: EventStoreOptions = {}) {
     this.transport = transport;
@@ -101,34 +142,56 @@ export class EventStore {
     this.publish(true);
   }
 
-  /** Accept one event. Returns false for a duplicate (same seq seen before, or older than what was trimmed). */
+  /** Events refused for not being events at all (a missing seq or type); each is warned about in the console, the first few. */
+  get malformed(): number {
+    return this.badEvents.count;
+  }
+
+  /** Accept one event. Returns false for a duplicate (same seq seen before, or older than what was trimmed) or a malformed one. */
   ingest(e: DrydockEvent): boolean {
-    if (!Number.isInteger(e.seq) || e.seq <= this.floor || this.seen.has(e.seq)) return false;
+    if (!isDrydockEvent(e)) {
+      this.badEvents.warn(`Ignored a malformed event: ${describeBadEvent(e)}`);
+      return false;
+    }
+    if (e.seq <= this.floor || this.seen.has(e.seq)) return false;
     this.seen.add(e.seq);
+    const row = rowOf(e);
     // events normally arrive in order; a late older event is inserted in place
-    if (this.events.length === 0 || e.seq > this.events[this.events.length - 1]!.seq) this.events.push(e);
+    if (this.events.length === 0 || e.seq > this.events[this.events.length - 1]!.seq) this.events.push(row);
     else {
       let i = this.events.length - 1;
       while (i >= 0 && this.events[i]!.seq > e.seq) i--;
-      this.events.splice(i + 1, 0, e);
+      this.events.splice(i + 1, 0, row);
     }
     if (e.seq > this.lastSeq) this.lastSeq = e.seq;
-    if (this.events.length > this.maxEvents) {
-      const drop = this.events.splice(0, this.events.length - this.maxEvents);
-      for (const d of drop) {
-        this.seen.delete(d.seq);
-        if (d.seq > this.floor) this.floor = d.seq;
-      }
-    }
+    this.trim();
     for (const cb of this.eventListeners) {
       try {
         cb(e);
-      } catch {
-        /* a listener must not break the stream */
+      } catch (err) {
+        this.listenerFailed(cb, err, 'event listener'); // reported, and the others are still told
       }
     }
     this.publish(false);
     return true;
+  }
+
+  private trim(): void {
+    if (this.events.length <= this.maxEvents) return;
+    const drop = this.events.splice(0, this.events.length - this.maxEvents);
+    for (const d of drop) {
+      this.seen.delete(d.seq);
+      if (d.seq > this.floor) this.floor = d.seq;
+    }
+  }
+
+  /** A listener threw: say so in the console (once for the same message), count it, and go on. */
+  private listenerFailed(listener: object, err: unknown, what: string): void {
+    this.listenerErrors++;
+    const message = err instanceof Error ? err.message : String(err);
+    if (this.lastFailure.get(listener) === message) return;
+    this.lastFailure.set(listener, message);
+    console.error(`Event store ${what} failed; the stream goes on.`, err);
   }
 
   /**
@@ -138,21 +201,19 @@ export class EventStore {
   backfill(older: readonly DrydockEvent[]): number {
     let added = 0;
     for (const e of older) {
-      if (!Number.isInteger(e.seq) || e.seq <= this.floor || this.seen.has(e.seq)) continue;
+      if (!isDrydockEvent(e)) {
+        this.badEvents.warn(`Ignored a malformed event in the history: ${describeBadEvent(e)}`);
+        continue;
+      }
+      if (e.seq <= this.floor || this.seen.has(e.seq)) continue;
       this.seen.add(e.seq);
       let i = this.events.length - 1;
       while (i >= 0 && this.events[i]!.seq > e.seq) i--;
-      this.events.splice(i + 1, 0, e);
+      this.events.splice(i + 1, 0, rowOf(e));
       added++;
     }
     if (added > 0) {
-      if (this.events.length > this.maxEvents) {
-        const drop = this.events.splice(0, this.events.length - this.maxEvents);
-        for (const d of drop) {
-          this.seen.delete(d.seq);
-          if (d.seq > this.floor) this.floor = d.seq;
-        }
-      }
+      this.trim();
       this.publish(true);
     }
     return added;
@@ -205,14 +266,25 @@ export class EventStore {
       this.sched.clearTimeout(this.notifyTimer);
       this.notifyTimer = undefined;
       this.snap = this.makeSnapshot();
-      for (const l of this.listeners) l();
+      this.notify();
       return;
     }
     if (this.notifyTimer !== undefined) return;
     this.notifyTimer = this.sched.setTimeout(() => {
       this.notifyTimer = undefined;
       this.snap = this.makeSnapshot();
-      for (const l of this.listeners) l();
+      this.notify();
     }, this.notifyEveryMs);
+  }
+
+  /** Tell every subscriber; one that throws is reported and does not stop the others (or the stream). */
+  private notify(): void {
+    for (const l of [...this.listeners]) {
+      try {
+        l();
+      } catch (err) {
+        this.listenerFailed(l, err, 'subscriber');
+      }
+    }
   }
 }
