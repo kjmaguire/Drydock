@@ -82,6 +82,9 @@ type Server struct {
 
 const keepLines = 200
 
+// errStopped is what a Start answers when a Stop (or a newer Start) took over while it waited, or while its program was starting.
+var errStopped = errors.New("the server was stopped before llama-server was ready")
+
 // State is the current state ("stopped" before the first start).
 func (s *Server) State() ServerState {
 	s.mu.Lock()
@@ -180,8 +183,22 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 	}
 	done := make(chan struct{})
 	s.mu.Lock()
-	s.p, s.done = p, done
+	// A Stop (or a newer Start) that came while the program was being started found nothing to end: the server held no process yet.
+	// This Start is no longer the current one, so it ends the program itself (and lets it go, so the port is free again when this
+	// returns) instead of leaving a llama-server that the page says is stopped.
+	superseded := s.gen != gen
+	if !superseded {
+		s.p, s.done = p, done
+	}
 	s.mu.Unlock()
+	if superseded {
+		_ = p.Kill(true)
+		select {
+		case <-p.Wait():
+		case <-time.After(10 * time.Second):
+		}
+		return errStopped
+	}
 	_ = p.Stdin().Close()
 	var logf *os.File
 	if l.LogDir != "" && os.MkdirAll(l.LogDir, 0o755) == nil {
@@ -239,7 +256,6 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 		defer s.mu.Unlock()
 		return s.gen == gen
 	}
-	errStopped := errors.New("the server was stopped before llama-server was ready")
 	wctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	tick := time.NewTicker(500 * time.Millisecond)

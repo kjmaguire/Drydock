@@ -193,6 +193,63 @@ func TestAStopDuringTheLoadLeavesTheServerStopped(t *testing.T) {
 	}
 }
 
+// stopInTheWindow is a process manager that calls Stop after the program has been started and before the server has taken hold of
+// it: the moment in which a Stop finds nothing to end (audit 2026-10-16, L44: the page lets a person press Stop while a start waits).
+// It also watches the program, so the test can tell whether it ended however the server reads its exit.
+type stopInTheWindow struct {
+	proc.Manager
+	srv     *localllm.Server
+	started chan *watched
+}
+
+func (m stopInTheWindow) Start(ctx context.Context, spec proc.Spec) (proc.Proc, error) {
+	p, err := m.Manager.Start(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	w := &watched{Proc: p, exited: make(chan struct{}), wait: make(chan proc.ExitInfo, 1)}
+	go func() {
+		ei := <-p.Wait()
+		w.wait <- ei
+		close(w.exited)
+	}()
+	m.started <- w
+	m.srv.Stop()
+	return w, nil
+}
+
+// watched is a program whose exit is announced twice: to whoever calls Wait, as always, and by closing exited.
+type watched struct {
+	proc.Proc
+	exited chan struct{}
+	wait   chan proc.ExitInfo
+}
+
+func (w *watched) Wait() <-chan proc.ExitInfo { return w.wait }
+
+// A Stop that lands while the program is being started (after it exists, before the server holds it) must not leave the program
+// running: the Start it came during ends it and answers that it was stopped.
+func TestAStopThatLandsWhileTheProgramIsBeingStartedDoesNotLeaveItRunning(t *testing.T) {
+	srv := &localllm.Server{}
+	started := make(chan *watched, 1)
+	srv.PM = stopInTheWindow{Manager: proc.New(), srv: srv, started: started}
+	t.Cleanup(srv.Stop)
+	err := srv.Start(context.Background(), localllm.Launch{Program: os.Args[0], Args: llamatest.Args("--load-ms=60000"), Model: tinyModel(t), Port: freePort(t), Timeout: 30 * time.Second})
+	if err == nil || !strings.Contains(err.Error(), "stopped") {
+		t.Fatalf("Start answered %v", err)
+	}
+	if st := srv.State(); st.State != "stopped" || st.Error != "" {
+		t.Fatalf("%+v", st)
+	}
+	w := <-started
+	select {
+	case <-w.exited:
+	case <-time.After(5 * time.Second):
+		_ = w.Kill(true) // the test's own cleanup: the server never held this program, so srv.Stop cannot end it
+		t.Fatal("the program a Stop did not find is still running after Start returned")
+	}
+}
+
 // A program that ends at start is reported as failed with its last lines; one that never becomes ready is killed.
 func TestAServerThatCannotStartIsReported(t *testing.T) {
 	srv := &localllm.Server{PM: proc.New()}
