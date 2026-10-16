@@ -61,6 +61,9 @@ type Config struct {
 	Credentials providers.CredentialStore
 	// LeaseTTL for workflow runs (default 30s).
 	LeaseTTL time.Duration
+	// BackupFirstCheck is how long after start the backup scheduler first considers a backup (default 5s). Tests that drive
+	// the scheduler by hand set it far out, so a backup of their own does not race the one they stage.
+	BackupFirstCheck time.Duration
 	// GitHubAPI answers the account calls (signed-in user, organizations, repositories). Default: the user's `gh`.
 	GitHubAPI host.API
 	// GitHubCloneURL, when set, makes github.clone run `git clone <url>` instead of `gh repo clone` (tests clone a local

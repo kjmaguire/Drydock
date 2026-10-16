@@ -66,6 +66,7 @@ type packaging struct {
 	backupClock func() time.Time
 
 	backupMu    sync.Mutex
+	backupFirst time.Duration // the scheduler's first check after start
 	backupEvery time.Duration // scheduler tick
 	retryAfter  time.Duration // wait after a failed scheduled backup
 	licenseTick time.Duration
@@ -110,7 +111,10 @@ func parseLicenseKeys(spec string) (license.Keys, error) {
 
 func startPackaging(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	p := &packaging{c: c, bg: ctx, now: time.Now, kickCh: make(chan struct{}, 1),
-		backupEvery: 10 * time.Minute, retryAfter: time.Hour, licenseTick: 30 * time.Second}
+		backupFirst: 5 * time.Second, backupEvery: 10 * time.Minute, retryAfter: time.Hour, licenseTick: 30 * time.Second}
+	if c.cfg.BackupFirstCheck > 0 {
+		p.backupFirst = c.cfg.BackupFirstCheck
+	}
 	keys, err := parseLicenseKeys(LicensePublicKeys)
 	if err != nil {
 		c.logf("licensing: %v (the build's embedded keys are unusable, so licensing is treated as not configured)", err)

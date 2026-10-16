@@ -224,8 +224,8 @@ func (p *packaging) backupDue(ctx context.Context) bool {
 }
 
 func (p *packaging) backupLoop(ctx context.Context) {
-	// the first check shortly after start, then on the interval
-	timer := time.NewTimer(5 * time.Second)
+	// the first check shortly after start (Config.BackupFirstCheck), then on the interval
+	timer := time.NewTimer(p.backupFirst)
 	defer timer.Stop()
 	for {
 		select {
