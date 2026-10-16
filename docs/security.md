@@ -310,6 +310,34 @@ Every release states which phase is active. The UI shows the isolation level in 
 
 Approval consume/mismatch/expiry/lineage-cancel; descriptor canonical JSON golden vectors; path guard fixture suite (junction, symlink, UNC, `\\?\`, ADS, 8.3 names, reserved names, trailing dot, case, long paths, TOCTOU swap); analyzer golden corpus per flavor (POSIX, PowerShell phase A, cmd) including obfuscations that must come out `Opaque`; secrets redaction across every scan point; data_class refusal in router, Context Engine, LLMClient, config writer; environment dump shows no production/Cloudflare/GitHub tokens; agent-edited instruction file never reaches memory without a human accept; hook/config drift detection; consent gate blocks Antigravity start without a current acknowledgement; audit chain verification detects a modified row.
 
+## 16. The repository's own supply chain (audit 2026-10-16, M19, L49 to L52, L54 to L57)
+
+The repository is public, and a pull request from anyone's fork runs its workflows, so the automation is held to what a stranger's
+code could reach.
+
+- **Runners and tokens.** Every job of `ci`, `verify`, `windows-probes`, `contract` and `security` says `runs-on: windows-latest`
+  or `ubuntu-latest` outright, so no repository variable can send fork code to a self-hosted runner on a person's PC; every
+  workflow has a `permissions:` block that is read-only, every job a `timeout-minutes`, every checkout `persist-credentials: false`.
+  `internal/ciconfig` reads the workflows and fails if one of these stops being true, and if a multi-command PowerShell step could
+  hide a failed command (`$PSNativeCommandUseErrorActionPreference`, L49).
+- **Secrets.** The sign-in secrets of the contract suite belong to the GitHub environment `contract`, which only `main` may use, and
+  only its suite step holds them. The newest agent CLIs are installed by a step of their own that holds none (npm runs with a scrubbed
+  environment, and Claude Code's npm package needs its install script, so what keeps the secrets safe is that the step has none).
+  `internal/security` runs the secret scan the product uses (gitleaks' rules) over every tracked file that is not a test, a fixture
+  or a lock file, with every `go test`, and `.gitignore` keeps env files, databases, keys and Playwright results out (and a test
+  fails if a tracked file is one it ignores).
+- **Known vulnerabilities and code scanning.** `security.yml` runs weekly, by hand and when a dependency file changes: `govulncheck`
+  at a pinned release (fails if the code can reach a known vulnerability), `npm audit` against the lock file (high or worse), and
+  CodeQL for Go and JavaScript/TypeScript. It is not part of the merge gate (a new advisory against an unchanged dependency must not
+  stop an unrelated change): the weekly run is read. Dependabot proposes updates with a 14-day cooldown. `SECURITY.md` says how to
+  report a vulnerability privately.
+- **Code an agent wrote, run by the harness.** The trial's acceptance runs it with `proc.ToolEnv` (no token) and accepts only if every
+  hidden test was seen to pass (`docs/evals.md` section 13). Recorded runs are committed with the account's plugin and connector
+  details and the machine's paths removed.
+- **Not done here.** Pinning `Vampire/setup-wsl` (the only third-party action) to a commit needs its repository, which this work could
+  not read; it stays on its major tag. The GitHub environment, its branch rule, the move of the two secrets and private vulnerability
+  reporting are settings only the owner can make (`docs/contract-tests.md`).
+
 ## Open questions / unverified
 
 - Q1. Do OpenCode/Goose/Codex requests to OpenRouter carry `provider:{data_collection:"deny", zdr:true}`? Per-model option passthrough is unverified. Candidate designs: CLI config passthrough, or a loopback Drydock proxy that injects the object, scans traffic and records ledger headers. D4 requires the filter on every private OpenRouter request, so this needs a decision before the cheap tier is enabled for private work.

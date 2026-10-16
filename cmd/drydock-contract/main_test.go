@@ -10,8 +10,64 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/agents/pins"
 	"github.com/kjmaguire/drydock/internal/contract"
 )
+
+// TestMain lets this test binary stand in for npm (a LABELLED TEST DOUBLE): a copy of it named npm records the environment it
+// was started with next to itself, makes the folder `npm install -g --prefix` would make, and succeeds. The tests that install
+// put such a copy first on PATH.
+func TestMain(m *testing.M) {
+	if base := strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0])); base == "npm" {
+		os.Exit(fakeNPM(os.Args[1:]))
+	}
+	os.Exit(m.Run())
+}
+
+func fakeNPM(args []string) int {
+	self, err := os.Executable() // os.Args[0] is only "npm" when the program was found on PATH
+	if err != nil {
+		return 1
+	}
+	dir := filepath.Dir(self)
+	appendTo := func(name, text string) {
+		if f, err := os.OpenFile(filepath.Join(dir, name), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			_, _ = f.WriteString(text)
+			_ = f.Close()
+		}
+	}
+	appendTo("npm-env.txt", strings.Join(os.Environ(), "\n")+"\n")
+	appendTo("npm-args.txt", strings.Join(args, "\n")+"\n")
+	for i, a := range args {
+		if a == "--prefix" && i+1 < len(args) {
+			bin := npmBin(args[i+1], runtime.GOOS)
+			if err := os.MkdirAll(bin, 0o755); err != nil {
+				return 1
+			}
+			return 0
+		}
+	}
+	return 0
+}
+
+// installFakeNPM puts a copy of this test binary named npm first on PATH and returns the folder it records into.
+func installFakeNPM(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	name := "npm"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	self, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), self, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
 
 func TestParseFlags(t *testing.T) {
 	o, err := parseFlags([]string{"--cli", "Claude, goose,", "--budget-usd", "1.5", "--latest", "--check-updates", "--skip-slow", "--out", "r"})
@@ -231,5 +287,97 @@ func TestListPrintsTheCatalog(t *testing.T) {
 	}
 	if err := installPinned(context.Background(), &b, "nothing-like-this"); err == nil || !strings.Contains(err.Error(), "no npm pin") {
 		t.Fatalf("%v", err)
+	}
+}
+
+// A package installed for the newest-release watch runs its install script, and that script must not find the suite's sign-in, the
+// job's token or any other credential in its environment (audit 2026-10-16, M19). npm gets what a build tool needs and its own
+// settings.
+func TestNPMRunsInstallScriptsWithoutTheCallersSecrets(t *testing.T) {
+	parent := []string{"PATH=/bin", "HOME=/home/u", "CLAUDE_CODE_OAUTH_TOKEN=oauth-secret-value", "ANTHROPIC_API_KEY=sk-secret-value", "GH_TOKEN=gh-secret-value",
+		"GITHUB_TOKEN=github-secret-value", "NODE_AUTH_TOKEN=npm-secret-value", "NPM_CONFIG_REGISTRY=https://registry.example/", "HTTPS_PROXY=http://user:pass@proxy:8080",
+		"NODE_OPTIONS=--max-old-space-size=4096", "AWS_SECRET_ACCESS_KEY=aws-secret-value"}
+	got := strings.Join(npmEnv(parent), "\n")
+	for _, secret := range []string{"oauth-secret-value", "sk-secret-value", "gh-secret-value", "github-secret-value", "npm-secret-value", "aws-secret-value", "user:pass"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("npm's environment holds %q:\n%s", secret, got)
+		}
+	}
+	for _, want := range []string{"PATH=/bin", "HOME=/home/u", "NPM_CONFIG_REGISTRY=https://registry.example/", "HTTPS_PROXY=http://proxy:8080", "NODE_OPTIONS=--max-old-space-size=4096"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("npm's environment lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// --install-latest and --latest-from are the two halves of --latest, run in two steps so the install happens without the secrets:
+// the first installs the newest releases into a prefix (npm, run without the caller's secrets), the second only uses them.
+func TestInstallLatestInstallsWithoutSecretsAndLatestFromInstallsNothing(t *testing.T) {
+	npmDir := installFakeNPM(t)
+	for k, v := range map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "oauth-secret-value", "ANTHROPIC_API_KEY": "sk-secret-value", "GH_TOKEN": "gh-secret-value"} {
+		t.Setenv(k, v)
+	}
+	prefix := filepath.Join(t.TempDir(), "latest")
+	var out bytes.Buffer
+	o, err := parseFlags([]string{"--cli", "claude", "--install-latest", prefix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := run(context.Background(), o, &out)
+	if err != nil || code != 0 {
+		t.Fatalf("install: %d %v\n%s", code, err, out.String())
+	}
+	env, _ := os.ReadFile(filepath.Join(npmDir, "npm-env.txt"))
+	args, _ := os.ReadFile(filepath.Join(npmDir, "npm-args.txt"))
+	for _, secret := range []string{"oauth-secret-value", "sk-secret-value", "gh-secret-value"} {
+		if strings.Contains(string(env), secret) {
+			t.Errorf("npm ran with %q in its environment", secret)
+		}
+	}
+	if !strings.Contains(string(args), "install\n-g\n--prefix\n"+prefix) || !strings.Contains(string(args), "@anthropic-ai/claude-code@latest") {
+		t.Errorf("npm was asked: %q", args)
+	}
+	if st, err := os.Stat(npmBin(prefix, runtime.GOOS)); err != nil || !st.IsDir() {
+		t.Errorf("the prefix was not made: %v", err)
+	}
+	if !strings.Contains(out.String(), "installed into") {
+		t.Errorf("the step does not say where: %s", out.String())
+	}
+
+	// --latest-from needs an install to have happened, and never installs
+	_ = os.Remove(filepath.Join(npmDir, "npm-args.txt"))
+	missing, err := parseFlags([]string{"--cli", "claude", "--latest-from", filepath.Join(t.TempDir(), "nothing")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err = run(context.Background(), missing, &out)
+	if err == nil || code != 2 || !strings.Contains(err.Error(), "run --install-latest first") {
+		t.Fatalf("--latest-from with nothing installed: %d %v", code, err)
+	}
+	if _, err := os.Stat(filepath.Join(npmDir, "npm-args.txt")); err == nil {
+		t.Error("--latest-from ran npm")
+	}
+}
+
+func TestParseFlagsRefusesTwoWaysToTheNewestReleases(t *testing.T) {
+	for _, bad := range [][]string{{"--latest", "--install-latest", "d"}, {"--latest", "--latest-from", "d"}, {"--install-latest", "d", "--latest-from", "d"}} {
+		if _, err := parseFlags(bad); err == nil {
+			t.Errorf("%v must be refused", bad)
+		}
+	}
+	if o, err := parseFlags([]string{"--latest-from", "d"}); err != nil || o.latestFrom != "d" {
+		t.Fatalf("%+v %v", o, err)
+	}
+}
+
+func TestLatestPinsAreOnlyWhatASelectedContractRuns(t *testing.T) {
+	selected := []pins.Pin{{Bin: "claude", Package: "@anthropic-ai/claude-code"}, {Bin: "codex", Package: "@openai/codex"}}
+	got := latestPins(selected, []string{"claude"}, false, nil)
+	if len(got) != 1 || got[0].Bin != "claude" {
+		t.Fatalf("%+v", got)
+	}
+	updates := []contract.Update{{CLI: "claude"}, {CLI: "codex", Newer: true}}
+	if got := latestPins(selected, []string{"claude", "codex"}, true, updates); len(got) != 1 || got[0].Bin != "codex" || !updates[1].Tested || updates[0].Tested {
+		t.Fatalf("with --check-updates only what is newer: %+v %+v", got, updates)
 	}
 }

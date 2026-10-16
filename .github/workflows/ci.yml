@@ -1,7 +1,10 @@
 # Windows is the only product target, so this is the only CI platform (decision P1). The repository is public since
 # 2026-10-10, so GitHub-hosted Windows runners are free and these jobs run on every pull request (decision P2 resolved).
-# Every job runs on windows-latest unless the repository variable WINDOWS_RUNS_ON names other runner labels as JSON, for
-# example ["self-hosted","windows","x64"] for a runner on the owner's PC (docs/windows-runner.md).
+# Every job runs on a GitHub-hosted runner, named outright: a pull request from a fork runs these workflows, so a self-hosted
+# runner (anyone's fork could run code on that PC) is not an option and no repository variable can name one (audit 2026-10-16,
+# M19; docs/windows-runner.md). The workflows get a read-only token and do not keep it in the checked-out workspace.
+# A step of several commands in the default shell (PowerShell) stops at the first command that fails
+# ($PSNativeCommandUseErrorActionPreference): the step's own exit code is the last command's alone (audit 2026-10-16, L49).
 name: ci
 on:
   push:
@@ -15,14 +18,16 @@ concurrency:
   cancel-in-progress: true
 jobs:
   go:
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 45
     # CGO on, said outright: the repo map's tree-sitter parser is C (decision P62), and without a C compiler Go would quietly
-    # build the tests without it. GitHub's Windows images have MinGW gcc on PATH; a self-hosted runner needs it too.
+    # build the tests without it. GitHub's Windows images have MinGW gcc on PATH.
     env:
       CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -33,6 +38,7 @@ jobs:
           node-version: "24"
       - name: Git identity for tests
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           git config --global user.name "Drydock CI"
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
@@ -44,11 +50,12 @@ jobs:
           Set-Content ui/dist/index.html '<!doctype html><title>Drydock</title>'
       - name: The C compiler for the repo map (MinGW gcc)
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           gcc --version
           go env CC CGO_ENABLED
       - run: go vet ./...
       - name: Unit and integration tests (real SQLite, git and child processes; real agent CLIs are never used here)
-        # a self-hosted runner may have a signed-in claude: the paid real-agent tests run only in verify.yml, on request
+        # the paid real-agent tests run only in verify.yml, on request
         env:
           DRYDOCK_NO_REAL_AGENTS: "1"
         # the output is kept in a file as well, so a failure can be listed on its own below
@@ -70,6 +77,7 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           go vet ./internal/repomap ./internal/mcp ./internal/core
           go test ./internal/repomap ./internal/mcp -count=1
       - name: The real Actions runner release (downloaded, checked and started; nothing is registered)
@@ -86,12 +94,13 @@ jobs:
     # UTF-16 distro list, detection through a login shell, the launch with translated paths, stream-json both ways over
     # wsl.exe's pipes, the MCP shim (a Windows program) started from inside through interop with only what WSLENV names, a
     # repository inside the distro with its worktree next to it, and that stopping kills the run's Linux processes.
-    # It always runs on a GitHub-hosted runner, never on WINDOWS_RUNS_ON: it installs a distro, which a self-hosted runner on
-    # the owner's PC must not get by surprise.
+    # It installs a distro, which only a GitHub-hosted runner may get.
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -102,6 +111,7 @@ jobs:
           additional-packages: git
       - name: Git identity for tests
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           git config --global user.name "Drydock CI"
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
@@ -112,16 +122,19 @@ jobs:
         run: go test ./internal/wsl/ ./internal/git/ ./internal/agents/claude/ -run "TestRealWSL" -count=1 -v
   trial-suite:
     # every trial task's hidden check fails on the fixture and passes on its reference solution (docs/evals.md section 13)
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
       - name: Git identity for tests
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           git config --global user.name "Drydock CI"
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
@@ -131,32 +144,38 @@ jobs:
     # Decisions D5 and P62: the repo map's tree-sitter parser is C, built with MinGW gcc. This job is quick to read on its
     # own: the parser and every language's tag query on Windows, then the Phase 0 probe (the go job runs the same tests among
     # all the others).
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 30
     env:
       CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Git identity for tests
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           git config --global user.name "Drydock CI"
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
       - name: The repo map with the real parser (every language, a real git checkout)
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           gcc --version
           go test ./internal/repomap -count=1 -v
       - name: Build and run the tree-sitter probe with CGO
         working-directory: evidence/phase0/go-probes/ts
         run: go run .
   ui:
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         # the end-to-end suite builds and starts the real core (cmd/drydock-e2e)
         with:
@@ -164,6 +183,7 @@ jobs:
           cache: true
       - name: Git identity for the end-to-end suite
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           git config --global user.name "Drydock CI"
           git config --global user.email "ci@drydock.invalid"
           git config --global core.autocrlf false
@@ -210,10 +230,12 @@ jobs:
           retention-days: 14
   lint:
     # golangci-lint with the committed .golangci.yml, for the Windows build and for the Linux development build
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -238,6 +260,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -254,10 +278,12 @@ jobs:
         run: go test ./internal/runners -run TestRealRunnerRelease -count=1 -v -timeout 20m
   app:
     needs: [go, ui]
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -271,6 +297,7 @@ jobs:
         env:
           CGO_ENABLED: "1"
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           gcc --version
           go build -tags production -ldflags "-w -s -H windowsgui" -o drydock.exe .
       - name: The app was built with CGO and the tree-sitter parser

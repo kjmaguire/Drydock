@@ -1,8 +1,8 @@
 # Builds the Windows verification bundle on the runner (cmd/drydock-winbundle) and runs it there (cmd/drydock-verify):
 # machine facts, the core running a whole task, a terminal through the core, the process cleanup, and the tests of every
 # package with Windows-specific code. The results zip (report and logs) is kept as an artifact.
-# It runs on windows-latest unless the repository variable WINDOWS_RUNS_ON names other runner labels as JSON, for example
-# ["self-hosted","windows","x64"] for a runner on the owner's PC (docs/windows-runner.md).
+# It runs on windows-latest, a GitHub-hosted runner named outright: the repository is public, so no self-hosted runner may
+# be attached to it and no variable names one (audit 2026-10-16, M19; docs/windows-runner.md).
 name: verify
 on:
   push:
@@ -22,13 +22,15 @@ concurrency:
 jobs:
   verify:
     # runs on every push: the repository is public, so GitHub-hosted Windows runners cost nothing (a 15 to 40 minute job)
-    runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
+    runs-on: windows-latest
     timeout-minutes: 120
     defaults:
       run:
         shell: pwsh
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod

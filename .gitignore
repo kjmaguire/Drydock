@@ -25,8 +25,17 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
+# env files and other local state or key material: never committed (audit 2026-10-16, L56). A look-alike a test needs is made
+# by the test, or lives under a testdata folder and is added with git add -f after a person has looked at it.
 .env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.pem
+*.key
 
 # Editor/IDE
 # .idea/
@@ -46,3 +55,7 @@ dist-windows/
 
 # Contract suite reports (go run ./cmd/drydock-contract; docs/contract-tests.md)
 /contract-report/
+
+# Playwright's results and report when it is run from the repository root (ui/.gitignore covers the ones under ui/)
+/test-results/
+/playwright-report/

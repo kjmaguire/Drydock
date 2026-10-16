@@ -7,6 +7,8 @@
 //	go run ./cmd/drydock-contract --cli claude --budget-usd 0.50
 //	go run ./cmd/drydock-contract --check-updates            # also compare the pins with the newest npm releases
 //	go run ./cmd/drydock-contract --check-updates --latest   # and run the suite against the newer releases
+//	go run ./cmd/drydock-contract --install-latest DIR       # only install the newest releases into DIR (for a step with no secrets)
+//	go run ./cmd/drydock-contract --latest-from DIR          # run the suite against what --install-latest put in DIR
 //	go run ./cmd/drydock-contract --list                     # print the catalog
 //	go run ./cmd/drydock-contract --install-pinned claude    # npm install -g the pinned claude unless one is on PATH
 package main
@@ -31,15 +33,17 @@ import (
 )
 
 type options struct {
-	clis         []string
-	out          string
-	budget       float64
-	latest       bool
-	checkUpdates bool
-	skipSlow     bool
-	list         bool
-	installPin   string
-	timeout      time.Duration
+	clis          []string
+	out           string
+	budget        float64
+	latest        bool
+	installLatest string
+	latestFrom    string
+	checkUpdates  bool
+	skipSlow      bool
+	list          bool
+	installPin    string
+	timeout       time.Duration
 }
 
 func parseFlags(args []string) (options, error) {
@@ -49,6 +53,8 @@ func parseFlags(args []string) (options, error) {
 	fs.StringVar(&o.out, "out", "contract-report", "directory for contract-report.json, contract-report.md and the raw go test logs")
 	fs.Float64Var(&o.budget, "budget-usd", 1.00, "stop starting paid checks once this many US dollars are spent (they use haiku)")
 	fs.BoolVar(&o.latest, "latest", false, "install the newest published version of each CLI into a temporary npm prefix and run against it")
+	fs.StringVar(&o.installLatest, "install-latest", "", "install the newest published version of each CLI into this npm prefix and exit; the packages' install scripts run, so do it where no secret is in the environment")
+	fs.StringVar(&o.latestFrom, "latest-from", "", "run against the CLIs that --install-latest put in this npm prefix; installs nothing")
 	fs.BoolVar(&o.checkUpdates, "check-updates", false, "compare the pinned and installed versions with the newest on npm and print what changed")
 	fs.BoolVar(&o.skipSlow, "skip-slow", false, "leave out the checks that take minutes (CLAUDE-MCPWAIT-01)")
 	fs.BoolVar(&o.list, "list", false, "print the catalog and exit")
@@ -68,7 +74,20 @@ func parseFlags(args []string) (options, error) {
 	if o.budget < 0 {
 		return o, errors.New("--budget-usd must not be negative")
 	}
+	if n := countSet(o.latest, o.installLatest != "", o.latestFrom != ""); n > 1 {
+		return o, errors.New("--latest, --install-latest and --latest-from are three ways to the newest releases: choose one")
+	}
 	return o, nil
+}
+
+func countSet(bs ...bool) int {
+	n := 0
+	for _, b := range bs {
+		if b {
+			n++
+		}
+	}
+	return n
 }
 
 func main() {
@@ -106,6 +125,9 @@ func run(ctx context.Context, o options, w io.Writer) (int, error) {
 	if o.installPin != "" {
 		return 0, installPinned(ctx, w, o.installPin)
 	}
+	if o.installLatest != "" {
+		return 0, installLatestOnly(ctx, w, cs, o)
+	}
 	root, err := repoRoot()
 	if err != nil {
 		return 2, err
@@ -133,18 +155,17 @@ func run(ctx context.Context, o options, w io.Writer) (int, error) {
 		updates = checkUpdates(ctx, selected, installedVersions(ctx, selected, clis))
 		printUpdates(w, updates)
 	}
-	if o.latest {
-		// only what a selected contract runs: the codex CLI, say, is not, because the codex-acp bridge brings its own
-		var toInstall []pins.Pin
-		for i, p := range selected {
-			if !slices.Contains(names, p.Bin) || (o.checkUpdates && !updates[i].Newer) {
-				continue
-			}
-			toInstall = append(toInstall, p)
-			if o.checkUpdates {
-				updates[i].Tested = true
+	useBin := func(bin string) {
+		os.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		clis = detectCLIs(ctx, names)
+		for i := range clis {
+			if strings.HasPrefix(clis[i].Path, bin) {
+				clis[i].Source = "latest"
 			}
 		}
+	}
+	if o.latest {
+		toInstall := latestPins(selected, names, o.checkUpdates, updates)
 		if len(toInstall) == 0 {
 			fmt.Fprintln(w, "--latest: nothing newer to install; running against what is installed")
 		} else {
@@ -152,12 +173,19 @@ func run(ctx context.Context, o options, w io.Writer) (int, error) {
 			if err != nil {
 				return 2, err
 			}
-			os.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-			clis = detectCLIs(ctx, names)
-			for i := range clis {
-				if strings.HasPrefix(clis[i].Path, bin) {
-					clis[i].Source = "latest"
-				}
+			useBin(bin)
+		}
+	}
+	if o.latestFrom != "" {
+		// the install happened in an earlier step that held no secret; this one only uses what it left (audit 2026-10-16, M19)
+		bin := npmBin(o.latestFrom, runtime.GOOS)
+		if st, err := os.Stat(bin); err != nil || !st.IsDir() {
+			return 2, fmt.Errorf("--latest-from: nothing is installed in %s (run --install-latest first)", o.latestFrom)
+		}
+		useBin(bin)
+		for i, p := range selected {
+			if i < len(updates) && updates[i].Newer && slices.Contains(names, p.Bin) {
+				updates[i].Tested = true
 			}
 		}
 	}
@@ -245,6 +273,48 @@ func printCatalog(w io.Writer, cs []contract.Contract) {
 	}
 }
 
+// latestPins are the pins --latest installs: only what a selected contract runs (the codex CLI, say, is not, because the
+// codex-acp bridge brings its own), and with --check-updates only what npm has a newer version of (marked as tested).
+func latestPins(selected []pins.Pin, names []string, checkUpdates bool, updates []contract.Update) []pins.Pin {
+	var out []pins.Pin
+	for i, p := range selected {
+		if !slices.Contains(names, p.Bin) || (checkUpdates && !updates[i].Newer) {
+			continue
+		}
+		out = append(out, p)
+		if checkUpdates {
+			updates[i].Tested = true
+		}
+	}
+	return out
+}
+
+// installLatestOnly is --install-latest: install the newest release of each CLI the selected contracts run into an npm prefix
+// and say where, then stop. A package's install script runs, because Claude Code's npm package links its native binary in one
+// (installed with --ignore-scripts it does not start); so this is done in a step of its own where no secret is in the
+// environment, and the suite step, which holds the sign-in, only runs what was installed here (audit 2026-10-16, M19).
+func installLatestOnly(ctx context.Context, w io.Writer, cs []contract.Contract, o options) error {
+	names := contract.CLIs(cs)
+	selected, err := pinsFor(names, o.clis)
+	if err != nil {
+		return err
+	}
+	toInstall := latestPins(selected, names, false, nil)
+	if len(toInstall) == 0 {
+		return errors.New("--install-latest: no pinned CLI belongs to the selected contracts")
+	}
+	prefix, err := filepath.Abs(o.installLatest)
+	if err != nil {
+		return err
+	}
+	bin, err := installLatest(ctx, w, prefix, toInstall)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "--install-latest: installed into %s\n", bin)
+	return nil
+}
+
 // installPinned installs the version the manifests pin for one CLI with `npm install -g`, unless the CLI is already on PATH.
 func installPinned(ctx context.Context, w io.Writer, name string) error {
 	ps, err := pins.Embedded()
@@ -263,6 +333,7 @@ func installPinned(ctx context.Context, w io.Writer, name string) error {
 		spec := p.Package + "@" + p.Version
 		fmt.Fprintf(w, "installing %s\n", spec)
 		cmd := exec.CommandContext(ctx, "npm", "install", "-g", "--no-audit", "--no-fund", spec)
+		cmd.Env = npmEnv(os.Environ())
 		var errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = w, &errb
 		if err := cmd.Run(); err != nil {

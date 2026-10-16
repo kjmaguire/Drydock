@@ -20,13 +20,16 @@ type workflow struct {
 			} `yaml:"inputs"`
 		} `yaml:"workflow_dispatch"`
 		Push struct {
-			Paths []string `yaml:"paths"`
+			Branches []string `yaml:"branches"`
+			Paths    []string `yaml:"paths"`
 		} `yaml:"push"`
 	} `yaml:"on"`
 	Permissions map[string]string `yaml:"permissions"`
 	Jobs        map[string]struct {
-		RunsOn string `yaml:"runs-on"`
-		Steps  []struct {
+		RunsOn      string            `yaml:"runs-on"`
+		Environment string            `yaml:"environment"`
+		Env         map[string]string `yaml:"env"`
+		Steps       []struct {
 			Uses  string            `yaml:"uses"`
 			Run   string            `yaml:"run"`
 			If    string            `yaml:"if"`
@@ -79,8 +82,22 @@ func TestContractWorkflowIsWhatTheDocsSay(t *testing.T) {
 	if !ok {
 		t.Fatal("no contract job")
 	}
-	if job.RunsOn != `${{ fromJSON(vars.CONTRACT_RUNS_ON || '"windows-latest"') }}` {
+	// a GitHub-hosted runner, named outright: a repository variable that could send this job to a self-hosted runner on a public
+	// repository is not there (audit 2026-10-16, M19)
+	if job.RunsOn != "windows-latest" {
 		t.Errorf("runs-on %q", job.RunsOn)
+	}
+	// the sign-in secrets belong to an environment that only main may use, and a push runs the workflow on main only
+	if job.Environment != "contract" {
+		t.Errorf("environment %q: the secrets are the environment contract's", job.Environment)
+	}
+	if !slices.Equal(w.On.Push.Branches, []string{"main"}) {
+		t.Errorf("a push runs it on %v: the environment lets main only read the secrets", w.On.Push.Branches)
+	}
+	for k, v := range job.Env {
+		if strings.Contains(v, "secrets.") || strings.Contains(v, "github.token") {
+			t.Errorf("job env %s holds a secret: every step would see it", k)
+		}
 	}
 	ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
 	if err != nil {
@@ -98,6 +115,31 @@ func TestContractWorkflowIsWhatTheDocsSay(t *testing.T) {
 			if !known[s.Uses] {
 				t.Errorf("%s is not an action (at that version) the existing CI uses", s.Uses)
 			}
+		}
+		// no step but the suite holds a secret, and the newest releases are installed by a step that holds none (their install
+		// scripts run there)
+		if !strings.Contains(s.Run, "--check-updates") {
+			for k, v := range s.Env {
+				if strings.Contains(v, "secrets.") || strings.Contains(v, "github.token") {
+					t.Errorf("step %q holds %s outside the suite step", s.Run, k)
+				}
+			}
+			for k, v := range s.With {
+				if str, ok := v.(string); ok && (strings.Contains(str, "secrets.") || strings.Contains(str, "github.token")) {
+					t.Errorf("action %s gets %s", s.Uses, k)
+				}
+			}
+		}
+		if s.Uses == "actions/checkout@v7" && s.With["persist-credentials"] != false {
+			t.Errorf("the checkout keeps the job's token in the workspace: %v", s.With)
+		}
+		if strings.Contains(s.Run, "--install-latest") {
+			if s.If != "${{ inputs.latest }}" {
+				t.Errorf("the install of the newest releases runs only when asked for: %q", s.If)
+			}
+		}
+		if strings.Contains(s.Run, "--check-updates") && (strings.Contains(s.Run, "--latest ") || strings.HasSuffix(strings.TrimSpace(s.Run), "--latest") || strings.Contains(s.Run, "npm")) {
+			t.Errorf("the suite step, which holds the sign-in, must not install anything: %q", s.Run)
 		}
 		if strings.Contains(s.Run, "--install-pinned claude") {
 			install = s.Run

@@ -137,11 +137,20 @@ paid check reads the run's ledger before it starts and skips once the budget is 
 installs the pinned Claude Code unless one is already installed, runs the suite with `--check-updates` and a budget cap, adds the
 report to the run's summary and uploads `contract-report/` as an artifact.
 
-- **Runner.** `runs-on` reads the repository variable `CONTRACT_RUNS_ON` (a JSON value, for example `"windows-latest"` or
-  `["self-hosted","windows"]`) and defaults to `windows-latest` (the product's platform; WIN-ARGV-01 runs only there).
-- **Sign-in.** Add one repository secret: `CLAUDE_CODE_OAUTH_TOKEN` (made with `claude setup-token` on a machine where you are
-  signed in; it uses your subscription) or `ANTHROPIC_API_KEY` (billed to the API account). Without either, the paid checks skip
-  with "claude is not signed in here" and the free ones still run.
+- **Runner.** `windows-latest`, named outright (the product's platform; WIN-ARGV-01 runs only there). There is no variable to
+  name another runner: the repository is public, and a self-hosted runner on a public repository would run a stranger's code
+  (audit 2026-10-16, M19).
+- **Sign-in.** Create the environment `contract` (Settings > Environments) with deployment branches set to `main`, add one secret
+  to it: `CLAUDE_CODE_OAUTH_TOKEN` (made with `claude setup-token` on a machine where you are signed in; it uses your
+  subscription) or `ANTHROPIC_API_KEY` (billed to the API account), and delete any repository secret of the same name (the job
+  names the environment, so only code on `main` reads the secret; add a required reviewer if every run should be approved).
+  Without either, the paid checks skip with "claude is not signed in here" and the free ones still run. A push runs the workflow
+  on `main` only.
+- **The newest releases (`--latest`, the manual run's `latest` box).** They are installed by `drydock-contract --install-latest`
+  in a step of their own that holds no secret and run by `--latest-from` in the step that holds the sign-in. A package's install
+  script runs (Claude Code's npm package links its native binary in one: installed with `--ignore-scripts` it prints "claude
+  native binary not installed" and cannot start), so what keeps the secrets safe is that the step that runs it has none, and
+  that npm itself runs with a scrubbed environment (`proc.ToolEnv` names, no token).
 - **Status.** The workflow runs on GitHub-hosted runners since the repository went public (decision P2 resolved): five runs by
   2026-10-11, about a minute and a half each, which is what a run looks like when the paid checks skip for want of a sign-in
   secret. Such a run now ends with a warning annotation ("no paid contract ran ... only the free contracts were checked"), so

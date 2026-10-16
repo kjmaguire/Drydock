@@ -3,17 +3,19 @@
 Drydock is Windows-only. **Since 2026-10-10 the repository is public, so GitHub-hosted Windows runners cost nothing** and
 every push runs `.github/workflows/ci.yml` (vet and every Go test, the UI tests, the app build) and `verify.yml` (the
 verification bundle below) on `windows-latest`; `windows-probes.yml` runs the Phase 0 probes when they change or by hand.
-That is the first way to get the proof. The other two need the owner's PC:
+That is the first way to get the proof. The other is to run the bundle on a PC by hand:
 
-1. **Run the verification bundle by hand.** A zip of Drydock's own tests compiled for Windows, plus a program that runs them
-   and writes a report. Nothing to install except Git; no Go needed. See [By hand](#by-hand-the-verification-bundle).
-2. **Register a self-hosted runner on the PC** and point the workflows at it with one repository variable. Then every
-   workflow (CI, the Phase 0 probes, and `verify.yml`, which builds and runs the bundle) runs there on each push.
-   See [A self-hosted runner](#a-self-hosted-runner-on-your-pc).
+**Run the verification bundle by hand.** A zip of Drydock's own tests compiled for Windows, plus a program that runs them
+and writes a report. Nothing to install except Git; no Go needed. See [By hand](#by-hand-the-verification-bundle).
 
-**Do not attach a self-hosted runner to a public repository.** A pull request from anyone's fork runs the workflows, so it
-could run its own code on the runner's PC (GitHub's own advice). With the repository public, use the GitHub-hosted runners;
-keep option 2 for a private repository only.
+**There is no self-hosted runner, and no variable that could name one** (audit 2026-10-16, M19). A pull request from anyone's
+fork runs the workflows, so a self-hosted runner attached to a public repository would run a stranger's code on the PC it
+sits on (GitHub's own advice is never to do that). Every job in `ci.yml`, `verify.yml`, `windows-probes.yml` and
+`contract.yml` says `runs-on: windows-latest` (or `ubuntu-latest` for the Linux sandbox job) outright, with a read-only token
+that the checkout does not keep in the workspace, and a test (`internal/ciconfig`) fails if a workflow names its runner by a
+variable, lacks a time limit or a `permissions:` block, or keeps the token. Registering a runner on the owner's PC is a thing
+for a private repository only, and Drydock's own CI runners feature (docs/ci-runners.md) does it for those, refusing a
+repository that is public.
 
 The bundle writes the same report wherever it runs: `drydock-verify-report.md` (for people) and `drydock-verify-report.json`, zipped with every
 step's log into `drydock-verify-<date>.zip`.
@@ -76,94 +78,3 @@ build on the PC already has one (that entry decrypts the provider keys the build
 go run ./cmd/drydock-winbundle -goos linux -out dist-windows/linux && dist-windows/linux/drydock-verify
 DRYDOCK_BUNDLE_E2E=1 go test -run TestBundleEndToEnd -timeout 60m ./internal/winverify   # build, unzip, run, check the report
 ```
-
-## A self-hosted runner on your PC
-
-### What it needs on the PC
-
-- Windows 10 or 11, x64.
-- **Git for Windows** (https://git-scm.com), installed for all users.
-- **PowerShell 7** (`winget install --id Microsoft.PowerShell`): the workflows use `shell: pwsh`.
-- **Go and Node** are installed for each job by `actions/setup-go` (the version in `go.mod`, today 1.27.2) and
-  `actions/setup-node` (Node 24 for the UI, 22 for the probes) into the runner's own tool folder. Install them yourself only
-  if you also want to run things by hand.
-- **gcc** (MinGW, on PATH): the repo map's parser is C (decision P62), so the `go`, `repomap-cgo`, `ui` (its end-to-end
-  harness) and `app` jobs build with CGO and fail without a C compiler, as does the probes' `treesitter` job.
-- Optional: **gh** (the GitHub CLI; tests that look for it skip without it), **Chocolatey** with administrator rights (the
-  NSIS installer step of the probes' `wails` job).
-- A few GB of free disk for the Go build cache and `node_modules`.
-
-### Register the runner
-
-1. Create a **standard (not administrator) Windows account** just for the runner, for example `drydock-ci`
-   (Settings > Accounts > Other users > Add account).
-2. On GitHub: the repository's **Settings > Actions > Runners > New self-hosted runner**, choose **Windows** and **x64**.
-   GitHub shows the exact PowerShell commands with the current runner version, its checksum and a one-time token. They look
-   like this; copy GitHub's own, not these:
-
-   ```powershell
-   mkdir C:\actions-runner; cd C:\actions-runner
-   Invoke-WebRequest -Uri https://github.com/actions/runner/releases/download/v<version>/actions-runner-win-x64-<version>.zip -OutFile actions-runner-win-x64-<version>.zip
-   if((Get-FileHash -Path actions-runner-win-x64-<version>.zip -Algorithm SHA256).Hash.ToUpper() -ne '<checksum>'.ToUpper()){ throw 'Computed checksum did not match' }
-   Add-Type -AssemblyName System.IO.Compression.FileSystem ; [System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD/actions-runner-win-x64-<version>.zip", "$PWD")
-   ./config.cmd --url https://github.com/kjmaguire/Drydock --token <token>
-   ```
-
-   Use a folder outside your own user folder (such as `C:\actions-runner`) and give the runner account full control of it.
-3. `config.cmd` asks a few questions. Keep the default runner group and name. **Labels:** the runner always gets
-   `self-hosted`, `Windows` and `X64`; you may add one of your own (for example `drydock`). Labels match without regard to
-   case. Keep the default work folder `_work`.
-4. Choose how it runs:
-   - **As a Windows service** (starts with the PC): answer `Y` when asked, and give the runner account (`.\drydock-ci`) and
-     its password when asked which account the service should use. Installing the service needs an administrator
-     PowerShell once; the service itself runs as the standard account.
-   - **Only while you want it:** answer `N`, sign in as the runner account and start `run.cmd` in the runner folder. It
-     takes jobs until you close the window.
-5. The runner appears as **Idle** under Settings > Actions > Runners.
-
-### Point the workflows at it
-
-Every job in `ci.yml`, `windows-probes.yml` and `verify.yml` has
-
-```yaml
-runs-on: ${{ fromJSON(vars.WINDOWS_RUNS_ON || '"windows-latest"') }}
-```
-
-so it runs on GitHub's `windows-latest` unless the repository variable `WINDOWS_RUNS_ON` says otherwise. Set it under
-**Settings > Secrets and variables > Actions > Variables > New repository variable**: name `WINDOWS_RUNS_ON`, value
-
-```json
-["self-hosted","windows","x64"]
-```
-
-(add your own label to the list, for example `["self-hosted","windows","x64","drydock"]`, to pick that runner only). With
-the GitHub CLI: `gh variable set WINDOWS_RUNS_ON --body '["self-hosted","windows","x64"]'`. Delete the variable to go back
-to GitHub-hosted runners. While it is set and the runner is offline, jobs wait in the queue for it.
-
-If GitHub Actions itself is switched off for the repository (Settings > Actions > General), no runner helps; the bundle by
-hand still works.
-
-### What runs there
-
-- `ci.yml` on pushes to `main` and on pull requests: `go vet` and `go test ./...` (real agent CLIs are never used there:
-  `DRYDOCK_NO_REAL_AGENTS=1`), the tree-sitter CGO probe, the UI tests and build, and the Wails app build.
-- `windows-probes.yml` on pushes to `claude/**` that touch the probes, or by hand: it **installs** agent CLIs with
-  `npm install -g` and `wails3` with `go install` for the runner account, and NSIS with Chocolatey.
-- `verify.yml` on pushes to `main` and `claude/**` (not for documentation-only changes, and only while `WINDOWS_RUNS_ON`
-  is set, so it never spends GitHub-hosted minutes by itself), or by hand from the Actions tab (**Run workflow**, with the
-  `with_claude` box for the real Claude Code tests): builds the bundle without a Go copy inside and runs `drydock-verify`.
-  The results zip is attached to the run as the artifact `drydock-verify-results`.
-
-### Security, in plain words
-
-- **The runner runs whatever is pushed to this repository**, including commits made by Claude sessions, with the rights of
-  the account it runs as. Anyone who can push to the repository can run programs on your PC.
-- **Use a dedicated standard (non-admin) Windows account** for it. Do not run it as yourself or as an administrator.
-- **Keep the repository private.** On a public repository anyone could open a pull request whose code then runs on your PC;
-  GitHub advises never to use self-hosted runners with public repositories.
-- **A runner on a personal PC can see what its account can see**: files that account can read, your home network, and
-  anything signed in under that account. Do not sign the runner account in to Claude Code or `gh` unless you want the tests
-  that use them to run (`with_claude` spends that account's Claude usage).
-- Workflows can install programs for that account (the probes do). Look at a workflow change before you let it run.
-- When you do not need it, stop the service (Services: "GitHub Actions Runner ...") or remove the runner: Settings > Actions
-  > Runners > the runner > Remove, then `./config.cmd remove --token <token>` in the runner folder.

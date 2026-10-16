@@ -18,6 +18,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/pins"
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/contract"
+	"github.com/kjmaguire/drydock/internal/proc"
 )
 
 // detectCLIs finds each CLI the selected contracts concern. A CLI with a manifest goes through Drydock's own Connections
@@ -198,6 +199,7 @@ func installLatest(ctx context.Context, w io.Writer, prefix string, ps []pins.Pi
 		spec := p.Package + "@latest"
 		fmt.Fprintf(w, "--latest: npm install -g --prefix %s %s\n", prefix, spec)
 		cmd := exec.CommandContext(ctx, "npm", "install", "-g", "--prefix", prefix, "--no-audit", "--no-fund", spec)
+		cmd.Env = npmEnv(os.Environ())
 		var errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = io.Discard, &errb
 		if err := cmd.Run(); err != nil {
@@ -210,6 +212,14 @@ func installLatest(ctx context.Context, w io.Writer, prefix string, ps []pins.Pi
 		return "", errors.New("--latest: nothing could be installed")
 	}
 	return npmBin(prefix, runtime.GOOS), nil
+}
+
+// npmEnv is the environment npm runs the install scripts of a package in: what a build tool needs to find its toolchain and the
+// network (proc.ToolEnv), and npm's own settings, and nothing else. The sign-in secrets of the suite, the job's token and every
+// other credential in the caller's environment stay out of code that is downloaded (audit 2026-10-16, M19).
+func npmEnv(parent []string) []string {
+	names := append(append([]string(nil), proc.BaseEnvNames...), proc.ToolEnvNames...)
+	return proc.WithoutProxyCredentials(proc.ScrubEnv(parent, names, []string{"NPM_CONFIG_"}), nil)
 }
 
 // npmBin is where `npm install -g --prefix` puts the commands: <prefix>\ on Windows, <prefix>/bin elsewhere.
