@@ -16,12 +16,32 @@ import (
 // (audit 2026-10-16, L51). Move both together; docs/software-notes.json records it as the version "used".
 const govulncheckModule = "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 
+// vulnDB is the vulnerability database govulncheck reads ("" is its own default, https://vuln.go.dev): -vulndb or
+// DRYDOCK_AUDIT_VULNDB, for a network that does not let that host through (the same database is served from
+// https://storage.googleapis.com/go-vulndb) or for a mirror on disk (file:///path).
+var vulnDB string
+
+// govulncheckArgs are the arguments of `go run` for the scanner.
+func govulncheckArgs() []string {
+	args := []string{"run", govulncheckModule}
+	if vulnDB != "" {
+		args = append(args, "-db", vulnDB)
+	}
+	return append(args, "-format", "json", "./...")
+}
+
 // govulncheck runs the Go vulnerability scanner over the whole module. A finding is "called" when the code can reach the
 // vulnerable function; the others are in a dependency or the standard library the build includes but does not call.
+// The scanner is built with the Go the project is built with: one built with an older Go cannot load packages that need a newer
+// one ("package requires newer Go version"), and `go run pkg@version` builds with the oldest Go the scanner's own go.mod allows.
 func govulncheck(ctx context.Context) ([]Vuln, string) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	out, err := run(ctx, root, nil, "go", "run", govulncheckModule, "-format", "json", "./...")
+	var env []string
+	if v, err := run(ctx, root, nil, "go", "env", "GOVERSION"); err == nil && strings.HasPrefix(strings.TrimSpace(v), "go") {
+		env = append(env, "GOTOOLCHAIN="+strings.TrimSpace(v))
+	}
+	out, err := run(ctx, root, env, "go", govulncheckArgs()...)
 	if err != nil {
 		fail("govulncheck: " + err.Error())
 		return nil, "did not run: " + firstLine(err.Error())

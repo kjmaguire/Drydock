@@ -13,14 +13,17 @@ import (
 
 // TestMain lets this test binary stand in for programs the audit runs (LABELLED TEST DOUBLES). A copy of it named npm answers
 // `npm outdated`, `npm --version` and nothing else, the way AUDIT_FAKE_NPM says; one named git lists the tags of two
-// repositories and finds no other; started with AUDIT_HELPER set it prints a fixed text and exits with a fixed code. None
-// touches the network, so the tests run the same on the Windows runner.
+// repositories and finds no other; one named go says which Go the project builds with and, asked to run the scanner, answers with
+// a finding that carries the toolchain and the arguments it was started with; started with AUDIT_HELPER set it prints a fixed
+// text and exits with a fixed code. None touches the network, so the tests run the same on the Windows runner.
 func TestMain(m *testing.M) {
 	switch base := strings.TrimSuffix(filepath.Base(os.Args[0]), filepath.Ext(os.Args[0])); base {
 	case "npm":
 		os.Exit(fakeNPM(os.Args[1:]))
 	case "git":
 		os.Exit(fakeGit(os.Args[1:]))
+	case "go":
+		os.Exit(fakeGo(os.Args[1:]))
 	}
 	if mode := os.Getenv("AUDIT_HELPER"); mode != "" {
 		os.Exit(helperProcess(mode))
@@ -71,6 +74,21 @@ func fakeNPM(args []string) int {
 		return 0
 	}
 	return 99
+}
+
+func fakeGo(args []string) int {
+	switch {
+	case len(args) == 2 && args[0] == "env" && args[1] == "GOVERSION":
+		fmt.Println("go1.27.9")
+		return 0
+	case len(args) > 1 && args[0] == "run":
+		// the scanner's output: one vulnerability the code calls, whose summary says how the scanner was started
+		fmt.Printf(`{"osv":{"id":"GO-TEST-1","summary":"toolchain=%s args=%s"}}`+"\n", os.Getenv("GOTOOLCHAIN"), strings.Join(args[1:], " "))
+		fmt.Println(`{"finding":{"osv":"GO-TEST-1","fixed_version":"v1.0.1","trace":[{"module":"example.com/m","version":"v1.0.0","function":"F"}]}}`)
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "the fake go answers env GOVERSION and run only")
+	return 1
 }
 
 func fakeGit(args []string) int {
@@ -438,5 +456,32 @@ func TestEveryActionInTheWorkflowsIsMeasuredAgainstItsRepository(t *testing.T) {
 	}
 	if f := takeFailures(); len(f) != 0 {
 		t.Errorf("lookups failed: %v", f)
+	}
+}
+
+// The scanner is built with the Go the project is built with (an older one cannot load packages that need a newer one), and
+// reads the database the person chose, when one was chosen.
+func TestTheScannerIsStartedWithTheProjectsGoAndTheChosenDatabase(t *testing.T) {
+	installFake(t, "go")
+	old := root
+	root = t.TempDir()
+	defer func() { root, vulnDB = old, "" }()
+	takeFailures()
+	defer takeFailures()
+
+	vs, status := govulncheck(context.Background())
+	if len(vs) != 1 || !vs[0].Called || !strings.Contains(status, "1 known vulnerabilities") {
+		t.Fatalf("%+v, %q", vs, status)
+	}
+	if want := "toolchain=go1.27.9 args=" + govulncheckModule + " -format json ./..."; vs[0].Summary != want {
+		t.Errorf("started as %q, want %q", vs[0].Summary, want)
+	}
+	vulnDB = "https://storage.googleapis.com/go-vulndb"
+	vs, _ = govulncheck(context.Background())
+	if len(vs) != 1 || !strings.Contains(vs[0].Summary, "args="+govulncheckModule+" -db https://storage.googleapis.com/go-vulndb -format json ./...") {
+		t.Errorf("with a chosen database: %+v", vs)
+	}
+	if f := takeFailures(); len(f) != 0 {
+		t.Errorf("failures: %v", f)
 	}
 }

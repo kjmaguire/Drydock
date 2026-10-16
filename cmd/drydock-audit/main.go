@@ -5,6 +5,7 @@
 //
 //	go run ./cmd/drydock-audit            # network lookups, writes docs/software-versions.json
 //	go run ./cmd/drydock-audit -vuln=false # skip the vulnerability scans (faster)
+//	go run ./cmd/drydock-audit -vulndb https://storage.googleapis.com/go-vulndb   # where vuln.go.dev is not reachable
 //
 // The report is written even when a lookup failed (it lists them under lookupsFailed and a package with no answer is "unknown",
 // never "current"), and the exit status is 2 then, so an incomplete measurement is not mistaken for a complete one.
@@ -219,6 +220,7 @@ func day(t string) string {
 
 func main() {
 	vuln := flag.Bool("vuln", true, "run govulncheck and npm audit")
+	flag.StringVar(&vulnDB, "vulndb", os.Getenv("DRYDOCK_AUDIT_VULNDB"), "the vulnerability database govulncheck reads (default: its own, https://vuln.go.dev; the same data is at https://storage.googleapis.com/go-vulndb)")
 	out := flag.String("out", "docs/software-versions.json", "output file, relative to the repository root")
 	artifactDir := flag.String("artifact-dir", "", "also write the dataset files for the Software Versions Artifact (items, vulns, drift, meta) into this directory")
 	flag.Parse()

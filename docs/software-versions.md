@@ -48,7 +48,10 @@ current, and the failed lookup is listed in the report (`lookupsFailed`). A scan
 should be (`govulncheck` JSON cut off, `npm audit` answering with an error object) reports "did not run", with the reason, instead
 of "0 vulnerabilities". The report is written either way, and the exit status is 2 when any lookup failed, so a measurement made
 without the network cannot pass for a complete one. `govulncheck` is run at the release pinned in `cmd/drydock-audit/vuln.go`
-(and in the workflow), recorded in `docs/software-notes.json` as the version used.
+(and in the workflow), recorded in `docs/software-notes.json` as the version used, and built with the Go the project is built with
+(`GOTOOLCHAIN` is set to `go env GOVERSION`: a scanner built with an older Go cannot load packages that need a newer one). Where
+`vuln.go.dev` cannot be reached, `-vulndb https://storage.googleapis.com/go-vulndb` (or `DRYDOCK_AUDIT_VULNDB`) reads the same
+database from its storage bucket, and `file:///path` reads a mirror; without it the scan says "did not run" and the exit status is 2.
 
 ## Refreshing the Artifact
 
