@@ -112,7 +112,8 @@ func (r *ScanRegistry) resolve(ctx context.Context, td TemplateDeps, t tasks.Tas
 
 // scanNode runs the named scans over the task's worktree. With informational true (the first scan of the Security template)
 // it only gathers findings for the worker and always continues; otherwise (the gate) any failing scan sends the work back.
-// Skipped and errored scans are recorded as evidence without a verdict and never count as a pass.
+// Skipped and errored scans are recorded as evidence without a verdict and never count as a pass: a gate on which no scan gave
+// a verdict does not pass by itself but asks a person (noVerdict).
 func (td TemplateDeps) scanNode(id string, informational bool) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, td.Deps, in)
@@ -128,6 +129,20 @@ func (td TemplateDeps) scanNode(id string, informational bool) workflow.NodeHand
 		var failing []checks.Result
 		var summary strings.Builder
 		var last checks.Result
+		// a gate with no scan that gave a verdict does not pass by itself: a person is asked (audit 2026-10-16, M28)
+		var unjudgedScans []unjudged
+		verdicts := 0
+		var ans verdictAnswer
+		diff := ""
+		if !informational {
+			if repo, rerr := td.Repo(ctx, t.ProjectID); rerr == nil {
+				diff, _ = repo.DiffHash(ctx, worktreeOf(t))
+			}
+			ans = verdictAnswerFor(ctx, td.Deps, in, diff)
+			if err := stopOnVerdictAnswer(ans, "the security scans"); err != nil {
+				return workflow.NodeOutput{}, err
+			}
+		}
 		for _, name := range names {
 			spec, pre, err := td.scans().resolve(ctx, td, t, name)
 			if err != nil {
@@ -159,8 +174,10 @@ func (td TemplateDeps) scanNode(id string, informational bool) workflow.NodeHand
 					td.OnInconclusive(ctx, t, res)
 				}
 				fmt.Fprintf(&summary, "- %s: %s (%s)\n", name, status, truncateStr(reason, 200))
+				unjudgedScans = append(unjudgedScans, unjudged{Name: name, Status: status, Reason: td.redact(truncateStr(oneLine(reason), 200))})
 				continue
 			}
+			verdicts++
 			passed := res.Passed
 			if _, err := td.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: name, Passed: &passed, Summary: summarize(res), Ref: res.LogRef, Data: data}); err != nil {
 				return workflow.NodeOutput{}, err
@@ -179,6 +196,9 @@ func (td TemplateDeps) scanNode(id string, informational bool) workflow.NodeHand
 		if informational {
 			b, _ := json.Marshal(map[string]any{"scanSummary": summary.String()})
 			return workflow.NodeOutput{Value: b, Route: "done"}, nil
+		}
+		if len(failing) == 0 && verdicts == 0 {
+			return noVerdict(ctx, td.Deps, in, t, "the security scans", diff, unjudgedScans, ans)
 		}
 		if len(failing) > 0 {
 			first := failing[0]

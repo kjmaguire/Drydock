@@ -134,3 +134,32 @@ func TestRetentionCompactsThenDeletesTheRawOutputOfEndedRuns(t *testing.T) {
 		t.Fatalf("later pass %+v %v", rep, err)
 	}
 }
+
+// Recorded telemetry older than its window is deleted by the daily pass; nothing else ever deleted it (audit 2026-10-16, L5).
+func TestTheRetentionPassPurgesOldTelemetry(t *testing.T) {
+	ctx := context.Background()
+	c, err := Open(ctx, Config{DataDir: t.TempDir(), User: "kyle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	now := time.Now()
+	old, fresh := now.Add(-40*24*time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli()
+	for _, ts := range []int64{old, fresh} {
+		if _, err := c.DB.Writer().Exec(`INSERT INTO telemetry_spans(trace_id,span_id,name,start_ms,end_ms) VALUES('t','s','node',?,?)`, ts, ts+5); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.DB.Writer().Exec(`INSERT INTO telemetry_metrics(ts,name,kind,value) VALUES(?,'m','counter',1)`, ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := c.RunRetention(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"telemetry_spans", "telemetry_metrics"} {
+		var n int
+		if err := c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("%s holds %d rows after the pass, want only the fresh one: %v", table, n, err)
+		}
+	}
+}

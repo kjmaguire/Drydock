@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -88,5 +89,19 @@ func TestSearchIgnoresCommonWordsAndWeighsTitles(t *testing.T) {
 	}
 	if r[0].ID != title.ID || r[1].ID != body.ID {
 		t.Fatalf("a title match must rank first: %q then %q", r[0].Title, r[1].Title)
+	}
+}
+
+// A proposal is short enough to be read whole before it is accepted (audit 2026-10-16, M26).
+func TestCheckSizeRefusesWhatCannotBeReadWhole(t *testing.T) {
+	ok := Entry{Title: "t", Body: strings.Repeat("é", MaxBodyChars)}
+	if err := CheckSize(ok); err != nil {
+		t.Fatalf("exactly the limit in characters (not bytes): %v", err)
+	}
+	if err := CheckSize(Entry{Title: "t", Body: strings.Repeat("x", MaxBodyChars+1)}); err == nil || !strings.Contains(err.Error(), "split it") {
+		t.Fatalf("a body over the limit: %v", err)
+	}
+	if err := CheckSize(Entry{Title: strings.Repeat("x", MaxTitleChars+1), Body: "b"}); err == nil {
+		t.Fatal("a title over the limit")
 	}
 }

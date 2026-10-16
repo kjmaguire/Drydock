@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -227,6 +228,85 @@ func TestImportedTasksWaitForAHumanToMoveThemOn(t *testing.T) {
 	}
 	if _, err := s.Transition(ctx, imp.ID, Ready, TransitionOpts{By: "human:k"}); err != nil {
 		t.Fatalf("a human moves it on: %v", err)
+	}
+}
+
+// A follow-up the team lead split off (origin lead:N) waits in BACKLOG for a person like an imported task does, whatever its
+// dependencies say; the origin is a value only the lead's depths can take, and a person moving the task on makes it ordinary
+// (audit 2026-10-16, M27).
+func TestALeadsFollowUpWaitsForAHumanToMoveItOn(t *testing.T) {
+	s, _ := newSvc(t)
+	ctx := context.Background()
+	own, _ := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "Ours"})
+	fol, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "Split off", Origin: LeadOrigin(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fol.Origin != "lead:1" || fol.LeadDepth() != 1 || !fol.WaitsForAHuman() || fol.Imported() || own.WaitsForAHuman() || own.LeadDepth() != 0 {
+		t.Fatalf("origin %q depth %d waits %v imported %v; ours waits %v", fol.Origin, fol.LeadDepth(), fol.WaitsForAHuman(), fol.Imported(), own.WaitsForAHuman())
+	}
+	if got, _ := s.PromoteReady(ctx, "p1"); len(got) != 1 || got[0] != own.ID {
+		t.Fatalf("only the task a person made is promoted, got %v", got)
+	}
+	if cur, _ := s.Get(ctx, fol.ID); cur.Status != Backlog || cur.Origin != "lead:1" {
+		t.Fatalf("%s %q", cur.Status, cur.Origin)
+	}
+	if _, err := s.Transition(ctx, fol.ID, Ready, TransitionOpts{By: "human:k"}); err != nil {
+		t.Fatalf("a person moves it on: %v", err)
+	}
+	for _, bad := range []string{"lead:0", "lead:3", "lead:-1", "lead:", "lead:1x", "lead:01", "lead: 1", "human:1", "x"} {
+		if _, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "bad", Origin: bad}); err == nil {
+			t.Errorf("the origin %q was accepted", bad)
+		}
+	}
+	if got := (Task{Origin: "lead:9"}).LeadDepth(); got != 9 {
+		t.Fatalf("a stored depth is read as it is: %d", got)
+	}
+	if got := (Task{Origin: "garbage"}).LeadDepth(); got != 0 {
+		t.Fatalf("an origin that is not the lead's is depth %d", got)
+	}
+}
+
+// The lead may have only so many unfinished follow-ups in a project: the count is taken in the transaction that inserts, and a
+// follow-up that is finished or cancelled no longer counts.
+func TestTheLeadsOpenFollowUpsAreCappedPerProject(t *testing.T) {
+	s, _ := newSvc(t)
+	ctx := context.Background()
+	if _, err := s.DB.Writer().Exec(`INSERT INTO projects(id,name,repo_path,created_at) VALUES('p2','other','/y',1)`); err != nil {
+		t.Fatal(err)
+	}
+	var first Task
+	for i := 0; i < MaxLeadOpen; i++ {
+		fol, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: fmt.Sprintf("follow-up %d", i), Origin: LeadOrigin(1 + i%MaxLeadDepth)})
+		if err != nil {
+			t.Fatalf("follow-up %d: %v", i, err)
+		}
+		if i == 0 {
+			first = fol
+		}
+	}
+	if n, err := s.OpenFromLead(ctx, "p1"); err != nil || n != MaxLeadOpen {
+		t.Fatalf("open %d %v", n, err)
+	}
+	if _, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "one too many", Origin: LeadOrigin(1)}); err == nil || !strings.Contains(err.Error(), "follow-ups open") {
+		t.Fatalf("the follow-up past the limit: %v", err)
+	}
+	// a task a person makes is not limited, and another project has its own count
+	if _, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "made by a person"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(ctx, CreateReq{ProjectID: "p2", Title: "elsewhere", Origin: LeadOrigin(1)}); err != nil {
+		t.Fatalf("another project: %v", err)
+	}
+	// cancelling one frees a place
+	if _, err := s.Transition(ctx, first.ID, Cancelled, TransitionOpts{By: "human:k"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "fits now", Origin: LeadOrigin(1)}); err != nil {
+		t.Fatalf("after one was cancelled: %v", err)
+	}
+	if _, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "over again", Origin: LeadOrigin(1)}); err == nil {
+		t.Fatal("the limit holds again")
 	}
 }
 

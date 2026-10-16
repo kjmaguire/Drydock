@@ -374,12 +374,8 @@ type ciAnswer struct {
 // its own pause; so the CI question is not delivered (RequestSpec.Retry without DeliverAnswer) and is read from its
 // approvals row instead, as the budget gate does.
 func ciAnswerFor(ctx context.Context, d Deps, in workflow.NodeInput, head string) ciAnswer {
-	var status, decision, by string
-	var resp, payload []byte
-	err := d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT status, decision, decided_by, response, payload FROM approvals
-		WHERE run_id=? AND node_id=? AND CAST(payload AS TEXT) LIKE '%"gate":"ci"%' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-		string(in.RunID), string(in.NodeID)).Scan(&status, &decision, &by, &resp, &payload)
-	if err != nil || status != "APPROVED" && status != "REJECTED" {
+	decision, by, resp, payload, ok := latestGateAnswer(ctx, d, in, "ci")
+	if !ok {
 		return ciAnswer{}
 	}
 	var q struct {

@@ -158,11 +158,19 @@ func (b *Bridge) UpdateApply() error {
 	if err != nil {
 		return err
 	}
-	if _, err := updatepolicy.Prepare(context.Background(), b.Core.DB, dir, exe, Version, rel.Version, time.Now()); err != nil {
+	prepared, err := updatepolicy.Prepare(context.Background(), b.Core.DB, dir, exe, Version, rel.Version, time.Now())
+	if err != nil {
 		return err
+	}
+	// remembered, so that the next start (the new version) can release the backup's prune exemption once it has run healthy
+	if err := updatepolicy.Record(context.Background(), b.Core.DB, prepared, Version, rel.Version, time.Now()); err != nil {
+		return fmt.Errorf("the update was not started: %w", err)
 	}
 	return b.app.Updater.DownloadAndInstall(context.Background())
 }
+
+// updateHealthyAfter is how long a freshly updated app must have been running before its pre-update backup is let go.
+const updateHealthyAfter = 2 * time.Minute
 
 // UpdateRestart restarts into the staged update. The app job object ends every agent process tree first.
 func (b *Bridge) UpdateRestart() error { return b.app.Updater.Restart(context.Background()) }

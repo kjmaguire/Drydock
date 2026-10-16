@@ -21,6 +21,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/uiassets"
+	"github.com/kjmaguire/drydock/internal/updatepolicy"
 )
 
 // DataDir is %LOCALAPPDATA%\Drydock.
@@ -132,6 +133,14 @@ func Run(assets fs.FS) error {
 	}
 	defer c.Close()
 	bridge.setCore(c)
+	// an update that was staged before this start proves itself by this version running for a while: its pre-update backup is
+	// then released from the prune exemption (audit 2026-10-16, M13)
+	confirm := time.AfterFunc(updateHealthyAfter, func() {
+		if _, err := updatepolicy.ConfirmHealthy(context.Background(), c.DB, Version, time.Now()); err != nil {
+			fmt.Fprintf(os.Stderr, "drydock: updates: %v\n", err)
+		}
+	})
+	defer confirm.Stop()
 	if err := bridge.configureUpdater(wa, "stable", false); err != nil {
 		fmt.Fprintf(os.Stderr, "drydock: updates: %v\n", err)
 	}

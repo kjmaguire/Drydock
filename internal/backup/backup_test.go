@@ -281,3 +281,38 @@ func TestAFailedSnapshotLeavesNoTemporaryFileAndStaleOnesAreSwept(t *testing.T) 
 		}
 	}
 }
+
+// A marker that nothing released (every update before the release was wired) does not keep a backup for ever.
+func TestAPreUpdateMarkerExpires(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := storage.OpenTemp(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	bdir := filepath.Join(dir, "backups")
+	old, err := backup.Create(ctx, db, bdir, "pre-update-1.0.0-to-1.1.0", time.Now().Add(-backup.MaxKeepAge-48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := backup.Create(ctx, db, bdir, "pre-update-1.1.0-to-1.2.0", time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := backup.Prune(bdir, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || removed[0] != old.Name {
+		t.Fatalf("removed %v, want only the expired %s", removed, old.Name)
+	}
+	if _, err := os.Stat(fresh.Path); err != nil {
+		t.Fatalf("a fresh pre-update backup was pruned: %v", err)
+	}
+	for _, sfx := range []string{"", ".sha256", ".keep"} {
+		if _, err := os.Stat(old.Path + sfx); err == nil {
+			t.Errorf("%s survived", old.Path+sfx)
+		}
+	}
+}

@@ -471,7 +471,7 @@ func guidanceLabel(from any) string {
 // `secrets` and `deps` checks), stopping at the first failure. It records evidence for each and returns the failing (or
 // final passing) CheckResult with Route pass or fail. A check that could not be evaluated (osv-scanner not installed, a
 // tool that broke) is recorded as evidence with no verdict and an inconclusive event; it is never a pass and never sends
-// the work back to an agent.
+// the work back to an agent. When no check at all gave a verdict the step does not pass either: it asks a person (noVerdict).
 func Verify(d Deps) workflow.NodeHandler {
 	return func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		t, err := taskFromInput(ctx, d, in)
@@ -507,7 +507,14 @@ func Verify(d Deps) workflow.NodeHandler {
 		}
 		logDir := filepath.Join(d.DataDir, "runs", string(in.RunID), "checks")
 		diffHash, _ := repo.DiffHash(ctx, worktreeOf(t))
+		// a person who stopped the run at an earlier "no check gave a result" question ends it here (audit 2026-10-16, M28)
+		ans := verdictAnswerFor(ctx, d, in, diffHash)
+		if err := stopOnVerdictAnswer(ans, "the checks of this task"); err != nil {
+			return workflow.NodeOutput{}, err
+		}
 		var last checks.Result
+		var unjudgedChecks []unjudged
+		verdicts := 0
 		failed := false
 		for _, spec := range specs {
 			spec.LogDir = logDir
@@ -531,9 +538,11 @@ func Verify(d Deps) workflow.NodeHandler {
 					return workflow.NodeOutput{}, err
 				}
 				d.emit(ctx, "task.check_inconclusive", t, map[string]any{"kind": kind, "status": status, "reason": truncateStr(nonEmptyStr(res.SkipReason, res.Output), 300), "logRef": res.LogRef, "diffHash": diffHash})
+				unjudgedChecks = append(unjudgedChecks, unjudged{Name: kind, Status: status, Reason: d.redact(truncateStr(oneLine(nonEmptyStr(res.SkipReason, res.Output)), 200))})
 				continue
 			}
 			last = res
+			verdicts++
 			passed := res.Passed
 			if _, err := d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: kind, Passed: &passed, Summary: summarize(res), Ref: res.LogRef, Data: data}); err != nil {
 				return workflow.NodeOutput{}, err
@@ -545,6 +554,10 @@ func Verify(d Deps) workflow.NodeHandler {
 				failed = true
 				break
 			}
+		}
+		if !failed && verdicts == 0 {
+			// no check gave a verdict, so nothing was verified: a person decides (audit 2026-10-16, M28)
+			return noVerdict(ctx, d, in, t, "the checks of this task", diffHash, unjudgedChecks, ans)
 		}
 		b, _ := json.Marshal(last.CheckResult)
 		route := "pass"

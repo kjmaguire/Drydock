@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -259,7 +260,7 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 			tc := p.calls[b.ToolUseID]
 			delete(p.calls, b.ToolUseID)
 			chunks = append(chunks, workflow.NewChunk(workflow.ChunkToolResult, workflow.ToolResult{
-				ID: b.ToolUseID, Name: tc.Name, Args: tc.Args, Output: flatten(b.Content), IsError: b.IsError}))
+				ID: b.ToolUseID, Name: tc.Name, Args: tc.Args, Output: clipOutput(flatten(b.Content)), IsError: b.IsError}))
 		}
 	case "rate_limit_event":
 		chunks = append(chunks, workflow.Chunk{Kind: workflow.ChunkRateLimit, Data: json.RawMessage(append([]byte(nil), line...))})
@@ -404,6 +405,26 @@ func blocks(raw json.RawMessage) []block {
 }
 
 // flatten renders tool_result content (a string or a list of text blocks) as text.
+// maxToolOutput is the most of one tool result that is kept: its start and its end, which are what a person and the watchdog read.
+const maxToolOutput = 256 << 10
+
+// clipOutput keeps the start and the end of a tool result over maxToolOutput, and says how much was left out (audit 2026-10-16, M22):
+// a file read of tens of megabytes was kept whole in the run's events, the UI's ring and the window's messages.
+func clipOutput(s string) string {
+	if len(s) <= maxToolOutput {
+		return s
+	}
+	head, tail := maxToolOutput/2, maxToolOutput/2
+	for head > 0 && !utf8.RuneStart(s[head]) {
+		head--
+	}
+	cut := len(s) - tail
+	for cut < len(s) && !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	return s[:head] + "\n[... " + strconv.Itoa(cut-head) + " bytes left out of this result ...]\n" + s[cut:]
+}
+
 func flatten(raw json.RawMessage) string {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {

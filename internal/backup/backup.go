@@ -141,6 +141,9 @@ func sweepStale(dir string, now time.Time) {
 	}
 }
 
+// MaxKeepAge is how long a pre-update backup stays exempt from pruning when nothing has released it.
+const MaxKeepAge = 30 * 24 * time.Hour
+
 // Release removes the prune exemption of a pre-update backup once the new version is confirmed healthy.
 func Release(path string) error {
 	err := os.Remove(path + ".keep")
@@ -259,7 +262,9 @@ func Prune(dir string, daily, weekly int) ([]string, error) {
 	days := map[string]bool{}
 	weeks := map[string]bool{}
 	for _, b := range all { // newest first
-		if b.Keep {
+		// A pre-update backup is exempt until the update proves itself, but not for good: markers that nothing ever released
+		// (every update before this was wired) would otherwise hold a database-sized file each, for ever (audit 2026-10-16, M13).
+		if b.Keep && time.Since(b.Created) < MaxKeepAge {
 			keep[b.Name] = true
 			continue
 		}

@@ -205,6 +205,9 @@ func TestMemoryRPCAndHumanOnlyAccept(t *testing.T) {
 	if e.Status != memory.Proposed || strings.Contains(e.Body, token) || !strings.Contains(e.Body, "[REDACTED:") {
 		t.Fatalf("proposals are never accepted by their author and secrets never reach memory: %+v", e)
 	}
+	if err := a.callErr("memory.propose", map[string]any{"projectId": p.ID, "kind": "convention", "title": "Too long", "body": strings.Repeat("x", 8001)}); err == nil || !strings.Contains(err.Error(), "split it") {
+		t.Fatalf("a proposal nobody can read whole was stored: %v", err)
+	}
 	if err := a.callErr("memory.propose", map[string]any{"projectId": p.ID, "kind": "bogus", "title": "x", "body": "y"}); err == nil {
 		t.Fatal("kind")
 	}

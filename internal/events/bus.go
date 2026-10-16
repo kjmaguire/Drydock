@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -418,6 +419,26 @@ func (b *SQLBus) SeqBefore(ctx context.Context, t time.Time) (uint64, error) {
 	}
 	return lo, nil
 }
+
+// ForTransport returns e as it is sent to a UI: a payload over max bytes is replaced by a small stand-in that says how large it
+// was and keeps its start. The stored event is untouched (events.replay still returns it whole); what is cut is the copy that
+// travels through the window's message channel and is held in the UI's ring, where one tool result of tens of megabytes cost
+// more than the whole rest of the stream (audit 2026-10-16, M22).
+func ForTransport(e Event, max int) Event {
+	if max <= 0 || len(e.Data) <= max {
+		return e
+	}
+	head := e.Data[:min(len(e.Data), transportHead)]
+	for len(head) > 0 && !utf8.Valid(head) {
+		head = head[:len(head)-1] // do not end in the middle of a character
+	}
+	stand, _ := json.Marshal(map[string]any{"truncated": true, "bytes": len(e.Data), "head": string(head)})
+	e.Data = stand
+	return e
+}
+
+// transportHead is how much of a payload that was cut is kept.
+const transportHead = 4 << 10
 
 // LastSeq returns the highest persisted sequence number (0 if none).
 func (b *SQLBus) LastSeq(ctx context.Context) (uint64, error) {

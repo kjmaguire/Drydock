@@ -724,6 +724,9 @@ func (k *Knowledge) ProposeMemory(ctx context.Context, projectID, kind, title, b
 		return memory.Entry{}, err
 	}
 	e := memory.Normalize(memory.Entry{ProjectID: projectID, Kind: kind, Title: title, Body: body, Source: source})
+	if err := memory.CheckSize(e); err != nil {
+		return memory.Entry{}, err
+	}
 	e.Title, e.Body = k.c.Scanner.Redact(e.Title), k.c.Scanner.Redact(e.Body)
 	e, err := k.Memory.Add(ctx, e, false)
 	if err != nil {

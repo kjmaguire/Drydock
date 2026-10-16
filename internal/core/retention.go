@@ -88,6 +88,8 @@ func (c *Core) RunRetention(ctx context.Context, now time.Time) (RetentionReport
 	if err != nil {
 		return rep, err
 	}
+	// recorded telemetry older than its retention window goes with the daily pass; nothing else ever deleted it (audit 2026-10-16, L5)
+	c.purgeTelemetry(ctx)
 	if !c.RetentionAllowed() {
 		rep.Suspended = true
 		return rep, nil
@@ -251,4 +253,17 @@ func dirSize(dir string) int64 {
 		return nil
 	})
 	return n
+}
+
+// purgeTelemetry deletes recorded spans and metrics older than the sink's retention window.
+func (c *Core) purgeTelemetry(ctx context.Context) {
+	econMu.Lock()
+	e := econByCore[c]
+	econMu.Unlock()
+	if e == nil || e.sink == nil {
+		return
+	}
+	if err := e.sink.Purge(ctx, false); err != nil {
+		c.logf("retention: telemetry: %v", err)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/events"
@@ -39,6 +40,7 @@ type Task struct {
 	Effort         string   `json:"effort,omitempty"`
 	CostUSD        float64  `json:"costUsd"`
 	IssueRef       string   `json:"issueRef,omitempty"`
+	Origin         string   `json:"origin,omitempty"` // "lead:N": a follow-up the team lead split off (see LeadDepth); empty when a person made it
 	PRRef          string   `json:"prRef,omitempty"`
 	RunID          string   `json:"runId,omitempty"`
 	BlockedReason  string   `json:"blockedReason,omitempty"`
@@ -54,6 +56,34 @@ type Task struct {
 // Imported reports whether the task was made from text outside Drydock (an issue, an error report, a finding): such a task
 // carries the reference of its source.
 func (t Task) Imported() bool { return t.IssueRef != "" }
+
+// Limits on the follow-ups a team lead splits off (audit 2026-10-16, M27): text that reached the lead, from a file, a web page
+// or an issue, must not be able to fan out into paid work on its own.
+const (
+	// MaxLeadDepth is how many steps from a task a person made a lead's follow-up may be: the lead may split a task a person
+	// made (depth 1) and a follow-up a person moved on (depth 2), and no further.
+	MaxLeadDepth = 2
+	// MaxLeadOpen is how many unfinished follow-ups the lead may have made in one project at a time.
+	MaxLeadOpen = 25
+	leadOrigin  = "lead:"
+)
+
+// LeadOrigin is the origin of a follow-up the lead split off at this depth.
+func LeadOrigin(depth int) string { return leadOrigin + strconv.Itoa(depth) }
+
+// LeadDepth is how many steps the task is from one a person made through the team lead's splits: 0 for a task a person, an
+// import or a plan made, 1 for a lead's follow-up of that, and so on.
+func (t Task) LeadDepth() int {
+	n, err := strconv.Atoi(strings.TrimPrefix(t.Origin, leadOrigin))
+	if !strings.HasPrefix(t.Origin, leadOrigin) || err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// WaitsForAHuman reports whether the task stays in BACKLOG until a person moves it on: one made from outside text (Imported)
+// or from the team lead's own text (a follow-up), so neither starts paid work by itself, even with automatic scheduling on.
+func (t Task) WaitsForAHuman() bool { return t.Imported() || t.LeadDepth() > 0 }
 
 // Evidence is one attached proof (brief section 12: a task enters REVIEW only with evidence).
 type Evidence struct {
@@ -115,15 +145,17 @@ func (s *Service) red(v string) string {
 
 // CreateReq creates a task.
 type CreateReq struct {
-	ProjectID     string
-	Title         string
-	Description   string
-	Priority      int
-	Template      string
-	Files         []string
-	Acceptance    []string
-	DependsOn     []string
-	IssueRef      string
+	ProjectID   string
+	Title       string
+	Description string
+	Priority    int
+	Template    string
+	Files       []string
+	Acceptance  []string
+	DependsOn   []string
+	IssueRef    string
+	// Origin is LeadOrigin(depth) for a follow-up the team lead split off; empty for any other task.
+	Origin        string
 	MaxIterations int
 }
 
@@ -146,8 +178,23 @@ func (r CreateReq) validate() error {
 		return fmt.Errorf("tasks: at most %d iterations (each is a paid work and review turn), not %d", MaxIterationsCap, r.MaxIterations)
 	case r.Priority < -MaxPriority || r.Priority > MaxPriority:
 		return fmt.Errorf("tasks: priority %d is outside -%d to %d", r.Priority, MaxPriority, MaxPriority)
+	case r.Origin != "" && !validLeadOrigin(r.Origin):
+		return fmt.Errorf("tasks: the origin %q is not one a task is made with; a team lead's follow-up is %s1 to %s%d", r.Origin, leadOrigin, leadOrigin, MaxLeadDepth)
 	}
 	return nil
+}
+
+func validLeadOrigin(o string) bool {
+	n, err := strconv.Atoi(strings.TrimPrefix(o, leadOrigin))
+	return strings.HasPrefix(o, leadOrigin) && err == nil && n >= 1 && n <= MaxLeadDepth && LeadOrigin(n) == o
+}
+
+// OpenFromLead counts the project's unfinished follow-ups that the team lead split off.
+func (s *Service) OpenFromLead(ctx context.Context, projectID string) (int, error) {
+	var n int
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE project_id=? AND origin LIKE 'lead:%' AND status NOT IN (?,?,?)`,
+		projectID, string(Completed), string(Failed), string(Cancelled)).Scan(&n)
+	return n, err
 }
 
 // Create inserts a BACKLOG task.
@@ -168,8 +215,18 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM tasks WHERE project_id=?`, req.ProjectID).Scan(&seq); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id,project_id,seq,title,description,status,priority,template,files,acceptance,issue_ref,max_iterations,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, req.ProjectID, seq, req.Title, req.Description, string(Backlog), req.Priority, req.Template, string(files), string(acc), req.IssueRef, maxIt, now, now); err != nil {
+		if req.Origin != "" { // counted in the transaction that inserts, so two splits at once cannot both pass the limit
+			var open int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE project_id=? AND origin LIKE 'lead:%' AND status NOT IN (?,?,?)`,
+				req.ProjectID, string(Completed), string(Failed), string(Cancelled)).Scan(&open); err != nil {
+				return err
+			}
+			if open >= MaxLeadOpen {
+				return fmt.Errorf("tasks: the team lead already has %d follow-ups open in this project (the limit is %d); finish or cancel some first", open, MaxLeadOpen)
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id,project_id,seq,title,description,status,priority,template,files,acceptance,issue_ref,origin,max_iterations,created_at,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, req.ProjectID, seq, req.Title, req.Description, string(Backlog), req.Priority, req.Template, string(files), string(acc), req.IssueRef, req.Origin, maxIt, now, now); err != nil {
 			return err
 		}
 		for _, d := range req.DependsOn {
@@ -211,7 +268,7 @@ func nz(s []string) []string {
 }
 
 const taskCols = `id,project_id,seq,title,description,status,priority,assignee,reviewer,template,files,acceptance,worktree,branch,base_branch,
-	iteration,max_iterations,review_feedback,verdict,model,effort,cost_usd,issue_ref,pr_ref,run_id,blocked_reason,accepted_by,
+	iteration,max_iterations,review_feedback,verdict,model,effort,cost_usd,issue_ref,origin,pr_ref,run_id,blocked_reason,accepted_by,
 	created_at,updated_at,started_at,completed_at,version`
 
 type rower interface{ Scan(dest ...any) error }
@@ -221,7 +278,7 @@ func scanTask(r rower) (Task, error) {
 	var status, files, acc string
 	err := r.Scan(&t.ID, &t.ProjectID, &t.Seq, &t.Title, &t.Description, &status, &t.Priority, &t.Assignee, &t.Reviewer, &t.Template, &files, &acc,
 		&t.Worktree, &t.Branch, &t.BaseBranch, &t.Iteration, &t.MaxIterations, &t.ReviewFeedback, &t.Verdict, &t.Model, &t.Effort, &t.CostUSD,
-		&t.IssueRef, &t.PRRef, &t.RunID, &t.BlockedReason, &t.AcceptedBy, &t.Created, &t.Updated, &t.Started, &t.Completed, &t.Version)
+		&t.IssueRef, &t.Origin, &t.PRRef, &t.RunID, &t.BlockedReason, &t.AcceptedBy, &t.Created, &t.Updated, &t.Started, &t.Completed, &t.Version)
 	t.Status = Status(status)
 	_ = json.Unmarshal([]byte(files), &t.Files)
 	_ = json.Unmarshal([]byte(acc), &t.Acceptance)
@@ -717,8 +774,9 @@ func (s *Service) Reviews(ctx context.Context, taskID string) ([]ReviewRecord, e
 }
 
 // PromoteReady moves BACKLOG tasks whose dependencies are all COMPLETED to READY. Returns the promoted ids. A task imported
-// from outside (an issue, an error report, a finding: IssueRef is set) stays in BACKLOG until a human moves it on, so text
-// from outside never starts paid work by itself, even with automatic scheduling on.
+// from outside (an issue, an error report, a finding: IssueRef is set) or split off by the team lead stays in BACKLOG until a
+// human moves it on, so text from outside, and text an agent wrote after reading it, never starts paid work by itself, even
+// with automatic scheduling on.
 func (s *Service) PromoteReady(ctx context.Context, projectID string) ([]string, error) {
 	backlog, err := s.List(ctx, Filter{ProjectID: projectID, Statuses: []Status{Backlog}})
 	if err != nil {
@@ -726,7 +784,7 @@ func (s *Service) PromoteReady(ctx context.Context, projectID string) ([]string,
 	}
 	var promoted []string
 	for _, t := range backlog {
-		if t.Imported() {
+		if t.WaitsForAHuman() {
 			continue
 		}
 		if _, err := s.Transition(ctx, t.ID, Ready, TransitionOpts{By: "system", Reason: "dependencies met"}); err == nil {

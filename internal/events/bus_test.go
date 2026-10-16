@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/storage"
 )
@@ -327,5 +328,35 @@ func TestReplayStatementsAreBoundedByTheCursor(t *testing.T) {
 		if name == "exact types" && strings.Contains(joined, "LIKE") {
 			t.Errorf("%s: %s", name, joined)
 		}
+	}
+}
+
+// A payload over the limit travels as a stand-in that keeps its start; one under it is untouched; the stored event is whole.
+func TestForTransportCutsOnlyWhatIsOverTheLimit(t *testing.T) {
+	small := Event{Seq: 1, Type: "x", Data: json.RawMessage(`{"a":1}`)}
+	if got := ForTransport(small, 100); string(got.Data) != `{"a":1}` {
+		t.Fatalf("a small payload changed: %s", got.Data)
+	}
+	big := Event{Seq: 2, Type: "agent.output", ProjectID: "p", Data: json.RawMessage(`{"text":"` + strings.Repeat("é", 100_000) + `"}`)}
+	got := ForTransport(big, 64<<10)
+	var d struct {
+		Truncated bool   `json:"truncated"`
+		Bytes     int    `json:"bytes"`
+		Head      string `json:"head"`
+	}
+	if err := json.Unmarshal(got.Data, &d); err != nil || !d.Truncated || d.Bytes != len(big.Data) || len(d.Head) == 0 || len(d.Head) > 4<<10 {
+		t.Fatalf("stand-in %.200s: %+v %v", got.Data, d, err)
+	}
+	if !strings.HasPrefix(d.Head, `{"text":"é`) || !utf8.ValidString(d.Head) {
+		t.Fatalf("the start was not kept, or was cut inside a character: %q", d.Head[:20])
+	}
+	if got.Seq != 2 || got.Type != "agent.output" || got.ProjectID != "p" {
+		t.Fatalf("the envelope changed: %+v", got)
+	}
+	if len(big.Data) < 200_000 {
+		t.Fatal("the original was changed")
+	}
+	if ForTransport(big, 0).Data == nil || len(ForTransport(big, 0).Data) != len(big.Data) {
+		t.Fatal("a limit of 0 means none")
 	}
 }

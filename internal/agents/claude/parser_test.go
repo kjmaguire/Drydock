@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -325,5 +326,22 @@ func TestAGatewayThatFailedToConnectStopsTheTurn(t *testing.T) {
 	}
 	if e := fatal(NewParser(), initWith("failed")); e != nil {
 		t.Fatalf("a session without the gateway's configuration does not check it: %+v", e)
+	}
+}
+
+// One tool result of tens of megabytes was kept whole in the run's events, the UI's ring and the window's messages
+// (audit 2026-10-16, M22). Its start and its end are kept, and the cut says how much it is.
+func TestAHugeToolResultKeepsItsStartAndItsEnd(t *testing.T) {
+	small := strings.Repeat("a", 1000)
+	if clipOutput(small) != small {
+		t.Fatal("a small result changed")
+	}
+	big := "START" + strings.Repeat("é", 400_000) + "END"
+	out := clipOutput(big)
+	if len(out) > maxToolOutput+200 || !strings.HasPrefix(out, "START") || !strings.HasSuffix(out, "END") || !strings.Contains(out, "bytes left out of this result") {
+		t.Fatalf("%d bytes: %.40q ... %.40q", len(out), out, out[len(out)-40:])
+	}
+	if !utf8.ValidString(out) {
+		t.Fatal("cut inside a character")
 	}
 }

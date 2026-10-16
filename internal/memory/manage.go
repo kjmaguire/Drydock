@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // ErrNotFound is returned for an unknown entry.
@@ -79,6 +80,25 @@ func (s Store) SearchWorkspace(ctx context.Context, query string, k int) ([]Entr
 		k = 5
 	}
 	return s.Find(ctx, "", query, Accepted, k)
+}
+
+// The most a proposed entry may hold. A person accepts a proposal from what they are shown, and an entry becomes text that
+// every later agent reads as the project's own memory: what is proposed must be short enough to be read whole, because text
+// that sits past the end of what is shown is text nobody approved (audit 2026-10-16, M26).
+const (
+	MaxTitleChars = 200
+	MaxBodyChars  = 8000
+)
+
+// CheckSize says whether a proposal is short enough to be read whole.
+func CheckSize(e Entry) error {
+	if n := utf8.RuneCountInString(e.Title); n > MaxTitleChars {
+		return fmt.Errorf("memory: the title is %d characters; at most %d", n, MaxTitleChars)
+	}
+	if n := utf8.RuneCountInString(e.Body); n > MaxBodyChars {
+		return fmt.Errorf("memory: the entry is %d characters; at most %d, so that a person can read all of it before accepting it: split it into entries", n, MaxBodyChars)
+	}
+	return nil
 }
 
 // Normalize trims a proposal's text fields.

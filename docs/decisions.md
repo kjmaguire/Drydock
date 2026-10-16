@@ -568,3 +568,19 @@ Open, owner action:
   unless a key is given for the new one, and its client refuses a redirect to another address (other headers than
   Authorization travel on a redirect in Go); an MCP server's bearer token or secret is not handed to another address or
   another program (docs/mcp.md).
+  **Updates, retention and what is stored (M13, L5, M22, M26):** an update that was staged is remembered (`updatepolicy.Record`,
+  setting `update.pending`), and the start of the new version releases the pre-update backup from the prune exemption after it has
+  run two minutes (`updatepolicy.ConfirmHealthy`); a marker that nothing released stops holding its backup after 30 days
+  (`backup.MaxKeepAge`), so no update leaves a database-sized file behind for good. The daily retention pass also purges recorded
+  telemetry past its window. An event sent over the follow stream keeps its type and ids and loses only the middle of an oversized
+  `data` (`events.ForTransport`, 256 KiB: `core.MaxFollowData`), the Claude parser keeps at most 256 KiB of one tool result, and
+  a memory proposal's title and body are limited (200 and 8,000 characters, `memory.CheckSize`) before they reach a person.
+  **Text that reached the lead (M27):** a follow-up the team lead splits off carries its origin (`lead:N`, N steps from a task a
+  person made; migration 00124, `Task.Origin`), stays in BACKLOG until a person moves it on even under automatic scheduling
+  (`Task.WaitsForAHuman`: the scheduler does not promote it and the lead is not asked to staff it), and is limited to two steps
+  and 25 unfinished follow-ups per project (`tasks.MaxLeadDepth`, `tasks.MaxLeadOpen`), counted in the transaction that inserts,
+  so text from a file, a page or an issue cannot fan out into paid work on its own. A split over a limit is refused whole and
+  becomes a question to the person. **Gates with no verdict (M28):** a blocking gate (the verification run, a security scan
+  gate) whose every check was skipped or could not run no longer passes: it asks a person, who can have it check again, go on
+  without a result this time (`{"waive_verdict": true}`, for that exact content, recorded as `waiver` evidence, not accepted
+  from an agent) or stop the run (`internal/pipeline/verdict.go`).

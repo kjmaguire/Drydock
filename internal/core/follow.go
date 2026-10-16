@@ -11,6 +11,9 @@ import (
 // replays from the last delivered sequence and resubscribes, so a slow consumer loses nothing (brief 24: the UI is a
 // projection of the persisted log). It returns when ctx ends or send returns false. flush, if set, is called after each
 // batch (the HTTP transport flushes its response there).
+// MaxFollowData is the largest event payload Follow sends whole; a larger one goes as a stand-in with its start (events.ForTransport).
+const MaxFollowData = 256 << 10
+
 func (c *Core) Follow(ctx context.Context, after uint64, f events.Filter, send func(events.Event) bool, flush func()) {
 	last := after
 	deliver := func(e events.Event) bool {
@@ -18,7 +21,7 @@ func (c *Core) Follow(ctx context.Context, after uint64, f events.Filter, send f
 			return true
 		}
 		last = e.Seq
-		return send(e)
+		return send(events.ForTransport(e, MaxFollowData))
 	}
 	for ctx.Err() == nil {
 		ch, cancel := c.Bus.Subscribe(f)

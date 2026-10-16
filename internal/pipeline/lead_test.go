@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -291,11 +292,118 @@ func TestLeadSplitsOffFollowUps(t *testing.T) {
 	if follow == nil || follow.Status != tasks.Backlog || len(follow.Acceptance) != 1 || !strings.Contains(follow.Description, "written by an agent") || !strings.Contains(follow.Description, "<<<DATA") {
 		t.Fatalf("follow-up %+v", follow)
 	}
+	if follow.Origin != tasks.LeadOrigin(1) || !follow.WaitsForAHuman() {
+		t.Fatalf("the follow-up must say that the lead made it and wait for a person: %+v", follow)
+	}
 	if wp := e.prompts(agWork); len(wp) != 3 || !strings.Contains(wp[2], "NARROW: only make Subtract") {
 		t.Fatalf("the current task continues with the narrowed scope: %q", wp)
 	}
 	if iv := e.interventions(t); len(iv) != 1 || len(iv[0].CreatedTasks) != 1 || iv[0].CreatedTasks[0] != follow.ID {
 		t.Fatalf("interventions %+v", iv)
+	}
+}
+
+// splitTrigger is a stall on a run of its own, so each call is a new intervention within the bound of three per task and run.
+func splitTrigger(taskID string, run int) pipeline.LeadTrigger {
+	return pipeline.LeadTrigger{Kind: pipeline.TriggerStalled, TaskID: taskID, RunID: fmt.Sprintf("run_split_%d", run), Evidence: "No progress events for 20 minutes."}
+}
+
+const splitAnswer = `{"action":"split","message":"NARROW: only Subtract.","tasks":[{"title":"Document Subtract","description":"Add a doc comment.","acceptanceCriteria":["Given calc.go, when a reader opens it, then Subtract has a doc comment"]},{"title":"Add Multiply","description":"Add it.","acceptanceCriteria":["Given 2 and 3, when Multiply is called, then it returns 6"]}],"reason":"the extra work is separate"}`
+
+func (e *leadEnv) countTasks(t *testing.T, where string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := e.db.Reader().QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id='p1' AND `+where, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// Text that reached the lead must not fan out into paid work: with automatic scheduling on, the lead's follow-ups are not moved
+// to READY by the scheduler, are not offered to the lead for staffing, and become ordinary once a person moves them on
+// (audit 2026-10-16, M27).
+func TestALeadsFollowUpsDoNotStartByThemselvesUnderAutomaticScheduling(t *testing.T) {
+	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: leadSays(splitAnswer)}, true)
+	ctx := context.Background()
+	e.devs.AutoSchedule = true
+	o := e.lead.Supervise(ctx, splitTrigger(e.task.ID, 1))
+	if !o.Intervened || o.Decision.Action != pipeline.LeadSplit || len(o.CreatedTasks) != 2 {
+		t.Fatalf("outcome %+v", o)
+	}
+	turns := len(e.prompts(agLead))
+	// the task the person made is BACKLOG with no dependencies, so it is the only one the scheduler may promote
+	if got, err := e.tasks.PromoteReady(ctx, "p1"); err != nil || len(got) != 1 || got[0] != e.task.ID {
+		t.Fatalf("promoted %v %v", got, err)
+	}
+	for _, id := range o.CreatedTasks {
+		if got, _ := e.tasks.Get(ctx, id); got.Status != tasks.Backlog || got.Origin != "lead:1" {
+			t.Fatalf("follow-up %s is %s with origin %q", id, got.Status, got.Origin)
+		}
+	}
+	if res, err := e.lead.Tick(ctx, "p1"); err != nil || len(res.Unassigned) != 0 || len(e.prompts(agLead)) != turns {
+		t.Fatalf("the lead was asked about its own follow-ups: %+v %v (turns %d, was %d)", res, err, len(e.prompts(agLead)), turns)
+	}
+	if _, err := e.tasks.Transition(ctx, o.CreatedTasks[0], tasks.Ready, tasks.TransitionOpts{By: "human:k"}); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := e.lead.Tick(ctx, "p1"); len(res.Unassigned) != 1 || res.Unassigned[0] != o.CreatedTasks[0] {
+		t.Fatalf("after a person moved one on it is an ordinary unassigned task: %+v", res)
+	}
+}
+
+// A follow-up of a follow-up can be split once more, and no further: a task two splits from one a person made is not split by
+// the lead, which escalates to a person instead, and nothing is created.
+func TestTheLeadDoesNotSplitMoreThanTwoStepsFromWhatAPersonMade(t *testing.T) {
+	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: leadSays(splitAnswer)}, true)
+	ctx := context.Background()
+	if _, err := e.db.Writer().Exec(`UPDATE tasks SET origin='lead:1' WHERE id=?`, e.task.ID); err != nil {
+		t.Fatal(err)
+	}
+	o := e.lead.Supervise(ctx, splitTrigger(e.task.ID, 1))
+	if !o.Intervened || o.Decision.Action != pipeline.LeadSplit || len(o.CreatedTasks) != 2 {
+		t.Fatalf("one step from a person's task the lead may split: %+v", o)
+	}
+	if n := e.countTasks(t, `origin='lead:2'`); n != 2 {
+		t.Fatalf("%d follow-ups at depth 2", n)
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE tasks SET origin='lead:2' WHERE id=?`, e.task.ID); err != nil {
+		t.Fatal(err)
+	}
+	o = e.lead.Supervise(ctx, splitTrigger(e.task.ID, 2))
+	if !o.Intervened || o.Decision.Action != pipeline.LeadEscalate || len(o.CreatedTasks) != 0 || !strings.Contains(o.Decision.Message, "splits at most") {
+		t.Fatalf("two steps from a person's task the lead must escalate: %+v", o)
+	}
+	if n := e.countTasks(t, `origin LIKE 'lead:%'`); n != 3 { // the two from before, and e.task itself
+		t.Fatalf("%d lead-made tasks; the refused split made some", n)
+	}
+}
+
+// A split that would pass the project's limit of unfinished follow-ups is refused whole (nothing half done) and goes to a
+// person; finishing or cancelling follow-ups frees room.
+func TestTheLeadsSplitIsRefusedWholeWhenItWouldPassTheOpenLimit(t *testing.T) {
+	e := newLeadEnv(t, map[string]fakeagent.Script{agLead: leadSays(splitAnswer)}, true)
+	ctx := context.Background()
+	var ids []string
+	for i := 0; i < tasks.MaxLeadOpen-1; i++ { // room for one more, and the lead's split makes two
+		nt, err := e.tasks.Create(ctx, tasks.CreateReq{ProjectID: "p1", Title: fmt.Sprintf("earlier follow-up %d", i), Origin: tasks.LeadOrigin(1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, nt.ID)
+	}
+	o := e.lead.Supervise(ctx, splitTrigger(e.task.ID, 1))
+	if !o.Intervened || o.Decision.Action != pipeline.LeadEscalate || len(o.CreatedTasks) != 0 || !strings.Contains(o.Decision.Message, "limit") {
+		t.Fatalf("a split over the limit must escalate: %+v", o)
+	}
+	if n := e.countTasks(t, `origin LIKE 'lead:%'`); n != tasks.MaxLeadOpen-1 {
+		t.Fatalf("%d lead-made tasks; the refused split left some behind", n)
+	}
+	if _, err := e.tasks.Transition(ctx, ids[0], tasks.Cancelled, tasks.TransitionOpts{By: "human:k"}); err != nil {
+		t.Fatal(err)
+	}
+	o = e.lead.Supervise(ctx, splitTrigger(e.task.ID, 2))
+	if !o.Intervened || o.Decision.Action != pipeline.LeadSplit || len(o.CreatedTasks) != 2 {
+		t.Fatalf("with room again: %+v", o)
 	}
 }
 

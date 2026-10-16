@@ -327,13 +327,28 @@ func pickReviewer(team []LeadMember, worker, leadID string) string {
 	return ""
 }
 
-// split creates the lead's follow-up tasks in BACKLOG, with the lead's text quoted as agent-authored.
+// split creates the lead's follow-up tasks in BACKLOG, with the lead's text quoted as agent-authored. The follow-ups carry
+// their origin (the lead's, and how many splits from a task a person made), so no scheduler moves them on by itself: a person
+// does, and the lead cannot make more than tasks.MaxLeadDepth steps of them or tasks.MaxLeadOpen unfinished ones in a project
+// (audit 2026-10-16, M27: text that reached the lead must not fan out into paid work with automatic scheduling on).
 func (l *Lead) split(ctx context.Context, t tasks.Task, lead LeadMember, ts []LeadTask) ([]string, error) {
+	depth := t.LeadDepth() + 1
+	if depth > tasks.MaxLeadDepth {
+		return nil, fmt.Errorf("this task is already %d splits from one a person made, and the lead splits at most %d deep; a person decides what the work still needs", t.LeadDepth(), tasks.MaxLeadDepth)
+	}
+	open, err := l.d.Tasks.OpenFromLead(ctx, t.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if open+len(ts) > tasks.MaxLeadOpen { // before any is made, so a refused split leaves nothing half done
+		return nil, fmt.Errorf("the lead already has %d follow-ups open in this project and %d more would pass the limit of %d; finish or cancel some first", open, len(ts), tasks.MaxLeadOpen)
+	}
 	var created []string
 	for _, nt := range ts {
 		desc := fmt.Sprintf("Split from #%d %q by the team lead (%s). The text below was written by an agent:\n\n%s", t.Seq, t.Title, lead.Name,
 			quoted("The team lead's description", l.redact(nt.Description)))
-		task, err := l.d.Tasks.Create(ctx, tasks.CreateReq{ProjectID: t.ProjectID, Title: l.redact(nt.Title), Description: desc, Acceptance: nt.AcceptanceCriteria, Priority: t.Priority})
+		task, err := l.d.Tasks.Create(ctx, tasks.CreateReq{ProjectID: t.ProjectID, Title: l.redact(nt.Title), Description: desc, Acceptance: nt.AcceptanceCriteria,
+			Priority: t.Priority, Origin: tasks.LeadOrigin(depth)})
 		if err != nil {
 			return created, err
 		}
@@ -722,7 +737,7 @@ Answer with exactly one JSON object and nothing else:
 {"action":"nudge|reassign|split|escalate|continue","message":"...","agent":"<team member name, only for reassign>","tasks":[{"title":"...","description":"...","acceptanceCriteria":["Given ..., when ..., then ..."]}],"reason":"..."}
 - nudge: the message goes to the worker's next turn as guidance; say exactly what to do differently.
 - reassign: give the task to another team member (never yourself, never the reviewer); the message goes to the new worker.
-- split: create 1 to 5 follow-up tasks (only "tasks" for split); the current task continues with the message as its narrowed scope.
+- split: create 1 to 5 follow-up tasks (only "tasks" for split); they wait in the backlog until a person starts them, and the current task continues with the message as its narrowed scope.
 - escalate: a human decides; the message is your question or recommendation to them.
 - continue: nothing to change.
 Prefer the smallest intervention that gets the task moving. Escalate when you are unsure or a human decision is needed.`)
@@ -811,8 +826,8 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 			if t.Assignee != "" && t.Reviewer != "" {
 				continue
 			}
-			if t.Status == tasks.Backlog && t.Imported() {
-				continue // imported work waits for a human to move it on; the lead is not paid to look at it before that
+			if t.Status == tasks.Backlog && t.WaitsForAHuman() {
+				continue // imported work and the lead's own follow-ups wait for a human to move them on; the lead is not paid to look at them before that
 			}
 			l.mu.Lock()
 			seen := l.unassigned[t.ID]
