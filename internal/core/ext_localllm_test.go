@@ -2,6 +2,8 @@ package core_test
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,6 +53,18 @@ func localCall(a *app, method string, params any) core.LocalView {
 	var v core.LocalView
 	a.call(method, params, &v)
 	return v
+}
+
+// freePort is a port nothing listens on right now, for the tests that serve: the default 9933 is shared with every other
+// Drydock (the e2e harness, a second test binary) that may run on the machine at the same time.
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 func newLocalRig(t *testing.T) *localRig {
@@ -132,6 +146,12 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 		t.Fatalf("variants %+v", vs)
 	}
 
+	// the server's port is a setting: a free one here, since 9933 may be taken by another Drydock on this machine
+	port := freePort(t)
+	if v = localCall(a, "local.settings.set", map[string]any{"port": port}); v.Settings.Port != port {
+		t.Fatalf("%+v", v.Settings)
+	}
+
 	// download: checked against the Hub's SHA-256, then listed with its fit
 	v = localCall(a, "local.model.download", map[string]any{"repo": "acme/tiny-GGUF", "variant": "Q4_0"})
 	if len(v.Downloads) != 1 || v.Downloads[0].Target != "acme/tiny-GGUF:Q4_0" {
@@ -150,7 +170,7 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 
 	// serve it: the server loads the model, becomes a provider whose model the router may use for agent work
 	v = localCall(a, "local.server.start", map[string]any{"modelId": "acme/tiny-GGUF:Q4_0"})
-	if v.Server.State != "running" || v.Server.ModelID != "acme/tiny-GGUF:Q4_0" || v.Server.BaseURL != "http://127.0.0.1:9933/v1" || v.Settings.ProviderID == "" || v.Settings.ModelID != "acme/tiny-GGUF:Q4_0" {
+	if v.Server.State != "running" || v.Server.ModelID != "acme/tiny-GGUF:Q4_0" || v.Server.BaseURL != fmt.Sprintf("http://127.0.0.1:%d/v1", port) || v.Settings.ProviderID == "" || v.Settings.ModelID != "acme/tiny-GGUF:Q4_0" {
 		t.Fatalf("serving: %+v %+v", v.Server, v.Settings)
 	}
 	var provs []providers.Provider
@@ -161,7 +181,7 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 			prov = &provs[i]
 		}
 	}
-	if prov == nil || prov.Kind != providers.KindHost || prov.Flavor != providers.FlavorLlamaCpp || prov.Tier != providers.TierCheap || prov.DataClass != providers.DataPrivate || prov.BaseURL != "http://127.0.0.1:9933/v1" || prov.MaxConcurrent != 1 || prov.KeyRef != "" {
+	if prov == nil || prov.Kind != providers.KindHost || prov.Flavor != providers.FlavorLlamaCpp || prov.Tier != providers.TierCheap || prov.DataClass != providers.DataPrivate || prov.BaseURL != fmt.Sprintf("http://127.0.0.1:%d/v1", port) || prov.MaxConcurrent != 1 || prov.KeyRef != "" {
 		t.Fatalf("provider: %+v", prov)
 	}
 	var models []providers.Model
@@ -266,6 +286,7 @@ func TestAServerThatFailsIsReportedAndARestartReplacesIt(t *testing.T) {
 		v = localCall(a, "local.get", nil)
 		return v.Runtime.Job != nil && v.Runtime.Job.State != "running"
 	})
+	localCall(a, "local.settings.set", map[string]any{"port": freePort(t)})
 	// --fail-start also fails --list-devices? no: the stand-in lists devices before failing, so nothing is known either way
 	v = localCall(a, "local.model.download", map[string]any{"repo": "acme/tiny-GGUF", "variant": "Q8_0"})
 	a.waitFor("the download to finish", func() bool {

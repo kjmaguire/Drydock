@@ -8,7 +8,7 @@ install:
   - {shell: cmd, command: 'npm i -g cline', requires: [{tool: node, min: "22"}]}
 requires: [{tool: node, min: "22"}]
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}     # prints the bare version ("3.0.70", observed)
-versions: {min: "3.0.70", recommended: "3.0.70"}
+versions: {min: "3.0.70", recommended: "3.0.71"}
 auth:
   # `cline auth` opens its own sign-in (Cline account, ClinePass, ChatGPT subscription, or an API key for a provider). ACP
   # advertises the same OAuth methods (cline, cline-pass, openai-codex) but Drydock never drives a sign-in: the human signs in

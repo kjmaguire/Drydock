@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -156,5 +157,35 @@ func TestClassifyComparesBuildTagsByNumber(t *testing.T) {
 		if got := classify(c.used, c.latest); got != c.want {
 			t.Errorf("classify(%s, %s) = %s, want %s", c.used, c.latest, got, c.want)
 		}
+	}
+}
+
+// The Artifact's dashboard type refuses a dataset file with no rows, so an empty vulns or drift dataset is written as one
+// placeholder row the page leaves out; a dataset with rows is written as is.
+func TestArtifactDataNeverWritesAnEmptyDataset(t *testing.T) {
+	dir := t.TempDir()
+	rep := Report{Items: []Item{{ID: "go:example.com/a", Kind: "direct"}}, Docs: []DocDrift{{Name: "x", Docs: "1", Code: "2", Ref: "docs/decisions.md"}}}
+	if err := writeArtifactData(dir, rep); err != nil {
+		t.Fatal(err)
+	}
+	read := func(name string) []map[string]any {
+		b, err := os.ReadFile(filepath.Join(dir, name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []map[string]any
+		if err := json.Unmarshal(b, &rows); err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	if v := read("vulns"); len(v) != 1 || v[0]["none"] != "yes" {
+		t.Errorf("empty vulns: %v", v)
+	}
+	if d := read("drift"); len(d) != 1 || d[0]["name"] != "x" || d[0]["none"] != nil {
+		t.Errorf("drift with a row: %v", d)
+	}
+	if it := read("items"); len(it) != 1 || it[0]["id"] != "go:example.com/a" {
+		t.Errorf("items: %v", it)
 	}
 }

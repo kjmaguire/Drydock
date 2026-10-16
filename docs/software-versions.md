@@ -49,6 +49,9 @@ The page is the Artifact type "Dashboard" over four data files. To refresh, afte
    `updated` to `{at, by}`. Delete the old assets afterwards.
 3. The page itself (`files/index.html`) changes only when the design does.
 
+A dataset with no rows (`vulns.json`, `drift.json` on a clean audit) is written as one placeholder row `{"none": "yes"}`, because the
+Dashboard type refuses a file it can read no rows from; the page leaves that row out and shows its empty-state sentence.
+
 ## Libraries only in the module graph
 
 A Go library that another library's go.mod lists, but of which no package is compiled into Drydock or its tests, is shown under

@@ -42,7 +42,7 @@ func TestRegistryBuildsEveryManifest(t *testing.T) {
 		cmd  string
 		args []string
 	}{
-		"codex":    {"npx", []string{"-y", "@agentclientprotocol/codex-acp@2.1.1"}},
+		"codex":    {"npx", []string{"-y", "@agentclientprotocol/codex-acp@2.2.2"}},
 		"gemini":   {"gemini", []string{"--acp"}},
 		"opencode": {"opencode", []string{"acp"}},
 		"goose":    {"goose", []string{"acp"}},

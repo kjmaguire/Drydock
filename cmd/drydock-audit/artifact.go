@@ -66,6 +66,13 @@ func writeArtifactData(dir string, rep Report) error {
 		"generated": rep.Generated, "commit": rep.Commit, "govulncheck": rep.VulnScans["govulncheck"], "npmAudit": rep.VulnScans["npm audit"],
 		"lookupsFailed": fmt.Sprint(len(rep.Offline)),
 	}}
+	// the Artifact's dashboard type refuses a file with no rows ("The file has no rows this dashboard can read"), so a dataset
+	// that is empty (no advisory, no drift: the usual state) carries one placeholder row, which the page leaves out
+	for _, ds := range []*[]row{&vulns, &drift} {
+		if len(*ds) == 0 {
+			*ds = []row{{"none": "yes"}}
+		}
+	}
 	for name, v := range map[string]any{"items": items, "vulns": vulns, "drift": drift, "meta": meta} {
 		b, err := json.Marshal(v)
 		if err != nil {

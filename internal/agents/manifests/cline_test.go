@@ -33,7 +33,7 @@ func TestClineManifestFacts(t *testing.T) {
 	if len(m.Requires) != 1 || m.Requires[0].Tool != "node" || m.Requires[0].Min != "22" {
 		t.Errorf("the npm launcher is a Node script: Node 22+ is required to run it (D9): %+v", m.Requires)
 	}
-	if m.Versions.Min != "3.0.70" || m.Versions.Recommended != "3.0.70" || !reflect.DeepEqual(m.Detect.Version.Argv, []string{"--version"}) {
+	if m.Versions.Min != "3.0.70" || m.Versions.Recommended != "3.0.71" || !reflect.DeepEqual(m.Detect.Version.Argv, []string{"--version"}) {
 		t.Errorf("versions %+v detect %+v", m.Versions, m.Detect)
 	}
 	if m.Auth.Probe != nil || m.Auth.Login == nil || !reflect.DeepEqual(m.Auth.Login.Argv, []string{"auth"}) || !m.Auth.Login.Terminal {

@@ -50,7 +50,7 @@ func TestManifestFactsMatchTheEvidence(t *testing.T) {
 		argv []string
 	}
 	for id, w := range map[string]acpWant{
-		"codex":    {[]string{"npx", "-y", "@agentclientprotocol/codex-acp@2.1.1"}},
+		"codex":    {[]string{"npx", "-y", "@agentclientprotocol/codex-acp@2.2.2"}},
 		"gemini":   {[]string{"gemini", "--acp"}},
 		"opencode": {[]string{"opencode", "acp"}},
 		"goose":    {[]string{"goose", "acp"}},
@@ -74,7 +74,7 @@ func TestManifestFactsMatchTheEvidence(t *testing.T) {
 	if cl.ACPEnabled() {
 		t.Error("the Claude ACP bridge must be disabled (D1)")
 	}
-	if a := cl.Transports.ACP; a == nil || !reflect.DeepEqual(a.Argv, []string{"npx", "-y", "@agentclientprotocol/claude-agent-acp@0.89.0"}) || a.EnableWhen != "written_confirmation_recorded" {
+	if a := cl.Transports.ACP; a == nil || !reflect.DeepEqual(a.Argv, []string{"npx", "-y", "@agentclientprotocol/claude-agent-acp@0.91.0"}) || a.EnableWhen != "written_confirmation_recorded" {
 		t.Errorf("claude acp block: %+v", a)
 	}
 	if !reflect.DeepEqual(cl.Auth.ForbiddenFlags, []string{"--bare"}) || !reflect.DeepEqual(cl.Auth.WarnEnv, []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}) {
@@ -83,7 +83,7 @@ func TestManifestFactsMatchTheEvidence(t *testing.T) {
 	if p := cl.Auth.Probe; p == nil || !reflect.DeepEqual(p.Argv, []string{"auth", "status", "--json"}) || p.Parse != "json" {
 		t.Errorf("claude probe %+v", p)
 	}
-	if cl.Versions.Min != "2.1.205" || cl.Versions.Recommended != "2.1.296" {
+	if cl.Versions.Min != "2.1.205" || cl.Versions.Recommended != "2.1.301" {
 		t.Errorf("claude versions %+v", cl.Versions)
 	}
 	cx := get(t, "codex")

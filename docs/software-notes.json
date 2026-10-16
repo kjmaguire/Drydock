@@ -3,13 +3,13 @@
     "tool:gh": "2.102.0",
     "tool:task": "3.54.0",
     "tool:osv-scanner": "2.6.0",
-    "tool:opengrep": "1.30.2",
+    "tool:opengrep": "1.31.0",
     "tool:go-licenses": "2.0.1",
-    "tool:wrangler": "4.149.0",
+    "tool:wrangler": "4.151.0",
     "tool:docker": "29.8.2",
     "tool:golangci-lint": "2.14.0",
     "tool:actions-runner": "2.338.0",
-    "tool:llama.cpp": "b11671"
+    "tool:llama.cpp": "b11672"
   },
   "notes": {
     "go": {
@@ -56,7 +56,7 @@
     },
     "go:github.com/wailsapp/wails/v3": {
       "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
-      "hold": "Still a beta, and beta.28 is the newest published. The risk was accepted in the brief; it is isolated in app/."
+      "hold": "Still a beta (the newest published, beta.30 since 2026-10-16). The risk was accepted in the brief; it is isolated in app/."
     },
     "go:github.com/zalando/go-keyring": {
       "role": "Stores secrets in the Windows Credential Manager."
@@ -120,7 +120,7 @@
     "cli:codex": {
       "role": "Codex: runs OpenAI's models as an agent.",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
-      "hold": "0.162.1 is not adopted yet: decision P33 adopts a CLI version only after the contract suite passes on it, and no contract runs Codex itself here (no Codex login); the ACP handshake runs through the codex-acp bridge, which bundles its own Codex."
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
     },
     "cli:gemini": {
       "role": "Gemini CLI: runs Google's models as an agent.",
@@ -133,7 +133,7 @@
     "cli:opencode": {
       "role": "OpenCode: an open-source agent that can use many providers.",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
-      "hold": "1.19.0 is not adopted yet: decision P33 adopts a CLI version only after the contract suite passes on it; the recommended 1.18.35 is the last one checked."
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
     },
     "cli:cline": {
       "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
@@ -142,11 +142,11 @@
     "bridge:@agentclientprotocol/claude-agent-acp": {
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
       "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1).",
-      "hold": "0.89.1 is not adopted yet: pinned at 0.89.0 after ACP-INIT-01 passed on it (decision P33); the bridge is off in the manifest (D1)."
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. The bridge is off in the manifest (D1), so the pin is a record, not a running dependency."
     },
     "bridge:@agentclientprotocol/codex-acp": {
       "role": "The ACP bridge Drydock starts with npx for Codex.",
-      "hold": "2.2.2 is not adopted yet: decision P33 adopts a bridge version only after its ACP contract passes on it, and no contract run has happened here since 2.1.1."
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back."
     },
     "action:actions/checkout": {
       "role": "Fetches the repository in CI.",
@@ -177,7 +177,7 @@
     },
     "tool:osv-scanner": {
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline); you install it.",
-      "hold": "2.7.0 is out; 2.6.0 stays documented until a real run on the PC shows the deps check and the security scan read its JSON as before (no osv-scanner here)."
+      "hold": "2.7.0 is out; 2.6.0 stays documented until a real run shows the deps check and the security scan read its JSON as before. An attempt to build 2.7.0 from the Go module proxy in the development sandbox (2026-10-16) ran out of disk, so the run is still owed; the owner can do it on the PC with osv-scanner 2.7.0 installed (the deps check and the Security page read its --format json)."
     },
     "tool:opengrep": {
       "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary; you install it and choose a rules folder.",
@@ -219,7 +219,7 @@
     "tool:docker": {
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
       "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified.",
-      "hold": "29.9.0 is out; 29.8.2 is the engine the sandbox was measured with (decision P30); it moves with the next sandbox run."
+      "hold": "29.9.1 is out; 29.8.2 is the engine the sandbox was measured with (decision P30); it moves with the next sandbox run (no Docker in the development sandbox)."
     },
     "tool:golangci-lint": {
       "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."

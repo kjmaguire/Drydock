@@ -128,7 +128,7 @@
     inputs: ['vulns'],
     title: 'Security advisories',
     description: 'How many advisories affect what is installed, and how many of them sit in code that is called.',
-    fn: (vulns) => [{ n: vulns.length, called: vulns.filter((v) => v.called === 'yes').length }],
+    fn: (vulns) => { const real = vulns.filter((v) => v.none !== 'yes'); return [{ n: real.length, called: real.filter((v) => v.called === 'yes').length }]; },
   });
 
   const ST = { major: 0, minor: 1, patch: 2, prerelease: 3, unknown: 3, current: 4 };
@@ -181,9 +181,10 @@
   function renderSmall(id, tableId, boxId, emptyId, cols) {
     const d = dash.data(id);
     if (d.status !== 'ok') return;
-    $(boxId).hidden = d.data.length === 0;
-    $(emptyId).hidden = d.data.length !== 0;
-    fillRows($(tableId).tBodies[0], d.data, cols);
+    const rows = d.data.filter((r) => r.none !== 'yes'); // an empty dataset carries one placeholder row (the type refuses a file with no rows)
+    $(boxId).hidden = rows.length === 0;
+    $(emptyId).hidden = rows.length !== 0;
+    fillRows($(tableId).tBodies[0], rows, cols);
   }
 
   let lastLayer = null;

@@ -14,7 +14,7 @@ install:                                         # display only; Drydock never e
   # inside a WSL distro (the wsl run mode, decision P41): the native Linux installer, which puts claude in ~/.local/bin
   - {shell: sh, run_mode: wsl, command: 'curl -fsSL https://claude.ai/install.sh | bash'}
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "2.1.205", recommended: "2.1.296"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
+versions: {min: "2.1.205", recommended: "2.1.301"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
 auth:
   login: {argv: [auth, login], variants: [[--claudeai], [--console], [--sso], [--email]], terminal: true}
   probe: {argv: [auth, status, --json], parse: json, ready_when: '$.loggedIn == true'}   # logged-out exit code unverified: parse the JSON
@@ -44,7 +44,7 @@ transports:
     interrupt: {via: stdin_control, message: interrupt}
   acp:
     enabled: false
-    argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.89.0"]
+    argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.91.0"]
     env: {CLAUDE_CODE_EXECUTABLE: "{{resolved_binary}}"}
     requires: [{tool: node, min: "22"}]
     enable_when: written_confirmation_recorded

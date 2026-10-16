@@ -20,16 +20,16 @@
     "@remix-run/ui": "0.12.1",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "lucide": "1.55.0",
+    "lucide": "1.57.0",
     "marked": "18.1.1",
     "monaco-editor": "0.57.0",
     "remix": "3.0.0"
   },
   "devDependencies": {
     "@pitlane/vite-plugin-remix": "0.9.0",
-    "@playwright/test": "1.64.0",
-    "@types/node": "24.19.1",
-    "playwright": "1.64.0",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
+    "playwright": "1.64.1",
     "typescript": "7.0.2",
     "vite": "8.3.4"
   },

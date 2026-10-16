@@ -5,14 +5,14 @@ install:
   - {shell: powershell, command: 'powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"'}
   - {shell: cmd, command: 'npm install -g @openai/codex', requires: [{tool: node, min: "22"}]}
 detect: {version: {argv: [--version], regex: 'codex-cli (\d+\.\d+\.\d+)'}}
-versions: {min: "0.159.1", recommended: "0.162.0"}   # 0.159.1: the bridge's dependency floor
+versions: {min: "0.159.1", recommended: "0.163.0"}   # 0.159.1: the bridge's dependency floor
 auth:
   login: {argv: [login], variants: [[--device-auth]], terminal: true}
   probe: {argv: [login, status], parse: exit_code, ready_when: 'exit == 0', not_ready_when: 'exit == 1'}   # logged-out: "Not logged in", exit 1 (observed)
 transports:
   primary: acp
   acp:
-    argv: [npx, -y, "@agentclientprotocol/codex-acp@2.1.1"]
+    argv: [npx, -y, "@agentclientprotocol/codex-acp@2.2.2"]
     requires: [{tool: node, min: "22"}]
   headless:                                       # fallback when Node is missing; not built by the registry yet
     argv: [exec, --json, -C, "{{cwd}}", -s, workspace-write, "-"]

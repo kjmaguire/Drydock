@@ -6,7 +6,7 @@ install:
   - {shell: cmd, command: 'choco install opencode'}
   - {shell: cmd, command: 'npm i -g opencode-ai@latest', requires: [{tool: node, min: "22"}]}
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "1.18.35", recommended: "1.18.35"}
+versions: {min: "1.18.35", recommended: "1.19.1"}
 auth:
   login: {argv: [providers, login], terminal: true}
   probe: {argv: [providers, list], parse: text_providers, ready_when: 'exit == 0', unverified: true}
