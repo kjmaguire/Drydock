@@ -46,6 +46,11 @@ func repoRoot(t *testing.T) string {
 func suite(t *testing.T) []Task {
 	t.Helper()
 	root := repoRoot(t)
+	// The Windows verification bundle runs this compiled test from a folder of its own, which holds no repository: no go.mod
+	// here means no source checkout (a checkout that lost evals/tasks still fails). CI's go and trial-suite jobs run these tests.
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Skip("not run from the source checkout: the repository's evals/ folder is not here")
+	}
 	ts, err := LoadSuite(root, filepath.Join(root, "evals", "tasks"))
 	if err != nil {
 		t.Fatal(err)

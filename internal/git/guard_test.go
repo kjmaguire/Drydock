@@ -284,7 +284,8 @@ func TestLocalGitCallsDoNotInheritTheAppsTokens(t *testing.T) {
 	r := &Repo{AuthorName: "t", AuthorEmail: "t@t"}
 	has := func(env []string, name string) bool {
 		for _, kv := range env {
-			if strings.HasPrefix(kv, name+"=") {
+			// names are compared as Windows does: the system spells the search path Path, not PATH
+			if k, _, _ := strings.Cut(kv, "="); strings.EqualFold(k, name) {
 				return true
 			}
 		}

@@ -74,14 +74,26 @@ func TestTheScanFindsATokenInProductCodeAndLeavesFixturesAlone(t *testing.T) {
 	}
 }
 
-func TestNoSecretInATrackedFileThatIsNotAFixture(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+// sourceRoot is the repository when the test runs from its source folder. The Windows verification bundle runs the compiled test
+// from a folder of its own: there is no repository there (on CI the bundle sits inside a checkout, so `git` would answer for that
+// one), and the test is skipped; CI's go job runs it from the source.
+func sourceRoot(t *testing.T) string {
+	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Skip("not run from the source checkout: there is no repository here to scan")
+	}
+	return root
+}
+
+func TestNoSecretInATrackedFileThatIsNotAFixture(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	root := sourceRoot(t)
 	listed, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
 	if err != nil {
 		t.Skipf("not a git checkout: %v", err)
@@ -116,10 +128,7 @@ func TestNoSecretInATrackedFileThatIsNotAFixture(t *testing.T) {
 // .gitignore keeps what must not be committed out, and nothing that is committed is a file it says to keep out (audit 2026-10-16,
 // L56: a Playwright result was tracked for lack of an ignore rule, and no rule named an env file, a key or a database).
 func TestGitignoreKeepsSecretsAndLocalStateOutAndNothingTrackedIsIgnored(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sourceRoot(t)
 	b, err := os.ReadFile(filepath.Join(root, ".gitignore"))
 	if err != nil {
 		t.Fatal(err)

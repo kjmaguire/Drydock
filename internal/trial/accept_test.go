@@ -237,7 +237,11 @@ func TestTheAcceptanceEnvironmentHoldsNoTokenAndIsTheScratchDirectorys(t *testin
 			t.Errorf("%s = %q, want %q", k, got[k], want)
 		}
 	}
-	if got["PATH"] == "" {
+	hasPath := false
+	for k, v := range got {
+		hasPath = hasPath || strings.EqualFold(k, "PATH") && v != "" // Windows spells it Path
+	}
+	if !hasPath {
 		t.Error("no PATH: the toolchain cannot be found")
 	}
 	for _, k := range []string{"HOME", "USERPROFILE", "TMPDIR", "TMP", "TEMP", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "GOPATH"} {

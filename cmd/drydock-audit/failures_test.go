@@ -396,6 +396,10 @@ func TestTheScannerIsPinnedToTheReleaseTheCIWorkflowRuns(t *testing.T) {
 		t.Fatalf("govulncheck must be pinned to a release: %s", govulncheckModule)
 	}
 	_, version, _ := strings.Cut(govulncheckModule, "@")
+	// the Windows verification bundle runs this compiled test from a folder that holds no workflows or notes
+	if _, err := os.Stat(filepath.Join("..", "..", "go.mod")); err != nil {
+		t.Skip("not run from the source checkout: the workflow and the notes are not here")
+	}
 	for _, f := range []string{filepath.Join("..", "..", ".github", "workflows", "security.yml"), filepath.Join("..", "..", "docs", "software-notes.json")} {
 		b, err := os.ReadFile(f)
 		if err != nil {
