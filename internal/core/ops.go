@@ -186,15 +186,25 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 
 // TaskDiff returns the diff evidence of the task (the change reviewers and the human look at).
 func (c *Core) TaskDiff(ctx context.Context, id string) (string, error) {
+	return c.TaskDiffAt(ctx, id, 0)
+}
+
+// TaskDiffAt returns the diff evidence with that id, or the newest one when evidenceID is 0. A screen that shows a patch beside an
+// Approve button asks for the evidence it keyed the card on, so a patch recorded since is never shown as that one (audit
+// 2026-10-16, L36); an id that is not a diff evidence of this task is an error.
+func (c *Core) TaskDiffAt(ctx context.Context, id string, evidenceID int64) (string, error) {
 	ev, err := c.Tasks.Evidence(ctx, id)
 	if err != nil {
 		return "", err
 	}
 	for i := len(ev) - 1; i >= 0; i-- {
-		if ev[i].Kind == "diff" {
+		if ev[i].Kind == "diff" && (evidenceID == 0 || ev[i].ID == evidenceID) {
 			b, err := runfiles.ReadConfined(c.cfg.DataDir, ev[i].Ref)
 			return string(b), err
 		}
+	}
+	if evidenceID != 0 {
+		return "", fmt.Errorf("evidence %d is not a diff of this task", evidenceID)
 	}
 	return "", nil
 }

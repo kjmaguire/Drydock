@@ -182,8 +182,13 @@ func (c *Core) Methods() map[string]Method {
 			n, err := c.Tasks.Count(ctx, f)
 			return map[string]int{"total": n}, err
 		}),
-		"task.get":  bind(func(ctx context.Context, p idParam) (any, error) { return c.GetTask(ctx, p.ID) }),
-		"task.diff": bind(func(ctx context.Context, p idParam) (any, error) { return c.TaskDiff(ctx, p.ID) }),
+		"task.get": bind(func(ctx context.Context, p idParam) (any, error) { return c.GetTask(ctx, p.ID) }),
+		"task.diff": bind(func(ctx context.Context, p struct {
+			ID         string `json:"id"`
+			EvidenceID int64  `json:"evidenceId"`
+		}) (any, error) {
+			return c.TaskDiffAt(ctx, p.ID, p.EvidenceID)
+		}),
 		"task.assign": bind(func(ctx context.Context, p struct{ ID, Assignee, Reviewer string }) (any, error) {
 			return c.AssignTask(ctx, p.ID, p.Assignee, p.Reviewer)
 		}),
