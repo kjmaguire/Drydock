@@ -1,11 +1,10 @@
 {
-  "generated": "2026-10-16T04:10:19Z",
-  "commit": "4588129",
+  "generated": "2026-10-16T15:24:28Z",
+  "commit": "403d843",
   "summary": {
-    "current": 170,
-    "minor": 1,
-    "patch": 3,
-    "unknown": 1
+    "current": 168,
+    "minor": 4,
+    "patch": 5
   },
   "items": [
     {
@@ -26,11 +25,11 @@
       "name": "@agentclientprotocol/claude-agent-acp (ACP bridge)",
       "kind": "bridge",
       "used": "0.91.0",
-      "latest": "0.91.0",
-      "status": "current",
+      "latest": "0.92.0",
+      "status": "minor",
       "where": "internal/agents/manifests/cli/claude.yaml",
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
-      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. The bridge is off in the manifest (D1), so the pin is a record, not a running dependency.",
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. The bridge is off in the manifest (D1), so the pin is a record, not a running dependency. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move.",
       "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1)."
     },
     {
@@ -39,10 +38,11 @@
       "name": "cline (cline)",
       "kind": "cli",
       "used": "3.0.71",
-      "latest": "3.0.71",
-      "status": "current",
+      "latest": "3.0.72",
+      "status": "patch",
       "where": "internal/agents/manifests/cli/cline.yaml (recommended; minimum 3.0.70)",
       "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
+      "hold": "3.0.72 is out; 3.0.71 stays the pin. Decision P33: a CLI version is adopted only after the contract suite passes on it, and the suite (nightly, and on every push that touches internal/agents) needs the sign-in secret that is not yet in the repository's environment `contract` (open item 8 of docs/decisions.md section 4).",
       "note": "Pinned at 3.0.70 (min and recommended), the newest release on 2026-10-09: version and ACP initialize checked live on Linux; no prompt turn was run (no sign-in here). You install it yourself with npm i -g cline (Node 22+; its launcher is a Node script). Decisions P29."
     },
     {
@@ -100,11 +100,11 @@
       "name": "opencode (opencode-ai)",
       "kind": "cli",
       "used": "1.19.1",
-      "latest": "1.19.2",
+      "latest": "1.19.3",
       "status": "patch",
       "where": "internal/agents/manifests/cli/opencode.yaml (recommended; minimum 1.18.35)",
       "role": "OpenCode: an open-source agent that can use many providers.",
-      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back.",
+      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move.",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
     },
     {
@@ -138,9 +138,9 @@
       "used": "v7",
       "latest": "v7.0.1",
       "status": "current",
-      "where": ".github/workflows/ci.yml, contract.yml, verify.yml, windows-probes.yml",
+      "where": ".github/workflows/ci.yml, contract.yml, security.yml, verify.yml, windows-probes.yml",
       "role": "Fetches the repository in CI.",
-      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+      "note": "Major tag v7. Every job of every workflow uses it with persist-credentials: false (a test, internal/ciconfig, keeps it so), on GitHub-hosted runners only."
     },
     {
       "id": "action:actions/setup-go",
@@ -150,9 +150,9 @@
       "used": "v7",
       "latest": "v7.0.0",
       "status": "current",
-      "where": ".github/workflows/ci.yml, contract.yml, verify.yml, windows-probes.yml",
+      "where": ".github/workflows/ci.yml, contract.yml, security.yml, verify.yml, windows-probes.yml",
       "role": "Installs Go in CI.",
-      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+      "note": "Major tag v7; installs the Go version go.mod names."
     },
     {
       "id": "action:actions/setup-node",
@@ -162,9 +162,9 @@
       "used": "v7",
       "latest": "v7.1.0",
       "status": "current",
-      "where": ".github/workflows/ci.yml, contract.yml, windows-probes.yml",
+      "where": ".github/workflows/ci.yml, contract.yml, security.yml, windows-probes.yml",
       "role": "Installs Node in CI.",
-      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+      "note": "Major tag v7; installs Node 24."
     },
     {
       "id": "action:actions/upload-artifact",
@@ -176,7 +176,31 @@
       "status": "current",
       "where": ".github/workflows/ci.yml, contract.yml, verify.yml",
       "role": "Keeps test output from CI runs.",
-      "note": "CI has not run yet (GitHub Actions is unavailable for this repository, decision P2)."
+      "note": "Major tag v7; keeps the end-to-end evidence of a failed run, the verification results and the contract report."
+    },
+    {
+      "id": "action:github/codeql-action/analyze",
+      "group": "GitHub Actions (CI)",
+      "name": "github/codeql-action/analyze",
+      "kind": "action",
+      "used": "v4",
+      "latest": "v4.39.0",
+      "status": "current",
+      "where": ".github/workflows/security.yml",
+      "role": "Runs the CodeQL analysis and uploads its results (security workflow).",
+      "note": "Major tag v4, the same repository as init (the two always move together)."
+    },
+    {
+      "id": "action:github/codeql-action/init",
+      "group": "GitHub Actions (CI)",
+      "name": "github/codeql-action/init",
+      "kind": "action",
+      "used": "v4",
+      "latest": "v4.39.0",
+      "status": "current",
+      "where": ".github/workflows/security.yml",
+      "role": "Starts CodeQL code scanning for Go and JavaScript/TypeScript in the security workflow (.github/workflows/security.yml).",
+      "note": "Major tag v4; the results go to the repository's Security tab. Added with the security workflow (audit 2026-10-16, L52)."
     },
     {
       "id": "go:cel.dev/cel-go",
@@ -487,7 +511,7 @@
       "usedDate": "2026-10-06",
       "where": "go.mod",
       "role": "Windows Job Objects (killing an agent's whole process tree) and other Windows calls.",
-      "usedBy": 10,
+      "usedBy": 11,
       "inBuild": true
     },
     {
@@ -2626,10 +2650,10 @@
       "name": "github.com/google/pprof",
       "kind": "indirect",
       "used": "0.0.0-20260802141513-ef3492d7dac3",
-      "latest": "0.0.0-20261014150452-c3b4e57cab2c",
+      "latest": "0.0.0-20261016150608-1facf8f91b50",
       "status": "patch",
       "usedDate": "2026-08-02",
-      "latestDate": "2026-10-14",
+      "latestDate": "2026-10-16",
       "where": "module graph (not in go.mod)",
       "note": "Pinned to a commit, not a release. Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -3221,10 +3245,10 @@
       "name": "github.com/klauspost/cpuid/v2",
       "kind": "indirect",
       "used": "2.3.0",
-      "latest": "2.4.0",
+      "latest": "2.4.1",
       "status": "minor",
       "usedDate": "2025-07-11",
-      "latestDate": "2026-06-17",
+      "latestDate": "2026-07-20",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5673,6 +5697,8 @@
       "usedDate": "2025-12-02",
       "latestDate": "2026-10-12",
       "where": "module graph (not in go.mod)",
+      "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use).",
+      "hold": "Only the module at the root is behind, as a pseudo-version (no release exists); it moves with the libraries that require it, not on its own (decision P23).",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
     },
@@ -5879,10 +5905,13 @@
       "name": "modernc.org/libc",
       "kind": "indirect",
       "used": "1.78.0",
-      "latest": "1.78.0",
-      "status": "current",
+      "latest": "1.79.0",
+      "status": "minor",
       "usedDate": "2026-10-11",
+      "latestDate": "2026-10-15",
       "where": "go.mod",
+      "role": "The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app.",
+      "hold": "1.79.0 was published on 2026-10-15, less than 14 days before this audit. A release is adopted at the next refresh after it has been out for 14 days (the cooldown Dependabot uses for this repository, .github/dependabot.yml), unless a fix is needed sooner. It is also the module that has to agree with the SQLite driver's generated code, so it moves together with modernc.org/sqlite and the storage tests are the check.",
       "inBuild": true
     },
     {
@@ -6094,32 +6123,33 @@
       "status": "current",
       "latestDate": "2025-09-08",
       "where": "docs/decisions.md section 2",
-      "role": "Produces THIRD_PARTY_NOTICES.md."
+      "role": "The documented cross-check for THIRD_PARTY_NOTICES.md (brief section 21); nothing in the repository runs it.",
+      "note": "THIRD_PARTY_NOTICES.md is generated by cmd/drydock-notices from docs/software-versions.json, ui/package-lock.json and the Go module cache, and a test keeps it equal to them (audit 2026-10-16, L57). go-licenses report can be run by a person to compare."
     },
     {
       "id": "tool:govulncheck",
       "group": "Tools Drydock runs or you install",
       "name": "govulncheck",
       "kind": "tool",
-      "used": "not pinned",
+      "used": "1.9.0",
       "latest": "1.9.0",
-      "status": "unknown",
+      "status": "current",
       "latestDate": "2026-10-11",
       "where": "docs/decisions.md section 2",
-      "role": "Go's own vulnerability scanner; used by the audit tool, runs with go run at its newest version.",
-      "note": "Not pinned: the audit runs it at @latest each time."
+      "role": "Go's own vulnerability scanner; run by the audit tool (cmd/drydock-audit) and by the security workflow (.github/workflows/security.yml) with go run at a pinned release.",
+      "note": "Pinned to v1.9.0 in both places (the audit's govulncheckModule constant and the workflow; a test keeps them equal), so the code that checks the code is the release Go's checksum database vouches for, not whatever is newest (audit 2026-10-16, L51/L52). Moving it means changing both and this entry."
     },
     {
       "id": "tool:golangci-lint",
       "group": "Tools Drydock runs or you install",
       "name": "golangci-lint (CI lint job)",
       "kind": "tool",
-      "used": "2.14.0",
-      "latest": "2.14.0",
+      "used": "2.15.0",
+      "latest": "2.15.0",
       "status": "current",
-      "latestDate": "2026-09-24",
+      "latestDate": "2026-10-16",
       "where": "docs/decisions.md section 2",
-      "role": "The Go linter the CI lint job runs (go install ...@v2.14.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
+      "role": "The Go linter the CI lint job runs (go install ...@v2.15.0 in .github/workflows/ci.yml) with the committed .golangci.yml, for the Windows and the Linux build (audit F22). Keep the version here and in ci.yml the same."
     },
     {
       "id": "tool:wrangler",
@@ -6127,10 +6157,11 @@
       "name": "Wrangler",
       "kind": "tool",
       "used": "4.151.0",
-      "latest": "4.151.0",
-      "status": "current",
+      "latest": "4.151.1",
+      "status": "patch",
       "where": "docs/decisions.md section 2",
-      "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it."
+      "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
+      "hold": "4.151.1 is out; the documented version is what the Cloudflare documentation of this repository was written against. Drydock does not run wrangler, so nothing breaks while it is behind; it moves when those documents are next reviewed."
     },
     {
       "id": "tool:docker",
@@ -6164,7 +6195,7 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11672",
-      "latest": "b11678",
+      "latest": "b11696",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6300,10 +6331,11 @@
       "name": "lucide",
       "kind": "direct",
       "used": "1.57.0",
-      "latest": "1.57.0",
-      "status": "current",
+      "latest": "1.58.0",
+      "status": "minor",
       "where": "ui/package.json",
-      "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled."
+      "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled.",
+      "hold": "1.58.0 was published on 2026-10-16, less than 14 days before this audit. A release is adopted at the next refresh after it has been out for 14 days (the cooldown Dependabot uses for this repository, .github/dependabot.yml), unless a fix is needed sooner."
     },
     {
       "id": "npm:marked",
@@ -6341,13 +6373,20 @@
       "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."
     }
   ],
-  "vulnerabilities": [],
+  "vulnerabilities": [
+    {
+      "source": "govulncheck",
+      "id": "GO-2026-5932",
+      "package": "golang.org/x/crypto v0.58.0",
+      "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues"
+    }
+  ],
   "vulnerabilityScans": {
-    "govulncheck": "0 known vulnerabilities in what is built, 0 of them in code that is called",
+    "govulncheck": "1 known vulnerabilities in what is built, 0 of them in code that is called",
     "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {
-    "action": 6,
+    "action": 8,
     "bridge": 2,
     "cli": 6,
     "dev": 6,

@@ -151,11 +151,11 @@ Pulled in by those, and compiled in:
 | golang.org/x/sync | v0.24.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/text | v0.43.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/time | v0.16.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
-| google.golang.org/genproto | v0.0.0-20251202230838-ff82c1b0f217 | Apache-2.0 (the repository's LICENSE; this module's source is not needed to build) | - | - |
+| google.golang.org/genproto | v0.0.0-20251202230838-ff82c1b0f217 | Apache-2.0 (the repository's LICENSE; this module's source is not needed to build) | - | Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use). |
 | google.golang.org/genproto/googleapis/api | v0.0.0-20261012220534-4341edf3f941 | Apache-2.0 | - | - |
 | google.golang.org/genproto/googleapis/rpc | v0.0.0-20261012220534-4341edf3f941 | Apache-2.0 | - | - |
 | google.golang.org/protobuf | v1.36.12 | BSD-3-Clause | Copyright (c) 2018 The Go Authors. All rights reserved. | - |
-| modernc.org/libc | v1.78.0 | BSD-3-Clause, with code under MIT | - | - |
+| modernc.org/libc | v1.78.0 | BSD-3-Clause, with code under MIT | - | The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app. |
 | modernc.org/mathutil | v1.7.1 | BSD-3-Clause | Copyright (c) 2014 The mathutil Authors. All rights reserved. | - |
 | modernc.org/memory | v1.12.1 | BSD-3-Clause | Copyright (c) 2017 The Memory Authors. All rights reserved. | - |
 
