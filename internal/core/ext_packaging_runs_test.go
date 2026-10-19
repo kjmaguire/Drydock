@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,9 +250,21 @@ func TestStartWhileExpiredParksOrphanedRunsInsteadOfRecoveringThem(t *testing.T)
 	}
 }
 
+// rawDSN names the data folder's database for a test that reads or writes it behind the core's back. Like the product's own
+// connections (storage.dsn) it waits up to five seconds for a lock instead of failing at once: a core that was just closed can
+// hold the file a moment longer, which a loaded Windows runner showed.
+func rawDSN(dataDir string, readOnly bool) string {
+	q := url.Values{}
+	q.Add("_pragma", "busy_timeout(5000)")
+	if readOnly {
+		q.Add("mode", "ro")
+	}
+	return "file:" + filepath.ToSlash(filepath.Join(dataDir, "drydock.db")) + "?" + q.Encode()
+}
+
 func mustRunStatus(t *testing.T, dataDir, runID string) string {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(dataDir, "drydock.db"))+"?mode=ro")
+	db, err := sql.Open("sqlite", rawDSN(dataDir, true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,13 +278,59 @@ func mustRunStatus(t *testing.T, dataDir, runID string) string {
 
 func setSetting(t *testing.T, dataDir, key, value string) {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(dataDir, "drydock.db")))
+	db, err := sql.Open("sqlite", rawDSN(dataDir, false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	if _, err := db.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A test that writes to the database behind the core's back (setSetting) or reads it (mustRunStatus) waits for a lock the way the
+// product's own connections do (busy_timeout 5000, storage.dsn). Without it, a core that was just closed could still hold the
+// file for a moment, and on a loaded Windows runner the call failed at once with SQLITE_BUSY: TestResetClockCorrectsTheRecordAndIsAudited
+// did (go job of 2026-10-19, `database is locked (5)` at its setSetting).
+func TestTheHelpersThatTouchTheDatabaseBehindTheCoreWaitForALock(t *testing.T) {
+	dataDir := t.TempDir() + "/data"
+	_, a, _ := licensedApp(t, dataDir)
+	a.c.Close()
+	// another connection holds the write lock for a moment
+	holder, err := sql.Open("sqlite", rawDSN(dataDir, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	ctx := context.Background()
+	conn, err := holder.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		t.Fatal(err)
+	}
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		time.Sleep(600 * time.Millisecond)
+		conn.ExecContext(ctx, `COMMIT`)
+		conn.Close()
+	}()
+	start := time.Now()
+	setSetting(t, dataDir, "test.waits", "yes")
+	if waited := time.Since(start); waited < 400*time.Millisecond {
+		t.Fatalf("setSetting did not wait for the lock (%s): was it held?", waited)
+	}
+	<-released
+	reader, err := sql.Open("sqlite", rawDSN(dataDir, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	var v string
+	if err := reader.QueryRow(`SELECT value FROM settings WHERE key='test.waits'`).Scan(&v); err != nil || v != "yes" {
+		t.Fatalf("the setting was not written: %q %v", v, err)
 	}
 }
 
