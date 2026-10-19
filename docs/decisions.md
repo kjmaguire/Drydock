@@ -693,6 +693,8 @@ Open, owner action:
   after it; a browser test reads the rows' computed layout). **P44 stands:** Drydock
   still ships and downloads no rules; the page lists and links, recommends no set and gives no legal advice, and the one rule on
   it is help text the person saves themselves (a test keeps it a valid rule file). A starter set of Drydock's own would reverse
-  P44 and is the owner's call. Document: [`security-scan.md`](security-scan.md) section 5. **Not verified:** the page's rule and
-  Git command against a real Opengrep and a real clone (no Opengrep binary can be run on the development host); the Semgrep
-  Rules License's terms (the page was unreachable from there); the look of the button and the dialog on Windows.
+  P44 and is the owner's call. Document: [`security-scan.md`](security-scan.md) section 5. **Checked:** the page's rule was run
+  through Semgrep OSS 1.181.0, the engine Opengrep was forked from: two findings in the two Go files, none for `fmt.Printf`,
+  `fmt.Sprint` or a Python file; its SARIF is now a test fixture of the reader. **Not verified:** the rule and the Git command
+  against Opengrep itself and a real clone (no Opengrep binary can be run on the development host); the Semgrep Rules
+  License's terms (the page was unreachable from there); the look of the button and the dialog on Windows.
