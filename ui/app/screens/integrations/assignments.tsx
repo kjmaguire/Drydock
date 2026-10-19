@@ -7,7 +7,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { BadgeCheck, Check, ExternalLink, FileText, FolderPlus, ListChecks, Pencil, Plus, RefreshCw, Send, Trash2, Unplug, Workflow } from 'lucide';
 import type { ExternalItem, ExternalItemDetail, IntegrationAssignment, IntegrationChoice, IntegrationKindInfo, IntegrationRule, IntegrationView, NotionPageText, Outbox } from '../../api/extTypes.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, plural } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -42,7 +42,7 @@ const segmented = css({
   gap: '2px',
   borderRadius: t.rMd,
   background: t.bgActive,
-  '& > button': { height: '26px', padding: '0 10px', border: '0', borderRadius: t.rSm, background: 'transparent', color: t.textMuted, fontSize: t.textSm, fontWeight: '500' },
+  '& > button': { height: '28px', padding: '0 10px', border: '0', borderRadius: t.rSm, background: 'transparent', color: t.textMuted, fontSize: t.textSm, fontWeight: '500' },
   '& > button:hover': { color: t.text },
   '& > button[aria-expanded="true"]': { background: t.bgRaised, color: t.text, boxShadow: t.shadowSm },
 });
@@ -123,7 +123,7 @@ function ItemRow(handle: Handle<{ it: ExternalItem; projectId: string; onChanged
           ) : null}
         </div>
         {it.excerpt ? <Markdown source={it.excerpt} maxChars={600} /> : null}
-        {it.redactions > 0 ? <p mix={faint}>{it.redactions} secret(s) were redacted from this text before it was stored.</p> : null}
+        {it.redactions > 0 ? <p mix={faint}>{plural(it.redactions, 'secret')} {it.redactions === 1 ? 'was' : 'were'} redacted from this text before it was stored.</p> : null}
         {(it.warnings ?? []).map((w, i) => (
           <Notice key={i} tone="warn">
             {w}
@@ -373,7 +373,7 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
             <div>
               when <code>{r.when}</code>
             </div>
-            {(r.matches ?? []).length > 0 ? <p mix={faint}>{(r.matches ?? []).length} match(es) recorded (dry-run listings included).</p> : null}
+            {(r.matches ?? []).length > 0 ? <p mix={faint}>{plural((r.matches ?? []).length, 'match', 'matches')} recorded (dry-run listings included).</p> : null}
             <div mix={toolbar}>
               <Button size="sm" mix={[on('click', () => void change(r, { enabled: !r.enabled }))]}>
                 {r.enabled ? 'Disable' : 'Enable'}

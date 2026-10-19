@@ -85,7 +85,7 @@ const panelTitle = css({
   margin: `0 0 ${t.s2}`,
   fontSize: t.textMd,
   fontWeight: '600',
-  '& a': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500' },
+  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', color: t.textFaint, fontSize: t.textSm, fontWeight: '500' },
   '& a:hover': { color: t.text },
 });
 const reqList = css({ margin: '0', padding: '0', listStyle: 'none' });

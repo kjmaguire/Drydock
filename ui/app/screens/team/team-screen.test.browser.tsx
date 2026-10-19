@@ -138,7 +138,7 @@ describe('Team: purpose, model and effort', () => {
     cleanup();
     const quiet = show([agent()]);
     const c2 = await waitAgent(quiet.r, 'Pay');
-    expect(c2.querySelector('.now')!.textContent).toContain('Resting');
+    expect(c2.querySelector('.now')!.textContent).toContain('Stopped');
     expect(c2.querySelector('[data-testid="agent-runs"]')).toBeNull();
   });
 
@@ -689,5 +689,18 @@ describe('Team: a permission mode that skips approvals (M1)', () => {
     expect(note.textContent).toContain('Make the template in the Library');
     expect(note.querySelector('a[href="/library"]')).not.toBeNull();
     expect(ed.textContent).not.toContain('Agent not changed');
+  });
+});
+
+describe('Team: what each agent is on', () => {
+  it('shows the open task of an agent, linked, on its card, and nothing for an agent without one', async () => {
+    const t1 = { id: 't1', seq: 3, title: 'Add Multiply', status: 'IN_PROGRESS', assignee: 'agt_1' } as never;
+    const { r } = show([agent({ id: 'agt_1', name: 'Ada' }), agent({ id: 'agt_2', name: 'Bo' })], { taskList: async () => [t1] } as never);
+    await waitFor(() => expect(r.$$('[data-testid="agent"]').length).toBe(2), r);
+    const cards = Array.from(r.$$('[data-testid="agent"]')) as HTMLElement[];
+    const ada = cards.find((c) => c.getAttribute('data-name') === 'Ada')!;
+    await waitFor(() => expect(ada.querySelector('[data-testid="agent-task"]')!.textContent).toContain('Task #3 Add Multiply'), r);
+    expect(ada.querySelector('[data-testid="agent-task"]')!.getAttribute('href')).toBe('/task/t1');
+    expect(cards.find((c) => c.getAttribute('data-name') === 'Bo')!.querySelector('[data-testid="agent-task"]')).toBeNull();
   });
 });

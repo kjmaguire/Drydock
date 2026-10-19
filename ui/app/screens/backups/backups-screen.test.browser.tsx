@@ -75,7 +75,7 @@ describe('BackupsScreen', () => {
     await r.act(() => btn(r.container, 'Back up now').click());
     const made = await waitFor(() => tid(r.container, 'backup-made'), r);
     expect(made.textContent).toContain('Backup b1.db written (2.0 KB).');
-    expect(made.textContent).toContain('Removed 1 old backup(s)');
+    expect(made.textContent).toContain('Removed 1 old backup');
     expect(labels).toEqual(['before refactor']);
     await waitFor(() => expect(reads).toBeGreaterThan(1), r);
     expect(byLabel(r.container, /^Label \(optional/).value).toBe('');

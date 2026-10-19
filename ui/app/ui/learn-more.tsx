@@ -9,6 +9,7 @@ const linkCss = css({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '5px',
+  minHeight: '28px',
   color: t.accentText,
   fontSize: t.textSm,
   fontWeight: '500',

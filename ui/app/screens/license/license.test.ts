@@ -18,8 +18,8 @@ describe('license helpers', () => {
     expect(daysLabel(lic({ state: 'expired' }))).toBe('Expired');
     expect(daysLabel(lic({ state: 'grace' }))).toBe('Grace days left');
     expect(daysLabel(lic())).toBe('Days left');
-    expect(daysText(lic({ state: 'grace', daysLeft: 5 }))).toBe('5 day(s)');
-    expect(daysText(lic({ daysLeft: 40 }))).toContain('40 day(s), until ');
+    expect(daysText(lic({ state: 'grace', daysLeft: 5 }))).toBe('5 days');
+    expect(daysText(lic({ daysLeft: 40 }))).toContain('40 days, until ');
     expect(daysText(lic({ state: 'expired', expiresAt: undefined }))).toBe('expired');
   });
 

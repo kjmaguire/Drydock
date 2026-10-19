@@ -7,6 +7,7 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { t } from '../../ui/tokens.ts';
 import { parseLimits, type LimitErrors } from '../budgets/budgets.ts';
+import { plural } from '../../lib/format.ts';
 
 export const pctText = (p: number | null | undefined) => (p === null || p === undefined ? 'n/a' : `${Math.round(p * 100)}%`);
 
@@ -84,7 +85,7 @@ export function BudgetPausePanel(handle: Handle<{ payload: BudgetPausePayload; r
           {exceeded.map((x) => (
             <li key={x.budget.id + x.instanceId}>
               {x.message || `${x.budget.scope} ${x.budget.scopeId}: ${pctText(x.pct)} used`}
-              {x.spend.unknownCostRows > 0 ? <span mix={muted}> ({x.spend.unknownCostRows} call(s) with unknown cost not counted as zero)</span> : null}
+              {x.spend.unknownCostRows > 0 ? <span mix={muted}> ({plural(x.spend.unknownCostRows, 'call')} with unknown cost not counted as zero)</span> : null}
             </li>
           ))}
         </ul>

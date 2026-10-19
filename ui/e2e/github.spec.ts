@@ -16,7 +16,7 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   // the sign-in: the harness has no gh, and the page says so in the core's words, with no sign-in button of its own
   const sign = page.getByTestId('gh-signin-state');
   await expect(sign).toHaveAttribute('data-signed-in', 'false');
-  await expect(sign).toContainText('not installed');
+  await expect(sign).toContainText('GitHub CLI not found');
   await expect(sign.getByRole('button')).toHaveCount(0);
   // the claim is about the gh route only, and the page says where the other sign-ins and tokens are kept (audit L45)
   await expect(page.getByTestId('gh-signin')).toContainText('On this route Drydock reads and stores no GitHub token');

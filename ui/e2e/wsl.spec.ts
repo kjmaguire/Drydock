@@ -137,7 +137,7 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
   const runs = page.getByLabel('Runs', { exact: true });
   await expect(await optionsOf(runs)).toHaveCount(3);
   await choose(runs, `wsl:${distro()}`);
-  await expect(page.getByTestId('run-mode')).toContainText('a repository inside the distro is fast');
+  await expect(page.getByTestId('run-mode')).toContainText('one inside the distro is fast');
   await page.getByRole('button', { name: 'Create agent' }).click();
   const card = page.getByTestId('agent').filter({ hasText: 'Linux worker' });
   await expect(card.getByTestId('agent-runs')).toHaveText(`in WSL ${distro()}`);

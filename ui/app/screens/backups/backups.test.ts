@@ -26,7 +26,7 @@ describe('backups helpers', () => {
 
   it('words a new backup and the pruned ones', () => {
     expect(madeMessage({ backup: b(), pruned: null })).toBe('Backup b1.db written (2.0 KB).');
-    expect(madeMessage({ backup: b(), pruned: ['a', 'b'] })).toContain('Removed 2 old backup(s)');
+    expect(madeMessage({ backup: b(), pruned: ['a', 'b'] })).toContain('Removed 2 old backups');
   });
 
   it('the form shows the default folder as empty and sends numbers or nothing', () => {

@@ -28,6 +28,7 @@ import { PermissionPromptPanel, permissionPayload } from '../shared/permission-p
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
+import { plural } from '../../lib/format.ts';
 
 // The decide card (Crew HQ, decision P64): a soft yellow card with the requests as white cards inside; the primary answer is
 // the black pill.
@@ -136,7 +137,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
             Request kind: <code>{p.spec.kind}</code>
           </span>
           {info.branch ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', minWidth: '0', maxWidth: '100%', overflowWrap: 'anywhere' }}>
               <Icon icon={GitBranch} size={13} />
               Branch <code>{visible(info.branch)}</code>
               {info.base ? (
@@ -153,7 +154,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
             <summary>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle' }}>
                 <Icon icon={FileDiff} size={13} />
-                {info.files.length} file(s) changed
+                {plural(info.files.length, 'file')} changed
               </span>
             </summary>
             <ul>

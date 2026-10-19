@@ -1,6 +1,7 @@
 // Pure helpers for the team page, the agent editor and the template form (no DOM, no services).
 
 import type { AppliedTemplate, SkillsInstalled } from '../../api/libraryClient.ts';
+import { isStopped } from '../../lib/format.ts';
 import type { AdapterInfo, Agent, AgentRun, Capabilities, PresenceState, RouteModel, Task, UsageTotals } from '../../api/types.ts';
 
 export const CAP_LABEL: [keyof Capabilities, string][] = [
@@ -81,17 +82,16 @@ export function presetUntouched(model: string, effort: string, last: { model: st
   return (model === '' && effort === '') || (last !== undefined && model === last.model && effort === last.effort);
 }
 
-/** What an agent is doing, in one line: its activity, else its presence label, else the presence name; "Resting" without presence. */
+/**
+ * What an agent is doing, in one line: its activity, else its presence label, else the presence name. One word for an agent whose
+ * program is not running: "Stopped" (the pages used to say "Resting", "stopped" and "Paused (stopped)" for it, the UI audit's B5).
+ */
 export function doing(p: PresenceState | undefined): string {
-  if (!p) return 'Resting';
-  return p.activity || p.label || p.presence;
+  if (isStopped(p)) return 'Stopped';
+  return p!.activity || p!.label || p!.presence;
 }
 
-/** The presence as words, as PresenceDot says them: "Working", "Paused (stopped)", "Unknown" without presence. */
-export function presenceWords(p: PresenceState | undefined): string {
-  const name = p?.presence ?? 'Unknown';
-  return p?.label ? `${name} (${p.label})` : name;
-}
+export { presenceWords } from '../../lib/format.ts';
 
 /** "Claude Code" for the claude adapter, else the adapter id (the chips of an agent's page). */
 export function adapterName(id: string): string {

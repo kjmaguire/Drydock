@@ -29,7 +29,7 @@ test('no license keys in this build: no banner, the License page says so plainly
 
   await workspaceNav(page, 'nav-settings');
   const up = page.getByTestId('updates-section');
-  await expect(up).toContainText('configured when Drydock is built');
+  await expect(up).toContainText('set when Drydock is built');
   await expect(up).toContainText('not been run on Windows');
   await expect(up.getByRole('button')).toHaveCount(0);
 });
@@ -317,7 +317,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.getByLabel('License token').fill(active);
   await page.getByRole('button', { name: 'Import license' }).click();
   await expect(page.getByTestId('license-state')).toHaveText('Active');
-  await expect(page.getByTestId('license-days')).toContainText('29 day(s)');
+  await expect(page.getByTestId('license-days')).toContainText('29 days');
   await expect(page.getByTestId('license-banner')).toHaveCount(0);
   expect(await page.content()).not.toContain(active.slice(0, 40));
 

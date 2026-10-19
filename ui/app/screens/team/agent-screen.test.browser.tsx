@@ -206,7 +206,7 @@ describe("an agent's page", () => {
     await hero(r);
     expect(r.$('h1')!.textContent).toBe('Rex');
     expect(r.container.textContent).toContain('No standing instructions');
-    expect(chips(r)).toEqual(['Resting', 'Claude Code · sonnet', 'effort: high']);
+    expect(chips(r)).toEqual(['Stopped', 'Claude Code · sonnet', 'effort: high']);
     expect(r.$('[data-testid="agent-now"]')!.textContent).toContain('Not on a task right now');
     expect(r.$('[data-testid="agent-activity"]')!.textContent).toContain('No run yet');
     // Rex finished #3 as worker with no rework round, but that task reports no cost or times, and nothing was spent
@@ -397,7 +397,7 @@ describe("an agent's page", () => {
     expect(nowChip(presence, tasks[0])).toBe('Working on #12');
     expect(nowChip(undefined, tasks[0])).toBe('On #12');
     expect(nowChip({ ...presence, taskId: undefined, activity: 'reading' }, undefined)).toBe('reading');
-    expect(nowChip(undefined, undefined)).toBe('Resting');
+    expect(nowChip(undefined, undefined)).toBe('Stopped');
     const team = [{ id: 'agt_1' }, { id: 'agt_2' }];
     expect(skillsOf(skills, agent(), team).mine.map((k) => k.name)).toEqual(['go-testing', 'stripe-api']);
     expect(skillsOf(skills, rex, team).mine.map((k) => k.name)).toEqual([]);

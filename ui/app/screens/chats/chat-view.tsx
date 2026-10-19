@@ -13,7 +13,7 @@ import { Avatar } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { headerCss } from '../../ui/layout.tsx';
+import { headerCss, actionsEnd } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { Popover } from '../../ui/popover.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
@@ -48,7 +48,7 @@ const titleBtn = css({
   '&:hover svg, &:focus-visible svg': { opacity: '1' },
 });
 const titleInput = css({ height: '28px', minWidth: '240px', fontSize: t.textLg, fontWeight: '600' });
-const actionsCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none' });
+const actionsCss = actionsEnd;
 
 // the second header line: chips, folder, status, usage
 const subCss = css({

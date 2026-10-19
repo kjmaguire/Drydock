@@ -31,7 +31,7 @@ describe('LicenseScreen', () => {
     const r = mount(<LicenseScreen />, testServices({ licenseStatus: async () => lic({ state: 'trial', kind: 'trial', daysLeft: 12, channels: ['stable', 'beta'] }) }));
     await waitFor(() => tid(r.container, 'license-details'), r);
     expect(tid(r.container, 'license-state').textContent).toBe('Trial');
-    expect(tid(r.container, 'license-days').textContent).toContain('12 day(s)');
+    expect(tid(r.container, 'license-days').textContent).toContain('12 days');
     expect(tid(r.container, 'license-details').textContent).toContain('stable, beta');
     expect(has(r.container, '[data-testid="license-readonly"]')).toBe(false);
   });
@@ -41,7 +41,7 @@ describe('LicenseScreen', () => {
     await waitFor(() => tid(r.container, 'license-details'), r);
     expect(tid(r.container, 'license-state').textContent).toBe('Grace period');
     expect(Array.from(r.container.querySelectorAll('dt')).some((d) => d.textContent === 'Grace days left')).toBe(true);
-    expect(tid(r.container, 'license-days').textContent).toContain('5 day(s)');
+    expect(tid(r.container, 'license-days').textContent).toContain('5 days');
   });
 
   it('explains read-only: what is still usable and what is off', async () => {

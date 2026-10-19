@@ -123,7 +123,7 @@ describe('routing decisions', () => {
     await waitFor(() => r.$('[data-testid="explain"]') ?? (() => { throw new Error('no explain'); })(), r);
     expect(asked).toEqual(['dec_2']);
     expect(r.container.querySelector('img')).toBeNull();
-    expect(r.container.textContent).toContain('alternative(s) not chosen');
+    expect(r.container.textContent).toContain('alternative not chosen');
   });
 
   it('names the kind of turn of each decision: work, review, room reply and the template steps', async () => {

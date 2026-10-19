@@ -66,7 +66,7 @@ test("the Crew page shows each agent as a dot with its name linking to the agent
   // the other agent's page, from the crew list
   await crew.getByTestId('crew-link').filter({ hasText: 'Rex' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Rex' })).toBeVisible();
-  await expect(chips.first()).toContainText('Resting');
+  await expect(chips.first()).toContainText('Stopped');
 
   // a reload shows the same page (the Go side serves index.html for /team/:id)
   await page.reload();

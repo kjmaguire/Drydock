@@ -1,6 +1,6 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import type { PresenceState } from '../api/types.ts';
-import { statusLabel, statusTone } from '../lib/format.ts';
+import { presenceWords, statusLabel, statusTone } from '../lib/format.ts';
 import { LEAD_ORIGIN_LABEL, leadStep, leadStepText } from '../lib/task-origin.ts';
 import { t, tone, type Tone } from './tokens.ts';
 
@@ -81,7 +81,7 @@ export function PresenceDot(handle: Handle<{ presence: PresenceState | undefined
   return () => {
     const p = handle.props.presence;
     const name = p?.presence ?? 'Unknown';
-    const label = p?.label ? `${name} (${p.label})` : name;
+    const label = presenceWords(p);
     const color = PRESENCE_TONE[name.toLowerCase().split(/\s/)[0] ?? ''] ?? t.textFaint;
     return (
       <span mix={presenceCss} title={p?.activity ? `${label}: ${p.activity}` : label} data-testid="presence">

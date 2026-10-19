@@ -5,6 +5,7 @@
 import { css, type Handle } from 'remix/component';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
+import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Avatar, Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
@@ -15,7 +16,8 @@ import { t } from '../../ui/tokens.ts';
 const rowCss = css({ flexWrap: 'wrap' });
 const nameCss = css({ fontWeight: '600', fontFamily: t.mono, fontSize: t.textSm });
 const reasonCss = css({ flexBasis: '100%', paddingLeft: '32px', fontSize: t.textSm });
-const toggleCss = css({ marginLeft: 'auto' });
+// one column for the switches, so they line up whatever the CLI's name: the label is as wide as the longest
+const toggleCss = css({ marginLeft: 'auto', width: '260px', maxWidth: '100%', flex: 'none' });
 
 export function CliGateway(handle: Handle) {
   const s = services(handle);
@@ -43,7 +45,7 @@ export function CliGateway(handle: Handle) {
         <ul mix={listCard} data-testid="cli-gateway">
           {rows.map((r) => (
             <li key={r.adapter} data-adapter={r.adapter} mix={rowCss}>
-              <Avatar id={r.adapter} name={r.adapter} size={22} square kind="system" />
+              {brandKey(r.adapter) ? <BrandLogo id={r.adapter} size={22} /> : <Avatar id={r.adapter} name={r.adapter} size={22} kind="system" />}
               <span mix={nameCss}>{r.adapter}</span>
               {r.attached && !r.trying ? <Badge tone="ok">verified</Badge> : null}
               {r.trying ? <Badge tone="warn">allowed by you, not verified</Badge> : null}

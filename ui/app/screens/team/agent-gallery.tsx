@@ -38,7 +38,7 @@ const cardCss = css({
   '&:hover': { borderColor: t.borderStrong },
   '& .head': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
   '& h4': { margin: '0', fontSize: t.textMd, fontWeight: '600', flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  '& h4 button': { all: 'unset', cursor: 'pointer', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& h4 button': { all: 'unset', display: 'inline-flex', alignItems: 'center', minHeight: '28px', cursor: 'pointer', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& h4 button:hover': { textDecoration: 'underline' },
   '& h4 button:focus-visible': { outline: `2px solid ${t.accent}`, outlineOffset: '2px', borderRadius: t.rSm },
   '& .sum': {
@@ -53,7 +53,7 @@ const cardCss = css({
   },
   '& .foot': { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: '0', fontSize: t.textXs, color: t.textMuted },
   '& .chip': { display: 'inline-flex', alignItems: 'center', gap: '4px', height: '20px', padding: '0 6px', border: `1px solid ${t.border}`, borderRadius: t.rSm, background: 'transparent', color: 'inherit', font: 'inherit' },
-  '& button.chip': { cursor: 'pointer' },
+  '& button.chip': { cursor: 'pointer', minHeight: '28px' },
   '& .cli': { display: 'inline-flex', alignItems: 'center', gap: '4px' },
   '& .dot': { width: '6px', height: '6px', borderRadius: '50%' },
   '& .act': { marginLeft: 'auto', display: 'inline-flex', gap: '4px' },

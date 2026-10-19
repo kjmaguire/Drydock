@@ -2,7 +2,7 @@
 
 import type { LicenseView } from '../../api/pkgTypes.ts';
 import type { Tone } from '../../ui/tokens.ts';
-import { formatDate, formatDateTime } from '../../lib/format.ts';
+import { formatDate, formatDateTime, plural } from '../../lib/format.ts';
 
 export const STATE_TEXT: Record<string, string> = {
   none: 'No license',
@@ -55,5 +55,5 @@ export function daysLabel(v: LicenseView): string {
 export function daysText(v: LicenseView): string {
   const expires = v.expiresAt ? formatDateTime(v.expiresAt * 1000) : '';
   if (v.state === 'expired') return expires || 'expired';
-  return `${v.daysLeft} day(s)${expires && v.state !== 'grace' ? `, until ${expires}` : ''}`;
+  return `${plural(v.daysLeft, 'day')}${expires && v.state !== 'grace' ? `, until ${expires}` : ''}`;
 }

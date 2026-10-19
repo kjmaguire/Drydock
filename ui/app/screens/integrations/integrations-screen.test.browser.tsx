@@ -68,9 +68,10 @@ describe('Integrations', () => {
     expect(tiles.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github']);
     for (const t of tiles) {
       expect(t.querySelector('[data-brand]')).not.toBeNull();
-      expect(t.textContent).toContain('Sync: not connected');
+      // one word of state, in the badge: nothing under it repeats it
+      expect(t.textContent).not.toContain('Sync:');
+      expect(t.textContent!.match(/not connected/g)).toHaveLength(1);
     }
-    expect(tiles[0]!.textContent).toContain('Sync: not connected · Agents: not connected'); // Linear has an MCP card too
     expect(tiles[3]!.textContent).not.toContain('Agents:'); // Aikido has no MCP card
     expect(tiles[3]!.querySelector('[data-brand="aikido"] path')).not.toBeNull(); // Aikido's own mark, not a lettermark
     const card = await open(r, 'linear');

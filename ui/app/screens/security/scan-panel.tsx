@@ -834,7 +834,7 @@ export function ScanPanel(
                   </Notice>
                 ) : null}
                 <p class="note">
-                  Opengrep needs a folder of rule files (.yaml). Drydock does not download rules: choose a folder of rules you are licensed to use.
+                  Opengrep needs a folder of rules you are licensed to use (.yaml files); Drydock downloads none.
                   {rulesHint ? ` ${rulesHint}` : ''}
                 </p>
                 <RulesSources openByDefault={!tl.rulesOk} />

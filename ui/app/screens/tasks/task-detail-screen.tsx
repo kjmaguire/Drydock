@@ -6,7 +6,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { Check, ClipboardList, Columns2, FileDiff, Flag, ListChecks, MessagesSquare, ScrollText, SquareTerminal, Workflow } from 'lucide';
 import type { Agent, PresenceState, Task, TaskDetail, UsageRow } from '../../api/types.ts';
-import { agentName, formatCost, formatDateTime, presenceFor, statusLabel } from '../../lib/format.ts';
+import { agentName, formatCost, formatDateTime, plural, presenceFor, statusLabel } from '../../lib/format.ts';
 import { LEAD_ORIGIN_WAITS, leadStep } from '../../lib/task-origin.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -422,7 +422,7 @@ function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[
         </dl>
         <p mix={faint} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Icon icon={FileDiff} size={13} />
-          {d.evidence.length} evidence item(s), {d.reviews.length} review(s)
+          {plural(d.evidence.length, 'evidence item')}, {plural(d.reviews.length, 'review')}
         </p>
       </div>
     );

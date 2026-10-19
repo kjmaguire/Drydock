@@ -249,7 +249,7 @@ describe('Scheduler', () => {
     const schedulerTick = recorder(() => ({ promoted: ['t1'], started: ['t1'], skipped: [{ taskId: 't2', reason: 'the worker is busy' }], active: 1, capacity: 1, max: 2 }));
     const r = mount(<SchedulerPanel projectId="prj_1" />, svc({ schedulerStatus: async () => status, schedulerTick }));
     await waitFor(() => expect(r.$('[data-testid="scheduler"]')!.textContent).toContain('manual'), r);
-    expect(r.$('[data-testid="scheduler"]')!.textContent).toContain('up to 2 task(s) in parallel');
+    expect(r.$('[data-testid="scheduler"]')!.textContent).toContain('up to 2 tasks in parallel');
     await r.act(() => byText(r.container, 'button', 'Start ready tasks now').click());
     await waitFor(() => expect(r.$('[data-testid="tick-result"]')).toBeTruthy(), r);
     const out = r.$('[data-testid="tick-result"]')!;

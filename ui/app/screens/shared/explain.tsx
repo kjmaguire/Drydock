@@ -1,6 +1,6 @@
 import { css, on, type Handle } from 'remix/component';
 import type { DecisionRow, RoutingDecision } from '../../api/extTypes.ts';
-import { formatUsd } from '../../lib/format.ts';
+import { formatUsd, plural } from '../../lib/format.ts';
 import { query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
@@ -29,7 +29,7 @@ export function ExplainText(handle: Handle<{ decisionId: string }>) {
         {d.DecidedBy === 'static' ? <p mix={muted}>This was the agent&apos;s configured assignment. The router did not choose it.</p> : null}
         {alts.length > 0 ? (
           <details>
-            <summary>{alts.length} alternative(s) not chosen</summary>
+            <summary>{plural(alts.length, 'alternative')} not chosen</summary>
             <ul>
               {alts.map((a) => (
                 <li>

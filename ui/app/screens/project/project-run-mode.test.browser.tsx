@@ -34,7 +34,7 @@ describe('Where agents run (project settings)', () => {
       return s;
     }, r);
     expect(optionsOf(sel).map((o) => o.label)).toEqual(['On Windows', 'In WSL: Ubuntu (default distro)']);
-    expect(r.container.textContent).toContain('A repository on a Windows drive is read across the WSL file share');
+    expect(r.container.textContent).toContain('A repository on a Windows drive is slower to read');
     type(sel, 'wsl:Ubuntu');
     await waitFor(() => expect(calls).toEqual(['prj_1:wsl:Ubuntu']), r);
     await waitFor(() => expect(valueOf(byLabel(r.container, 'Agents run'))).toBe('wsl:Ubuntu'), r); // the answer is shown before the next choice

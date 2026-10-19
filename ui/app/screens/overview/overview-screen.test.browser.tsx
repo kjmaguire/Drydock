@@ -67,7 +67,7 @@ describe('the Overview', () => {
     const ada = r.$('[data-testid="overview-agent"][data-name="Ada"]')!;
     expect(ada.querySelector('[data-dot="true"]')).not.toBeNull();
     expect(ada.textContent).toContain('Writing the retry tests');
-    expect(r.$('[data-testid="overview-agent"][data-name="Rex"]')!.textContent).toContain('Resting');
+    expect(r.$('[data-testid="overview-agent"][data-name="Rex"]')!.textContent).toContain('Stopped');
     expect(r.$('[data-testid="overview-crew"] a[href="/team"]')).not.toBeNull();
     // in motion: the open tasks that are not in the backlog
     const moving = Array.from(r.$$('[data-testid="overview-task"]'));

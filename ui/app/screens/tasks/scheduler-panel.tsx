@@ -11,6 +11,7 @@ import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
+import { plural } from '../../lib/format.ts';
 
 const panelCss = css({
   display: 'grid',
@@ -60,8 +61,8 @@ export function SchedulerPanel(handle: Handle<{ projectId: string }>) {
           </h2>
           {st ? (
             <p class="facts">
-              <Badge tone={st.settings.autoSchedule ? 'info' : 'muted'}>{st.settings.autoSchedule ? 'automatic' : 'manual'}</Badge> up to {st.settings.maxParallel || 'the default number of'} task(s) in
-              parallel; {st.activeRuns} run(s) executing, {st.agentSlotsInUse} agent slot(s) in use (peak {st.peakAgentSlots}). Change these under Project settings.
+              <Badge tone={st.settings.autoSchedule ? 'info' : 'muted'}>{st.settings.autoSchedule ? 'automatic' : 'manual'}</Badge> up to {st.settings.maxParallel ? plural(st.settings.maxParallel, 'task') : 'the default number of tasks'} in
+              parallel; {plural(st.activeRuns, 'run')} executing, {plural(st.agentSlotsInUse, 'agent slot')} in use (peak {st.peakAgentSlots}). Change these under Project settings.
             </p>
           ) : (
             <span class="facts" />

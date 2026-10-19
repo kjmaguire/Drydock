@@ -125,10 +125,14 @@ describe('the GitHub settings page', () => {
       },
     });
     const sign = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
-    // the core's words once, not twice: the title does not repeat what the core said
+    // the core's words are said once on the page (in the connection panel, which shows them wherever it is opened): the sign-in
+    // notice gives the way to install without repeating them
     expect(sign.textContent).toContain('GitHub CLI not found');
-    expect(sign.textContent).toContain('the GitHub CLI (gh) is not installed: install it from https://cli.github.com');
-    expect(sign.textContent!.match(/is not installed/g)).toHaveLength(1);
+    expect(sign.textContent).toContain('Install it from');
+    expect(sign.textContent).not.toContain('is not installed');
+    const page = r.$('[data-testid="github-page"]')!.textContent!;
+    await waitFor(() => expect(r.$('[data-testid="github-page"]')!.textContent).toContain('the GitHub CLI (gh) is not installed: install it from https://cli.github.com'), r);
+    expect(page.match(/the GitHub CLI \(gh\) is not installed/g)?.length ?? 0).toBeLessThanOrEqual(1);
     expect(sign.querySelector('a[href="https://cli.github.com"]')!.getAttribute('target')).toBe('_blank');
     expect(sign.querySelector('[data-testid="gh-login"]')).toBeNull();
     // the connection panel still offers the connection (its connect form asks gh too), and the runners say none

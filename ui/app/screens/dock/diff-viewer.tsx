@@ -44,7 +44,7 @@ const statusCss = css({
 });
 const fileName = css({ color: t.text, fontFamily: t.mono, fontSize: t.textSm });
 const fileDir = css({ color: t.textFaint, fontSize: t.textXs, marginLeft: '6px' });
-const countsCss = css({ marginLeft: 'auto', paddingLeft: t.s2, display: 'inline-flex', gap: '6px', fontFamily: t.mono, fontSize: t.textXs, flex: 'none' });
+const countsCss = css({ marginLeft: 'auto', paddingLeft: t.s2, display: 'inline-flex', gap: t.s2, fontFamily: t.mono, fontSize: t.textXs, flex: 'none' });
 const addCss = css({ color: t.success });
 const delCss = css({ color: t.danger });
 const binCss = css({ color: t.textFaint });

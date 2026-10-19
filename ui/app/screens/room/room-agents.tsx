@@ -17,6 +17,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { memberKey, MODE_TEXT } from './messages.ts';
+import { tightList } from '../../ui/layout.tsx';
 
 // a pill under the room's header (Crew HQ, decision P64); open, its body is a card below it
 const barCss = css({
@@ -82,7 +83,7 @@ const memberRow = css({
   '& .who strong': { fontSize: t.textMd, fontWeight: '600' },
   '& .who span': { color: t.textMuted, fontSize: t.textSm },
 });
-const listCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
+const listCss = tightList;
 /** What the round limit says when its text is not a whole number (M25): a typo is never turned into the default. */
 export const ROUNDS_ERROR = 'Enter the round limit as a whole number greater than zero, for example 3, or leave it empty for the default.';
 const tableWrap = css({ border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'auto', '& tr:last-child td': { borderBottom: '0' } });

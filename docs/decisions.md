@@ -698,3 +698,30 @@ Open, owner action:
   `fmt.Sprint` or a Python file; its SARIF is now a test fixture of the reader. **Not verified:** the rule and the Git command
   against Opengrep itself and a real clone (no Opengrep binary can be run on the development host); the Semgrep Rules
   License's terms (the page was unreachable from there); the look of the button and the dialog on Windows.
+
+- **P75. The UI audit of 2026-10-19: one type scale, a Guide for the detail, and each fact said once (2026-10-19, on the owner's words:
+  "the UI still needs a little bit of love ... duplication, things that are too close between columns and tables, type things, maybe
+  too much context or information ... maybe we should build a guide and reference most things there and keep the really basic info on
+  the main UI", then "do all high, medium, and low").** The audit ([`ui-audit-2026-10-19.md`](ui-audit-2026-10-19.md)) measured 41
+  pages of the real app and found 33 type sizes against a scale of 6, 60 paragraphs over 200 characters, 18 pages saying the same
+  thing twice or more, 58 targets under 28 px and a dozen rows whose neighbours were closer than 8 px. What was built: (1) **Type**:
+  a title token (28 px), four weights (400, 500, 600, 700), one size for code (`--text-sm`); `styles/source-rules.test.ts` fails a
+  literal size, a fifth weight or "file(s)" in the source. (2) **Frame**: reading columns are left-aligned under the title (they were
+  centred, which put their left edge at a different x on each page), every page title has an icon (`Page`'s `icon` is required unless
+  the page draws its own head), titles are in sentence case. (3) **The Guide** (S23): 31 topics; the pages lost their intros
+  (Routing, Settings, Budgets, Connections, Library, Skills, Packs, Project settings, GitHub, Security, Evals, Providers, Support,
+  Backups, Data, License, Memory, Requirements, Repo map, Plan, Pulls, Activity) and keep one subtitle line, their controls and their
+  data; a warning that belongs to a click (the sandbox has no shell, workers may run the project's own code, the scan only reads
+  files) stays beside it, shortened. The Evals page's full report is behind a disclosure; the Crew page's eight adapter cards are one
+  table; the shared `Disclosure`, `dataTable`, `listBox`, `stackList`, `tightList` and `actionsEnd` replace copies in a dozen files.
+  (4) **Each fact once**: the Overview's figures are in the Today card only; a routing rule shows its priority and its action once
+  (the exact JSON is the badge's tooltip); a run status is said in words, once; an agent whose program is not running is "Stopped"
+  everywhere (it was "Resting", "stopped" and "Paused (stopped)"); a tile does not say "not connected" under a badge that says it;
+  `/mcp` opens `/integrations`; "task(s)" and its kind are counted nouns (`plural`). (5) **Room and targets**: no two neighbouring
+  texts closer than 8 px, checkboxes and radios 18 px inside a 28 px label, switches 40 x 24, filters and tabs 28 px. (6) **Kept
+  fixed**: `ui/e2e/density.spec.ts` measures every page at 1366 and 1024 wide and fails on a paragraph over 200 characters, a size
+  or weight off the scale, neighbours under 8 px, a control under 28 x 24, text said three times, or horizontal overflow; it lists
+  the one exemption it has (a container engine's own error). **Not done:** the Guide's topics are written from what the pages said and
+  the docs; nobody who has not built Drydock has read them yet. The look on Windows (Segoe UI at 125-150 %) of the larger switches and
+  the table is not seen.
+

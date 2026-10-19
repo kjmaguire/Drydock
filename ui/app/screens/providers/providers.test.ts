@@ -58,8 +58,8 @@ describe('provider helpers', () => {
     expect(probeLabel(probe())).toBe('reachable');
     expect(probeLabel(probe({ OK: false, AuthFailed: true }))).toBe('key rejected');
     expect(probeLabel(probe({ OK: false }))).toBe('failed');
-    expect(probeDetail(probe())).toBe('0 model(s) listed');
-    expect(probeDetail(probe({ Flavor: 'openrouter', Latency: 42e6, Models: [model()] }))).toBe('flavor openrouter, 42 ms, 1 model(s) listed');
+    expect(probeDetail(probe())).toBe('0 models listed');
+    expect(probeDetail(probe({ Flavor: 'openrouter', Latency: 42e6, Models: [model()] }))).toBe('flavor openrouter, 42 ms, 1 model listed');
   });
 
   it('create sends exported Go field names, only true attestations, and the key only when typed', () => {

@@ -11,6 +11,7 @@ import { services, watch } from '../state/services.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
 import { ProjectSwitcher } from './project-switcher.tsx';
+import { actionsEnd } from '../ui/layout.tsx';
 
 const barCss = css({
   display: 'flex',
@@ -60,7 +61,7 @@ const tabCss = css({
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
 
-const rightCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none' });
+const rightCss = actionsEnd;
 const searchCss = css({
   display: 'inline-flex',
   alignItems: 'center',

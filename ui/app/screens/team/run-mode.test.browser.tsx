@@ -82,7 +82,7 @@ describe('where an agent runs', () => {
     type(byLabel(r.container, 'Role'), 'backend');
     type(runs, 'wsl:Ubuntu');
     r.root.flush();
-    expect(r.container.textContent).toContain('a repository inside the distro is fast');
+    expect(r.container.textContent).toContain('one inside the distro is fast');
     await r.act(() => byText(r.container, 'button', 'Create agent').click());
     await waitFor(() => expect(calls).toEqual([{ projectId: 'prj_1', name: 'Linux', role: 'backend', purpose: '', adapter: 'claude', model: '', effort: '', practices: true, runMode: 'wsl', wslDistro: 'Ubuntu' }]), r);
     // an adapter that cannot run in WSL shows no such choice

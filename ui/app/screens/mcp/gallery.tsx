@@ -47,7 +47,8 @@ const cardCss = css({
   // the base layer sets code a little smaller than its text: at the smallest size that is under 12 px (the layout guard)
   '& .pub code': { fontSize: 'inherit' },
   '& .sum': { color: t.textMuted, fontSize: t.textSm, lineHeight: '1.45' },
-  '& .meta': { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: t.textXs, color: t.textMuted },
+  '& .meta a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px' },
+  '& .meta': { display: 'flex', alignItems: 'center', gap: `${t.s1} ${t.s3}`, flexWrap: 'wrap', fontSize: t.textXs, color: t.textMuted },
   '& .row': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
   '& details summary': { cursor: 'pointer', fontSize: t.textSm, color: t.textMuted },
   '& details ul': { margin: '6px 0 0', paddingLeft: '18px', fontSize: t.textSm },

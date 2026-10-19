@@ -58,7 +58,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 
     // reload: everything is a projection of the core, so the page shows the same state. The task turns Completed a moment
     // before the run commits its own completion (both arrive as events), so the comparison starts once the run says so too.
-    await expect(page.locator('.task-meta')).toContainText('COMPLETED', { timeout: 30_000 });
+    await expect(page.locator('.task-meta')).toContainText('Completed', { timeout: 30_000 });
     const before = await snapshot(page);
     await page.reload();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/);
@@ -155,7 +155,10 @@ test("the top bar is keyboard navigable: the Drydock mark comes first (the way h
   await expect(items.nth(1)).toHaveAttribute('href', '/');
   await page.getByTestId('nav-needs-you').focus();
   await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('nav-guide-top')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
   await expect(page.getByTestId('nav-settings')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');

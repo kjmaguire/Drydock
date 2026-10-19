@@ -157,8 +157,10 @@ export function agentsStateText(cards: readonly McpGalleryCard[]): string {
   return connected === 0 ? word : `${connected} of ${cards.length} connected, ${cards.length - connected} ${word}`;
 }
 
-/** The tile's state line: both channels where the vendor has them ("Sync: connected as kyle · Agents: needs a token"). */
+/** The tile's state line: both channels where the vendor has them ("Sync: connected as kyle · Agents: needs a token"); empty when nothing is connected. */
 export function vendorStateText(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): string {
+  // nothing is connected on any channel: the badge says "not connected" already, a line repeating it adds nothing
+  if (!conn && v.cards.every((c) => c.status === 'not_connected')) return '';
   const parts: string[] = [];
   if (v.kind) parts.push(`Sync: ${syncStateText(conn)}`);
   if (v.cards.length > 0) parts.push(`Agents: ${agentsStateText(v.cards)}`);

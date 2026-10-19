@@ -119,3 +119,16 @@ export function formatBytes(n: number | undefined | null): string {
   const r = shown(v);
   return `${r.toFixed(r < 10 ? 1 : 0)} ${units[i]}`;
 }
+
+/** An agent whose program is not running: the core says it as presence Paused with the label "stopped", and there is no presence at all before the first start. */
+export const isStopped = (p: PresenceState | undefined): boolean => !p || (p.presence === 'Paused' && p.label === 'stopped');
+
+/** The presence as words (PresenceDot says them too): "Working", "Paused (waiting for you)", "Stopped", "Unknown" when the core said nothing. */
+export function presenceWords(p: PresenceState | undefined): string {
+  if (!p) return 'Unknown';
+  if (isStopped(p)) return 'Stopped';
+  return p.label ? `${p.presence} (${p.label})` : p.presence;
+}
+
+/** "1 file", "2 files": a count with its noun, so a page never writes "file(s)". `many` is for nouns that do not take an s. */
+export const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;

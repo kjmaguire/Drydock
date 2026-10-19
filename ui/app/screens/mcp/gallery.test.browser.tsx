@@ -114,12 +114,13 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(tiles[0]!.getAttribute('data-connected')).toBe('true');
     // both channels where the vendor has them
     expect(tiles[0]!.textContent).toContain('Sync: connected as kyle · Agents: not connected');
-    expect(tiles[3]!.textContent).toContain('Sync: not connected');
-    expect(tiles[3]!.textContent).not.toContain('Agents:');
-    expect(tiles[4]!.textContent).toContain('Sync: not connected · Agents: not connected');
+    // a tile with nothing connected says so once, in its badge: no line repeats it
+    for (const i of [3, 4, 5]) {
+      expect(tiles[i]!.textContent).not.toContain('Sync:');
+      expect(tiles[i]!.textContent).not.toContain('Agents:');
+      expect(tiles[i]!.textContent!.match(/not connected/g)).toHaveLength(1);
+    }
     expect(tiles[5]!.textContent).toContain('Microsoft Learn');
-    expect(tiles[5]!.textContent).toContain('Agents: not connected');
-    expect(tiles[5]!.textContent).not.toContain('Sync:');
     expect(tiles[5]!.querySelector('[data-brand="microsoft"]')).not.toBeNull();
     expect(tiles[6]!.textContent).toContain('Cloudflare');
     expect(tiles[6]!.textContent).toContain('Documentation, API');

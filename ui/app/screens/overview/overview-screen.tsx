@@ -14,7 +14,7 @@ import { buttonStyle } from '../../ui/button.tsx';
 import { Avatar, OriginBadge, StatusChip, presenceColor } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page, Section, card } from '../../ui/layout.tsx';
+import { Page, Section, card, stackList, tightList } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
@@ -81,7 +81,7 @@ const crewCard = css({
   '& .act > i': { flex: 'none', width: '7px', height: '7px', marginTop: '6px', borderRadius: '50%', display: 'block' },
 });
 
-const motionList = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+const motionList = stackList;
 const motionRow = css({
   display: 'flex',
   alignItems: 'center',
@@ -107,8 +107,8 @@ const statCss = css({
   '& small': { color: t.textFaint, fontSize: t.textXs },
 });
 const panelTitle = css({ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: t.s2, margin: `0 0 ${t.s3}`, fontSize: t.textMd, fontWeight: '600', '& span': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500' } });
-const roomsList = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
-const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '500', color: t.textMuted, '&:hover': { color: t.text } });
+const roomsList = tightList;
+const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', minHeight: '28px', fontSize: t.textSm, fontWeight: '500', color: t.textMuted, '&:hover': { color: t.text } });
 
 // Insights: a 2x2 of linked numbers, each with the words that say what it measures
 const insightGrid = css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: t.s2 });
@@ -313,7 +313,7 @@ export function OverviewScreen(handle: Handle) {
                 <a href={routes.security.href()} mix={insightCss} data-testid="overview-findings">
                   <small>Security</small>
                   <b data-na={scan.data === null || (lastScan && lastScan.counts.total === 0) ? '' : undefined}>{scan.data === undefined ? '…' : lastScan ? lastScan.counts.total : report ? '…' : '–'}</b>
-                  <small>{scan.data === undefined ? 'reading the last scan' : lastScan ? `${findingsText(lastScan.counts.total)} in the last scan` : report ? 'a scan is running' : 'no scan yet'}</small>
+                  <small>{scan.data === undefined ? 'reading the last scan' : lastScan ? `${findingsText(lastScan.counts.total)} in the last scan` : report ? 'a scan is running' : 'no scan yet: open to run one'}</small>
                 </a>
               </div>
             </div>

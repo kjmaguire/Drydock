@@ -24,6 +24,7 @@ import { t } from '../../ui/tokens.ts';
 import { AddFromLibrary, Approvals, ServerCard } from '../mcp/mcp-screen.tsx';
 import { AssignForm, AssignmentRow, head, type OpenTask } from './assignments.tsx';
 import { kindLabel, projectConnState, statusTone } from './integrations.ts';
+import { plural } from '../../lib/format.ts';
 
 const defaultOpen: OpenTask = (href) => void navigate(href);
 
@@ -62,7 +63,7 @@ function ProjectConnection(handle: Handle<{ conn: IntegrationView; info?: Integr
           <>
             {(conn.legacyItems ?? 0) > 0 ? (
               <Notice tone="info">
-                {conn.legacyItems} item(s) were stored before connections and projects were separated; the first project it is assigned to adopts them and the stored settings.
+                {plural(conn.legacyItems ?? 0, 'item')} {conn.legacyItems === 1 ? 'was' : 'were'} stored before connections and projects were separated; the first project it is assigned to adopts them and the stored settings.
               </Notice>
             ) : null}
             <p mix={muted}>

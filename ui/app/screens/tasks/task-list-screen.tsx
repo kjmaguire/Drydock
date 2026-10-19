@@ -16,7 +16,7 @@ import { buttonStyle } from '../../ui/button.tsx';
 import { Avatar, OriginBadge, StatusChip, presenceColor } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page } from '../../ui/layout.tsx';
+import { Page, listBox } from '../../ui/layout.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
@@ -145,7 +145,7 @@ const cardCss = css({
   '& .top .seq': { fontVariantNumeric: 'tabular-nums' },
   '& .top .when': { overflow: 'hidden', textOverflow: 'ellipsis' },
   '& h4': { fontSize: t.textMd, fontWeight: '600', lineHeight: '1.35', letterSpacing: '-0.005em', overflowWrap: 'anywhere' },
-  '& h4 a': { color: t.text, textDecoration: 'none', outline: 'none' },
+  '& h4 a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', color: t.text, textDecoration: 'none', outline: 'none' },
   // the whole card is the link's hit area; its name is only the title. The Open link stacks above it.
   '& h4 a::after': { content: '""', position: 'absolute', inset: '0', borderRadius: '18px' },
   '& h4 a:focus-visible::after': { boxShadow: t.focus },
@@ -257,15 +257,6 @@ function Card(handle: Handle<{ task: Task; column: BoardColumn; agents: readonly
 
 // --- the list ---
 
-const listCss = css({
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  background: t.bgSurface,
-  overflow: 'hidden',
-});
 
 const groupCss = css({
   display: 'flex',
@@ -436,7 +427,7 @@ export function TaskListScreen(handle: Handle) {
                   shown.length === 0 ? (
                     noMatch
                   ) : (
-                    <ul mix={listCss} aria-label="Tasks" style={{ marginTop: '12px' }}>
+                    <ul mix={listBox} aria-label="Tasks" style={{ marginTop: '12px' }}>
                       {groupByStatus(shown).map((g) => [
                         <li key={`g-${g.status}`} mix={groupCss} aria-hidden="true">
                           <span class="dot" style={{ background: tone[statusTone(g.status)].fg }} />

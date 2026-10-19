@@ -14,6 +14,7 @@ import { services, watch } from '../state/services.tsx';
 import { Avatar, presenceColor } from '../ui/data.tsx';
 import { Icon, roomIcon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
+import { tightList } from '../ui/layout.tsx';
 
 const subCss = css({
   display: 'flex',
@@ -129,11 +130,13 @@ const railCss = css({
   padding: `${t.s4} ${t.s3}`,
   borderRight: `1px solid ${t.border}`,
   background: t.bgSidebar,
+  // a group's heading is the first thing in its own box, so the space between two groups is the box's
+  '& > div + div': { marginTop: t.s4 },
 });
 // the Settings rail's labels are short: it is narrower than the Rooms rail, so the page beside it keeps its room
 const settingsRailCss = css({ width: '232px', gap: '0' });
 const groupHead = css({ margin: `${t.s5} ${t.s2} ${t.s1}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', '&:first-child': { marginTop: '0' } });
-const listCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
+const listCss = tightList;
 const itemCss = css({
   display: 'flex',
   alignItems: 'center',

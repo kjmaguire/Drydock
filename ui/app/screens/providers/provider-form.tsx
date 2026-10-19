@@ -7,6 +7,7 @@ import { Plus } from 'lucide';
 import type { Provider } from '../../api/types.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, services, watch } from '../../state/services.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions, formGrid } from '../../ui/form.tsx';
@@ -26,13 +27,6 @@ const fieldsetCss = css({
   borderRadius: t.rMd,
   '& legend': { padding: `0 ${t.s1}`, fontSize: t.textSm, fontWeight: '500', color: t.text },
 });
-const detailsCss = css({
-  gridColumn: '1 / -1',
-  '& > summary': { cursor: 'pointer', fontSize: t.textSm, fontWeight: '500', color: t.textMuted, width: 'max-content' },
-  '& > summary:hover': { color: t.text },
-  '&[open] > summary': { marginBottom: t.s3 },
-});
-
 type Option = [value: string, label: string];
 
 /** `onCreated` gets the provider the core created (when it answered with one), so the screen can open it. */
@@ -150,15 +144,14 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void 
             />
           ))}
         </fieldset>
-        <details mix={detailsCss}>
-          <summary>Advanced</summary>
+        <Disclosure summary="Advanced" wide>
           <div mix={formGrid}>
             {select('Flavor', 'flavor', [['', 'detect from the URL'], ...FLAVORS.map((f): Option => [f, f])])}
             {text('Max concurrent requests (0 = default)', 'maxConcurrent', { mode: 'numeric' })}
             {text('Hourly cost in USD (hosts)', 'hourlyCost', { mode: 'decimal' })}
             {text('Pinned TLS fingerprint (SHA-256, self-signed hosts)', 'fingerprint', { mono: true })}
           </div>
-        </details>
+        </Disclosure>
         <div mix={formActions}>
           <Button
             type="submit"

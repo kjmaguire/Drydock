@@ -29,7 +29,7 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   await expect(github.getByTestId('connector-status')).toHaveText('Not connected');
   // the two Cloudflare servers share one tile
   const cfTile = gallery.locator('[data-testid="integration-tile"][data-kind="cloudflare"][data-mcp="true"]');
-  await expect(cfTile).toContainText('Agents: not connected');
+  await expect(cfTile).toContainText('not connected');
   await cfTile.click();
   await expect(gallery.getByTestId('integration-agents').locator('[data-testid="connector"]')).toHaveCount(2);
   await expect(gallery.locator('[data-testid="connector"][data-id="cfapi"]')).toContainText('Cloudflare');

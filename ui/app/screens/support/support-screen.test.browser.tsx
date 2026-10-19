@@ -95,7 +95,7 @@ describe('SupportScreen', () => {
     expect((await waitFor(() => tid(r.container, 'bundle-path'), r)).textContent).toBe('C:\\data\\support\\b.zip');
     expect(creates).toEqual([{ eventLimit: undefined, includeRun: undefined, dest: undefined, acknowledgeRun: false }]);
     expect(tid(r.container, 'bundle-created').textContent).toContain('not been uploaded');
-    expect(tid(r.container, 'bundle-created').textContent).toContain('2 file(s)');
+    expect(tid(r.container, 'bundle-created').textContent).toContain('2 files');
   });
 
   it('makes including a run opt-in: shows the scan result first and needs an acknowledgement', async () => {
@@ -153,7 +153,7 @@ describe('SupportScreen', () => {
     await r.act(() => btn(r.container, 'Create the bundle').click());
     const w = await waitFor(() => tid(r.container, 'bundle-written'), r);
     expect(tid(r.container, 'bundle-path').textContent).toBe('C:\\data\\support\\b.zip');
-    expect(tid(r.container, 'bundle-created').textContent).toContain('(3.9 KB, 3 file(s))');
+    expect(tid(r.container, 'bundle-created').textContent).toContain('(3.9 KB, 3 files)');
     expect(tid(r.container, 'bundle-replaced', true)).toBeNull();
     // the files that are in the bundle, with their sizes
     expect(Array.from(w.querySelectorAll('[data-testid="bundle-written-file"]')).map((x) => x.textContent)).toEqual(['summary.json1.2 KB', 'logs/drydock.log2.9 KB', 'settings.json800 B']);

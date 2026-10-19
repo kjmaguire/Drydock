@@ -558,7 +558,7 @@ export function PlanScreen(handle: Handle) {
       >
         <ErrorNote error={q.error ?? act.error} what="Plan" />
         <Stepper plan={current} />
-        <Section title="Goal" description="What should the team achieve? The planner breaks it into tasks with acceptance criteria and dependencies.">
+        <Section title="What should the team achieve?" description="The planner breaks it into tasks with acceptance criteria and dependencies.">
           <form
             mix={[
               card,

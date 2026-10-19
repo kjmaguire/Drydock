@@ -8,8 +8,7 @@ import type { AgentConfigFinding } from '../../api/types.ts';
  * the folder it works in; the core refuses to start the CLI there until a person trusted exactly those files.
  */
 export const AGENT_CONFIG_WHY =
-  'A repository can bring files that an agent CLI acts on when it starts (settings, hooks, plugins, MCP servers, commands, environment files), and those can run programs or send prompts elsewhere. ' +
-  'Drydock does not start the CLI in a folder where they are not trusted: read them, then trust exactly those files here, or remove them.';
+  'Files a repository brings (hooks, plugins, MCP servers) can run programs or send prompts elsewhere. Drydock does not start the CLI where they are not trusted: read them, then trust or remove them.';
 
 /** The findings nobody trusted yet: the ones that keep a CLI from starting. */
 export const untrusted = (list: readonly AgentConfigFinding[]): AgentConfigFinding[] => list.filter((f) => !f.trusted);

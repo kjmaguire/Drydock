@@ -5,7 +5,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { BookOpen, Download, ExternalLink, Library, MessageSquareText, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide';
 import type { Pack, PackAttachment, PackCitation, PackConsult, PackSearchResult, QuarantinedChunk } from '../../api/extTypes.ts';
-import { formatCost, formatDateTime } from '../../lib/format.ts';
+import { formatCost, formatDateTime, plural } from '../../lib/format.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
@@ -96,7 +96,7 @@ export function SearchResultView(handle: Handle<{ r: PackSearchResult }>) {
         <p mix={headlineCss}>
           <strong>{searchHeadline(r)}</strong>
           <span>confidence</span> <Badge tone={r.confidence === 'high' ? 'ok' : r.confidence === 'none' ? 'muted' : 'warn'}>{r.confidence}</Badge>
-          <span mix={faint}>(a heuristic from the search, not calibrated); source age {r.sourceAgeDays} day(s)</span>
+          <span mix={faint}>(a heuristic from the search, not calibrated); source age {plural(r.sourceAgeDays, 'day')}</span>
         </p>
         {Object.entries(r.unavailable ?? {}).map(([k, v]) => (
           <Notice key={k} tone="warn">
@@ -109,7 +109,7 @@ export function SearchResultView(handle: Handle<{ r: PackSearchResult }>) {
           </Notice>
         ))}
         {(r.suspiciousDropped ?? 0) > 0 ? (
-          <Notice tone="warn">{r.suspiciousDropped} result(s) were dropped because they looked like instructions to an agent.</Notice>
+          <Notice tone="warn">{plural(r.suspiciousDropped ?? 0, 'result')} {r.suspiciousDropped === 1 ? 'was' : 'were'} dropped because they looked like instructions to an agent.</Notice>
         ) : null}
         {hits.length > 0 ? (
           <ol mix={hitsCss}>
@@ -151,7 +151,7 @@ export function ConsultView(handle: Handle<{ r: PackConsult }>) {
           <span mix={faint}>
             route {r.route}
             {r.model ? `, model ${r.model}` : ''}
-            {r.sourceAgeDays >= 0 ? `; source age ${r.sourceAgeDays} day(s)` : ''}
+            {r.sourceAgeDays >= 0 ? `; source age ${plural(r.sourceAgeDays, 'day')}` : ''}
           </span>
         </p>
         {r.degraded ? <Notice tone="warn">{r.degraded}</Notice> : null}

@@ -2,7 +2,7 @@
 // this file states; a measurement the core has not made reads n/a, never 0.
 
 import type { BudgetSpend, BudgetStatus, EvalsReport } from '../../api/extTypes.ts';
-import type { PresenceState, Task } from '../../api/types.ts';
+import type { Task } from '../../api/types.ts';
 import { ratioRate } from '../evals/evals.ts';
 
 export const DONE = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
@@ -19,11 +19,8 @@ export function greeting(hour: number): string {
   return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-/** What an agent is doing, in one line: its activity, else its presence label, else the presence name. */
-export function doing(p: PresenceState | undefined): string {
-  if (!p) return 'Resting';
-  return p.activity || p.label || p.presence;
-}
+/** What an agent is doing, in one line (one implementation, with the Crew pages). */
+export { doing } from '../team/team.ts';
 
 /** The tasks completed at or after `since` (milliseconds). */
 export const mergedSince = (tasks: readonly Pick<Task, 'status' | 'completed' | 'updated'>[], since: number): number =>

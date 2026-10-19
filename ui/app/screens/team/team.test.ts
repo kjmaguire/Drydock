@@ -59,12 +59,14 @@ describe('team helpers', () => {
 
   it('says what an agent is doing in one line, where it runs, and names its CLI', () => {
     const p = (over: Partial<PresenceState>): PresenceState => ({ agentId: 'a', presence: 'Working', since: '', updated: '', seq: 1, ...over });
-    expect(doing(undefined)).toBe('Resting');
+    expect(doing(undefined)).toBe('Stopped');
     expect(doing(p({ activity: 'tool: Write', label: 'on #3' }))).toBe('tool: Write');
-    expect(doing(p({ label: 'stopped', presence: 'Paused' }))).toBe('stopped');
+    expect(doing(p({ label: 'stopped', presence: 'Paused' }))).toBe('Stopped');
+    expect(doing(p({ label: 'waiting for you', presence: 'Paused' }))).toBe('waiting for you');
     expect(doing(p({}))).toBe('Working');
     expect(presenceWords(undefined)).toBe('Unknown');
-    expect(presenceWords(p({ presence: 'Paused', label: 'stopped' }))).toBe('Paused (stopped)');
+    expect(presenceWords(p({ presence: 'Paused', label: 'stopped' }))).toBe('Stopped');
+    expect(presenceWords(p({ presence: 'Paused', label: 'budget' }))).toBe('Paused (budget)');
     expect(runsWhere({ runMode: 'wsl', wslDistro: 'Ubuntu' })).toBe('in WSL Ubuntu');
     expect(runsWhere({ runMode: 'native' })).toBe('on Windows');
     expect(runsWhere({})).toBe('');

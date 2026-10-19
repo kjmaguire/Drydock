@@ -3,7 +3,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { PanelRightClose, PanelRightOpen } from 'lucide';
-import { agentName, formatCost, presenceFor } from '../lib/format.ts';
+import { agentName, formatCost, isStopped, presenceFor } from '../lib/format.ts';
 import { routes } from '../routes.ts';
 import { query, services, watch } from '../state/services.tsx';
 import { SkipsBadge } from '../screens/shared/skip-approvals.tsx';
@@ -98,8 +98,8 @@ export function Details(handle: Handle<{ taskId: string | undefined; page: Detai
                       </span>
                       <SkipsBadge mode={a.permissionMode} />
                       <PresenceDot presence={pr} />
-                      {/* the activity, unless the presence line already says it ("Paused (stopped)" over "stopped") */}
-                      {pr?.activity && pr.activity !== pr.label ? <span class="act">{pr.activity}</span> : null}
+                      {/* the activity, unless the presence line already says it ("Stopped" over "stopped") */}
+                      {pr?.activity && pr.activity !== pr.label && !isStopped(pr) ? <span class="act">{pr.activity}</span> : null}
                     </div>
                     <button type="button" mix={[inspectBtn, on('click', () => ui.openInspector(a.id))]} aria-label={`Inspect ${a.name}`}>
                       Inspect

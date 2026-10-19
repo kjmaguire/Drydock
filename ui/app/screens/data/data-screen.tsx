@@ -5,7 +5,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { ArrowDownUp, FileDown, FileUp, ScanSearch } from 'lucide';
 import type { ExportManifest, ExportPreview, ExportResult, ImportPreview, ImportResult, ImportStats } from '../../api/pkgTypes.ts';
-import { formatBytes, formatDateTime } from '../../lib/format.ts';
+import { formatBytes, formatDateTime, plural } from '../../lib/format.ts';
 import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
@@ -48,11 +48,11 @@ function ScanSummary(handle: Handle<{ m: ExportManifest }>) {
       <div data-testid="export-scan" style={{ display: 'grid', gap: t.s2 }}>
         <h3 mix={subhead}>Secret scan</h3>
         <p style={{ margin: '0' }}>
-          Project data: <strong>{sc.dbRedactions}</strong> secret-like value(s) redacted.
+          Project data: <strong>{sc.dbRedactions}</strong> secret-like {sc.dbRedactions === 1 ? 'value' : 'values'} redacted.
           {m.includesRuns ? (
             <>
               {' '}
-              Raw run output: {sc.runsFilesScanned} file(s) scanned, <strong>{sc.runsRedactions}</strong> redacted.
+              Raw run output: {plural(sc.runsFilesScanned, 'file')} scanned, <strong>{sc.runsRedactions}</strong> redacted.
             </>
           ) : (
             ' Raw run output is not included.'
@@ -203,7 +203,7 @@ function ExportSection(handle: Handle) {
           <div mix={previewCss} data-testid="export-preview" data-fresh={String(fresh)}>
             {!fresh ? <Warn>This preview is for different choices. Preview again before exporting.</Warn> : null}
             <p>
-              <strong>{m.projectName}</strong>: {(m.files ?? []).length} file(s), {formatBytes(preview.totalBytes)}, made by Drydock {m.appVersion} (schema{' '}
+              <strong>{m.projectName}</strong>: {plural((m.files ?? []).length, 'file')}, {formatBytes(preview.totalBytes)}, made by Drydock {m.appVersion} (schema{' '}
               {m.schemaVersion}).
             </p>
             {preview.warning ? <Warn testId="export-runs-warning">{preview.warning}</Warn> : null}
@@ -384,8 +384,8 @@ function ImportSection(handle: Handle) {
         {result ? (
           <div mix={previewCss} role="status" data-testid="import-result" data-project-id={result.projectId}>
             <p>
-              Imported <strong data-testid="import-result-name">{result.name}</strong> as a new project ({result.idsRemapped} ids remapped, {result.runFilesRestored} run
-              file(s) restored
+              Imported <strong data-testid="import-result-name">{result.name}</strong> as a new project ({result.idsRemapped} ids remapped, {plural(result.runFilesRestored, 'run file')}
+              restored
               {result.migratedForward ? ', migrated forward' : ''}). Choose it in the project switcher at the top of the sidebar.
             </p>
             <p>It came in untrusted:</p>

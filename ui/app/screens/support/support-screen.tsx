@@ -21,6 +21,7 @@ import { t } from '../../ui/tokens.ts';
 import { RuleCounts } from '../data/rule-counts.tsx';
 import { confirmRow, Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
 import { bundleKey, bundleOpts, identityText, scrubbedFiles, type BundleOpts } from './support.ts';
+import { plural } from '../../lib/format.ts';
 
 const formCss = css({ display: 'grid', gap: t.s4 });
 const neverCss = css({
@@ -67,7 +68,7 @@ export function ScrubReport(handle: Handle<{ r: BundleReport; testId?: string; t
       <div data-testid={testId} style={{ display: 'grid', gap: t.s2 }}>
         <h3 mix={subhead}>Scrub report</h3>
         <p style={{ margin: '0' }}>
-          <strong data-testid={totalTestId}>{r.totalSecretsRedacted}</strong> secret-like value(s) redacted across {files.length} file(s).
+          <strong data-testid={totalTestId}>{r.totalSecretsRedacted}</strong> secret-like {r.totalSecretsRedacted === 1 ? 'value' : 'values'} redacted across {plural(files.length, 'file')}.
         </p>
         <RuleCounts by={r.byRule} />
         {touched.length > 0 ? (
@@ -306,7 +307,7 @@ export function SupportScreen(handle: Handle) {
                 <>
                   <Done testId="bundle-created">
                     <span>
-                      Created <code data-testid="bundle-path">{created.path}</code> ({formatBytes(created.size)}, {(created.files ?? []).length} file(s)). It has not been
+                      Created <code data-testid="bundle-path">{created.path}</code> ({formatBytes(created.size)}, {plural((created.files ?? []).length, 'file')}). It has not been
                       uploaded anywhere.
                       {created.replaced ? (
                         <>

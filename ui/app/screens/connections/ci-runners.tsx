@@ -12,13 +12,13 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
-import { listCard, Section } from '../../ui/layout.tsx';
+import { listCard, Section, stackList } from '../../ui/layout.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
 import { ChooseFolder } from '../shared/choose-folder.tsx';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 
-const kindsCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+const kindsCss = stackList;
 const kindCss = css({
   display: 'grid',
   gap: '4px',

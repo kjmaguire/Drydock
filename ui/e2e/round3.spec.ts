@@ -71,7 +71,7 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await tel.getByRole('button', { name: 'Preview what an export contains' }).click();
   await expect(page.getByTestId('telemetry-preview')).toContainText('allowlisted');
   await expect(tel.getByTestId('telemetry-status')).toHaveAttribute('data-tone', 'muted');
-  await expect(tel).toContainText('It is off unless you turn it on.');
+  await expect(tel).toContainText('Off unless you turn it on.');
   await tel.getByRole('button', { name: 'Turn telemetry on' }).click();
   await expect(tel.getByRole('button', { name: 'Turn telemetry off' })).toBeVisible();
   await expect(tel.getByTestId('telemetry-status')).toHaveText('on');

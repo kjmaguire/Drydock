@@ -53,7 +53,7 @@ const listCss = css({
   maxWidth: '72ch',
   '& li': { padding: `${t.s3} 0`, borderTop: `1px solid ${t.border}` },
   '& li:first-child': { borderTop: '0' },
-  '& a': { fontWeight: '600', fontSize: t.textMd },
+  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', fontWeight: '600', fontSize: t.textMd },
   '& p': { margin: '2px 0 0', color: t.textMuted, fontSize: t.textSm },
 });
 const relatedCss = css({
@@ -62,6 +62,7 @@ const relatedCss = css({
   borderTop: `1px solid ${t.border}`,
   '& h3': { margin: '0 0 6px', fontSize: t.textSm, fontWeight: '600', color: t.textMuted },
   '& ul': { margin: '0', padding: '0', listStyle: 'none', display: 'flex', flexWrap: 'wrap', gap: `${t.s1} ${t.s4}` },
+  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px' },
 });
 
 function TopicList(handle: Handle<{ topics: readonly Topic[] }>) {

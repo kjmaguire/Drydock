@@ -439,7 +439,7 @@ describe('Library page', () => {
     const card = await pick(r, 'lib-mcp');
     await r.act(() => byText(card, 'button', 'Disconnect').click());
     expect(deletes).toEqual([]);
-    expect(card.textContent).toContain('leaves 2 project(s)');
+    expect(card.textContent).toContain('leaves 2 projects');
     await r.act(() => byText(card, 'button', 'Yes, disconnect').click());
     await waitFor(() => expect(deletes).toEqual([['tst']]), r);
     await waitFor(() => expect(note(r)).toContain('Test server was disconnected.'), r);

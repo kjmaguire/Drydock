@@ -54,6 +54,18 @@ describe('the type rules the UI audit set (B1-B3)', () => {
     expect(block![0]).toContain('font-size: var(--text-sm)');
   });
 
+  it('counts things with their noun ("1 file", "2 files"), never "file(s)" (B5)', () => {
+    const bad: string[] = [];
+    for (const f of FILES) {
+      if (f.path.startsWith('test/')) continue; // fixtures stand in for what the core sends
+      f.text.split('\n').forEach((line, i) => {
+        if (/^\s*(\/\/|\/\*|\*)/.test(line)) return;
+        if (/\b(file|task|run|item|day|slot|model|hit|result|passage|match|backup|project|call|review|value|alternative|secret)\((s|es)\)/.test(line)) bad.push(`${f.path}:${i + 1}: ${line.trim().slice(0, 90)}`);
+      });
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('defines the title size as a token and the scale has no other sizes', () => {
     const css = FILES.find((f) => f.path === 'styles/app.css')!.text;
     const sizes = [...css.matchAll(/--text-([a-z0-9]+):\s*(\d+)px/g)].map((m) => `${m[1]}=${m[2]}`);

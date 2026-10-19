@@ -3,7 +3,7 @@
 
 import type { AvoidedEndpoint, ProviderDetail } from '../../api/providerClient.ts';
 import type { DataClass, NewProvider, PriceTier, ProbeResult, Provider, ProviderKind, ProviderModel } from '../../api/types.ts';
-import { formatUsd } from '../../lib/format.ts';
+import { formatUsd, plural } from '../../lib/format.ts';
 import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -37,9 +37,9 @@ export const priceTone = (src: string): Tone => (src === 'catalog' ? 'ok' : src 
 /** The probe outcome in words. */
 export const probeLabel = (r: ProbeResult) => (r.OK ? 'reachable' : r.AuthFailed ? 'key rejected' : 'failed');
 
-/** "flavor x, 42 ms, 3 model(s) listed". Null lists count as empty. */
+/** "flavor x, 42 ms, 3 models listed". Null lists count as empty. */
 export function probeDetail(r: ProbeResult): string {
-  return `${r.Flavor ? `flavor ${r.Flavor}, ` : ''}${r.Latency > 0 ? `${Math.round(r.Latency / 1e6)} ms, ` : ''}${(r.Models ?? []).length} model(s) listed`;
+  return `${r.Flavor ? `flavor ${r.Flavor}, ` : ''}${r.Latency > 0 ? `${Math.round(r.Latency / 1e6)} ms, ` : ''}${plural((r.Models ?? []).length, 'model')} listed`;
 }
 
 /** Health from the last probe; anything but up or down is unknown. */

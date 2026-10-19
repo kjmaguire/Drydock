@@ -14,6 +14,9 @@ import { Page, tableCard } from '../../ui/layout.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { selectRows, typeTone } from './activity.ts';
 
+/** An id's start, so a column of them stays readable; the full id is its tooltip. */
+const shortId = (id: string): string => (id.length > 14 ? `${id.slice(0, 11)}…` : id);
+
 const STATUS_TONE: Record<ConnectionState, Tone> = { open: 'ok', connecting: 'info', reconnecting: 'warn', idle: 'muted', stopped: 'err' };
 
 
@@ -40,6 +43,11 @@ const tableCss = css({
   '& td.scope': { color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs, width: '1%' },
   '& td.scope > span': { display: 'block', whiteSpace: 'nowrap' },
   '& td.data': { color: t.textMuted, maxWidth: '0', width: '50%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& td.data .peek': { display: 'block', width: '100%', minHeight: '28px', lineHeight: '28px', padding: '0', border: '0', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  '& td.data .peek:hover': { color: t.text },
+  '& tr.detail td': { background: t.bgRaised },
+  '& tr.detail pre': { margin: '0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm },
+  '& tr.detail p': { margin: `${t.s2} 0 0`, color: t.textMuted },
 });
 
 const dot = css({ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', flex: 'none' });
@@ -47,6 +55,7 @@ const dot = css({ display: 'inline-block', width: '6px', height: '6px', borderRa
 export function ActivityScreen(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
+  const open = new Set<number>();
   let filter = '';
   let thisProject = true;
   let historyError: Error | undefined;
@@ -128,10 +137,10 @@ export function ActivityScreen(handle: Handle) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((e) => {
+                {rows.flatMap((e) => {
                   // the ring holds a preview of the payload (EVENT_PREVIEW_CHARS), not the payload: the row shows its start
                   const data = e.preview.slice(0, 200);
-                  return (
+                  return [
                     <tr key={e.seq} data-testid="event-row" data-type={e.type}>
                       <td class="seq">{e.seq}</td>
                       <td class="time">{formatTime(e.time)}</td>
@@ -143,14 +152,34 @@ export function ActivityScreen(handle: Handle) {
                       </td>
                       <td class="scope">
                         {[e.taskId, e.agentId, e.runId].filter(Boolean).map((id) => (
-                          <span key={id}>{id}</span>
+                          <span key={id} title={id}>
+                            {shortId(id!)}
+                          </span>
                         ))}
                       </td>
-                      <td class="data" title={e.preview ? `${e.preview}${e.cut ? ' … (cut here; the core has the rest)' : ''}` : undefined}>
-                        <span mix={mono}>{data}</span>
+                      <td class="data">
+                        {e.preview ? (
+                          <button
+                            type="button"
+                            class="peek"
+                            aria-expanded={open.has(e.seq) ? 'true' : 'false'}
+                            aria-label={`${open.has(e.seq) ? 'Hide' : 'Show'} the data of event ${e.seq}`}
+                            mix={on('click', () => (open.has(e.seq) ? open.delete(e.seq) : open.add(e.seq), void handle.update()))}
+                          >
+                            <span mix={mono}>{data}</span>
+                          </button>
+                        ) : null}
                       </td>
-                    </tr>
-                  );
+                    </tr>,
+                    open.has(e.seq) ? (
+                      <tr key={`${e.seq}-data`} class="detail" data-testid="event-detail">
+                        <td colSpan={5}>
+                          <pre mix={mono}>{e.preview}</pre>
+                          {e.cut ? <p>Cut here; the core has the rest.</p> : null}
+                        </td>
+                      </tr>
+                    ) : null,
+                  ];
                 })}
               </tbody>
             </table>

@@ -126,7 +126,10 @@ describe('integrations helpers', () => {
     const lin = { kind: KINDS[0], cards: [galleryCard({ id: 'linear', status: 'connected' })] };
     expect(vendorStateText(lin, conn)).toBe('Sync: connected as kyle · Agents: connected');
     expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'needs_token' })] }, undefined)).toBe('Sync: not connected · Agents: needs a token');
-    expect(vendorStateText({ kind: KINDS[3], cards: [] }, undefined)).toBe('Sync: not connected');
+    // nothing connected anywhere: the badge says it, so the line is empty (it used to repeat "not connected" under the badge)
+    expect(vendorStateText({ kind: KINDS[3], cards: [] }, undefined)).toBe('');
+    expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'not_connected' })] }, undefined)).toBe('');
+    expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'not_connected' })] }, view({ identity: { account: 'kyle' } }))).toBe('Sync: connected as kyle · Agents: not connected');
     expect(vendorStateText({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toBe('Agents: connected');
     expect(vendorStateText({ cards: [galleryCard({ status: 'connected' }), galleryCard({ id: 'b', status: 'needs_sign_in' })] }, undefined)).toBe('Agents: 1 of 2 connected, 1 needs sign-in');
     expect(agentsStateText([galleryCard({ status: 'error' }), galleryCard({ id: 'b' })])).toBe('error');

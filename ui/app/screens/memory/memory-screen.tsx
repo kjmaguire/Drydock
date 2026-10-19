@@ -16,20 +16,11 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page, Section, card, spacer } from '../../ui/layout.tsx';
+import { Page, Section, card, spacer, listBox } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { visible } from '../../lib/visible.ts';
 import { bodyNote, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memoryTone } from './memory.ts';
 
-const listCss = css({
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  background: t.bgSurface,
-  overflow: 'hidden',
-});
 const entryCss = css({
   display: 'grid',
   gap: t.s2,
@@ -161,8 +152,8 @@ const segmented = css({
   borderRadius: t.rMd,
   background: t.bgSurface,
   '& button': {
-    height: '26px',
-    minHeight: '26px',
+    height: '28px',
+    minHeight: '28px',
     padding: '0 10px',
     border: '0',
     borderRadius: t.rSm,
@@ -307,7 +298,7 @@ export function MemoryScreen(handle: Handle) {
           </div>
         ) : null}
         {list.length > 0 ? (
-          <ul mix={listCss} aria-label="Memory entries">
+          <ul mix={listBox} aria-label="Memory entries">
             {list.map((e) => (
               <MemoryCard
                 key={e.id}

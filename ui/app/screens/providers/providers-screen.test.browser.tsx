@@ -313,7 +313,7 @@ describe('ModelTable and ProbeView', () => {
   it('probe view handles null lists', () => {
     const r = renderPlain(<ProbeView r={{ ProviderID: 'p', OK: true, AuthFailed: false, Latency: 0, Flavor: '', Models: null, ServerInfo: null, Warnings: null, Error: '' }} />);
     expect(r.container.textContent).toContain('reachable');
-    expect(r.container.textContent).toContain('0 model(s)');
+    expect(r.container.textContent).toContain('0 models');
     expect(need(r, '[data-testid="probe"]').getAttribute('data-ok')).toBe('true');
   });
 });

@@ -32,6 +32,7 @@ import { inputOf, whereOf } from '../mcp/server-input.ts';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { TemplateForm } from '../team/template-form.tsx';
 import { serverBlurb, serverState, templateBlurb, templateState } from './tiles.ts';
+import { plural } from '../../lib/format.ts';
 
 type Say = (message: string) => void;
 type Fail = (e: Error | undefined) => void;
@@ -249,7 +250,7 @@ function McpPanel(handle: Handle<{ s: McpLibraryServer; say: Say; fail: Fail; on
           {confirm ? (
             <div mix={confirmCss}>
               <span>
-                Disconnect {s.display}? It leaves {n} project(s) and its stored secrets are deleted.
+                Disconnect {s.display}? It leaves {plural(n, 'project')} and its stored secrets are deleted.
               </span>
               <Button
                 size="sm"

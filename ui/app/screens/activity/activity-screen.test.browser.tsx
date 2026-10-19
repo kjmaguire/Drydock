@@ -44,12 +44,21 @@ describe('ActivityScreen', () => {
     const cell = r.$('[data-type="task.diff"] td.data')!;
     expect(cell.textContent!.startsWith('{"diff":"zzzz')).toBe(true);
     expect(cell.textContent!.length).toBe(200);
-    // the tooltip has the stored preview (2 KB at most) and says the rest is not here
-    const title = cell.getAttribute('title')!;
-    expect(title.length).toBeGreaterThan(2000);
-    expect(title.length).toBeLessThan(2200);
-    expect(title).toContain('cut here');
-    expect(r.$('[data-type="agent.created"] td.data')!.getAttribute('title')).toBe('{"name":"Pay"}');
+    // opening the row shows the stored preview (2 KB at most) and says the rest is not here
+    expect(cell.querySelector('button')!.getAttribute('aria-expanded')).toBe('false');
+    await r.act(() => (cell.querySelector('button') as HTMLButtonElement).click());
+    const detail = await waitFor(() => r.$('[data-testid="event-detail"]')!, r);
+    expect(detail.querySelector('pre')!.textContent!.length).toBeGreaterThan(2000);
+    expect(detail.querySelector('pre')!.textContent!.length).toBeLessThan(2200);
+    expect(detail.textContent).toContain('Cut here');
+    expect(r.$('[data-type="task.diff"] td.data button')!.getAttribute('aria-expanded')).toBe('true');
+    // a short payload opens whole, with no note; closing the row hides it again
+    await r.act(() => (r.$('[data-type="agent.created"] td.data button') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$$('[data-testid="event-detail"]')).toHaveLength(2), r);
+    const second = Array.from(r.$$('[data-testid="event-detail"]'))[0] as HTMLElement;
+    expect(second.textContent).toBe('{"name":"Pay"}');
+    await r.act(() => (r.$('[data-type="task.diff"] td.data button') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$$('[data-testid="event-detail"]')).toHaveLength(1), r);
     for (const row of s.store.getSnapshot().events) expect('data' in row).toBe(false);
     // a live event is kept the same way
     s.emit({ type: 'task.completed', projectId: 'p1', data: big });

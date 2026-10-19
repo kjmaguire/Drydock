@@ -5,7 +5,7 @@ import { createController } from 'remix/router';
 import type { AppContext } from '../router.tsx';
 import { routes } from '../routes.ts';
 
-/** The Integrations page; /mcp (the former MCP servers page, merged into it by decision P47) is its alias. */
+/** The Integrations page. */
 async function integrations({ render }: Pick<AppContext, 'render'>) {
   const { IntegrationsScreen } = await import('../screens/integrations/integrations-screen.tsx');
   return render(<IntegrationsScreen />);
@@ -101,7 +101,11 @@ export const controller = createController(routes, {
       const { PacksScreen } = await import('../screens/packs/packs-screen.tsx');
       return render(<PacksScreen />);
     },
-    mcp: integrations,
+    // /mcp, the former MCP servers page merged into Integrations (decision P47), is an old address: it opens the one page's own address
+    async mcp({ render }) {
+      const { Redirect } = await import('../shell/redirect.tsx');
+      return render(<Redirect to={routes.integrations.href()} />);
+    },
     async budgets({ render }) {
       const { BudgetsScreen } = await import('../screens/budgets/budgets-screen.tsx');
       return render(<BudgetsScreen />);

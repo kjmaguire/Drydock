@@ -505,12 +505,7 @@ export function LocalModels(handle: Handle) {
                   <Badge>built in</Badge>
                 </div>
                 <p>
-                  Drydock downloads and runs llama.cpp itself: the newest
-                  Windows build of the source below, for the backend you pick,
-                  checked against the digest GitHub recorded and unpacked into
-                  Drydock&apos;s own folder. Nothing has to be installed by
-                  hand, and nothing is added to the PC&apos;s PATH; the models
-                  come from the Hugging Face Hub the same way.
+                  Drydock downloads and runs llama.cpp itself, checked against GitHub&apos;s digest, in its own folder. Nothing has to be installed by hand or added to PATH; models come from the Hugging Face Hub.
                 </p>
                 <div mix={pickCss}>
                   <Field

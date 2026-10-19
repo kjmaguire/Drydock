@@ -22,7 +22,7 @@ import { AddPrebuilt } from './add-prebuilt.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
-import { CAP_LABEL, doing, presenceWords, purposeExcerpt, runsWhere, sortAdapters } from './team.ts';
+import { CAP_LABEL, currentTask, doing, presenceWords, purposeExcerpt, runsWhere, sortAdapters } from './team.ts';
 
 const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(272px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
 
@@ -42,7 +42,7 @@ const agentCard = css({
   transition: `border-color ${t.fast} ${t.ease}, box-shadow ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, boxShadow: t.shadowSm },
   '& h3': { marginTop: t.s2, fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  '& h3 a': { color: t.text, textDecoration: 'none' },
+  '& h3 a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', maxWidth: '100%', color: t.text, textDecoration: 'none' },
   '& h3 a:hover': { textDecoration: 'underline' },
   '& .role': { color: t.textFaint, fontSize: t.textSm },
   '& .now': {
@@ -61,6 +61,7 @@ const agentCard = css({
     overflowWrap: 'anywhere',
   },
   '& .now > i': { flex: 'none', width: '7px', height: '7px', marginTop: '6px', borderRadius: '50%', display: 'block' },
+  '& .on': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', marginTop: t.s1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: t.textSm, color: t.accentText },
   '& .spec': { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '2px 8px', marginTop: t.s2, fontSize: t.textSm, color: t.textMuted },
   '& .spec b': { fontWeight: '500', color: t.text },
   '& .spec code': { fontSize: t.textSm },
@@ -165,6 +166,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
     const agentsQ = s.project.agents;
     const agents = s.project.agentList;
     const presence = s.project.presence.data ?? [];
+    const tasks = s.project.taskList;
     const sorted = sortAdapters(adapters.data ?? []);
     const editAgent = agents.find((a) => a.id === editing);
     const removeAgent = agents.find((a) => a.id === removing);
@@ -221,6 +223,14 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                         {presenceWords(p)}
                       </span>
                     </span>
+                    {(() => {
+                      const on = currentTask(a.id, p, [], tasks);
+                      return on ? (
+                        <a class="on" href={routes.task.href({ id: on.id })} data-testid="agent-task" title={on.title}>
+                          Task #{on.seq} {on.title}
+                        </a>
+                      ) : null;
+                    })()}
                     <div class="spec">
                       <code>{a.adapter}</code>
                       {a.model ? (

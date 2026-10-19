@@ -1,7 +1,7 @@
 // Pure helpers for the Backups screen.
 
 import type { BackupInfo, BackupResult, BackupSettings, BackupVerify, RestoreStatus } from '../../api/pkgTypes.ts';
-import { formatBytes } from '../../lib/format.ts';
+import { formatBytes, plural } from '../../lib/format.ts';
 import { parseWhole } from '../../lib/limits.ts';
 
 /** A verification belongs to the file as it was when checked (name, time, size): a pruned or replaced file loses it. */
@@ -37,7 +37,7 @@ export function restoreTitle(pending: RestoreStatus | undefined, ok: boolean): s
 /** The line shown after "Back up now". */
 export function madeMessage(r: BackupResult): string {
   let m = `Backup ${r.backup.name} written (${formatBytes(r.backup.size)}).`;
-  if (r.pruned && r.pruned.length > 0) m += ` Removed ${r.pruned.length} old backup(s) beyond your retention.`;
+  if (r.pruned && r.pruned.length > 0) m += ` Removed ${plural(r.pruned.length, 'old backup')} beyond your retention.`;
   return m;
 }
 

@@ -18,7 +18,7 @@ import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Switch } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page } from '../../ui/layout.tsx';
+import { Page, stackList } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -172,7 +172,7 @@ const statCss = css({
   '& small': { color: t.textFaint, fontSize: t.textXs },
 });
 
-const rowsCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+const rowsCss = stackList;
 // The two long lists (ui/windowed-list.tsx, L37) are not a grid with a gap: each of their rows carries its own space below it.
 const rowSpace = css({ marginBottom: t.s2 });
 const rowCss = css({
@@ -205,7 +205,7 @@ const memCss = css({
   '& small': { display: 'block', marginTop: '4px', color: t.textFaint, fontSize: t.textSm },
 });
 
-const taskList = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+const taskList = stackList;
 const taskRow = css({
   display: 'flex',
   alignItems: 'center',

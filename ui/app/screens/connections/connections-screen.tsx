@@ -18,6 +18,7 @@ import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page } from '../../ui/layout.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
@@ -59,7 +60,6 @@ const gateCss = css({
 });
 const rowCss = css({ display: 'flex', alignItems: 'center', gap: t.s3, flexWrap: 'wrap' });
 const confirmCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, background: t.warningSoft });
-const detailsCss = css({ '& summary': { cursor: 'pointer', fontSize: t.textSm, color: t.textMuted }, '& ul': { margin: `${t.s2} 0 0`, padding: '0', listStyle: 'none', display: 'grid', gap: '6px' } });
 const markCss = css({ display: 'inline-flex', flex: 'none', marginTop: '2px' });
 const lineCss = css({ display: 'flex', gap: t.s2, alignItems: 'flex-start', fontSize: t.textMd });
 const reportCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& p': { margin: '0' }, '& h4': { margin: '0' } });
@@ -123,8 +123,7 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
           </>
         ) : null}
         {matrix.length > 0 ? (
-          <details mix={detailsCss}>
-            <summary>Capability matrix ({matrix.length}) with where each value comes from</summary>
+          <Disclosure summary={`Capability matrix (${matrix.length}) with where each value comes from`}>
             <table mix={tableCss} aria-label="Capability matrix">
               <thead>
                 <tr>
@@ -147,7 +146,7 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
                 ))}
               </tbody>
             </table>
-          </details>
+          </Disclosure>
         ) : null}
       </div>
     );
@@ -206,9 +205,8 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   return () => {
     const { f } = handle.props;
     return (
-      <details mix={detailsCss} data-testid="wsl-facts">
-        <summary>The distro</summary>
-        <dl mix={kv} style={{ marginTop: '8px' }}>
+      <Disclosure summary="The distro" testId="wsl-facts">
+        <dl mix={kv}>
           <dt>Windows programs from inside (interop)</dt>
           <dd>{f.interop ? 'on' : 'off: Drydock’s tools cannot reach an agent here'}</dd>
           <dt>Networking</dt>
@@ -243,7 +241,7 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
             </li>
           ))}
         </ul>
-      </details>
+      </Disclosure>
     );
   };
 }
@@ -492,9 +490,8 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
           </p>
         ) : null}
         {(c.prereqs ?? []).length > 0 ? (
-          <details mix={detailsCss}>
-            <summary>Prerequisites</summary>
-            <ul>
+          <Disclosure summary="Prerequisites">
+            <ul mix={steps}>
               {(c.prereqs ?? []).map((p) => (
                 <li key={p.tool} data-ok={String(p.ok)} mix={lineCss}>
                   <Mark status={p.ok ? 'pass' : 'fail'} />
@@ -505,7 +502,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
                 </li>
               ))}
             </ul>
-          </details>
+          </Disclosure>
         ) : null}
         {(c.gates ?? []).map((g) => (
           <Gate key={g.id} g={g} onAck={ack} />

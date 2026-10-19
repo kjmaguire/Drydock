@@ -100,7 +100,7 @@ const chipsCss = css({
   gap: t.s2,
   flexWrap: 'wrap',
   '& button': {
-    height: '26px',
+    height: '28px',
     padding: '0 10px',
     borderRadius: t.rFull,
     border: `1px solid ${t.border}`,

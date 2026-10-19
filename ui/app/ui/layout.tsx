@@ -170,6 +170,17 @@ export const card = css({
   minWidth: '0',
 });
 
+/** A bordered list with no row layout of its own: the rows draw themselves (a task list, a memory list). */
+export const listBox = css({
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rLg,
+  background: t.bgSurface,
+  overflow: 'hidden',
+});
+
 /** A bordered surface whose rows are separated by lines (a list of items). */
 export const listCard = css({
   border: `1px solid ${t.border}`,
@@ -198,6 +209,13 @@ export const tableCard = css({
   overflow: 'auto',
   '& tr:last-child td': { borderBottom: '0' },
 });
+
+/** A plain list as a column of rows with a small gap (no bullets, no indent). */
+export const stackList = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+/** A plain list whose rows nearly touch (a menu of links). */
+export const tightList = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
+/** The actions of a bar or a header, pushed to its end. */
+export const actionsEnd = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none' });
 
 /** Horizontal row with a gap; wraps. */
 export const row = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0' });

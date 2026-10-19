@@ -51,11 +51,13 @@ function SignIn(handle: Handle) {
             </Notice>
           ) : st && !st.installed ? (
             <Notice tone="warn" role="status" title="GitHub CLI not found">
-              {st.error ? st.error : 'Install the GitHub CLI and run gh auth login.'}{' '}
+              {/* the core's own words say the same install steps in the connection panel below; here only a reason that adds something */}
+              {st.error && !/not installed/i.test(st.error) ? `${st.error} ` : ''}
+              Install it from{' '}
               <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document>
                 cli.github.com <Icon icon={ExternalLink} size={11} />
-              </a>
-              . Until then a project can still work on a local folder; pull requests and GitHub repositories need gh.
+              </a>{' '}
+              and run <code>gh auth login</code>. Until then a project can still work on a local folder; pull requests and GitHub repositories need gh.
             </Notice>
           ) : st?.unreachable ? (
             <Notice tone="warn" role="status" title="GitHub did not answer in time.">
@@ -143,7 +145,7 @@ export function GitHubScreen() {
         >
           <VendorDetail vendor="github" />
           <p mix={[muted, toolbar]}>
-            <a href={routes.integrations.href()} data-testid="gh-integrations-link">
+            <a href={routes.integrations.href()} mix={buttonStyle('ghost', 'sm')} data-testid="gh-integrations-link">
               All integrations
             </a>
           </p>

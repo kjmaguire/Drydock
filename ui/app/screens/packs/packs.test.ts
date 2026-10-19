@@ -50,7 +50,7 @@ describe('Pack helpers', () => {
   });
 
   it('freshness, the zero time and the packs a search uses', () => {
-    expect(freshnessText(pack())).toBe('fresh, 2 day(s) old');
+    expect(freshnessText(pack())).toBe('fresh, 2 days old');
     expect(freshnessText(pack({ version: '', freshness: undefined, offline: true }))).toBe('unknown, offline');
     expect(zeroTime('0001-01-01T00:00:00Z')).toBe(true);
     expect(zeroTime(undefined)).toBe(true);
@@ -76,6 +76,6 @@ describe('Pack helpers', () => {
         confidence: 'high',
         sourceAgeDays: 0,
       }),
-    ).toBe('2 hit(s) in no pack');
+    ).toBe('2 hits in no pack');
   });
 });

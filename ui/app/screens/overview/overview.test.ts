@@ -14,7 +14,7 @@ describe('the day', () => {
   });
 
   it('says what an agent is doing from its presence', () => {
-    expect(doing(undefined)).toBe('Resting');
+    expect(doing(undefined)).toBe('Stopped');
     expect(doing({ agentId: 'a', presence: 'working', label: 'Working', activity: 'Writing tests' } as never)).toBe('Writing tests');
     expect(doing({ agentId: 'a', presence: 'idle', label: 'Idle' } as never)).toBe('Idle');
     expect(doing({ agentId: 'a', presence: 'away' } as never)).toBe('away');

@@ -67,7 +67,7 @@ describe('the Agent configuration group of Project settings (M3)', () => {
     const why = g.querySelector('header p')!.textContent!;
     expect(why).toBe(AGENT_CONFIG_WHY);
     expect(why).toContain('run programs or send prompts elsewhere');
-    expect(why).toContain('Drydock does not start the CLI in a folder where they are not trusted');
+    expect(why).toContain('Drydock does not start the CLI where they are not trusted');
     await waitFor(() => need(g.querySelector('[data-testid="agent-config-none"]')), r);
     expect(g.querySelector('[data-testid="agent-config-none"]')!.textContent).toContain('Nothing found');
     expect(items(r)).toHaveLength(0);

@@ -122,7 +122,7 @@ describe('DataScreen', () => {
     await r.act(() => byLabel(r.container, /Include raw run output/).click());
     await r.act(() => btn(r.container, 'Preview the export').click());
     expect((await waitFor(() => tid(r.container, 'export-runs-warning'), r)).textContent).toContain('source code');
-    expect(tid(r.container, 'export-scan').textContent).toContain('12 file(s) scanned');
+    expect(tid(r.container, 'export-scan').textContent).toContain('12 files scanned');
     expect(tid(r.container, 'export-scan').textContent).toContain('aws-key');
     expect(btn(r.container, 'Export').disabled).toBe(true);
     await r.act(() => byLabel(r.container, /I have read the secret-scan result/).click());

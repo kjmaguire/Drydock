@@ -24,12 +24,13 @@ import type {
   SkillRegistry,
 } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
@@ -81,7 +82,6 @@ const stats = css({
 });
 const steps = css({ display: 'grid', gap: '4px', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textMd, '& li': { display: 'flex', gap: t.s2, alignItems: 'baseline' } });
 const reportCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& p': { margin: '0' } });
-const detailsCss = css({ gridColumn: '1 / -1', '& summary': { cursor: 'pointer', color: t.textMuted, fontSize: t.textSm, marginBottom: t.s2 } });
 const serviceHead = css({
   display: 'flex',
   alignItems: 'center',
@@ -225,8 +225,7 @@ export function VerifyReportView(handle: Handle<{ r: IntegrationVerifyReport }>)
           </p>
         ))}
         {calls.length > 0 ? (
-          <details mix={detailsCss}>
-            <summary>Calls made ({calls.length})</summary>
+          <Disclosure summary={`Calls made (${calls.length})`} wide>
             <ul mix={callList} data-testid="verify-calls">
               {calls.map((c, i) => (
                 <li key={`${i}-${c.endpoint}`} data-testid="verify-call" data-status={String(c.status)}>
@@ -235,7 +234,7 @@ export function VerifyReportView(handle: Handle<{ r: IntegrationVerifyReport }>)
                 </li>
               ))}
             </ul>
-          </details>
+          </Disclosure>
         ) : null}
       </div>
     );
@@ -509,10 +508,9 @@ function ConnectForm(
           plain.map(renderField)
         )}
         {advanced.length > 0 ? (
-          <details mix={detailsCss}>
-            <summary>Advanced</summary>
+          <Disclosure summary="Advanced" wide>
             <div mix={formGrid}>{advanced.map(renderField)}</div>
-          </details>
+          </Disclosure>
         ) : null}
         <div mix={full}>
           <ReadOnlyNote />
@@ -559,7 +557,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
           {verified ? <Badge tone={verified.ok ? 'ok' : 'err'}>{verified.ok ? 'verified' : 'check did not pass'}</Badge> : null}
         </header>
         <p mix={muted}>
-          {info?.blurb ?? kind.blurb}. Drydock reads {info?.items ?? 'items'} through {info?.api ?? 'the service API'} and imports them into the projects you assign.
+          {info?.blurb ?? kind.blurb}, read through {info?.api ?? 'the service API'} and imported into the projects you assign.
         </p>
         {!conn ? (
           <ConnectForm kind={kind.kind} info={info} onDone={(r) => ((report = r.test), onChanged())} onKindsChanged={onKindsChanged} />
@@ -682,7 +680,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
               <h4>Projects</h4>
               {(conn.legacyItems ?? 0) > 0 ? (
                 <Notice tone="info">
-                  {conn.legacyItems} item(s) were stored before connections and projects were separated; the first project you assign adopts them and the stored settings.
+                  {plural(conn.legacyItems ?? 0, 'item')} {conn.legacyItems === 1 ? 'was' : 'were'} stored before connections and projects were separated; the first project you assign adopts them and the stored settings.
                 </Notice>
               ) : null}
               <p mix={muted} data-testid="integration-assigned">
@@ -693,8 +691,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
           </>
         )}
         {info ? (
-          <details mix={detailsCss} data-testid="api-info">
-            <summary>About the {label} API</summary>
+          <Disclosure summary={`About the ${label} API`} testId="api-info" wide>
             <div mix={stack}>
               <p mix={faint}>
                 {info.api}, {info.apiVersion}. {info.sdk}
@@ -711,7 +708,7 @@ function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKind
                 ))}
               </ul>
             </div>
-          </details>
+          </Disclosure>
         ) : null}
         {report && !conn ? <ReportView r={report} /> : null}
       </article>
@@ -840,7 +837,7 @@ export function VendorPanel(
             label="Agent tools (MCP)"
             testId="integration-agents"
             title="Agent tools (MCP)"
-            description={`${v.label}'s MCP server${v.cards.length === 1 ? '' : 's'}, checked against the vendor's own documentation. Connect once here; add it to a project, and grant it to that project's agents, from the project's Integrations page. Every tool not marked read-only waits for your approval, call by call.`}
+            description={`${v.label}'s MCP server${v.cards.length === 1 ? '' : 's'}, checked against the vendor's own documentation. Connect once here, then grant it per agent on the project's Integrations page. Tools not marked read-only wait for your approval.`}
           >
             <ul mix={connectorGrid}>
               {v.cards.map((c) => (

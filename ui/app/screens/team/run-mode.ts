@@ -26,4 +26,4 @@ export function distroLabel(d: WSLDistroInfo): string {
 
 /** Plain words for what running in WSL changes. */
 export const WSL_HELP =
-  'Inside WSL, the agent uses the Claude Code installed in that distro, with that distro’s own sign-in. A repository on a Windows drive is read across the WSL file share, which is slower; a repository inside the distro is fast, and its task worktrees are made inside the distro too.';
+  'Inside WSL the agent uses the Claude Code installed in that distro, with its own sign-in. A repository on a Windows drive is slower to read; one inside the distro is fast, and so are its worktrees.';

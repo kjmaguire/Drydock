@@ -20,7 +20,8 @@ export const tileGrid = css({
 
 export const tileCss = css({
   display: 'flex',
-  alignItems: 'center',
+  // from the top, so the names of the tiles of a row start on one line however many lines each blurb has
+  alignItems: 'flex-start',
   // the app stylesheet centres every button's content and forbids wrapping (one-line buttons); a tile is a card whose
   // blurb and state wrap inside it
   justifyContent: 'flex-start',

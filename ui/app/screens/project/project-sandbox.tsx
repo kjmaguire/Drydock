@@ -166,7 +166,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
               </p>
             ) : null}
             <p mix={noteRow} data-testid="sandbox-explain">
-              With it on, a Claude Code worker has no shell on this machine: every command runs in the task's container and the network reaches only the allowlist.
+              With it on, a Claude Code worker has no shell on this machine: its commands run in the task's container, with only the allowlisted network.
               Agents on other CLIs cannot work in a sandboxed project yet.
             </p>
             <div mix={actionsCss}>

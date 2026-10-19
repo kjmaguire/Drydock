@@ -12,12 +12,12 @@ import { faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { t } from '../../ui/tokens.ts';
 import { parseEnvNames } from './settings.ts';
 import { Group, panelPad } from './settings-kit.tsx';
 
 const formCss = css({ display: 'grid', gap: t.s3 });
-const detailsCss = css({ fontSize: t.textSm, '& p': { margin: `${t.s2} 0 0` } });
 
 export function AgentEnvSection(handle: Handle) {
   const s = services(handle);
@@ -97,12 +97,11 @@ export function AgentEnvSection(handle: Handle) {
             </div>
           </form>
         </div>
-        <details mix={detailsCss}>
-          <summary>What every agent keeps</summary>
+        <Disclosure summary="What every agent keeps">
           <p mix={faint}>
             {(q.data?.kept ?? []).join(', ')}; and every variable starting with {(q.data?.prefixes ?? []).join(' or ')} for Claude Code.
           </p>
-        </details>
+        </Disclosure>
       </Group>
     );
   };

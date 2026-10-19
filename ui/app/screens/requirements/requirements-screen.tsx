@@ -6,7 +6,7 @@ import { css, on, type Handle } from 'remix/component';
 import { Archive, ArchiveRestore, Check, ChevronRight, FileText, Link2, Search, ShieldAlert, Upload } from 'lucide';
 import type { Requirement, RequirementHit, RequirementTrace } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, plural } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -16,7 +16,7 @@ import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page, Section, card, spacer } from '../../ui/layout.tsx';
+import { Page, Section, card, spacer, listBox } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
@@ -84,10 +84,10 @@ export function TraceView(handle: Handle<{ t: RequirementTrace }>) {
         <p mix={traceHead}>
           <Badge tone={tr.verified ? 'ok' : 'warn'}>{tr.verified ? 'verified' : 'not verified'}</Badge>
           <span>
-            {tr.criteria} criteria linked, {tr.tasksCompleted} of {tasks.length} task(s) completed
+            {tr.criteria} criteria linked, {tr.tasksCompleted} of {plural(tasks.length, 'task')} completed
           </span>
         </p>
-        {tr.tasksStale > 0 ? <Notice tone="warn">{tr.tasksStale} task(s) were linked to an older version of this requirement.</Notice> : null}
+        {tr.tasksStale > 0 ? <Notice tone="warn">{plural(tr.tasksStale, 'task')} {tr.tasksStale === 1 ? 'was' : 'were'} linked to an older version of this requirement.</Notice> : null}
         {tasks.length === 0 ? <p mix={faint}>No task is linked to this requirement.</p> : null}
         {tasks.map((tt) => (
           <div key={tt.taskId} mix={traceTask} data-testid="trace-task">
@@ -295,7 +295,7 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
         {r.quarantined > 0 ? (
           <div mix={quarCss} data-testid="req-quarantine">
             <p>
-              <Icon icon={ShieldAlert} size={14} /> {r.quarantined} passage(s) look like instructions to an agent and are kept out of search.
+              <Icon icon={ShieldAlert} size={14} /> {plural(r.quarantined, 'passage')} {r.quarantined === 1 ? 'looks' : 'look'} like instructions to an agent and {r.quarantined === 1 ? 'is' : 'are'} kept out of search.
             </p>
             {(quarantined.data ?? []).map((c) => (
               <div key={c.chunkId} class="chunk">
@@ -445,15 +445,6 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
 
 // --- the screen ---
 
-const listCss = css({
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  background: t.bgSurface,
-  overflow: 'hidden',
-});
 const rowCss = css({
   display: 'grid',
   gridTemplateColumns: '20px minmax(0, 1fr) auto auto auto',
@@ -592,7 +583,7 @@ export function RequirementsScreen(handle: Handle) {
           </div>
         ) : null}
         {list.length > 0 ? (
-          <ul mix={listCss} aria-label="Requirements">
+          <ul mix={listBox} aria-label="Requirements">
             {list.map((r) => (
               <li key={r.id} mix={rowCss} data-testid="requirement" data-title={r.title} data-open={String(open === r.id)} data-archived={String(r.archived)}>
                 <Icon icon={FileText} size={15} />

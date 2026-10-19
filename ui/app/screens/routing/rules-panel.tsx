@@ -153,7 +153,7 @@ const bodyCss = css({
   fontSize: t.textMd,
   '& .head': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
   '& .line': { display: 'flex', alignItems: 'baseline', gap: t.s2, flexWrap: 'wrap', minWidth: '0' },
-  '& .kw': { width: '34px', flex: 'none', color: t.textFaint, fontSize: t.textXs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' },
+  '& .kw': { width: '48px', flex: 'none', color: t.textFaint, fontSize: t.textXs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' },
   '& code': { overflowWrap: 'anywhere' },
 });
 const actionsCss = css({ display: 'flex', gap: t.s1, flexWrap: 'wrap', justifyContent: 'flex-end' });
