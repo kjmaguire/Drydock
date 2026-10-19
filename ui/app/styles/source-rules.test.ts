@@ -1,12 +1,14 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 
 // The type rules of the UI audit of 2026-10-19 (docs/ui-audit-2026-10-19.md, findings B1-B3): text sizes come from the tokens in
 // app.css, four font weights are in use, and the code font has one size. A new screen that breaks one fails here.
 
-const ROOT = new URL('..', import.meta.url).pathname;
+// fileURLToPath, not .pathname: on Windows the pathname is "/D:/a/...", which is not a folder
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -17,7 +19,7 @@ function sources(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const FILES = sources(ROOT).map((p) => ({ path: relative(ROOT, p), text: readFileSync(p, 'utf8') }));
+const FILES = sources(ROOT).map((p) => ({ path: relative(ROOT, p).replaceAll('\\', '/'), text: readFileSync(p, 'utf8') }));
 
 // text whose size is computed from a pixel box (avatar initials), handed to an editor widget, or drawn by the start-up failure
 // page with inline styles because the stylesheet may be what failed: none of them is a page's type scale
