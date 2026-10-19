@@ -335,6 +335,12 @@ describe('Security scan page', () => {
     const tl = Array.from(panel.querySelectorAll('[data-testid="tool"]')) as HTMLElement[];
     expect(tl.map((x) => x.getAttribute('data-tool'))).toEqual(['gitleaks', 'osv-scanner', 'opengrep']);
     expect(tl.map((x) => x.getAttribute('data-found'))).toEqual(['true', 'false', 'true']);
+    // every tool is a row of the list's layout: the two with an install row lost it once (a wrapper took the place of the
+    // list's direct child), and their name ran into the text after it
+    for (const x of tl) {
+      const cs = getComputedStyle(x);
+      expect(`${x.getAttribute('data-tool')}: ${cs.display}, ${cs.paddingLeft}`).toMatch(/: flex, 18px$/);
+    }
     expect(tl[0]!.textContent).toContain('built into Drydock, 8.21.0');
     expect(tl[1]!.textContent).toContain('Not installed');
     expect(tl[1]!.textContent).toContain('winget install Google.OSVScanner');

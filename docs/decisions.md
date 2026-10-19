@@ -688,7 +688,9 @@ Open, owner action:
   no usable rules, folds away once it has, and keeps what the person did with it. (2) **Choose folder...** (the window's folder
   dialog through `fs.pickFolder`, P58) saves the folder at once, with the call Save makes; only a person may, cancelling changes
   nothing, and without a dialog (the browser in development) only the typed path is offered. (3) The Code engine's skipped reason
-  ends with where to choose rules and where to get them; the scan's summary keeps its first sentence. **P44 stands:** Drydock
+  ends with where to choose rules and where to get them; the scan's summary keeps its first sentence. (4) The rows of osv-scanner
+  and Opengrep, wrapped in a block by P66's install rows, are laid out as the list's rows again (their name ran into the text
+  after it; a browser test reads the rows' computed layout). **P44 stands:** Drydock
   still ships and downloads no rules; the page lists and links, recommends no set and gives no legal advice, and the one rule on
   it is help text the person saves themselves (a test keeps it a valid rule file). A starter set of Drydock's own would reverse
   P44 and is the owner's call. Document: [`security-scan.md`](security-scan.md) section 5. **Not verified:** the page's rule and

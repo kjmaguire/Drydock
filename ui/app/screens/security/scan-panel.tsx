@@ -133,6 +133,12 @@ const idBadge = css({
   '&:hover': { textDecoration: 'underline' },
 });
 
+// A tool that can be installed or chosen is one block of the list (its row, the install row, the program field): listCard lays out
+// only its direct rows, so the block carries the rule between blocks and gives its own row the same layout.
+const toolBlock = css({
+  borderTop: `1px solid ${t.border}`,
+  '& > .row': { display: 'flex', alignItems: 'center', gap: t.s3, padding: '11px 18px', minWidth: '0' },
+});
 const toolRow = css({
   '& strong': { fontWeight: '600', minWidth: '96px' },
   '& .state': { color: t.textMuted, fontSize: t.textSm, minWidth: '0', overflowWrap: 'anywhere' },
@@ -701,7 +707,7 @@ export function ScanPanel(
                 const installing = job?.state === 'running';
                 const installed = info.source === 'installed';
                 return (
-                  <div key={k}>
+                  <div key={k} mix={toolBlock}>
                     {row}
                     {tl.canInstall ? (
                       <div mix={installCss} data-testid="tool-install-row" data-tool={name} data-state={job?.state ?? 'none'}>
