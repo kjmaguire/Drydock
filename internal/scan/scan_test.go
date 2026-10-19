@@ -286,6 +286,38 @@ func TestWithoutARulesFolderTheCodeEngineIsSkippedAndSaysSo(t *testing.T) {
 	if !strings.Contains(rep.Summary, "no vulnerable packages") {
 		t.Fatalf("%q", rep.Summary)
 	}
+	// the reason is read in a report, away from the field that fixes it: it says where that field is, and the summary
+	// keeps only the first sentence
+	reason := engine(rep, scan.SAST).Reason
+	if !strings.Contains(reason, `"Tools on this computer"`) || !strings.Contains(reason, "where to get them") {
+		t.Fatalf("the skipped reason does not say where to choose the rules: %q", reason)
+	}
+	if !strings.Contains(rep.Summary, "the Code engine was skipped (No rules folder chosen: the Code engine is skipped until one is)") || strings.Contains(rep.Summary, "Tools on this computer") {
+		t.Fatalf("the summary should keep the first sentence only: %q", rep.Summary)
+	}
+}
+
+// Every way the rules folder can be unusable ends the Code engine skipped with the same pointer, and a usable one does not.
+func TestEveryUnusableRulesFolderSkipsTheCodeEngineWithWhereToChoose(t *testing.T) {
+	empty := t.TempDir()
+	for name, dir := range map[string]string{
+		"relative":   "rules",
+		"missing":    filepath.Join(t.TempDir(), "gone"),
+		"no yaml":    empty,
+		"not chosen": "",
+	} {
+		rep := scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: dir,
+			Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
+		e := engine(rep, scan.SAST)
+		if e.Status != scan.Skipped || !strings.HasSuffix(e.Reason, "where to get them.") {
+			t.Errorf("%s: %+v", name, e)
+		}
+	}
+	rep := scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: rules(t),
+		Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
+	if e := engine(rep, scan.SAST); e.Status != scan.Done || strings.Contains(e.Reason, "Tools on this computer") {
+		t.Fatalf("a usable rules folder should run the Code engine: %+v", e)
+	}
 }
 
 func TestDetectSaysWhatIsInstalledAndHowToGetTheRest(t *testing.T) {

@@ -676,3 +676,21 @@ Open, owner action:
   computation) were fixed in the code except two it cannot be satisfied on (a certificate pin, and an authorization server stand-in),
   whose queries the configuration switches off, with a test that holds the code to the reason (see `docs/security.md`); the Windows runs found a lock that hid its owner's process id (`internal/datalock`), tests that compared a
   path by its spelling or read a source file with CRLF, and tests that need the repository where the verification bundle has none.
+
+**P74. The Security page says where rules come from, and the rules folder is chosen with the folder dialog (2026-10-19, on the
+  owner's words: "I installed OpenGrep but I can't run it without rules where do I get the rules?").** The page asked for "a
+  folder of rules you are licensed to use" (P44) but offered only a typed path and said nothing of where rules come from, and a
+  scan without them skipped the Code engine with a reason that sat in the report, away from the field that fixes it. Now:
+  (1) **Where do I get rules?** under the rules folder lists public repositories of Semgrep-syntax rules with what each one's own
+  licence file or README said when it was read (2026-10-16: the Opengrep set LGPL-2.1 with the Commons Clause and "research,
+  testing & benchmarking"; Semgrep's a licence file that points to its terms, which are linked, not restated; Trail of Bits AGPL-3.0;
+  0xdea and dgryski MIT), a Git command that clones one, and one rule to try the Code engine with; it is open while the folder has
+  no usable rules, folds away once it has, and keeps what the person did with it. (2) **Choose folder...** (the window's folder
+  dialog through `fs.pickFolder`, P58) saves the folder at once, with the call Save makes; only a person may, cancelling changes
+  nothing, and without a dialog (the browser in development) only the typed path is offered. (3) The Code engine's skipped reason
+  ends with where to choose rules and where to get them; the scan's summary keeps its first sentence. **P44 stands:** Drydock
+  still ships and downloads no rules; the page lists and links, recommends no set and gives no legal advice, and the one rule on
+  it is help text the person saves themselves (a test keeps it a valid rule file). A starter set of Drydock's own would reverse
+  P44 and is the owner's call. Document: [`security-scan.md`](security-scan.md) section 5. **Not verified:** the page's rule and
+  Git command against a real Opengrep and a real clone (no Opengrep binary can be run on the development host); the Semgrep
+  Rules License's terms (the page was unreachable from there); the look of the button and the dialog on Windows.

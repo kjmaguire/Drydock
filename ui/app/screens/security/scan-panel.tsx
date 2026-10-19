@@ -20,6 +20,8 @@ import { Section, card, listCard, spacer } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { Meter } from '../budgets/meter.tsx';
+import { ChooseFolder } from '../shared/choose-folder.tsx';
+import { RulesSources } from './rules-sources.tsx';
 import type { ScanScope } from './scan-scope.ts';
 import {
   ENGINES,
@@ -791,11 +793,22 @@ export function ScanPanel(
               >
                 <label for={`rules-${handle.id}`}>Opengrep rules folder</label>
                 <div class="line">
+                  {/* the window's own folder dialog, in the desktop app; a folder chosen there is saved at once, like a program chosen with Choose file... */}
+                  <ChooseFolder
+                    title="Choose the Opengrep rules folder"
+                    testId="rules-choose"
+                    disabled={busy}
+                    onPick={(path) => {
+                      rulesEdit = path;
+                      void saveRules();
+                    }}
+                  />
                   <input
                     id={`rules-${handle.id}`}
                     aria-label="Rules folder"
                     data-testid="rules-dir"
                     spellcheck={false}
+                    placeholder="for example C:\tools\opengrep-rules"
                     value={rulesValue}
                     mix={on('input', (e) => {
                       rulesEdit = e.currentTarget.value;
@@ -819,6 +832,7 @@ export function ScanPanel(
                   Opengrep needs a folder of rule files (.yaml). Drydock does not download rules: choose a folder of rules you are licensed to use.
                   {rulesHint ? ` ${rulesHint}` : ''}
                 </p>
+                <RulesSources openByDefault={!tl.rulesOk} />
               </form>
             </div>
           ) : null}

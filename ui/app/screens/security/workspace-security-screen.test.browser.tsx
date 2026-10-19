@@ -128,6 +128,28 @@ describe('the workspace Security page', () => {
     await waitFor(() => expect(saved).toEqual(['D:\\rules']), r);
   });
 
+  it("Choose folder… on the rules folder saves the folder scans' rules folder and leaves the folder to scan alone", async () => {
+    const saved: string[] = [];
+    const titles: string[] = [];
+    const { r } = show({
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }),
+      fsPickFolder: async (title?: string) => (titles.push(title ?? ''), 'D:\\rules\\mine'),
+      securityWorkspaceRulesSet: async (dir: string) => (saved.push(dir), tools({ rulesDir: dir, rulesOk: true, ready: true })),
+    });
+    const choose = await waitFor(() => {
+      const b = r.$('[data-testid="rules-choose"]');
+      if (!b) throw new Error('not yet');
+      return b as HTMLButtonElement;
+    }, r);
+    const scanFolder = folderField(r).value;
+    await r.act(() => choose.click());
+    await waitFor(() => expect(saved).toEqual(['D:\\rules\\mine']), r);
+    expect(titles).toEqual(['Choose the Opengrep rules folder']);
+    await waitFor(() => expect((r.$('[data-testid="rules-dir"]') as HTMLInputElement).value).toBe('D:\\rules\\mine'), r);
+    // the folder to scan is another field with its own button
+    expect(folderField(r).value).toBe(scanFolder);
+  });
+
   it('opens a past folder scan from the history and shows its folder', async () => {
     const other = report({ id: 'scn0', dir: 'D:\\imports\\tool', findings: [], counts: counts(), startedAt: 1_699_000_000_000 });
     const opened: string[] = [];

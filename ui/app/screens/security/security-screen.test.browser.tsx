@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
 import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { CLONE_COMMAND, DEMO_RULE, RULE_SOURCES } from './rules-sources.ts';
 import { SecurityScreen } from './security-screen.tsx';
 
 afterEach(cleanup);
@@ -353,6 +354,128 @@ describe('Security scan page', () => {
     await waitFor(() => expect(sets).toEqual([['p1', 'C:\\rules']]), r);
     await waitFor(() => expect(panel.textContent).toContain('Rules found.'), r);
     expect(panel.querySelector('[data-testid="rules-note"]')).toBeNull();
+  });
+
+  // the owner's question: "I installed OpenGrep but I can't run it without rules, where do I get the rules?"
+  const noRules = () => tools({ rulesDir: '', rulesOk: false, rulesNote: 'No rules folder chosen: the Code engine is skipped until one is.', ready: false });
+  const helpOf = (r: R) =>
+    waitFor(() => {
+      const h = r.$('[data-testid="rules-sources"]');
+      if (!h) throw new Error('not yet');
+      return h as HTMLDetailsElement;
+    }, r);
+
+  it('Choose folder… on the rules folder saves what the window dialog returns at once; cancelling saves nothing', async () => {
+    const sets: [string, string][] = [];
+    const titles: string[] = [];
+    const answers = ['D:\\rules\\semgrep', ''];
+    let state = noRules();
+    const { r } = show({
+      securityTools: async () => state,
+      securitySettingsSet: async (projectId: string, rulesDir: string) => (sets.push([projectId, rulesDir]), (state = tools({ rulesDir })), state),
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }),
+      fsPickFolder: async (title?: string) => (titles.push(title ?? ''), answers.shift() ?? ''),
+    });
+    const pick = await waitFor(() => {
+      const b = r.$('[data-testid="rules-choose"]') as HTMLButtonElement | null;
+      if (!b) throw new Error('not yet');
+      return b;
+    }, r);
+    expect(pick.textContent).toContain('Choose folder');
+    expect(r.$('[data-testid="rules-dir"]')!.getAttribute('placeholder')).toBe('for example C:\\tools\\opengrep-rules');
+    await r.act(() => pick.click());
+    // saved without pressing Save, through the same call the Save button makes
+    await waitFor(() => expect(sets).toEqual([['p1', 'D:\\rules\\semgrep']]), r);
+    expect(titles).toEqual(['Choose the Opengrep rules folder']);
+    const panel = r.$('[data-testid="security-tools"]') as HTMLElement;
+    await waitFor(() => expect((r.$('[data-testid="rules-dir"]') as HTMLInputElement).value).toBe('D:\\rules\\semgrep'), r);
+    await waitFor(() => expect(panel.textContent).toContain('Rules found.'), r);
+    expect(panel.textContent).toContain('Saved.');
+    expect(panel.querySelector('[data-testid="rules-note"]')).toBeNull();
+    // cancelling the dialog ("" back) changes nothing
+    await waitFor(() => expect((r.$('[data-testid="rules-choose"]') as HTMLButtonElement).disabled).toBe(false), r);
+    await r.act(() => (r.$('[data-testid="rules-choose"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(titles.length).toBe(2), r);
+    await drain();
+    expect(sets).toEqual([['p1', 'D:\\rules\\semgrep']]);
+    expect((r.$('[data-testid="rules-dir"]') as HTMLInputElement).value).toBe('D:\\rules\\semgrep');
+  });
+
+  it('without a folder dialog (the browser in development) only the typed path is offered for the rules folder', async () => {
+    const { r } = show({ securityTools: async () => noRules(), fsFolderHints: async () => ({ canPick: false, windows: false, devDrives: [] }) });
+    await helpOf(r);
+    expect(r.$('[data-testid="rules-choose"]')).toBeNull();
+    expect(r.$('[data-testid="rules-dir"]')).not.toBeNull();
+  });
+
+  it('the rules help names each set with its licence and its repository, and shows the Git command and a rule to try', async () => {
+    const { r } = show({ securityTools: async () => noRules() });
+    const help = await helpOf(r);
+    // there are no usable rules: the help is open, under the note that says so
+    expect(help.open).toBe(true);
+    expect(help.querySelector('summary')!.textContent).toBe('Where do I get rules?');
+    expect(r.$('[data-testid="rules-note"]')!.textContent).toContain('No rules folder chosen');
+    const items = Array.from(help.querySelectorAll('[data-testid="rules-source"]')) as HTMLElement[];
+    expect(items.map((x) => x.getAttribute('data-repo'))).toEqual(RULE_SOURCES.map((s) => s.repo));
+    const item = (repo: string) => items.find((x) => x.getAttribute('data-repo') === repo)!;
+    const og = item('opengrep/opengrep-rules');
+    expect(og.textContent).toContain('Commons Clause');
+    expect(og.textContent).toContain('research, testing and benchmarking');
+    // a link opens in the person's browser: the attributes installExternalLinks reads
+    const link = og.querySelector('a')!;
+    expect(link.getAttribute('href')).toBe('https://github.com/opengrep/opengrep-rules');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.hasAttribute('data-rmx-document')).toBe(true);
+    expect(link.getAttribute('rel')).toContain('noopener');
+    // a licence that only points to its terms links them
+    const terms = Array.from(item('semgrep/semgrep-rules').querySelectorAll('a')).find((a) => a.textContent === 'Terms')!;
+    expect(terms.getAttribute('href')).toBe('https://semgrep.dev/legal/rules-license');
+    for (const a of Array.from(help.querySelectorAll('a'))) {
+      expect(a.getAttribute('href')).toMatch(/^https:\/\//);
+      expect(a.getAttribute('target')).toBe('_blank');
+    }
+    expect(help.querySelector('[data-testid="rules-clone"]')!.textContent).toBe(CLONE_COMMAND);
+    expect(help.querySelector('[data-testid="rules-demo"]')!.textContent).toBe(DEMO_RULE);
+    // it only tells: nothing is fetched or run from the page
+    expect(help.querySelector('button, form, input')).toBeNull();
+  });
+
+  it('the rules help folds away once the folder works, and a choice the person made with it stands', async () => {
+    let state = noRules();
+    const { r, s } = show({ securityTools: async () => state });
+    const help = await helpOf(r);
+    expect(help.open).toBe(true);
+    const settle = (next: SecurityTools, text: string, present: boolean) => {
+      state = next;
+      s.emit({ type: 'security.settings', projectId: 'p1' });
+      return waitFor(() => expect((r.$('[data-testid="security-tools"]')!.textContent ?? '').includes(text)).toBe(present), r);
+    };
+    const toggled = (h: HTMLDetailsElement) => new Promise<void>((res) => h.addEventListener('toggle', () => res(), { once: true }));
+    // the person closes it while it is open for them
+    const closed = toggled(help);
+    help.open = false;
+    await closed;
+    await drain();
+    // the folder works: it stays closed; the folder stops working: it stays closed, the person closed it
+    await settle(tools(), 'Rules found.', true);
+    expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(false);
+    await settle(noRules(), 'No rules folder chosen', true);
+    expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it('the rules help opens by itself when the folder stops working and folds away when it works, while the person has not chosen', async () => {
+    let state = tools();
+    const { r, s } = show({ securityTools: async () => state });
+    const help = await helpOf(r);
+    expect(help.open).toBe(false);
+    // the person did not touch it: the folder stops working and the help opens
+    state = noRules();
+    s.emit({ type: 'security.settings', projectId: 'p1' });
+    await waitFor(() => expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(true), r);
+    // and folds away again when it works
+    state = tools();
+    s.emit({ type: 'security.settings', projectId: 'p1' });
+    await waitFor(() => expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(false), r);
   });
 
   it('a history item opens that report, and a running scan takes the display back', async () => {

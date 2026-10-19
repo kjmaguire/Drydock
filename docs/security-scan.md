@@ -67,7 +67,7 @@ it (a cancelled scan is stored as cancelled).
 | Method | Does |
 |---|---|
 | `security.tools {projectId}` (or `{}`: the folder scans') | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (path, `--version` and how each was found: `chosen`, `path` or `folder`, or an install hint; a chosen file that is gone is named), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
-| `security.settings.set {projectId, rulesDir}` or `{workspace: true, rulesDir}` | stores the project's rules folder, or the one folder scans use (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. |
+| `security.settings.set {projectId, rulesDir}` or `{workspace: true, rulesDir}` | stores the project's rules folder, or the one folder scans use (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. The page's **Choose folder...** asks the window's folder dialog (`fs.pickFolder`, P58) and then makes this call with the folder chosen; cancelling changes nothing. |
 | `security.tool.set {projectId, tool, path}` | stores the program a person chose for `osv-scanner` or `opengrep`, for the whole workspace (a program is on the computer, not in a project); `""` goes back to finding it. The path must be a full path to an existing file (an `.exe` on Windows); quotes from Explorer's "Copy as path" are removed. Only a person may: the program reads the whole project. The programs are probed (`--version`) once per change: the answer goes to the caller and, for the next three seconds, to every page that re-reads on the `security.settings` event, so a program whose first run is slow is paid for once; a program deleted or replaced meanwhile is probed again at once. |
 | `security.tool.choose {projectId, tool}` | opens the window's own Open dialog (the desktop app, through Wails; filter `*.exe`) and stores the file chosen; cancelling changes nothing. Where the window has no dialog (the browser in development) it is refused and the page offers only the path field (`security.tools` says `canChoose`). |
 | `security.tool.install {projectId, tool}` | Drydock installs the tool itself (decision P66): in the background it reads the tool's GitHub release listing (no sign-in), picks the newest stable release that carries the Windows program with a SHA-256 digest, downloads it from that repository only, refuses it unless the digest matches, and puts the program (unpacked from Opengrep's archive with its DLLs, or the exe renamed) under `<data>\tools\<tool>\<tag>\`. The same call is **Update**: with the installed release already the newest it ends "already the newest release (vX)". Only a person may. The answer, and every later `security.tools`, carries the install's state in `job` (`running` with the phase and the bytes so far, `done`, `failed` with the reason, `cancelled`); each change is announced on `security.settings` (`tool`, `install`). `security.tools` says `canInstall` (Windows). |
@@ -110,9 +110,32 @@ page each external tool's row has **Install** (or **Update** once Drydock instal
   `%USERPROFILE%\scoop\shims`, `%USERPROFILE%\go\bin` (and `%GOBIN%`) and Chocolatey's `%ProgramData%\chocolatey\bin`.
   The panel says which: "Chosen file", "Installed by Drydock (vX) at", "Found at", or "Found (not on the PATH Drydock
   started with) at".
-- **Rules**: a folder of Semgrep-syntax rule files. The `opengrep-rules` repository carries LGPL-2.1 with the Commons Clause
-  and says its rules are for research, testing and benchmarking, so Drydock does not fetch it for you: point the scan at
-  rules you are licensed to use (your own, or a set whose licence you accepted).
+- **Rules**: a folder of Semgrep-syntax rule files (`.yaml` or `.yml`, found through its sub-folders; `.git` is skipped). The
+  `opengrep-rules` repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and
+  benchmarking, so Drydock does not fetch it for you (P44): point the scan at rules you are licensed to use (your own, or a set
+  whose licence you accepted). The person chooses the folder with **Choose folder...** (the window's own folder dialog, shown
+  in the desktop app, saved at once) or types its full path and presses Save (P74).
+- **Where do I get rules?** (P74) is a help on the page, under the rules folder. It is open while the folder has no usable
+  rules, folds away once it has, and keeps whatever the person did with it. It is text and links only: nothing is fetched or run
+  by the page, the links open in the person's browser, and it recommends no set. It lists public repositories of Semgrep-syntax
+  rules with what each one's own licence file or README said on 2026-10-16, a Git command that clones one into a folder
+  (`git clone -c core.longpaths=true --depth 1 https://github.com/OWNER/REPOSITORY C:\tools\REPOSITORY`), and one rule of
+  Drydock's own to try the Code engine with: saved as a `.yaml` file in an empty folder that is then chosen, it flags each
+  `fmt.Println` call in the Go files Opengrep scans. A test (`TestTheDemoRuleOnTheSecurityPageIsAValidRuleFile`) reads the rule
+  from the page's source and requires a valid rule file that Drydock accepts as a rules folder. What was read:
+
+  | Repository | What its licence file or README said | Rules for |
+  |---|---|---|
+  | `opengrep/opengrep-rules` | `LICENSE`: LGPL 2.1 with the "Commons Clause" License Condition v1.0 (no right to Sell the rules: practising the rights to provide third parties, for a fee or other consideration, a product or service whose value derives entirely or substantially from them). README: "These rules are intended for research, testing & benchmarking." | a fork of Semgrep's rules |
+  | `semgrep/semgrep-rules` | `LICENSE`: "Semgrep Rules License v1.0. For more details, visit https://semgrep.dev/legal/rules-license". The terms page could not be reached from the development host, so they are linked, not restated. | Semgrep's own rules |
+  | `trailofbits/semgrep-rules` | `LICENSE`: GNU Affero General Public License, version 3 | Trail of Bits' public rules |
+  | `0xdea/semgrep-rules` | `LICENSE`: MIT | C (and sometimes C++) |
+  | `dgryski/semgrep-go` | `LICENSE`: MIT | Go |
+
+  A licence can change, and what applies depends on how the rules are used (your own code, inside a company, in a product): the
+  page tells the person to read it. The Code engine's reason, when it is skipped because the rules folder is not usable, ends
+  with where to choose rules and where to get them (`rulesHelp`), because a report is read away from the field that mends it;
+  the scan's summary keeps only the reason's first sentence.
 
 ## 6. Tests
 
@@ -136,6 +159,13 @@ page each external tool's row has **Install** (or **Update** once Drydock instal
 - `ui/e2e/security.spec.ts`: the page against the real core and the stand-in tools: Scan, the three engines done, the
   findings, the key's value absent from the page, the history; and from Home's tile, a folder that is not a project scanned
   the same way, its report reopened from the recent folder scans, no project made.
+- The rules folder's help and picker (P74): `internal/scan` (`TestEveryUnusableRulesFolderSkipsTheCodeEngineWithWhereToChoose`:
+  each way the folder can be unusable ends the Code engine skipped with where to choose rules; the summary keeps the first
+  sentence; `TestTheDemoRuleOnTheSecurityPageIsAValidRuleFile`), `rules-sources.test.ts`, the browser tests of both Security
+  pages (Choose folder... saves at once and cancelling saves nothing, the workspace page's saves the folder scans' folder and
+  leaves the folder to scan alone, only the typed path where the window has no dialog; the help's sets, links, command and
+  rule, open while the folder has no rules and a choice of the person standing) and `ui/e2e/security.spec.ts` (the folder
+  dialog's stand-in, the help, the skipped reason on the page).
 - Folder scans (P61): `internal/core/ext_security_folder_test.go` (a folder scan runs the three engines with the stand-ins,
   carries no project in its report, events and history, is found by folder and across folders, the workspace rules folder
   is not a project's, refused folders, cancel), `ext_security_internal_test.go` (only a person starts a scan of either
@@ -157,6 +187,12 @@ page each external tool's row has **Install** (or **Update** once Drydock instal
   field; the fixture answers in that shape. The first Install on a PC proves it. Drydock does not look for new releases by
   itself (Update does, on request) and installs the x86-64 build only (neither tool publishes a Windows ARM64 build).
 - A folder is chosen with "Choose folder..." (the window's own dialog through `fs.pickFolder`, decision P58; shown only in the desktop app) or typed or pasted.
+- No rules are shipped: P44 stands. A starter set of Drydock's own would reverse it and is the owner's call; the one rule on the
+  page (P74) is help text that the person saves themselves, not something Drydock applies.
+- Not verified (P74): the page's rule and Git command were not run against a real Opengrep or a real clone (no Opengrep binary
+  can be run on the development host); the rule has the shape of the one in Opengrep's README and a test keeps it a valid rule
+  file. The licence wording was read from the repositories on 2026-10-16, and the Semgrep Rules License's terms page could not
+  be read there. Windows: how the Choose folder... button sits in the rules form and the folder dialog it opens.
 - The `deps` check on a task's diff (`internal/checks`) keeps its own osv-scanner invocation; P61 changed only the scan's.
 
 ## 8. Scanning a folder that is not a project (decision P61)

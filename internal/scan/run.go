@@ -242,7 +242,7 @@ func (r *Run) run(ctx context.Context) {
 			return
 		}
 		if ok, note := checkRules(r.o.RulesDir); !ok {
-			r.finish(SAST, nil, Skipped, note, "")
+			r.finish(SAST, nil, Skipped, note+rulesHelp, "")
 			return
 		}
 		start(SAST)

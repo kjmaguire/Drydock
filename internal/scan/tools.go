@@ -21,6 +21,10 @@ const (
 	opengrepInstall = "Install Opengrep: press Install below, or download opengrep_windows_x86.zip (opengrep_windows_x86.exe before 2.0) from https://github.com/opengrep/opengrep/releases, keep opengrep.exe with its DLLs and put that folder on your PATH (or run the repository's install.ps1)."
 )
 
+// rulesHelp ends the Code engine's skipped reason when the rules folder is the cause. A report is read away from the field that
+// mends it, and the Security page's "Tools on this computer" says where rules come from (Drydock ships and downloads none).
+const rulesHelp = ` Choose a folder of rules you are licensed to use under "Tools on this computer" on this page; it says where to get them.`
+
 // gitleaksVersion is the version of the gitleaks rules and engine compiled into Drydock, read from the build's module list.
 func gitleaksVersion() string {
 	if bi, ok := debug.ReadBuildInfo(); ok {
