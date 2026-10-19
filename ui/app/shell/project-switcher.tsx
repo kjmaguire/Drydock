@@ -26,7 +26,7 @@ const triggerCss = css({
   background: t.bgSurface,
   color: t.text,
   fontSize: t.textMd,
-  fontWeight: '650',
+  fontWeight: '600',
   textAlign: 'left',
   justifyContent: 'flex-start',
   transition: `background-color ${t.fast} ${t.ease}, border-color ${t.fast} ${t.ease}`,

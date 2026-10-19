@@ -19,7 +19,7 @@ import { MODES, STRATEGIES } from './project.ts';
 import { AttachRepository, BriefPanel } from './project-repo.tsx';
 import { SettingRow, SettingsGroup, errorPad, footerCss } from './settings-kit.tsx';
 
-const colCss = css({ display: 'grid', gap: t.s8, width: '100%', maxWidth: '820px', margin: '0 auto' });
+const colCss = css({ display: 'grid', gap: t.s8, width: '100%', maxWidth: '960px', margin: '0' });
 const valueCss = css({ fontSize: t.textMd, overflowWrap: 'anywhere', textAlign: 'right' });
 
 const dangerHead = css({ '& > header h2': { color: t.danger } });

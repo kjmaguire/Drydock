@@ -20,7 +20,7 @@ export const headerCss = css({
     gap: t.s2,
     minWidth: '0',
     fontSize: t.textLg,
-    fontWeight: '650',
+    fontWeight: '600',
     letterSpacing: '-0.01em',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -34,7 +34,7 @@ const pageHead = css({
   alignItems: 'flex-end',
   gap: t.s4,
   flexWrap: 'wrap',
-  '& h1': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0', fontSize: '28px', fontWeight: '700', letterSpacing: '-0.025em', lineHeight: '1.15' },
+  '& h1': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0', fontSize: t.textTitle, fontWeight: '700', letterSpacing: '-0.025em', lineHeight: '1.15' },
 });
 const headerIcon = css({ display: 'inline-flex', color: t.textMuted });
 const headerSub = css({ color: t.textMuted, fontSize: t.textMd, marginTop: '6px', maxWidth: '80ch' });
@@ -50,17 +50,21 @@ const wideCss = css({ maxWidth: 'none' });
  * given the id the page's h1 must carry, and replaces the default header and the children.
  */
 export function Page(
-  handle: Handle<{
-    title: RemixNode;
-    icon?: IconNode;
-    subtitle?: RemixNode;
-    actions?: RemixNode;
-    wide?: boolean;
-    flush?: boolean;
-    children?: RemixNode;
-    testId?: string;
-    head?: (titleId: string) => RemixNode;
-  }>,
+  handle: Handle<
+    {
+      title: RemixNode;
+      subtitle?: RemixNode;
+      actions?: RemixNode;
+      wide?: boolean;
+      flush?: boolean;
+      children?: RemixNode;
+      testId?: string;
+    } & (
+      // every page title carries the icon of what the page is; only a page that draws its own head (an agent) may leave it out
+      | { icon: IconNode; head?: undefined }
+      | { icon?: IconNode; head: (titleId: string) => RemixNode }
+    )
+  >,
 ) {
   const titleId = `page-title-${handle.id}`;
   return () => {
@@ -124,7 +128,7 @@ const sectionHead = css({
   alignItems: 'flex-end',
   justifyContent: 'space-between',
   gap: t.s3,
-  '& h2': { fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em', margin: '0' },
+  '& h2': { fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', margin: '0' },
   '& h3': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
   '& p': { color: t.textMuted, fontSize: t.textSm, marginTop: '3px' },
 });

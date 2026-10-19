@@ -9,6 +9,7 @@ export const t = {
   textLg: 'var(--text-lg)',
   textXl: 'var(--text-xl)',
   text2xl: 'var(--text-2xl)',
+  textTitle: 'var(--text-title)',
   s1: 'var(--space-1)',
   s2: 'var(--space-2)',
   s3: 'var(--space-3)',

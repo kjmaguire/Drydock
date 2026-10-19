@@ -83,7 +83,7 @@ const segCss = css({
     background: 'transparent',
     color: t.textMuted,
     fontSize: t.textSm,
-    fontWeight: '550',
+    fontWeight: '500',
     gap: '6px',
   },
   '& > button:hover': { background: 'transparent', color: t.text },
@@ -121,7 +121,7 @@ const columnCss = css({
   borderRadius: t.rXl,
   background: t.bgSidebar,
   minWidth: '0',
-  '& > h3': { display: 'flex', alignItems: 'center', gap: t.s2, padding: '4px 6px 2px', fontSize: t.textMd, fontWeight: '650' },
+  '& > h3': { display: 'flex', alignItems: 'center', gap: t.s2, padding: '4px 6px 2px', fontSize: t.textMd, fontWeight: '600' },
   '& > h3 > i': { width: '9px', height: '9px', borderRadius: '50%', display: 'inline-block', flex: 'none' },
   '& > h3 > em': { marginLeft: 'auto', fontStyle: 'normal', fontFamily: t.mono, fontSize: t.textXs, fontWeight: '500', color: t.textFaint },
   '& > ul': { display: 'grid', gap: '10px', margin: '0', padding: '0', listStyle: 'none' },
@@ -159,7 +159,7 @@ const cardCss = css({
   // above the card's link overlay, so the badge's tooltip can be reached
   '& .foot .chips': { position: 'relative', zIndex: '1', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: '0' },
   '& .foot a': { position: 'relative', zIndex: '1' },
-  '&[data-column="done"] h4': { color: t.textMuted, fontWeight: '550' },
+  '&[data-column="done"] h4': { color: t.textMuted, fontWeight: '500' },
 });
 
 const addCss = css({
@@ -171,7 +171,7 @@ const addCss = css({
   border: `1.5px dashed ${t.borderStrong}`,
   color: t.textMuted,
   fontSize: t.textSm,
-  fontWeight: '550',
+  fontWeight: '500',
   textDecoration: 'none',
   '&:hover': { color: t.text, borderColor: t.text, textDecoration: 'none' },
 });
@@ -348,6 +348,7 @@ export function TaskListScreen(handle: Handle) {
     return (
       <Page
         title="Tasks"
+        icon={ClipboardList}
         subtitle={subtitle}
         wide
         actions={

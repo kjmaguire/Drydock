@@ -103,7 +103,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
     const project = s.workspace.project;
     if (project && !projectHasRepo(project)) {
       return (
-        <Page title="Pull Requests" icon={GitPullRequest}>
+        <Page title="Pull requests" icon={GitPullRequest}>
           <Empty title="No repository yet" icon={GitPullRequest}>
             <p data-testid="pulls-no-repo">
               Attach a GitHub repository to see pull requests. <a href={routes.project.href()}>Open Project settings</a>
@@ -116,7 +116,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
     const taskId = currentId();
     const current = list.find((x) => x.id === taskId);
     return (
-      <Page title="Pull Requests" icon={GitPullRequest} subtitle={list.length > 0 ? `${list.length} open from tasks` : undefined}>
+      <Page title="Pull requests" icon={GitPullRequest} subtitle={list.length > 0 ? `${list.length} open from tasks` : undefined}>
         <Section title="Pull requests of tasks" description="In pull request mode a finished task is pushed and a PR is opened; its CI and reviews are read from GitHub. It is merged only after its CI passed (unless you decided otherwise: Project settings, CI before merge) and you approved.">
           <ErrorNote error={s.project.tasks.error} what="Could not load tasks" />
           <TaskTotalNotice>The pull requests of older tasks are not listed here.</TaskTotalNotice>

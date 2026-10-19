@@ -60,7 +60,7 @@ const pillCss = css({
   background: 'transparent',
   color: t.textMuted,
   fontSize: t.textMd,
-  fontWeight: '550',
+  fontWeight: '500',
   whiteSpace: 'nowrap',
   '&:hover': { background: t.bgHover, color: t.text },
   '&[data-state="active"]': { background: t.bgSurface, color: t.text, borderColor: t.border, boxShadow: t.shadowSm },

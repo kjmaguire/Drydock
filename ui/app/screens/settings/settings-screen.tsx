@@ -1,4 +1,4 @@
-// Settings and About: the theme, what this session is connected to, what agents inherit, telemetry, how updates work, and
+// Settings and about: the theme, what this session is connected to, what agents inherit, telemetry, how updates work, and
 // the features that are not built yet. A workspace screen: it works with no project.
 
 import { css, on, type Handle } from 'remix/component';
@@ -218,7 +218,7 @@ function NotBuilt(_handle: Handle) {
 
 export function SettingsScreen(_handle: Handle) {
   return () => (
-    <Page title="Settings and About" icon={Settings} subtitle="This computer">
+    <Page title="Settings and about" icon={Settings} subtitle="This computer">
       <div mix={settingsColumn}>
         <Group title="Appearance" icon={Palette} label="Appearance" description="Choose how Drydock looks. System follows the Windows light or dark setting.">
           <ThemePicker />

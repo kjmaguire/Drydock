@@ -68,7 +68,7 @@ const roomHead = css({
   minHeight: '68px',
   padding: `${t.s3} ${t.s6} ${t.s3} ${t.s5}`,
   borderBottom: `1px solid ${t.border}`,
-  '& h1': { margin: '0', fontSize: '19px', fontWeight: '650', lineHeight: '24px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& h1': { margin: '0', fontSize: t.textXl, fontWeight: '600', lineHeight: '24px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& .title': { display: 'grid', minWidth: '0', gap: '1px' },
   '& .title .line': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
 });

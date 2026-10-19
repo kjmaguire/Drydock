@@ -66,7 +66,7 @@ const projectCard = css({
   '& .crew .stack': { display: 'flex' },
   '& .crew .stack > *': { marginLeft: '-7px', boxShadow: `0 0 0 2px ${t.bgSurface}` },
   '& .crew .stack > :first-child': { marginLeft: '0' },
-  '& small[data-tone]': { marginTop: '4px', padding: '6px 10px', borderRadius: t.rMd, background: t.bgSidebar, fontWeight: '550' },
+  '& small[data-tone]': { marginTop: '4px', padding: '6px 10px', borderRadius: t.rMd, background: t.bgSidebar, fontWeight: '500' },
   '& small[data-tone="warn"]': { background: t.warningSoft, color: t.warning },
   '& small[data-tone="bad"]': { background: t.dangerSoft, color: t.danger },
 });
@@ -413,7 +413,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
 
           <Section title="App" testId="home-app">
             <ul mix={tileGrid} aria-label="App">
-              <AreaTile href={routes.settings.href()} icon={Map} title="Settings and About" blurb="Theme, updates, telemetry and this build" testId="home-settings" />
+              <AreaTile href={routes.settings.href()} icon={Map} title="Settings and about" blurb="Theme, updates, telemetry and this build" testId="home-settings" />
               <AreaTile href={routes.backups.href()} icon={HardDriveDownload} title="Backups" blurb="Scheduled copies of Drydock's data" testId="home-backups" />
               <AreaTile href={routes.data.href()} icon={Database} title="Export and import" blurb="Move a project to another computer" testId="home-data" />
               <AreaTile href={routes.license.href()} icon={KeyRound} title="License" blurb="Your license and what it allows" testId="home-license" />

@@ -45,7 +45,7 @@ describe('SettingsScreen', () => {
     const s = testServices(settingsClient());
     s.workspace.start();
     const r = mount(<SettingsScreen />, s);
-    expect(r.$('h1')!.textContent).toContain('Settings and About');
+    expect(r.$('h1')!.textContent).toContain('Settings and about');
     await waitFor(() => expect(r.container.textContent).toContain('human:kyle'), r);
     expect(r.container.textContent).toContain('C:\\Users\\kyle\\AppData\\Local\\Drydock');
     expect(r.container.textContent).toContain('fake');

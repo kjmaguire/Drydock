@@ -69,9 +69,9 @@ const srcCss = css({
   transition: `border-color ${t.fast} ${t.ease}, transform ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, textDecoration: 'none', transform: 'translateY(-1px)' },
   '& .ic': { display: 'grid', placeItems: 'center', width: '38px', height: '38px', marginBottom: t.s2, borderRadius: '12px' },
-  '& .n': { fontSize: '24px', fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' },
+  '& .n': { fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' },
   '& .n[data-empty]': { color: t.textFaint },
-  '& b': { fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em' },
+  '& b': { fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em' },
   '& small': { color: t.textMuted, fontSize: t.textSm, lineHeight: '1.45', overflowWrap: 'anywhere' },
 });
 
@@ -84,7 +84,7 @@ const panelTitle = css({
   gap: t.s2,
   margin: `0 0 ${t.s2}`,
   fontSize: t.textMd,
-  fontWeight: '650',
+  fontWeight: '600',
   '& a': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500' },
   '& a:hover': { color: t.text },
 });

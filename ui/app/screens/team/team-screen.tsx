@@ -39,7 +39,7 @@ const agentCard = css({
   textAlign: 'center',
   transition: `border-color ${t.fast} ${t.ease}, box-shadow ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, boxShadow: t.shadowSm },
-  '& h3': { marginTop: t.s2, fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& h3': { marginTop: t.s2, fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& h3 a': { color: t.text, textDecoration: 'none' },
   '& h3 a:hover': { textDecoration: 'underline' },
   '& .role': { color: t.textFaint, fontSize: t.textSm },
@@ -60,7 +60,7 @@ const agentCard = css({
   },
   '& .now > i': { flex: 'none', width: '7px', height: '7px', marginTop: '6px', borderRadius: '50%', display: 'block' },
   '& .spec': { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '2px 8px', marginTop: t.s2, fontSize: t.textSm, color: t.textMuted },
-  '& .spec b': { fontWeight: '550', color: t.text },
+  '& .spec b': { fontWeight: '500', color: t.text },
   '& .spec code': { fontSize: t.textSm },
   '& .purpose': {
     margin: `${t.s2} 0 0`,
@@ -189,6 +189,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
     return (
       <Page
         title="Crew"
+        icon={Users}
         subtitle={count}
         testId="crew"
         actions={

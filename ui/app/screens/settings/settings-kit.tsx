@@ -7,13 +7,13 @@ import { TriangleAlert } from 'lucide';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
 
-/** The page column: narrower than a list page, and a container for the two-column groups. */
+/** The page column: narrower than a list page, left-aligned under the title, and a container for the two-column groups. */
 export const settingsColumn = css({
   display: 'grid',
   gap: t.s8,
   width: '100%',
   maxWidth: '960px',
-  margin: '0 auto',
+  margin: '0',
   containerType: 'inline-size',
 });
 

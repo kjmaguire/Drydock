@@ -55,7 +55,7 @@ describe('command palette items', () => {
   });
 
   it('matches letters in order as a last resort and drops non-matches', () => {
-    const it0 = { id: 'x', group: 'Navigate' as const, label: 'Settings and About' };
+    const it0 = { id: 'x', group: 'Navigate' as const, label: 'Settings and about' };
     expect(score(it0, 'stab')).toBeGreaterThan(0);
     expect(score(it0, 'zzz')).toBe(0);
     expect(score(it0, 'settings')).toBeGreaterThan(score(it0, 'about'));

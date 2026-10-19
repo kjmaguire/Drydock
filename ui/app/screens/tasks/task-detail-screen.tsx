@@ -91,7 +91,7 @@ const propsCss = css({
   display: 'grid',
   gap: t.s4,
   fontSize: t.textMd,
-  '& h2': { fontSize: t.textXs, fontWeight: '650', color: t.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: t.mono },
+  '& h2': { fontSize: t.textXs, fontWeight: '600', color: t.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: t.mono },
   '& dl': { display: 'grid', gridTemplateColumns: '78px 1fr', gap: `10px ${t.s3}`, margin: '0', alignItems: 'center' },
   '& dt': { color: t.textFaint, fontSize: t.textSm },
   '& dd': { margin: '0', minWidth: '0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', overflowWrap: 'anywhere' },
@@ -102,7 +102,7 @@ const propsCss = css({
 const moreCss = css({
   display: 'grid',
   gap: t.s2,
-  '& h2': { fontSize: t.textXs, fontWeight: '650', color: t.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: t.mono },
+  '& h2': { fontSize: t.textXs, fontWeight: '600', color: t.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: t.mono },
   '& > a, & > button': {
     display: 'flex',
     alignItems: 'center',
@@ -166,6 +166,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
     const reload = () => detail.reload();
     return (
       <Page
+        icon={ClipboardList}
         title={
           <>
             <span mix={seqCss}>#{task.seq}</span> {task.title}

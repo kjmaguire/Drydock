@@ -38,7 +38,7 @@ const panelCss = css({
   borderRadius: t.rXl,
   border: `1px solid ${t.mentionBorder}`,
   background: t.mentionBg,
-  '& > h2': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em' },
+  '& > h2': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em' },
   '& > h2 svg': { color: t.warning },
 });
 

@@ -4,6 +4,7 @@
 // hub's pills (Tasks, Knowledge...), then the page, with the Rooms rail or the Settings rail beside it when the hub has one.
 
 import { css, navigate, type Handle, type RemixNode } from 'remix/component';
+import { PlugZap } from 'lucide';
 import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys } from '../lib/keys.ts';
 import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from '../lib/route.ts';
@@ -92,7 +93,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
       center = <Loading />;
     } else if (ws.projects.error && !ws.projects.data) {
       center = (
-        <Page title="Cannot reach the Drydock core">
+        <Page title="Cannot reach the Drydock core" icon={PlugZap}>
           <ErrorNote error={ws.projects.error} />
           <p>The page needs the core's address and token (open the link the core printed, which ends in ?token=...).</p>
         </Page>

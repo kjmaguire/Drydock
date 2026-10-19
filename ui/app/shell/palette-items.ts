@@ -55,7 +55,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.data.href(), 'Export and import'],
   [routes.support.href(), 'Support bundle'],
   [routes.license.href(), 'License'],
-  [routes.settings.href(), 'Settings and About', ['theme', 'preferences']],
+  [routes.settings.href(), 'Settings and about', ['theme', 'preferences']],
 ];
 
 /** How many recent chats the palette offers (and asks the core for). */

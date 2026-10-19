@@ -76,7 +76,7 @@ const crewCss = css({
     borderRadius: '14px',
     border: `1.5px dashed ${t.borderStrong}`,
     color: t.textMuted,
-    fontWeight: '550',
+    fontWeight: '500',
     fontSize: t.textMd,
   },
   '& .add:hover': { color: t.text, background: t.bgHover },
@@ -94,7 +94,7 @@ const heroCss = css({
   background: t.bgSurface,
   minWidth: '0',
   '& .who': { flex: '1', minWidth: '0' },
-  '& h1': { fontSize: '30px', fontWeight: '700', letterSpacing: '-0.03em', lineHeight: '1.15', overflowWrap: 'anywhere' },
+  '& h1': { fontSize: t.textTitle, fontWeight: '700', letterSpacing: '-0.03em', lineHeight: '1.15', overflowWrap: 'anywhere' },
   '& .purpose': { marginTop: '4px', color: t.textMuted, fontSize: t.textMd, lineHeight: '1.5', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' },
   '& .none': { marginTop: '4px', color: t.textFaint, fontSize: t.textMd, fontStyle: 'italic' },
   '& .chips': { display: 'flex', flexWrap: 'wrap', gap: t.s2, marginTop: t.s3 },
@@ -112,7 +112,7 @@ const chipCss = css({
   background: t.bgSurface,
   color: t.textMuted,
   fontSize: t.textSm,
-  fontWeight: '550',
+  fontWeight: '500',
   textDecoration: 'none',
   '&[data-live="true"]': { background: t.successSoft, borderColor: t.success, color: t.success },
   '& i': { display: 'block', width: '7px', height: '7px', borderRadius: '50%', background: 'currentColor' },
@@ -128,7 +128,7 @@ const panelCss = css({
   borderRadius: t.rXl,
   background: t.bgSurface,
   minWidth: '0',
-  '& > h2, & > h3': { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: t.s2, fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em' },
+  '& > h2, & > h3': { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: t.s2, fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em' },
   '& > h2 span, & > h3 span': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500', textAlign: 'right' },
   '& .quiet': { color: t.textMuted, fontSize: t.textMd },
 });
@@ -168,7 +168,7 @@ const statCss = css({
   padding: '12px 14px',
   borderRadius: '14px',
   background: t.bgSidebar,
-  '& b': { display: 'block', fontSize: '22px', fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.15' },
+  '& b': { display: 'block', fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.15' },
   '& small': { color: t.textFaint, fontSize: t.textXs },
 });
 
@@ -219,10 +219,10 @@ const taskRow = css({
   minWidth: '0',
   '&:hover': { borderColor: t.borderStrong, textDecoration: 'none' },
   '& .seq': { color: t.textFaint, fontVariantNumeric: 'tabular-nums', flex: 'none' },
-  '& .title': { flex: '1', minWidth: '0', fontWeight: '550', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  '& .title': { flex: '1', minWidth: '0', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .as': { color: t.textFaint, fontSize: t.textSm, flex: 'none' },
 });
-const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '550', color: t.textMuted, '&:hover': { color: t.text } });
+const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '500', color: t.textMuted, '&:hover': { color: t.text } });
 
 type TabName = 'overview' | 'skills' | 'memory' | 'history';
 

@@ -40,7 +40,7 @@ const itemCss = css({
   },
   '&[data-urgent="true"] > a': { borderColor: t.danger, background: t.dangerSoft },
   '& > a:hover': { textDecoration: 'none', transform: 'translateY(-1px)' },
-  '& .title': { fontWeight: '650', fontSize: t.textLg, letterSpacing: '-0.01em', minWidth: '0', overflowWrap: 'anywhere' },
+  '& .title': { fontWeight: '600', fontSize: t.textLg, letterSpacing: '-0.01em', minWidth: '0', overflowWrap: 'anywhere' },
   '& .meta': { gridColumn: '2', display: 'flex', alignItems: 'center', gap: t.s2, color: t.textMuted, fontSize: t.textSm },
   '& .detail, & .hint': { gridColumn: '2', color: t.textMuted, fontSize: t.textSm, lineHeight: '1.5' },
   '& .hint': { color: t.text, marginTop: '4px' },

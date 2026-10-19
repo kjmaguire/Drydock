@@ -34,7 +34,7 @@ const pillCss = css({
   borderRadius: t.rFull,
   color: t.textMuted,
   fontSize: t.textSm,
-  fontWeight: '550',
+  fontWeight: '500',
   textDecoration: 'none',
   whiteSpace: 'nowrap',
   border: '1px solid transparent',
@@ -132,7 +132,7 @@ const railCss = css({
 });
 // the Settings rail's labels are short: it is narrower than the Rooms rail, so the page beside it keeps its room
 const settingsRailCss = css({ width: '232px', gap: '0' });
-const groupHead = css({ margin: `${t.s5} ${t.s2} ${t.s1}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '650', letterSpacing: '0.06em', textTransform: 'uppercase', '&:first-child': { marginTop: '0' } });
+const groupHead = css({ margin: `${t.s5} ${t.s2} ${t.s1}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', '&:first-child': { marginTop: '0' } });
 const listCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
 const itemCss = css({
   display: 'flex',
@@ -197,7 +197,7 @@ export function SettingsRail(handle: Handle<{ route: Route }>) {
           <RailLink href={routes.routing.href()} current={at('routing')} testId="nav-routing" label="Routing" />
         </Group>
         <Group title="App">
-          <RailLink href={routes.settings.href()} current={at('settings')} testId="nav-settings-about" label="Settings and About" />
+          <RailLink href={routes.settings.href()} current={at('settings')} testId="nav-settings-about" label="Settings and about" />
           <RailLink href={routes.license.href()} current={at('license')} testId="nav-license" label="License" />
           <RailLink href={routes.backups.href()} current={at('backups')} testId="nav-backups" label="Backups" />
           <RailLink href={routes.data.href()} current={at('data')} testId="nav-data" label="Export and import" />

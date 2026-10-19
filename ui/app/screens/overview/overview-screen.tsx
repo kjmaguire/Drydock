@@ -4,7 +4,7 @@
 // scan's findings, each a link to its page. Everything here is a projection of the core's reads; nothing is approved here.
 
 import { css, type Handle } from 'remix/component';
-import { ArrowRight, Inbox, Sparkles } from 'lucide';
+import { ArrowRight, Inbox, LayoutDashboard, Sparkles } from 'lucide';
 import type { Agent, NeedsYouItem, Task } from '../../api/types.ts';
 import { agentName, presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -36,9 +36,9 @@ const needCard = css({
   borderRadius: t.rXl,
   border: `1px solid ${t.mentionBorder}`,
   background: t.mentionBg,
-  '& .kind': { fontSize: t.textXs, fontWeight: '650', letterSpacing: '0.06em', textTransform: 'uppercase', color: t.warning },
+  '& .kind': { fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', color: t.warning },
   '& .head': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0' },
-  '& h3': { fontSize: t.textLg, fontWeight: '650', letterSpacing: '-0.01em', overflowWrap: 'anywhere' },
+  '& h3': { fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', overflowWrap: 'anywhere' },
   '& p': { color: t.textMuted, fontSize: t.textSm, lineHeight: '1.5', overflowWrap: 'anywhere' },
   '& .acts': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
   '&[data-urgent="true"]': { borderColor: t.danger, background: t.dangerSoft },
@@ -61,7 +61,7 @@ const crewCard = css({
   textDecoration: 'none',
   transition: `border-color ${t.fast} ${t.ease}, transform ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, textDecoration: 'none', transform: 'translateY(-1px)' },
-  '& .name': { marginTop: t.s2, fontSize: t.textMd, fontWeight: '650' },
+  '& .name': { marginTop: t.s2, fontSize: t.textMd, fontWeight: '600' },
   '& .role': { color: t.textFaint, fontSize: t.textSm },
   '& .act': {
     display: 'flex',
@@ -95,7 +95,7 @@ const motionRow = css({
   minWidth: '0',
   '&:hover': { borderColor: t.borderStrong, textDecoration: 'none' },
   '& .seq': { color: t.textFaint, fontVariantNumeric: 'tabular-nums', flex: 'none' },
-  '& .title': { flex: '1', minWidth: '0', fontWeight: '550', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  '& .title': { flex: '1', minWidth: '0', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 });
 
 const statsCss = css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: t.s2 });
@@ -103,12 +103,12 @@ const statCss = css({
   padding: '12px 14px',
   borderRadius: t.rMd,
   background: t.bgSidebar,
-  '& b': { display: 'block', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1' },
+  '& b': { display: 'block', fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1' },
   '& small': { color: t.textFaint, fontSize: t.textXs },
 });
-const panelTitle = css({ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: t.s2, margin: `0 0 ${t.s3}`, fontSize: t.textMd, fontWeight: '650', '& span': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500' } });
+const panelTitle = css({ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: t.s2, margin: `0 0 ${t.s3}`, fontSize: t.textMd, fontWeight: '600', '& span': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500' } });
 const roomsList = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
-const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '550', color: t.textMuted, '&:hover': { color: t.text } });
+const moreLink = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: t.textSm, fontWeight: '500', color: t.textMuted, '&:hover': { color: t.text } });
 
 // Insights: a 2x2 of linked numbers, each with the words that say what it measures
 const insightGrid = css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: t.s2 });
@@ -124,7 +124,7 @@ const insightCss = css({
   minWidth: '0',
   '&:hover': { background: t.bgHover, textDecoration: 'none' },
   '& small': { color: t.textFaint, fontSize: t.textXs, lineHeight: '1.35' },
-  '& b': { display: 'block', fontSize: '22px', fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' },
+  '& b': { display: 'block', fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' },
   '& b[data-na]': { color: t.textFaint },
 });
 
@@ -199,7 +199,7 @@ export function OverviewScreen(handle: Handle) {
     ];
     const taskOf = (x: Task) => x;
     return (
-      <Page title={greeting(new Date().getHours())} subtitle={`${project?.name ?? 'Project'} · ${numbers.join(' · ')}`} wide testId="overview">
+      <Page title={greeting(new Date().getHours())} icon={LayoutDashboard} subtitle={`${project?.name ?? 'Project'} · ${numbers.join(' · ')}`} wide testId="overview">
         <TaskTotalNotice>The tasks under way and the merged counts below are counted from these tasks only.</TaskTotalNotice>
         <div mix={layoutCss}>
           <div mix={colCss}>

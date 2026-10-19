@@ -155,7 +155,7 @@ describe('PullsScreen', () => {
     const githubIssues = recorder<[string, string?], GitHubIssue[]>(() => Promise.reject(new Error('the project has no GitHub origin')));
     const r = mount(<PullsScreen />, svc({ githubIssues }));
     await waitFor(() => expect(r.container.textContent).toContain('No task has a pull request'), r);
-    expect(r.$('h1')!.textContent).toContain('Pull Requests');
+    expect(r.$('h1')!.textContent).toContain('Pull requests');
     await loadable(r);
     await r.act(() => type(byLabel(r.container, 'Labels (comma separated, optional)'), ' bug '));
     await r.act(() => byText(r.container, 'button', 'Load open issues').click());
