@@ -204,7 +204,7 @@ describe('Library page', () => {
     expect(r.$('[data-testid="cli-gateway"]')).toBeNull();
   });
 
-  it('has no skills section of its own: skills have their own page, linked from the intro', async () => {
+  it('has no skills section of its own: skills have their own page, linked from a button of the page', async () => {
     const r = show();
     await one(r, '[data-testid="lib-mcp-empty"], [aria-label="MCP servers"]');
     expect(r.$('[data-testid="library-skills"]')).toBeNull();

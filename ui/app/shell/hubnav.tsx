@@ -202,6 +202,7 @@ export function SettingsRail(handle: Handle<{ route: Route }>) {
           <RailLink href={routes.backups.href()} current={at('backups')} testId="nav-backups" label="Backups" />
           <RailLink href={routes.data.href()} current={at('data')} testId="nav-data" label="Export and import" />
           <RailLink href={routes.support.href()} current={at('support')} testId="nav-support" label="Support bundle" />
+          <RailLink href={routes.guide.href()} current={at('guide')} testId="nav-guide" label="Guide" />
         </Group>
       </nav>
     );

@@ -9,6 +9,7 @@ import { Avatar, Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { listCard, Section } from '../../ui/layout.tsx';
+import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
 
 const rowCss = css({ flexWrap: 'wrap' });
@@ -33,7 +34,7 @@ export function CliGateway(handle: Handle) {
         label="Agent CLIs and the MCP gateway"
         testId="cli-gateway-section"
         title="MCP gateway"
-        description="Which agent CLIs receive the MCP servers you give an agent. The servers reach an agent through one local gateway. Claude Code is verified with real runs. For the other CLIs, Drydock hands the gateway over when the session starts, but no real run has shown yet that each CLI uses it, so it stays off until you allow it here."
+        description={<>Which agent CLIs receive the MCP servers you give an agent. Claude Code is verified; the others stay off until you allow them. <LearnMore topic="connect-cli" /></>}
       >
         <ErrorNote error={status.error ?? act.error} what="MCP gateway" />
         {status.data && !status.data.running ? (

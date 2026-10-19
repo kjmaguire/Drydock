@@ -13,7 +13,7 @@ import type { AdapterInfo } from '../../api/types.ts';
 import { skipsApprovals } from '../../lib/permission.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -36,7 +36,6 @@ import { serverBlurb, serverState, templateBlurb, templateState } from './tiles.
 type Say = (message: string) => void;
 type Fail = (e: Error | undefined) => void;
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 const sectionsCss = css({ display: 'grid', gap: t.s6, minWidth: '0' });
 const noteCss = css({ '&:empty': { display: 'none' } });
 
@@ -437,14 +436,15 @@ export function LibraryScreen(handle: Handle) {
         title="Library"
         icon={Library}
         wide
+        guide="integrations"
+        actions={
+          <a href={routes.librarySkills.href()} mix={buttonStyle('ghost', 'sm')} data-testid="library-skills-link">
+            Skills
+          </a>
+        }
         subtitle={servers.data && templates.data ? `${libServers.length} server${libServers.length === 1 ? '' : 's'} · ${tpls.length} template${tpls.length === 1 ? '' : 's'}` : undefined}
       >
         <div mix={sectionsCss}>
-          <p mix={introCss}>
-            Connect an MCP server or define a team member once, here, for the whole workspace. Click a tile to see its tools and settings. A project gets a server on its own
-            Integrations page, where you also choose which of its agents may use it, and a team member from a template on its Team page: a project only ever reaches the servers it
-            was given, and an agent only the servers you gave it. Skills have a page of their own: <a href={routes.librarySkills.href()}>Skills</a>.
-          </p>
           <div role="status" aria-live="polite" data-testid="library-note" mix={noteCss}>
             {note ? <Notice tone="ok">{note}</Notice> : null}
           </div>

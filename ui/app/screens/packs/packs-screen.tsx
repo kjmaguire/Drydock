@@ -513,11 +513,7 @@ export function PacksScreen(handle: Handle) {
     const busy = act.busy !== '';
     const projectId = pid() ?? '';
     return (
-      <Page title="Expert packs" icon={BookOpen} subtitle={packs.data ? `${list.length} installed` : undefined}>
-        <p mix={muted}>
-          A pack is a body of reference text (documentation, standards) that agents search and cite. Everything inside a pack is outside text: it is shown here
-          as inert text, passages that look like instructions are quarantined, and nothing in a pack can grant a permission or make a decision.
-        </p>
+      <Page title="Expert packs" icon={BookOpen} subtitle={packs.data ? `${list.length} installed` : undefined} guide="skills">
         <ErrorNote error={packs.error ?? act.error} what="Packs" />
         {packs.loading && !packs.data ? <Loading /> : null}
         {packs.data && list.length === 0 ? (
@@ -597,7 +593,7 @@ export function PacksScreen(handle: Handle) {
 
         <Section
           title="Install a pack"
-          description="Paste a pack manifest (YAML). A source can be a local folder (type local_dir with a path), a list of URLs or a site. Installing does not fetch anything; use Refresh."
+          description="Paste a pack manifest (YAML). Installing fetches nothing yet: use Refresh."
         >
           <form
             mix={[

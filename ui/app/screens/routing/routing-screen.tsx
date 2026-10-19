@@ -68,7 +68,7 @@ export function PreviewPanel(handle: Handle) {
     <Section
       title="Preview a decision"
       label="Preview a routing decision"
-      description="A dry run with the same rules, providers, quotas and budgets as a real decision. Nothing is recorded and no quota is taken."
+      description="A dry run with the same rules as a real decision. Nothing is recorded and no quota is taken."
     >
       <div mix={[card, resultCss]}>
         <div mix={previewForm}>
@@ -213,7 +213,7 @@ export function CheapModelPanel(handle: Handle) {
       <Section
         title="Cheap model selection"
         label="Cheap model selection"
-        description="For each enabled cheap, private provider Drydock can test the cheapest few models with a small tool-call check and pick a default and a fallback. The check sends a few synthetic requests to the provider and can cost a little."
+        description="Tests the cheapest few models of each cheap, private provider with a small tool-call check. It can cost a little."
       >
         <ErrorNote error={providers.error ?? act.error} what="Selection failed" />
         {providers.data && cheap.length === 0 ? (
@@ -265,8 +265,7 @@ export function CheapModelPanel(handle: Handle) {
             <p class="msg">
               <Icon icon={TriangleAlert} size={15} />
               <span>
-                The startup probe sends a few synthetic requests to each cheap private provider every time Drydock starts. That can cost a little. It is off unless you
-                turn it on.
+                The startup probe makes a few test requests every time Drydock starts. That can cost a little. It is off unless you turn it on.
               </span>
             </p>
             <div class="row">
@@ -296,18 +295,9 @@ export function CheapModelPanel(handle: Handle) {
   };
 }
 
-const introCss = css({ color: t.textMuted, fontSize: t.textMd, maxWidth: '820px' });
-
 export function RoutingScreen(_handle: Handle) {
   return () => (
-    <Page title="Routing" icon={RouteIcon} subtitle="Model routing">
-      <p mix={introCss}>
-        The router chooses the model for every turn of an agent whose human listed the models it may choose between (Team, Edit): its task work and
-        reviews, its replies in the room, and the template steps it takes (the spec, the tests written first, the design, the security review). It
-        chooses only among that agent&apos;s own models and never picks another agent&apos;s CLI. Other agents use their configured model. The router also
-        decides for the app&apos;s own model calls. Every turn records a decision so outcomes can be compared; where a decision was static, the explanation
-        says so.
-      </p>
+    <Page title="Routing" icon={RouteIcon} subtitle="Which model answers each turn" guide="routing-rules">
       <RulesPanel />
       <PreviewPanel />
       <CheapModelPanel />

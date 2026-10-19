@@ -306,8 +306,7 @@ function ImportSection(handle: Handle) {
         label="Import a project"
         description={
           <>
-            Importing creates a <strong>new</strong> project linked to a local Git repository you choose (an archive never contains your repository). Everything that comes in
-            is untrusted until you decide. Importing starts nothing.
+            Importing creates a <strong>new</strong> project linked to a repository you choose. What comes in is untrusted until you decide; nothing starts.
           </>
         }
       >

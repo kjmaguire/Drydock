@@ -5,7 +5,7 @@
 import { css, ref, type Handle } from 'remix/component';
 import { ArrowLeft, Workflow } from 'lucide';
 import type { RunExplanation } from '../../api/runClient.ts';
-import { formatCost, formatDateTime, formatTime } from '../../lib/format.ts';
+import { formatCost, formatDateTime, formatTime, statusLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
@@ -111,7 +111,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
           <>
             {r ? (
               <Badge tone={runTone(r.status)} testId="run-status">
-                {r.status}
+                {statusLabel(r.status)}
               </Badge>
             ) : null}
             <a href={routes.task.href({ id: taskId })} mix={buttonStyle('ghost', 'sm')}>
@@ -137,13 +137,14 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                   <code>{r.workflow}</code>
                 </dd>
               </div>
-              <div>
-                <dt>Status</dt>
-                <dd>
-                  <Badge tone={runTone(r.status)}>{r.status}</Badge>
-                  {r.failedReason ? <span mix={muted}>{r.failedReason}</span> : null}
-                </dd>
-              </div>
+              {r.failedReason ? (
+                <div>
+                  <dt>Why it failed</dt>
+                  <dd>
+                    <span mix={muted}>{r.failedReason}</span>
+                  </dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Started</dt>
                 <dd title={formatDateTime(r.created)}>{formatTime(r.created)}</dd>

@@ -19,11 +19,10 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   await expect(sign).toContainText('not installed');
   await expect(sign.getByRole('button')).toHaveCount(0);
   // the claim is about the gh route only, and the page says where the other sign-ins and tokens are kept (audit L45)
-  await expect(page.getByTestId('gh-signin')).toContainText('On this route it reads and stores no GitHub token');
-  await expect(page.getByTestId('gh-about')).toContainText('GitHub MCP server in the Library, under MCP servers');
+  await expect(page.getByTestId('gh-signin')).toContainText('On this route Drydock reads and stores no GitHub token');
 
-  // what it does, the connection with the gh MCP server (the same panel as the Integrations tile), and the runners
-  await expect(page.getByTestId('gh-about')).toContainText('Branch protection is respected and never bypassed');
+  // what it does is in the Guide; here the connection with the gh MCP server (the same panel as the Integrations tile) and the runners
+  await expect(page.getByTestId('github-page').getByTestId('learn-more')).toHaveAttribute('href', '/guide/github');
   const connection = page.getByTestId('gh-connection');
   await expect(connection.locator('[data-testid="integration"][data-kind="github"]')).toBeVisible();
   await expect(connection.getByRole('button', { name: 'Use the GitHub CLI sign-in' })).toBeVisible();

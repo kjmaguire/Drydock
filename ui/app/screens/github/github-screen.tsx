@@ -1,6 +1,6 @@
 // GitHub, one settings page (on the owner's request, 2026-10-16): everything Drydock does with GitHub and the sign-in it does
 // it with. Your gh sign-in (github.status: the GitHub CLI's own login, which Drydock uses and never stores), what Drydock does
-// with it in plain words (docs/github.md), the GitHub connection for app sync and the GitHub MCP server for agents (the same
+// with it (the Guide's GitHub topic explains the rest), the GitHub connection for app sync and the GitHub MCP server for agents (the same
 // panel the GitHub tile on Integrations opens: VendorDetail, one implementation), and which repositories have CI runners on
 // this PC (runners.get; adding and managing them stays on Connections). A workspace page: it works with no project.
 
@@ -9,7 +9,7 @@ import { ExternalLink, GitPullRequest, RefreshCw } from 'lucide';
 import { routes } from '../../routes.ts';
 import { query, services } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
-import { Badge, faint, mono, muted } from '../../ui/data.tsx';
+import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, listCard, Page, Section } from '../../ui/layout.tsx';
@@ -20,15 +20,6 @@ import { VendorDetail } from '../integrations/integrations-screen.tsx';
 const columnCss = css({ display: 'grid', gap: t.s8, minWidth: '0' });
 const cardCss = css({ display: 'grid', gap: t.s3, minWidth: '0', '& p': { margin: '0' } });
 const toolbar = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' });
-const doesCss = css({
-  display: 'grid',
-  gap: t.s2,
-  margin: '0',
-  paddingLeft: '20px',
-  fontSize: t.textMd,
-  '& li': { lineHeight: '1.5' },
-  '& strong': { fontWeight: '600' },
-});
 const slotRow = css({ flexWrap: 'wrap', '& .repo': { fontWeight: '600' }, '& .kinds': { display: 'flex', gap: t.s2, flexWrap: 'wrap', marginLeft: 'auto' } });
 
 const KIND_NAME = { windows: 'Windows', linux: 'Linux' } as const;
@@ -44,7 +35,7 @@ function SignIn(handle: Handle) {
         title="Your sign-in"
         label="Your sign-in"
         testId="gh-signin"
-        description="Drydock works on GitHub through the GitHub CLI (gh) that you installed and signed in to. On this route it reads and stores no GitHub token: gh keeps the sign-in. A GitHub MCP server, or a Sign in with GitHub, that you connect below is separate and keeps its own sign-in or token."
+        description="Uses the gh sign-in you made. On this route Drydock reads and stores no GitHub token; a connection or MCP server below keeps its own, in the Windows credential store, never shown."
         actions={
           <Button size="sm" icon={RefreshCw} disabled={gh.loading} mix={on('click', () => gh.reload())} title="Ask gh again whether it is signed in">
             {gh.loading ? 'Checking...' : 'Check again'}
@@ -59,13 +50,12 @@ function SignIn(handle: Handle) {
               gh is signed in as <strong data-testid="gh-login">{st.login}</strong>. Drydock pushes branches, opens pull requests and reads CI with this sign-in.
             </Notice>
           ) : st && !st.installed ? (
-            <Notice tone="warn" role="status" title="The GitHub CLI (gh) is not installed.">
-              {st.error ? `${st.error} ` : ''}
-              Install it from{' '}
+            <Notice tone="warn" role="status" title="GitHub CLI not found">
+              {st.error ? st.error : 'Install the GitHub CLI and run gh auth login.'}{' '}
               <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document>
                 cli.github.com <Icon icon={ExternalLink} size={11} />
-              </a>{' '}
-              and run <code>gh auth login</code>. Until then a project can still work on a local folder; pull requests and GitHub repositories need gh.
+              </a>
+              . Until then a project can still work on a local folder; pull requests and GitHub repositories need gh.
             </Notice>
           ) : st?.unreachable ? (
             <Notice tone="warn" role="status" title="GitHub did not answer in time.">
@@ -77,56 +67,10 @@ function SignIn(handle: Handle) {
               Run <code>gh auth login</code> in a terminal. Drydock has no sign-in button for gh, so gh&apos;s own credentials never pass through it.
             </Notice>
           ) : null}
-          <p mix={faint}>
-            A sign-in is checked by asking GitHub who it is (gh api /user). Scopes are not checked: gh asks for repo and read:org when you sign in, and that is what Drydock needs.
-          </p>
         </div>
       </Section>
     );
   };
-}
-
-/** What Drydock does with GitHub, in plain words (docs/github.md), so the page reads as a whole and not as a pile of controls. */
-function WhatItDoes() {
-  return () => (
-    <Section title="What Drydock does with GitHub" label="What Drydock does with GitHub" testId="gh-about">
-      <div mix={[card, cardCss]}>
-        <ul mix={doesCss}>
-          <li>
-            <strong>Pushes a task's branch and opens its pull request</strong> with your gh sign-in, in a project whose delivery mode is pull requests. The description comes from the task:
-            its summary, acceptance criteria, evidence and the reviewers' verdicts. A retry finds the open pull request of the branch instead of opening a second one.
-          </li>
-          <li>
-            <strong>Waits for CI</strong> on the pushed commit and hands a failing job's log back to the worker, which fixes it and pushes again. No CI reported is a question for you in
-            Needs you, never a pass; a repository without CI is something only you can declare, in Project settings.
-          </li>
-          <li>
-            <strong>Reads the review</strong> on the pull request and feeds a collaborator's requested changes back to the task.
-          </li>
-          <li>
-            <strong>Merges only after you approve</strong>, through GitHub, with the project's merge method, and only while the pull request's head is still the commit you reviewed.
-            Branch protection is respected and never bypassed; auto-merge is never enabled.
-          </li>
-          <li>
-            <strong>Imports a repository's issues</strong> as tasks of a project once you assign the GitHub connection to it (below, then on the project's Integrations page).
-          </li>
-          <li>
-            <strong>Gives agents GitHub's tools</strong> through the GitHub MCP server, once you connect it here and grant it to a project's agents; every tool that writes waits for your
-            approval, call by call.
-          </li>
-          <li>
-            <strong>Runs your private repositories' CI on this PC</strong> when you add a runner on Connections. Runners only run jobs and report to GitHub.
-          </li>
-          <li>
-            <strong>Keeps no GitHub token on the GitHub CLI route.</strong> Pushing, pull requests, CI, reviews and merging go through gh with your own sign-in, and Drydock never sees
-            its token. Two things you connect yourself do keep a sign-in or token in the Windows credential store, never shown: a Sign in with GitHub on the connection below, and the
-            GitHub MCP server in the Library, under MCP servers. Disconnect either one to delete what it keeps. Everything read from GitHub (issues, comments, logs) is treated as
-            untrusted text.
-          </li>
-        </ul>
-      </div>
-    </Section>
-  );
 }
 
 /** Which repositories have a CI runner on this PC, each runner's state in a word or two, and the way to Connections to manage them. */
@@ -188,15 +132,14 @@ function Runners(handle: Handle) {
 /** The GitHub settings page. */
 export function GitHubScreen() {
   return () => (
-    <Page title="GitHub" icon={GitPullRequest} testId="github-page" subtitle="What Drydock does on GitHub, and the sign-in it does it with">
+    <Page title="GitHub" icon={GitPullRequest} testId="github-page" subtitle="Your gh sign-in, the connection and the CI runners" guide="github">
       <div mix={columnCss}>
         <SignIn />
-        <WhatItDoes />
         <Section
           title="Connection and agent tools"
           label="Connection and agent tools"
           testId="gh-connection"
-          description="The GitHub connection for app sync (a repository's issues into the projects you assign) and GitHub's MCP server for agents. This is the GitHub tile of the Integrations page, in one place with the rest."
+          description="App sync (a repository's issues into the projects you assign) and GitHub's MCP server for agents."
         >
           <VendorDetail vendor="github" />
           <p mix={[muted, toolbar]}>

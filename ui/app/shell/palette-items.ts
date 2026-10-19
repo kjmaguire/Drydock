@@ -4,6 +4,8 @@
 import type { Agent, Room, Task } from '../api/types.ts';
 import { chatTitle, type ChatListItem } from '../api/chatClient.ts';
 import { parseRoute } from '../lib/route.ts';
+import { topicPath } from '../screens/guide/model.ts';
+import { GUIDE_TOPICS } from '../screens/guide/topics.ts';
 import { routes } from '../routes.ts';
 
 export type Group = 'Navigate' | 'Chats' | 'Tasks' | 'Agents' | 'Actions';
@@ -56,6 +58,9 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.support.href(), 'Support bundle'],
   [routes.license.href(), 'License'],
   [routes.settings.href(), 'Settings and about', ['theme', 'preferences']],
+  [routes.guide.href(), 'Guide', ['help', 'documentation', 'how to', 'learn']],
+  // every Guide topic is found by its title and keywords: "how do I scan a repository" opens the topic
+  ...GUIDE_TOPICS.map((g): [string, string, string[]] => [topicPath(g.id), `Guide: ${g.title}`, ['help', ...(g.keywords ?? [])]]),
 ];
 
 /** How many recent chats the palette offers (and asks the core for). */

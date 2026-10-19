@@ -122,6 +122,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
         title="Integrations"
         icon={Blocks}
         wide
+        guide="integrations"
         subtitle={project.name}
         testId="project-integrations"
         actions={
@@ -137,13 +138,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
             label="MCP servers in this project"
             testId="project-mcp"
             title="MCP servers"
-            description={
-              <>
-                The connected servers {project.name} has, and which of its agents may use each one. Servers are connected once for the workspace, on the{' '}
-                <a href={routes.integrations.href()}>Integrations</a> page and in the <a href={routes.library.href()}>Library</a>. A server nobody was granted is never reached,
-                and every tool not marked read-only waits for your approval, call by call.
-              </>
-            }
+            description="Which of this project's agents may use each connected server. A server nobody was granted is never reached; every tool not marked read-only waits for your approval."
           >
             <ErrorNote error={servers.error} what="Could not load the servers" />
             {servers.loading && !servers.data ? <Loading /> : null}

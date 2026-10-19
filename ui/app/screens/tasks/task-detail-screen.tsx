@@ -6,7 +6,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { Check, ClipboardList, Columns2, FileDiff, Flag, ListChecks, MessagesSquare, ScrollText, SquareTerminal, Workflow } from 'lucide';
 import type { Agent, PresenceState, Task, TaskDetail, UsageRow } from '../../api/types.ts';
-import { agentName, formatCost, formatDateTime, presenceFor } from '../../lib/format.ts';
+import { agentName, formatCost, formatDateTime, presenceFor, statusLabel } from '../../lib/format.ts';
 import { LEAD_ORIGIN_WAITS, leadStep } from '../../lib/task-origin.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -404,7 +404,7 @@ function Properties(handle: Handle<{ detail: TaskDetail; agents: readonly Agent[
             <dl>
               <dt>Run</dt>
               <dd>
-                <code>{d.run.status}</code>
+                {statusLabel(d.run.status)}
               </dd>
               <dt>Workflow</dt>
               <dd>

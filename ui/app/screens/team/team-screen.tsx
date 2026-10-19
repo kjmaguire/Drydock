@@ -9,18 +9,20 @@ import { presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
-import { Avatar, Badge, kv, muted, presenceColor } from '../../ui/data.tsx';
+import { Avatar, Badge, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Page, Section, card, cardGrid } from '../../ui/layout.tsx';
+import { Page, Section, card, tableCard } from '../../ui/layout.tsx';
+import { dataTable } from '../../ui/table.tsx';
 import { t } from '../../ui/tokens.ts';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { AddPrebuilt } from './add-prebuilt.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
-import { doing, presenceWords, purposeExcerpt, runsWhere, sortAdapters } from './team.ts';
+import { CAP_LABEL, doing, presenceWords, purposeExcerpt, runsWhere, sortAdapters } from './team.ts';
 
 const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(272px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
 
@@ -74,7 +76,6 @@ const agentCard = css({
     textAlign: 'left',
     width: '100%',
   },
-  '& .nopurpose': { margin: `${t.s2} 0 0`, fontSize: t.textSm, color: t.textFaint, fontStyle: 'italic' },
   '& .actions': { display: 'flex', alignItems: 'center', gap: '2px', width: '100%', marginTop: 'auto', paddingTop: t.s3 },
   '& .actions .end': { marginLeft: 'auto', display: 'flex', gap: '2px' },
 });
@@ -82,69 +83,52 @@ const agentCard = css({
 const addCard = css({ display: 'grid', gap: t.s4, scrollMarginTop: t.s4, borderRadius: t.rXl });
 const divider = css({ height: '1px', background: t.border, margin: '0' });
 
-const adapterCss = css({
-  display: 'grid',
-  gap: t.s3,
-  alignContent: 'start',
-  borderRadius: t.rXl,
-  '& header': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
-  '& h3': { fontSize: t.textMd, fontWeight: '600', margin: '0', display: 'inline-flex', alignItems: 'center', gap: '6px' },
-  '& .note': { margin: '0', fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere' },
-  '& .err': { margin: '0', fontSize: t.textSm, color: t.danger, overflowWrap: 'anywhere' },
-  '& summary': { fontSize: t.textSm },
+const adapterName = css({ whiteSpace: 'nowrap', '& svg': { verticalAlign: '-2px', marginRight: '6px' } });
+const adaptersCss = css({
+  '& .note': { margin: `${t.s1} 0 0`, fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere' },
+  '& .err': { margin: `${t.s1} 0 0`, fontSize: t.textSm, color: t.danger, overflowWrap: 'anywhere' },
 });
 
-function AdapterCard(handle: Handle<{ a: AdapterInfo }>) {
+/** One row of the adapters table: what was found, and how much of what Drydock can use of it was verified (the list is one click away). */
+function AdapterRow(handle: Handle<{ a: AdapterInfo }>) {
   return () => {
     const a = handle.props.a;
     const d = a.detection;
+    const verified = CAP_LABEL.filter(([k]) => a.capabilities?.[k] === true).length;
+    const problems = [a.error, ...(d.problems ?? [])].filter((x): x is string => !!x);
     return (
-      <article mix={[card, adapterCss]} data-testid="adapter" data-adapter={a.id}>
-        <header>
-          <h3>
-            <Icon icon={Cpu} size={14} />
-            {a.id}
-          </h3>
+      <tr data-testid="adapter" data-adapter={a.id}>
+        <th scope="row" mix={adapterName}>
+          <Icon icon={Cpu} size={14} />
+          {a.id}
+        </th>
+        <td>
           <Badge tone={d.status === 'ready' ? 'ok' : 'warn'}>{d.status}</Badge>
-          <span mix={muted} style={{ fontSize: 'var(--text-sm)', marginLeft: 'auto' }}>
-            {d.installed ? 'installed' : 'not installed'}
-          </span>
-        </header>
-        <dl mix={kv}>
-          {d.version ? (
-            <>
-              <dt>Version</dt>
-              <dd>{d.version}</dd>
-            </>
-          ) : null}
+        </td>
+        <td class="nowrap">{d.installed ? (d.version ?? 'installed') : 'not installed'}</td>
+        <td class="nowrap">{d.authenticated === true ? 'yes' : d.authenticated === false ? 'no' : 'not reported'}</td>
+        <td>
+          <Disclosure summary={`${verified} of ${CAP_LABEL.length} verified`}>
+            <CapabilityList caps={a.capabilities} />
+          </Disclosure>
           {d.path ? (
-            <>
-              <dt>Path</dt>
-              <dd>
-                <code>{d.path}</code>
-              </dd>
-            </>
+            <p class="note">
+              <code>{d.path}</code>
+            </p>
           ) : null}
-          <dt>Signed in</dt>
-          <dd>{d.authenticated === true ? 'yes' : d.authenticated === false ? 'no' : 'not reported'}</dd>
-        </dl>
-        {d.authDetail ? <p class="note">{d.authDetail}</p> : null}
-        {a.error ? <p class="err">{a.error}</p> : null}
-        {(d.problems ?? []).map((p, i) => (
-          <p key={i} class="err">
-            {p}
-          </p>
-        ))}
-        {d.installHint ? (
-          <p class="note">
-            Install guidance (Drydock never runs this for you): <code>{d.installHint}</code>
-          </p>
-        ) : null}
-        <details>
-          <summary>Capabilities (absent means not verified)</summary>
-          <CapabilityList caps={a.capabilities} />
-        </details>
-      </article>
+          {d.authDetail ? <p class="note">{d.authDetail}</p> : null}
+          {problems.map((p, i) => (
+            <p key={i} class="err">
+              {p}
+            </p>
+          ))}
+          {d.installHint ? (
+            <p class="note">
+              Install: <code>{d.installHint}</code>
+            </p>
+          ) : null}
+        </td>
+      </tr>
     );
   };
 }
@@ -203,7 +187,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
           </>
         }
       >
-        <Section title="Your crew" description="Each agent is a real coding CLI with a role. A task needs a worker and a different agent as reviewer.">
+        <Section title="Agents" description="Each agent is a real coding CLI with a role. A task needs a worker and a different agent as reviewer.">
           <ErrorNote error={agentsQ.error} what="Could not list agents" />
           <ErrorNote error={act.error} what="Could not open a direct message" />
           {agentsQ.loading && !agentsQ.data ? <Loading /> : null}
@@ -257,9 +241,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                       <p class="purpose" data-testid="agent-purpose" title={a.purpose}>
                         Purpose: {purposeExcerpt(a.purpose)}
                       </p>
-                    ) : (
-                      <p class="nopurpose">No standing instructions.</p>
-                    )}
+                    ) : null}
                     <div class="actions">
                       <Button size="sm" variant="ghost" icon={ScanSearch} mix={on('click', () => s.ui.openInspector(a.id))}>
                         Inspect
@@ -312,13 +294,26 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
           </div>
         </Section>
 
-        <Section title="Adapters" description="The agent CLIs Drydock found on this machine. Capabilities that were not checked are never claimed.">
+        <Section title="Adapters" description="The agent CLIs Drydock found on this machine. A capability that was not checked is never claimed. Drydock never installs a CLI for you.">
           <ErrorNote error={adapters.error} what="Could not list adapters" />
           {adapters.loading && !adapters.data ? <Loading label="Detecting..." /> : null}
-          <div mix={cardGrid}>
-            {sorted.map((a) => (
-              <AdapterCard key={a.id} a={a} />
-            ))}
+          <div mix={tableCard}>
+            <table mix={[dataTable, adaptersCss]} aria-label="Adapters">
+              <thead>
+                <tr>
+                  <th scope="col">Adapter</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Signed in</th>
+                  <th scope="col">Capabilities</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((a) => (
+                  <AdapterRow key={a.id} a={a} />
+                ))}
+              </tbody>
+            </table>
           </div>
         </Section>
 

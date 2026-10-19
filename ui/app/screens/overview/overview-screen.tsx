@@ -192,21 +192,16 @@ export function OverviewScreen(handle: Handle) {
     const firstCheck = evals.data ? firstCheckText(evals.data.report) : undefined;
     const report = scan.data;
     const lastScan = report && report.status !== 'running' ? report : undefined;
-    const numbers = [
-      working ? `${working} ${working === 1 ? 'agent' : 'agents'} working` : `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`,
-      `${mergedToday} merged today`,
-      needs.length ? `${needs.length} ${needs.length === 1 ? 'thing needs' : 'things need'} you` : 'nothing needs you',
-    ];
     const taskOf = (x: Task) => x;
     return (
-      <Page title={greeting(new Date().getHours())} icon={LayoutDashboard} subtitle={`${project?.name ?? 'Project'} · ${numbers.join(' · ')}`} wide testId="overview">
+      <Page title={greeting(new Date().getHours())} icon={LayoutDashboard} subtitle={project?.name ?? 'Project'} wide testId="overview">
         <TaskTotalNotice>The tasks under way and the merged counts below are counted from these tasks only.</TaskTotalNotice>
         <div mix={layoutCss}>
           <div mix={colCss}>
             <Section title="Needs you" description={needs.length ? 'Each opens where you decide it.' : undefined} actions={needs.length > 2 ? <a href={routes.needsYou.href()} mix={moreLink}>All {needs.length} <Icon icon={ArrowRight} size={14} /></a> : null} testId="overview-needs">
               <ErrorNote error={p.needs.error} what="Could not load what needs you" />
               {needs.length === 0 ? (
-                <p mix={quietCss}>Nothing needs you right now. Approvals, reviews and questions land here as they happen.</p>
+                <p mix={quietCss}>Nothing needs you right now.</p>
               ) : (
                 <ul mix={needsGrid}>
                   {needs.slice(0, 2).map((it) => (

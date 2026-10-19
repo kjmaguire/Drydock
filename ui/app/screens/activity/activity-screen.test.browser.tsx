@@ -31,7 +31,9 @@ describe('ActivityScreen', () => {
     expect(row.textContent).toContain('{"name":"Pay"}');
     s.emit({ type: 'task.completed', projectId: 'p1', taskId: 't1' });
     await waitFor(() => expect(types(r.container)[0]).toBe('task.completed'), r);
-    expect(r.container.textContent).toContain('The event log as the core persisted it (newest first).');
+    // the stream's state is the page's subtitle; what the log is lives in the Guide
+    expect(r.container.textContent).toContain('events held');
+    expect(r.container.querySelector('a[data-testid="learn-more"]')!.getAttribute('href')).toBe('/guide/events');
   });
 
   it('shows the start of each payload from the ring, which holds a preview and not the payload (M22)', async () => {

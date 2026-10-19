@@ -53,7 +53,7 @@ export function TelemetryPanel(handle: Handle) {
         icon={Activity}
         label="Telemetry"
         testId="telemetry"
-        description="Keeps usage counts in a local database, with only allowlisted identifier-shaped attributes (no prompts, code, tool output, file contents or secrets), so you can see and export them; nothing is sent anywhere. It is off unless you turn it on."
+        description="Local usage counts only: no prompts, code or secrets, and nothing is sent anywhere. Off unless you turn it on."
       >
         <ErrorNote error={q.error ?? act.error} what="Telemetry" />
         {!st && q.loading ? <Loading /> : null}

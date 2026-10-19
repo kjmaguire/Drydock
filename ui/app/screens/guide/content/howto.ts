@@ -1,0 +1,229 @@
+import type { Topic } from '../model.ts';
+
+export const HOWTO: readonly Topic[] = [
+  {
+    id: 'connect-cli',
+    section: 'howto',
+    title: 'Connect an agent CLI',
+    summary: 'Drydock uses the coding CLIs you installed, with their own sign-in.',
+    keywords: ['connections', 'cli', 'claude code', 'codex', 'gemini', 'wsl', 'sign in', 'mcp gateway', 'test'],
+    body: [
+      { p: '[Connections](/connections) lists the agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials.' },
+      {
+        ol: [
+          'Install the CLI the way its vendor documents and sign in once in a terminal.',
+          'Open [Connections](/connections). A tile appears for each CLI found. Choose a tile to see it in full.',
+          'Read and accept every notice on the CLI. A CLI is **usable** only when it is ready and you have accepted each notice on it.',
+          'Press **Test connection…** on the tile. Drydock starts the real CLI (on this machine, or inside the WSL distro for a WSL tile) and checks that it starts, answers and stops.',
+        ],
+      },
+      { h: 'A CLI inside WSL' },
+      { p: 'A CLI installed inside a WSL distro has a tile of its own with its own sign-in, separate from Windows. Open a terminal in the distro (`wsl -d <distro>`) and sign in the way the CLI documents. Drydock never reads or copies that sign-in.' },
+      { h: 'MCP gateway' },
+      { p: 'The MCP servers you give an agent reach it through one local gateway. **Claude Code** is verified with real runs. For the other CLIs Drydock hands the gateway over when the session starts, but no real run has shown yet that each CLI uses it, so it stays off until you allow it under **MCP gateway** on the Connections page.' },
+    ],
+    related: ['crew', 'capabilities', 'integrations', 'troubleshooting'],
+  },
+  {
+    id: 'github',
+    section: 'howto',
+    title: 'Work with GitHub',
+    summary: 'Drydock uses the GitHub CLI (gh) you installed and signed in to.',
+    keywords: ['gh', 'github', 'pull request', 'sign in', 'token', 'oauth', 'issues', 'mcp'],
+    body: [
+      { p: 'Drydock works on GitHub through the **GitHub CLI** (`gh`). On this route it reads and stores no GitHub token: `gh` keeps the sign-in.' },
+      {
+        ol: [
+          'Install `gh` from [cli.github.com](https://cli.github.com).',
+          'Run `gh auth login` in a terminal and sign in.',
+          'Open [GitHub](/github) and press **Check again**.',
+        ],
+      },
+      { p: 'The sign-in is checked by asking GitHub who it is (`gh api /user`). Scopes are not checked: `gh` asks for `repo` and `read:org` when you sign in, and that is what Drydock needs. Until `gh` is signed in a project can still work on a local folder; pull requests and GitHub repositories need it.' },
+      { h: 'What Drydock does on GitHub' },
+      {
+        ul: [
+          'Pushes a task’s branch and opens its pull request, in a project whose delivery mode is pull request.',
+          'Waits for CI on the pushed commit and hands a failing job’s log back to the worker, which fixes it and pushes again. No CI reported is a question for you in Needs you, never a pass.',
+          'Reads the review on the pull request and feeds a collaborator’s requested changes back to the task.',
+          'Merges only after you approve, through GitHub, with the project’s merge method, and only while the pull request’s head is still the commit you reviewed.',
+          'Imports a repository’s issues as tasks once you assign the GitHub connection to a project (on the project’s Integrations page).',
+          'Gives agents GitHub’s tools through the GitHub MCP server, once you connect it and grant it to a project’s agents; every tool that writes waits for your approval, call by call.',
+        ],
+      },
+      { p: 'Two things you connect yourself keep a sign-in or token in the Windows credential store, never shown: **Sign in with GitHub** on the connection, and the **GitHub MCP server** in the Library. Disconnect either one to delete what it keeps. Everything read from GitHub (issues, comments, logs) is treated as untrusted text.' },
+    ],
+    related: ['delivery', 'integrations', 'runners', 'untrusted-text'],
+  },
+  {
+    id: 'integrations',
+    section: 'howto',
+    title: 'Connect services and MCP servers',
+    summary: 'Connect a service or an agent tool once for the workspace, then give it to projects and agents.',
+    keywords: ['integrations', 'mcp', 'linear', 'notion', 'sentry', 'aikido', 'app sync', 'grant', 'rule', 'library'],
+    body: [
+      { h: 'Services (app sync)' },
+      { p: '[Integrations](/integrations) lists services such as Linear, Notion, Sentry, Aikido and GitHub. Drydock reads their items through each service’s own API, as untrusted text: redacted, scored for injection risk and quoted as data. Secrets stay in the Windows credential store.' },
+      {
+        ol: [
+          'Connect the service once on the Integrations page.',
+          'On a project’s Integrations page, **assign** the service and choose what it imports.',
+          'Writing back to a service needs your approval of the exact text.',
+        ],
+      },
+      { p: 'A **rule** creates backlog tasks from matching items. Only you can create, change or enable a rule. A new rule starts disabled and in dry-run: it lists what it would create and creates nothing until you turn both on. Items with an injection risk of 3 or more are never created by a rule, and item text cannot set a rule parameter.' },
+      { h: 'Agent tools (MCP servers)' },
+      { p: 'MCP servers give agents a vendor’s tools. Connect one once (here or in the [Library](/library)), add it to a project, and grant it per agent on that project’s Integrations page. Every tool not marked read-only waits for your approval, call by call. A project only ever reaches the servers it was given, and an agent only the servers you gave it.' },
+      { p: 'Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on [Connections](/connections). A server with a sign-in: after you save it, press **Sign in** on its card. Your browser opens the server’s own sign-in page and Drydock keeps the tokens in the Windows credential store.' },
+    ],
+    related: ['github', 'connect-cli', 'untrusted-text'],
+  },
+  {
+    id: 'scan',
+    section: 'howto',
+    title: 'Scan a repository for problems',
+    summary: 'Three engines look for secrets, vulnerable packages and unsafe code; the Code engine needs rules you choose.',
+    keywords: ['security scan', 'gitleaks', 'osv-scanner', 'opengrep', 'semgrep', 'rules', 'secrets', 'vulnerabilities', 'sast'],
+    body: [
+      { p: 'A scan reads the files of a folder with three engines at once: **Secrets** (gitleaks) finds keys, tokens and passwords left in files; **Dependencies** (osv-scanner) finds packages with known vulnerabilities; **Code** (Opengrep) finds unsafe code patterns. A secret’s value is never shown or stored. Findings name the rule, the file and the line.' },
+      { p: 'The scan only reads files. It never runs the repository’s code, its scripts or its package manager, so it is safe for a repository you just downloaded.' },
+      { h: 'Scan a folder or a project' },
+      {
+        ol: [
+          'Open [Security scan](/security-scan) for any folder on this computer, or the **Security** tab of a project.',
+          'Choose the folder, or type or paste its full path (Explorer’s “Copy as path” works), then press **Scan**. The folder does not need to be a project, and nothing is added to one.',
+        ],
+      },
+      { h: 'Tools on this computer' },
+      { p: 'Each engine is a tool that must be on this computer. The page shows what it found and offers **Install**, which downloads the newest release from GitHub, checks its SHA-256 and keeps it in Drydock’s folder, or **Choose file…** to use a copy you already have.' },
+      { h: 'Rules for the Code engine' },
+      { p: 'Opengrep needs a folder of rule files (`.yaml`). **Drydock downloads no rules**: you get a set yourself and choose the folder it is in. Opengrep reads rules written for Semgrep, so a Semgrep rule set works unchanged. See [Rule sets and their licences](guide:rule-licences).' },
+      {
+        ol: [
+          'Pick a rule set and read its licence.',
+          'Clone it, for example with `git clone --depth 1 https://github.com/semgrep/semgrep-rules` (the Security page shows the command for each set).',
+          'Under **Tools on this computer**, press **Choose folder…** next to the rules folder and pick the clone.',
+        ],
+      },
+      { note: 'A downloaded repository can still steer what two of the tools skip: an `osv-scanner.toml` or a `.semgrepignore` inside it is read by osv-scanner and Opengrep. The secrets engine follows no file of the repository.', tone: 'warn' },
+    ],
+    related: ['rule-licences', 'privacy'],
+  },
+  {
+    id: 'providers',
+    section: 'howto',
+    title: 'Add a model provider',
+    summary: 'Providers are the model services Drydock may call directly, and how OpenRouter is used.',
+    keywords: ['provider', 'api key', 'openrouter', 'credential manager', 'http', 'uptime', 'quota'],
+    body: [
+      { p: '[Providers](/providers) lists the model providers Drydock may call directly. Choose a tile to see a provider in full, or press **Add a provider**.' },
+      {
+        ul: [
+          'API keys are stored in the **Windows Credential Manager** and are never shown again after you save them.',
+          'Plain `http` is accepted only for hosts on your own machine or private network.',
+          'For **OpenRouter**, before a call Drydock reads the model’s endpoints from OpenRouter (kept 5 minutes) and asks OpenRouter to skip those below the minimum recent uptime you set. When every endpoint is below it, the best are kept; when the lookup fails, the call goes out unchanged. Agent CLIs that call OpenRouter themselves are not affected.',
+        ],
+      },
+      { p: 'Which model answers each turn is decided by the router, see [Routing rules](guide:routing-rules).' },
+    ],
+    related: ['routing-rules', 'local-models'],
+  },
+  {
+    id: 'local-models',
+    section: 'howto',
+    title: 'Run a local model',
+    summary: 'Drydock downloads and runs llama.cpp itself; models come from the Hugging Face Hub.',
+    keywords: ['llama.cpp', 'local model', 'hugging face', 'gguf', 'kv cache', 'turboquant', 'cuda', 'vulkan'],
+    body: [
+      { p: 'Drydock downloads and runs **llama.cpp** itself: the newest Windows build of the source you choose, for the backend you pick, checked against the digest GitHub recorded and unpacked into Drydock’s own folder. Nothing has to be installed by hand, and nothing is added to the PC’s `PATH`. Models come from the Hugging Face Hub the same way.' },
+      {
+        ul: [
+          '**Source:** the official weekly build is the default. The TurboQuant fork is a second build you can pick; it adds the `turbo4` and `turbo3` cache types.',
+          '**KV cache type:** `q8_0` is near-lossless with half the KV memory of `f16`. `q4_0` uses a quarter, with llama.cpp’s Hadamard rotation (most of TurboQuant’s gain).',
+        ],
+      },
+    ],
+    related: ['providers'],
+  },
+  {
+    id: 'backups',
+    section: 'howto',
+    title: 'Back up and restore',
+    summary: 'Drydock keeps copies of its database; a restore is staged and applied at the next start.',
+    keywords: ['backup', 'restore', 'verify', 'schedule', 'database'],
+    body: [
+      { p: 'Drydock keeps copies of its database in a backup folder. Backups, verifying and restoring work in every license state. A backup contains your project data and run history; keep the folder somewhere only you can read.' },
+      {
+        ul: [
+          '**Automatic backups** run once a day while Drydock is open. Older backups beyond the number you keep are removed.',
+          '**Verify** a backup before restoring it.',
+          'A **restore** is staged and applied the next time Drydock starts. Each restore keeps the database it replaced in the folder of earlier restores. Drydock never deletes these; remove them yourself when you are sure.',
+        ],
+      },
+      { h: 'Updates' },
+      { p: 'Updates are set when Drydock is built, not in the app. The planned flow takes a backup before every update and rolls back if the new version does not start. That flow has **not been run on Windows**, so treat any update as untested until it has. Your [license](/license) decides which update channels you may use.' },
+    ],
+    related: ['support-bundle'],
+  },
+  {
+    id: 'support-bundle',
+    section: 'howto',
+    title: 'Send a support bundle',
+    summary: 'A zip of diagnostics for a bug report, previewed before it is written.',
+    keywords: ['support', 'bundle', 'diagnostics', 'bug report', 'logs', 'scrub'],
+    body: [
+      { p: 'A support bundle is a zip of diagnostics for a bug report: versions, connection states, settings, recent logs, event types and a scrub report. Secrets are redacted and your name, computer name and folders are replaced. Event payloads are dropped (only event types and ids are listed).' },
+      {
+        ol: [
+          'Open [Support bundle](/support) and press **Preview the bundle**. Nothing is written yet; you see every file and what was scrubbed.',
+          'Check the file list and the report. Scrubbing reduces but does not eliminate leakage.',
+          'Press **Create the bundle**. It is written on this computer and has not been uploaded anywhere. You send it yourself.',
+        ],
+      },
+    ],
+    related: ['privacy', 'troubleshooting'],
+  },
+  {
+    id: 'runners',
+    section: 'howto',
+    title: 'Run GitHub Actions on this PC',
+    summary: 'Self-hosted runners for private repositories: one job each, then a fresh runner.',
+    keywords: ['runner', 'self-hosted', 'actions', 'ci', 'dev drive', 'windows'],
+    body: [
+      { p: 'GitHub Actions self-hosted runners let your private repositories run CI on this PC. Each runner takes one job; then its files are deleted and a fresh one waits. Runners only run CI and report the result to GitHub: when CI fails, Drydock’s task reads the failure, fixes it and pushes, as with GitHub’s own runners.' },
+      { p: '**Private repositories only.** On a public repository anyone\u2019s pull request could run its own code on this PC, so Drydock refuses it. Windows jobs run on the PC in a fresh folder each (on a Dev Drive when there is one); Linux jobs run in a fresh container each.' },
+      { note: 'Windows has no container for each job like Linux has. Use runners for repositories whose workflows you trust. A workflow an agent adds to a task branch runs here too once the branch is pushed; Drydock asks you before it pushes a branch that changes workflows, and shows which.', tone: 'warn' },
+      { p: 'Runners are kept in Drydock’s own folder, on a trusted Dev Drive when one is found (Microsoft Defender scans a trusted Dev Drive in performance mode), or in the folder you chose.' },
+    ],
+    related: ['github', 'delivery'],
+  },
+  {
+    id: 'project-settings',
+    section: 'howto',
+    title: 'Project settings, one by one',
+    summary: 'What each setting of a project does, and what it costs.',
+    keywords: ['project settings', 'sandbox', 'container', 'checks', 'verification', 'ci before merge', 'skills delivery', 'scheduler', 'stall', 'lead'],
+    body: [
+      { h: 'Verification checks' },
+      { p: 'Build, test and lint always run. Checks you add run on every task (the secrets scan of the diff, the dependency vulnerability scan, and others). A check whose tool is missing is reported as skipped, never as passed.' },
+      { h: 'Development flow' },
+      {
+        ul: [
+          '**Maximum parallel agent turns:** how many agent turns may run at the same time in this project. Start with 3 to 5.',
+          '**Team lead stall time:** minutes without progress before the lead checks a task. Empty or 0 means 15; at most 1440 (a day).',
+          '**CI before merge:** a pull request is merged only after CI passed on the reviewed commit. When no CI reports within 2 minutes you are asked to check again, merge without CI this time, or stop.',
+          '**Repository has no CI:** only for a repository that really has none. A pull request nothing reports on is merged after the review and your approval; checks that do report still have to pass, and GitHub’s branch protection still applies. Your name and the time are recorded.',
+          '**Skills for Claude agents:** *relevant only* loads the repository’s own skills and path-matched imports into each turn and lists the rest; *all* loads every skill into every turn. See [Skills](guide:skills).',
+        ],
+      },
+      { h: 'Letting workers run the check commands' },
+      { p: 'Workers may type only the exact check commands (`go build ./...`, `go test ./...`, `go vet ./...`, `npm run test --silent` and the like), in their own worktree, and reviewers never get them.' },
+      { note: 'These commands run the project’s own code, and the worker can change that code in the same turn, so in practice a worker can run any program with your user’s rights, including git, downloads and shells. There is no operating-system sandbox. Turn this on only for projects where you accept that.', tone: 'warn' },
+      { h: 'Sandbox (containers)' },
+      { p: 'With the sandbox on, a Claude Code worker has no shell on this machine: it runs every command in the task’s container, where only the task’s working folder is mounted, the services listed in the definition are reachable by name, and the network reaches only the allowlist. The project’s checks run there too, the end-to-end check and the preview do not run on this machine, and the container is removed when the task ends. Agents on other CLIs cannot work in a sandboxed project yet.' },
+      { h: 'Creating a project' },
+      { p: 'When you choose a folder, **Create a Git repository here** runs `git init` with the branch `main` and makes a first commit, so the agents’ worktrees can start from it. Prebuilt agents bring pinned skills from public registries; Drydock checks them before use.' },
+    ],
+    related: ['delivery', 'tasks', 'skills'],
+  },
+];

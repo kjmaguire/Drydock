@@ -262,8 +262,12 @@ describe('Team: purpose, model and effort', () => {
     await waitFor(() => expect(r.$$('[data-testid="adapter"]').length).toBe(2), r);
     const cards = Array.from(r.$$('[data-testid="adapter"]'));
     expect(cards.map((c) => c.getAttribute('data-adapter'))).toEqual(['claude', 'zeta']);
-    expect(cards[1]!.textContent).toContain('Drydock never runs this for you');
+    // the install advice is said once, as the section's sentence; a row only gives the command
+    expect(cards[1]!.textContent).toContain('Install: npm i -g zeta');
+    expect(r.container.textContent!.match(/never installs a CLI for you/g)).toHaveLength(1);
+    expect(r.container.textContent!.match(/absent means not verified/g)).toBeNull();
     expect(cards[1]!.textContent).toContain('Streaming: not verified');
+    expect(cards[0]!.textContent).toMatch(/\d+ of \d+ verified/);
     expect(cards[0]!.querySelector('[data-cap="modelSelection"]')!.getAttribute('data-verified')).toBe('true');
   });
 });

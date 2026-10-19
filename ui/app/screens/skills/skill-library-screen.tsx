@@ -19,7 +19,6 @@ import { t } from '../../ui/tokens.ts';
 import { pickKey, SkillRows } from './skill-rows.tsx';
 import { newInLibrary, registryStatusText, registryTileText, skillBrand, syncChanges } from './skills.ts';
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 const barCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& [role="combobox"]': { maxWidth: '240px' } });
 const panelCss = css({
   display: 'grid',
@@ -89,11 +88,7 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
     const fresh = newInLibrary(statuses);
     const changes = syncChanges(openStatus);
     return (
-      <Page title="Skills" icon={Cpu} wide testId="skill-library">
-        <p mix={introCss}>
-          Instructions agents read, from the skill registries you enabled; Drydock syncs them at start and twice a day. Pick skills and take them to a project: there
-          you add them, or ask an agent of the team which ones fit the project's plan and who should get them.
-        </p>
+      <Page title="Skills" icon={Cpu} wide testId="skill-library" subtitle="From the registries you enabled; add them to a project there" guide="skills">
         {s.workspace.projects.data && projects.length === 0 ? (
           <Notice tone="info" testId="skill-library-no-project">
             Skills are added to a project. <a href={routes.projectNew.href()}>Create a project</a> first; you can browse the registries meanwhile.

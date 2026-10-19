@@ -74,11 +74,9 @@ export function RepoMapScreen(handle: Handle) {
     const r = v?.result;
     const skipped = r ? skippedText(r.skipped) : '';
     return (
-      <Page title="Repo map" icon={FolderTree} testId="repo-map" subtitle={project?.name}>
+      <Page title="Repo map" icon={FolderTree} testId="repo-map" subtitle={project?.name} guide="knowledge">
         <p mix={introCss}>
-          The most important code of the project's repository, as agents get it from the repo_map tool: files ranked by how much the rest of the code uses them, each with
-          its most important definition lines, within a token budget. Focus paths rank what those files use higher. It is made on this computer from the repository's files
-          (.gitignore respected); nothing leaves the machine.
+          Files ranked by how much the rest of the code uses them, as agents get them from the repo_map tool. Made on this computer; nothing leaves it.
         </p>
         {!project ? <Notice tone="info">Choose a project to see its repo map.</Notice> : null}
         {project && !hasRepo ? (

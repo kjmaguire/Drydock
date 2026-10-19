@@ -168,6 +168,10 @@ export const controller = createController(routes, {
       const { DataScreen } = await import('../screens/data/data-screen.tsx');
       return render(<DataScreen />);
     },
+    async guide({ render, params }) {
+      const { GuideScreen } = await import('../screens/guide/guide-screen.tsx');
+      return render(<GuideScreen key={params.topic ?? ''} topic={params.topic} />);
+    },
     async support({ render }) {
       const { SupportScreen } = await import('../screens/support/support-screen.tsx');
       return render(<SupportScreen />);

@@ -9,7 +9,7 @@ import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
 import { Notice } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
-import { ScanPanel, introCss } from './scan-panel.tsx';
+import { ScanPanel } from './scan-panel.tsx';
 import { projectScope } from './scan-scope.ts';
 
 export function SecurityScreen(handle: Handle) {
@@ -21,11 +21,7 @@ export function SecurityScreen(handle: Handle) {
     const pid = s.workspace.projectId;
     const hasRepo = projectHasRepo(project);
     return (
-      <Page title="Security scan" icon={ShieldCheck} testId="security-scan" subtitle={project?.name}>
-        <p mix={introCss}>
-          Scans the project's working tree on this computer with three engines at once. Nothing leaves the machine except osv-scanner's package names, which it checks
-          against osv.dev. A secret's value is never shown or stored; findings name the rule, the file and the line.
-        </p>
+      <Page title="Security scan" icon={ShieldCheck} testId="security-scan" subtitle={project?.name} guide="scan">
         {!project ? <Notice tone="info">Choose a project to scan.</Notice> : null}
         {project && !hasRepo ? (
           <Notice tone="warn" testId="security-no-repo">

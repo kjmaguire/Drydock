@@ -436,7 +436,8 @@ describe('Security scan page', () => {
     // a licence that only points to its terms links them
     const terms = Array.from(item('semgrep/semgrep-rules').querySelectorAll('a')).find((a) => a.textContent === 'Terms')!;
     expect(terms.getAttribute('href')).toBe('https://semgrep.dev/legal/rules-license');
-    for (const a of Array.from(help.querySelectorAll('a'))) {
+    // every link of the list opens a website in a new tab; the one link to the Guide stays in the app
+    for (const a of Array.from(help.querySelectorAll('a:not([data-testid="learn-more"])'))) {
       expect(a.getAttribute('href')).toMatch(/^https:\/\//);
       expect(a.getAttribute('target')).toBe('_blank');
     }

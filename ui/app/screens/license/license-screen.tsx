@@ -263,7 +263,7 @@ export function LicenseScreen(handle: Handle) {
             <Group
               title="Import a license"
               icon={FileKey}
-              description="Paste the license token, or give the path of a license file on this computer. The token is sent once to your local core and is never shown again or kept in this page. Importing is always allowed, including when Drydock is read-only."
+              description="Paste the license token or the path of a license file. The token is sent once to your local core and never shown again. Importing is always allowed."
             >
               <form
                 mix={[formCss, on('submit', (e) => (e.preventDefault(), void submit()))]}
@@ -328,8 +328,7 @@ export function LicenseScreen(handle: Handle) {
           ) : null}
 
           <p mix={intro}>
-            Licenses are checked offline on this computer; Drydock never contacts a license server. The check protects against casual sharing and gives honest expiry
-            behaviour. It is not tamper-proof.
+            Checked offline on this computer; Drydock never contacts a license server. Not tamper-proof.
           </p>
         </div>
       </Page>

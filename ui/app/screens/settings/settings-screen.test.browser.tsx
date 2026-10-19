@@ -64,7 +64,7 @@ describe('SettingsScreen', () => {
     const rows = Array.from(table.querySelectorAll('tbody tr')).map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent));
     expect(rows).toEqual(NOT_BUILT.map((x) => [x.feature, x.slice, x.meanwhile]));
     expect(Array.from(table.querySelectorAll('th')).map((th) => th.textContent)).toEqual(['Feature', 'Slice', 'Meanwhile']);
-    expect(r.container.textContent).toContain('They are listed here instead of shown as disabled screens or sample data.');
+    expect(r.container.textContent).toContain('Listed here instead of shown as disabled screens or sample data.');
   });
 
   it('switches the theme from the swatches and shows the current choice', async () => {
@@ -102,11 +102,12 @@ describe('UpdatesSection', () => {
   it('says updates are build-time and untested on Windows, with no buttons', () => {
     const r = renderPlain(<UpdatesSection />);
     const sec = tid(r.container, 'updates-section');
-    expect(sec.textContent).toContain('configured when Drydock is built');
+    expect(sec.textContent).toContain('set when Drydock is built');
     expect(sec.textContent).toContain('not been run on Windows');
-    expect(sec.textContent).toContain('backup before every update');
+    expect(sec.textContent).toContain('a backup first');
     expect(sec.querySelectorAll('button').length).toBe(0);
-    expect(Array.from(sec.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual(['/license', '/backups']);
+    // the rest (the update channels, backing up by hand) is in the Guide
+    expect(Array.from(sec.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual(['/guide/backups']);
   });
 });
 
@@ -133,7 +134,7 @@ describe('TelemetryPanel', () => {
     expect(tid(r.container, 'telemetry-status').textContent).toBe('off');
     expect(tid(r.container, 'telemetry-status').getAttribute('data-tone')).toBe('muted');
     expect(box.textContent).toContain(
-      'Keeps usage counts in a local database, with only allowlisted identifier-shaped attributes (no prompts, code, tool output, file contents or secrets), so you can see and export them; nothing is sent anywhere. It is off unless you turn it on.',
+      'Local usage counts only: no prompts, code or secrets, and nothing is sent anywhere. Off unless you turn it on.',
     );
     expect(box.textContent).not.toContain('Off by default');
     expect(box.textContent).toContain('this device only');

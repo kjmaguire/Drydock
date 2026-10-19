@@ -161,7 +161,7 @@ export const memberKey = (m: RoomMember): string =>
   m.member.kind === 'human' ? `human:${m.member.id}` : m.member.kind === 'tool' ? `tool:${m.member.id}` : m.member.kind === 'system' ? 'system' : m.member.id;
 
 export const MODE_TEXT: Record<string, string> = {
-  auto: 'Auto: simple rules decide who answers a message (an explicit mention first, then the task assignee, then a role match). No model chooses the speaker, and agents do not talk to each other without a bound.',
+  auto: 'Auto: simple rules decide who answers: a mention first, then the task assignee, then a role match. No model chooses the speaker.',
   sequential: 'Sequential: the members you list speak in that order, one turn each per round, and the debate stops at the round limit.',
   moderator: 'Moderator: the moderator you pick (you or an agent) names who speaks next. If the moderator is an agent, its choices are ordinary agent turns and are billed.',
 };

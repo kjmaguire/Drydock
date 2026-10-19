@@ -258,7 +258,6 @@ function ProviderCard(handle: Handle<{ p: Provider; onChanged: () => void }>) {
   };
 }
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 
 /** One provider on the overview: its brand's logo (or its kind's icon), its name, what it is and its state. */
 function ProviderTile(handle: Handle<{ p: Provider; selected: boolean; onSelect: () => void }>) {
@@ -303,11 +302,7 @@ export function ProvidersScreen(handle: Handle<{ initial?: string }>) {
     }
     const open = list.find((p) => p.id === selected);
     return (
-      <Page title="Providers" icon={Network} subtitle={q.data ? `${list.length} configured, ${up} up` : undefined}>
-        <p mix={introCss}>
-          Model providers Drydock may call directly. API keys are stored in the Windows Credential Manager and are never shown again after you save them. Plain http is
-          accepted only for hosts on your own machine or private network. Choose a tile to see a provider in full.
-        </p>
+      <Page title="Providers" icon={Network} subtitle={q.data ? `${list.length} configured, ${up} up` : undefined} guide="providers">
         <LocalModels />
         <ErrorNote error={q.error} what="Could not list providers" />
         {q.loading && !q.data ? <Loading /> : null}

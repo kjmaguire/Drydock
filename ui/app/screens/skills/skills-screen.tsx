@@ -372,7 +372,7 @@ function AddFromLibrary(
       <Section
         label="Add from the Library"
         title="Add from the Library"
-        description="The Library holds every skill of your registries; Drydock fills it by itself. Pick skills and add them: adding is your acceptance, and they reach the agents at once. Click a name to read what it does."
+        description="Pick skills to add: adding is your acceptance, and they reach agents at once."
       >
         <ErrorNote error={lib.error ?? act.error} what="Library" />
         {added ? (
@@ -509,7 +509,7 @@ function Usage(handle: Handle<{ projectId: string; onChanged: () => void }>) {
       <Section
         label="Skill usage"
         title="Usage"
-        description="What each skill cost and whether it was read. Loaded: its full text went into a run. Listed: it was only named for on-demand reading. Opened: an agent read it on demand. The recommendation is Drydock's; nothing changes until you act on it."
+        description="What each skill cost and whether it was read. Nothing changes until you act on a recommendation."
       >
         <ErrorNote error={q.error ?? act.error} what="Usage" />
         {q.loading && !q.data ? <Loading /> : null}
@@ -619,7 +619,7 @@ function Registries(handle: Handle<{ projectId: string; statuses: readonly Skill
       <Section
         label="Skill registries"
         title="Registries"
-        description="The Library fills from the GitHub repositories allowed here, pinned to a commit, at start and twice a day. Nothing reaches a project until you add it."
+        description="Pinned to a commit and synced at start and twice a day. Nothing reaches a project until you add it."
         actions={
           adding ? undefined : (
             <Button size="sm" icon={Plus} mix={on('click', () => set(() => (adding = true)))}>
@@ -849,6 +849,7 @@ export function SkillsScreen(handle: Handle) {
       <Page
         title="Skills"
         icon={Cpu}
+        guide="skills"
         subtitle={q.data ? `${skills.length} skill${skills.length === 1 ? '' : 's'}${offered ? `, ${offered} waiting for you` : ''}` : undefined}
         actions={
           <Button icon={ScanSearch} disabled={act.busy !== ''} mix={on('click', () => void runScan())}>
@@ -856,11 +857,6 @@ export function SkillsScreen(handle: Handle) {
           </Button>
         }
       >
-        <p mix={muted}>
-          Skills are instructions agents read. The Library holds every skill of your registries; you choose here which ones this project uses, and adding one is
-          your acceptance. Skills found in the repository are offered until you accept them. Accepted skills reach agents as path-scoped rule files that stay
-          out of the diff.
-        </p>
         <ErrorNote error={q.error ?? act.error} what="Skills" />
         {scan ? (
           <Notice tone="info" role="status" testId="skill-scan">

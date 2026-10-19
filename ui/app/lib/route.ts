@@ -17,6 +17,7 @@ export type Route =
   | { name: 'agent'; id: string }
   | { name: 'chats' }
   | { name: 'chat'; id: string }
+  | { name: 'guide'; topic?: string }
   | {
       name:
         | 'pulls'
@@ -79,7 +80,7 @@ const SIMPLE = new Set<string>([
 
 export function isWorkspaceRoute(r: Route): boolean {
   // chats open without a project too (a chat may have none); /mcp is an alias of Integrations (decision P47)
-  return (WORKSPACE_ROUTES as readonly string[]).includes(r.name) || r.name === 'chats' || r.name === 'chat' || r.name === 'mcp';
+  return (WORKSPACE_ROUTES as readonly string[]).includes(r.name) || r.name === 'chats' || r.name === 'chat' || r.name === 'mcp' || r.name === 'guide';
 }
 
 /**
@@ -115,6 +116,9 @@ export function parseRoute(pathname: string): Route {
     case 'chats':
       if (parts.length === 1) return { name: 'chats' };
       return b && parts.length === 2 ? { name: 'chat', id: b } : { name: 'not-found' };
+    case 'guide':
+      if (parts.length === 1) return { name: 'guide' };
+      return b && parts.length === 2 ? { name: 'guide', topic: b } : { name: 'not-found' };
     case 'home':
       return parts.length === 1 ? { name: 'workspace' } : { name: 'not-found' };
     case 'library':
@@ -219,6 +223,7 @@ const HUB_OF: Record<Route['name'], Hub> = {
   'library-skills': 'library',
   'security-scan': 'scan',
   'project-new': 'project-new',
+  guide: 'settings',
   'not-found': 'none',
 };
 

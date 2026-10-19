@@ -13,7 +13,7 @@ import { Notice } from '../../ui/feedback.tsx';
 import { Page, card } from '../../ui/layout.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ScanPanel, introCss } from './scan-panel.tsx';
+import { ScanPanel } from './scan-panel.tsx';
 import { folderScope, projectScope } from './scan-scope.ts';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 
@@ -85,14 +85,9 @@ export function WorkspaceSecurityScreen(handle: Handle) {
     const canScan = mode === 'folder' ? typed.trim() !== '' : projectHasRepo(project);
 
     return (
-      <Page title="Security scan" icon={ShieldCheck} testId="workspace-security" subtitle="Any repository on this computer">
-        <p mix={introCss}>
-          Scan a folder on this computer, such as a repository you just downloaded or are about to import, or one of your projects. Three engines look at once for
-          secrets left in files, packages with known vulnerabilities and unsafe code patterns. A secret's value is never shown or stored.
-        </p>
+      <Page title="Security scan" icon={ShieldCheck} testId="workspace-security" subtitle="Any repository on this computer" guide="scan">
         <Notice tone="info" testId="scan-reads-only">
           The scan only reads files: it never runs the repository's code, its scripts or its package manager, so it is safe for a repository you just downloaded.
-          osv-scanner sends package names and versions to osv.dev; nothing else leaves this computer.
         </Notice>
 
         <form
@@ -137,7 +132,7 @@ export function WorkspaceSecurityScreen(handle: Handle) {
                   />
                 </div>
                 <p class="hint">
-                  Choose the folder, or type or paste its full path (Explorer's "Copy as path" works), then press Scan. The folder does not need to be a project, and nothing is added to one.
+                  Choose the folder or paste its full path. It does not need to be a project, and nothing is added to one.
                 </p>
               </div>
             ) : (
@@ -172,10 +167,6 @@ export function WorkspaceSecurityScreen(handle: Handle) {
             onPick={mode === 'folder' ? pickHistory : undefined}
           />
         ) : null}
-        <p mix={introCss} style={{ fontSize: t.textSm }}>
-          A downloaded repository can still steer what two of the tools skip: an osv-scanner.toml or a .semgrepignore inside it is read by osv-scanner and Opengrep. The
-          secrets engine follows no file of the repository.
-        </p>
       </Page>
     );
   };

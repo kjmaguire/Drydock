@@ -53,7 +53,10 @@ describe('the Overview', () => {
     await waitFor(() => expect(r.$$('[data-testid="overview-need"]')).toHaveLength(1), r);
     expect(r.$('[data-testid="overview"]')).not.toBeNull();
     expect(r.$('h1')!.textContent).toMatch(/^Good (morning|afternoon|evening)$/);
-    expect(r.container.textContent).toContain('gocalc · 1 agent working · 1 merged today · 1 thing needs you');
+    // each figure is shown once, in the Today card: the subtitle is the project's name only
+    expect(r.$('h1')!.parentElement!.textContent).toContain('gocalc');
+    expect(r.$('h1')!.parentElement!.textContent).not.toContain('merged today');
+    expect(r.$('aside[aria-label="Today"]')!.textContent).toContain('merged today');
     // needs you: the first items, each a link to where it is decided
     const need = r.$('[data-testid="overview-need"]')!;
     expect(need.getAttribute('data-kind')).toBe('approval');

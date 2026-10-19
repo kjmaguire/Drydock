@@ -52,7 +52,7 @@ const find = (r: R, sel: string) =>
   }, r);
 
 describe('the GitHub settings page', () => {
-  it('gathers the gh sign-in, what Drydock does, the GitHub connection with its MCP server, and the repositories with runners', async () => {
+  it('gathers the gh sign-in, the GitHub connection with its MCP server, and the repositories with runners', async () => {
     const r = show({
       integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', identity: { account: 'kyle', scopes: ['repo'] }, assignments: [] })],
       runnersGet: async () => runners({ slots: [slot('kyle/pay', 'windows', 'idle'), slot('kyle/pay', 'linux', 'paused'), slot('kyle/web', 'windows', 'busy', 'build')] }),
@@ -62,12 +62,10 @@ describe('the GitHub settings page', () => {
     const sign = await find(r, '[data-testid="gh-signin-state"][data-signed-in="true"]');
     expect(sign.querySelector('[data-testid="gh-login"]')!.textContent).toBe('kyle');
     expect(sign.textContent).toContain('gh is signed in as');
-    expect(r.$('[data-testid="gh-signin"]')!.textContent).toContain('On this route it reads and stores no GitHub token: gh keeps the sign-in.');
-    // what it does, in plain words
-    const about = r.$('[data-testid="gh-about"]')!;
-    expect(about.textContent).toContain('opens its pull request');
-    expect(about.textContent).toContain('Branch protection is respected and never bypassed');
-    expect(about.textContent).toContain('Keeps no GitHub token on the GitHub CLI route.');
+    expect(r.$('[data-testid="gh-signin"]')!.textContent).toContain('On this route Drydock reads and stores no GitHub token');
+    // what it does is in the Guide, one link away (the page keeps to the basics)
+    expect(r.$('[data-testid="gh-about"]')).toBeNull();
+    expect(r.$('[data-testid="github-page"] a[data-testid="learn-more"]')!.getAttribute('href')).toBe('/guide/github');
     // the GitHub tile's own panel: app sync (connected, as the tile shows it) and the gh MCP card; no other vendor
     const panel = await find(r, '[data-testid="gh-connection"] [data-testid="integration-panel"][data-kind="github"]');
     expect(panel.querySelector('[data-testid="integration"][data-kind="github"]')).not.toBeNull();
@@ -100,13 +98,10 @@ describe('the GitHub settings page', () => {
     expect(claims.length).toBeGreaterThan(0);
     for (const c of claims) expect(c).toMatch(/GitHub CLI route|this route|this connection|this way|\bgh\b/i);
     for (const old of ['It never reads or stores a GitHub token', 'Never reads or stores a GitHub token', 'Drydock stores no GitHub token', 'there is nothing of GitHub']) expect(page).not.toContain(old);
-    // where a token is kept: the GitHub MCP server in the Library (MCP servers) and a Sign in with GitHub, in the credential store
-    const about = r.$('[data-testid="gh-about"]')!.textContent!;
-    expect(about).toContain('Sign in with GitHub on the connection below');
-    expect(about).toContain('GitHub MCP server in the Library, under MCP servers');
-    expect(about).toContain('Windows credential store, never shown');
-    expect(about).toContain('Disconnect either one to delete what it keeps');
-    expect(r.$('[data-testid="gh-signin"]')!.textContent).toContain('keeps its own sign-in or token');
+    // where the other tokens are kept: a connection or MCP server below keeps its own, in the credential store (the Guide says which and how to remove them)
+    const signin = r.$('[data-testid="gh-signin"]')!.textContent!;
+    expect(signin).toContain('a connection or MCP server below keeps its own');
+    expect(signin).toContain('Windows credential store, never shown');
   });
 
   it('a GitHub connection made with Sign in with GitHub says its token is in the credential store, not that it is the gh sign-in', async () => {
@@ -130,8 +125,10 @@ describe('the GitHub settings page', () => {
       },
     });
     const sign = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
-    expect(sign.textContent).toContain('The GitHub CLI (gh) is not installed.');
+    // the core's words once, not twice: the title does not repeat what the core said
+    expect(sign.textContent).toContain('GitHub CLI not found');
     expect(sign.textContent).toContain('the GitHub CLI (gh) is not installed: install it from https://cli.github.com');
+    expect(sign.textContent!.match(/is not installed/g)).toHaveLength(1);
     expect(sign.querySelector('a[href="https://cli.github.com"]')!.getAttribute('target')).toBe('_blank');
     expect(sign.querySelector('[data-testid="gh-login"]')).toBeNull();
     // the connection panel still offers the connection (its connect form asks gh too), and the runners say none

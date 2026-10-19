@@ -6,16 +6,16 @@ import { Download, FolderOpen, Gauge, RefreshCw } from 'lucide';
 import type { EvalsExportResult, Ratio } from '../../api/extTypes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
-import { Page, Section } from '../../ui/layout.tsx';
+import { Page } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Meter } from '../budgets/meter.tsx';
 import { evalsOptions, ratioRate, ratioText, WINDOWS } from './evals.ts';
 
-const introCss = css({ color: t.textMuted, fontSize: t.textMd, maxWidth: '820px' });
 const toolbarCss = css({
   display: 'flex',
   alignItems: 'center',
@@ -92,6 +92,7 @@ export function EvalsScreen(handle: Handle) {
       <Page
         title="Evals report"
         icon={Gauge}
+        guide="evals"
         subtitle={project ? (thisProject ? project.name : 'All projects') : undefined}
         actions={
           projectId ? (
@@ -106,10 +107,6 @@ export function EvalsScreen(handle: Handle) {
           ) : undefined
         }
       >
-        <p mix={introCss}>
-          How the system performed on your own tasks. Rates over a zero denominator show n/a, because no measurement is not a measured 0. These are counts and medians
-          from your history, not claims of significance.
-        </p>
         {!projectId ? (
           s.workspace.projects.data === undefined ? (
             <Loading />
@@ -173,11 +170,11 @@ export function EvalsScreen(handle: Handle) {
             ) : null}
             {q.loading && !q.data ? <Loading label="Building the report..." /> : null}
             {q.data ? (
-              <Section title="Full report" label="Full report" testId="evals-markdown">
+              <Disclosure summary="Full report: the text that Export writes" testId="evals-markdown">
                 <div mix={reportCss}>
                   <Markdown source={q.data.markdown} maxChars={200000} />
                 </div>
-              </Section>
+              </Disclosure>
             ) : null}
           </>
         )}

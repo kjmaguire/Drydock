@@ -156,9 +156,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
             </SettingRow>
             {parallelWarn(d.maxParallel) ? (
               <p mix={[noteRow, warnNote]} data-testid="parallel-note">
-                Anthropic suggests starting with 3 to 5 agents working at once: token cost grows with every active agent, coordination gets harder, and beyond that
-                more agents rarely finish the work faster.
-              </p>
+                Anthropic suggests 3 to 5 at once: cost grows with every active agent, and more rarely finishes sooner.
+</p>
             ) : null}
             <ToggleRow label="Start ready tasks automatically (scheduler)" checked={d.autoSchedule} onChange={(v) => patch({ autoSchedule: v })} />
             <ToggleRow label="Make a task wait while an earlier task is changing the same code" checked={d.collisionGuard !== false} onChange={(v) => patch({ collisionGuard: v })} />
@@ -169,17 +168,14 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
             />
             {d.workerChecks ? (
               <p mix={[noteRow, warnNote]} data-testid="worker-checks-note">
-                Workers may type only the exact check commands (go build ./..., go test ./..., go vet ./..., npm run test --silent and the like), in their own worktree,
-                and reviewers never get them. But these commands run the project's own code, and the worker can change that code in the same turn, so in practice a
-                worker can run any program with your user's rights, including git, downloads and shells. There is no operating-system sandbox. Turn this on only for
-                projects where you accept that.
-              </p>
+                Workers may type only the exact check commands. They run the project's own code, which the worker can change in the same turn, so in practice a worker can run any program with your user's rights. There is no operating-system sandbox. Turn this on only where you accept that.
+</p>
             ) : null}
             <ToggleRow label="Agents answer in channels and direct messages" checked={d.respond} onChange={(v) => patch({ respond: v })} />
             <SettingRow
               label="Team lead: minutes without progress before it checks a task"
               for={stallId}
-              description="When the project has a team lead (an agent with the role lead), it looks at a running task that has shown no progress for this long. Empty or 0 means 15; at most 1440 (a day)."
+              description="The lead checks a running task with no progress after this many minutes. Empty or 0 means 15; at most 1440."
             >
               <input
                 id={stallId}
@@ -211,10 +207,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   Only the ones the task needs{DEFAULT_SKILL_DELIVERY === 'relevant' ? ' (default)' : ''}
                 </label>
                 <p id={`${skName}-relevant`}>
-                  The repository's own skills are loaded into every turn (one with paths only when the task names no files or names one of them), and so is an imported
-                  skill whose paths match the files of the task. The other skills (a vendor's, a prebuilt agent's) are listed by name and purpose, and the agent opens one
-                  when its work needs it. Fewer tokens in every turn; a listed skill the agent does not think of opening is not used.
-                </p>
+                  Only the repository's own skills and path-matched imports go into each turn; the rest are listed and opened on request. Fewer tokens.
+</p>
               </div>
               <div>
                 <label>
@@ -229,9 +223,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   All of them, in every turn{DEFAULT_SKILL_DELIVERY === 'all' ? ' (default)' : ''}
                 </label>
                 <p id={`${skName}-all`}>
-                  Every skill the agent has goes into every turn, whatever the task touches. Large skills that have nothing to do with a task cost tokens on every
-                  request, and the run's context record says when the total is over budget.
-                </p>
+                  Every skill goes into every turn. Large, unrelated skills cost tokens on every request.
+</p>
               </div>
             </div>
 
@@ -251,9 +244,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   Required (default)
                 </label>
                 <p id={`${ciName}-required`}>
-                  A pull request is merged only after CI passed on the commit that was reviewed, including the checks its branch protection requires. When no CI
-                  reports within 2 minutes, you are asked to check again, merge without CI this time, or stop.
-                </p>
+                  Merges only after CI passed on the reviewed commit. With no CI after 2 minutes you are asked what to do.
+</p>
               </div>
               <div>
                 <label>
@@ -268,9 +260,8 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
                   This repository has no CI: merge after the review alone
                 </label>
                 <p id={`${ciName}-none`}>
-                  Only for a repository that really has no CI. A pull request nothing reports on is merged after the review and your approval; checks that do report
-                  still have to pass, and GitHub's branch protection still applies. Your name and the time are recorded.
-                </p>
+                  Only for a repository with no CI. Checks that do report must still pass, and branch protection still applies. Your name and the time are recorded.
+</p>
               </div>
             </div>
             {ciNone ? (

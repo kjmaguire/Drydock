@@ -95,8 +95,7 @@ function RuleEditor(handle: Handle<{ rule: RouteRule; onSaved: () => void; onCan
             {(id) => <input id={id} value={chain} spellcheck={false} placeholder="none" mix={set((v) => (chain = v))} />}
           </Field>
           <p mix={faint}>
-            When the chosen model or its provider is unavailable (rate-limited, overloaded, down, model not found) before the turn does any work, the
-            turn moves to the next model here: at most 2 hops, the same tier or cheaper, within the budget. The work's own errors never fall back.
+            Used only when the chosen model is unavailable before the turn starts: at most 2 hops, the same tier or cheaper.
           </p>
         </div>
         <div class="wide">
@@ -173,7 +172,7 @@ export function RulesPanel(handle: Handle) {
       <Section
         title="Routing rules"
         label="Routing rules"
-        description="Rules are evaluated by the router; invariants (data class, quota, budget hard limit) always win. Only you can change them."
+        description="Highest priority first. Invariants (data class, quota, budget limit) always win."
         actions={
           <Button
             size="sm"
@@ -223,7 +222,7 @@ export function RulesPanel(handle: Handle) {
                       <Badge tone={r.enabled ? 'ok' : 'muted'}>{r.enabled ? 'enabled' : 'disabled'}</Badge>
                       <code>{r.id}</code>
                       <span mix={muted}>
-                        {r.scope}, priority {r.priority}, v{r.version}
+                        {r.scope}, v{r.version}
                       </span>
                     </div>
                     <div class="line">
@@ -233,11 +232,10 @@ export function RulesPanel(handle: Handle) {
                     <div class="line">
                       <span class="kw">then</span>
                       {actionChips(r.then).map((c) => (
-                        <Badge key={c.key} tone={c.tone}>
+                        <Badge key={c.key} tone={c.tone} title={JSON.stringify(r.then)}>
                           {c.text}
                         </Badge>
                       ))}
-                      <code mix={faint}>{JSON.stringify(r.then)}</code>
                     </div>
                   </div>
                   {editing === r.id ? null : (

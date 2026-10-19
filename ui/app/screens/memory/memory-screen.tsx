@@ -11,7 +11,7 @@ import type { MemoryEntry } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
-import { Badge, muted } from '../../ui/data.tsx';
+import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
@@ -243,11 +243,7 @@ export function MemoryScreen(handle: Handle) {
     const list = found ?? q.data ?? [];
     const counted = q.data && !found ? `${q.data.length} ${status ? (MEMORY_FILTERS.find((f) => f.value === status)?.label ?? status) : 'entries'}` : undefined;
     return (
-      <Page title="Memory" icon={Brain} subtitle={found ? `${found.length} found` : counted}>
-        <p mix={muted}>
-          Project memory: decisions, conventions and known issues agents read. Agents (and you) can propose entries; only an entry you accept reaches agents.
-          Secrets are redacted before anything is stored.
-        </p>
+      <Page title="Memory" icon={Brain} subtitle={`${found ? `${found.length} found` : counted} · only entries you accept reach agents`} guide="knowledge">
         <div mix={toolbar}>
           <div mix={segmented} role="group" aria-label="Show">
             {MEMORY_FILTERS.map((f) => (

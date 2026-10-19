@@ -44,7 +44,6 @@ import {
   stepTone,
 } from './connections.ts';
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
 const head = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& h2': { fontSize: t.textLg, fontWeight: '600', margin: '0', marginRight: 'auto' } });
 const subhead = css({ fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase', color: t.textMuted, margin: '0' });
@@ -583,12 +582,7 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
     const key = selected;
     const open = list.find((c) => connectionKey(c) === key);
     return (
-      <Page title="Connections" icon={Link2} subtitle={q.data ? `${usable} of ${list.length} usable` : undefined}>
-        <p mix={introCss}>
-          Agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials. A CLI is usable only when it is ready
-          and every notice on it has been accepted by you. A CLI installed inside a WSL distro has a tile of its own, with its own sign-in. Choose a tile to see it in full. Below the
-          tiles, the MCP gateway says which CLIs receive the MCP servers you give an agent.
-        </p>
+      <Page title="Connections" icon={Link2} subtitle={q.data ? `${usable} of ${list.length} usable` : undefined} guide="connect-cli">
         <ErrorNote error={q.error} what="Could not list connections" />
         {q.loading && !q.data ? <Loading label="Detecting..." /> : null}
         {q.data && list.length === 0 ? (

@@ -25,7 +25,15 @@ describe('command palette items', () => {
     expect(items.find((i) => i.label === "Open Ada's page")).toMatchObject({ group: 'Agents', hint: 'backend', href: '/team/a1' });
     expect(filterItems(items, 'ada').map((i) => i.label)).toContain("Open Ada's page");
     // nothing that approves, merges, deletes or stops
-    expect(labels.some((l) => /approve|merge|delete|stop|cancel/i.test(l))).toBe(false);
+    // (the Guide's topics are reading, and are named after what they explain: "Approvals and Needs you")
+    expect(labels.filter((l) => !l.startsWith('Guide')).some((l) => /approve|merge|delete|stop|cancel/i.test(l))).toBe(false);
+  });
+
+  it('finds a Guide topic by its title or a word people use', () => {
+    const items = buildItems(rooms, tasks, agents);
+    expect(items.find((i) => i.label === 'Guide: Scan a repository for problems')).toMatchObject({ group: 'Navigate', href: '/guide/scan' });
+    expect(filterItems(items, 'rule sets')[0]!.href).toBe('/guide/rule-licences');
+    expect(filterItems(items, 'guide')[0]!.label).toBe('Guide');
   });
 
   it('ranks an exact screen name first', () => {

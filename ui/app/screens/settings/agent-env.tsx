@@ -11,6 +11,7 @@ import { Button } from '../../ui/button.tsx';
 import { faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
+import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
 import { parseEnvNames } from './settings.ts';
 import { Group, panelPad } from './settings-kit.tsx';
@@ -64,9 +65,7 @@ export function AgentEnvSection(handle: Handle) {
         testId="agent-env"
         description={
           <>
-            Agent programs start with a trimmed environment, not everything Drydock was started with. A token another tool left in your environment (GitHub, a cloud
-            provider) is not handed to an agent that a prompt could ask to print it. Claude Code keeps everything named <code>CLAUDE_*</code> or <code>ANTHROPIC_*</code>, so
-            its own sign-in keeps working.
+            Agent programs start with a trimmed environment: a token another tool left in yours is not passed on. <LearnMore topic="agent-environment" />
           </>
         }
       >

@@ -19,7 +19,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { RuleCounts } from '../data/rule-counts.tsx';
-import { confirmRow, Done, Group, intro, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
+import { confirmRow, Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
 import { bundleKey, bundleOpts, identityText, scrubbedFiles, type BundleOpts } from './support.ts';
 
 const formCss = css({ display: 'grid', gap: t.s4 });
@@ -203,13 +203,8 @@ export function SupportScreen(handle: Handle) {
     const fresh = shown?.key === bundleKey(events, run);
     const busy = act.busy !== '';
     return (
-      <Page title="Support bundle" icon={LifeBuoy} subtitle="Diagnostics for a bug report">
+      <Page title="Support bundle" icon={LifeBuoy} subtitle="A zip of scrubbed diagnostics for a bug report" guide="support-bundle">
         <div mix={[settingsColumn, ref((n: Element) => (root = n as HTMLElement))]}>
-          <p mix={intro}>
-            A support bundle is a zip of diagnostics for a bug report: versions, connection states, settings, recent logs, event types and a scrub report. Secrets are
-            redacted and your name, computer name and folders are replaced. Event payloads are dropped (only event types and ids are listed). Scrubbing reduces but does not
-            eliminate leakage, so check the file list and report before you send it.
-          </p>
           <p mix={neverCss} data-testid="bundle-never-uploaded">
             <Icon icon={ShieldCheck} size={16} />
             <span>

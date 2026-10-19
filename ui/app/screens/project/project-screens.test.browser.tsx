@@ -324,8 +324,8 @@ describe('Check settings and development flow', () => {
     expect(required.checked).toBe(true); // a core that sends no ciMode means required
     expect(none.checked).toBe(false);
     expect(r.$('[role="radiogroup"][aria-label="CI before merge"]')).not.toBe(null);
-    expect(document.getElementById(required.getAttribute('aria-describedby')!)!.textContent).toMatch(/only after CI passed[\s\S]*check again, merge without CI this time, or stop/);
-    expect(document.getElementById(none.getAttribute('aria-describedby')!)!.textContent).toMatch(/checks that do report\s+still have to pass/);
+    expect(document.getElementById(required.getAttribute('aria-describedby')!)!.textContent).toMatch(/after CI passed on the reviewed commit[\s\S]*you are asked what to do/);
+    expect(document.getElementById(none.getAttribute('aria-describedby')!)!.textContent).toMatch(/Checks that do report must still pass/);
     expect(r.$('[data-testid="ci-none-note"]')).toBe(null);
 
     await r.act(() => none.click());
@@ -352,8 +352,8 @@ describe('Check settings and development flow', () => {
     expect(relevant.checked).toBe(DEFAULT_SKILL_DELIVERY === 'relevant');
     expect(all.checked).toBe(DEFAULT_SKILL_DELIVERY === 'all');
     expect((DEFAULT_SKILL_DELIVERY === 'all' ? all : relevant).parentElement!.textContent).toContain('(default)');
-    expect(document.getElementById(relevant.getAttribute('aria-describedby')!)!.textContent).toMatch(/repository's own skills[\s\S]*listed by name and purpose, and the agent opens one when its work needs it/);
-    expect(document.getElementById(all.getAttribute('aria-describedby')!)!.textContent).toMatch(/whatever the task touches[\s\S]*over budget/);
+    expect(document.getElementById(relevant.getAttribute('aria-describedby')!)!.textContent).toMatch(/repository's own skills[\s\S]*listed and opened on request/);
+    expect(document.getElementById(all.getAttribute('aria-describedby')!)!.textContent).toMatch(/Every skill goes into every turn[\s\S]*tokens on every request/);
     await r.act(() => (DEFAULT_SKILL_DELIVERY === 'all' ? relevant : all).click());
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);

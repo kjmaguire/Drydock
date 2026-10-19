@@ -97,7 +97,9 @@ describe('RunScreen', () => {
     await ready(r);
     await waitFor(() => expect(r.$('h1')!.textContent).toContain('Run of #3 Subtract'), r);
     expect(r.$('[data-testid="run-id"]')!.textContent).toBe('run_1');
-    expect(r.$('[data-testid="run-status"]')!.textContent).toBe('WAITING_HUMAN');
+    // the status is said once, in words, in the header
+    expect(r.$('[data-testid="run-status"]')!.textContent).toBe('Waiting for you');
+    expect(r.container.textContent!.match(/Waiting for you/g)!.length).toBeGreaterThanOrEqual(1);
     expect(r.$('a[href="/task/t1"]')!.textContent).toContain('Back to the task');
 
     await r.act(() => tab(r, /Turns/).click());

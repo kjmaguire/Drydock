@@ -35,8 +35,12 @@ describe('RoutingScreen', () => {
     }, r);
     expect(rows.map((x) => x.getAttribute('data-rule'))).toEqual(['r0', 'r1', 'low']);
     expect(rows[1]!.textContent).toContain('prefer tier: cheap');
-    expect(rows[1]!.textContent).toContain('{"prefer_tier":"cheap"}');
-    expect(rows[1]!.textContent).toContain('workspace, priority 5, v3');
+    // the priority is the number at the left, shown once; the action is shown as words, its exact JSON is the badge's tooltip
+    expect(rows[1]!.querySelector('[title="priority 5"]')!.textContent).toBe('5');
+    expect(rows[1]!.textContent).toContain('workspace, v3');
+    expect(rows[1]!.textContent).not.toContain('priority 5,');
+    expect(rows[1]!.textContent).not.toContain('{"prefer_tier"');
+    expect(Array.from(rows[1]!.querySelectorAll('[title]')).some((n) => n.getAttribute('title') === '{"prefer_tier":"cheap"}')).toBe(true);
     expect(rows[0]!.textContent).toContain('disabled');
   });
 

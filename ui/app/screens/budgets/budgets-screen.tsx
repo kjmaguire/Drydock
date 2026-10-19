@@ -225,7 +225,6 @@ function BudgetCard(handle: Handle<{ row: BudgetRow; onChanged: () => void }>) {
   };
 }
 
-const introCss = css({ color: t.textMuted, fontSize: t.textMd, maxWidth: '820px' });
 
 export function BudgetsScreen(handle: Handle) {
   const s = services(handle);
@@ -250,7 +249,8 @@ export function BudgetsScreen(handle: Handle) {
       <Page
         title="Budgets"
         icon={PiggyBank}
-        subtitle={project ? project.name : undefined}
+        guide="budgets"
+        subtitle={project ? `${project.name}: warns at a percentage, stops new turns at 100%` : 'Warns at a percentage, stops new turns at 100%'}
         actions={
           projectId ? (
             <Button
@@ -266,12 +266,6 @@ export function BudgetsScreen(handle: Handle) {
           ) : undefined
         }
       >
-        <p mix={introCss}>
-          A budget warns at its warning percentage (80% by default). At 100% no new agent turn starts: a task's run waits for you in Needs you, where you can raise the
-          limit or approve one more turn, and agents stop answering in the room and in direct messages until the limit is raised. Your own chats are not counted.
-          Only you can change a budget. Costs are reported, estimated or unknown and are never merged: calls with an unknown
-          cost are counted, not priced at zero.
-        </p>
         {!projectId ? (
           s.workspace.projects.data === undefined ? (
             <Loading />

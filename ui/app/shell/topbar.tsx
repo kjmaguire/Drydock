@@ -4,7 +4,7 @@
 // with sub-pages shows them under it (hubnav.tsx).
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { Bell, BookOpen, ClipboardList, House, Library, MessagesSquare, Search, Settings, ShieldCheck, Users, type IconNode } from 'lucide';
+import { Bell, BookOpen, CircleHelp, ClipboardList, House, Library, MessagesSquare, Search, Settings, ShieldCheck, Users, type IconNode } from 'lucide';
 import { hubOf, isWorkspaceHub, type Hub, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
@@ -230,7 +230,10 @@ export function TopBar(handle: Handle<{ route: Route }>) {
                 </span>
               </a>
             ) : null}
-            <a href={routes.settings.href()} mix={iconLink} data-nav="" data-testid="nav-settings" aria-label="Settings" title="Settings" aria-current={hub === 'settings' ? 'page' : undefined}>
+            <a href={routes.guide.href()} mix={iconLink} data-nav="" data-testid="nav-guide-top" aria-label="Guide" title="Guide" aria-current={route.name === 'guide' ? 'page' : undefined}>
+              <Icon icon={CircleHelp} size={17} />
+            </a>
+            <a href={routes.settings.href()} mix={iconLink} data-nav="" data-testid="nav-settings" aria-label="Settings" title="Settings" aria-current={hub === 'settings' && route.name !== 'guide' ? 'page' : undefined}>
               <Icon icon={Settings} size={17} />
             </a>
             <span mix={streamCss} data-testid="stream" data-state={status} title={`Event stream: ${status}`}>

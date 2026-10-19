@@ -14,7 +14,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { Callout, Done, Group, intro, panel, panelPad, plainList, settingsColumn, tableWrap, Warn } from '../settings/settings-kit.tsx';
+import { Callout, Done, Group, panel, panelPad, plainList, settingsColumn, tableWrap, Warn } from '../settings/settings-kit.tsx';
 import {
   canRestore,
   currentVerifications,
@@ -211,12 +211,8 @@ export function BackupsScreen(handle: Handle) {
     const confirmB = confirming ? backups.find((b) => b.name === confirming) : undefined;
 
     return (
-      <Page title="Backups" icon={DatabaseBackup} subtitle={l ? `${backups.length} in the backup folder` : undefined}>
+      <Page title="Backups" icon={DatabaseBackup} subtitle={l ? `${backups.length} in the backup folder` : undefined} guide="backups">
         <div mix={settingsColumn}>
-          <p mix={intro}>
-            Drydock keeps copies of its database in a backup folder. Backups, verifying and restoring work in every license state. A backup contains your project data
-            and run history; keep the folder somewhere only you can read.
-          </p>
           <ErrorNote error={list.error ?? status.error ?? act.error} what="Backups" />
 
           {pending?.pending ? (

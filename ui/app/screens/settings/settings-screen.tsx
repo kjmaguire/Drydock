@@ -4,11 +4,11 @@
 import { css, on, type Handle } from 'remix/component';
 import { Check, Construction, Info, Palette, RefreshCw, Settings } from 'lucide';
 import type { ThemeChoice } from '../../lib/theme.ts';
-import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
 import { kv, muted } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
+import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT, THEMES } from './settings.ts';
@@ -168,13 +168,11 @@ export function UpdatesSection(_handle: Handle) {
     >
       <div mix={panel}>
         <p style={{ margin: '0' }}>
-          <strong>Updates are configured when Drydock is built, not in this screen.</strong> This page cannot check for, download or install an update, and there is no
-          setting here to change that.
+          <strong>Updates are set when Drydock is built; this page cannot check for or install one.</strong>
         </p>
         <p mix={muted} style={{ margin: '0' }}>
-          The planned flow uses the Wails updater plus Drydock&apos;s own policy: a backup before every update, and a rollback if the new version does not start. That flow
-          has <strong>not been run on Windows</strong>, so treat any update as untested until it has. Your license decides which update channels you may use; see the{' '}
-          <a href={routes.license.href()}>License</a> page. You can make a backup yourself at any time on the <a href={routes.backups.href()}>Backups</a> page.
+          The planned flow (a backup first, a rollback if the new version does not start) has <strong>not been run on Windows</strong>, so treat any update as untested.{' '}
+          <LearnMore topic="backups" />
         </p>
       </div>
     </Group>
@@ -190,7 +188,7 @@ function NotBuilt(_handle: Handle) {
       icon={Construction}
       label="Not built yet"
       stacked
-      description="These features are not implemented. They are listed here instead of shown as disabled screens or sample data."
+      description="Not implemented. Listed here instead of shown as disabled screens or sample data."
     >
       <div mix={tableWrap}>
         <table aria-label="Not built yet">

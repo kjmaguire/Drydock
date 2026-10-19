@@ -4,6 +4,7 @@
 // person opened or closed it themselves. Everything is text: nothing is fetched, and the links open in the person's browser.
 
 import { css, on, type Handle } from 'remix/component';
+import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
 import { CLONE_COMMAND, DEMO_RULE, RULES_READ_ON, RULE_SOURCES, repoUrl } from './rules-sources.ts';
 
@@ -53,9 +54,8 @@ export function RulesSources(handle: Handle<{ openByDefault: boolean }>) {
         <summary>Where do I get rules?</summary>
         <div class="body">
           <p>
-            Opengrep reads rules written for Semgrep, so a Semgrep rule set works unchanged. Drydock downloads none: you get a set yourself and choose the folder it is in. These public
-            repositories hold sets, with what each one&rsquo;s own licence file or README said on {RULES_READ_ON}. A licence can change, so read it yourself and use a set only in the way
-            it allows.
+            Drydock downloads no rules: you get a set yourself and choose its folder. Semgrep rule sets work unchanged. What each licence said on {RULES_READ_ON} is below; a licence can
+            change, so read it before you use a set. <LearnMore topic="rule-licences" />
           </p>
           <ul aria-label="Rule sets">
             {RULE_SOURCES.map((s) => (

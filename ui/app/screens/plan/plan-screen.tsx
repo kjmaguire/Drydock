@@ -540,7 +540,7 @@ export function PlanScreen(handle: Handle) {
       <Page
         title="Plan"
         icon={Sparkles}
-        subtitle="PlanTeam proposes, you decide"
+        subtitle="A pm or architect agent proposes tasks; nothing is created until you accept" guide="tasks"
         actions={
           plans.length > 1 ? (
             <Select
@@ -556,10 +556,6 @@ export function PlanScreen(handle: Handle) {
           ) : undefined
         }
       >
-        <p mix={muted}>
-          Describe a goal and an agent with the pm or architect role proposes a graph of tasks. Nothing is created until you accept: choose the tasks you want,
-          edit them if you like, and the rest are dropped. The planner&apos;s text is outside text and is shown inert.
-        </p>
         <ErrorNote error={q.error ?? act.error} what="Plan" />
         <Stepper plan={current} />
         <Section title="Goal" description="What should the team achieve? The planner breaks it into tasks with acceptance criteria and dependencies.">

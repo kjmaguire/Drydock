@@ -16,7 +16,6 @@ import { selectRows, typeTone } from './activity.ts';
 
 const STATUS_TONE: Record<ConnectionState, Tone> = { open: 'ok', connecting: 'info', reconnecting: 'warn', idle: 'muted', stopped: 'err' };
 
-const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2 });
 
 const toolbarCss = css({
   display: 'flex',
@@ -80,13 +79,17 @@ export function ActivityScreen(handle: Handle) {
     const snap = s.store.getSnapshot();
     const rows = selectRows(snap.events, { filter, projectId: thisProject ? s.workspace.projectId : undefined });
     return (
-      <Page title="Activity" icon={Activity} subtitle="The event log" wide>
-        <p mix={introCss}>
-          <span>The event log as the core persisted it (newest first).</span>
-          <span>
-            Stream: <Badge tone={STATUS_TONE[snap.status] ?? 'muted'}>{snap.status}</Badge>, last seq {snap.lastSeq}, {snap.events.length} events held.
-          </span>
-        </p>
+      <Page
+        title="Activity"
+        icon={Activity}
+        guide="events"
+        wide
+        subtitle={
+          <>
+            Stream <Badge tone={STATUS_TONE[snap.status] ?? 'muted'}>{snap.status}</Badge>, last seq {snap.lastSeq}, {snap.events.length} events held
+          </>
+        }
+      >
         <ErrorNote error={historyError} what="Could not load earlier events" />
         <div mix={toolbarCss}>
           <div class="filter">

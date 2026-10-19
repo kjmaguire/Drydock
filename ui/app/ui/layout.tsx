@@ -1,5 +1,7 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import { Icon, type IconNode } from './icon.tsx';
+import type { GuideId } from '../screens/guide/topics.ts';
+import { LearnMore } from './learn-more.tsx';
 import { t } from './tokens.ts';
 
 const pageCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0' });
@@ -59,6 +61,8 @@ export function Page(
       flush?: boolean;
       children?: RemixNode;
       testId?: string;
+      /** The Guide topic that explains this page: a "Learn more" link beside the subtitle (the page itself keeps to the basics). */
+      guide?: GuideId;
     } & (
       // every page title carries the icon of what the page is; only a page that draws its own head (an agent) may leave it out
       | { icon: IconNode; head?: undefined }
@@ -68,7 +72,8 @@ export function Page(
 ) {
   const titleId = `page-title-${handle.id}`;
   return () => {
-    const { title, icon, subtitle, actions, wide, flush, children, testId, head } = handle.props;
+    const { title, icon, subtitle, actions, wide, flush, children, testId, head, guide } = handle.props;
+    const sub = subtitle || guide ? <>{subtitle}{subtitle && guide ? ' ' : null}{guide ? <LearnMore topic={guide} /> : null}</> : null;
     if (head) {
       return (
         <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>
@@ -90,7 +95,7 @@ export function Page(
               ) : null}
               {title}
             </h1>
-            {subtitle ? <div mix={headerSub} style={{ marginTop: '0' }}>{subtitle}</div> : null}
+            {sub ? <div mix={headerSub} style={{ marginTop: '0' }}>{sub}</div> : null}
             {actions ? <div mix={headerActions}>{actions}</div> : null}
           </header>
         ) : null}
@@ -109,7 +114,7 @@ export function Page(
                     ) : null}
                     {title}
                   </h1>
-                  {subtitle ? <div mix={headerSub}>{subtitle}</div> : null}
+                  {sub ? <div mix={headerSub}>{sub}</div> : null}
                 </div>
                 {actions ? <div mix={headerActions}>{actions}</div> : null}
               </header>

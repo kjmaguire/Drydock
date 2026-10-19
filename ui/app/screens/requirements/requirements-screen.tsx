@@ -578,10 +578,9 @@ export function RequirementsScreen(handle: Handle) {
     const busy = act.busy !== '';
     const projectId = pid();
     return (
-      <Page title="Requirements" icon={FileText} subtitle={q.data ? `${list.length} requirement${list.length === 1 ? '' : 's'}` : undefined}>
+      <Page title="Requirements" icon={FileText} subtitle={q.data ? `${list.length} requirement${list.length === 1 ? '' : 's'}` : undefined} guide="knowledge">
         <p mix={muted}>
-          Upload or paste requirements text, link its criteria to tasks, and see which tasks have passing test evidence. The text is outside text: it is stored
-          with secrets redacted, shown inert, and passages that look like instructions to an agent are quarantined.
+          Link criteria to tasks and see which have passing test evidence.
         </p>
         <ErrorNote error={q.error ?? act.error} what="Requirements" />
         {q.loading && !q.data ? <Loading /> : null}

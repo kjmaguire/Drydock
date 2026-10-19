@@ -5,6 +5,7 @@ import { css, on, type Handle } from 'remix/component';
 import { Ban, Play, UserCheck } from 'lucide';
 import type { WorkflowTemplate } from '../../api/extTypes.ts';
 import type { Agent, TaskDetail } from '../../api/types.ts';
+import { statusLabel } from '../../lib/format.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -151,7 +152,7 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
             </>
           ) : (
             <p class="running">
-              A run is in progress (<code>{detail.run?.status}</code>). Answer its requests above, or cancel the task.
+              A run is in progress{detail.run ? ` (${statusLabel(detail.run.status).toLowerCase()})` : ''}. Answer its requests above, or cancel the task.
             </p>
           )}
           <div class="confirm">

@@ -193,7 +193,7 @@ export function ProjectSettingsScreen(handle: Handle) {
       );
     }
     return (
-      <Page title="Project settings" icon={Settings2} subtitle={p.name}>
+      <Page title="Project settings" icon={Settings2} subtitle={p.name} guide="project-settings">
         <div mix={colCss}>
           <SettingsGroup title="General" label="General" description="The repository this project works on. Drydock works in separate worktrees and merges only after you approve.">
             <SettingRow label="Name">

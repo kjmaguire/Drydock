@@ -13,6 +13,7 @@ import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { listCard, Section } from '../../ui/layout.tsx';
+import { LearnMore } from '../../ui/learn-more.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
 import { ChooseFolder } from '../shared/choose-folder.tsx';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
@@ -163,7 +164,7 @@ export function CiRunners(handle: Handle) {
         label="CI runners"
         testId="ci-runners-section"
         title="CI runners"
-        description="GitHub Actions self-hosted runners for your private repositories, on this PC. Each runner takes one job; then its files are deleted and a fresh one waits. Runners only run CI and report the result to GitHub: when CI fails, Drydock's task reads the failure, fixes it and pushes, as with GitHub's own runners."
+        description={<>Self-hosted GitHub Actions runners for your private repositories, on this PC: one job each, then a fresh runner. <LearnMore topic="runners" /></>}
       >
         <ErrorNote error={v.error ?? act.error} what="CI runners" />
         <Notice tone="warn" testId="runner-private-only">

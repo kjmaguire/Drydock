@@ -55,4 +55,6 @@ export const routes = route({
   support: get('/support'),
   license: get('/license'),
   settings: get('/settings'),
+  // the Guide: explanations the pages leave out; one topic per path (the UI audit of 2026-10-19)
+  guide: get('/guide(/:topic)'),
 });

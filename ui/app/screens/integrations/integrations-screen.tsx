@@ -958,6 +958,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
         title="Integrations"
         icon={Blocks}
         wide
+        guide="integrations"
         testId="integrations"
         subtitle={loaded ? `${connected} connected · each once for the whole workspace` : 'Each connected once for the whole workspace'}
         actions={
@@ -980,7 +981,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
             <Section
               title="Services"
               testId="integrations-services"
-              description="Drydock reads their items through each service's own API, as untrusted text: redacted, scored for injection risk and quoted as data. Assign a service to a project, and choose what it imports, on that project's Integrations page; writing back needs your approval of the exact text. Secrets stay in the Windows credential store."
+              description="Their items are read as untrusted text. Assign a service to a project on that project's Integrations page. Secrets stay in the Windows credential store."
             >
               {grid(synced, 'Services')}
               {panelFor(synced)}
@@ -989,20 +990,14 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
               <Section
                 title="Agent tools"
                 testId="integrations-tools"
-                description={
-                  <>
-                    MCP servers that give agents a vendor's tools. Connect one once, then add it to a project and grant it per agent on that project's Integrations page; every tool
-                    not marked read-only waits for your approval, call by call. Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on
-                    the <a href={routes.connections.href()}>Connections</a> page.
-                  </>
-                }
+                description="MCP servers that give agents a vendor's tools. Every tool not marked read-only waits for your approval, call by call."
               >
                 {grid(toolsOnly, 'Agent tools')}
                 {panelFor(toolsOnly)}
               </Section>
             ) : (
               <p mix={muted}>
-                Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on the <a href={routes.connections.href()}>Connections</a> page.
+                Other agent CLIs than Claude Code receive MCP servers only after you allow it under MCP gateway on <a href={routes.connections.href()}>Connections</a>.
               </p>
             )}
           </div>

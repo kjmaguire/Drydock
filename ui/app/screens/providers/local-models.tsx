@@ -21,6 +21,7 @@ import { ErrorNote, Loading, Notice } from "../../ui/feedback.tsx";
 import { Checkbox, Field } from "../../ui/form.tsx";
 import { Select, selectValues } from "../../ui/select.tsx";
 import { Section } from "../../ui/layout.tsx";
+import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from "../../ui/tokens.ts";
 import { Meter } from "../budgets/meter.tsx";
 import { ConfirmAction } from "../shared/confirm-action.tsx";
@@ -336,7 +337,7 @@ export function LocalModels(handle: Handle) {
         <Section
           title="Models on this PC"
           testId="local-models"
-          description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
+          description={<>Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
         >
           <ErrorNote error={q.error} what="Models on this PC" />
           {q.loading ? <Loading /> : null}
@@ -349,7 +350,7 @@ export function LocalModels(handle: Handle) {
         <Section
           title="Models on this PC"
           testId="local-models"
-          description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
+          description={<>Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
         >
           <ErrorNote error={q.error} what="Models on this PC" />
           <div mix={cardCss} data-testid="local-runtime">
@@ -385,7 +386,7 @@ export function LocalModels(handle: Handle) {
       <Section
         title="Models on this PC"
         testId="local-models"
-        description="Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below."
+        description={<>Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
       >
         <ErrorNote error={q.error ?? act.error ?? stopAct.error} what="Models on this PC" />
         {stoppedNote ? (

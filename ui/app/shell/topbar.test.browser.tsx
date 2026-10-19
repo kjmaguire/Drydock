@@ -36,7 +36,7 @@ describe('the top bar', () => {
     await waitFor(() => expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you'), r);
     expect(r.$('nav[aria-label="Main"]')).not.toBeNull();
     expect(r.$('[role="img"][aria-label="Drydock"]')).not.toBeNull();
-    expect(ids(r)).toEqual(['nav-workspace', 'nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', null, 'nav-needs-you', 'nav-settings']);
+    expect(ids(r)).toEqual(['nav-workspace', 'nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', null, 'nav-needs-you', 'nav-guide-top', 'nav-settings']);
     expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
     expect(r.$('[data-testid="nav-rooms"]')!.getAttribute('href')).toBe('/rooms');
     expect(r.$('[data-testid="nav-knowledge"]')!.getAttribute('href')).toBe('/knowledge');
@@ -66,6 +66,9 @@ describe('the top bar', () => {
       [{ name: 'project-integrations' }, 'nav-overview'],
       [{ name: 'connections' }, 'nav-settings'],
       [{ name: 'github' }, 'nav-settings'],
+      // the Guide has its own button next to the gear; the gear is not current there
+      [{ name: 'guide' }, 'nav-guide-top'],
+      [{ name: 'guide', topic: 'scan' }, 'nav-guide-top'],
     ] as const) {
       const r = mount(<TopBar route={route} />, svc());
       await waitFor(() => expect(r.$(`[data-testid="${tab}"]`)!.getAttribute('aria-current')).toBe('page'), r);
@@ -78,7 +81,7 @@ describe('the top bar', () => {
     const r = mount(<TopBar route={{ name: 'workspace' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('aria-current')).toBe('page'), r);
     // the mark has no test id here: the Home tab is the way home
-    expect(ids(r)).toEqual([null, 'nav-workspace', 'nav-chats', 'nav-library', 'nav-security-scan', null, 'nav-settings']);
+    expect(ids(r)).toEqual([null, 'nav-workspace', 'nav-chats', 'nav-library', 'nav-security-scan', null, 'nav-guide-top', 'nav-settings']);
     expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
     expect(r.$('[data-testid="nav-security-scan"]')!.getAttribute('href')).toBe('/security-scan');
     expect(r.$('[data-testid="nav-needs-you"]')).toBeNull();
@@ -163,7 +166,7 @@ describe('the hubs', () => {
     const r = mount(<SettingsRail route={{ name: 'github' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="nav-github"]')).not.toBeNull(), r);
     const links = Array.from(r.$$('nav[aria-label="Settings"] a')).map((a) => a.getAttribute('data-testid'));
-    expect(links).toEqual(['nav-integrations', 'nav-connections', 'nav-github', 'nav-providers', 'nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support']);
+    expect(links).toEqual(['nav-integrations', 'nav-connections', 'nav-github', 'nav-providers', 'nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support', 'nav-guide']);
     expect(r.$('[data-testid="nav-github"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-github"]')!.getAttribute('href')).toBe('/github');
     expect(r.$('[data-testid="nav-github"]')!.textContent).toBe('GitHub');

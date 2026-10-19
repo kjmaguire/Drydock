@@ -53,7 +53,6 @@ const ENGINE_ICON: Record<EngineID, IconNode> = { secrets: KeyRound, deps: Packa
 const ENGINE_TOOL: Record<EngineID, keyof Pick<SecurityTools, 'gitleaks' | 'osv' | 'opengrep'>> = { secrets: 'gitleaks', deps: 'osv', sast: 'opengrep' };
 
 /** The page's opening paragraph. */
-export const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '72ch' });
 const dirCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm, overflowWrap: 'anywhere' });
 const actionRow = css({ display: 'flex', alignItems: 'center', gap: t.s3, flexWrap: 'wrap' });
 const statusCss = css({ color: t.textMuted, fontSize: t.textMd, minWidth: '0', overflowWrap: 'anywhere' });
