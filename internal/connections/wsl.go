@@ -122,7 +122,7 @@ func CheckWSL(ctx context.Context, m *manifests.Manifest, d wsl.Distro, o Option
 	}
 	var extra []string
 	if !in.Interop {
-		extra = append(extra, "Windows interop is off in this distro, so Drydock's tools (its MCP gateway, reached through a Windows program the distro starts) cannot reach an agent here: turn it on with [interop] enabled=true in /etc/wsl.conf, then wsl --terminate "+d.Name)
+		extra = append(extra, "Windows interop is off in this distro, so Drydock's tools cannot reach an agent here: set [interop] enabled=true in /etc/wsl.conf, then wsl --terminate "+d.Name)
 	}
 	if in.Paths.MountRoot == "" {
 		extra = append(extra, "the distro does not say where it mounts Windows drives (wslpath failed and /etc/wsl.conf names no [automount] root), so no Windows folder can be handed to the agent")

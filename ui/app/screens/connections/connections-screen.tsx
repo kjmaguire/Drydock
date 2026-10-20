@@ -425,9 +425,8 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
             {checkAgain}
             <span mix={faint}>
               {inWSL
-                ? `Runs the CLI's own sign-in (${c.signIn}) inside the distro, in a terminal here: this install's sign-in is separate from the Windows one.`
-                : `Runs the CLI's own sign-in (${c.signIn}) in a terminal here.`}{' '}
-              Drydock never reads or copies what it stores, and this card checks itself again when the sign-in ends.
+                ? `Runs the CLI's own sign-in (${c.signIn}) inside the distro, in a terminal here: this install's sign-in is separate from the Windows one. Drydock never reads or copies it.`
+                : `Runs the CLI's own sign-in (${c.signIn}) in a terminal here. Drydock never reads or copies what it stores, and this card checks itself again when the sign-in ends.`}
             </span>
           </div>
         ) : (
