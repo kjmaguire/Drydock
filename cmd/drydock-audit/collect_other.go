@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -96,65 +95,26 @@ func newestStableTag(lsRemote string) string {
 	return best
 }
 
-// gitNewestDatedTag is the tag starting with prefix whose commit is the newest. The TurboQuant fork names its builds by commit
-// (turboquant-windows-x64-vulkan-519f0c5), so only the commits' dates order them: each tagged commit is fetched without its
-// trees into a scratch repository and its committer date read.
-func gitNewestDatedTag(ctx context.Context, repo, prefix string) (string, error) {
-	out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+repo)
-	if err != nil {
-		return "", err
-	}
-	tags := tagsWithPrefix(out, prefix)
-	if len(tags) == 0 {
-		return "", fmt.Errorf("no tag starts with %s", prefix)
-	}
-	dir, err := os.MkdirTemp("", "drydock-audit-tags-")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(dir)
-	if _, err := run(ctx, dir, nil, "git", "init", "-q"); err != nil {
-		return "", err
-	}
-	dates := map[string]int64{}
-	for _, t := range tags {
-		if _, err := run(ctx, dir, nil, "git", "fetch", "-q", "--depth", "1", "--filter=tree:0", "https://github.com/"+repo, "refs/tags/"+t+":refs/tags/"+t); err != nil {
-			return "", err
-		}
-		v, err := run(ctx, dir, nil, "git", "log", "-1", "--format=%ct", "refs/tags/"+t)
-		if err != nil {
-			return "", err
-		}
-		n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
-		if err != nil {
-			return "", fmt.Errorf("date of %s: %w", t, err)
-		}
-		dates[t] = n
-	}
-	return newestByDate(dates), nil
-}
+// forkReleaseR is a release tag of the TurboQuant fork: the llama.cpp build it is based on and its own version (b10298-2.0.0).
+// Its other tags (turboquant-windows-x64-vulkan-<commit>, dev-latest) are pre-release builds, which Drydock does not install.
+var forkReleaseR = regexp.MustCompile(`^b(\d+)-(\d+\.\d+\.\d+)$`)
 
-// tagsWithPrefix lists the tags of git ls-remote output that start with prefix.
-func tagsWithPrefix(lsRemote, prefix string) []string {
-	var out []string
+// newestForkRelease picks the fork's newest release tag of git ls-remote output: the highest own version, then the highest build.
+func newestForkRelease(lsRemote string) string {
+	best, bestBuild, bestVer := "", 0, ""
 	for _, line := range strings.Split(lsRemote, "\n") {
 		i := strings.Index(line, "refs/tags/")
 		if i < 0 {
 			continue
 		}
-		if t := strings.TrimSpace(line[i+len("refs/tags/"):]); strings.HasPrefix(t, prefix) {
-			out = append(out, t)
+		t := strings.TrimSpace(line[i+len("refs/tags/"):])
+		m := forkReleaseR.FindStringSubmatch(t)
+		if m == nil {
+			continue
 		}
-	}
-	return out
-}
-
-// newestByDate picks the tag with the latest date; between two of the same date, the greater name.
-func newestByDate(dates map[string]int64) string {
-	best := ""
-	for t, d := range dates {
-		if best == "" || d > dates[best] || (d == dates[best] && t > best) {
-			best = t
+		n, _ := strconv.Atoi(m[1])
+		if best == "" || less(bestVer, m[2]) || (bestVer == m[2] && n > bestBuild) {
+			best, bestBuild, bestVer = t, n, m[2]
 		}
 	}
 	return best
@@ -284,21 +244,21 @@ func tools(ctx context.Context) []Item {
 	type tool struct {
 		id, name, kind, goMod, npmPkg, ghRepo string
 		buildTags                             bool   // the repository tags builds bNNNN instead of versions (llama.cpp)
-		tagPrefix                             string // the repository tags builds <prefix><commit>: the newest is the latest commit
+		forkTags                              bool   // the repository tags releases bNNNN-X.Y.Z (the TurboQuant fork)
 	}
 	list := []tool{
-		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", false, ""},
-		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", false, ""},
-		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", false, ""},
-		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", false, ""},
-		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", false, ""},
-		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", false, ""},
-		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", false, ""},
-		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", false, ""},
-		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", false, ""},
-		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", false, ""},
-		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", true, ""},
-		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork, Windows Vulkan build (comes with the download, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", false, "turboquant-windows-x64-vulkan-"},
+		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", false, false},
+		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", false, false},
+		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", false, false},
+		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", false, false},
+		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", false, false},
+		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", false, false},
+		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", false, false},
+		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", false, false},
+		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", false, false},
+		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", false, false},
+		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", true, false},
+		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork (comes with the download, Vulkan build, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", false, true},
 	}
 	used := toolUsed()
 	var items []Item
@@ -307,12 +267,12 @@ func tools(ctx context.Context) []Item {
 		switch {
 		case t.goMod != "":
 			it.Latest, it.LatestDate = goLatest(ctx, t.goMod)
-		case t.ghRepo != "" && t.tagPrefix != "":
-			tag, err := gitNewestDatedTag(ctx, t.ghRepo, t.tagPrefix)
+		case t.ghRepo != "" && t.forkTags:
+			out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+t.ghRepo)
 			if err != nil {
 				fail("tags of " + t.ghRepo + ": " + err.Error())
 			}
-			it.Latest = tag
+			it.Latest = newestForkRelease(out)
 		case t.ghRepo != "" && t.buildTags:
 			tag, err := gitLatestBuildTag(ctx, t.ghRepo)
 			if err != nil {

@@ -222,7 +222,7 @@ its digest). Drydock installs them into its own folder at the first start; it do
 - Opengrep v1.31.0 (https://github.com/opengrep/opengrep): LGPL-2.1. The program is shipped unmodified, as its own executable, not
   linked into Drydock. Its source for that release is at https://github.com/opengrep/opengrep/tree/v1.31.0; on request Drydock's
   maintainers provide the same source.
-- llama.cpp, the TurboQuant fork's Windows Vulkan build `turboquant-windows-x64-vulkan-519f0c5`
+- llama.cpp, the TurboQuant fork's release `b10298-2.0.0`, its Windows Vulkan build
   (https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant): MIT, as llama.cpp and ggml (copyright the ggml
   authors, as its LICENSE file states). Its archive carries the licences of what it contains; Drydock unpacks it as published.
 

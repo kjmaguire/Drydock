@@ -47,8 +47,11 @@ func pickRelease(src Source, b Backend, list []rawRelease) (Release, error) {
 	if want == "" {
 		return Release{}, fmt.Errorf("%s has no Windows build for %s", src.Name, Describe(b).Label)
 	}
-	tried := 0
+	tried, pre := 0, 0
 	for _, r := range list {
+		if r.Prerelease && !src.Prerelease && !r.Draft {
+			pre++
+		}
 		if r.Draft || (r.Prerelease && !src.Prerelease) || strings.TrimSpace(r.TagName) == "" {
 			continue
 		}
@@ -87,6 +90,10 @@ func pickRelease(src Source, b Backend, list []rawRelease) (Release, error) {
 		return rel, nil
 	}
 	if tried == 0 {
+		if pre > 0 {
+			// the fork's dev builds are marked pre-release: only its releases (tagged bNNNN-X.Y.Z) are installed
+			return Release{}, fmt.Errorf("%s lists no release, only %d pre-release build(s), which are not installed", src.Name, pre)
+		}
 		return Release{}, fmt.Errorf("%s lists no release", src.Name)
 	}
 	return Release{}, fmt.Errorf("none of the newest %d releases of %s carries %s with a SHA-256 digest", tried, src.Name, want)

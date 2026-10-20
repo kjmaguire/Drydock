@@ -11,7 +11,7 @@
     "tool:golangci-lint": "2.15.0",
     "tool:actions-runner": "2.338.0",
     "tool:llama.cpp": "b11672",
-    "tool:llama.cpp-turboquant": "turboquant-windows-x64-vulkan-519f0c5"
+    "tool:llama.cpp-turboquant": "b10298-2.0.0"
   },
   "notes": {
     "go": {
@@ -286,7 +286,7 @@
     },
     "tool:llama.cpp-turboquant": {
       "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
-      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. It names builds by commit (turboquant-windows-x64-vulkan-<commit>), so the audit orders them by commit date: 519f0c5 (2026-07-03) is the newest Windows Vulkan build; a newer commit (066cc29, 2026-07-17) has no Windows Vulkan build. It trails upstream llama.cpp."
+      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. Its releases are tagged bNNNN-X.Y.Z (the llama.cpp build it is based on, then its own version); b10298-2.0.0 (2026-10-05) is the newest. Its per-commit tags (turboquant-windows-x64-vulkan-<commit>) and dev-latest are pre-release dev builds, which Drydock does not install. It trails upstream llama.cpp."
     }
   }
 }

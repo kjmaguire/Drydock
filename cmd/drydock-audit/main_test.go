@@ -190,19 +190,18 @@ func TestArtifactDataNeverWritesAnEmptyDataset(t *testing.T) {
 	}
 }
 
-// The TurboQuant fork names its builds by commit, so the newest is found by the commits' dates, not by the names.
-func TestTheForksNewestBuildIsTheLatestCommit(t *testing.T) {
-	ls := "a\trefs/tags/turboquant-windows-x64-vulkan-d86eb0b\nb\trefs/tags/turboquant-windows-x64-vulkan-519f0c5\nc\trefs/tags/turboquant-windows-x64-cuda-13.3-066cc29\n"
-	tags := tagsWithPrefix(ls, "turboquant-windows-x64-vulkan-")
-	if len(tags) != 2 || tags[0] != "turboquant-windows-x64-vulkan-d86eb0b" || tags[1] != "turboquant-windows-x64-vulkan-519f0c5" {
-		t.Fatalf("tags = %v", tags)
-	}
-	// d86eb0b sorts last by name but is the oldest commit
-	got := newestByDate(map[string]int64{"turboquant-windows-x64-vulkan-d86eb0b": 1782128143, "turboquant-windows-x64-vulkan-519f0c5": 1783067551})
-	if got != "turboquant-windows-x64-vulkan-519f0c5" {
+// The TurboQuant fork's releases are tagged bNNNN-X.Y.Z; its per-platform dev builds (named by commit) and dev-latest are
+// pre-releases and do not count.
+func TestTheForksNewestReleaseIsItsHighestVersion(t *testing.T) {
+	ls := "a\trefs/tags/b10269-1.7.0\nb\trefs/tags/b10298-2.0.0\nc\trefs/tags/b10018-1.3.0\nd\trefs/tags/turboquant-windows-x64-vulkan-519f0c5\ne\trefs/tags/dev-latest\nf\trefs/tags/b8523\ng\trefs/tags/b10269-1.10.0\n"
+	if got := newestForkRelease(ls); got != "b10298-2.0.0" {
 		t.Fatalf("newest = %s", got)
 	}
-	if newestByDate(nil) != "" {
-		t.Fatal("no tags gave a newest")
+	// 1.10.0 is newer than 1.7.0 (not by text)
+	if got := newestForkRelease("x\trefs/tags/b10269-1.7.0\ny\trefs/tags/b10269-1.10.0\n"); got != "b10269-1.10.0" {
+		t.Fatalf("newest = %s", got)
+	}
+	if newestForkRelease("z\trefs/tags/dev-latest\n") != "" {
+		t.Fatal("a dev build counted as a release")
 	}
 }

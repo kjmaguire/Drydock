@@ -752,7 +752,7 @@ Open, owner action:
   the app", and "I don't want to install llama.ccp, I want it already installed with Google's TurboQuant built in ... If there are
   updates to llama.ccp, we will do those periodically when checking for updates").** Amends P44 and P66 (Drydock ships the tools and
   rules now) and P65 (the bundled build is the TurboQuant fork). (1) **The bundle**: `packaging/bundle.json` pins osv-scanner v2.7.0,
-  Opengrep v1.31.0 and the fork's `turboquant-windows-x64-vulkan-519f0c5` (the newest Windows Vulkan build, by commit date). The CI app
+  Opengrep v1.31.0 and the fork's release `b10298-2.0.0` (its newest release, 2026-10-05; its per-commit `turboquant-windows-x64-*` tags are pre-release dev builds, which Drydock does not install). The CI app
   job runs `cmd/drydock-bundle`, which reads each pinned release, downloads its Windows file from that repository only, refuses it
   unless the SHA-256 GitHub recorded matches, and writes `tools/` beside `drydock.exe` with `tools/bundle.json` (the files, their
   addresses and digests). The artifact is `drydock-windows`. (2) **Seeding**: at start, the core copies each bundled file into the

@@ -98,4 +98,14 @@ func TestTheForksDevBuildsAreSkipped(t *testing.T) {
 	if !src.CacheType("turbo4") || official(t).CacheType("turbo4") || !official(t).CacheType("q4_0") {
 		t.Fatal("cache types")
 	}
+	// a pinned tag that names a dev build (the bundle's first pin did) is refused, and the error says it is a pre-release
+	fx.Add(llamatest.ReleaseSpec{Tag: "turboquant-windows-x64-vulkan-519f0c5", Prerelease: true, Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": server}})
+	_, err = localllm.ReleaseByTag(context.Background(), host.HTTPAPI{BaseURL: fx.Server.URL}, src, localllm.Vulkan, "turboquant-windows-x64-vulkan-519f0c5")
+	if err == nil || !strings.Contains(err.Error(), "only 1 pre-release build(s), which are not installed") {
+		t.Fatalf("err = %v", err)
+	}
+	// the release tag itself is found by its tag
+	if rel, err := localllm.ReleaseByTag(context.Background(), host.HTTPAPI{BaseURL: fx.Server.URL}, src, localllm.Vulkan, "b10298-2.0.0"); err != nil || rel.Tag != "b10298-2.0.0" {
+		t.Fatalf("%+v %v", rel, err)
+	}
 }
