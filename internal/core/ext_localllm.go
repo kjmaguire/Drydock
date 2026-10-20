@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kjmaguire/drydock/internal/bundle"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -66,6 +67,10 @@ type LocalRuntime struct {
 	InstalledAt time.Time        `json:"installedAt,omitempty"`
 	Devices     localllm.Devices `json:"devices"`
 	Job         *LocalJob        `json:"job,omitempty"`
+	// Latest is a newer build of the same source and backend, when the twice-daily update check found one (decision P77)
+	Latest string `json:"latest,omitempty"`
+	// Bundled says the installed build is the one the download carried (decision P77), not one installed later.
+	Bundled bool `json:"bundled,omitempty"`
 }
 
 // LocalView is the Providers page's "Models on this PC" section.
@@ -97,6 +102,10 @@ func init() {
 		l.m.Server.OnChange = func(st localllm.ServerState) {
 			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "server", "state": st.State})
 		}
+		l.seedBundled(ctx)
+		wctx, stopWatch := context.WithCancel(context.Background())
+		l.stopWatch = stopWatch
+		l.watchUpdates(wctx)
 		l.autostart(ctx)
 		return map[string]Method{
 			"local.get": bind(func(ctx context.Context, _ struct{}) (any, error) {
@@ -107,6 +116,11 @@ func init() {
 				Backend localllm.Backend `json:"backend"`
 			}) (any, error) {
 				return l.install(ctx, p.Source, p.Backend, c.Human())
+			}),
+			// the installed build's newest release, read now instead of at the next twice-daily check (decision P77)
+			"local.checkUpdates": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				l.checkUpdates(ctx)
+				return l.view(ctx), nil
 			}),
 			"local.runtime.remove": bind(func(ctx context.Context, _ struct{}) (any, error) {
 				return l.removeRuntime(ctx, c.Human())
@@ -177,6 +191,8 @@ type localExt struct {
 	devFor    string     // the server program the devices were read for ("" until a build was asked)
 	devMu     sync.Mutex // one device probe at a time
 	starting  bool
+	latest    string // the installed build's newest release, as the last update check read it (under mu)
+	stopWatch context.CancelFunc
 }
 
 type localDownload struct {
@@ -185,6 +201,9 @@ type localDownload struct {
 }
 
 func (l *localExt) close() {
+	if l.stopWatch != nil {
+		l.stopWatch()
+	}
 	l.mu.Lock()
 	if l.jobCancel != nil {
 		l.jobCancel()
@@ -299,7 +318,13 @@ func (l *localExt) view(ctx context.Context) LocalView {
 	}
 	if in, ok := l.m.Runtime.Installed(); ok {
 		src, _ := localllm.SourceByID(in.Source)
-		v.Runtime = LocalRuntime{Installed: true, Source: in.Source, SourceName: src.Name, Tag: in.Tag, Backend: in.Backend, Server: in.Server, InstalledAt: in.InstalledAt}
+		v.Runtime = LocalRuntime{Installed: true, Source: in.Source, SourceName: src.Name, Tag: in.Tag, Backend: in.Backend, Server: in.Server, InstalledAt: in.InstalledAt,
+			Bundled: l.m.Runtime.BundledTag() == in.Tag}
+		l.mu.Lock()
+		if l.latest != "" && l.latest != in.Tag {
+			v.Runtime.Latest = l.latest
+		}
+		l.mu.Unlock()
 		v.Runtime.Devices = l.devicesOf(ctx, in)
 	}
 	l.mu.Lock()
@@ -764,4 +789,125 @@ func (l *localExt) autostart(ctx context.Context) {
 			l.c.logf("local models: autostart: %v", err)
 		}
 	})
+}
+
+// seedBundled installs, in the background, the llama.cpp build the download carries (decision P77, on the owner's words: "I
+// don't want to install llama.cpp, I want it already installed with Google's TurboQuant built in"). It is put in place only when
+// there is no build here or an earlier bundled one; a build the person installed or removed is left as it is
+// (localllm.Runtime.SeedFromBundle). The first time, the settings follow the build: its source, and its first KV cache type
+// (turbo4 for the TurboQuant build), unless the person already chose.
+func (l *localExt) seedBundled(ctx context.Context) {
+	m, err := bundle.Read(l.c.cfg.BundleDir)
+	if err != nil {
+		l.c.logf("local models: the download's tools: %v", err)
+		return
+	}
+	if m == nil || m.Llama == nil {
+		return
+	}
+	b, dir := *m.Llama, l.c.cfg.BundleDir
+	src, ok := localllm.SourceByID(b.Source)
+	if !ok {
+		l.c.logf("local models: the download names %q, not a build source", b.Source)
+		return
+	}
+	l.mu.Lock()
+	if l.job != nil && l.job.State == "running" {
+		l.mu.Unlock()
+		return
+	}
+	job := &LocalJob{Kind: "install", Target: src.Name + " for " + localllm.Describe(localllm.Backend(b.Backend)).Label, State: "running",
+		Phase: "installing from the download", Started: time.Now().UTC()}
+	l.job = job
+	l.mu.Unlock()
+	_, chosen := l.savedSettings(ctx)
+	safe.Go("core.localExt.seedBundled", func() {
+		in, did, err := l.m.Runtime.SeedFromBundle(context.Background(), dir, b)
+		l.mu.Lock()
+		job.Ended = time.Now().UTC()
+		switch {
+		case err != nil:
+			job.State, job.Error = "failed", "from the download: "+err.Error()
+		case did:
+			job.State, job.Phase = "done", "installed "+in.Tag+" from the download"
+		default:
+			l.job = nil // nothing to do: the build's own state says it all
+		}
+		l.mu.Unlock()
+		if err != nil {
+			l.c.logf("local models: llama.cpp from the download: %v", err)
+		}
+		if did {
+			l.c.logf("local models: %s %s (%s) installed from the download", src.Name, in.Tag, in.Backend)
+			if !chosen {
+				s := l.settings(context.Background())
+				s.Source, s.Backend, s.CacheType = src.ID, in.Backend, src.CacheTypes[0]
+				if err := l.save(context.Background(), s); err != nil {
+					l.c.logf("local models: settings for the bundled build: %v", err)
+				}
+			}
+		}
+		if err != nil || did {
+			l.changed("runtime", nil)
+		}
+	})
+}
+
+// savedSettings reads the stored settings and whether a person (or an earlier start) saved any.
+func (l *localExt) savedSettings(ctx context.Context) (LocalSettings, bool) {
+	var v string
+	if err := l.c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingLocal).Scan(&v); err != nil {
+		return l.settings(ctx), false
+	}
+	return l.settings(ctx), true
+}
+
+// watchUpdates checks, three minutes after start and every twelve hours (with the scan tools' check, decision P77: "if there
+// are updates to llama.cpp, we will do those periodically when checking for updates"), whether the installed build's source
+// has a newer release for its backend. A newer one is offered on the page; nothing is installed until the person presses
+// Update.
+func (l *localExt) watchUpdates(ctx context.Context) {
+	safe.Go("core.localExt.watchUpdates", func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(toolUpdatesFirst):
+		}
+		t := time.NewTicker(toolUpdatesEvery)
+		defer t.Stop()
+		for {
+			l.checkUpdates(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	})
+}
+
+// checkUpdates reads the newest release of the installed build's source and backend; a change is announced.
+func (l *localExt) checkUpdates(ctx context.Context) {
+	in, ok := l.m.Runtime.Installed()
+	if !ok {
+		return
+	}
+	src, ok := localllm.SourceByID(in.Source)
+	if !ok {
+		return
+	}
+	rel, err := localllm.LatestRelease(ctx, l.m.GitHub, src, in.Backend)
+	if err != nil {
+		if ctx.Err() == nil {
+			l.c.logf("local models: update check: %v", err)
+		}
+		return
+	}
+	l.mu.Lock()
+	changed := l.latest != rel.Tag
+	l.latest = rel.Tag
+	l.mu.Unlock()
+	if changed {
+		l.changed("runtime", nil)
+	}
 }

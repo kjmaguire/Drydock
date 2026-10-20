@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/bundle"
 	"github.com/kjmaguire/drydock/internal/runners"
 )
 
@@ -121,18 +122,17 @@ func (r *Runtime) Install(ctx context.Context, rel Release, report func(Progress
 	if err := os.WriteFile(filepath.Join(r.Root, installedFile), b, 0o644); err != nil {
 		return Installed{}, err
 	}
+	_ = os.Remove(filepath.Join(r.Root, removedFile)) // installed again: the person wants it
 	r.prune(dir)
 	report(Progress{Phase: "done"})
 	return in, nil
 }
 
-// Remove forgets the current build and deletes every unpacked build and cached archive.
+// Remove forgets the current build and deletes every unpacked build and cached archive. It also records that the person
+// removed it, so the build the download carries is not put back at the next start (SeedFromBundle).
 func (r *Runtime) Remove() error {
 	entries, err := os.ReadDir(r.Root)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	var first error
@@ -144,7 +144,69 @@ func (r *Runtime) Remove() error {
 			first = err
 		}
 	}
-	return first
+	if first != nil {
+		return first
+	}
+	if err := os.MkdirAll(r.Root, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(r.Root, removedFile), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+// removedFile says a person removed the build: the bundled build stays out until they install one again.
+const removedFile = "removed.json"
+
+// bundledFile names the bundled build last put in place from the download (SeedFromBundle).
+const bundledFile = "bundled.json"
+
+// SeedFromBundle puts the build the download carries in place (decision P77: llama.cpp comes installed, with the TurboQuant
+// KV cache types). It does so when no build is here, or when the one here is an earlier bundled build (the app was updated
+// with a newer one). A build the person installed is left alone, and so is a build the person removed. The archive is checked
+// against the SHA-256 the bundle recorded, copied into the download cache, and installed by the ordinary Install, which checks
+// the digest again and fetches nothing. It reports whether it installed.
+func (r *Runtime) SeedFromBundle(ctx context.Context, dir string, b bundle.LlamaBuild) (Installed, bool, error) {
+	src, ok := SourceByID(b.Source)
+	if !ok {
+		return Installed{}, false, fmt.Errorf("%q is not a build source", b.Source)
+	}
+	backend := Backend(b.Backend)
+	if !backend.Valid() {
+		return Installed{}, false, fmt.Errorf("%q is not a backend", b.Backend)
+	}
+	if _, err := os.Stat(filepath.Join(r.Root, removedFile)); err == nil {
+		return Installed{}, false, nil
+	}
+	last := r.BundledTag()
+	if in, ok := r.Installed(); ok && (in.Tag == b.Tag || in.Tag != last) {
+		return in, false, nil
+	}
+	if _, err := bundle.Stage(dir, b.Archive, src.DownloadPrefix(), filepath.Join(r.Root, "cache")); err != nil {
+		return Installed{}, false, err
+	}
+	in, err := r.Install(ctx, Release{Source: src.ID, Tag: b.Tag, Backend: backend, Archive: b.Archive}, nil)
+	if err != nil {
+		return Installed{}, false, err
+	}
+	v, _ := json.Marshal(map[string]string{"tag": b.Tag})
+	if err := os.WriteFile(filepath.Join(r.Root, bundledFile), v, 0o644); err != nil {
+		return in, true, err
+	}
+	return in, true, nil
+}
+
+// BundledTag is the release of the build last put in place from the download, or "" when none was.
+func (r *Runtime) BundledTag() string {
+	raw, err := os.ReadFile(filepath.Join(r.Root, bundledFile))
+	if err != nil {
+		return ""
+	}
+	var v struct {
+		Tag string `json:"tag"`
+	}
+	if json.Unmarshal(raw, &v) != nil {
+		return ""
+	}
+	return v.Tag
 }
 
 // prune removes unpacked builds other than keep and archives in the cache other than the newest two.

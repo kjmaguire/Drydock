@@ -109,6 +109,10 @@ type Config struct {
 	// ScanInstall, when set, adjusts the security scan's tool installer before it is used (decision P66): tests and the e2e
 	// harness replace GitHub, the download client and the installed program with labelled test doubles.
 	ScanInstall func(i *scan.Installer)
+	// BundleDir is the tools folder the download carries beside drydock.exe (decision P77): osv-scanner, Opengrep and a
+	// llama.cpp build with the TurboQuant KV cache types, each with the SHA-256 its release recorded, installed from there at
+	// start. The desktop app sets it (bundle.Dir()); empty, or a folder without bundle.json, carries nothing.
+	BundleDir string
 }
 
 // FilePick is what a file dialog asks for.

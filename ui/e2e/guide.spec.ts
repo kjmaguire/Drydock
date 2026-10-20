@@ -21,7 +21,7 @@ test('the Guide: a button in the top bar, a search, a topic, Learn more from a p
   await expect(page).toHaveURL(/\/guide\/scan$/);
   const topic = page.getByTestId('guide-topic');
   await expect(topic.getByRole('heading', { level: 2, name: 'Scan a repository for problems' })).toBeVisible();
-  await expect(topic).toContainText('Drydock downloads no rules');
+  await expect(topic).toContainText('Drydock comes with its rules built in');
   await expect(topics.getByRole('link', { name: 'Scan a repository for problems' })).toHaveAttribute('aria-current', 'page');
 
   // a page's "Learn more" opens its topic

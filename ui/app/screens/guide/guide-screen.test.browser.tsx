@@ -27,7 +27,7 @@ describe('the Guide screen', () => {
     const art = r.$('[data-testid="guide-topic"]')!;
     expect(art.getAttribute('data-topic')).toBe('scan');
     expect(art.querySelector('h2')!.textContent).toBe('Scan a repository for problems');
-    expect(art.textContent).toContain('Drydock downloads no rules');
+    expect(art.textContent).toContain('Drydock comes with its rules built in');
     expect(r.$('nav a[aria-current="page"]')!.getAttribute('href')).toBe('/guide/scan');
     const next = [...art.querySelectorAll('aside[aria-label="Related topics"] a')].map((a) => a.getAttribute('href'));
     expect(next).toContain('/guide/rule-licences');

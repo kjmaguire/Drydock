@@ -1,0 +1,124 @@
+# Drydock's own rules for Python (decision P77). Each one names a pattern that is a security problem in most code that has
+# it; its message says why and what to do instead. Fixtures: internal/scan/testdata/rules/drydock.
+rules:
+  - id: drydock.py.subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: >-
+      shell=True runs the command through the shell, so a value with ; | & or $( ) in it runs other commands. Pass the
+      command as a list of arguments without shell=True.
+    metadata: { category: security, cwe: "CWE-78: OS Command Injection", confidence: MEDIUM }
+    patterns:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern-not: subprocess.$F("...", ..., shell=True, ...)
+  - id: drydock.py.os-system-of-non-literal
+    languages: [python]
+    severity: ERROR
+    message: >-
+      os.system and os.popen run their argument through the shell; a command built from data can run other commands. Use
+      subprocess.run with a list of arguments.
+    metadata: { category: security, cwe: "CWE-78: OS Command Injection", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: os.system($X)
+          - pattern: os.popen($X, ...)
+      - pattern-not: os.system("...")
+      - pattern-not: os.popen("...", ...)
+  - id: drydock.py.eval-of-non-literal
+    languages: [python]
+    severity: ERROR
+    message: >-
+      eval() and exec() run a string as Python code; one built from data can run what an attacker chose. Use
+      ast.literal_eval for literals, or json for data.
+    metadata: { category: security, cwe: "CWE-95: Eval Injection", confidence: HIGH }
+    patterns:
+      - pattern-either:
+          - pattern: eval($X, ...)
+          - pattern: exec($X, ...)
+      - pattern-not: eval("...", ...)
+      - pattern-not: exec("...", ...)
+  - id: drydock.py.pickle-load
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Unpickling runs code the data asks for; pickle data from outside this program can take it over. Use json, or sign the
+      data and check the signature first.
+    metadata: { category: security, cwe: "CWE-502: Deserialization of Untrusted Data", confidence: MEDIUM }
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: cPickle.loads(...)
+      - pattern: cPickle.load(...)
+      - pattern: dill.loads(...)
+      - pattern: shelve.open(...)
+  - id: drydock.py.yaml-load-unsafe
+    languages: [python]
+    severity: ERROR
+    message: >-
+      yaml.load without a safe loader can build any Python object the document names, and so run code. Use yaml.safe_load,
+      or Loader=yaml.SafeLoader.
+    metadata: { category: security, cwe: "CWE-502: Deserialization of Untrusted Data", confidence: HIGH }
+    patterns:
+      - pattern-either:
+          - pattern: yaml.load(...)
+          - pattern: yaml.load_all(...)
+          - pattern: yaml.unsafe_load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
+      - pattern-not: yaml.load_all(..., Loader=yaml.SafeLoader, ...)
+  - id: drydock.py.tls-certificate-check-off
+    languages: [python]
+    severity: ERROR
+    message: >-
+      verify=False turns off the check of the server's certificate, so anyone on the network path can read and change the
+      traffic. Pass the server's CA bundle as verify= instead.
+    metadata: { category: security, cwe: "CWE-295: Improper Certificate Validation", confidence: HIGH }
+    pattern-either:
+      - pattern: requests.$M(..., verify=False, ...)
+      - pattern: httpx.$M(..., verify=False, ...)
+      - pattern: ssl._create_unverified_context(...)
+  - id: drydock.py.sql-built-from-data
+    languages: [python]
+    severity: ERROR
+    message: >-
+      This SQL text is built with % , .format() or an f-string, so a value with a quote can change the query (SQL injection).
+      Pass the values as the execute() parameters instead.
+    metadata: { category: security, cwe: "CWE-89: SQL Injection", confidence: MEDIUM }
+    pattern-either:
+      - pattern: $CUR.execute("..." % $X, ...)
+      - pattern: $CUR.execute("...".format(...), ...)
+      - pattern: $CUR.execute(f"...", ...)
+      - pattern: $CUR.execute("..." + $X, ...)
+      - pattern: $CUR.execute("..." + $X + "...", ...)
+      - pattern: $CUR.executemany("..." % $X, ...)
+  - id: drydock.py.weak-hash
+    languages: [python]
+    severity: WARNING
+    message: >-
+      MD5 and SHA-1 are broken for security: collisions can be made. For passwords use a password hash (bcrypt, scrypt,
+      argon2); for integrity use SHA-256 or better. If this is not for security, say so with usedforsecurity=False.
+    metadata: { category: security, cwe: "CWE-328: Use of Weak Hash", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+          - pattern: hashlib.new("md5", ...)
+          - pattern: hashlib.new("sha1", ...)
+      - pattern-not: hashlib.md5(..., usedforsecurity=False, ...)
+      - pattern-not: hashlib.sha1(..., usedforsecurity=False, ...)
+  - id: drydock.py.flask-debug-on
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Flask's debug mode gives anyone who can reach the server a Python console. Switch it on only for a server bound to
+      your own machine during development, never through code that ships.
+    metadata: { category: security, cwe: "CWE-489: Active Debug Code", confidence: HIGH }
+    pattern: $APP.run(..., debug=True, ...)
+  - id: drydock.py.tempfile-mktemp
+    languages: [python]
+    severity: WARNING
+    message: >-
+      tempfile.mktemp returns a name another process can take before this one opens it. Use NamedTemporaryFile or mkstemp.
+    metadata: { category: security, cwe: "CWE-377: Insecure Temporary File", confidence: HIGH }
+    pattern: tempfile.mktemp(...)

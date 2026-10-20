@@ -28,10 +28,21 @@ import (
 
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
-		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}, jobs: map[string]*toolJob{},
+		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}, jobs: map[string]*toolJob{}, latest: map[string]string{},
 			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools"))}
 		if c.cfg.ScanInstall != nil {
 			c.cfg.ScanInstall(s.inst)
+		}
+		s.seedBundled(ctx)
+		wctx, stopWatch := context.WithCancel(context.Background())
+		s.stopWatch = stopWatch
+		s.watchUpdates(wctx)
+		// the built-in rules (decision P77) are written once per version under the app's data; every scan runs them. A folder
+		// that cannot be written leaves them out, and the page and the scan say so.
+		if dir, err := scan.WriteBuiltinRules(filepath.Join(c.cfg.DataDir, "rules")); err != nil {
+			c.logf("security: the built-in rules could not be written: %v", err)
+		} else {
+			s.builtinRules = dir
 		}
 		// a project is not deleted under a running scan; a scan report the database refused goes with the project
 		c.onProjectBusy(func(projectID string) string {
@@ -93,6 +104,16 @@ func init() {
 				Tool      string `json:"tool"`
 			}) (any, error) {
 				return s.installTool(ctx, p.ProjectID, p.Tool, c.Human())
+			}),
+			// the newest release of every installed tool, read now instead of at the next twice-daily check (decision P77)
+			"security.tools.checkUpdates": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+			}) (any, error) {
+				s.checkUpdates(ctx)
+				s.memoMu.Lock()
+				s.memo.key = "" // the answer must carry what was just read
+				s.memoMu.Unlock()
+				return s.tools(ctx, p.ProjectID), nil
 			}),
 			"security.tool.install.cancel": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -169,6 +190,12 @@ type securityExt struct {
 	// ended (under mu)
 	inst *scan.Installer
 	jobs map[string]*toolJob
+	// builtinRules is the folder the built-in rules were written to; empty when they could not be
+	builtinRules string
+	// latest is each installed tool's newest release, as the last update check read it (under mu)
+	latest map[string]string
+	// stopWatch ends the update check
+	stopWatch context.CancelFunc
 }
 
 // toolsMemoTTL is how long a tools answer serves the reads that follow one change.
@@ -376,6 +403,7 @@ func (s *securityExt) paths(ctx context.Context) scan.Paths {
 	}
 	p.OSV = pick("osv-scanner", p.OSV)
 	p.Opengrep = pick("opengrep", p.Opengrep)
+	p.BuiltinRules = s.builtinRules
 	return p
 }
 
@@ -508,7 +536,7 @@ func (s *securityExt) start(ctx context.Context, p scanTarget, by string) (scan.
 	delete(s.unstored, t.Key)
 	// the scan outlives the request; close() cancels what is still running when the core closes
 	run := scan.Start(context.Background(), scan.Options{ID: id, ProjectID: t.ProjectID, By: by, Dir: t.Dir, Procs: s.c.Deps.PM, Redact: s.c.Scanner.Redact,
-		Env: checks.CommandEnv, Paths: s.paths(ctx), RulesDir: s.rulesDir(ctx, t.ProjectID), NoGit: t.Folder != "", OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(t, rep, e) }})
+		Env: checks.CommandEnv, Paths: s.paths(ctx), BuiltinRules: s.builtinRules, RulesDir: s.rulesDir(ctx, t.ProjectID), NoGit: t.Folder != "", OnChange: func(rep scan.Report, e scan.EngineID) { s.changed(t, rep, e) }})
 	s.running[t.Key] = run
 	// published under the lock: changed() takes it before it can publish an engine or finished event, so started comes first
 	s.publish(ctx, t, "security.scan.started", map[string]any{"id": id, "by": by})
@@ -706,6 +734,9 @@ func (s *securityExt) folders(ctx context.Context, limit int) ([]scan.Summary, e
 
 // close cancels the scans still running and waits for them, so no tool outlives the core.
 func (s *securityExt) close() {
+	if s.stopWatch != nil {
+		s.stopWatch()
+	}
 	s.mu.Lock()
 	runs := make([]*scan.Run, 0, len(s.running))
 	for _, r := range s.running {

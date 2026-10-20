@@ -56,6 +56,22 @@ func StartReleases() *ReleaseFixture {
 	f := &ReleaseFixture{releases: map[string][]map[string]any{}, files: map[string][]byte{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// one release by its tag (/repos/<owner>/<name>/releases/tags/<tag>), as GitHub answers it
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/repos/"); ok && strings.Contains(rest, "/releases/tags/") {
+			repo, tag, _ := strings.Cut(rest, "/releases/tags/")
+			f.mu.Lock()
+			list := f.releases[repo]
+			f.mu.Unlock()
+			for _, rel := range list {
+				if rel["tag_name"] == tag {
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(rel)
+					return
+				}
+			}
+			http.NotFound(w, r)
+			return
+		}
 		if repo, ok := strings.CutPrefix(r.URL.Path, "/repos/"); ok && strings.HasSuffix(repo, "/releases") {
 			repo = strings.TrimSuffix(repo, "/releases")
 			f.mu.Lock()

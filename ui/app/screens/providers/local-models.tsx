@@ -219,6 +219,13 @@ export function LocalModels(handle: Handle) {
   };
   const install = (src: string, be: LocalBackend | "") =>
     change("install", () => s.client.localInstall(src, be));
+  // the newest build now, instead of at the next twice-daily check (decision P77)
+  let checked = false;
+  const checkUpdates = async () => {
+    const v = await change("check-updates", () => s.client.localCheckUpdates());
+    if (v) checked = true;
+    redraw();
+  };
   const setSetting = async (e: LocalSettingsEdit) => {
     const running =
       q.data?.server.state === "running" || q.data?.server.state === "starting";
@@ -406,6 +413,9 @@ export function LocalModels(handle: Handle) {
                 <div class="line">
                   <h3>{runtimeLine(v.runtime, label)}</h3>
                   <Badge tone="ok">installed</Badge>
+                  {v.runtime.bundled ? (
+                    <Badge testId="local-bundled">came with Drydock</Badge>
+                  ) : null}
                   {v.runtime.installedAt ? (
                     <span mix={muted}>
                       installed {formatDate(v.runtime.installedAt)}
@@ -414,6 +424,18 @@ export function LocalModels(handle: Handle) {
                   <span class="acts">
                     <Button
                       size="sm"
+                      variant="ghost"
+                      data-testid="local-check-updates"
+                      disabled={busy || installing}
+                      mix={on("click", () => void checkUpdates())}
+                    >
+                      {act.busy === "check-updates"
+                        ? "Checking…"
+                        : "Check for updates"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={v.runtime.latest ? "primary" : "secondary"}
                       data-testid="local-update"
                       disabled={busy || installing}
                       mix={on(
@@ -425,7 +447,9 @@ export function LocalModels(handle: Handle) {
                           ),
                       )}
                     >
-                      Update
+                      {v.runtime.latest
+                        ? `Update to ${v.runtime.latest}`
+                        : "Update"}
                     </Button>
                     {confirmRemove ? (
                       <>
@@ -470,10 +494,30 @@ export function LocalModels(handle: Handle) {
                     )}
                   </span>
                 </div>
-                <p mix={muted}>
-                  Downloaded and run by Drydock from its own folder; Update
-                  fetches the newest build the same way.
+                <p mix={muted} data-testid="local-runtime-note">
+                  {v.runtime.bundled
+                    ? "Came installed with Drydock and runs from its own folder. Drydock looks for a newer build twice a day; Update fetches it, checked against GitHub's digest."
+                    : "Downloaded and run by Drydock from its own folder; Update fetches the newest build the same way."}
                 </p>
+                {installedSrc && installedSrc.cacheTypes.some((c) => c.startsWith("turbo")) ? (
+                  <p mix={muted} data-testid="local-turboquant">
+                    Google&apos;s TurboQuant is built in: the{" "}
+                    {installedSrc.cacheTypes
+                      .filter((c) => c.startsWith("turbo"))
+                      .join(" and ")}{" "}
+                    KV cache types keep more context in less memory. Choose one
+                    under KV cache type.
+                  </p>
+                ) : null}
+                {v.runtime.latest ? (
+                  <p role="status" data-testid="local-latest">
+                    {v.runtime.latest} is out (this is {v.runtime.tag}).
+                  </p>
+                ) : checked ? (
+                  <p mix={muted} role="status" data-testid="local-up-to-date">
+                    This is the newest build.
+                  </p>
+                ) : null}
                 {v.runtime.devices.probed ? (
                   gpus(v.runtime.devices.devices).length > 0 ? (
                     <ul aria-label="Devices" data-testid="local-devices">
@@ -535,7 +579,7 @@ export function LocalModels(handle: Handle) {
                   </Field>
                   <Field
                     label="Source"
-                    hint="The official weekly build is the default. The TurboQuant fork is a second build you can pick; it adds the turbo4 and turbo3 cache types."
+                    hint="Drydock's download comes with the TurboQuant fork, which adds Google's turbo4 and turbo3 cache types. The official weekly build is the other choice."
                   >
                     {(id) => (
                       <Select

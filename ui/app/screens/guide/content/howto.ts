@@ -95,14 +95,15 @@ export const HOWTO: readonly Topic[] = [
         ],
       },
       { h: 'Tools on this computer' },
-      { p: 'Each engine is a tool that must be on this computer. The page shows what it found and offers **Install**, which downloads the newest release from GitHub, checks its SHA-256 and keeps it in Drydock’s folder, or **Choose file…** to use a copy you already have.' },
+      { p: 'Each engine is a tool. Drydock comes with osv-scanner and Opengrep installed in its own folder, so a scan works from the start. **Check for updates** looks up their newest releases (Drydock also looks twice a day), and **Update to** a release downloads it from GitHub, checks its SHA-256 and keeps it in Drydock’s folder. **Choose file…** uses a copy you already have instead.' },
       { h: 'Rules for the Code engine' },
-      { p: 'Opengrep needs a folder of rule files (`.yaml`). **Drydock downloads no rules**: you get a set yourself and choose the folder it is in. Opengrep reads rules written for Semgrep, so a Semgrep rule set works unchanged. See [Rule sets and their licences](guide:rule-licences).' },
+      { p: 'Opengrep runs with a folder of rule files (`.yaml`). **Drydock comes with its rules built in**: they run on every scan, and the Security page lists each set with its licence. See [Rule sets and their licences](guide:rule-licences).' },
+      { p: 'To run more rules as well, add a folder of your own:' },
       {
         ol: [
-          'Pick a rule set and read its licence.',
+          'Pick a rule set and read its licence. Opengrep reads rules written for Semgrep, so a Semgrep rule set works unchanged.',
           'Clone it, for example with `git clone --depth 1 https://github.com/semgrep/semgrep-rules` (the Security page shows the command for each set).',
-          'Under **Tools on this computer**, press **Choose folder…** next to the rules folder and pick the clone.',
+          'Under **Tools on this computer**, open **Add a folder of your own rules**, press **Choose folder…** and pick the clone.',
         ],
       },
       { note: 'A downloaded repository can still steer what two of the tools skip: an `osv-scanner.toml` or a `.semgrepignore` inside it is read by osv-scanner and Opengrep. The secrets engine follows no file of the repository.', tone: 'warn' },
@@ -138,7 +139,7 @@ export const HOWTO: readonly Topic[] = [
       { p: 'Drydock downloads and runs **llama.cpp** itself: the newest Windows build of the source you choose, for the backend you pick, checked against the digest GitHub recorded and unpacked into Drydock’s own folder. Nothing has to be installed by hand, and nothing is added to the PC’s `PATH`. Models come from the Hugging Face Hub the same way.' },
       {
         ul: [
-          '**Source:** the official weekly build is the default. The TurboQuant fork is a second build you can pick; it adds the `turbo4` and `turbo3` cache types.',
+          '**Source:** Drydock’s download comes with a build of the TurboQuant fork, installed at the first start with `turbo4` as the cache type, so nothing has to be installed. The fork adds Google’s TurboQuant cache types `turbo4` and `turbo3`. The official weekly build is the other choice. Drydock looks for a newer build of the installed source twice a day, and **Update to** installs it.',
           '**KV cache type:** `q8_0` is near-lossless with half the KV memory of `f16`. `q4_0` uses a quarter, with llama.cpp’s Hadamard rotation (most of TurboQuant’s gain).',
         ],
       },

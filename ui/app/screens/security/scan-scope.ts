@@ -19,6 +19,8 @@ export interface ScanScope {
   installTool(tool: ScanToolName): Promise<SecurityTools>;
   cancelInstall(tool: ScanToolName): Promise<SecurityTools>;
   removeTool(tool: ScanToolName): Promise<SecurityTools>;
+  /** Look up every installed tool's newest release now (decision P77). */
+  checkUpdates(): Promise<SecurityTools>;
   start(): Promise<ScanReport>;
   cancel(): Promise<ScanReport>;
   /** The running scan, else the last finished one, else null. */
@@ -47,6 +49,7 @@ export function projectScope(client: SecurityClient, projectId: string): ScanSco
     installTool: (tool) => client.securityToolInstall(projectId, tool),
     cancelInstall: (tool) => client.securityToolInstallCancel(projectId, tool),
     removeTool: (tool) => client.securityToolRemove(projectId, tool),
+    checkUpdates: () => client.securityToolsCheckUpdates(projectId),
     start: () => client.securityScanStart(projectId),
     cancel: () => client.securityScanCancel(projectId),
     get: () => client.securityScanGet(projectId),
@@ -73,6 +76,7 @@ export function folderScope(client: SecurityClient, folder: string, typed: () =>
     installTool: (tool) => client.securityToolInstall('', tool),
     cancelInstall: (tool) => client.securityToolInstallCancel('', tool),
     removeTool: (tool) => client.securityToolRemove('', tool),
+    checkUpdates: () => client.securityToolsCheckUpdates(''),
     start: async () => {
       const r = await client.securityFolderScanStart(typed().trim());
       onStarted(r);

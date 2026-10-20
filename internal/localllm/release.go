@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 
@@ -115,6 +116,19 @@ func firstLine(body string) string {
 		}
 	}
 	return ""
+}
+
+// ReleaseByTag reads one release of the source by its tag (the pinned build a download carries, cmd/drydock-bundle) and checks
+// it as LatestRelease would: the backend's archive with its SHA-256 digest.
+func ReleaseByTag(ctx context.Context, api host.API, src Source, b Backend, tag string) (Release, error) {
+	if api == nil {
+		return Release{}, errors.New("GitHub cannot be reached")
+	}
+	var one rawRelease
+	if _, err := api.Do(ctx, "GET", "/repos/"+src.Repo+"/releases/tags/"+url.PathEscape(tag), nil, &one, ""); err != nil {
+		return Release{}, fmt.Errorf("could not read %s's release %s: %w", src.Repo, tag, err)
+	}
+	return pickRelease(src, b, []rawRelease{one})
 }
 
 // LatestRelease reads the source's releases through the GitHub API (no sign-in needed) and picks the newest that has the

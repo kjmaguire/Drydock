@@ -212,9 +212,30 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEAL
 
 The extra queries in `internal/repomap/queries/*-extra.scm` are Drydock's own.
 
+## Tools and rules the Windows download carries (decision P77)
+
+The `tools` folder beside `drydock.exe` holds these release files exactly as each project published them on GitHub, pinned in
+`packaging/bundle.json` and checked against the SHA-256 digest GitHub recorded (`tools/bundle.json` lists each file, its address and
+its digest). Drydock installs them into its own folder at the first start; it does not change them.
+
+- osv-scanner v2.7.0 (https://github.com/google/osv-scanner): Apache-2.0.
+- Opengrep v1.31.0 (https://github.com/opengrep/opengrep): LGPL-2.1. The program is shipped unmodified, as its own executable, not
+  linked into Drydock. Its source for that release is at https://github.com/opengrep/opengrep/tree/v1.31.0; on request Drydock's
+  maintainers provide the same source.
+- llama.cpp, the TurboQuant fork's Windows Vulkan build `turboquant-windows-x64-vulkan-519f0c5`
+  (https://github.com/AtomicBot-ai/atomic-llama-cpp-turboquant): MIT, as llama.cpp and ggml (copyright the ggml
+  authors, as its LICENSE file states). Its archive carries the licences of what it contains; Drydock unpacks it as published.
+
+The built-in Opengrep rules in `internal/scan/rules` are compiled into Drydock and written to its data folder with each set's
+`LICENSE`:
+
+- Drydock's own rules (`internal/scan/rules/drydock`): under Drydock's licence.
+- dgryski/semgrep-go (https://github.com/dgryski/semgrep-go): MIT, Copyright (c) 2020 Damian Gryski.
+- 0xdea/semgrep-rules, the C and C++ rules (https://github.com/0xdea/semgrep-rules): MIT, Copyright (c) 2022 raptor.
+
 ## Tools Drydock invokes but does not bundle
 
-Installed and licensed by the user: Claude Code (proprietary, Anthropic), Codex CLI (Apache-2.0), Gemini CLI (Apache-2.0), OpenCode (MIT), Goose (Apache-2.0), Antigravity CLI (proprietary, Google), `git` (GPL-2.0), GitHub CLI (MIT), osv-scanner (Apache-2.0), Playwright (Apache-2.0), Wrangler (MIT OR Apache-2.0), Node.js (MIT). The Sentry MCP server (FSL-1.1-Apache-2.0), the Aikido MCP server (AGPL or commercial) and Notion's local MCP server are **not** bundled (decision D14).
+Installed and licensed by the user: Claude Code (proprietary, Anthropic), Codex CLI (Apache-2.0), Gemini CLI (Apache-2.0), OpenCode (MIT), Goose (Apache-2.0), Antigravity CLI (proprietary, Google), `git` (GPL-2.0), GitHub CLI (MIT), Playwright (Apache-2.0), Wrangler (MIT OR Apache-2.0), Node.js (MIT). The Sentry MCP server (FSL-1.1-Apache-2.0), the Aikido MCP server (AGPL or commercial) and Notion's local MCP server are **not** bundled (decision D14).
 
 ## Dev tooling (not shipped)
 

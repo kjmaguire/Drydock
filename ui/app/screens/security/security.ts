@@ -170,3 +170,9 @@ export function emptyFindingsText(report: Pick<ScanReport, 'status' | 'engines'>
   }
   return 'Nothing found.';
 }
+
+/** A rule set's language as people write it (Opengrep names them in lower case: csharp, cpp). */
+export function languageName(id: string): string {
+  const names: Record<string, string> = { javascript: 'JavaScript', typescript: 'TypeScript', python: 'Python', go: 'Go', java: 'Java', csharp: 'C#', c: 'C', cpp: 'C++' };
+  return names[id] ?? id;
+}

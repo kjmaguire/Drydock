@@ -20,12 +20,11 @@ import { Section, card, listCard, spacer } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { Meter } from '../budgets/meter.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { ChooseFolder } from '../shared/choose-folder.tsx';
 import { RulesSources } from './rules-sources.tsx';
 import type { ScanScope } from './scan-scope.ts';
 import {
-  ENGINES,
-  SEVERITIES,
   advisoryUrl,
   byName,
   countsText,
@@ -35,11 +34,14 @@ import {
   engineCounts,
   engineDeterminate,
   engineFraction,
+  ENGINES,
   engineTone,
   filesText,
   filterFindings,
   findingsText,
+  languageName,
   overallPercent,
+  SEVERITIES,
   severityTone,
   sortFindings,
   statusText,
@@ -170,6 +172,8 @@ const rulesCss = css({
   '& .line': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
   '& .line input': { flex: '1', minWidth: '220px', fontFamily: t.mono, fontSize: t.textSm },
   '& .note': { margin: '0', fontSize: t.textSm, color: t.textMuted },
+  '& ul': { margin: '0', paddingLeft: t.s4, display: 'grid', gap: '2px', fontSize: t.textSm, color: t.textMuted },
+  '& li strong': { fontWeight: '600', color: t.text },
 });
 
 const historyBtn = css({
@@ -270,7 +274,8 @@ function EngineRow(handle: Handle<{ id: EngineID; e?: EngineResult; tools?: Secu
       right = st.lines;
       status = e.status;
     } else if (tool) {
-      const ok = tool.found && (id !== 'sast' || tools?.rulesOk !== false);
+      // the Code engine runs the built-in rules (decision P77), and a folder of the person's own when there is one
+      const ok = tool.found && (id !== 'sast' || tools?.builtinRules === true || tools?.rulesOk === true);
       badge = <Badge tone={ok ? 'ok' : 'warn'}>{!tool.found ? 'not installed' : ok ? 'ready' : 'no rules'}</Badge>;
       status = ok ? 'ready' : 'missing';
     } else {
@@ -522,6 +527,16 @@ export function ScanPanel(
     const r = await act.run(`remove:${tool}`, () => scope().removeTool(tool));
     if (r) tools.set(r);
   };
+  // the newest release of each installed tool, now instead of at the next twice-daily check (decision P77)
+  let checked = false;
+  const checkUpdates = async () => {
+    const r = await act.run('check-updates', () => scope().checkUpdates());
+    if (r) {
+      tools.set(r);
+      checked = true;
+      void handle.update();
+    }
+  };
   const pick = (f: () => void) => {
     f();
     void handle.update();
@@ -678,7 +693,22 @@ export function ScanPanel(
           </Section>
         ) : null}
 
-        <Section title="Tools on this computer" testId="security-tools">
+        <Section
+          title="Tools on this computer"
+          testId="security-tools"
+          actions={
+            tl?.canInstall ? (
+              <Button type="button" variant="secondary" size="sm" data-testid="tools-check-updates" disabled={busy} mix={on('click', () => void checkUpdates())}>
+                {act.busy === 'check-updates' ? 'Checking…' : 'Check for updates'}
+              </Button>
+            ) : undefined
+          }
+        >
+          {checked && tl && !tl.osv.latest && !tl.opengrep.latest ? (
+            <p mix={muted} role="status" data-testid="tools-up-to-date">
+              The installed tools are the newest releases.
+            </p>
+          ) : null}
           <ErrorNote error={tools.error} what="Could not read the tools" />
           {!tl && tools.loading ? <Loading /> : null}
           {tl ? (
@@ -717,14 +747,14 @@ export function ScanPanel(
                         ) : (
                           <Button
                             type="button"
-                            variant={info.found ? 'secondary' : 'primary'}
+                            variant={!info.found || info.latest ? 'primary' : 'secondary'}
                             size="sm"
                             data-testid="tool-install"
                             disabled={busy}
                             title={installed ? 'Look up the newest release and install it if it is newer' : "Download the newest release from the tool's GitHub repository, check it and keep it in Drydock's own folder"}
                             mix={on('click', () => void installTool(tool))}
                           >
-                            {act.busy === `install:${tool}` ? 'Starting…' : installed ? 'Update' : 'Install'}
+                            {act.busy === `install:${tool}` ? 'Starting…' : installed ? (info.latest ? `Update to ${info.latest}` : 'Update') : 'Install'}
                           </Button>
                         )}
                         {installed && !installing ? (
@@ -737,7 +767,13 @@ export function ScanPanel(
                             {jobText(job)}
                           </span>
                         ) : (
-                          <span class="job">{installed ? 'Update looks up the newest release.' : `Install downloads the newest release from GitHub, checks its SHA-256 and keeps it in Drydock's own folder.`}</span>
+                          <span class="job" data-testid={info.latest ? 'tool-latest' : undefined}>
+                            {installed
+                              ? info.latest
+                                ? `${info.latest} is out (this is ${info.tag ?? 'an older release'}).`
+                                : 'Update looks up the newest release.'
+                              : `Install downloads the newest release from GitHub, checks its SHA-256 and keeps it in Drydock's own folder.`}
+                          </span>
                         )}
                       </div>
                     ) : null}
@@ -787,58 +823,79 @@ export function ScanPanel(
                   </div>
                 );
               })}
-              <form
-                mix={[
-                  rulesCss,
-                  on('submit', (e) => {
-                    e.preventDefault();
-                    if (!busy) void saveRules();
-                  }),
-                ]}
-              >
-                <label for={`rules-${handle.id}`}>Opengrep rules folder</label>
-                <div class="line">
-                  {/* the window's own folder dialog, in the desktop app; a folder chosen there is saved at once, like a program chosen with Choose file... */}
-                  <ChooseFolder
-                    title="Choose the Opengrep rules folder"
-                    testId="rules-choose"
-                    disabled={busy}
-                    onPick={(path) => {
-                      rulesEdit = path;
-                      void saveRules();
-                    }}
-                  />
-                  <input
-                    id={`rules-${handle.id}`}
-                    aria-label="Rules folder"
-                    data-testid="rules-dir"
-                    spellcheck={false}
-                    placeholder="for example C:\tools\opengrep-rules"
-                    value={rulesValue}
-                    mix={on('input', (e) => {
-                      rulesEdit = e.currentTarget.value;
-                      rulesSaved = false;
-                      void handle.update();
-                    })}
-                  />
-                  <Button type="submit" variant="secondary" size="sm" disabled={busy}>
-                    {act.busy === 'rules' ? 'Saving…' : 'Save'}
-                  </Button>
-                  {rulesSaved && rulesEdit === undefined ? <span role="status">Saved.</span> : null}
-                  <span mix={spacer} />
-                  {tl.rulesOk ? <Badge tone="ok">Rules found.</Badge> : null}
-                </div>
-                {!tl.rulesOk && tl.rulesNote ? (
-                  <Notice tone="warn" testId="rules-note">
-                    {tl.rulesNote}
+              <div mix={rulesCss} data-testid="builtin-rules">
+                <strong>Opengrep rules</strong>
+                {tl.builtinRules ? (
+                  <p class="note">
+                    {tl.builtinRuleCount ?? 0} rules are built into Drydock and run on every scan:
+                  </p>
+                ) : (
+                  <Notice tone="warn" testId="builtin-rules-missing">
+                    The built-in rules could not be written to Drydock's data folder, so only a folder of your own rules can run.
                   </Notice>
-                ) : null}
-                <p class="note">
-                  Opengrep needs a folder of rules you are licensed to use (.yaml files); Drydock downloads none.
-                  {rulesHint ? ` ${rulesHint}` : ''}
-                </p>
-                <RulesSources openByDefault={!tl.rulesOk} />
-              </form>
+                )}
+                <ul aria-label="Built-in rule sets">
+                  {(tl.ruleSets ?? []).map((r) => (
+                    <li key={r.id} data-testid="rule-set" data-set={r.id}>
+                      <strong>{r.name}</strong>: {r.rules} rules for {(r.languages ?? []).map(languageName).join(', ')}. Licence: {r.licence}.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Disclosure summary={tl.rulesDir ? 'Your own rules folder (used with the built-in rules)' : 'Add a folder of your own rules (optional)'} open={!!tl.rulesDir && !tl.rulesOk} testId="own-rules">
+                <form
+                  mix={[
+                    rulesCss,
+                    on('submit', (e) => {
+                      e.preventDefault();
+                      if (!busy) void saveRules();
+                    }),
+                  ]}
+                >
+                  <label for={`rules-${handle.id}`}>Your rules folder</label>
+                  <div class="line">
+                    {/* the window's own folder dialog, in the desktop app; a folder chosen there is saved at once, like a program chosen with Choose file... */}
+                    <ChooseFolder
+                      title="Choose the Opengrep rules folder"
+                      testId="rules-choose"
+                      disabled={busy}
+                      onPick={(path) => {
+                        rulesEdit = path;
+                        void saveRules();
+                      }}
+                    />
+                    <input
+                      id={`rules-${handle.id}`}
+                      aria-label="Rules folder"
+                      data-testid="rules-dir"
+                      spellcheck={false}
+                      placeholder="for example C:\tools\opengrep-rules"
+                      value={rulesValue}
+                      mix={on('input', (e) => {
+                        rulesEdit = e.currentTarget.value;
+                        rulesSaved = false;
+                        void handle.update();
+                      })}
+                    />
+                    <Button type="submit" variant="secondary" size="sm" disabled={busy}>
+                      {act.busy === 'rules' ? 'Saving…' : 'Save'}
+                    </Button>
+                    {rulesSaved && rulesEdit === undefined ? <span role="status">Saved.</span> : null}
+                    <span mix={spacer} />
+                    {tl.rulesOk ? <Badge tone="ok">Rules found.</Badge> : null}
+                  </div>
+                  {!tl.rulesOk && tl.rulesNote ? (
+                    <Notice tone="warn" testId="rules-note">
+                      {tl.rulesNote}
+                    </Notice>
+                  ) : null}
+                  <p class="note">
+                    The rules in this folder (.yaml files you are licensed to use) run with the built-in ones.
+                    {rulesHint ? ` ${rulesHint}` : ''}
+                  </p>
+                  <RulesSources />
+                </form>
+              </Disclosure>
             </div>
           ) : null}
         </Section>

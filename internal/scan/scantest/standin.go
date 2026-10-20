@@ -120,25 +120,28 @@ const SARIF = `{
   }]
 }`
 
-// opengrep checks that a rules folder was given, writes SARIF to the --sarif-output file and exits 0.
+// opengrep checks that each rules folder given with -f is there, writes SARIF to the --sarif-output file and exits 0.
 func opengrep(args []string, empty bool) int {
-	out, rules := "", ""
+	out, rules := "", []string{}
 	for i := 0; i < len(args); i++ {
 		switch {
 		case strings.HasPrefix(args[i], "--sarif-output="):
 			out = strings.TrimPrefix(args[i], "--sarif-output=")
 		case args[i] == "-f" && i+1 < len(args):
-			rules = args[i+1]
+			rules = append(rules, args[i+1])
 			i++
 		}
 	}
-	if rules == "" {
+	if len(rules) == 0 {
 		fmt.Fprintln(os.Stderr, "opengrep stand-in: no rules given (-f)")
 		return 2
 	}
-	if st, err := os.Stat(rules); err != nil || !st.IsDir() {
-		fmt.Fprintf(os.Stderr, "opengrep stand-in: rules folder %s is not there\n", rules)
-		return 2
+	// every -f must be a folder that is there (the built-in rules, then the person's own folder)
+	for _, dir := range rules {
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			fmt.Fprintf(os.Stderr, "opengrep stand-in: rules folder %s is not there\n", dir)
+			return 2
+		}
 	}
 	if out == "" {
 		fmt.Fprintln(os.Stderr, "opengrep stand-in: no --sarif-output given")

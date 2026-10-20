@@ -81,6 +81,10 @@ export interface LocalRuntime {
   installedAt?: string;
   devices: Devices;
   job?: LocalJob;
+  /** A newer build of the same source and backend, found by the update check (decision P77). */
+  latest?: string;
+  /** The installed build is the one that came with Drydock's download (decision P77). */
+  bundled?: boolean;
 }
 
 export interface LocalSettings {
@@ -188,6 +192,8 @@ export interface LocalClient {
   localGet(): Promise<LocalView>;
   /** Installs (or updates to) the newest build of the source for the backend, in the background. '' keeps the current setting. */
   localInstall(source?: string, backend?: LocalBackend | ''): Promise<LocalView>;
+  /** Looks up the newest build of the installed source and backend now; a newer one comes back as runtime.latest. */
+  localCheckUpdates(): Promise<LocalView>;
   /** Stops the server and deletes every build. */
   localRuntimeRemove(): Promise<LocalView>;
   /** Changes just the settings given. */
@@ -212,6 +218,7 @@ export function createLocalClient(t: Transport): LocalClient {
   return {
     localGet: async () => view(await t.call<LocalView>('local.get')),
     localInstall: async (source = '', backend = '') => view(await t.call<LocalView>('local.install', { source, backend })),
+    localCheckUpdates: async () => view(await t.call<LocalView>('local.checkUpdates')),
     localRuntimeRemove: async () => view(await t.call<LocalView>('local.runtime.remove')),
     localSettingsSet: async (e) => view(await t.call<LocalView>('local.settings.set', e)),
     localModelsSuggested: async () => arr(await t.call<Repo[] | null>('local.models.suggested')).map(repo),

@@ -273,50 +273,61 @@ func TestCancelEndsTheScanAsCancelled(t *testing.T) {
 	}
 }
 
-func TestWithoutARulesFolderTheCodeEngineIsSkippedAndSaysSo(t *testing.T) {
-	run := scan.Start(context.Background(), scan.Options{Dir: tree(t),
-		Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}})
-	rep := run.Wait()
-	if e := engine(rep, scan.SAST); e.Status != scan.Skipped || !strings.Contains(e.Reason, "No rules folder chosen") {
+// Decision P77: with no folder of the person's own the Code engine runs the built-in rules; only when even those could not be
+// written does it skip, and the reason says what to check and where to choose a folder instead.
+func TestWithoutARulesFolderTheCodeEngineRunsTheBuiltinRules(t *testing.T) {
+	builtin, err := scan.WriteBuiltinRules(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := scan.Start(context.Background(), scan.Options{Dir: tree(t), BuiltinRules: builtin,
+		Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
+	if e := engine(rep, scan.SAST); e.Status != scan.Done || e.Reason != "" {
+		t.Fatalf("%+v", e)
+	}
+	// nothing to run at all: skipped, with what to check and where to choose rules
+	rep = scan.Start(context.Background(), scan.Options{Dir: tree(t),
+		Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
+	e := engine(rep, scan.SAST)
+	if e.Status != scan.Skipped || !strings.Contains(e.Reason, "built-in rules could not be written") || !strings.Contains(e.Reason, `"Tools on this computer"`) {
 		t.Fatalf("%+v", e)
 	}
 	if e := engine(rep, scan.Deps); e.Status != scan.Done || e.Findings != 0 {
 		t.Fatalf("%+v", e)
 	}
-	if !strings.Contains(rep.Summary, "no vulnerable packages") {
+	// the summary keeps the first sentence only
+	if !strings.Contains(rep.Summary, "the Code engine was skipped (The built-in rules could not be written") || strings.Contains(rep.Summary, "Tools on this computer") {
 		t.Fatalf("%q", rep.Summary)
-	}
-	// the reason is read in a report, away from the field that fixes it: it says where that field is, and the summary
-	// keeps only the first sentence
-	reason := engine(rep, scan.SAST).Reason
-	if !strings.Contains(reason, `"Tools on this computer"`) || !strings.Contains(reason, "where to get them") {
-		t.Fatalf("the skipped reason does not say where to choose the rules: %q", reason)
-	}
-	if !strings.Contains(rep.Summary, "the Code engine was skipped (No rules folder chosen: the Code engine is skipped until one is)") || strings.Contains(rep.Summary, "Tools on this computer") {
-		t.Fatalf("the summary should keep the first sentence only: %q", rep.Summary)
 	}
 }
 
-// Every way the rules folder can be unusable ends the Code engine skipped with the same pointer, and a usable one does not.
-func TestEveryUnusableRulesFolderSkipsTheCodeEngineWithWhereToChoose(t *testing.T) {
-	empty := t.TempDir()
+// A folder of the person's own that cannot be used is left out and the built-in rules still run; without the built-in rules it
+// is the reason the engine skipped, and a usable folder runs alone.
+func TestAnUnusableRulesFolderIsLeftOutAndTheBuiltinRulesStillRun(t *testing.T) {
+	builtin, err := scan.WriteBuiltinRules(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for name, dir := range map[string]string{
-		"relative":   "rules",
-		"missing":    filepath.Join(t.TempDir(), "gone"),
-		"no yaml":    empty,
-		"not chosen": "",
+		"relative": "rules",
+		"missing":  filepath.Join(t.TempDir(), "gone"),
+		"no yaml":  t.TempDir(),
 	} {
-		rep := scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: dir,
+		rep := scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: dir, BuiltinRules: builtin,
 			Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
-		e := engine(rep, scan.SAST)
-		if e.Status != scan.Skipped || !strings.HasSuffix(e.Reason, "where to get them.") {
-			t.Errorf("%s: %+v", name, e)
+		if e := engine(rep, scan.SAST); e.Status != scan.Done {
+			t.Errorf("%s with the built-in rules: %+v", name, e)
+		}
+		rep = scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: dir,
+			Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
+		if e := engine(rep, scan.SAST); e.Status != scan.Skipped || !strings.Contains(e.Reason, "your rules folder cannot be used") {
+			t.Errorf("%s alone: %+v", name, e)
 		}
 	}
 	rep := scan.Start(context.Background(), scan.Options{Dir: tree(t), RulesDir: rules(t),
 		Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
-	if e := engine(rep, scan.SAST); e.Status != scan.Done || strings.Contains(e.Reason, "Tools on this computer") {
-		t.Fatalf("a usable rules folder should run the Code engine: %+v", e)
+	if e := engine(rep, scan.SAST); e.Status != scan.Done {
+		t.Fatalf("a usable rules folder runs the Code engine: %+v", e)
 	}
 }
 
@@ -334,8 +345,17 @@ func TestDetectSaysWhatIsInstalledAndHowToGetTheRest(t *testing.T) {
 		t.Fatalf("%+v", have)
 	}
 	none := scan.Detect(ctx, nil, nil, scan.Paths{LookPath: notFound}, "")
-	if none.OSV.Found || none.Opengrep.Found || none.Ready || none.RulesOK || !strings.Contains(none.OSV.Install, "osv-scanner") || !strings.Contains(none.Opengrep.Install, "opengrep") || none.RulesNote == "" {
+	if none.OSV.Found || none.Opengrep.Found || none.Ready || none.RulesOK || !strings.Contains(none.OSV.Install, "osv-scanner") || !strings.Contains(none.Opengrep.Install, "opengrep") || none.RulesNote != "" {
 		t.Fatalf("%+v", none)
+	}
+	// the built-in rule sets are listed whether or not they were written; written, they make the Code engine ready without
+	// a folder of the person's own (decision P77)
+	if len(none.RuleSets) != 3 || none.BuiltinRuleCount != 34+66+49 || none.BuiltinRules {
+		t.Fatalf("%+v", none.RuleSets)
+	}
+	builtin := scan.Detect(ctx, nil, nil, scan.Paths{OSV: tool("osv-scanner"), Opengrep: tool("opengrep"), BuiltinRules: "/rules/builtin"}, "")
+	if !builtin.BuiltinRules || !builtin.Ready || builtin.RulesOK {
+		t.Fatalf("%+v", builtin)
 	}
 }
 

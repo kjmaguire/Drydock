@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,6 +90,70 @@ func newestStableTag(lsRemote string) string {
 		}
 		t := line[i+len("refs/tags/"):]
 		if _, _, _, pre, ok := parseSemver(t); ok && !pre && strings.Count(t, ".") == 2 && (best == "" || less(best, t)) {
+			best = t
+		}
+	}
+	return best
+}
+
+// gitNewestDatedTag is the tag starting with prefix whose commit is the newest. The TurboQuant fork names its builds by commit
+// (turboquant-windows-x64-vulkan-519f0c5), so only the commits' dates order them: each tagged commit is fetched without its
+// trees into a scratch repository and its committer date read.
+func gitNewestDatedTag(ctx context.Context, repo, prefix string) (string, error) {
+	out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+repo)
+	if err != nil {
+		return "", err
+	}
+	tags := tagsWithPrefix(out, prefix)
+	if len(tags) == 0 {
+		return "", fmt.Errorf("no tag starts with %s", prefix)
+	}
+	dir, err := os.MkdirTemp("", "drydock-audit-tags-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+	if _, err := run(ctx, dir, nil, "git", "init", "-q"); err != nil {
+		return "", err
+	}
+	dates := map[string]int64{}
+	for _, t := range tags {
+		if _, err := run(ctx, dir, nil, "git", "fetch", "-q", "--depth", "1", "--filter=tree:0", "https://github.com/"+repo, "refs/tags/"+t+":refs/tags/"+t); err != nil {
+			return "", err
+		}
+		v, err := run(ctx, dir, nil, "git", "log", "-1", "--format=%ct", "refs/tags/"+t)
+		if err != nil {
+			return "", err
+		}
+		n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			return "", fmt.Errorf("date of %s: %w", t, err)
+		}
+		dates[t] = n
+	}
+	return newestByDate(dates), nil
+}
+
+// tagsWithPrefix lists the tags of git ls-remote output that start with prefix.
+func tagsWithPrefix(lsRemote, prefix string) []string {
+	var out []string
+	for _, line := range strings.Split(lsRemote, "\n") {
+		i := strings.Index(line, "refs/tags/")
+		if i < 0 {
+			continue
+		}
+		if t := strings.TrimSpace(line[i+len("refs/tags/"):]); strings.HasPrefix(t, prefix) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// newestByDate picks the tag with the latest date; between two of the same date, the greater name.
+func newestByDate(dates map[string]int64) string {
+	best := ""
+	for t, d := range dates {
+		if best == "" || d > dates[best] || (d == dates[best] && t > best) {
 			best = t
 		}
 	}
@@ -218,20 +283,22 @@ func tools(ctx context.Context) []Item {
 	// a tool is measured against the Go module proxy, npm, or (a project that publishes only GitHub releases) its git tags
 	type tool struct {
 		id, name, kind, goMod, npmPkg, ghRepo string
-		buildTags                             bool // the repository tags builds bNNNN instead of versions (llama.cpp)
+		buildTags                             bool   // the repository tags builds bNNNN instead of versions (llama.cpp)
+		tagPrefix                             string // the repository tags builds <prefix><commit>: the newest is the latest commit
 	}
 	list := []tool{
-		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", false},
-		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", false},
-		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", false},
-		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", false},
-		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", false},
-		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", false},
-		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", false},
-		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", false},
-		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", false},
-		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", false},
-		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", true},
+		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", false, ""},
+		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", false, ""},
+		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", false, ""},
+		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", false, ""},
+		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", false, ""},
+		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", false, ""},
+		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", false, ""},
+		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", false, ""},
+		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", false, ""},
+		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", false, ""},
+		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", true, ""},
+		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork, Windows Vulkan build (comes with the download, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", false, "turboquant-windows-x64-vulkan-"},
 	}
 	used := toolUsed()
 	var items []Item
@@ -240,6 +307,12 @@ func tools(ctx context.Context) []Item {
 		switch {
 		case t.goMod != "":
 			it.Latest, it.LatestDate = goLatest(ctx, t.goMod)
+		case t.ghRepo != "" && t.tagPrefix != "":
+			tag, err := gitNewestDatedTag(ctx, t.ghRepo, t.tagPrefix)
+			if err != nil {
+				fail("tags of " + t.ghRepo + ": " + err.Error())
+			}
+			it.Latest = tag
 		case t.ghRepo != "" && t.buildTags:
 			tag, err := gitLatestBuildTag(ctx, t.ghRepo)
 			if err != nil {

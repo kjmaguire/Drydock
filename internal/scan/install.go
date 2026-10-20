@@ -8,12 +8,14 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/bundle"
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/runners"
 )
@@ -134,6 +136,19 @@ func firstNoteLine(body string) string {
 		}
 	}
 	return ""
+}
+
+// ToolReleaseByTag reads one release of the tool by its tag (the pinned release a download carries, cmd/drydock-bundle) and
+// checks it as LatestToolRelease would: a stable release with the Windows asset and its SHA-256 digest.
+func ToolReleaseByTag(ctx context.Context, api host.API, src ToolSource, tag string) (ToolRelease, error) {
+	if api == nil {
+		return ToolRelease{}, errors.New("GitHub cannot be reached")
+	}
+	var one rawToolRelease
+	if _, err := api.Do(ctx, "GET", "/repos/"+src.Repo+"/releases/tags/"+url.PathEscape(tag), nil, &one, ""); err != nil {
+		return ToolRelease{}, fmt.Errorf("could not read %s's release %s: %w", src.Repo, tag, err)
+	}
+	return pickToolRelease(src, []rawToolRelease{one})
 }
 
 // LatestToolRelease reads the tool's releases through the GitHub API (no sign-in: the repositories are public) and picks the
@@ -267,13 +282,15 @@ func (i *Installer) Install(ctx context.Context, rel ToolRelease, report func(In
 	if err := os.WriteFile(filepath.Join(root, installedToolFile), b, 0o644); err != nil {
 		return InstalledTool{}, err
 	}
+	_ = os.Remove(filepath.Join(i.Root, src.Tool+removedMarker)) // installed again: the person wants it
 	i.prune(root, dir)
 	_ = os.Remove(asset) // the checked download is in place; the cache keeps nothing
 	report(InstallProgress{Phase: "done"})
 	return in, nil
 }
 
-// Remove forgets the tool's current release and deletes every release and cached download of it.
+// Remove forgets the tool's current release and deletes every release and cached download of it. It also records that the
+// person removed it, so the copy the download carries is not put back at the next start (SeedFromBundle).
 func (i *Installer) Remove(tool string) error {
 	if _, ok := SourceOf(tool); !ok {
 		return fmt.Errorf("%q is not a tool Drydock installs", tool)
@@ -282,7 +299,55 @@ func (i *Installer) Remove(tool string) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return nil
+	if err := os.MkdirAll(i.Root, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(i.Root, tool+removedMarker), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+// removedMarker beside a tool's folder says a person removed the tool: the bundled copy stays out until they install it again.
+const removedMarker = ".removed"
+
+// bundledFile in a tool's folder names the bundled release last put in place from the download (SeedFromBundle).
+const bundledFile = "bundled.json"
+
+// SeedFromBundle puts the release the download carries in place (decision P77: the tools come installed). It does so when
+// the tool has no release here, or when the one here is an earlier bundled release (the app was updated with a newer one).
+// A release the person installed (Install, Update) is left alone, as is a tool the person removed. The bundled file is checked
+// against the SHA-256 the bundle recorded, copied into the download cache, and installed by the ordinary Install, which
+// checks the digest again and fetches nothing. It reports whether it installed.
+func (i *Installer) SeedFromBundle(ctx context.Context, dir string, b bundle.ScanTool) (InstalledTool, bool, error) {
+	src, ok := SourceOf(b.Tool)
+	if !ok {
+		return InstalledTool{}, false, fmt.Errorf("%q is not a tool Drydock installs", b.Tool)
+	}
+	if _, err := os.Stat(filepath.Join(i.Root, b.Tool+removedMarker)); err == nil {
+		return InstalledTool{}, false, nil
+	}
+	last := ""
+	if raw, err := os.ReadFile(filepath.Join(i.dir(b.Tool), bundledFile)); err == nil {
+		var v struct {
+			Tag string `json:"tag"`
+		}
+		if json.Unmarshal(raw, &v) == nil {
+			last = v.Tag
+		}
+	}
+	if in, ok := i.Installed(b.Tool); ok && (in.Tag == b.Tag || in.Tag != last) {
+		return in, false, nil
+	}
+	if _, err := bundle.Stage(dir, b.Asset, src.DownloadPrefix(), filepath.Join(i.dir(b.Tool), "cache")); err != nil {
+		return InstalledTool{}, false, err
+	}
+	in, err := i.Install(ctx, ToolRelease{Tool: b.Tool, Tag: b.Tag, Asset: b.Asset}, nil)
+	if err != nil {
+		return InstalledTool{}, false, err
+	}
+	v, _ := json.Marshal(map[string]string{"tag": b.Tag})
+	if err := os.WriteFile(filepath.Join(i.dir(b.Tool), bundledFile), v, 0o644); err != nil {
+		return in, true, err
+	}
+	return in, true, nil
 }
 
 // prune removes the tool's releases other than keep.

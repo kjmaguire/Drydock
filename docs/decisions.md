@@ -746,3 +746,31 @@ Open, owner action:
   Tests: the skills package (giving by role at insert, refusing the team, converting old skills with nothing lost), the core (start-up
   conversion, prebuilt agents, recommendations), the screens, and `ui/e2e/agent-skills.spec.ts` (a Library skill added on one agent's
   page reaches only that agent, and Remove takes it away). **Not verified:** whether agents do better as specialists; no trial was run.
+- **P77. The download comes with osv-scanner, Opengrep, built-in rules and llama.cpp with TurboQuant; newer releases are offered
+  (2026-10-20, on the owner's words: "I want the app to already have the dependencies installed for OSV-Scanner and OpenGrep and then
+  have the ability to update them if they are out of date", "I don't want to choose where the opengrep rules are; just build them into
+  the app", and "I don't want to install llama.ccp, I want it already installed with Google's TurboQuant built in ... If there are
+  updates to llama.ccp, we will do those periodically when checking for updates").** Amends P44 and P66 (Drydock ships the tools and
+  rules now) and P65 (the bundled build is the TurboQuant fork). (1) **The bundle**: `packaging/bundle.json` pins osv-scanner v2.7.0,
+  Opengrep v1.31.0 and the fork's `turboquant-windows-x64-vulkan-519f0c5` (the newest Windows Vulkan build, by commit date). The CI app
+  job runs `cmd/drydock-bundle`, which reads each pinned release, downloads its Windows file from that repository only, refuses it
+  unless the SHA-256 GitHub recorded matches, and writes `tools/` beside `drydock.exe` with `tools/bundle.json` (the files, their
+  addresses and digests). The artifact is `drydock-windows`. (2) **Seeding**: at start, the core copies each bundled file into the
+  installer's cache after checking it again (`bundle.Stage`) and runs the ordinary install, which checks it a third time and fetches
+  nothing. A tool the person removed stays removed (`<tool>.removed`, `removed.json`); a build the person installed is left alone; an
+  app update with a newer bundled build replaces only an earlier bundled one (`bundled.json`). The first bundled llama.cpp sets the
+  settings to the fork, its backend and `turbo4`, unless the person already saved settings. (3) **Updates**: three minutes after start
+  and every twelve hours the core reads the newest release of each installed tool and of the installed llama.cpp source and backend;
+  a newer one is shown ("Update to v1.32.0") and installed only when the person presses it. **Check for updates** on the Security page
+  and on the llama.cpp card checks now. (4) **Built-in rules**: `internal/scan/rules` is compiled in (`go:embed`), written once per
+  content digest to `<data>\rules\builtin-<digest>\` and given to Opengrep first (`-f`) on every scan; a folder of the person's own
+  is optional and added with a second `-f` when usable. The sets: Drydock's own 34 rules (JavaScript and TypeScript, Python, Go, Java,
+  C#; each with a fixture that a rule-engine test runs, 34 of 34 passing under Semgrep OSS 1.181.0), and two MIT sets copied at a fixed
+  commit: dgryski/semgrep-go (66 rules) and 0xdea/semgrep-rules (49 rules, C and C++). Left out on licence grounds: opengrep-rules
+  (Commons Clause, "for research, testing & benchmarking"), semgrep-rules (Semgrep Rules License) and Trail of Bits' set (AGPL-3.0),
+  which stays the owner's call. Tests: `internal/bundle`, the seeding in `internal/scan` and `internal/localllm`, the core
+  (`TestTheDownloadsScanToolsComeInstalledAndAreOfferedUpdates`, `TestTheDownloadsLlamaBuildComesInstalledWithTurboQuant`),
+  `cmd/drydock-bundle` (built from checked releases; the pins match `docs/software-notes.json`), the screens, and
+  `ui/e2e/security.spec.ts`. **Not verified:** the pinned release files were not fetched from the development host (GitHub's release
+  downloads are blocked there), so the first CI run of the app job is what proves the tags and file names; the fork's code was not
+  reviewed; the built-in rules were not run by Opengrep itself, only by Semgrep OSS, whose rule syntax Opengrep reads.

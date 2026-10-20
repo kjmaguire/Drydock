@@ -44,10 +44,11 @@ func TestTheSecurityScanRunsThreeEnginesAndKeepsAReportWithoutTheSecret(t *testi
 	var p core.Project
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
 
-	// what this machine has: the stand-ins are found, no rules folder yet
+	// what this machine has: the stand-ins are found, and the built-in rules (decision P77) make it ready without a folder of
+	// the person's own
 	var tools scan.Tools
 	a.call("security.tools", map[string]any{"projectId": p.ID}, &tools)
-	if !tools.Gitleaks.BuiltIn || !tools.OSV.Found || !tools.Opengrep.Found || tools.RulesOK || tools.Ready || !strings.Contains(tools.RulesNote, "No rules folder") {
+	if !tools.Gitleaks.BuiltIn || !tools.OSV.Found || !tools.Opengrep.Found || tools.RulesOK || !tools.Ready || !tools.BuiltinRules || tools.BuiltinRuleCount != 34+66+49 || tools.RulesNote != "" {
 		t.Fatalf("%+v", tools)
 	}
 	// a relative folder is refused: Opengrep runs in the repository, Drydock elsewhere

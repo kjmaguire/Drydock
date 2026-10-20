@@ -169,6 +169,8 @@ type ToolInfo struct {
 	Chosen string `json:"chosen,omitempty"`
 	// Tag is the release Drydock installed, when it did (Source "installed").
 	Tag string `json:"tag,omitempty"`
+	// Latest is a newer release than Tag, when the twice-daily update check found one (decision P77): Update installs it.
+	Latest string `json:"latest,omitempty"`
 	// Job is the install of the tool in progress, or how the last one ended.
 	Job *ToolJob `json:"job,omitempty"`
 }
@@ -191,8 +193,14 @@ type Tools struct {
 	Gitleaks ToolInfo `json:"gitleaks"`
 	OSV      ToolInfo `json:"osv"`
 	Opengrep ToolInfo `json:"opengrep"`
-	// RulesDir is the folder of Opengrep rules the project uses (asked without a project: the one folder scans use, decision
-	// P61); RulesOK says it exists and holds at least one .yaml/.yml file.
+	// RuleSets are the built-in rule sets (decision P77) and BuiltinRuleCount their rules in all; BuiltinRules says they were
+	// written where Opengrep can read them, so every scan runs them.
+	RuleSets         []RuleSet `json:"ruleSets"`
+	BuiltinRuleCount int       `json:"builtinRuleCount"`
+	BuiltinRules     bool      `json:"builtinRules"`
+	// RulesDir is a folder of the person's own Opengrep rules the project adds to the built-in ones (asked without a project:
+	// the one folder scans use, decision P61); empty for none. RulesOK says it exists and holds at least one .yaml/.yml file,
+	// and RulesNote says why not.
 	RulesDir  string `json:"rulesDir"`
 	RulesOK   bool   `json:"rulesOk"`
 	RulesNote string `json:"rulesNote,omitempty"`

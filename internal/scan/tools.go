@@ -21,9 +21,9 @@ const (
 	opengrepInstall = "Install Opengrep: press Install below, or download opengrep_windows_x86.zip (opengrep_windows_x86.exe before 2.0) from https://github.com/opengrep/opengrep/releases, keep opengrep.exe with its DLLs and put that folder on your PATH (or run the repository's install.ps1)."
 )
 
-// rulesHelp ends the Code engine's skipped reason when the rules folder is the cause. A report is read away from the field that
-// mends it, and the Security page's "Tools on this computer" says where rules come from (Drydock ships and downloads none).
-const rulesHelp = ` Choose a folder of rules you are licensed to use under "Tools on this computer" on this page; it says where to get them.`
+// rulesHelp ends the Code engine's skipped reason when no rules could be given to it at all (the built-in rules could not be
+// written, and no folder of the person's own is usable). A report is read away from the field that mends it.
+const rulesHelp = ` Check that the app's data folder can be written to, or choose a folder of your own rules under "Tools on this computer" on this page.`
 
 // gitleaksVersion is the version of the gitleaks rules and engine compiled into Drydock, read from the build's module list.
 func gitleaksVersion() string {
@@ -45,6 +45,8 @@ type Paths struct {
 	OSV      Tool
 	Opengrep Tool
 	LookPath func(string) (string, error)
+	// BuiltinRules is where the built-in rules were written (empty when they could not be).
+	BuiltinRules string
 }
 
 // Detect reports what this machine has: the tools, their versions, and whether the rules folder is usable. Each version
@@ -63,8 +65,15 @@ func Detect(ctx context.Context, pm proc.Manager, env []string, p Paths, rulesDi
 	})
 	wg.Wait()
 	t.RulesDir = rulesDir
-	t.RulesOK, t.RulesNote = checkRules(rulesDir)
-	t.Ready = t.OSV.Found && t.Opengrep.Found && t.RulesOK
+	if strings.TrimSpace(rulesDir) != "" {
+		t.RulesOK, t.RulesNote = checkRules(rulesDir)
+	}
+	t.RuleSets, _ = BuiltinRuleSets()
+	t.BuiltinRules = p.BuiltinRules != ""
+	for _, s := range t.RuleSets {
+		t.BuiltinRuleCount += s.Rules
+	}
+	t.Ready = t.OSV.Found && t.Opengrep.Found && (t.BuiltinRules || t.RulesOK)
 	return t
 }
 
@@ -97,7 +106,7 @@ func toolVersion(ctx context.Context, pm proc.Manager, env []string, path string
 // checkRules says whether the rules folder can be used by the Code engine.
 func checkRules(dir string) (bool, string) {
 	if strings.TrimSpace(dir) == "" {
-		return false, "No rules folder chosen: the Code engine is skipped until one is."
+		return false, "No folder of your own rules is chosen."
 	}
 	if !filepath.IsAbs(dir) {
 		// Opengrep runs in the repository and Drydock elsewhere: a relative path would name two different folders

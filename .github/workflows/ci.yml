@@ -310,3 +310,25 @@ jobs:
         with:
           name: drydock-windows-unsigned
           path: drydock.exe
+      # decision P77: the download carries osv-scanner, Opengrep and llama.cpp with the TurboQuant KV cache types, pinned in
+      # packaging/bundle.json; each file is checked against the SHA-256 GitHub recorded, and the app installs them at its first
+      # start (the token only raises the API's rate limit)
+      - name: The tools the download carries (pinned releases, checked against GitHub's digests)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/drydock-bundle -pins packaging/bundle.json -out dist/drydock/tools
+      - name: The download (drydock.exe, its tools folder and the SHA-256 of every file)
+        shell: pwsh
+        run: |
+          Copy-Item drydock.exe dist/drydock/
+          Push-Location dist/drydock
+          Get-ChildItem -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | ForEach-Object {
+            $rel = (Resolve-Path -Relative $_.FullName).TrimStart('.', '\').Replace('\', '/')
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $rel
+          } | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          Pop-Location
+      - uses: actions/upload-artifact@v7
+        with:
+          name: drydock-windows
+          path: dist/drydock

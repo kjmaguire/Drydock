@@ -29,6 +29,8 @@ export interface SecurityClient {
   securityToolInstallCancel(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
   /** Deletes the release Drydock installed; the tool is looked for on PATH again. Only a human may. */
   securityToolRemove(projectId: string, tool: ScanToolName): Promise<SecurityTools>;
+  /** Read every installed tool's newest release now, instead of at the next twice-daily check (decision P77). */
+  securityToolsCheckUpdates(projectId: string): Promise<SecurityTools>;
   /** Starts a scan (status "running"). Refused while one runs or when the project has no repository. */
   securityScanStart(projectId: string): Promise<ScanReport>;
   securityScanCancel(projectId: string): Promise<ScanReport>;
@@ -60,6 +62,7 @@ export function createSecurityClient(t: Transport): SecurityClient {
     securityToolInstall: (projectId, tool) => t.call('security.tool.install', { projectId, tool }),
     securityToolInstallCancel: (projectId, tool) => t.call('security.tool.install.cancel', { projectId, tool }),
     securityToolRemove: (projectId, tool) => t.call('security.tool.remove', { projectId, tool }),
+    securityToolsCheckUpdates: (projectId) => t.call('security.tools.checkUpdates', { projectId }),
     securityScanStart: async (projectId) => report(await t.call<ScanReport>('security.scan.start', { projectId })),
     securityScanCancel: async (projectId) => report(await t.call<ScanReport>('security.scan.cancel', { projectId })),
     securityScanGet: async (projectId) => {

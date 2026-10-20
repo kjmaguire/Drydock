@@ -93,6 +93,8 @@ export interface ToolInfo {
   chosen?: string;
   /** The release Drydock installed (source 'installed'). */
   tag?: string;
+  /** A newer release than `tag`, found by the twice-daily update check (decision P77); Update installs it. */
+  latest?: string;
   /** The install of the tool in progress, or how the last one ended. */
   job?: ToolJob;
 }
@@ -110,10 +112,25 @@ export interface ToolJob {
   ended?: string;
 }
 
+/** One built-in rule set of the Code engine (decision P77). */
+export interface RuleSet {
+  id: string;
+  name: string;
+  source: string;
+  licence: string;
+  rules: number;
+  languages: string[] | null;
+}
+
 export interface SecurityTools {
   gitleaks: ToolInfo;
   osv: ToolInfo;
   opengrep: ToolInfo;
+  /** The rule sets built into Drydock, run on every scan (decision P77); builtinRules says they could be written for Opengrep. */
+  ruleSets?: RuleSet[] | null;
+  builtinRuleCount?: number;
+  builtinRules?: boolean;
+  /** A folder of the person's own rules, run with the built-in ones ("" for none). */
   rulesDir: string;
   rulesOk: boolean;
   rulesNote?: string;

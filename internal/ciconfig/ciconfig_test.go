@@ -196,8 +196,11 @@ func TestCodeScanningSwitchesOffOnlyTwoQueriesAndTheCodeKeepsTheirReasons(t *tes
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		t.Fatalf("the CodeQL configuration does not parse: %v", err)
 	}
-	if len(cfg.PathsIgnore) != 0 {
-		t.Errorf("paths-ignore %v: for Go, CodeQL reports alerts in ignored paths anyway, so the filter only misleads", cfg.PathsIgnore)
+	// one path is ignored: the fixtures of the Code engine's built-in rules (decision P77), JavaScript and TypeScript that is
+	// insecure on purpose so each rule has something to find. For Go the filter would hide nothing, and hides nothing here:
+	// Go never builds a testdata folder, so CodeQL never extracts the Go fixture.
+	if want := []string{"internal/scan/testdata/rules"}; !slices.Equal(cfg.PathsIgnore, want) {
+		t.Errorf("paths-ignore %v: only %v may be ignored (the rule fixtures); for Go, CodeQL reports alerts in ignored paths anyway, so any other filter only misleads", cfg.PathsIgnore, want)
 	}
 	var excluded []string
 	for _, f := range cfg.QueryFilters {
@@ -227,6 +230,9 @@ func TestCodeScanningSwitchesOffOnlyTwoQueriesAndTheCodeKeepsTheirReasons(t *tes
 		if d.IsDir() {
 			switch d.Name() {
 			case ".git", ".claude", "node_modules", "dist-windows":
+				return fs.SkipDir
+			case "testdata":
+				// Go never builds a testdata folder: the rule fixtures there (decision P77) are insecure on purpose and in no build
 				return fs.SkipDir
 			}
 			return nil

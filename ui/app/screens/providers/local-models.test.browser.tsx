@@ -637,6 +637,47 @@ describe('Models on this PC', () => {
     expect(valueOf(sel(r, '[data-testid="local-cache"]'))).toBe('turbo4');
   });
 
+  // decision P77: llama.cpp comes installed with Drydock, with Google's TurboQuant built in; newer builds are offered, not forced
+  it('the build that came with Drydock says so and names the TurboQuant cache types; Check for updates offers Update to the newer build', async () => {
+    const bundled = (latest?: string) =>
+      installed({
+        runtime: { ...installed().runtime, source: 'turboquant', sourceName: FORK.name, tag: 'turboquant-windows-x64-vulkan-d86eb0b', bundled: true, ...(latest ? { latest } : {}) },
+        settings: { ...installed().settings, source: 'turboquant', cacheType: 'turbo4' },
+      });
+    let next = bundled();
+    const calls: unknown[] = [];
+    const { r } = show({
+      localGet: async () => bundled(),
+      localCheckUpdates: async () => (calls.push('check'), next),
+      localInstall: async (...a) => (calls.push(a), next),
+    });
+    await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
+    expect(need(r, '[data-testid="local-bundled"]').textContent).toBe('came with Drydock');
+    expect(need(r, '[data-testid="local-runtime-note"]').textContent).toContain('Came installed with Drydock');
+    expect(need(r, '[data-testid="local-turboquant"]').textContent).toContain("Google's TurboQuant is built in: the turbo4 and turbo3 KV cache types");
+    expect(need(r, '[data-testid="local-update"]').textContent).toBe('Update');
+    expect(q(r, '[data-testid="local-up-to-date"]')).toBe(null);
+    // nothing newer: said once the check is back
+    await r.act(() => (need(r, '[data-testid="local-check-updates"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(need(r, '[data-testid="local-up-to-date"]').textContent).toBe('This is the newest build.'), r);
+    // a newer build: named, and the Update button names it and installs the settings' source and backend
+    next = bundled('turboquant-windows-x64-vulkan-e11e11e');
+    await r.act(async () => (await enabled(r, '[data-testid="local-check-updates"]')).click());
+    await waitFor(() => expect(need(r, '[data-testid="local-update"]').textContent).toBe('Update to turboquant-windows-x64-vulkan-e11e11e'), r);
+    expect(need(r, '[data-testid="local-latest"]').textContent).toBe('turboquant-windows-x64-vulkan-e11e11e is out (this is turboquant-windows-x64-vulkan-d86eb0b).');
+    expect(q(r, '[data-testid="local-up-to-date"]')).toBe(null);
+    await r.act(async () => (await enabled(r, '[data-testid="local-update"]')).click());
+    await waitFor(() => expect(calls).toEqual(['check', 'check', ['turboquant', 'vulkan']]), r);
+  });
+
+  it('a build the person installed (not the one that came with Drydock) says so, and the official build has no TurboQuant note', async () => {
+    const { r } = show({ localGet: async () => installed() });
+    await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
+    expect(q(r, '[data-testid="local-bundled"]')).toBe(null);
+    expect(q(r, '[data-testid="local-turboquant"]')).toBe(null);
+    expect(need(r, '[data-testid="local-runtime-note"]').textContent).toContain('Downloaded and run by Drydock');
+  });
+
   it('the event local.changed reads the view again', async () => {
     let state = installed();
     let reads = 0;

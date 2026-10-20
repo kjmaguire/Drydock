@@ -31,10 +31,10 @@ func TestOSVScannerRunsWithoutCallAnalysis(t *testing.T) {
 // a project's scan keeps git's view of its files.
 func TestOpengrepRunsNoGitInAFolderScan(t *testing.T) {
 	lead := Tool{Path: "opengrep", Args: []string{"lead"}}
-	if got := strings.Join(opengrepArgs(lead, "/rules", "/tmp/o.sarif", true), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q --no-git-ignore ." {
+	if got := strings.Join(opengrepArgs(lead, []string{"/rules"}, "/tmp/o.sarif", true), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q --no-git-ignore ." {
 		t.Fatal(got)
 	}
-	if got := strings.Join(opengrepArgs(lead, "/rules", "/tmp/o.sarif", false), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q ." {
+	if got := strings.Join(opengrepArgs(lead, []string{"/rules"}, "/tmp/o.sarif", false), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q ." {
 		t.Fatal(got)
 	}
 }

@@ -95,16 +95,25 @@ test("a tool's program is chosen with the file dialog and forgotten again", asyn
   await expect(pick.getByTestId('tool-clear')).toHaveCount(0);
 });
 
-// The rules folder (decision P44: Drydock ships and downloads no rules): the help says where rules come from, "Choose folder..."
-// saves what the harness's stand-in folder dialog (cmd/drydock-e2e) answers, and a scan with no usable rules skips the Code
-// engine with a reason that says where to choose them. The stand-in answers with a folder that does not exist yet.
-test('the rules folder is chosen with the folder dialog; the help says where to get rules; a folder without them skips the Code engine and says so', async ({ page }) => {
+// The rules (decision P77): the built-in rules run on every scan, so the Code engine needs no folder. A folder of the person's
+// own is optional: "Choose folder..." saves what the harness's stand-in folder dialog (cmd/drydock-e2e) answers, a folder
+// that is not there says so and is left out, and the scan still runs the Code engine with the built-in rules. The help for
+// more rules is folded away.
+test('the built-in rules run without a folder; a folder of your own that is not there is left out and said; the help is folded', async ({ page }) => {
   test.setTimeout(300_000);
   const repo = freshRepo();
   await createProject(page, 'gocalc-security-rules', repo);
   await projectNav(page, 'nav-security');
   await expect(page.locator('[data-testid=tool][data-tool=opengrep][data-found=true]')).toBeVisible({ timeout: 60_000 });
-  // the harness's own rules folder works, so the help is folded; opening it lists the sets, the command and the rule to try
+  // the built-in sets, each with its rules and licence
+  const builtin = page.getByTestId('builtin-rules');
+  await expect(builtin).toContainText('built into Drydock and run on every scan');
+  await expect(builtin.getByTestId('rule-set')).toHaveCount(3);
+  await expect(builtin.getByTestId('rule-set').filter({ hasText: 'dgryski/semgrep-go' })).toContainText('Licence: MIT');
+  // the folder of your own: open its section
+  const own = page.getByTestId('own-rules');
+  if (!(await own.evaluate((d) => (d as HTMLDetailsElement).open))) await own.locator(':scope > summary').click();
+  // the help for more rules, inside it, is folded; opening it lists the sets, the command and the rule to try
   const help = page.getByTestId('rules-sources');
   await expect(help).toHaveJSProperty('open', false);
   await help.locator('summary').click();
@@ -113,18 +122,15 @@ test('the rules folder is chosen with the folder dialog; the help says where to 
   await expect(help.getByTestId('rules-source').filter({ hasText: 'opengrep/opengrep-rules' })).toContainText('Commons Clause');
   await expect(help.getByTestId('rules-clone')).toContainText('git clone -c core.longpaths=true --depth 1');
   await expect(help.getByTestId('rules-demo')).toContainText('pattern: fmt.Println(...)');
-  // Choose folder... saves the folder the dialog answered, at once, and the page says it is not there
+  // Choose folder... saves the folder the dialog answered, at once, and the page says it is not there; the engine stays ready
   await page.getByTestId('rules-choose').click();
   await expect(page.getByTestId('rules-dir')).toHaveValue(/picked-folders[\\/]Fresh Project \d+$/);
   await expect(page.getByTestId('rules-note')).toContainText('does not exist');
-  await expect(page.locator('[data-testid=scan-engine][data-engine=sast]')).toHaveAttribute('data-status', 'missing');
-  // a scan skips the Code engine, and the reason says where to choose rules and where to get them
+  await expect(page.locator('[data-testid=scan-engine][data-engine=sast]')).toHaveAttribute('data-status', 'ready');
+  // a scan runs the Code engine with the built-in rules (the stand-in opengrep refuses a -f folder that is not there)
   await page.getByTestId('scan-button').click();
   await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
-  const code = page.locator('[data-testid=scan-engine][data-engine=sast]');
-  await expect(code).toHaveAttribute('data-status', 'skipped');
-  await expect(code.getByTestId('engine-reason')).toContainText('Tools on this computer');
-  await expect(code.getByTestId('engine-reason')).toContainText('where to get them');
+  await expect(page.locator('[data-testid=scan-engine][data-engine=sast]')).toHaveAttribute('data-status', 'done');
   await expect(page.locator('[data-testid=scan-engine][data-engine=secrets]')).toHaveAttribute('data-status', 'done');
 });
 

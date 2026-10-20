@@ -189,3 +189,20 @@ func TestArtifactDataNeverWritesAnEmptyDataset(t *testing.T) {
 		t.Errorf("items: %v", it)
 	}
 }
+
+// The TurboQuant fork names its builds by commit, so the newest is found by the commits' dates, not by the names.
+func TestTheForksNewestBuildIsTheLatestCommit(t *testing.T) {
+	ls := "a\trefs/tags/turboquant-windows-x64-vulkan-d86eb0b\nb\trefs/tags/turboquant-windows-x64-vulkan-519f0c5\nc\trefs/tags/turboquant-windows-x64-cuda-13.3-066cc29\n"
+	tags := tagsWithPrefix(ls, "turboquant-windows-x64-vulkan-")
+	if len(tags) != 2 || tags[0] != "turboquant-windows-x64-vulkan-d86eb0b" || tags[1] != "turboquant-windows-x64-vulkan-519f0c5" {
+		t.Fatalf("tags = %v", tags)
+	}
+	// d86eb0b sorts last by name but is the oldest commit
+	got := newestByDate(map[string]int64{"turboquant-windows-x64-vulkan-d86eb0b": 1782128143, "turboquant-windows-x64-vulkan-519f0c5": 1783067551})
+	if got != "turboquant-windows-x64-vulkan-519f0c5" {
+		t.Fatalf("newest = %s", got)
+	}
+	if newestByDate(nil) != "" {
+		t.Fatal("no tags gave a newest")
+	}
+}

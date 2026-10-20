@@ -7,19 +7,24 @@ import (
 	"path/filepath"
 )
 
-// opengrepArgs are Opengrep's arguments: `scan -f <rules> --sarif-output=<file> --no-progress-bar -q [--no-git-ignore] .`.
+// opengrepArgs are Opengrep's arguments: `scan -f <rules> [-f <more rules>] --sarif-output=<file> --no-progress-bar -q
+// [--no-git-ignore] .`, one -f per rules folder (the built-in rules first, decision P77).
 // Opengrep is static analysis: it parses the files and runs none of them. Inside a git repository it lists the files with
 // `git ls-files` unless told --no-git-ignore; noGit (folder scans, decision P61) tells it, so git never runs in a folder
 // whose .git/config came from somewhere else.
-func opengrepArgs(tool Tool, rules, out string, noGit bool) []string {
-	args := append(append([]string(nil), tool.Args...), "scan", "-f", rules, "--sarif-output="+out, "--no-progress-bar", "-q")
+func opengrepArgs(tool Tool, rules []string, out string, noGit bool) []string {
+	args := append(append([]string(nil), tool.Args...), "scan")
+	for _, r := range rules {
+		args = append(args, "-f", r)
+	}
+	args = append(args, "--sarif-output="+out, "--no-progress-bar", "-q")
 	if noGit {
 		args = append(args, "--no-git-ignore")
 	}
 	return append(args, ".")
 }
 
-// scanCode runs Opengrep over dir with the rules folder (`scan -f <rules> --sarif-output=<file> .`) and reads the SARIF
+// scanCode runs Opengrep over dir with the rules folders (`scan -f <rules> --sarif-output=<file> .`) and reads the SARIF
 // file it writes. Opengrep exits 0 whether or not it found anything (findings change the exit code only with --error, which
 // is not passed); another code is an error and its first stderr line is the reason.
 func scanCode(ctx context.Context, o *Options, path string, tool Tool) ([]Finding, EngineStatus, string, string) {
@@ -29,7 +34,7 @@ func scanCode(ctx context.Context, o *Options, path string, tool Tool) ([]Findin
 	}
 	defer os.RemoveAll(tmp)
 	out := filepath.Join(tmp, "opengrep.sarif")
-	args := opengrepArgs(tool, o.RulesDir, out, o.NoGit)
+	args := opengrepArgs(tool, o.ruleSources(), out, o.NoGit)
 	r := runTool(ctx, o.Procs, path, args, o.Dir, o.env(), "scan:sast", o.timeout())
 	if ctx.Err() != nil {
 		return nil, Cancelled, "", ""

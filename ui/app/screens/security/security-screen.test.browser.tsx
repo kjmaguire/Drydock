@@ -46,6 +46,14 @@ const tools = (over: Partial<SecurityTools> = {}): SecurityTools => ({
   gitleaks: { tool: 'gitleaks', builtIn: true, found: true, version: '8.21.0' },
   osv: { tool: 'osv-scanner', found: true, path: 'C:\\Tools\\osv-scanner.exe', version: '2.0.2' },
   opengrep: { tool: 'opengrep', found: true, path: 'C:\\Tools\\opengrep.exe', version: '1.1.0' },
+  // the rules built into Drydock (decision P77): written out, so every scan runs them
+  ruleSets: [
+    { id: 'drydock', name: "Drydock's own", source: 'written for Drydock', licence: "the repository's licence", rules: 34, languages: ['csharp', 'go', 'java', 'javascript', 'python', 'typescript'] },
+    { id: 'third_party/dgryski-semgrep-go', name: 'dgryski/semgrep-go', source: 'https://github.com/dgryski/semgrep-go', licence: 'MIT', rules: 66, languages: ['go'] },
+    { id: 'third_party/0xdea-c', name: '0xdea/semgrep-rules (C and C++)', source: 'https://github.com/0xdea/semgrep-rules', licence: 'MIT', rules: 49, languages: ['c', 'cpp'] },
+  ],
+  builtinRuleCount: 149,
+  builtinRules: true,
   rulesDir: 'C:\\rules',
   rulesOk: true,
   ready: true,
@@ -312,7 +320,7 @@ describe('Security scan page', () => {
     await waitFor(() => expect(cancels).toEqual(['p1']), r);
   });
 
-  it('the tools panel: built-in gitleaks, a missing tool with its install hint, the rules note, and saving the rules folder', async () => {
+  it('the tools panel: built-in gitleaks, a missing tool with its install hint, the built-in rules, and an optional folder of your own', async () => {
     const sets: [string, string][] = [];
     // the core answers with the saved state once the folder was set
     const unset = tools({
@@ -320,7 +328,6 @@ describe('Security scan page', () => {
       opengrep: { tool: 'opengrep', found: true, path: 'C:\\Tools\\opengrep.exe', version: '1.1.0' },
       rulesDir: '',
       rulesOk: false,
-      rulesNote: 'No rules folder is set.',
       ready: false,
     });
     const { r } = show({
@@ -345,13 +352,21 @@ describe('Security scan page', () => {
     expect(tl[1]!.textContent).toContain('Not installed');
     expect(tl[1]!.textContent).toContain('winget install Google.OSVScanner');
     expect(tl[2]!.textContent).toContain('Found at C:\\Tools\\opengrep.exe (1.1.0)');
-    expect(panel.querySelector('[data-testid="rules-note"]')!.textContent).toContain('No rules folder is set.');
-    expect(panel.textContent).toContain('rules you are licensed to use');
-    // the engine rows say which tool is missing before any scan ran
-    expect(rows(r).map((e) => e.getAttribute('data-status'))).toEqual(['ready', 'missing', 'missing']);
+    // decision P77: the built-in rules run on every scan, each set with its rules, languages and licence; no folder is needed
+    const builtin = panel.querySelector('[data-testid="builtin-rules"]')!;
+    expect(builtin.textContent).toContain('149 rules are built into Drydock and run on every scan');
+    const sets3 = Array.from(builtin.querySelectorAll('[data-testid="rule-set"]')).map((x) => x.textContent);
+    expect(sets3[0]).toBe("Drydock's own: 34 rules for C#, Go, Java, JavaScript, Python, TypeScript. Licence: the repository's licence.");
+    expect(sets3[2]).toBe('0xdea/semgrep-rules (C and C++): 49 rules for C, C++. Licence: MIT.');
+    expect(panel.querySelector('[data-testid="rules-note"]')).toBeNull();
+    // the engine rows: the Code engine is ready with the built-in rules alone
+    expect(rows(r).map((e) => e.getAttribute('data-status'))).toEqual(['ready', 'missing', 'ready']);
     expect(rows(r)[1]!.textContent).toContain('not installed');
-    expect(rows(r)[2]!.textContent).toContain('no rules');
-
+    // a folder of your own is optional: folded away until there is one
+    const own = panel.querySelector('[data-testid="own-rules"]') as HTMLDetailsElement;
+    expect(own.open).toBe(false);
+    expect(own.querySelector('summary')!.textContent).toBe('Add a folder of your own rules (optional)');
+    expect(own.textContent).toContain('run with the built-in ones');
     const field = byLabel<HTMLInputElement>(panel, 'Rules folder');
     expect(field.getAttribute('data-testid')).toBe('rules-dir');
     expect(field.value).toBe('');
@@ -359,11 +374,18 @@ describe('Security scan page', () => {
     await r.act(() => byText(panel, 'button', 'Save').click());
     await waitFor(() => expect(sets).toEqual([['p1', 'C:\\rules']]), r);
     await waitFor(() => expect(panel.textContent).toContain('Rules found.'), r);
-    expect(panel.querySelector('[data-testid="rules-note"]')).toBeNull();
+    expect((panel.querySelector('[data-testid="own-rules"] summary') as HTMLElement).textContent).toBe('Your own rules folder (used with the built-in rules)');
+  });
+
+  it('without the built-in rules (the data folder could not be written) the Code engine needs a folder, and says so', async () => {
+    const { r } = show({ securityTools: async () => tools({ builtinRules: false, rulesDir: '', rulesOk: false, ready: false }) });
+    await waitFor(() => expect(r.$('[data-testid="builtin-rules-missing"]')).not.toBeNull(), r);
+    expect(rows(r)[2]!.getAttribute('data-status')).toBe('missing');
+    expect(rows(r)[2]!.textContent).toContain('no rules');
   });
 
   // the owner's question: "I installed OpenGrep but I can't run it without rules, where do I get the rules?"
-  const noRules = () => tools({ rulesDir: '', rulesOk: false, rulesNote: 'No rules folder chosen: the Code engine is skipped until one is.', ready: false });
+  const noRules = () => tools({ rulesDir: '', rulesOk: false });
   const helpOf = (r: R) =>
     waitFor(() => {
       const h = r.$('[data-testid="rules-sources"]');
@@ -414,13 +436,13 @@ describe('Security scan page', () => {
     expect(r.$('[data-testid="rules-dir"]')).not.toBeNull();
   });
 
-  it('the rules help names each set with its licence and its repository, and shows the Git command and a rule to try', async () => {
+  it('the help for more rules names each set with its licence and its repository, and shows the Git command and a rule to try', async () => {
     const { r } = show({ securityTools: async () => noRules() });
     const help = await helpOf(r);
-    // there are no usable rules: the help is open, under the note that says so
-    expect(help.open).toBe(true);
-    expect(help.querySelector('summary')!.textContent).toBe('Where do I get rules?');
-    expect(r.$('[data-testid="rules-note"]')!.textContent).toContain('No rules folder chosen');
+    // folded away: the built-in rules need nothing from the person
+    expect(help.open).toBe(false);
+    expect(help.querySelector('summary')!.textContent).toBe('Where to get more rules');
+    expect(help.textContent).toContain('The built-in rules run on every scan.');
     const items = Array.from(help.querySelectorAll('[data-testid="rules-source"]')) as HTMLElement[];
     expect(items.map((x) => x.getAttribute('data-repo'))).toEqual(RULE_SOURCES.map((s) => s.repo));
     const item = (repo: string) => items.find((x) => x.getAttribute('data-repo') === repo)!;
@@ -447,42 +469,21 @@ describe('Security scan page', () => {
     expect(help.querySelector('button, form, input')).toBeNull();
   });
 
-  it('the rules help folds away once the folder works, and a choice the person made with it stands', async () => {
-    let state = noRules();
+  it('a folder of your own that cannot be used opens its section and says why; the built-in rules still run', async () => {
+    let state = tools({ rulesDir: 'C:\\gone', rulesOk: false, rulesNote: 'The rules folder does not exist or is not a folder.' });
     const { r, s } = show({ securityTools: async () => state });
-    const help = await helpOf(r);
-    expect(help.open).toBe(true);
-    const settle = (next: SecurityTools, text: string, present: boolean) => {
-      state = next;
-      s.emit({ type: 'security.settings', projectId: 'p1' });
-      return waitFor(() => expect((r.$('[data-testid="security-tools"]')!.textContent ?? '').includes(text)).toBe(present), r);
-    };
-    const toggled = (h: HTMLDetailsElement) => new Promise<void>((res) => h.addEventListener('toggle', () => res(), { once: true }));
-    // the person closes it while it is open for them
-    const closed = toggled(help);
-    help.open = false;
-    await closed;
-    await drain();
-    // the folder works: it stays closed; the folder stops working: it stays closed, the person closed it
-    await settle(tools(), 'Rules found.', true);
-    expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(false);
-    await settle(noRules(), 'No rules folder chosen', true);
-    expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(false);
-  });
-
-  it('the rules help opens by itself when the folder stops working and folds away when it works, while the person has not chosen', async () => {
-    let state = tools();
-    const { r, s } = show({ securityTools: async () => state });
-    const help = await helpOf(r);
-    expect(help.open).toBe(false);
-    // the person did not touch it: the folder stops working and the help opens
-    state = noRules();
-    s.emit({ type: 'security.settings', projectId: 'p1' });
-    await waitFor(() => expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(true), r);
-    // and folds away again when it works
+    const own = await waitFor(() => {
+      const d = r.$('[data-testid="own-rules"]') as HTMLDetailsElement | null;
+      if (!d) throw new Error('not yet');
+      return d;
+    }, r);
+    expect(own.open).toBe(true);
+    expect(r.$('[data-testid="rules-note"]')!.textContent).toContain('does not exist');
+    expect(rows(r)[2]!.getAttribute('data-status')).toBe('ready');
+    // once it works the note goes
     state = tools();
     s.emit({ type: 'security.settings', projectId: 'p1' });
-    await waitFor(() => expect((r.$('[data-testid="rules-sources"]') as HTMLDetailsElement).open).toBe(false), r);
+    await waitFor(() => expect(r.$('[data-testid="rules-note"]')).toBeNull(), r);
   });
 
   it('a history item opens that report, and a running scan takes the display back', async () => {
@@ -766,6 +767,45 @@ describe('Security scan page', () => {
       await drain();
       expect(again.asked.length).toBe(2);
     });
+  });
+
+  it('Check for updates asks the core for the newest releases: a newer one is named on its tool, Update to installs it, and with none newer the panel says so (P77)', async () => {
+    const asked: string[] = [];
+    const installed = (tool: 'osv-scanner' | 'opengrep', tag: string) => ({ tool, found: true, source: 'installed' as const, tag, path: `C:\\Drydock\\tools\\${tool}\\${tag}\\${tool}.exe`, version: tag.slice(1) });
+    let state = tools({ osv: installed('osv-scanner', 'v2.7.0'), opengrep: installed('opengrep', 'v1.31.0'), canInstall: true });
+    const { r } = show({
+      securityTools: async () => state,
+      securityToolsCheckUpdates: async (projectId: string) => {
+        asked.push(`check ${projectId}`);
+        return state;
+      },
+      securityToolInstall: async (projectId: string, tool: string) => (asked.push(`install ${projectId}:${tool}`), state),
+    });
+    const check = await waitFor(() => {
+      const b = r.$('[data-testid="tools-check-updates"]');
+      if (!b) throw new Error('not yet');
+      return b as HTMLButtonElement;
+    }, r);
+    expect(check.textContent).toBe('Check for updates');
+    // nothing newer: said once the check is back
+    expect(r.$('[data-testid="tools-up-to-date"]')).toBeNull();
+    await r.act(() => check.click());
+    await waitFor(() => expect(r.$('[data-testid="tools-up-to-date"]')!.textContent).toBe('The installed tools are the newest releases.'), r);
+    expect(asked).toEqual(['check p1']);
+    // a newer Opengrep: its button names the release and is the primary one, its hint says what is installed
+    state = { ...state, opengrep: { ...state.opengrep, latest: 'v1.32.0' } };
+    await r.act(() => check.click());
+    const og = () => r.$('[data-testid="tool-install-row"][data-tool="opengrep"]') as HTMLElement;
+    await waitFor(() => expect(og().querySelector('[data-testid="tool-install"]')!.textContent).toBe('Update to v1.32.0'), r);
+    expect(r.$('[data-testid="tools-up-to-date"]')).toBeNull();
+    expect(og().querySelector('[data-testid="tool-latest"]')!.textContent).toBe('v1.32.0 is out (this is v1.31.0).');
+    // the primary look: not the same as the Update of a tool with nothing newer
+    expect(og().querySelector('[data-testid="tool-install"]')!.className).not.toBe(
+      r.$('[data-testid="tool-install-row"][data-tool="osv-scanner"] [data-testid="tool-install"]')!.className,
+    );
+    expect(r.$('[data-testid="tool-install-row"][data-tool="osv-scanner"] [data-testid="tool-install"]')!.textContent).toBe('Update');
+    await r.act(() => (og().querySelector('[data-testid="tool-install"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(asked).toEqual(['check p1', 'check p1', 'install p1:opengrep']), r);
   });
 
   it('without canInstall (the browser on a development host) no Install is offered and the hint says Windows', async () => {

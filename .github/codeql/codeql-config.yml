@@ -2,6 +2,11 @@
 # internal/ciconfig holds the code to what the reason says: a third query on this list, or a file the reason does not cover, fails
 # there. (A path filter does not help: for Go, CodeQL reports alerts in the paths it is told to ignore.)
 name: Drydock code scanning
+# The fixtures of the Code engine's built-in rules (decision P77) are insecure on purpose, so each rule has a line to find; they are
+# in no build. internal/ciconfig allows this one path and no other. (The Go fixture is in a testdata folder, which Go never builds,
+# so CodeQL never extracts it.)
+paths-ignore:
+  - internal/scan/testdata/rules
 query-filters:
   # go/disabled-certificate-check flags InsecureSkipVerify and cannot see the check that replaces the chain check. The only use in
   # the product is the pin of a provider's certificate by its SHA-256 (internal/providers/pinned_tls.go: InsecureSkipVerify with a

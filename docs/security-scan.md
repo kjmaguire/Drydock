@@ -17,10 +17,10 @@ never carries, and what is not built.
    | Engine | Tool | What it looks for | How it runs |
    |---|---|---|---|
    | Secrets | gitleaks (compiled into Drydock, the default rules) | keys, tokens and passwords in files | Drydock walks the tree itself and runs the rules over every text file, so it can count files and show "1,204 of 5,330 files". It does not enter `.git`, `node_modules` or `.drydock-worktrees`, skips symlinks, files over 2 MiB and files with a NUL byte in their first 8 KiB. |
-   | Dependencies | osv-scanner (you install it) | packages in lockfiles and manifests with known vulnerabilities | `osv-scanner scan source --format json --no-call-analysis=all -r .`, read with the same parser as the `deps` check (`checks.ParseOSV`): only package names, versions and advisory ids are kept. Unless the tool is run offline it sends package names to osv.dev; nothing else leaves the machine. Call analysis is off (P61): it is the one part of osv-scanner that runs other programs (Go's, on by default, runs the go toolchain over the repository). |
-   | Code | Opengrep (you install it) with a rules folder you choose | code patterns the rules mark as unsafe | `opengrep scan -f <rules folder> --sarif-output=<temp file> --no-progress-bar -q [--no-git-ignore] .` (`--no-git-ignore` for a folder scan, section 8); the SARIF 2.1.0 file is read (`scan.ParseSARIF`): rule id, level, the message's first line, file and line. |
+   | Dependencies | osv-scanner (comes installed with Drydock, section 5) | packages in lockfiles and manifests with known vulnerabilities | `osv-scanner scan source --format json --no-call-analysis=all -r .`, read with the same parser as the `deps` check (`checks.ParseOSV`): only package names, versions and advisory ids are kept. Unless the tool is run offline it sends package names to osv.dev; nothing else leaves the machine. Call analysis is off (P61): it is the one part of osv-scanner that runs other programs (Go's, on by default, runs the go toolchain over the repository). |
+   | Code | Opengrep (comes installed with Drydock) with the built-in rules, and a folder of your own if you add one | code patterns the rules mark as unsafe | `opengrep scan -f <built-in rules> [-f <your rules folder>] --sarif-output=<temp file> --no-progress-bar -q [--no-git-ignore] .` (`--no-git-ignore` for a folder scan, section 8); the SARIF 2.1.0 file is read (`scan.ParseSARIF`): rule id, level, the message's first line, file and line. |
 
-3. Each engine ends done, skipped (the tool is not installed, there is no rules folder, osv-scanner found no lockfile),
+3. Each engine ends done, skipped (the tool is not installed, there are no rules, osv-scanner found no lockfile),
    errored (the tool broke or ran past the ten-minute cap) or cancelled. A skipped or errored engine says why on the page and
    in the report's summary. **It is never a pass.** The secrets engine counts the folders and files it could not read
    (permissions) and says so on its row and in the summary (`unread`); a tree it cannot read at all is an error. A cancelled
@@ -82,8 +82,16 @@ it (a cancelled scan is stored as cancelled).
 
 ## 5. Installing the tools (Windows)
 
-Drydock ships neither tool and downloads no rules, but it installs the two tools on request (decision P66). On the Security
-page each external tool's row has **Install** (or **Update** once Drydock installed it) and, for an installed one, **Remove**:
+Drydock comes with both tools and with rules (decision P77). The Windows download carries a `tools` folder beside
+`drydock.exe` with the pinned releases of `packaging/bundle.json` (built by `cmd/drydock-bundle` in CI, each asset checked
+against the SHA-256 digest GitHub recorded, listed in `tools/bundle.json`). At its first start Drydock installs them from that
+folder with the same check and placement as **Install** below, so a scan works with nothing downloaded. A tool the person
+removed (`<tool>.removed` beside the installs) is not installed again from the folder.
+
+Drydock looks for newer releases of an installed tool three minutes after it starts and then twice a day; the Security page's
+**Check for updates** looks now. A newer release is named on the tool's row ("v1.32.0 is out") and its button reads **Update to
+v1.32.0**. Nothing is installed without the person pressing it. On the Security page each external tool's row has **Install**
+(or **Update** once Drydock installed it) and, for an installed one, **Remove** (decision P66):
 
 - **Install** reads the tool's own GitHub release listing (`google/osv-scanner`, `opengrep/opengrep`; no sign-in, the
   repositories are public), takes the newest stable release (no draft, no pre-release) that carries the Windows program with
@@ -94,7 +102,7 @@ page each external tool's row has **Install** (or **Update** once Drydock instal
   beside it. No install script from the internet runs (Opengrep's `install.ps1` is not used). The row shows the download's
   progress; the install runs in the background and survives leaving the page.
 - **Update** is the same call: it looks the newest release up and installs it when it is newer than the one installed,
-  otherwise says "already the newest release (vX)". Drydock does not check for new releases by itself.
+  otherwise says "already the newest release (vX)".
 - **Remove** deletes Drydock's copy; the tool is then looked for on PATH again.
 - Without Drydock's install, the page still says how to get each tool by hand: `osv-scanner_windows_amd64.exe` from
   https://github.com/google/osv-scanner/releases named `osv-scanner.exe` on your PATH (or `go install
@@ -110,13 +118,19 @@ page each external tool's row has **Install** (or **Update** once Drydock instal
   `%USERPROFILE%\scoop\shims`, `%USERPROFILE%\go\bin` (and `%GOBIN%`) and Chocolatey's `%ProgramData%\chocolatey\bin`.
   The panel says which: "Chosen file", "Installed by Drydock (vX) at", "Found at", or "Found (not on the PATH Drydock
   started with) at".
-- **Rules**: a folder of Semgrep-syntax rule files (`.yaml` or `.yml`, found through its sub-folders; `.git` is skipped). The
-  `opengrep-rules` repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and
-  benchmarking, so Drydock does not fetch it for you (P44): point the scan at rules you are licensed to use (your own, or a set
-  whose licence you accepted). The person chooses the folder with **Choose folder...** (the window's own folder dialog, shown
-  in the desktop app, saved at once) or types its full path and presses Save (P74).
-- **Where do I get rules?** (P74) is a help on the page, under the rules folder. It is open while the folder has no usable
-  rules, folds away once it has, and keeps whatever the person did with it. It is text and links only: nothing is fetched or run
+- **Built-in rules** (P77): the rules in `internal/scan/rules` are compiled into Drydock, written once per version to
+  `<data>\rules\builtin-<digest>\` (rule files and each set's `LICENSE` only), and given to Opengrep first on every scan.
+  They are Drydock's own rules (34, for JavaScript and TypeScript, Python, Go, Java and C#, each with a test fixture under
+  `internal/scan/testdata/rules`) and two MIT sets copied at a fixed commit: `dgryski/semgrep-go` (66 rules, Go) and
+  `0xdea/semgrep-rules` (49 rules, C and C++). `internal/scan/rules/README.md` names the commits and why the other public sets
+  are not built in: `opengrep-rules` carries the Commons Clause and says it is for research, testing and benchmarking (P44),
+  Semgrep's own set is under the Semgrep Rules License, and Trail of Bits' set is AGPL-3.0. The page lists each built-in set
+  with its rules, languages and licence.
+- **Your own rules** (optional): a folder of Semgrep-syntax rule files (`.yaml` or `.yml`, found through its sub-folders;
+  `.git` is skipped) runs as well as the built-in rules. The person chooses it under **Add a folder of your own rules** with
+  **Choose folder...** (the window's own folder dialog, shown in the desktop app, saved at once) or types its full path and
+  presses Save (P74). A folder that cannot be used is left out of the scan and the page says why.
+- **Where to get more rules** (P74) is a help on the page, folded away. It is text and links only: nothing is fetched or run
   by the page, the links open in the person's browser, and it recommends no set. It lists public repositories of Semgrep-syntax
   rules with what each one's own licence file or README said on 2026-10-16, a Git command that clones one into a folder
   (`git clone -c core.longpaths=true --depth 1 https://github.com/OWNER/REPOSITORY C:\tools\REPOSITORY`), and one rule of
@@ -133,7 +147,8 @@ page each external tool's row has **Install** (or **Update** once Drydock instal
   | `dgryski/semgrep-go` | `LICENSE`: MIT | Go |
 
   A licence can change, and what applies depends on how the rules are used (your own code, inside a company, in a product): the
-  page tells the person to read it. The Code engine's reason, when it is skipped because the rules folder is not usable, ends
+  page tells the person to read it. The Code engine is skipped for want of rules only when the built-in rules could not be
+  written. Its reason, when it is skipped because the rules folder is not usable, ends
   with where to choose rules and where to get them (`rulesHelp`), because a report is read away from the field that mends it;
   the scan's summary keeps only the reason's first sentence.
 

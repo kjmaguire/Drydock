@@ -65,6 +65,20 @@ func StartReleases(repo string) *ReleaseFixture {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(f.releases)
 	})
+	// one release by its tag, as GitHub answers it
+	mux.HandleFunc("/repos/"+repo+"/releases/tags/", func(w http.ResponseWriter, r *http.Request) {
+		tag := strings.TrimPrefix(r.URL.Path, "/repos/"+repo+"/releases/tags/")
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, rel := range f.releases {
+			if rel["tag_name"] == tag {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(rel)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		b, ok := f.files[r.URL.Path]

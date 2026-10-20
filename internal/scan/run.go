@@ -29,7 +29,11 @@ type Options struct {
 	Env func() []string
 	// Paths say where the tools are (default: osv-scanner and opengrep on PATH).
 	Paths Paths
-	// RulesDir is the Opengrep rules folder; empty skips the Code engine.
+	// BuiltinRules is the folder the built-in rules were written to (WriteBuiltinRules, decision P77); the Code engine runs
+	// them on every scan. Empty when they could not be written.
+	BuiltinRules string
+	// RulesDir is a folder of the person's own Opengrep rules, run as well as the built-in ones; empty runs the built-in
+	// rules alone. A folder that cannot be used is left out (the page says why).
 	RulesDir string
 	// NoGit keeps the tools from running git in Dir (decision P61): Opengrep then walks the folder itself instead of asking
 	// `git ls-files`, so a .git/config that came with a downloaded folder (core.fsmonitor and the like) can run nothing.
@@ -41,6 +45,25 @@ type Options struct {
 	// report and that engine's id, and once more when the scan ends (engine ""). Progress counters do not call it: read
 	// Snapshot for those.
 	OnChange func(rep Report, engine EngineID)
+}
+
+// ruleSources are the rule folders Opengrep is given: the built-in rules, then the person's own folder when it can be used.
+func (o *Options) ruleSources() []string {
+	var out []string
+	if o.BuiltinRules != "" {
+		out = append(out, o.BuiltinRules)
+	}
+	if ok, _ := checkRules(o.RulesDir); ok {
+		out = append(out, o.RulesDir)
+	}
+	return out
+}
+
+func lowerFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }
 
 func (o *Options) redact(s string) string {
@@ -241,8 +264,13 @@ func (r *Run) run(ctx context.Context) {
 			r.finish(SAST, nil, Skipped, "Opengrep is not installed, so no code was checked. "+opengrepInstall, "")
 			return
 		}
-		if ok, note := checkRules(r.o.RulesDir); !ok {
-			r.finish(SAST, nil, Skipped, note+rulesHelp, "")
+		if len(r.o.ruleSources()) == 0 {
+			reason := "The built-in rules could not be written to the app's data folder, and no folder of your own rules is chosen."
+			if strings.TrimSpace(r.o.RulesDir) != "" {
+				_, note := checkRules(r.o.RulesDir)
+				reason = "The built-in rules could not be written to the app's data folder, and your rules folder cannot be used: " + lowerFirst(note)
+			}
+			r.finish(SAST, nil, Skipped, reason+rulesHelp, "")
 			return
 		}
 		start(SAST)
