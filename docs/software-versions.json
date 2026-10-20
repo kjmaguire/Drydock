@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-20T06:35:37Z",
-  "commit": "7bd3ae7",
+  "generated": "2026-10-20T07:40:30Z",
+  "commit": "d7f7969",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -6209,7 +6209,7 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11672",
-      "latest": "b11750",
+      "latest": "b11751",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6218,14 +6218,14 @@
     {
       "id": "tool:llama.cpp-turboquant",
       "group": "Tools Drydock runs or you install",
-      "name": "llama.cpp TurboQuant fork, Windows Vulkan build (comes with the download, decision P77)",
+      "name": "llama.cpp TurboQuant fork (comes with the download, Vulkan build, decision P77)",
       "kind": "tool",
-      "used": "turboquant-windows-x64-vulkan-519f0c5",
-      "latest": "turboquant-windows-x64-vulkan-519f0c5",
+      "used": "b10298-2.0.0",
+      "latest": "b10298-2.0.0",
       "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
-      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. It names builds by commit (turboquant-windows-x64-vulkan-\u003ccommit\u003e), so the audit orders them by commit date: 519f0c5 (2026-07-03) is the newest Windows Vulkan build; a newer commit (066cc29, 2026-07-17) has no Windows Vulkan build. It trails upstream llama.cpp."
+      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. Its releases are tagged bNNNN-X.Y.Z (the llama.cpp build it is based on, then its own version); b10298-2.0.0 (2026-10-05) is the newest. Its per-commit tags (turboquant-windows-x64-vulkan-\u003ccommit\u003e) and dev-latest are pre-release dev builds, which Drydock does not install. It trails upstream llama.cpp."
     },
     {
       "id": "npm:@pitlane/vite-plugin-remix",
