@@ -23,13 +23,13 @@ Imported by Drydock itself:
 | Module | Version | License | Copyright | Used for |
 |---|---|---|---|---|
 | cel.dev/cel-go | v0.32.0 | Apache-2.0, with code under BSD-3-Clause | - | Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language. |
-| github.com/anthropics/anthropic-sdk-go | v1.82.0 | MIT | Copyright 2023 Anthropic, PBC. | Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. |
+| github.com/anthropics/anthropic-sdk-go | v1.83.0 | MIT | Copyright 2023 Anthropic, PBC. | Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. |
 | github.com/aymanbagabas/go-pty | v0.2.3 | MIT | Copyright (c) 2023 Ayman Bagabas | The human's terminals in the bottom dock: ConPTY on Windows, a Unix pseudo-terminal elsewhere (internal/terminal). |
 | github.com/charmbracelet/x/ansi | v0.11.9 | MIT | Copyright (c) 2023 Charmbracelet, Inc. | Meant for reading terminal escape codes in agent and terminal output. |
 | github.com/coder/acp-go-sdk | v0.13.5 | Apache-2.0 | Copyright 2025 Coder Technologies, Inc. | Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose. |
 | github.com/google/jsonschema-go | v0.4.3 | MIT | Copyright (c) 2025 JSON Schema Go Project Authors | Describes the workspace tools' inputs to MCP clients as JSON Schema. |
 | github.com/modelcontextprotocol/go-sdk | v1.8.0 | MIT and Apache-2.0 (the project is moving its code from MIT to Apache-2.0; its LICENSE holds both) | - | The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. |
-| github.com/openai/openai-go/v3 | v3.78.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
+| github.com/openai/openai-go/v3 | v3.82.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
 | github.com/pressly/goose/v3 | v3.29.0 | MIT | - | Runs the database migrations. |
 | github.com/tree-sitter/go-tree-sitter | v0.25.0 | MIT | - | The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build n... |
 | github.com/tree-sitter/tree-sitter-c-sharp | v0.23.5 | MIT | Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors. | C# grammar of the repo map, with its queries/tags.scm. |
@@ -39,7 +39,7 @@ Imported by Drydock itself:
 | github.com/tree-sitter/tree-sitter-python | v0.25.0 | MIT | Copyright (c) 2016 Max Brunsfeld | Python grammar of the repo map, with its queries/tags.scm. |
 | github.com/tree-sitter/tree-sitter-rust | v0.24.2 | MIT | Copyright (c) 2017 Maxim Sokolov | Rust grammar of the repo map, with its queries/tags.scm. |
 | github.com/tree-sitter/tree-sitter-typescript | v0.23.2 | MIT | Copyright (c) 2017 Max Brunsfeld | TypeScript and TSX grammars of the repo map, with their queries/tags.scm (combined with JavaScript's, as the grammar does) and Drydock's own extra queries. |
-| github.com/wailsapp/wails/v3 | v3.0.0-beta.30 | MIT | Copyright (c) 2018-Present Lea Anthony | The Windows desktop shell: the window and the WebView2 that shows the UI. |
+| github.com/wailsapp/wails/v3 | v3.0.0-beta.34 | MIT | Copyright (c) 2018-Present Lea Anthony | The Windows desktop shell: the window and the WebView2 that shows the UI. |
 | github.com/zalando/go-keyring | v0.2.8 | MIT | Copyright (c) 2016 Zalando SE | Stores secrets in the Windows Credential Manager. |
 | github.com/zricethezav/gitleaks/v8 | v8.30.1 | MIT | Copyright (c) 2019 Zachary Rice | Scans diffs and outputs for secrets before they are kept or sent. |
 | golang.org/x/oauth2 | v0.37.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry... |
@@ -91,7 +91,7 @@ Pulled in by those, and compiled in:
 | github.com/h2non/filetype | v1.1.3 | MIT | Copyright (c) Tomas Aparicio | - |
 | github.com/hashicorp/go-version | v1.9.0 | MPL-2.0 | - | - |
 | github.com/hashicorp/golang-lru/v2 | v2.0.7 | MPL-2.0 | Copyright (c) 2014 HashiCorp, Inc. | - |
-| github.com/huandu/xstrings | v1.6.2 | MIT | Copyright (c) 2015 Huan Du | - |
+| github.com/huandu/xstrings | v1.6.3 | MIT | Copyright (c) 2015 Huan Du | - |
 | github.com/invopop/jsonschema | v0.14.0 | MIT | Copyright (C) 2014 Alec Thomas | - |
 | github.com/klauspost/compress | v1.20.3 | BSD-3-Clause, with code under Apache-2.0, MIT | - | - |
 | github.com/klauspost/pgzip | v1.2.7 | MIT | Copyright (c) 2014 Klaus Post | - |
@@ -103,7 +103,7 @@ Pulled in by those, and compiled in:
 | github.com/mfridman/interpolate | v0.0.2 | MIT | Copyright (c) 2014-2017 Buildkite Pty Ltd | - |
 | github.com/mholt/archives | v0.1.5 | MIT | Copyright (c) 2016 Matthew Holt | - |
 | github.com/mikelolasagasti/xz | v1.0.1 | ISC | - | - |
-| github.com/minio/minlz | v1.2.2 | Apache-2.0 | - | - |
+| github.com/minio/minlz | v1.2.3 | Apache-2.0 | - | - |
 | github.com/mitchellh/copystructure | v1.2.0 | MIT | Copyright (c) 2014 Mitchell Hashimoto | - |
 | github.com/mitchellh/reflectwalk | v1.0.2 | MIT | Copyright (c) 2013 Mitchell Hashimoto | - |
 | github.com/muesli/termenv | v0.16.0 | MIT | Copyright (c) 2019 Christian Muehlhaeuser | - |
@@ -120,7 +120,7 @@ Pulled in by those, and compiled in:
 | github.com/segmentio/asm | v1.2.1 | MIT | Copyright 2023 Segment | - |
 | github.com/segmentio/encoding | v0.5.4 | MIT | Copyright (c) 2019 Segment.io, Inc. | - |
 | github.com/sethvargo/go-retry | v0.5.0 | Apache-2.0 | - | - |
-| github.com/shopspring/decimal | v1.5.0 | MIT | Copyright (c) 2015 Spring, Inc. | - |
+| github.com/shopspring/decimal | v1.6.0 | MIT | Copyright (c) 2015 Spring, Inc. | - |
 | github.com/sorairolake/lzip-go | v0.3.8 | Apache-2.0 OR MIT (the author's choice: LICENSE-APACHE and LICENSE-MIT) | - | - |
 | github.com/spf13/afero | v1.15.0 | Apache-2.0 | - | - |
 | github.com/spf13/cast | v1.10.0 | MIT | Copyright (c) 2014 Steve Francia | - |
@@ -144,7 +144,7 @@ Pulled in by those, and compiled in:
 | go.opentelemetry.io/otel/trace | v1.47.0 | Apache-2.0, with code under BSD-3-Clause | - | - |
 | go.uber.org/multierr | v1.11.0 | MIT | Copyright (c) 2017-2021 Uber Technologies, Inc. | - |
 | go.yaml.in/yaml/v3 | v3.0.5 | MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files) | - | - |
-| go4.org | v0.0.0-20260112195520-a5071408f32f | Apache-2.0 | - | - |
+| go4.org | v0.0.0-20261019143151-5b882263cdaf | Apache-2.0 | - | - |
 | golang.org/x/crypto | v0.58.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/exp | v0.0.0-20261014143641-f0251eb4aa3e | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/mod | v0.42.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
@@ -152,10 +152,10 @@ Pulled in by those, and compiled in:
 | golang.org/x/text | v0.43.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/time | v0.16.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | google.golang.org/genproto | v0.0.0-20251202230838-ff82c1b0f217 | Apache-2.0 (the repository's LICENSE; this module's source is not needed to build) | - | Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use). |
-| google.golang.org/genproto/googleapis/api | v0.0.0-20261012220534-4341edf3f941 | Apache-2.0 | - | - |
-| google.golang.org/genproto/googleapis/rpc | v0.0.0-20261012220534-4341edf3f941 | Apache-2.0 | - | - |
+| google.golang.org/genproto/googleapis/api | v0.0.0-20261019180522-ce908d29299b | Apache-2.0 | - | - |
+| google.golang.org/genproto/googleapis/rpc | v0.0.0-20261019180522-ce908d29299b | Apache-2.0 | - | - |
 | google.golang.org/protobuf | v1.36.12 | BSD-3-Clause | Copyright (c) 2018 The Go Authors. All rights reserved. | - |
-| modernc.org/libc | v1.78.0 | BSD-3-Clause, with code under MIT | - | The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app. |
+| modernc.org/libc | v1.79.0 | BSD-3-Clause, with code under MIT | - | The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app. |
 | modernc.org/mathutil | v1.7.1 | BSD-3-Clause | Copyright (c) 2014 The mathutil Authors. All rights reserved. | - |
 | modernc.org/memory | v1.12.1 | BSD-3-Clause | Copyright (c) 2017 The Memory Authors. All rights reserved. | - |
 
@@ -265,7 +265,7 @@ Listed in `ui/package.json` as what the UI needs to run:
 | @remix-run/ui | 0.12.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
 | @xterm/addon-fit | 0.11.0 | MIT | Sizes a terminal to its panel. |
 | @xterm/xterm | 6.0.0 | MIT | Draws the human's terminals in the bottom dock (lazy-loaded). |
-| lucide | 1.57.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
+| lucide | 1.60.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
 | marked | 14.0.0 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
 | marked | 18.1.1 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
 | monaco-editor | 0.57.0 | MIT | The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported). |
