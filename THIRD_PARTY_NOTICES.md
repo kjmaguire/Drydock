@@ -230,12 +230,20 @@ The built-in Opengrep rules in `internal/scan/rules` are compiled into Drydock a
 `LICENSE`:
 
 - Drydock's own rules (`internal/scan/rules/drydock`): under Drydock's licence.
-- dgryski/semgrep-go (https://github.com/dgryski/semgrep-go): MIT, Copyright (c) 2020 Damian Gryski.
-- 0xdea/semgrep-rules, the C and C++ rules (https://github.com/0xdea/semgrep-rules): MIT, Copyright (c) 2022 raptor.
+- dgryski/semgrep-go (https://github.com/dgryski/semgrep-go), at commit db0227c03f4b3c4e71d900188d51db4c81d66932: MIT,
+  Copyright (c) 2020 Damian Gryski.
+- 0xdea/semgrep-rules, the C and C++ rules (https://github.com/0xdea/semgrep-rules), at commit
+  e0121ac19d9fa259a44f3a24d3e42c95719b17c7: MIT, Copyright (c) 2022 raptor.
 
 ## Tools Drydock invokes but does not bundle
 
-Installed and licensed by the user: Claude Code (proprietary, Anthropic), Codex CLI (Apache-2.0), Gemini CLI (Apache-2.0), OpenCode (MIT), Goose (Apache-2.0), Antigravity CLI (proprietary, Google), `git` (GPL-2.0), GitHub CLI (MIT), Playwright (Apache-2.0), Wrangler (MIT OR Apache-2.0), Node.js (MIT). The Sentry MCP server (FSL-1.1-Apache-2.0), the Aikido MCP server (AGPL or commercial) and Notion's local MCP server are **not** bundled (decision D14).
+Installed and licensed by the user: Claude Code (proprietary, Anthropic), Codex CLI (Apache-2.0), Gemini CLI (Apache-2.0), OpenCode (MIT), Goose (Apache-2.0), Cline CLI (Apache-2.0), Antigravity CLI (proprietary, Google), `git` (GPL-2.0), GitHub CLI (MIT), Playwright (Apache-2.0), Wrangler (MIT OR Apache-2.0), Node.js (MIT).
+
+Fetched when used, not bundled: the ACP bridges `@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp`
+(Apache-2.0), started with `npx -y` at the versions the agent manifests pin; the official llama.cpp build (MIT, ggml-org/llama.cpp)
+when a person installs it, with NVIDIA's CUDA runtime archive beside a CUDA build (NVIDIA CUDA Toolkit EULA); the GitHub
+Actions runner (MIT) for the CI runners; models from the Hugging Face Hub under each model's own licence; and container images a
+person's sandbox or runner pulls (Debian, Ubuntu, Node, Go and Python official images, each under its own licences). The Sentry MCP server (FSL-1.1-Apache-2.0), the Aikido MCP server (AGPL or commercial) and Notion's local MCP server are **not** bundled (decision D14).
 
 ## Dev tooling (not shipped)
 
@@ -363,7 +371,21 @@ Pulled in by those:
   without restriction, subject to including the copyright notice and this permission notice; THE SOFTWARE IS PROVIDED "AS
   IS", WITHOUT WARRANTY OF ANY KIND (the MIT License, in full at https://opensource.org/license/mit).
 
+- **Aikido**: the two paths of the logo in `docs/banner.svg` of https://github.com/AikidoSec/safe-chain, scaled into the
+  24-unit box. That repository is offered under the AGPL-3.0 or a commercial licence (its `LICENSE`, read on 2026-10-20).
+- **Microsoft**: the four squares, drawn in `ui/app/ui/brand-logo.tsx` (Simple Icons carries no Microsoft mark).
+
 The marks are trademarks of their owners, shown only to say which service or CLI a card connects to.
+
+## Skill descriptions quoted in the catalog
+
+`internal/skills/registry.yaml` quotes the description from the front matter of each skill the prebuilt agents name, read at a
+pinned commit; nothing else of the skills ships (a skill's files are fetched only when a person adds it):
+
+- anthropics/skills at 683bc88e56f3e09ba94f7055977f3d3aa499f202: Apache-2.0 (each skill's `LICENSE.txt`).
+- vercel-labs/agent-skills at 063bee94c3f4df8453406c830b0a7df0f2860278: MIT.
+- cloudflare/skills at a18ffe2a99448ebff262fc87915b0fd14bab9b70: Apache-2.0.
+- MicrosoftDocs/mcp at f8ffde185dfd232dbf5d187c22ce299eadc3d583: content CC BY 4.0, code MIT.
 
 ## Reused architecture and algorithms (reimplemented, not copied)
 

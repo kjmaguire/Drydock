@@ -31,13 +31,16 @@ type RuleSet struct {
 	Licence   string   `json:"licence"`
 	Rules     int      `json:"rules"`
 	Languages []string `json:"languages"`
+	// Commit is the upstream commit a copied set was taken from (empty for Drydock's own); the Software Versions page compares
+	// it with the upstream repository's newest commit.
+	Commit string `json:"commit,omitempty"`
 }
 
 // builtinSets names the folders under rules/ and what each one is.
 var builtinSets = []RuleSet{
 	{ID: "drydock", Name: "Drydock's own", Source: "written for Drydock", Licence: "the repository's licence"},
-	{ID: "third_party/dgryski-semgrep-go", Name: "dgryski/semgrep-go", Source: "https://github.com/dgryski/semgrep-go", Licence: "MIT"},
-	{ID: "third_party/0xdea-c", Name: "0xdea/semgrep-rules (C and C++)", Source: "https://github.com/0xdea/semgrep-rules", Licence: "MIT"},
+	{ID: "third_party/dgryski-semgrep-go", Name: "dgryski/semgrep-go", Source: "https://github.com/dgryski/semgrep-go", Licence: "MIT", Commit: "db0227c03f4b3c4e71d900188d51db4c81d66932"},
+	{ID: "third_party/0xdea-c", Name: "0xdea/semgrep-rules (C and C++)", Source: "https://github.com/0xdea/semgrep-rules", Licence: "MIT", Commit: "e0121ac19d9fa259a44f3a24d3e42c95719b17c7"},
 }
 
 type ruleFile struct {

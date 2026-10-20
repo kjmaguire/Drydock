@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -453,3 +454,33 @@ func TestTheCommittedNoticesNameEveryModuleInTheBuildAtItsVersion(t *testing.T) 
 		t.Error("THIRD_PARTY_NOTICES.md must state the license LICENSE grants")
 	}
 }
+
+// Every commit Drydock copies or quotes third-party content from is named in THIRD_PARTY_NOTICES.md: the skills the catalog
+// quotes (internal/skills/registry.yaml) and the copied rule sets (internal/scan/builtin_rules.go). A new pin without a notice
+// fails here (the sweep of 2026-10-20 found the skill commits missing).
+func TestEveryCopiedCommitIsInTheNotices(t *testing.T) {
+	root := repoRoot(t)
+	doc, err := os.ReadFile(filepath.Join(root, "THIRD_PARTY_NOTICES.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commits []string
+	for _, f := range []string{"internal/skills/registry.yaml", "internal/scan/builtin_rules.go"} {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := commitR.FindAllString(string(b), -1)
+		if len(found) == 0 {
+			t.Fatalf("%s: no commit found", f)
+		}
+		commits = append(commits, found...)
+	}
+	for _, c := range commits {
+		if !strings.Contains(string(doc), c) {
+			t.Errorf("THIRD_PARTY_NOTICES.md does not name %s", c)
+		}
+	}
+}
+
+var commitR = regexp.MustCompile(`\b[0-9a-f]{40}\b`)

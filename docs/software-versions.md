@@ -19,6 +19,13 @@ the notes (below).
 | Agent CLIs and ACP bridges | `internal/agents/manifests/cli/*.yaml` | `npm view` |
 | Tools you install (gh, task, go-licenses, govulncheck, wrangler) | the version `docs/software-notes.json` records as documented | the Go proxy or npm |
 | Tools the Windows download carries (osv-scanner, Opengrep, the TurboQuant llama.cpp build) | the pins of `packaging/bundle.json` (decision P77), not a copy in the notes | git tags; for the TurboQuant fork, GitHub's release listing read with the app's own picker (the newest release with the Windows build and a digest), or its release tags (`bNNNN-X.Y.Z`) when the listing cannot be read, which the item's note then says |
+| Agent CLIs not on npm (the Antigravity CLI) | the manifest's recommended version | none: no feed; the row says to check by hand |
+| Copied into Drydock: the built-in Opengrep rule sets, the Simple Icons and LobeHub logo paths | the commit in `internal/scan/builtin_rules.go`; the versions in `ui/app/ui/brand-logo.tsx` | the repository's newest commit; npm |
+| Skills the prebuilt agents name at a commit | `internal/skills/registry.yaml` | the registry repository's newest commit |
+| Container images Drydock pulls or builds on (the CI runner container, the sandbox's suggested images) | the image names in the Go code (`internal/runners/launch.go`, `internal/sandbox/config.go`) | Docker's official-images library: still published, and the newest Debian or Ubuntu release |
+| Vendor APIs and protocols (MCP revision, Linear schema, Notion-Version, X-GitHub-Api-Version, anthropic-version) | the code that sends them | MCP: the specification's dated tags; Linear: `@linear/sdk` on npm; the others publish versions only on a web page, so their rows say where to look |
+| What CI workflows install at a version (`npm install -g`, `npx -y`, `go install`, `go run`) | `.github/workflows/*.yml` | npm or the Go proxy; a pin that differs from the manifests says so, and the Phase 0 probes carry a hold (they keep the versions they verified) |
+| Git, and Semgrep OSS (development only, checks the built-in rules) | the versions `docs/software-notes.json` records | their git tags |
 | Security advisories | | `govulncheck` (Go; pinned to a release, the same one `.github/workflows/security.yml` runs), `npm audit` (UI) |
 | Documentation that names a different version than the code | `docs/decisions.md` | |
 
@@ -68,6 +75,24 @@ The page is the Artifact type "Dashboard" over four data files. To refresh, afte
 
 A dataset with no rows (`vulns.json`, `drift.json` on a clean audit) is written as one placeholder row `{"none": "yes"}`, because the
 Dashboard type refuses a file it can read no rows from; the page leaves that row out and shows its empty-state sentence.
+
+## Not tracked, and why (the sweep of 2026-10-20)
+
+A sweep of the code, CI and packaging for software Drydock uses found these, which the page leaves out on purpose:
+
+- **Parts of Windows or of a person's PC**: `wsl.exe` and the tools inside a distro, PowerShell and `cmd.exe` (the terminal and
+  sign-ins), `fsutil` (Dev Drive), `nvidia-smi` (looked for, never run), the WebView2 runtime (evergreen), the default browser,
+  and the helpers Git for Windows starts (ssh, credential helpers). Windows updates them; Drydock pins none.
+- **What a CI runner image brings**: `windows-latest` and `ubuntu-latest` are floating labels; MinGW gcc, Git for Windows,
+  PowerShell 7 and Chocolatey come with the image. The Playwright browser follows `@playwright/test` and the CodeQL bundle
+  follows `github/codeql-action`, both tracked. NSIS is installed unpinned by the Phase 0 probe job only.
+- **Content a person chooses**: models from the Hugging Face Hub, the skill registries Drydock syncs at their newest commit (by
+  design: the Library shows what is new), and container images a project's own sandbox configuration names.
+- **Services without a version**: the hosted MCP servers of `internal/mcp/catalog.yaml` (Microsoft Learn, Cloudflare docs and API,
+  GitHub, Context7, Linear, Notion, Sentry), and the Sentry (`/api/0`) and Aikido (`/api/public/v1`) APIs, whose version is only
+  in the path.
+- **Not part of the product**: the Phase 0 probe modules (`evidence/phase0/**/go.mod`, a record of what was verified), the
+  starter template's packages (`testdata/starter-cloudflare-saas`), the trial fixtures, and Dependabot (a GitHub service).
 
 ## Libraries only in the module graph
 

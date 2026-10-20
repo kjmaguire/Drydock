@@ -313,6 +313,8 @@ func tools(ctx context.Context) []Item {
 		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", nil},
 		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", nil},
 		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", nil},
+		{"tool:git", "Git (Drydock runs it for every repository; Git for Windows on a PC)", "tool", "", "", "git/git", nil},
+		{"tool:semgrep", "Semgrep OSS (checks the built-in rules against their fixtures; not shipped)", "tool", "", "", "semgrep/semgrep", nil},
 		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", buildRelease},
 		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork (comes with the download, Vulkan build, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", forkRelease},
 	}

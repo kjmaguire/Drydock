@@ -8,7 +8,9 @@
     "tool:docker": "29.8.2",
     "tool:golangci-lint": "2.15.0",
     "tool:actions-runner": "2.338.0",
-    "tool:llama.cpp": "b11672"
+    "tool:llama.cpp": "b11672",
+    "tool:git": "2.43.0",
+    "tool:semgrep": "1.181.0"
   },
   "notes": {
     "go": {
@@ -238,7 +240,7 @@
     },
     "tool:llama.cpp": {
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
-      "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant)."
+      "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant). A CUDA build is installed with the matching NVIDIA CUDA runtime archive (cudart-llama-bin-win-cuda-<toolkit>-x64.zip) from the same release, checked the same way; it follows the build."
     },
     "tool:actions-runner": {
       "role": "The CI runners (decision P56) run GitHub's own runner for a person's private repositories: unpacked on the PC for Windows jobs, built into a container image (FROM ubuntu:24.04, the current Ubuntu LTS) for Linux jobs.",
@@ -284,6 +286,19 @@
     "tool:llama.cpp-turboquant": {
       "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
       "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. Its releases are tagged bNNNN-X.Y.Z (the llama.cpp build it is based on, then its own version); b10298-2.0.0 (2026-10-05) is the newest. Its per-commit tags (turboquant-windows-x64-vulkan-<commit>) and dev-latest are pre-release dev builds, which Drydock does not install. It trails upstream llama.cpp."
+    },
+    "tool:git": {
+      "role": "Version control for every project: Drydock runs git for worktrees, commits, merges and the repository guard (internal/git), always with hooks, filters and external programs switched off. On a PC it is Git for Windows, which the person installs; nothing is bundled.",
+      "note": "The version shown is the git the development sandbox tests with (git --version). CI's Windows jobs use the Git for Windows of GitHub's windows-latest image, which is not pinned. Drydock uses only long-standing git commands.",
+      "hold": "2.43.0 is the development host's distribution git, which the test suite runs; Drydock asks for no newer feature. A person's PC keeps its own Git for Windows, which its installer updates."
+    },
+    "tool:semgrep": {
+      "role": "Development only: Semgrep OSS runs the built-in Opengrep rules against their fixtures (internal/scan builtin_rules_test.go with DRYDOCK_RULES_ENGINE) and made the SARIF fixture of the reader. Opengrep reads the same rule syntax; Semgrep is not shipped.",
+      "note": "Installed in a Python virtual environment on the development host; CI does not run it."
+    },
+    "cli:antigravity": {
+      "role": "Google's Antigravity CLI (agy), driven only after a person acknowledges the terms notice (decision D2); its adapter refuses to start sessions until its stream is captured (no fixtures yet).",
+      "note": ""
     }
   }
 }

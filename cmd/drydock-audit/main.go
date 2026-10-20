@@ -260,6 +260,7 @@ func main() {
 	items = append(items, actions(ctx)...)
 	items = append(items, agentSoftware(ctx)...)
 	items = append(items, tools(ctx)...)
+	items = append(items, extras(ctx)...)
 
 	missing := []string{}
 	for i := range items {

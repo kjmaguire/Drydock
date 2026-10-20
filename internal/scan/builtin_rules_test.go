@@ -225,3 +225,27 @@ func TestTheCodeEngineRunsTheBuiltinRulesAndThePersonsFolder(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// A copied set names the upstream commit it was taken from, and rules/README.md (the human record) names the same one, so the
+// Software Versions page, which reads the commit from here, measures what was really copied.
+func TestACopiedRuleSetNamesItsCommit(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("rules", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sets, err := BuiltinRuleSets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sets {
+		copied := strings.HasPrefix(s.ID, "third_party/")
+		switch {
+		case copied && len(s.Commit) != 40:
+			t.Errorf("%s: no full commit (%q)", s.ID, s.Commit)
+		case copied && !strings.Contains(string(readme), s.Commit):
+			t.Errorf("%s: rules/README.md does not name %s", s.ID, s.Commit)
+		case !copied && s.Commit != "":
+			t.Errorf("%s: Drydock's own set has a commit", s.ID)
+		}
+	}
+}
