@@ -259,6 +259,43 @@ func TestRegistryCheckRecordsAFailureAndKeepsTheLibrary(t *testing.T) {
 	}
 }
 
+// The owner's report of 2026-10-20: "Blocked: SKILL.md is larger than 64 KiB", although the limit had been 128 KiB for days.
+// The row was written by an older version, and an unchanged commit was never read again. A registry read under older checks
+// is now read again once, and the skill is judged by today's checks.
+func TestARegistryReadUnderOlderChecksIsJudgedAgain(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, nil)
+	gh := newGHFixture(t)
+	gh.publish("cloudflare/skills", "HEAD", sha1, fixtureTree(nil))
+	e.useFixture(gh)
+	if _, err := e.s.CheckRegistry(ctx, "cloudflare-skills"); err != nil {
+		t.Fatal(err)
+	}
+	// what an older version left behind: the skill blocked by the old limit, the registry read under no rules version
+	if _, err := e.db.Writer().Exec(`UPDATE skill_library SET status='blocked', block_reason='SKILL.md is larger than 64 KiB' WHERE registry_id='cloudflare-skills' AND name='d1-migrations'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE skill_registry_watch SET rules_version=0 WHERE registry_id='cloudflare-skills'`); err != nil {
+		t.Fatal(err)
+	}
+	tarHits := gh.hits["/cloudflare/skills/tar.gz/"+sha1]
+	st, err := e.s.CheckRegistry(ctx, "cloudflare-skills")
+	if err != nil || st.LastError != "" {
+		t.Fatalf("%v %+v", err, st)
+	}
+	if gh.hits["/cloudflare/skills/tar.gz/"+sha1] != tarHits+1 {
+		t.Fatal("a registry read under older checks was not read again")
+	}
+	k, err := e.s.libraryRow(ctx, "cloudflare-skills", "d1-migrations")
+	if err != nil || k.Status != LibraryAvailable || k.BlockReason != "" {
+		t.Fatalf("the stale block stayed: %v %+v", err, k)
+	}
+	// once read under today's checks, an unchanged commit is not downloaded again
+	if _, err := e.s.CheckRegistry(ctx, "cloudflare-skills"); err != nil || gh.hits["/cloudflare/skills/tar.gz/"+sha1] != tarHits+1 {
+		t.Fatalf("read again under the same checks: %v", err)
+	}
+}
+
 func byRegistry(sts []RegistryStatus, id string) RegistryStatus {
 	for _, st := range sts {
 		if st.RegistryID == id {

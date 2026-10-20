@@ -43,6 +43,10 @@ const triggerCss = css({
   alignItems: 'center',
   gap: t.s2,
   width: '100%',
+  // never wider than its column: a long choice ("private (may receive repository content)") is cut with an ellipsis and
+  // read in full from the title, instead of the box growing over the field beside it
+  minWidth: '0',
+  maxWidth: '100%',
   minHeight: '34px',
   padding: '6px 10px 6px 12px',
   background: t.bgInput,
@@ -65,6 +69,10 @@ const triggerCss = css({
   '& > .value > .hint': { color: t.textMuted, fontSize: t.textSm, marginLeft: '6px' },
   '& > .chevron': { display: 'inline-flex', flex: 'none', color: t.textMuted, transition: `transform ${t.fast} ${t.ease}` },
   '&[aria-expanded="true"] > .chevron': { transform: 'rotate(180deg)' },
+  // a label that wraps the dropdown in a toolbar ("Ask [agent] [Recommend]") keeps its words and the dropdown on one line, so
+  // the buttons beside it line up with the dropdown instead of with the pair (the owner's report of 2026-10-20). A Field's
+  // label names its control with for= and stays above it.
+  ':where(label:not([for]):has(> &))': { display: 'inline-flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
 });
 
 const smallCss = css({ minHeight: '28px', padding: '3px 8px 3px 10px', fontSize: t.textSm });
@@ -274,7 +282,7 @@ export function Select(handle: Handle<SelectProps>) {
           aria-controls={listId}
           aria-activedescendant={open && active !== -1 ? `${listId}-${active}` : undefined}
           aria-label={label}
-          title={title}
+          title={title ?? (typeof shown === 'string' && shown ? shown : undefined)}
           disabled={disabled}
           data-testid={testId}
           data-value={value}

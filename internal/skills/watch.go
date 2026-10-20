@@ -182,9 +182,15 @@ func (st RegistryStatus) HasNews() bool {
 	return false
 }
 
+// LibraryRulesVersion is the version of the checks a library sync applies (size, licence, name, safety). Raise it whenever
+// one of them changes: every registry is then read again at its next check, even on an unchanged commit, so what an older
+// check blocked is judged by the current one. 1: the 128 KiB SKILL.md limit (rows blocked under 64 KiB stayed blocked).
+const LibraryRulesVersion = 1
+
 type watchRow struct {
 	commit, notified, lastErr string
 	checkedAt                 int64
+	rules                     int
 	added, changed            []RegistryChange
 }
 
@@ -196,8 +202,8 @@ type watchChanges struct {
 func (s *Service) watchRow(ctx context.Context, registryID string) (watchRow, bool, error) {
 	var r watchRow
 	var changesJSON string
-	err := s.DB.Reader().QueryRowContext(ctx, `SELECT last_commit,checked_at,notified_commit,remote_json,last_error FROM skill_registry_watch WHERE registry_id=?`, registryID).
-		Scan(&r.commit, &r.checkedAt, &r.notified, &changesJSON, &r.lastErr)
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT last_commit,checked_at,notified_commit,remote_json,last_error,rules_version FROM skill_registry_watch WHERE registry_id=?`, registryID).
+		Scan(&r.commit, &r.checkedAt, &r.notified, &changesJSON, &r.lastErr, &r.rules)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, false, nil
 	}
@@ -216,15 +222,15 @@ func (s *Service) watchRow(ctx context.Context, registryID string) (watchRow, bo
 func (s *Service) saveWatch(ctx context.Context, registryID string, r watchRow) error {
 	changesJSON, _ := json.Marshal(watchChanges{Added: nz(r.added), Changed: nz(r.changed)})
 	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO skill_registry_watch(registry_id,last_commit,checked_at,notified_commit,remote_json,last_error) VALUES(?,?,?,?,?,?)
-			ON CONFLICT(registry_id) DO UPDATE SET last_commit=excluded.last_commit,checked_at=excluded.checked_at,notified_commit=excluded.notified_commit,remote_json=excluded.remote_json,last_error=excluded.last_error`,
-			registryID, r.commit, r.checkedAt, r.notified, string(changesJSON), r.lastErr)
+		_, err := tx.ExecContext(ctx, `INSERT INTO skill_registry_watch(registry_id,last_commit,checked_at,notified_commit,remote_json,last_error,rules_version) VALUES(?,?,?,?,?,?,?)
+			ON CONFLICT(registry_id) DO UPDATE SET last_commit=excluded.last_commit,checked_at=excluded.checked_at,notified_commit=excluded.notified_commit,remote_json=excluded.remote_json,last_error=excluded.last_error,rules_version=excluded.rules_version`,
+			registryID, r.commit, r.checkedAt, r.notified, string(changesJSON), r.lastErr, r.rules)
 		return err
 	})
 }
 
 // CheckRegistry reads a registry's default branch once and syncs the library with what it holds. When the commit has not
-// moved since the last check nothing is downloaded. A failure (the registry unreachable, the tarball unreadable) is recorded
+// moved since the last check, under the same checks (LibraryRulesVersion), nothing is downloaded. A failure (the registry unreachable, the tarball unreadable) is recorded
 // in LastError and returned as a status, not an error, so a scheduled pass continues with the next registry.
 func (s *Service) CheckRegistry(ctx context.Context, registryID string) (RegistryStatus, error) {
 	reg, err := s.registry(ctx, registryID)
@@ -255,7 +261,8 @@ func (s *Service) CheckRegistry(ctx context.Context, registryID string) (Registr
 	}
 	var libCount int
 	_ = s.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM skill_library WHERE registry_id=?`, reg.ID).Scan(&libCount)
-	if commit != row.commit || libCount == 0 {
+	// read it again when upstream moved, when the library is empty, or when Drydock's checks changed since the last read
+	if commit != row.commit || libCount == 0 || row.rules < LibraryRulesVersion {
 		remote, err := s.Fetcher.Fetch(ctx, reg.Repo, commit, reg.Root)
 		if err != nil {
 			return fail(err)
@@ -264,7 +271,7 @@ func (s *Service) CheckRegistry(ctx context.Context, registryID string) (Registr
 		if err != nil {
 			return RegistryStatus{}, err
 		}
-		row.commit, row.added, row.changed = commit, sync.added, sync.changed
+		row.commit, row.added, row.changed, row.rules = commit, sync.added, sync.changed, LibraryRulesVersion
 		if len(sync.added) > 0 || len(sync.changed) > 0 || sync.removedUpstream > 0 {
 			s.emit(ctx, EventLibrarySynced, "", "", "", map[string]any{"registry": reg.ID, "repo": reg.Repo, "commit": commit, "added": len(sync.added), "changed": len(sync.changed), "gone": sync.removedUpstream, "skills": sync.count, "blocked": sync.blocked})
 		}

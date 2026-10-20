@@ -5,7 +5,8 @@
 //   - no two neighbouring texts in a row closer than 8 px;
 //   - no control smaller than 28 px high and 24 px wide (the label of a box or a switch is its target);
 //   - no text said more than twice on a page outside a table or a list;
-//   - nothing wider than the window at 1024 px.
+//   - nothing wider than the window at 1024 px;
+//   - no two controls overlapping, and a button beside a dropdown or a text box centred on it (2026-10-20).
 // A page that has a reason to break one lists it in EXEMPT with the reason.
 import { expect, test, type Page } from '@playwright/test';
 import { appUrl, choose, createAgent, createProject, projectNav } from './helpers';
@@ -137,7 +138,43 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
         if (r.right > cr.right + 1 && own(el)) sticks.push(`${label(el)} "${own(el).slice(0, 30)}" ends ${Math.round(r.right - cr.right)}px past ${label(card)}`);
       }
     }
-    return { ...out, sticks: sticks.slice(0, 10), overflowX: document.documentElement.scrollWidth > innerWidth + 1 };
+    // no two controls overlap (a dropdown grew over the field beside it in the provider form), and a button in a row with a
+    // dropdown or a text box is centred on it, not on the label above it (the owner's report of 2026-10-20)
+    const CONTROL = 'button, [role=combobox], input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea';
+    const controls = Array.from(main.querySelectorAll(CONTROL)).filter((el) => !el.closest(SKIP) && visible(el) && !hidden(el));
+    const overlap: string[] = [];
+    const name = (el: Element) => `${label(el)} "${((el as HTMLElement).innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 30)}"`;
+    for (let i = 0; i < controls.length; i++) {
+      const a = controls[i]!.getBoundingClientRect();
+      for (let j = i + 1; j < controls.length; j++) {
+        const bEl = controls[j]!;
+        if (controls[i]!.contains(bEl) || bEl.contains(controls[i]!)) continue;
+        const b = bEl.getBoundingClientRect();
+        const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (w > 1 && h > 1) overlap.push(`${name(controls[i]!)} overlaps ${name(bEl)} by ${Math.round(w)}x${Math.round(h)}`);
+      }
+    }
+    const misaligned: string[] = [];
+    for (const row of Array.from(main.querySelectorAll('*'))) {
+      const cs = getComputedStyle(row);
+      if (!/flex/.test(cs.display) || !/row/.test(cs.flexDirection) || row.closest(SKIP) || !visible(row) || hidden(row)) continue;
+      const kids = Array.from(row.children).filter((k) => visible(k));
+      const fields = kids
+        .map((k) => (k.matches(CONTROL) && !k.matches('button') ? k : k.matches('label, div') ? k.querySelector(':scope > [role=combobox], :scope > input:not([type=checkbox]):not([type=radio]), :scope > select') : null))
+        .filter((f): f is Element => !!f);
+      const buttons = kids.filter((k) => k.matches('button:not([role=combobox])'));
+      for (const f of fields) {
+        const fr = f.getBoundingClientRect();
+        for (const b of buttons) {
+          const br = b.getBoundingClientRect();
+          if (Math.min(fr.bottom, br.bottom) - Math.max(fr.top, br.top) <= 0 && Math.abs(br.top - fr.top) > fr.height * 2) continue; // another line
+          const off = Math.abs((fr.top + fr.bottom) / 2 - (br.top + br.bottom) / 2);
+          if (off > 3) misaligned.push(`${name(b)} sits ${Math.round(off)}px off the middle of ${name(f)}`);
+        }
+      }
+    }
+    return { ...out, sticks: sticks.slice(0, 10), overlap: overlap.slice(0, 10), misaligned: misaligned.slice(0, 10), overflowX: document.documentElement.scrollWidth > innerWidth + 1 };
   });
   const findings: Finding[] = [];
   const add = (rule: 'paragraph' | 'repeat' | 'size' | 'tight' | 'target' | 'subtitle', list: string[]) => {
@@ -153,6 +190,8 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
   add('repeat', raw.repeats);
   add('subtitle', raw.subtitle);
   for (const w of raw.sticks) findings.push({ rule: 'sticks-out', where: w });
+  for (const w of raw.overlap) findings.push({ rule: 'overlap', where: w });
+  for (const w of raw.misaligned) findings.push({ rule: 'misaligned', where: w });
   return { findings, overflowX: raw.overflowX };
 }
 
@@ -193,6 +232,11 @@ test('every page keeps to the density budget: short text, the type scale, room b
     await page.goto(u.toString());
     await expect(page.locator('#main h1, #main [role=heading]').first()).toBeVisible();
     await page.waitForTimeout(800);
+    // the provider form opens from its tile; measure it open (its dropdowns once overlapped the fields beside them)
+    if (path === '/providers') {
+      await page.getByTestId('provider-add-tile').click();
+      await expect(page.getByRole('form', { name: 'Add a provider' })).toBeVisible();
+    }
     await page.setViewportSize({ width: 1366, height: 768 });
     const wide = await measure(page);
     for (const f of wide.findings) problems.push(`${path} [${f.rule}] ${f.where}`);

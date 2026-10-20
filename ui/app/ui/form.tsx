@@ -2,7 +2,8 @@ import { css, on, type Handle, type RemixNode } from 'remix/component';
 import * as toggle from '@remix-run/ui/toggle';
 import { t } from './tokens.ts';
 
-const fieldCss = css({ display: 'grid', gap: '6px', minWidth: '0' });
+// one column that may shrink below its content (minmax(0, 1fr)): a dropdown's min-content is its whole choice
+const fieldCss = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', minWidth: '0' });
 const labelCss = css({ fontSize: t.textSm, fontWeight: '500', color: t.text });
 const hintCss = css({ fontSize: t.textSm, color: t.textMuted, margin: '0' });
 /** The text of a field's error. A Field draws its own; a control that is not in a Field (a row of a list) uses it for the error it shows. */

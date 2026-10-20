@@ -110,8 +110,15 @@ describe('Library > Skills', () => {
     // Pick all takes the addable ones only (not the blocked one, not the one the project has)
     await r.act(() => byText(r.container, 'button', 'Pick all 2').click());
     await waitFor(() => expect((r.$('[data-testid="lib-skill-add-picked"]') as HTMLElement).textContent).toBe('Add 2 skills to gocalc'), r);
-    // another project
+    // the bar's buttons sit on the line of the Project dropdown, not on the middle of its label and dropdown together
+    // (the owner's screenshot of 2026-10-20: "Pick all 16" sat below "Project" and above the dropdown)
     const sel = byLabel<HTMLElement>(r.container, 'Project to add skills to');
+    const mid = (el: Element) => {
+      const b = el.getBoundingClientRect();
+      return (b.top + b.bottom) / 2;
+    };
+    for (const b of [add, byText(r.container, 'button', 'Pick all 2')]) expect(Math.abs(mid(b) - mid(sel)) <= 3).toBe(true);
+    // another project
     await r.act(() => choose(sel, 'prj_2'));
     await waitFor(() => expect((r.$('[data-testid="lib-skill-add-picked"]') as HTMLElement).textContent).toBe('Add 2 skills to shop'), r);
     await r.act(() => (r.$('[data-testid="lib-skill-add-picked"]') as HTMLButtonElement).click());

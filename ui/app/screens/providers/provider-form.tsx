@@ -17,6 +17,9 @@ import { t } from '../../ui/tokens.ts';
 import { ATTESTATIONS, emptyProviderForm, FLAVORS, newProviderRequest, type ProviderFormValues } from './providers.ts';
 
 const wide = css({ gridColumn: '1 / -1' });
+// three fields to a row on a laptop (name, kind, address; key, data class, tier): the four of formGrid left the kind and the
+// data class too narrow for their choices
+const gridCss = css({ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' });
 const fieldsetCss = css({
   display: 'grid',
   gap: t.s2,
@@ -101,6 +104,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void 
         mix={[
           card,
           formGrid,
+          gridCss,
           on('submit', (e) => {
             e.preventDefault();
             void submit();
