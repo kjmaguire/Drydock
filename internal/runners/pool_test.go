@@ -243,8 +243,13 @@ func TestARunnerThatFailsBacksOffAndIsUnregistered(t *testing.T) {
 	fail := &failingLauncher{Launcher: runnerstest.Launcher{K: runners.Linux}}
 	r.pool.Launchers[runners.Linux] = fail
 	r.pool.Set([]runners.SlotConfig{slotFor("kjmaguire/shop", runners.Linux)})
-	waitUntil(t, "three failures", func() bool { return len(r.gh.Registrations()) >= 3 })
-	st := r.status(t, "kjmaguire/shop:linux")
+	// three failures, read while the slot shows the last one's reason: a new attempt clears the reason as it starts, so reading
+	// right after the third registration could land in that moment (Windows CI did, 2026-10-20)
+	var st runners.Status
+	waitUntil(t, "three failures and the reason", func() bool {
+		st = r.status(t, "kjmaguire/shop:linux")
+		return len(r.gh.Registrations()) >= 3 && strings.Contains(st.Reason, "stopped without taking a job")
+	})
 	if !strings.Contains(st.Reason, "stopped without taking a job: An error occurred: bad configuration") {
 		t.Fatalf("%+v", st)
 	}
