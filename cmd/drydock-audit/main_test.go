@@ -250,3 +250,13 @@ func TestTheBundledToolsAreReadFromTheBundlePins(t *testing.T) {
 		t.Errorf("a scan tool's version is shown without its v: %q", used["tool:osv-scanner"])
 	}
 }
+
+// A lookup's own note (the fork read from its tags because GitHub's listing could not be read) survives the hand-written note.
+func TestALookupsNoteIsKeptBesideTheHandWrittenOne(t *testing.T) {
+	if got := withNote("The fork has not been reviewed.", "Newest release tag, read from the git tags."); got != "The fork has not been reviewed. Newest release tag, read from the git tags." {
+		t.Fatalf("%q", got)
+	}
+	if withNote("", " x ") != "x" || withNote("y", "") != "y" {
+		t.Fatal("empty parts")
+	}
+}

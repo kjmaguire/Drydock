@@ -266,9 +266,7 @@ func main() {
 		it := &items[i]
 		if n, ok := notes.Notes[it.ID]; ok {
 			it.Role, it.Hold = n.Role, n.Hold
-			if n.Note != "" {
-				it.Note = n.Note
-			}
+			it.Note = withNote(n.Note, it.Note)
 		} else if it.Kind == "direct" || it.Kind == "dev" || it.Kind == "runtime" || it.Kind == "tool" || it.Kind == "action" || it.Kind == "cli" || it.Kind == "bridge" {
 			missing = append(missing, it.ID)
 		}
@@ -347,6 +345,12 @@ func repoRoot() (string, error) {
 }
 
 // graphOnlyNote is the remark every Go library gets that is only in the module graph (decision P23).
+// withNote is an item's note: the hand-written one, then what the lookup itself found (how it read the version, what it could
+// not check), which a hand-written note never replaces.
+func withNote(hand, measured string) string {
+	return strings.TrimSpace(strings.TrimSpace(hand) + " " + strings.TrimSpace(measured))
+}
+
 const graphOnlyNote = "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23)."
 
 // graphOnly reports whether a Go library is in the module graph without any package of it compiled into Drydock or its tests.

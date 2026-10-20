@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-20T07:40:30Z",
-  "commit": "d7f7969",
+  "generated": "2026-10-20T14:59:27Z",
+  "commit": "19dccb7-dirty",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -6111,7 +6111,7 @@
       "latest": "2.7.0",
       "status": "current",
       "latestDate": "2026-10-12",
-      "where": "docs/decisions.md section 2",
+      "where": "packaging/bundle.json",
       "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline). Comes with Drydock's Windows download (decision P77: pinned in packaging/bundle.json, fetched by cmd/drydock-bundle in CI and checked against GitHub's SHA-256 digest, installed from the download's tools folder at the first start). The Security page offers newer releases (a check three minutes after start and twice a day, or Check for updates) and Update installs one from google/osv-scanner's GitHub releases, checked the same way (decision P66).",
       "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
     },
@@ -6123,7 +6123,7 @@
       "used": "1.31.0",
       "latest": "1.31.0",
       "status": "current",
-      "where": "docs/decisions.md section 2",
+      "where": "packaging/bundle.json",
       "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary. Comes with Drydock's Windows download, pinned in packaging/bundle.json and checked against GitHub's SHA-256 digest (decision P77); the Security page offers newer releases and Update installs one from opengrep/opengrep's GitHub releases (decision P66). It runs with Drydock's built-in rules (internal/scan/rules) and, if the person adds one, a folder of their own.",
       "note": "Built-in rules (decision P77): Drydock's own 34 rules and two MIT sets copied at a fixed commit, dgryski/semgrep-go (66 rules, Go) and 0xdea/semgrep-rules (49 rules, C and C++); internal/scan/rules/README.md names the commits. Not built in, on licence grounds: opengrep-rules (LGPL-2.1 with the Commons Clause, 'for research, testing \u0026 benchmarking'), semgrep-rules (Semgrep Rules License) and trailofbits/semgrep-rules (AGPL-3.0). Newest release read from GitHub's tags."
     },
@@ -6171,7 +6171,7 @@
       "name": "Wrangler",
       "kind": "tool",
       "used": "4.151.0",
-      "latest": "4.151.2",
+      "latest": "4.151.3",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
@@ -6209,7 +6209,7 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11672",
-      "latest": "b11751",
+      "latest": "b11757",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6223,7 +6223,7 @@
       "used": "b10298-2.0.0",
       "latest": "b10298-2.0.0",
       "status": "current",
-      "where": "docs/decisions.md section 2",
+      "where": "packaging/bundle.json",
       "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
       "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. Its releases are tagged bNNNN-X.Y.Z (the llama.cpp build it is based on, then its own version); b10298-2.0.0 (2026-10-05) is the newest. Its per-commit tags (turboquant-windows-x64-vulkan-\u003ccommit\u003e) and dev-latest are pre-release dev builds, which Drydock does not install. It trails upstream llama.cpp."
     },
