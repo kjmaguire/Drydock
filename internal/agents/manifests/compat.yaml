@@ -12,8 +12,10 @@ node: {min: "22"}
 adapters:
   claude:
     min: "2.1.205"
-    recommended: "2.1.301"
+    recommended: "2.1.304"
     entries:
+      - {version: "2.1.304", class: inspected, date: 2026-10-20, platform: linux, transport: headless, method: "contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn): CLAUDE-ARGV-01, EFFORT-01, QUIET-01, PLAN-01, RESTRICTED-01 and USAGE-03 passed; the paid ones were skipped"}
+      - {version: "0.94.0", class: inspected, date: 2026-10-20, platform: linux, transport: acp, bridge: "@agentclientprotocol/claude-agent-acp@0.94.0", method: "ACP-INIT-01 passed (contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn)); no prompt sent (the bridge stays disabled, decision D1)"}
       - {version: "2.1.296", class: verified_linux, date: 2026-10-10, platform: linux, transport: headless, method: "contract suite (go run ./cmd/drydock-contract --cli claude, decision P33): 16 passed, 0 failed, 4 skipped (MCPWAIT-01 passed in the run before), after the parser counts each turn once (CLAUDE-USAGE-02) and plugin MCP tools are denied (CLAUDE-MCP-01); the real-Claude sandbox test (P30) and the real-CLI MCP and core tests ran on it"}
       - {version: "2.1.295", class: verified_linux, date: 2026-10-09, platform: linux, transport: headless, method: "conformance suite against the real CLI on the sandbox's own login (TestClaudeAdapterAgainstTheRealCLI: start, stream, usage, Read tool visibility, interrupt, permission request, stop); the real-CLI MCP, purpose and best-practices tests of internal/core and internal/mcp run on it too"}
       - {version: "0.89.0", class: inspected, date: 2026-10-10, platform: linux, transport: acp, bridge: "@agentclientprotocol/claude-agent-acp@0.89.0", method: "contract ACP-INIT-01 against the newest release (go run ./cmd/drydock-contract --cli claude-agent-acp --check-updates --latest): ACP initialize passed; no prompt sent (the bridge stays disabled, decision D1)"}
@@ -33,19 +35,22 @@ adapters:
       - {version: "0.63.0", class: inspected, date: 2026-10-08, platform: linux, transport: acp, method: "gemini --acp: ACP initialize live; session/new answers authentication required without an API key"}
   opencode:
     min: "1.18.35"
-    recommended: "1.19.1"
+    recommended: "1.19.3"
     entries:
+      - {version: "1.19.3", class: inspected, date: 2026-10-20, platform: linux, transport: acp, method: "ACP-INIT-01 passed (contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn)), and TestLiveACPHandshake/opencode: initialize and session/new live without a login, the same capability matrix; no prompt was sent"}
       - {version: "1.18.35", class: inspected, date: 2026-10-08, platform: linux, transport: acp, method: "opencode acp: ACP initialize and session/new live without a login (modes and models are listed); no prompt was sent"}
   goose:
     min: "1.53.0"
-    recommended: "1.54.0"
+    recommended: "1.55.0"
     entries:
+      - {version: "1.55.0", class: inspected, date: 2026-10-20, platform: linux, transport: acp, method: "ACP-INIT-01 passed (contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn)), and TestLiveACPHandshake/goose: initialize live with the same capability matrix; session/new fails without a configured provider (GOOSE_PROVIDER); no prompt was sent"}
       - {version: "1.54.0", class: inspected, date: 2026-10-09, platform: linux, transport: acp, method: "goose acp (TestLiveACPHandshake/goose): ACP initialize live with the same capability matrix as 1.53.0; session/new fails without a configured provider (GOOSE_PROVIDER); no prompt was sent"}
       - {version: "1.53.0", class: inspected, date: 2026-10-08, platform: linux, transport: acp, method: "goose acp: ACP initialize live; session/new fails without a configured provider (GOOSE_PROVIDER); no prompt was sent"}
   cline:
     min: "3.0.70"
-    recommended: "3.0.71"
+    recommended: "3.0.73"
     entries:
+      - {version: "3.0.73", class: inspected, date: 2026-10-20, platform: linux, transport: acp, method: "npm package cline@3.0.73 in a scratch folder: cline --version; ACP-INIT-01 passed (contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn)), and TestLiveACPHandshake/cline: initialize live with the same capabilities and auth methods (cline, cline-pass, openai-codex); session/new answers authentication required; no prompt was sent"}
       - {version: "3.0.70", class: inspected, date: 2026-10-09, platform: linux, transport: acp, method: "npm package cline@3.0.70 installed into a scratch folder: cline --version; cline --acp (TestLiveACPHandshake/cline, TestLiveACPConnections/cline): ACP initialize live (loadSession, image prompts, auth methods cline, cline-pass, openai-codex); session/new answers authentication required without a sign-in; no prompt was sent"}
   antigravity:
     min: "1.3.0"

@@ -74,7 +74,7 @@ export const kinds: IntegrationKindInfo[] = [
     blurb: 'Issues and projects',
     items: 'issues',
     api: 'Linear GraphQL API (https://api.linear.app/graphql)',
-    apiVersion: 'GraphQL schema of @linear/sdk 97.1.0',
+    apiVersion: 'GraphQL schema of @linear/sdk 98.0.0',
     sdk: 'Linear’s official SDK is TypeScript.',
     rateLimit: '2,500 requests per hour per user with an API key',
     docs: [{ title: 'Rate limiting', url: 'https://linear.app/developers/rate-limiting' }],

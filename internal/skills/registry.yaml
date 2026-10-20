@@ -18,7 +18,8 @@ registries:
 
 # Skills Drydock names in its shipped catalogs (the prebuilt agents, internal/agentcatalog), with the description from each
 # skill's own SKILL.md front matter at the pinned commit and its license, so a page can say what a skill does before anything
-# is fetched. Read from raw.githubusercontent.com at these exact commits on 2026-10-12 (decision P43). The license is the
+# is fetched. Read from raw.githubusercontent.com at these exact commits on 2026-10-12 (decision P43); the anthropics and cloudflare
+# pins moved to their repositories' newest commits on 2026-10-20 and their descriptions were read again (only wrangler's changed). The license is the
 # skill's LICENSE.txt or front matter when it has one, otherwise the repository's: Anthropic's per-skill LICENSE.txt files
 # are Apache-2.0; Vercel's composition-patterns and react-best-practices say MIT in their front matter and the repository's
 # README says MIT for the rest; cloudflare/skills has an Apache-2.0 LICENSE; MicrosoftDocs/mcp has LICENSE (CC BY 4.0) for
@@ -26,13 +27,13 @@ registries:
 skills:
   - registry: anthropic-skills
     name: frontend-design
-    ref: 683bc88e56f3e09ba94f7055977f3d3aa499f202
+    ref: dbd4588f9e1033efb41dad4bef2f7947c8993d44
     path: skills/frontend-design
     license: Apache-2.0
     description: "Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one. Helps with aesthetic direction, typography, and making choices that don't read as templated defaults."
   - registry: anthropic-skills
     name: mcp-builder
-    ref: 683bc88e56f3e09ba94f7055977f3d3aa499f202
+    ref: dbd4588f9e1033efb41dad4bef2f7947c8993d44
     path: skills/mcp-builder
     license: Apache-2.0
     description: "Guide for creating high-quality MCP (Model Context Protocol) servers that enable LLMs to interact with external services through well-designed tools. Use when building MCP servers to integrate external APIs or services, whether in Python (FastMCP) or Node/TypeScript (MCP SDK)."
@@ -62,25 +63,25 @@ skills:
     description: "Review docs/prose for Writing Guidelines compliance. Use when asked to \"review my docs\", \"check writing style\", \"audit prose\", \"review docs voice and tone\", or \"check this page against the writing handbook\"."
   - registry: cloudflare-skills
     name: cloudflare
-    ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70
+    ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f
     path: skills/cloudflare
     license: Apache-2.0
     description: "Discover and choose Cloudflare products for apps, APIs, AI agents, storage, networking, and security. Use for architecture and product selection, including when the user describes a need without naming a Cloudflare product; then find the relevant skill or documentation."
   - registry: cloudflare-skills
     name: workers-best-practices
-    ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70
+    ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f
     path: skills/workers-best-practices
     license: Apache-2.0
     description: "Cloudflare Workers best practices for production applications. Use when writing, reviewing, or configuring Workers."
   - registry: cloudflare-skills
     name: wrangler
-    ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70
+    ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f
     path: skills/wrangler
     license: Apache-2.0
-    description: "Run or troubleshoot Wrangler CLI commands and configure Worker projects for local development, Previews, deployment, and Cloudflare resource management."
+    description: "Run or troubleshoot Wrangler CLI commands in projects that have a wrangler.jsonc, wrangler.json, or wrangler.toml file, including local development, Previews, deployment, and resource management. For new projects and projects without a Wrangler configuration file, use the cf CLI instead."
   - registry: cloudflare-skills
     name: durable-objects
-    ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70
+    ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f
     path: skills/durable-objects
     license: Apache-2.0
     description: "Build, debug, or review Cloudflare Durable Objects code for persistent state and coordination."

@@ -86,7 +86,7 @@ func fixtureSkill(name, extra, body string) string {
 }
 
 const (
-	cfPin = "a18ffe2a99448ebff262fc87915b0fd14bab9b70"
+	cfPin = "86505e44f87d801aa1864a3c4109e9a8ae5c409f"
 	msPin = "f8ffde185dfd232dbf5d187c22ce299eadc3d583"
 )
 

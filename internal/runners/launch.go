@@ -305,7 +305,7 @@ const (
 // Dockerfile is the runner image: Ubuntu with the tools most workflows expect, the runner's own dependencies (its
 // installdependencies.sh), and an unprivileged user that may use sudo inside the container (jobs install packages). The
 // runner archive is the checked download, unpacked by ADD.
-const Dockerfile = `FROM ubuntu:24.04
+const Dockerfile = `FROM ubuntu:26.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git jq sudo unzip zip xz-utils tar gzip && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1001 -s /bin/bash runner && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner && chmod 0440 /etc/sudoers.d/runner

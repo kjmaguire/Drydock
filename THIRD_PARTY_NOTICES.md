@@ -382,9 +382,9 @@ The marks are trademarks of their owners, shown only to say which service or CLI
 `internal/skills/registry.yaml` quotes the description from the front matter of each skill the prebuilt agents name, read at a
 pinned commit; nothing else of the skills ships (a skill's files are fetched only when a person adds it):
 
-- anthropics/skills at 683bc88e56f3e09ba94f7055977f3d3aa499f202: Apache-2.0 (each skill's `LICENSE.txt`).
+- anthropics/skills at dbd4588f9e1033efb41dad4bef2f7947c8993d44: Apache-2.0 (each skill's `LICENSE.txt`).
 - vercel-labs/agent-skills at 063bee94c3f4df8453406c830b0a7df0f2860278: MIT.
-- cloudflare/skills at a18ffe2a99448ebff262fc87915b0fd14bab9b70: Apache-2.0.
+- cloudflare/skills at 86505e44f87d801aa1864a3c4109e9a8ae5c409f: Apache-2.0.
 - MicrosoftDocs/mcp at f8ffde185dfd232dbf5d187c22ce299eadc3d583: content CC BY 4.0, code MIT.
 
 ## Reused architecture and algorithms (reimplemented, not copied)

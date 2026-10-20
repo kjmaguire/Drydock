@@ -10,7 +10,7 @@ import (
 )
 
 func TestParseConfigFillsDefaultsAndRefusesWhatCannotWork(t *testing.T) {
-	c, err := ParseConfig([]byte(`{"image":"node:24-bookworm","setup":["npm ci"],"env":{"DATABASE_URL":"postgres://app@db/app"},
+	c, err := ParseConfig([]byte(`{"image":"node:24-trixie","setup":["npm ci"],"env":{"DATABASE_URL":"postgres://app@db/app"},
 		"services":{"db":{"image":"postgres:17","env":{"POSTGRES_PASSWORD":"dev"}}},"allowHosts":["API.Stripe.com","*.example.org"],
 		"volumes":["/workspace/node_modules"]}`))
 	if err != nil {
@@ -72,7 +72,7 @@ func TestStarterSuggestsADefinitionFromTheProjectFiles(t *testing.T) {
 			return false
 		}
 	}
-	if c := Starter(has("package.json", "package-lock.json")); c.Image != "node:24-bookworm" || c.Setup[0] != "npm ci" || c.Volumes[0] != "/workspace/node_modules" {
+	if c := Starter(has("package.json", "package-lock.json")); c.Image != "node:24-trixie" || c.Setup[0] != "npm ci" || c.Volumes[0] != "/workspace/node_modules" {
 		t.Fatalf("node project: %+v", c)
 	}
 	if c := Starter(has("go.mod")); !strings.HasPrefix(c.Image, "golang:") {

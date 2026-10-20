@@ -61,7 +61,7 @@ Each runner is **ephemeral and registered just in time** (`internal/runners/pool
    tokens; the container engine client also keeps its `DOCKER_*` settings).
    - **Windows**: a fresh copy of the runner in `<folder>\jobs\<runner name>`, started with `run.cmd` inside a Windows job
      object, so everything the job starts ends with it.
-   - **Linux**: `docker run --rm --init` of the image `drydock-runner:<version>` (Ubuntu 24.04, git, curl, jq, the runner's own
+   - **Linux**: `docker run --rm --init` of the image `drydock-runner:<version>` (Ubuntu 26.04 LTS, git, curl, jq, the runner's own
      dependencies; jobs run as user 1001 with sudo inside the container), limits of 4 processors, 8 GB and 4,096 processes, no
      mount of the PC's drives and no engine socket, so a job cannot start containers beside it or reach Windows' files.
 5. The runner waits, takes one job and exits. Its output is read for "Running job: …" and "Job … completed with result: …"

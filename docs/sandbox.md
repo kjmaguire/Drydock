@@ -48,7 +48,7 @@ and volumes are removed.
 
 ```json
 {
-  "image": "node:24-bookworm",
+  "image": "node:24-trixie",
   "setup": ["npm ci"],
   "env": { "DATABASE_URL": "postgres://app:app@db:5432/app" },
   "services": {

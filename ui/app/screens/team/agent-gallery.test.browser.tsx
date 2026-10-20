@@ -66,10 +66,10 @@ describe('the prebuilt agents gallery', () => {
     expect(first.textContent).toContain('skill-0');
     expect(first.textContent).toContain('What skill 0 does, from its SKILL.md.');
     expect(first.textContent).toContain('MIT');
-    expect(first.textContent).toContain('pinned at a18ffe2a9944');
+    expect(first.textContent).toContain('pinned at 86505e44f87d');
     const link = first.querySelector('a')!;
     expect(link.textContent).toContain('acme/skills');
-    expect(link.getAttribute('href')).toBe('https://github.com/acme/skills/tree/a18ffe2a99448ebff262fc87915b0fd14bab9b70/skills/skill-0');
+    expect(link.getAttribute('href')).toBe('https://github.com/acme/skills/tree/86505e44f87d801aa1864a3c4109e9a8ae5c409f/skills/skill-0');
     expect(link.getAttribute('target')).toBe('_blank');
     const server = d.querySelector('[data-testid="prebuilt-server"]') as HTMLElement;
     expect(server.textContent).toContain('Cloudflare Documentation');

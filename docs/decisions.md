@@ -25,8 +25,8 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 
 | Layer | Decision | Evidence and caveats |
 |---|---|---|
-| Language and toolchain | Go, `go 1.27.2` in `go.mod` (moved up from 1.26.0 on 2026-10-09) | sqlite, goose, otel, mvdan/sh, x/sys need 1.26 or newer; the whole module graph was updated with it. |
-| Desktop shell | Wails v3 `v3.0.0-beta.30`, isolated in `app/`, pinned | MIT, beta, builds Windows-only with `CGO_ENABLED=0` (Wails needs no CGO; since P62 the product exe is built with `CGO_ENABLED=1` for the repo map's parser); bindings generation proven; open issues unchecked. Accepted risk (brief risk register). |
+| Language and toolchain | Go, `go 1.27.3` in `go.mod` (moved up from 1.26.0 on 2026-10-09, to 1.27.3 on 2026-10-20) | sqlite, goose, otel, mvdan/sh, x/sys need 1.26 or newer; the whole module graph was updated with it. |
+| Desktop shell | Wails v3 `v3.0.0-beta.34`, isolated in `app/`, pinned | MIT, beta, builds Windows-only with `CGO_ENABLED=0` (Wails needs no CGO; since P62 the product exe is built with `CGO_ENABLED=1` for the repo map's parser); bindings generation proven; open issues unchecked. Accepted risk (brief risk register). |
 | Storage | `modernc.org/sqlite` v1.60.1, WAL, FTS5; migrations with `pressly/goose` v3.29.0 | FTS5/bm25/WAL proven on Linux; single writer connection plus pooled readers; `BEGIN IMMEDIATE`/`_txlock=immediate` for write transactions. Re-run on NTFS. |
 | Secrets | `zalando/go-keyring` v0.2.8; values over 2560 bytes are encrypted into SQLite with the key in Credential Manager | Limit confirmed in source and Microsoft docs. |
 | Workflow engine | In-house on SQLite; agent-framework-go is a design reference only | Experiment: re-runs completed siblings after a partial superstep and double-emits on duplicate resume. We provide idempotency keys, leases and `response_entry` checkpoints. |
@@ -774,3 +774,19 @@ Open, owner action:
   `ui/e2e/security.spec.ts`. **Not verified:** the pinned release files were not fetched from the development host (GitHub's release
   downloads are blocked there), so the first CI run of the app job is what proves the tags and file names; the fork's code was not
   reviewed; the built-in rules were not run by Opengrep itself, only by Semgrep OSS, whose rule syntax Opengrep reads.
+- **P78. Everything moved to its newest release again (2026-10-20, on the owner's words: "Lets go ahead and get things to their
+  latest update").** As in P23 and the round of 2026-10-16: Go 1.27.3 (go.mod; the CI jobs read it from there), every Go module
+  (`go get -u -t ./...`: openai-go 3.82.0, Wails v3 beta.34 published the same day, modernc.org/libc 1.79.0 and the indirect
+  ones), lucide 1.60.0 (with npm 11, as CI's Node 24 ships, so the lock file keeps its platform fields), the agent CLIs and
+  bridge (Claude Code 2.1.304, the Claude ACP bridge 0.94.0, OpenCode 1.19.3, goose 1.55.0, Cline 3.0.73), the sandbox's
+  suggested images on Debian trixie (13) instead of bookworm, the CI runner image on Ubuntu 26.04 LTS (the runner's own
+  dependency script lists its libicu), the skills the prebuilt agents name at the newest commits of anthropics/skills and
+  cloudflare/skills (each SKILL.md read again: only wrangler's description changed, every licence the same), and the Linear schema
+  Drydock follows to `@linear/sdk` 98.0.0 (every type and field Drydock's queries and mutations use is unchanged). Checked here:
+  the agent CLIs with the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake, without a sign-in;
+  the Windows exe built with CGO; the Go and UI suites. **Left as they were, with the reason on the Software Versions page:** the
+  Phase 0 probe workflow's pins (its evidence), the Docker and git versions the tests were measured with (no newer engine or git
+  ran here), the development host's Node and npm, and the genproto root module (a pseudo-version that moves with the libraries
+  that need it). **Not verified here:** a paid contract or a prompt turn on the new CLIs (no sign-in), the runner image on
+  Ubuntu 26.04 (CI's sandbox job builds it and starts the runner), and the trixie images (suggestions; nothing pulls them in
+  the tests).

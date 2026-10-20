@@ -267,7 +267,7 @@ func TestContainerLauncherBuildsTheImageOnceAndRunsJobsInIsolatedContainers(t *t
 	if len(builds) != 1 {
 		t.Fatalf("built %d times", len(builds))
 	}
-	want := []string{"Dockerfile:" + fmt.Sprint(len(Dockerfile)) + ":FROM ubuntu:24.04", fmt.Sprintf("runner.tar.gz:%d:pretend tar.gz", len(tgz))}
+	want := []string{"Dockerfile:" + fmt.Sprint(len(Dockerfile)) + ":FROM ubuntu:26.04", fmt.Sprintf("runner.tar.gz:%d:pretend tar.gz", len(tgz))}
 	if !slices.Equal(builds[0].Tar, want) || !slices.Contains(builds[0].Args, ImageTag("2.330.0")) {
 		t.Fatalf("%+v", builds[0])
 	}

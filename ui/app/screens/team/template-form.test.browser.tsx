@@ -100,10 +100,10 @@ describe('TemplateForm', () => {
     expect(calls[0]).toEqual({ id: 'tpl_1', name: 'Old', role: 'tester', purpose: '', adapter: 'codex', model: '', effort: '', permissionMode: '', providerId: 'prov', mcpServers: [], skills: [] });
   });
 
-  const wrangler = { registry: 'cloudflare-skills', name: 'wrangler', ref: 'a18ffe2a99448ebff262fc87915b0fd14bab9b70' };
+  const wrangler = { registry: 'cloudflare-skills', name: 'wrangler', ref: '86505e44f87d801aa1864a3c4109e9a8ae5c409f' };
   const choices: SkillChoice[] = [
     { ...wrangler, description: 'Wrangler config', from: ['project gocalc', 'prebuilt Cloudflare Engineer'] },
-    { registry: 'anthropic-skills', name: 'frontend-design', ref: '683bc88e56f3e09ba94f7055977f3d3aa499f202', description: '', from: ['prebuilt UI Engineer'] },
+    { registry: 'anthropic-skills', name: 'frontend-design', ref: 'dbd4588f9e1033efb41dad4bef2f7947c8993d44', description: '', from: ['prebuilt UI Engineer'] },
     { registry: 'vercel-agent-skills', name: 'web-design-guidelines', ref: '063bee94c3f4df8453406c830b0a7df0f2860278', description: 'UI review', from: ['prebuilt UI Engineer'] },
   ];
 
@@ -114,7 +114,7 @@ describe('TemplateForm', () => {
     const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
     const field = form.querySelector<HTMLElement>('[data-testid="template-skills"]')!;
     expect(field.textContent).toContain('wrangler');
-    expect(field.textContent).toContain('cloudflare-skills, pinned at a18ffe2a9944');
+    expect(field.textContent).toContain('cloudflare-skills, pinned at 86505e44f87d');
     type(byLabel(form, 'Template name'), 'Edge worker');
     r.root.flush();
     await r.act(() => byText(form, 'button', 'Save template').click());

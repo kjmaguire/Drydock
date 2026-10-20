@@ -8,7 +8,7 @@
     "tool:docker": "29.8.2",
     "tool:golangci-lint": "2.15.0",
     "tool:actions-runner": "2.338.0",
-    "tool:llama.cpp": "b11672",
+    "tool:llama.cpp": "b11757",
     "tool:git": "2.43.0",
     "tool:semgrep": "1.181.0"
   },
@@ -57,7 +57,7 @@
     },
     "go:github.com/wailsapp/wails/v3": {
       "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
-      "hold": "Still a beta (the newest published, beta.30 since 2026-10-16). The risk was accepted in the brief; it is isolated in app/."
+      "hold": "Still a beta: beta.34, published on 2026-10-20 and taken the same day at the owner's instruction (no 14-day cooldown). The risk was accepted in the brief; it is isolated in app/. The Windows exe builds with it (CGO, MinGW) and CI's app job builds and checks it."
     },
     "go:github.com/zalando/go-keyring": {
       "role": "Stores secrets in the Windows Credential Manager."
@@ -89,8 +89,7 @@
       "hold": "Pinned exactly: Remix calls it unstable (0.x, breaking changes in minor releases). Re-read its changelog before every bump."
     },
     "npm:lucide": {
-      "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled.",
-      "hold": "1.58.0 was published on 2026-10-16, less than 14 days before this audit. A release is adopted at the next refresh after it has been out for 14 days (the cooldown Dependabot uses for this repository, .github/dependabot.yml), unless a fix is needed sooner."
+      "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled."
     },
     "npm:@fontsource-variable/inter": {
       "role": "Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1)."
@@ -117,7 +116,7 @@
     },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "Recommended and verified: 2.1.296 (the contract suite, decision P33: 16 passed, 0 failed, on Linux). You install the CLI yourself."
+      "note": "Recommended 2.1.304, moved to the newest release on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself."
     },
     "cli:codex": {
       "role": "Codex: runs OpenAI's models as an agent.",
@@ -130,23 +129,19 @@
     },
     "cli:goose": {
       "role": "Goose: the open-source agent (reached through its ACP bridge).",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
-      "hold": "1.55.0 was published on 2026-10-16, minutes before this audit. Decision P33 wants the contract suite to pass on a version before it is recommended, so the recommended 1.54.0 stays until the suite has run on 1.55.0 (the contract workflow runs on every push that touches internal/agents, and nightly)."
+      "note": "Recommended 1.55.0, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install the CLI yourself."
     },
     "cli:opencode": {
       "role": "OpenCode: an open-source agent that can use many providers.",
-      "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself.",
-      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move."
+      "note": "Recommended 1.19.3, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install the CLI yourself."
     },
     "cli:cline": {
       "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
-      "note": "Pinned at 3.0.70 (min and recommended), the newest release on 2026-10-09: version and ACP initialize checked live on Linux; no prompt turn was run (no sign-in here). You install it yourself with npm i -g cline (Node 22+; its launcher is a Node script). Decisions P29.",
-      "hold": "3.0.72 is out; 3.0.71 stays the pin. Decision P33: a CLI version is adopted only after the contract suite passes on it, and the suite (nightly, and on every push that touches internal/agents) needs the sign-in secret that is not yet in the repository's environment `contract` (open item 8 of docs/decisions.md section 4)."
+      "note": "Recommended 3.0.73, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install it yourself with npm i -g cline (Node 22+)."
     },
     "bridge:@agentclientprotocol/claude-agent-acp": {
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
-      "note": "Pinned at 0.89.0 after its ACP handshake contract (ACP-INIT-01) passed on it (decision P33); no prompt turn is sent (D1).",
-      "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. The bridge is off in the manifest (D1), so the pin is a record, not a running dependency. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move."
+      "note": "Pinned at 0.94.0 on 2026-10-20 at the owner's instruction, after its ACP handshake contract (ACP-INIT-01) passed on it; no prompt turn is sent (the bridge stays disabled, D1)."
     },
     "bridge:@agentclientprotocol/codex-acp": {
       "role": "The ACP bridge Drydock starts with npx for Codex.",
@@ -209,9 +204,6 @@
     },
     "go:golang.org/x/oauth2": {
       "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens)."
-    },
-    "ci-go:1.27.2": {
-      "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."
     },
     "npm:monaco-editor": {
       "role": "The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported).",
@@ -277,7 +269,7 @@
     },
     "go:modernc.org/libc": {
       "role": "The C runtime that modernc.org/sqlite (pure Go SQLite) is translated against; indirect, but compiled into the app.",
-      "hold": "1.79.0 was published on 2026-10-15, less than 14 days before this audit. A release is adopted at the next refresh after it has been out for 14 days (the cooldown Dependabot uses for this repository, .github/dependabot.yml), unless a fix is needed sooner. It is also the module that has to agree with the SQLite driver's generated code, so it moves together with modernc.org/sqlite and the storage tests are the check."
+      "note": "1.79.0 since 2026-10-20 (the owner's instruction, before the 14-day cooldown). modernc.org/sqlite 1.60.1 asks for 1.77.1; the storage tests pass with 1.79.0."
     },
     "go:google.golang.org/genproto": {
       "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use).",
@@ -299,6 +291,10 @@
     "cli:antigravity": {
       "role": "Google's Antigravity CLI (agy), driven only after a person acknowledges the terms notice (decision D2); its adapter refuses to start sessions until its stream is captured (no fixtures yet).",
       "note": ""
+    },
+    "ci-go:1.27.2": {
+      "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead).",
+      "hold": "Only the Phase 0 probe workflow (windows-probes.yml) pins Go outright; it keeps the toolchain its evidence was recorded with. Every other job takes the version from go.mod (1.27.3)."
     }
   }
 }

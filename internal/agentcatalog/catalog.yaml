@@ -5,8 +5,8 @@
 #
 # Skills are referenced, never copied: the text is fetched from the registry at the pinned commit when the human applies the
 # agent, then license-checked and scanned like any import. Pins were read on 2026-10-09:
-#   cloudflare/skills          a18ffe2a99448ebff262fc87915b0fd14bab9b70 (Apache-2.0)
-#   anthropics/skills          683bc88e56f3e09ba94f7055977f3d3aa499f202 (per skill; frontend-design and mcp-builder are Apache-2.0)
+#   cloudflare/skills          86505e44f87d801aa1864a3c4109e9a8ae5c409f (Apache-2.0)
+#   anthropics/skills          dbd4588f9e1033efb41dad4bef2f7947c8993d44 (per skill; frontend-design and mcp-builder are Apache-2.0)
 #   vercel-labs/agent-skills   063bee94c3f4df8453406c830b0a7df0f2860278 (MIT)
 #   MicrosoftDocs/mcp          f8ffde185dfd232dbf5d187c22ce299eadc3d583 (content CC BY 4.0, code MIT)
 # Only SKILL.md is delivered (no references/, rules/ or scripts/). web-design-guidelines and writing-guidelines tell the agent to
@@ -125,7 +125,7 @@ agents:
       - {adapter: opencode}
     mcp: [ctx7]
     skills:
-      - {registry: anthropic-skills, name: frontend-design, ref: 683bc88e56f3e09ba94f7055977f3d3aa499f202}
+      - {registry: anthropic-skills, name: frontend-design, ref: dbd4588f9e1033efb41dad4bef2f7947c8993d44}
       - {registry: vercel-agent-skills, name: web-design-guidelines, ref: 063bee94c3f4df8453406c830b0a7df0f2860278}
       - {registry: vercel-agent-skills, name: react-best-practices, ref: 063bee94c3f4df8453406c830b0a7df0f2860278}
       - {registry: vercel-agent-skills, name: composition-patterns, ref: 063bee94c3f4df8453406c830b0a7df0f2860278}
@@ -182,10 +182,10 @@ agents:
       - {adapter: opencode}
     mcp: [cfdocs]
     skills:
-      - {registry: cloudflare-skills, name: cloudflare, ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70}
-      - {registry: cloudflare-skills, name: workers-best-practices, ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70}
-      - {registry: cloudflare-skills, name: wrangler, ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70}
-      - {registry: cloudflare-skills, name: durable-objects, ref: a18ffe2a99448ebff262fc87915b0fd14bab9b70}
+      - {registry: cloudflare-skills, name: cloudflare, ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f}
+      - {registry: cloudflare-skills, name: workers-best-practices, ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f}
+      - {registry: cloudflare-skills, name: wrangler, ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f}
+      - {registry: cloudflare-skills, name: durable-objects, ref: 86505e44f87d801aa1864a3c4109e9a8ae5c409f}
     tags: [cloudflare, workers, edge, serverless]
 
   - id: microsoft-engineer
@@ -433,7 +433,7 @@ agents:
       - {adapter: codex}
     mcp: [ctx7]
     skills:
-      - {registry: anthropic-skills, name: mcp-builder, ref: 683bc88e56f3e09ba94f7055977f3d3aa499f202}
+      - {registry: anthropic-skills, name: mcp-builder, ref: dbd4588f9e1033efb41dad4bef2f7947c8993d44}
     tags: [mcp, tools, integrations]
 
   - id: fast-generalist

@@ -36,7 +36,7 @@ const (
 
 // Config is a project's sandbox definition (the JSON file at ConfigPath).
 type Config struct {
-	// Image is the workspace image, for example "node:24-bookworm" or the project's dev container image.
+	// Image is the workspace image, for example "node:24-trixie" or the project's dev container image.
 	Image string `json:"image"`
 	// Setup commands run once, in order, after the workspace starts (for example "npm ci"). A failure is reported to the agent,
 	// it does not stop the sandbox.
@@ -118,7 +118,7 @@ func ParseConfig(data []byte) (Config, error) {
 func (c *Config) Validate() error {
 	c.Image = strings.TrimSpace(c.Image)
 	if c.Image == "" {
-		return errors.New(`"image" is required (for example "node:24-bookworm")`)
+		return errors.New(`"image" is required (for example "node:24-trixie")`)
 	}
 	if !imageRe.MatchString(c.Image) {
 		return fmt.Errorf("image %q is not a valid image reference", c.Image)
@@ -441,10 +441,10 @@ func sameMap(a, b map[string]string) bool {
 // Starter suggests a definition for a project that has none yet, from what the worktree contains. It is a suggestion shown
 // to the human, never used without being committed.
 func Starter(hasFile func(name string) bool) Config {
-	c := Config{Image: "debian:bookworm"}
+	c := Config{Image: "debian:trixie"}
 	switch {
 	case hasFile("package.json"):
-		c.Image = "node:24-bookworm"
+		c.Image = "node:24-trixie"
 		switch {
 		case hasFile("package-lock.json"):
 			c.Setup = []string{"npm ci"}
@@ -457,10 +457,10 @@ func Starter(hasFile func(name string) bool) Config {
 		}
 		c.Volumes = []string{Workdir + "/node_modules"}
 	case hasFile("go.mod"):
-		c.Image = "golang:bookworm"
+		c.Image = "golang:trixie"
 		c.Setup = []string{"go mod download"}
 	case hasFile("requirements.txt") || hasFile("pyproject.toml"):
-		c.Image = "python:3-bookworm"
+		c.Image = "python:3-trixie"
 	}
 	return c
 }

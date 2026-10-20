@@ -25,7 +25,7 @@ func TestKnownSkillsAreRecordedWithDescriptionSourceAndLicense(t *testing.T) {
 			t.Errorf("%s: %+v", key, k)
 		}
 	}
-	fd := known[KnownSkillKey("anthropic-skills", "frontend-design", "683bc88e56f3e09ba94f7055977f3d3aa499f202")]
+	fd := known[KnownSkillKey("anthropic-skills", "frontend-design", "dbd4588f9e1033efb41dad4bef2f7947c8993d44")]
 	if fd.License != "Apache-2.0" || !strings.HasPrefix(fd.Description, "Guidance for distinctive, intentional visual design") {
 		t.Fatalf("frontend-design: %+v", fd)
 	}

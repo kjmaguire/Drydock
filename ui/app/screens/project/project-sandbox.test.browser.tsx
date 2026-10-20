@@ -20,7 +20,7 @@ const ready: SandboxStatus = {
   found: true,
   branch: 'main',
   configPath: '.drydock/sandbox.json',
-  config: { image: 'node:24-bookworm', setup: ['npm ci'], services: { db: { image: 'postgres:17' } }, network: 'allowlist' },
+  config: { image: 'node:24-trixie', setup: ['npm ci'], services: { db: { image: 'postgres:17' } }, network: 'allowlist' },
   hosts: ['registry.npmjs.org', 'api.stripe.com'],
 };
 
@@ -31,7 +31,7 @@ function panel(client: Partial<Client>) {
 
 describe('Sandbox settings', () => {
   it('summarises a definition and says when the switch can go on', () => {
-    expect(sandboxSummary(ready)).toBe('image node:24-bookworm; services db; network allowlist of 2 hosts; setup: npm ci');
+    expect(sandboxSummary(ready)).toBe('image node:24-trixie; services db; network allowlist of 2 hosts; setup: npm ci');
     expect(sandboxReady(ready)).toBe(true);
     expect(sandboxReady({ ...ready, engine: undefined, engineError: 'no container engine is reachable' })).toBe(false);
     expect(sandboxReady({ ...ready, found: false })).toBe(false);
@@ -47,11 +47,11 @@ describe('Sandbox settings', () => {
         branch: 'main',
         configPath: '.drydock/sandbox.json',
         configError: 'the project has no .drydock/sandbox.json on main: add one (the project settings suggest a starting point)',
-        starter: '{\n  "image": "node:24-bookworm"\n}',
+        starter: '{\n  "image": "node:24-trixie"\n}',
       }),
     });
     const starter = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-starter"]')), r);
-    expect(starter.textContent).toContain('"image": "node:24-bookworm"');
+    expect(starter.textContent).toContain('"image": "node:24-trixie"');
     expect(starter.textContent).toContain('on main');
     expect(r.container.querySelector('[data-testid="sandbox-definition"]')!.textContent).toContain('has no .drydock/sandbox.json');
     expect(byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task").disabled).toBe(true);
@@ -77,7 +77,7 @@ describe('Sandbox settings', () => {
       },
     });
     const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task"), r);
-    expect(r.container.querySelector('[data-testid="sandbox-definition"]')!.textContent).toContain('.drydock/sandbox.json on main: image node:24-bookworm');
+    expect(r.container.querySelector('[data-testid="sandbox-definition"]')!.textContent).toContain('.drydock/sandbox.json on main: image node:24-trixie');
     expect(box.disabled).toBe(false);
     await r.act(() => box.click());
     await waitFor(() => expect(calls).toEqual([['p1', true]]), r);
@@ -135,9 +135,9 @@ describe('Sandbox settings', () => {
     });
 
     it('says what a definition that was never confirmed is, from the core\'s own description', async () => {
-      const r = panel({ sandboxStatus: async () => ({ ...changed, changes: ['no definition has been confirmed yet; this one has image "node:24-bookworm", network "allowlist"'] }) });
+      const r = panel({ sandboxStatus: async () => ({ ...changed, changes: ['no definition has been confirmed yet; this one has image "node:24-trixie", network "allowlist"'] }) });
       await waitFor(() => need(callout(r)), r);
-      expect(lines(r)).toEqual(['no definition has been confirmed yet; this one has image "node:24-bookworm", network "allowlist"']);
+      expect(lines(r)).toEqual(['no definition has been confirmed yet; this one has image "node:24-trixie", network "allowlist"']);
     });
 
     it('confirms exactly the definition that was shown (its fingerprint), then reads the status again and the warning is gone', async () => {

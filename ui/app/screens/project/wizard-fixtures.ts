@@ -57,7 +57,7 @@ export function prebuilt(id: string, avail: Record<string, boolean> = {}): Prebu
   };
 }
 
-const skillRefs = (n: number) => Array.from({ length: n }, (_, i) => ({ registry: 'r', name: `skill-${i}`, ref: 'a18ffe2a99448ebff262fc87915b0fd14bab9b70' }));
+const skillRefs = (n: number) => Array.from({ length: n }, (_, i) => ({ registry: 'r', name: `skill-${i}`, ref: '86505e44f87d801aa1864a3c4109e9a8ae5c409f' }));
 
 const MCP_INFO: Record<string, { display: string; publisher: string; brand: string; summary: string; auth: string }> = {
   'cloudflare-docs': { display: 'Cloudflare Documentation', publisher: 'Cloudflare', brand: 'cloudflare', summary: 'Search the Cloudflare developer documentation.', auth: 'none' },
