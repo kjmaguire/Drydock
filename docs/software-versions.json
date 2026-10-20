@@ -1,10 +1,15 @@
 {
-  "generated": "2026-10-16T18:07:02Z",
-  "commit": "529cec5",
+  "generated": "2026-10-20T06:35:37Z",
+  "commit": "7bd3ae7",
+  "lookupsFailed": [
+    "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
+  ],
   "summary": {
-    "current": 167,
-    "minor": 5,
-    "patch": 5
+    "current": 155,
+    "major": 1,
+    "minor": 8,
+    "patch": 13,
+    "prerelease": 1
   },
   "items": [
     {
@@ -13,8 +18,8 @@
       "name": "claude (@anthropic-ai/claude-code)",
       "kind": "cli",
       "used": "2.1.301",
-      "latest": "2.1.301",
-      "status": "current",
+      "latest": "2.1.304",
+      "status": "patch",
       "where": "internal/agents/manifests/cli/claude.yaml (recommended; minimum 2.1.205)",
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
       "note": "Recommended and verified: 2.1.296 (the contract suite, decision P33: 16 passed, 0 failed, on Linux). You install the CLI yourself."
@@ -25,7 +30,7 @@
       "name": "@agentclientprotocol/claude-agent-acp (ACP bridge)",
       "kind": "bridge",
       "used": "0.91.0",
-      "latest": "0.92.0",
+      "latest": "0.94.0",
       "status": "minor",
       "where": "internal/agents/manifests/cli/claude.yaml",
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
@@ -38,7 +43,7 @@
       "name": "cline (cline)",
       "kind": "cli",
       "used": "3.0.71",
-      "latest": "3.0.72",
+      "latest": "3.0.73",
       "status": "patch",
       "where": "internal/agents/manifests/cli/cline.yaml (recommended; minimum 3.0.70)",
       "role": "Cline: an open-source (Apache-2.0) agent CLI, driven over its own ACP mode (cline --acp).",
@@ -114,8 +119,8 @@
       "name": "Go version pinned in a workflow",
       "kind": "action",
       "used": "1.27.2",
-      "latest": "1.27.2",
-      "status": "current",
+      "latest": "1.27.3",
+      "status": "patch",
       "where": ".github/workflows/windows-probes.yml",
       "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead)."
     },
@@ -309,9 +314,10 @@
       "name": "github.com/openai/openai-go/v3",
       "kind": "direct",
       "used": "3.78.0",
-      "latest": "3.78.0",
-      "status": "current",
+      "latest": "3.82.0",
+      "status": "minor",
       "usedDate": "2026-10-13",
+      "latestDate": "2026-10-18",
       "where": "go.mod",
       "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests.",
       "usedBy": 1,
@@ -450,9 +456,10 @@
       "name": "github.com/wailsapp/wails/v3",
       "kind": "direct",
       "used": "3.0.0-beta.30",
-      "latest": "3.0.0-beta.30",
-      "status": "current",
+      "latest": "3.0.0-beta.33",
+      "status": "prerelease",
       "usedDate": "2026-10-15",
+      "latestDate": "2026-10-19",
       "where": "go.mod",
       "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
       "hold": "Still a beta (the newest published, beta.30 since 2026-10-16). The risk was accepted in the brief; it is isolated in app/.",
@@ -526,7 +533,7 @@
       "usedDate": "2022-05-27",
       "where": "go.mod",
       "role": "Reads YAML: agent manifests, the MCP catalog, expert packs, skills.",
-      "usedBy": 9,
+      "usedBy": 10,
       "inBuild": true
     },
     {
@@ -2929,9 +2936,10 @@
       "name": "github.com/huandu/xstrings",
       "kind": "indirect",
       "used": "1.6.2",
-      "latest": "1.6.2",
-      "status": "current",
+      "latest": "1.6.3",
+      "status": "patch",
       "usedDate": "2026-09-30",
+      "latestDate": "2026-10-20",
       "where": "go.mod",
       "inBuild": true
     },
@@ -4400,9 +4408,10 @@
       "name": "github.com/shopspring/decimal",
       "kind": "indirect",
       "used": "1.5.0",
-      "latest": "1.5.0",
-      "status": "current",
+      "latest": "1.6.0",
+      "status": "minor",
       "usedDate": "2026-10-05",
+      "latestDate": "2026-10-18",
       "where": "go.mod",
       "inBuild": true
     },
@@ -5108,10 +5117,10 @@
       "name": "github.com/yandex-cloud/go-genproto",
       "kind": "indirect",
       "used": "0.126.0",
-      "latest": "0.128.0",
+      "latest": "0.129.0",
       "status": "minor",
       "usedDate": "2026-10-05",
-      "latestDate": "2026-10-15",
+      "latestDate": "2026-10-19",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5472,9 +5481,10 @@
       "name": "go4.org",
       "kind": "indirect",
       "used": "0.0.0-20260112195520-a5071408f32f",
-      "latest": "0.0.0-20260112195520-a5071408f32f",
-      "status": "current",
+      "latest": "0.0.0-20261019143151-5b882263cdaf",
+      "status": "patch",
       "usedDate": "2026-01-12",
+      "latestDate": "2026-10-19",
       "where": "go.mod",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
@@ -5679,10 +5689,10 @@
       "name": "google.golang.org/api",
       "kind": "indirect",
       "used": "0.259.0",
-      "latest": "0.304.0",
+      "latest": "0.305.0",
       "status": "minor",
       "usedDate": "2026-01-06",
-      "latestDate": "2026-10-14",
+      "latestDate": "2026-10-19",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5693,10 +5703,10 @@
       "name": "google.golang.org/genproto",
       "kind": "indirect",
       "used": "0.0.0-20251202230838-ff82c1b0f217",
-      "latest": "0.0.0-20261012220534-4341edf3f941",
+      "latest": "0.0.0-20261019180522-ce908d29299b",
       "status": "patch",
       "usedDate": "2025-12-02",
-      "latestDate": "2026-10-12",
+      "latestDate": "2026-10-19",
       "where": "module graph (not in go.mod)",
       "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use).",
       "hold": "Only the module at the root is behind, as a pseudo-version (no release exists); it moves with the libraries that require it, not on its own (decision P23).",
@@ -5709,9 +5719,10 @@
       "name": "google.golang.org/genproto/googleapis/api",
       "kind": "indirect",
       "used": "0.0.0-20261012220534-4341edf3f941",
-      "latest": "0.0.0-20261012220534-4341edf3f941",
-      "status": "current",
+      "latest": "0.0.0-20261019180522-ce908d29299b",
+      "status": "patch",
       "usedDate": "2026-10-12",
+      "latestDate": "2026-10-19",
       "where": "go.mod",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
@@ -5722,9 +5733,10 @@
       "name": "google.golang.org/genproto/googleapis/rpc",
       "kind": "indirect",
       "used": "0.0.0-20261012220534-4341edf3f941",
-      "latest": "0.0.0-20261012220534-4341edf3f941",
-      "status": "current",
+      "latest": "0.0.0-20261019180522-ce908d29299b",
+      "status": "patch",
       "usedDate": "2026-10-12",
+      "latestDate": "2026-10-19",
       "where": "go.mod",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
@@ -6023,10 +6035,11 @@
       "name": "Go",
       "kind": "runtime",
       "used": "1.27.2",
-      "latest": "1.27.2",
-      "status": "current",
+      "latest": "1.27.3",
+      "status": "patch",
       "where": "go.mod (go directive)",
-      "role": "The language the core is written in. go.mod requires at least this version, and the sandbox and CI build with exactly it."
+      "role": "The language the core is written in. go.mod requires at least this version, and the sandbox and CI build with exactly it.",
+      "note": "Newest patch of the 1.27 series: 1.27.3."
     },
     {
       "id": "go-installed",
@@ -6034,8 +6047,8 @@
       "name": "Go (installed in this sandbox)",
       "kind": "runtime",
       "used": "1.27.2",
-      "latest": "1.27.2",
-      "status": "current",
+      "latest": "1.27.3",
+      "status": "patch",
       "where": "this machine",
       "role": "What this sandbox builds and tests with (the toolchain go.mod asks for, downloaded automatically)."
     },
@@ -6044,9 +6057,9 @@
       "group": "Language and toolchain",
       "name": "Node.js (installed in this sandbox)",
       "kind": "runtime",
-      "used": "24.22.0",
-      "latest": "24.22.0",
-      "status": "current",
+      "used": "22.22.0",
+      "latest": "22.23.3",
+      "status": "minor",
       "where": "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)",
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
       "note": "Newest Node release overall: 26.12.0. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
@@ -6056,9 +6069,9 @@
       "group": "Language and toolchain",
       "name": "npm (installed in this sandbox)",
       "kind": "runtime",
-      "used": "12.2.0",
+      "used": "10.9.4",
       "latest": "12.2.0",
-      "status": "current",
+      "status": "major",
       "where": "this machine",
       "role": "Installs the UI packages.",
       "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3).",
@@ -6099,7 +6112,7 @@
       "status": "current",
       "latestDate": "2026-10-12",
       "where": "docs/decisions.md section 2",
-      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline). Installed on request by the Security page's Install button from google/osv-scanner's GitHub releases, checked against GitHub's SHA-256 digest (decision P66), or by you.",
+      "role": "The dependency vulnerability check (sends package names to osv.dev unless run offline). Comes with Drydock's Windows download (decision P77: pinned in packaging/bundle.json, fetched by cmd/drydock-bundle in CI and checked against GitHub's SHA-256 digest, installed from the download's tools folder at the first start). The Security page offers newer releases (a check three minutes after start and twice a day, or Check for updates) and Update installs one from google/osv-scanner's GitHub releases, checked the same way (decision P66).",
       "note": "2.7.0 was built from the Go module proxy and run for real on 2026-10-16 in the development sandbox: the deps check's and the security scan's exact invocations (scan source --format json -r .) with the offline databases (api.osv.dev is not reachable from there); it read go.mod and ui/package-lock.json, found the module-level advisory GO-2026-5932 on golang.org/x/crypto's openpgp (not imported by Drydock; govulncheck agrees) and GHSA-wq5f-xc86-pv6w on sharp 0.35.4 in the Cloudflare starter fixture, and its JSON is read by checks.ParseOSV (the captured output is internal/checks/testdata/osv-scanner-2.7.0.json)."
     },
     {
@@ -6111,8 +6124,8 @@
       "latest": "1.31.0",
       "status": "current",
       "where": "docs/decisions.md section 2",
-      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary. Installed on request by the Security page's Install button from opengrep/opengrep's GitHub releases (the Windows archive from 2.0, the exe before), checked against GitHub's SHA-256 digest (decision P66), or by you; you choose a rules folder.",
-      "note": "Drydock ships and downloads no rules: the opengrep-rules repository carries LGPL-2.1 with the Commons Clause and says its rules are for research, testing and benchmarking, so the person points the scan at rules they are licensed to use. Newest release read from GitHub (releases/latest)."
+      "role": "The Code engine of the security scan (decision P44): a Semgrep-compatible static analyser, LGPL-2.1, native Windows binary. Comes with Drydock's Windows download, pinned in packaging/bundle.json and checked against GitHub's SHA-256 digest (decision P77); the Security page offers newer releases and Update installs one from opengrep/opengrep's GitHub releases (decision P66). It runs with Drydock's built-in rules (internal/scan/rules) and, if the person adds one, a folder of their own.",
+      "note": "Built-in rules (decision P77): Drydock's own 34 rules and two MIT sets copied at a fixed commit, dgryski/semgrep-go (66 rules, Go) and 0xdea/semgrep-rules (49 rules, C and C++); internal/scan/rules/README.md names the commits. Not built in, on licence grounds: opengrep-rules (LGPL-2.1 with the Commons Clause, 'for research, testing \u0026 benchmarking'), semgrep-rules (Semgrep Rules License) and trailofbits/semgrep-rules (AGPL-3.0). Newest release read from GitHub's tags."
     },
     {
       "id": "tool:go-licenses",
@@ -6158,7 +6171,7 @@
       "name": "Wrangler",
       "kind": "tool",
       "used": "4.151.0",
-      "latest": "4.151.1",
+      "latest": "4.151.2",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
@@ -6196,11 +6209,23 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11672",
-      "latest": "b11700",
+      "latest": "b11750",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
-      "note": "Not pinned: Drydock installs the newest release that carries the backend's archive with a SHA-256 digest, when a person presses Install or Update (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The TurboQuant fork a person may opt into (AtomicBot-ai/atomic-llama-cpp-turboquant) is not tracked here: it is not Drydock's default and trails upstream."
+      "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant)."
+    },
+    {
+      "id": "tool:llama.cpp-turboquant",
+      "group": "Tools Drydock runs or you install",
+      "name": "llama.cpp TurboQuant fork, Windows Vulkan build (comes with the download, decision P77)",
+      "kind": "tool",
+      "used": "turboquant-windows-x64-vulkan-519f0c5",
+      "latest": "turboquant-windows-x64-vulkan-519f0c5",
+      "status": "current",
+      "where": "docs/decisions.md section 2",
+      "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
+      "note": "The fork has not been reviewed by Drydock's maintainers; the Providers page says so. It names builds by commit (turboquant-windows-x64-vulkan-\u003ccommit\u003e), so the audit orders them by commit date: 519f0c5 (2026-07-03) is the newest Windows Vulkan build; a newer commit (066cc29, 2026-07-17) has no Windows Vulkan build. It trails upstream llama.cpp."
     },
     {
       "id": "npm:@pitlane/vite-plugin-remix",
@@ -6332,7 +6357,7 @@
       "name": "lucide",
       "kind": "direct",
       "used": "1.57.0",
-      "latest": "1.58.0",
+      "latest": "1.60.0",
       "status": "minor",
       "where": "ui/package.json",
       "role": "The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled.",
@@ -6368,22 +6393,15 @@
       "name": "remix",
       "kind": "direct",
       "used": "3.0.0",
-      "latest": "3.0.0",
+      "latest": "2.17.5",
       "status": "current",
       "where": "ui/package.json",
       "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."
     }
   ],
-  "vulnerabilities": [
-    {
-      "source": "govulncheck",
-      "id": "GO-2026-5932",
-      "package": "golang.org/x/crypto v0.58.0",
-      "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues"
-    }
-  ],
+  "vulnerabilities": [],
   "vulnerabilityScans": {
-    "govulncheck": "1 known vulnerabilities in what is built, 0 of them in code that is called",
+    "govulncheck": "did not run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden",
     "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {
@@ -6395,6 +6413,6 @@
     "graphOnly": 310,
     "indirect": 417,
     "runtime": 4,
-    "tool": 11
+    "tool": 12
   }
 }
