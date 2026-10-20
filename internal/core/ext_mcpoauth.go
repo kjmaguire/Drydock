@@ -183,7 +183,11 @@ func (s *mcpServers) oauthBegin(ctx context.Context, id string) (OAuthStatus, er
 
 func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by string) {
 	defer f.cancel()
+	// stopCallback closes the callback address. The flow's end (failed or done) is said only after it is closed, so whoever
+	// reads that state can rely on the address answering no more (on a slow runner a deferred close came after the state).
+	stopCallback := func() {}
 	fail := func(err error) {
+		stopCallback()
 		f.mu.Lock()
 		f.state, f.err, f.url = "failed", err.Error(), ""
 		f.mu.Unlock()
@@ -238,11 +242,13 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	safe.Go("core.mcpServers.runOAuth", func() { _ = srv.Serve(ln) })
-	defer func() {
+	stopCallback = sync.OnceFunc(func() {
 		sctx, c := context.WithTimeout(context.Background(), 2*time.Second)
 		defer c()
 		_ = srv.Shutdown(sctx)
-	}()
+		_ = ln.Close()
+	})
+	defer stopCallback()
 
 	hc := oauthHTTPClient(r.URL)
 	allowLocal := false // a sign-in page over plain http: only a server on this computer
@@ -336,6 +342,7 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	if _, err := s.discover(context.Background(), r.ID); err != nil {
 		s.c.logf("mcp %s: signed in, but listing its tools failed: %v", r.ID, err)
 	}
+	stopCallback()
 	f.mu.Lock()
 	f.state, f.url = "done", ""
 	f.mu.Unlock()
