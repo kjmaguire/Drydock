@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect } from 'remix/assert';
@@ -10,16 +10,21 @@ import { describe, it } from 'remix/test';
 // fileURLToPath, not .pathname: on Windows the pathname is "/D:/a/...", which is not a folder
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-function sources(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) sources(p, out);
-    else if (/\.(ts|tsx|css)$/.test(name) && !/\.test\./.test(name)) out.push(p);
-  }
-  return out;
+// one recursive walk; the paths it returns are relative to ui/app with forward slashes on every OS, so the lookups below
+// ('styles/app.css', the test/ prefix, SIZE_EXEMPT) hold on Windows too
+function sources(): string[] {
+  return readdirSync(ROOT, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && /\.(ts|tsx|css)$/.test(e.name) && !/\.test\./.test(e.name))
+    .map((e) => relative(ROOT, join(e.parentPath, e.name)).replaceAll('\\', '/'));
 }
 
-const FILES = sources(ROOT).map((p) => ({ path: relative(ROOT, p).replaceAll('\\', '/'), text: readFileSync(p, 'utf8') }));
+const FILES = sources().map((path) => ({ path, text: readFileSync(join(ROOT, path), 'utf8') }));
+
+function appCss(): string {
+  // a named failure, not "cannot read properties of undefined", when the walk does not reach the stylesheet
+  expect(FILES.map((f) => f.path)).toContain('styles/app.css');
+  return FILES.find((f) => f.path === 'styles/app.css')!.text;
+}
 
 // text whose size is computed from a pixel box (avatar initials), handed to an editor widget, or drawn by the start-up failure
 // page with inline styles because the stylesheet may be what failed: none of them is a page's type scale
@@ -50,7 +55,7 @@ describe('the type rules the UI audit set (B1-B3)', () => {
   });
 
   it('gives code, kbd, pre and samp one size, the small text token', () => {
-    const css = FILES.find((f) => f.path === 'styles/app.css')!.text;
+    const css = appCss();
     const block = css.match(/code,\s*kbd,\s*pre,\s*samp\s*\{[^}]*\}/);
     expect(block).not.toBeNull();
     expect(block![0]).toContain('font-size: var(--text-sm)');
@@ -69,7 +74,7 @@ describe('the type rules the UI audit set (B1-B3)', () => {
   });
 
   it('defines the title size as a token and the scale has no other sizes', () => {
-    const css = FILES.find((f) => f.path === 'styles/app.css')!.text;
+    const css = appCss();
     const sizes = [...css.matchAll(/--text-([a-z0-9]+):\s*(\d+)px/g)].map((m) => `${m[1]}=${m[2]}`);
     expect(sizes).toEqual(['xs=12', 'sm=13', 'md=14', 'lg=16', 'xl=20', '2xl=24', 'title=28']);
   });
