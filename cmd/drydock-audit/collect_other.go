@@ -174,9 +174,20 @@ func forkRelease(ctx context.Context, repo string) (string, string, error) {
 	}
 	best := newestForkTag(src, tags)
 	if best == "" {
-		return "", "", fmt.Errorf("no release tag (%s) among the tags, and GitHub's release listing could not be read: %v", src.TagForm(), apiErr)
+		return "", "", fmt.Errorf("no release tag (%s) among the tags, and GitHub's release listing could not be read: %s", src.TagForm(), firstLineOf(apiErr.Error()))
 	}
-	return best, "Newest release tag, read from the git tags: GitHub's release listing could not be read (" + apiErr.Error() + "), so whether it is a pre-release or carries the Windows build was not checked.", nil
+	// the listing's error stays on the console: an answer body (a proxy's, a rate limit's) is not for the committed report
+	fmt.Fprintln(os.Stderr, "TurboQuant fork: GitHub's release listing could not be read; using its release tags:", firstLineOf(apiErr.Error()))
+	return best, "Newest release tag, read from the git tags: GitHub's release listing could not be read here, so whether it is a pre-release or carries the Windows build was not checked.", nil
+}
+
+// firstLineOf is the first line of an error, at most 160 characters.
+func firstLineOf(s string) string {
+	s, _, _ = strings.Cut(s, "\n")
+	if r := []rune(s); len(r) > 160 {
+		s = string(r[:160]) + "..."
+	}
+	return strings.TrimSpace(s)
 }
 
 // newestForkTag picks the source's newest release tag by its own numbering; its dev builds are not release tags.

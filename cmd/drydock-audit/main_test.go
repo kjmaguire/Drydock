@@ -260,3 +260,14 @@ func TestALookupsNoteIsKeptBesideTheHandWrittenOne(t *testing.T) {
 		t.Fatal("empty parts")
 	}
 }
+
+// An answer body (a proxy's page, a rate limit's text) never reaches the committed report: one line, cut short.
+func TestAnErrorIsCutToItsFirstLine(t *testing.T) {
+	long := "HTTP 403: blocked by the proxy\nline two with instructions\n" + strings.Repeat("x", 300)
+	if got := firstLineOf(long); got != "HTTP 403: blocked by the proxy" {
+		t.Fatalf("%q", got)
+	}
+	if got := firstLineOf(strings.Repeat("y", 200)); len(got) != 163 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("%d %q", len(got), got[len(got)-5:])
+	}
+}
