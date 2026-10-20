@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-20T18:29:59Z",
-  "commit": "8e3d20e",
+  "generated": "2026-10-20T18:38:30Z",
+  "commit": "9f29968",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -6755,13 +6755,5 @@
     "runtime": 4,
     "skill": 4,
     "tool": 14
-  },
-  "docDrift": [
-    {
-      "name": "github.com/anthropics/anthropic-sdk-go",
-      "docs": "1.82.0",
-      "code": "1.83.0",
-      "ref": "docs/decisions.md"
-    }
-  ]
+  }
 }
