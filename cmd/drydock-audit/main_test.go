@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/kjmaguire/drydock/internal/localllm"
 )
 
 func TestClassifyMeasuresTheGap(t *testing.T) {
@@ -130,10 +133,10 @@ func TestGoModWhereNamesTheModuleGraph(t *testing.T) {
 
 func TestNewestStableTagSkipsPreReleasesAndAlphaTags(t *testing.T) {
 	out := "a\trefs/tags/v1.29.0\nb\trefs/tags/v1.30.2\nc\trefs/tags/v2.0.0-nopython.alpha.1\nd\trefs/tags/v1.30.3-rc.1\ne\trefs/tags/nightly\n"
-	if got := newestStableTag(out); got != "v1.30.2" {
+	if got := newestStableTag(tagNames(out)); got != "v1.30.2" {
 		t.Fatalf("got %q", got)
 	}
-	if got := newestStableTag("x\trefs/tags/v3\n"); got != "" {
+	if got := newestStableTag(tagNames("x\trefs/tags/v3\n")); got != "" {
 		t.Fatalf("a major-only tag is not a release: %q", got)
 	}
 }
@@ -142,10 +145,10 @@ func TestNewestStableTagSkipsPreReleasesAndAlphaTags(t *testing.T) {
 // last in the listing's order.
 func TestNewestBuildTagPicksTheHighestBuild(t *testing.T) {
 	out := "a\trefs/tags/b11669\nb\trefs/tags/b9999\nc\trefs/tags/v0.7.0\nd\trefs/tags/b11600\ne\trefs/tags/gguf-v0.4.0\n"
-	if got := newestBuildTag(out); got != "b11669" {
+	if got := newestBuildTag(tagNames(out)); got != "b11669" {
 		t.Fatalf("got %q", got)
 	}
-	if got := newestBuildTag("x\trefs/tags/v1.2.3\n"); got != "" {
+	if got := newestBuildTag(tagNames("x\trefs/tags/v1.2.3\n")); got != "" {
 		t.Fatalf("a version tag is not a build: %q", got)
 	}
 }
@@ -190,18 +193,60 @@ func TestArtifactDataNeverWritesAnEmptyDataset(t *testing.T) {
 	}
 }
 
-// The TurboQuant fork's releases are tagged bNNNN-X.Y.Z; its per-platform dev builds (named by commit) and dev-latest are
-// pre-releases and do not count.
+// The TurboQuant fork's releases are tagged bNNNN-X.Y.Z; its per-commit dev builds and dev-latest are pre-releases and do not
+// count. Ordered by the fork's own version, so the audit and the app (localllm.Source.Newer) agree.
 func TestTheForksNewestReleaseIsItsHighestVersion(t *testing.T) {
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
 	ls := "a\trefs/tags/b10269-1.7.0\nb\trefs/tags/b10298-2.0.0\nc\trefs/tags/b10018-1.3.0\nd\trefs/tags/turboquant-windows-x64-vulkan-519f0c5\ne\trefs/tags/dev-latest\nf\trefs/tags/b8523\ng\trefs/tags/b10269-1.10.0\n"
-	if got := newestForkRelease(ls); got != "b10298-2.0.0" {
+	if got := newestForkTag(src, tagNames(ls)); got != "b10298-2.0.0" {
 		t.Fatalf("newest = %s", got)
 	}
 	// 1.10.0 is newer than 1.7.0 (not by text)
-	if got := newestForkRelease("x\trefs/tags/b10269-1.7.0\ny\trefs/tags/b10269-1.10.0\n"); got != "b10269-1.10.0" {
+	if got := newestForkTag(src, tagNames("x\trefs/tags/b10269-1.7.0\ny\trefs/tags/b10269-1.10.0\n")); got != "b10269-1.10.0" {
 		t.Fatalf("newest = %s", got)
 	}
-	if newestForkRelease("z\trefs/tags/dev-latest\n") != "" {
+	if newestForkTag(src, tagNames("z\trefs/tags/dev-latest\n")) != "" {
 		t.Fatal("a dev build counted as a release")
+	}
+}
+
+// The bundled fork falls behind like any other piece: its own version says by how much (before, both tags were "unknown").
+func TestTheForksReleaseTagsAreClassified(t *testing.T) {
+	for _, c := range []struct{ used, latest, want string }{
+		{"b10298-2.0.0", "b10298-2.0.0", "current"},
+		{"b10298-2.0.0", "b10350-2.1.0", "minor"},
+		{"b10298-2.0.0", "b10400-3.0.0", "major"},
+		{"b10298-2.0.0", "b10310-2.0.1", "patch"},
+		{"b10298-2.0.0", "b10310-2.0.0", "patch"}, // the same version on a newer build
+		{"b11600", "b11669", "patch"},
+		{"1.31.0", "1.32.0", "minor"},
+	} {
+		if got := classify(c.used, c.latest); got != c.want {
+			t.Errorf("classify(%s, %s) = %s, want %s", c.used, c.latest, got, c.want)
+		}
+	}
+}
+
+// The bundled tools' versions come from packaging/bundle.json, the pins the download is built from; docs/software-notes.json
+// carries no second copy that could drift.
+func TestTheBundledToolsAreReadFromTheBundlePins(t *testing.T) {
+	old := root
+	root = filepath.Join("..", "..")
+	t.Cleanup(func() { root = old })
+	p, err := readBundlePins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := p.used()
+	for _, id := range []string{"tool:osv-scanner", "tool:opengrep", "tool:llama.cpp-turboquant"} {
+		if used[id] == "" {
+			t.Errorf("%s: no pin in packaging/bundle.json", id)
+		}
+		if v, ok := toolUsed()[id]; ok {
+			t.Errorf("%s: docs/software-notes.json also says %q; the pin is the one source", id, v)
+		}
+	}
+	if strings.HasPrefix(used["tool:osv-scanner"], "v") {
+		t.Errorf("a scan tool's version is shown without its v: %q", used["tool:osv-scanner"])
 	}
 }

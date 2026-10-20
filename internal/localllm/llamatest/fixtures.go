@@ -59,11 +59,20 @@ func (f *ReleaseFixture) Close() { f.Server.Close() }
 func StartReleases(repo string) *ReleaseFixture {
 	f := &ReleaseFixture{Repo: repo, files: map[string][]byte{}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/"+repo+"/releases", func(w http.ResponseWriter, _ *http.Request) {
+	// the listing pages as GitHub's does: per_page (default 30, at most 100) and page (from 1)
+	mux.HandleFunc("/repos/"+repo+"/releases", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		per, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+		if per <= 0 {
+			per = 30
+		}
+		per = min(per, 100)
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		page = max(page, 1)
+		from, to := min((page-1)*per, len(f.releases)), min(page*per, len(f.releases))
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(f.releases)
+		_ = json.NewEncoder(w).Encode(f.releases[from:to])
 	})
 	// one release by its tag, as GitHub answers it
 	mux.HandleFunc("/repos/"+repo+"/releases/tags/", func(w http.ResponseWriter, r *http.Request) {

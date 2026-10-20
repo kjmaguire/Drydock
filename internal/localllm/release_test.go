@@ -2,6 +2,7 @@ package localllm_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -98,14 +99,74 @@ func TestTheForksDevBuildsAreSkipped(t *testing.T) {
 	if !src.CacheType("turbo4") || official(t).CacheType("turbo4") || !official(t).CacheType("q4_0") {
 		t.Fatal("cache types")
 	}
-	// a pinned tag that names a dev build (the bundle's first pin did) is refused, and the error says it is a pre-release
+	// a pinned tag that names a dev build (the bundle's first pin did) is refused, and the error says why
 	fx.Add(llamatest.ReleaseSpec{Tag: "turboquant-windows-x64-vulkan-519f0c5", Prerelease: true, Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": server}})
 	_, err = localllm.ReleaseByTag(context.Background(), host.HTTPAPI{BaseURL: fx.Server.URL}, src, localllm.Vulkan, "turboquant-windows-x64-vulkan-519f0c5")
-	if err == nil || !strings.Contains(err.Error(), "only 1 pre-release build(s), which are not installed") {
+	if err == nil || !strings.Contains(err.Error(), "lists no release Drydock installs (skipped: 1 not a release tag (bNNNN-X.Y.Z))") {
 		t.Fatalf("err = %v", err)
 	}
 	// the release tag itself is found by its tag
 	if rel, err := localllm.ReleaseByTag(context.Background(), host.HTTPAPI{BaseURL: fx.Server.URL}, src, localllm.Vulkan, "b10298-2.0.0"); err != nil || rel.Tag != "b10298-2.0.0" {
 		t.Fatalf("%+v %v", rel, err)
+	}
+}
+
+// The newest release is the highest by the source's own numbering, not the first GitHub lists: a backport to an older line
+// published after a newer release is not offered as an update (it would be a downgrade).
+func TestTheForksNewestReleaseIsItsHighestVersion(t *testing.T) {
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	fx := llamatest.NewReleases(t, src.Repo)
+	server := llamatest.ZipOf(map[string][]byte{"llama-server.exe": []byte("MZ")})
+	asset := map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": server}
+	fx.Add(llamatest.ReleaseSpec{Tag: "b10269-1.7.0", Assets: asset})
+	fx.Add(llamatest.ReleaseSpec{Tag: "b10298-2.0.0", Assets: asset})
+	fx.Add(llamatest.ReleaseSpec{Tag: "b10269-1.7.1", Assets: asset}) // listed first: published last
+	rel, err := localllm.LatestRelease(context.Background(), host.HTTPAPI{BaseURL: fx.Server.URL}, src, localllm.Vulkan)
+	if err != nil || rel.Tag != "b10298-2.0.0" {
+		t.Fatalf("%+v %v", rel, err)
+	}
+	for _, c := range []struct {
+		a, b         string
+		newer, known bool
+	}{
+		{"b10298-2.0.0", "b10269-1.7.1", true, true},
+		{"b10269-1.7.1", "b10298-2.0.0", false, true},
+		{"b10269-1.10.0", "b10269-1.7.0", true, true}, // by number, not by text
+		{"b10300-2.0.0", "b10298-2.0.0", true, true},  // the same version on a newer build
+		{"b10298-2.0.0", "b10298-2.0.0", false, true},
+		{"turboquant-windows-x64-vulkan-519f0c5", "b10298-2.0.0", false, false},
+	} {
+		if newer, known := src.Newer(c.a, c.b); newer != c.newer || known != c.known {
+			t.Errorf("Newer(%s, %s) = %v, %v", c.a, c.b, newer, known)
+		}
+	}
+	if !src.ReleaseTag("b10298-2.0.0") || src.ReleaseTag("dev-latest") || src.ReleaseTag("b10298") || !official(t).ReleaseTag("b11669") || official(t).ReleaseTag("b10298-2.0.0") {
+		t.Fatal("release tags")
+	}
+}
+
+// The fork tags a dev build per commit and platform, so its release can sit beyond the first page of the listing; and a
+// listing with no release says what it held instead.
+func TestTheForksReleaseIsFoundPastAPageOfDevBuilds(t *testing.T) {
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	fx := llamatest.NewReleases(t, src.Repo)
+	server := llamatest.ZipOf(map[string][]byte{"llama-server.exe": []byte("MZ")})
+	asset := map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": server}
+	fx.Add(llamatest.ReleaseSpec{Tag: "b10298-2.0.0", Assets: asset})
+	for i := range 130 {
+		fx.Add(llamatest.ReleaseSpec{Tag: fmt.Sprintf("turboquant-windows-x64-vulkan-%07x", i), Prerelease: true, Assets: asset})
+	}
+	rel, err := localllm.LatestRelease(context.Background(), host.HTTPAPI{BaseURL: fx.Server.URL}, src, localllm.Vulkan)
+	if err != nil || rel.Tag != "b10298-2.0.0" {
+		t.Fatalf("%+v %v", rel, err)
+	}
+
+	only := llamatest.NewReleases(t, src.Repo)
+	only.Add(llamatest.ReleaseSpec{Tag: "b10298-2.0.0", Prerelease: true, Assets: asset})
+	only.Add(llamatest.ReleaseSpec{Tag: "b10300-2.1.0", Draft: true, Assets: asset})
+	only.Add(llamatest.ReleaseSpec{Tag: "dev-latest", Prerelease: true, Assets: asset})
+	_, err = localllm.LatestRelease(context.Background(), host.HTTPAPI{BaseURL: only.Server.URL}, src, localllm.Vulkan)
+	if err == nil || !strings.HasSuffix(err.Error(), "lists no release Drydock installs (skipped: 1 draft, 1 not a release tag (bNNNN-X.Y.Z), 1 pre-release)") {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/kjmaguire/drydock/internal/agents/pins"
+	"github.com/kjmaguire/drydock/internal/git/host"
+	"github.com/kjmaguire/drydock/internal/localllm"
 )
 
 var usesR = regexp.MustCompile(`(?m)^\s*-?\s*uses:\s*([\w.-]+/[\w./-]+)@(\S+)`)
@@ -69,25 +72,42 @@ func actionRepo(action string) string {
 	return parts[0] + "/" + parts[1]
 }
 
-// gitLatestTag is the newest stable release tag (vX.Y.Z or X.Y.Z) of a GitHub repository, read with git ls-remote: no API
-// token is needed, and it works for projects that publish only GitHub releases (Opengrep).
-func gitLatestTag(ctx context.Context, repo string) (string, error) {
+// lsRemoteTags lists the tag names of a GitHub repository with git ls-remote: no API token is needed, and it works for
+// projects that publish only GitHub releases (Opengrep).
+func lsRemoteTags(ctx context.Context, repo string) ([]string, error) {
 	out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+repo)
+	if err != nil {
+		return nil, err
+	}
+	return tagNames(out), nil
+}
+
+// tagNames reads the tag names of git ls-remote --tags --refs output.
+func tagNames(lsRemote string) []string {
+	var out []string
+	for _, line := range strings.Split(lsRemote, "\n") {
+		if i := strings.Index(line, "refs/tags/"); i >= 0 {
+			if t := strings.TrimSpace(line[i+len("refs/tags/"):]); t != "" {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
+// gitLatestTag is the newest stable release tag (vX.Y.Z or X.Y.Z) of a GitHub repository.
+func gitLatestTag(ctx context.Context, repo string) (string, error) {
+	tags, err := lsRemoteTags(ctx, repo)
 	if err != nil {
 		return "", err
 	}
-	return newestStableTag(out), nil
+	return newestStableTag(tags), nil
 }
 
-// newestStableTag picks the highest vX.Y.Z (or X.Y.Z) tag of git ls-remote output; pre-releases and alpha tags are skipped.
-func newestStableTag(lsRemote string) string {
+// newestStableTag picks the highest vX.Y.Z (or X.Y.Z) tag; pre-releases and alpha tags are skipped.
+func newestStableTag(tags []string) string {
 	best := ""
-	for _, line := range strings.Split(lsRemote, "\n") {
-		i := strings.Index(line, "refs/tags/")
-		if i < 0 {
-			continue
-		}
-		t := line[i+len("refs/tags/"):]
+	for _, t := range tags {
 		if _, _, _, pre, ok := parseSemver(t); ok && !pre && strings.Count(t, ".") == 2 && (best == "" || less(best, t)) {
 			best = t
 		}
@@ -95,53 +115,79 @@ func newestStableTag(lsRemote string) string {
 	return best
 }
 
-// forkReleaseR is a release tag of the TurboQuant fork: the llama.cpp build it is based on and its own version (b10298-2.0.0).
-// Its other tags (turboquant-windows-x64-vulkan-<commit>, dev-latest) are pre-release builds, which Drydock does not install.
-var forkReleaseR = regexp.MustCompile(`^b(\d+)-(\d+\.\d+\.\d+)$`)
+var buildTagR = regexp.MustCompile(`^b(\d+)$`)
 
-// newestForkRelease picks the fork's newest release tag of git ls-remote output: the highest own version, then the highest build.
-func newestForkRelease(lsRemote string) string {
-	best, bestBuild, bestVer := "", 0, ""
-	for _, line := range strings.Split(lsRemote, "\n") {
-		i := strings.Index(line, "refs/tags/")
-		if i < 0 {
-			continue
-		}
-		t := strings.TrimSpace(line[i+len("refs/tags/"):])
-		m := forkReleaseR.FindStringSubmatch(t)
+// newestBuildTag picks the highest bNNNN tag (llama.cpp's weekly builds).
+func newestBuildTag(tags []string) string {
+	best, bestN := "", -1
+	for _, t := range tags {
+		m := buildTagR.FindStringSubmatch(t)
 		if m == nil {
 			continue
 		}
-		n, _ := strconv.Atoi(m[1])
-		if best == "" || less(bestVer, m[2]) || (bestVer == m[2] && n > bestBuild) {
-			best, bestBuild, bestVer = t, n, m[2]
+		if n, _ := strconv.Atoi(m[1]); n > bestN {
+			best, bestN = t, n
 		}
 	}
 	return best
 }
 
-// gitLatestBuildTag is the newest build tag (bNNNN, llama.cpp's weekly builds) of a GitHub repository.
-func gitLatestBuildTag(ctx context.Context, repo string) (string, error) {
-	out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+repo)
-	if err != nil {
-		return "", err
-	}
-	return newestBuildTag(out), nil
+// forkReleaseR is a release tag of the TurboQuant fork: the llama.cpp build it is based on, then its own version (b10298-2.0.0).
+var forkReleaseR = regexp.MustCompile(`^b(\d+)-(\d+\.\d+\.\d+)$`)
+
+// A latestFunc finds the newest release of a tool's GitHub repository, with a note when how it was found matters.
+type latestFunc func(ctx context.Context, repo string) (latest, note string, err error)
+
+// stableRelease is the newest vX.Y.Z tag, as a version (the default for a repository).
+func stableRelease(ctx context.Context, repo string) (string, string, error) {
+	tag, err := gitLatestTag(ctx, repo)
+	return releaseOf(tag), "", err
 }
 
-var buildTagR = regexp.MustCompile(`refs/tags/(b(\d+))$`)
+// buildRelease is the newest bNNNN build tag (llama.cpp's weekly builds; its vX.Y.Z tags carry no binaries).
+func buildRelease(ctx context.Context, repo string) (string, string, error) {
+	tags, err := lsRemoteTags(ctx, repo)
+	return newestBuildTag(tags), "", err
+}
 
-// newestBuildTag picks the highest bNNNN tag of git ls-remote output.
-func newestBuildTag(lsRemote string) string {
-	best, bestN := "", -1
-	for _, line := range strings.Split(lsRemote, "\n") {
-		m := buildTagR.FindStringSubmatch(strings.TrimSpace(line))
-		if m == nil {
+// forkRelease is the newest release of the TurboQuant fork Drydock would install: read from GitHub's release listing with the
+// app's own picker (localllm.LatestRelease: no drafts, no pre-releases, the Windows build of the bundled backend with its
+// digest, ordered by the fork's version), so the audit and the app agree. Where the listing cannot be read (no API access),
+// the newest release tag stands in, and the note says what was not checked.
+func forkRelease(ctx context.Context, repo string) (string, string, error) {
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	if src.Repo != repo {
+		return "", "", fmt.Errorf("%s is not the TurboQuant fork's repository", repo)
+	}
+	b := localllm.Vulkan
+	if p, err := readBundlePins(); err == nil && p.Llama != nil && p.Llama.Backend != "" {
+		b = localllm.Backend(p.Llama.Backend)
+	}
+	api := host.HTTPAPI{BaseURL: "https://api.github.com", Token: os.Getenv("GITHUB_TOKEN")}
+	rel, apiErr := localllm.LatestRelease(ctx, api, src, b)
+	if apiErr == nil {
+		return rel.Tag, "Newest release with the Windows " + localllm.Describe(b).Label + " build and a SHA-256 digest, from GitHub's release listing (as the app's update check picks it).", nil
+	}
+	tags, err := lsRemoteTags(ctx, repo)
+	if err != nil {
+		return "", "", err
+	}
+	best := newestForkTag(src, tags)
+	if best == "" {
+		return "", "", fmt.Errorf("no release tag (%s) among the tags, and GitHub's release listing could not be read: %v", src.TagForm(), apiErr)
+	}
+	return best, "Newest release tag, read from the git tags: GitHub's release listing could not be read (" + apiErr.Error() + "), so whether it is a pre-release or carries the Windows build was not checked.", nil
+}
+
+// newestForkTag picks the source's newest release tag by its own numbering; its dev builds are not release tags.
+func newestForkTag(src localllm.Source, tags []string) string {
+	best := ""
+	for _, t := range tags {
+		if !src.ReleaseTag(t) {
 			continue
 		}
-		n, _ := strconv.Atoi(m[2])
-		if n > bestN {
-			best, bestN = m[1], n
+		if newer, _ := src.Newer(t, best); best == "" || newer {
+			best = t
 		}
 	}
 	return best
@@ -243,48 +289,52 @@ func tools(ctx context.Context) []Item {
 	// a tool is measured against the Go module proxy, npm, or (a project that publishes only GitHub releases) its git tags
 	type tool struct {
 		id, name, kind, goMod, npmPkg, ghRepo string
-		buildTags                             bool   // the repository tags builds bNNNN instead of versions (llama.cpp)
-		forkTags                              bool   // the repository tags releases bNNNN-X.Y.Z (the TurboQuant fork)
+		latest                                latestFunc // for a GitHub repository: how its newest release is found (nil: the newest vX.Y.Z tag)
 	}
 	list := []tool{
-		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", false, false},
-		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", false, false},
-		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", false, false},
-		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", false, false},
-		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", false, false},
-		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", false, false},
-		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", false, false},
-		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", false, false},
-		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", false, false},
-		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", false, false},
-		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", true, false},
-		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork (comes with the download, Vulkan build, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", false, true},
+		{"tool:gh", "GitHub CLI (gh)", "tool", "github.com/cli/cli/v2", "", "", nil},
+		{"tool:task", "go-task", "tool", "github.com/go-task/task/v3", "", "", nil},
+		{"tool:osv-scanner", "osv-scanner", "tool", "github.com/google/osv-scanner/v2", "", "", nil},
+		{"tool:opengrep", "Opengrep (the security scan's Code engine)", "tool", "", "", "opengrep/opengrep", nil},
+		{"tool:go-licenses", "go-licenses", "tool", "github.com/google/go-licenses/v2", "", "", nil},
+		{"tool:govulncheck", "govulncheck", "tool", "golang.org/x/vuln", "", "", nil},
+		{"tool:golangci-lint", "golangci-lint (CI lint job)", "tool", "github.com/golangci/golangci-lint/v2", "", "", nil},
+		{"tool:wrangler", "Wrangler", "tool", "", "wrangler", "", nil},
+		{"tool:docker", "Docker-compatible container engine (docker)", "tool", "github.com/docker/cli", "", "", nil},
+		{"tool:actions-runner", "GitHub Actions runner (the CI runners download it)", "tool", "", "", "actions/runner", nil},
+		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", buildRelease},
+		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork (comes with the download, Vulkan build, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", forkRelease},
 	}
 	used := toolUsed()
+	bundled := map[string]string{}
+	if p, err := readBundlePins(); err != nil {
+		fail("packaging/bundle.json: " + err.Error())
+	} else {
+		bundled = p.used()
+	}
 	var items []Item
 	for _, t := range list {
 		it := Item{ID: t.id, Group: "Tools Drydock runs or you install", Name: t.name, Kind: t.kind, Used: used[t.id], Where: "docs/decisions.md section 2"}
+		if v, ok := bundled[t.id]; ok {
+			it.Used, it.Where = v, "packaging/bundle.json"
+		}
 		switch {
 		case t.goMod != "":
 			it.Latest, it.LatestDate = goLatest(ctx, t.goMod)
-		case t.ghRepo != "" && t.forkTags:
-			out, err := run(ctx, root, nil, "git", "ls-remote", "--tags", "--refs", "https://github.com/"+t.ghRepo)
-			if err != nil {
-				fail("tags of " + t.ghRepo + ": " + err.Error())
-			}
-			it.Latest = newestForkRelease(out)
-		case t.ghRepo != "" && t.buildTags:
-			tag, err := gitLatestBuildTag(ctx, t.ghRepo)
-			if err != nil {
-				fail("tags of " + t.ghRepo + ": " + err.Error())
-			}
-			it.Latest = tag
 		case t.ghRepo != "":
-			tag, err := gitLatestTag(ctx, t.ghRepo)
-			if err != nil {
-				fail("tags of " + t.ghRepo + ": " + err.Error())
+			find := t.latest
+			if find == nil {
+				find = stableRelease
 			}
-			it.Latest = releaseOf(tag)
+			latest, note, err := find(ctx, t.ghRepo)
+			switch {
+			case err != nil:
+				fail("tags of " + t.ghRepo + ": " + err.Error())
+			case latest == "":
+				// a lookup that answered but found no release is a broken lookup (the project changed how it tags), not news
+				fail("tags of " + t.ghRepo + ": no release tag found")
+			}
+			it.Latest, it.Note = latest, note
 		default:
 			it.Latest = npmLatest(ctx, t.npmPkg)
 		}
@@ -308,4 +358,39 @@ func toolUsed() map[string]string {
 	}
 	_ = json.Unmarshal(b, &n)
 	return n.Used
+}
+
+// bundlePins is packaging/bundle.json: the tools the Windows download carries (decision P77). The versions it pins are what
+// Drydock ships, so the audit reads them from there, not from a copy in docs/software-notes.json.
+type bundlePins struct {
+	Scan []struct {
+		Tool string `json:"tool"`
+		Tag  string `json:"tag"`
+	} `json:"scan"`
+	Llama *struct {
+		Source  string `json:"source"`
+		Backend string `json:"backend"`
+		Tag     string `json:"tag"`
+	} `json:"llama"`
+}
+
+func readBundlePins() (bundlePins, error) {
+	var p bundlePins
+	b, err := os.ReadFile(filepath.Join(root, "packaging", "bundle.json"))
+	if err != nil {
+		return p, err
+	}
+	return p, json.Unmarshal(b, &p)
+}
+
+// used maps each pinned tool's item id to the version the download carries.
+func (p bundlePins) used() map[string]string {
+	out := map[string]string{}
+	for _, s := range p.Scan {
+		out["tool:"+s.Tool] = strings.TrimPrefix(s.Tag, "v")
+	}
+	if p.Llama != nil {
+		out["tool:llama.cpp-"+p.Llama.Source] = p.Llama.Tag
+	}
+	return out
 }

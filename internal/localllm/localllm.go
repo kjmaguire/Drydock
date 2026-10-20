@@ -83,6 +83,11 @@ type Source struct {
 	assets func(tag string, b Backend) string
 	// cudart names the CUDA runtime archive the archive needs beside it, from the archive's own name ("" when none).
 	cudart func(archive string) string
+	// releaseTag is how the source tags a release (its other tags are dev builds), with the parts that order releases as
+	// submatches, most significant first; tagForm says it in words for messages.
+	releaseTag *regexp.Regexp
+	order      []int // the submatch indexes of releaseTag, most significant first
+	tagForm    string
 }
 
 // toolkitVersion is the toolkit version in an archive's name ("cuda-13.4" is 13, 4), nil when it carries none.
@@ -132,8 +137,49 @@ func (s Source) DownloadPrefix() string {
 	return "https://github.com/" + s.Repo + "/releases/download/"
 }
 
-// ReleasesPath is the REST path listing the source's releases, newest first.
-func (s Source) ReleasesPath() string { return "/repos/" + s.Repo + "/releases?per_page=20" }
+// releasesPerPage is the page size of the release listing (GitHub's largest).
+const releasesPerPage = 100
+
+// ReleasesPath is the REST path of one page of the source's releases, newest first.
+func (s Source) ReleasesPath(page int) string {
+	return fmt.Sprintf("/repos/%s/releases?per_page=%d&page=%d", s.Repo, releasesPerPage, page)
+}
+
+// ReleaseTag reports whether tag is one of the source's release tags (not a dev build): only those are installed.
+func (s Source) ReleaseTag(tag string) bool {
+	return s.releaseTag != nil && s.releaseTag.MatchString(tag)
+}
+
+// TagForm is the shape of the source's release tags, for messages ("bNNNN-X.Y.Z").
+func (s Source) TagForm() string { return s.tagForm }
+
+// version is the release tag's ordering key, or nil when tag is not a release tag of the source.
+func (s Source) version(tag string) []int {
+	if s.releaseTag == nil {
+		return nil
+	}
+	m := s.releaseTag.FindStringSubmatch(tag)
+	if m == nil {
+		return nil
+	}
+	v := make([]int, 0, len(s.order))
+	for _, i := range s.order {
+		n, _ := strconv.Atoi(m[i])
+		v = append(v, n)
+	}
+	return v
+}
+
+// Newer reports whether release a is newer than release b by the source's own numbering (for the fork, its version before
+// the llama.cpp build it is based on, so a late backport to an older line is not newer). known is false when either tag is
+// not a release tag of the source; the caller then cannot order them.
+func (s Source) Newer(a, b string) (newer, known bool) {
+	va, vb := s.version(a), s.version(b)
+	if va == nil || vb == nil {
+		return false, false
+	}
+	return newerToolkit(va, vb), true
+}
 
 // Supports reports whether the source builds for the backend.
 func (s Source) Supports(b Backend) bool { return s.assets("tag", b) != "" }
@@ -175,7 +221,8 @@ var Sources = []Source{
 			}
 			return ""
 		},
-		cudart: officialCudart,
+		cudart:     officialCudart,
+		releaseTag: regexp.MustCompile(`^b(\d+)$`), order: []int{1}, tagForm: "bNNNN",
 	},
 	{
 		ID: SourceTurboQuant, Name: "TurboQuant fork (AtomicBot-ai/atomic-llama-cpp-turboquant)", Repo: "AtomicBot-ai/atomic-llama-cpp-turboquant",
@@ -199,6 +246,9 @@ var Sources = []Source{
 			return ""
 		},
 		cudart: func(string) string { return "" },
+		// its releases are b<llama.cpp build>-<its own version> (b10298-2.0.0); its per-commit builds
+		// (turboquant-windows-x64-vulkan-519f0c5) and dev-latest are pre-release dev builds
+		releaseTag: regexp.MustCompile(`^b(\d+)-(\d+)\.(\d+)\.(\d+)$`), order: []int{2, 3, 4, 1}, tagForm: "bNNNN-X.Y.Z",
 	},
 }
 

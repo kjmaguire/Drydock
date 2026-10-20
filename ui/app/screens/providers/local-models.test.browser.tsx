@@ -641,7 +641,7 @@ describe('Models on this PC', () => {
   it('the build that came with Drydock says so and names the TurboQuant cache types; Check for updates offers Update to the newer build', async () => {
     const bundled = (latest?: string) =>
       installed({
-        runtime: { ...installed().runtime, source: 'turboquant', sourceName: FORK.name, tag: 'turboquant-windows-x64-vulkan-d86eb0b', bundled: true, ...(latest ? { latest } : {}) },
+        runtime: { ...installed().runtime, source: 'turboquant', sourceName: FORK.name, tag: 'b10298-2.0.0', bundled: true, ...(latest ? { latest } : {}) },
         settings: { ...installed().settings, source: 'turboquant', cacheType: 'turbo4' },
       });
     let next = bundled();
@@ -661,10 +661,10 @@ describe('Models on this PC', () => {
     await r.act(() => (need(r, '[data-testid="local-check-updates"]') as HTMLButtonElement).click());
     await waitFor(() => expect(need(r, '[data-testid="local-up-to-date"]').textContent).toBe('This is the newest build.'), r);
     // a newer build: named, and the Update button names it and installs the settings' source and backend
-    next = bundled('turboquant-windows-x64-vulkan-e11e11e');
+    next = bundled('b10350-2.1.0');
     await r.act(async () => (await enabled(r, '[data-testid="local-check-updates"]')).click());
-    await waitFor(() => expect(need(r, '[data-testid="local-update"]').textContent).toBe('Update to turboquant-windows-x64-vulkan-e11e11e'), r);
-    expect(need(r, '[data-testid="local-latest"]').textContent).toBe('turboquant-windows-x64-vulkan-e11e11e is out (this is turboquant-windows-x64-vulkan-d86eb0b).');
+    await waitFor(() => expect(need(r, '[data-testid="local-update"]').textContent).toBe('Update to b10350-2.1.0'), r);
+    expect(need(r, '[data-testid="local-latest"]').textContent).toBe('b10350-2.1.0 is out (this is b10298-2.0.0).');
     expect(q(r, '[data-testid="local-up-to-date"]')).toBe(null);
     await r.act(async () => (await enabled(r, '[data-testid="local-update"]')).click());
     await waitFor(() => expect(calls).toEqual(['check', 'check', ['turboquant', 'vulkan']]), r);

@@ -17,7 +17,8 @@ the notes (below).
 | Node and npm | the installed ones | `npm view node@22`, `npm view npm` |
 | GitHub Actions in CI | `.github/workflows/*.yml` | git tags of each action |
 | Agent CLIs and ACP bridges | `internal/agents/manifests/cli/*.yaml` | `npm view` |
-| Tools you install (gh, task, osv-scanner, go-licenses, govulncheck, wrangler) | the version `docs/software-notes.json` records as documented | the Go proxy or npm |
+| Tools you install (gh, task, go-licenses, govulncheck, wrangler) | the version `docs/software-notes.json` records as documented | the Go proxy or npm |
+| Tools the Windows download carries (osv-scanner, Opengrep, the TurboQuant llama.cpp build) | the pins of `packaging/bundle.json` (decision P77), not a copy in the notes | git tags; for the TurboQuant fork, GitHub's release listing read with the app's own picker (the newest release with the Windows build and a digest), or its release tags (`bNNNN-X.Y.Z`) when the listing cannot be read, which the item's note then says |
 | Security advisories | | `govulncheck` (Go; pinned to a release, the same one `.github/workflows/security.yml` runs), `npm audit` (UI) |
 | Documentation that names a different version than the code | `docs/decisions.md` | |
 

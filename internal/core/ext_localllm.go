@@ -322,7 +322,11 @@ func (l *localExt) view(ctx context.Context) LocalView {
 			Bundled: l.m.Runtime.BundledTag() == in.Tag}
 		l.mu.Lock()
 		if l.latest != "" && l.latest != in.Tag {
-			v.Runtime.Latest = l.latest
+			// offered only when it is newer by the source's numbering (a backport to an older line is not an update); two tags
+			// the source cannot order (an install from before release tags were checked) are offered as different
+			if newer, known := src.Newer(l.latest, in.Tag); newer || !known {
+				v.Runtime.Latest = l.latest
+			}
 		}
 		l.mu.Unlock()
 		v.Runtime.Devices = l.devicesOf(ctx, in)

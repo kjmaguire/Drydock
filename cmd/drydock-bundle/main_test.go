@@ -29,7 +29,7 @@ func TestTheBundleIsBuiltFromThePinnedCheckedReleases(t *testing.T) {
 	fx.Add(scantest.ReleaseSpec{Repo: "opengrep/opengrep", Tag: "v1.31.0", Assets: map[string][]byte{"opengrep_windows_x86.exe": []byte("MZ og")}})
 	tq, _ := localllm.SourceByID(localllm.SourceTurboQuant)
 	lf := llamatest.NewReleases(t, tq.Repo)
-	tag := "turboquant-windows-x64-vulkan-d86eb0b"
+	tag := "b10298-2.0.0"
 	lf.Add(llamatest.ReleaseSpec{Tag: tag, Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": llamatest.ZipOf(map[string][]byte{localllm.ServerName(): []byte("server")})}})
 
 	var pins Pins
@@ -80,6 +80,16 @@ func TestTheBundleIsBuiltFromThePinnedCheckedReleases(t *testing.T) {
 			t.Errorf("pin %+v", p)
 		}
 	}
+	// the llama pin is one of the fork's releases, not one of its dev builds (the first pin was, and only CI's download found it)
+	if src, _ := localllm.SourceByID(mine.Llama.Source); !src.ReleaseTag(mine.Llama.Tag) {
+		t.Errorf("llama pin %q is not a release tag (%s)", mine.Llama.Tag, src.TagForm())
+	}
+	// and a dev-build pin is refused before anything is fetched
+	pins.Scan[1].Tag = "v1.31.0"
+	pins.Llama.Tag = "turboquant-windows-x64-vulkan-519f0c5"
+	if _, err := Build(ctx, pins, api, client, t.TempDir(), time.Now()); err == nil || !strings.Contains(err.Error(), "is not one of its release tags (bNNNN-X.Y.Z)") {
+		t.Fatalf("%v", err)
+	}
 }
 
 // splitAPI sends the llama source's requests to its fixture and every other to the scan tools' fixture.
@@ -107,38 +117,4 @@ func (s splitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return s.llama.RoundTrip(r)
 	}
 	return s.scan.RoundTrip(r)
-}
-
-// The Software Versions page (docs/software-versions.md) shows what the download carries: the versions it lists as used for the
-// bundled tools are the pins of packaging/bundle.json.
-func TestThePinsAreTheVersionsTheSoftwarePageShows(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "packaging", "bundle.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var pins Pins
-	if err := json.Unmarshal(raw, &pins); err != nil {
-		t.Fatal(err)
-	}
-	notes, err := os.ReadFile(filepath.Join("..", "..", "docs", "software-notes.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var n struct {
-		Used map[string]string `json:"used"`
-	}
-	if err := json.Unmarshal(notes, &n); err != nil {
-		t.Fatal(err)
-	}
-	if len(pins.Scan) == 0 || pins.Llama == nil {
-		t.Fatalf("pins %+v", pins)
-	}
-	for _, p := range pins.Scan {
-		if got := n.Used["tool:"+p.Tool]; got != strings.TrimPrefix(p.Tag, "v") {
-			t.Errorf("%s: the bundle pins %s, the notes say %q", p.Tool, p.Tag, got)
-		}
-	}
-	if got := n.Used["tool:llama.cpp-"+pins.Llama.Source]; got != pins.Llama.Tag {
-		t.Errorf("llama.cpp: the bundle pins %s, the notes say %q", pins.Llama.Tag, got)
-	}
 }

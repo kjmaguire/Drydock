@@ -67,6 +67,11 @@ func Build(ctx context.Context, pins Pins, api host.API, client *http.Client, ou
 			return m, fmt.Errorf("%q is not a llama.cpp build source", l.Source)
 		}
 		b := localllm.Backend(l.Backend)
+		// a pin must name one of the source's releases, not a dev build (the fork marks those pre-release): said here, before
+		// anything is fetched, rather than as "no release" from the listing
+		if l.Tag != "" && !src.ReleaseTag(l.Tag) {
+			return m, fmt.Errorf("%s: %q is not one of its release tags (%s); its other tags are dev builds, which Drydock does not install", src.Name, l.Tag, src.TagForm())
+		}
 		var rel localllm.Release
 		var err error
 		if l.Tag == "" {

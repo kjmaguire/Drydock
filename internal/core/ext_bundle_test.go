@@ -107,7 +107,7 @@ func TestTheDownloadsScanToolsComeInstalledAndAreOfferedUpdates(t *testing.T) {
 func TestTheDownloadsLlamaBuildComesInstalledWithTurboQuant(t *testing.T) {
 	tq, _ := localllm.SourceByID(localllm.SourceTurboQuant)
 	zip := llamatest.ZipOf(map[string][]byte{localllm.ServerName(): []byte("server"), "ggml-vulkan.dll": []byte("dll")})
-	tag := "turboquant-windows-x64-vulkan-d86eb0b"
+	tag := "b10298-2.0.0"
 	dir := writeBundle(t, map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": zip}, bundle.Manifest{Version: 1,
 		Llama: &bundle.LlamaBuild{Source: tq.ID, Tag: tag, Backend: string(localllm.Vulkan), Archive: assetOf(tq.DownloadPrefix(), tag, "llama-turboquant-windows-x64-vulkan.zip", zip)}})
 	rel := llamatest.NewReleases(t, tq.Repo)
@@ -145,8 +145,15 @@ func TestTheDownloadsLlamaBuildComesInstalledWithTurboQuant(t *testing.T) {
 	if !v.Runtime.Bundled || v.Runtime.Latest != "" {
 		t.Fatalf("bundled %v latest %q", v.Runtime.Bundled, v.Runtime.Latest)
 	}
-	// a newer build of the same source and backend is released: Check for updates names it; nothing is installed by itself
-	newer := "turboquant-windows-x64-vulkan-e11e11e"
+	// a backport to an older line, published after the bundled release, is not offered: it would be a downgrade
+	rel.Add(llamatest.ReleaseSpec{Tag: "b10269-1.7.1", Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": zip}})
+	v = core.LocalView{}
+	a.call("local.checkUpdates", nil, &v)
+	if v.Runtime.Latest != "" {
+		t.Fatalf("a backport was offered: %q", v.Runtime.Latest)
+	}
+	// a newer release of the same source and backend: Check for updates names it; nothing is installed by itself
+	newer := "b10350-2.1.0"
 	rel.Add(llamatest.ReleaseSpec{Tag: newer, Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": zip}})
 	v = core.LocalView{}
 	a.call("local.checkUpdates", nil, &v)

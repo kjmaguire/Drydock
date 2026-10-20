@@ -179,6 +179,18 @@ func classify(used, latest string) string {
 		}
 		return "unknown"
 	}
+	if fu, fl := forkReleaseR.FindStringSubmatch(used), forkReleaseR.FindStringSubmatch(latest); fu != nil && fl != nil {
+		// the TurboQuant fork's bNNNN-X.Y.Z: its own version says how far behind; a newer build of the same version is a patch
+		if st := classify(fu[2], fl[2]); st != "current" {
+			return st
+		}
+		ub, _ := strconv.Atoi(fu[1])
+		lb, _ := strconv.Atoi(fl[1])
+		if lb > ub {
+			return "patch"
+		}
+		return "current"
+	}
 	um, un, up, upre, ok1 := parseSemver(used)
 	lm, ln, lp, _, ok2 := parseSemver(latest)
 	if !ok1 || !ok2 {
@@ -202,12 +214,12 @@ func classify(used, latest string) string {
 
 // buildNumbers reads two bNNNN build tags.
 func buildNumbers(a, b string) (int, int, bool) {
-	m1, m2 := buildTagR.FindStringSubmatch("refs/tags/"+a), buildTagR.FindStringSubmatch("refs/tags/"+b)
+	m1, m2 := buildTagR.FindStringSubmatch(a), buildTagR.FindStringSubmatch(b)
 	if m1 == nil || m2 == nil {
 		return 0, 0, false
 	}
-	n1, _ := strconv.Atoi(m1[2])
-	n2, _ := strconv.Atoi(m2[2])
+	n1, _ := strconv.Atoi(m1[1])
+	n2, _ := strconv.Atoi(m2[1])
 	return n1, n2, true
 }
 

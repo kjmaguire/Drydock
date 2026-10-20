@@ -43,7 +43,7 @@ func TestTheBundledLlamaBuildIsPutInPlaceOnce(t *testing.T) {
 	root := t.TempDir()
 	rt := &localllm.Runtime{Root: root, HTTP: &http.Client{Transport: offline{t}}}
 	dl := t.TempDir()
-	b1 := bundledBuild(t, dl, "turboquant-windows-x64-vulkan-d86eb0b", "server one")
+	b1 := bundledBuild(t, dl, "b10298-2.0.0", "server one")
 	in, did, err := rt.SeedFromBundle(ctx, dl, b1)
 	if err != nil || !did || in.Source != localllm.SourceTurboQuant || in.Backend != localllm.Vulkan || in.Tag != b1.Tag {
 		t.Fatalf("%v %v %+v", err, did, in)
@@ -58,7 +58,7 @@ func TestTheBundledLlamaBuildIsPutInPlaceOnce(t *testing.T) {
 		t.Fatal("seeded twice")
 	}
 	dl2 := t.TempDir()
-	b2 := bundledBuild(t, dl2, "turboquant-windows-x64-vulkan-e00e0e0", "server two")
+	b2 := bundledBuild(t, dl2, "b10350-2.1.0", "server two")
 	if in, did, err = rt.SeedFromBundle(ctx, dl2, b2); err != nil || !did || in.Tag != b2.Tag {
 		t.Fatalf("a newer bundle: %v %v %+v", err, did, in)
 	}
