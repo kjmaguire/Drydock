@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	cel.dev/cel-go v0.32.0
-	github.com/anthropics/anthropic-sdk-go v1.82.0
+	github.com/anthropics/anthropic-sdk-go v1.83.0
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/coder/acp-go-sdk v0.13.5

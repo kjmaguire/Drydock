@@ -20,7 +20,8 @@
       "role": "What this sandbox builds and tests with (the toolchain go.mod asks for, downloaded automatically)."
     },
     "node": {
-      "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine)."
+      "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
+      "hold": "This row is the development host's own Node (22.22.0), which the sandbox provides and Drydock does not pin. CI installs the newest Node 24 on every run (actions/setup-node with node-version 24), and the UI asks for 24.3 or newer (ui/package.json engines)."
     },
     "npm": {
       "role": "Installs the UI packages.",
