@@ -229,7 +229,8 @@ func TestTheCodeEngineRunsTheBuiltinRulesAndThePersonsFolder(t *testing.T) {
 // A copied set names the upstream commit it was taken from, and rules/README.md (the human record) names the same one, so the
 // Software Versions page, which reads the commit from here, measures what was really copied.
 func TestACopiedRuleSetNamesItsCommit(t *testing.T) {
-	readme, err := os.ReadFile(filepath.Join("rules", "README.md"))
+	// the README is compiled in with the rules, so this runs in the Windows verification bundle too (it carries no sources)
+	readme, err := fs.ReadFile(builtinFS, "rules/README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
