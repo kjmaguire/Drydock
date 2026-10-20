@@ -190,8 +190,13 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   const wranglerInLibrary = page.locator('[data-testid=library-skill-tile][data-name=wrangler]');
   await expect(wranglerInLibrary).toBeVisible();
   await wranglerInLibrary.locator('button.what').click();
-  await wranglerInLibrary.getByTestId('library-skill-tile-detail').getByRole('button', { name: 'Add to gocalc-know' }).click();
+  // a skill is given to agents, never the whole team (P76): Add waits until the agents it is for are ticked
+  const add = wranglerInLibrary.getByTestId('library-skill-tile-detail').getByRole('button', { name: 'Add to gocalc-know' });
+  await expect(add).toBeDisabled();
+  await page.getByTestId('library-for-agents').getByLabel('Dana (backend)').check();
+  await add.click();
   await expect(page.getByTestId('skill-added')).toContainText('wrangler was added to gocalc-know and is accepted ✓');
+  await expect(page.getByTestId('skill-added')).toContainText('For Dana');
   const wrangler = page.locator('[data-testid=skill-tile][data-name=wrangler]');
   await expect(wrangler).toHaveAttribute('data-status', 'accepted');
   await expect(wrangler).toHaveAttribute('data-check', 'true');
