@@ -1,15 +1,16 @@
 {
-  "generated": "2026-10-20T15:02:16Z",
-  "commit": "0f9b3ab",
+  "generated": "2026-10-20T15:29:11Z",
+  "commit": "16ce89d",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
   "summary": {
-    "current": 155,
-    "major": 1,
-    "minor": 8,
-    "patch": 13,
-    "prerelease": 1
+    "current": 165,
+    "major": 7,
+    "minor": 15,
+    "patch": 16,
+    "prerelease": 2,
+    "unknown": 4
   },
   "items": [
     {
@@ -112,6 +113,121 @@
       "role": "OpenCode: an open-source agent that can use many providers.",
       "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back. Newer releases appeared on the same day (opencode 1.19.3, claude-agent-acp 0.92.0); they wait for the contract suite (P33) like every other move.",
       "note": "The version in the manifest is what Drydock recommends and was checked against; you install the CLI yourself."
+    },
+    {
+      "id": "cli:antigravity",
+      "group": "Agent CLIs Drydock drives",
+      "name": "Antigravity CLI (antigravity)",
+      "kind": "cli",
+      "used": "1.3.1",
+      "status": "unknown",
+      "where": "internal/agents/manifests/cli/antigravity.yaml (recommended; minimum 1.3.0)",
+      "role": "Google's Antigravity CLI (agy), driven only after a person acknowledges the terms notice (decision D2); its adapter refuses to start sessions until its stream is captured (no fixtures yet).",
+      "note": "Not distributed on npm (its vendor's own installer), so there is no feed to read its newest release from: check it by hand."
+    },
+    {
+      "id": "image:debian:bookworm",
+      "group": "Container images",
+      "name": "debian:bookworm",
+      "kind": "image",
+      "used": "debian:bookworm",
+      "latest": "debian:trixie",
+      "status": "major",
+      "where": "internal/sandbox/config.go",
+      "role": "A Docker official image Drydock names (the CI runner container, or a sandbox image it suggests).",
+      "note": "Built on Debian bookworm; Debian's newest release is trixie."
+    },
+    {
+      "id": "image:golang:bookworm",
+      "group": "Container images",
+      "name": "golang:bookworm",
+      "kind": "image",
+      "used": "golang:bookworm",
+      "latest": "golang:trixie",
+      "status": "major",
+      "where": "internal/sandbox/config.go",
+      "role": "A Docker official image Drydock names (the CI runner container, or a sandbox image it suggests).",
+      "note": "Built on Debian bookworm; Debian's newest release is trixie."
+    },
+    {
+      "id": "image:node:24-bookworm",
+      "group": "Container images",
+      "name": "node:24-bookworm",
+      "kind": "image",
+      "used": "node:24-bookworm",
+      "latest": "node:24-trixie",
+      "status": "major",
+      "where": "internal/sandbox/config.go",
+      "role": "A Docker official image Drydock names (the CI runner container, or a sandbox image it suggests).",
+      "note": "Built on Debian bookworm; Debian's newest release is trixie."
+    },
+    {
+      "id": "image:python:3-bookworm",
+      "group": "Container images",
+      "name": "python:3-bookworm",
+      "kind": "image",
+      "used": "python:3-bookworm",
+      "latest": "python:3-trixie",
+      "status": "major",
+      "where": "internal/sandbox/config.go",
+      "role": "A Docker official image Drydock names (the CI runner container, or a sandbox image it suggests).",
+      "note": "Built on Debian bookworm; Debian's newest release is trixie."
+    },
+    {
+      "id": "image:ubuntu:24.04",
+      "group": "Container images",
+      "name": "ubuntu:24.04",
+      "kind": "image",
+      "used": "ubuntu:24.04",
+      "latest": "ubuntu:26.04",
+      "status": "major",
+      "where": "internal/runners/launch.go",
+      "role": "A Docker official image Drydock names (the CI runner container, or a sandbox image it suggests).",
+      "note": "A newer Ubuntu LTS is Docker's latest."
+    },
+    {
+      "id": "copied:dgryski-semgrep-go",
+      "group": "Copied into Drydock",
+      "name": "dgryski/semgrep-go (Opengrep rules, MIT)",
+      "kind": "copied",
+      "used": "db0227c03f4b",
+      "latest": "db0227c03f4b",
+      "status": "current",
+      "where": "internal/scan/rules/third_party/dgryski-semgrep-go (commit in internal/scan/builtin_rules.go)",
+      "role": "Built-in Opengrep rules: 66 rules run on every scan (decision P77)."
+    },
+    {
+      "id": "copied:0xdea-c",
+      "group": "Copied into Drydock",
+      "name": "0xdea/semgrep-rules (C and C++) (Opengrep rules, MIT)",
+      "kind": "copied",
+      "used": "e0121ac19d9f",
+      "latest": "e0121ac19d9f",
+      "status": "current",
+      "where": "internal/scan/rules/third_party/0xdea-c (commit in internal/scan/builtin_rules.go)",
+      "role": "Built-in Opengrep rules: 49 rules run on every scan (decision P77)."
+    },
+    {
+      "id": "copied:simple-icons",
+      "group": "Copied into Drydock",
+      "name": "Simple Icons (brand logos, CC0-1.0)",
+      "kind": "copied",
+      "used": "16.35.0",
+      "latest": "16.35.0",
+      "status": "current",
+      "where": "ui/app/ui/brand-logo.tsx",
+      "role": "SVG paths of brand logos, copied so only the few the app shows ship."
+    },
+    {
+      "id": "copied:lobehub-icons",
+      "group": "Copied into Drydock",
+      "name": "LobeHub icons (four brand logos, MIT)",
+      "kind": "copied",
+      "used": "1.95.1",
+      "latest": "1.95.1",
+      "status": "current",
+      "where": "ui/app/ui/brand-logo.tsx",
+      "role": "SVG paths of brand logos, copied so only the few the app shows ship."
     },
     {
       "id": "ci-go:1.27.2",
@@ -456,10 +572,10 @@
       "name": "github.com/wailsapp/wails/v3",
       "kind": "direct",
       "used": "3.0.0-beta.30",
-      "latest": "3.0.0-beta.33",
+      "latest": "3.0.0-beta.34",
       "status": "prerelease",
       "usedDate": "2026-10-15",
-      "latestDate": "2026-10-19",
+      "latestDate": "2026-10-20",
       "where": "go.mod",
       "role": "The Windows desktop shell: the window and the WebView2 that shows the UI.",
       "hold": "Still a beta (the newest published, beta.30 since 2026-10-16). The risk was accepted in the brief; it is isolated in app/.",
@@ -533,7 +649,7 @@
       "usedDate": "2022-05-27",
       "where": "go.mod",
       "role": "Reads YAML: agent manifests, the MCP catalog, expert packs, skills.",
-      "usedBy": 10,
+      "usedBy": 11,
       "inBuild": true
     },
     {
@@ -6030,6 +6146,124 @@
       "inBuild": false
     },
     {
+      "id": "ci:ci.yml:github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
+      "group": "Installed by CI workflows",
+      "name": "github.com/golangci/golangci-lint/v2/cmd/golangci-lint (ci.yml)",
+      "kind": "ci",
+      "used": "2.15.0",
+      "latest": "2.15.0",
+      "status": "current",
+      "latestDate": "2026-10-16",
+      "where": ".github/workflows/ci.yml"
+    },
+    {
+      "id": "ci:security.yml:golang.org/x/vuln/cmd/govulncheck",
+      "group": "Installed by CI workflows",
+      "name": "golang.org/x/vuln/cmd/govulncheck (security.yml)",
+      "kind": "ci",
+      "used": "1.9.0",
+      "latest": "1.9.0",
+      "status": "current",
+      "latestDate": "2026-10-11",
+      "where": ".github/workflows/security.yml"
+    },
+    {
+      "id": "ci:windows-probes.yml:@anthropic-ai/claude-code",
+      "group": "Installed by CI workflows",
+      "name": "@anthropic-ai/claude-code (windows-probes.yml)",
+      "kind": "ci",
+      "used": "2.1.293",
+      "latest": "2.1.304",
+      "status": "patch",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 2.1.301."
+    },
+    {
+      "id": "ci:windows-probes.yml:@openai/codex",
+      "group": "Installed by CI workflows",
+      "name": "@openai/codex (windows-probes.yml)",
+      "kind": "ci",
+      "used": "0.161.0",
+      "latest": "0.163.0",
+      "status": "minor",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 0.163.0."
+    },
+    {
+      "id": "ci:windows-probes.yml:@google/gemini-cli",
+      "group": "Installed by CI workflows",
+      "name": "@google/gemini-cli (windows-probes.yml)",
+      "kind": "ci",
+      "used": "0.63.0",
+      "latest": "0.64.0",
+      "status": "minor",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 0.64.0."
+    },
+    {
+      "id": "ci:windows-probes.yml:opencode-ai",
+      "group": "Installed by CI workflows",
+      "name": "opencode-ai (windows-probes.yml)",
+      "kind": "ci",
+      "used": "1.18.35",
+      "latest": "1.19.3",
+      "status": "minor",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 1.19.1."
+    },
+    {
+      "id": "ci:windows-probes.yml:@aaif/goose-acp",
+      "group": "Installed by CI workflows",
+      "name": "@aaif/goose-acp (windows-probes.yml)",
+      "kind": "ci",
+      "used": "1.53.0",
+      "latest": "1.55.0",
+      "status": "minor",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 1.54.0."
+    },
+    {
+      "id": "ci:windows-probes.yml:@agentclientprotocol/codex-acp",
+      "group": "Installed by CI workflows",
+      "name": "@agentclientprotocol/codex-acp (windows-probes.yml)",
+      "kind": "ci",
+      "used": "2.1.1",
+      "latest": "2.2.2",
+      "status": "minor",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 2.2.2."
+    },
+    {
+      "id": "ci:windows-probes.yml:@agentclientprotocol/claude-agent-acp",
+      "group": "Installed by CI workflows",
+      "name": "@agentclientprotocol/claude-agent-acp (windows-probes.yml)",
+      "kind": "ci",
+      "used": "0.87.0",
+      "latest": "0.94.0",
+      "status": "minor",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
+      "note": "Drydock's manifests pin 0.91.0."
+    },
+    {
+      "id": "ci:windows-probes.yml:github.com/wailsapp/wails/v3/cmd/wails3",
+      "group": "Installed by CI workflows",
+      "name": "github.com/wailsapp/wails/v3/cmd/wails3 (windows-probes.yml)",
+      "kind": "ci",
+      "used": "3.0.0-beta.30",
+      "latest": "3.0.0-beta.34",
+      "status": "prerelease",
+      "latestDate": "2026-10-20",
+      "where": ".github/workflows/windows-probes.yml",
+      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay."
+    },
+    {
       "id": "go",
       "group": "Language and toolchain",
       "name": "Go",
@@ -6076,6 +6310,52 @@
       "role": "Installs the UI packages.",
       "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3).",
       "note": "Ships with Node; a newer npm can be installed on top of it (npm install -g npm), which is what the development host does."
+    },
+    {
+      "id": "skills:anthropic-skills@683bc88e56f3",
+      "group": "Skills pinned to a commit",
+      "name": "anthropics/skills (frontend-design, mcp-builder)",
+      "kind": "skill",
+      "used": "683bc88e56f3",
+      "latest": "dbd4588f9e10",
+      "status": "patch",
+      "where": "internal/skills/registry.yaml",
+      "role": "Skills the prebuilt agents name, with their descriptions quoted at this commit.",
+      "note": "The repository has newer commits than the copy; look at what changed before copying again."
+    },
+    {
+      "id": "skills:cloudflare-skills@a18ffe2a9944",
+      "group": "Skills pinned to a commit",
+      "name": "cloudflare/skills (cloudflare, durable-objects, workers-best-practices, wrangler)",
+      "kind": "skill",
+      "used": "a18ffe2a9944",
+      "latest": "86505e44f87d",
+      "status": "patch",
+      "where": "internal/skills/registry.yaml",
+      "role": "Skills the prebuilt agents name, with their descriptions quoted at this commit.",
+      "note": "The repository has newer commits than the copy; look at what changed before copying again."
+    },
+    {
+      "id": "skills:msdocs-mcp-skills@f8ffde185dfd",
+      "group": "Skills pinned to a commit",
+      "name": "MicrosoftDocs/mcp (microsoft-code-reference, microsoft-docs)",
+      "kind": "skill",
+      "used": "f8ffde185dfd",
+      "latest": "f8ffde185dfd",
+      "status": "current",
+      "where": "internal/skills/registry.yaml",
+      "role": "Skills the prebuilt agents name, with their descriptions quoted at this commit."
+    },
+    {
+      "id": "skills:vercel-agent-skills@063bee94c3f4",
+      "group": "Skills pinned to a commit",
+      "name": "vercel-labs/agent-skills (composition-patterns, react-best-practices, web-design-guidelines, writing-guidelines)",
+      "kind": "skill",
+      "used": "063bee94c3f4",
+      "latest": "063bee94c3f4",
+      "status": "current",
+      "where": "internal/skills/registry.yaml",
+      "role": "Skills the prebuilt agents name, with their descriptions quoted at this commit."
     },
     {
       "id": "tool:gh",
@@ -6204,6 +6484,31 @@
       "note": "Not pinned: Drydock downloads the newest stable release when a runner starts and runs it only after checking its SHA-256 against the one the release notes publish (GitHub stops serving runners that fall far behind). The version shown is the newest at the last audit. CI downloads, checks and starts it on every push (TestRealRunnerRelease); nothing is registered there."
     },
     {
+      "id": "tool:git",
+      "group": "Tools Drydock runs or you install",
+      "name": "Git (Drydock runs it for every repository; Git for Windows on a PC)",
+      "kind": "tool",
+      "used": "2.43.0",
+      "latest": "2.56.0",
+      "status": "minor",
+      "where": "docs/decisions.md section 2",
+      "role": "Version control for every project: Drydock runs git for worktrees, commits, merges and the repository guard (internal/git), always with hooks, filters and external programs switched off. On a PC it is Git for Windows, which the person installs; nothing is bundled.",
+      "hold": "2.43.0 is the development host's distribution git, which the test suite runs; Drydock asks for no newer feature. A person's PC keeps its own Git for Windows, which its installer updates.",
+      "note": "The version shown is the git the development sandbox tests with (git --version). CI's Windows jobs use the Git for Windows of GitHub's windows-latest image, which is not pinned. Drydock uses only long-standing git commands."
+    },
+    {
+      "id": "tool:semgrep",
+      "group": "Tools Drydock runs or you install",
+      "name": "Semgrep OSS (checks the built-in rules against their fixtures; not shipped)",
+      "kind": "tool",
+      "used": "1.181.0",
+      "latest": "1.181.0",
+      "status": "current",
+      "where": "docs/decisions.md section 2",
+      "role": "Development only: Semgrep OSS runs the built-in Opengrep rules against their fixtures (internal/scan builtin_rules_test.go with DRYDOCK_RULES_ENGINE) and made the SARIF fixture of the reader. Opengrep reads the same rule syntax; Semgrep is not shipped.",
+      "note": "Installed in a Python virtual environment on the development host; CI does not run it."
+    },
+    {
       "id": "tool:llama.cpp",
       "group": "Tools Drydock runs or you install",
       "name": "llama.cpp (the local models' engine, decision P65)",
@@ -6213,7 +6518,7 @@
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
-      "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant)."
+      "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant). A CUDA build is installed with the matching NVIDIA CUDA runtime archive (cudart-llama-bin-win-cuda-\u003ctoolkit\u003e-x64.zip) from the same release, checked the same way; it follows the build."
     },
     {
       "id": "tool:llama.cpp-turboquant",
@@ -6397,6 +6702,58 @@
       "status": "current",
       "where": "ui/package.json",
       "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."
+    },
+    {
+      "id": "api:mcp",
+      "group": "Vendor APIs and protocols",
+      "name": "Model Context Protocol (revision Drydock speaks)",
+      "kind": "api",
+      "used": "2026-07-28",
+      "latest": "2026-07-28",
+      "status": "current",
+      "where": "internal/mcp/protocol.go",
+      "role": "The MCP gateway and the hosted MCP servers Drydock connects to."
+    },
+    {
+      "id": "api:linear",
+      "group": "Vendor APIs and protocols",
+      "name": "Linear GraphQL API (schema of @linear/sdk)",
+      "kind": "api",
+      "used": "97.1.0",
+      "latest": "98.0.0",
+      "status": "major",
+      "where": "internal/integrations/catalog.go",
+      "role": "Reading and writing Linear issues; the API is unversioned, so Drydock follows the schema of Linear's own SDK."
+    },
+    {
+      "id": "api:notion",
+      "group": "Vendor APIs and protocols",
+      "name": "Notion API (Notion-Version header)",
+      "kind": "api",
+      "used": "2026-03-11",
+      "status": "unknown",
+      "where": "internal/integrations/notion.go",
+      "note": "The vendor lists its versions only on a web page (https://developers.notion.com/page/changelog): check it by hand."
+    },
+    {
+      "id": "api:github",
+      "group": "Vendor APIs and protocols",
+      "name": "GitHub REST API (X-GitHub-Api-Version header)",
+      "kind": "api",
+      "used": "2022-11-28",
+      "status": "unknown",
+      "where": "internal/git/host/host.go",
+      "note": "The vendor lists its versions only on a web page (https://docs.github.com/rest/about-the-rest-api/api-versions): check it by hand."
+    },
+    {
+      "id": "api:anthropic",
+      "group": "Vendor APIs and protocols",
+      "name": "Anthropic API (anthropic-version header of the provider probe)",
+      "kind": "api",
+      "used": "2023-06-01",
+      "status": "unknown",
+      "where": "internal/providers/probe.go",
+      "note": "The vendor lists its versions only on a web page (https://docs.anthropic.com/en/api/versioning): check it by hand."
     }
   ],
   "vulnerabilities": [],
@@ -6406,13 +6763,18 @@
   },
   "counts": {
     "action": 8,
+    "api": 5,
     "bridge": 2,
-    "cli": 6,
+    "ci": 10,
+    "cli": 7,
+    "copied": 4,
     "dev": 6,
     "direct": 33,
     "graphOnly": 310,
+    "image": 5,
     "indirect": 417,
     "runtime": 4,
-    "tool": 12
+    "skill": 4,
+    "tool": 14
   }
 }
