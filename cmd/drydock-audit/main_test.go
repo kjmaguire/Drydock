@@ -231,7 +231,7 @@ func TestTheForksReleaseTagsAreClassified(t *testing.T) {
 // carries no second copy that could drift.
 func TestTheBundledToolsAreReadFromTheBundlePins(t *testing.T) {
 	old := root
-	root = filepath.Join("..", "..")
+	root = sourceRoot(t)
 	t.Cleanup(func() { root = old })
 	p, err := readBundlePins()
 	if err != nil {

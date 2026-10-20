@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -120,7 +122,7 @@ func TestTheNewestMCPRevisionIsItsLatestDatedTag(t *testing.T) {
 // A value the code no longer carries is a failed lookup, not a silent blank.
 func TestAPinThatMovedIsAFailedLookup(t *testing.T) {
 	old := root
-	root = "../.."
+	root = sourceRoot(t)
 	t.Cleanup(func() { root = old })
 	if v := pinnedIn("internal/mcp/protocol.go", `protocolNew = "([0-9-]+)"`); v == "" {
 		t.Fatal("the MCP revision was not read")
@@ -130,4 +132,27 @@ func TestAPinThatMovedIsAFailedLookup(t *testing.T) {
 		t.Fatalf("%q, %d failures", v, len(failed)-before)
 	}
 	failed = failed[:before]
+}
+
+// sourceRoot is Drydock's source tree above the test's folder. The tests that use it read the sources; the Windows
+// verification bundle carries only test binaries (its folder has a go.mod of its own), so there they skip.
+func sourceRoot(t *testing.T) string {
+	t.Helper()
+	d, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if b, err := os.ReadFile(filepath.Join(d, "go.mod")); err == nil {
+			if first, _, _ := strings.Cut(string(b), "\n"); strings.TrimSpace(first) != "module github.com/kjmaguire/drydock" {
+				t.Skipf("%s is not Drydock's source tree (a verification bundle carries no sources), and this test reads them", d)
+			}
+			return d
+		}
+		p := filepath.Dir(d)
+		if p == d {
+			t.Skip("no source tree above the test's folder (a verification bundle carries no sources), and this test reads them")
+		}
+		d = p
+	}
 }
