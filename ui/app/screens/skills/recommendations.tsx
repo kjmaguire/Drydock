@@ -88,18 +88,23 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
       recs.reload();
     }
   };
+  // the picks go to the agents ticked for them: each agent is a specialist, so nothing is added for everyone (P76)
+  let pickFor: string[] = [];
   const addPicks = async () => {
-    const { projectId, picks, onPicksDone, onChanged } = handle.props;
+    const { projectId, picks, onPicksDone, onChanged, agents } = handle.props;
+    const to = pickFor.filter((id) => agents.some((x) => x.id === id));
+    if (to.length === 0) return;
     const done: string[] = [];
     const ok = await act.run('addPicks', async () => {
       for (const p of picks) {
-        await s.client.skillLibraryAdd(projectId, p.registryId, p.name);
+        await s.client.skillLibraryAdd(projectId, p.registryId, p.name, 'agents', to);
         done.push(p.name);
       }
       return true;
     });
     if (done.length > 0) {
-      set(() => (added = `${done.join(', ')} ${done.length === 1 ? 'was' : 'were'} added to ${handle.props.projectName} for the whole team.`));
+      const who = to.map((id) => agents.find((x) => x.id === id)?.name ?? id).join(', ');
+      set(() => (added = `${done.join(', ')} ${done.length === 1 ? 'was' : 'were'} added to ${handle.props.projectName} for ${who}.`));
       onChanged();
     }
     if (ok) onPicksDone();
@@ -169,14 +174,29 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
         {picks.length > 0 ? (
           <Notice tone="info" testId="skill-picks" title={`You picked ${picks.length} skill${picks.length === 1 ? '' : 's'} in the Library for ${projectName}`}>
             <p style={{ margin: '0 0 8px' }}>{picks.map((p) => p.name).join(', ')}</p>
+            <div mix={askCss} role="group" aria-label="Agents to add the picks for" data-testid="picks-for">
+              {agents.map((x) => (
+                <Checkbox
+                  key={x.id}
+                  label={`${x.name} (${x.role})`}
+                  checked={pickFor.includes(x.id)}
+                  onChange={(v) => set(() => (pickFor = v ? [...pickFor.filter((id) => id !== x.id), x.id] : pickFor.filter((id) => id !== x.id)))}
+                />
+              ))}
+            </div>
             <div mix={askCss}>
               {a ? (
                 <Button size="sm" variant="primary" icon={Lightbulb} disabled={act.busy !== '' || running} data-testid="picks-ask" mix={on('click', () => void ask(true))}>
                   Ask {a.name} which to use
                 </Button>
               ) : null}
-              <Button size="sm" disabled={act.busy !== ''} data-testid="picks-add" mix={on('click', () => void addPicks())}>
-                {act.busy === 'addPicks' ? 'Adding...' : `Add ${picks.length === 1 ? 'it' : `all ${picks.length}`} for the whole team`}
+              <Button
+                size="sm"
+                disabled={act.busy !== '' || pickFor.length === 0}
+                data-testid="picks-add"
+                mix={on('click', () => void addPicks())}
+              >
+                {act.busy === 'addPicks' ? 'Adding...' : pickFor.length === 0 ? 'Tick the agents to add them for' : `Add ${picks.length === 1 ? 'it' : `all ${picks.length}`} for them`}
               </Button>
               <Button size="sm" variant="ghost" mix={on('click', () => handle.props.onPicksDone())}>
                 Forget the picks

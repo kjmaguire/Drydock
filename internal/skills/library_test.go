@@ -7,11 +7,17 @@ import (
 	"testing"
 )
 
-// Decision P48: a project chooses from the library, and choosing is accepting.
+// Decision P48: a project chooses from the library, and choosing is accepting. Decision P76: the skill goes to agents, the
+// ones whose role it names unless the person chose others.
 func TestAddingFromTheLibraryAcceptsTheSkillAndRefusesWhatCannotBeAdded(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, map[string]string{SkillsDir + "/workers-style/SKILL.md": skillMD("workers-style", "ours", "", "Our own rule.")})
+	e.addAgent("agt_be", "backend")
+	e.addAgent("agt_fe", "frontend")
 	if _, err := e.s.ScanRepo(ctx, "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.Assign(ctx, human, "p1", "workers-style", "agt_be", true); err != nil {
 		t.Fatal(err)
 	}
 	gh := newGHFixture(t)
@@ -28,7 +34,7 @@ func TestAddingFromTheLibraryAcceptsTheSkillAndRefusesWhatCannotBeAdded(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if k.Status != StatusAccepted || k.Origin != OriginRegistry || k.RegistryID != "cloudflare-skills" || k.PinnedCommit != sha1 || k.DecidedBy != human || k.Audience != AudienceTeam ||
+	if k.Status != StatusAccepted || k.Origin != OriginRegistry || k.RegistryID != "cloudflare-skills" || k.PinnedCommit != sha1 || k.DecidedBy != human || k.Audience != AudienceAgents || strings.Join(k.Agents, ",") != "agt_be" ||
 		strings.Join(k.Globs, ",") != "migrations/**/*.sql" || k.License != "Apache-2.0" || !k.HasScripts {
 		t.Fatalf("%+v", k)
 	}
@@ -55,8 +61,8 @@ func TestAddingFromTheLibraryAcceptsTheSkillAndRefusesWhatCannotBeAdded(t *testi
 	if k, err = e.s.AddFromLibrary(ctx, human, "p1", "cloudflare-skills", "d1-migrations", "", nil); err != nil || k.Status != StatusAccepted {
 		t.Fatalf("%v %+v", err, k)
 	}
-	// every accepted skill reaches the plan; the blocked ones never entered the project
-	el, _ := e.s.Eligible(ctx, "p1", "", "backend")
+	// every accepted skill given to the agent reaches its plan; the blocked ones never entered the project
+	el, _ := e.s.Eligible(ctx, "p1", "agt_be", "backend")
 	var names []string
 	for _, x := range el {
 		names = append(names, x.Name)
@@ -64,13 +70,23 @@ func TestAddingFromTheLibraryAcceptsTheSkillAndRefusesWhatCannotBeAdded(t *testi
 	if strings.Join(names, ",") != "d1-migrations,workers-style" {
 		t.Fatalf("eligible: %v", names)
 	}
-	// an audience can be set with the add: only chosen agents, and none chosen yet means nobody receives it
-	k, err = e.s.AddFromLibrary(ctx, human, "p1", "cloudflare-skills", "d1-migrations", AudienceAgents, []string{})
-	if err != nil || k.Audience != AudienceAgents {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_fe", "frontend"); len(el) != 0 {
+		t.Fatalf("the frontend agent got skills it was not given: %+v", el)
+	}
+	// the agents a person chooses replace the ones the roles suggested; the whole team is refused
+	if k, err = e.s.AddFromLibrary(ctx, human, "p1", "cloudflare-skills", "d1-migrations", "", []string{"agt_fe"}); err != nil || strings.Join(k.Agents, ",") != "agt_fe" {
 		t.Fatalf("%v %+v", err, k)
 	}
-	if el, _ = e.s.Eligible(ctx, "p1", "", "backend"); len(el) != 1 || el[0].Name != "workers-style" {
-		t.Fatalf("eligible after narrowing the audience: %+v", el)
+	if _, err := e.s.AddFromLibrary(ctx, human, "p1", "cloudflare-skills", "d1-migrations", AudienceTeam, nil); err == nil {
+		t.Fatal("a library skill was added for the whole team")
+	}
+	// none chosen means nobody receives it
+	k, err = e.s.AddFromLibrary(ctx, human, "p1", "cloudflare-skills", "d1-migrations", AudienceAgents, []string{})
+	if err != nil || k.Audience != AudienceAgents || len(k.Agents) != 0 {
+		t.Fatalf("%v %+v", err, k)
+	}
+	if el, _ = e.s.Eligible(ctx, "p1", "agt_be", "backend"); len(el) != 1 || el[0].Name != "workers-style" {
+		t.Fatalf("eligible after taking it from everyone: %+v", el)
 	}
 }
 

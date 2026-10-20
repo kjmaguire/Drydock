@@ -227,6 +227,15 @@ func (d Drydock) Run(ctx context.Context, t Task, repo string, accept func(tree 
 	if err := call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer", Adapter: "claude", Role: "reviewer", Model: d.Model}, &r); err != nil {
 		return fail(Failed, err.Error())
 	}
+	if d.hasSkills() {
+		// skills are given to agents, never to the whole team (decision P76); the trial measures the bundle reaching both agents
+		// of the run, as every recorded run had it, so each skill is given to the worker and the reviewer
+		for _, name := range rec.SkillNames {
+			if err := call("skill.audience", map[string]any{"projectId": p.ID, "name": name, "audience": skills.AudienceAgents, "agents": []string{w.ID, r.ID}}, nil); err != nil {
+				return fail(Failed, err.Error())
+			}
+		}
+	}
 	var task tasks.Task
 	if err := call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: t.Title, Description: t.Prompt}, &task); err != nil {
 		return fail(Failed, err.Error())

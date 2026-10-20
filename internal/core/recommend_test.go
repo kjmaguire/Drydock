@@ -242,10 +242,9 @@ func TestTheProjectAsksForRecommendationsAgainAsItEvolves(t *testing.T) {
 	}
 }
 
-// A skill the project has for chosen agents only, recommended for the whole team, is widened to the team (the agents it was
-// given to keep it); recommended again once the whole team has it, it is dropped with that reason. Before, the first was
-// dropped as "already in the project for the whole team", which was not true.
-func TestARecommendationWidensASkillToTheWholeTeam(t *testing.T) {
+// Skills belong to agents (decision P76): a recommendation that gives a skill to nobody in particular (the whole team) is
+// dropped with the reason, one that names agents is applied to exactly them, and an old "whole team" item cannot be applied.
+func TestARecommendationGivesASkillToNamedAgentsNeverToTheWholeTeam(t *testing.T) {
 	a := open(t, "")
 	p := gitProject(t, a, "widen")
 	f := newWatchFixture(t)
@@ -254,9 +253,10 @@ func TestARecommendationWidensASkillToTheWholeTeam(t *testing.T) {
 	if _, err := a.c.RunSkillWatch(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	var lead, dev core.Agent
+	var lead, dev, ops core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Lead", Adapter: "claude", Role: "lead", Model: "fake-1"}, &lead)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &dev)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Ops", Adapter: "claude", Role: "devops", Model: "fake-1"}, &ops)
 	a.call("skill.libraryAdd", map[string]any{"projectId": p.ID, "registryId": "cloudflare-skills", "name": "wrangler", "audience": skills.AudienceAgents, "agents": []string{dev.ID}}, nil)
 
 	everyone := `{"summary": "Everyone deploys now.", "recommendations": [{"kind": "skill", "action": "add", "name": "wrangler", "agents": [], "reason": "The whole team deploys Workers."}]}`
@@ -264,20 +264,35 @@ func TestARecommendationWidensASkillToTheWholeTeam(t *testing.T) {
 	var r core.Recommendation
 	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
 	r = a.recommendDone(p.ID, r.ID)
-	if r.Status != "done" || len(r.Items) != 1 || r.Items[0].Action != "team" || len(r.Items[0].Agents) != 0 {
-		t.Fatalf("widening to the team: %+v", r)
+	if r.Status != "done" || len(r.Items) != 0 || len(r.Dropped) != 1 || !strings.Contains(r.Dropped[0], "not to the whole team") {
+		t.Fatalf("a skill for everyone was not dropped: %+v", r)
+	}
+
+	toOps := fmt.Sprintf(`{"summary": "Ops deploys.", "recommendations": [{"kind": "skill", "action": "add", "name": "wrangler", "agents": [%q], "reason": "Ops runs the deploys."}]}`, ops.ID)
+	recommendScript(t, toOps)
+	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
+	r = a.recommendDone(p.ID, r.ID)
+	if r.Status != "done" || len(r.Items) != 1 || r.Items[0].Action != "give" || !slices.Equal(r.Items[0].Agents, []string{ops.ID}) {
+		t.Fatalf("giving it to Ops: %+v", r)
 	}
 	a.call("recommend.apply", map[string]any{"id": r.ID, "itemId": r.Items[0].ID}, &r)
 	var got skills.Skill
 	a.call("skill.get", map[string]any{"projectId": p.ID, "name": "wrangler"}, &got)
-	if got.Audience != skills.AudienceTeam || !slices.Equal(got.Agents, []string{dev.ID}) || r.Items[0].Status != "applied" {
+	want := []string{dev.ID, ops.ID}
+	slices.Sort(want)
+	if got.Audience != skills.AudienceAgents || !slices.Equal(got.Agents, want) || r.Items[0].Status != "applied" {
 		t.Fatalf("after applying: skill %+v, item %+v", got, r.Items[0])
 	}
 
-	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
-	r = a.recommendDone(p.ID, r.ID)
-	if r.Status != "done" || len(r.Items) != 0 || len(r.Dropped) != 1 || !strings.Contains(r.Dropped[0], "already in the project for the whole team") {
-		t.Fatalf("the team has it already: %+v", r)
+	// an item stored before P76 that widened a skill to the whole team cannot be applied, and says why
+	if _, err := a.c.DB.Writer().Exec(`UPDATE recommendations SET items=replace(items, '"action":"give"', '"action":"team"') WHERE id=?`, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.c.DB.Writer().Exec(`UPDATE recommendations SET items=replace(items, '"status":"applied"', '"status":"open"') WHERE id=?`, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.callErr("recommend.apply", map[string]any{"id": r.ID, "itemId": r.Items[0].ID}); err == nil || !strings.Contains(err.Error(), "given to agents") {
+		t.Fatalf("an old whole-team item was applied: %v", err)
 	}
 }
 

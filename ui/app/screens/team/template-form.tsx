@@ -208,8 +208,8 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
             Skills it brings into a project
           </legend>
           <p mix={muted}>
-            Registry skills pinned to a commit. Putting the template into a project installs them there and gives them to the new agent; a skill the
-            whole team already has stays with the team.
+            Registry skills pinned to a commit. Putting the template into a project installs them there and gives them to the new agent; the
+            agents that already had one keep it.
           </p>
           {skills.length === 0 ? <p mix={muted}>No skills.</p> : null}
           {skills.length > 0 ? (

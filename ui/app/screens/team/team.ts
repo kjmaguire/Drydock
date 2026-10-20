@@ -189,3 +189,51 @@ export function minutesText(m: number): string {
   if (m < 60 * 24) return `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} m`;
   return `${(m / (60 * 24)).toFixed(1)} d`;
 }
+
+/** The figures at the top of the Crew page: who is at work, what the crew is on, what waits for the person, and its skills. */
+export interface CrewFigures {
+  agents: number;
+  working: number;
+  stopped: number;
+  inFlight: number;
+  waiting: number;
+  skillsGiven: number;
+  withoutSkills: number;
+}
+
+const IN_FLIGHT = new Set(['CLAIMED', 'IN_PROGRESS', 'REVIEW', 'VERIFICATION']);
+const AT_WORK = new Set(['Working', 'Thinking']);
+
+/** Counts the Crew page's figures from the team, its presence, the project's tasks and its skills (each given to agents, P76). */
+export function crewFigures(
+  agents: readonly { id: string }[],
+  presence: readonly PresenceState[],
+  tasks: readonly { status: string }[],
+  skills: readonly { status: string; agents?: string[] | null }[],
+): CrewFigures {
+  const at = (id: string) => presence.find((p) => p.agentId === id);
+  const ids = new Set(agents.map((a) => a.id));
+  const given = new Map<string, number>();
+  let skillsGiven = 0;
+  for (const k of skills) {
+    if (k.status !== 'accepted') continue;
+    for (const a of k.agents ?? []) {
+      if (!ids.has(a)) continue;
+      given.set(a, (given.get(a) ?? 0) + 1);
+      skillsGiven++;
+    }
+  }
+  return {
+    agents: agents.length,
+    working: agents.filter((a) => AT_WORK.has(at(a.id)?.presence ?? '')).length,
+    stopped: agents.filter((a) => isStopped(at(a.id))).length,
+    inFlight: tasks.filter((t) => IN_FLIGHT.has(t.status)).length,
+    waiting: tasks.filter((t) => t.status === 'WAITING_HUMAN').length,
+    skillsGiven,
+    withoutSkills: agents.filter((a) => !given.get(a.id)).length,
+  };
+}
+
+/** How many accepted skills are given to one agent. */
+export const skillCount = (skills: readonly { status: string; agents?: string[] | null }[], agentId: string): number =>
+  skills.filter((k) => k.status === 'accepted' && (k.agents ?? []).includes(agentId)).length;

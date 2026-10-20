@@ -170,7 +170,8 @@ export interface ExtClient {
   /** The workspace skill library: every enabled registry's skills, filled by the core itself (decision P48). */
   skillLibraryList(registryId?: string): Promise<LibrarySkill[]>;
   /** Add a library skill to a project. Adding is the person's acceptance: the skill arrives accepted. */
-  skillLibraryAdd(projectId: string, registryId: string, name: string, audience?: 'team' | 'agents', agents?: string[]): Promise<Skill>;
+  /** Add a library skill to a project for the agents named (decision P76); with none named it goes to the agents whose role it names. */
+  skillLibraryAdd(projectId: string, registryId: string, name: string, audience?: 'agents', agents?: string[]): Promise<Skill>;
   /** Add every available library skill of a registry to a project at once. */
   skillLibraryAddAll(projectId: string, registryId: string): Promise<SkillLibraryAddAll>;
   /** Ask an agent (the team lead unless named) which agent should get which skill, MCP server or integration (decision P52). */
@@ -187,8 +188,8 @@ export interface ExtClient {
   skillRegistryStatus(): Promise<SkillRegistryStatus[]>;
   /** Check one registry (or all of them) now instead of waiting for the schedule. */
   skillRegistryCheck(registryId?: string): Promise<SkillRegistryStatus[]>;
-  /** Who receives a skill: the whole team (its roles, plus `agents`) or only the chosen `agents`. */
-  skillAudience(projectId: string, name: string, audience: 'team' | 'agents', agents: string[]): Promise<Skill>;
+  /** The agents a skill is given to (decision P76: never the whole team). */
+  skillAudience(projectId: string, name: string, audience: 'agents', agents: string[]): Promise<Skill>;
   skillDeliveries(projectId: string, taskId?: string): Promise<SkillDelivery[]>;
   skillCoverage(projectId: string, taskId?: string): Promise<SkillCoverage>;
   // memory

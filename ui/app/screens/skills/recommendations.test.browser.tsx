@@ -111,7 +111,7 @@ describe('Recommendations', () => {
     await waitFor(() => expect(r.$('[data-testid="recommend-latest"]')!.textContent).toContain('Every recommendation was applied or dismissed.'), r);
   });
 
-  it('offers the skills picked in the Library: ask which to use (with the picks), or add them all for the whole team', async () => {
+  it('offers the skills picked in the Library: ask which to use (with the picks), or add them all for the agents ticked (never the whole team)', async () => {
     const picks = [
       { registryId: 'cloudflare-skills', name: 'wrangler' },
       { registryId: 'cloudflare-skills', name: 'durable-objects' },
@@ -141,9 +141,20 @@ describe('Recommendations', () => {
       picks,
     );
     const box2 = await waitFor(() => two.r.$('[data-testid="skill-picks"]') as HTMLElement, two.r);
-    await two.r.act(() => byText(box2, 'button', 'Add all 2 for the whole team').click());
-    await waitFor(() => expect(added).toEqual([['prj_1', 'cloudflare-skills', 'wrangler'], ['prj_1', 'cloudflare-skills', 'durable-objects']]), two.r);
-    await waitFor(() => expect(two.r.$('[data-testid="picks-added"]')!.textContent).toBe('wrangler, durable-objects were added to gocalc for the whole team.'), two.r);
+    // nothing is added until agents are ticked
+    expect((byText(box2, 'button', 'Tick the agents to add them for') as HTMLButtonElement).disabled).toBe(true);
+    const dev = box2.querySelector('[data-testid="picks-for"] input') as HTMLInputElement; // the first agent: Backend #1
+    await two.r.act(() => dev.click());
+    await two.r.act(() => byText(box2, 'button', 'Add all 2 for them').click());
+    await waitFor(
+      () =>
+        expect(added).toEqual([
+          ['prj_1', 'cloudflare-skills', 'wrangler', 'agents', ['agt_dev']],
+          ['prj_1', 'cloudflare-skills', 'durable-objects', 'agents', ['agt_dev']],
+        ]),
+      two.r,
+    );
+    await waitFor(() => expect(two.r.$('[data-testid="picks-added"]')!.textContent).toBe('wrangler, durable-objects were added to gocalc for Backend #1.'), two.r);
     expect(two.changed.length).toBe(1);
     expect(two.picksDone()).toBe(1);
   });

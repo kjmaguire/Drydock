@@ -140,6 +140,12 @@ func (p *packaging) importProject(ctx context.Context, r importReq) (any, error)
 	if root != "" {
 		c.trustGitConfigNow(ctx, res.ProjectID)
 	}
+	// an archive from before decision P76 brings whole-team skills: they go to the agents they reached
+	if k := c.Knowledge(); k != nil {
+		if _, err := k.Skills.GiveTeamSkillsToAgents(ctx); err != nil {
+			c.logf("import: skills to agents: %v", err)
+		}
+	}
 	p.audit(ctx, "project.import", res.ProjectID, map[string]any{"file": filepath.Base(r.Path), "source": res.SourceID, "idsRemapped": res.IDsRemapped})
 	c.publish(ctx, "project.imported", res.ProjectID, map[string]any{"name": res.Name, "from": filepath.Base(r.Path)})
 	// tell the human what is waiting for their decision, in the new project's own room

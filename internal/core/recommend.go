@@ -50,7 +50,7 @@ type RecommendItem struct {
 	Name       string   `json:"name"`   // skill name, library MCP server id, integration kind
 	Label      string   `json:"label"`  // what a person reads (a server's display name, the vendor's name)
 	RegistryID string   `json:"registryId,omitempty"`
-	Agents     []string `json:"agents"` // agent ids; empty means the whole team (skills) or the project (integrations)
+	Agents     []string `json:"agents"` // agent ids a skill or server goes to (a skill always names them, P76); empty for an integration
 	Reason     string   `json:"reason"`
 	Status     string   `json:"status"` // open | applied | dismissed
 	Note       string   `json:"note,omitempty"`
@@ -457,8 +457,8 @@ func (c *Core) recommendPrompt(ctx context.Context, projectID string, w recommen
 	}
 	for _, name := range sortedKeys(w.inProject) {
 		s := w.inProject[name]
-		who := "whole team"
-		if s.Audience == skills.AudienceAgents {
+		who := "given to nobody yet"
+		if len(s.Agents) > 0 {
 			var ns []string
 			for _, id := range s.Agents {
 				ns = append(ns, names[id])
@@ -537,7 +537,8 @@ Answer with one JSON object and nothing else:
   {"kind": "mcp", "action": "give", "name": "<server id>", "agents": ["<agent id>"], "reason": "..."},
   {"kind": "integration", "action": "add", "name": "<integration kind>", "reason": "..."}
 ]}
-An empty "agents" list on a skill means the whole team. At most %d recommendations. Use only names and ids listed above.
+Every agent is a specialist in its role: give a skill only to the agents whose role needs it, never to everyone, and name
+those agents on every skill recommendation. At most %d recommendations. Use only names and ids listed above.
 `, recommendMaxItems)
 	return b.String()
 }
@@ -619,17 +620,12 @@ func parseRecommend(text string, w recommendWorld) ([]RecommendItem, []string, s
 		case "skill":
 			_, inProject := w.inProject[name]
 			switch {
+			case (action == "add" || action == "give") && len(agentsOut) == 0:
+				// skills belong to agents (P76): a recommendation that names nobody, or the whole team, is not one to apply
+				bad("a skill is given to named agents (the specialists whose role needs it), not to the whole team")
+				continue
 			case action == "add" && inProject:
-				// already in the project: named agents are a give; none widens it to the whole team, unless it reaches them already
-				switch {
-				case len(agentsOut) > 0:
-					it.Action = "give"
-				case w.inProject[name].Audience == skills.AudienceAgents:
-					it.Action = "team"
-				default:
-					bad("already in the project for the whole team")
-					continue
-				}
+				it.Action = "give" // already in the project: adding it for agents is giving it to them
 			case action == "add":
 				ls := w.library[name]
 				var pick *skills.LibrarySkill
@@ -646,9 +642,6 @@ func parseRecommend(text string, w recommendWorld) ([]RecommendItem, []string, s
 				it.RegistryID = pick.RegistryID
 			case (action == "give" || action == "remove") && !inProject:
 				bad("not a skill of the project")
-				continue
-			case action == "give" && len(agentsOut) == 0:
-				bad("give needs the agents")
 				continue
 			case action != "give" && action != "remove":
 				bad("action must be add, give or remove")
@@ -890,11 +883,8 @@ func (c *Core) RecommendApply(ctx context.Context, id, itemID string) (Recommend
 	var note string
 	switch it.Kind + "/" + it.Action {
 	case "skill/add":
-		audience := skills.AudienceTeam
-		if len(it.Agents) > 0 {
-			audience = skills.AudienceAgents
-		}
-		err = call("skill.libraryAdd", map[string]any{"projectId": pid, "registryId": it.RegistryID, "name": it.Name, "audience": audience, "agents": it.Agents})
+		// to the agents the recommendation names (P76: a skill is never added for the whole team)
+		err = call("skill.libraryAdd", map[string]any{"projectId": pid, "registryId": it.RegistryID, "name": it.Name, "audience": skills.AudienceAgents, "agents": it.Agents})
 		note = "added to the project"
 	case "skill/give":
 		for _, a := range it.Agents {
@@ -904,14 +894,8 @@ func (c *Core) RecommendApply(ctx context.Context, id, itemID string) (Recommend
 		}
 		note = "given to the agents"
 	case "skill/team":
-		// the whole team from now on; the agents it was given to keep it
-		var cur skills.Skill
-		if k := c.Knowledge(); k == nil {
-			err = errors.New("no skills service")
-		} else if cur, err = k.Skills.Get(ctx, pid, it.Name); err == nil {
-			err = call("skill.audience", map[string]any{"projectId": pid, "name": it.Name, "audience": skills.AudienceTeam, "agents": cur.Agents})
-		}
-		note = "given to the whole team"
+		// made before P76, when a skill could go to the whole team; skills are given to agents now
+		err = errors.New("this recommendation gave a skill to the whole team; skills are given to agents now, so give it to the agents that need it on the Skills page")
 	case "skill/remove":
 		err = call("skill.release", map[string]any{"projectId": pid, "name": it.Name})
 		note = "no longer used by the project"

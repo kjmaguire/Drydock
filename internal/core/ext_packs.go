@@ -192,6 +192,13 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 	if err := k.Skills.EnsureRegistries(ctx); err != nil {
 		return nil, nil, err
 	}
+	// skills made before decision P76 went to the whole team; from now on each agent's skills are its own, so they are given to
+	// the agents they reached (nobody loses one)
+	if n, err := k.Skills.GiveTeamSkillsToAgents(ctx); err != nil {
+		return nil, nil, err
+	} else if n > 0 {
+		c.logf("skills: %d whole-team skills given to the agents they reached (decision P76)", n)
+	}
 	k.wireContext()
 	k.stopSked = k.Packs.Start(ctx, 15*time.Minute)
 	knowledgeRegistry.Store(c, k)

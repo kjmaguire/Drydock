@@ -14,48 +14,50 @@ async function openSkill(page: Page, name: string) {
 test('skills: given when an agent is made, who gets each one shown and changed, and kept by an edited template', async ({ page }) => {
   await createProject(page, 'skills-picker', freshGreenRepo());
 
-  // the green fixture repository has go-style (roles: Backend); accepted, it goes to every backend agent
+  // the green fixture repository has go-style (roles: Backend); accepted with no agent on the team, it goes to nobody yet (P76)
   await projectNav(page, 'nav-skills');
   await page.getByRole('button', { name: 'Scan the repository for skills' }).click();
   await expect(page.locator('[data-testid=skill-tile][data-name=go-style]')).toHaveAttribute('data-status', 'offered');
   let card = await openSkill(page, 'go-style');
   await card.getByRole('button', { name: 'Accept go-style' }).click();
   await expect(card).toHaveAttribute('data-status', 'accepted');
-  await expect(card.getByTestId('skill-audience-text')).toHaveText('Every Backend agent');
+  await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody yet: give it to the agents that need it');
 
-  // a frontend agent is given it in the new-agent form; a backend agent gets it with the team
+  // a frontend agent is given it in the new-agent form; a backend agent is only offered it as a suggestion, never given it by role
   await projectNav(page, 'nav-team');
   const form = page.getByTestId('agent-form');
   await form.getByLabel('Agent name').fill('Ada');
   await form.getByLabel('Role', { exact: true }).fill('frontend');
   await choose(form.getByLabel('Adapter', { exact: true }), 'claude');
   const box = form.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
-  await expect(form.getByTestId('agent-skills')).toContainText('Now it goes to every Backend agent.');
+  await expect(form.getByTestId('agent-skills')).toContainText('Not given to another agent.');
   await box.check();
   await form.getByRole('button', { name: 'Create agent' }).click();
   await expect(page.getByTestId('agent').filter({ hasText: 'Ada' })).toBeVisible();
   await form.getByLabel('Agent name').fill('Bob');
   await form.getByLabel('Role', { exact: true }).fill('backend');
-  await expect(box).toBeChecked();
-  await expect(box).toBeDisabled();
+  await expect(form.getByTestId('agent-skills')).toContainText('Suggested for backend. Also given to Ada.');
+  await expect(box).not.toBeChecked();
+  await expect(box).toBeEnabled();
   await form.getByRole('button', { name: 'Create agent' }).click();
   await expect(page.getByTestId('agent').filter({ hasText: 'Bob' })).toBeVisible();
 
-  // the Skills page names who gets it, and narrows it to chosen agents starting from those who have it
+  // the Skills page names who gets it, and changes it starting from those who have it: Bob given it, Ada's taken away
   card = await openSkill(page, 'go-style');
-  await expect(card.getByTestId('skill-audience-text')).toHaveText('Every Backend agent, and Ada');
+  await expect(card.getByTestId('skill-audience-text')).toHaveText('Ada');
   await card.getByRole('button', { name: 'Change who gets go-style' }).click();
   const who = card.getByTestId('skill-audience');
-  await who.getByRole('radio', { name: /Only the agents I choose/ }).check();
+  await expect(who.getByRole('radio')).toHaveCount(0);
   await expect(who.getByRole('checkbox', { name: /^Ada/ })).toBeChecked();
-  await expect(who.getByRole('checkbox', { name: /^Bob/ })).toBeChecked();
-  await who.getByRole('checkbox', { name: /^Bob/ }).uncheck();
+  await expect(who.getByRole('checkbox', { name: /^Bob/ })).not.toBeChecked();
+  await who.getByRole('checkbox', { name: /^Bob/ }).check();
+  await who.getByRole('checkbox', { name: /^Ada/ }).uncheck();
   await who.getByRole('button', { name: 'Save who gets go-style' }).click();
-  await expect(card.getByTestId('skill-audience-text')).toHaveText('Only Ada');
+  await expect(card.getByTestId('skill-audience-text')).toHaveText('Bob');
 
-  // the editor shows what Ada has and takes it away
+  // the editor shows what Bob has and takes it away
   await projectNav(page, 'nav-team');
-  await page.getByTestId('agent').filter({ hasText: 'Ada' }).getByRole('button', { name: 'Edit Ada' }).click();
+  await page.getByTestId('agent').filter({ hasText: 'Bob' }).getByRole('button', { name: 'Edit Bob' }).click();
   const editor = page.getByTestId('agent-editor');
   const mine = editor.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
   await expect(mine).toBeChecked();
@@ -63,7 +65,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await editor.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   card = await openSkill(page, 'go-style');
-  await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody: no agent is chosen yet');
+  await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody yet: give it to the agents that need it');
 
   // a template carries a registry skill (one a prebuilt agent comes with) and keeps it when it is edited
   await workspaceNav(page, 'nav-library');

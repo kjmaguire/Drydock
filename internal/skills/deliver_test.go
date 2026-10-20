@@ -26,15 +26,24 @@ func acceptedEnv(t *testing.T) *env {
 		".aet/skills/everywhere/SKILL.md":    skillMD("everywhere", "Applies to all paths", "", "Keep commits small."),
 		".aet/skills/test-names/SKILL.md":    skillMD("test-names", "Test naming", metaLines("**/*.test.ts", "QA"), "Name tests after behavior."),
 	})
+	// skills are given to agents (decision P76): the backend and QA agents are on the team before the scan, so the skills that
+	// name their roles start with them, and the two that name no role are given to the backend agent by a person
+	e.addAgent("agt_backend", "Backend")
+	e.addAgent("agt_qa", "QA")
 	if res, err := e.s.ScanRepo(context.Background(), "p1"); err != nil || res.Accepted != 4 {
 		t.Fatalf("%v %+v", err, res)
+	}
+	for _, n := range []string{"api-style", "everywhere"} {
+		if _, err := e.s.Assign(context.Background(), human, "p1", n, "agt_backend", true); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return e
 }
 
 func TestPlanClaudeRulesAreNativePathScopedAndRoleFiltered(t *testing.T) {
 	e := acceptedEnv(t)
-	plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
+	plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +80,7 @@ func TestPlanClaudeRulesAreNativePathScopedAndRoleFiltered(t *testing.T) {
 	e.gitRun("add", "-A")
 	e.gitRun("commit", "-qm", "braces")
 	e.s.ScanRepo(context.Background(), "p1")
-	plan, _ = e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "", Delivery: DeliveryAll})
+	plan, _ = e.s.Plan(context.Background(), Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "", Delivery: DeliveryAll})
 	for _, f := range plan.Files {
 		if strings.HasSuffix(f.Path, "braces.md") && !strings.Contains(f.Content, "src/**/*.{ts,tsx}") {
 			t.Fatalf("%s", f.Content)
@@ -107,7 +116,7 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	e := acceptedEnv(t)
 	ctx := context.Background()
 	asImported(t, e, "api-style", "d1-migrations", "everywhere")
-	plan, err := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant, Hints: []string{"src/api/users.ts"}})
+	plan, err := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant, Hints: []string{"src/api/users.ts"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +156,7 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 		t.Fatalf("the index lists only on-demand skills, never a body:\n%s", plan.Note)
 	}
 	// no file hints: no imported skill can be matched, so every imported skill is on demand
-	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant})
+	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Delivery: DeliveryRelevant})
 	for _, f := range plan.Files {
 		if f.Method != MethodClaudeOnDemand {
 			t.Fatalf("without hints: %+v", f)
@@ -157,7 +166,7 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 	if DeliveryOf("") != DeliveryRelevant || DeliveryOf("bogus") != DeliveryRelevant {
 		t.Fatal("the default is relevant")
 	}
-	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
+	plan, _ = e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
 	if len(plan.Files) != 3 || plan.Index || plan.Note != "" || len(plan.OnDemand) != 0 {
 		t.Fatalf("all: %+v", plan)
 	}
@@ -167,7 +176,7 @@ func TestPlanClaudeRelevantPutsOnlyMatchingSkillsIntoTheTurn(t *testing.T) {
 		}
 	}
 	// other CLIs ignore the setting
-	cx, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "codex", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
+	cx, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "codex", Delivery: DeliveryAll, Hints: []string{"src/api/users.ts"}})
 	if len(cx.OnDemand) != 1 {
 		t.Fatalf("%+v", cx)
 	}
@@ -188,7 +197,7 @@ func TestPlanClaudeRelevantLoadsTheRepositorysOwnSkills(t *testing.T) {
 		{[]string{"src/api/users.ts"}, MethodClaudeRules + "/" + FidelityRunStart},
 		{[]string{"README.md"}, MethodClaudeOnDemand + "/" + FidelityOnDemand},
 	} {
-		plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Hints: c.hints})
+		plan, err := e.s.Plan(context.Background(), Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Hints: c.hints})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -209,7 +218,7 @@ func TestPlanForCLIsWithoutNativeScoping(t *testing.T) {
 	e := acceptedEnv(t)
 	ctx := context.Background()
 	// Gemini: nested GEMINI.md for directory-anchored globs, the rest on demand
-	gem, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "gemini"})
+	gem, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "gemini"})
 	paths := map[string]PlannedFile{}
 	for _, f := range gem.Files {
 		paths[f.Path] = f
@@ -226,14 +235,14 @@ func TestPlanForCLIsWithoutNativeScoping(t *testing.T) {
 		t.Fatalf("%+v", gem)
 	}
 	// Goose: nested AGENTS.md
-	gs, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "goose"})
+	gs, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "goose"})
 	for _, f := range gs.Files {
 		if !strings.HasSuffix(f.Path, "/AGENTS.md") {
 			t.Fatalf("%s", f.Path)
 		}
 	}
 	// Codex: run-start selection by task file hints into .agents/skills, the rest on demand
-	cx, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "codex", Hints: []string{"src/api/users.ts", "README.md"}})
+	cx, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "codex", Hints: []string{"src/api/users.ts", "README.md"}})
 	cp := map[string]PlannedFile{}
 	for _, f := range cx.Files {
 		cp[f.Path] = f
@@ -253,7 +262,7 @@ func TestPlanForCLIsWithoutNativeScoping(t *testing.T) {
 		t.Fatalf("%v %+v", err, ps)
 	}
 	// with no hints only global skills are copied
-	cx2, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "opencode"})
+	cx2, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "opencode"})
 	if len(cx2.Files) != 1 || cx2.Files[0].Skills[0] != "everywhere" {
 		t.Fatalf("%v", cx2.Files)
 	}
@@ -275,7 +284,7 @@ func TestContextEngineWritesRulesIntoRealWorktree(t *testing.T) {
 	var delivered []string
 	eng := &ctxeng.Engine{DB: e.db, Memory: memory.Store{DB: e.db}}
 	eng.Files = func(ctx context.Context, projectID, worktree string) ([]ctxeng.ExtraFile, error) {
-		plan, err := e.s.Plan(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
+		plan, err := e.s.Plan(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
 		if err != nil {
 			return nil, err
 		}
@@ -286,7 +295,7 @@ func TestContextEngineWritesRulesIntoRealWorktree(t *testing.T) {
 				Done: func(ctx context.Context, written bool) {
 					if written {
 						delivered = append(delivered, f.Skills[0])
-						e.s.RecordDelivery(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_1", Role: "Backend"}, "", f.Skills[0], f.Hash, f.Method, f.Fidelity, f.Path)
+						e.s.RecordDelivery(ctx, Target{ProjectID: projectID, TaskID: "task_1", AgentID: "agt_backend", Role: "Backend"}, "", f.Skills[0], f.Hash, f.Method, f.Fidelity, f.Path)
 					}
 				}})
 		}
@@ -361,7 +370,7 @@ func TestSkillsToolThroughTheRealGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer g.Close()
-	ep, err := g.StartRun(mcp.RunConfig{Info: mcp.RunInfo{RunID: "r1", ProjectID: "p1", TaskID: "task_9", AgentID: "agt_9", Role: "Backend"}, Policy: mcp.RunPolicy{Allow: map[string][]string{"workspace": {"skills"}}}})
+	ep, err := g.StartRun(mcp.RunConfig{Info: mcp.RunInfo{RunID: "r1", ProjectID: "p1", TaskID: "task_9", AgentID: "agt_backend", Role: "Backend"}, Policy: mcp.RunPolicy{Allow: map[string][]string{"workspace": {"skills"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +400,7 @@ func TestSkillsToolThroughTheRealGateway(t *testing.T) {
 		}
 	}
 	if len(list) != 3 || names["test-names"] || names["workers-style"] {
-		t.Fatalf("Backend sees accepted, role-matching skills only (not the QA one, not the merely offered one): %v", names)
+		t.Fatalf("the backend agent sees the accepted skills given to it only (not the QA one, not the merely offered one): %v", names)
 	}
 	txt, _ = call(map[string]any{"action": "for_paths", "paths": []string{"migrations/0002_users.sql", "README.md"}})
 	body, _ = mcp.ExtractBody(txt)
@@ -418,7 +427,7 @@ func TestSkillsToolThroughTheRealGateway(t *testing.T) {
 		t.Fatalf("%+v", ds)
 	}
 	for _, d := range ds {
-		if d.Method != MethodTool || d.Fidelity != FidelityOnDemand || d.AgentID != "agt_9" {
+		if d.Method != MethodTool || d.Fidelity != FidelityOnDemand || d.AgentID != "agt_backend" {
 			t.Fatalf("%+v", d)
 		}
 	}

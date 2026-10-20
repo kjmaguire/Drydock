@@ -48,10 +48,13 @@ const (
 	OriginRegistry = "registry"
 )
 
-// Audiences: who receives an accepted skill (SetAudience).
+// Audiences: who receives an accepted skill (SetAudience). Since decision P76 every skill is for chosen agents: an agent is a
+// specialist in its role, not a jack of all trades, so a skill reaches exactly the agents it is given to. AudienceTeam is only
+// read: skills made before P76 (and in older project archives) carry it until GiveTeamSkillsToAgents turns them into skills
+// for the agents they reached.
 const (
-	// AudienceTeam is every agent whose role matches the skill's drydock.roles (every agent when it names none), agents added
-	// later included, plus each agent the skill is given to (Assign).
+	// AudienceTeam (before P76) was every agent whose role matched the skill's drydock.roles (every agent when it named
+	// none), agents added later included, plus each agent the skill was given to.
 	AudienceTeam = "team"
 	// AudienceAgents is only the agents the skill is given to.
 	AudienceAgents = "agents"
@@ -312,8 +315,13 @@ func (s *Service) upsert(ctx context.Context, projectID string, r record) (Skill
 			_, e = tx.ExecContext(ctx, `INSERT INTO skills(`+skillCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				id, projectID, r.ps.Name, r.ps.Description, body, r.license, r.ps.Compatibility, string(globs), string(roles), r.origin, r.registry, r.source, r.pinned,
 				r.hash, b2i(r.scripts), b2i(r.ps.AllowedTools != ""), status, r.verdict.Risk, strings.Join(r.verdict.Flags, ","), r.reason, decidedBy, decidedAt, now, now, string(notes),
-				AudienceTeam)
-			return e
+				AudienceAgents)
+			if e != nil {
+				return e
+			}
+			// a new skill is for chosen agents (P76); one that names the roles it is for starts with the agents of those roles,
+			// one that names none starts with nobody until a person gives it to an agent
+			return giveByRoles(ctx, tx, projectID, r.ps.Name, r.ps.Roles, "drydock:roles", now)
 		case e != nil:
 			return e
 		}

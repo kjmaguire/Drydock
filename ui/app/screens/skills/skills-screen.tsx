@@ -5,7 +5,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { BookOpen, Cpu, GitBranch, Plus, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, Users } from 'lucide';
-import type { LibrarySkill, Skill, SkillDelivery, SkillLibraryAddAll, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
+import type { LibrarySkill, Skill, SkillDelivery, SkillRegistry, SkillRegistryStatus, SkillScan } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
@@ -23,12 +23,12 @@ import { AudienceEditor } from './audience.tsx';
 import { Recommendations } from './recommendations.tsx';
 import { pickKey, ProjectSkillRows, SkillLogo, SkillRows } from './skill-rows.tsx';
 import {
-  addAllText,
   addSelectedText,
   addedText,
   audienceText,
   coverageText,
   formatCount,
+  inWords,
   libraryGroups,
   listOr,
   newInLibrary,
@@ -113,6 +113,18 @@ const chipsCss = css({
   '& button:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
 const rowCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' });
+// the agents a Library skill is added for, in one wrapping row of boxes
+const forCss = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: `${t.s1} ${t.s4}`,
+  margin: '0',
+  padding: '0',
+  border: '0',
+  minWidth: '0',
+  '& legend': { float: 'left', marginRight: t.s3, fontSize: t.textSm, fontWeight: '500', color: t.text },
+});
 const formCss = css({ display: 'grid', gap: t.s4 });
 const usageCss = css({
   '& td, & th': { whiteSpace: 'nowrap' },
@@ -134,7 +146,7 @@ export function SkillPanel(
     /** The project's team, for who gets the skill. */
     agents?: readonly Agent[];
     /** Set who gets the skill; resolves true when it was saved. */
-    onAudience?: (audience: 'team' | 'agents', agents: string[]) => Promise<boolean>;
+    onAudience?: (agents: string[]) => Promise<boolean>;
     deliveries?: readonly SkillDelivery[];
     busy: boolean;
     /** Rendered inside the open row of the project's list: no frame of its own. */
@@ -176,7 +188,7 @@ export function SkillPanel(
         {s.description ? <p class="desc">{s.description}</p> : null}
         <dl mix={kv}>
           <dt>Goes to</dt>
-          <dd data-testid="skill-audience-text">{s.status === 'accepted' ? who : `${who}, once accepted`}</dd>
+          <dd data-testid="skill-audience-text">{s.status === 'accepted' || (s.agents ?? []).length === 0 ? who : `${who}, once accepted`}</dd>
           <dt>Roles it names</dt>
           <dd>{listOr(s.roles)}</dd>
           <dt>Paths</dt>
@@ -282,8 +294,8 @@ export function SkillPanel(
             agents={agents}
             busy={busy}
             onCancel={() => set(() => (editing = false))}
-            onSave={async (audience, chosen) => {
-              if (await onAudience(audience, chosen)) set(() => (editing = false));
+            onSave={async (chosen) => {
+              if (await onAudience(chosen)) set(() => (editing = false));
             }}
           />
         ) : null}
@@ -304,6 +316,8 @@ function AddFromLibrary(
     projectName: string;
     skills: readonly Skill[];
     statuses: readonly SkillRegistryStatus[];
+    /** The project's team: a skill is added for the agents chosen among them (decision P76). */
+    agents: readonly Agent[];
     /** Bumped by the page when a registry was synced from elsewhere on it: the Library is re-read. */
     epoch?: number;
     onAdded: (name: string) => void;
@@ -318,41 +332,32 @@ function AddFromLibrary(
   const act = action(handle);
   let registry = '';
   let picked = new Set<string>();
-  let added: { names: string[]; project: string } | undefined;
-  let result: { repo: string; r: SkillLibraryAddAll } | undefined;
+  // the agents the skills are added for: each agent is a specialist, so a skill goes to the ones that need it, never to all
+  let forAgents: string[] = [];
+  let added: { names: string[]; project: string; who: string } | undefined;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
   const addMany = async (ls: readonly LibrarySkill[]) => {
-    const { projectId, projectName, onAdded } = handle.props;
+    const { projectId, projectName, onAdded, agents } = handle.props;
+    const to = forAgents.filter((id) => agents.some((a) => a.id === id));
+    if (to.length === 0) return;
     const done: string[] = [];
     await act.run('add', async () => {
       for (const l of ls) {
-        await s.client.skillLibraryAdd(projectId, l.registryId, l.name);
+        await s.client.skillLibraryAdd(projectId, l.registryId, l.name, 'agents', to);
         done.push(l.name);
       }
       return true;
     });
     if (done.length > 0) {
+      const who = inWords(to.map((id) => agents.find((a) => a.id === id)?.name ?? id));
       set(() => {
-        added = { names: done, project: projectName };
-        result = undefined;
+        added = { names: done, project: projectName, who };
         picked = new Set();
       });
       onAdded(done.length === 1 ? done[0]! : '');
-    }
-  };
-  const addAll = async (registryId: string, repo: string) => {
-    const r = await act.run('addAll', () => s.client.skillLibraryAddAll(handle.props.projectId, registryId));
-    if (r) {
-      set(() => {
-        result = { repo, r };
-        added = undefined;
-        picked = new Set();
-      });
-      lib.reload();
-      handle.props.onAdded('');
     }
   };
   const sync = async () => {
@@ -360,7 +365,8 @@ function AddFromLibrary(
     lib.reload();
   };
   return () => {
-    const { skills, projectName, statuses } = handle.props;
+    const { skills, projectName, statuses, agents } = handle.props;
+    const to = forAgents.filter((id) => agents.some((a) => a.id === id));
     const all = notInProject(lib.data ?? [], skills);
     const groups = libraryGroups(all);
     const chosen = groups.some((g) => g.registryId === registry) ? registry : '';
@@ -372,31 +378,12 @@ function AddFromLibrary(
       <Section
         label="Add from the Library"
         title="Add from the Library"
-        description="Pick skills to add: adding is your acceptance, and they reach agents at once."
+        description="Pick skills and the agents that need them: adding is your acceptance."
       >
         <ErrorNote error={lib.error ?? act.error} what="Library" />
         {added ? (
           <Notice tone="ok" role="status" testId="skill-added">
-            {added.names.length === 1 ? addedText(added.names[0]!, added.project) : `${added.names.length} skills were added to ${added.project} and are accepted ✓: ${added.names.join(', ')}`}
-          </Notice>
-        ) : null}
-        {result ? (
-          <Notice tone={result.r.blocked.length + result.r.skipped.length > 0 ? 'warn' : 'ok'} role="status" testId="skill-added-all" title={`From ${result.repo}:`}>
-            {addAllText(result.r)}
-            {result.r.blocked.length + result.r.skipped.length > 0 ? (
-              <ul aria-label={`Skills not added from ${result.repo}`} style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
-                {result.r.blocked.map((b) => (
-                  <li key={`b-${b.name}`}>
-                    <code>{b.name}</code> blocked: {b.reason}
-                  </li>
-                ))}
-                {result.r.skipped.map((k) => (
-                  <li key={`s-${k.name}`}>
-                    <code>{k.name}</code> skipped: {k.reason}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            {added.names.length === 1 ? addedText(added.names[0]!, added.project) : `${added.names.length} skills were added to ${added.project} and are accepted ✓: ${added.names.join(', ')}`} For {added.who}.
           </Notice>
         ) : null}
         {lib.loading && !lib.data ? <Loading /> : null}
@@ -429,35 +416,40 @@ function AddFromLibrary(
                 ))}
               </div>
             </div>
+            <fieldset mix={forCss} data-testid="library-for-agents">
+              <legend>For</legend>
+              {agents.length === 0 ? <span class="note">Add an agent to the crew first: skills are given to agents.</span> : null}
+              {agents.map((a) => (
+                <Checkbox
+                  key={a.id}
+                  label={`${a.name} (${a.role})`}
+                  checked={to.includes(a.id)}
+                  onChange={(v) => set(() => (forAgents = v ? [...to.filter((x) => x !== a.id), a.id] : to.filter((x) => x !== a.id)))}
+                />
+              ))}
+            </fieldset>
             <div mix={rowCss}>
               <Button
                 variant="primary"
                 size="sm"
                 icon={Plus}
-                disabled={act.busy !== '' || pickedSkills.length === 0}
+                disabled={act.busy !== '' || pickedSkills.length === 0 || to.length === 0}
                 data-testid="library-add-picked"
                 mix={on('click', () => void addMany(pickedSkills))}
               >
-                {act.busy === 'add' ? 'Adding...' : pickedSkills.length === 0 ? 'Pick skills to add' : addSelectedText(pickedSkills.map((l) => l.name), projectName)}
+                {act.busy === 'add'
+                  ? 'Adding...'
+                  : pickedSkills.length === 0
+                    ? 'Pick skills to add'
+                    : to.length === 0
+                      ? 'Choose the agents first'
+                      : addSelectedText(pickedSkills.map((l) => l.name), projectName)}
               </Button>
               {pickedSkills.length > 0 ? (
                 <Button size="sm" variant="ghost" mix={on('click', () => set(() => (picked = new Set())))}>
                   Clear
                 </Button>
               ) : null}
-              {(chosen ? groups.filter((g) => g.registryId === chosen) : groups).map((g) => (
-                <Button
-                  key={g.registryId}
-                  size="sm"
-                  icon={Plus}
-                  disabled={act.busy !== ''}
-                  data-testid="library-add-all"
-                  data-registry={g.registryId}
-                  mix={on('click', () => void addAll(g.registryId, g.repo))}
-                >
-                  Add all from {g.repo}
-                </Button>
-              ))}
             </div>
             <SkillRows
               skills={shown}
@@ -475,7 +467,15 @@ function AddFromLibrary(
               label="Skills in the Library"
               testId="library-skill-tile"
               actions={(l) => (
-                <Button variant="primary" size="sm" icon={Plus} disabled={act.busy !== ''} data-testid="library-add" mix={on('click', () => void addMany([l]))}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Plus}
+                  disabled={act.busy !== '' || to.length === 0}
+                  title={to.length === 0 ? 'Choose the agents it is for above' : undefined}
+                  data-testid="library-add"
+                  mix={on('click', () => void addMany([l]))}
+                >
                   {act.busy === 'add' ? 'Adding...' : `Add to ${projectName}`}
                 </Button>
               )}
@@ -907,10 +907,10 @@ export function SkillsScreen(handle: Handle) {
                   onRelease={decide(s.client.skillRelease, open.name)}
                   agents={s.project.agentList}
                   deliveries={deliveries}
-                  onAudience={async (audience, agents) => {
+                  onAudience={async (agents) => {
                     const projectId = pid();
                     if (!projectId) return false;
-                    const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, open.name, audience, agents)));
+                    const ok = !!(await act.run('audience', () => s.client.skillAudience(projectId, open.name, 'agents', agents)));
                     q.reload();
                     return ok;
                   }}
@@ -926,6 +926,7 @@ export function SkillsScreen(handle: Handle) {
             projectName={projectName}
             skills={skills}
             statuses={st.data ?? []}
+            agents={s.project.agentList}
             epoch={synced}
             onAdded={(name) => {
               if (name) set(() => (selected = name));

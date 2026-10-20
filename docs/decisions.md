@@ -725,3 +725,24 @@ Open, owner action:
   the docs; nobody who has not built Drydock has read them yet. The look on Windows (Segoe UI at 125-150 %) of the larger switches and
   the table is not seen.
 
+
+- **P76. Skills belong to agents, never to the whole team; the Crew page is a dashboard (2026-10-20, on the owner's words: "Remember
+  skills are agent-based, not entire project-based. Each agent needs to be a specialist. We don't want all our agents being the jack of
+  all trades. They need to master their role", "we don't see the ability to add or remove skills from Agents when in the project", and
+  "let's not show the first agent on the window; let's see more of a dashboard ... and let us click on the agents to see the additional
+  info").** Supersedes the whole-team audience of P35. (1) **Who gets a skill**: only the agents it is given to (`skills.Reaches`). A
+  new skill starts with the agents whose role it names (`drydock.roles`), or with nobody when it names none; an agent added later gets
+  nothing by its role. `skill.audience` refuses the whole team with the reason; a Library add takes the agents chosen (they replace the
+  role's suggestion). (2) **Existing skills**: every whole-team skill is given, at start and after a project import, to the agents it
+  reached (its roles' agents and the agents given it); nobody loses a skill (`GiveTeamSkillsToAgents`, logged and published as
+  `skill.audience` by `drydock:P76`). (3) **Where**: an agent's own page lists its skills, each with Remove, and adds more from the
+  project's skills or straight from the Library for that agent alone, a skill naming its role first, marked as suggested; the Skills
+  page asks which agents before adding from the Library (no "Add all from a registry" there any more) and its editor is a list of
+  agents; the new-agent and edit forms tick skills, nothing locked by role. (4) **The lead's recommendations** name the agents for
+  every skill; one for nobody in particular is dropped with the reason, and an older "whole team" item cannot be applied. (5) **The
+  trial's Drydock arm** gives its bundle to the worker and the reviewer, as every recorded run had it. (6) **Crew**: the figures (at
+  work now, tasks in progress or review, tasks waiting for you, skills given and agents with none), then one compact row per agent
+  (dot, name and role, what it is doing now and its task, CLI and model, its skill count, its actions); a row opens the agent's page.
+  Tests: the skills package (giving by role at insert, refusing the team, converting old skills with nothing lost), the core (start-up
+  conversion, prebuilt agents, recommendations), the screens, and `ui/e2e/agent-skills.spec.ts` (a Library skill added on one agent's
+  page reaches only that agent, and Remove takes it away). **Not verified:** whether agents do better as specialists; no trial was run.

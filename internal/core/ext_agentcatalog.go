@@ -449,23 +449,21 @@ func (c *Core) installSkillsFor(ctx context.Context, ag Agent, refs []agentcatal
 				continue
 			}
 		}
-		// Who gets it is left as the project has it whenever the skill already reached agents: a whole-team skill whose roles
-		// match the newcomer is shared as it is, and otherwise the newcomer is given it as well, which takes it from nobody. A
-		// skill that reached nobody before this choice (new to the project, or never accepted) comes with this agent, so it goes
-		// to this agent (and to any agent it was already given to); the human can give it to the team on the Skills page.
+		// Skills belong to agents (decision P76): the skill comes with this agent, so it is given to this agent. One the project
+		// already had keeps the agents it was given to and gains this one; one new to the project (or never accepted) goes to this
+		// agent and to any agent a person had given it, not to the other agents its roles name.
 		reached := existed && before.Status == skills.StatusAccepted
-		switch {
-		case reached && cur.Audience != skills.AudienceAgents && cur.Status == skills.StatusAccepted && skills.RolesMatch(cur.Roles, ag.Role):
-			res.Shared = append(res.Shared, ref.Name)
-			continue
-		case reached || cur.Audience == skills.AudienceAgents:
+		if reached {
 			if cur, err = k.Skills.Assign(ctx, c.Human(), ag.ProjectID, ref.Name, ag.ID, true); err != nil {
 				res.Failed = append(res.Failed, Skipped{Name: ref.Name, Reason: err.Error()})
 				continue
 			}
 			k.audit(ctx, "skill.assign", ref.Name, map[string]any{"project": ag.ProjectID, "agent": ag.ID, "on": true, "via": via})
-		default:
-			given := append(append([]string{}, cur.Agents...), ag.ID)
+		} else {
+			given := []string{ag.ID}
+			if existed {
+				given = append(append([]string{}, before.Agents...), ag.ID)
+			}
 			if cur, err = k.Skills.SetAudience(ctx, c.Human(), ag.ProjectID, ref.Name, skills.AudienceAgents, given); err != nil {
 				res.Failed = append(res.Failed, Skipped{Name: ref.Name, Reason: err.Error()})
 				continue

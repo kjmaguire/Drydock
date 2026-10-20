@@ -6,7 +6,6 @@ import {
   addSelectedText,
   addedText,
   audienceText,
-  byRole,
   coverageText,
   formatCount,
   inWords,
@@ -25,6 +24,7 @@ import {
   registryTileText,
   registryUpdates,
   rolesMatch,
+  suggestsRole,
   scanText,
   shortDescription,
   skillBrand,
@@ -130,16 +130,15 @@ describe('Skills helpers', () => {
     expect(skillBrand(undefined, 'registry')).toBe('');
   });
 
-  it('writes a project skill\'s state: accepted with a check and who gets it, offered, rejected, blocked, or an update in the Library', () => {
-    expect(skillStateText({ status: 'accepted', audience: 'team', agents: [] }, false)).toEqual({ text: 'Accepted ✓ · whole team', tone: 'ok' });
-    expect(skillStateText({ status: 'accepted', audience: 'team', agents: ['a'] }, false).text).toBe('Accepted ✓ · whole team');
-    expect(skillStateText({ status: 'accepted', audience: 'agents', agents: ['a', 'b'] }, false)).toEqual({ text: 'Accepted ✓ · 2 agents', tone: 'ok' });
-    expect(skillStateText({ status: 'accepted', audience: 'agents', agents: ['a'] }, false).text).toBe('Accepted ✓ · 1 agent');
-    expect(skillStateText({ status: 'accepted', audience: 'agents', agents: null }, false).text).toBe('Accepted ✓ · 0 agents');
-    expect(skillStateText({ status: 'offered', audience: 'team', agents: [] }, false)).toEqual({ text: 'Offered', tone: 'warn' });
-    expect(skillStateText({ status: 'rejected', audience: 'team', agents: [] }, false)).toEqual({ text: 'Rejected', tone: '' });
-    expect(skillStateText({ status: 'blocked', audience: 'team', agents: [] }, false)).toEqual({ text: 'Blocked', tone: 'bad' });
-    expect(skillStateText({ status: 'accepted', audience: 'team', agents: [] }, true)).toEqual({ text: 'Update in the Library', tone: 'warn' });
+  it('writes a project skill\'s state: accepted with a check and how many agents get it, offered, rejected, blocked, or an update in the Library', () => {
+    expect(skillStateText({ status: 'accepted', agents: ['a', 'b'] }, false)).toEqual({ text: 'Accepted ✓ · 2 agents', tone: 'ok' });
+    expect(skillStateText({ status: 'accepted', agents: ['a'] }, false).text).toBe('Accepted ✓ · 1 agent');
+    // given to nobody: accepted, but no agent gets it yet (P76: never the whole team)
+    expect(skillStateText({ status: 'accepted', agents: null }, false)).toEqual({ text: 'Accepted ✓ · no agent yet', tone: 'warn' });
+    expect(skillStateText({ status: 'offered', agents: [] }, false)).toEqual({ text: 'Offered', tone: 'warn' });
+    expect(skillStateText({ status: 'rejected', agents: [] }, false)).toEqual({ text: 'Rejected', tone: '' });
+    expect(skillStateText({ status: 'blocked', agents: [] }, false)).toEqual({ text: 'Blocked', tone: 'bad' });
+    expect(skillStateText({ status: 'accepted', agents: [] }, true)).toEqual({ text: 'Update in the Library', tone: 'warn' });
   });
 
   it('names the project skills whose library text is newer, from every registry', () => {
@@ -260,33 +259,29 @@ describe('Skills helpers', () => {
     expect(rolesMatch(['Frontend'], 'backend')).toBe(false);
   });
 
-  it('decides who a skill reaches like internal/skills Reaches', () => {
-    const team = { audience: 'team', roles: ['Frontend'], agents: ['agt_b'] };
-    expect(reaches(team, 'agt_a', 'frontend')).toBe(true); // by role
-    expect(reaches(team, 'agt_b', 'backend')).toBe(true); // given on top of the team
-    expect(reaches(team, 'agt_c', 'backend')).toBe(false);
-    expect(byRole(team, 'frontend')).toBe(true);
-    expect(byRole(team, 'backend')).toBe(false);
-    const chosen = { audience: 'agents', roles: [], agents: ['agt_b'] };
-    expect(reaches(chosen, 'agt_b', 'backend')).toBe(true);
-    expect(reaches(chosen, 'agt_a', 'backend')).toBe(false); // roles do not count for chosen agents
-    expect(byRole(chosen, 'backend')).toBe(false);
-    expect(reaches({ audience: 'agents', roles: null, agents: null }, '', 'qa')).toBe(false);
+  it('decides who a skill reaches like internal/skills Reaches: only the agents it is given to (P76)', () => {
+    const k = { roles: ['Frontend'], agents: ['agt_b'] };
+    expect(reaches(k, 'agt_b')).toBe(true);
+    expect(reaches(k, 'agt_a')).toBe(false); // a role the skill names does not give it
+    expect(reaches({ roles: null, agents: null }, '')).toBe(false);
+    // the role it names only makes it a suggestion for that agent; a skill naming no role suggests nobody
+    expect(suggestsRole(k, ' frontend ')).toBe(true);
+    expect(suggestsRole(k, 'backend')).toBe(false);
+    expect(suggestsRole({ roles: [] }, 'backend')).toBe(false);
   });
 
   it('says who gets a skill in words', () => {
     const names: Record<string, string> = { agt_a: 'Ada', agt_b: 'Bob', agt_c: 'Cy' };
     const name = (id: string) => names[id] ?? id;
-    expect(audienceText({ audience: 'team', roles: [], agents: [] }, name)).toBe('The whole team');
-    expect(audienceText({ audience: 'team', roles: ['Database', 'Backend'], agents: ['agt_a'] }, name)).toBe('Every Database or Backend agent, and Ada');
-    expect(audienceText({ audience: 'agents', roles: ['QA'], agents: ['agt_a', 'agt_b', 'agt_c'] }, name)).toBe('Only Ada, Bob and Cy');
-    expect(audienceText({ audience: 'agents', roles: null, agents: null }, name)).toBe('Nobody: no agent is chosen yet');
+    expect(audienceText({ roles: ['QA'], agents: ['agt_a', 'agt_b', 'agt_c'] }, name)).toBe('Ada, Bob and Cy');
+    expect(audienceText({ roles: [], agents: ['agt_a'] }, name)).toBe('Ada');
+    expect(audienceText({ roles: null, agents: null }, name)).toBe('Nobody yet: give it to the agents that need it');
     expect(inWords([])).toBe('');
     expect(inWords(['a', 'b'], 'or')).toBe('a or b');
   });
 
   it('leaves out agents removed from the team once the team is known', () => {
-    const k = { audience: 'agents', roles: [], agents: ['agt_a', 'agt_gone'] };
+    const k = { roles: [], agents: ['agt_a', 'agt_gone'] };
     expect(onTeam(k, [{ id: 'agt_a' }]).agents).toEqual(['agt_a']);
     expect(onTeam(k, []).agents).toEqual(['agt_a', 'agt_gone']);
   });

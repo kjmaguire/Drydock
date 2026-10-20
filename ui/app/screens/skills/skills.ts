@@ -72,15 +72,14 @@ export function registryUpdates(statuses: readonly SkillRegistryStatus[] | undef
 }
 
 /**
- * A project skill's state line on its tile: "Accepted ✓ · whole team" / "Accepted ✓ · 2 agents", "Offered", "Rejected", "Blocked",
- * or "Update in the Library" when the library's text is newer than this copy.
+ * A project skill's state line on its tile: "Accepted ✓ · 2 agents" / "Accepted ✓ · no agent yet", "Offered", "Rejected",
+ * "Blocked", or "Update in the Library" when the library's text is newer than this copy. Skills are given to agents (P76).
  */
-export function skillStateText(s: Pick<Skill, 'status' | 'audience' | 'agents'>, hasUpdate: boolean): { text: string; tone: TileTone } {
+export function skillStateText(s: Pick<Skill, 'status' | 'agents'>, hasUpdate: boolean): { text: string; tone: TileTone } {
   if (hasUpdate) return { text: 'Update in the Library', tone: 'warn' };
   if (s.status === 'accepted') {
     const n = (s.agents ?? []).length;
-    const who = s.audience === 'agents' ? `${n} agent${n === 1 ? '' : 's'}` : 'whole team';
-    return { text: `Accepted ✓ · ${who}`, tone: 'ok' };
+    return n === 0 ? { text: 'Accepted ✓ · no agent yet', tone: 'warn' } : { text: `Accepted ✓ · ${n} agent${n === 1 ? '' : 's'}`, tone: 'ok' };
   }
   if (s.status === 'offered') return { text: 'Offered', tone: 'warn' };
   if (s.status === 'blocked') return { text: 'Blocked', tone: 'bad' };
@@ -139,7 +138,7 @@ export function recommendationBadge(rec: string): { tone: Tone; text: string } {
 /** A list as words, with a fallback for none ('all'). */
 export const listOr = (xs: readonly string[] | null | undefined, none = 'all'): string => (xs ?? []).join(', ') || none;
 
-type Audience = Pick<Skill, 'audience' | 'roles' | 'agents'>;
+type Audience = Pick<Skill, 'roles' | 'agents'>;
 
 /**
  * Whether a skill's roles take in an agent's role: no roles listed means every role (internal/skills RolesMatch; a skill's
@@ -151,12 +150,12 @@ export function rolesMatch(roles: readonly string[] | null | undefined, role: st
   return rs.length === 0 || rs.some((x) => x.toLowerCase() === r);
 }
 
-/** Whether a whole-team skill reaches every agent with this role, whatever the agent is given. */
-export const byRole = (s: Audience, role: string): boolean => s.audience !== 'agents' && rolesMatch(s.roles, role);
+/** Whether a skill goes to an agent: only to the agents it is given to (decision P76: each agent is a specialist; internal/skills
+ * Reaches). */
+export const reaches = (s: Audience, agentId: string): boolean => agentId !== '' && (s.agents ?? []).includes(agentId);
 
-/** Whether a skill goes to an agent: a whole-team skill to every agent its roles take in and to each agent given it, a skill for
- * chosen agents only to those (internal/skills Reaches). */
-export const reaches = (s: Audience, agentId: string, role: string): boolean => (agentId !== '' && (s.agents ?? []).includes(agentId)) || byRole(s, role);
+/** Whether a skill names the agent's role among its own: such an agent is the one it suggests, never one that gets it by role. */
+export const suggestsRole = (s: Pick<Skill, 'roles'>, role: string): boolean => (s.roles ?? []).length > 0 && rolesMatch(s.roles, role);
 
 /** The skill with only the agents still on the team (a removed agent keeps its rows but gets nothing); unchanged while the team
  * list is empty (not loaded yet). */
@@ -172,10 +171,7 @@ export function inWords(xs: readonly string[], and = 'and'): string {
 /** Who gets a skill, in words. nameOf turns an agent id into its name. */
 export function audienceText(s: Audience, nameOf: (id: string) => string): string {
   const given = inWords((s.agents ?? []).map(nameOf));
-  if (s.audience === 'agents') return given ? `Only ${given}` : 'Nobody: no agent is chosen yet';
-  const roles = s.roles ?? [];
-  const team = roles.length > 0 ? `Every ${inWords(roles, 'or')} agent` : 'The whole team';
-  return given ? `${team}, and ${given}` : team;
+  return given || 'Nobody yet: give it to the agents that need it';
 }
 
 /** The skills to give an agent and to take away from it (agent.create skills, agent.update addSkills / removeSkills). */

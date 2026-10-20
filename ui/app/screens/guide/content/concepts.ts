@@ -165,7 +165,7 @@ export const CONCEPTS: readonly Topic[] = [
         ul: [
           'A **skill** is a set of instructions agents read. The [Library](/library/skills) holds every skill of the registries you enabled. Drydock fills it from the allowed GitHub repositories, pinned to a commit, at start and twice a day. Nothing reaches a project until you add it, and adding is your acceptance.',
           'Skills found in the repository itself are offered until you accept them. Accepted skills reach agents as path-scoped rule files that stay out of the diff.',
-          'A **whole-team** skill reaches every agent its roles take in; the switch on an agent’s page gives that agent a skill of its own or takes it away.',
+          'Skills belong to **agents**, never to the whole team: each agent is a specialist in its role. Give an agent its skills on its own page (Crew, then the agent), where you can also add one straight from the Library. A skill that names a role is suggested for the agents of that role.',
           '**Usage** shows what each skill cost and whether it was read. **Loaded**: its full text went into a run. **Listed**: it was only named, for on-demand reading. **Opened**: an agent read it on demand.',
           '**Recommendations** are made by an agent of your team from the project’s plan, tasks and team. You apply or dismiss each one.',
         ],

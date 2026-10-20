@@ -418,7 +418,7 @@ const sk = (name: string, over: Partial<Skill> = {}): Skill => ({
   origin: 'repo',
   contentHash: 'h',
   status: 'accepted',
-  audience: 'team',
+  audience: 'agents',
   agents: [],
   created: '',
   updated: '',
@@ -439,43 +439,38 @@ describe('Team: skills', () => {
   const skills = [
     sk('everyone'),
     sk('react', { roles: ['Frontend'] }),
-    sk('wrangler', { audience: 'agents', agents: ['agt_9'] }),
+    sk('wrangler', { agents: ['agt_9'] }),
     sk('waiting', { status: 'offered' }),
     sk('flagged', { status: 'blocked' }),
   ];
   const edge = agent({ id: 'agt_9', name: 'Edge' });
 
-  it('the new-agent form gives the ticked skills; a skill the whole team gets for the role is included and cannot be unticked', async () => {
+  it('the new-agent form gives the ticked skills, nothing by its role: a skill naming the role comes first, suggested (P76)', async () => {
     const calls: unknown[] = [];
     const { r } = show([edge], { skillList: async () => skills, agentCreate: async (spec) => (calls.push(spec), { ...agent(), ...spec } as Agent) });
     await waitAdapters(r);
     const form = must(r.container.querySelector<HTMLElement>('[data-testid="agent-form"]'), 'no form');
     await waitFor(() => skillBox(form, 'wrangler'), r);
     type(byLabel(form, 'Agent name'), 'Pay');
-    type(byLabel(form, 'Role'), 'backend');
+    type(byLabel(form, 'Role'), 'Frontend');
     r.root.flush();
-    // only accepted skills are listed; the others wait on the Skills page
-    expect(Array.from(form.querySelectorAll('[data-testid="agent-skills"] code')).map((c) => c.textContent)).toEqual(['everyone', 'react', 'wrangler']);
+    // only accepted skills are listed, the one naming the role first; the others wait on the Skills page
+    expect(Array.from(form.querySelectorAll('[data-testid="agent-skills"] code')).map((c) => c.textContent)).toEqual(['react', 'everyone', 'wrangler']);
     expect(form.querySelector('[data-testid="agent-skills"]')?.textContent).toContain('One skill waits for your decision on the Skills page.');
-    const everyone = skillBox(form, 'everyone');
-    expect(everyone.input.checked && everyone.input.disabled).toBe(true);
-    expect(everyone.who).toBe('Included: it goes to the whole team.');
-    expect(skillBox(form, 'react').who).toBe('Now it goes to every Frontend agent.');
-    expect(skillBox(form, 'wrangler').who).toBe('Now it goes to only Edge.');
-    expect(skillBox(form, 'react').input.disabled || skillBox(form, 'react').input.checked).toBe(false);
+    expect(skillBox(form, 'react').who).toBe('Suggested for Frontend. Not given to another agent.');
+    expect(skillBox(form, 'everyone').who).toBe('Not given to another agent.');
+    expect(skillBox(form, 'wrangler').who).toBe('Also given to Edge.');
+    // nothing is ticked or locked by the role
+    for (const n of ['react', 'everyone', 'wrangler']) expect(skillBox(form, n).input.checked || skillBox(form, n).input.disabled).toBe(false);
     // tick two, change your mind about one
     await r.act(() => skillBox(form, 'react').input.click());
     await r.act(() => skillBox(form, 'wrangler').input.click());
     await r.act(() => skillBox(form, 'wrangler').input.click());
     expect(skillBox(form, 'react').input.checked).toBe(true);
     await r.act(() => byText(form, 'button', 'Create agent').click());
-    await waitFor(() => expect(calls).toEqual([{ projectId: 'prj_1', name: 'Pay', role: 'backend', purpose: '', adapter: 'claude', model: '', effort: '', practices: true, skills: ['react'] }]), r);
+    await waitFor(() => expect(calls).toEqual([{ projectId: 'prj_1', name: 'Pay', role: 'Frontend', purpose: '', adapter: 'claude', model: '', effort: '', practices: true, skills: ['react'] }]), r);
     // the form is cleared, skills included
     await waitFor(() => expect(skillBox(form, 'react').input.checked).toBe(false), r);
-    // a frontend agent gets react with the team
-    type(byLabel(form, 'Role'), 'Frontend ');
-    r.root.flush();
-    expect(skillBox(form, 'react').input.checked && skillBox(form, 'react').input.disabled).toBe(true);
   });
 
   it('sends no skills when none is ticked, and says when the project has no accepted skill', async () => {
@@ -496,11 +491,11 @@ describe('Team: skills', () => {
     const calls: unknown[] = [];
     const pay = agent();
     const mine = [
-      sk('everyone', { agents: ['agt_1'] }), // included by role and given: left alone
+      sk('everyone', { agents: ['agt_1'] }), // given: left alone
       sk('react', { roles: ['Frontend'], agents: ['agt_1'] }),
-      sk('wrangler', { audience: 'agents', agents: ['agt_9', 'agt_1'] }),
-      sk('docs', { audience: 'agents', agents: [] }),
-      sk('flagged', { status: 'blocked', audience: 'agents', agents: ['agt_1'] }), // not shown, never taken away
+      sk('wrangler', { agents: ['agt_9', 'agt_1'] }),
+      sk('docs', { agents: [] }),
+      sk('flagged', { status: 'blocked', agents: ['agt_1'] }), // not shown, never taken away
     ];
     const { r } = show([pay, edge], { skillList: async () => mine, agentUpdate: async (u) => (calls.push(u), pay) });
     const card = await waitAgent(r, 'Pay');
@@ -508,12 +503,12 @@ describe('Team: skills', () => {
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
     await waitFor(() => skillBox(ed, 'docs'), r);
     expect(skillBox(ed, 'react').input.checked).toBe(true);
-    expect(skillBox(ed, 'react').who).toBe('Now it goes to every Frontend agent.');
+    expect(skillBox(ed, 'react').who).toBe('Not given to another agent.'); // it names Frontend; Pay is backend: no suggestion
     expect(skillBox(ed, 'wrangler').input.checked).toBe(true);
-    expect(skillBox(ed, 'wrangler').who).toBe('Now it goes to only Edge.');
+    expect(skillBox(ed, 'wrangler').who).toBe('Also given to Edge.');
     expect(skillBox(ed, 'docs').input.checked).toBe(false);
-    expect(skillBox(ed, 'docs').who).toBe('Now it goes to nobody: no agent is chosen yet.');
-    expect(skillBox(ed, 'everyone').input.disabled).toBe(true);
+    expect(skillBox(ed, 'docs').who).toBe('Not given to another agent.');
+    expect(skillBox(ed, 'everyone').input.disabled).toBe(false);
     await r.act(() => skillBox(ed, 'wrangler').input.click());
     await r.act(() => skillBox(ed, 'docs').input.click());
     await r.act(() => byText(ed, 'button', 'Save changes').click());
@@ -689,6 +684,35 @@ describe('Team: a permission mode that skips approvals (M1)', () => {
     expect(note.textContent).toContain('Make the template in the Library');
     expect(note.querySelector('a[href="/library"]')).not.toBeNull();
     expect(ed.textContent).not.toContain('Agent not changed');
+  });
+});
+
+describe('Team: the Crew dashboard (the owner\'s request of 2026-10-20)', () => {
+  it('opens with the crew at a glance, one compact row per agent with its skills, and a row opens the agent\'s page', async () => {
+    const t1 = { id: 't1', seq: 3, title: 'Add Multiply', status: 'IN_PROGRESS', assignee: 'agt_1' } as never;
+    const t2 = { id: 't2', seq: 4, title: 'Ship it', status: 'WAITING_HUMAN', assignee: 'agt_2' } as never;
+    const { r, navigated } = show([agent({ id: 'agt_1', name: 'Ada' }), agent({ id: 'agt_2', name: 'Bo' })], {
+      taskList: async () => [t1, t2],
+      presenceList: async () => [{ agentId: 'agt_1', presence: 'Working', since: '', updated: '', seq: 1 }],
+      skillList: async () => [sk('go-style', { agents: ['agt_1'] }), sk('docs', { agents: ['agt_1'] })],
+    } as never);
+    await waitFor(() => expect(r.$$('[data-testid="agent"]').length).toBe(2), r);
+    const fig = (id: string) => r.$(`[data-testid="${id}"]`)!.textContent;
+    await waitFor(() => expect(fig('figure-working')).toBe('1 of 2at work now, 1 stopped'), r);
+    expect(fig('figure-in-flight')).toBe('1task in progress or review');
+    expect(fig('figure-waiting')).toBe('1task waits for you');
+    await waitFor(() => expect(fig('figure-skills')).toBe('2skills given, 1 agent with none'), r);
+    // no agent fills the window: a row is a 40 px dot, not the 64 px card
+    const ada = await waitAgent(r, 'Ada');
+    expect((ada.querySelector('[data-dot="true"]') as HTMLElement).getBoundingClientRect().width).toBeLessThan(48);
+    expect(ada.querySelector('[data-testid="agent-skill-count"]')!.textContent).toBe('2 skills');
+    expect((await waitAgent(r, 'Bo')).querySelector('[data-testid="agent-skill-count"]')!.textContent).toBe('No skill yet');
+    // a click on the row opens the agent's page; its own buttons do what they say instead
+    await r.act(() => (ada.querySelector('.spec') as HTMLElement).click());
+    expect(navigated).toEqual(['/team/agt_1']);
+    await r.act(() => byText(ada, 'button', 'Edit Ada').click());
+    expect(navigated).toEqual(['/team/agt_1']);
+    await waitFor(() => expect(editor(r)).not.toBeNull(), r);
   });
 });
 

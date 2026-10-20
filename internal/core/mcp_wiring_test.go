@@ -630,6 +630,7 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 	var backend, frontend core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend", Adapter: "claude", Role: "backend", Model: "fake-1"}, &backend)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Frontend", Adapter: "claude", Role: "frontend", Model: "fake-1"}, &frontend)
+	a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "go-style", "agentId": backend.ID, "on": true}, nil) // skills are given to agents (P76)
 	dataDir := a.dataDir()
 
 	spawn := func(ag core.Agent, taskID string) (*rt.Managed, *sdk.ClientSession, string, string) {

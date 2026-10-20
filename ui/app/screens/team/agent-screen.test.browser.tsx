@@ -1,11 +1,11 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
+import type { LibrarySkill, MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, AgentDetail, PresenceState, Project, Task } from '../../api/types.ts';
 import { lic, usage, usageTotals } from '../../test/fixtures.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { AgentScreen, nowChip, serversOf, skillsOf } from './agent-screen.tsx';
 
 afterEach(cleanup);
@@ -59,7 +59,29 @@ const sk = (name: string, over: Partial<Skill> = {}): Skill => ({
   updated: '',
   ...over,
 });
-const skills: Skill[] = [sk('go-testing', { agents: ['agt_1'] }), sk('stripe-api', { audience: 'team', roles: ['backend'] }), sk('frontend-design'), sk('waiting', { status: 'offered' })];
+// skills belong to agents (P76): go-testing is Ada's; stripe-api names her role (a suggestion, not hers); frontend-design is nobody's
+const skills: Skill[] = [sk('go-testing', { agents: ['agt_1'] }), sk('stripe-api', { roles: ['backend'] }), sk('frontend-design'), sk('waiting', { status: 'offered' })];
+const libSkill = (name: string, over: Partial<LibrarySkill> = {}): LibrarySkill => ({
+  id: `l-${name}`,
+  registryId: 'cloudflare-skills',
+  repo: 'cloudflare/skills',
+  name,
+  description: `${name} from the Library.`,
+  license: 'Apache-2.0',
+  globs: [],
+  roles: [],
+  sourcePath: `skills/${name}`,
+  pinnedCommit: 'abc',
+  contentHash: 'h',
+  hasScripts: false,
+  status: 'available',
+  blockReason: '',
+  risk: 0,
+  flags: [],
+  gone: false,
+  updated: '',
+  ...over,
+});
 const server = (over: Partial<McpServer>): McpServer =>
   ({ id: 'github', display: 'GitHub', transport: 'http', secretEnv: [], hasToken: true, guard: true, readOnlyTools: [], tools: [{ name: 'list_issues', readOnlyHint: true }, { name: 'get_pr', readOnlyHint: true }], discoveredAt: 1, projects: ['prj_1'], createdAt: 1, updatedAt: 1, projectId: 'prj_1', enabled: true, agents: [], ...over }) as McpServer;
 const servers: McpServer[] = [server({ agents: [{ agentId: 'agt_1', tools: ['list_issues'] }] }), server({ id: 'linear', display: 'Linear', agents: [{ agentId: 'agt_2', tools: [] }] })];
@@ -78,6 +100,7 @@ function show(id: string, client: Partial<Client> = {}) {
     taskList: async () => tasks,
     agentGet: async (x) => (x === 'agt_1' ? detail : Promise.reject(new Error(`agent ${x}: not found`))),
     skillList: async () => skills,
+    skillLibraryList: async () => [libSkill('wrangler'), libSkill('stripe-api'), libSkill('evil', { status: 'blocked' })],
     mcpServerList: async () => servers,
     memoryList: async () => notes,
     routeDecisions: async () => [],
@@ -141,18 +164,13 @@ describe("an agent's page", () => {
     expect(now.querySelector('[data-testid="stat-avg-cost"] b')!.textContent).toBe('$0.31');
     expect(now.querySelector('[data-testid="stat-avg-time"] b')!.textContent).toBe('14 m');
     expect(now.querySelector('[data-testid="stat-spend"] b')!.textContent).toBe('$0.12');
-    // skills: the ones given, the whole-team one for its role (included, its switch off limits), the accepted ones it does not have
-    await waitFor(() => expect(r.$$('[data-testid="agent-skill"]').length).toBe(3), r);
+    // skills: only the ones given to her (P76: the one naming her role is not hers until given), each with Remove
+    await waitFor(() => expect(r.$$('[data-testid="agent-skill"]').length).toBe(1), r);
     const rows = Array.from(r.$$('[data-testid="agent-skill"]'));
-    expect(rows.map((x) => [x.getAttribute('data-skill'), x.getAttribute('data-on')])).toEqual([
-      ['go-testing', 'true'],
-      ['stripe-api', 'true'],
-      ['frontend-design', 'false'],
-    ]);
-    expect(r.container.textContent).toContain('2 of 3 in this project');
-    expect(rows[1]!.textContent).toContain('Every backend agent gets it');
-    expect(rows[1]!.querySelector('button[role="switch"]')!.getAttribute('aria-disabled')).toBe('true');
-    expect(rows[0]!.querySelector('button[role="switch"]')!.getAttribute('aria-disabled')).toBeNull();
+    expect(rows.map((x) => x.getAttribute('data-skill'))).toEqual(['go-testing']);
+    expect(r.container.textContent).toContain('1 given to Ada');
+    expect(rows[0]!.querySelector('[data-testid="agent-skill-remove"]')!.getAttribute('aria-label')).toBe('Remove go-testing from Ada');
+    expect(r.$('[data-testid="agent-skills-more"]')!.textContent).toBe('Add skills');
     expect(rows[0]!.textContent).toContain('go-testing: table tests, fakes, race checks.');
     expect(rows[0]!.textContent).not.toContain('More words');
     // tools: only the server this agent is granted, with what it was granted
@@ -165,26 +183,44 @@ describe("an agent's page", () => {
     expect(r.container.textContent).toContain('1 note');
   });
 
-  it('a skill switch gives the agent the skill or takes it away through agent.update, and the list is re-read', async () => {
+  it('Remove takes a skill from the agent; Add gives a project skill, or adds a Library skill for this agent only, suggested ones first', async () => {
     const calls: unknown[] = [];
+    const libAdds: unknown[][] = [];
     let listed = 0;
-    const { r } = show('agt_1', { skillList: async () => (listed++, skills), agentUpdate: async (u) => (calls.push(u), agent()) });
+    const { r } = show('agt_1', {
+      skillList: async () => (listed++, skills),
+      agentUpdate: async (u) => (calls.push(u), agent()),
+      skillLibraryAdd: async (...a: unknown[]) => (libAdds.push(a), sk('wrangler', { agents: ['agt_1'] })),
+    });
     await hero(r);
-    await waitFor(() => expect(r.$$('[data-testid="agent-skill"]').length).toBe(3), r);
+    await waitFor(() => expect(r.$$('[data-testid="agent-skill"]').length).toBe(1), r);
     const before = listed;
-    await r.act(() => r.$('[data-testid="agent-skill"][data-skill="frontend-design"] button[role="switch"]')!.click());
-    await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', addSkills: ['frontend-design'] }]), r);
+    await r.act(() => (r.$('[data-testid="agent-skill"][data-skill="go-testing"] [data-testid="agent-skill-remove"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', removeSkills: ['go-testing'] }]), r);
     await waitFor(() => expect(listed).toBeGreaterThan(before), r);
-    await r.act(() => r.$('[data-testid="agent-skill"][data-skill="go-testing"] button[role="switch"]')!.click());
-    await waitFor(() => expect(calls.length).toBe(2), r);
-    expect(calls[1]).toEqual({ id: 'agt_1', removeSkills: ['go-testing'] });
+
+    // Add skills opens the Skills tab: the project's skills she lacks, then the Library's not in the project (no blocked one)
+    await r.act(() => (r.$('[data-testid="agent-skills-more"]') as HTMLButtonElement).click());
+    const choices = () => Array.from(r.$$('[data-testid="agent-skill-choice"]')).map((x) => `${x.getAttribute('data-from')}:${x.getAttribute('data-skill')}`);
+    await waitFor(() => expect(choices()).toEqual(['project:stripe-api', 'project:frontend-design', 'library:wrangler']), r);
+    expect(r.$('[data-testid="agent-skill-choice"][data-skill="stripe-api"]')!.textContent).toContain('suggested for backend');
+    expect(r.$('[data-testid="agent-skill-choice"][data-skill="wrangler"]')!.textContent).toContain('cloudflare/skills');
+    await r.act(() => (r.$('[data-testid="agent-skill-choice"][data-skill="stripe-api"] [data-testid="agent-skill-add"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls[1]).toEqual({ id: 'agt_1', addSkills: ['stripe-api'] }), r);
+    // a Library skill goes to the project for her alone
+    await r.act(() => (r.$('[data-testid="agent-skill-choice"][data-skill="wrangler"] [data-testid="agent-skill-add"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(libAdds).toEqual([['prj_1', 'cloudflare-skills', 'wrangler', 'agents', ['agt_1']]]), r);
+    await waitFor(() => expect(r.$('[data-testid="agent-skill-added"]')!.textContent).toBe('wrangler was given to Ada.'), r);
+    // the words typed narrow the list
+    await r.act(() => type(r.$('input[type="search"]') as HTMLInputElement, 'wrang'));
+    await waitFor(() => expect(choices()).toEqual(['library:wrangler']), r);
   });
 
   it('the tabs: Skills & tools in full, Memory, and History with its tasks, runs and usage', async () => {
     const { r } = show('agt_1');
     await hero(r);
     await r.act(() => r.$('[data-testid="agent-tab-skills"]')!.click());
-    await waitFor(() => expect(r.$$('[data-testid="agent-skill"]').length).toBe(3), r);
+    await waitFor(() => expect(r.$$('[data-testid="agent-skill"]').length).toBe(1), r);
     expect(r.$('[data-testid="agent-skill"]')!.textContent).toContain('More words after the first sentence');
     expect(r.$('[data-testid="agent-tool"]')!.textContent).toContain('list_issues');
     await r.act(() => r.$('[data-testid="agent-tab-memory"]')!.click());
@@ -279,7 +315,8 @@ describe("an agent's page", () => {
 
   describe('a project with hundreds of skills and notes (L37)', () => {
     const N = 400;
-    const manySkills: Skill[] = Array.from({ length: N }, (_, i) => sk(`skill-${String(i).padStart(3, '0')}`, i === 0 ? { agents: ['agt_1'] } : {}));
+    // every one given to Ada: her own list is the long one
+    const manySkills: Skill[] = Array.from({ length: N }, (_, i) => sk(`skill-${String(i).padStart(3, '0')}`, { agents: ['agt_1'] }));
     const manyNotes: MemoryEntry[] = Array.from({ length: N }, (_, i) => ({
       id: `m${i}`,
       projectId: 'prj_1',
@@ -304,14 +341,14 @@ describe("an agent's page", () => {
       r.root.flush();
     };
 
-    it('draws only the skills near the view in the Skills & tools tab, reaches the first and the last, and the switch of a row that was scrolled to still works', async () => {
+    it('draws only the skills near the view in the Skills & tools tab, reaches the first and the last, and the Remove of a row that was scrolled to still works', async () => {
       const calls: unknown[] = [];
       const { r } = show('agt_1', { skillList: async () => manySkills, agentUpdate: async (u) => (calls.push(u), agent()) });
       await hero(r);
       // the overview shows five, whole, and says how many there are
       await waitFor(() => expect(skillRows(r).length).toBe(5), r);
       expect(r.$('[data-testid="agent-skills-list"]')!.getAttribute('data-windowed')).toBe('false');
-      expect(byText(r.container, 'button', `All ${N} skills`)).toBeTruthy();
+      expect(byText(r.container, 'button', `All ${N} skills, and add more`)).toBeTruthy();
 
       await r.act(() => r.$('[data-testid="agent-tab-skills"]')!.click());
       const sc = await waitFor(() => (r.$('[data-testid="agent-skills-list"][data-windowed="true"]') as HTMLElement | null) ?? (() => { throw new Error('no scroller yet'); })(), r);
@@ -319,7 +356,7 @@ describe("an agent's page", () => {
       await frames();
       // a named list that can be reached by keyboard and holds a window of the skills, not all of them
       expect(sc.getAttribute('role')).toBe('list');
-      expect(sc.getAttribute('aria-label')).toBe('Skills');
+      expect(sc.getAttribute('aria-label')).toBe("Ada's skills");
       expect(sc.getAttribute('tabindex')).toBe('0');
       expect(sc.getAttribute('data-rows')).toBe(String(N));
       expect(skillRows(r).length).toBeLessThan(80);
@@ -328,17 +365,14 @@ describe("an agent's page", () => {
       expect(sc.clientHeight).toBeLessThanOrEqual(640);
       expect(sc.scrollHeight).toBeGreaterThan(N * 40);
       expect(skillRows(r)[0]!.getAttribute('data-skill')).toBe('skill-000');
-      // the first skill was given to the agent; the rest were not
-      expect(skillRows(r)[0]!.getAttribute('data-on')).toBe('true');
-      expect(skillRows(r)[1]!.getAttribute('data-on')).toBe('false');
 
       await scrollTo(r, sc, sc.scrollHeight);
       await waitFor(() => expect(skillRows(r).at(-1)!.getAttribute('data-skill')).toBe(`skill-${N - 1}`), r);
       expect(skillRows(r).some((x) => x.getAttribute('data-skill') === 'skill-000')).toBe(false);
       expect(skillRows(r).length).toBeLessThan(80);
-      // a switch in the window works as it does in a short list
-      await r.act(() => r.$(`[data-testid="agent-skill"][data-skill="skill-${N - 1}"] button[role="switch"]`)!.click());
-      await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', addSkills: [`skill-${N - 1}`] }]), r);
+      // Remove in the window works as it does in a short list
+      await r.act(() => (r.$(`[data-testid="agent-skill"][data-skill="skill-${N - 1}"] [data-testid="agent-skill-remove"]`) as HTMLButtonElement).click());
+      await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', removeSkills: [`skill-${N - 1}`] }]), r);
       // and the way back to the top
       await scrollTo(r, sc, 0);
       await waitFor(() => expect(skillRows(r)[0]!.getAttribute('data-skill')).toBe('skill-000'), r);
@@ -381,7 +415,7 @@ describe("an agent's page", () => {
       const { r } = show('agt_1');
       await hero(r);
       await r.act(() => r.$('[data-testid="agent-tab-skills"]')!.click());
-      await waitFor(() => expect(skillRows(r).length).toBe(3), r);
+      await waitFor(() => expect(skillRows(r).length).toBe(1), r);
       const list = r.$('[data-testid="agent-skills-list"]')!;
       expect(list.getAttribute('data-windowed')).toBe('false');
       expect(list.getAttribute('role')).toBe('list');
@@ -399,7 +433,7 @@ describe("an agent's page", () => {
     expect(nowChip({ ...presence, taskId: undefined, activity: 'reading' }, undefined)).toBe('reading');
     expect(nowChip(undefined, undefined)).toBe('Stopped');
     const team = [{ id: 'agt_1' }, { id: 'agt_2' }];
-    expect(skillsOf(skills, agent(), team).mine.map((k) => k.name)).toEqual(['go-testing', 'stripe-api']);
+    expect(skillsOf(skills, agent(), team).mine.map((k) => k.name)).toEqual(['go-testing']); // the one naming her role is not hers
     expect(skillsOf(skills, rex, team).mine.map((k) => k.name)).toEqual([]);
     expect(skillsOf(skills, rex, team).accepted.length).toBe(3);
     // a skill given to an agent no longer on the team does not count as given

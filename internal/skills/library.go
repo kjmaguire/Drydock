@@ -234,7 +234,11 @@ func (s *Service) AddFromLibrary(ctx context.Context, by, projectID, registryID,
 	if err != nil {
 		return k, err
 	}
-	if audience != "" {
+	// the agents a person chose replace the ones the skill's roles suggested; with none chosen the suggestion stands (P76)
+	if audience != "" || len(agents) > 0 {
+		if audience == "" {
+			audience = AudienceAgents
+		}
 		return s.SetAudience(ctx, by, projectID, name, audience, agents)
 	}
 	return k, nil

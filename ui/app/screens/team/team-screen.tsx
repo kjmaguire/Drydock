@@ -1,11 +1,12 @@
-// Crew (Crew HQ, decision P64): the project's agents as large dots (who they are, what each is doing right now, what it
-// runs), each a link to its own page; adding one from a template, a prebuilt agent or from scratch; editing and removing
-// them; the team lead's stand-up and interventions; and the adapters this machine has.
+// Crew (Crew HQ, decision P64): a dashboard of the project's crew. The figures first (who is at work, what the crew is on,
+// what waits for you, its skills), then one compact row per agent (who it is, what it is doing now, what it runs, how many
+// skills it has); a row opens the agent's own page with the rest (the owner's request of 2026-10-20: no agent filling the
+// window). Below: the team lead's stand-up and interventions, adding an agent, and the adapters this machine has.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { Cpu, MessageSquare, Pencil, ScanSearch, Sparkles, Trash2, UserPlus, Users } from 'lucide';
 import type { AdapterInfo, Agent } from '../../api/types.ts';
-import { presenceFor } from '../../lib/format.ts';
+import { plural, presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
@@ -22,63 +23,57 @@ import { AddPrebuilt } from './add-prebuilt.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
-import { CAP_LABEL, currentTask, doing, presenceWords, purposeExcerpt, runsWhere, sortAdapters } from './team.ts';
+import { CAP_LABEL, crewFigures, currentTask, doing, presenceWords, purposeExcerpt, runsWhere, skillCount, sortAdapters } from './team.ts';
 
-const gridCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(272px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
+const figuresCss = css({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+  gap: t.s3,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  '& li': { display: 'grid', minWidth: '0' },
+  // a figure is a tile; the ones with a page of their own are a link as a whole (the target is the tile, not its words)
+  '& .fig': { display: 'grid', gap: '2px', padding: `${t.s3} ${t.s4}`, border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, color: t.text, textDecoration: 'none', minWidth: '0' },
+  '& a.fig:hover': { borderColor: t.borderStrong, boxShadow: t.shadowSm },
+  '& b': { fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.15', fontVariantNumeric: 'tabular-nums' },
+  '& span': { color: t.textMuted, fontSize: t.textSm },
+});
 
-// a crew card: the dot, the name (a link to the agent's page), the role, what it is doing now, what it runs, its purpose, and
-// the actions along the bottom
-const agentCard = css({
-  display: 'flex',
-  flexDirection: 'column',
+const rowsCss = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none' });
+
+// one agent: the dot, who it is, what it is doing now, what it runs, its skills, and the actions at the end. The whole row
+// opens the agent's page (its name is the link, for the keyboard and for reading).
+const agentRow = css({
+  display: 'grid',
+  gridTemplateColumns: 'auto minmax(170px, 1.2fr) minmax(180px, 1.5fr) minmax(150px, 1fr) auto auto',
   alignItems: 'center',
-  gap: '4px',
-  padding: `${t.s5} 14px ${t.s3}`,
+  gap: `${t.s2} ${t.s4}`,
+  padding: `${t.s3} ${t.s4}`,
   border: `1px solid ${t.border}`,
-  borderRadius: t.rXl,
+  borderRadius: t.rLg,
   background: t.bgSurface,
   minWidth: '0',
-  textAlign: 'center',
+  cursor: 'pointer',
   transition: `border-color ${t.fast} ${t.ease}, box-shadow ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, boxShadow: t.shadowSm },
-  '& h3': { marginTop: t.s2, fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '@media (max-width: 1100px)': { gridTemplateColumns: 'auto minmax(0, 1fr) minmax(0, 1fr)', '& .spec, & .skills': { gridColumn: '2 / -1' }, '& .actions': { gridColumn: '1 / -1' } },
+  '& .who': { display: 'grid', gap: '2px', minWidth: '0' },
+  '& h3': { margin: '0', fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& h3 a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', maxWidth: '100%', color: t.text, textDecoration: 'none' },
   '& h3 a:hover': { textDecoration: 'underline' },
-  '& .role': { color: t.textFaint, fontSize: t.textSm },
-  '& .now': {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '7px',
-    width: '100%',
-    marginTop: t.s2,
-    padding: `${t.s2} 10px`,
-    borderRadius: t.rMd,
-    background: t.bgSidebar,
-    color: t.textMuted,
-    fontSize: t.textSm,
-    lineHeight: '1.4',
-    textAlign: 'left',
-    overflowWrap: 'anywhere',
-  },
+  '& .role': { display: 'flex', alignItems: 'center', gap: t.s2, color: t.textFaint, fontSize: t.textSm },
+  '& .purpose': { margin: '0', fontSize: t.textSm, color: t.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& .doing': { display: 'grid', gap: '2px', minWidth: '0' },
+  '& .now': { display: 'flex', alignItems: 'flex-start', gap: '7px', color: t.textMuted, fontSize: t.textSm, lineHeight: '1.4', overflowWrap: 'anywhere' },
   '& .now > i': { flex: 'none', width: '7px', height: '7px', marginTop: '6px', borderRadius: '50%', display: 'block' },
-  '& .on': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', marginTop: t.s1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: t.textSm, color: t.accentText },
-  '& .spec': { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '2px 8px', marginTop: t.s2, fontSize: t.textSm, color: t.textMuted },
+  '& .on': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: t.textSm, color: t.accentText },
+  '& .spec': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', fontSize: t.textSm, color: t.textMuted, minWidth: '0' },
   '& .spec b': { fontWeight: '500', color: t.text },
   '& .spec code': { fontSize: t.textSm },
-  '& .purpose': {
-    margin: `${t.s2} 0 0`,
-    fontSize: t.textSm,
-    color: t.textMuted,
-    lineHeight: '1.5',
-    display: '-webkit-box',
-    WebkitLineClamp: '3',
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    textAlign: 'left',
-    width: '100%',
-  },
-  '& .actions': { display: 'flex', alignItems: 'center', gap: '2px', width: '100%', marginTop: 'auto', paddingTop: t.s3 },
-  '& .actions .end': { marginLeft: 'auto', display: 'flex', gap: '2px' },
+  '& .skills': { fontSize: t.textSm, color: t.textMuted, whiteSpace: 'nowrap' },
+  '& .skills[data-none="true"]': { color: t.warning },
+  '& .actions': { display: 'flex', alignItems: 'center', gap: '2px', justifyContent: 'flex-end' },
 });
 
 const addCard = css({ display: 'grid', gap: t.s4, scrollMarginTop: t.s4, borderRadius: t.rXl });
@@ -140,6 +135,16 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
   watch(handle, s.project);
   watch(handle, s.workspace);
   const adapters = query(handle, { load: () => s.client.adapterList() });
+  const skills = query(handle, {
+    load: () => s.client.skillList(s.workspace.projectId ?? ''),
+    key: () => s.workspace.projectId ?? '',
+    enabled: () => !!s.workspace.projectId,
+    when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.'),
+  });
+  const go = (href: string) => {
+    if (handle.props.onNavigate) handle.props.onNavigate(href);
+    else void navigate(href);
+  };
   const act = action(handle);
   let editing: string | undefined;
   let removing: string | undefined;
@@ -151,9 +156,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
   const message = (agent: Agent) =>
     act.run('dm', async () => {
       const room = await s.client.roomCreateDM(agent.projectId || s.workspace.projectId || '', agent.id);
-      const href = routes.room.href({ id: room.id });
-      if (handle.props.onNavigate) handle.props.onNavigate(href);
-      else void navigate(href);
+      go(routes.room.href({ id: room.id }));
     });
 
   const focusAdd = () => {
@@ -171,6 +174,7 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
     const editAgent = agents.find((a) => a.id === editing);
     const removeAgent = agents.find((a) => a.id === removing);
     const count = agentsQ.data ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined;
+    const fig = crewFigures(agents, presence, tasks, skills.data ?? []);
 
     return (
       <Page
@@ -189,7 +193,38 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
           </>
         }
       >
-        <Section title="Agents" description="Each agent is a real coding CLI with a role. A task needs a worker and a different agent as reviewer.">
+        {agents.length > 0 ? (
+          <ul mix={figuresCss} aria-label="The crew at a glance" data-testid="crew-figures">
+            <li data-testid="figure-working">
+              <div class="fig">
+                <b>
+                  {fig.working} of {fig.agents}
+                </b>
+                <span>at work now{fig.stopped > 0 ? `, ${fig.stopped} stopped` : ''}</span>
+              </div>
+            </li>
+            <li data-testid="figure-in-flight">
+              <a class="fig" href={routes.tasks.href()}>
+                <b>{fig.inFlight}</b>
+                <span>{fig.inFlight === 1 ? 'task' : 'tasks'} in progress or review</span>
+              </a>
+            </li>
+            <li data-testid="figure-waiting">
+              <a class="fig" href={routes.needsYou.href()}>
+                <b>{fig.waiting}</b>
+                <span>{fig.waiting === 1 ? 'task waits' : 'tasks wait'} for you</span>
+              </a>
+            </li>
+            <li data-testid="figure-skills">
+              <div class="fig">
+                <b>{skills.data ? fig.skillsGiven : ''}</b>
+                <span>{skills.data ? `skills given${fig.withoutSkills > 0 ? `, ${plural(fig.withoutSkills, 'agent')} with none` : ''}` : 'skills'}</span>
+              </div>
+            </li>
+          </ul>
+        ) : null}
+
+        <Section title="Agents" description="Each agent is a real coding CLI and a specialist in its role. Click one to see its page.">
           <ErrorNote error={agentsQ.error} what="Could not list agents" />
           <ErrorNote error={act.error} what="Could not open a direct message" />
           {agentsQ.loading && !agentsQ.data ? <Loading /> : null}
@@ -201,36 +236,58 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
             </div>
           ) : null}
           {agents.length > 0 ? (
-            <ul mix={gridCss} aria-label="Agents">
+            <ul mix={rowsCss} aria-label="Agents">
               {agents.map((a) => {
                 const p = presenceFor(a.id, presence);
                 const where = runsWhere(a);
+                const n = skillCount(skills.data ?? [], a.id);
+                const on_ = currentTask(a.id, p, [], tasks);
                 return (
-                  <li key={a.id} mix={agentCard} data-testid="agent" data-name={a.name}>
-                    <Avatar id={a.id} name={a.name} size={64} status={presenceColor(p)} kind="agent" />
-                    <h3 title={a.name}>
-                      <a href={routes.agent.href({ id: a.id })} data-testid="agent-link">
-                        {a.name}
-                      </a>
-                    </h3>
-                    <span class="role">{a.role}</span>
-                    <SkipsBadge mode={a.permissionMode} />
-                    <span class="now">
-                      <i style={{ background: presenceColor(p) }} aria-hidden="true" />
-                      <span>{doing(p)}</span>
-                      {/* the presence in words for assistive tech (the dot is colour, the text is the activity) */}
-                      <span class="sr-only" data-testid="presence">
-                        {presenceWords(p)}
-                      </span>
-                    </span>
-                    {(() => {
-                      const on = currentTask(a.id, p, [], tasks);
-                      return on ? (
-                        <a class="on" href={routes.task.href({ id: on.id })} data-testid="agent-task" title={on.title}>
-                          Task #{on.seq} {on.title}
+                  <li
+                    key={a.id}
+                    mix={[
+                      agentRow,
+                      on('click', (e) => {
+                        // the row opens the agent's page; its own links and buttons do what they say
+                        if ((e.target as Element).closest('a, button, input, [role="dialog"]')) return;
+                        go(routes.agent.href({ id: a.id }));
+                      }),
+                    ]}
+                    data-testid="agent"
+                    data-name={a.name}
+                  >
+                    <Avatar id={a.id} name={a.name} size={40} status={presenceColor(p)} kind="agent" />
+                    <div class="who">
+                      <h3 title={a.name}>
+                        <a href={routes.agent.href({ id: a.id })} data-testid="agent-link">
+                          {a.name}
                         </a>
-                      ) : null;
-                    })()}
+                      </h3>
+                      <span class="role">
+                        {a.role}
+                        <SkipsBadge mode={a.permissionMode} />
+                      </span>
+                      {a.purpose ? (
+                        <p class="purpose" data-testid="agent-purpose" title={a.purpose}>
+                          Purpose: {purposeExcerpt(a.purpose)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div class="doing">
+                      <span class="now">
+                        <i style={{ background: presenceColor(p) }} aria-hidden="true" />
+                        <span>{doing(p)}</span>
+                        {/* the presence in words for assistive tech (the dot is colour, the text is the activity) */}
+                        <span class="sr-only" data-testid="presence">
+                          {presenceWords(p)}
+                        </span>
+                      </span>
+                      {on_ ? (
+                        <a class="on" href={routes.task.href({ id: on_.id })} data-testid="agent-task" title={on_.title}>
+                          Task #{on_.seq} {on_.title}
+                        </a>
+                      ) : null}
+                    </div>
                     <div class="spec">
                       <code>{a.adapter}</code>
                       {a.model ? (
@@ -247,28 +304,20 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                       ) : null}
                       {where ? <span data-testid="agent-runs">{where}</span> : null}
                     </div>
-                    {a.purpose ? (
-                      <p class="purpose" data-testid="agent-purpose" title={a.purpose}>
-                        Purpose: {purposeExcerpt(a.purpose)}
-                      </p>
-                    ) : null}
+                    <span class="skills" data-testid="agent-skill-count" data-none={skills.data && n === 0 ? 'true' : undefined}>
+                      {skills.data ? (n === 0 ? 'No skill yet' : plural(n, 'skill')) : ''}
+                    </span>
                     <div class="actions">
-                      <Button size="sm" variant="ghost" icon={ScanSearch} mix={on('click', () => s.ui.openInspector(a.id))}>
-                        Inspect
-                      </Button>
-                      <Button size="sm" variant="ghost" icon={MessageSquare} disabled={act.busy === 'dm'} mix={on('click', () => void message(a))}>
-                        Message
-                      </Button>
-                      <span class="end">
-                        <IconButton
-                          icon={Pencil}
-                          label={`Edit ${a.name}`}
-                          aria-haspopup="dialog"
-                          aria-expanded={editing === a.id}
-                          mix={on('click', () => ((editing = a.id), void handle.update()))}
-                        />
-                        <IconButton icon={Trash2} label={`Remove ${a.name}`} aria-haspopup="dialog" mix={on('click', () => ((removing = a.id), void handle.update()))} />
-                      </span>
+                      <IconButton icon={ScanSearch} label="Inspect" title={`Inspect ${a.name}`} mix={on('click', () => s.ui.openInspector(a.id))} />
+                      <IconButton icon={MessageSquare} label="Message" title={`Message ${a.name}`} disabled={act.busy === 'dm'} mix={on('click', () => void message(a))} />
+                      <IconButton
+                        icon={Pencil}
+                        label={`Edit ${a.name}`}
+                        aria-haspopup="dialog"
+                        aria-expanded={editing === a.id}
+                        mix={on('click', () => ((editing = a.id), void handle.update()))}
+                      />
+                      <IconButton icon={Trash2} label={`Remove ${a.name}`} aria-haspopup="dialog" mix={on('click', () => ((removing = a.id), void handle.update()))} />
                     </div>
                   </li>
                 );

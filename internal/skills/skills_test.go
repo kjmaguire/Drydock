@@ -251,7 +251,7 @@ func TestScanRepoSkipsSymlinksAndScripts(t *testing.T) {
 	if !k.HasScripts {
 		t.Fatal("scripts are recorded")
 	}
-	plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
+	plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_backend", Role: "Backend", Adapter: "claude", Delivery: DeliveryAll})
 	for _, f := range plan.Files {
 		if strings.Contains(f.Path, "scripts") || strings.Contains(f.Content, "echo hi") {
 			t.Fatalf("scripts are never delivered: %+v", f)
@@ -348,6 +348,8 @@ func fixtureTree(extra map[string]string) map[string]string {
 func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, nil)
+	e.addAgent("agt_db", "Database")
+	e.addAgent("agt_fe", "Frontend")
 	gh := newGHFixture(t)
 	gh.publish("cloudflare/skills", "HEAD", sha1, fixtureTree(nil))
 	e.useFixture(gh)
@@ -375,10 +377,10 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 		t.Fatalf("%+v", k)
 	}
 	// offered means: not in any worktree, not served to any agent
-	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_db", "Database"); len(el) != 0 {
 		t.Fatalf("an offered skill must not be eligible: %+v", el)
 	}
-	if plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", Role: "Database", Adapter: "claude", Delivery: DeliveryAll}); len(plan.Files) != 0 {
+	if plan, _ := e.s.Plan(ctx, Target{ProjectID: "p1", AgentID: "agt_db", Role: "Database", Adapter: "claude", Delivery: DeliveryAll}); len(plan.Files) != 0 {
 		t.Fatalf("an offered skill must not be planned: %+v", plan)
 	}
 	if len(e.events("skill.imported")) != 1 || len(e.events("skill.offered")) != 1 || len(e.events("skill.resolved")) != 1 {
@@ -417,7 +419,7 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// accept: now it is eligible for the matching role and only that role
+	// accept: now it reaches the agent of the role it names, and only that agent (P76: given by its roles when it came in)
 	if _, err := e.s.Accept(ctx, "agent_1", "p1", "d1-migrations"); !errors.Is(err, ErrNotHuman) {
 		t.Fatalf("agents cannot accept: %v", err)
 	}
@@ -425,10 +427,10 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 	if err != nil || acc.Status != StatusAccepted || acc.DecidedBy != human {
 		t.Fatalf("%v %+v", err, acc)
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 1 {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_db", "Database"); len(el) != 1 {
 		t.Fatal("accepted skill is eligible for its role")
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "", "Frontend"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_fe", "Frontend"); len(el) != 0 {
 		t.Fatal("roles filter")
 	}
 
@@ -446,7 +448,7 @@ func TestRegistryImportIsPinnedValidatedAndOnlyOffered(t *testing.T) {
 	if k.Status != StatusOffered || k.PinnedCommit != "3333333333333333333333333333333333333333" || !strings.Contains(k.Body, "rename tables") {
 		t.Fatalf("a changed skill must be re-accepted: %+v", k)
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "", "Database"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_db", "Database"); len(el) != 0 {
 		t.Fatal("until it is accepted again, the old text is not delivered either")
 	}
 	// disabling the registry stops imports
@@ -563,18 +565,22 @@ func TestManualAcceptRepoSkillsSwitch(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, map[string]string{".aet/skills/rule-one/SKILL.md": skillMD("rule-one", "d", "", "Rule one.")})
 	e.s.ManualAcceptRepoSkills = true
+	e.addAgent("agt_be", "Backend")
 	res, err := e.s.ScanRepo(ctx, "p1")
 	if err != nil || res.Accepted != 0 || res.Offered != 1 {
 		t.Fatalf("%v %+v", err, res)
 	}
-	if el, _ := e.s.Eligible(ctx, "p1", "", "Backend"); len(el) != 0 {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_be", "Backend"); len(el) != 0 {
 		t.Fatal("with manual acceptance a committed repo skill is only offered")
 	}
 	if _, err := e.s.Accept(ctx, human, "p1", "rule-one"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := e.s.Assign(ctx, human, "p1", "rule-one", "agt_be", true); err != nil { // it names no role: a person gives it (P76)
+		t.Fatal(err)
+	}
 	e.s.ScanRepo(ctx, "p1") // the human decision survives the rescan
-	if el, _ := e.s.Eligible(ctx, "p1", "", "Backend"); len(el) != 1 {
+	if el, _ := e.s.Eligible(ctx, "p1", "agt_be", "Backend"); len(el) != 1 {
 		t.Fatal("accepted stays accepted for identical content")
 	}
 }

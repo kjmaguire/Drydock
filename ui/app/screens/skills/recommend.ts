@@ -2,9 +2,9 @@
 
 import type { RecommendItem, Recommendation } from '../../api/extTypes.ts';
 
-/** Who an item is for: the agents' names, or the whole team when it names none. */
+/** Who an item is for: the agents' names (a skill item always names them, decision P76). */
 export function forWhom(agents: readonly string[], names: ReadonlyMap<string, string>): string {
-  if (agents.length === 0) return 'the whole team';
+  if (agents.length === 0) return 'nobody named';
   return agents.map((id) => names.get(id) ?? id).join(', ');
 }
 
@@ -17,7 +17,8 @@ export function itemText(it: RecommendItem, names: ReadonlyMap<string, string>):
     case 'skill/give':
       return `Give the skill ${it.label || it.name} to ${who}`;
     case 'skill/team':
-      return `Give the skill ${it.label || it.name} to the whole team`;
+      // stored before P76; it cannot be applied now that skills go to agents
+      return `Give the skill ${it.label || it.name} to the whole team (skills now go to chosen agents)`;
     case 'skill/remove':
       return `Stop using the skill ${it.label || it.name}`;
     case 'mcp/give':

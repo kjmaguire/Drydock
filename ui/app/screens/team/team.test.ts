@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AdapterInfo, Agent, AgentRun, PresenceState, Task } from '../../api/types.ts';
-import { adapterName, adapterOption, agentStats, appliedNote, currentTask, defaultRoutes, doing, minutesText, presenceWords, presetUntouched, purposeExcerpt, routesForUpdate, runsWhere, sortAdapters, spentLabel, stepIndex } from './team.ts';
+import { adapterName, adapterOption, agentStats, appliedNote, crewFigures, currentTask, defaultRoutes, doing, minutesText, presenceWords, presetUntouched, purposeExcerpt, routesForUpdate, runsWhere, skillCount, sortAdapters, spentLabel, stepIndex } from './team.ts';
 
 const mk = (id: string, status: string, installed: boolean) => ({ id, detection: { adapter: id, installed, status }, capabilities: {} as never }) as AdapterInfo;
 
@@ -131,5 +131,23 @@ describe('team helpers', () => {
     expect(spentLabel({ rows: 120, estimated: 30 })).toBe('spent in all 120 usage rows, 30 estimated');
     expect(spentLabel({ rows: 1, estimated: 0 })).toBe('spent in all 1 usage row');
     expect(spentLabel({ rows: 1234, estimated: 0 })).toBe('spent in all 1,234 usage rows');
+  });
+
+  it('counts the Crew page figures: at work, stopped, tasks in flight and waiting, skills given and agents without one', () => {
+    const agents = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const presence = [
+      { agentId: 'a', presence: 'Working', since: '', updated: '', seq: 1 },
+      { agentId: 'b', presence: 'Paused', label: 'stopped', since: '', updated: '', seq: 1 },
+    ] as PresenceState[];
+    const tasks = [{ status: 'IN_PROGRESS' }, { status: 'REVIEW' }, { status: 'WAITING_HUMAN' }, { status: 'COMPLETED' }, { status: 'BACKLOG' }];
+    const skills = [
+      { status: 'accepted', agents: ['a', 'b'] },
+      { status: 'accepted', agents: ['a', 'gone'] }, // an agent off the team is not counted
+      { status: 'offered', agents: ['c'] }, // not accepted: given to nobody yet
+    ];
+    // c has no presence at all: stopped too (it never started)
+    expect(crewFigures(agents, presence, tasks, skills)).toEqual({ agents: 3, working: 1, stopped: 2, inFlight: 2, waiting: 1, skillsGiven: 3, withoutSkills: 1 });
+    expect(skillCount(skills, 'a')).toBe(2);
+    expect(skillCount(skills, 'c')).toBe(0);
   });
 });

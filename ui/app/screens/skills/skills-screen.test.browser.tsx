@@ -18,8 +18,8 @@ const skill = (over: Partial<Skill>): Skill => ({
   origin: 'repository',
   contentHash: 'h',
   status: 'offered',
-  audience: 'team',
-  agents: [],
+  audience: 'agents',
+  agents: ['agt_a'],
   created: '',
   updated: '',
   body: 'Keep functions small. <script>window.__xss=1</script>',
@@ -144,7 +144,7 @@ describe('SkillsScreen', () => {
     expect(go.getAttribute('data-check')).toBe('true');
     expect(go.querySelector('[data-brand]')).toBeNull(); // a repository skill: the file icon
     expect(go.querySelector('svg')).not.toBeNull();
-    expect(stateOf(go)).toBe('Accepted ✓ · whole team');
+    expect(stateOf(go)).toBe('Accepted ✓ · 1 agent');
     expect(go.querySelector('[data-testid="skill-state"]')!.getAttribute('data-tone')).toBe('ok');
     expect(go.textContent).toContain('Go style');
     const w = tile(r, 'wrangler')!;
@@ -179,7 +179,7 @@ describe('SkillsScreen', () => {
     expect(w.querySelector('.short')!.textContent).toBe('Cloudflare Workers, Pages and Wrangler.');
     expect(w.textContent).not.toContain('Deploys a Worker');
     expect(w.querySelector('[data-brand="cloudflare"]')).not.toBeNull();
-    expect(stateOf(w)).toBe('Accepted ✓ · whole team');
+    expect(stateOf(w)).toBe('Accepted ✓ · 1 agent');
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(w.querySelector('[data-testid="skill-tile-detail"]')).toBeNull();
     // open: the full panel inside the row, with the whole description, who gets it and the buttons
@@ -187,7 +187,7 @@ describe('SkillsScreen', () => {
     expect(button.getAttribute('aria-expanded')).toBe('true');
     expect(button.getAttribute('aria-controls')).toBe(w.querySelector('[data-testid="skill-tile-detail"]')!.id);
     expect(panel.textContent).toContain(long);
-    expect(panel.querySelector('[data-testid="skill-audience-text"]')!.textContent).toBe('The whole team');
+    expect(panel.querySelector('[data-testid="skill-audience-text"]')!.textContent).toBe('agt_a'); // the team is not loaded here: the id
     byText(panel, 'button', 'Stop using wrangler');
     expect(panel.hasAttribute('data-inline')).toBe(true);
     expect(w.querySelector('.short')!.textContent).toBe('Cloudflare Workers, Pages and Wrangler.'); // the row stays above the panel
@@ -283,7 +283,7 @@ describe('SkillsScreen', () => {
     let skills: Skill[] = [skill({ status: 'accepted' })];
     const r = mount(
       <SkillsScreen />,
-      servicesWith({
+      withTeam({
         skillList: async () => skills,
         skillLibraryList: async () => [
           lib({}),
@@ -331,13 +331,17 @@ describe('SkillsScreen', () => {
     expect(w.textContent).toContain('Workers');
     expect(w.textContent).toContain('Apache-2.0');
     expect(w.textContent).toContain('abcdef123456');
+    // nothing is added for the whole team: Add waits until the agents it is for are ticked (P76), and there is no "Add all"
+    expect((byText(w, 'button', 'Add to gocalc') as HTMLButtonElement).disabled).toBe(true);
+    expect(r.$('[data-testid="library-add-all"]')).toBeNull();
+    await r.act(() => byLabel<HTMLInputElement>(r.$('[data-testid="library-for-agents"]')!, /^Ada/).click());
     await r.act(() => byText(w, 'button', 'Add to gocalc').click());
-    await waitFor(() => expect(added).toEqual([['prj_1', 'cloudflare-skills', 'wrangler']]), r);
+    await waitFor(() => expect(added).toEqual([['prj_1', 'cloudflare-skills', 'wrangler', 'agents', ['agt_a']]]), r);
     const note = await one(r, '[data-testid="skill-added"]');
     expect(note.getAttribute('role')).toBe('status');
-    expect(note.textContent).toContain('wrangler was added to gocalc and is accepted ✓');
+    expect(note.textContent).toContain('wrangler was added to gocalc and is accepted ✓ For Ada.');
     await waitFor(() => expect(tile(r, 'wrangler')?.getAttribute('data-check')).toBe('true'), r);
-    expect(stateOf(tile(r, 'wrangler')!)).toBe('Accepted ✓ · whole team');
+    expect(stateOf(tile(r, 'wrangler')!)).toBe('Accepted ✓ · 1 agent');
     expect(r.$('[data-testid="library-skill-tile"][data-name="wrangler"]')).toBeNull();
     // the added skill's panel opens: it says accepted
     expect(r.$('[data-testid="skill"][data-skill="wrangler"]')!.querySelector('[data-testid="skill-status"]')!.textContent).toBe('accepted ✓');
@@ -348,7 +352,7 @@ describe('SkillsScreen', () => {
     let skills: Skill[] = [];
     const r = mount(
       <SkillsScreen />,
-      servicesWith({
+      withTeam({
         skillList: async () => skills,
         skillLibraryList: async () => [lib({}), lib({ id: 'l-xlsx', name: 'xlsx', description: 'Spreadsheets' }), lib({ id: 'l-docx', name: 'docx', description: 'Documents' })],
         skillLibraryAdd: async (...a: unknown[]) => {
@@ -372,49 +376,14 @@ describe('SkillsScreen', () => {
     };
     await pick('pdf');
     await pick('docx');
+    await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Choose the agents first'), r);
+    await r.act(() => byLabel<HTMLInputElement>(r.$('[data-testid="library-for-agents"]')!, /^Quinn/).click());
     await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Add 2 skills to gocalc'), r);
     await r.act(() => (r.$('[data-testid="library-add-picked"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(added.map((a) => a[2])).toEqual(['pdf', 'docx']), r);
+    await waitFor(() => expect(added.map((a) => [a[2], a[4]])).toEqual([['pdf', ['agt_q']], ['docx', ['agt_q']]]), r);
     const note = await one(r, '[data-testid="skill-added"]');
-    expect(note.textContent).toContain('2 skills were added to gocalc and are accepted ✓: pdf, docx');
+    expect(note.textContent).toContain('2 skills were added to gocalc and are accepted ✓: pdf, docx For Quinn.');
     await waitFor(() => expect(Array.from(r.$$('[data-testid="library-skill-tile"]')).map((x) => x.getAttribute('data-name'))).toEqual(['xlsx']), r);
-  });
-
-  it('Add all from a registry calls libraryAddAll and reports what happened with the reasons', async () => {
-    const calls: unknown[][] = [];
-    let lists = 0;
-    const r = mount(
-      <SkillsScreen />,
-      servicesWith({
-        skillList: async () => (lists++, []),
-        skillLibraryList: async () => [lib({}), lib({ id: 'l-w', name: 'wrangler', registryId: 'cloudflare-skills', repo: 'cloudflare/skills' })],
-        skillLibraryAddAll: async (...a: unknown[]) => (
-          calls.push(a),
-          {
-            added: ['pdf', 'xlsx'],
-            unchanged: ['docx'],
-            blocked: [{ name: 'evil', reason: 'contains a secret' }],
-            skipped: [{ name: 'bad', reason: 'no SKILL.md' }],
-          }
-        ),
-      }),
-    );
-    const buttons = await waitFor(() => {
-      const b = Array.from(r.$$('[data-testid="library-add-all"]')) as HTMLButtonElement[];
-      if (b.length !== 2) throw new Error('not yet');
-      return b;
-    }, r);
-    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Add all from anthropics/skills', 'Add all from cloudflare/skills']);
-    const before = lists;
-    await r.act(() => buttons[0]!.click());
-    await waitFor(() => expect(calls).toEqual([['prj_1', 'anthropic-skills']]), r);
-    const note = await one(r, '[data-testid="skill-added-all"]');
-    expect(note.getAttribute('role')).toBe('status');
-    expect(note.textContent).toContain('From anthropics/skills:');
-    expect(note.textContent).toContain('2 added, 1 unchanged, 1 blocked, 1 skipped');
-    expect(note.textContent).toContain('evil blocked: contains a secret');
-    expect(note.textContent).toContain('bad skipped: no SKILL.md');
-    await waitFor(() => expect(lists).toBeGreaterThan(before), r); // the project's skills are re-read
   });
 
   it('an empty Library says it is filling and offers Sync now; a full one in the project says everything is in', async () => {
@@ -454,7 +423,7 @@ describe('SkillsScreen', () => {
     await waitFor(() => expect(tile(r, 'pdf')?.getAttribute('data-update')).toBe('true'), r);
     expect(stateOf(tile(r, 'pdf')!)).toBe('Update in the Library');
     expect(tile(r, 'xlsx')!.getAttribute('data-update')).toBe('false'); // another project's update is not ours
-    expect(stateOf(tile(r, 'xlsx')!)).toBe('Accepted ✓ · whole team');
+    expect(stateOf(tile(r, 'xlsx')!)).toBe('Accepted ✓ · 1 agent');
     const x = await open(r, 'xlsx');
     expect(exists(x, 'button', 'Update from the Library')).toBe(false);
     const p = await open(r, 'pdf');
@@ -640,26 +609,29 @@ describe('SkillsScreen', () => {
   }
   const audienceOf = (panel: Element) => panel.querySelector<HTMLElement>('[data-testid="skill-audience-text"]')?.textContent ?? '';
 
-  it('says who gets each skill: the whole team or its roles, agents given it on top, or only chosen agents', async () => {
+  it('says who gets each skill: the agents it is given to, never the whole team (P76)', async () => {
     const r = mount(
       <SkillsScreen />,
       withTeam({
         skillList: async () => [
           skill({ status: 'accepted', roles: ['Backend'], agents: ['agt_q'] }),
-          skill({ id: 'e', name: 'everywhere', status: 'accepted', roles: [] }),
-          skill({ id: 'w', name: 'wrangler', status: 'accepted', audience: 'agents', agents: ['agt_b', 'agt_removed'] }),
-          skill({ id: 'n', name: 'new-one', status: 'offered', roles: [] }),
+          skill({ id: 'e', name: 'everywhere', status: 'accepted', roles: [], agents: [] }),
+          skill({ id: 'w', name: 'wrangler', status: 'accepted', agents: ['agt_b', 'agt_removed'] }),
+          skill({ id: 'n', name: 'new-one', status: 'offered', roles: [], agents: [] }),
+          skill({ id: 'm', name: 'mine', status: 'offered', roles: [], agents: ['agt_a'] }),
         ],
       }),
     );
     const go = await open(r, 'go-style');
-    await waitFor(() => expect(audienceOf(go)).toBe('Every Backend agent, and Quinn'), r);
-    expect(audienceOf(await open(r, 'everywhere'))).toBe('The whole team');
-    expect(audienceOf(await open(r, 'wrangler'))).toBe('Only Bob'); // a removed agent is not named
-    expect(audienceOf(await open(r, 'new-one'))).toBe('The whole team, once accepted');
+    await waitFor(() => expect(audienceOf(go)).toBe('Quinn'), r); // the role it names does not give it to Ada
+    expect(audienceOf(await open(r, 'everywhere'))).toBe('Nobody yet: give it to the agents that need it');
+    expect(audienceOf(await open(r, 'wrangler'))).toBe('Bob'); // a removed agent is not named
+    expect(audienceOf(await open(r, 'new-one'))).toBe('Nobody yet: give it to the agents that need it');
+    expect(audienceOf(await open(r, 'mine'))).toBe('Ada, once accepted');
+    expect(stateOf(tile(r, 'everywhere')!)).toBe('Accepted ✓ · no agent yet');
   });
 
-  it('gives a team skill to one more agent, or narrows it to chosen agents starting from those who have it', async () => {
+  it('gives a skill to the agents ticked, starting from those who have it; the role it names is a suggestion only', async () => {
     const calls: unknown[][] = [];
     const r = mount(
       <SkillsScreen />,
@@ -669,22 +641,22 @@ describe('SkillsScreen', () => {
       }),
     );
     const go = await open(r, 'go-style');
-    await waitFor(() => expect(audienceOf(go)).toBe('Every Backend agent'), r);
+    await waitFor(() => expect(audienceOf(go)).toBe('Ada'), r);
     await r.act(() => byText(go, 'button', 'Change who gets go-style').click());
     const ed = await waitFor(() => go.querySelector<HTMLElement>('[data-testid="skill-audience"]')!, r);
-    // the whole team: Ada (backend) gets it with the team and cannot be unticked; Quinn is given it on top
-    expect(byLabel<HTMLInputElement>(ed, /^Ada/).disabled).toBe(true);
+    // no choice of the whole team: one list of agents, the one of the role it names marked as such
+    expect(ed.querySelector('input[type="radio"]')).toBeNull();
+    expect(ed.textContent).toContain('backend: the skill names this role');
+    expect(byLabel<HTMLInputElement>(ed, /^Ada/).checked).toBe(true);
+    expect(byLabel<HTMLInputElement>(ed, /^Ada/).disabled).toBe(false);
     await r.act(() => byLabel<HTMLInputElement>(ed, /^Quinn/).click());
     await r.act(() => byText(ed, 'button', 'Save who gets go-style').click());
-    await waitFor(() => expect(calls).toEqual([['prj_1', 'go-style', 'team', ['agt_q']]]), r);
+    await waitFor(() => expect(calls).toEqual([['prj_1', 'go-style', 'agents', ['agt_a', 'agt_q']]]), r);
     await waitFor(() => expect(go.querySelector('[data-testid="skill-audience"]')).toBe(null), r);
 
-    // only chosen agents: starts from Ada, who has it now; Bob is added, Ada taken off
+    // again: Bob is added and Ada taken off
     await r.act(() => byText(go, 'button', 'Change who gets go-style').click());
     const ed2 = await waitFor(() => go.querySelector<HTMLElement>('[data-testid="skill-audience"]')!, r);
-    await r.act(() => byLabel<HTMLInputElement>(ed2, /^Only the agents I choose/).click());
-    expect(byLabel<HTMLInputElement>(ed2, /^Ada/).checked).toBe(true);
-    expect(byLabel<HTMLInputElement>(ed2, /^Ada/).disabled).toBe(false);
     await r.act(() => byLabel<HTMLInputElement>(ed2, /^Bob/).click());
     await r.act(() => byLabel<HTMLInputElement>(ed2, /^Ada/).click());
     await r.act(() => byText(ed2, 'button', 'Save who gets go-style').click());
@@ -702,7 +674,7 @@ describe('SkillsScreen', () => {
       }),
     );
     const go = await open(r, 'go-style');
-    await waitFor(() => expect(audienceOf(go)).toBe('Only Ada'), r);
+    await waitFor(() => expect(audienceOf(go)).toBe('Ada'), r);
     await r.act(() => byText(go, 'button', 'Change who gets go-style').click());
     const ed = await waitFor(() => go.querySelector<HTMLElement>('[data-testid="skill-audience"]')!, r);
     await r.act(() => byLabel<HTMLInputElement>(ed, /^Ada/).click());

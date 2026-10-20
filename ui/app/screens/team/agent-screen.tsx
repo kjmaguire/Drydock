@@ -5,7 +5,7 @@
 // Everything is a projection of what the core reports; nothing is estimated and nothing is invented.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { BookOpen, MessageSquare, Pencil, Plug, Plus, ShieldAlert, ShieldCheck, Sparkles, UserX } from 'lucide';
+import { MessageSquare, Pencil, Plug, Plus, ShieldAlert, ShieldCheck, Sparkles, UserX } from 'lucide';
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
@@ -16,14 +16,14 @@ import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Avatar, Badge, StatusChip, hueFor, muted, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
-import { Switch } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, stackList } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t } from '../../ui/tokens.ts';
 import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
-import { byRole, onTeam, shortDescription } from '../skills/skills.ts';
+import { onTeam, shortDescription } from '../skills/skills.ts';
+import { AddSkills, AgentSkillList, agentSkills, rowCss, rowSpace } from './agent-skills.tsx';
 import { TaskDecisions } from '../shared/explain.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
@@ -173,26 +173,6 @@ const statCss = css({
 });
 
 const rowsCss = stackList;
-// The two long lists (ui/windowed-list.tsx, L37) are not a grid with a gap: each of their rows carries its own space below it.
-const rowSpace = css({ marginBottom: t.s2 });
-const rowCss = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px',
-  padding: '10px 12px',
-  borderRadius: '14px',
-  background: t.bgSidebar,
-  fontSize: t.textMd,
-  minWidth: '0',
-  '& .ico': { display: 'grid', placeItems: 'center', flex: 'none', width: '30px', height: '30px', borderRadius: '9px', background: t.bgSurface, border: `1px solid ${t.border}`, color: t.textMuted },
-  '& .what': { flex: '1', minWidth: '0', display: 'grid', gap: '1px' },
-  '& .what code': { fontSize: t.textMd, background: 'transparent', padding: '0' },
-  '& .what small': { color: t.textFaint, fontSize: t.textSm, overflowWrap: 'anywhere' },
-  '& .what small.desc': { color: t.textMuted },
-  '& em': { marginLeft: 'auto', flex: 'none', fontStyle: 'normal', color: t.textFaint, fontSize: t.textSm },
-  '& label': { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap' },
-});
-
 const memCss = css({
   padding: '10px 12px',
   borderLeft: `3px solid ${t.mentionBorder}`,
@@ -238,53 +218,14 @@ export function nowChip(p: PresenceState | undefined, task: Task | undefined): s
   return doing(p);
 }
 
-/** The project's skills an agent receives (accepted ones that reach it), and the project's accepted skills in all. */
+/** The project's skills an agent receives (the accepted ones given to it, decision P76), and the project's accepted skills in all. */
 export function skillsOf(all: readonly Skill[], agent: Pick<Agent, 'id' | 'role'>, team: readonly { id: string }[]): { mine: Skill[]; accepted: Skill[] } {
   const accepted = all.filter((k) => k.status === 'accepted').map((k) => onTeam(k, team));
-  const mine = accepted.filter((k) => byRole(k, agent.role) || (k.agents ?? []).includes(agent.id));
-  return { mine, accepted };
+  return { mine: agentSkills(accepted, agent.id), accepted };
 }
 
 /** The project's MCP servers this agent is granted. */
 export const serversOf = (servers: readonly McpServer[], agentId: string): McpServer[] => servers.filter((sv) => sv.agents.some((x) => x.agentId === agentId));
-
-function SkillRows(handle: Handle<{ skills: readonly Skill[]; agent: Agent; busy: string; onToggle: (k: Skill, on: boolean) => void; full?: boolean }>) {
-  return () => {
-    const { skills, agent, busy, onToggle, full } = handle.props;
-    // a project can have hundreds of skills (a vendor's registry alone has 175): a long list draws only the rows near the view
-    return (
-      <WindowedList
-        {...listOf(
-          skills,
-          (k) => k.name,
-          (k) => {
-            const included = byRole(k, agent.role);
-            const given = (k.agents ?? []).includes(agent.id);
-            const on = included || given;
-            return (
-              <div role="listitem" mix={[rowCss, rowSpace]} data-testid="agent-skill" data-skill={k.name} data-on={on ? 'true' : 'false'}>
-                <span class="ico" aria-hidden="true">
-                  <Icon icon={BookOpen} size={15} />
-                </span>
-                <span class="what">
-                  <code>{k.name}</code>
-                  {k.description ? <small class="desc">{full ? k.description : shortDescription(k.description)}</small> : null}
-                  {included ? <small>{(k.roles ?? []).length ? `Every ${(k.roles ?? []).join(', ')} agent gets it` : 'The whole team gets it'}</small> : null}
-                </span>
-                <Switch label={`${k.name} for ${agent.name}`} checked={on} disabled={included || busy === k.name} onChange={(v) => onToggle(k, v)} />
-              </div>
-            );
-          },
-        )}
-        label="Skills"
-        role="list"
-        testId="agent-skills-list"
-        maxHeight={640}
-        estimate={64}
-      />
-    );
-  };
-}
 
 function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: string; full?: boolean }>) {
   return () => {
@@ -369,7 +310,6 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   watch(handle, s.workspace);
   // two actions, so a failed direct message and a failed skill switch each say what they were
   const dm = action(handle);
-  const change = action(handle);
   let tab: TabName = 'overview';
   let editing = false;
   const pid = () => s.workspace.projectId ?? '';
@@ -393,12 +333,6 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
       const room = await s.client.roomCreateDM(a.projectId || pid(), a.id);
       go(routes.room.href({ id: room.id }));
     });
-  const toggleSkill = (a: Agent, k: Skill, on: boolean) =>
-    change.run(k.name, async () => {
-      await s.client.agentUpdate(on ? { id: a.id, addSkills: [k.name] } : { id: a.id, removeSkills: [k.name] });
-      skills.reload();
-    });
-
   return () => {
     const id = handle.props.id;
     const agents = s.project.agentList;
@@ -503,20 +437,19 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
         <div mix={colCss}>
           <section mix={panelCss} aria-label="Skills">
             <h2>
-              Skills <span>{skills.data ? `${sk.mine.length} of ${sk.accepted.length} in this project` : ''}</span>
+              Skills <span>{skills.data ? `${sk.mine.length} given to ${a.name}` : ''}</span>
             </h2>
             <ErrorNote error={skills.error} what="Skills" />
-            {skills.data && sk.accepted.length === 0 ? (
-              <p class="quiet">
-                No skill is accepted in this project yet. Skills come from the repository or a registry on the <a href={routes.skills.href()}>Skills</a> page.
-              </p>
-            ) : null}
-            <SkillRows skills={sk.accepted.slice(0, 5)} agent={a} busy={change.busy} onToggle={(k, on) => void toggleSkill(a, k, on)} />
-            {sk.accepted.length > 5 ? (
-              <button type="button" mix={[moreLink, on('click', () => ((tab = 'skills'), void handle.update()))]} style={{ border: '0', background: 'transparent', padding: '0', minHeight: '0' }}>
-                All {sk.accepted.length} skills
-              </button>
-            ) : null}
+            {skills.data && sk.mine.length === 0 ? <p class="quiet">{a.name} has no skill yet. Give it the ones its role needs.</p> : null}
+            <AgentSkillList agent={a} skills={sk.accepted} limit={5} onChanged={() => skills.reload()} />
+            <button
+              type="button"
+              data-testid="agent-skills-more"
+              mix={[moreLink, on('click', () => ((tab = 'skills'), void handle.update()))]}
+              style={{ border: '0', background: 'transparent', padding: '0', minHeight: '0' }}
+            >
+              {sk.mine.length > 5 ? `All ${sk.mine.length} skills, and add more` : 'Add skills'}
+            </button>
           </section>
           <section mix={panelCss} aria-label="Tools">
             <h2>
@@ -553,18 +486,24 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
 
     const skillsTab = a ? (
       <div mix={grid2}>
-        <section mix={panelCss} aria-label="Skills">
-          <h2>
-            Skills <span>{skills.data ? `${sk.mine.length} of ${sk.accepted.length} in this project` : ''}</span>
-          </h2>
-          <p class="quiet">
-            A whole-team skill reaches every agent its roles take in; the switch gives this agent a skill of its own or takes it away. Who gets each skill is decided on the <a href={routes.skills.href()}>Skills</a> page.
-          </p>
-          <ErrorNote error={skills.error} what="Skills" />
-          {skills.loading && !skills.data ? <Loading /> : null}
-          {skills.data && sk.accepted.length === 0 ? <p class="quiet">No skill is accepted in this project yet.</p> : null}
-          <SkillRows skills={sk.accepted} agent={a} busy={change.busy} onToggle={(k, on) => void toggleSkill(a, k, on)} full />
-        </section>
+        <div mix={colCss}>
+          <section mix={panelCss} aria-label="Skills">
+            <h2>
+              Skills <span>{skills.data ? `${sk.mine.length} given to ${a.name}` : ''}</span>
+            </h2>
+            <p class="quiet">Each agent is a specialist: give it the skills its role needs, and nothing else.</p>
+            <ErrorNote error={skills.error} what="Skills" />
+            {skills.loading && !skills.data ? <Loading /> : null}
+            {skills.data && sk.mine.length === 0 ? <p class="quiet">{a.name} has no skill yet.</p> : null}
+            <AgentSkillList agent={a} skills={sk.accepted} full onChanged={() => skills.reload()} />
+          </section>
+          <section mix={panelCss} aria-label="Add skills">
+            <h2>
+              Add skills <span>from this project and the Library</span>
+            </h2>
+            <AddSkills agent={a} projectId={a.projectId || pid()} skills={skills.data ?? []} onChanged={() => skills.reload()} />
+          </section>
+        </div>
         <section mix={panelCss} aria-label="Tools">
           <h2>
             Tools <span>MCP</span>
@@ -730,7 +669,6 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                   </div>
                   <ErrorNote error={dm.error} what="Could not open a direct message" />
                   <TaskTotalNotice>The numbers and the task list on this page are counted from these tasks only.</TaskTotalNotice>
-                  <ErrorNote error={change.error} what="Skill not changed" />
                   <ErrorNote error={detail.error} what="Could not load the agent's runs and usage" />
                   <Tabs
                     label={`${a.name}'s page`}

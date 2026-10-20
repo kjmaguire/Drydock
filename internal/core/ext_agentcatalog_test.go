@@ -197,31 +197,26 @@ func TestPrebuiltAgentsAreAppliedWithTheirSkillsAndServers(t *testing.T) {
 		t.Fatalf("one library server for both: %+v", lib)
 	}
 
-	// the human gives wrangler to the whole team, and workers-best-practices to the team by its role (Frontend)
-	for _, n := range []string{"wrangler", "workers-best-practices"} {
-		a.call("skill.audience", map[string]any{"projectId": p.ID, "name": n, "audience": skills.AudienceTeam, "agents": []string{}}, nil)
+	// skills belong to agents (decision P76): a newcomer is given the skills it brings, and the agents that had them keep them;
+	// nobody gets one by role, and the whole team cannot be chosen
+	if err := a.callErr("skill.audience", map[string]any{"projectId": p.ID, "name": "wrangler", "audience": skills.AudienceTeam, "agents": []string{}}); err == nil || !strings.Contains(err.Error(), "specialist") {
+		t.Fatalf("the whole team was accepted: %v", err)
 	}
-	// a skill the whole team gets is shared, not narrowed to the newcomer; a team skill for another role is given to the
-	// newcomer as well, and that role keeps it
 	var res3 core.PrebuiltApplied
 	a.call("agentcatalog.apply", map[string]any{"id": "cloudflare-engineer", "projectId": p.ID, "name": "Edge", "installSkills": true, "connectMcp": false}, &res3)
-	if res3.Agent.Name != "Edge" || strings.Join(res3.Skills.Shared, ",") != "wrangler" || strings.Join(res3.Skills.Assigned, ",") != "cloudflare,workers-best-practices" ||
+	if res3.Agent.Name != "Edge" || len(res3.Skills.Shared) != 0 || strings.Join(res3.Skills.Assigned, ",") != "cloudflare,workers-best-practices,wrangler" ||
 		skillNames(res3.Skills.Pending) != "durable-objects" || len(res3.MCP.Granted) != 0 || len(res3.MCP.Skipped) != 1 {
-		t.Fatalf("shared %+v", res3)
+		t.Fatalf("the newcomer's skills %+v", res3)
 	}
-	var wr, wbp skills.Skill
+	var wr skills.Skill
 	a.call("skill.get", map[string]string{"projectId": p.ID, "name": "wrangler"}, &wr)
-	if len(wr.Agents) != 0 || wr.Audience != skills.AudienceTeam {
-		t.Fatalf("wrangler was narrowed: %+v %s", wr.Agents, wr.Audience)
-	}
-	a.call("skill.get", map[string]string{"projectId": p.ID, "name": "workers-best-practices"}, &wbp)
-	if wbp.Audience != skills.AudienceTeam || strings.Join(wbp.Agents, ",") != res3.Agent.ID {
-		t.Fatalf("workers-best-practices %s %+v", wbp.Audience, wbp.Agents)
+	if wr.Audience != skills.AudienceAgents || len(wr.Agents) != 3 || !slices.Contains(wr.Agents, ag.ID) || !slices.Contains(wr.Agents, res2.Agent.ID) || !slices.Contains(wr.Agents, res3.Agent.ID) {
+		t.Fatalf("wrangler: %s %+v", wr.Audience, wr.Agents)
 	}
 	var fe skills.Plan
 	a.call("skill.plan", skills.Target{ProjectID: p.ID, Role: "frontend", Adapter: "claude"}, &fe)
-	if len(fe.Files) != 2 || !strings.Contains(fe.Files[0].Path+fe.Files[1].Path, "workers-best-practices") {
-		t.Fatalf("the Frontend role keeps workers-best-practices: %+v", fe.Files)
+	if len(fe.Files) != 0 {
+		t.Fatalf("a role with no agent given a skill got one: %+v", fe.Files)
 	}
 	if err := a.callErr("skill.audience", map[string]any{"projectId": p.ID, "name": "wrangler", "audience": "everyone"}); err == nil {
 		t.Fatal("an unknown audience was accepted")

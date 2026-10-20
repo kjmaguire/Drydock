@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -400,6 +401,12 @@ func TestRelevantSkillDeliveryListsSkillsAndKeepsTheirTextOutOfTheTurn(t *testin
 	var worker, reviewer core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	for _, ag := range []string{worker.ID, reviewer.ID} { // skills are given to agents (P76)
+		a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "go-style", "agentId": ag, "on": true}, nil)
+	}
+	for _, ag := range []string{worker.ID, reviewer.ID} { // skills are given to agents (P76)
+		a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "wrangler", "agentId": ag, "on": true}, nil)
+	}
 	var task tasks.Task
 	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
 	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
@@ -488,6 +495,9 @@ func TestTheManifestSaysWhenEveryTurnCarriesTooMuch(t *testing.T) {
 	var worker, reviewer core.Agent
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
 	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	for _, ag := range []string{worker.ID, reviewer.ID} { // skills are given to agents (P76)
+		a.call("skill.assign", map[string]any{"projectId": p.ID, "name": "vendor-guide", "agentId": ag, "on": true}, nil)
+	}
 	var task tasks.Task
 	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
 	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
@@ -519,4 +529,46 @@ func setSkillDelivery(t *testing.T, a *app, projectID, d string) {
 	a.call("projectdev.get", map[string]any{"projectId": projectID}, &s)
 	s["skillDelivery"] = d
 	a.call("projectdev.set", map[string]any{"projectId": projectID, "settings": s}, nil)
+}
+
+// Decision P76 at start: a skill an older version gave to the whole team is given to the agents it reached when the app
+// starts, and a newcomer to the team no longer gets it by its role.
+func TestWholeTeamSkillsAreGivenToTheirAgentsWhenTheAppStarts(t *testing.T) {
+	dir := t.TempDir()
+	a := open(t, dir)
+	repo := newRepo(t)
+	os.MkdirAll(filepath.Join(repo, ".aet", "skills", "go-style"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".aet", "skills", "go-style", "SKILL.md"), []byte("---\nname: go-style\ndescription: How Go code is written here\n---\nKeep functions small.\n"), 0o644)
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-qm", "skills")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	var be, fe core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &be)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Frontend #1", Adapter: "claude", Role: "frontend", Model: "fake-1"}, &fe)
+	a.call("skill.scan", map[string]string{"projectId": p.ID}, nil)
+	a.call("skill.accept", map[string]string{"projectId": p.ID, "name": "go-style"}, nil)
+	// what an older version left: the skill for the whole team, given to nobody of its own
+	for _, q := range []string{`UPDATE skills SET audience='team' WHERE project_id=?`, `DELETE FROM agent_skills WHERE project_id=?`} {
+		if _, err := a.c.DB.Writer().Exec(q, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.c.Close()
+
+	b := open(t, dir)
+	var k skills.Skill
+	b.call("skill.get", map[string]any{"projectId": p.ID, "name": "go-style"}, &k)
+	want := []string{be.ID, fe.ID}
+	slices.Sort(want)
+	if k.Audience != skills.AudienceAgents || !slices.Equal(k.Agents, want) {
+		t.Fatalf("after the start: %s %+v", k.Audience, k.Agents)
+	}
+	var late core.Agent
+	b.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #2", Adapter: "claude", Role: "backend", Model: "fake-1"}, &late)
+	var plan skills.Plan
+	b.call("skill.plan", skills.Target{ProjectID: p.ID, AgentID: late.ID, Role: "backend", Adapter: "claude"}, &plan)
+	if len(plan.Files) != 0 {
+		t.Fatalf("a newcomer got a skill by its role: %+v", plan.Files)
+	}
 }

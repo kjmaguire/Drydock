@@ -59,7 +59,7 @@ test("the Crew page shows each agent as a dot with its name linking to the agent
   expect(await smallText(page), 'agent page: text under 12 px').toEqual([]);
   // the tabs
   await page.getByTestId('agent-tab-skills').click();
-  await expect(page.locator('section[aria-label="Skills"]')).toContainText('No skill is accepted in this project yet');
+  await expect(page.locator('section[aria-label="Skills"]')).toContainText('Ada has no skill yet.');
   await page.getByTestId('agent-tab-history').click();
   await expect(page.locator('section[aria-label="Runs"]')).toContainText('has not run yet');
   await page.getByTestId('agent-tab-overview').click();

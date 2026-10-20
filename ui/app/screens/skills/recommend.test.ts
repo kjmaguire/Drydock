@@ -10,16 +10,16 @@ const names = new Map([
 const item = (over: Partial<RecommendItem>): RecommendItem => ({ id: 'r1', kind: 'skill', action: 'add', name: 'wrangler', label: 'wrangler', agents: [], reason: 'why', status: 'open', ...over });
 
 describe('recommendation text', () => {
-  it('names the agents, or the whole team', () => {
-    expect(forWhom([], names)).toBe('the whole team');
+  it('names the agents (a skill item always names them, P76)', () => {
+    expect(forWhom([], names)).toBe('nobody named');
     expect(forWhom(['agt_1', 'agt_2'], names)).toBe('Backend #1, Lead');
     expect(forWhom(['agt_9'], names)).toBe('agt_9');
   });
 
   it('says what each kind of item does', () => {
-    expect(itemText(item({}), names)).toBe('Add the skill wrangler for the whole team');
+    expect(itemText(item({ agents: ['agt_1'] }), names)).toBe('Add the skill wrangler for Backend #1');
     expect(itemText(item({ action: 'give', agents: ['agt_1'] }), names)).toBe('Give the skill wrangler to Backend #1');
-    expect(itemText(item({ action: 'team' }), names)).toBe('Give the skill wrangler to the whole team');
+    expect(itemText(item({ action: 'team' }), names)).toBe('Give the skill wrangler to the whole team (skills now go to chosen agents)');
     expect(itemText(item({ action: 'remove' }), names)).toBe('Stop using the skill wrangler');
     expect(itemText(item({ kind: 'mcp', action: 'give', name: 'cfdocs', label: 'Cloudflare docs', agents: ['agt_2'] }), names)).toBe('Give the MCP server Cloudflare docs to Lead');
     expect(itemText(item({ kind: 'integration', action: 'add', name: 'linear', label: 'Linear' }), names)).toBe('Assign Linear to this project');

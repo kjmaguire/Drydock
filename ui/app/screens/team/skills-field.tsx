@@ -1,6 +1,6 @@
-// The Skills section of the agent forms: which of the project's accepted skills the agent gets. A whole-team skill whose roles
-// take in the agent's role is included and shown as such (who gets a skill is changed on the Skills page); every other skill
-// can be ticked to give it to this agent, which takes it from nobody.
+// The Skills section of the agent forms: which of the project's accepted skills the agent gets (decision P76: skills are given
+// to agents, each a specialist in its role). Ticking a skill gives it to this agent and takes it from nobody; a skill that
+// names the agent's role comes first, marked as suggested.
 
 import { css, type Handle } from 'remix/component';
 import { Cpu } from 'lucide';
@@ -11,7 +11,7 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
-import { audienceText, byRole, isGiven, onTeam, toggleSkill, type SkillChanges } from '../skills/skills.ts';
+import { audienceText, isGiven, onTeam, suggestsRole, toggleSkill, type SkillChanges } from '../skills/skills.ts';
 
 const fieldCss = css({
   display: 'grid',
@@ -31,7 +31,7 @@ export interface SkillsFieldProps {
   projectId: string;
   /** The agent being edited; empty for a new agent. */
   agentId?: string;
-  /** The role typed in the form: a whole-team skill whose roles take it in is included. */
+  /** The role typed in the form: a skill that names it comes first, marked as suggested. */
   role: string;
   /** The skills ticked or unticked so far; only these change when the form is saved. */
   changes: SkillChanges;
@@ -52,7 +52,9 @@ export function SkillsField(handle: Handle<SkillsFieldProps>) {
   return () => {
     const { agentId = '', role, changes, onChange } = handle.props;
     const all: Skill[] = q.data ?? [];
-    const accepted = all.filter((k) => k.status === 'accepted');
+    const accepted = all
+      .filter((k) => k.status === 'accepted')
+      .sort((x, y) => Number(suggestsRole(y, role)) - Number(suggestsRole(x, role)) || x.name.localeCompare(y.name));
     const waiting = all.filter((k) => k.status === 'offered').length;
     const others = (k: Skill): Skill => ({ ...k, agents: (onTeam(k, s.project.agentList).agents ?? []).filter((a) => a !== agentId) });
     return (
@@ -68,9 +70,9 @@ export function SkillsField(handle: Handle<SkillsFieldProps>) {
           </p>
         ) : null}
         {accepted.map((k) => {
-          const included = byRole(k, role);
+          const suggested = suggestsRole(k, role);
           const had = agentId !== '' && (k.agents ?? []).includes(agentId);
-          const who = audienceText(others(k), nameOf);
+          const who = (others(k).agents ?? []).length > 0 ? `Also given to ${audienceText(others(k), nameOf)}` : 'Not given to another agent';
           return (
             <Checkbox
               key={k.name}
@@ -80,9 +82,8 @@ export function SkillsField(handle: Handle<SkillsFieldProps>) {
                   {k.description ? <span class="desc">{excerpt(k.description)}</span> : null}
                 </>
               }
-              description={`${included ? 'Included: it goes to' : 'Now it goes to'} ${who.charAt(0).toLowerCase()}${who.slice(1)}.`}
-              checked={included || isGiven(changes, k.name, had)}
-              disabled={included}
+              description={`${suggested ? `Suggested for ${role}. ` : ''}${who}.`}
+              checked={isGiven(changes, k.name, had)}
               onChange={(on) => onChange(toggleSkill(changes, k.name, had, on))}
             />
           );
