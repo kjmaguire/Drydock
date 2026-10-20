@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - name: build fixture and jobtree
         run: |
           go build -o bin/fixture.exe ./fixture
@@ -71,7 +71,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - name: wincred (go-keyring on Credential Manager)
         if: always()
         run: go run ./wincred
@@ -96,7 +96,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - name: toolchain facts
         run: |
           where.exe gcc
@@ -134,13 +134,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
       - name: install CLIs from npm
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.293 @openai/codex@0.161.0 @google/gemini-cli@0.63.0 opencode-ai@1.18.35 @aaif/goose-acp@1.53.0
+          npm install -g @anthropic-ai/claude-code@2.1.305 @openai/codex@0.163.0 @google/gemini-cli@0.65.0 opencode-ai@1.19.3 @aaif/goose-acp@1.55.0
           npm prefix -g
           Get-ChildItem (npm prefix -g) | Select-Object -First 40 Name
       - name: where and versions
@@ -164,10 +164,10 @@ jobs:
         run: ./bin/acpspawn.exe 60 goose acp
       - name: ACP initialize - codex-acp via npx.cmd
         if: always()
-        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/codex-acp@2.1.1
+        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/codex-acp@2.2.2
       - name: ACP initialize - claude-agent-acp via npx.cmd
         if: always()
-        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/claude-agent-acp@0.87.0
+        run: ./bin/acpspawn.exe 180 npx -y @agentclientprotocol/claude-agent-acp@0.94.0
       - name: orphan check after probes
         if: always()
         run: |
@@ -185,13 +185,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
       - name: install wails3 CLI
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.30
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34
           wails3 version
           wails3 doctor
       - name: scaffold and build hello app

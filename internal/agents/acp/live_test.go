@@ -35,7 +35,7 @@ type liveCase struct {
 }
 
 var liveCases = []liveCase{
-	{name: "gemini", env: "GEMINI", bin: "gemini", args: []string{"--acp"}, extra: []string{"GEMINI_CLI_TRUST_WORKSPACE=true", "NO_BROWSER=1"}, version: "0.63.0",
+	{name: "gemini", env: "GEMINI", bin: "gemini", args: []string{"--acp"}, extra: []string{"GEMINI_CLI_TRUST_WORKSPACE=true", "NO_BROWSER=1"}, version: "0.65.0",
 		check: func(t *testing.T, i acp.AgentInfo) {
 			if !i.LoadSession || i.Resume || i.Fork || i.List || !i.MCPHTTP || !i.MCPSSE || !i.Image {
 				t.Errorf("gemini capabilities differ from docs/phase0/agent-clis.md section 7.1: %+v", i)

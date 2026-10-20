@@ -45,7 +45,7 @@ func TestEachUserDistroIsAConnectionOfItsOwnWithItsOwnSignIn(t *testing.T) {
 		t.Fatalf("%d connections: %+v", len(cs), cs)
 	}
 	c := cs[1]
-	if c.Adapter != "claude" || c.RunMode != agents.RunModeWSL || c.Distro != "Ubuntu" || !c.Installed || c.Version != "2.1.304" ||
+	if c.Adapter != "claude" || c.RunMode != agents.RunModeWSL || c.Distro != "Ubuntu" || !c.Installed || c.Version != "2.1.305" ||
 		c.Path != filepath.Join(f.Home, ".local", "bin", "claude") || c.Authenticated == nil || !*c.Authenticated || c.AuthDetail != "claude.ai" ||
 		c.Account != "standin@example.invalid" {
 		t.Fatalf("%+v", c)

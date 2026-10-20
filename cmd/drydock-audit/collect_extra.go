@@ -449,7 +449,8 @@ var (
 )
 
 // ciInstalls are the programs CI workflows install at a version, against their newest release; one that differs from the
-// version Drydock's manifests pin says so. The Phase 0 probes keep the versions they verified (their hold says so).
+// version Drydock's manifests pin says so. The Phase 0 probes follow the newest releases too (2026-10-20, the owner's
+// instruction): a push that changes their workflow runs them again on Windows.
 func ciInstalls(ctx context.Context) []Item {
 	ps, _ := pins.Embedded()
 	pinned := map[string]string{}
@@ -477,9 +478,6 @@ func ciInstalls(ctx context.Context) []Item {
 				if want, ok := pinned[pkg]; ok && want != it.Used {
 					it.Note = "Drydock's manifests pin " + want + "."
 				}
-			}
-			if wf == "windows-probes.yml" {
-				it.Hold = "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay."
 			}
 			items = append(items, it)
 		}

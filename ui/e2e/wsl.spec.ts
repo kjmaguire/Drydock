@@ -100,7 +100,7 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   // the distro's install is its own choice, named as on the Connections page (its Connection is probed when the dialog opens)
   const agent = dialog.getByLabel('Agent CLI', { exact: true });
   const choice = await optionsOf(agent, `claude@wsl:${distro()}`);
-  await expect(choice).toHaveText(new RegExp(`^Claude Code in ${distro()} \\(WSL\\) 2\\.1\\.304$`), { timeout: 60_000 });
+  await expect(choice).toHaveText(new RegExp(`^Claude Code in ${distro()} \\(WSL\\) 2\\.1\\.305$`), { timeout: 60_000 });
   await expect(choice).toBeEnabled();
   await expect(await optionsOf(agent, 'claude')).toContainText('Claude Code on Windows');
   await choose(agent, `claude@wsl:${distro()}`);

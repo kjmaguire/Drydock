@@ -24,7 +24,7 @@ the notes (below).
 | Skills the prebuilt agents name at a commit | `internal/skills/registry.yaml` | the registry repository's newest commit |
 | Container images Drydock pulls or builds on (the CI runner container, the sandbox's suggested images) | the image names in the Go code (`internal/runners/launch.go`, `internal/sandbox/config.go`) | Docker's official-images library: still published, and the newest Debian or Ubuntu release |
 | Vendor APIs and protocols (MCP revision, Linear schema, Notion-Version, X-GitHub-Api-Version, anthropic-version) | the code that sends them | MCP: the specification's dated tags; Linear: `@linear/sdk` on npm; the others publish versions only on a web page, so their rows say where to look |
-| What CI workflows install at a version (`npm install -g`, `npx -y`, `go install`, `go run`) | `.github/workflows/*.yml` | npm or the Go proxy; a pin that differs from the manifests says so, and the Phase 0 probes carry a hold (they keep the versions they verified) |
+| What CI workflows install at a version (`npm install -g`, `npx -y`, `go install`, `go run`) | `.github/workflows/*.yml` | npm or the Go proxy; a pin that differs from the manifests says so; the Phase 0 probes follow the newest releases as well (a change to their workflow runs them on Windows again) |
 | Git, and Semgrep OSS (development only, checks the built-in rules) | the versions `docs/software-notes.json` records | their git tags |
 | Security advisories | | `govulncheck` (Go; pinned to a release, the same one `.github/workflows/security.yml` runs), `npm audit` (UI) |
 | Documentation that names a different version than the code | `docs/decisions.md` | |

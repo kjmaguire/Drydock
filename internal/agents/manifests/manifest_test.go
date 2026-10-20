@@ -83,7 +83,7 @@ func TestManifestFactsMatchTheEvidence(t *testing.T) {
 	if p := cl.Auth.Probe; p == nil || !reflect.DeepEqual(p.Argv, []string{"auth", "status", "--json"}) || p.Parse != "json" {
 		t.Errorf("claude probe %+v", p)
 	}
-	if cl.Versions.Min != "2.1.205" || cl.Versions.Recommended != "2.1.304" {
+	if cl.Versions.Min != "2.1.205" || cl.Versions.Recommended != "2.1.305" {
 		t.Errorf("claude versions %+v", cl.Versions)
 	}
 	cx := get(t, "codex")

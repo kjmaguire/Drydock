@@ -5,7 +5,7 @@ install:
   - {shell: cmd, command: 'npm install -g @google/gemini-cli', requires: [{tool: node, min: "22"}]}   # the CLI needs 20; D9 sets 22
 requires: [{tool: node, min: "22"}]                # npm is its only documented install, so Node is needed on every path
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "0.63.0", recommended: "0.64.0"}
+versions: {min: "0.63.0", recommended: "0.65.0"}
 auth:
   allowed_kinds: [gemini-api-key, vertex-ai]
   blocked_kinds: [oauth-personal]

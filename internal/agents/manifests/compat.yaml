@@ -12,8 +12,9 @@ node: {min: "22"}
 adapters:
   claude:
     min: "2.1.205"
-    recommended: "2.1.304"
+    recommended: "2.1.305"
     entries:
+      - {version: "2.1.305", class: inspected, date: 2026-10-20, platform: linux, transport: headless, method: "contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --cli claude,claude-agent-acp,gemini --budget-usd 0 --skip-slow: 9 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn): CLAUDE-ARGV-01, EFFORT-01, QUIET-01, PLAN-01, RESTRICTED-01, USAGE-03 and PERMPROMPT-01 passed; the paid ones were skipped; the bridge 0.94.0 passed ACP-INIT-01 against it"}
       - {version: "2.1.304", class: inspected, date: 2026-10-20, platform: linux, transport: headless, method: "contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn): CLAUDE-ARGV-01, EFFORT-01, QUIET-01, PLAN-01, RESTRICTED-01 and USAGE-03 passed; the paid ones were skipped"}
       - {version: "0.94.0", class: inspected, date: 2026-10-20, platform: linux, transport: acp, bridge: "@agentclientprotocol/claude-agent-acp@0.94.0", method: "ACP-INIT-01 passed (contract suite, free contracts only (go run ./cmd/drydock-contract --latest-from <scratch prefix> --budget-usd 0 --skip-slow: 11 passed, 0 failed; no sign-in here, so no paid contract and no prompt turn)); no prompt sent (the bridge stays disabled, decision D1)"}
       - {version: "2.1.296", class: verified_linux, date: 2026-10-10, platform: linux, transport: headless, method: "contract suite (go run ./cmd/drydock-contract --cli claude, decision P33): 16 passed, 0 failed, 4 skipped (MCPWAIT-01 passed in the run before), after the parser counts each turn once (CLAUDE-USAGE-02) and plugin MCP tools are denied (CLAUDE-MCP-01); the real-Claude sandbox test (P30) and the real-CLI MCP and core tests ran on it"}
@@ -30,8 +31,9 @@ adapters:
       - {version: "0.159.3", class: inspected, date: 2026-10-08, platform: linux, transport: acp, bridge: "@agentclientprotocol/codex-acp@2.1.1", method: "ACP initialize and session/new through the pinned bridge (the bridge launches its own bundled codex 0.159.3); session/new answers authentication required"}
   gemini:
     min: "0.63.0"
-    recommended: "0.64.0"
+    recommended: "0.65.0"
     entries:
+      - {version: "0.65.0", class: inspected, date: 2026-10-20, platform: linux, transport: acp, method: "ACP-INIT-01 passed (contract suite, free contracts only, as for claude 2.1.305), and TestLiveACPHandshake/gemini: initialize live with the same capability matrix (loadSession, image, MCP over HTTP and SSE); session/new answers authentication required without an API key; no prompt was sent"}
       - {version: "0.63.0", class: inspected, date: 2026-10-08, platform: linux, transport: acp, method: "gemini --acp: ACP initialize live; session/new answers authentication required without an API key"}
   opencode:
     min: "1.18.35"

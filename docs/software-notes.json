@@ -21,11 +21,11 @@
     },
     "node": {
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
-      "hold": "This row is the development host's own Node (22.22.0), which the sandbox provides and Drydock does not pin. CI installs the newest Node 24 on every run (actions/setup-node with node-version 24), and the UI asks for 24.3 or newer (ui/package.json engines)."
+      "hold": "This row is the development host's own Node (22.22.0), which the sandbox provides and Drydock does not pin. CI installs the newest Node 24 on every run (actions/setup-node with node-version 24), and the UI asks for 24.3 or newer (ui/package.json engines). Putting Node 24 on this machine changes its setup, which is the owner's call (the environment's setup script)."
     },
     "npm": {
       "role": "Installs the UI packages.",
-      "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3)."
+      "hold": "This row is the development host's own npm (10.9.4, which comes with its Node 22.22.0); the sandbox provides it and Drydock does not pin it. CI uses the npm its Node 24 ships (11.x), and the lock file stays readable by both (lockfileVersion 3). Putting a newer Node or npm on this machine changes its setup, which is the owner's call (the environment's setup script)."
     },
     "go:cel.dev/cel-go": {
       "role": "Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language."
@@ -201,7 +201,7 @@
     },
     "tool:wrangler": {
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
-      "hold": "4.151.1 is out; the documented version is what the Cloudflare documentation of this repository was written against. Drydock does not run wrangler, so nothing breaks while it is behind; it moves when those documents are next reviewed."
+      "hold": "4.151.3 is out, but Cloudflare's newest @cloudflare/vite-plugin (1.64.0, which the starter template builds with) pins wrangler 4.151.0 exactly; the starter moves when that plugin does (checked 2026-10-20: 4.151.3 would put a second wrangler in its lock file). Drydock itself does not run wrangler."
     },
     "go:golang.org/x/oauth2": {
       "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens)."
@@ -273,8 +273,7 @@
       "note": "1.79.0 since 2026-10-20 (the owner's instruction, before the 14-day cooldown). modernc.org/sqlite 1.60.1 asks for 1.77.1; the storage tests pass with 1.79.0."
     },
     "go:google.golang.org/genproto": {
-      "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use).",
-      "hold": "Only the module at the root is behind, as a pseudo-version (no release exists); it moves with the libraries that require it, not on its own (decision P23)."
+      "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use)."
     },
     "tool:llama.cpp-turboquant": {
       "role": "The llama.cpp build that comes installed with Drydock's Windows download (decision P77, the owner's words: 'I want it already installed with Google's TurboQuant built in'): AtomicBot-ai/atomic-llama-cpp-turboquant, MIT, a community fork of llama.cpp adding Google's TurboQuant KV cache types (turbo4, turbo3). Pinned in packaging/bundle.json for the Vulkan backend (any recent GPU), checked against GitHub's SHA-256 digest, installed at the first start with turbo4 as the cache type. Newer builds are offered on the Providers page with the twice-daily check.",
@@ -292,10 +291,6 @@
     "cli:antigravity": {
       "role": "Google's Antigravity CLI (agy), driven only after a person acknowledges the terms notice (decision D2); its adapter refuses to start sessions until its stream is captured (no fixtures yet).",
       "note": ""
-    },
-    "ci-go:1.27.2": {
-      "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead).",
-      "hold": "Only the Phase 0 probe workflow (windows-probes.yml) pins Go outright; it keeps the toolchain its evidence was recorded with. Every other job takes the version from go.mod (1.27.3)."
     }
   }
 }

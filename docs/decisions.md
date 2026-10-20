@@ -790,3 +790,15 @@ Open, owner action:
   that need it). **Not verified here:** a paid contract or a prompt turn on the new CLIs (no sign-in), the runner image on
   Ubuntu 26.04 (CI's sandbox job builds it and starts the runner), and the trixie images (suggestions; nothing pulls them in
   the tests).
+- **P79. The holds left by P78 are cleared where Drydock controls the pin (2026-10-20, on the owner's words: "fix those").** The
+  Phase 0 probe workflow follows the newest releases now (Go 1.27.3, Node 24, Claude Code 2.1.305, Codex 0.163.0, Gemini CLI
+  0.65.0, OpenCode 1.19.3, goose 1.55.0, the Codex and Claude ACP bridges 2.2.2 and 0.94.0, wails3 beta.34); a push that changes
+  the workflow runs it again on Windows, so its evidence is re-recorded at these versions, and the audit no longer holds its pins.
+  The manifests recommend Claude Code 2.1.305 and Gemini CLI 0.65.0, released after P78 (the free contracts: 9 passed, 0 failed;
+  Gemini's live ACP handshake with the same capability matrix). Libraries only in the module graph (P23) are shown on the Software
+  Versions page as "not compiled in" rather than as a gap: none of their packages is built into Drydock or its tests on Linux or
+  Windows, and `go mod tidy` drops a requirement on a module that provides no package, so Drydock cannot pin them (the genproto
+  root module among them; its hand-written hold is gone). **Still held, with the reason on the page:** wrangler 4.151.0
+  (Cloudflare's newest `@cloudflare/vite-plugin`, 1.64.0, pins it exactly; 4.151.3 would put a second wrangler in the starter),
+  and the development host's own Node, npm, git and Docker (changing this machine's setup was not allowed from the session; it
+  is the owner's call, in the environment's setup script).
