@@ -98,6 +98,13 @@ describe('Library > Skills', () => {
     // a blocked skill and one the project has cannot be picked
     expect((r.$('[data-testid="lib-skill-tile"][data-name="claude-api"] input') as HTMLInputElement).disabled).toBe(true);
     expect((r.$('[data-testid="lib-skill-tile"][data-name="pdf"] input') as HTMLInputElement).disabled).toBe(true);
+    // each box is hit through a 28 px label around it (the density test's target rule: a bare box was 16 px)
+    const pick = art.querySelector('[data-testid="skill-pick"]') as HTMLElement;
+    const box = pick.getBoundingClientRect();
+    expect(box.width >= 28 && box.height >= 28).toBe(true);
+    expect(pick.querySelector('input')!.getAttribute('aria-label')).toBe('Pick algorithmic-art');
+    await r.act(() => pick.click());
+    expect((pick.querySelector('input') as HTMLInputElement).checked).toBe(true);
   });
 
   it('takes several picked skills to the chosen project: selects it, hands the picks over and opens its Skills page', async () => {

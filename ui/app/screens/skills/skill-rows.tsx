@@ -59,7 +59,9 @@ const rowCss = css({
   gap: t.s3,
   padding: `${t.s2} ${t.s3}`,
   minHeight: '44px',
-  '& input[type="checkbox"]': { width: '16px', height: '16px', margin: '0' },
+  // the box is hit through a 28 px label around it, like every box of the app (the density test's target rule)
+  '& .pick': { display: 'grid', placeItems: 'center', width: '28px', height: '28px', margin: '-6px', cursor: 'pointer' },
+  '& input[type="checkbox"]': { width: '18px', height: '18px', margin: '0' },
   '& .what': {
     display: 'flex',
     alignItems: 'baseline',
@@ -216,14 +218,16 @@ export function SkillRows(handle: Handle<SkillRowsProps>) {
           return (
             <li key={k} data-testid={testId} data-name={l.name} data-registry={l.registryId} data-status={l.status} data-check={String(inProject)}>
               <div mix={rowCss}>
-                <input
-                  type="checkbox"
-                  aria-label={`Pick ${l.name}`}
-                  checked={picked.has(k)}
-                  disabled={blocked || inProject}
-                  title={blocked ? 'Blocked: it cannot be added' : inProject ? `${projectName} already has it` : undefined}
-                  mix={on('change', (e) => onPick(k, e.currentTarget.checked))}
-                />
+                <label class="pick" data-testid="skill-pick">
+                  <input
+                    type="checkbox"
+                    aria-label={`Pick ${l.name}`}
+                    checked={picked.has(k)}
+                    disabled={blocked || inProject}
+                    title={blocked ? 'Blocked: it cannot be added' : inProject ? `${projectName} already has it` : undefined}
+                    mix={on('change', (e) => onPick(k, e.currentTarget.checked))}
+                  />
+                </label>
                 <button type="button" class="what" aria-expanded={isOpen ? 'true' : 'false'} aria-controls={detailId} mix={on('click', () => toggle(k))}>
                   <Icon icon={isOpen ? ChevronDown : ChevronRight} size={14} />
                   <span class="name">{l.name}</span>
