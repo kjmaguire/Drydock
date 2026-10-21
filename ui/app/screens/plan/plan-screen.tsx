@@ -499,6 +499,14 @@ const workingCss = css({
   '@keyframes dd-plan-spin': { to: { transform: 'rotate(360deg)' } },
 });
 const composeCss = css({ display: 'grid', gap: t.s4 });
+// the requirements take the width; the planner picker sits beside them (they were a 230 px box next to a full-width goal)
+const reqGrid = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(200px, 280px)', gap: t.s4, alignItems: 'start', '@media (max-width: 719px)': { gridTemplateColumns: '1fr' } });
+const newPlanCss = css({
+  display: 'grid',
+  gap: t.s3,
+  '& > summary': { cursor: 'pointer', width: 'fit-content', color: t.textMuted, fontSize: t.textSm, fontWeight: '500' },
+  '& > summary:hover': { color: t.text },
+});
 const planSelect = css({ width: '280px', maxWidth: '40vw' });
 
 export function PlanScreen(handle: Handle) {
@@ -536,6 +544,8 @@ export function PlanScreen(handle: Handle) {
     const agents = s.project.agentList;
     const plans = newestFirst(q.data ?? []);
     const current = plans.find((p) => p.id === sel) ?? plans[0];
+    // while a plan is drafted or waits for review it leads, and the form for a new goal folds under it (UI review P1-9)
+    const lead = current?.status === 'PLANNING' || current?.status === 'PROPOSED';
     return (
       <Page
         title="Plan"
@@ -558,75 +568,152 @@ export function PlanScreen(handle: Handle) {
       >
         <ErrorNote error={q.error ?? act.error} what="Plan" />
         <Stepper plan={current} />
-        <Section title="What should the team achieve?" description="The planner breaks it into tasks with acceptance criteria and dependencies.">
-          <form
-            mix={[
-              card,
-              composeCss,
-              on('submit', (e) => {
-                e.preventDefault();
-                if (!act.busy && !ro.readOnly && goal.trim()) void propose();
-              }),
-            ]}
-          >
-            <Field label="Goal">
-              {(id) => (
-                <textarea
-                  id={id}
-                  rows={3}
-                  value={goal}
-                  placeholder="Add arithmetic helpers to the calculator"
-                  mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
-                />
-              )}
-            </Field>
-            <div mix={formGrid}>
-              <Field label="Requirements or constraints (optional)">
-                {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
-              </Field>
-              <Field label="Planner agent">
-                {(id) => (
-                  <Select
-                    id={id}
-                    label="Planner agent"
-                    value={planner}
-                    options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
-                    onChange={(v) => ((planner = v), void handle.update())}
-                  />
-                )}
-              </Field>
-            </div>
-            <div mix={formActions}>
-              <Button
-                type="submit"
-                variant="primary"
-                icon={Sparkles}
-                disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
-                title={ro.readOnly ? ro.reason : undefined}
+        {lead ? (
+          <>
+            <Section title="Proposal">
+              {current ? (
+                current.status === 'PLANNING' ? (
+                  <div mix={[planCard, workingCss]} data-testid="plan-working">
+                    <span class="spin" aria-hidden="true" />
+                    <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
+                  </div>
+                ) : (
+                  <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
+                )
+              ) : q.data ? (
+                <div mix={card}>
+                  <Empty title="No plans yet." icon={Sparkles}>
+                    <p>Describe a goal above and the planner proposes tasks for you to review.</p>
+                  </Empty>
+                </div>
+              ) : null}
+            </Section>
+            <details mix={newPlanCss} data-testid="plan-new">
+              <summary>Plan something else</summary>
+              <form
+                mix={[
+                  card,
+                  composeCss,
+                  on('submit', (e) => {
+                    e.preventDefault();
+                    if (!act.busy && !ro.readOnly && goal.trim()) void propose();
+                  }),
+                ]}
               >
-                {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
-              </Button>
-            </div>
-          </form>
-        </Section>
-        <Section title="Proposal">
-          {current ? (
-            current.status === 'PLANNING' ? (
-              <div mix={[planCard, workingCss]} data-testid="plan-working">
-                <span class="spin" aria-hidden="true" />
-                <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
-              </div>
-            ) : (
-              <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
-            )
-          ) : q.data ? (
-            <div mix={card}>
-              <Empty title="No plans yet." icon={Sparkles}>
-                <p>Describe a goal above and the planner proposes tasks for you to review.</p>
-              </Empty>
-            </div>
-          ) : null}
-        </Section>
+                <Field label="Goal">
+                  {(id) => (
+                    <textarea
+                      id={id}
+                      rows={3}
+                      value={goal}
+                      placeholder="Add arithmetic helpers to the calculator"
+                      mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
+                    />
+                  )}
+                </Field>
+                <div mix={reqGrid}>
+                  <Field label="Requirements or constraints (optional)">
+                    {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
+                  </Field>
+                  <Field label="Planner agent">
+                    {(id) => (
+                      <Select
+                        id={id}
+                        label="Planner agent"
+                        value={planner}
+                        options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
+                        onChange={(v) => ((planner = v), void handle.update())}
+                      />
+                    )}
+                  </Field>
+                </div>
+                <div mix={formActions}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    icon={Sparkles}
+                    disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
+                    title={ro.readOnly ? ro.reason : undefined}
+                  >
+                    {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
+                  </Button>
+                </div>
+              </form>
+            </details>
+          </>
+        ) : (
+          <>
+            <Section title="What should the team achieve?" description="The planner breaks it into tasks with acceptance criteria and dependencies.">
+              <form
+                mix={[
+                  card,
+                  composeCss,
+                  on('submit', (e) => {
+                    e.preventDefault();
+                    if (!act.busy && !ro.readOnly && goal.trim()) void propose();
+                  }),
+                ]}
+              >
+                <Field label="Goal">
+                  {(id) => (
+                    <textarea
+                      id={id}
+                      rows={3}
+                      value={goal}
+                      placeholder="Add arithmetic helpers to the calculator"
+                      mix={on('input', (e) => ((goal = e.currentTarget.value), void handle.update()))}
+                    />
+                  )}
+                </Field>
+                <div mix={reqGrid}>
+                  <Field label="Requirements or constraints (optional)">
+                    {(id) => <textarea id={id} rows={2} value={reqs} mix={on('input', (e) => ((reqs = e.currentTarget.value), void handle.update()))} />}
+                  </Field>
+                  <Field label="Planner agent">
+                    {(id) => (
+                      <Select
+                        id={id}
+                        label="Planner agent"
+                        value={planner}
+                        options={[{ value: '', label: 'First agent with the pm or architect role' }, ...agents.map((a) => ({ value: a.id, label: `${a.name} (${a.role})` }))]}
+                        onChange={(v) => ((planner = v), void handle.update())}
+                      />
+                    )}
+                  </Field>
+                </div>
+                <div mix={formActions}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    icon={Sparkles}
+                    disabled={act.busy !== '' || ro.readOnly || !goal.trim()}
+                    title={ro.readOnly ? ro.reason : undefined}
+                  >
+                    {act.busy === 'propose' ? 'Asking the planner...' : 'Propose a plan'}
+                  </Button>
+                </div>
+              </form>
+            </Section>
+            <Section title="Proposal">
+              {current ? (
+                current.status === 'PLANNING' ? (
+                  <div mix={[planCard, workingCss]} data-testid="plan-working">
+                    <span class="spin" aria-hidden="true" />
+                    <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
+                  </div>
+                ) : (
+                  <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
+                )
+              ) : q.data ? (
+                <div mix={card}>
+                  <Empty title="No plans yet." icon={Sparkles}>
+                    <p>Describe a goal above and the planner proposes tasks for you to review.</p>
+                  </Empty>
+                </div>
+              ) : null}
+            </Section>
+          </>
+        )}
       </Page>
     );
   };

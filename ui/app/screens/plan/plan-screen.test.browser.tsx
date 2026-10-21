@@ -9,6 +9,11 @@ import { PlanReview, PlanScreen } from './plan-screen.tsx';
 
 afterEach(cleanup);
 
+const must = <T,>(x: T | null | undefined): T => {
+  if (x === null || x === undefined) throw new Error('not yet');
+  return x;
+};
+
 const pt = (key: string, deps: string[] = []): ProposedTask => ({
   key,
   title: `Task ${key}`,
@@ -215,6 +220,25 @@ describe('PlanScreen', () => {
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Propose a plan').click());
     await waitFor(() => expect(proposed).toEqual([['prj_1', 'More', 'no deps', 'agt_pm']]), r);
+  });
+
+  it('a proposal waiting for review leads; the goal form folds under it, and comes first again once the plan is decided (UI review P1-9)', async () => {
+    let status = 'PROPOSED';
+    const s = servicesWith({ agentList: async () => [agent], planList: async () => [plan({ id: 'p', goal: 'Add arithmetic', status })] });
+    const r = mount(<PlanScreen />, s);
+    const card = await waitFor(() => must(r.$('[data-testid="plan"]')), r);
+    const goal = byLabel<HTMLTextAreaElement>(r.container, 'Goal');
+    // the goal reads on the plan card, above the tasks and Accept; the form for a new one is folded below it
+    expect(card.textContent).toContain('Add arithmetic');
+    expect(card.compareDocumentPosition(goal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const fold = goal.closest('details[data-testid="plan-new"]') as HTMLDetailsElement;
+    expect([fold.open, fold.querySelector('summary')!.textContent]).toEqual([false, 'Plan something else']);
+    status = 'ACCEPTED';
+    s.emit({ type: 'plan.accepted', projectId: 'prj_1' });
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('ACCEPTED'), r, 3000);
+    const goal2 = byLabel<HTMLTextAreaElement>(r.container, 'Goal');
+    expect(goal2.closest('details')).toBeNull();
+    expect(r.$('[data-testid="plan"]')!.compareDocumentPosition(goal2) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
   it('read-only turns Propose off', async () => {
