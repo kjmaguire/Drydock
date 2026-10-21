@@ -4,13 +4,13 @@ go 1.27.3
 
 require (
 	cel.dev/cel-go v0.32.0
-	github.com/anthropics/anthropic-sdk-go v1.83.0
+	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/openai/openai-go/v3 v3.82.0
+	github.com/openai/openai-go/v3 v3.83.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5

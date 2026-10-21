@@ -1,15 +1,14 @@
 {
-  "generated": "2026-10-20T18:38:30Z",
-  "commit": "9f29968",
+  "generated": "2026-10-21T00:00:48Z",
+  "commit": "cd993be",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
   "summary": {
-    "current": 190,
+    "current": 194,
     "major": 1,
-    "minor": 9,
+    "minor": 6,
     "patch": 4,
-    "prerelease": 1,
     "unknown": 4
   },
   "items": [
@@ -18,12 +17,12 @@
       "group": "Agent CLIs Drydock drives",
       "name": "claude (@anthropic-ai/claude-code)",
       "kind": "cli",
-      "used": "2.1.304",
-      "latest": "2.1.304",
+      "used": "2.1.305",
+      "latest": "2.1.305",
       "status": "current",
       "where": "internal/agents/manifests/cli/claude.yaml (recommended; minimum 2.1.205)",
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "Recommended 2.1.304, moved to the newest release on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself. Installed in this sandbox: 2.1.304."
+      "note": "Recommended 2.1.304, moved to the newest release on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself. Installed in this sandbox: 2.1.305."
     },
     {
       "id": "bridge:@agentclientprotocol/claude-agent-acp",
@@ -79,8 +78,8 @@
       "group": "Agent CLIs Drydock drives",
       "name": "gemini (@google/gemini-cli)",
       "kind": "cli",
-      "used": "0.64.0",
-      "latest": "0.64.0",
+      "used": "0.65.0",
+      "latest": "0.65.0",
       "status": "current",
       "where": "internal/agents/manifests/cli/gemini.yaml (recommended; minimum 0.63.0)",
       "role": "Gemini CLI: runs Google's models as an agent.",
@@ -221,16 +220,14 @@
       "role": "SVG paths of brand logos, copied so only the few the app shows ship."
     },
     {
-      "id": "ci-go:1.27.2",
+      "id": "ci-go:1.27.3",
       "group": "GitHub Actions (CI)",
       "name": "Go version pinned in a workflow",
       "kind": "action",
-      "used": "1.27.2",
+      "used": "1.27.3",
       "latest": "1.27.3",
-      "status": "patch",
-      "where": ".github/workflows/windows-probes.yml",
-      "role": "The Go version the Windows probe workflow installs (the main workflow reads go.mod instead).",
-      "hold": "Only the Phase 0 probe workflow (windows-probes.yml) pins Go outright; it keeps the toolchain its evidence was recorded with. Every other job takes the version from go.mod (1.27.3)."
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "action:Vampire/setup-wsl",
@@ -336,9 +333,10 @@
       "name": "github.com/anthropics/anthropic-sdk-go",
       "kind": "direct",
       "used": "1.83.0",
-      "latest": "1.83.0",
-      "status": "current",
+      "latest": "1.84.0",
+      "status": "minor",
       "usedDate": "2026-10-20",
+      "latestDate": "2026-10-20",
       "where": "go.mod",
       "role": "Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. The agent CLIs make their own calls and do not use it.",
       "usedBy": 1,
@@ -422,9 +420,10 @@
       "name": "github.com/openai/openai-go/v3",
       "kind": "direct",
       "used": "3.82.0",
-      "latest": "3.82.0",
-      "status": "current",
+      "latest": "3.83.0",
+      "status": "minor",
       "usedDate": "2026-10-18",
+      "latestDate": "2026-10-20",
       "where": "go.mod",
       "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests.",
       "usedBy": 1,
@@ -2079,10 +2078,10 @@
       "name": "github.com/docker/cli",
       "kind": "indirect",
       "used": "28.2.2+incompatible",
-      "latest": "29.9.1+incompatible",
+      "latest": "29.9.2+incompatible",
       "status": "major",
       "usedDate": "2025-05-30",
-      "latestDate": "2026-10-14",
+      "latestDate": "2026-10-20",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -2106,10 +2105,10 @@
       "name": "github.com/docker/docker-credential-helpers",
       "kind": "indirect",
       "used": "0.9.3",
-      "latest": "0.9.10",
+      "latest": "0.9.12",
       "status": "patch",
       "usedDate": "2025-03-14",
-      "latestDate": "2026-10-09",
+      "latestDate": "2026-10-20",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5812,7 +5811,6 @@
       "latestDate": "2026-10-19",
       "where": "module graph (not in go.mod)",
       "role": "Generated stubs of Google's public API protocol buffers; indirect (its googleapis/api and googleapis/rpc modules are what the gRPC libraries use).",
-      "hold": "Only the module at the root is behind, as a pseudo-version (no release exists); it moves with the libraries that require it, not on its own (decision P23).",
       "note": "Pinned to a commit, not a release.",
       "inBuild": true
     },
@@ -6154,96 +6152,81 @@
       "group": "Installed by CI workflows",
       "name": "@anthropic-ai/claude-code (windows-probes.yml)",
       "kind": "ci",
-      "used": "2.1.293",
-      "latest": "2.1.304",
-      "status": "patch",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 2.1.304."
+      "used": "2.1.305",
+      "latest": "2.1.305",
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:@openai/codex",
       "group": "Installed by CI workflows",
       "name": "@openai/codex (windows-probes.yml)",
       "kind": "ci",
-      "used": "0.161.0",
+      "used": "0.163.0",
       "latest": "0.163.0",
-      "status": "minor",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 0.163.0."
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:@google/gemini-cli",
       "group": "Installed by CI workflows",
       "name": "@google/gemini-cli (windows-probes.yml)",
       "kind": "ci",
-      "used": "0.63.0",
-      "latest": "0.64.0",
-      "status": "minor",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 0.64.0."
+      "used": "0.65.0",
+      "latest": "0.65.0",
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:opencode-ai",
       "group": "Installed by CI workflows",
       "name": "opencode-ai (windows-probes.yml)",
       "kind": "ci",
-      "used": "1.18.35",
+      "used": "1.19.3",
       "latest": "1.19.3",
-      "status": "minor",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 1.19.3."
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:@aaif/goose-acp",
       "group": "Installed by CI workflows",
       "name": "@aaif/goose-acp (windows-probes.yml)",
       "kind": "ci",
-      "used": "1.53.0",
+      "used": "1.55.0",
       "latest": "1.55.0",
-      "status": "minor",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 1.55.0."
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:@agentclientprotocol/codex-acp",
       "group": "Installed by CI workflows",
       "name": "@agentclientprotocol/codex-acp (windows-probes.yml)",
       "kind": "ci",
-      "used": "2.1.1",
+      "used": "2.2.2",
       "latest": "2.2.2",
-      "status": "minor",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 2.2.2."
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:@agentclientprotocol/claude-agent-acp",
       "group": "Installed by CI workflows",
       "name": "@agentclientprotocol/claude-agent-acp (windows-probes.yml)",
       "kind": "ci",
-      "used": "0.87.0",
+      "used": "0.94.0",
       "latest": "0.94.0",
-      "status": "minor",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay.",
-      "note": "Drydock's manifests pin 0.94.0."
+      "status": "current",
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "ci:windows-probes.yml:github.com/wailsapp/wails/v3/cmd/wails3",
       "group": "Installed by CI workflows",
       "name": "github.com/wailsapp/wails/v3/cmd/wails3 (windows-probes.yml)",
       "kind": "ci",
-      "used": "3.0.0-beta.30",
+      "used": "3.0.0-beta.34",
       "latest": "3.0.0-beta.34",
-      "status": "prerelease",
+      "status": "current",
       "latestDate": "2026-10-20",
-      "where": ".github/workflows/windows-probes.yml",
-      "hold": "A Phase 0 evidence probe: it re-checks on Windows what was verified at these versions, so its pins stay."
+      "where": ".github/workflows/windows-probes.yml"
     },
     {
       "id": "go",
@@ -6277,7 +6260,7 @@
       "status": "minor",
       "where": "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)",
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
-      "hold": "This row is the development host's own Node (22.22.0), which the sandbox provides and Drydock does not pin. CI installs the newest Node 24 on every run (actions/setup-node with node-version 24), and the UI asks for 24.3 or newer (ui/package.json engines).",
+      "hold": "This row is the development host's own Node (22.22.0), which the sandbox provides and Drydock does not pin. CI installs the newest Node 24 on every run (actions/setup-node with node-version 24), and the UI asks for 24.3 or newer (ui/package.json engines). Putting Node 24 on this machine changes its setup, which is the owner's call (the environment's setup script).",
       "note": "Newest Node release overall: 26.12.0. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
     },
     {
@@ -6290,7 +6273,7 @@
       "status": "major",
       "where": "this machine",
       "role": "Installs the UI packages.",
-      "hold": "12.2.0 is installed on the development host on top of Node 24.22.0 (npm install -g npm@12.2.0, 2026-10-16, on the owner's instruction). CI takes the npm its Node 24 ships (11.x), so the lock file must stay readable by both; it is (lockfileVersion 3).",
+      "hold": "This row is the development host's own npm (10.9.4, which comes with its Node 22.22.0); the sandbox provides it and Drydock does not pin it. CI uses the npm its Node 24 ships (11.x), and the lock file stays readable by both (lockfileVersion 3). Putting a newer Node or npm on this machine changes its setup, which is the owner's call (the environment's setup script).",
       "note": "Ships with Node; a newer npm can be installed on top of it (npm install -g npm), which is what the development host does."
     },
     {
@@ -6343,9 +6326,9 @@
       "name": "GitHub CLI (gh)",
       "kind": "tool",
       "used": "2.102.0",
-      "latest": "2.102.0",
-      "status": "current",
-      "latestDate": "2026-09-30",
+      "latest": "2.102.1",
+      "status": "patch",
+      "latestDate": "2026-10-20",
       "where": "docs/decisions.md section 2",
       "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
       "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
@@ -6435,7 +6418,7 @@
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
-      "hold": "4.151.1 is out; the documented version is what the Cloudflare documentation of this repository was written against. Drydock does not run wrangler, so nothing breaks while it is behind; it moves when those documents are next reviewed."
+      "hold": "4.151.3 is out, but Cloudflare's newest @cloudflare/vite-plugin (1.64.0, which the starter template builds with) pins wrangler 4.151.0 exactly; the starter moves when that plugin does (checked 2026-10-20: 4.151.3 would put a second wrangler in its lock file). Drydock itself does not run wrangler."
     },
     {
       "id": "tool:docker",
@@ -6443,9 +6426,9 @@
       "name": "Docker-compatible container engine (docker)",
       "kind": "tool",
       "used": "29.8.2",
-      "latest": "29.9.1",
+      "latest": "29.9.2",
       "status": "minor",
-      "latestDate": "2026-10-14",
+      "latestDate": "2026-10-20",
       "where": "docs/decisions.md section 2",
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
       "hold": "29.9.1 is out; 29.8.2 stays documented: it is the engine the sandbox was measured with (decision P30), and nothing has run it on 29.9.1. Measured today with CI's ubuntu-latest image too, which carries Docker 28.0.4 (sandbox job of ci, 2026-10-16); the development sandbox has the 29.8.2 client and no daemon. It moves when a sandbox run on 29.9.1 happens, on the owner's PC with Docker Desktop updated.",
@@ -6482,8 +6465,8 @@
       "name": "Semgrep OSS (checks the built-in rules against their fixtures; not shipped)",
       "kind": "tool",
       "used": "1.181.0",
-      "latest": "1.181.0",
-      "status": "current",
+      "latest": "1.182.0",
+      "status": "minor",
       "where": "docs/decisions.md section 2",
       "role": "Development only: Semgrep OSS runs the built-in Opengrep rules against their fixtures (internal/scan builtin_rules_test.go with DRYDOCK_RULES_ENGINE) and made the SARIF fixture of the reader. Opengrep reads the same rule syntax; Semgrep is not shipped.",
       "note": "Installed in a Python virtual environment on the development host; CI does not run it."
@@ -6494,8 +6477,8 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11757",
-      "latest": "b11757",
-      "status": "current",
+      "latest": "b11766",
+      "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
       "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant). A CUDA build is installed with the matching NVIDIA CUDA runtime archive (cudart-llama-bin-win-cuda-\u003ctoolkit\u003e-x64.zip) from the same release, checked the same way; it follows the build."
@@ -6754,6 +6737,7 @@
     "indirect": 417,
     "runtime": 4,
     "skill": 4,
-    "tool": 14
+    "tool": 14,
+    "withoutNote": 1
   }
 }
