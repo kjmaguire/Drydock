@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { RoomTurn } from '../../api/extTypes.ts';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { byLabel, byText, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { ROUNDS_ERROR, RoomAgentsPanel } from './room-agents.tsx';
+import { ROUNDS_ERROR, RoomAgentsPanel, RoomTab } from './room-agents.tsx';
 
 afterEach(cleanup);
 
@@ -17,11 +17,40 @@ const agents = [agent('a1', 'Dana', 'backend'), agent('a2', 'Rex', 'reviewer')];
 const button = (r: { container: HTMLElement }, name: string) => byText<HTMLButtonElement>(r.container, 'button', name);
 
 describe('RoomAgentsPanel', () => {
-  it('is a collapsible bar that says what it is', () => {
+  it('lays out the mode and the agents for the Room tab, with the turns folded away (UI review P1-5)', () => {
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [] }));
-    const d = r.container.querySelector<HTMLDetailsElement>('details[data-testid="room-agents"]')!;
-    expect(d.querySelector('summary')!.textContent).toContain('Agents in this room and how they answer');
-    expect(d.textContent).toContain('Current mode: auto');
+    const panel = r.container.querySelector<HTMLElement>('[data-testid="room-agents"]')!;
+    expect(panel.tagName).toBe('DIV');
+    expect(panel.textContent).toContain('Current mode: auto');
+    expect(Array.from(panel.querySelectorAll('section')).map((x) => x.getAttribute('aria-label'))).toEqual(['Turn-taking mode', 'Agents']);
+    const turns = panel.querySelector<HTMLDetailsElement>('details[data-testid="room-turns"]')!;
+    expect([turns.open, turns.querySelector('summary')!.textContent]).toEqual([false, 'Recent agent turns']);
+  });
+
+  it('the Room tab reads the room, its members and the newest human message itself; an archived room only says so', async () => {
+    const replies: string[] = [];
+    let archived = false;
+    const msg = (id: string, kind: 'human' | 'agent', seq: number) => ({ id, roomId: 'room_1', seq, author: { kind, id: kind === 'human' ? 'kyle' : 'a1' }, type: 'CHAT', body: 'x', createdAt: '' }) as never;
+    const s = testServices({
+      roomGet: async () => ({ ...room, archived }),
+      roomMembers: async () => members,
+      roomMessagesLatest: async () => [msg('m1', 'human', 1), msg('m2', 'agent', 2)],
+      roomTurns: async () => [],
+      roomReply: async (id: string) => (replies.push(id), {}) as never,
+      agentList: async () => agents,
+    });
+    s.workspace.start();
+    s.project.start();
+    const r = mount(<RoomTab roomId="room_1" />, s);
+    await waitFor(() => expect(r.container.textContent).toContain('Current mode: auto'), r);
+    await waitFor(() => button(r, 'Ask agents to reply to my last message'), r);
+    await r.act(() => button(r, 'Ask agents to reply to my last message').click());
+    await waitFor(() => expect(replies).toEqual(['m1']), r);
+    cleanup();
+    archived = true;
+    const r2 = mount(<RoomTab roomId="room_1" />, s);
+    await waitFor(() => expect(r2.container.textContent).toContain('This channel is archived'), r2);
+    expect(r2.container.querySelector('[data-testid="room-agents"]')).toBeNull();
   });
 
   it('explains each mode in plain language and saves it with the right parameters', async () => {
@@ -62,7 +91,6 @@ describe('RoomAgentsPanel', () => {
     const calls: unknown[] = [];
     const s = testServices({ roomSetMode: async (req: unknown) => (calls.push(req), room), roomTurns: async () => [] });
     const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
-    r.container.querySelector<HTMLDetailsElement>('details[data-testid="room-agents"]')!.open = true; // focus can only go to a field that is shown
     const limit = () => byLabel<HTMLInputElement>(r.container, 'Round limit');
     for (const bad of ['three', '3.5', '1e3', '0', '-2', '5 rounds']) {
       await r.act(() => type(limit(), bad));

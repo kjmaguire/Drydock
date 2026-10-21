@@ -140,6 +140,16 @@ describe('Conversation', () => {
     expect(byLabel<HTMLTextAreaElement>(r.container, 'Message to #task-1').disabled).toBe(true);
     expect(qa(r, 'header span').some((e) => e.textContent === 'archived')).toBe(true);
     expect(q(r, '[data-testid="room-agents"]')).toBeNull();
+    expect(q(r, '[data-testid="room-mode"]')).toBeNull();
+  });
+
+  it('keeps the agents panel off the messages: the mode chip opens the Room tab on the right (UI review P1-5)', async () => {
+    const s = servicesWith({});
+    const r = mount(<Conversation room={taskRoom} />, s);
+    expect(q(r, '[data-testid="room-agents"]')).toBeNull();
+    s.ui.setDetails(false);
+    await r.act(() => (q(r, '[data-testid="room-mode"]') as HTMLButtonElement).click());
+    expect([s.ui.detailsOpen, s.ui.tab]).toEqual([true, 'room']);
   });
 
   it('groups consecutive messages, keeps the author name for continuations, and divides days', async () => {

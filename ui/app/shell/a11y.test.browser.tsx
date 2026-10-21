@@ -135,6 +135,20 @@ describe('the details panel', () => {
     expect(rows[1]!.querySelector('[data-testid="skips-approvals-badge"]')).toBeNull();
   });
 
+  it('has a Room tab only on a room, and it holds the room panel (UI review P1-5)', async () => {
+    const room = { id: 'room_1', projectId: 'p1', kind: 'channel', name: 'general', mode: 'auto', archived: false, createdAt: '', version: 1 };
+    const s = testServices({ roomGet: async () => room as never, roomMembers: async () => [], roomMessagesLatest: async () => [], roomTurns: async () => [] });
+    s.ui.setDetails(true);
+    const tabs = (r: { $$: (sel: string) => HTMLElement[] }) => Array.from(r.$$('[role="tab"]')).map((t) => t.textContent);
+    const plain = mount(<Details taskId={undefined} page="conversation" />, s);
+    expect(tabs(plain)).toEqual(['Agents']);
+    cleanup();
+    s.ui.openRoomPanel();
+    const r = mount(<Details taskId={undefined} roomId="room_1" page="conversation" />, s);
+    expect(tabs(r)).toEqual(['Agents', 'Room']);
+    await waitFor(() => expect(r.$('[role="tabpanel"] [data-testid="room-agents"]')!.textContent).toContain('Current mode: auto'), r);
+  });
+
   it('its tabs name no panel that is not in the page', async () => {
     const s = testServices({});
     s.ui.setDetails(true);

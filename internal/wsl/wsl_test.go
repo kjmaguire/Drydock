@@ -8,9 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"unicode/utf8"
 	"time"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/wsl"

@@ -20,8 +20,7 @@ import { VirtualList } from '../../ui/virtual-list.tsx';
 import { Composer } from './composer.tsx';
 import { MessageFeed } from './feed.ts';
 import { CheckGroup, MessageItem } from './message-item.tsx';
-import { buildRows, lastHumanMessageId, replyCounts, type Row } from './messages.ts';
-import { RoomAgentsPanel } from './room-agents.tsx';
+import { buildRows, replyCounts, type Row } from './messages.ts';
 import { RoomExports } from './room-exports.tsx';
 import { RoomMembers } from './room-members.tsx';
 
@@ -75,6 +74,16 @@ const roomHead = css({
 const titleIcon = css({ display: 'grid', placeItems: 'center', flex: 'none', width: '38px', height: '38px', borderRadius: '12px', background: t.bgActive, color: t.textMuted });
 const topicCss = css({ minWidth: '0', color: t.textMuted, fontSize: t.textSm, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
 const actionsCss = actionsEnd;
+const modeBtn = css({
+  height: '30px',
+  padding: '0 10px',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rFull,
+  background: t.bgSurface,
+  color: t.textMuted,
+  cursor: 'pointer',
+  '&:hover': { borderColor: t.borderStrong, color: t.text },
+});
 const modeCss = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap', '@media (max-width: 719px)': { display: 'none' } });
 
 const logWrap = css({ position: 'relative', flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' });
@@ -277,9 +286,15 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             </div>
           </div>
           <div mix={actionsCss}>
-            <span mix={modeCss} title="How agents take turns in this room">
-              {room.mode} mode
-            </span>
+            {room.archived ? (
+              <span mix={modeCss} title="How agents took turns in this room">
+                {room.mode} mode
+              </span>
+            ) : (
+              <button type="button" mix={[modeCss, modeBtn, on('click', () => s.ui.openRoomPanel())]} data-testid="room-mode" title="Who answers in this room and how: opens the Room tab on the right">
+                {room.mode} mode
+              </button>
+            )}
             {room.kind === 'task' && room.taskId ? (
               <a href={routes.task.href({ id: room.taskId })} mix={buttonStyle('secondary', 'sm')}>
                 <Icon icon={ListChecks} size={14} />
@@ -290,7 +305,6 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             <RoomExports room={room} />
           </div>
         </header>
-        {!room.archived ? <RoomAgentsPanel room={room} agents={agents} members={mem} lastHumanMessageId={lastHumanMessageId(msgs)} /> : null}
         {feed.error ? (
           <div mix={notesCss} style={{ paddingTop: '12px' }}>
             <ErrorNote error={feed.error} what="Could not load messages" />

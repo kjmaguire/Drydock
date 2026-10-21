@@ -169,7 +169,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
           </div>
           {inProject ? (
             <ErrorBoundary label="the details panel">
-              <Details taskId={taskContext} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} />
+              <Details taskId={taskContext} roomId={route.name === 'room' ? route.id : undefined} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} />
             </ErrorBoundary>
           ) : null}
         </div>

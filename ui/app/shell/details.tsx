@@ -9,6 +9,7 @@ import { query, services, watch } from '../state/services.tsx';
 import { SkipsBadge } from '../screens/shared/skip-approvals.tsx';
 import { AgentInspector } from '../screens/team/inspector.tsx';
 import { leadOf, RunStandup } from '../screens/team/lead.tsx';
+import { RoomTab } from '../screens/room/room-agents.tsx';
 import { ThreadPanel } from '../screens/room/thread-panel.tsx';
 import { IconButton } from '../ui/button.tsx';
 import { Avatar, OriginBadge, PresenceDot, StatusChip, kv, presenceColor } from '../ui/data.tsx';
@@ -51,12 +52,12 @@ const agentRow = css({
 });
 const sectionLabel = css({ margin: `${t.s1} ${t.s2} ${t.s2}`, color: t.textFaint, fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase' });
 
-export function Details(handle: Handle<{ taskId: string | undefined; page: DetailsPage }>) {
+export function Details(handle: Handle<{ taskId: string | undefined; roomId?: string; page: DetailsPage }>) {
   const s = services(handle);
   watch(handle, s.ui);
   watch(handle, s.project);
   return () => {
-    const { taskId, page } = handle.props;
+    const { taskId, roomId, page } = handle.props;
     const ui = s.ui;
     ui.detailsPage(page);
     if (!ui.detailsOpen) {
@@ -67,6 +68,7 @@ export function Details(handle: Handle<{ taskId: string | undefined; page: Detai
       );
     }
     const items: TabItem[] = [{ name: 'agents', label: 'Agents' }];
+    if (roomId) items.push({ name: 'room', label: 'Room' });
     if (taskId) items.push({ name: 'task', label: 'Task' });
     if (ui.thread) items.push({ name: 'thread', label: 'Thread' });
     if (ui.inspectId) items.push({ name: 'inspector', label: 'Inspector' });
@@ -111,6 +113,7 @@ export function Details(handle: Handle<{ taskId: string | undefined; page: Detai
               })}
             </div>
           ) : null}
+          {tab === 'room' && roomId ? <RoomTab key={roomId} roomId={roomId} /> : null}
           {tab === 'task' && taskId ? <TaskSummary key={taskId} taskId={taskId} /> : null}
           {tab === 'thread' && ui.thread ? <ThreadPanel key={`${ui.thread.roomId}:${ui.thread.rootId}`} roomId={ui.thread.roomId} rootId={ui.thread.rootId} onClose={() => ui.closeThread()} /> : null}
           {tab === 'inspector' ? <AgentInspector key={ui.inspectId ?? ''} agentId={ui.inspectId} /> : null}

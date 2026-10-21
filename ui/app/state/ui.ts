@@ -6,7 +6,7 @@ import type { SkillPick } from '../api/extTypes.ts';
 import { isRecord } from '../api/guards.ts';
 import { Model } from './services.tsx';
 
-export type DetailsTab = 'agents' | 'task' | 'thread' | 'inspector';
+export type DetailsTab = 'agents' | 'room' | 'task' | 'thread' | 'inspector';
 export type DockTab = 'terminal' | 'diff' | 'logs' | 'activity';
 /** The kind of page the details panel sits beside: a room, a task or a run ('conversation'), or any other page. */
 export type DetailsPage = 'conversation' | 'other';
@@ -143,6 +143,12 @@ export class UiModel extends Model {
   openInspector(agentId: string): void {
     this.inspectId = agentId;
     this.tab = 'inspector';
+    this.setDetails(true);
+  }
+
+  /** The room's members and mode (the Room tab, UI review P1-5). */
+  openRoomPanel(): void {
+    this.tab = 'room';
     this.setDetails(true);
   }
 

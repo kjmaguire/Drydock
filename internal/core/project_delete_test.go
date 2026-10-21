@@ -35,7 +35,7 @@ func TestDeleteProjectRemovesItsWorkButNeverTheRepository(t *testing.T) {
 	a.call("project.create", map[string]any{"name": "keep me"}, &other)
 
 	// a task with a real worktree that holds a change nobody committed, and a run that waits for the human
-	x(`INSERT INTO tasks(id,project_id,seq,title,status,created_at,updated_at) VALUES('task_del1','`+p.ID+`',1,'Subtract','BACKLOG',1,1)`)
+	x(`INSERT INTO tasks(id,project_id,seq,title,status,created_at,updated_at) VALUES('task_del1','` + p.ID + `',1,'Subtract','BACKLOG',1,1)`)
 	r, err := git.Open(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestDeleteProjectRemovesItsWorkButNeverTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	x(`UPDATE tasks SET worktree=?, branch=? WHERE id='task_del1'`, wt.Path, wt.Branch)
-	x(`INSERT INTO workflow_runs(id,workflow,status,project_id,task_id,topology_hash,created_at,updated_at) VALUES('run_del1','iterate-until-verified','WAITING_HUMAN','`+p.ID+`','task_del1','h',1,1)`)
+	x(`INSERT INTO workflow_runs(id,workflow,status,project_id,task_id,topology_hash,created_at,updated_at) VALUES('run_del1','iterate-until-verified','WAITING_HUMAN','` + p.ID + `','task_del1','h',1,1)`)
 	runDir := filepath.Join(data, "runs", "run_del1")
 	os.MkdirAll(runDir, 0o755)
 	os.WriteFile(filepath.Join(runDir, "stream.jsonl"), []byte("{}\n"), 0o644)

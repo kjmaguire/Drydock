@@ -360,8 +360,10 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await box.fill('@rita drydock-e2e routed reply: what does Subtract do?');
   await box.press('Control+Enter');
   await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'Answered by the scripted room stand-in' })).toBeVisible({ timeout: 90_000 });
+  // the room's agents and turns are the Room tab on the right; the mode chip in the header opens it (UI review P1-5)
+  await page.getByTestId('room-mode').click();
   const panel = page.getByTestId('room-agents');
-  await panel.locator('summary').click();
+  await panel.getByTestId('room-turns').locator('summary').click();
   const model = panel.getByTestId('room-turn-model').first();
   await expect(model).toContainText('haiku'); // a reply is light: the router's cheap choice among Rita's own models
   await model.getByRole('button', { name: 'Why this model?' }).click();
@@ -372,8 +374,8 @@ test('room modes, the scheduler and previews report what the core says', async (
   await createProject(page, 'gocalc-room');
   await createAgent(page, 'Dana', 'backend');
   await openRoom(page, 'general');
+  await page.getByTestId('room-mode').click();
   const panel = page.getByTestId('room-agents');
-  await panel.locator('summary').click();
   await choose(panel.getByLabel('Mode', { exact: true }), 'sequential');
   await expect(panel.getByTestId('mode-text')).toContainText('one turn each per round');
   await panel.getByRole('button', { name: 'Add Dana' }).click();
@@ -381,7 +383,7 @@ test('room modes, the scheduler and previews report what the core says', async (
   await expect(panel).toContainText('Current mode: sequential');
   await page.reload();
   await openRoom(page, 'general');
-  await page.getByTestId('room-agents').locator('summary').click();
+  await page.getByTestId('room-mode').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
   // moderator mode needs a moderator: the core refuses and says so
   await choose(page.getByTestId('room-agents').getByLabel('Mode', { exact: true }), 'moderator');
