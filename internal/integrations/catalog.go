@@ -73,7 +73,7 @@ func Catalog(oauth func(kind string) bool) []KindInfo {
 	return []KindInfo{
 		{
 			Kind: KindLinear, Label: "Linear", Blurb: "Issues and projects", Items: "issues",
-			API: "Linear GraphQL API (https://api.linear.app/graphql)", APIVersion: "GraphQL schema of @linear/sdk 98.0.0 (unversioned API)",
+			API: "Linear GraphQL API (https://api.linear.app/graphql)", APIVersion: "GraphQL schema of @linear/sdk 99.0.0 (unversioned API)",
 			SDK:       "Linear's official SDK is TypeScript (@linear/sdk). There is no official Go SDK, so Drydock sends GraphQL over HTTPS that follows the SDK's schema.",
 			RateLimit: limitLinearKey.Note + " (" + limitLinearOAuth.Note + ")",
 			Docs: []DocLink{{"GraphQL API", "https://linear.app/developers/graphql"}, {"Rate limiting", "https://linear.app/developers/rate-limiting"},

@@ -995,3 +995,9 @@ Open, owner action:
   (the four copied marks are byte-identical). Wrangler stays at 4.151.0 (its hold still applies). Not done here: the
   `npm audit signatures` check could not reach Sigstore from this machine and osv.dev was refused by its network policy, so
   provenance was read from the registry's metadata instead of verified, and the Go vulnerability lookup ran in CI only.
+  (5) Same day, after the review of this change: @linear/sdk 99.0.0 came out; every type, field and enum value Drydock's Linear
+  queries and mutations use (Issue and its fields, IssueFilter, the updatedAt order, viewer, organization, teams, projects,
+  workflow states, CommentCreateInput, IssueUpdateInput) is in 99.0.0 and none is deprecated, so the schema Drydock follows
+  moved to 99.0.0. The audit's Node row now reads the newest Node overall from nodejs.org too, names every security release of
+  the installed line newer than the installed version, and reports a failed nodejs.org lookup instead of falling back to the
+  npm package that lags.
