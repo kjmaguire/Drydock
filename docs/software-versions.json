@@ -1,11 +1,11 @@
 {
-  "generated": "2026-10-21T02:52:03Z",
-  "commit": "e3854b3",
+  "generated": "2026-10-21T02:53:56Z",
+  "commit": "39d932f",
   "summary": {
-    "current": 198,
+    "current": 199,
     "major": 1,
     "minor": 3,
-    "patch": 3,
+    "patch": 2,
     "unknown": 4
   },
   "items": [
@@ -6472,9 +6472,9 @@
       "group": "Tools Drydock runs or you install",
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
-      "used": "b11774",
+      "used": "b11776",
       "latest": "b11776",
-      "status": "patch",
+      "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
       "note": "Not pinned: when a person presses Install or Update, Drydock installs the newest release that carries the backend's archive with a SHA-256 digest (the weekly builds are tagged bNNNN and marked pre-release; the vX.Y.Z tags carry no binaries). The version shown is the newest build at the last audit. The download itself carries the TurboQuant fork's build (tool:llama.cpp-turboquant). A CUDA build is installed with the matching NVIDIA CUDA runtime archive (cudart-llama-bin-win-cuda-\u003ctoolkit\u003e-x64.zip) from the same release, checked the same way; it follows the build."
