@@ -97,6 +97,10 @@ func (r *Run) permissionPrompt(ctx context.Context, c *callRec, args json.RawMes
 		return permissionAnswer(false, nil, msg)
 	}
 	c.decision, c.reason = DecisionAllowed, "permission for "+req.ToolName+": "+ans.Outcome
+	if len(ans.UpdatedInput) > 0 {
+		// a person approved the call with input they changed (P88): the CLI runs that input, which the rules checked again
+		return permissionAnswer(true, json.RawMessage(ans.UpdatedInput), "")
+	}
 	// The CLI runs the tool with the input it is sent back. That is the canonical text the approval hashed and a person read, not
 	// the agent's own bytes (a duplicate key or another spelling could be read differently there; audit 2026-10-16, H8).
 	canon, err := security.CanonicalJSON(json.RawMessage(in))

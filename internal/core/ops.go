@@ -219,7 +219,7 @@ func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, d
 		}
 	}
 	if taskID, ok := c.permissionRequestTask(ctx, requestID); ok {
-		return c.respondPermission(ctx, runID, requestID, taskID, decision)
+		return c.respondPermission(ctx, runID, requestID, taskID, decision, data)
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
 	var d []byte = data

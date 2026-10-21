@@ -1,6 +1,7 @@
 // Typed client for the run explanation and the workflow graph (internal/core/ext_explain.go).
 
 import type { Transport } from './transport.ts';
+import type { AguiActivity } from './agui.gen.ts';
 import type { UsageRow } from './types.ts';
 
 export interface GraphNode {
@@ -127,12 +128,18 @@ export interface RunClient {
   roomExport(roomId: string, kind: 'minutes' | 'adr_candidates' | 'pr_description', title?: string): Promise<RoomExportView>;
   runExplain(taskId: string, runId?: string): Promise<RunExplanation>;
   runPrompt(taskId: string, runId: string, nodeId: string, step: number, attempt: number): Promise<string>;
+  /** What the task's agents did, turn by turn, in the typed vocabulary modelled on AG-UI (internal/agui, P87). */
+  taskActivity(taskId: string): Promise<AguiActivity>;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
 export function createRunClient(t: Transport): RunClient {
   return {
+    taskActivity: async (taskId) => {
+      const a = await t.call<AguiActivity | null>('task.activity', { taskId });
+      return { ...a, threads: arr(a?.threads).map((th) => ({ ...th, events: arr(th.events) })) };
+    },
     roomExport: (roomId, kind, title = '') => t.call('room.export', { roomId, kind, title }),
     runExplain: async (taskId, runId = '') => {
       const r = await t.call<RunExplanation>('run.explain', { taskId, runId });

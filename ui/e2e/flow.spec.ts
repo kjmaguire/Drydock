@@ -37,6 +37,12 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.getByRole('button', { name: 'Show the raw patch' }).click();
     await expect(page.locator('.diff-add', { hasText: 'return a - b' })).toBeVisible();
 
+    // Activity (P87): the worker's and the reviewer's processes, each turn read from the core's typed activity
+    const activity = page.getByTestId('task-activity');
+    await expect(activity.getByTestId('activity-thread')).toHaveCount(2);
+    await expect(activity.getByTestId('activity-thread').filter({ hasText: 'Worker One' }).getByTestId('activity-text').filter({ hasText: 'implemented Subtract' })).toBeVisible();
+    await expect(activity.getByTestId('activity-thread').filter({ hasText: 'Reviewer One' })).toContainText('SHIP');
+
     // the task channel: Tests check card, the worker's message, the reviewer's verdict
     await openTaskChannel(page);
     await openChecks(page);

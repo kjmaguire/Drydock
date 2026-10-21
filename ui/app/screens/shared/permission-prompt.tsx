@@ -3,9 +3,13 @@
 // while the worker's turn waits. The core lists it among the run's pending requests with gate "permission_prompt": the tool,
 // its input as stored for display (secrets redacted), the approval kind, why it was asked and when it expires. Allowing covers
 // exactly this tool with exactly this input, once; the agent can never answer it. The input is agent output: shown as text.
+//
+// Edit before allowing (P88): where the core says the call can be changed (a Claude worker, the whole input shown, nothing
+// redacted in it), the person can change the input first; the core checks the changed call with the rules again and the
+// worker runs it instead. A shell command is changed as the command; any other tool as its JSON input.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, X } from 'lucide';
+import { Check, Pencil, X } from 'lucide';
 import type { PendingRequest } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
@@ -33,6 +37,10 @@ export interface PermissionPayload {
   agentId?: string;
   /** Unix milliseconds; nobody answering by then refuses the call. */
   expiresAt?: number;
+  /** The person can change the input before allowing it (P88). */
+  editable: boolean;
+  /** The input is a shell command (the command alone is shown and changed). */
+  shell: boolean;
 }
 
 export function permissionPayload(p: PendingRequest): PermissionPayload | undefined {
@@ -49,7 +57,26 @@ export function permissionPayload(p: PendingRequest): PermissionPayload | undefi
     reason: str(v.reason),
     agentId: str(v.agentId) || undefined,
     expiresAt: typeof v.expiresAt === 'number' && v.expiresAt > 0 ? v.expiresAt : undefined,
+    editable: v.editable === true,
+    shell: v.shell === true,
   };
+}
+
+/**
+ * The input the person changed, as the core takes it: a shell command becomes {"command": ...}, anything else must be a
+ * JSON object. An error says what is wrong in words.
+ */
+export function editedInput(p: Pick<PermissionPayload, 'shell'>, text: string): { input: Record<string, unknown> } | { error: string } {
+  const v = text.trim();
+  if (!v) return { error: p.shell ? 'Write the command to run.' : 'Write the input as a JSON object.' };
+  if (p.shell) return { input: { command: v } };
+  try {
+    const x: unknown = JSON.parse(v);
+    if (x && typeof x === 'object' && !Array.isArray(x)) return { input: x as Record<string, unknown> };
+  } catch {
+    return { error: 'The input is not valid JSON.' };
+  }
+  return { error: 'The input must be a JSON object ({ ... }).' };
 }
 
 /** Whether the input is a shell command (shown as one line of code) rather than JSON. */
@@ -97,6 +124,25 @@ type Respond = (decision: string, data?: unknown) => Promise<void>;
  * Read-only (license) turns off allowing only.
  */
 export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+  let editing = false;
+  let draft = '';
+  let problem = '';
+  const startEdit = () => {
+    editing = true;
+    draft = displayInput(handle.props.payload);
+    problem = '';
+    void handle.update();
+  };
+  const allowEdited = () => {
+    const r = editedInput(handle.props.payload, draft);
+    if ('error' in r) {
+      problem = r.error;
+      void handle.update();
+      return;
+    }
+    problem = '';
+    void handle.props.onRespond('approved', { input: r.input });
+  };
   return () => {
     const { payload: p, busy, readOnly, onRespond } = handle.props;
     return (
@@ -110,6 +156,29 @@ export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayloa
         <pre aria-label={`${p.tool} input`} data-testid="permission-prompt-input">
           {visible(displayInput(p))}
         </pre>
+        {editing ? (
+          <div style={{ display: 'grid', gap: '6px' }}>
+            <label style={{ display: 'grid', gap: '4px', fontSize: t.textSm }}>
+              <span>{p.shell ? 'The command to run instead' : 'The input to run instead (JSON)'}</span>
+              <textarea
+                rows={p.shell ? 3 : 8}
+                value={draft}
+                spellcheck={false}
+                style={{ fontFamily: t.mono, fontSize: t.textSm, width: '100%', resize: 'vertical' }}
+                data-testid="permission-prompt-edit"
+                mix={on('input', (e) => {
+                  draft = (e.currentTarget as HTMLTextAreaElement).value;
+                })}
+              />
+            </label>
+            <span style={{ fontSize: t.textXs, color: t.textMuted }}>Drydock checks the changed call with its rules again; one they refuse is refused.</span>
+            {problem ? (
+              <span role="alert" style={{ fontSize: t.textSm, color: t.danger }} data-testid="permission-prompt-edit-error">
+                {problem}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <dl>
           {p.kind ? (
             <>
@@ -133,9 +202,35 @@ export function PermissionPromptPanel(handle: Handle<{ payload: PermissionPayloa
           ) : null}
         </dl>
         <div mix={formActions}>
-          <Button variant="primary" icon={Check} disabled={busy || readOnly} mix={on('click', () => void onRespond('approved'))}>
-            Allow once
-          </Button>
+          {editing ? (
+            <>
+              <Button variant="primary" icon={Check} disabled={busy || readOnly} mix={on('click', allowEdited)}>
+                Allow the changed call once
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                mix={on('click', () => {
+                  editing = false;
+                  problem = '';
+                  void handle.update();
+                })}
+              >
+                Cancel the change
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="primary" icon={Check} disabled={busy || readOnly} mix={on('click', () => void onRespond('approved'))}>
+                Allow once
+              </Button>
+              {p.editable ? (
+                <Button variant="secondary" icon={Pencil} disabled={busy || readOnly} mix={on('click', startEdit)}>
+                  Edit before allowing
+                </Button>
+              ) : null}
+            </>
+          )}
           <Button variant="danger" icon={X} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
             Refuse
           </Button>

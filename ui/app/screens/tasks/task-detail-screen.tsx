@@ -26,6 +26,7 @@ import { DiffView } from './raw-diff.tsx';
 import { ReviewPanel } from './review-panel.tsx';
 import { Interventions, leadOf } from '../team/lead.tsx';
 import { stepsFor, type Step } from './steps.ts';
+import { TaskActivity } from './activity-panel.tsx';
 import { TaskControls } from './task-controls.tsx';
 import { elapsed, isWaitingForTask, newestDiffId } from './tasks.ts';
 
@@ -214,6 +215,9 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
                 </ul>
               </Section>
             ) : null}
+            <Section title="Activity" description="What each agent did, turn by turn, live while it works.">
+              <TaskActivity taskId={task.id} agents={agents} />
+            </Section>
             <Section title="Evidence">
               <EvidenceList evidence={d.evidence} />
             </Section>

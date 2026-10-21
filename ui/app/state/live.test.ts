@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { EventStore } from './eventStore.ts';
 import { Live } from './live.ts';
-import { FakeTransport, ManualScheduler } from '../test/fakes.ts';
+import { FakeTransport, ManualScheduler, ev } from '../test/fakes.ts';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -114,5 +114,44 @@ describe('Live', () => {
     await live.reload();
     expect(live.error?.message).toBe('core is down');
     expect(live.data).toBe('newer');
+  });
+});
+
+describe('Live on streaming events (P87)', () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  it('ignores agent.output unless asked, and then re-reads at most once per interval while the stream goes on', async () => {
+    const t = new FakeTransport();
+    const store = new EventStore(t, { scheduler: new ManualScheduler(), backoff: () => 100 });
+    let quiet = 0;
+    let loud = 0;
+    const when = (e: { taskId?: string }) => e.taskId === 't1';
+    const a = new Live(store, { load: async () => ++quiet, when, debounceMs: 20 }).start();
+    const b = new Live(store, { load: async () => ++loud, when, debounceMs: 20, noisy: true }).start();
+    store.start();
+    t.current.h.onOpen();
+    let seq = 0;
+    const out = (taskId = 't1') => t.current.h.onEvent({ ...ev(++seq), type: 'agent.output', taskId });
+    // a steady stream for about 100 ms, one event every 5 ms: a debounce would wait for its end, the throttle reads during it
+    for (let i = 0; i < 20; i++) {
+      out();
+      await wait(5);
+    }
+    const during = loud;
+    await wait(40);
+    expect(quiet).toBe(0);
+    expect(during).toBeGreaterThanOrEqual(2);
+    expect(loud).toBeLessThanOrEqual(8);
+    // another task's stream is not this read's
+    const before = loud;
+    out('t2');
+    await wait(40);
+    expect(loud).toBe(before);
+    // stop() leaves no read pending, and a later start would not be blocked by it
+    out();
+    b.stop();
+    await wait(40);
+    expect(loud).toBe(before);
+    a.stop();
+    store.stop();
   });
 });

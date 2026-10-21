@@ -1073,9 +1073,9 @@ func TestAnACPChatAsksThePersonAndAllowsOnce(t *testing.T) {
 	if ask.ChatID != c.ID || ask.TurnID != turn || !strings.Contains(ask.Summary, "Run go test") || !strings.Contains(string(ask.Input), "go test") || ask.ExpiresAt <= ask.Created {
 		t.Fatalf("the request as the person sees it: %+v", ask)
 	}
-	if len(e.eventsOf("chat.permission")) == 0 {
-		t.Fatal("no chat.permission event")
-	}
+	// the request is listed before its event is published (a page that re-reads on the event must find it), so the event
+	// may land a moment after chat.asks shows the request
+	e.waitFor("the chat.permission event", func() bool { return len(e.eventsOf("chat.permission")) > 0 })
 	// Needs you lists it while it waits, in its project and in the list of every project, and not in another project's
 	needs := func(projectID string) []room.NeedsYouItem {
 		var out []room.NeedsYouItem

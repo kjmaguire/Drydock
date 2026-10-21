@@ -16,6 +16,11 @@ export interface LiveOptions<T> {
   /** Accepted events for which this returns true re-read (debounced). */
   when?: (e: DrydockEvent) => boolean;
   debounceMs?: number;
+  /**
+   * Also accept the events that arrive in bulk while an agent streams (isNoisy). They re-read at most once per debounceMs
+   * (a throttle: a steady stream never postpones the read indefinitely, as a debounce would).
+   */
+  noisy?: boolean;
 }
 
 /**
@@ -48,9 +53,17 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
     if (when) {
       this.#off.push(
         this.#store.onEvent((e) => {
-          if (!this.#enabled || isNoisy(e) || !when(e)) return;
-          clearTimeout(this.#timer);
-          this.#timer = setTimeout(() => this.reload(), this.#opts.debounceMs ?? 100);
+          if (!this.#enabled || !when(e)) return;
+          if (isNoisy(e)) {
+            if (!this.#opts.noisy || this.#timer !== undefined) return;
+          } else {
+            clearTimeout(this.#timer);
+            this.#timer = undefined;
+          }
+          this.#timer = setTimeout(() => {
+            this.#timer = undefined;
+            void this.reload();
+          }, this.#opts.debounceMs ?? 100);
         }),
       );
     }
@@ -68,6 +81,7 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
 
   stop(): void {
     clearTimeout(this.#timer);
+    this.#timer = undefined;
     for (const off of this.#off.splice(0)) off();
     this.#gen++;
   }
@@ -119,6 +133,7 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
     this.error = undefined;
     this.loading = enabled;
     clearTimeout(this.#timer);
+    this.#timer = undefined;
   }
 
   #emit(): void {

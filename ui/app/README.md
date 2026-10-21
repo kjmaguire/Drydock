@@ -26,7 +26,7 @@ app/
   routes.ts           the URL contract (routes.task.href({ id }))
   router.tsx          createAppRouter(services): render transform = <Services><Shell url>{content}</Shell></Services>
   actions/controller.tsx  route actions: lazy-import the screen module, render it with the params
-  api/                transport + typed client (framework-free)
+  api/                transport + typed client (framework-free); *.gen.ts are generated from Go types (go run ./cmd/drydock-tsgen; never edit them)
   state/              eventStore, live reads (live.ts), services/query/action/watch (services.tsx),
                       models: ui.ts (panels, dock, palette, theme), workspace.ts (projects, license), project.ts (the selected project's
                       shared reads; its task list comes with the project's task count: taskList, taskTotal, taskCoverage)

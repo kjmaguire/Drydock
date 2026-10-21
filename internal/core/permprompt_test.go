@@ -353,3 +353,153 @@ func TestAnACPCallIsReadForTheAnalyzerOnlyWhereThatIsExact(t *testing.T) {
 		}
 	}
 }
+
+// P88: a person can approve a Claude worker's call with input they changed. The changed call is checked by the rules again
+// (a refusal stands even for a person's edit), the CLI runs the changed input, and only a digest of it is recorded: the
+// edit itself is kept in memory, never in the approvals table, the events or the audit.
+func TestAPersonApprovesAWorkersCallWithEditsAndTheRulesStillApply(t *testing.T) {
+	ask := func(cmd string) fakeagent.Step {
+		in, _ := json.Marshal(map[string]string{"command": cmd, "description": "step"})
+		return fakeagent.Step{Tool: "Bash", Input: in, Result: "ran", Ask: true}
+	}
+	permLog := filepath.Join(t.TempDir(), "answers.jsonl")
+	t.Setenv("DRYDOCK_FAKE_PERMISSION_LOG", permLog)
+	a := openScripted(t, nil, fakeagent.Script{
+		Rules: []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
+		Default: []fakeagent.Step{ask("npm install left-pad"), ask("npm install right-pad"),
+			{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: impl}}, {Say: "implemented Subtract"}},
+	})
+	p, _ := a.setup("gocalc")
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer #1", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+	permission := func(input string) (pr map[string]any, id string) {
+		var detail core.TaskDetail
+		a.waitFor("the permission request for "+input, func() bool {
+			a.call("task.get", map[string]string{"id": task.ID}, &detail)
+			for _, p := range detail.Pending {
+				var pl map[string]any
+				_ = json.Unmarshal(p.Spec.Payload, &pl)
+				if pl["gate"] == core.PermissionGate && pl["input"] == input {
+					pr, id = pl, string(p.ID)
+					return true
+				}
+			}
+			return false
+		})
+		return pr, id
+	}
+
+	pl, id := permission("npm install left-pad")
+	if pl["editable"] != true || pl["shell"] != true {
+		t.Fatalf("a Claude worker's whole shell command can be changed before it is approved: %v", pl)
+	}
+	// a changed input goes only with an approval, and must be an object
+	if err := a.callErr("run.respond", map[string]any{"runId": runID, "requestId": id, "decision": "rejected", "data": map[string]any{"input": map[string]string{"command": "x"}}}); err == nil {
+		t.Fatal("a refusal cannot carry a changed input")
+	}
+	if err := a.callErr("run.respond", map[string]any{"runId": runID, "requestId": id, "decision": "approved", "data": map[string]any{"input": "npm ci"}}); err == nil {
+		t.Fatal("a changed input that is not a JSON object must be refused")
+	}
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": id, "decision": "approved", "data": map[string]any{"input": map[string]string{"command": "npm install left-pad@1.3.0 --ignore-scripts"}}}, nil)
+
+	// the second call is changed into one the rules refuse outright: the person's edit does not get past them
+	_, id2 := permission("npm install right-pad")
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": id2, "decision": "approved", "data": map[string]any{"input": map[string]string{"command": "cat ~/.claude/.credentials.json"}}}, nil)
+
+	var detail core.TaskDetail
+	a.waitFor("the review request", func() bool {
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		return len(detail.Pending) == 1 && detail.Pending[0].Spec.Kind == "review"
+	})
+
+	raw, _ := os.ReadFile(permLog)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("answers: %s", raw)
+	}
+	var first, second struct {
+		Behavior     string          `json:"behavior"`
+		Message      string          `json:"message"`
+		UpdatedInput json.RawMessage `json:"updatedInput"`
+	}
+	_ = json.Unmarshal([]byte(lines[0]), &first)
+	_ = json.Unmarshal([]byte(lines[1]), &second)
+	if first.Behavior != "allow" || string(first.UpdatedInput) != `{"command":"npm install left-pad@1.3.0 --ignore-scripts"}` {
+		t.Fatalf("the CLI must run the changed input: %s", lines[0])
+	}
+	if second.Behavior != "deny" || !strings.Contains(second.Message, "as a person changed it") {
+		t.Fatalf("an edit the rules refuse must be refused: %s", lines[1])
+	}
+	var outcomes []string
+	for _, e := range a.eventsOf("permission.decided") {
+		outcomes = append(outcomes, e["outcome"].(string))
+		if e["outcome"] == "approved_with_edits" && e["editedInputDigest"] == nil {
+			t.Fatalf("an approval with edits records the digest of what ran: %v", e)
+		}
+	}
+	if strings.Join(outcomes, ",") != "approved_with_edits,denied" {
+		t.Fatalf("outcomes %v", outcomes)
+	}
+	// the edits are nowhere in the database: not in the approvals, the events or the audit
+	for _, q := range []string{`SELECT COUNT(*) FROM approvals WHERE CAST(payload AS TEXT) LIKE '%1.3.0%' OR response LIKE '%1.3.0%'`,
+		`SELECT COUNT(*) FROM events WHERE CAST(data AS TEXT) LIKE '%1.3.0%' AND type <> 'agent.output'`,
+		`SELECT COUNT(*) FROM audit_log WHERE CAST(detail AS TEXT) LIKE '%1.3.0%'`} {
+		var n int
+		if err := a.c.DB.Reader().QueryRow(q).Scan(&n); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+		if n != 0 {
+			t.Fatalf("the edit is stored: %s -> %d", q, n)
+		}
+	}
+	var statuses []string
+	rows, _ := a.c.DB.Reader().Query(`SELECT status FROM approvals WHERE id IN (?, ?) ORDER BY created_at`, id, id2)
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		statuses = append(statuses, s)
+	}
+	rows.Close()
+	if strings.Join(statuses, ",") != "CONSUMED,CANCELLED" {
+		t.Fatalf("the approvals: %v", statuses)
+	}
+
+	// the task's activity shows each wait for the person in the worker's turn, and how it was answered (P87, P88)
+	var act struct {
+		Threads []struct {
+			AgentID string `json:"agentId"`
+			Events  []struct {
+				Type  string `json:"type"`
+				Name  string `json:"name"`
+				Value struct {
+					ID      string `json:"id"`
+					Title   string `json:"title"`
+					Outcome string `json:"outcome"`
+				} `json:"value"`
+			} `json:"events"`
+		} `json:"threads"`
+	}
+	a.call("task.activity", map[string]string{"taskId": task.ID}, &act)
+	var waits []string
+	for _, th := range act.Threads {
+		for _, e := range th.Events {
+			if e.Type == "CUSTOM" {
+				if th.AgentID != worker.ID {
+					t.Fatalf("a wait in another agent's thread: %+v", th)
+				}
+				waits = append(waits, e.Name+" "+e.Value.ID+" "+e.Value.Title+e.Value.Outcome)
+			}
+		}
+	}
+	want := []string{"drydock.interrupt " + id + " Bash: npm install left-pad", "drydock.resume " + id + " approved_with_edits",
+		"drydock.interrupt " + id2 + " Bash: npm install right-pad", "drydock.resume " + id2 + " denied"}
+	if strings.Join(waits, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("waits in the activity:\n%s", strings.Join(waits, "\n"))
+	}
+}

@@ -536,6 +536,55 @@ describe('Permission request', () => {
     expect(tricky.$('[data-testid="permission-prompt-shortened"]')).toBeNull();
   });
 
+  it('offers Edit before allowing only where the core says the call can change, and sends the changed input (P88)', async () => {
+    // not editable (an ACP agent, a shortened or redacted input): no edit button
+    const plain = mount(<ReviewPanel detail={permission(bash)} onChanged={() => undefined} />, svc());
+    expect(buttons(plain.container)).toEqual(['Allow once', 'Refuse']);
+    cleanup();
+
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={permission({ ...bash, editable: true, shell: true })} onChanged={() => undefined} />, svc({ runRespond }));
+    expect(buttons(r.container)).toEqual(['Allow once', 'Edit before allowing', 'Refuse']);
+    await r.act(() => byText(r.container, 'button', 'Edit before allowing').click());
+    const box = r.$('[data-testid="permission-prompt-edit"]') as HTMLTextAreaElement;
+    expect(box.value).toBe('npm install left-pad');
+    expect(buttons(r.container)).toEqual(['Allow the changed call once', 'Cancel the change', 'Refuse']);
+    // an empty command is not sent
+    await r.act(() => type(box, '   '));
+    await r.act(() => byText(r.container, 'button', 'Allow the changed call once').click());
+    expect(r.$('[data-testid="permission-prompt-edit-error"]')!.textContent).toBe('Write the command to run.');
+    expect(runRespond.calls).toEqual([]);
+    await r.act(() => type(box, 'npm install left-pad@1.3.0 --ignore-scripts'));
+    await r.act(() => byText(r.container, 'button', 'Allow the changed call once').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'apr_1', 'approved', { input: { command: 'npm install left-pad@1.3.0 --ignore-scripts' } }]]), r);
+    cleanup();
+
+    // a JSON input is changed as JSON: it must stay an object
+    const json = recorder(() => undefined);
+    const w = mount(
+      <ReviewPanel detail={permission({ ...bash, tool: 'Write', shell: false, editable: true, input: '{"file_path":"a.txt","content":"x"}' })} onChanged={() => undefined} />,
+      svc({ runRespond: json }),
+    );
+    await w.act(() => byText(w.container, 'button', 'Edit before allowing').click());
+    const area = w.$('[data-testid="permission-prompt-edit"]') as HTMLTextAreaElement;
+    expect(JSON.parse(area.value)).toEqual({ file_path: 'a.txt', content: 'x' });
+    for (const [bad, said] of [
+      ['{"file_path":', 'The input is not valid JSON.'],
+      ['["a"]', 'The input must be a JSON object ({ ... }).'],
+    ] as const) {
+      await w.act(() => type(area, bad));
+      await w.act(() => byText(w.container, 'button', 'Allow the changed call once').click());
+      expect(w.$('[data-testid="permission-prompt-edit-error"]')!.textContent).toBe(said);
+    }
+    // Cancel the change goes back to the plain answers
+    await w.act(() => byText(w.container, 'button', 'Cancel the change').click());
+    expect(w.$('[data-testid="permission-prompt-edit"]')).toBeNull();
+    await w.act(() => byText(w.container, 'button', 'Edit before allowing').click());
+    await w.act(() => type(w.$('[data-testid="permission-prompt-edit"]') as HTMLTextAreaElement, '{"file_path":"b.txt","content":"y"}'));
+    await w.act(() => byText(w.container, 'button', 'Allow the changed call once').click());
+    await waitFor(() => expect(json.calls).toEqual([['run-7', 'apr_1', 'approved', { input: { file_path: 'b.txt', content: 'y' } }]]), w);
+  });
+
   it('read-only allows refusing, not allowing', async () => {
     const r = mount(<ReviewPanel detail={permission(bash)} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);

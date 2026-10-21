@@ -49,6 +49,8 @@ export interface QueryOptions<T> {
   /** While false nothing is read and data stays undefined. */
   enabled?: () => boolean;
   debounceMs?: number;
+  /** Also re-read on streaming events (agent.output), at most once per debounceMs (LiveOptions.noisy). */
+  noisy?: boolean;
 }
 
 export interface Query<T> {

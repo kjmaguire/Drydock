@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -37,6 +38,8 @@ const (
 	PermissionRejected      = "rejected"  // a person refused it
 	PermissionTimedOut      = "timed_out" // nobody answered before the approval expired
 	PermissionCancelled     = "cancelled" // the run ended, or the CLI gave up waiting
+	// PermissionApprovedEdited: a person approved the call with input they changed (P88); the CLI runs the changed input.
+	PermissionApprovedEdited = "approved_with_edits"
 )
 
 // EventPermissionDecided is published once per permission request with the outcome. It never carries the input, only its
@@ -291,6 +294,9 @@ type PermissionOutcome struct {
 	Outcome    string // one of the Permission* outcomes
 	Kind       string // approval kind, when one was asked
 	ApprovalID string
+	// UpdatedInput, when set, is the input the person approved instead of the agent's (canonical JSON): the CLI runs the
+	// tool with it. Only an approval with edits sets it.
+	UpdatedInput json.RawMessage
 }
 
 // PermissionGate answers permission requests: analyzer first, then a person on a hashed approval.
@@ -303,6 +309,38 @@ type PermissionGate struct {
 	Bus    events.Bus
 	TTL    time.Duration // how long a person has to answer (default DefaultApprovalTTL)
 	Poll   time.Duration // how often the approval is read while waiting (default 250 ms)
+
+	edits sync.Map // approval id -> json.RawMessage: input a person changed before approving (kept in memory only)
+}
+
+// ErrEditNotPossible is returned for an edit the request cannot take: not a JSON object, or a CLI that cannot run an
+// edited call (an ACP agent's request: its protocol allows or refuses a call, it cannot change one).
+var ErrEditNotPossible = errors.New("this call cannot be approved with edits")
+
+// SetEdit holds the input a person changed for a waiting request, for the moment it is approved (P88). The edit lives in
+// memory only: it may hold text the person typed, and the approvals table keeps no secrets. Call it right before the approval
+// is decided; ClearEdit drops it when the decision fails.
+func (g *PermissionGate) SetEdit(approvalID, tool string, input json.RawMessage) error {
+	if !strings.HasPrefix(tool, "claude:") { // the approval's tool is "<cli>:<tool>"; only Claude's prompt tool takes a changed input
+		return ErrEditNotPossible
+	}
+	canon, err := CanonicalJSON(input)
+	if err != nil || len(canon) == 0 || canon[0] != '{' {
+		return fmt.Errorf("%w: the input must be a JSON object", ErrEditNotPossible)
+	}
+	g.edits.Store(approvalID, json.RawMessage(canon))
+	return nil
+}
+
+// ClearEdit drops a held edit.
+func (g *PermissionGate) ClearEdit(approvalID string) { g.edits.Delete(approvalID) }
+
+func (g *PermissionGate) takeEdit(approvalID string) (json.RawMessage, bool) {
+	v, ok := g.edits.LoadAndDelete(approvalID)
+	if !ok {
+		return nil, false
+	}
+	return v.(json.RawMessage), true
 }
 
 // Decide answers one request. It blocks until the rules decide or a person answers, the approval expires, or ctx ends (the run
@@ -332,7 +370,7 @@ func (g *PermissionGate) Decide(ctx context.Context, scope PermissionScope, req 
 		g.record(ctx, scope, req, td, out)
 		return out
 	}
-	out := g.ask(ctx, scope, req, td)
+	out := g.ask(ctx, scope, req, td, pol)
 	g.record(ctx, scope, req, td, out)
 	return out
 }
@@ -342,7 +380,7 @@ func (g *PermissionGate) bind(scope PermissionScope, a ActionDescriptor) ActionD
 	return a
 }
 
-func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req ToolRequest, td ToolDecision) PermissionOutcome {
+func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req ToolRequest, td ToolDecision, pol *Policy) PermissionOutcome {
 	out := PermissionOutcome{Kind: td.Kind}
 	if g.Approvals == nil {
 		out.Outcome, out.Message = PermissionDenied, "this "+req.Tool+" call needs a person's approval and none can be asked here, so Drydock refused it."
@@ -392,11 +430,31 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 				return out
 			}
 			again.Action.Kind = td.Action.Kind // the kind the person saw; everything else is recomputed
+			edited, hasEdit := g.takeEdit(id)
+			if hasEdit {
+				// the person changed the input: the changed call is checked by the rules like any call (a refusal stands even
+				// for a person's edit), and only then is the approval of the request they answered spent on it
+				ed := req
+				ed.Input = edited
+				check, cerr := ClassifyToolRequest(context.WithoutCancel(ctx), g.Analyzer, pol, ed)
+				if cerr != nil || check.Verdict == VerdictDeny {
+					_ = g.Approvals.Cancel(context.WithoutCancel(ctx), id, "system")
+					why := "it could not be checked"
+					if cerr == nil {
+						why = strings.Join(check.Reasons, "; ")
+					}
+					out.Outcome, out.Message = PermissionDenied, "The call as a person changed it is one Drydock's rules refuse ("+why+"), so Drydock refused it. Continue without it, or stop and say what you needed."
+					return out
+				}
+			}
 			if err := g.Approvals.Consume(context.WithoutCancel(ctx), id, g.bind(scope, again.Action)); err != nil {
 				out.Outcome, out.Message = PermissionDenied, "The approval did not match this exact call, so Drydock refused it."
 				return out
 			}
 			out.Allow, out.Outcome = true, PermissionApproved
+			if hasEdit {
+				out.Outcome, out.UpdatedInput = PermissionApprovedEdited, edited
+			}
 			return out
 		case "REJECTED":
 			out.Outcome, out.Message = PermissionRejected, "A person refused this "+req.Tool+" call in Drydock. Do not try to reach the same result another way; continue without it, or stop and say what you needed."
@@ -422,6 +480,10 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 // input itself is never recorded here (the approval's display copy, redacted, is the only stored form).
 func (g *PermissionGate) record(ctx context.Context, scope PermissionScope, req ToolRequest, td ToolDecision, out PermissionOutcome) {
 	data := map[string]any{"tool": req.Tool, "outcome": out.Outcome, "allowed": out.Allow, "kind": out.Kind, "inputDigest": td.Action.ArgvDigest}
+	if len(out.UpdatedInput) > 0 { // what ran instead, as a digest: the edit itself is never stored
+		sum := sha256.Sum256(out.UpdatedInput)
+		data["editedInputDigest"] = hex.EncodeToString(sum[:])
+	}
 	if out.ApprovalID != "" {
 		data["approval"] = out.ApprovalID
 	}

@@ -49,6 +49,7 @@ export function svc(client: Partial<Client> = {}, opts: { license?: LicenseView;
     usageList: async () => [],
     routeDecisions: async () => [],
     previewList: async () => [],
+    taskActivity: async () => ({ threads: [] }),
     ...client,
   });
   s.workspace.start();

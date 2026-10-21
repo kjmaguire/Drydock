@@ -876,3 +876,29 @@ Open, owner action:
   only inside the chat. The core's `needsyou.list` now adds each waiting chat request (kind `chat_permission`, with its chat;
   opening it goes to the chat, where Allow once and Refuse are), so the count in the top bar is everything that waits for a
   person, and every list and count of Needs you reloads on the same events (`needsChanged`).
+- **P87. A typed activity vocabulary modelled on AG-UI, and a task's Activity (2026-10-21, the CopilotKit/AG-UI comparison,
+  phase 3).** An agent's run reached the UI only as raw `agent.output` chunks, which no screen drew: the task page showed
+  evidence and reviews but not what the agents did while they worked. `internal/agui` names that in a vocabulary modelled on the
+  AG-UI protocol 1.0: RUN_STARTED / RUN_FINISHED / RUN_ERROR per turn, TEXT_MESSAGE_START / CONTENT / END, REASONING_MESSAGE_*,
+  TOOL_CALL_START / ARGS / END / RESULT, ACTIVITY_SNAPSHOT for an agent's plan (ACP `plan` updates), and AG-UI CUSTOM events
+  `drydock.interrupt` / `drydock.resume` for a turn that waits for a person (P88). It is not a second record: `agui.Project` reads
+  the `agent.*`, `approval.requested` and `permission.decided` events the bus already stored for a task (pure, deterministic; one
+  thread per agent process; consecutive deltas joined; arguments and results cut to 8 KiB) and `task.activity` returns it. The
+  UI's types are generated from the Go structs (`internal/tsgen`, a reflection-based writer that reads types as encoding/json
+  does; `go run ./cmd/drydock-tsgen` writes `ui/app/api/agui.gen.ts`, and a Go test fails while the file is out of date), so the
+  core and the page cannot disagree on a field. The task page's new Activity section draws each agent process: its plan as a
+  checklist, its newest turn open (messages, reasoning folded away, each tool call as the chat's card from P84, each wait for a
+  person and its answer), earlier turns folded to one line; it re-reads as the task's events arrive, throttled to once per
+  750 ms (a live read can now opt into streaming events: `LiveOptions.noisy`, a throttle rather than a debounce, so a steady
+  stream never postpones the read). Nothing new is installed: the vocabulary is modelled on AG-UI's event names; no AG-UI
+  package is a dependency.
+- **P88. Approve with edits, and the waits in the activity (2026-10-21, the CopilotKit/AG-UI comparison, phase 3).** A
+  worker's permission request (P40, P83) could be allowed once or refused, nothing between: a person who saw `npm install
+  left-pad` and wanted `npm install left-pad@1.3.0 --ignore-scripts` had to refuse and hope. The task page now offers Edit before
+  allowing where the CLI can run a changed call (Claude workers: the prompt answer's `updatedInput`; ACP agents can only allow
+  or refuse) and the whole input is shown (not shortened or redacted). The changed call is checked by the rules again, so a
+  hard-deny stands even for a person's edit; the approval the person answered is consumed as before (its hash binds the call
+  they read) and the CLI runs the changed input. The edit stays in memory: the approvals table, the events and the audit get
+  only `approved_with_edits` and the changed input's digest. In the task's Activity each permission request is a wait inside
+  the worker's turn ("Waiting for you: Bash: npm install left-pad") until it is answered ("Allowed by you with your changes",
+  "Refused by Drydock's rules", "Nobody answered in time"); docs/security.md s5 step 6.

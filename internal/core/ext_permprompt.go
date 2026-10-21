@@ -66,7 +66,7 @@ func (p *permissionService) Permit(ctx context.Context, req mcp.PermissionReques
 	out := gate.Decide(ctx,
 		security.PermissionScope{Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID},
 		security.ToolRequest{Tool: req.ToolName, Input: json.RawMessage(req.Input), Root: req.Run.Worktree, WSL: req.Run.WSL})
-	return mcp.PermissionAnswer{Allow: out.Allow, Message: out.Message, Outcome: out.Outcome}
+	return mcp.PermissionAnswer{Allow: out.Allow, Message: out.Message, Outcome: out.Outcome, UpdatedInput: out.UpdatedInput}
 }
 
 // offerPermissionPrompts gives a marked worker turn the permission tool: the policy allows it, the CLI is told to ask it, and
@@ -98,7 +98,10 @@ func (c *Core) permissionRequestTask(ctx context.Context, id string) (taskID str
 
 // respondPermission records the human's answer to a permission request shown on the page of the run's task. The waiting tool
 // call reads it, consumes the approval and answers the CLI.
-func (c *Core) respondPermission(ctx context.Context, runID, requestID, taskID, decision string) error {
+//
+// An approval may carry the input changed by the person (data {"input": {...}}, P88): the CLI then runs that input, after the
+// rules checked it again. Only Claude workers can run a changed call.
+func (c *Core) respondPermission(ctx context.Context, runID, requestID, taskID, decision string, data []byte) error {
 	info, err := c.Engine.Status(ctx, workflow.RunID(runID))
 	if err != nil {
 		return err
@@ -118,6 +121,29 @@ func (c *Core) respondPermission(ctx context.Context, runID, requestID, taskID, 
 	gate, err := c.permissions().init()
 	if err != nil {
 		return err
+	}
+	var edit struct {
+		Input json.RawMessage `json:"input"`
+	}
+	if len(data) > 0 {
+		_ = json.Unmarshal(data, &edit)
+	}
+	if len(edit.Input) > 0 && string(edit.Input) != "null" {
+		if d != security.DecisionApprove {
+			return errors.New("only an approval carries a changed input")
+		}
+		info, err := gate.Approvals.Get(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		if err := gate.SetEdit(requestID, info.Action.Tool, edit.Input); err != nil {
+			return err
+		}
+		if err := gate.Approvals.Decide(ctx, requestID, d, c.Human()); err != nil {
+			gate.ClearEdit(requestID)
+			return err
+		}
+		return nil
 	}
 	return gate.Approvals.Decide(ctx, requestID, d, c.Human())
 }
@@ -165,8 +191,11 @@ func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.
 				targets = append(targets, x)
 			}
 		}
+		// a person can change the input before approving only where the CLI can run a changed call (Claude's prompt tool)
+		// and the input shown is the whole input: a shortened or redacted copy would run without what was left out (P88)
+		editable := strings.HasPrefix(info.Action.Tool, "claude:") && !info.Action.Shortened && !strings.Contains(info.Action.Command, "[REDACTED")
 		payload, _ := json.Marshal(map[string]any{
-			"gate": PermissionGate, "tool": toolOfAction(info.Action.Tool), "input": info.Action.Command,
+			"gate": PermissionGate, "tool": toolOfAction(info.Action.Tool), "input": info.Action.Command, "editable": editable, "shell": info.Action.Shell != "",
 			"targets": targets, "shortened": info.Action.Shortened,
 			"kind": info.ActionKind, "reason": info.Reason, "agentId": info.Action.AgentID, "expiresAt": info.ExpiresAt,
 		})

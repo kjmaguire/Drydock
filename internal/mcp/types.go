@@ -312,6 +312,9 @@ type PermissionAnswer struct {
 	Allow   bool
 	Message string
 	Outcome string
+	// UpdatedInput, when set, is the input a person approved instead of the CLI's (canonical JSON, P88): the CLI runs the
+	// tool with it.
+	UpdatedInput []byte
 }
 
 // CredentialSource resolves upstream credentials held by Drydock (agents never see them).
