@@ -8,7 +8,7 @@
 # its own, so a test can prove that stopping the run kills them. It never prints a value that could be a credential, only the
 # length of ANTHROPIC_API_KEY.
 case "$1" in
-  --version) echo "2.1.305 (Claude Code)"; exit 0 ;;
+  --version) echo "2.1.306 (Claude Code)"; exit 0 ;;
   auth)
     if [ "$2" = login ]; then
       # the stand-in's interactive sign-in: it says where it runs (the run marker, whether the login shell's PATH reached it,
@@ -59,7 +59,7 @@ while IFS= read -r line; do
     *) continue ;;
   esac
   if [ "$started" = 0 ]; then
-    printf '{"type":"system","subtype":"init","session_id":"%s","model":"standin","tools":[],"cwd":"%s","claude_code_version":"2.1.305"}\n' "$sid" "$(esc "$PWD")"
+    printf '{"type":"system","subtype":"init","session_id":"%s","model":"standin","tools":[],"cwd":"%s","claude_code_version":"2.1.306"}\n' "$sid" "$(esc "$PWD")"
     started=1
   fi
   turn=$((turn+1)); extra=""

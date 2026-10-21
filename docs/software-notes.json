@@ -116,7 +116,7 @@
     },
     "cli:claude": {
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "Recommended 2.1.304, moved to the newest release on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself."
+      "note": "Recommended 2.1.306, moved to the newest release on 2026-10-21 at the owner's instruction (decision P82). Checked here on 2026-10-21 without a sign-in: the contract suite's free contracts (8 passed, 0 failed, the Claude ACP bridge 0.94.0's handshake among them); the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Under npm 12 the npm install needs --allow-scripts=@anthropic-ai/claude-code, which the install line shown in Drydock carries. Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself."
     },
     "cli:codex": {
       "role": "Codex: runs OpenAI's models as an agent.",

@@ -72,6 +72,7 @@ func TestNPMPackageReadsInstallLines(t *testing.T) {
 		ok       bool
 	}{
 		{"npm install -g @anthropic-ai/claude-code", "@anthropic-ai/claude-code", true},
+		{"npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code", "@anthropic-ai/claude-code", true}, // npm 12's flag is not the package
 		{"npm i -g opencode-ai@latest", "opencode-ai", true},
 		{"npm i --global cline@3.0.70", "cline", true},
 		{"npm install -g @scope/name@1.2.3", "@scope/name", true},

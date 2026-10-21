@@ -268,7 +268,7 @@ func TestStandInHostListsDistrosAndProbesThroughALoginShell(t *testing.T) {
 	if in.Tool != filepath.Join(f.Home, ".local", "bin", "claude") || !strings.Contains(in.Path, filepath.Join(f.Home, ".local", "bin")) || in.Home != f.Home {
 		t.Fatalf("%+v", in)
 	}
-	if !strings.HasPrefix(in.Version, "2.1.305") || in.AuthExit != 0 || !strings.Contains(in.Auth, `"loggedIn": true`) || !in.Setsid {
+	if !strings.HasPrefix(in.Version, "2.1.306") || in.AuthExit != 0 || !strings.Contains(in.Auth, `"loggedIn": true`) || !in.Setsid {
 		t.Fatalf("%+v", in)
 	}
 	if c, ok := h.Cached("ubuntu-24.04", "claude"); !ok || c.Tool != in.Tool {

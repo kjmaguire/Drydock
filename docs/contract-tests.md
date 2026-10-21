@@ -84,7 +84,7 @@ go run ./cmd/drydock-contract --list                             # print the cat
 
 ```powershell
 # Windows (PowerShell), from the repository root; WIN-ARGV-01 runs only here, and only with an npm install (claude.cmd)
-npm install -g @anthropic-ai/claude-code      # or: go run ./cmd/drydock-contract --install-pinned claude
+npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code      # or: go run ./cmd/drydock-contract --install-pinned claude
 go run ./cmd/drydock-contract --budget-usd 1.50
 ```
 

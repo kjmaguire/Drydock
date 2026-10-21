@@ -10,11 +10,11 @@ install:                                         # display only; Drydock never e
   - {shell: powershell, command: 'irm https://claude.ai/install.ps1 | iex'}
   - {shell: cmd, command: 'curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd'}
   - {shell: cmd, command: 'winget install Anthropic.ClaudeCode', note: no auto-update}
-  - {shell: cmd, command: 'npm install -g @anthropic-ai/claude-code', requires: [{tool: node, min: "22"}]}
+  - {shell: cmd, command: 'npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code', requires: [{tool: node, min: "22"}]}   # npm 12 runs no install script unless allowed; this one links the native binary
   # inside a WSL distro (the wsl run mode, decision P41): the native Linux installer, which puts claude in ~/.local/bin
   - {shell: sh, run_mode: wsl, command: 'curl -fsSL https://claude.ai/install.sh | bash'}
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
-versions: {min: "2.1.205", recommended: "2.1.305"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
+versions: {min: "2.1.205", recommended: "2.1.306"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
 auth:
   login: {argv: [auth, login], variants: [[--claudeai], [--console], [--sso], [--email]], terminal: true}
   probe: {argv: [auth, status, --json], parse: json, ready_when: '$.loggedIn == true'}   # logged-out exit code unverified: parse the JSON

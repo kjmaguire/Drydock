@@ -825,3 +825,12 @@ Open, owner action:
   is approved; esbuild's, which only checks its platform binary, is skipped with no effect, and the lock file is unchanged. The
   holds on the four rows are gone. The host is a cloud container rebuilt from its environment: these versions last until it is
   rebuilt, unless the environment's setup script installs them too.
+- **P82. Claude Code 2.1.306, and npm 12's install scripts (2026-10-21, on the owner's words: "update claude code to 2.1.306
+  too").** The manifest recommends 2.1.306; the free contracts pass on it (8 passed, 0 failed, the Claude ACP bridge 0.94.0's
+  handshake among them; no sign-in here, so no paid contract and no prompt turn), and the Phase 0 probe workflow, the WSL stand-in
+  and its tests follow it. Installing it with the development host's npm 12 (P81) found that npm 12 runs no package's install
+  script unless the command allows it: Claude Code's links its native binary, and without it `claude` does not start. Three agent
+  packages ship one (Claude Code, opencode, cline), so the npm install line Drydock shows for each now allows its own package's
+  script (`npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code`), and the contract tool's own
+  installs (`--install-pinned`, `--latest`, `--install-latest`) do the same; npm 11, which Node 24 ships, accepts the flag too
+  (checked with 11.19.1). Tests keep both.

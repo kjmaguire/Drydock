@@ -27,7 +27,7 @@ func TestClineManifestFacts(t *testing.T) {
 			t.Fatalf("tool approval must stay with Drydock: %v", m.Transports.ACP.Argv)
 		}
 	}
-	if m.InstallHint() != "cmd: npm i -g cline" {
+	if m.InstallHint() != "cmd: npm i -g --allow-scripts=cline cline" {
 		t.Errorf("install hint %q", m.InstallHint())
 	}
 	if len(m.Requires) != 1 || m.Requires[0].Tool != "node" || m.Requires[0].Min != "22" {
@@ -71,7 +71,7 @@ func TestClineBuildsAsTheGenericACPAdapterWithDrydocksPolicy(t *testing.T) {
 	}
 	t.Setenv("PATH", t.TempDir())
 	d, err := a.Detect(context.Background())
-	if err != nil || d.Installed || d.Status != agents.StatusNotInstalled || d.InstallHint != "cmd: npm i -g cline" {
+	if err != nil || d.Installed || d.Status != agents.StatusNotInstalled || d.InstallHint != "cmd: npm i -g --allow-scripts=cline cline" {
 		t.Fatalf("detect without cline: %+v %v", d, err)
 	}
 }

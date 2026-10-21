@@ -198,7 +198,7 @@ func installLatest(ctx context.Context, w io.Writer, prefix string, ps []pins.Pi
 	for _, p := range ps {
 		spec := p.Package + "@latest"
 		fmt.Fprintf(w, "--latest: npm install -g --prefix %s %s\n", prefix, spec)
-		cmd := exec.CommandContext(ctx, "npm", "install", "-g", "--prefix", prefix, "--no-audit", "--no-fund", spec)
+		cmd := exec.CommandContext(ctx, "npm", npmInstallArgs(prefix, p.Package, spec)...)
 		cmd.Env = npmEnv(os.Environ())
 		var errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = io.Discard, &errb
@@ -220,6 +220,17 @@ func installLatest(ctx context.Context, w io.Writer, prefix string, ps []pins.Pi
 func npmEnv(parent []string) []string {
 	names := append(append([]string(nil), proc.BaseEnvNames...), proc.ToolEnvNames...)
 	return proc.WithoutProxyCredentials(proc.ScrubEnv(parent, names, []string{"NPM_CONFIG_"}), nil)
+}
+
+// npmInstallArgs is `npm install -g` of one package (into prefix, unless it is ""), with that package's install script allowed:
+// Claude Code's npm package links its native binary in one, and npm 12 runs no install script unless the command allows it
+// (npm 11 accepts the flag too).
+func npmInstallArgs(prefix, pkg, spec string) []string {
+	args := []string{"install", "-g"}
+	if prefix != "" {
+		args = append(args, "--prefix", prefix)
+	}
+	return append(args, "--no-audit", "--no-fund", "--allow-scripts="+pkg, spec)
 }
 
 // npmBin is where `npm install -g --prefix` puts the commands: <prefix>\ on Windows, <prefix>/bin elsewhere.

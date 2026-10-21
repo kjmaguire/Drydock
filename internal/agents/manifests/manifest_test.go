@@ -8,6 +8,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
+	"github.com/kjmaguire/drydock/internal/agents/pins"
 )
 
 func embeddedSet(t *testing.T) *manifests.Set {
@@ -83,7 +84,7 @@ func TestManifestFactsMatchTheEvidence(t *testing.T) {
 	if p := cl.Auth.Probe; p == nil || !reflect.DeepEqual(p.Argv, []string{"auth", "status", "--json"}) || p.Parse != "json" {
 		t.Errorf("claude probe %+v", p)
 	}
-	if cl.Versions.Min != "2.1.205" || cl.Versions.Recommended != "2.1.305" {
+	if cl.Versions.Min != "2.1.205" || cl.Versions.Recommended != "2.1.306" {
 		t.Errorf("claude versions %+v", cl.Versions)
 	}
 	cx := get(t, "codex")
@@ -135,6 +136,32 @@ func TestManifestFactsMatchTheEvidence(t *testing.T) {
 	for id, tier := range map[string]string{"claude": "premium", "codex": "premium", "gemini": "premium", "opencode": "cheap", "goose": "cheap", "antigravity": "premium"} {
 		if got := get(t, id).Meta.Tier; got != tier {
 			t.Errorf("%s tier %q, want %q", id, got, tier)
+		}
+	}
+}
+
+// npm 12 runs no package's install script unless the command allows it, and these three need theirs (Claude Code links its
+// native binary in one, opencode picks its platform binary, cline has a postinstall): the npm line shown for each allows its
+// own package's script, which npm 11 accepts too (decision P82).
+func TestTheNPMInstallLinesAllowThePackagesThatNeedTheirInstallScript(t *testing.T) {
+	need := map[string]string{"claude": "@anthropic-ai/claude-code", "opencode": "opencode-ai", "cline": "cline"}
+	for id, pkg := range need {
+		found := false
+		for _, in := range get(t, id).Install {
+			got, ok := pins.NPMPackage(in.Command)
+			if !ok {
+				continue
+			}
+			found = true
+			if got != pkg {
+				t.Errorf("%s: the npm line installs %q, want %q", id, got, pkg)
+			}
+			if !strings.Contains(" "+in.Command+" ", " --allow-scripts="+pkg+" ") {
+				t.Errorf("%s: %q does not allow %s's install script, so npm 12 installs it without it", id, in.Command, pkg)
+			}
+		}
+		if !found {
+			t.Errorf("%s: no npm install line", id)
 		}
 	}
 }

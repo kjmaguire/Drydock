@@ -4,7 +4,7 @@ binaries: {native: [opencode.exe, opencode.cmd], wsl: [opencode]}
 install:
   - {shell: cmd, command: 'scoop install opencode'}
   - {shell: cmd, command: 'choco install opencode'}
-  - {shell: cmd, command: 'npm i -g opencode-ai@latest', requires: [{tool: node, min: "22"}]}
+  - {shell: cmd, command: 'npm i -g --allow-scripts=opencode-ai opencode-ai@latest', requires: [{tool: node, min: "22"}]}   # npm 12 runs no install script unless allowed; its postinstall picks the platform binary
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
 versions: {min: "1.18.35", recommended: "1.19.3"}
 auth:

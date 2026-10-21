@@ -146,7 +146,7 @@ install:                                             # display only; Drydock nev
   - {shell: powershell, command: 'irm https://claude.ai/install.ps1 | iex'}
   - {shell: cmd, command: 'curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd'}
   - {shell: cmd, command: 'winget install Anthropic.ClaudeCode', note: no auto-update}
-  - {shell: cmd, command: 'npm install -g @anthropic-ai/claude-code', requires: [{tool: node, min: "22"}]}
+  - {shell: cmd, command: 'npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code', requires: [{tool: node, min: "22"}]}
 detect: {version: {argv: [--version], regex: '^(\d+\.\d+\.\d+)'}}
 versions: {min: "2.1.205", recommended: "2.1.277"}    # interrupt receipts / AGENTS.md fallback [cli §12]
 auth: {login: {argv: [auth, login], variants: [[--claudeai], [--console], [--sso], [--email]], terminal: true}, probe: {argv: [auth, status, --json], parse: json, ready_when: '$.loggedIn == true'}, warn_env: [ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN], forbidden_flags: [--bare]}
@@ -194,7 +194,7 @@ usage: {normalizer: gemini_result_stats, acp_normalizer: gemini_meta_quota, quot
 ---
 meta: {id: opencode, license: MIT, tier: cheap}      # repo anomalyco/opencode [cli §4]; D3 default cheap-tier agent
 binaries: {native: [opencode.exe, opencode.cmd], wsl: [opencode]}
-install: [{shell: cmd, command: 'scoop install opencode'}, {shell: cmd, command: 'choco install opencode'}, {shell: cmd, command: 'npm i -g opencode-ai@latest'}]
+install: [{shell: cmd, command: 'scoop install opencode'}, {shell: cmd, command: 'choco install opencode'}, {shell: cmd, command: 'npm i -g --allow-scripts=opencode-ai opencode-ai@latest'}]
 detect: {version: {argv: [--version], regex: '^(\d+\.\d+\.\d+)'}}
 versions: {min: "1.18.35", recommended: "1.18.35"}
 auth: {login: {argv: [providers, login], terminal: true}, probe: {argv: [providers, list], parse: text_providers}}
@@ -334,7 +334,7 @@ Cline (Apache-2.0, github.com/cline/cline) is the eighth manifest, `internal/age
 
 | Item | Value | Evidence |
 |---|---|---|
-| Install (shown, never run) | `npm i -g cline`, Node 22+ | README; the package's `bin/cline` is a Node launcher (`#!/usr/bin/env node`) for the bundled platform binary, so Node is needed at run time too (D9) |
+| Install (shown, never run) | `npm i -g --allow-scripts=cline cline`, Node 22+ | README; the package's `bin/cline` is a Node launcher (`#!/usr/bin/env node`) for the bundled platform binary, so Node is needed at run time too (D9) |
 | Detection | `cline --version` prints `3.0.70`; binaries `cline.cmd`, `cline.exe` | observed on Linux (npm package in a scratch folder) |
 | Pin | min and recommended `3.0.70`, compat class `inspected` | `TestLiveACPHandshake/cline`, `TestLiveACPConnections/cline`, `TestLiveACPHandshakes/cline` with `DRYDOCK_ACP_CLINE=<path>` |
 | Transport | `cline --acp`; no `--auto-approve`/`--yolo`, so every tool call reaches Drydock as `session/request_permission`, which Drydock refuses (as built no handler asks a person, so nothing is approved: audit 2026-10-16, L29) | `apps/cli/src/acp/permissions.ts` (options allow once, allow always, reject) |

@@ -332,7 +332,7 @@ func installPinned(ctx context.Context, w io.Writer, name string) error {
 		}
 		spec := p.Package + "@" + p.Version
 		fmt.Fprintf(w, "installing %s\n", spec)
-		cmd := exec.CommandContext(ctx, "npm", "install", "-g", "--no-audit", "--no-fund", spec)
+		cmd := exec.CommandContext(ctx, "npm", npmInstallArgs("", p.Package, spec)...)
 		cmd.Env = npmEnv(os.Environ())
 		var errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = w, &errb

@@ -5,7 +5,7 @@
 meta: {schema: 1, id: cline, display_name: Cline, kind: agent_cli, license: Apache-2.0, tier: premium, run_modes: [native]}
 binaries: {native: [cline.cmd, cline.exe]}
 install:
-  - {shell: cmd, command: 'npm i -g cline', requires: [{tool: node, min: "22"}]}
+  - {shell: cmd, command: 'npm i -g --allow-scripts=cline cline', requires: [{tool: node, min: "22"}]}   # npm 12 runs no install script unless allowed; it has a postinstall
 requires: [{tool: node, min: "22"}]
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}     # prints the bare version ("3.0.70", observed)
 versions: {min: "3.0.70", recommended: "3.0.73"}

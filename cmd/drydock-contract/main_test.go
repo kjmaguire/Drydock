@@ -381,3 +381,18 @@ func TestLatestPinsAreOnlyWhatASelectedContractRuns(t *testing.T) {
 		t.Fatalf("with --check-updates only what is newer: %+v %+v", got, updates)
 	}
 }
+
+// npm 12 runs no install script unless the command allows it, and Claude Code's npm package links its native binary in one:
+// every install the tool makes allows the script of the package it installs, and nothing else's.
+func TestTheToolsNPMInstallsAllowThePackagesOwnInstallScript(t *testing.T) {
+	got := npmInstallArgs("/tmp/p", "@anthropic-ai/claude-code", "@anthropic-ai/claude-code@latest")
+	want := []string{"install", "-g", "--prefix", "/tmp/p", "--no-audit", "--no-fund", "--allow-scripts=@anthropic-ai/claude-code", "@anthropic-ai/claude-code@latest"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("into a prefix: %q, want %q", got, want)
+	}
+	got = npmInstallArgs("", "opencode-ai", "opencode-ai@1.19.3")
+	want = []string{"install", "-g", "--no-audit", "--no-fund", "--allow-scripts=opencode-ai", "opencode-ai@1.19.3"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("global: %q, want %q", got, want)
+	}
+}
