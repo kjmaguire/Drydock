@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -120,6 +121,9 @@ type EventView struct {
 }
 
 const explainEventLimit = 300
+
+// explainEventData is the most of one event's payload the run explanation carries (a longer one is cut, saying so).
+const explainEventData = 16 << 10
 
 // ExplainRun explains a run of a task: runID, or the task's current run.
 func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplanation, error) {
@@ -247,6 +251,8 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 			m.Data = data
 			out.MCPCalls = append(out.MCPCalls, m)
 		}
+		// the inspector (P91) shows each event's payload: as the bus stored it (redacted), cut as the event stream cuts it
+		e.Data = events.ForTransport(events.Event{Data: data}, explainEventData).Data
 		out.Events = append(out.Events, e)
 	}
 	// read newest first so the limit keeps the newest; shown oldest first

@@ -2,7 +2,8 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { ExecView, GraphView, RunExplanation } from '../../api/runClient.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { CHAT_TEXT_MAX, tryInChat } from './turns.tsx';
 import { RunScreen } from './run-screen.tsx';
 
 afterEach(cleanup);
@@ -48,7 +49,11 @@ const explanation = (): RunExplanation => ({
     { id: 'cp2', step: 2, kind: 'step', created: 2, status: 'WAITING_HUMAN', latest: true, waiting: ['approve'] },
   ],
   mcpCalls: [{ seq: 9, ts: 3, type: 'mcp.denied', agentId: 'agt_w', data: { tool: 'search_pack' } }],
-  events: [{ seq: 1, ts: 1, type: 'workflow.started' }],
+  events: [
+    { seq: 1, ts: 1, type: 'workflow.started', data: { workflow: 'iterate-until-verified', note: '<img src=x onerror=alert(1)>' } },
+    { seq: 2, ts: 2, type: 'workflow.node_started', agentId: 'agt_w', data: { node: 'work' } },
+    { seq: 3, ts: 3, type: 'workflow.request_raised', data: { node: 'approve' } },
+  ],
 });
 
 function setup(client: Partial<Client> = {}) {
@@ -122,6 +127,56 @@ describe('RunScreen', () => {
     await waitFor(() => expect(r.$('[data-testid="mcp-call"]')!.textContent).toContain('denied'), r);
     await r.act(() => tab(r, /Events/).click());
     await waitFor(() => expect(r.$('[data-testid="run-event"]')!.textContent).toContain('workflow.started'), r);
+    // the inspector (P91): words filter by type, agent or payload; a row opens to its payload, as text
+    const filter = r.$('[aria-label="Filter events"]') as HTMLInputElement;
+    const types = () => all(r, '[data-testid="run-event"]').map((e) => e.getAttribute('data-type'));
+    await r.act(() => type(filter, 'worker one'));
+    await waitFor(() => expect(types()).toEqual(['workflow.node_started']), r);
+    await r.act(() => type(filter, 'approve'));
+    await waitFor(() => expect(types()).toEqual(['workflow.request_raised']), r);
+    expect(r.$('[data-testid="run-events-count"]')!.textContent).toBe('1 of 3 events');
+    await r.act(() => type(filter, ''));
+    await waitFor(() => expect(types()).toHaveLength(3), r);
+    const first = all(r, '[data-testid="run-event"]')[0]!;
+    await r.act(() => byText(first, 'button', 'Payload').click());
+    const payload = await waitFor(() => r.$('[data-testid="run-event-payload"]')!, r);
+    expect(JSON.parse(payload.querySelector('pre')!.textContent!)).toEqual({ workflow: 'iterate-until-verified', note: '<img src=x onerror=alert(1)>' });
+    expect(r.container.querySelector('img')).toBeNull();
+    await r.act(() => byText(first, 'button', 'Hide').click());
+    await waitFor(() => expect(r.$('[data-testid="run-event-payload"]')).toBeNull(), r);
+  });
+
+  it('offers Try in a chat on an agent turn, which sends its exact prompt to a new chat of the same agent (P91)', async () => {
+    const created: unknown[] = [];
+    const sent: unknown[] = [];
+    const client = {
+      runPrompt: async () => 'Implement Subtract.',
+      chatCreate: async (p: unknown) => (created.push(p), { id: 'chat_9' }),
+      chatSend: async (id: string, text: string) => void sent.push([id, text]),
+    };
+    const exec = { nodeId: 'work', step: 2, attempt: 1, status: 'done', started: 1 } as ExecView;
+    const id = await tryInChat(client, { taskId: 't1', runId: 'run_1', exec, projectId: 'p1', agent: { adapter: 'claude', model: 'sonnet', name: 'Worker One' } });
+    expect(id).toBe('chat_9');
+    expect(created).toEqual([{ projectId: 'p1', adapter: 'claude', model: 'sonnet', title: 'Try: work turn of Worker One' }]);
+    expect(sent).toEqual([['chat_9', 'Implement Subtract.']]);
+    // a prompt longer than a chat message takes is refused before any chat is made
+    const big = { ...client, runPrompt: async () => 'x'.repeat(CHAT_TEXT_MAX + 1) };
+    let err = '';
+    try {
+      await tryInChat(big, { taskId: 't1', runId: 'run_1', exec, projectId: 'p1', agent: { adapter: 'claude', model: '', name: 'W' } });
+    } catch (e) {
+      err = String(e);
+    }
+    expect(err).toContain('cannot be tried in a chat');
+    expect(created).toHaveLength(1);
+
+    // the button is on an agent's turn of a known agent
+    const r = mount(<RunScreen taskId="t1" />, setup({ agentList: async () => [{ id: 'agt_w', name: 'Worker One', role: 'backend', adapter: 'claude', model: 'sonnet' } as never] }));
+    await ready(r);
+    await r.act(() => tab(r, /Turns/).click());
+    const work = await waitFor(() => all(r, '[data-testid="turn"]').find((li) => li.getAttribute('data-node') === 'work')!, r);
+    await r.act(() => work.querySelector('button')!.click());
+    await waitFor(() => expect(byText(work, 'button', 'Try in a chat')).toBeTruthy(), r);
   });
 
   it('says so when the task never ran', async () => {

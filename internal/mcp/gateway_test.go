@@ -1146,7 +1146,7 @@ func TestWorkspaceToolsAreAnnotatedReadOnlyOnlyWhenTheyAre(t *testing.T) {
 		}
 		seen++
 	}
-	if seen != 16 {
-		t.Fatalf("expected the fifteen workspace tools and fetch_range, got %d", seen)
+	if seen != 17 {
+		t.Fatalf("expected the sixteen workspace tools and fetch_range, got %d", seen)
 	}
 }

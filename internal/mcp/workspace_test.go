@@ -178,7 +178,7 @@ func wsEnv(t *testing.T, ws Workspace, mod func(*Options)) (*env, *sdk.ClientSes
 
 func TestWorkspaceToolsListed(t *testing.T) {
 	_, cs, _, _ := wsEnv(t, Workspace{}, nil)
-	want := "chats,fetch_range,handoff,read_range,repo_map,room,sandbox_info,sandbox_logs,sandbox_run,sandbox_start,sandbox_stop,search_memory,search_pack,search_requirements,skills,task"
+	want := "chats,fetch_range,handoff,propose_memory,read_range,repo_map,room,sandbox_info,sandbox_logs,sandbox_run,sandbox_start,sandbox_stop,search_memory,search_pack,search_requirements,skills,task"
 	if got := strings.Join(toolNames(t, cs), ","); got != want {
 		t.Fatalf("got %s\nwant %s", got, want)
 	}
@@ -498,4 +498,60 @@ func TestConfineLexicalRules(t *testing.T) {
 		t.Error("protectedRel")
 	}
 	_ = errors.New
+}
+
+// proposals is a labelled test double of the memory proposals service: it records what it is given.
+type proposals struct {
+	mu   sync.Mutex
+	got  []string
+	fail error
+}
+
+func (p *proposals) Propose(_ context.Context, run RunInfo, kind, title, body string) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.fail != nil {
+		return "", p.fail
+	}
+	p.got = append(p.got, run.ProjectID+"|"+run.AgentID+"|"+run.TaskID+"|"+kind+"|"+title+"|"+body)
+	return fmt.Sprintf("mem_%d", len(p.got)), nil
+}
+
+// P92: an agent proposes a lesson for project memory; the schema bounds it, a session makes at most MaxMemoryProposals, and
+// what reaches agents is only what a person accepts (the service never accepts).
+func TestAnAgentProposesMemoryWithinItsLimit(t *testing.T) {
+	p := &proposals{}
+	_, cs, _, _ := wsEnv(t, Workspace{MemoryProposals: p}, nil)
+	for i := 0; i < MaxMemoryProposals; i++ {
+		res := callTool(t, cs, "propose_memory", map[string]any{"kind": "convention", "title": fmt.Sprintf("Errors wrap with %%w (%d)", i), "body": "Use fmt.Errorf with %w."})
+		if res.IsError || !strings.Contains(textOf(res), "A person accepts or rejects it") {
+			t.Fatalf("proposal %d: %s", i, textOf(res))
+		}
+	}
+	res := callTool(t, cs, "propose_memory", map[string]any{"kind": "convention", "title": "one more", "body": "x"})
+	if !res.IsError || !strings.Contains(textOf(res), "already proposed 5") {
+		t.Fatalf("the sixth proposal: %s", textOf(res))
+	}
+	if len(p.got) != MaxMemoryProposals || p.got[0] != "p|ag|task-1|convention|Errors wrap with %w (0)|Use fmt.Errorf with %w." {
+		t.Fatalf("proposed %q", p.got)
+	}
+	// the schema refuses an unknown kind and an over-long title before the service sees it
+	for _, bad := range []map[string]any{{"kind": "fact", "title": "t", "body": "b"}, {"kind": "decision", "title": strings.Repeat("t", 201), "body": "b"}, {"kind": "decision", "title": "t"}} {
+		if res := callTool(t, cs, "propose_memory", bad); !res.IsError {
+			t.Fatalf("%v must be refused", bad)
+		}
+	}
+	// a failed proposal does not count against the limit
+	p2 := &proposals{fail: fmt.Errorf("memory: the body is too long")}
+	_, cs2, _, _ := wsEnv(t, Workspace{MemoryProposals: p2}, nil)
+	for i := 0; i <= MaxMemoryProposals; i++ {
+		if res := callTool(t, cs2, "propose_memory", map[string]any{"kind": "decision", "title": "t", "body": "b"}); !strings.Contains(textOf(res), "too long") {
+			t.Fatalf("call %d: %s", i, textOf(res))
+		}
+	}
+	// without the service the tool says so
+	_, cs3, _, _ := wsEnv(t, Workspace{}, nil)
+	if res := callTool(t, cs3, "propose_memory", map[string]any{"kind": "decision", "title": "t", "body": "b"}); !res.IsError || !strings.Contains(textOf(res), "does not take proposals") {
+		t.Fatalf("no service: %s", textOf(res))
+	}
 }

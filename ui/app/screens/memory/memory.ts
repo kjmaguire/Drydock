@@ -49,7 +49,23 @@ export const memoryTone = (status: string): Tone => (status === 'accepted' ? 'ok
 /** A kind as words: api_contract -> api contract. */
 export const kindLabel = (k: string): string => k.replace(/_/g, ' ');
 
+/**
+ * Where a proposal came from, in words (P92): an agent while it worked on a task ("agent:<id> task:<id>"), a person's change
+ * request on a review ("review:<task>"), a person's edit of a generated instruction file ("edit:<file>"), or as stored.
+ */
+export function memorySource(source: string | undefined, nameOf: (agentId: string) => string = (x) => x, taskOf: (taskId: string) => string = (x) => x): string {
+  const s = (source ?? '').trim();
+  if (!s) return '';
+  const agent = /^agent:(\S+)(?:\s+task:(\S+))?$/.exec(s);
+  if (agent) return agent[2] ? `${nameOf(agent[1]!)}, working on ${taskOf(agent[2])}` : nameOf(agent[1]!);
+  const review = /^review:(\S+)$/.exec(s);
+  if (review) return `your change request on ${taskOf(review[1]!)}`;
+  const edit = /^edit:(.+)$/.exec(s);
+  if (edit) return `your edit of ${edit[1]}`;
+  return s;
+}
+
 /** The line under an entry's title: who proposed it, when it changed, and whether agents can see it. */
-export function memoryMeta(e: { source?: string; status: string }, updated: string): string {
-  return `${e.source ? `Proposed by ${e.source}. ` : ''}Updated ${updated}.${e.status === 'proposed' ? ' Agents do not see it until you accept it.' : ''}`;
+export function memoryMeta(e: { source?: string; status: string }, updated: string, who = e.source ?? ''): string {
+  return `${who ? `Proposed by ${who}. ` : ''}Updated ${updated}.${e.status === 'proposed' ? ' Agents do not see it until you accept it.' : ''}`;
 }

@@ -934,3 +934,25 @@ Open, owner action:
   deletes them, and the quoted history of a fresh session names them. The composer takes files from its button, a drop or a
   paste, as removable chips; a message shows its files as the room's file cards (Save, and Show image for a picture; SVG is never
   rendered), now shared by rooms and chats.
+- **P91. An event inspector, and "Try in a chat" (2026-10-21, the CopilotKit/AG-UI comparison, phase 4).** The Run page listed a
+  run's events by type and time only; what happened was in payloads nobody could see. The run explanation now carries each
+  event's payload as the bus stored it (redacted), cut past 16 KB as the event stream cuts it, and the Events tab is an
+  inspector: a filter that matches words in the type, the agent or the payload, each row opening to its payload as text, and
+  Copy as JSON. "Try from here" for a task run is not offered, on purpose: a checkpoint holds the workflow's state but not the
+  worktree, so a run branched from an earlier point would run its later steps on today's files while claiming to resume the
+  earlier state; and a finished task (completed, failed, cancelled) is terminal in the state machine, so a branched run could
+  not move it. The engine's `ResumeFrom` and `Replay` stay unexposed. What is offered instead is sound: on an agent's turn,
+  Try in a chat sends the exact prompt that turn was given as the first message of a new chat with the same agent CLI and model
+  in the project's folder (not the task's worktree), to see what it does with that input again, or with a change, without
+  touching the task; a prompt larger than a chat message (100 KB) is refused before a chat is made. Chats keep their own
+  "from here": fork from a message (P29) and edit and send again (P89).
+- **P92. The learning loop: agents and reviews propose memory (2026-10-21, the CopilotKit/AG-UI comparison, phase 4).** Project
+  memory (decisions, conventions, API contracts, rejected approaches, known issues, preferences) reached agents through the
+  generated AGENTS.md and `search_memory`, but only a person wrote it, and what a person taught in a review was lost after the
+  task. Two paths now propose entries; neither accepts one. (1) Every role's Workspace tools include `propose_memory`: an agent
+  proposes a durable lesson (kind, title, body), stored as a proposal through the same path as a person's (kind checked, size
+  bounded, redacted), its source naming the agent and the task; at most 5 per session. (2) A person's change request on a
+  review, in their own words, becomes a `preference` proposal titled "From the review of #N <title>", its source the task
+  (a request under 20 characters teaches nothing and proposes nothing). Accepting stays human-only (`DecideMemory`), and only
+  accepted entries reach later agents. The Memory page says where each proposal came from in words ("Backend #1, working on #3
+  ...", "your change request on #3 ...", "your edit of AGENTS.md").

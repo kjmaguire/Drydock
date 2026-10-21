@@ -1,11 +1,12 @@
 // Every turn of a run, explained: what it was given (context manifest), the exact prompt, which model and why, what it
 // cost. Read-only.
 
-import { css, on, ref, type Handle } from 'remix/component';
-import { ChevronRight, ScrollText } from 'lucide';
+import { css, navigate, on, ref, type Handle } from 'remix/component';
+import { ChevronRight, MessagesSquare, ScrollText } from 'lucide';
 import type { Agent } from '../../api/types.ts';
 import type { ExecView, RoutingDecisionView, RunExplanation } from '../../api/runClient.ts';
 import { agentName, formatCost } from '../../lib/format.ts';
+import { routes } from '../../routes.ts';
 import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, mono, muted } from '../../ui/data.tsx';
@@ -90,13 +91,36 @@ export const promptCss = css({
   overflowWrap: 'anywhere',
 });
 
+/** The most a chat message takes (chat.send refuses more), in bytes. */
+export const CHAT_TEXT_MAX = 100 << 10;
+
+/**
+ * "Try in a chat" (P91): the exact prompt of an agent's turn, sent as the first message of a new chat with the same agent CLI
+ * and model in the project's folder, to see what it does with that input again, or with a change, without touching the task.
+ * A task run cannot be restarted from an earlier point (its worktree is not part of a checkpoint, and a finished task does not
+ * reopen), so this is the way to try a turn again.
+ */
+export async function tryInChat(
+  client: { runPrompt(taskId: string, runId: string, nodeId: string, step: number, attempt: number): Promise<string>; chatCreate(p: { projectId?: string; adapter?: string; model?: string; title?: string }): Promise<{ id: string }>; chatSend(id: string, text: string): Promise<unknown> },
+  a: { taskId: string; runId: string; exec: ExecView; projectId: string; agent: Pick<Agent, 'adapter' | 'model' | 'name'> },
+): Promise<string> {
+  const prompt = await client.runPrompt(a.taskId, a.runId, a.exec.nodeId, a.exec.step, a.exec.attempt);
+  const size = new TextEncoder().encode(prompt).length;
+  if (size > CHAT_TEXT_MAX) throw new Error(`This prompt is ${Math.ceil(size / 1024)} KB; a chat message can be at most ${CHAT_TEXT_MAX >> 10} KB, so it cannot be tried in a chat.`);
+  const c = await client.chatCreate({ projectId: a.projectId, adapter: a.agent.adapter, model: a.agent.model || undefined, title: `Try: ${a.exec.nodeId} turn of ${a.agent.name}` });
+  await client.chatSend(c.id, prompt);
+  return c.id;
+}
+
 /** "Show the exact prompt" for one turn: reads it from the core and shows it as plain text (never as HTML). */
-export function PromptView(handle: Handle<{ taskId: string; runId: string; exec: ExecView; testId?: string }>) {
+export function PromptView(handle: Handle<{ taskId: string; runId: string; exec: ExecView; testId?: string; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   const act = action(handle);
   let prompt: string | undefined;
   return () => {
     const { taskId, runId, exec: e, testId = 'prompt-text' } = handle.props;
+    const agent = e.agentId ? s.project.agentList.find((x) => x.id === e.agentId) : undefined;
+    const projectId = s.project.id;
     return (
       <>
         <Button
@@ -115,6 +139,27 @@ export function PromptView(handle: Handle<{ taskId: string; runId: string; exec:
         >
           Show the exact prompt
         </Button>
+        {agent && projectId && !s.workspace.license.readOnly ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={MessagesSquare}
+            disabled={act.busy === 'try'}
+            title="Send this exact prompt to the same agent in a new chat, in the project's folder (not the task's worktree)"
+            mix={[
+              on('click', async () => {
+                const id = await act.run('try', () => tryInChat(s.client, { taskId, runId, exec: e, projectId, agent }));
+                if (id) {
+                  const href = routes.chat.href({ id });
+                  if (handle.props.onNavigate) handle.props.onNavigate(href);
+                  else void navigate(href);
+                }
+              }),
+            ]}
+          >
+            Try in a chat
+          </Button>
+        ) : null}
         <ErrorNote error={act.error} what="Could not read the prompt" />
         {prompt !== undefined ? (
           <pre mix={promptCss} data-testid={testId} tabIndex={0} aria-label="The exact prompt">

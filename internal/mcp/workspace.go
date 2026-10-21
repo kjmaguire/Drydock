@@ -29,6 +29,8 @@ type Workspace struct {
 	Packs        PackSearcher
 	Requirements RequirementsSearcher
 	Memory       MemorySearcher
+	// MemoryProposals backs propose_memory (P92): an agent proposes a lesson; a person accepts or rejects it.
+	MemoryProposals MemoryProposer
 	// RepoMap is nil in a build without CGO, which has no tree-sitter parser (decisions D5, P62): repo_map then returns
 	// RepoMapGatedMessage.
 	RepoMap RepoMapper
@@ -175,6 +177,14 @@ type MemorySearcher interface {
 	Search(ctx context.Context, run RunInfo, query, scope string, k int) ([]TextHit, error)
 }
 
+// MemoryProposer backs propose_memory: it stores a proposal for the run's project and returns its id. It never accepts one.
+type MemoryProposer interface {
+	Propose(ctx context.Context, run RunInfo, kind, title, body string) (string, error)
+}
+
+// MaxMemoryProposals is how many memory proposals one session may make.
+const MaxMemoryProposals = 5
+
 // RepoMapper backs repo_map.
 type RepoMapper interface {
 	Map(ctx context.Context, run RunInfo, focusPaths []string, tokenBudget int) (string, error)
@@ -198,6 +208,7 @@ const wsSchemas = `{
 "search_pack":{"type":"object","required":["query"],"properties":{"query":{"type":"string","maxLength":512},"pack_ids":{"type":"array","items":{"type":"string"}},"k":{"type":"integer","minimum":1,"maximum":10,"default":5}}},
 "search_requirements":{"type":"object","required":["query"],"properties":{"query":{"type":"string","maxLength":512},"doc_id":{"type":"string"},"k":{"type":"integer","minimum":1,"maximum":10,"default":5}}},
 "search_memory":{"type":"object","required":["query"],"properties":{"query":{"type":"string","maxLength":512},"scope":{"enum":["project","workspace"],"default":"project"},"k":{"type":"integer","minimum":1,"maximum":10,"default":5}}},
+"propose_memory":{"type":"object","required":["kind","title","body"],"properties":{"kind":{"enum":["decision","convention","api_contract","rejected","known_issue","preference"]},"title":{"type":"string","minLength":1,"maxLength":200},"body":{"type":"string","minLength":1,"maxLength":8000}}},
 "repo_map":{"type":"object","properties":{"focus_paths":{"type":"array","items":{"type":"string"}},"token_budget":{"type":"integer","minimum":256,"maximum":8192,"default":2048}}},
 "read_range":{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"start_line":{"type":"integer","minimum":1},"end_line":{"type":"integer","minimum":1},"max_bytes":{"type":"integer","maximum":65536,"default":16384}}},
 "task":{"type":"object","required":["action"],"properties":{"action":{"enum":["get","add_note","propose_status"]},"task_id":{"type":"string"},"note":{"type":"string","maxLength":4000},"status":{"enum":["BLOCKED","WAITING_HUMAN","REVIEW"]},"evidence_refs":{"type":"array","items":{"type":"string"}}}},
@@ -227,6 +238,7 @@ func workspaceToolDefs() []*wsTool {
 			{Name: "search_pack", Description: "Search expert-pack documentation. Returns cited chunks, or says nothing was found.", ReadOnly: true, handler: wsSearchPack},
 			{Name: "search_requirements", Description: "Search the project's requirements documents.", ReadOnly: true, handler: wsSearchRequirements},
 			{Name: "search_memory", Description: "Search project or workspace memory.", ReadOnly: true, handler: wsSearchMemory},
+			{Name: "propose_memory", Description: "Propose a lesson for this project's memory: a decision, a convention, an API contract, an approach that was rejected, a known issue or a preference that later work should know. A person accepts or rejects it; only accepted entries reach later agents. Propose what is durable and true of the project, not what you did in this task. At most 5 per session.", handler: wsProposeMemory},
 			{Name: "repo_map", Description: "Map of the repository's most important code within a token budget: files ranked by how much the rest of the code uses them (PageRank over references), each with its most important definition lines. focus_paths (files or folders) ranks what they use higher. Paths are worktree-relative.", ReadOnly: true, handler: wsRepoMap, Budget: 49152},
 			{Name: "read_range", Description: "Read a line range of a file in the worktree. Paths are worktree-relative.", ReadOnly: true, handler: wsReadRange, Budget: 65536},
 			{Name: "task", Description: "Read the current task, add a note, or propose BLOCKED, WAITING_HUMAN or REVIEW with evidence. Cannot complete or accept a task.", handler: wsTask},
@@ -379,6 +391,22 @@ func wsSearchMemory(ctx context.Context, r *Run, a map[string]any) (string, erro
 		return "nothing found in memory for this query", nil
 	}
 	return jsonText(hits)
+}
+
+func wsProposeMemory(ctx context.Context, r *Run, a map[string]any) (string, error) {
+	p := r.ws().MemoryProposals
+	if p == nil {
+		return "", notAvailable("propose_memory", "project memory does not take proposals here")
+	}
+	if r.memoryProposals.Add(1) > MaxMemoryProposals {
+		return "", fmt.Errorf("this session already proposed %d memory entries, the most one session may; say what else you would propose in your answer instead", MaxMemoryProposals)
+	}
+	id, err := p.Propose(ctx, r.cfg.Info, argStr(a, "kind"), argStr(a, "title"), argStr(a, "body"))
+	if err != nil {
+		r.memoryProposals.Add(-1)
+		return "", err
+	}
+	return "Proposed memory entry " + id + ". A person accepts or rejects it on the Memory page; until then it reaches no agent.", nil
 }
 
 func wsRepoMap(ctx context.Context, r *Run, a map[string]any) (string, error) {

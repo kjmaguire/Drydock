@@ -1,11 +1,25 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { bodyNote, charCount, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memoryTone } from './memory.ts';
+import { bodyNote, charCount, kindLabel, MEMORY_BODY_LIMIT, MEMORY_KINDS, MEMORY_TITLE_LIMIT, memoryMeta, memorySource, memoryTone } from './memory.ts';
 
 describe('Memory helpers', () => {
   it('says a proposal is invisible to agents until accepted', () => {
     expect(memoryMeta({ source: 'agt_1', status: 'proposed' }, 'today')).toBe('Proposed by agt_1. Updated today. Agents do not see it until you accept it.');
     expect(memoryMeta({ status: 'accepted' }, 'today')).toBe('Updated today.');
+  });
+
+  it('says in words where a proposal came from (P92)', () => {
+    const name = (id: string) => (id === 'agt_1' ? 'Backend #1' : 'an agent');
+    const task = (id: string) => (id === 'task_3' ? '#3 Implement Subtract' : 'a task');
+    expect(memorySource('agent:agt_1 task:task_3', name, task)).toBe('Backend #1, working on #3 Implement Subtract');
+    expect(memorySource('agent:agt_9', name, task)).toBe('an agent');
+    expect(memorySource('review:task_3', name, task)).toBe('your change request on #3 Implement Subtract');
+    expect(memorySource('edit:AGENTS.md', name, task)).toBe('your edit of AGENTS.md');
+    expect(memorySource('human:kyle', name, task)).toBe('human:kyle');
+    expect(memorySource('', name, task)).toBe('');
+    expect(memoryMeta({ source: 'review:task_3', status: 'proposed' }, 'today', memorySource('review:task_3', name, task))).toBe(
+      'Proposed by your change request on #3 Implement Subtract. Updated today. Agents do not see it until you accept it.',
+    );
   });
 
   it('colors status and prints kinds as words', () => {

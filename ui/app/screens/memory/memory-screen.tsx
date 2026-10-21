@@ -8,7 +8,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { Brain, Check, Search, Trash2, X } from 'lucide';
 import type { MemoryEntry } from '../../api/extTypes.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { agentName, formatDateTime } from '../../lib/format.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
@@ -19,7 +19,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, listBox } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { visible } from '../../lib/visible.ts';
-import { bodyNote, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memoryTone } from './memory.ts';
+import { bodyNote, kindLabel, MEMORY_FILTERS, MEMORY_KINDS, memoryMeta, memorySource, memoryTone } from './memory.ts';
 
 const entryCss = css({
   display: 'grid',
@@ -75,6 +75,7 @@ function MemoryCard(
     onDelete: () => void;
   }>,
 ) {
+  const s = services(handle);
   let confirm = false;
   const setConfirm = (v: boolean) => {
     confirm = v;
@@ -92,7 +93,20 @@ function MemoryCard(
           <Badge tone="accent">{kindLabel(e.kind)}</Badge>
           <Badge tone={memoryTone(e.status)}>{e.status}</Badge>
         </header>
-        <p class="meta">{memoryMeta(e, formatDateTime(e.updated))}</p>
+        <p class="meta" data-testid="memory-meta">
+          {memoryMeta(
+            e,
+            formatDateTime(e.updated),
+            memorySource(
+              e.source,
+              (id) => agentName(id, s.project.agentList) || 'an agent',
+              (id) => {
+                const tk = s.project.taskList.find((x) => x.id === id);
+                return tk ? `#${tk.seq} ${tk.title}` : 'a task';
+              },
+            ),
+          )}
+        </p>
         <div class="body">
           <pre mix={bodyBox} role="group" aria-label={`Full text of the ${e.status === 'proposed' ? 'proposal' : 'entry'}`} tabIndex={0} data-testid="memory-body">
             {visible(body)}

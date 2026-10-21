@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -68,6 +69,19 @@ func TestRunExplanationExplainsEveryTurn(t *testing.T) {
 	}
 	if len(x.Checkpoints) == 0 || latest != 1 || len(x.Events) == 0 {
 		t.Fatalf("checkpoints %+v events %d", x.Checkpoints, len(x.Events))
+	}
+	// the inspector (P91): every event carries its payload as stored, so what happened can be read from the page
+	var started bool
+	for _, e := range x.Events {
+		if len(e.Data) == 0 || !json.Valid(e.Data) {
+			t.Fatalf("event %d %s has no payload: %q", e.Seq, e.Type, e.Data)
+		}
+		var d map[string]any
+		_ = json.Unmarshal(e.Data, &d)
+		started = started || (e.Type == "workflow.started" && d["workflow"] != nil)
+	}
+	if !started {
+		t.Fatalf("workflow.started without its workflow in the payload: %+v", x.Events[:min(3, len(x.Events))])
 	}
 
 	var prompt string

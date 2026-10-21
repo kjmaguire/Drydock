@@ -2,9 +2,11 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/kjmaguire/drydock/internal/agents"
@@ -222,8 +224,67 @@ func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, d
 		return c.respondPermission(ctx, runID, requestID, taskID, decision, data)
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
+	review := c.isReviewRequest(ctx, runID, requestID)
 	var d []byte = data
-	return c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d})
+	if err := c.Engine.Resume(ctx, workflow.RunID(runID), workflow.Response{RequestID: workflow.RequestID(requestID), Decision: decision, By: c.Human(), Data: d}); err != nil {
+		return err
+	}
+	if review && decision == "rejected" {
+		c.learnFromReview(ctx, runID, data)
+	}
+	return nil
+}
+
+// isReviewRequest reports whether a pending request of a run is a review (where a person asks for changes in their own words).
+func (c *Core) isReviewRequest(ctx context.Context, runID, requestID string) bool {
+	ps, err := c.Engine.Pending(ctx, workflow.RunID(runID))
+	if err != nil {
+		return false
+	}
+	for _, p := range ps {
+		if string(p.ID) == requestID {
+			return p.Spec.Kind == "review"
+		}
+	}
+	return false
+}
+
+// minLessonChars is the shortest change request kept as a memory proposal ("no", "redo" teach nothing).
+const minLessonChars = 20
+
+// learnFromReview turns a person's change request into a memory proposal (P92): what they asked for in their own words is
+// what later work in the project should know. It is only a proposal: it reaches no agent until the person accepts it on
+// the Memory page. A request too short to teach anything, or a project without memory, proposes nothing.
+func (c *Core) learnFromReview(ctx context.Context, runID string, data []byte) {
+	var r struct {
+		Feedback string `json:"feedback"`
+	}
+	if json.Unmarshal(data, &r) != nil || len([]rune(strings.TrimSpace(r.Feedback))) < minLessonChars {
+		return
+	}
+	k := c.Knowledge()
+	if k == nil {
+		return
+	}
+	info, err := c.Engine.Status(ctx, workflow.RunID(runID))
+	if err != nil || info.TaskID == "" {
+		return
+	}
+	t, err := c.Tasks.Get(ctx, info.TaskID)
+	if err != nil {
+		return
+	}
+	title := fmt.Sprintf("From the review of #%d %s", t.Seq, t.Title)
+	if r := []rune(title); len(r) > 200 {
+		title = string(r[:199]) + "…"
+	}
+	body := strings.TrimSpace(r.Feedback)
+	if r := []rune(body); len(r) > 7900 {
+		body = string(r[:7900])
+	}
+	if _, err := k.ProposeMemory(ctx, t.ProjectID, "preference", title, body, "review:"+t.ID); err != nil {
+		c.logf("core: a memory proposal from the review of %s: %v", t.ID, err)
+	}
 }
 
 // CancelTask stops the task's run and cancels the task.

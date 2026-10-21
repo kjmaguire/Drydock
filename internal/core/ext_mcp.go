@@ -159,10 +159,11 @@ type mcpPlan struct {
 	Servers    []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
-// readTools are the Workspace tools every role gets: they only read. repo_map is among them in a build with the tree-sitter
+// readTools are the Workspace tools every role gets: they only read, or propose what a person then decides. repo_map is among them in a build with the tree-sitter
 // parser (CGO); a build without it has no repo map and does not offer the tool (decisions D5, P62).
 var readTools = func() []string {
-	t := []string{"read_range", "search_memory", "search_requirements", "skills"}
+	// propose_memory writes nothing an agent reads: a proposal waits for a person (P92)
+	t := []string{"propose_memory", "read_range", "search_memory", "search_requirements", "skills"}
 	if repomap.Available() {
 		t = append(t, "repo_map")
 	}

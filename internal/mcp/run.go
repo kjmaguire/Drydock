@@ -40,6 +40,8 @@ type Run struct {
 	closeOnce sync.Once
 	// withheld remembers the tools already reported as kept from the model (toolreview.go).
 	withheld sync.Map
+	// memoryProposals counts this session's propose_memory calls (MaxMemoryProposals).
+	memoryProposals atomic.Int32
 
 	hmu     sync.Mutex
 	handles map[string]string // handle -> raw file path

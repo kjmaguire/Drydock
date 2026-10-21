@@ -64,7 +64,27 @@ func (k *Knowledge) Workspace() mcp.Workspace {
 		Requirements: requirements.NewSearchProvider(k.Requirements),
 		Skills:       skills.NewProvider(k.Skills),
 		Memory:       knowledgeMemory{k.Memory},
+		// P92: an agent proposes, a person decides (DecideMemory is human-only)
+		MemoryProposals: knowledgeProposals{k},
 	}
+}
+
+// knowledgeProposals implements mcp.MemoryProposer: a proposal of the run's project, its source naming the agent and task.
+type knowledgeProposals struct{ k *Knowledge }
+
+func (p knowledgeProposals) Propose(ctx context.Context, run mcp.RunInfo, kind, title, body string) (string, error) {
+	if run.ProjectID == "" {
+		return "", errors.New("this run has no project, so it has no memory to propose to")
+	}
+	src := "agent:" + run.AgentID
+	if run.TaskID != "" {
+		src += " task:" + run.TaskID
+	}
+	e, err := p.k.ProposeMemory(ctx, run.ProjectID, kind, title, body, src)
+	if err != nil {
+		return "", err
+	}
+	return e.ID, nil
 }
 
 // UseGateway makes live packs query MCP docs servers through g (the app's shared gateway) instead of the private gateway this
