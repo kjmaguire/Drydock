@@ -135,6 +135,25 @@ describe('Chats list', () => {
     expect(byText(r.container, 'button', 'All chats').getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('shows the open chat on top when the project filter would hide it (UI review P1-4)', async () => {
+    const home = item({ id: 'chat_home', title: 'Started from Home', projectId: '' });
+    const { r } = setup(
+      {
+        chatList: async (p) => (p?.projectId ? [item({ id: 'c1', title: 'Project chat' })] : [item({ id: 'c1', title: 'Project chat' }), home]),
+        chatGet: async () => ({ chat: home, messages: [], hasMore: false }),
+      },
+      { id: 'chat_home' },
+    );
+    const open = await waitFor(() => must$(r, '[data-testid="chat-list-open"]'), r);
+    expect(open.textContent).toContain('Started from Home');
+    expect(open.previousElementSibling!.textContent).toBe('Open, not in a project');
+    expect(rowTitles(r)).toEqual(['Started from Home', 'Project chat']);
+    // with All chats it is in the list itself, so it is not shown twice
+    await r.act(() => byText(r.container, 'button', 'All chats').click());
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Project chat', 'Started from Home']), r);
+    expect($(r, '[data-testid="chat-list-open"]')).toBeNull();
+  });
+
   it('searches with a debounced query and highlights the matches', async () => {
     const searched: string[] = [];
     const hits: ChatHit[] = [
@@ -455,12 +474,19 @@ describe('Conversation', () => {
     expect($(r, '[data-testid="chip-effort"]')!.textContent).toBe('high effort');
     expect($(r, '[data-testid="chip-mode"]')!.getAttribute('data-warn')).toBe('true');
     expect($(r, '[data-testid="chip-mode"]')!.textContent).toContain('skips approvals');
-    expect($(r, '[data-testid="chat-cwd"]')!.getAttribute('title')).toBe('C:\\repos\\gocalc');
     expect($(r, '[data-testid="chat-status"]')!.textContent).toBe('Session kept');
-    const usage = $(r, '[data-testid="chat-usage"]')!.textContent!;
+    // the folder and the usage are in Properties, not in the header strip (UI review P1-2)
+    const header = must$(r, '[data-testid="chat-status"]').parentElement!;
+    expect([header.querySelector('[data-testid="chat-cwd"]'), header.querySelector('[data-testid="chat-usage"]')]).toEqual([null, null]);
+    await r.act(() => must$(r, '[data-testid="chat-properties-open"]').click());
+    const props = await waitFor(() => must(document.querySelector<HTMLElement>('[data-testid="chat-properties-form"]'), 'properties'), r);
+    expect(props.querySelector('[data-testid="chat-cwd"]')!.getAttribute('title')).toBe('C:\\repos\\gocalc');
+    const usage = props.querySelector('[data-testid="chat-usage"]')!.textContent!;
+    expect(usage).toContain('Usage');
     expect(usage).toContain('1.2k in');
     expect(usage).toContain('cost unknown');
     expect(usage).not.toContain('$0');
+    await r.act(() => byText(props, 'button', 'Cancel').click());
     // markdown is rendered as elements, never raw HTML
     expect(messages(r)[1]!.querySelector('.md strong')!.textContent).toBe('there');
     const log = $(r, '[role="log"]')!;
@@ -558,7 +584,9 @@ describe('Conversation', () => {
     s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_2', status: 'done', usage: { inputTokens: 800, outputTokens: 40, costUsd: 0.01 } } });
     await waitFor(() => expect($(r, '[data-testid="chat-streaming"]')).toBeNull(), r);
     await waitFor(() => expect($(r, '[data-testid="chat-stop"]')).toBeNull(), r);
-    expect($(r, '[data-testid="chat-usage"]')!.textContent).toContain('2.0k in');
+    await r.act(() => must$(r, '[data-testid="chat-properties-open"]').click());
+    await waitFor(() => expect(must(document.querySelector('[data-testid="chat-properties-form"] [data-testid="chat-usage"]'), 'usage').textContent).toContain('2.0k in'), r);
+    await r.act(() => byText(document.querySelector<HTMLElement>('[data-testid="chat-properties-form"]')!, 'button', 'Cancel').click());
     type(box, 'next');
     await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Send').disabled).toBe(false), r);
   });
@@ -593,14 +621,37 @@ describe('Conversation', () => {
     const callout = await waitFor(() => must$(r, '[data-testid="chat-denied"]'), r);
     expect(callout.textContent).toContain('Claude was not allowed to run Bash');
     expect(callout.textContent).toContain('Bash(touch probe.txt)');
-    expect(callout.querySelector('button')!.textContent).toBe('Allow for this chat');
+    // the newest refusal leads with Allow and retry (UI review P1-3); Only allow keeps the two steps apart
+    expect(Array.from(callout.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow and retry', 'Only allow']);
     expect(byText(r.container, 'button', /Allowed tools/).textContent).toBe('Allowed tools');
-    await r.act(() => byText(callout, 'button', 'Allow for this chat').click());
+    await r.act(() => byText(callout, 'button', 'Only allow').click());
     await waitFor(() => expect(allowed).toEqual([['chat_a', 'Bash(touch probe.txt)']]), r);
     await waitFor(() => expect(callout.textContent).toContain('Allowed for this chat'), r);
     expect(byText(r.container, 'button', /Allowed tools/).textContent).toBe('Allowed tools (1)');
     await r.act(() => byText(callout, 'button', 'Retry').click());
     await waitFor(() => expect(sent).toEqual([['chat_a', RETRY_TEXT, []]]), r);
+  });
+
+  it('Allow and retry allows the rule and runs the turn again in one step; the canned retry shows as a note (P1-2, P1-3)', async () => {
+    let c = chat();
+    const order: string[] = [];
+    const msgs = [
+      msg(1, 'user', 'touch a probe file'),
+      msg(2, 'denied', 'Not allowed in this chat: Bash: touch probe.txt', { toolName: 'Bash', toolInput: { command: 'touch probe.txt' }, suggestedRule: 'Bash(touch probe.txt)' }),
+    ];
+    const { r, s } = conv(c, msgs, {
+      chatAllowTool: async (_id, tool) => (order.push(`allow ${tool}`), (c = chat({ allowedTools: [tool] }))),
+      chatSend: async (_id, text) => (order.push(`send ${text}`), { turnId: 't3', version: 3 }),
+    });
+    const callout = await waitFor(() => must$(r, '[data-testid="chat-denied"]'), r);
+    await r.act(() => byText(callout, 'button', 'Allow and retry').click());
+    await waitFor(() => expect(order).toEqual(['allow Bash(touch probe.txt)', `send ${RETRY_TEXT}`]), r);
+    // the retry Drydock sent is a note in the log, not a bubble in the person's name
+    s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(3, 'user', RETRY_TEXT, { turnId: 't3' }) } });
+    const note = await waitFor(() => must$(r, '[data-retry="true"]'), r);
+    expect(note.textContent).toBe('You allowed the tool and asked to continue.');
+    const row = note.closest('[data-testid="chat-message"]')!;
+    expect([row.getAttribute('data-role'), row.getAttribute('data-mine'), row.querySelector('.chat-tools')]).toEqual(['system', null, null]);
   });
 
   it('tool calls are cards: an edit as a diff, a command with its output, a failure marked, one still running spinning', async () => {

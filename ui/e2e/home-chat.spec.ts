@@ -52,10 +52,11 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
   await expect(page.getByTestId('chip-skills')).toHaveText('1 skill');
   await expect(page.getByTestId('chip-mcp')).toHaveText('1 MCP server');
-  await expect(page.getByTestId('chat-cwd')).toHaveAttribute('title', /chats/);
 
   // Properties: the server is taken away; the change is in the history and applies from the next message
   await page.getByRole('button', { name: 'Properties' }).click();
+  // the folder is in Properties: a chat without a project gets a private folder
+  await expect(page.getByTestId('chat-cwd')).toHaveAttribute('title', /chats/);
   const props = page.getByRole('dialog', { name: 'Chat properties' });
   await expect(props.locator('[data-testid=chat-skill-option][data-name=wrangler] input')).toBeChecked();
   await props.locator('[data-testid=chat-mcp-option][data-server=chatmcp] input').uncheck();

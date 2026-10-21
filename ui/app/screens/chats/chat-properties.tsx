@@ -17,9 +17,19 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
-import { chatChoices, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
+import { chatChoices, compactNumber, costText, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
 import { ShownNotes, Targets } from '../shared/approval-text.tsx';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
+
+const usageCss = css({
+  gridColumn: '1 / -1',
+  display: 'flex',
+  gap: t.s2,
+  fontSize: t.textSm,
+  fontVariantNumeric: 'tabular-nums',
+  color: t.textMuted,
+  '& > span': { fontWeight: '500', color: t.text },
+});
 
 const groupCss = css({
   display: 'grid',
@@ -245,13 +255,13 @@ export function ChatPropertiesDialog(handle: Handle<{ open: boolean; chat: Chat;
           </Field>
           {chat.projectId ? (
             <Field label="Folder" hint="A chat in a project runs in the project's folder.">
-              {(id) => <input id={id} value={chat.cwd} readOnly style={{ fontFamily: 'var(--font-mono)' }} />}
+              {(id) => <input id={id} value={chat.cwd} title={chat.cwd} data-testid="chat-cwd" readOnly style={{ fontFamily: 'var(--font-mono)' }} />}
             </Field>
           ) : (
             <Field label="Folder" hint="An absolute path to an existing folder, checked when you save. Empty: a private folder Drydock makes for this chat.">
               {(id) => (
                 <div mix={folderRow}>
-                  <input id={id} value={cwd} spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />
+                  <input id={id} value={cwd} title={chat.cwd} data-testid="chat-cwd" spellcheck={false} autocomplete="off" style={{ fontFamily: 'var(--font-mono)' }} mix={on('input', (e) => set(() => (cwd = e.currentTarget.value)))} />
                   <ChooseFolder title="Choose the chat's folder" testId="chat-choose-folder" onPick={(path) => set(() => (cwd = path))} />
                 </div>
               )}
@@ -259,6 +269,10 @@ export function ChatPropertiesDialog(handle: Handle<{ open: boolean; chat: Chat;
           )}
           <SkillPicker library={library.data} loading={library.loading} error={library.error} chosen={skills} onChange={(v) => set(() => (skills = v))} />
           <ServerPicker servers={servers.data} loading={servers.loading} error={servers.error} chosen={mcp} had={chat.mcpServers ?? []} onChange={(v) => set(() => (mcp = v))} />
+          <div mix={usageCss} data-testid="chat-usage" title="Tokens and cost reported by the agent CLI">
+            <span>Usage</span>
+            {compactNumber(chat.tokensIn)} in · {compactNumber(chat.tokensOut)} out · {costText(chat)}
+          </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <Notice tone={moved ? 'warn' : 'info'} testId="chat-properties-note">
               {moved

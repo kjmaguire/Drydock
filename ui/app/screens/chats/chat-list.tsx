@@ -152,6 +152,19 @@ export function ChatList(
     key: () => [scope(), archived],
     debounceMs: 150,
   });
+  // the chat that is open, when the list as filtered does not hold it (a chat with no project, or another project's): it is
+  // shown on top so the list never hides where you are (UI review P1-4). Read only then.
+  const missingOpen = () => {
+    const id = handle.props.selectedId;
+    return !!id && !!chats.data && !chats.data.some((c) => c.id === id);
+  };
+  const open = query(handle, {
+    load: () => s.client.chatList({ projectId: '', includeArchived: true }),
+    when: (e) => e.type === 'chat.updated' || e.type === 'chat.deleted',
+    key: () => handle.props.selectedId,
+    enabled: missingOpen,
+    debounceMs: 150,
+  });
   const hits = query(handle, {
     load: () => s.client.chatSearch(q, scope()),
     when: (e) => e.type === 'chat.message' || e.type === 'chat.updated' || e.type === 'chat.deleted',
@@ -264,6 +277,7 @@ export function ChatList(
   return () => {
     const { projectId, onNew } = handle.props;
     const list = chats.data ?? [];
+    const openChat = missingOpen() ? (open.data ?? []).find((c) => c.id === handle.props.selectedId) : undefined;
     const pinned = list.filter((c) => c.pinned);
     const rest = list.filter((c) => !c.pinned);
     const searching = q.length > 0;
@@ -316,6 +330,14 @@ export function ChatList(
           ) : (
             <>
               <ErrorNote error={chats.error} />
+              {openChat ? (
+                <>
+                  <div mix={groupCss}>{openChat.projectId ? 'Open, from another project' : 'Open, not in a project'}</div>
+                  <ul mix={listCss} aria-label="Open chat" data-testid="chat-list-open">
+                    {row(openChat)}
+                  </ul>
+                </>
+              ) : null}
               {list.length === 0 && !chats.error ? (
                 <div mix={emptyCss}>
                   <p>{archived ? 'No chats here.' : projectId && !all ? 'No chats in this project yet.' : 'No chats yet.'}</p>

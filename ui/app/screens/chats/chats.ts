@@ -77,6 +77,9 @@ export const skipsApprovals = (mode: string): boolean => SKIP_MODES.has(mode);
 /** The message a Retry after "Allow for this chat" sends. */
 export const RETRY_TEXT = 'Continue — the tool is now allowed.';
 
+/** Whether a message is the canned retry Drydock sends for the person after an allow (shown as a note, not as their words). */
+export const isRetryMessage = (m: { role: string; body: string }): boolean => m.role === 'user' && m.body === RETRY_TEXT;
+
 /** At most this many chats can be attached to one message (chat.send). */
 export const MAX_ATTACH = 5;
 
@@ -108,7 +111,8 @@ export function compactNumber(n: number): string {
 export function costText(c: Pick<Chat, 'costUsd' | 'costUnknownTurns'>): string {
   if (c.costUsd === null || c.costUsd === undefined) return 'cost unknown';
   const money = formatUsd(c.costUsd);
-  return c.costUnknownTurns > 0 ? `${money} + ${c.costUnknownTurns} ${c.costUnknownTurns === 1 ? 'turn' : 'turns'} unknown` : money;
+  // "+ 2 turns unknown" read as if turns were missing (UI review P1-2): it is the cost of those turns that is not known
+  return c.costUnknownTurns > 0 ? `${money}, and ${c.costUnknownTurns} ${c.costUnknownTurns === 1 ? "turn's" : "turns'"} cost unknown` : money;
 }
 
 /** "Claude Code" for the claude adapter, else the adapter id. */

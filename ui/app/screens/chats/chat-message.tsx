@@ -11,7 +11,7 @@ import { Avatar } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
-import { adapterLabel, agentWord } from './chats.ts';
+import { adapterLabel, agentWord, isRetryMessage } from './chats.ts';
 import { ToolCard } from './chat-tool.tsx';
 import { ChatFiles } from './chat-files.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
@@ -124,6 +124,8 @@ export interface ChatMessageProps {
   busy: string;
   onAllow?: (rule: string) => void;
   onRetry?: () => void;
+  /** Allow the rule for the chat, then run the turn again (UI review P1-3): one step instead of two. */
+  onAllowAndRetry?: (rule: string) => void;
   onFork?: (seq: number) => void;
   /** The person's own message can be changed and sent again: it and everything after it are replaced (P89). */
   onEdit?: (seq: number, text: string) => Promise<boolean>;
@@ -162,12 +164,14 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
     void handle.update();
   };
   return () => {
-    const { m, head, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onFork, onEdit, onRegenerate } = handle.props;
-    const role = m.role;
+    const { m, head, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate } = handle.props;
+    // the canned "continue" Drydock sends after an allow is a note of what happened, not words the person typed (P1-2)
+    const retry = isRetryMessage(m);
+    const role = retry ? 'system' : m.role;
     const quiet = role === 'system' || role === 'error';
     const showHead = head && (role === 'user' || role === 'assistant' || role === 'tool' || role === 'denied');
     const who = role === 'user' ? 'You' : adapterLabel(adapter);
-    const forkable = !!onFork && (role === 'user' || role === 'assistant');
+    const forkable = !!onFork && (role === 'user' || role === 'assistant') && !retry;
     const mine = role === 'user';
     return (
       <article
@@ -201,9 +205,11 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
           {role === 'tool' ? (
             <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
           ) : role === 'denied' ? (
-            <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} />
+            <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} onAllowAndRetry={onAllowAndRetry} />
           ) : quiet ? (
-            <div mix={role === 'error' ? errorBody : quietBody}>{m.body}</div>
+            <div mix={role === 'error' ? errorBody : quietBody} data-retry={retry ? 'true' : undefined}>
+              {retry ? 'You allowed the tool and asked to continue.' : m.body}
+            </div>
           ) : mine && editing ? (
             <div mix={editCss} data-testid="chat-edit">
               <textarea
@@ -279,10 +285,20 @@ function summaryOf(m: ChatMessage): string {
 }
 
 function DeniedCallout(
-  handle: Handle<{ m: ChatMessage; adapter: string; allowedTools: readonly string[]; latest: boolean; running: boolean; busy: string; onAllow?: (rule: string) => void; onRetry?: () => void }>,
+  handle: Handle<{
+    m: ChatMessage;
+    adapter: string;
+    allowedTools: readonly string[];
+    latest: boolean;
+    running: boolean;
+    busy: string;
+    onAllow?: (rule: string) => void;
+    onRetry?: () => void;
+    onAllowAndRetry?: (rule: string) => void;
+  }>,
 ) {
   return () => {
-    const { m, adapter, allowedTools, latest, running, busy, onAllow, onRetry } = handle.props;
+    const { m, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry } = handle.props;
     const rule = m.suggestedRule ?? '';
     const allowed = !!rule && allowedTools.includes(rule);
     const tool = m.toolName || 'a tool';
@@ -312,9 +328,16 @@ function DeniedCallout(
                 Allowed for this chat
               </span>
             ) : (
-              <Button size="sm" variant="secondary" disabled={!onAllow || !!busy} mix={[on('click', () => onAllow?.(rule))]}>
-                {busy === `allow:${rule}` ? 'Allowing...' : 'Allow for this chat'}
-              </Button>
+              <>
+                {latest && onAllowAndRetry ? (
+                  <Button size="sm" variant="primary" disabled={running || !!busy} mix={[on('click', () => onAllowAndRetry(rule))]}>
+                    {busy === `allow:${rule}` ? 'Allowing...' : 'Allow and retry'}
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="secondary" disabled={!onAllow || !!busy} mix={[on('click', () => onAllow?.(rule))]}>
+                  {latest && onAllowAndRetry ? 'Only allow' : busy === `allow:${rule}` ? 'Allowing...' : 'Allow for this chat'}
+                </Button>
+              </>
             )}
             {allowed && latest ? (
               <Button size="sm" variant="primary" disabled={!onRetry || running || !!busy} mix={[on('click', () => onRetry?.())]}>

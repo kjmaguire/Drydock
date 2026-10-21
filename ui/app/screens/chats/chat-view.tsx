@@ -3,7 +3,7 @@
 // streamed assistant text in its own bubble outside the live region) and the composer (Ctrl+Enter, attached chats, Stop).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { ArrowDown, Bot, FolderOpen, GitFork, PanelLeftOpen, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
+import { ArrowDown, Bot, GitFork, PanelLeftOpen, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
 import type { Chat } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
@@ -27,7 +27,7 @@ import { ChatAsks } from './chat-asks.tsx';
 import type { ComposerFile } from './chat-composer.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
-import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
+import { adapterLabel, chatTitle, chatWhere, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
 const titleBtn = css({
@@ -92,11 +92,9 @@ const chipCss = css({
   whiteSpace: 'nowrap',
   '&[data-warn="true"]': { borderColor: `color-mix(in srgb, ${t.warning} 50%, ${t.border})`, color: t.warning, background: t.warningSoft },
 });
-const cwdCss = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', minWidth: '0', maxWidth: '360px', fontFamily: t.mono, fontSize: t.textXs, color: t.textMuted, '& span': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } });
 const statusCss = css({ display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' });
 const dotCss = css({ width: '7px', height: '7px', borderRadius: '50%', flex: 'none' });
 const pulse = css({ animation: 'dd-chat-pulse 1.2s ease-in-out infinite', '@keyframes dd-chat-pulse': { '50%': { opacity: '0.35' } } });
-const usageCss = css({ marginLeft: 'auto', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: t.textFaint });
 
 const logWrap = css({ position: 'relative', flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' });
 const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', padding: `${t.s3} 0 ${t.s5}`, outline: 'none', '&:focus-visible': { boxShadow: `inset ${t.focus}` } });
@@ -202,9 +200,10 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     if (c) await go(routes.chat.href({ id: c.id }));
   };
 
-  const allow = async (rule: string) => {
+  const allow = async (rule: string): Promise<boolean> => {
     const c = await act.run(`allow:${rule}`, () => s.client.chatAllowTool(handle.props.id, rule));
     if (c) feed.setChat(c);
+    return !!c;
   };
 
   const disallow = async (rule: string) => {
@@ -268,6 +267,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           busy={act.busy}
           onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
           onRetry={chat.archived || readOnly ? undefined : () => void send(RETRY_TEXT)}
+          onAllowAndRetry={chat.adapter === 'claude' && !chat.archived && !readOnly ? (r) => void allow(r).then((ok) => (ok ? send(RETRY_TEXT) : false)) : undefined}
           onFork={(seq) => void fork(seq)}
           onEdit={chat.archived || readOnly ? undefined : (seq, text) => resend(seq, text)}
           onRegenerate={chat.archived || readOnly || i !== msgs.length - 1 || !lastUserSeq ? undefined : () => void resend(lastUserSeq)}
@@ -382,7 +382,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               ) : null}
               {toolsOpen ? <ErrorNote error={act.error} /> : null}
             </Popover>
-            <Button size="sm" variant="ghost" icon={SlidersHorizontal} data-testid="chat-properties-open" mix={[on('click', openProps)]} title="Agent CLI, folder, skills and MCP servers">
+            <Button size="sm" variant="ghost" icon={SlidersHorizontal} data-testid="chat-properties-open" mix={[on('click', openProps)]} title="Agent CLI, folder, skills, MCP servers and usage">
               Properties
             </Button>
             <Button size="sm" variant="secondary" icon={GitFork} disabled={!!act.busy} mix={[on('click', () => void fork())]} title="A new chat with this chat's messages, its own session">
@@ -435,10 +435,6 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               ) : null}
             </button>
           ) : null}
-          <span mix={cwdCss} title={chat.cwd} data-testid="chat-cwd">
-            <Icon icon={FolderOpen} size={12} />
-            <span>{shortPath(chat.cwd)}</span>
-          </span>
           <span mix={statusCss} data-testid="chat-status" title={chat.status === 'error' ? chat.lastError : chat.sessionId ? `Session ${chat.sessionId}` : undefined}>
             <span
               mix={[dotCss, running ? pulse : undefined]}
@@ -452,9 +448,6 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               forked from an earlier chat
             </a>
           ) : null}
-          <span mix={usageCss} data-testid="chat-usage" title="Tokens and cost reported by the agent CLI">
-            {compactNumber(chat.tokensIn)} in · {compactNumber(chat.tokensOut)} out · {costText(chat)}
-          </span>
         </div>
         {feed.error ? (
           <div mix={noteCss}>

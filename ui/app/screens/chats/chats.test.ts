@@ -52,7 +52,8 @@ describe('chats helpers', () => {
     expect(costText({ costUsd: null, costUnknownTurns: 0 })).toBe('cost unknown');
     expect(costText({ costUsd: 0.0123, costUnknownTurns: 0 })).toBe('$0.01');
     expect(costText({ costUsd: 0.0002, costUnknownTurns: 0 })).toBe('$0.0002');
-    expect(costText({ costUsd: 1.5, costUnknownTurns: 2 })).toBe('$1.50 + 2 turns unknown');
+    expect(costText({ costUsd: 1.5, costUnknownTurns: 2 })).toBe("$1.50, and 2 turns' cost unknown");
+    expect(costText({ costUsd: 1.5, costUnknownTurns: 1 })).toBe("$1.50, and 1 turn's cost unknown");
     expect(compactNumber(950)).toBe('950');
     expect(compactNumber(1234)).toBe('1.2k');
     expect(compactNumber(25_000)).toBe('25k');

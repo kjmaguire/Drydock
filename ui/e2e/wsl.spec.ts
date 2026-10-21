@@ -110,7 +110,9 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   const chatId = page.url().split('/').pop() ?? '';
   await expect(page.getByTestId('chip-adapter')).toContainText(`Claude Code in ${distro()} (WSL)`);
   // the private folder inside the distro, named the Windows way
+  await page.getByRole('button', { name: 'Properties' }).click();
   await expect(page.getByTestId('chat-cwd')).toHaveAttribute('title', new RegExp(`^\\\\\\\\wsl\\.localhost\\\\${distro()}\\\\.*\\\\\\.drydock\\\\chats\\\\${chatId}$`));
+  await page.getByRole('dialog', { name: 'Chat properties' }).getByRole('button', { name: 'Cancel' }).click();
 
   const message = page.getByLabel('Message', { exact: true });
   await message.fill('hello from a chat in WSL');

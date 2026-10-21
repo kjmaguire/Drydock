@@ -1,6 +1,6 @@
 // Chats against the real core. The agent CLI is the harness's scripted stand-in (cmd/drydock-e2e, a TEST DOUBLE that
 // speaks Claude Code's stream-json): it answers messages that carry "drydock-e2e chat", refuses a Bash call for
-// "drydock-e2e touch" in the default permission mode, and runs it once the rule is allowed and Retry sends the retry text.
+// "drydock-e2e touch" in the default permission mode, and runs it once Allow and retry allows the rule and sends the retry text.
 import { expect, test } from '@playwright/test';
 import { createProject, sidebar, workspaceNav } from './helpers';
 
@@ -44,17 +44,19 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   await expect(page.getByText('could not be continued')).toHaveCount(0);
   await expect(log.getByText('Continued in a new session')).toHaveCount(0);
 
-  // a refused tool: allow the suggested rule for this chat, then Retry
+  // a refused tool: allow the suggested rule for this chat and retry
   await message.fill('drydock-e2e touch a probe file');
   await message.press('Control+Enter');
   await expect(message).toHaveValue(''); // sent
   const denied = page.getByTestId('chat-denied');
   await expect(denied).toContainText('Claude was not allowed to run Bash');
   await expect(denied).toContainText('Bash(touch chat_probe.txt)');
-  await denied.getByRole('button', { name: 'Allow for this chat' }).click();
+  // Allow and retry (UI review P1-3): the rule is allowed and the turn runs again in one step
+  await denied.getByRole('button', { name: 'Allow and retry' }).click();
   await expect(denied).toContainText('Allowed for this chat');
   await expect(page.getByRole('button', { name: 'Allowed tools (1)' })).toBeVisible();
-  await denied.getByRole('button', { name: 'Retry' }).click();
   await expect(log.getByText('Done: chat_probe.txt is there now.')).toBeVisible();
+  // the retry Drydock sent shows as a note, not as words the person typed
+  await expect(log.locator('[data-retry="true"]')).toHaveText('You allowed the tool and asked to continue.');
   await expect(page.getByTestId('chat-denied')).toHaveCount(1); // the retry ran the tool without a new refusal
 });
