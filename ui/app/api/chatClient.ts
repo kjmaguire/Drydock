@@ -156,6 +156,26 @@ export const isChat = (v: unknown): v is Chat =>
 export const isChatTurnEnd = (v: unknown): v is ChatTurnEnd =>
   isRecord(v) && typeof v.chatId === 'string' && typeof v.turnId === 'string' && (v.status === 'done' || v.status === 'error' || v.status === 'stopped');
 
+/** A tool call the chat's CLI waits to be allowed (an ACP agent asking over its protocol); only the person answers it. */
+export interface ChatAsk {
+  id: string;
+  chatId: string;
+  turnId: string;
+  /** The note in the chat that records the request. */
+  messageId: string;
+  tool: string;
+  /** The call in one line, as the person reads it (secrets redacted). */
+  summary: string;
+  /** The call's input as stored (redacted, bounded). */
+  input?: unknown;
+  created: number;
+  /** When it is refused if nobody answered. */
+  expiresAt: number;
+}
+
+export const isChatAsk = (v: unknown): v is ChatAsk =>
+  isRecord(v) && typeof v.id === 'string' && typeof v.chatId === 'string' && typeof v.summary === 'string' && typeof v.expiresAt === 'number';
+
 export interface ChatClient {
   /** limit: at most this many (1-500; omitted = 500). */
   chatList(p?: { projectId?: string; query?: string; includeArchived?: boolean; limit?: number }): Promise<ChatListItem[]>;
@@ -172,6 +192,10 @@ export interface ChatClient {
   chatFork(id: string, uptoSeq?: number): Promise<Chat>;
   chatAllowTool(id: string, tool: string): Promise<Chat>;
   chatDisallowTool(id: string, tool: string): Promise<Chat>;
+  /** The tool calls the chat's CLI is waiting on, oldest first. */
+  chatAsks(id: string): Promise<ChatAsk[]>;
+  /** Answers one: allow lets exactly that call run once. */
+  chatAnswer(id: string, askId: string, allow: boolean): Promise<void>;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
@@ -206,5 +230,9 @@ export function createChatClient(t: Transport): ChatClient {
     chatFork: async (id, uptoSeq = 0) => normalizeChat(await t.call<Chat>('chat.fork', { id, uptoSeq })),
     chatAllowTool: async (id, tool) => normalizeChat(await t.call<Chat>('chat.allowTool', { id, tool })),
     chatDisallowTool: async (id, tool) => normalizeChat(await t.call<Chat>('chat.disallowTool', { id, tool })),
+    chatAsks: async (id) => arr(await t.call<ChatAsk[] | null>('chat.asks', { id })).filter(isChatAsk),
+    chatAnswer: async (id, askId, allow) => {
+      await t.call('chat.answer', { id, askId, allow });
+    },
   };
 }

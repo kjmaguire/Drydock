@@ -48,6 +48,8 @@ type ToolRequest struct {
 	Tool  string          // the CLI's tool name: "Bash", "Edit", "WebFetch", "mcp__github__create_issue"
 	Input json.RawMessage // the exact input the CLI will run the tool with
 	Root  string          // the worktree the agent works in
+	// CLI names the agent CLI that asks ("claude" when empty): the approval's tool is "<cli>:<tool>".
+	CLI string
 	// WSL is set when the agent runs inside a WSL distro (decision P41): its shell commands are bash with Unix paths and its
 	// file paths are Linux paths, mapped to their real Windows locations before they are checked against Root.
 	WSL *wsl.Paths
@@ -106,7 +108,7 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 	}
 	rv, rerr := ReviewInput(req.Input)
 	d := ToolDecision{Display: rv.Text, Shortened: rv.Shortened}
-	d.Action = ActionDescriptor{Tool: "claude:" + req.Tool, Cwd: req.Root, Command: d.Display, ArgvDigest: digest, Targets: rv.Targets, Shortened: rv.Shortened}
+	d.Action = ActionDescriptor{Tool: firstNonEmpty(req.CLI, "claude") + ":" + req.Tool, Cwd: req.Root, Command: d.Display, ArgvDigest: digest, Targets: rv.Targets, Shortened: rv.Shortened}
 	var fields map[string]any
 	_ = json.Unmarshal(req.Input, &fields)
 	str := func(k string) string { s, _ := fields[k].(string); return s }
@@ -356,6 +358,9 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 	}
 	action := g.bind(scope, td.Action)
 	reason := "A Claude worker asks to use " + req.Tool + ", which its rules do not allow. Allow only this exact call."
+	if req.CLI != "" && req.CLI != "claude" {
+		reason = "A " + req.CLI + " worker asks to use " + req.Tool + ", which its rules do not allow. Allow only this exact call."
+	}
 	if len(td.Reasons) > 0 {
 		reason += " Analyzer: " + strings.Join(td.Reasons, "; ") + "."
 	}

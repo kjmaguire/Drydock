@@ -208,6 +208,7 @@ type Options struct {
 	MaxToolInput    int           // stored tool input JSON (default 4096)
 	MaxRules        int           // allow rules per chat (default 50)
 	DeltaEvery      time.Duration // chat.delta coalescing (default 60ms)
+	AskTTL          time.Duration // how long a permission request waits for the person (default AskTTL)
 }
 
 func (o *Options) defaults() {
@@ -238,6 +239,9 @@ func (o *Options) defaults() {
 	if o.DeltaEvery <= 0 {
 		o.DeltaEvery = 60 * time.Millisecond
 	}
+	if o.AskTTL <= 0 {
+		o.AskTTL = AskTTL
+	}
 }
 
 // Service owns chats and their turns.
@@ -251,6 +255,7 @@ type Service struct {
 
 	mu      sync.Mutex
 	running map[string]*turnState
+	asks    map[string]*pendingAsk // permission requests waiting for the person, by id
 }
 
 type turnState struct {
@@ -265,7 +270,7 @@ func New(d Deps, o Options) *Service {
 		d.Redact = func(s string) string { return s }
 	}
 	bg, cancel := context.WithCancel(context.Background())
-	return &Service{d: d, o: o, bg: bg, cancel: cancel, running: map[string]*turnState{}}
+	return &Service{d: d, o: o, bg: bg, cancel: cancel, running: map[string]*turnState{}, asks: map[string]*pendingAsk{}}
 }
 
 // Start marks turns a crash left "running" as failed. They are never re-run: a re-run is a new, billed turn nobody asked for.

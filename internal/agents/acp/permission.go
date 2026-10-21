@@ -3,6 +3,8 @@ package acp
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/kjmaguire/drydock/internal/agents"
 )
 
 // Option kinds of session/request_permission (ACP).
@@ -62,4 +64,21 @@ func AllowOnce(_ context.Context, req PermissionRequest) string {
 		}
 	}
 	return ""
+}
+
+// askHandler turns a session's PermissionAsker into a PermissionHandler. An allow selects the agent's allow_once option only:
+// a person approves one call, never every later one (an agent that offers no allow_once option gets a cancelled request). A
+// refusal selects reject_once, then reject_always, as RejectOnce does.
+func askHandler(ask agents.PermissionAsker) PermissionHandler {
+	return func(ctx context.Context, req PermissionRequest) string {
+		allow, _ := ask(ctx, agents.ToolAsk{ToolCallID: req.ToolCallID, Tool: req.Tool, Title: req.Title, Kind: req.Kind, Args: req.Args,
+			Locations: append([]string(nil), req.Locations...)})
+		if ctx.Err() != nil {
+			return ""
+		}
+		if allow {
+			return AllowOnce(ctx, req)
+		}
+		return RejectOnce(ctx, req)
+	}
 }

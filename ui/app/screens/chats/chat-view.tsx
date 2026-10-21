@@ -23,6 +23,7 @@ import { VirtualList } from '../../ui/virtual-list.tsx';
 import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
 import { ChatMessageRow } from './chat-message.tsx';
+import { ChatAsks } from './chat-asks.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
 import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
 
@@ -524,6 +525,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             </Notice>
           </div>
         ) : null}
+        <ChatAsks chat={chat} agentName={adapterLabel(chat.adapter)} />
         <ChatApprovals chat={chat} />
         {!settingsOpen && !toolsOpen && act.error ? (
           <div mix={noteCss}>

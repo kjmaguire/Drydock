@@ -78,6 +78,7 @@ function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean;
     skillLibraryList: async () => [],
     mcpLibList: async () => [],
     mcpApprovalList: async () => [],
+    chatAsks: async () => [],
     ...client,
   });
   s.workspace.start();
@@ -590,6 +591,36 @@ describe('Conversation', () => {
     expect(byText(r.container, 'button', /Allowed tools/).textContent).toBe('Allowed tools (1)');
     await r.act(() => byText(callout, 'button', 'Retry').click());
     await waitFor(() => expect(sent).toEqual([['chat_a', RETRY_TEXT, []]]), r);
+  });
+
+  it('a tool call the agent waits on is shown with its input, and Allow once or Refuse answers it', async () => {
+    const answered: unknown[] = [];
+    let waiting = [
+      { id: 'cask_1', chatId: 'chat_a', turnId: 't1', messageId: 'm2', tool: 'Run go test', summary: 'Run go test: go test ./...', input: { command: 'go test ./...' }, created: Date.now(), expiresAt: Date.now() + 30 * 60_000 },
+      { id: 'cask_2', chatId: 'chat_a', turnId: 't1', messageId: 'm3', tool: 'Fetch', summary: 'Fetch: https://go.dev', input: { url: 'https://go.dev' }, created: Date.now() + 1, expiresAt: Date.now() + 30 * 60_000 },
+    ];
+    const { r } = conv(chat({ adapter: 'gemini' }), [msg(1, 'user', 'run the tests'), msg(2, 'system', 'Asks to use Run go test: go test ./...')], {
+      chatAsks: async () => waiting,
+      chatAnswer: async (id, askId, allow) => {
+        answered.push([id, askId, allow]);
+        waiting = waiting.filter((a) => a.id !== askId);
+      },
+    });
+    const cards = await waitFor(() => {
+      const c = $$(r, '[data-testid="chat-ask"]');
+      if (c.length !== 2) throw new Error('two requests');
+      return c;
+    }, r);
+    expect(cards[0]!.getAttribute('role')).toBe('alert');
+    expect(cards[0]!.textContent).toContain('asks to use Run go test: go test ./...');
+    expect(cards[0]!.querySelector('[data-testid="chat-ask-input"]')!.textContent).toContain('"command": "go test ./..."');
+    expect(cards[0]!.querySelector('[data-testid="chat-ask-expiry"]')!.textContent).toMatch(/^Refused at .+ if nobody answers\.$/);
+    await r.act(() => byText(cards[0]!, 'button', 'Allow once').click());
+    await waitFor(() => expect(answered).toEqual([['chat_a', 'cask_1', true]]), r);
+    await waitFor(() => expect($$(r, '[data-testid="chat-ask"]')).toHaveLength(1), r);
+    await r.act(() => byText(must$(r, '[data-testid="chat-ask"]'), 'button', 'Refuse').click());
+    await waitFor(() => expect(answered).toEqual([['chat_a', 'cask_1', true], ['chat_a', 'cask_2', false]]), r);
+    await waitFor(() => expect($(r, '[data-testid="chat-asks"]')).toBeNull(), r);
   });
 
   it('lists the allowed tools and removes one', async () => {

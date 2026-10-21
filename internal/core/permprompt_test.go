@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/agents/acp"
+	"github.com/kjmaguire/drydock/internal/agents/acp/fakeacp"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/core"
@@ -245,4 +248,108 @@ func TestALargeWriteOutsideTheWorktreeShowsItsDestinationOnTheTaskPage(t *testin
 		a.call("task.get", map[string]string{"id": task.ID}, &detail)
 		return detail.Task.Status == tasks.Completed
 	})
+}
+
+// An ACP worker (Codex here, stood in for by the scripted ACP agent, a labelled test double that is a real separate process on
+// the real ACP SDK) asks over session/request_permission, and its requests go through the same gate as a Claude worker's:
+// a plain "ls" is allowed by the rules, a fetch no rule covers waits for the human on the task page and is approved there, and
+// reading Claude's credential file is refused outright. The agent is told each answer; nothing is refused or approved on the person's behalf.
+func TestACPWorkerPermissionRequestsGoThroughTheAnalyzerAndTheHuman(t *testing.T) {
+	perm := func(id, title, kind string, in map[string]any) fakeacp.Step {
+		return fakeacp.Step{Perm: &fakeacp.Perm{Tool: fakeacp.Tool{ID: id, Title: title, Kind: kind, Input: in}}}
+	}
+	script, _ := json.Marshal(fakeacp.Script{Default: []fakeacp.Step{
+		perm("t1", "List files", "execute", map[string]any{"command": "ls"}),
+		perm("t2", "Fetch the Go docs", "fetch", map[string]any{"url": "https://go.dev/doc/"}),
+		{Perm: &fakeacp.Perm{Tool: fakeacp.Tool{ID: "t3", Title: "Read the Claude sign-in", Kind: "read",
+			Input: map[string]any{"path": "~/.claude/.credentials.json"}, Locations: []string{"~/.claude/.credentials.json"}}}},
+		{FSWrite: &fakeacp.FSOp{Path: "calc.go", Content: impl}},
+		{Say: "implemented Subtract"},
+	}})
+	sp := filepath.Join(t.TempDir(), "acp-script.json")
+	if err := os.WriteFile(sp, script, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	codex := acp.New(acp.Config{ID: "codex", Command: os.Args[0], Env: []string{"DRYDOCK_FAKE_ACP=1", "DRYDOCK_FAKE_ACP_SCRIPT=" + sp}})
+	a := openWith(t, map[string]agents.Adapter{"codex": codex})
+	p, _ := a.setup("gocalc")
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Codex worker", Adapter: "codex", Role: "backend"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Reviewer", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Implement Subtract", Description: "Subtract returns 0; make it return a - b."}, &task)
+	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
+	var runID string
+	a.call("task.start", map[string]string{"id": task.ID}, &runID)
+
+	var pl map[string]any
+	var id string
+	a.waitFor("the fetch to wait on the task page", func() bool {
+		var detail core.TaskDetail
+		a.call("task.get", map[string]string{"id": task.ID}, &detail)
+		for _, p := range detail.Pending {
+			var m map[string]any
+			_ = json.Unmarshal(p.Spec.Payload, &m)
+			if m["gate"] == core.PermissionGate {
+				pl, id = m, string(p.ID)
+				return true
+			}
+		}
+		return false
+	})
+	if tool, _ := pl["tool"].(string); !strings.Contains(tool, "Fetch the Go docs") || !strings.Contains(pl["input"].(string), "go.dev") || pl["agentId"] != worker.ID {
+		t.Fatalf("the task page must show the call as the agent made it: %v", pl)
+	}
+	a.call("run.respond", map[string]any{"runId": runID, "requestId": id, "decision": "approved", "data": map[string]string{}}, nil)
+
+	var outcomes []string
+	a.waitFor("three permission decisions", func() bool {
+		outcomes = outcomes[:0]
+		for _, e := range a.eventsOf("permission.decided") {
+			outcomes = append(outcomes, e["outcome"].(string))
+		}
+		return len(outcomes) >= 3
+	})
+	if strings.Join(outcomes, ",") != "allowed_by_rule,approved,denied" {
+		t.Fatalf("outcomes %v", outcomes)
+	}
+	var said []string // the agent's own messages: it says which option each request ended with
+	a.waitFor("the worker to finish its turn", func() bool {
+		said = said[:0]
+		for _, e := range a.eventsOf("agent.output") {
+			if d, _ := e["data"].(map[string]any); e["kind"] == "message_end" && d != nil {
+				said = append(said, fmt.Sprint(d["text"]))
+			}
+		}
+		return strings.Contains(strings.Join(said, " | "), "implemented Subtract")
+	})
+	if got := strings.Join(said, " | "); !strings.HasPrefix(got, "permission: selected allow | permission: selected allow | permission: selected reject") {
+		t.Fatalf("the agent must be told allow, allow, reject: %s", got)
+	}
+}
+
+// An ACP call is read as the analyzer's tool vocabulary only where that reading is exact; anything else keeps the agent's name
+// and input, which no rule allows, so a person sees it whole.
+func TestAnACPCallIsReadForTheAnalyzerOnlyWhereThatIsExact(t *testing.T) {
+	for _, c := range []struct {
+		q    agents.ToolAsk
+		tool string
+		in   string
+	}{
+		{agents.ToolAsk{Kind: "execute", Tool: "Run", Args: json.RawMessage(`{"command":"go test ./...","description":"tests"}`)}, "Bash", `{"command":"go test ./..."}`},
+		// a field that changes what runs (a working folder) is not a plain command
+		{agents.ToolAsk{Kind: "execute", Tool: "Run", Args: json.RawMessage(`{"command":"ls","cwd":"C:\\"}`)}, "acp:Run", `{"command":"ls","cwd":"C:\\"}`},
+		{agents.ToolAsk{Kind: "execute", Tool: "Run", Args: json.RawMessage(`{"command":["bash","-lc","ls"]}`)}, "acp:Run", `{"command":["bash","-lc","ls"]}`},
+		{agents.ToolAsk{Kind: "read", Tool: "Read", Locations: []string{"src/a.go"}}, "Read", `{"file_path":"src/a.go"}`},
+		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Locations: []string{"src/a.go"}, Args: json.RawMessage(`{"new":"x"}`)}, "Write", `{"file_path":"src/a.go"}`},
+		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Args: json.RawMessage(`{"new":"x"}`)}, "acp:Edit", `{"new":"x"}`},
+		{agents.ToolAsk{Kind: "move", Tool: "Move", Locations: []string{"a", "b"}}, "acp:Move", `null`},
+		{agents.ToolAsk{Kind: "fetch", Tool: "Fetch", Args: json.RawMessage(`{"url":"https://x"}`)}, "acp:Fetch", `{"url":"https://x"}`},
+		{agents.ToolAsk{}, "acp:tool", `null`},
+	} {
+		r := core.ACPToolRequest(c.q)
+		if r.Tool != c.tool || string(r.Input) != c.in {
+			t.Errorf("%+v: got %s %s, want %s %s", c.q, r.Tool, r.Input, c.tool, c.in)
+		}
+	}
 }

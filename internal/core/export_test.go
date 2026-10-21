@@ -119,3 +119,14 @@ func (c *Core) TestSandboxDefinition(ctx context.Context, projectID string) (san
 func (c *Core) TestMCPApprove(ctx context.Context, req mcp.ApprovalRequest) (bool, error) {
 	return c.mcpServerSvc().Approve(ctx, req)
 }
+
+// SetChatAskTTL shortens how long a chat's permission request waits for the person, for the cores opened after it; it returns
+// a function that restores the default.
+func SetChatAskTTL(d time.Duration) func() {
+	old := chatAskTTL
+	chatAskTTL = d
+	return func() { chatAskTTL = old }
+}
+
+// ACPToolRequest exposes how an ACP tool call is read for the permission gate.
+var ACPToolRequest = acpToolRequest

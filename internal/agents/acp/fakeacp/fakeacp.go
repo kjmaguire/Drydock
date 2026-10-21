@@ -766,8 +766,12 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 	if kind == "" {
 		kind = acp.ToolKindEdit
 	}
+	var locs []acp.ToolCallLocation
+	for _, l := range t.Locations {
+		locs = append(locs, acp.ToolCallLocation{Path: l})
+	}
 	start := acp.SessionUpdateToolCall{SessionUpdate: "tool_call", ToolCallId: acp.ToolCallId(t.ID), Title: t.Title, Kind: kind,
-		Status: acp.ToolCallStatusPending, RawInput: t.Input}
+		Status: acp.ToolCallStatusPending, RawInput: t.Input, Locations: locs}
 	send(acp.SessionUpdate{ToolCall: &start})
 	opts := []acp.PermissionOption{
 		{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow", OptionId: "allow"},
@@ -780,7 +784,7 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 		}
 	}
 	resp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{SessionId: sid, Options: opts, ToolCall: acp.ToolCallUpdate{
-		ToolCallId: acp.ToolCallId(t.ID), Title: acp.Ptr(t.Title), Kind: acp.Ptr(kind), RawInput: t.Input}})
+		ToolCallId: acp.ToolCallId(t.ID), Title: acp.Ptr(t.Title), Kind: acp.Ptr(kind), RawInput: t.Input, Locations: locs}})
 	st := acp.ToolCallStatusCompleted
 	switch {
 	case err != nil:

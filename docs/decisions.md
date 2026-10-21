@@ -834,3 +834,14 @@ Open, owner action:
   script (`npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code`), and the contract tool's own
   installs (`--install-pinned`, `--latest`, `--install-latest`) do the same; npm 11, which Node 24 ships, accepts the flag too
   (checked with 11.19.1). Tests keep both.
+- **P83. Every agent's permission requests reach the person (2026-10-21, on the owner's words about the CopilotKit/AG-UI
+  comparison: "Lets go for it").** Until now only Claude workers' permission prompts reached a person (P40); every ACP agent's
+  `session/request_permission` (Codex, Gemini CLI, OpenCode, goose, Cline) was refused by the default handler, so an agent that
+  asks before a tool call could do nothing that needed asking. Each session now carries its own asker (`RunSpec.AskPermission`).
+  Worker turns outside a sandbox get one from the runtime that sends the request through the same gate as a Claude worker's:
+  the call is read as the analyzer's tool vocabulary only where that reading is exact (a bare command is Bash, one path read is
+  Read, one path edited or deleted is Write), the rules allow or refuse what they decide, and anything else becomes an approval
+  of exactly that call on the task page and in Needs you. Chats ask the person in the chat: the request is listed with the call
+  and its input, Allow once or Refuse answers it, it expires after 30 minutes and is withdrawn when the turn ends. An approval
+  selects the agent's `allow_once` option only, never `allow_always`. Read-only and sandboxed sessions still refuse. Not built:
+  comparing the call the agent then makes with the approved one (docs/security.md s5).

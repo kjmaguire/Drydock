@@ -235,7 +235,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		c.wsl = &wsl.Host{PM: cfg.Procs}
 	}
 	// Adapters come from the embedded manifests (Claude headless; Codex, Gemini, OpenCode and Goose over ACP; Antigravity is
-	// declared but gated). ACP permission requests are rejected until the approval UI is wired (nil handler rejects).
+	// declared but gated). An ACP agent's permission requests are refused unless its session has an asker: worker turns get
+	// one from Runtime.Permissions (ext_permprompt.go), chats ask in the chat.
 	c.Connections, err = connections.NewService(connections.Config{
 		Manifests: manifests.Options{ScrubEnv: true, PassEnv: func() []string { return passEnvNames(context.Background(), db) }, WSL: c.wsl},
 		Detection: connections.Options{PM: cfg.Procs, Acked: acked, Last: c.loadTestOutcomes(ctx), Drift: c.loadDrift(ctx), WSL: c.wsl},
@@ -281,7 +282,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
-	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Instructions: c.agentInstructions,
+	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
 		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,

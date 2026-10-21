@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
@@ -29,6 +30,9 @@ func init() {
 }
 
 var chatRegistry sync.Map // *Core -> *chats.Service
+
+// chatAskTTL is how long a chat's permission request waits for the person (0: chats.AskTTL). Tests shorten it.
+var chatAskTTL time.Duration
 
 // Chats returns the chats service (nil before the extension started or after Close).
 func (c *Core) Chats() *chats.Service {
@@ -62,7 +66,7 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		Instructions:   c.chatInstructions,
 		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
 		Logf:           c.logf,
-	}, chats.Options{})
+	}, chats.Options{AskTTL: chatAskTTL})
 	if err := svc.Start(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -123,6 +127,15 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 			UptoSeq int64  `json:"uptoSeq"`
 		}) (any, error) {
 			return svc.Fork(ctx, p.ID, p.UptoSeq)
+		}),
+		// permission requests a chat's CLI is waiting on (chats/permission.go); only the person's UI calls these methods
+		"chat.asks": bind(func(ctx context.Context, p idOnly) (any, error) { return svc.Asks(ctx, p.ID) }),
+		"chat.answer": bind(func(ctx context.Context, p struct {
+			ID    string `json:"id"`
+			AskID string `json:"askId"`
+			Allow bool   `json:"allow"`
+		}) (any, error) {
+			return map[string]bool{"answered": true}, svc.Answer(ctx, p.ID, p.AskID, p.Allow)
 		}),
 		"chat.allowTool":    bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.AllowTool(ctx, p.ID, p.Tool) }),
 		"chat.disallowTool": bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.DisallowTool(ctx, p.ID, p.Tool) }),

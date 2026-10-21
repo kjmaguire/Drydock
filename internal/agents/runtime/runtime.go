@@ -36,6 +36,9 @@ type Runtime struct {
 	// room replies, the planner), so this one hook covers all of them. A hook error does not stop the turn: the session runs
 	// without MCP and the reason is published as agent.mcp. Nil means no MCP (tests of other packages).
 	MCP func(ctx context.Context, cfg *Config, runID string) (MCPAttachment, error)
+	// Permissions, if set, gives a session that has no permission asker of its own one (agents.RunSpec.AskPermission): Spawn
+	// calls it with the run's id before the agent starts. It returns nil for a session whose requests are refused.
+	Permissions func(ctx context.Context, cfg *Config, runID string) agents.PermissionAsker
 	// Instructions, if set, returns the standing instructions the human wrote for an agent. Spawn adds them to the session's
 	// system prompt (cfg.Spec.SystemAppend), so every path that starts an agent (workflow turns, room replies, templates)
 	// carries the agent's purpose without each one having to remember it.
@@ -171,6 +174,9 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 			cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + strings.TrimSpace(s))
 			cfg.Spec.PracticesVersion = pv
 		}
+	}
+	if r.Permissions != nil && cfg.Spec.AskPermission == nil {
+		cfg.Spec.AskPermission = r.Permissions(ctx, &cfg, runID)
 	}
 	var att MCPAttachment
 	if r.MCP != nil && cfg.Spec.MCPConfigPath == "" {

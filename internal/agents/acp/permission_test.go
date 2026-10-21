@@ -152,3 +152,46 @@ func TestStopCancelsAPendingPermissionRequest(t *testing.T) {
 		t.Fatal("handler context not cancelled by Stop")
 	}
 }
+
+// A session's own asker (a worker turn, a chat) decides over the adapter's handler: it sees the call as the agent described it,
+// an allow selects allow_once only (never allow_always), a refusal selects reject_once.
+func TestTheSessionsAskerDecidesAndAllowsOnlyOnce(t *testing.T) {
+	var got atomic.Value
+	allow := atomic.Bool{}
+	spec := agents.RunSpec{AgentID: "a", AskPermission: func(_ context.Context, q agents.ToolAsk) (bool, string) {
+		got.Store(q)
+		return allow.Load(), "no"
+	}}
+	adapterSaw := atomic.Bool{}
+	opts := []fakeacp.PermOption{{ID: "always", Name: "Always", Kind: acp.KindAllowAlways}, {ID: "once", Name: "Once", Kind: acp.KindAllowOnce}, {ID: "no", Name: "No", Kind: acp.KindRejectOnce}}
+	ad := fakeAdapter(t, permScript(opts...), func(c *acp.Config) {
+		c.Permission = func(context.Context, acp.PermissionRequest) string { adapterSaw.Store(true); return "always" }
+	})
+
+	allow.Store(true)
+	cs := turn(t, startSession(t, ad, spec), "go")
+	if !strings.Contains(text(cs), "permission: selected once") {
+		t.Fatalf("an allow selects allow_once: %q", text(cs))
+	}
+	q, _ := got.Load().(agents.ToolAsk)
+	if q.ToolCallID != "p1" || q.Tool != "Write config.json" || q.Kind != "edit" || !strings.Contains(string(q.Args), "config.json") {
+		t.Fatalf("the asker saw %+v", q)
+	}
+	if adapterSaw.Load() {
+		t.Fatal("the adapter's handler must not decide when the session has its own asker")
+	}
+
+	allow.Store(false)
+	cs = turn(t, startSession(t, ad, spec), "go")
+	if !strings.Contains(text(cs), "permission: selected no") {
+		t.Fatalf("a refusal selects reject_once: %q", text(cs))
+	}
+
+	// an agent that offers only allow_always gets a cancelled request, not a standing approval
+	ad = fakeAdapter(t, permScript(fakeacp.PermOption{ID: "always", Name: "Always", Kind: acp.KindAllowAlways}))
+	allow.Store(true)
+	cs = turn(t, startSession(t, ad, spec), "go")
+	if !strings.Contains(text(cs), "permission: cancelled") {
+		t.Fatalf("allow_always is never chosen for a person's one approval: %q", text(cs))
+	}
+}

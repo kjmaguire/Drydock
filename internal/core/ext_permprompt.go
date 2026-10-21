@@ -8,11 +8,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/workflow"
+	"github.com/kjmaguire/drydock/internal/wsl"
 )
 
 // Permission prompts of Claude workers outside a sandbox (docs/security.md s4 and s5, decision P40). The pipeline marks such a
@@ -164,11 +166,98 @@ func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.
 			}
 		}
 		payload, _ := json.Marshal(map[string]any{
-			"gate": PermissionGate, "tool": strings.TrimPrefix(info.Action.Tool, "claude:"), "input": info.Action.Command,
+			"gate": PermissionGate, "tool": toolOfAction(info.Action.Tool), "input": info.Action.Command,
 			"targets": targets, "shortened": info.Action.Shortened,
 			"kind": info.ActionKind, "reason": info.Reason, "agentId": info.Action.AgentID, "expiresAt": info.ExpiresAt,
 		})
 		out = append(out, workflow.PendingRequest{ID: workflow.RequestID(id), Spec: workflow.RequestSpec{Kind: "approval", Title: info.Title, Payload: payload, ActionHash: info.ActionHash}})
 	}
 	return out
+}
+
+// permissionAsker is Runtime.Permissions: an ACP worker turn outside a sandbox (the pipeline sets PermissionPrompts) asks over
+// session/request_permission instead of a gateway tool, and its requests go through the same gate as a Claude worker's: the
+// analyzer allows or refuses what the rules decide, anything else becomes an approval of exactly that call on the task page.
+// Claude workers ask through the gateway (offerPermissionPrompts); reviewers, planners and other read-only turns, sandboxed
+// turns and chats (which ask in the chat) get nil here, so their requests stay refused.
+func (c *Core) permissionAsker(ctx context.Context, cfg *rt.Config, runID string) agents.PermissionAsker {
+	if !cfg.Spec.PermissionPrompts || cfg.Spec.ReadOnly || cfg.Spec.Sandboxed || cfg.Adapter == "claude" || cfg.Spec.Cwd == "" {
+		return nil
+	}
+	scope := security.PermissionScope{Project: cfg.ProjectID, TaskID: cfg.TaskID, RunID: runID, AgentID: cfg.AgentID}
+	root, cli := cfg.Spec.Cwd, cfg.Adapter
+	var paths *wsl.Paths
+	if cfg.Spec.IsWSL() {
+		p, ok := c.wslPaths(ctx, cfg.Spec.WSLDistro)
+		if !ok {
+			return func(context.Context, agents.ToolAsk) (bool, string) {
+				return false, "The WSL distro " + cfg.Spec.WSLDistro + " could not be probed, so Drydock cannot check this call and refused it."
+			}
+		}
+		paths = &p
+	}
+	return func(ctx context.Context, q agents.ToolAsk) (bool, string) {
+		gate, err := c.permissions().init()
+		if err != nil {
+			return false, "Drydock's command analyzer is not available, so it refused this call."
+		}
+		req := acpToolRequest(q)
+		req.Root, req.CLI, req.WSL = root, cli, paths
+		out := gate.Decide(ctx, scope, req)
+		return out.Allow, out.Message
+	}
+}
+
+// acpBenignShellKeys are the fields an ACP shell call may carry besides its command without changing what runs: a call with
+// any other field (a working folder, an environment) is not read as a plain command, so a person sees it whole.
+var acpBenignShellKeys = map[string]bool{"command": true, "description": true, "explanation": true, "timeout": true, "is_background": true}
+
+// acpToolRequest reads an ACP tool call as the analyzer's tool vocabulary where that reading is exact, so the same rules decide
+// it as decide a Claude call: a shell call that is only a command string is Bash; a read or search of one path is Read; an
+// edit or a delete of one path is Write. Anything else (a move between two paths, a fetch, a call whose fields would change
+// what runs) keeps the agent's own name and input, which no Drydock rule allows, so a person decides it.
+func acpToolRequest(q agents.ToolAsk) security.ToolRequest {
+	var fields map[string]any
+	_ = json.Unmarshal(q.Args, &fields)
+	switch q.Kind {
+	case "execute":
+		cmd, ok := fields["command"].(string)
+		plain := ok && strings.TrimSpace(cmd) != ""
+		for k := range fields {
+			if !acpBenignShellKeys[k] {
+				plain = false
+			}
+		}
+		if plain {
+			in, _ := json.Marshal(map[string]string{"command": cmd})
+			return security.ToolRequest{Tool: "Bash", Input: in}
+		}
+	case "read", "search":
+		if len(q.Locations) == 1 {
+			in, _ := json.Marshal(map[string]string{"file_path": q.Locations[0]})
+			return security.ToolRequest{Tool: "Read", Input: in}
+		}
+	case "edit", "delete":
+		if len(q.Locations) == 1 {
+			in, _ := json.Marshal(map[string]string{"file_path": q.Locations[0]})
+			return security.ToolRequest{Tool: "Write", Input: in}
+		}
+	}
+	name := strings.TrimSpace(firstNonEmpty(q.Tool, q.Kind))
+	if name == "" {
+		name = "tool"
+	}
+	in := q.Args
+	if len(in) == 0 {
+		in = json.RawMessage("null")
+	}
+	return security.ToolRequest{Tool: "acp:" + name, Input: in}
+}
+
+// toolOfAction is the tool a permission approval names, without the asking CLI ("claude:Bash" and "gemini:Bash" are Bash).
+func toolOfAction(t string) string {
+	if _, tool, ok := strings.Cut(t, ":"); ok {
+		return tool
+	}
+	return t
 }

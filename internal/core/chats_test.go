@@ -21,6 +21,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/chats"
+	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
 )
@@ -795,7 +796,7 @@ func TestChatSessionsThatReadHistoryGetTheChatsToolOnly(t *testing.T) {
 }
 
 // An ACP agent: the second turn loads the stored session (session/load), and a permission request the application refuses is
-// shown as a denial, without an allow rule to offer (only Claude takes per-chat rules).
+// shown as a denial when the person refuses it, without an allow rule to offer (only Claude takes per-chat rules).
 func TestACPChatLoadsItsSessionAndShowsRefusedPermissions(t *testing.T) {
 	dir := t.TempDir()
 	sc, _ := json.Marshal(fakeacp.Script{LoadSession: true, Modes: []string{"plan", "act"},
@@ -813,7 +814,10 @@ func TestACPChatLoadsItsSessionAndShowsRefusedPermissions(t *testing.T) {
 	if c.PermissionMode != "plan" {
 		t.Fatalf("chat %+v", c)
 	}
-	ev := e.send(c.ID, "first")
+	turn := e.start(c.ID, "first")
+	ask := e.waitAsk(c.ID)
+	e.call("chat.answer", map[string]any{"id": c.ID, "askId": ask.ID, "allow": false}, nil)
+	ev := e.waitTurn(turn)
 	if ev["status"] != chats.TurnDone || ev["sessionId"] != "fake-sess-1" {
 		t.Fatalf("turn %v", ev)
 	}
@@ -824,8 +828,11 @@ func TestACPChatLoadsItsSessionAndShowsRefusedPermissions(t *testing.T) {
 			den = &d.Messages[i]
 		}
 	}
-	if den == nil || !strings.Contains(den.Body, "refused") || den.SuggestedRule != "" {
+	if den == nil || !strings.Contains(den.Body, "Refused by you") || den.SuggestedRule != "" {
 		t.Fatalf("denial %s %+v", roles(d.Messages), den)
+	}
+	if !strings.Contains(d.Messages[len(d.Messages)-1].Body, "first answer") || !strings.Contains(transcriptText(d.Messages), "permission: selected reject") {
+		t.Fatalf("the agent must be told the person refused: %s", transcriptText(d.Messages))
 	}
 	if err := e.callErr("chat.allowTool", map[string]any{"id": c.ID, "tool": "Edit"}); err == nil || !strings.Contains(err.Error(), "does not take per-chat allow rules") {
 		t.Fatalf("allow rules for an ACP chat: %v", err)
@@ -1022,3 +1029,115 @@ func TestChatListLimitIsClampedToTheMaximum(t *testing.T) {
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
+
+// waitAsk waits for the chat's first waiting permission request.
+func (e *chatEnv) waitAsk(chatID string) chats.PendingAsk {
+	e.t.Helper()
+	var asks []chats.PendingAsk
+	e.waitFor("a permission request in "+chatID, func() bool {
+		e.call("chat.asks", map[string]string{"id": chatID}, &asks)
+		return len(asks) > 0
+	})
+	return asks[0]
+}
+
+func transcriptText(ms []chats.Message) string {
+	var b strings.Builder
+	for _, m := range ms {
+		b.WriteString(m.Role + ": " + m.Body + "\n")
+	}
+	return b.String()
+}
+
+// An ACP agent in a chat that asks to use a tool waits for the person (it is never refused or allowed on their behalf): the
+// request is shown in the chat with the call, Allow once lets exactly that call run once, and the request can be answered
+// only once. A request nobody answers expires and is refused; one still waiting when the turn is stopped is withdrawn.
+func TestAnACPChatAsksThePersonAndAllowsOnce(t *testing.T) {
+	dir := t.TempDir()
+	sc, _ := json.Marshal(fakeacp.Script{LoadSession: true, Default: []fakeacp.Step{
+		{Perm: &fakeacp.Perm{Tool: fakeacp.Tool{ID: "t1", Title: "Run go test", Kind: "execute", Input: map[string]any{"command": "go test ./..."}}}},
+		{Say: "done"},
+	}})
+	sp := filepath.Join(dir, "acp.json")
+	if err := os.WriteFile(sp, sc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ad := acp.New(acp.Config{ID: "acpchat", Command: os.Args[0], Env: []string{"DRYDOCK_FAKE_ACP=1", "DRYDOCK_FAKE_ACP_SCRIPT=" + sp}})
+	e := openChats(t, fakeagent.Script{}, map[string]agents.Adapter{"acpchat": ad})
+	p, _ := e.setup("acpask")
+	c := e.create(map[string]any{"projectId": p.ID, "adapter": "acpchat"})
+
+	turn := e.start(c.ID, "run the tests")
+	ask := e.waitAsk(c.ID)
+	if ask.ChatID != c.ID || ask.TurnID != turn || !strings.Contains(ask.Summary, "Run go test") || !strings.Contains(string(ask.Input), "go test") || ask.ExpiresAt <= ask.Created {
+		t.Fatalf("the request as the person sees it: %+v", ask)
+	}
+	if len(e.eventsOf("chat.permission")) == 0 {
+		t.Fatal("no chat.permission event")
+	}
+	// the waiting turn is visible as running; nothing answers on the person's behalf meanwhile
+	if err := e.callErr("chat.answer", map[string]any{"id": "chat_other", "askId": ask.ID, "allow": true}); err == nil {
+		t.Fatal("an answer through another chat must be refused")
+	}
+	e.call("chat.answer", map[string]any{"id": c.ID, "askId": ask.ID, "allow": true}, nil)
+	if err := e.callErr("chat.answer", map[string]any{"id": c.ID, "askId": ask.ID, "allow": false}); err == nil {
+		t.Fatal("a request is answered once")
+	}
+	if ev := e.waitTurn(turn); ev["status"] != chats.TurnDone {
+		t.Fatalf("turn %v", ev)
+	}
+	d := e.get(c.ID)
+	all := transcriptText(d.Messages)
+	if !strings.Contains(all, "permission: selected allow") || !strings.Contains(all, "Allowed once by you") || !strings.Contains(all, "Asks to use") {
+		t.Fatalf("an allowed request: %s", all)
+	}
+	var asks []chats.PendingAsk
+	e.call("chat.asks", map[string]string{"id": c.ID}, &asks)
+	if len(asks) != 0 {
+		t.Fatalf("nothing waits after the answer: %+v", asks)
+	}
+
+	// stopping the turn withdraws a request still waiting: the agent is told it was cancelled, never allowed
+	turn = e.start(c.ID, "again")
+	ask = e.waitAsk(c.ID)
+	var st map[string]bool
+	e.call("chat.stop", map[string]string{"id": c.ID}, &st)
+	e.waitTurn(turn)
+	if err := e.callErr("chat.answer", map[string]any{"id": c.ID, "askId": ask.ID, "allow": true}); err == nil {
+		t.Fatal("a withdrawn request cannot be answered")
+	}
+	withdrawn := false
+	for _, x := range e.eventsOf("chat.permission_answered") {
+		if x["id"] == ask.ID && x["outcome"] == chats.AskWithdrawn {
+			withdrawn = true
+		}
+	}
+	if !withdrawn {
+		t.Fatalf("permission_answered %v", e.eventsOf("chat.permission_answered"))
+	}
+}
+
+// A permission request nobody answers expires and is refused; the agent is told so and the chat says why.
+func TestAnACPChatsUnansweredRequestExpiresAndIsRefused(t *testing.T) {
+	t.Cleanup(core.SetChatAskTTL(300 * time.Millisecond))
+	dir := t.TempDir()
+	sc, _ := json.Marshal(fakeacp.Script{Default: []fakeacp.Step{
+		{Perm: &fakeacp.Perm{Tool: fakeacp.Tool{ID: "t1", Title: "Delete build", Kind: "delete", Input: map[string]any{"path": "build"}}}},
+		{Say: "done"},
+	}})
+	sp := filepath.Join(dir, "acp.json")
+	if err := os.WriteFile(sp, sc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ad := acp.New(acp.Config{ID: "acpchat", Command: os.Args[0], Env: []string{"DRYDOCK_FAKE_ACP=1", "DRYDOCK_FAKE_ACP_SCRIPT=" + sp}})
+	e := openChats(t, fakeagent.Script{}, map[string]agents.Adapter{"acpchat": ad})
+	p, _ := e.setup("acpexp")
+	c := e.create(map[string]any{"projectId": p.ID, "adapter": "acpchat"})
+	if ev := e.send(c.ID, "clean up"); ev["status"] != chats.TurnDone {
+		t.Fatalf("turn %v", ev)
+	}
+	all := transcriptText(e.get(c.ID).Messages)
+	if !strings.Contains(all, "Nobody answered") || !strings.Contains(all, "permission: selected reject") || strings.Contains(all, "selected allow") {
+		t.Fatalf("an unanswered request: %s", all)
+	}
+}

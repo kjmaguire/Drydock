@@ -343,7 +343,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	s, c := t.s, t.c
 	var o attemptOut
 	spec := agents.RunSpec{AgentID: c.ID, Role: "chat", Cwd: c.Cwd, Model: c.Model, Effort: c.Effort, PermissionMode: c.PermissionMode,
-		ResumeID: resumeID, AllowedTools: append([]string(nil), c.AllowedTools...)}
+		ResumeID: resumeID, AllowedTools: append([]string(nil), c.AllowedTools...), AskPermission: t.asker()}
 	if c.WSLDistro != "" {
 		// the adapter's own WSL start (decision P41), as for an agent: paths converted, WSLENV, the MCP shim, the marker sweep
 		spec.RunMode, spec.WSLDistro = agents.RunModeWSL, c.WSLDistro
@@ -437,21 +437,8 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 				t.store(RoleDenied, "Not allowed in this chat: "+ToolSummary(d.ToolName, d.Input), d.ToolName, d.Input)
 			}
 		case workflow.ChunkPermission:
-			// an ACP agent asked; the application-wide handler refuses every request (nothing approves on the human's behalf)
-			var p struct {
-				Tool  string          `json:"tool"`
-				Title string          `json:"title"`
-				Args  json.RawMessage `json:"args"`
-			}
-			if ch.Decode(&p) == nil {
-				o.sawOutput = true
-				name := firstNonEmpty(p.Tool, "tool")
-				body := "Asked for permission and was refused: " + ToolSummary(name, p.Args)
-				if p.Title != "" {
-					body = "Asked for permission and was refused: " + name + ": " + clip(oneLine(p.Title), 160)
-				}
-				t.store(RoleDenied, body, name, p.Args)
-			}
+			// an ACP agent asked; the turn's asker (permission.go) stores the request and waits for the person's answer
+			o.sawOutput = true
 		case workflow.ChunkSession:
 			var sc workflow.SessionChunk
 			if ch.Decode(&sc) == nil && sc.SessionID != "" {

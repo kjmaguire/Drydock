@@ -58,6 +58,20 @@ type Detection struct {
 	InstallHint   string           `json:"installHint,omitempty"` // the vendor's official command; never executed by Drydock
 }
 
+// ToolAsk is a CLI's request to use one tool call its own rules do not allow.
+type ToolAsk struct {
+	ToolCallID string          // the CLI's id of the call, as in its tool_call chunk
+	Tool       string          // normalized tool name
+	Title      string          // the CLI's own description of the call
+	Kind       string          // the protocol's tool kind (ACP: read, edit, delete, move, search, execute, think, fetch, other)
+	Args       json.RawMessage // the exact input of the call
+	Locations  []string        // the paths the call names
+}
+
+// PermissionAsker answers a ToolAsk: true allows exactly that call once, false refuses it (message, when set, is what the
+// CLI is told). It may block while a person decides; ctx ends when the turn is interrupted or the session stops.
+type PermissionAsker func(ctx context.Context, q ToolAsk) (allow bool, message string)
+
 // RunSpec describes one agent session.
 type RunSpec struct {
 	AgentID        string
@@ -94,7 +108,12 @@ type RunSpec struct {
 	// PermissionPromptTool is the MCP tool the CLI asks (Claude: --permission-prompt-tool mcp__drydock__permission_prompt).
 	// Empty: the CLI's own permission mode and rules decide alone (a headless Claude then refuses what they do not allow).
 	PermissionPromptTool string
-	ExtraArgs            []string // adapter-specific escape hatch
+	// AskPermission answers a CLI that asks, over its own protocol (ACP session/request_permission), to use a tool its rules do
+	// not allow. Nil refuses every request (nothing is approved on the human's behalf). The pipeline gives worker turns outside a
+	// sandbox one that goes through Drydock's analyzer and, when the rules do not decide, a person; a chat gives one that asks
+	// the person in the chat (docs/security.md s4).
+	AskPermission PermissionAsker `json:"-"`
+	ExtraArgs     []string        // adapter-specific escape hatch
 	// RunMode is where the CLI runs: RunModeNative ("" too) or RunModeWSL, inside the WSL distro WSLDistro (decision P41).
 	// Only an adapter whose Capabilities list the mode accepts it; the others refuse to start.
 	RunMode   string

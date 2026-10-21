@@ -392,6 +392,9 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	s.emitKind(workflow.ChunkPermission, req)
 
 	handler := s.adapter.cfg.Permission
+	if ask := s.spec.AskPermission; ask != nil {
+		handler = askHandler(ask) // the session's own asker (a worker turn, a chat) decides over the adapter's default
+	}
 	if handler == nil {
 		handler = RejectOnce
 	}
