@@ -27,10 +27,10 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 |---|---|---|
 | Language and toolchain | Go, `go 1.27.3` in `go.mod` (moved up from 1.26.0 on 2026-10-09, to 1.27.3 on 2026-10-20) | sqlite, goose, otel, mvdan/sh, x/sys need 1.26 or newer; the whole module graph was updated with it. |
 | Desktop shell | Wails v3 `v3.0.0-beta.34`, isolated in `app/`, pinned | MIT, beta, builds Windows-only with `CGO_ENABLED=0` (Wails needs no CGO; since P62 the product exe is built with `CGO_ENABLED=1` for the repo map's parser); bindings generation proven; open issues unchecked. Accepted risk (brief risk register). |
-| Storage | `modernc.org/sqlite` v1.60.1, WAL, FTS5; migrations with `pressly/goose` v3.29.0 | FTS5/bm25/WAL proven on Linux; single writer connection plus pooled readers; `BEGIN IMMEDIATE`/`_txlock=immediate` for write transactions. Re-run on NTFS. |
+| Storage | `modernc.org/sqlite` v1.61.0, WAL, FTS5; migrations with `pressly/goose` v3.29.0 | FTS5/bm25/WAL proven on Linux; single writer connection plus pooled readers; `BEGIN IMMEDIATE`/`_txlock=immediate` for write transactions. Re-run on NTFS. |
 | Secrets | `zalando/go-keyring` v0.2.8; values over 2560 bytes are encrypted into SQLite with the key in Credential Manager | Limit confirmed in source and Microsoft docs. |
 | Workflow engine | In-house on SQLite; agent-framework-go is a design reference only | Experiment: re-runs completed siblings after a partial superstep and double-emits on duplicate resume. We provide idempotency keys, leases and `response_entry` checkpoints. |
-| LLM clients | `anthropic-sdk-go` v1.84.0, `github.com/openai/openai-go/v3` v3.84.0 | Read final-chunk usage ourselves (`CacheWriteTokens` is dropped by the accumulator). |
+| LLM clients | `anthropic-sdk-go` v1.84.0, `github.com/openai/openai-go/v3` v3.85.0 | Read final-chunk usage ourselves (`CacheWriteTokens` is dropped by the accumulator). |
 | ACP | `github.com/coder/acp-go-sdk` v0.13.5 behind our own interface | Pre-1.0, no Windows CI; `usage_update` and prompt `usage` unstable. |
 | MCP | `github.com/modelcontextprotocol/go-sdk` v1.8.0 behind our own interface | Mixed MIT/Apache-2.0 license in transition: legal sign-off before release. `CommandTransport` kills only the direct child: servers are started under our process manager. |
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
