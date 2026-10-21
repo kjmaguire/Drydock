@@ -56,6 +56,21 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
   #pending: { turnId: string; version: number } | undefined;
   #stopped = false;
   readonly #badEvents = new LimitedWarn();
+  /**
+   * How tool calls ended, by message id, as chat.tool_result said. A result can come before its row is in the list (the view
+   * opened mid-turn: the row arrives with a read that began before the result was stored), so it is kept and put on the row
+   * whenever the row lands without one.
+   */
+  readonly #results = new Map<string, Pick<ChatMessage, 'toolStatus' | 'toolResult' | 'toolMs'>>();
+
+  /** The list with every known result on its row (a row that already says how it ended keeps that). */
+  #withResults(list: ChatMessage[]): ChatMessage[] {
+    if (this.#results.size === 0) return list;
+    return list.map((m) => {
+      const r = m.toolStatus ? undefined : this.#results.get(m.id);
+      return r ? { ...m, ...r } : m;
+    });
+  }
 
   constructor(client: FeedClient, store: EventStore, id: string) {
     super();
@@ -104,12 +119,12 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
       if (!first && baseNewest !== undefined && firstSeq !== undefined && firstSeq <= baseNewest + 1) {
         // the page joins what was shown: merge; its hasMore counts when it reaches back to the oldest message shown
         const oldest = this.messages[0]?.seq ?? firstSeq;
-        this.messages = mergeMessages(this.messages, d.messages);
+        this.messages = this.#withResults(mergeMessages(this.messages, d.messages));
         if (firstSeq <= oldest) this.hasMore = d.hasMore;
       } else {
         // the first load, or a page that does not join (a long turn stored messages while the stream was down): start the
         // list from the page, keeping only what events added from the page on
-        this.messages = mergeMessages(d.messages, firstSeq === undefined ? this.messages : this.messages.filter((m) => m.seq >= firstSeq));
+        this.messages = this.#withResults(mergeMessages(d.messages, firstSeq === undefined ? this.messages : this.messages.filter((m) => m.seq >= firstSeq)));
         this.hasMore = d.hasMore;
       }
       this.#loaded = true;
@@ -136,7 +151,7 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
       // stopped, or a load landed meanwhile: the page was asked for against a list that may be gone
       if (this.#stopped || gen !== this.#listGen) return 0;
       const n = this.messages.length;
-      this.messages = mergeMessages(this.messages, page.messages);
+      this.messages = this.#withResults(mergeMessages(this.messages, page.messages));
       added = this.messages.length - n;
       this.hasMore = page.hasMore;
       this.error = undefined;
@@ -208,7 +223,7 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         const m = d.message;
         if (!isChatMessage(m)) return this.#ignore(e, 'message');
         if (m.chatId !== this.id) return;
-        this.messages = mergeMessages(this.messages, [m]);
+        this.messages = this.#withResults(mergeMessages(this.messages, [m]));
         // the stored assistant block covers the text streamed so far (the core flushes deltas before it stores)
         if (m.role === 'assistant' && this.streaming) this.streaming = { ...this.streaming, text: '' };
         // the stored tool call or answer keeps the reasoning streamed before it (P89)
@@ -224,10 +239,12 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
       }
       case 'chat.tool_result': {
         if (!isChatToolResult(d)) return this.#ignore(e, 'result');
+        const r = { toolStatus: d.status, toolResult: d.result, toolMs: d.ms };
+        this.#results.set(d.messageId, r);
         const i = this.messages.findIndex((m) => m.id === d.messageId);
-        if (i < 0) return; // a page not loaded: the stored row carries the result when it is read
+        if (i < 0) return; // not in the list yet: put on the row when it lands
         const next = this.messages.slice();
-        next[i] = { ...next[i]!, toolStatus: d.status, toolResult: d.result, toolMs: d.ms };
+        next[i] = { ...next[i]!, ...r };
         this.messages = next;
         break;
       }

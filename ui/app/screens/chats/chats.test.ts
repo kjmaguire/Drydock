@@ -292,6 +292,26 @@ describe('ChatFeed', () => {
     expect(f.messages).toHaveLength(3);
   });
 
+  it('a result that comes before its call is in the list lands on the row when a stale read brings it (the view opened mid-turn)', async () => {
+    let release: (v: { chat: Chat; messages: ChatMessage[]; hasMore: boolean }) => void = () => {};
+    const store = new EventStore(new FakeTransport());
+    const get = () => new Promise<{ chat: Chat; messages: ChatMessage[]; hasMore: boolean }>((res) => (release = res));
+    const f = new ChatFeed({ chatGet: get, chatMessages: async () => ({ messages: [], hasMore: false }) }, store, 'c1').start();
+    // the result is reported while the first read is out; the read was made before it was stored
+    store.ingest(ev(2, 'chat.tool_result', { data: { chatId: 'c1', messageId: 'm3', status: 'ok', result: 'never guess flags', ms: 55 } }));
+    release({ chat: chat(), messages: [msg(1), msg(3, 'tool', { id: 'm3', toolName: 'skills', body: 'skills' })], hasMore: false });
+    await settle();
+    const m = f.messages.find((x) => x.id === 'm3')!;
+    expect([m.toolStatus, m.toolResult, m.toolMs]).toEqual(['ok', 'never guess flags', 55]);
+    // a later read that already carries how the call ended keeps its own answer
+    const page = { chat: chat(), messages: [msg(1), msg(3, 'tool', { id: 'm3', toolName: 'skills', body: 'skills', toolStatus: 'failed', toolResult: 'x', toolMs: 1 })], hasMore: false };
+    f.stop();
+    const g = new ChatFeed({ chatGet: async () => page, chatMessages: async () => ({ messages: [], hasMore: false }) }, store, 'c1').start();
+    await settle();
+    expect(g.messages.find((x) => x.id === 'm3')!.toolStatus).toBe('failed');
+    g.stop();
+  });
+
   it('ignores a chat.* event whose data is not what the feed reads, with a console warning, and goes on with the next (L43)', async () => {
     const { f, emit } = feed();
     await settle();

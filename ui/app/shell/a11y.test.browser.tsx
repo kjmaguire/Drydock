@@ -139,7 +139,7 @@ describe('the details panel', () => {
     const room = { id: 'room_1', projectId: 'p1', kind: 'channel', name: 'general', mode: 'auto', archived: false, createdAt: '', version: 1 };
     const s = testServices({ roomGet: async () => room as never, roomMembers: async () => [], roomMessagesLatest: async () => [], roomTurns: async () => [] });
     s.ui.setDetails(true);
-    const tabs = (r: { $$: (sel: string) => HTMLElement[] }) => Array.from(r.$$('[role="tab"]')).map((t) => t.textContent);
+    const tabs = (r: { $$: (sel: string) => NodeListOf<HTMLElement> }) => Array.from(r.$$('[role="tab"]')).map((t) => t.textContent);
     const plain = mount(<Details taskId={undefined} page="conversation" />, s);
     expect(tabs(plain)).toEqual(['Agents']);
     cleanup();
