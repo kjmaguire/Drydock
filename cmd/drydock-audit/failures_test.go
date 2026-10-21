@@ -494,27 +494,39 @@ func TestTheScannerIsStartedWithTheProjectsGoAndTheChosenDatabase(t *testing.T) 
 	}
 }
 
-// nodejs.org's index is newest first; the comparison is the newest release of the installed major, and a security release says
-// so (2026-10-20: 24.22.1 while the npm package "node" still said 24.22.0).
-func TestParseNodeIndexPicksTheNewestOfTheLineAndItsSecurityFlag(t *testing.T) {
-	idx := []byte(`[
+// nodejs.org's index is newest first; the comparison is the newest release of the installed major, and a security release newer
+// than the installed one is named even when the newest release is not itself a security release (2026-10-20: 24.22.1 while the
+// npm package "node" still said 24.22.0).
+func TestNodeIndexNamesTheNewestOfTheLineAndEverySecurityReleaseMissed(t *testing.T) {
+	idx, err := parseNodeIndex([]byte(`[
 		{"version":"v26.12.1","date":"2026-10-21","security":true},
+		{"version":"v24.22.2","date":"2026-10-27","security":false},
 		{"version":"v24.22.1","date":"2026-10-20","security":true},
 		{"version":"v24.22.0","date":"2026-10-13","security":false},
+		{"version":"v24.21.0","date":"2026-09-01","security":true},
 		{"version":"v2.0.0","date":"2016-01-01","security":false}
-	]`)
-	r, ok := parseNodeIndex(idx, "24")
-	if !ok || r.version != "24.22.1" || r.date != "2026-10-20" || !r.security {
-		t.Errorf("24: %+v %v", r, ok)
+	]`))
+	if err != nil || idx[0].version != "26.12.1" {
+		t.Fatalf("index: %v %+v", err, idx)
+	}
+	newest, missed, ok := nodeLine(idx, "24", "24.22.0")
+	if !ok || newest.version != "24.22.2" || !slices.Equal(missed, []string{"24.22.1 (2026-10-20)"}) {
+		t.Errorf("on 24.22.0: %+v %v %v", newest, missed, ok)
+	}
+	// on the security release itself nothing is missed: a current row carries no warning
+	if _, missed, _ := nodeLine(idx, "24", "24.22.1"); len(missed) != 0 {
+		t.Errorf("on 24.22.1: %v", missed)
 	}
 	// "2" is its own line, not the start of 24 or 26
-	if r, ok := parseNodeIndex(idx, "2"); !ok || r.version != "2.0.0" || r.security {
-		t.Errorf("2: %+v %v", r, ok)
+	if newest, _, ok := nodeLine(idx, "2", "2.0.0"); !ok || newest.version != "2.0.0" {
+		t.Errorf("2: %+v %v", newest, ok)
 	}
-	if _, ok := parseNodeIndex(idx, "22"); ok {
+	if _, _, ok := nodeLine(idx, "22", "22.1.0"); ok {
 		t.Error("a line the index does not have is not found")
 	}
-	if _, ok := parseNodeIndex([]byte(`<html>blocked</html>`), "24"); ok {
-		t.Error("an unreadable index is not an answer")
+	for _, bad := range []string{`<html>blocked</html>`, `[]`} {
+		if _, err := parseNodeIndex([]byte(bad)); err == nil {
+			t.Errorf("%s is not an answer", bad)
+		}
 	}
 }

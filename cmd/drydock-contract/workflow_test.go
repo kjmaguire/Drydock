@@ -182,8 +182,10 @@ func TestEverySetupNodeInstallsTheNewestRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("no workflows: %v", err)
+	yamls, err2 := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yaml"))
+	files = append(files, yamls...)
+	if err != nil || err2 != nil || len(files) == 0 {
+		t.Fatalf("no workflows: %v %v", err, err2)
 	}
 	seen := 0
 	for _, f := range files {
@@ -201,7 +203,8 @@ func TestEverySetupNodeInstallsTheNewestRelease(t *testing.T) {
 					continue
 				}
 				seen++
-				if s.With["check-latest"] != true {
+				// true, or the string "true" (an action input is a string either way)
+				if v := s.With["check-latest"]; v != true && v != "true" {
 					t.Errorf("%s job %s step %d: setup-node without check-latest: true", filepath.Base(f), name, i)
 				}
 			}

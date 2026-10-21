@@ -78,19 +78,20 @@ func npmPackages(ctx context.Context) []Item {
 		it := Item{ID: "node", Group: "Language and toolchain", Name: "Node.js (installed in this sandbox)", Kind: "runtime", Used: used, Where: "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)"}
 		// the project's line is Node 24 (CI, and the UI tooling needs 24.3+; decision D9 keeps 22 as the user's floor): compare
 		// with the newest release of the installed major and say what the newest line is
-		if major, _, ok := strings.Cut(used, "."); ok {
-			// nodejs.org's own index first: the npm package "node" lags the releases by days, and the index marks security releases
-			if r, ok := nodeIndexLatest(ctx, major); ok {
-				it.Latest = r.version
-				if r.security {
-					it.Note = "The newest " + major + ".x (" + r.version + ", " + r.date + ") is a security release. "
+		// nodejs.org's own index, not the npm package "node", which lags the releases by days; the index also marks security releases
+		idx, err := nodeIndex(ctx)
+		if err != nil {
+			fail("nodejs.org release index: " + err.Error()) // no fallback to the lagging package: a stale answer would pass as current
+		} else if major, _, ok := strings.Cut(used, "."); ok {
+			if newest, missed, ok := nodeLine(idx, major, used); ok {
+				it.Latest = newest.version
+				if len(missed) > 0 {
+					it.Note = withNote(it.Note, "Behind a security release of the "+major+" line: "+strings.Join(missed, ", ")+".")
 				}
-			} else if out := lastLine(run(ctx, root, nil, "npm", "view", "node@"+major, "version")); out != "" {
-				it.Latest = strings.Trim(strings.Fields(out)[len(strings.Fields(out))-1], "'")
+			} else {
+				fail("nodejs.org release index: no " + major + ".x release")
 			}
-		}
-		if newest := npmLatest(ctx, "node"); newest != "" {
-			it.Note += "Newest Node release overall: " + newest + ". The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
+			it.Note = withNote(it.Note, "Newest Node release overall: "+idx[0].version+". The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison.")
 		}
 		items = append(items, it)
 	}
@@ -108,46 +109,64 @@ type nodeRelease struct {
 	security      bool
 }
 
-// nodeIndexLatest reads https://nodejs.org/dist/index.json for the newest release of a major line.
-func nodeIndexLatest(ctx context.Context, major string) (nodeRelease, bool) {
+// nodeIndex reads https://nodejs.org/dist/index.json: every Node release, newest first.
+func nodeIndex(ctx context.Context) ([]nodeRelease, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://nodejs.org/dist/index.json", nil)
 	if err != nil {
-		return nodeRelease{}, false
+		return nil, err
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nodeRelease{}, false
+		return nil, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nodeRelease{}, false
+		return nil, errors.New(res.Status)
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, 16<<20))
 	if err != nil {
-		return nodeRelease{}, false
+		return nil, err
 	}
-	return parseNodeIndex(b, major)
+	return parseNodeIndex(b)
 }
 
-// parseNodeIndex picks the newest release of the major line from nodejs.org's index (newest first, "v24.22.1"); false when the
-// index cannot be read or has no release of that line.
-func parseNodeIndex(b []byte, major string) (nodeRelease, bool) {
+// parseNodeIndex reads nodejs.org's index ("v24.22.1", newest first); an index that is not JSON or lists nothing is an error.
+func parseNodeIndex(b []byte) ([]nodeRelease, error) {
 	var idx []struct {
 		Version  string `json:"version"`
 		Date     string `json:"date"`
 		Security bool   `json:"security"`
 	}
-	if json.Unmarshal(b, &idx) != nil {
-		return nodeRelease{}, false
+	if err := json.Unmarshal(b, &idx); err != nil {
+		return nil, errors.New("unreadable index")
 	}
+	if len(idx) == 0 {
+		return nil, errors.New("empty index")
+	}
+	out := make([]nodeRelease, 0, len(idx))
 	for _, r := range idx {
-		if strings.HasPrefix(r.Version, "v"+major+".") {
-			return nodeRelease{version: strings.TrimPrefix(r.Version, "v"), date: r.Date, security: r.Security}, true
+		out = append(out, nodeRelease{version: strings.TrimPrefix(r.Version, "v"), date: r.Date, security: r.Security})
+	}
+	return out, nil
+}
+
+// nodeLine finds the newest release of the major line, and every security release of that line newer than used ("24.22.1
+// (2026-10-20)"): a host can be behind a security release even when the newest release is not one.
+func nodeLine(idx []nodeRelease, major, used string) (newest nodeRelease, missed []string, ok bool) {
+	for _, r := range idx {
+		if !strings.HasPrefix(r.version, major+".") {
+			continue
+		}
+		if !ok {
+			newest, ok = r, true
+		}
+		if r.security && less(used, r.version) {
+			missed = append(missed, r.version+" ("+r.date+")")
 		}
 	}
-	return nodeRelease{}, false
+	return newest, missed, ok
 }
 
 // npmOutdatedAnswer is parseNPMOutdated for a run that ended with exit code code. npm exits 1 when some package is behind and lists
