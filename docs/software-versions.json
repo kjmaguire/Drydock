@@ -1,13 +1,13 @@
 {
-  "generated": "2026-10-21T00:00:48Z",
-  "commit": "cd993be",
+  "generated": "2026-10-21T00:03:51Z",
+  "commit": "96a49aa",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
   "summary": {
-    "current": 194,
+    "current": 196,
     "major": 1,
-    "minor": 6,
+    "minor": 4,
     "patch": 4,
     "unknown": 4
   },
@@ -332,11 +332,10 @@
       "group": "Go libraries Drydock imports",
       "name": "github.com/anthropics/anthropic-sdk-go",
       "kind": "direct",
-      "used": "1.83.0",
+      "used": "1.84.0",
       "latest": "1.84.0",
-      "status": "minor",
+      "status": "current",
       "usedDate": "2026-10-20",
-      "latestDate": "2026-10-20",
       "where": "go.mod",
       "role": "Drydock's own requests to the Anthropic API, through the llm layer that adds caching, quota and retries. The agent CLIs make their own calls and do not use it.",
       "usedBy": 1,
@@ -419,11 +418,10 @@
       "group": "Go libraries Drydock imports",
       "name": "github.com/openai/openai-go/v3",
       "kind": "direct",
-      "used": "3.82.0",
+      "used": "3.83.0",
       "latest": "3.83.0",
-      "status": "minor",
-      "usedDate": "2026-10-18",
-      "latestDate": "2026-10-20",
+      "status": "current",
+      "usedDate": "2026-10-20",
       "where": "go.mod",
       "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests.",
       "usedBy": 1,
@@ -6739,5 +6737,13 @@
     "skill": 4,
     "tool": 14,
     "withoutNote": 1
-  }
+  },
+  "docDrift": [
+    {
+      "name": "github.com/openai/openai-go/v3",
+      "docs": "3.82.0",
+      "code": "3.83.0",
+      "ref": "docs/decisions.md"
+    }
+  ]
 }
