@@ -493,3 +493,28 @@ func TestTheScannerIsStartedWithTheProjectsGoAndTheChosenDatabase(t *testing.T) 
 		t.Errorf("failures: %v", f)
 	}
 }
+
+// nodejs.org's index is newest first; the comparison is the newest release of the installed major, and a security release says
+// so (2026-10-20: 24.22.1 while the npm package "node" still said 24.22.0).
+func TestParseNodeIndexPicksTheNewestOfTheLineAndItsSecurityFlag(t *testing.T) {
+	idx := []byte(`[
+		{"version":"v26.12.1","date":"2026-10-21","security":true},
+		{"version":"v24.22.1","date":"2026-10-20","security":true},
+		{"version":"v24.22.0","date":"2026-10-13","security":false},
+		{"version":"v2.0.0","date":"2016-01-01","security":false}
+	]`)
+	r, ok := parseNodeIndex(idx, "24")
+	if !ok || r.version != "24.22.1" || r.date != "2026-10-20" || !r.security {
+		t.Errorf("24: %+v %v", r, ok)
+	}
+	// "2" is its own line, not the start of 24 or 26
+	if r, ok := parseNodeIndex(idx, "2"); !ok || r.version != "2.0.0" || r.security {
+		t.Errorf("2: %+v %v", r, ok)
+	}
+	if _, ok := parseNodeIndex(idx, "22"); ok {
+		t.Error("a line the index does not have is not found")
+	}
+	if _, ok := parseNodeIndex([]byte(`<html>blocked</html>`), "24"); ok {
+		t.Error("an unreadable index is not an answer")
+	}
+}

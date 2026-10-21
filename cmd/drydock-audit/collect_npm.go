@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // npmPackages reads ui/package.json for what is declared and ui/package-lock.json for what is installed, and asks the registry
@@ -76,12 +79,18 @@ func npmPackages(ctx context.Context) []Item {
 		// the project's line is Node 24 (CI, and the UI tooling needs 24.3+; decision D9 keeps 22 as the user's floor): compare
 		// with the newest release of the installed major and say what the newest line is
 		if major, _, ok := strings.Cut(used, "."); ok {
-			if out := lastLine(run(ctx, root, nil, "npm", "view", "node@"+major, "version")); out != "" {
+			// nodejs.org's own index first: the npm package "node" lags the releases by days, and the index marks security releases
+			if r, ok := nodeIndexLatest(ctx, major); ok {
+				it.Latest = r.version
+				if r.security {
+					it.Note = "The newest " + major + ".x (" + r.version + ", " + r.date + ") is a security release. "
+				}
+			} else if out := lastLine(run(ctx, root, nil, "npm", "view", "node@"+major, "version")); out != "" {
 				it.Latest = strings.Trim(strings.Fields(out)[len(strings.Fields(out))-1], "'")
 			}
 		}
 		if newest := npmLatest(ctx, "node"); newest != "" {
-			it.Note = "Newest Node release overall: " + newest + ". The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
+			it.Note += "Newest Node release overall: " + newest + ". The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
 		}
 		items = append(items, it)
 	}
@@ -92,6 +101,53 @@ func npmPackages(ctx context.Context) []Item {
 		items = append(items, it)
 	}
 	return items
+}
+
+type nodeRelease struct {
+	version, date string
+	security      bool
+}
+
+// nodeIndexLatest reads https://nodejs.org/dist/index.json for the newest release of a major line.
+func nodeIndexLatest(ctx context.Context, major string) (nodeRelease, bool) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://nodejs.org/dist/index.json", nil)
+	if err != nil {
+		return nodeRelease{}, false
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nodeRelease{}, false
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nodeRelease{}, false
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, 16<<20))
+	if err != nil {
+		return nodeRelease{}, false
+	}
+	return parseNodeIndex(b, major)
+}
+
+// parseNodeIndex picks the newest release of the major line from nodejs.org's index (newest first, "v24.22.1"); false when the
+// index cannot be read or has no release of that line.
+func parseNodeIndex(b []byte, major string) (nodeRelease, bool) {
+	var idx []struct {
+		Version  string `json:"version"`
+		Date     string `json:"date"`
+		Security bool   `json:"security"`
+	}
+	if json.Unmarshal(b, &idx) != nil {
+		return nodeRelease{}, false
+	}
+	for _, r := range idx {
+		if strings.HasPrefix(r.Version, "v"+major+".") {
+			return nodeRelease{version: strings.TrimPrefix(r.Version, "v"), date: r.Date, security: r.Security}, true
+		}
+	}
+	return nodeRelease{}, false
 }
 
 // npmOutdatedAnswer is parseNPMOutdated for a run that ended with exit code code. npm exits 1 when some package is behind and lists
