@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-idempotent-payments",
+  "taskClass": "high-risk",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "c86e5cc2294cc54857319bc439bb53b727b1cfe9",
+  "startedAt": "2026-10-10T21:51:51.303948612Z",
+  "wallMs": 315701,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1677,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2845,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.027s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.011s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.005s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.005s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.019s\nok  \texample.com/tally/internal/snapshot\t0.021s\nok  \texample.com/tally/internal/store\t0.009s\nok  \texample.com/tally/internal/subscriptions\t0.010s\nok  \texample.com/tally/internal/webhooks\t0.007s\n"
+      }
+    ],
+    "durationMs": 4542
+  },
+  "costUsd": 0.07414772,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 86,
+    "output": 57497,
+    "cacheRead": 2061842,
+    "cacheWrite": 123861
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_6578b355c587",
+      "feedback": "internal/api/idempotency.go, chargeWithKey: the keep rule also drops 409 payment_in_progress responses (`!errors.Is(err, payments.ErrPaymentInProgress)`), but the task says every non-5xx response (including 409s) is kept and replayed. Either keep that response to match the spec, or, if the deviation is intended to avoid stranding clients on a stale 409, state it explicitly for the user to approve. The test TestPayKeyInProgressAnswersAtOnce (the 'refused' key assertions) encodes the deviation and must change with the decision."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_6578b355c587"
+    }
+  ],
+  "coreTaskId": "task_2ae878736e6c"
+}

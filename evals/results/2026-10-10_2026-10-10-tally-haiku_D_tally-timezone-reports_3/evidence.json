@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /v1/reports/revenue` groups succeeded payments by day, week or month in the organization's `time_zone`, with the validation errors, bucket shape and gap-filling from the spec.\n- Unit tests cover New York DST days, week and month bucketing, empty buckets, per-currency totals, and each 400 error.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791610851739
+  },
+  {
+    "id": 2,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 590ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-timezone-reports-D-3/data/runs/run_905fb02fe36a/checks/build-1791610851772355615.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 591,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610852363
+  },
+  {
+    "id": 3,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 660ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-timezone-reports-D-3/data/runs/run_905fb02fe36a/checks/test-1791610852365590745.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 658,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610853024
+  },
+  {
+    "id": 4,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 390ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-timezone-reports-D-3/data/runs/run_905fb02fe36a/checks/lint-1791610853025616824.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 388,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610853414
+  },
+  {
+    "id": 5,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3039215516/tally-timezone-reports-D-3/data/runs/run_905fb02fe36a/checks/secrets-1791610853431406996.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 15,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610853431
+  },
+  {
+    "id": 6,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +229 -31",
+    "ref": "/tmp/drydock-trial-3039215516/tally-timezone-reports-D-3/data/runs/run_905fb02fe36a/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 229,
+      "Deletions": 31,
+      "base": "521f290bc866b9eaec49e6fc0f25283b9a0b6df2",
+      "commit": "eae49eeed6c07276a490f014a36778b5fe998df9"
+    },
+    "created": 1791610853558
+  },
+  {
+    "id": 7,
+    "taskId": "task_5616a562113c",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit eae49eeed6",
+    "ref": "eae49eeed6c07276a490f014a36778b5fe998df9",
+    "data": {},
+    "created": 1791610853559
+  }
+]

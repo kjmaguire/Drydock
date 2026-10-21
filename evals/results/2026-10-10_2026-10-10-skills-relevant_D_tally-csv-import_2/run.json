@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "cc5e494377e124b77304b4fe8c0600cc38e9fd83",
+  "startedAt": "2026-10-10T22:07:35.164871126Z",
+  "wallMs": 435832,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1089,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3274,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t2.574s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.005s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.007s\nok  \texample.com/tally/internal/payments\t0.007s\nok  \texample.com/tally/internal/reports\t0.006s\nok  \texample.com/tally/internal/snapshot\t0.013s\nok  \texample.com/tally/internal/store\t0.017s\nok  \texample.com/tally/internal/subscriptions\t0.028s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 4367
+  },
+  "costUsd": 0.10198859999999998,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 116,
+    "output": 78558,
+    "cacheRead": 2881420,
+    "cacheWrite": 169419
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_010eb95e7116",
+      "feedback": "1. internal/store/customers.go: customersByEmail is keyed by normalized email only, but the uniqueness rule is per organization. CreateCustomers (line 44-45, 60) and CustomerEmailsTaken (line 72) therefore miss an address that an existing customer of the importing org holds when another org has since registered the same address (CreateCustomer at line 22-27 allows that, and overwrites the map entry). Result: the import creates a duplicate email in the org instead of returning email_taken. Fix: key the email index by org and normalized email (e.g. orgID+\"\\x00\"+normEmail(email)) and update every use (CreateCustomer, CreateCustomers, CustomerEmailsTaken, FindCustomerByEmail, UpdateCustomer, DeleteCustomer). Add a test: org A has jane@x, org B creates jane@x, then org A's import of jane@x must return 422 email_taken and create nothing. 2. Optional: in internal/api/customers.go row(), two metadata columns with the same key are filled in random map-iteration order; make the choice deterministic."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_010eb95e7116"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_08ae1dbb810f"
+}

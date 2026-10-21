@@ -1,0 +1,37 @@
+# Cross-cutting: one entry per successful change across many endpoints, exact fields, redaction and access control.
+id: tally-audit-log
+title: "Audit log"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  Owners need to see who changed what. Add an audit log.
+
+  - Record one entry for each successful (2xx) request of these kinds, and for nothing else:
+    customer.created, customer.updated, customer.deleted, plan.created, plan.updated, subscription.created,
+    subscription.updated, subscription.canceled, invoice.created, invoice.paid, invoice.voided, api_key.created,
+    api_key.revoked, member.role_changed, member.removed, invite.created, invite.revoked, webhook_endpoint.created,
+    webhook_endpoint.updated, webhook_endpoint.deleted, org.updated.
+    (POST /v1/subscriptions/{id}/cancel is subscription.canceled, also with at_period_end; POST /v1/invoices/{id}/pay that
+    answers 200 is invoice.paid.)
+  - An entry is {"id", "action", "actor": {"type": "api_key", "id": <the key's ID>, "user_id": <its member's user ID>},
+    "target": {"type": <"customer", "plan", "subscription", "invoice", "api_key", "member", "invite", "webhook_endpoint" or
+    "org">, "id": <the object's ID; a member's user ID>}, "request_id": <the request's X-Request-Id>, "at": <the service's
+    clock, RFC 3339 UTC>}. Entries of *.updated, member.role_changed and org.updated also have "changes":
+    {"<JSON field name>": {"from": <old value>, "to": <new value>}} for exactly the fields whose value changed.
+  - Secrets never enter the log: no API key token, webhook endpoint secret or invite token appears in any entry.
+  - GET /v1/audit-events lists the organization's entries, newest first, with the filters ?action=, ?target_id= and
+    ?actor_id= (a user ID or an API key ID) and the usual limit and cursor paging. Only owners and admins may read it; others
+    get 403 {"error":"forbidden"}. No request can change or delete an entry.
+  - A request that fails records nothing.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-audit-log
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

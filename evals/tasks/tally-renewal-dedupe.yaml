@@ -1,0 +1,31 @@
+# A race between server instances and a half-done renewal: both need the same idempotent design.
+id: tally-renewal-dedupe
+title: "Stop duplicate renewal invoices"
+suite: tally
+fixture: testdata/fixtures/tally
+class: test-fix loop
+risk: high
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Some customers got two invoices for the same month. Two things cause it, and both must be fixed:
+
+  1. RenewDue runs in every server instance, so two instances can renew the same subscription at the same time.
+  2. When the charge of a renewal invoice fails because the payment gateway is unavailable, RenewDue returns after the invoice
+     was created and before the subscription moved to its next period, so the next run invoices that period again.
+
+  Rules:
+  - A subscription's period is invoiced at most once: the pair (subscription, period start) identifies a renewal invoice. Any
+    number of RenewDue calls, at the same time or one after another, with the gateway working or not, create at most one
+    invoice per subscription and period and take the money for it at most once.
+  - When the gateway is unavailable, the renewal still moves the subscription to its next period; the invoice stays open (it
+    can be paid later) and the subscription keeps its status.
+  - RenewDue goes on with the other subscriptions when one fails, and returns the error only after trying them all.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-renewal-dedupe
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

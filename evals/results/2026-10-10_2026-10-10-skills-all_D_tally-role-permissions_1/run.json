@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-role-permissions",
+  "taskClass": "security review",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "c608a3a91fe841eed72c90f6464bc85d0a8ff230",
+  "startedAt": "2026-10-10T21:53:47.622151518Z",
+  "wallMs": 540932,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1054,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1768,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.176s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.013s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.011s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.009s\nok  \texample.com/tally/internal/snapshot\t0.009s\nok  \texample.com/tally/internal/store\t0.004s\nok  \texample.com/tally/internal/subscriptions\t0.006s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2826
+  },
+  "costUsd": 0.28336364,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 146,
+    "output": 108279,
+    "cacheRead": 5318858,
+    "cacheWrite": 317088
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_ba9fced71b39",
+      "feedback": "Race in owner/admin protection: internal/api/team.go:106 (updateMember) and team.go:126 (removeMember) read the target role with s.store.Member() and then call SetMemberRole/RemoveMember in a separate lock acquisition. If an owner promotes a member to admin between those two calls, an admin's request that passed the check still changes or removes that admin, violating 'only owners change or remove an owner or admin'. Fix: move the caller-is-owner / target-is-owner-or-admin decision into the store methods SetMemberRole and RemoveMember in internal/store/store.go, under the same s.mu as the write. Return a sentinel (e.g. ErrForbidden) and map it to writeCode(403, \"forbidden\") in storeError. Add a test or store-level test covering it. Everything else in the matrix, member rules, invites, and API key access checks out."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_ba9fced71b39",
+      "feedback": "internal/store/store.go: SetMemberRole and RemoveMember changed their exported signatures (new `actor Actor` parameter). The task requires existing exported names and signatures to keep working unless the task says otherwise, and it does not. Restore `SetMemberRole(orgID, userID string, role Role)` and `RemoveMember(orgID, userID string)` with their original signatures and behaviour, add new methods that take an Actor (e.g. SetMemberRoleAs / RemoveMemberAs) that carry the new guard and last-owner rules, and switch the handlers in internal/api/team.go (updateMember, removeMember) to the new methods. In internal/store/store_test.go, revert the TestUsersAndMembers calls to the original signatures so that test is unchanged, and point the new TestMemberRoleGuards at the new methods."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_ba9fced71b39"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_f752a2df2034"
+}

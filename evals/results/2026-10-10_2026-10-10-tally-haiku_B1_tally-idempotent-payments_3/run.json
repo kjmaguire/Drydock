@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-idempotent-payments",
+  "taskClass": "high-risk",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "fe84b9d020d60ad3fefafff98056a525e3d5a318",
+  "startedAt": "2026-10-10T05:32:26.215424318Z",
+  "wallMs": 262137,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1062,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2557,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.063s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.008s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.009s\nok  \texample.com/tally/internal/payments\t0.012s\nok  \texample.com/tally/internal/reports\t0.009s\nok  \texample.com/tally/internal/snapshot\t0.043s\nok  \texample.com/tally/internal/store\t0.009s\nok  \texample.com/tally/internal/subscriptions\t0.013s\nok  \texample.com/tally/internal/webhooks\t0.006s\n"
+      }
+    ],
+    "durationMs": 3642
+  },
+  "costUsd": 0.17345398,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 46,
+    "output": 48533,
+    "cacheRead": 1920232,
+    "cacheWrite": 108999
+  },
+  "sessions": 1,
+  "modelTurns": 24,
+  "toolUses": {
+    "Bash": 23
+  }
+}

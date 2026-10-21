@@ -1,0 +1,110 @@
+# CI for the golden starter. Windows only: Drydock itself is Windows-only, and
+# agents' checks must pass where the product runs.
+#
+# PREVIEW DEPLOY (decision D6): the `preview` job is DISABLED unless the secret
+# CF_PREVIEW_API_TOKEN exists. It only ever runs `wrangler preview` (through
+# `npm run preview`, which refuses every other subcommand). `wrangler deploy`
+# does not appear in this repository's automation. The token must belong to a
+# Cloudflare account that holds only preview resources, never production.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test (workerd + D1/KV/R2 simulators, offline)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: E2E (Playwright against wrangler dev)
+        run: npm run e2e
+
+      - name: Upload test artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Secrets cannot be read in a job-level `if`, so this job turns "secret exists"
+  # into an output the preview job can test.
+  preview-gate:
+    runs-on: windows-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        shell: bash
+        env:
+          CF_PREVIEW_API_TOKEN: ${{ secrets.CF_PREVIEW_API_TOKEN }}
+        run: |
+          if [ -n "$CF_PREVIEW_API_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "CF_PREVIEW_API_TOKEN is not set: preview deploys are disabled."
+          fi
+
+  preview:
+    needs: [verify, preview-gate]
+    # Same-repository pull requests only: forks never receive the secret anyway,
+    # and a preview must never be created from untrusted code.
+    if: >-
+      needs.preview-gate.outputs.enabled == 'true' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create preview deployment (wrangler preview only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PREVIEW_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_PREVIEW_ACCOUNT_ID }}
+        run: npm run preview -- --name pr-${{ github.event.pull_request.number }} --message "PR ${{ github.event.pull_request.number }} @ ${{ github.sha }}"

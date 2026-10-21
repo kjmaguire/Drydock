@@ -1,0 +1,74 @@
+# Drydock's own rules for C# (decision P77). Each one names a pattern that is a security problem in most code that has it;
+# its message says why and what to do instead. Fixtures: internal/scan/testdata/rules/drydock.
+rules:
+  - id: drydock.cs.sql-built-from-data
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      This SQL text is built by joining strings or interpolation, so a value with a quote can change the query (SQL
+      injection). Use parameters (@name) and add the values with Parameters.AddWithValue.
+    metadata: { category: security, cwe: "CWE-89: SQL Injection", confidence: MEDIUM }
+    pattern-either:
+      - pattern: new SqlCommand("..." + $X, ...)
+      - pattern: new SqlCommand("..." + $X + "...", ...)
+      - pattern: new SqlCommand($"...", ...)
+      - pattern: new SqliteCommand("..." + $X, ...)
+      - pattern: new SqliteCommand("..." + $X + "...", ...)
+      - pattern: new NpgsqlCommand("..." + $X, ...)
+      - pattern: new NpgsqlCommand("..." + $X + "...", ...)
+      - pattern: $CMD.CommandText = "..." + $X
+      - pattern: $CMD.CommandText = "..." + $X + "..."
+      - pattern: $CMD.CommandText = $"..."
+      - pattern: $DB.Database.ExecuteSqlRaw("..." + $X, ...)
+      - pattern: $DB.Database.ExecuteSqlRaw("..." + $X + "...", ...)
+      - pattern: $DB.$SET.FromSqlRaw("..." + $X, ...)
+      - pattern: $DB.$SET.FromSqlRaw("..." + $X + "...", ...)
+  - id: drydock.cs.binary-formatter
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      BinaryFormatter, NetDataContractSerializer, SoapFormatter and LosFormatter build whatever types the data names; data
+      from outside this program can run code. Microsoft marks them unsafe: use System.Text.Json.
+    metadata: { category: security, cwe: "CWE-502: Deserialization of Untrusted Data", confidence: HIGH }
+    pattern-either:
+      - pattern: new BinaryFormatter(...)
+      - pattern: new NetDataContractSerializer(...)
+      - pattern: new SoapFormatter(...)
+      - pattern: new LosFormatter(...)
+  - id: drydock.cs.weak-hash
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      MD5 and SHA-1 are broken for security: collisions can be made. Use SHA256 or better, or a password hash (PBKDF2 with
+      Rfc2898DeriveBytes) for passwords.
+    metadata: { category: security, cwe: "CWE-328: Use of Weak Hash", confidence: MEDIUM }
+    pattern-either:
+      - pattern: MD5.Create(...)
+      - pattern: SHA1.Create(...)
+      - pattern: MD5.HashData(...)
+      - pattern: SHA1.HashData(...)
+      - pattern: new MD5CryptoServiceProvider()
+      - pattern: new SHA1CryptoServiceProvider()
+  - id: drydock.cs.tls-certificate-check-off
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      A certificate callback that returns true accepts every certificate, so anyone on the network path can read and change
+      the traffic. Remove it, or check the certificate's thumbprint against the one you expect.
+    metadata: { category: security, cwe: "CWE-295: Improper Certificate Validation", confidence: HIGH }
+    pattern-either:
+      - pattern: $X.ServerCertificateValidationCallback = ($A, $B, $C, $D) => true
+      - pattern: $X.ServerCertificateCustomValidationCallback = ($A, $B, $C, $D) => true
+      - pattern: $X.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+  - id: drydock.cs.process-shell-built-from-data
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      This starts cmd.exe or a shell with a command built from data, so a value with & | or ; runs other commands. Start the
+      program itself and pass the arguments in ArgumentList.
+    metadata: { category: security, cwe: "CWE-78: OS Command Injection", confidence: MEDIUM }
+    pattern-either:
+      - pattern: Process.Start("cmd.exe", "/c " + $X)
+      - pattern: Process.Start("cmd", "/c " + $X)
+      - pattern: Process.Start("cmd.exe", $"...")
+      - pattern: Process.Start("powershell", "-Command " + $X)

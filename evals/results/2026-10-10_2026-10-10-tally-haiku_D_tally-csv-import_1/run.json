@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "e128520648640683df3ba60864d73e62d7ca2268",
+  "startedAt": "2026-10-10T04:51:30.648018882Z",
+  "wallMs": 366211,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1614,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 4149,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t2.301s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.006s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.014s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.013s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.010s\nok  \texample.com/tally/internal/snapshot\t0.008s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.006s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 5798
+  },
+  "costUsd": 0.13105693000000002,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 78,
+    "output": 73633,
+    "cacheRead": 2413043,
+    "cacheWrite": 186621
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_ab54d9654ed9",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe import handler, store batch, header matching, dry run, error codes, and viewer check all match the spec. One requirement is not met: the reader drops records it should report.\n\n- **`internal/api/customers_import.go`, `readImport` and `blankFields`:** `blankFields` skips any record whose fields are all empty, so a line like `,,` or `,,,` is silently dropped. The spec only says blank lines are skipped. A `,,` line is a record with no name, so it should produce `{\"row\": N, \"error\": \"missing_name\"}` and the batch should be refused. Spreadsheet exports often end with such rows, so they will be silently ignored instead of reported. Fix: skip only records that are truly empty lines (or whitespace-only lines), and let `,,` go through `importProblem`. Add a test with a `,,` row expecting `missing_name` at its line number.\n\nOptional notes, not reasons to revise:\n- A ragged row (wrong field count) returns 400 `invalid_csv` for the whole body rather than a per-row error. This is a defensible reading of \"not valid CSV\", and the spec does not settle it.\n- `seen` is set for invalid earlier records too, so a later record can get `duplicate_email` because an earlier invalid record used the address. This matches the literal \"an earlier record has it\" wording.\n- The store's `customersByEmail` map is global across organizations and is overwritten on insert. `CreateCustomer` already does this, so it is not introduced here.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"internal/api/customers_import.go, rea\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_ab54d9654ed9"
+    }
+  ],
+  "coreTaskId": "task_0a7abe0095d2"
+}

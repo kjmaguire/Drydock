@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-month-end-renewals",
+  "taskClass": "test-fix loop",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "98295dff61002c99af8a37d4b4d141e8e153a460",
+  "startedAt": "2026-10-10T04:52:00.670620955Z",
+  "wallMs": 217061,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1463,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3488,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.095s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.021s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.005s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.015s\nok  \texample.com/tally/internal/snapshot\t0.035s\nok  \texample.com/tally/internal/store\t0.013s\nok  \texample.com/tally/internal/subscriptions\t0.025s\nok  \texample.com/tally/internal/webhooks\t0.011s\n"
+      }
+    ],
+    "durationMs": 4957
+  },
+  "costUsd": 0.05487684999999999,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 44,
+    "output": 46425,
+    "cacheRead": 1225895,
+    "cacheWrite": 97005
+  },
+  "sessions": 2,
+  "reviews": [
+    {
+      "verdict": "SHIP",
+      "by": "agt_3d977fe0e68e"
+    }
+  ],
+  "coreTaskId": "task_a4da74677858"
+}

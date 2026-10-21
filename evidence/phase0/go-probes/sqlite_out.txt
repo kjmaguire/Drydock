@@ -1,0 +1,12 @@
+sqlite_version: 3.53.4 journal_mode: wal
+compile_option: ENABLE_FTS5
+compile_option: ENABLE_RTREE
+compile_option: THREADSAFE=1
+fts5 hit: db bm25=-0.5384
+fts5 snippet: auth refresh [tokens] expire after thirty...
+json_extract: 5
+BENCH insert 100000 rows batch=1000 (prepared, 1 tx per batch, WAL, sync=NORMAL, 1 index): 708.28108ms => 141187 rows/s
+BENCH insert 100000 rows batch=100 (prepared, 1 tx per batch, WAL, sync=NORMAL, 1 index): 1.542319389s => 64837 rows/s
+BENCH autocommit single-row insert 5000 rows: 197.990509ms => 25254 rows/s
+CONCURRENT: writer inserted 20000 rows in 407.274203ms while 4 reader goroutines completed 36946 reads, 0 read errors
+4 concurrent writers x200 tx w/ busy_timeout=5000 (deferred BEGIN): ok=800 err=0

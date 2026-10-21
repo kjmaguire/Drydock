@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "B1",
+  "armDetail": "plain Claude Code: one headless session (claude -p), --permission-mode acceptEdits, --allowedTools Bash, on this machine",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "156ce7dd16cd0e494cd5f30e5a8e9b3bdd87a9fb",
+  "startedAt": "2026-10-10T05:36:26.854972305Z",
+  "wallMs": 201677,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1133,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1866,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t1.258s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.002s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.005s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.007s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.008s\nok  \texample.com/tally/internal/snapshot\t0.007s\nok  \texample.com/tally/internal/store\t0.013s\nok  \texample.com/tally/internal/subscriptions\t0.010s\nok  \texample.com/tally/internal/webhooks\t0.019s\n"
+      }
+    ],
+    "durationMs": 3005
+  },
+  "costUsd": 0.09208305,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 36,
+    "output": 46268,
+    "cacheRead": 1311165,
+    "cacheWrite": 88829
+  },
+  "sessions": 1,
+  "modelTurns": 19,
+  "toolUses": {
+    "Bash": 9,
+    "Edit": 5,
+    "Read": 2,
+    "Write": 2
+  }
+}

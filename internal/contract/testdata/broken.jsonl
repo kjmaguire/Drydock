@@ -1,0 +1,6 @@
+{"ImportPath":"example.com/gtsample/broken [example.com/gtsample/broken.test]","Action":"build-output","Output":"# example.com/gtsample/broken [example.com/gtsample/broken.test]\n"}
+{"ImportPath":"example.com/gtsample/broken [example.com/gtsample/broken.test]","Action":"build-output","Output":"broken/broken_test.go:6:14: cannot use \"not an int\" (untyped string constant) as int value in variable declaration\n"}
+{"ImportPath":"example.com/gtsample/broken [example.com/gtsample/broken.test]","Action":"build-fail"}
+{"Time":"2026-10-10T00:18:46.485737031Z","Action":"start","Package":"example.com/gtsample/broken"}
+{"Time":"2026-10-10T00:18:46.4858169Z","Action":"output","Package":"example.com/gtsample/broken","Output":"FAIL\texample.com/gtsample/broken [build failed]\n","OutputType":"frame"}
+{"Time":"2026-10-10T00:18:46.485827719Z","Action":"fail","Package":"example.com/gtsample/broken","Elapsed":0,"FailedBuild":"example.com/gtsample/broken [example.com/gtsample/broken.test]"}

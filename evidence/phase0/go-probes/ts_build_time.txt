@@ -1,0 +1,5 @@
+COLD all-10-grammars build: 32.176526677 s; binary 27756928 bytes
+WARM rebuild after editing main.go: .638874233 s
+COLD go-tree-sitter+go+python build: 13.881527390 s; binary 3709568 bytes
+stripped 2-grammar: 2506136
+stripped 10-grammar: 26129016

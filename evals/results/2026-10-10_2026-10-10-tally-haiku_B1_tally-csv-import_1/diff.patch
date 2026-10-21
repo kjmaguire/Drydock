@@ -1,0 +1,574 @@
+diff --git a/result/internal/api/customers_import.go b/result/internal/api/customers_import.go
+new file mode 100644
+index 0000000..19fedec
+--- /dev/null
++++ b/result/internal/api/customers_import.go
+@@ -0,0 +1,183 @@
++package api
++
++import (
++	"bufio"
++	"bytes"
++	"encoding/csv"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++
++	"example.com/tally/internal/auth"
++	"example.com/tally/internal/store"
++)
++
++// maxImportRows is how many data records one import may bring.
++const maxImportRows = 10000
++
++// importRow is one record of an import, with the line of the file where it starts.
++type importRow struct {
++	line int
++	rec  store.CustomerRecord
++}
++
++// importColumns says which columns of an import's header hold what.
++type importColumns struct {
++	name, email, paymentMethod int // -1 when absent
++	metadata                   []metadataColumn
++}
++
++type metadataColumn struct {
++	index int
++	key   string
++}
++
++// importColumnsOf reads the header: names match ignoring case and surrounding spaces, and the first column of each name
++// wins. It reports false unless there are name and email columns.
++func importColumnsOf(header []string) (importColumns, bool) {
++	cols := importColumns{name: -1, email: -1, paymentMethod: -1}
++	seenKey := map[string]bool{}
++	for i, h := range header {
++		h = strings.TrimSpace(h)
++		switch strings.ToLower(h) {
++		case "name":
++			if cols.name < 0 {
++				cols.name = i
++			}
++		case "email":
++			if cols.email < 0 {
++				cols.email = i
++			}
++		case "default_payment_method":
++			if cols.paymentMethod < 0 {
++				cols.paymentMethod = i
++			}
++		default:
++			const prefix = "metadata."
++			if len(h) <= len(prefix) || !strings.EqualFold(h[:len(prefix)], prefix) {
++				continue
++			}
++			key := strings.TrimSpace(h[len(prefix):])
++			if key != "" && !seenKey[key] {
++				seenKey[key] = true
++				cols.metadata = append(cols.metadata, metadataColumn{index: i, key: key})
++			}
++		}
++	}
++	return cols, cols.name >= 0 && cols.email >= 0
++}
++
++// record reads one data record. Values are trimmed; an empty metadata value leaves the key unset.
++func (c importColumns) record(f []string) store.CustomerRecord {
++	rec := store.CustomerRecord{Name: strings.TrimSpace(f[c.name]), Email: strings.TrimSpace(f[c.email])}
++	if c.paymentMethod >= 0 {
++		rec.DefaultPaymentMethod = strings.TrimSpace(f[c.paymentMethod])
++	}
++	for _, m := range c.metadata {
++		if v := strings.TrimSpace(f[m.index]); v != "" {
++			if rec.Metadata == nil {
++				rec.Metadata = map[string]string{}
++			}
++			rec.Metadata[m.key] = v
++		}
++	}
++	return rec
++}
++
++// nextRecord reads the next CSV record that is not a blank line, or io.EOF at the end. It returns the record's line too.
++func nextRecord(cr *csv.Reader) ([]string, int, error) {
++	for {
++		rec, err := cr.Read()
++		if err != nil {
++			return nil, 0, err
++		}
++		if len(rec) == 1 && strings.TrimSpace(rec[0]) == "" {
++			continue
++		}
++		line, _ := cr.FieldPos(0)
++		return rec, line, nil
++	}
++}
++
++// importCustomers creates the customers of a CSV body: see the API documentation for the format. With ?dry_run=true it only
++// checks the file.
++func (s *Server) importCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	in := bufio.NewReader(r.Body)
++	if b, _ := in.Peek(3); bytes.Equal(b, []byte("\xef\xbb\xbf")) {
++		_, _ = in.Discard(3)
++	}
++	cr := csv.NewReader(in)
++	cr.FieldsPerRecord = -1 // checked below, so that a blank line with spaces is skipped rather than rejected
++	header, _, err := nextRecord(cr)
++	if errors.Is(err, io.EOF) {
++		writeError(w, http.StatusUnprocessableEntity, "invalid_header", "the first record must be a header with name and email columns")
++		return
++	}
++	if err != nil {
++		writeError(w, http.StatusBadRequest, "invalid_csv", "the body is not valid CSV: "+err.Error())
++		return
++	}
++	cols, ok := importColumnsOf(header)
++	if !ok {
++		writeError(w, http.StatusUnprocessableEntity, "invalid_header", "the header must have name and email columns")
++		return
++	}
++	var rows []importRow
++	for {
++		rec, line, err := nextRecord(cr)
++		if errors.Is(err, io.EOF) {
++			break
++		}
++		if err != nil || len(rec) != len(header) {
++			msg := "a record has a different number of fields than the header"
++			if err != nil {
++				msg = err.Error()
++			}
++			writeError(w, http.StatusBadRequest, "invalid_csv", "the body is not valid CSV: "+msg)
++			return
++		}
++		if len(rows) == maxImportRows {
++			writeError(w, http.StatusRequestEntityTooLarge, "too_many_rows", "an import takes at most 10000 records")
++			return
++		}
++		rows = append(rows, importRow{line: line, rec: cols.record(rec)})
++	}
++
++	recs := make([]store.CustomerRecord, len(rows))
++	for i, row := range rows {
++		recs[i] = row.rec
++	}
++	dryRun := r.URL.Query().Get("dry_run") == "true"
++	created, problems, err := s.store.ImportCustomers(p.OrgID, recs, s.clock.Now(), dryRun)
++	if err != nil {
++		s.storeError(w, err)
++		return
++	}
++	if len(problems) > 0 {
++		type rowError struct {
++			Row   int    `json:"row"`
++			Error string `json:"error"`
++		}
++		out := make([]rowError, len(problems))
++		for i, pr := range problems {
++			out[i] = rowError{Row: rows[pr.Index].line, Error: pr.Code}
++		}
++		writeJSON(w, http.StatusUnprocessableEntity, struct {
++			Error string     `json:"error"`
++			Rows  []rowError `json:"rows"`
++		}{"invalid_rows", out})
++		return
++	}
++	if dryRun {
++		writeJSON(w, http.StatusOK, map[string]int{"created": 0, "would_create": len(rows)})
++		return
++	}
++	for _, c := range created {
++		s.publish(r.Context(), p.OrgID, "customer.created", c)
++	}
++	writeJSON(w, http.StatusCreated, struct {
++		Created int              `json:"created"`
++		Items   []store.Customer `json:"items"`
++	}{len(created), created})
++}
+diff --git a/result/internal/api/customers_import_test.go b/result/internal/api/customers_import_test.go
+new file mode 100644
+index 0000000..be9eeaf
+--- /dev/null
++++ b/result/internal/api/customers_import_test.go
+@@ -0,0 +1,233 @@
++package api_test
++
++import (
++	"fmt"
++	"net/http"
++	"strings"
++	"testing"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++const importPath = "/v1/customers/import"
++
++type importResponse struct {
++	Created int              `json:"created"`
++	Items   []store.Customer `json:"items"`
++}
++
++// rowErrors decodes an invalid_rows answer.
++func rowErrors(t *testing.T, r *apitest.Response) []string {
++	t.Helper()
++	var body struct {
++		Error string `json:"error"`
++		Rows  []struct {
++			Row   int    `json:"row"`
++			Error string `json:"error"`
++		} `json:"rows"`
++	}
++	r.JSON(t, &body)
++	if body.Error != "invalid_rows" {
++		t.Fatalf("error = %q, want invalid_rows: %s", body.Error, r)
++	}
++	out := []string{}
++	for _, row := range body.Rows {
++		out = append(out, fmt.Sprintf("%d:%s", row.Row, row.Error))
++	}
++	return out
++}
++
++func expectError(t *testing.T, r *apitest.Response, status int, code string) {
++	t.Helper()
++	if r.Code != status || r.Map(t)["error"] != code {
++		t.Fatalf("want %d %s, got %s", status, code, r)
++	}
++}
++
++func customerCount(e *apitest.Env, org apitest.Org) int {
++	return len(e.Store.Customers(org.ID))
++}
++
++func TestImportCustomers(t *testing.T) {
++	e := apitest.New(t)
++	e.CreateCustomer(e.Acme, "Existing", "existing@example.com")
++	body := "\xef\xbb\xbf" + // byte order mark
++		"Ignored , Email ,  NAME,metadata.Plan , metadata.crm,default_payment_method\r\n" +
++		"x,jane@example.com,\"Doe, Jane \"\"JD\"\"\",gold,7,pm_card_1\r\n" +
++		"\r\n" +
++		"  \n" +
++		"y,\"ann@example.com\",\"Ann\nLee\",,,\n" +
++		"z,JOHN@example.com,John Roe,silver,,\n"
++	var got importResponse
++	e.MustDo(http.StatusCreated, "POST", importPath, e.Acme.Key, body, &got)
++	if got.Created != 3 || len(got.Items) != 3 {
++		t.Fatalf("answer = %+v", got)
++	}
++	jane, ann, john := got.Items[0], got.Items[1], got.Items[2]
++	if jane.Name != `Doe, Jane "JD"` || jane.Email != "jane@example.com" || jane.DefaultPaymentMethod != "pm_card_1" {
++		t.Fatalf("jane = %+v", jane)
++	}
++	if jane.Metadata["Plan"] != "gold" || jane.Metadata["crm"] != "7" || len(jane.Metadata) != 2 {
++		t.Fatalf("jane's metadata = %v", jane.Metadata)
++	}
++	if ann.Name != "Ann\nLee" || ann.Metadata != nil || ann.DefaultPaymentMethod != "" {
++		t.Fatalf("ann = %+v", ann)
++	}
++	if john.Email != "JOHN@example.com" || john.Metadata["Plan"] != "silver" {
++		t.Fatalf("john = %+v", john)
++	}
++	if !(jane.CreatedAt.Equal(ann.CreatedAt) && ann.CreatedAt.Equal(john.CreatedAt)) || jane.ID >= ann.ID || ann.ID >= john.ID {
++		t.Fatalf("ids or times out of file order: %s %s %s", jane.ID, ann.ID, john.ID)
++	}
++	if customerCount(e, e.Acme) != 4 {
++		t.Fatalf("org has %d customers", customerCount(e, e.Acme))
++	}
++
++	var events struct {
++		Items []store.Event `json:"items"`
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/events", e.Acme.Key, nil, &events)
++	created := 0
++	for _, ev := range events.Items {
++		if ev.Type == "customer.created" {
++			created++
++		}
++	}
++	if created != 4 { // the existing customer, then the three imported ones
++		t.Fatalf("customer.created events: %d", created)
++	}
++}
++
++func TestImportOtherOrganizationsEmailIsNotTaken(t *testing.T) {
++	e := apitest.New(t)
++	e.CreateCustomer(e.Globex, "Elsewhere", "shared@example.com")
++	var got importResponse
++	e.MustDo(http.StatusCreated, "POST", importPath, e.Acme.Key, "name,email\nShared,shared@example.com\n", &got)
++	if got.Created != 1 {
++		t.Fatalf("answer = %+v", got)
++	}
++}
++
++func TestImportHeaderOnlyAndBlankIsEmpty(t *testing.T) {
++	e := apitest.New(t)
++	var got importResponse
++	r := e.MustDo(http.StatusCreated, "POST", importPath, e.Acme.Key, "name,email\n\n", &got)
++	if !strings.Contains(string(r.Body), `"items":[]`) || got.Created != 0 {
++		t.Fatalf("answer = %s", r)
++	}
++}
++
++func TestImportInvalidHeader(t *testing.T) {
++	e := apitest.New(t)
++	for _, body := range []string{
++		"",
++		"\n\n  \n",
++		"\xef\xbb\xbf",
++		"name,phone\nJane,555\n",
++		"email\njane@example.com\n",
++		"name,Email2\nJane,jane@example.com\n",
++		"metadata.name,email\nJane,jane@example.com\n",
++	} {
++		expectError(t, e.Do("POST", importPath, e.Acme.Key, body), http.StatusUnprocessableEntity, "invalid_header")
++	}
++	if customerCount(e, e.Acme) != 0 {
++		t.Fatal("a refused import created customers")
++	}
++}
++
++func TestImportInvalidCSV(t *testing.T) {
++	e := apitest.New(t)
++	for _, body := range []string{
++		"name,email\nJane,\"jane@example.com\n",     // unterminated quote
++		"name,email\nJa\"ne,jane@example.com\n",     // quote inside an unquoted field
++		"name,email\nJane,jane@example.com,extra\n", // more fields than the header
++		"name,email\nJane\n",                        // fewer fields than the header
++	} {
++		expectError(t, e.Do("POST", importPath, e.Acme.Key, body), http.StatusBadRequest, "invalid_csv")
++	}
++	if customerCount(e, e.Acme) != 0 {
++		t.Fatal("a refused import created customers")
++	}
++}
++
++func TestImportTooManyRows(t *testing.T) {
++	e := apitest.New(t)
++	build := func(n int) string {
++		var b strings.Builder
++		b.WriteString("name,email\n")
++		for i := 0; i < n; i++ {
++			fmt.Fprintf(&b, "Customer %d,c%d@example.com\n", i, i)
++		}
++		return b.String()
++	}
++	expectError(t, e.Do("POST", importPath, e.Acme.Key, build(10001)), http.StatusRequestEntityTooLarge, "too_many_rows")
++	if customerCount(e, e.Acme) != 0 {
++		t.Fatal("a refused import created customers")
++	}
++	var got importResponse
++	e.MustDo(http.StatusCreated, "POST", importPath, e.Acme.Key, build(10000), &got)
++	if got.Created != 10000 {
++		t.Fatalf("created %d", got.Created)
++	}
++}
++
++func TestImportInvalidRowsReportsEveryBadRecord(t *testing.T) {
++	e := apitest.New(t)
++	e.CreateCustomer(e.Acme, "Taken", "taken@example.com")
++	body := "name,email,default_payment_method\n" +
++		"Fine,fine@example.com,\n" + // line 2
++		",nameless@example.com,\n" + // line 3: missing_name
++		"Bad,not-an-email,\n" + // line 4: invalid_email
++		"Card,card@example.com,card_123\n" + // line 5: invalid_payment_method
++		"Dup,TAKEN@example.com,\n" + // line 6: email_taken
++		"Twice,Fine@example.com,\n" + // line 7: duplicate_email
++		",\"multi@example.com\",\n" + // line 8: missing_name
++		"\"Two\nlines\",two@example.com,\n" + // lines 9-10: fine
++		"Ok,ok@example.com,pm_ok\n" + // line 11: fine
++		"  ,spaces@example.com,\n" // line 12: missing_name
++	want := []string{"3:missing_name", "4:invalid_email", "5:invalid_payment_method", "6:email_taken", "7:duplicate_email", "8:missing_name", "12:missing_name"}
++	if got := rowErrors(t, e.Do("POST", importPath, e.Acme.Key, body)); strings.Join(got, " ") != strings.Join(want, " ") {
++		t.Fatalf("rows = %v, want %v", got, want)
++	}
++	if customerCount(e, e.Acme) != 1 {
++		t.Fatal("an import with bad rows created customers")
++	}
++}
++
++func TestImportRowNumberCountsMultiLineRecords(t *testing.T) {
++	e := apitest.New(t)
++	body := "name,email\n" +
++		"\"Jane\nDoe\",jane@example.com\n" + // lines 2-3
++		"\n" + // line 4, blank
++		"\"Bad\nRow\",not-an-email\n" // starts on line 5
++	if got := rowErrors(t, e.Do("POST", importPath, e.Acme.Key, body)); strings.Join(got, " ") != "5:invalid_email" {
++		t.Fatalf("rows = %v", got)
++	}
++}
++
++func TestImportDryRun(t *testing.T) {
++	e := apitest.New(t)
++	var got struct {
++		Created     int `json:"created"`
++		WouldCreate int `json:"would_create"`
++	}
++	e.MustDo(http.StatusOK, "POST", importPath+"?dry_run=true", e.Acme.Key, "name,email\nJane,jane@example.com\nJohn,john@example.com\n", &got)
++	if got.Created != 0 || got.WouldCreate != 2 {
++		t.Fatalf("dry run = %+v", got)
++	}
++	expectError(t, e.Do("POST", importPath+"?dry_run=true", e.Acme.Key, "name,email\nJane,jane@example.com\nJane,JANE@example.com\n"), http.StatusUnprocessableEntity, "invalid_rows")
++	expectError(t, e.Do("POST", importPath+"?dry_run=true", e.Acme.Key, "name\nJane\n"), http.StatusUnprocessableEntity, "invalid_header")
++	if customerCount(e, e.Acme) != 0 {
++		t.Fatal("a dry run created customers")
++	}
++}
++
++func TestImportNeedsWriteAccess(t *testing.T) {
++	e := apitest.New(t)
++	_, viewer := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++	expectError(t, e.Do("POST", importPath, viewer, "name,email\nJane,jane@example.com\n"), http.StatusForbidden, "forbidden")
++	if r := e.Do("POST", importPath, "", "name,email\n"); r.Code != http.StatusUnauthorized {
++		t.Fatalf("no key: %s", r)
++	}
++}
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..e037bc7 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -101,6 +101,7 @@ func (s *Server) routes() {
+ 	m.HandleFunc("GET /v1/customers", s.authed(s.listCustomers))
+ 	m.HandleFunc("POST /v1/customers", s.authed(s.createCustomer))
+ 	m.HandleFunc("GET /v1/customers/export.csv", s.authed(s.exportCustomers))
++	m.HandleFunc("POST /v1/customers/import", s.authed(s.importCustomers))
+ 	m.HandleFunc("GET /v1/customers/{id}", s.authed(s.getCustomer))
+ 	m.HandleFunc("PATCH /v1/customers/{id}", s.authed(s.updateCustomer))
+ 	m.HandleFunc("DELETE /v1/customers/{id}", s.authed(s.deleteCustomer))
+diff --git a/start/internal/store/customers.go b/result/internal/store/customers.go
+index 73ff6bc..6676b52 100644
+--- a/start/internal/store/customers.go
++++ b/result/internal/store/customers.go
+@@ -130,6 +130,75 @@ func (s *Store) DeleteCustomer(orgID, id string) error {
+ 	return nil
+ }
+ 
++// CustomerRecord is one customer to import.
++type CustomerRecord struct {
++	Name                 string
++	Email                string
++	DefaultPaymentMethod string
++	Metadata             map[string]string
++}
++
++// RecordProblem says why the record at Index of an import cannot be imported: one of "missing_name", "invalid_email",
++// "invalid_payment_method", "email_taken" or "duplicate_email".
++type RecordProblem struct {
++	Index int
++	Code  string
++}
++
++// ImportCustomers creates a customer for each record, in order, all or nothing. The records are checked as a whole first:
++// when any is not fine, nothing is created and the problems are returned, one per bad record, in order. With dryRun it only
++// checks. The check and the creation happen under one lock, so no other change can come between them.
++func (s *Store) ImportCustomers(orgID string, recs []CustomerRecord, now time.Time, dryRun bool) ([]Customer, []RecordProblem, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if _, ok := s.orgs[orgID]; !ok {
++		return nil, nil, ErrNotFound
++	}
++	var problems []RecordProblem
++	seen := map[string]bool{}
++	for i, rec := range recs {
++		name, email := strings.TrimSpace(rec.Name), normEmail(rec.Email)
++		code := ""
++		switch {
++		case name == "":
++			code = "missing_name"
++		case !validEmail(email):
++			code = "invalid_email"
++		case rec.DefaultPaymentMethod != "" && !strings.HasPrefix(rec.DefaultPaymentMethod, "pm_"):
++			code = "invalid_payment_method"
++		case s.hasCustomerEmail(orgID, email):
++			code = "email_taken"
++		case seen[email]:
++			code = "duplicate_email"
++		}
++		seen[email] = true
++		if code != "" {
++			problems = append(problems, RecordProblem{Index: i, Code: code})
++		}
++	}
++	if len(problems) > 0 || dryRun {
++		return nil, problems, nil
++	}
++	created := []Customer{}
++	for _, rec := range recs {
++		c := Customer{
++			ID: s.newID("cus"), OrgID: orgID, Name: strings.TrimSpace(rec.Name), Email: strings.TrimSpace(rec.Email),
++			DefaultPaymentMethod: rec.DefaultPaymentMethod, Metadata: rec.Metadata, CreatedAt: now.UTC(),
++		}
++		s.customers[c.ID] = c
++		s.customersByEmail[normEmail(c.Email)] = c.ID
++		created = append(created, copyCustomer(c))
++	}
++	return created, nil, nil
++}
++
++// hasCustomerEmail reports whether the organization has a customer with this (normalized) email address. The caller holds
++// the lock.
++func (s *Store) hasCustomerEmail(orgID, email string) bool {
++	id, ok := s.customersByEmail[email]
++	return ok && s.customers[id].OrgID == orgID
++}
++
+ func copyCustomer(c Customer) Customer {
+ 	if c.Metadata != nil {
+ 		m := make(map[string]string, len(c.Metadata))
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..5e350cc 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -255,3 +255,49 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestImportCustomersIsAllOrNothing(t *testing.T) {
++	s := New()
++	acme := newOrg(t, s, "Acme")
++	globex := newOrg(t, s, "Globex")
++	if _, err := s.CreateCustomer(globex.ID, "Elsewhere", "shared@example.com", t0); err != nil {
++		t.Fatal(err)
++	}
++	good := CustomerRecord{Name: "Jane", Email: "jane@example.com", Metadata: map[string]string{"crm": "7"}}
++
++	_, problems, err := s.ImportCustomers(acme.ID, []CustomerRecord{good, {Name: "John", Email: "john@example.com", DefaultPaymentMethod: "card_1"}}, t0, false)
++	if err != nil || !reflect.DeepEqual(problems, []RecordProblem{{Index: 1, Code: "invalid_payment_method"}}) {
++		t.Fatalf("problems %v, err %v", problems, err)
++	}
++	if n := len(s.Customers(acme.ID)); n != 0 {
++		t.Fatalf("a refused import created %d customers", n)
++	}
++
++	if _, _, err := s.ImportCustomers("org_missing", []CustomerRecord{good}, t0, false); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("unknown org: %v", err)
++	}
++
++	created, problems, err := s.ImportCustomers(acme.ID, []CustomerRecord{good}, t0, true)
++	if err != nil || created != nil || problems != nil || len(s.Customers(acme.ID)) != 0 {
++		t.Fatalf("dry run: created %v, problems %v, err %v", created, problems, err)
++	}
++
++	// Another organization's address is not taken here, so the same address imports.
++	created, problems, err = s.ImportCustomers(acme.ID, []CustomerRecord{{Name: "Shared", Email: "shared@example.com"}}, t0, false)
++	if err != nil || len(problems) != 0 || len(created) != 1 {
++		t.Fatalf("other org's email: created %v, problems %v, err %v", created, problems, err)
++	}
++
++	_, problems, err = s.ImportCustomers(acme.ID, []CustomerRecord{good, {Name: "Jane 2", Email: "jane@EXAMPLE.com"}}, t0, false)
++	if err != nil || !reflect.DeepEqual(problems, []RecordProblem{{Index: 1, Code: "duplicate_email"}}) {
++		t.Fatalf("duplicate in file: problems %v, err %v", problems, err)
++	}
++
++	_, problems, err = s.ImportCustomers(acme.ID, []CustomerRecord{good, {Name: "Again", Email: "SHARED@example.com"}}, t0, false)
++	if err != nil || !reflect.DeepEqual(problems, []RecordProblem{{Index: 1, Code: "email_taken"}}) {
++		t.Fatalf("taken by an existing customer: problems %v, err %v", problems, err)
++	}
++	if n := len(s.Customers(acme.ID)); n != 1 {
++		t.Fatalf("org has %d customers, want the shared one only", n)
++	}
++}

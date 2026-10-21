@@ -1,0 +1,91 @@
+# Drydock's own rules for Go (decision P77). Each one names a pattern that is a security problem in most code that has it; its
+# message says why and what to do instead. Fixtures: internal/scan/testdata/rules/drydock.
+rules:
+  - id: drydock.go.tls-certificate-check-off
+    languages: [go]
+    severity: ERROR
+    message: >-
+      InsecureSkipVerify turns off the check of the server's certificate, so anyone on the network path can read and change
+      the traffic. Add the server's CA to RootCAs, or check the certificate's fingerprint in VerifyPeerCertificate.
+    metadata: { category: security, cwe: "CWE-295: Improper Certificate Validation", confidence: HIGH }
+    patterns:
+      - pattern: |
+          tls.Config{..., InsecureSkipVerify: true, ...}
+      - pattern-not-inside: |
+          tls.Config{..., VerifyPeerCertificate: $F, ...}
+  - id: drydock.go.shell-command-built-from-data
+    languages: [go]
+    severity: ERROR
+    message: >-
+      This command line is handed to a shell (sh -c, bash -c or cmd /c) and is not a fixed string, so a value with ; | & or
+      $( ) runs other commands. Run the program directly with its arguments: exec.Command(name, arg1, arg2).
+    metadata: { category: security, cwe: "CWE-78: OS Command Injection", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command($SH, $FLAG, $CMD, ...)
+          - pattern: exec.CommandContext($CTX, $SH, $FLAG, $CMD, ...)
+      - metavariable-regex:
+          metavariable: $SH
+          regex: ^"(sh|bash|/bin/sh|/bin/bash|cmd|cmd\.exe|powershell|pwsh)"$
+      - metavariable-regex:
+          metavariable: $FLAG
+          regex: ^"(-c|/c|/C|-Command)"$
+      - pattern-not: exec.Command($SH, $FLAG, "...", ...)
+      - pattern-not: exec.CommandContext($CTX, $SH, $FLAG, "...", ...)
+  - id: drydock.go.sql-built-with-sprintf
+    languages: [go]
+    severity: ERROR
+    message: >-
+      This SQL text is built with fmt.Sprintf or +, so a value with a quote can change the query (SQL injection). Use
+      placeholders (? or $1) and pass the values as arguments.
+    metadata: { category: security, cwe: "CWE-89: SQL Injection", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: $DB.$M(fmt.Sprintf(...), ...)
+          - pattern: $DB.$M($CTX, fmt.Sprintf(...), ...)
+          - pattern: $DB.$M("..." + $X, ...)
+          - pattern: $DB.$M("..." + $X + "...", ...)
+          - pattern: $DB.$M($CTX, "..." + $X, ...)
+          - pattern: $DB.$M($CTX, "..." + $X + "...", ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(Query|QueryRow|Exec|QueryContext|QueryRowContext|ExecContext|Prepare|PrepareContext)$
+  - id: drydock.go.weak-hash
+    languages: [go]
+    severity: WARNING
+    message: >-
+      MD5 and SHA-1 are broken for security: collisions can be made. For passwords use bcrypt, scrypt or argon2; for
+      signatures and integrity use SHA-256 or better. A checksum that guards against accidents only is fine.
+    metadata: { category: security, cwe: "CWE-328: Use of Weak Hash", confidence: MEDIUM }
+    pattern-either:
+      - pattern: md5.New()
+      - pattern: md5.Sum(...)
+      - pattern: sha1.New()
+      - pattern: sha1.Sum(...)
+  - id: drydock.go.math-rand-for-secrets
+    languages: [go]
+    severity: WARNING
+    message: >-
+      math/rand is predictable; a token, key or password made from it can be guessed. Use crypto/rand.
+    metadata: { category: security, cwe: "CWE-338: Use of Cryptographically Weak PRNG", confidence: LOW }
+    patterns:
+      - pattern-either:
+          - pattern: $TOKEN := <... rand.$F(...) ...>
+          - pattern: $TOKEN = <... rand.$F(...) ...>
+      # functions only math/rand has (crypto/rand has Int, Read, Prime and Text, and is the one to use)
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(Intn|Int63|Int63n|Int31|Int31n|Float64|Float32|Uint32|Uint64|Perm|N|IntN|Int64|Int64N|Uint64N)$
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: (?i).*(token|secret|password|passwd|nonce|salt|apikey|api_key|sessionid|session_id).*
+  - id: drydock.go.http-server-without-timeouts
+    languages: [go]
+    severity: INFO
+    message: >-
+      http.ListenAndServe has no read or write timeouts, so slow clients can hold its connections open for ever (Slowloris).
+      Make an http.Server with ReadHeaderTimeout (and the other timeouts) and call its ListenAndServe.
+    metadata: { category: security, cwe: "CWE-400: Uncontrolled Resource Consumption", confidence: MEDIUM }
+    pattern-either:
+      - pattern: http.ListenAndServe(...)
+      - pattern: http.ListenAndServeTLS(...)

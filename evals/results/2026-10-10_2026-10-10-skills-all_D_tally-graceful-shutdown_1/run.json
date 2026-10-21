@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "1a3c9473f3c5447a807899fd8d99d073c24c9396",
+  "startedAt": "2026-10-10T21:51:13.470945025Z",
+  "wallMs": 312271,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 2792,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 13286,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.010s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.022s\n?   \texample.com/tally/internal/clock\t[no test files]\n--- FAIL: TestHiddenSecondShutdownAndStopReturnAtOnce (10.01s)\n    zz_hidden_graceful_shutdown_test.go:383: a second Shutdown while the first was waiting did not return within 10s\nFAIL\nFAIL\texample.com/tally/internal/jobs\t10.639s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.008s\nok  \texample.com/tally/internal/payments\t0.011s\nok  \texample.com/tally/internal/reports\t0.018s\nok  \texample.com/tally/internal/snapshot\t0.016s\nok  \texample.com/tally/internal/store\t0.003s\nok  \texample.com/tally/internal/subscriptions\t0.011s\nok  \texample.com/tally/internal/webhooks\t0.004s\nFAIL\n"
+      }
+    ],
+    "durationMs": 16146
+  },
+  "costUsd": 0.06139917,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 38,
+    "output": 45737,
+    "cacheRead": 900727,
+    "cacheWrite": 147598
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_d2e49937d59f",
+      "feedback": "internal/jobs/jobs.go, Shutdown early-return (the `if r.stopping` branch): a repeated Shutdown (and Stop after Shutdown) returns nil immediately while the first call may still be waiting for running jobs, so it can return while the runner's goroutines are alive. The spec says these calls return nil once the first call has finished. Make the repeat call wait on the first call's finished channel (store it on Runner when the first call creates it), then return nil. Add a test that calls Shutdown a second time while the first is blocked on a running job and asserts the second call does not return until that job finishes."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_d2e49937d59f"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_2dae4307e331"
+}

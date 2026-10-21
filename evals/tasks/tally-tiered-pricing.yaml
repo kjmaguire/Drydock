@@ -1,0 +1,37 @@
+# A pricing model with two modes and inclusive boundaries, validated input, and renewal billing.
+id: tally-tiered-pricing
+title: "Tiered pricing for metered plans"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  Metered plans charge the same price for every unit; large customers need volume pricing. Add tiers to metered plans.
+
+  - New types in package store: type TiersMode string with constants Graduated TiersMode = "graduated" and Volume TiersMode =
+    "volume"; type Tier struct { UpTo *int64; UnitAmount int64; FlatAmount int64 } (amounts in minor units, JSON fields
+    "up_to", "unit_amount", "flat_amount"); Plan gets TiersMode (JSON "tiers_mode") and Tiers (JSON "tiers").
+  - POST /v1/plans accepts, for a metered plan, "tiers_mode" and "tiers": a list of {"up_to": whole number or null,
+    "unit_amount": "<major units>", "flat_amount": "<major units>"} where flat_amount may be left out (0). Valid tiers: at
+    least one; sorted by up_to, strictly ascending; every up_to is a positive whole number except the last tier's, which is null
+    (no upper limit); no negative amount; tiers_mode is graduated or volume. A plan with tiers does not need "price". Invalid
+    tiers, tiers on a licensed plan, or tiers without a valid tiers_mode: 422 {"error":"invalid_tiers"}. Plan answers show
+    tiers_mode and tiers with amounts in minor units.
+  - billing.TieredAmount(tiers []store.Tier, mode store.TiersMode, quantity int64) int64 is the charge for a quantity:
+    - graduated: each unit is priced at the unit_amount of the tier it falls in (units 1 to up_to of the first tier, the next
+      units in the next tier, and so on), plus the flat_amount of every tier that at least one unit falls in;
+    - volume: every unit is priced at the unit_amount of the one tier the total quantity falls in, plus that tier's
+      flat_amount;
+    - a tier's up_to is inclusive, and a quantity of 0 costs 0 in both modes.
+  - When a subscription to a tiered plan renews, the usage of the period that ended is billed with one invoice line: quantity 1,
+    unit_amount = TieredAmount(usage), and a description that starts with the plan's name. No usage: no invoice.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-tiered-pricing
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

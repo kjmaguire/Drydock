@@ -1,0 +1,421 @@
+diff --git a/cmd/tally/main.go b/cmd/tally/main.go
+index 5915fed..3771fb8 100644
+--- a/cmd/tally/main.go
++++ b/cmd/tally/main.go
+@@ -76,11 +76,20 @@ func main() {
+ 			stop()
+ 		}
+ 	}()
+-	<-ctx.Done()
++	<-ctx.Done() // SIGINT or SIGTERM
+ 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+ 	defer cancel()
+ 	_ = hs.Shutdown(shutdown)
+-	runner.Stop()
++	// Let the running jobs finish (renewals charge cards) before the snapshot is saved; cancel them if they take too long.
++	jobsCtx, cancelJobs := context.WithTimeout(context.Background(), jobs.StopTimeout)
++	defer cancelJobs()
++	if err := runner.Shutdown(jobsCtx); err != nil {
++		log.Warn("background jobs were canceled", "err", err)
++	}
++	// The renewals and deliveries left over are found again in the store when the server starts next.
++	for _, j := range runner.Pending() {
++		log.Warn("background job left for the next start", "job", j.Name)
++	}
+ 	if err := snapshot.Save(st, *data, clk.Now()); err != nil {
+ 		log.Error("save snapshot", "err", err)
+ 		os.Exit(1)
+diff --git a/internal/jobs/jobs.go b/internal/jobs/jobs.go
+index 66de5cc..a3a6410 100644
+--- a/internal/jobs/jobs.go
++++ b/internal/jobs/jobs.go
+@@ -2,26 +2,64 @@
+ package jobs
+ 
+ import (
++	"cmp"
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"io"
+ 	"log/slog"
++	"runtime/debug"
++	"slices"
++	"sync"
++	"time"
+ )
+ 
+-// Job is one piece of background work.
++// Job is one piece of background work. Run gets a context that Shutdown cancels when its own context ends; a job that
++// stops because of it should return an error, so that it is counted as still to be done (Pending).
+ type Job struct {
+ 	Name string
+ 	Run  func(ctx context.Context) error
+ }
+ 
+-// ErrQueueFull is returned by Enqueue when the queue has no room.
+-var ErrQueueFull = errors.New("the job queue is full")
++// Errors.
++var (
++	// ErrQueueFull is returned by Enqueue when the queue has no room.
++	ErrQueueFull = errors.New("the job queue is full")
++	// ErrStopped is returned by Enqueue once Shutdown (or Stop) was called.
++	ErrStopped = errors.New("the job runner is stopped")
++)
++
++// StopTimeout is how long Stop lets running jobs finish before it cancels them.
++const StopTimeout = 30 * time.Second
+ 
+ // Runner runs jobs on its workers.
+ type Runner struct {
+-	queue   chan Job
+-	workers int
+-	log     *slog.Logger
++	workers   int
++	queueSize int
++	log       *slog.Logger
++
++	// ctx is the context of every job; Shutdown cancels it when its own context ends first.
++	ctx    context.Context
++	cancel context.CancelFunc
++
++	mu       sync.Mutex
++	wake     *sync.Cond // signaled when a job is queued, broadcast when the runner stops
++	queue    []entry    // jobs not started yet, in the order they were enqueued
++	seq      uint64     // the number of jobs enqueued so far
++	idle     int        // workers waiting for a job
++	running  int        // jobs running now
++	started  bool
++	stopping bool          // Shutdown was called: nothing is queued or started any more
++	alive    int           // workers that have not exited
++	exited   chan struct{} // closed when every worker has exited (at Shutdown, when none was started)
++	canceled []entry       // jobs whose context Shutdown canceled and that returned an error
++	done     chan struct{} // closed when the first Shutdown returns
++}
++
++// entry is a job and its place in the enqueue order.
++type entry struct {
++	seq uint64
++	job Job
+ }
+ 
+ // NewRunner returns a runner with workers workers and room for queueSize waiting jobs. A nil log discards.
+@@ -29,38 +67,180 @@ func NewRunner(workers, queueSize int, log *slog.Logger) *Runner {
+ 	if workers < 1 {
+ 		workers = 1
+ 	}
++	if queueSize < 0 {
++		queueSize = 0
++	}
+ 	if log == nil {
+ 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+ 	}
+-	return &Runner{queue: make(chan Job, queueSize), workers: workers, log: log}
++	ctx, cancel := context.WithCancel(context.Background())
++	r := &Runner{workers: workers, queueSize: queueSize, log: log, ctx: ctx, cancel: cancel, exited: make(chan struct{}), done: make(chan struct{})}
++	r.wake = sync.NewCond(&r.mu)
++	return r
+ }
+ 
+-// Start starts the workers.
++// Start starts the workers. It does nothing once the runner has started or stopped.
+ func (r *Runner) Start() {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	if r.started || r.stopping {
++		return
++	}
++	r.started = true
++	r.alive = r.workers
+ 	for i := 0; i < r.workers; i++ {
+ 		go r.work()
+ 	}
+ }
+ 
+ func (r *Runner) work() {
+-	for j := range r.queue {
+-		if err := j.Run(context.Background()); err != nil {
+-			r.log.Error("job failed", "job", j.Name, "err", err)
++	defer r.exit()
++	for {
++		e, ok := r.next()
++		if !ok {
++			return
+ 		}
++		r.run(e)
++	}
++}
++
++// next waits for the next queued job and takes it; it reports false once the runner is stopping.
++func (r *Runner) next() (entry, bool) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	for len(r.queue) == 0 && !r.stopping {
++		r.idle++
++		r.wake.Wait()
++		r.idle--
++	}
++	if r.stopping {
++		return entry{}, false
++	}
++	e := r.queue[0]
++	r.queue[0] = entry{}
++	r.queue = r.queue[1:]
++	r.running++
++	return e, true
++}
++
++func (r *Runner) exit() {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	if r.alive--; r.alive == 0 {
++		close(r.exited)
++	}
++}
++
++// run runs one job. A job that fails is logged; one that returned an error after Shutdown canceled its context is kept for
++// Pending. A job that panics is logged and not run again.
++func (r *Runner) run(e entry) {
++	ok, err := r.call(e.job)
++	canceled := ok && err != nil && r.ctx.Err() != nil
++	r.mu.Lock()
++	r.running--
++	if canceled {
++		r.canceled = append(r.canceled, e)
++	}
++	r.mu.Unlock()
++	switch {
++	case canceled:
++		r.log.Warn("job canceled by shutdown", "job", e.job.Name, "err", err)
++	case ok && err != nil:
++		r.log.Error("job failed", "job", e.job.Name, "err", err)
+ 	}
+ }
+ 
+-// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room.
++// call runs a job, recovering a panic; ok is false when the job panicked.
++func (r *Runner) call(j Job) (ok bool, err error) {
++	defer func() {
++		if v := recover(); v != nil {
++			r.log.Error("job panicked", "job", j.Name, "panic", v, "stack", string(debug.Stack()))
++			ok, err = false, nil
++		}
++	}()
++	return true, j.Run(r.ctx)
++}
++
++// Enqueue adds a job to the queue without waiting. It returns ErrQueueFull when the queue has no room, and ErrStopped once
++// Shutdown or Stop was called.
+ func (r *Runner) Enqueue(j Job) error {
+-	select {
+-	case r.queue <- j:
+-		return nil
+-	default:
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	if r.stopping {
++		return ErrStopped
++	}
++	if len(r.queue) >= r.queueSize+r.idle {
+ 		return ErrQueueFull
+ 	}
++	r.seq++
++	r.queue = append(r.queue, entry{seq: r.seq, job: j})
++	r.wake.Signal()
++	return nil
+ }
+ 
+-// Stop stops the runner.
++// Shutdown stops the runner. From the moment it is called, Enqueue returns ErrStopped and no queued job is started. It waits
++// for the running jobs to finish and returns nil; when ctx ends first, it cancels the context of every running job, waits
++// for them to return and returns ctx.Err(). When it returns, all the runner's workers have exited. Another call, or Stop,
++// after it returns at once: nil once the first call has finished. Pending tells what was left undone.
++func (r *Runner) Shutdown(ctx context.Context) error {
++	r.mu.Lock()
++	if r.stopping {
++		r.mu.Unlock()
++		select {
++		case <-r.done:
++			return nil
++		default:
++			return fmt.Errorf("%w: a shutdown is already in progress", ErrStopped)
++		}
++	}
++	r.stopping = true
++	if !r.started {
++		close(r.exited)
++	}
++	r.wake.Broadcast()
++	r.mu.Unlock()
++
++	var err error
++	select {
++	case <-r.exited:
++	case <-ctx.Done():
++		r.mu.Lock()
++		busy := r.running > 0
++		r.mu.Unlock()
++		if busy {
++			r.cancel()
++			err = ctx.Err()
++		}
++		<-r.exited
++	}
++	r.cancel()
++	close(r.done)
++	return err
++}
++
++// Stop does what Shutdown does, giving the running jobs StopTimeout to finish.
+ func (r *Runner) Stop() {
+-	close(r.queue)
++	ctx, cancel := context.WithTimeout(context.Background(), StopTimeout)
++	defer cancel()
++	if err := r.Shutdown(ctx); err != nil && !errors.Is(err, ErrStopped) {
++		r.log.Warn("stop: running jobs were canceled", "err", err)
++	}
++}
++
++// Pending returns the jobs that still need to run, in the order they were enqueued: before Shutdown, the queued jobs that
++// have not started; after it, the jobs that never started followed by the jobs whose context Shutdown canceled and that
++// returned an error. The caller saves them.
++func (r *Runner) Pending() []Job {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	canceled := slices.Clone(r.canceled)
++	slices.SortFunc(canceled, func(a, b entry) int { return cmp.Compare(a.seq, b.seq) })
++	out := make([]Job, 0, len(r.queue)+len(canceled))
++	for _, e := range r.queue {
++		out = append(out, e.job)
++	}
++	for _, e := range canceled {
++		out = append(out, e.job)
++	}
++	return out
+ }
+diff --git a/internal/jobs/jobs_test.go b/internal/jobs/jobs_test.go
+index d3f467a..0a9ae6a 100644
+--- a/internal/jobs/jobs_test.go
++++ b/internal/jobs/jobs_test.go
+@@ -48,3 +48,121 @@ func TestEnqueueWhenFull(t *testing.T) {
+ 		t.Fatalf("err = %v, want ErrQueueFull", err)
+ 	}
+ }
++
++// held returns a job that tells started it runs, then waits for release or for its context to be canceled.
++func held(name string, started chan<- string, release <-chan struct{}) Job {
++	return Job{Name: name, Run: func(ctx context.Context) error {
++		started <- name
++		select {
++		case <-release:
++			return nil
++		case <-ctx.Done():
++			return ctx.Err()
++		}
++	}}
++}
++
++func names(js []Job) []string {
++	out := []string{}
++	for _, j := range js {
++		out = append(out, j.Name)
++	}
++	return out
++}
++
++func TestShutdownWaitsForRunningJobs(t *testing.T) {
++	r := NewRunner(1, 10, nil)
++	r.Start()
++	started, release := make(chan string, 1), make(chan struct{})
++	ran := make(chan string, 10)
++	quick := func(name string) Job {
++		return Job{Name: name, Run: func(context.Context) error { ran <- name; return nil }}
++	}
++	_ = r.Enqueue(held("a", started, release))
++	<-started
++	_ = r.Enqueue(quick("b"))
++	_ = r.Enqueue(quick("c"))
++	if got := names(r.Pending()); len(got) != 2 || got[0] != "b" || got[1] != "c" {
++		t.Fatalf("pending = %v", got)
++	}
++	done := make(chan error, 1)
++	go func() { done <- r.Shutdown(context.Background()) }()
++	for !errors.Is(r.Enqueue(quick("late")), ErrStopped) {
++		time.Sleep(time.Millisecond) // until Shutdown has started; the jobs queued meanwhile never start
++	}
++	select {
++	case err := <-done:
++		t.Fatalf("Shutdown returned %v while a job was running", err)
++	case <-time.After(50 * time.Millisecond):
++	}
++	close(release)
++	if err := <-done; err != nil {
++		t.Fatalf("Shutdown = %v", err)
++	}
++	if len(ran) != 0 {
++		t.Fatalf("a queued job was started after Shutdown: %s", <-ran)
++	}
++	if got := names(r.Pending()); len(got) < 2 || got[0] != "b" || got[1] != "c" {
++		t.Fatalf("pending after Shutdown = %v", got)
++	}
++	if err := r.Shutdown(context.Background()); err != nil {
++		t.Fatalf("second Shutdown = %v", err)
++	}
++	r.Stop()
++}
++
++func TestShutdownCancelsWhenContextEnds(t *testing.T) {
++	r := NewRunner(2, 10, nil)
++	r.Start()
++	started := make(chan string, 2)
++	_ = r.Enqueue(held("a", started, nil))
++	_ = r.Enqueue(Job{Name: "b", Run: func(ctx context.Context) error { started <- "b"; <-ctx.Done(); return nil }})
++	<-started
++	<-started
++	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
++	defer cancel()
++	if err := r.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("Shutdown = %v, want the context's error", err)
++	}
++	if got := names(r.Pending()); len(got) != 1 || got[0] != "a" {
++		t.Fatalf("pending = %v, want only the canceled job that returned an error", got)
++	}
++}
++
++func TestEnqueueAfterStop(t *testing.T) {
++	r := NewRunner(1, 10, nil)
++	r.Start()
++	r.Stop()
++	if err := r.Enqueue(Job{Name: "x", Run: func(context.Context) error { return nil }}); !errors.Is(err, ErrStopped) {
++		t.Fatalf("Enqueue after Stop = %v", err)
++	}
++	if len(r.Pending()) != 0 {
++		t.Fatalf("pending = %v", names(r.Pending()))
++	}
++}
++
++func TestPanickingJobDoesNotStopTheWorker(t *testing.T) {
++	r := NewRunner(1, 10, nil)
++	r.Start()
++	defer r.Stop()
++	var mu sync.Mutex
++	panics := 0
++	_ = r.Enqueue(Job{Name: "boom", Run: func(context.Context) error {
++		mu.Lock()
++		panics++
++		mu.Unlock()
++		panic("boom")
++	}})
++	ok := make(chan struct{})
++	_ = r.Enqueue(Job{Name: "next", Run: func(context.Context) error { close(ok); return nil }})
++	select {
++	case <-ok:
++	case <-time.After(5 * time.Second):
++		t.Fatal("the job after a panicking one did not run")
++	}
++	mu.Lock()
++	defer mu.Unlock()
++	if panics != 1 {
++		t.Fatalf("the panicking job ran %d times", panics)
++	}
++}

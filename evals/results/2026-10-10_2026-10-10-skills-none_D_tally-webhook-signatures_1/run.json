@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-webhook-signatures",
+  "taskClass": "security review",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "2011957cb4e3c512f11fa0d6924b89bc38abc529",
+  "startedAt": "2026-10-10T22:04:52.427465328Z",
+  "wallMs": 273791,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 991,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2275,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.015s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.012s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.005s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.010s\nok  \texample.com/tally/internal/snapshot\t0.008s\nok  \texample.com/tally/internal/store\t0.008s\nok  \texample.com/tally/internal/subscriptions\t0.009s\nok  \texample.com/tally/internal/webhooks\t0.010s\n"
+      }
+    ],
+    "durationMs": 3277
+  },
+  "costUsd": 0.06510232,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 82,
+    "output": 51592,
+    "cacheRead": 1324152,
+    "cacheWrite": 130283
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_bdf5ed954d2c",
+      "feedback": "1. Rotation overlap is lost on restart (internal/store/types.go:250-252). PreviousSecret and PreviousSecretUntil are tagged json:\"-\" to keep them out of the API response. But the server persists state as JSON: cmd/tally/main.go:84 calls snapshot.Save, which marshals store.State (internal/snapshot/snapshot.go:30), and cmd/tally/main.go:35 reloads it with snapshot.Load. So after any restart within 24 hours of a rotation, previous_secret and its deadline are silently dropped, and deliveries carry only one v1 entry. That violates the task's requirement that deliveries carry both v1 entries for 24 hours after a rotation. Fix: persist the previous secret and deadline in the snapshot while keeping them out of the endpoint's API JSON. Options: add a separate field to store.State (for example a map of endpoint ID to previous secret and deadline) that Export and FromState (internal/store/state.go:63 and :95) write and read, or give State its own serialization for these fields. Add a test that Save then Load keeps the window: after a rotation, a delivery through the reloaded store still carries two v1 entries until SecretOverlap has passed. Everything else (Verify error ordering and tolerance, multiple v1 entries, SignatureHeader, Sign unchanged, rotate response, and the existing tests) looks correct."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_bdf5ed954d2c"
+    }
+  ],
+  "coreTaskId": "task_303ef91bc93d"
+}

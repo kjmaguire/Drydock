@@ -1,0 +1,316 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/kjmaguire/drydock/internal/localllm"
+)
+
+func TestClassifyMeasuresTheGap(t *testing.T) {
+	cases := []struct{ used, latest, want string }{
+		{"1.2.3", "1.2.3", "current"},
+		{"1.2.3", "1.2.4", "patch"},
+		{"1.2.3", "1.3.0", "minor"},
+		{"1.2.3", "2.0.0", "major"},
+		{"v0.9.0", "v0.10.0", "minor"},
+		{"22.22.0", "22.23.3", "minor"},
+		{"1.26.0", "1.27.2", "minor"},
+		{"3.0.0-beta.28", "3.0.0-beta.28", "current"},
+		{"3.0.0-beta.27", "3.0.0-beta.28", "prerelease"},
+		{"1.0.0", "", "unknown"},
+		{"not pinned", "1.0.0", "unknown"},
+		{"2.0.0", "1.9.0", "current"}, // newer than the registry's latest (a pre-release channel): not behind
+	}
+	for _, c := range cases {
+		if got := classify(c.used, c.latest); got != c.want {
+			t.Errorf("classify(%q, %q) = %s, want %s", c.used, c.latest, got, c.want)
+		}
+	}
+}
+
+func TestReleaseOfDropsTheProxyDecorations(t *testing.T) {
+	for in, want := range map[string]string{"v29.9.0+incompatible": "29.9.0", "v1.60.1": "1.60.1", "2.0.1": "2.0.1"} {
+		if got := releaseOf(in); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseSemverReadsGoAndNpmVersions(t *testing.T) {
+	for _, c := range []struct {
+		in         string
+		maj, min   int
+		pat        int
+		pre, valid bool
+	}{
+		{"1.26.0", 1, 26, 0, false, true},
+		{"v1.60.1", 1, 60, 1, false, true},
+		{"go1.27rc2", 1, 27, 0, true, true},
+		{"go1.27.2", 1, 27, 2, false, true},
+		{"3.0.0-beta.28", 3, 0, 0, true, true},
+		{"v4", 0, 0, 0, false, false},
+	} {
+		maj, min, pat, pre, ok := parseSemver(c.in)
+		if ok != c.valid || (ok && (maj != c.maj || min != c.min || pat != c.pat || pre != c.pre)) {
+			t.Errorf("parseSemver(%q) = %d.%d.%d pre=%v ok=%v", c.in, maj, min, pat, pre, ok)
+		}
+	}
+	if !less("1.27.1", "1.27.2") || less("1.27.2", "1.27.2") || !less("1.9.0", "1.10.0") {
+		t.Error("less orders versions numerically")
+	}
+}
+
+// A sentence in docs/decisions.md that names a different version than the code pins is reported, and a library whose name only
+// ends the same (acp-go-sdk and go-sdk) is not mistaken for the other.
+func TestDocDriftFindsDisagreementsAndIgnoresLookalikes(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "docs"), 0o755)
+	os.WriteFile(filepath.Join(dir, "docs", "decisions.md"), []byte("| ACP | `github.com/coder/acp-go-sdk` v0.13.5 |\n| MCP | `github.com/modelcontextprotocol/go-sdk` v1.8.0 |\n| Tests | Playwright 1.64.0 |\n"), 0o644)
+	old := root
+	root = dir
+	defer func() { root = old }()
+	items := []Item{
+		{ID: "go:github.com/coder/acp-go-sdk", Name: "github.com/coder/acp-go-sdk", Kind: "direct", Used: "0.13.5"},
+		{ID: "go:github.com/modelcontextprotocol/go-sdk", Name: "github.com/modelcontextprotocol/go-sdk", Kind: "direct", Used: "1.8.0"},
+		{ID: "npm:@playwright/test", Name: "@playwright/test", Kind: "dev", Used: "1.56.1"},
+	}
+	got := docDrift(items)
+	if len(got) != 1 || got[0].Name != "@playwright/test" || got[0].Docs != "1.64.0" || got[0].Code != "1.56.1" {
+		t.Fatalf("drift = %+v", got)
+	}
+}
+
+// Only section 2 of docs/decisions.md (what the code uses) is compared: a dated entry after it that names the version current
+// when it was written is history. A module whose path ends in /vN is found by its name before the /vN.
+func TestDocDriftReadsTheStackTableOnly(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "docs"), 0o755)
+	doc := "## 1. Owner decisions\n\n## 2. Stack decisions\n| LLM clients | `github.com/openai/openai-go/v3` v3.83.0, `anthropic-sdk-go` v1.83.0 |\n" +
+		"## 3. Process decisions\n- **P78.** openai-go 3.82.0 and anthropic-sdk-go 1.80.0 were taken.\n"
+	os.WriteFile(filepath.Join(dir, "docs", "decisions.md"), []byte(doc), 0o644)
+	old := root
+	root = dir
+	defer func() { root = old }()
+	items := []Item{
+		{ID: "go:github.com/openai/openai-go/v3", Name: "github.com/openai/openai-go/v3", Kind: "direct", Used: "3.83.0"},
+		{ID: "go:github.com/anthropics/anthropic-sdk-go", Name: "github.com/anthropics/anthropic-sdk-go", Kind: "direct", Used: "1.84.0"},
+	}
+	got := docDrift(items)
+	if len(got) != 1 || got[0].Name != "github.com/anthropics/anthropic-sdk-go" || got[0].Docs != "1.83.0" {
+		t.Fatalf("drift = %+v (only the stack table's anthropic-sdk-go row disagrees)", got)
+	}
+}
+
+// A graph-only library is not part of what Drydock runs: it gets the P23 remark without a hand-written hold and is left out of
+// how far behind Drydock is, while a library compiled in is counted as before.
+func TestGraphOnlyLibrariesAreRemarkedAndNotCountedAsBehind(t *testing.T) {
+	no, yes := false, true
+	items := []Item{
+		{ID: "go:example.com/graph", Kind: "indirect", Status: "patch", InBuild: &no},
+		{ID: "go:example.com/built", Kind: "indirect", Status: "patch", InBuild: &yes},
+		{ID: "npm:marked", Kind: "direct", Status: "current"},
+	}
+	markGraphOnly(items)
+	markGraphOnly(items) // a second pass does not repeat the remark
+	if items[0].Note != graphOnlyNote {
+		t.Fatalf("graph-only note %q", items[0].Note)
+	}
+	if items[1].Note != "" || items[2].Note != "" {
+		t.Fatalf("built items got a note: %q %q", items[1].Note, items[2].Note)
+	}
+	summary, counts := summarize(items)
+	if summary["patch"] != 1 || summary["current"] != 1 || counts["graphOnly"] != 1 || counts["indirect"] != 2 {
+		t.Fatalf("summary %v counts %v", summary, counts)
+	}
+}
+
+// A measurement taken with uncommitted changes says so: the versions it reports are not the ones HEAD pins.
+func TestCommitLabelMarksUncommittedChanges(t *testing.T) {
+	if got := commitLabel("b755878\n", ""); got != "b755878" {
+		t.Fatalf("clean: %q", got)
+	}
+	if got := commitLabel("b755878\n", " M go.mod\n M ui/package.json\n"); got != "b755878-dirty" {
+		t.Fatalf("dirty: %q", got)
+	}
+}
+
+// A module that go.mod does not require has its version from the module graph, and the report says so.
+func TestGoModWhereNamesTheModuleGraph(t *testing.T) {
+	req := map[string]bool{"github.com/klauspost/compress": true}
+	if got := goModWhere("github.com/klauspost/compress", req); got != "go.mod" {
+		t.Fatalf("required: %q", got)
+	}
+	if got := goModWhere("github.com/aws/aws-sdk-go-v2/feature/ec2/imds", req); got != "module graph (not in go.mod)" {
+		t.Fatalf("graph: %q", got)
+	}
+	if got := goModWhere("anything", nil); got != "go.mod" {
+		t.Fatalf("unknown go.mod: %q", got)
+	}
+}
+
+func TestNewestStableTagSkipsPreReleasesAndAlphaTags(t *testing.T) {
+	out := "a\trefs/tags/v1.29.0\nb\trefs/tags/v1.30.2\nc\trefs/tags/v2.0.0-nopython.alpha.1\nd\trefs/tags/v1.30.3-rc.1\ne\trefs/tags/nightly\n"
+	if got := newestStableTag(tagNames(out)); got != "v1.30.2" {
+		t.Fatalf("got %q", got)
+	}
+	if got := newestStableTag(tagNames("x\trefs/tags/v3\n")); got != "" {
+		t.Fatalf("a major-only tag is not a release: %q", got)
+	}
+}
+
+// llama.cpp tags its weekly builds bNNNN (the vX.Y.Z tags carry no binaries): the newest build is the highest number, not the
+// last in the listing's order.
+func TestNewestBuildTagPicksTheHighestBuild(t *testing.T) {
+	out := "a\trefs/tags/b11669\nb\trefs/tags/b9999\nc\trefs/tags/v0.7.0\nd\trefs/tags/b11600\ne\trefs/tags/gguf-v0.4.0\n"
+	if got := newestBuildTag(tagNames(out)); got != "b11669" {
+		t.Fatalf("got %q", got)
+	}
+	if got := newestBuildTag(tagNames("x\trefs/tags/v1.2.3\n")); got != "" {
+		t.Fatalf("a version tag is not a build: %q", got)
+	}
+}
+
+func TestClassifyComparesBuildTagsByNumber(t *testing.T) {
+	for _, c := range []struct{ used, latest, want string }{
+		{"b11669", "b11671", "patch"}, {"b11671", "b11671", "current"}, {"b11671", "b11669", "unknown"}, {"b11671", "v0.7.0", "unknown"},
+	} {
+		if got := classify(c.used, c.latest); got != c.want {
+			t.Errorf("classify(%s, %s) = %s, want %s", c.used, c.latest, got, c.want)
+		}
+	}
+}
+
+// The Artifact's dashboard type refuses a dataset file with no rows, so an empty vulns or drift dataset is written as one
+// placeholder row the page leaves out; a dataset with rows is written as is.
+func TestArtifactDataNeverWritesAnEmptyDataset(t *testing.T) {
+	dir := t.TempDir()
+	rep := Report{Items: []Item{{ID: "go:example.com/a", Kind: "direct"}}, Docs: []DocDrift{{Name: "x", Docs: "1", Code: "2", Ref: "docs/decisions.md"}}}
+	if err := writeArtifactData(dir, rep); err != nil {
+		t.Fatal(err)
+	}
+	read := func(name string) []map[string]any {
+		b, err := os.ReadFile(filepath.Join(dir, name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []map[string]any
+		if err := json.Unmarshal(b, &rows); err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	if v := read("vulns"); len(v) != 1 || v[0]["none"] != "yes" {
+		t.Errorf("empty vulns: %v", v)
+	}
+	if d := read("drift"); len(d) != 1 || d[0]["name"] != "x" || d[0]["none"] != nil {
+		t.Errorf("drift with a row: %v", d)
+	}
+	if it := read("items"); len(it) != 1 || it[0]["id"] != "go:example.com/a" {
+		t.Errorf("items: %v", it)
+	}
+}
+
+// The TurboQuant fork's releases are tagged bNNNN-X.Y.Z; its per-commit dev builds and dev-latest are pre-releases and do not
+// count. Ordered by the fork's own version, so the audit and the app (localllm.Source.Newer) agree.
+func TestTheForksNewestReleaseIsItsHighestVersion(t *testing.T) {
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	ls := "a\trefs/tags/b10269-1.7.0\nb\trefs/tags/b10298-2.0.0\nc\trefs/tags/b10018-1.3.0\nd\trefs/tags/turboquant-windows-x64-vulkan-519f0c5\ne\trefs/tags/dev-latest\nf\trefs/tags/b8523\ng\trefs/tags/b10269-1.10.0\n"
+	if got := newestForkTag(src, tagNames(ls)); got != "b10298-2.0.0" {
+		t.Fatalf("newest = %s", got)
+	}
+	// 1.10.0 is newer than 1.7.0 (not by text)
+	if got := newestForkTag(src, tagNames("x\trefs/tags/b10269-1.7.0\ny\trefs/tags/b10269-1.10.0\n")); got != "b10269-1.10.0" {
+		t.Fatalf("newest = %s", got)
+	}
+	if newestForkTag(src, tagNames("z\trefs/tags/dev-latest\n")) != "" {
+		t.Fatal("a dev build counted as a release")
+	}
+}
+
+// The bundled fork falls behind like any other piece: its own version says by how much (before, both tags were "unknown").
+func TestTheForksReleaseTagsAreClassified(t *testing.T) {
+	for _, c := range []struct{ used, latest, want string }{
+		{"b10298-2.0.0", "b10298-2.0.0", "current"},
+		{"b10298-2.0.0", "b10350-2.1.0", "minor"},
+		{"b10298-2.0.0", "b10400-3.0.0", "major"},
+		{"b10298-2.0.0", "b10310-2.0.1", "patch"},
+		{"b10298-2.0.0", "b10310-2.0.0", "patch"}, // the same version on a newer build
+		{"b11600", "b11669", "patch"},
+		{"1.31.0", "1.32.0", "minor"},
+	} {
+		if got := classify(c.used, c.latest); got != c.want {
+			t.Errorf("classify(%s, %s) = %s, want %s", c.used, c.latest, got, c.want)
+		}
+	}
+}
+
+// The bundled tools' versions come from packaging/bundle.json, the pins the download is built from; docs/software-notes.json
+// carries no second copy that could drift.
+func TestTheBundledToolsAreReadFromTheBundlePins(t *testing.T) {
+	old := root
+	root = sourceRoot(t)
+	t.Cleanup(func() { root = old })
+	p, err := readBundlePins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := p.used()
+	for _, id := range []string{"tool:osv-scanner", "tool:opengrep", "tool:llama.cpp-turboquant"} {
+		if used[id] == "" {
+			t.Errorf("%s: no pin in packaging/bundle.json", id)
+		}
+		if v, ok := toolUsed()[id]; ok {
+			t.Errorf("%s: docs/software-notes.json also says %q; the pin is the one source", id, v)
+		}
+	}
+	if strings.HasPrefix(used["tool:osv-scanner"], "v") {
+		t.Errorf("a scan tool's version is shown without its v: %q", used["tool:osv-scanner"])
+	}
+}
+
+// A tool Drydock does not pin (llama.cpp: the newest build is installed) is shown at the newest release, and
+// docs/software-notes.json records no version for it that the next build would leave behind.
+func TestAToolDrydockDoesNotPinIsShownAtTheNewestRelease(t *testing.T) {
+	old := root
+	root = sourceRoot(t)
+	t.Cleanup(func() { root = old })
+	if got := usedVersion("tool:llama.cpp", "b11774", "b11776"); got != "b11776" {
+		t.Errorf("llama.cpp is shown as using %q, want the newest build", got)
+	}
+	if got := usedVersion("tool:llama.cpp", "", ""); got != "" {
+		t.Errorf("with the newest unknown, llama.cpp is shown as using %q", got)
+	}
+	if got := usedVersion("tool:gh", "2.102.1", "2.103.0"); got != "2.102.1" {
+		t.Errorf("a pinned tool is shown as using %q, want the recorded version", got)
+	}
+	for id := range followsNewest {
+		if v, ok := toolUsed()[id]; ok {
+			t.Errorf("%s: docs/software-notes.json records %q for a tool Drydock does not pin", id, v)
+		}
+	}
+}
+
+// A lookup's own note (the fork read from its tags because GitHub's listing could not be read) survives the hand-written note.
+func TestALookupsNoteIsKeptBesideTheHandWrittenOne(t *testing.T) {
+	if got := withNote("The fork has not been reviewed.", "Newest release tag, read from the git tags."); got != "The fork has not been reviewed. Newest release tag, read from the git tags." {
+		t.Fatalf("%q", got)
+	}
+	if withNote("", " x ") != "x" || withNote("y", "") != "y" {
+		t.Fatal("empty parts")
+	}
+}
+
+// An answer body (a proxy's page, a rate limit's text) never reaches the committed report: one line, cut short.
+func TestAnErrorIsCutToItsFirstLine(t *testing.T) {
+	long := "HTTP 403: blocked by the proxy\nline two with instructions\n" + strings.Repeat("x", 300)
+	if got := firstLineOf(long); got != "HTTP 403: blocked by the proxy" {
+		t.Fatalf("%q", got)
+	}
+	if got := firstLineOf(strings.Repeat("y", 200)); len(got) != 163 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("%d %q", len(got), got[len(got)-5:])
+	}
+}

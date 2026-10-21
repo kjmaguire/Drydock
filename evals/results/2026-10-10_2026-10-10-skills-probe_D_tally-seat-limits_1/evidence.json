@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seat limits are enforced in the store, under its lock, for invite creation, viewer→other role changes and plan changes. Free allows 3 seats, team 10, business unlimited. Refusals return the exact 402 or 409 bodies from the spec, and a refused change leaves nothing behind.\n- `GET /v1/org` shows `\"seats\": {\"used\", \"limit\"}`, with `limit` null when unlimited. `PATCH /v1/org` returns the same shape.\n- New tests cover each rule, accepting an invite at a full org, and a race where several simultaneous invites for the last seat yield exactly one success. `go build ./...`, `go test ./...` and `go \n...[truncated]",
+    "data": {},
+    "created": 1791672208423
+  },
+  {
+    "id": 2,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 780ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/build_1e5f93326e10.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 778,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672209285
+  },
+  {
+    "id": 3,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 600ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/test_b2b54aae57f3.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 600,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672209889
+  },
+  {
+    "id": 4,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 620ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/lint_1f261d899f0d.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 622,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672210514
+  },
+  {
+    "id": 5,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/checks/secrets_fee6510d450b.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672210535
+  },
+  {
+    "id": 6,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +445 -6",
+    "ref": "<scratchpad>/trialwork/probe-tally-seat-limits/tally-seat-limits-D-1/data/runs/run_e99b7258c3a5/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 445,
+      "Deletions": 6,
+      "base": "26c2ec6182f851a9e44405e6b5ee7dee14d31f61",
+      "commit": "f36126758d0cbfd0aabd6f16384cf43744ce5cb7"
+    },
+    "created": 1791672210673
+  },
+  {
+    "id": 7,
+    "taskId": "task_6ff0790d65f0",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit f36126758d",
+    "ref": "f36126758d0cbfd0aabd6f16384cf43744ce5cb7",
+    "data": {},
+    "created": 1791672210673
+  }
+]

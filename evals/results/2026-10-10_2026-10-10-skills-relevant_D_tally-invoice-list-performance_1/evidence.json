@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /v1/invoices` (any mix of `customer_id`, `subscription_id`, `status`, `limit`, `cursor`) now reads from a per-organization sorted index instead of copying and sorting every invoice in the store. It builds views only for the page, and looks up each customer directly. Output is unchanged: same order, fields, errors and cursors.\n- Store and HTTP tests compare paging against the full list across orgs, filters and page sizes, and cover invoices created between pages, status changes, and a snapshot restore. Checked with `go build ./...`, `go vet ./...` and `go test ./...`, all passing.\n- No e\n...[truncated]",
+    "data": {},
+    "created": 1791669160980
+  },
+  {
+    "id": 2,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.52s",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-1/data/runs/run_8c03b686e8c9/checks/build_462f76c088d2.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1520,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669162684
+  },
+  {
+    "id": 3,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.09s",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-1/data/runs/run_8c03b686e8c9/checks/test_5cf6981261e5.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1090,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669163778
+  },
+  {
+    "id": 4,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 990ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-1/data/runs/run_8c03b686e8c9/checks/lint_32cfbebce089.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 991,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669164773
+  },
+  {
+    "id": 5,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-1/data/runs/run_8c03b686e8c9/checks/secrets_20afd36a98fb.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 27,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669164802
+  },
+  {
+    "id": 6,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +408 -50",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-1/data/runs/run_8c03b686e8c9/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 408,
+      "Deletions": 50,
+      "base": "53953db3cd24256734c6b0aed68ebb516ac0308c",
+      "commit": "02a75f476d9313456c15ebe71ba5a201e775f782"
+    },
+    "created": 1791669165017
+  },
+  {
+    "id": 7,
+    "taskId": "task_c3d375c4c774",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 02a75f476d",
+    "ref": "02a75f476d9313456c15ebe71ba5a201e775f782",
+    "data": {},
+    "created": 1791669165017
+  }
+]

@@ -1,0 +1,367 @@
+diff --git a/internal/store/billing.go b/internal/store/billing.go
+index 0332c41..1eee98a 100644
+--- a/internal/store/billing.go
++++ b/internal/store/billing.go
+@@ -2,6 +2,7 @@ package store
+ 
+ import (
+ 	"encoding/json"
++	"fmt"
+ 	"sort"
+ 	"strings"
+ 	"time"
+@@ -175,6 +176,46 @@ func (s *Store) UpdateSubscription(orgID, id string, f func(*Subscription) error
+ 	return copySub(sub), nil
+ }
+ 
++// ErrAlreadyRenewed is returned by RenewSubscription when the subscription is no longer in the period the caller saw: another
++// caller (another server instance) renewed or canceled it first.
++var ErrAlreadyRenewed = fmt.Errorf("%w: the subscription was renewed already", ErrConflict)
++
++// RenewSubscription ends a subscription's current period, which ends at periodEnd, in one step: it changes the subscription
++// with change (to its next period, or canceled) and stores inv, when not nil, as the invoice of the renewal. When the
++// subscription is canceled or its current period no longer ends at periodEnd, nothing changes and ErrAlreadyRenewed is
++// returned, so a period is renewed, and invoiced, once however many callers try at the same time. When inv cannot be
++// stored, nothing changes either.
++func (s *Store) RenewSubscription(orgID, id string, periodEnd time.Time, change func(*Subscription), inv *Invoice, now time.Time) (Subscription, Invoice, error) {
++	if inv != nil {
++		if err := checkInvoice(*inv); err != nil {
++			return Subscription{}, Invoice{}, err
++		}
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	old, ok := s.subs[id]
++	if !ok || old.OrgID != orgID {
++		return Subscription{}, Invoice{}, ErrNotFound
++	}
++	if old.Status == Canceled || !old.CurrentPeriodEnd.Equal(periodEnd) {
++		return Subscription{}, Invoice{}, ErrAlreadyRenewed
++	}
++	sub := copySub(old)
++	change(&sub)
++	sub.ID, sub.OrgID, sub.CustomerID, sub.PlanID, sub.CreatedAt = old.ID, old.OrgID, old.CustomerID, old.PlanID, old.CreatedAt
++	var created Invoice
++	if inv != nil {
++		in := *inv
++		in.OrgID, in.SubscriptionID = orgID, id
++		var err error
++		if created, err = s.createInvoice(in, now); err != nil {
++			return Subscription{}, Invoice{}, err
++		}
++	}
++	s.subs[id] = sub
++	return copySub(sub), created, nil
++}
++
+ // DueSubscriptions returns the subscriptions of every organization whose current period has ended by now and that are not
+ // canceled, the longest overdue first.
+ func (s *Store) DueSubscriptions(now time.Time) []Subscription {
+@@ -243,19 +284,31 @@ func (s *Store) UsageTotal(orgID, subID string, from, to time.Time) int64 {
+ 
+ // CreateInvoice stores an invoice for one of the organization's customers, with the organization's tax rate. It is open.
+ func (s *Store) CreateInvoice(inv Invoice, now time.Time) (Invoice, error) {
++	if err := checkInvoice(inv); err != nil {
++		return Invoice{}, err
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.createInvoice(inv, now)
++}
++
++func checkInvoice(inv Invoice) error {
+ 	if !inv.Currency.Valid() {
+-		return Invoice{}, invalid("unknown currency %q", inv.Currency)
++		return invalid("unknown currency %q", inv.Currency)
+ 	}
+ 	if inv.DiscountPercent < 0 || inv.DiscountPercent > 100 {
+-		return Invoice{}, invalid("the discount is 0 to 100 percent")
++		return invalid("the discount is 0 to 100 percent")
+ 	}
+ 	for _, l := range inv.Lines {
+ 		if l.Quantity <= 0 {
+-			return Invoice{}, invalid("a line needs a positive quantity")
++			return invalid("a line needs a positive quantity")
+ 		}
+ 	}
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
++	return nil
++}
++
++// createInvoice stores a checked invoice. The caller holds the lock.
++func (s *Store) createInvoice(inv Invoice, now time.Time) (Invoice, error) {
+ 	org, ok := s.orgs[inv.OrgID]
+ 	if !ok {
+ 		return Invoice{}, ErrNotFound
+diff --git a/internal/subscriptions/subscriptions.go b/internal/subscriptions/subscriptions.go
+index 6d6d997..8086c60 100644
+--- a/internal/subscriptions/subscriptions.go
++++ b/internal/subscriptions/subscriptions.go
+@@ -143,71 +143,103 @@ func (s *Service) Cancel(ctx context.Context, orgID, id string, atPeriodEnd bool
+ // RenewDue renews every subscription, of every organization, whose current period has ended. A subscription set to cancel
+ // at the end of its period is canceled. Otherwise its next period starts and is invoiced: a licensed plan bills the new
+ // period in advance, a metered plan bills the usage of the period that ended. A declined charge makes the subscription past
+-// due. RenewDue returns how many subscriptions it renewed or canceled.
++// due; when the payment gateway is unavailable the invoice stays open (it can be paid later) and the subscription keeps its
++// status.
++//
++// RenewDue may run in several server instances at once: each period is renewed, invoiced and charged once (the pair of the
++// subscription and the period start identifies its invoice), whoever gets to it first. When one subscription fails, RenewDue
++// goes on with the others and returns the errors after trying them all. It returns how many subscriptions it renewed or
++// canceled itself.
+ func (s *Service) RenewDue(ctx context.Context) (int, error) {
+ 	now := s.Clock.Now()
+ 	n := 0
++	var errs []error
+ 	for _, sub := range s.Store.DueSubscriptions(now) {
+ 		if err := ctx.Err(); err != nil {
+-			return n, err
++			errs = append(errs, err)
++			break
+ 		}
+-		if err := s.renew(ctx, sub, now); err != nil {
+-			return n, fmt.Errorf("renew %s: %w", sub.ID, err)
++		renewed, err := s.renew(ctx, sub, now)
++		if renewed {
++			n++
++		}
++		if err != nil {
++			errs = append(errs, fmt.Errorf("renew %s: %w", sub.ID, err))
+ 		}
+-		n++
+ 	}
+-	return n, nil
++	return n, errors.Join(errs...)
+ }
+ 
+-func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Time) error {
++// renew ends sub's current period and reports whether it did: false when another caller renewed it first. The error of a
++// renewal whose charge could not be made (the payment gateway is unavailable) comes with true: the subscription moved on.
++func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Time) (bool, error) {
+ 	plan, ok := s.Store.Plan(sub.OrgID, sub.PlanID)
+ 	if !ok {
+-		return store.ErrNotFound
++		return false, store.ErrNotFound
+ 	}
+ 	if sub.CancelAtPeriodEnd {
+ 		end := sub.CurrentPeriodEnd
+-		sub, err := s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
++		canceled, _, err := s.Store.RenewSubscription(sub.OrgID, sub.ID, sub.CurrentPeriodEnd, func(x *store.Subscription) {
+ 			x.Status, x.CanceledAt = store.Canceled, &end
+-			return nil
+-		})
+-		if err == nil {
+-			s.publish(ctx, sub.OrgID, "subscription.canceled", sub)
++		}, nil, now)
++		if errors.Is(err, store.ErrAlreadyRenewed) {
++			return false, nil
+ 		}
+-		return err
++		if err != nil {
++			return false, err
++		}
++		s.publish(ctx, sub.OrgID, "subscription.canceled", canceled)
++		return true, nil
+ 	}
+ 	start := now
+ 	end := billing.AddInterval(start, plan.Interval)
+-	paid := true
+-	var err error
++	var inv *store.Invoice
+ 	switch {
+ 	case plan.UsageType == store.Metered && sub.Status != store.Trialing:
+-		paid, err = s.invoicePeriod(ctx, sub, plan, sub.CurrentPeriodStart, sub.CurrentPeriodEnd)
++		i := s.periodInvoice(sub, plan, sub.CurrentPeriodStart, sub.CurrentPeriodEnd)
++		inv = &i
+ 	case plan.UsageType == store.Licensed:
+-		paid, err = s.invoicePeriod(ctx, sub, plan, start, end)
++		i := s.periodInvoice(sub, plan, start, end)
++		inv = &i
++	}
++	// Moving to the next period and storing its invoice is one step, which only one caller can take.
++	renewed, created, err := s.Store.RenewSubscription(sub.OrgID, sub.ID, sub.CurrentPeriodEnd, func(x *store.Subscription) {
++		x.CurrentPeriodStart, x.CurrentPeriodEnd = start, end
++	}, inv, now)
++	if errors.Is(err, store.ErrAlreadyRenewed) {
++		return false, nil
+ 	}
+ 	if err != nil {
+-		return err
++		return false, err
+ 	}
+-	sub, err = s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
+-		x.CurrentPeriodStart, x.CurrentPeriodEnd = start, end
+-		if paid {
+-			x.Status = store.Active
+-		} else {
+-			x.Status = store.PastDue
++	status, chargeErr := store.Active, error(nil)
++	if inv != nil {
++		s.publish(ctx, sub.OrgID, "invoice.created", map[string]any{"invoice_id": created.ID, "subscription_id": sub.ID})
++		paid, err := s.charge(ctx, created)
++		switch {
++		case err != nil:
++			status, chargeErr = renewed.Status, fmt.Errorf("the invoice %s stays open: %w", created.ID, err)
++		case !paid:
++			status = store.PastDue
++		}
++	}
++	if status != renewed.Status {
++		if updated, err := s.Store.UpdateSubscription(sub.OrgID, sub.ID, func(x *store.Subscription) error {
++			if x.Status == store.Canceled {
++				return ErrCanceled
++			}
++			x.Status = status
++			return nil
++		}); err == nil {
++			renewed = updated
+ 		}
+-		return nil
+-	})
+-	if err != nil {
+-		return err
+ 	}
+-	s.publish(ctx, sub.OrgID, "subscription.updated", sub)
+-	return nil
++	s.publish(ctx, sub.OrgID, "subscription.updated", renewed)
++	return true, chargeErr
+ }
+ 
+-// invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.
+-// It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no
+-// payment method stays open and counts as paid here (it is paid by hand).
+-func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {
++// periodInvoice is the invoice of one period of a subscription, not stored yet.
++func (s *Service) periodInvoice(sub store.Subscription, plan store.Plan, start, end time.Time) store.Invoice {
+ 	var lines []store.Line
+ 	period := start.Format("Jan 2, 2006") + " to " + end.Format("Jan 2, 2006")
+ 	switch plan.UsageType {
+@@ -221,13 +253,25 @@ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, pla
+ 		}
+ 	}
+ 	ps, pe := start, end
+-	inv, err := s.Store.CreateInvoice(store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
+-		Lines: lines, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe}, s.Clock.Now())
++	return store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
++		Lines: lines, DiscountPercent: sub.DiscountPercent, PeriodStart: &ps, PeriodEnd: &pe}
++}
++
++// invoicePeriod invoices one period of a subscription and charges the invoice (charge).
++func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {
++	inv, err := s.Store.CreateInvoice(s.periodInvoice(sub, plan, start, end), s.Clock.Now())
+ 	if err != nil {
+ 		return false, err
+ 	}
+ 	s.publish(ctx, sub.OrgID, "invoice.created", map[string]any{"invoice_id": inv.ID, "subscription_id": sub.ID})
+-	_, _, err = s.Payments.Pay(ctx, sub.OrgID, inv.ID, "")
++	return s.charge(ctx, inv)
++}
++
++// charge charges an invoice to the customer's default payment method. It reports false when the charge was declined. An
++// invoice that needs no charge is marked paid; one whose customer has no payment method stays open and counts as paid here
++// (it is paid by hand). When the gateway is unavailable the error wraps payments.ErrUnavailable and the invoice stays open.
++func (s *Service) charge(ctx context.Context, inv store.Invoice) (bool, error) {
++	_, _, err := s.Payments.Pay(ctx, inv.OrgID, inv.ID, "")
+ 	var decline *payments.DeclineError
+ 	switch {
+ 	case err == nil, errors.Is(err, payments.ErrNoPaymentMethod):
+diff --git a/internal/subscriptions/subscriptions_test.go b/internal/subscriptions/subscriptions_test.go
+index a713e2d..acc5337 100644
+--- a/internal/subscriptions/subscriptions_test.go
++++ b/internal/subscriptions/subscriptions_test.go
+@@ -2,11 +2,13 @@ package subscriptions_test
+ 
+ import (
+ 	"context"
++	"sync"
+ 	"testing"
+ 	"time"
+ 
+ 	"example.com/tally/internal/apitest"
+ 	"example.com/tally/internal/money"
++	"example.com/tally/internal/payments"
+ 	"example.com/tally/internal/store"
+ 	"example.com/tally/internal/subscriptions"
+ )
+@@ -134,3 +136,80 @@ func TestMeteredBillsUsageInArrears(t *testing.T) {
+ 		t.Fatalf("invoices = %+v (usage at the period's end belongs to the next period)", invs)
+ 	}
+ }
++
++// subscribe starts a monthly subscription for a new customer whose default payment method is pm_card_visa, then switches
++// the customer to method.
++func subscribe(t *testing.T, e *apitest.Env, email, method string) store.Subscription {
++	t.Helper()
++	c := e.CreateCustomer(e.Acme, "Jane", email)
++	setMethod := func(m string) {
++		if _, err := e.Store.UpdateCustomer(e.Acme.ID, c.ID, func(c *store.Customer) error { c.DefaultPaymentMethod = m; return nil }); err != nil {
++			t.Fatal(err)
++		}
++	}
++	setMethod("pm_card_visa")
++	p := e.CreatePlan(e.Acme, "Team "+email, "USD", "20.00")
++	sub, err := e.Subs.Create(context.Background(), e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	setMethod(method)
++	return sub
++}
++
++func TestConcurrentRenewalsInvoiceOnce(t *testing.T) {
++	e := apitest.New(t)
++	var subs []store.Subscription
++	for _, email := range []string{"a@example.com", "b@example.com", "c@example.com"} {
++		subs = append(subs, subscribe(t, e, email, "pm_card_visa"))
++	}
++	e.Clock.Set(subs[0].CurrentPeriodEnd)
++	var wg sync.WaitGroup
++	for i := 0; i < 8; i++ { // eight server instances
++		pay := &payments.Service{Store: e.Store, Gateway: e.Gateway, Clock: e.Clock, Publisher: e.Webhooks}
++		instance := &subscriptions.Service{Store: e.Store, Payments: pay, Clock: e.Clock, Publisher: e.Webhooks}
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			_, _ = instance.RenewDue(context.Background())
++		}()
++	}
++	wg.Wait()
++	for _, sub := range subs {
++		if invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 2 {
++			t.Fatalf("%s has %d invoices, want 2", sub.ID, len(invs))
++		}
++	}
++	if n := len(e.Gateway.Charges()); n != 6 {
++		t.Fatalf("%d charges, want 6", n)
++	}
++}
++
++func TestRenewalWithTheGatewayDown(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	down := subscribe(t, e, "down@example.com", "pm_gateway_down")
++	fine := subscribe(t, e, "fine@example.com", "pm_card_visa")
++	e.Clock.Set(down.CurrentPeriodEnd)
++	n, err := e.Subs.RenewDue(ctx)
++	if n != 2 || err == nil {
++		t.Fatalf("RenewDue = %d, %v; want both renewed and the gateway's error", n, err)
++	}
++	got, _ := e.Store.Subscription(e.Acme.ID, down.ID)
++	if got.Status != store.Active || !got.CurrentPeriodStart.Equal(down.CurrentPeriodEnd) {
++		t.Fatalf("after the renewal = %+v, want the next period, still active", got)
++	}
++	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: down.ID})
++	if len(invs) != 2 || invs[1].Status != store.InvoiceOpen {
++		t.Fatalf("invoices = %+v, want the renewal's open", invs)
++	}
++	if invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: fine.ID}); len(invs) != 2 || invs[1].Status != store.InvoicePaid {
++		t.Fatalf("the other subscription's invoices = %+v", invs)
++	}
++	if n, err := e.Subs.RenewDue(ctx); n != 0 || err != nil {
++		t.Fatalf("the next run = %d, %v; want nothing to do", n, err)
++	}
++	if invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: down.ID}); len(invs) != 2 {
++		t.Fatalf("the period was invoiced again: %+v", invs)
++	}
++}

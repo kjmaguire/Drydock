@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-renewal-dedupe",
+  "taskClass": "test-fix loop",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "0e8f21e1cc71f1f5371ca141d5c4fedc21b92122",
+  "startedAt": "2026-10-10T22:10:46.999564104Z",
+  "wallMs": 510372,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1042,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1837,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.015s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.008s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.006s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.006s\nok  \texample.com/tally/internal/payments\t0.003s\nok  \texample.com/tally/internal/reports\t0.002s\nok  \texample.com/tally/internal/snapshot\t0.012s\nok  \texample.com/tally/internal/store\t0.004s\nok  \texample.com/tally/internal/subscriptions\t0.040s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2884
+  },
+  "costUsd": 0.1273458,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 118,
+    "output": 106171,
+    "cacheRead": 2502230,
+    "cacheWrite": 246131
+  },
+  "sessions": 7,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_0417e237774f",
+      "feedback": "subscriptions.go:201-210: renew() moves CurrentPeriodStart/End via RenewSubscription before invoicePeriod creates the invoice. If CreateInvoice fails for a non-gateway reason (ErrConflict, ErrNotFound, invalid currency/discount), the period has already moved, so the period is never invoiced and no later RunDue retries it; before this change the next run retried. Fix so a failed invoice creation cannot leave a moved period without an invoice: create the invoice before the move keyed on a deterministic period start (the old CurrentPeriodEnd/due, not now, which differs per instance), with the claim still atomic, or otherwise guarantee the invoice exists. Update TestRenewDueGoesOnPastAFailure (subscriptions_test.go ~line 220), which currently asserts the lost-invoice outcome. Optional, pre-existing: the final UpdateSubscription at subscriptions.go:223 is unguarded, so a concurrent Cancel can be overwritten with Active/PastDue."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_0417e237774f",
+      "feedback": "In internal/store/billing.go, createInvoice's (subscription, PeriodStart) duplicate check makes RenewSubscriptionInvoiced return ErrConflict and leave the subscription's period unmoved whenever the new period's invoice already exists. Legacy duplicates from the old bug (metered subscriptions whose gateway was down, which keep CurrentPeriodStart and re-invoice it) hit this on every run, so those subscriptions are never renewed and RenewDue errors forever. The spec requires the renewal to move the subscription on, and one failing subscription must not block the rest. Fix in internal/subscriptions/subscriptions.go renew(): when the period's invoice already exists, treat the period as already invoiced, advance the subscription without storing a second invoice and without charging again. Update TestRenewDueGoesOnPastAFailure (it asserts the stuck state) to expect the subscription to advance with no error, and add a test for a metered subscription that already has a duplicate invoice for its current period."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_0417e237774f"
+    }
+  ],
+  "coreTaskId": "task_84aef0ea50a8"
+}

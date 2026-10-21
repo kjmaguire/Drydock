@@ -1,0 +1,353 @@
+package integrations
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// TaskResult is the outcome of an import.
+type TaskResult struct {
+	ItemID   string `json:"itemId"`
+	TaskID   string `json:"taskId"`
+	IssueRef string `json:"issueRef"`
+	Existing bool   `json:"existing"` // the item already had a task; nothing was created
+	// Requirements is set for a Notion page: it became a requirements-source candidate, not a task.
+	Requirements bool     `json:"requirements,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
+}
+
+// maxRulePriority is the largest priority (either way) a rule may give the tasks it makes: the task service's own limit
+// (tasks.MaxPriority). A value outside it is not used; the integration's mapped priority stays.
+const maxRulePriority = 1000
+
+// rulePriority is the priority a rule gives the tasks it makes, or fallback when it gives none or one outside the task service's
+// range (rules are checked when they are saved; this is the second look, at the point of use).
+func rulePriority(params map[string]any, fallback int) int {
+	if p, ok := num(params["priority"]); ok && p >= -maxRulePriority && p <= maxRulePriority {
+		return int(p)
+	}
+	return fallback
+}
+
+// Import turns one item into work. Only a human can call it (it is the "human action" of docs/integrations.md section 3):
+//
+//   - Linear issue -> BACKLOG task with the title and description quoted, labels and priority mapped, IssueRef "ENG-123".
+//   - Sentry issue -> BACKLOG bug task with a secret-scanned stack trace excerpt.
+//   - Aikido finding -> BACKLOG security task with the severity mapped to the task priority.
+//   - Notion page -> a requirements-source candidate: the event integration.notion_page_ready is emitted and the text is
+//     available through NotionPage; the Requirements area decides what to do with it.
+func (s *Service) Import(ctx context.Context, by, itemID, projectOverride string) (TaskResult, error) {
+	if err := requireHuman(by); err != nil {
+		return TaskResult{}, err
+	}
+	it, err := s.st.GetItem(ctx, itemID)
+	if err != nil {
+		return TaskResult{}, err
+	}
+	conn, err := s.st.GetConnection(ctx, it.IntegrationID)
+	if err != nil {
+		return TaskResult{}, err
+	}
+	if it.Kind == ItemPage {
+		return s.notionCandidate(ctx, by, conn, it)
+	}
+	project := projectOverride
+	if project == "" {
+		project = it.ProjectID // the project of the assignment that brought the item
+	}
+	if project == "" {
+		project = conn.ProjectID
+	}
+	if project == "" {
+		return TaskResult{}, errf(ErrBadRequest, "this item belongs to no Drydock project; choose one first")
+	}
+	// the screen disables the button for such an item; this refuses it for any other caller as well
+	if it.Risk >= RiskThreshold {
+		return TaskResult{}, errf(ErrNotImportable, "%s has a high injection risk (%s): it is not turned into a task", it.IssueRef, strings.Join(it.RiskFlags, ", "))
+	}
+	// a gone item is closed upstream (a closed GitHub issue, a resolved Sentry issue) or out of the project's scope: it is not
+	// open work any more (one that already has a task answers with that task below)
+	if it.Gone && it.TaskID == "" {
+		return TaskResult{}, errf(ErrNotImportable, "%s is closed upstream or no longer in this project's scope", it.IssueRef)
+	}
+	tr, err := s.createTask(ctx, by, it, project, nil)
+	if errors.Is(err, ErrAlreadyImported) {
+		return tr, nil
+	}
+	return tr, err
+}
+
+func (s *Service) notionCandidate(ctx context.Context, by string, conn Connection, it Item) (TaskResult, error) {
+	project := firstNonEmpty(it.ProjectID, conn.ProjectID)
+	s.emit(ctx, EventNotionPageReady, project, "", map[string]any{
+		"integrationId": conn.ID, "itemId": it.ID, "externalId": it.ExternalID, "sourceRef": "notion:" + it.ExternalID, "hash": it.ContentHash, "risk": it.Risk, "by": by,
+		"projectId": project, "untrusted": true,
+	})
+	return TaskResult{ItemID: it.ID, IssueRef: it.IssueRef, Requirements: true, Warnings: riskWarnings(it.RiskFlags)}, nil
+}
+
+// NotionPageText is a Notion page handed to the Requirements area: sanitized, secret-redacted, size-limited, and still data.
+type NotionPageText struct {
+	ItemID      string   `json:"itemId"`
+	ProjectID   string   `json:"projectId"`
+	ExternalID  string   `json:"externalId"`
+	SourceRef   string   `json:"sourceRef"` // "notion:<page id>", the stable id the Requirements area keys a synced document by
+	Title       string   `json:"title"`
+	URL         string   `json:"url"`
+	Text        string   `json:"text"`
+	ContentHash string   `json:"contentHash"`
+	Untrusted   bool     `json:"untrusted"` // always true: the Requirements area wraps it like any retrieved document
+	Risk        int      `json:"risk"`
+	RiskFlags   []string `json:"riskFlags"`
+	Truncated   bool     `json:"truncated"`
+}
+
+// NotionPage returns the stored text of a Notion item for the Requirements area (the method behind
+// integration.notion_page_ready).
+func (s *Service) NotionPage(ctx context.Context, itemID string) (NotionPageText, error) {
+	it, err := s.st.GetItem(ctx, itemID)
+	if err != nil {
+		return NotionPageText{}, err
+	}
+	if it.Kind != ItemPage {
+		return NotionPageText{}, errf(ErrBadRequest, "item %s is not a Notion page", itemID)
+	}
+	text := s.st.ReadBody(it)
+	if text == "" {
+		text = it.Excerpt
+	}
+	return NotionPageText{ItemID: it.ID, ProjectID: it.ProjectID, ExternalID: it.ExternalID, SourceRef: "notion:" + it.ExternalID, Title: it.Title, URL: it.URL, Text: text, ContentHash: it.ContentHash,
+		Untrusted: true, Risk: it.Risk, RiskFlags: it.RiskFlags, Truncated: it.Truncated}, nil
+}
+
+// createTask creates the BACKLOG task for an item. by is "human:<name>" or "rule:<id>". It is the single place external text
+// becomes task text, and it only ever puts that text inside a quoted block.
+func (s *Service) createTask(ctx context.Context, by string, it Item, projectID string, rule *Rule) (TaskResult, error) {
+	if s.o.CreateTask == nil {
+		return TaskResult{}, errors.New("integrations: no task creator is configured")
+	}
+	lk := s.lock("item:" + it.ID)
+	lk.Lock()
+	defer lk.Unlock()
+	cur, err := s.st.GetItem(ctx, it.ID)
+	if err != nil {
+		return TaskResult{}, err
+	}
+	if cur.TaskID != "" {
+		return TaskResult{ItemID: cur.ID, TaskID: cur.TaskID, IssueRef: cur.IssueRef, Existing: true}, ErrAlreadyImported
+	}
+	if cur.Kind == ItemPage {
+		return TaskResult{}, errf(ErrNotImportable, "a Notion page is a requirements source, not a task")
+	}
+	it = cur
+	if projectID != "" && s.o.ProjectExists != nil {
+		if err := s.o.ProjectExists(ctx, projectID); err != nil {
+			return TaskResult{}, err
+		}
+	}
+	conn, err := s.st.GetConnection(ctx, it.IntegrationID)
+	if err != nil {
+		return TaskResult{}, err
+	}
+	ad, ok := AdapterFor(conn.Kind)
+	if !ok {
+		return TaskResult{}, errf(ErrBadRequest, "unknown integration %q", conn.Kind)
+	}
+	mapping := ad.TaskMapping(it)
+	var warnings []string
+
+	// Sentry: the stack trace is fetched only for an issue that is becoming a task, scanned, and quoted separately.
+	stack := ""
+	if conn.Kind == KindSentry {
+		stack, warnings = s.fetchStack(ctx, conn, ad, it, warnings)
+	}
+
+	body := s.st.ReadBody(it)
+	if body == "" {
+		body = it.Excerpt
+	}
+	titleFlags := titleFlagsOf(it.Title)
+	taskTitle := it.IssueRef + ": " + it.Title
+	if len(titleFlags) > 0 {
+		taskTitle = it.IssueRef + ": (title withheld: instruction-like text; see the quoted source below)"
+		warnings = append(warnings, "the title contained instruction-like text and was replaced")
+	}
+	taskTitle = oneLine(taskTitle, MaxTaskTitleRunes)
+
+	var head strings.Builder
+	fmt.Fprintf(&head, "Imported from %s %s by %s.\n", vendor(conn.Kind), it.IssueRef, by)
+	if facts := safeFacts(it); facts != "" {
+		head.WriteString(facts + "\n")
+	}
+	srcText := "Title: " + it.Title
+	if it.State != "" {
+		srcText += "\nStatus: " + it.State
+	}
+	if len(it.Labels) > 0 {
+		srcText += "\nLabels: " + strings.Join(it.Labels, ", ")
+	}
+	if it.Assignee != "" {
+		srcText += "\nAssignee: " + it.Assignee
+	}
+	if strings.TrimSpace(body) != "" {
+		srcText += "\n\n" + body
+	}
+	q, _ := truncateRunes(srcText, MaxQuoteRunes)
+	allWarnings := append(riskWarnings(it.RiskFlags), warnings...)
+	desc := head.String() + "\n" + QuotedBlock(vendor(conn.Kind)+" "+it.IssueRef, it.URL, allWarnings, q)
+	if stack != "" {
+		desc += "\n" + QuotedBlock("stack trace excerpt (secret-scanned)", "", nil, stack)
+	}
+
+	prio := mapping.Priority
+	template := ""
+	if rule != nil {
+		prio = rulePriority(rule.Params, prio)
+		template, _ = rule.Params["template"].(string)
+	}
+	taskID, err := s.o.CreateTask(ctx, TaskInput{ProjectID: projectID, Title: taskTitle, Description: desc, Priority: prio, IssueRef: it.IssueRef, Template: template})
+	if err != nil {
+		return TaskResult{}, err
+	}
+	won, err := s.st.ClaimItem(ctx, it.ID, taskID, by)
+	if err != nil {
+		return TaskResult{}, err
+	}
+	if !won {
+		return TaskResult{ItemID: it.ID, TaskID: taskID}, errf(ErrAlreadyImported, "another import won the race; task %s is a duplicate and should be cancelled", taskID)
+	}
+	data := map[string]any{"integrationId": conn.ID, "itemId": it.ID, "taskId": taskID, "ref": it.IssueRef, "by": by, "label": mapping.Label, "priority": prio}
+	if rule != nil {
+		data["ruleId"] = rule.ID
+	} else {
+		data["human"] = by
+	}
+	s.emit(ctx, EventTaskCreated, projectID, taskID, data)
+	return TaskResult{ItemID: it.ID, TaskID: taskID, IssueRef: it.IssueRef, Warnings: allWarnings}, nil
+}
+
+func (s *Service) fetchStack(ctx context.Context, conn Connection, ad Adapter, it Item, warnings []string) (string, []string) {
+	api, fail := s.api(ctx, conn)
+	if fail != nil {
+		return "", append(warnings, "the stack trace could not be fetched: "+s.scrub(fail.Message))
+	}
+	cfg := conn.Config
+	if it.AssignmentID != "" {
+		if a, err := s.st.GetAssignment(ctx, it.AssignmentID); err == nil {
+			cfg = a.Config
+		}
+	}
+	dctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
+	defer cancel()
+	text, has, err := ad.Detail(dctx, api, cfg, it.ExternalID)
+	if err != nil {
+		var f *Failure
+		msg := err.Error()
+		if errors.As(err, &f) {
+			msg = f.Message
+		}
+		return "", append(warnings, "the stack trace could not be fetched: "+s.scrub(msg))
+	}
+	if !has {
+		return "", warnings
+	}
+	c := s.san.Text(ctx, text, MaxStackRunes)
+	return excerptLines(c.Text, 60), warnings
+}
+
+// excerptLines keeps the first n lines.
+func excerptLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = append(lines[:n], fmt.Sprintf("… (%d more lines)", len(lines)-n))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func titleFlagsOf(title string) []string {
+	_, flags := Score(title, 0)
+	var out []string
+	for _, f := range flags {
+		if f != "hidden-characters" && f != "long-base64" && f != "hidden-comment" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func oneLine(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	s, _ = truncateRunes(s, n)
+	return s
+}
+
+// safeFacts renders only enum-constrained or numeric facts in the (trusted) header of a task description.
+func safeFacts(it Item) string {
+	var parts []string
+	if lvl, ok := it.Meta["level"].(string); ok && levelEnum[lvl] {
+		parts = append(parts, "level "+lvl)
+	}
+	if n, ok := num(it.Meta["events"]); ok && n > 0 {
+		parts = append(parts, strconv.FormatInt(n, 10)+" events")
+	}
+	if n, ok := num(it.Meta["users"]); ok && n > 0 {
+		parts = append(parts, strconv.FormatInt(n, 10)+" users")
+	}
+	if sev, ok := it.Meta["severity"].(string); ok && severityEnum[sev] {
+		parts = append(parts, "severity "+sev)
+	}
+	if priorityEnum[it.Priority] && it.Source == KindLinear && it.Priority != "none" {
+		parts = append(parts, "priority "+it.Priority)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Facts: " + strings.Join(parts, ", ") + "."
+}
+
+// OutsideTask is the task text for one piece of outside text a human chose to import without a connection (a GitHub issue):
+// the same cleaning as a connection's items (invisible characters removed, secrets redacted, instruction-like titles
+// withheld, sizes capped) and the same quoted block.
+type OutsideTask struct {
+	Title       string
+	Description string
+	Risk        int
+	Flags       []string
+}
+
+// OutsideTask cleans an item's title and body and renders its task title and description. origin names the source
+// ("GitHub issue"), ref its reference ("#12"), by who imported it.
+func (s Sanitizer) OutsideTask(ctx context.Context, origin, ref, url, by, title, body string) OutsideTask {
+	t := s.Line(ctx, title, MaxTitleRunes)
+	b := s.Text(ctx, body, MaxQuoteRunes)
+	out := OutsideTask{Risk: t.Risk + b.Risk}
+	seen := map[string]bool{}
+	for _, f := range append(append([]string(nil), t.Flags...), b.Flags...) {
+		if !seen[f] {
+			seen[f] = true
+			out.Flags = append(out.Flags, f)
+		}
+	}
+	warnings := riskWarnings(out.Flags)
+	if n := t.Redactions + b.Redactions; n > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d secret(s) in the text were replaced by [REDACTED:<rule>]", n))
+	}
+	if b.Truncated {
+		warnings = append(warnings, fmt.Sprintf("the text was cut to %d characters", MaxQuoteRunes))
+	}
+	out.Title = ref + ": " + t.Text
+	if len(titleFlagsOf(t.Text)) > 0 {
+		out.Title = ref + ": (title withheld: instruction-like text; see the quoted source below)"
+		warnings = append(warnings, "the title contained instruction-like text and was replaced")
+	}
+	out.Title = oneLine(out.Title, MaxTaskTitleRunes)
+	src := "Title: " + t.Text
+	if strings.TrimSpace(b.Text) != "" {
+		src += "\n\n" + b.Text
+	}
+	out.Description = fmt.Sprintf("Imported from %s %s by %s.\n\n", origin, ref, by) + QuotedBlock(origin+" "+ref, url, warnings, src)
+	return out
+}

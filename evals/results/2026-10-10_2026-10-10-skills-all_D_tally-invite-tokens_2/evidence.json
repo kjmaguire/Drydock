@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Invite tokens are 32 random bytes from crypto/rand, base64url-unpadded, stored only as SHA-256 hashes. Plaintext appears only in the invite email. No API response or snapshot contains it.\n- Accept returns 404 `invite_not_found` (unknown or revoked), 410 `invite_used`, or 410 `invite_expired` (older than 7 days on the service clock). A valid token accepts as before.\n- Re-inviting an address (case-insensitive) revokes the old pending invite. GET /v1/invites lists only pending invites, each with `expires_at`. Tests cover each behavior, and `go build`, `go test`, and `go vet` pass.",
+    "data": {},
+    "created": 1791670413240
+  },
+  {
+    "id": 2,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.04s",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/runs/run_4ecf92e9c334/checks/build_acced3a3159d.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1043,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670414330
+  },
+  {
+    "id": 3,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 790ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/runs/run_4ecf92e9c334/checks/test_82a298c17666.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 790,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670415122
+  },
+  {
+    "id": 4,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.02s",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/runs/run_4ecf92e9c334/checks/lint_050742f0720c.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1021,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670416147
+  },
+  {
+    "id": 5,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 40ms",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/runs/run_4ecf92e9c334/checks/secrets_a975d061deb1.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 36,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670416185
+  },
+  {
+    "id": 6,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +251 -17",
+    "ref": "<scratchpad>/trialwork/all-3-1/tally-invite-tokens-D-2/data/runs/run_4ecf92e9c334/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 251,
+      "Deletions": 17,
+      "base": "52e64ba27a1937a708f1f06c99d9ba617f093038",
+      "commit": "6120ffccba087a85061f1c6eb495226c51b722a7"
+    },
+    "created": 1791670416484
+  },
+  {
+    "id": 7,
+    "taskId": "task_a7da62c1813b",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 6120ffccba",
+    "ref": "6120ffccba087a85061f1c6eb495226c51b722a7",
+    "data": {},
+    "created": 1791670416484
+  }
+]

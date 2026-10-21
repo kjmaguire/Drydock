@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-proration",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "3101e48cf85db1570f6bb1a520d21f3eee802edc",
+  "startedAt": "2026-10-10T04:52:05.672463027Z",
+  "wallMs": 547617,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1881,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 3012,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.048s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.007s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.025s\nok  \texample.com/tally/internal/payments\t0.007s\nok  \texample.com/tally/internal/reports\t0.009s\nok  \texample.com/tally/internal/snapshot\t0.016s\nok  \texample.com/tally/internal/store\t0.007s\nok  \texample.com/tally/internal/subscriptions\t0.022s\nok  \texample.com/tally/internal/webhooks\t0.005s\n"
+      }
+    ],
+    "durationMs": 4942
+  },
+  "costUsd": 0.29750567000000006,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 140,
+    "output": 115406,
+    "cacheRead": 4611383,
+    "cacheWrite": 316049
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_14f2113dfb5d",
+      "feedback": "1) internal/subscriptions/subscriptions.go:174-180 (prorate): if an upgrade arrives after CurrentPeriodEnd but before RenewDue has run, remaining is negative. Example: Team 2000 -\u003e Business 5000, remaining -86400s of 2678400s gives lines +65 and -161, a net credit of 96 to the customer. Decide the behaviour (renew first, or clamp remaining to [0, length]) and add a test where now is after CurrentPeriodEnd. Optional: subscriptions.go:124 is not gofmt-formatted (changed :=newPlan.ID); the API tests in internal/api only cover the pending downgrade and the 422, not upgrade, equal, trialing or renewal, which the worker's DoD claims they do."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_14f2113dfb5d",
+      "feedback": "internal/api/subscriptions.go updateSubscription (~lines 78-84): when Update's upgrade billing fails with a non-decline error, the plan change is already applied, but the handler only logs the error and returns 200. The subscription is upgraded with no invoice and no signal to the caller, which is a free upgrade. Surface the failure (e.g. return a 5xx with the subscription, or mark it past_due) and add a test that forces a non-decline billing error and checks the result. Verify how bill() behaves on gateway errors in internal/subscriptions/subscriptions.go before choosing the fix."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_14f2113dfb5d"
+    }
+  ],
+  "coreTaskId": "task_292d2e317ceb"
+}

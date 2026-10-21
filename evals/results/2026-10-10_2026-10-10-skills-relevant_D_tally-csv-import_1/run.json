@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "4d161a0630ba51323b15e8aea5c6fd52f79eb51f",
+  "startedAt": "2026-10-10T21:43:17.104886484Z",
+  "wallMs": 340130,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1586,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 4532,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t2.976s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.012s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.004s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.021s\nok  \texample.com/tally/internal/reports\t0.097s\nok  \texample.com/tally/internal/snapshot\t0.072s\nok  \texample.com/tally/internal/store\t0.049s\nok  \texample.com/tally/internal/subscriptions\t0.014s\nok  \texample.com/tally/internal/webhooks\t0.043s\n"
+      }
+    ],
+    "durationMs": 6163
+  },
+  "costUsd": 0.06969137,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 68,
+    "output": 62471,
+    "cacheRead": 1119707,
+    "cacheWrite": 136260
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_4b7ee42f3faf",
+      "feedback": "internal/store/customers.go:97-100 and its caller at line 72: the email_taken check uses the global customersByEmail index, which keeps only one owner per email across all organizations. If Acme and Globex both hold jane@example.com (allowed by CreateCustomer), the index points at Globex's customer, so customerEmailTaken(acme, key) returns false and the import creates a second Acme customer with that email, violating 'email may not be used by an existing customer of the organization'. Fix: in ImportCustomers, before the loop, build a set of the organization's own normalized emails by iterating s.customers where OrgID == orgID, and use that set for the email_taken check instead of the global index. Also, line 90 overwrites another organization's index entry, so the index should not be trusted for cross-org cases at all. Add a test: Acme and Globex each create jane@example.com, then importing jane@example.com into Acme must return 422 invalid_rows with email_taken on that row."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_4b7ee42f3faf"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_4a23898ee20d"
+}

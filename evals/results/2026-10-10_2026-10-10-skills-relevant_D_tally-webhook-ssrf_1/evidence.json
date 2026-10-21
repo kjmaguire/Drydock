@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Webhook endpoint create and URL-update requests return 422 `{\"error\":\"invalid_url\"}` for non-https URLs, URLs with userinfo, and hosts that are or resolve to a non-public address, using the webhooks Service's Resolver.\n- Before each delivery attempt, the host is re-resolved with the same Resolver; any non-public address stops the send, and the delivery error contains \"not public\" without changing the endpoint.\n- New tests cover the accept and refuse cases for validation and delivery, and `go build ./...`, `go test ./...`, and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791669888444
+  },
+  {
+    "id": 2,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 750ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/build_943759138f87.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 745,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669889248
+  },
+  {
+    "id": 3,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 760ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/test_b6abf6fbb9c1.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 764,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669890014
+  },
+  {
+    "id": 4,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 780ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/lint_7f905857de6f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 778,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669890795
+  },
+  {
+    "id": 5,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/secrets_a31094790805.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 52,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669890850
+  },
+  {
+    "id": 6,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +123 -8",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 123,
+      "Deletions": 8,
+      "base": "7a9bc717fdcb8c4c292afb3689d8407e9d40e91b",
+      "commit": "2631f4f7a7bb44e19fa8edc11905345316c63260"
+    },
+    "created": 1791669891029
+  },
+  {
+    "id": 7,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 2631f4f7a7",
+    "ref": "2631f4f7a7bb44e19fa8edc11905345316c63260",
+    "data": {},
+    "created": 1791669891030
+  },
+  {
+    "id": 8,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- the webhook URL checks and delivery-time re-resolution are in place, and the zoned-IPv6 bypass the reviewer found is fixed. Build, tests and vet pass. Nothing is committed.",
+    "data": {},
+    "created": 1791669928866
+  },
+  {
+    "id": 9,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 700ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/build_7da5e3238ebf.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 703,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669929621
+  },
+  {
+    "id": 10,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 540ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/test_d6c33ec6ee8b.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 539,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669930162
+  },
+  {
+    "id": 11,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 620ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/lint_085c974bfe74.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 621,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669930786
+  },
+  {
+    "id": 12,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/checks/secrets_74c45582862a.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 18,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669930806
+  },
+  {
+    "id": 13,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +124 -8",
+    "ref": "<scratchpad>/trialwork/relevant-1-1/tally-webhook-ssrf-D-1/data/runs/run_c07abbd28468/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 124,
+      "Deletions": 8,
+      "base": "7a9bc717fdcb8c4c292afb3689d8407e9d40e91b",
+      "commit": "8bb2378acf4ed28e28834b3df4c47d44c6bd5475"
+    },
+    "created": 1791669930954
+  },
+  {
+    "id": 14,
+    "taskId": "task_04a298fcdcf7",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 8bb2378acf",
+    "ref": "8bb2378acf4ed28e28834b3df4c47d44c6bd5475",
+    "data": {},
+    "created": 1791669930955
+  }
+]

@@ -1,0 +1,359 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `RenewDue` claims each due period in the store atomically, so concurrent or repeated calls create at most one renewal invoice and charge it at most once. A renewal the gateway can't take still moves the subscription on, leaves the invoice open, and keeps its status.\n- One failing subscription doesn't stop the others. `RenewDue` returns the joined errors after trying all of them.\n- New tests in `internal/subscriptions` cover concurrent calls, a gateway outage, and error continuation. `go build ./...`, `go test ./...` and `go vet ./...` all pass. Existing names and signatures are unchanged. I \n...[truncated]",
+    "data": {},
+    "created": 1791670421331
+  },
+  {
+    "id": 2,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 640ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/build_a496f4feca27.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 637,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670422016
+  },
+  {
+    "id": 3,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 420ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/test_e03b0089c63d.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 421,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670422440
+  },
+  {
+    "id": 4,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 370ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/lint_31fdfbb52258.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 370,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670422812
+  },
+  {
+    "id": 5,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/secrets_4176adb9a2a1.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 17,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670422833
+  },
+  {
+    "id": 6,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +216 -26",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 216,
+      "Deletions": 26,
+      "base": "0e8f21e1cc71f1f5371ca141d5c4fedc21b92122",
+      "commit": "5a6f188bd8513ed71903f22d25be35b79bbf2b30"
+    },
+    "created": 1791670422964
+  },
+  {
+    "id": 7,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5a6f188bd8",
+    "ref": "5a6f188bd8513ed71903f22d25be35b79bbf2b30",
+    "data": {},
+    "created": 1791670422965
+  },
+  {
+    "id": 8,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `RenewDue` claims each due period atomically, so concurrent or repeated calls create at most one renewal invoice and charge it at most once. A renewal the gateway can't take still moves the subscription on, leaves the invoice open, and keeps its status. One failing subscription doesn't stop the others, and `RenewDue` returns the joined errors after trying all of them. The new tests in `internal/subscriptions` cover concurrent calls, a gateway outage, and error continuation. `go build ./...`, `go test ./...` and `go vet ./...` all pass. Existing names and signatures are unchanged. (The task t\n...[truncated]",
+    "data": {},
+    "created": 1791670569932
+  },
+  {
+    "id": 9,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 500ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/build_d4e59389eeff.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 500,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670570469
+  },
+  {
+    "id": 10,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 430ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/test_0b47ec5d26a8.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 433,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670570904
+  },
+  {
+    "id": 11,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 400ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/lint_4c1df0f396a6.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 398,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670571306
+  },
+  {
+    "id": 12,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/secrets_31eba2542d69.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 23,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670571330
+  },
+  {
+    "id": 13,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +342 -37",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 342,
+      "Deletions": 37,
+      "base": "0e8f21e1cc71f1f5371ca141d5c4fedc21b92122",
+      "commit": "e45d6e8322b79f1dc5ace3ee9ad9faf8526879f5"
+    },
+    "created": 1791670571461
+  },
+  {
+    "id": 14,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit e45d6e8322",
+    "ref": "e45d6e8322b79f1dc5ace3ee9ad9faf8526879f5",
+    "data": {},
+    "created": 1791670571462
+  },
+  {
+    "id": 15,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 580ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/build_7397e9f9c8b1.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 575,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670727227
+  },
+  {
+    "id": 16,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 760ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/test_a34d35c8e89b.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 763,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670727993
+  },
+  {
+    "id": 17,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 410ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/lint_07e7361aeb5d.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 412,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670728408
+  },
+  {
+    "id": 18,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/checks/secrets_caae02c67ed6.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670728433
+  },
+  {
+    "id": 19,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +442 -37",
+    "ref": "<scratchpad>/trialwork/none-3-1/tally-renewal-dedupe-D-2/data/runs/run_6ac1d3616671/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 442,
+      "Deletions": 37,
+      "base": "0e8f21e1cc71f1f5371ca141d5c4fedc21b92122",
+      "commit": "363491e945d303db7f312fd8da5749d224817594"
+    },
+    "created": 1791670728566
+  },
+  {
+    "id": 20,
+    "taskId": "task_84aef0ea50a8",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 363491e945",
+    "ref": "363491e945d303db7f312fd8da5749d224817594",
+    "data": {},
+    "created": 1791670728567
+  }
+]

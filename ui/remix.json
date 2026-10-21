@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/remix/schema/remix.json",
+  // Unit tests (*.test.ts) run in Node; component tests (*.test.browser.tsx) run in a real Chromium page. The end-to-end
+  // suite under e2e/ is Playwright's own (npm run e2e) because it drives the built app against the real Go core.
+  "test": {
+    "files": ["app/**/*.test{,.browser}.{ts,tsx}"],
+    "browserFiles": ["app/**/*.test.browser.{ts,tsx}"],
+    "exclude": ["node_modules/**", "dist/**", "e2e/**"],
+    "type": ["server", "browser"],
+    "reporter": "spec"
+  }
+}

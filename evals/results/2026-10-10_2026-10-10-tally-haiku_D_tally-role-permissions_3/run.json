@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-role-permissions",
+  "taskClass": "security review",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "1fb38b82c26b8fd6bd577ccf25936b09cf1e9b3f",
+  "startedAt": "2026-10-10T05:41:48.509998895Z",
+  "wallMs": 402720,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 941,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1601,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.092s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.008s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.003s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.007s\nok  \texample.com/tally/internal/payments\t0.002s\nok  \texample.com/tally/internal/reports\t0.007s\nok  \texample.com/tally/internal/snapshot\t0.007s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.009s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2546
+  },
+  "costUsd": 0.18881957,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 100,
+    "output": 83038,
+    "cacheRead": 2700681,
+    "cacheWrite": 258427
+  },
+  "sessions": 6,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_185e943c860a",
+      "feedback": "internal/api/team.go createInvite: the owner-only check covers only the admin role (`if in.Role == store.RoleAdmin \u0026\u0026 p.Role != store.RoleOwner`). An admin can still invite someone as owner, which violates 'Only an owner may give someone the owner or admin role'. Change the condition to refuse both owner and admin when the caller is not an owner, and add a case to TestInvitesAndAdmins (internal/api/roles_test.go) where an admin invites with role owner and gets 403 forbidden with no invite created."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_185e943c860a",
+      "feedback": "internal/api/server.go:165: restrict calls s.store.TouchAPIKey before the role check at line 167, so a request refused with 403 still updates the key's last-used time. The task says a refused request changes nothing. Move the TouchAPIKey call after the `allow != nil \u0026\u0026 !allow(p.Role)` check so it runs only when the handler is reached, and add a test that a refused call leaves the key's last-used timestamp unchanged."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_185e943c860a"
+    }
+  ],
+  "coreTaskId": "task_bec3ac8e3445"
+}

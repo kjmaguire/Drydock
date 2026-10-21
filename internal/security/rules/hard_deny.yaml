@@ -1,0 +1,75 @@
+# Hard-deny set (docs/security.md s7): not approvable from an agent process. A human can still do these outside the agent.
+# Other hard-deny rules live next to their class (production deploys in deploy.yaml, format/diskpart in destructive.yaml,
+# -EncodedCommand with a non-literal payload in the PowerShell lexer). ILLUSTRATIVE, NOT EXHAUSTIVE.
+class: hard_deny
+rules:
+  - id: hard_deny.ps.execution_policy
+    programs: [set-executionpolicy]
+    ci: true
+    shells: [powershell]
+    hard_deny: true
+    paths: none
+    reason: Set-ExecutionPolicy weakens script execution policy
+  - id: hard_deny.ps.defender
+    programs: [set-mppreference, add-mppreference, remove-mppreference, uninstall-windowsfeature, disable-windowsoptionalfeature]
+    ci: true
+    shells: [powershell]
+    hard_deny: true
+    paths: none
+    reason: changes Windows Defender or Windows features
+  - id: hard_deny.ps.firewall
+    programs: [set-netfirewallprofile, disable-netfirewallrule, remove-netfirewallrule, new-netfirewallrule, set-netfirewallrule]
+    ci: true
+    shells: [powershell]
+    hard_deny: true
+    paths: none
+    reason: changes the Windows firewall
+  - id: hard_deny.ps.services
+    programs: [stop-service, set-service, remove-service]
+    args_regex: ['(?i)^(windefend|mpssvc|wscsvc|sense|wdnissvc|eventlog|vss|securityhealthservice)$']
+    ci: true
+    shells: [powershell]
+    hard_deny: true
+    paths: none
+    reason: stops a security service
+  - id: hard_deny.cmd.firewall
+    programs: [netsh]
+    args_regex: ['(?i)^(advfirewall|firewall|winhttp|wlan)$']
+    ci: true
+    hard_deny: true
+    paths: none
+    reason: netsh changes firewall or network configuration
+  - id: hard_deny.cmd.sc
+    programs: [sc, net, wmic, bcdedit, vssadmin, wevtutil, auditpol, bitsadmin]
+    args_regex: ['(?i)^(stop|config|delete|disable|stopservice|stop-service|windefend|mpssvc|shadows|cl|clear-log|/set|/delete|/disable)$']
+    ci: true
+    hard_deny: true
+    paths: none
+    reason: stops security services, deletes shadow copies or clears logs
+  - id: hard_deny.reg_security
+    programs: [reg]
+    args_regex: ['(?i)(DisableAntiSpyware|DisableRealtimeMonitoring|DisableAntiVirus|EnableFirewall|Windows Defender|Policies\\Microsoft\\Windows Defender)']
+    ci: true
+    hard_deny: true
+    paths: none
+    reason: disables Windows Defender or the firewall through the registry
+  - id: hard_deny.posix.firewall
+    programs: [iptables, ip6tables, nft, ufw, firewall-cmd, setenforce, auditctl]
+    hard_deny: true
+    paths: none
+    reason: changes the host firewall or security modules
+# Known CLI credential files (agent-clis s13): never readable through a mediated tool. Lower case substrings matched
+# against every path-like argument and redirect target with separators normalized to "/".
+credential_paths:
+  - ".claude/.credentials.json"
+  - ".claude/credentials.json"
+  - ".codex/auth.json"
+  - ".gemini/oauth_creds.json"
+  - "opencode/auth.json"
+  - ".config/gh/hosts.yml"
+  - "/gh/hosts.yml"
+  - ".git-credentials"
+  - ".netrc"
+  - "/_netrc"
+  - ".wrangler/config/default.toml"
+  - "wrangler/config/default.toml"

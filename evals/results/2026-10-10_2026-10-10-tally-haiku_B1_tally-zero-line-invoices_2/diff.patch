@@ -1,0 +1,203 @@
+diff --git a/start/internal/api/invoices.go b/result/internal/api/invoices.go
+index 843d000..5341fec 100644
+--- a/start/internal/api/invoices.go
++++ b/result/internal/api/invoices.go
+@@ -38,8 +38,11 @@ func newInvoiceView(inv store.Invoice, c *store.Customer) invoiceView {
+ 	return v
+ }
+ 
+-// describe is the invoice's first line, and how many more there are.
++// describe is the invoice's first line, and how many more there are; "" when the invoice has no lines.
+ func describe(lines []store.Line) string {
++	if len(lines) == 0 {
++		return ""
++	}
+ 	d := lines[0].Description
+ 	if len(lines) > 1 {
+ 		d += fmt.Sprintf(" and %d more", len(lines)-1)
+diff --git a/result/internal/api/invoices_test.go b/result/internal/api/invoices_test.go
+new file mode 100644
+index 0000000..86122bc
+--- /dev/null
++++ b/result/internal/api/invoices_test.go
+@@ -0,0 +1,98 @@
++package api_test
++
++import (
++	"context"
++	"net/http"
++	"strings"
++	"testing"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/money"
++	"example.com/tally/internal/store"
++	"example.com/tally/internal/subscriptions"
++)
++
++// TestInvoicesWithoutLines reproduces the incident: an invoice with no lines (what a free plan's invoice was stored as) made
++// GET /v1/invoices and GET /v1/invoices/{id} answer 500 with "index out of range [0] with length 0".
++func TestInvoicesWithoutLines(t *testing.T) {
++	e := apitest.New(t)
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	inv, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: c.ID, Currency: money.USD}, e.Clock.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	var listed struct {
++		Items []struct{ ID, Description string }
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices", e.Acme.Key, nil, &listed)
++	if len(listed.Items) != 1 || listed.Items[0].ID != inv.ID || listed.Items[0].Description != "" {
++		t.Fatalf("listed = %+v", listed)
++	}
++	var got struct{ ID, Description string }
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+inv.ID, e.Acme.Key, nil, &got)
++	if got.ID != inv.ID || got.Description != "" {
++		t.Fatalf("got = %+v", got)
++	}
++	var paid struct {
++		Invoice store.Invoice `json:"invoice"`
++	}
++	e.MustDo(http.StatusOK, "POST", "/v1/invoices/"+inv.ID+"/pay", e.Acme.Key, map[string]string{"payment_method": "pm_card_visa"}, &paid)
++	if paid.Invoice.Status != store.InvoicePaid {
++		t.Fatalf("paid = %+v", paid.Invoice)
++	}
++	other := e.CreateCustomer(e.Acme, "Bob", "bob@example.com")
++	void, err := e.Store.CreateInvoice(store.Invoice{OrgID: e.Acme.ID, CustomerID: other.ID, Currency: money.USD}, e.Clock.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	e.MustDo(http.StatusOK, "POST", "/v1/invoices/"+void.ID+"/void", e.Acme.Key, nil, nil)
++	if n := len(e.Gateway.Charges()); n != 0 {
++		t.Fatalf("charges = %d, want none for a zero-total invoice", n)
++	}
++}
++
++// TestFreePlanInvoicesHaveOneLine: a free licensed plan is invoiced like any other, with one line for the plan and no charge.
++func TestFreePlanInvoicesHaveOneLine(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	plan, err := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "Free", Currency: money.USD, UnitAmount: 0, Interval: store.Monthly}, e.Clock.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: plan.ID, Quantity: 3})
++	if err != nil {
++		t.Fatal(err)
++	}
++	e.Clock.Set(sub.CurrentPeriodEnd)
++	if n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RenewDue = %d, %v", n, err)
++	}
++	var listed struct {
++		Items []struct {
++			store.Invoice
++			Description string `json:"description"`
++			Total       int64
++		}
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices?subscription_id="+sub.ID, e.Acme.Key, nil, &listed)
++	if len(listed.Items) != 2 {
++		t.Fatalf("invoices = %+v, want the first and one renewal", listed.Items)
++	}
++	for _, inv := range listed.Items {
++		if inv.Status != store.InvoicePaid || inv.Total != 0 || len(inv.Lines) != 1 || inv.Lines[0].UnitAmount != 0 || inv.Lines[0].Quantity != 3 {
++			t.Fatalf("invoice = %+v", inv)
++		}
++		if !strings.HasPrefix(inv.Description, "Free, ") {
++			t.Fatalf("description = %q", inv.Description)
++		}
++	}
++	if n := len(e.Gateway.Charges()); n != 0 {
++		t.Fatalf("charges = %d, want none", n)
++	}
++	var lines struct{ Items []struct{ Amount int64 } }
++	e.MustDo(http.StatusOK, "GET", "/v1/invoices/"+listed.Items[0].ID+"/lines", e.Acme.Key, nil, &lines)
++	if len(lines.Items) != 1 || lines.Items[0].Amount != 0 {
++		t.Fatalf("lines = %+v", lines.Items)
++	}
++}
+diff --git a/start/internal/subscriptions/subscriptions.go b/result/internal/subscriptions/subscriptions.go
+index 6d6d997..b7d891d 100644
+--- a/start/internal/subscriptions/subscriptions.go
++++ b/result/internal/subscriptions/subscriptions.go
+@@ -206,19 +206,20 @@ func (s *Service) renew(ctx context.Context, sub store.Subscription, now time.Ti
+ 
+ // invoicePeriod invoices one period of a subscription and charges the invoice to the customer's default payment method.
+ // It reports false when the charge was declined. An invoice that needs no charge is marked paid; one whose customer has no
+-// payment method stays open and counts as paid here (it is paid by hand).
++// payment method stays open and counts as paid here (it is paid by hand). A metered period without usage has nothing to
++// bill and creates no invoice.
+ func (s *Service) invoicePeriod(ctx context.Context, sub store.Subscription, plan store.Plan, start, end time.Time) (bool, error) {
+ 	var lines []store.Line
+ 	period := start.Format("Jan 2, 2006") + " to " + end.Format("Jan 2, 2006")
+ 	switch plan.UsageType {
+ 	case store.Licensed:
+-		if plan.UnitAmount > 0 {
+-			lines = append(lines, store.Line{Description: plan.Name + ", " + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})
+-		}
++		lines = append(lines, store.Line{Description: plan.Name + ", " + period, Quantity: int64(sub.Quantity), UnitAmount: plan.UnitAmount})
+ 	case store.Metered:
+-		if used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end); used > 0 {
+-			lines = append(lines, store.Line{Description: plan.Name + " usage, " + period, Quantity: used, UnitAmount: plan.UnitAmount})
++		used := s.Store.UsageTotal(sub.OrgID, sub.ID, start, end)
++		if used <= 0 {
++			return true, nil
+ 		}
++		lines = append(lines, store.Line{Description: plan.Name + " usage, " + period, Quantity: used, UnitAmount: plan.UnitAmount})
+ 	}
+ 	ps, pe := start, end
+ 	inv, err := s.Store.CreateInvoice(store.Invoice{OrgID: sub.OrgID, CustomerID: sub.CustomerID, SubscriptionID: sub.ID, Currency: plan.Currency,
+diff --git a/start/internal/subscriptions/subscriptions_test.go b/result/internal/subscriptions/subscriptions_test.go
+index a713e2d..90fee9b 100644
+--- a/start/internal/subscriptions/subscriptions_test.go
++++ b/result/internal/subscriptions/subscriptions_test.go
+@@ -134,3 +134,46 @@ func TestMeteredBillsUsageInArrears(t *testing.T) {
+ 		t.Fatalf("invoices = %+v (usage at the period's end belongs to the next period)", invs)
+ 	}
+ }
++
++func TestMeteredRenewalWithoutUsageCreatesNoInvoice(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	p, _ := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "API calls", Currency: money.USD, UnitAmount: 2, Interval: store.Monthly, UsageType: store.Metered}, e.Clock.Now())
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	e.Clock.Set(sub.CurrentPeriodEnd)
++	if n, err := e.Subs.RenewDue(ctx); err != nil || n != 1 {
++		t.Fatalf("RenewDue = %d, %v", n, err)
++	}
++	got, _ := e.Store.Subscription(e.Acme.ID, sub.ID)
++	if got.Status != store.Active || !got.CurrentPeriodStart.Equal(sub.CurrentPeriodEnd) {
++		t.Fatalf("after the renewal = %+v", got)
++	}
++	if invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID}); len(invs) != 0 {
++		t.Fatalf("invoices = %+v, want none for a period without usage", invs)
++	}
++}
++
++func TestFreePlanFirstInvoiceHasOneLineAndIsPaid(t *testing.T) {
++	e := apitest.New(t)
++	ctx := context.Background()
++	c := e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	p, err := e.Store.CreatePlan(store.Plan{OrgID: e.Acme.ID, Name: "Free", Currency: money.USD, UnitAmount: 0, Interval: store.Monthly}, e.Clock.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	sub, err := e.Subs.Create(ctx, e.Acme.ID, subscriptions.CreateInput{CustomerID: c.ID, PlanID: p.ID, Quantity: 2})
++	if err != nil || sub.Status != store.Active {
++		t.Fatalf("subscription = %+v, %v", sub, err)
++	}
++	invs := e.Store.ListInvoices(e.Acme.ID, store.InvoiceFilter{SubscriptionID: sub.ID})
++	if len(invs) != 1 || invs[0].Status != store.InvoicePaid || len(invs[0].Lines) != 1 || invs[0].Lines[0].Quantity != 2 || invs[0].Lines[0].UnitAmount != 0 {
++		t.Fatalf("invoices = %+v", invs)
++	}
++	if cs := e.Gateway.Charges(); len(cs) != 0 {
++		t.Fatalf("charges = %+v", cs)
++	}
++}

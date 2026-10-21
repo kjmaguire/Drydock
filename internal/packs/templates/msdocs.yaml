@@ -1,0 +1,12 @@
+# Microsoft Learn (docs/expert-packs.md section 2). Live only: Learn's commercial-use terms for local copies were not found,
+# so nothing is stored locally; results are cached by the gateway for 24 h.
+schema: 1
+id: msdocs
+title: Microsoft Learn
+kind: live
+visibility: public
+license: {content: CC-BY-4.0, code: MIT, attribution_required: true, attribution: "Microsoft Learn, CC BY 4.0"}
+live: {mcp: mslearn, tool: microsoft_docs_search, arg: query, use: primary}
+attach: {instructions: "Microsoft/Azure questions: search Learn first; fetch the page for details before quoting.", default_k: 5, roles: [Backend, DevOps, Security]}
+consult: {max_chunks: 8, route: trainable_ok}
+offline: false

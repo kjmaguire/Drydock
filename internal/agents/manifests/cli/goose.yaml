@@ -1,0 +1,29 @@
+# Goose, driven as an ACP agent (decision D10). Third cheap-tier agent (D3).
+meta: {schema: 1, id: goose, display_name: Goose, kind: agent_cli, license: Apache-2.0, tier: cheap, run_modes: [native]}
+binaries: {native: [goose.exe]}
+install:
+  - {shell: powershell, command: 'download_cli.ps1 from the aaif-goose/goose repository (exact URL not recorded)'}
+  - {shell: cmd, command: 'npm install -g @aaif/goose-acp', requires: [{tool: node, min: "22"}]}
+detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
+versions: {min: "1.53.0", recommended: "1.55.0"}
+auth:
+  login: {argv: [configure], terminal: true}
+  probe: none                                      # `goose doctor` exists but its output is unverified
+transports:
+  primary: acp
+  acp:
+    argv: [goose, acp]
+    env: {GOOSE_MODE: approve}                      # auto | approve | smart_approve | chat
+  headless:
+    argv: [run, --output-format, stream-json, --no-profile]
+    optional:
+      model: [--model, "{{model}}"]
+      resume: [-r, --session-id, "{{session_id}}"]
+    parser: goose_streamevent
+    interrupt: unverified
+    unverified: true
+provider_config: {writer: goose_env, env: [GOOSE_PROVIDER, GOOSE_MODEL, OPENAI_HOST, OPENAI_BASE_PATH, OPENROUTER_API_KEY, OPENROUTER_HOST, OLLAMA_HOST]}
+mcp: {inject: acp_session_new, transports: [stdio, http]}
+capabilities_declared: {streaming: true, model_selection: true, effort_control: false, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: true, headless: true, permission_modes: true, image_input: true, tool_call_visibility: true}
+instructions: {primary: AGENTS.md, secondary: .goosehints}
+terms: {notice: open-source-provider-terms-v1}

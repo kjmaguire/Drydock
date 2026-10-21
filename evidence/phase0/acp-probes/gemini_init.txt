@@ -1,0 +1,38 @@
+{
+ "agentInfo": {
+  "name": "gemini-cli",
+  "title": "Gemini CLI",
+  "version": "0.63.0"
+ },
+ "protocolVersion": 1,
+ "agentCapabilities": {
+  "loadSession": true,
+  "promptCapabilities": {
+   "image": true,
+   "audio": true,
+   "embeddedContext": true
+  },
+  "mcpCapabilities": {
+   "http": true,
+   "sse": true
+  }
+ },
+ "authMethods": [
+  [
+   "oauth-personal",
+   null
+  ],
+  [
+   "gemini-api-key",
+   null
+  ],
+  [
+   "vertex-ai",
+   null
+  ],
+  [
+   "gateway",
+   null
+  ]
+ ]
+}

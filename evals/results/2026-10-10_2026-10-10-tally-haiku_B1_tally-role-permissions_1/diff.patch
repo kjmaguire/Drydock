@@ -1,0 +1,793 @@
+diff --git a/start/README.md b/result/README.md
+index 7aa8d92..926d3eb 100644
+--- a/start/README.md
++++ b/result/README.md
+@@ -33,6 +33,26 @@ happened. Its own staff work in the organization as members with roles. Go stand
+   through them. `next_cursor` is absent on the last page.
+ - Times are RFC 3339 in UTC. Amounts are integers in the currency's minor unit; fields ending in `_formatted` are for people.
+ - Every response carries an `X-Request-Id` (the caller's, when it sent a sensible one).
++- A member whose role may not use an endpoint gets 403 `forbidden` and nothing changes. The role is read on every request.
++
++### Roles
++
++| What | owner | admin | billing | member | viewer |
++|---|---|---|---|---|---|
++| Read customers, plans, subscriptions, invoices, payments | yes | yes | yes | yes | yes |
++| Create, update or delete customers | yes | yes | yes | yes | no |
++| Create or update plans | yes | yes | yes | no | no |
++| Create, update or cancel subscriptions; report usage | yes | yes | yes | yes | no |
++| Create, pay or void invoices; revenue report | yes | yes | yes | no | no |
++| Webhook endpoints, deliveries and events | yes | yes | no | no | no |
++| Read the organization, members and invites | yes | yes | yes | yes | yes |
++| Update the organization; invite, revoke invites, change roles, remove members | yes | yes | no | no | no |
++
++- Only an owner gives the owner or admin role, changes the role of, or removes, an owner or an admin.
++- Nobody changes their own role. Anyone may leave (`DELETE /v1/members/{their own user_id}`).
++- An organization keeps at least one owner: a change that would leave none is 409 `last_owner`.
++- Every member may create API keys and revoke their own. Owners and admins may revoke anyone's. `GET /v1/api-keys` lists the
++  whole organization's keys for owners and admins, and only the caller's own for everyone else.
+ 
+ ## Working on Tally
+ 
+diff --git a/start/internal/api/respond.go b/result/internal/api/respond.go
+index f27c62b..044e1b0 100644
+--- a/start/internal/api/respond.go
++++ b/result/internal/api/respond.go
+@@ -33,9 +33,19 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+ 	return true
+ }
+ 
++// refusal is a request that the member's role does not allow, for a reason the caller is told. It answers 403 forbidden.
++type refusal string
++
++func (r refusal) Error() string { return string(r) }
++
+ // storeError answers for an error from the store or a service.
+ func (s *Server) storeError(w http.ResponseWriter, err error) {
++	var ref refusal
+ 	switch {
++	case errors.As(err, &ref):
++		writeError(w, http.StatusForbidden, "forbidden", string(ref))
++	case errors.Is(err, store.ErrLastOwner):
++		writeError(w, http.StatusConflict, "last_owner", err.Error())
+ 	case errors.Is(err, store.ErrNotFound):
+ 		writeError(w, http.StatusNotFound, "not_found", "no such object")
+ 	case errors.Is(err, store.ErrEmailTaken):
+diff --git a/result/internal/api/roles_test.go b/result/internal/api/roles_test.go
+new file mode 100644
+index 0000000..12a28da
+--- /dev/null
++++ b/result/internal/api/roles_test.go
+@@ -0,0 +1,302 @@
++package api_test
++
++import (
++	"net/http"
++	"testing"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++// The roles of the permissions table, as sets.
++var (
++	allRoles = []store.Role{store.RoleOwner, store.RoleAdmin, store.RoleBilling, store.RoleMember, store.RoleViewer}
++	writers  = []store.Role{store.RoleOwner, store.RoleAdmin, store.RoleBilling, store.RoleMember}
++	billers  = []store.Role{store.RoleOwner, store.RoleAdmin, store.RoleBilling}
++	admins   = []store.Role{store.RoleOwner, store.RoleAdmin}
++)
++
++// roleKeys gives Acme one member per role besides owner (whose key is the org's) and returns every role's API key.
++func roleKeys(e *apitest.Env) map[store.Role]string {
++	keys := map[store.Role]string{store.RoleOwner: e.Acme.Key}
++	for _, role := range []store.Role{store.RoleAdmin, store.RoleBilling, store.RoleMember, store.RoleViewer} {
++		_, keys[role] = e.AddMember(e.Acme, string(role)+"@acme.example", role)
++	}
++	return keys
++}
++
++func TestRolePermissionsMatrix(t *testing.T) {
++	e := apitest.New(t)
++	keys := roleKeys(e)
++	calls := []struct {
++		method, path string
++		body         any
++		allowed      []store.Role
++	}{
++		{"GET", "/v1/me", nil, allRoles},
++		{"GET", "/v1/org", nil, allRoles},
++		{"PATCH", "/v1/org", map[string]any{"tax_rate_bp": 0}, admins},
++		{"GET", "/v1/members", nil, allRoles},
++		{"PATCH", "/v1/members/usr_nope", map[string]string{"role": "member"}, admins},
++		{"DELETE", "/v1/members/usr_nope", nil, admins},
++		{"GET", "/v1/invites", nil, allRoles},
++		{"POST", "/v1/invites", map[string]string{"email": "new@people.example", "role": "viewer"}, admins},
++		{"DELETE", "/v1/invites/inv_nope", nil, admins},
++		{"GET", "/v1/api-keys", nil, allRoles},
++		{"POST", "/v1/api-keys", map[string]string{"name": "CI"}, allRoles},
++
++		{"GET", "/v1/customers", nil, allRoles},
++		{"GET", "/v1/customers/export.csv", nil, allRoles},
++		{"GET", "/v1/customers/cus_nope", nil, allRoles},
++		{"POST", "/v1/customers", map[string]string{"name": "Jane", "email": "jane@example.com"}, writers},
++		{"PATCH", "/v1/customers/cus_nope", map[string]string{"name": "X"}, writers},
++		{"DELETE", "/v1/customers/cus_nope", nil, writers},
++
++		{"GET", "/v1/plans", nil, allRoles},
++		{"GET", "/v1/plans/pln_nope", nil, allRoles},
++		{"POST", "/v1/plans", map[string]string{"name": "Pro", "currency": "USD", "price": "10.00", "interval": "month"}, billers},
++		{"PATCH", "/v1/plans/pln_nope", map[string]string{"name": "Pro 2"}, billers},
++
++		{"GET", "/v1/subscriptions", nil, allRoles},
++		{"GET", "/v1/subscriptions/sub_nope", nil, allRoles},
++		{"POST", "/v1/subscriptions", map[string]string{"customer_id": "cus_nope", "plan_id": "pln_nope"}, writers},
++		{"PATCH", "/v1/subscriptions/sub_nope", map[string]string{"quantity": "2"}, writers},
++		{"POST", "/v1/subscriptions/sub_nope/cancel", nil, writers},
++		{"POST", "/v1/subscriptions/sub_nope/usage", map[string]int{"quantity": 1}, writers},
++
++		{"GET", "/v1/invoices", nil, allRoles},
++		{"GET", "/v1/invoices/inv_nope", nil, allRoles},
++		{"GET", "/v1/invoices/inv_nope/lines", nil, allRoles},
++		{"GET", "/v1/payments", nil, allRoles},
++		{"POST", "/v1/invoices", map[string]string{"customer_id": "cus_nope"}, billers},
++		{"POST", "/v1/invoices/inv_nope/pay", nil, billers},
++		{"POST", "/v1/invoices/inv_nope/void", nil, billers},
++		{"GET", "/v1/reports/revenue?from=2026-01-01&to=2026-01-31", nil, billers},
++
++		{"GET", "/v1/webhook-endpoints", nil, admins},
++		{"POST", "/v1/webhook-endpoints", map[string]any{"url": "https://hooks.acme.example/a", "events": []string{"invoice.paid"}}, admins},
++		{"GET", "/v1/webhook-endpoints/wh_nope", nil, admins},
++		{"PATCH", "/v1/webhook-endpoints/wh_nope", map[string]bool{"enabled": false}, admins},
++		{"DELETE", "/v1/webhook-endpoints/wh_nope", nil, admins},
++		{"GET", "/v1/webhook-endpoints/wh_nope/deliveries", nil, admins},
++		{"GET", "/v1/events", nil, admins},
++		{"GET", "/v1/events/evt_nope", nil, admins},
++	}
++	for _, c := range calls {
++		for _, role := range allRoles {
++			r := e.Do(c.method, c.path, keys[role], c.body)
++			if r.Code >= 500 {
++				t.Fatalf("%s %s as %s: %s", c.method, c.path, role, r)
++			}
++			if contains(c.allowed, role) {
++				if r.Code == http.StatusUnauthorized || r.Code == http.StatusForbidden {
++					t.Fatalf("%s %s as %s: want the request to be allowed, got %s", c.method, c.path, role, r)
++				}
++				continue
++			}
++			if r.Code != http.StatusForbidden || r.Map(t)["error"] != "forbidden" {
++				t.Fatalf("%s %s as %s: want 403 forbidden, got %s", c.method, c.path, role, r)
++			}
++		}
++	}
++}
++
++func contains(roles []store.Role, role store.Role) bool {
++	for _, r := range roles {
++		if r == role {
++			return true
++		}
++	}
++	return false
++}
++
++func TestRefusedRequestsChangeNothing(t *testing.T) {
++	e := apitest.New(t)
++	keys := roleKeys(e)
++	admin, _ := e.Store.UserByEmail("admin@acme.example")
++	member, _ := e.Store.UserByEmail("member@acme.example")
++	customers := len(e.Store.Customers(e.Acme.ID))
++	plans := len(e.Store.Plans(e.Acme.ID))
++
++	if r := e.Do("POST", "/v1/customers", keys[store.RoleViewer], map[string]string{"name": "X", "email": "x@example.com"}); r.Code != http.StatusForbidden {
++		t.Fatalf("viewer creates a customer: %s", r)
++	}
++	if r := e.Do("POST", "/v1/plans", keys[store.RoleMember], map[string]string{"name": "Pro", "currency": "USD", "price": "10.00", "interval": "month"}); r.Code != http.StatusForbidden {
++		t.Fatalf("member creates a plan: %s", r)
++	}
++	if got := len(e.Store.Customers(e.Acme.ID)); got != customers {
++		t.Fatalf("customers = %d, want %d", got, customers)
++	}
++	if got := len(e.Store.Plans(e.Acme.ID)); got != plans {
++		t.Fatalf("plans = %d, want %d", got, plans)
++	}
++
++	if r := e.Do("PATCH", "/v1/org", keys[store.RoleBilling], map[string]string{"name": "Hacked"}); r.Code != http.StatusForbidden {
++		t.Fatalf("billing renames the org: %s", r)
++	}
++	if o, _ := e.Store.Org(e.Acme.ID); o.Name != "Acme" {
++		t.Fatalf("org name = %q", o.Name)
++	}
++
++	if r := e.Do("POST", "/v1/invites", keys[store.RoleAdmin], map[string]string{"email": "boss@people.example", "role": "admin"}); r.Code != http.StatusForbidden || r.Map(t)["error"] != "forbidden" {
++		t.Fatalf("admin invites an admin: %s", r)
++	}
++	if n := len(e.Store.Invites(e.Acme.ID)); n != 0 {
++		t.Fatalf("invites = %d after a refused invite", n)
++	}
++
++	if r := e.Do("PATCH", "/v1/members/"+member.ID, keys[store.RoleAdmin], map[string]string{"role": "admin"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin promotes a member to admin: %s", r)
++	}
++	if m, _ := e.Store.Member(e.Acme.ID, member.ID); m.Role != store.RoleMember {
++		t.Fatalf("member's role = %s", m.Role)
++	}
++
++	if r := e.Do("DELETE", "/v1/members/"+member.ID, keys[store.RoleViewer], nil); r.Code != http.StatusForbidden {
++		t.Fatalf("viewer removes a member: %s", r)
++	}
++	if _, ok := e.Store.Member(e.Acme.ID, member.ID); !ok {
++		t.Fatal("a refused removal removed the member")
++	}
++	if _, ok := e.Store.Member(e.Acme.ID, admin.ID); !ok {
++		t.Fatal("admin missing")
++	}
++}
++
++func TestRoleChangeAppliesToExistingKeys(t *testing.T) {
++	e := apitest.New(t)
++	member, key := e.AddMember(e.Acme, "dev@acme.example", store.RoleMember)
++	e.MustDo(http.StatusCreated, "POST", "/v1/customers", key, map[string]string{"name": "Jane", "email": "jane@example.com"}, nil)
++
++	e.MustDo(http.StatusOK, "PATCH", "/v1/members/"+member.ID, e.Acme.Key, map[string]string{"role": "viewer"}, nil)
++	if r := e.Do("POST", "/v1/customers", key, map[string]string{"name": "Joe", "email": "joe@example.com"}); r.Code != http.StatusForbidden {
++		t.Fatalf("demoted member writes with an old key: %s", r)
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/customers", key, nil, nil)
++
++	e.MustDo(http.StatusOK, "PATCH", "/v1/members/"+member.ID, e.Acme.Key, map[string]string{"role": "billing"}, nil)
++	e.MustDo(http.StatusCreated, "POST", "/v1/plans", key, map[string]string{"name": "Pro", "currency": "USD", "price": "10.00", "interval": "month"}, nil)
++}
++
++func TestMemberRoleRules(t *testing.T) {
++	e := apitest.New(t)
++	adminUser, adminKey := e.AddMember(e.Acme, "admin@acme.example", store.RoleAdmin)
++	otherAdmin, _ := e.AddMember(e.Acme, "admin2@acme.example", store.RoleAdmin)
++	billing, _ := e.AddMember(e.Acme, "billing@acme.example", store.RoleBilling)
++	member, _ := e.AddMember(e.Acme, "member@acme.example", store.RoleMember)
++	owner, _ := e.Store.UserByEmail("owner@acme.example")
++
++	// Nobody changes their own role.
++	if r := e.Do("PATCH", "/v1/members/"+owner.ID, e.Acme.Key, map[string]string{"role": "admin"}); r.Code != http.StatusForbidden {
++		t.Fatalf("owner changes their own role: %s", r)
++	}
++	if r := e.Do("PATCH", "/v1/members/"+adminUser.ID, adminKey, map[string]string{"role": "member"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin changes their own role: %s", r)
++	}
++
++	// Only owners give the owner or admin role, or change or remove an owner or an admin.
++	if r := e.Do("PATCH", "/v1/members/"+member.ID, adminKey, map[string]string{"role": "admin"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin makes an admin: %s", r)
++	}
++	if r := e.Do("PATCH", "/v1/members/"+member.ID, adminKey, map[string]string{"role": "owner"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin makes an owner: %s", r)
++	}
++	if r := e.Do("PATCH", "/v1/members/"+otherAdmin.ID, adminKey, map[string]string{"role": "billing"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin demotes another admin: %s", r)
++	}
++	if r := e.Do("PATCH", "/v1/members/"+owner.ID, adminKey, map[string]string{"role": "member"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin demotes the owner: %s", r)
++	}
++	if r := e.Do("DELETE", "/v1/members/"+owner.ID, adminKey, nil); r.Code != http.StatusForbidden {
++		t.Fatalf("admin removes the owner: %s", r)
++	}
++	if r := e.Do("DELETE", "/v1/members/"+otherAdmin.ID, adminKey, nil); r.Code != http.StatusForbidden {
++		t.Fatalf("admin removes another admin: %s", r)
++	}
++	if r := e.Do("POST", "/v1/invites", adminKey, map[string]string{"email": "boss@people.example", "role": "admin"}); r.Code != http.StatusForbidden {
++		t.Fatalf("admin invites an admin: %s", r)
++	}
++
++	// Within those limits, admins manage billing and member roles.
++	e.MustDo(http.StatusOK, "PATCH", "/v1/members/"+billing.ID, adminKey, map[string]string{"role": "member"}, nil)
++	if r := e.Do("PATCH", "/v1/members/"+billing.ID, adminKey, map[string]string{"role": "superuser"}); r.Code != http.StatusUnprocessableEntity {
++		t.Fatalf("unknown role: %s", r)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/members/"+member.ID, adminKey, nil, nil)
++
++	// Owners may do all of it.
++	e.MustDo(http.StatusOK, "PATCH", "/v1/members/"+otherAdmin.ID, e.Acme.Key, map[string]string{"role": "member"}, nil)
++	e.MustDo(http.StatusCreated, "POST", "/v1/invites", e.Acme.Key, map[string]string{"email": "boss@people.example", "role": "admin"}, nil)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/members/"+otherAdmin.ID, e.Acme.Key, nil, nil)
++}
++
++func TestLeavingAndLastOwner(t *testing.T) {
++	e := apitest.New(t)
++	viewer, viewerKey := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/members/"+viewer.ID, viewerKey, nil, nil)
++	if r := e.Do("GET", "/v1/me", viewerKey, nil); r.Code != http.StatusUnauthorized {
++		t.Fatalf("a member who left: %s", r)
++	}
++
++	second, secondKey := e.AddMember(e.Acme, "second@acme.example", store.RoleOwner)
++	owner, _ := e.Store.UserByEmail("owner@acme.example")
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/members/"+second.ID, e.Acme.Key, nil, nil)
++	if r := e.Do("GET", "/v1/me", secondKey, nil); r.Code != http.StatusUnauthorized {
++		t.Fatalf("a removed owner's key: %s", r)
++	}
++
++	// The only owner may not leave, and nothing changes.
++	var out struct {
++		Code string `json:"error"`
++	}
++	r := e.Do("DELETE", "/v1/members/"+owner.ID, e.Acme.Key, nil)
++	r.JSON(t, &out)
++	if r.Code != http.StatusConflict || out.Code != "last_owner" {
++		t.Fatalf("the only owner leaves: %s", r)
++	}
++	if m, _ := e.Store.Member(e.Acme.ID, owner.ID); m.Role != store.RoleOwner {
++		t.Fatalf("owner's role = %s", m.Role)
++	}
++}
++
++func TestAPIKeyRevocationRules(t *testing.T) {
++	e := apitest.New(t)
++	viewer, viewerKey := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++	_, memberKey := e.AddMember(e.Acme, "member@acme.example", store.RoleMember)
++	_, adminKey := e.AddMember(e.Acme, "admin@acme.example", store.RoleAdmin)
++	ownerKey, _ := e.Store.APIKeyByToken(e.Acme.Key)
++
++	// Everyone may create keys; a viewer lists only their own.
++	var mine store.APIKey
++	e.MustDo(http.StatusCreated, "POST", "/v1/api-keys", viewerKey, map[string]string{"name": "laptop"}, &mine)
++	var list struct{ Items []store.APIKey }
++	e.MustDo(http.StatusOK, "GET", "/v1/api-keys", viewerKey, nil, &list)
++	if len(list.Items) != 2 {
++		t.Fatalf("viewer's keys = %+v", list.Items)
++	}
++	for _, k := range list.Items {
++		if k.UserID != viewer.ID {
++			t.Fatalf("viewer sees someone else's key: %+v", k)
++		}
++	}
++	e.MustDo(http.StatusOK, "GET", "/v1/api-keys", e.Acme.Key, nil, &list)
++	if len(list.Items) != 5 {
++		t.Fatalf("owner's view of keys = %d, want 5", len(list.Items))
++	}
++
++	// Anyone may revoke their own; others' keys need an owner or admin.
++	if r := e.Do("DELETE", "/v1/api-keys/"+ownerKey.ID, viewerKey, nil); r.Code != http.StatusForbidden {
++		t.Fatalf("viewer revokes the owner's key: %s", r)
++	}
++	if r := e.Do("DELETE", "/v1/api-keys/"+ownerKey.ID, memberKey, nil); r.Code != http.StatusForbidden {
++		t.Fatalf("member revokes the owner's key: %s", r)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/api-keys/"+mine.ID, viewerKey, nil, nil)
++	if r := e.Do("GET", "/v1/org", mine.Token, nil); r.Code != http.StatusUnauthorized {
++		t.Fatalf("revoked own key: %s", r)
++	}
++	e.MustDo(http.StatusNoContent, "DELETE", "/v1/api-keys/"+ownerKey.ID, adminKey, nil, nil)
++	if r := e.Do("GET", "/v1/org", e.Acme.Key, nil); r.Code != http.StatusUnauthorized {
++		t.Fatalf("admin revoked the owner's key, which still works: %s", r)
++	}
++}
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..6a30af9 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -83,66 +83,66 @@ func (s *Server) routes() {
+ 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+ 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+ 	})
+-	m.HandleFunc("GET /v1/me", s.authed(s.getMe))
+-
+-	m.HandleFunc("GET /v1/org", s.authed(s.getOrg))
+-	m.HandleFunc("PATCH /v1/org", s.authed(s.updateOrg))
+-	m.HandleFunc("GET /v1/members", s.authed(s.listMembers))
+-	m.HandleFunc("PATCH /v1/members/{user_id}", s.authed(s.updateMember))
+-	m.HandleFunc("DELETE /v1/members/{user_id}", s.authed(s.removeMember))
+-	m.HandleFunc("GET /v1/invites", s.authed(s.listInvites))
+-	m.HandleFunc("POST /v1/invites", s.authed(s.createInvite))
+-	m.HandleFunc("DELETE /v1/invites/{id}", s.authed(s.revokeInvite))
++	m.HandleFunc("GET /v1/me", s.authed(auth.Everyone, s.getMe))
++
++	m.HandleFunc("GET /v1/org", s.authed(auth.Everyone, s.getOrg))
++	m.HandleFunc("PATCH /v1/org", s.authed(auth.Admins, s.updateOrg))
++	m.HandleFunc("GET /v1/members", s.authed(auth.Everyone, s.listMembers))
++	m.HandleFunc("PATCH /v1/members/{user_id}", s.authed(auth.Admins, s.updateMember))
++	m.HandleFunc("DELETE /v1/members/{user_id}", s.authed(auth.Everyone, s.removeMember))
++	m.HandleFunc("GET /v1/invites", s.authed(auth.Everyone, s.listInvites))
++	m.HandleFunc("POST /v1/invites", s.authed(auth.Admins, s.createInvite))
++	m.HandleFunc("DELETE /v1/invites/{id}", s.authed(auth.Admins, s.revokeInvite))
+ 	m.HandleFunc("POST /v1/invites/accept", s.acceptInvite) // no API key: the token is the credential
+-	m.HandleFunc("GET /v1/api-keys", s.authed(s.listAPIKeys))
+-	m.HandleFunc("POST /v1/api-keys", s.authed(s.createAPIKey))
+-	m.HandleFunc("DELETE /v1/api-keys/{id}", s.authed(s.revokeAPIKey))
+-
+-	m.HandleFunc("GET /v1/customers", s.authed(s.listCustomers))
+-	m.HandleFunc("POST /v1/customers", s.authed(s.createCustomer))
+-	m.HandleFunc("GET /v1/customers/export.csv", s.authed(s.exportCustomers))
+-	m.HandleFunc("GET /v1/customers/{id}", s.authed(s.getCustomer))
+-	m.HandleFunc("PATCH /v1/customers/{id}", s.authed(s.updateCustomer))
+-	m.HandleFunc("DELETE /v1/customers/{id}", s.authed(s.deleteCustomer))
+-
+-	m.HandleFunc("GET /v1/plans", s.authed(s.listPlans))
+-	m.HandleFunc("POST /v1/plans", s.authed(s.createPlan))
+-	m.HandleFunc("GET /v1/plans/{id}", s.authed(s.getPlan))
+-	m.HandleFunc("PATCH /v1/plans/{id}", s.authed(s.updatePlan))
+-
+-	m.HandleFunc("GET /v1/subscriptions", s.authed(s.listSubscriptions))
+-	m.HandleFunc("POST /v1/subscriptions", s.authed(s.createSubscription))
+-	m.HandleFunc("GET /v1/subscriptions/{id}", s.authed(s.getSubscription))
+-	m.HandleFunc("PATCH /v1/subscriptions/{id}", s.authed(s.updateSubscription))
+-	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", s.authed(s.cancelSubscription))
+-	m.HandleFunc("POST /v1/subscriptions/{id}/usage", s.authed(s.reportUsage))
+-
+-	m.HandleFunc("GET /v1/invoices", s.authed(s.listInvoices))
+-	m.HandleFunc("POST /v1/invoices", s.authed(s.createInvoice))
+-	m.HandleFunc("GET /v1/invoices/{id}", s.authed(s.getInvoice))
+-	m.HandleFunc("GET /v1/invoices/{id}/lines", s.authed(s.getInvoiceLines))
+-	m.HandleFunc("POST /v1/invoices/{id}/pay", s.authed(s.payInvoice))
+-	m.HandleFunc("POST /v1/invoices/{id}/void", s.authed(s.voidInvoice))
+-	m.HandleFunc("GET /v1/payments", s.authed(s.listPayments))
+-
+-	m.HandleFunc("GET /v1/webhook-endpoints", s.authed(s.listEndpoints))
+-	m.HandleFunc("POST /v1/webhook-endpoints", s.authed(s.createEndpoint))
+-	m.HandleFunc("GET /v1/webhook-endpoints/{id}", s.authed(s.getEndpoint))
+-	m.HandleFunc("PATCH /v1/webhook-endpoints/{id}", s.authed(s.updateEndpoint))
+-	m.HandleFunc("DELETE /v1/webhook-endpoints/{id}", s.authed(s.deleteEndpoint))
+-	m.HandleFunc("GET /v1/webhook-endpoints/{id}/deliveries", s.authed(s.listDeliveries))
+-	m.HandleFunc("GET /v1/events", s.authed(s.listEvents))
+-	m.HandleFunc("GET /v1/events/{id}", s.authed(s.getEvent))
+-
+-	m.HandleFunc("GET /v1/reports/revenue", s.authed(s.revenueReport))
++	m.HandleFunc("GET /v1/api-keys", s.authed(auth.Everyone, s.listAPIKeys))
++	m.HandleFunc("POST /v1/api-keys", s.authed(auth.Everyone, s.createAPIKey))
++	m.HandleFunc("DELETE /v1/api-keys/{id}", s.authed(auth.Everyone, s.revokeAPIKey))
++
++	m.HandleFunc("GET /v1/customers", s.authed(auth.Everyone, s.listCustomers))
++	m.HandleFunc("POST /v1/customers", s.authed(auth.Editors, s.createCustomer))
++	m.HandleFunc("GET /v1/customers/export.csv", s.authed(auth.Everyone, s.exportCustomers))
++	m.HandleFunc("GET /v1/customers/{id}", s.authed(auth.Everyone, s.getCustomer))
++	m.HandleFunc("PATCH /v1/customers/{id}", s.authed(auth.Editors, s.updateCustomer))
++	m.HandleFunc("DELETE /v1/customers/{id}", s.authed(auth.Editors, s.deleteCustomer))
++
++	m.HandleFunc("GET /v1/plans", s.authed(auth.Everyone, s.listPlans))
++	m.HandleFunc("POST /v1/plans", s.authed(auth.BillingStaff, s.createPlan))
++	m.HandleFunc("GET /v1/plans/{id}", s.authed(auth.Everyone, s.getPlan))
++	m.HandleFunc("PATCH /v1/plans/{id}", s.authed(auth.BillingStaff, s.updatePlan))
++
++	m.HandleFunc("GET /v1/subscriptions", s.authed(auth.Everyone, s.listSubscriptions))
++	m.HandleFunc("POST /v1/subscriptions", s.authed(auth.Editors, s.createSubscription))
++	m.HandleFunc("GET /v1/subscriptions/{id}", s.authed(auth.Everyone, s.getSubscription))
++	m.HandleFunc("PATCH /v1/subscriptions/{id}", s.authed(auth.Editors, s.updateSubscription))
++	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", s.authed(auth.Editors, s.cancelSubscription))
++	m.HandleFunc("POST /v1/subscriptions/{id}/usage", s.authed(auth.Editors, s.reportUsage))
++
++	m.HandleFunc("GET /v1/invoices", s.authed(auth.Everyone, s.listInvoices))
++	m.HandleFunc("POST /v1/invoices", s.authed(auth.BillingStaff, s.createInvoice))
++	m.HandleFunc("GET /v1/invoices/{id}", s.authed(auth.Everyone, s.getInvoice))
++	m.HandleFunc("GET /v1/invoices/{id}/lines", s.authed(auth.Everyone, s.getInvoiceLines))
++	m.HandleFunc("POST /v1/invoices/{id}/pay", s.authed(auth.BillingStaff, s.payInvoice))
++	m.HandleFunc("POST /v1/invoices/{id}/void", s.authed(auth.BillingStaff, s.voidInvoice))
++	m.HandleFunc("GET /v1/payments", s.authed(auth.Everyone, s.listPayments))
++
++	m.HandleFunc("GET /v1/webhook-endpoints", s.authed(auth.Admins, s.listEndpoints))
++	m.HandleFunc("POST /v1/webhook-endpoints", s.authed(auth.Admins, s.createEndpoint))
++	m.HandleFunc("GET /v1/webhook-endpoints/{id}", s.authed(auth.Admins, s.getEndpoint))
++	m.HandleFunc("PATCH /v1/webhook-endpoints/{id}", s.authed(auth.Admins, s.updateEndpoint))
++	m.HandleFunc("DELETE /v1/webhook-endpoints/{id}", s.authed(auth.Admins, s.deleteEndpoint))
++	m.HandleFunc("GET /v1/webhook-endpoints/{id}/deliveries", s.authed(auth.Admins, s.listDeliveries))
++	m.HandleFunc("GET /v1/events", s.authed(auth.Admins, s.listEvents))
++	m.HandleFunc("GET /v1/events/{id}", s.authed(auth.Admins, s.getEvent))
++
++	m.HandleFunc("GET /v1/reports/revenue", s.authed(auth.BillingStaff, s.revenueReport))
+ }
+ 
+ // handler is an endpoint that runs for a known member.
+ type handler func(w http.ResponseWriter, r *http.Request, p auth.Principal)
+ 
+-// authed resolves the request's API key to the member it acts for, or answers 401. Viewers may only read: any other method
+-// answers 403.
+-func (s *Server) authed(h handler) http.HandlerFunc {
++// authed resolves the request's API key to the member it acts for, or answers 401. The member's current role is read on
++// every request; if it is not in the capability the endpoint needs, the request answers 403 and changes nothing.
++func (s *Server) authed(c auth.Capability, h handler) http.HandlerFunc {
+ 	return func(w http.ResponseWriter, r *http.Request) {
+ 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+ 		if !ok {
+@@ -159,12 +159,12 @@ func (s *Server) authed(h handler) http.HandlerFunc {
+ 			writeError(w, http.StatusUnauthorized, "unauthorized", "the key's owner is no longer a member")
+ 			return
+ 		}
+-		s.store.TouchAPIKey(key.ID, s.clock.Now())
+-		p := auth.Principal{OrgID: key.OrgID, UserID: key.UserID, KeyID: key.ID, Role: m.Role}
+-		if r.Method != http.MethodGet && !auth.CanWrite(p.Role) {
+-			writeError(w, http.StatusForbidden, "forbidden", "viewers can only read")
++		if !c.Allows(m.Role) {
++			writeError(w, http.StatusForbidden, "forbidden", "your role may not use this endpoint")
+ 			return
+ 		}
++		s.store.TouchAPIKey(key.ID, s.clock.Now())
++		p := auth.Principal{OrgID: key.OrgID, UserID: key.UserID, KeyID: key.ID, Role: m.Role}
+ 		h(w, r, p)
+ 	}
+ }
+diff --git a/start/internal/api/team.go b/result/internal/api/team.go
+index 1a95c1a..f7a9cd3 100644
+--- a/start/internal/api/team.go
++++ b/result/internal/api/team.go
+@@ -85,9 +85,15 @@ func (s *Server) listMembers(w http.ResponseWriter, r *http.Request, p auth.Prin
+ 	writeJSON(w, http.StatusOK, list{Items: items})
+ }
+ 
++// isOwnerOrAdmin reports whether a role is one that only an owner may give, change or remove.
++func isOwnerOrAdmin(r store.Role) bool { return auth.Admins.Allows(r) }
++
++// updateMember changes a member's role. Nobody changes their own role, and only owners give, or change the role of, an
++// owner or an admin.
+ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	if !auth.CanManageTeam(p.Role) {
+-		writeError(w, http.StatusForbidden, "forbidden", "only owners and admins manage members")
++	target := r.PathValue("user_id")
++	if target == p.UserID {
++		writeError(w, http.StatusForbidden, "forbidden", "nobody may change their own role")
+ 		return
+ 	}
+ 	var in struct {
+@@ -96,7 +102,13 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
+-	m, err := s.store.SetMemberRole(p.OrgID, r.PathValue("user_id"), in.Role)
++	m, err := s.store.UpdateMember(p.OrgID, target, func(m *store.Member) error {
++		if p.Role != store.RoleOwner && (isOwnerOrAdmin(m.Role) || isOwnerOrAdmin(in.Role)) {
++			return refusal("only owners give or change owner and admin roles")
++		}
++		m.Role = in.Role
++		return nil
++	})
+ 	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+@@ -104,12 +116,21 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	writeJSON(w, http.StatusOK, s.memberView(m))
+ }
+ 
++// removeMember removes a member. Anyone may leave. Otherwise only owners and admins remove members, and only owners remove
++// an owner or an admin.
+ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	if !auth.CanManageTeam(p.Role) {
++	target := r.PathValue("user_id")
++	if target != p.UserID && !auth.CanManageTeam(p.Role) {
+ 		writeError(w, http.StatusForbidden, "forbidden", "only owners and admins manage members")
+ 		return
+ 	}
+-	if err := s.store.RemoveMember(p.OrgID, r.PathValue("user_id")); err != nil {
++	err := s.store.RemoveMemberChecked(p.OrgID, target, func(m store.Member) error {
++		if target != p.UserID && isOwnerOrAdmin(m.Role) && p.Role != store.RoleOwner {
++			return refusal("only owners remove owners and admins")
++		}
++		return nil
++	})
++	if err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
+@@ -132,6 +153,10 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	if !decode(w, r, &in) {
+ 		return
+ 	}
++	if in.Role == store.RoleAdmin && p.Role != store.RoleOwner {
++		writeError(w, http.StatusForbidden, "forbidden", "only owners invite admins")
++		return
++	}
+ 	inv, err := s.store.CreateInvite(p.OrgID, in.Email, in.Role, p.UserID, s.clock.Now())
+ 	if err != nil {
+ 		s.storeError(w, err)
+@@ -187,8 +212,15 @@ func (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {
+ 	writeJSON(w, http.StatusCreated, map[string]any{"user": u, "member": s.memberView(m), "api_key": k})
+ }
+ 
++// listAPIKeys lists the organization's keys for owners and admins, and only the caller's own keys for everyone else.
+ func (s *Server) listAPIKeys(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	writeJSON(w, http.StatusOK, list{Items: s.store.APIKeys(p.OrgID)})
++	items := []store.APIKey{}
++	for _, k := range s.store.APIKeys(p.OrgID) {
++		if auth.CanManageTeam(p.Role) || k.UserID == p.UserID {
++			items = append(items, k)
++		}
++	}
++	writeJSON(w, http.StatusOK, list{Items: items})
+ }
+ 
+ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+@@ -206,8 +238,19 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request, p auth.Pri
+ 	writeJSON(w, http.StatusCreated, k)
+ }
+ 
++// revokeAPIKey revokes one of the organization's keys. Anyone may revoke their own keys; only owners and admins revoke
++// anyone's.
+ func (s *Server) revokeAPIKey(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+-	if _, err := s.store.RevokeAPIKey(p.OrgID, r.PathValue("id"), s.clock.Now()); err != nil {
++	k, ok := s.store.APIKey(p.OrgID, r.PathValue("id"))
++	if !ok {
++		s.storeError(w, store.ErrNotFound)
++		return
++	}
++	if k.UserID != p.UserID && !auth.CanManageTeam(p.Role) {
++		writeError(w, http.StatusForbidden, "forbidden", "only owners and admins revoke other members' keys")
++		return
++	}
++	if _, err := s.store.RevokeAPIKey(p.OrgID, k.ID, s.clock.Now()); err != nil {
+ 		s.storeError(w, err)
+ 		return
+ 	}
+diff --git a/start/internal/auth/auth.go b/result/internal/auth/auth.go
+index b599e59..bda281a 100644
+--- a/start/internal/auth/auth.go
++++ b/result/internal/auth/auth.go
+@@ -12,8 +12,39 @@ type Principal struct {
+ 	Role   store.Role
+ }
+ 
++// Capability is a set of roles: what an endpoint needs of the member who calls it. The sets are the columns of the
++// permissions table in the README.
++type Capability int
++
++const (
++	// Everyone is every role, viewers included.
++	Everyone Capability = iota
++	// Editors is every role but viewers. They create and change customers and subscriptions and report usage.
++	Editors
++	// BillingStaff is owners, admins and billing. They create and change plans, create, pay and void invoices, and read
++	// the revenue report.
++	BillingStaff
++	// Admins is owners and admins. They manage webhooks, the organization, invites and members.
++	Admins
++)
++
++// Allows reports whether a role is in the set.
++func (c Capability) Allows(r store.Role) bool {
++	switch c {
++	case Everyone:
++		return true
++	case Editors:
++		return r != store.RoleViewer
++	case BillingStaff:
++		return r == store.RoleOwner || r == store.RoleAdmin || r == store.RoleBilling
++	case Admins:
++		return r == store.RoleOwner || r == store.RoleAdmin
++	}
++	return false
++}
++
+ // CanWrite reports whether a role may change anything. Viewers only read.
+-func CanWrite(r store.Role) bool { return r != store.RoleViewer }
++func CanWrite(r store.Role) bool { return Editors.Allows(r) }
+ 
+ // CanManageTeam reports whether a role may manage the organization's settings, members and invites.
+-func CanManageTeam(r store.Role) bool { return r == store.RoleOwner || r == store.RoleAdmin }
++func CanManageTeam(r store.Role) bool { return Admins.Allows(r) }
+diff --git a/start/internal/store/store.go b/result/internal/store/store.go
+index 71ce935..efb89c2 100644
+--- a/start/internal/store/store.go
++++ b/result/internal/store/store.go
+@@ -25,6 +25,8 @@ var (
+ 	ErrAlreadyMember = fmt.Errorf("%w: already a member", ErrConflict)
+ 	// ErrCustomerOrgMismatch is returned when an object names a customer of another organization.
+ 	ErrCustomerOrgMismatch = errors.New("customer belongs to another organization")
++	// ErrLastOwner is returned when a member change would leave an organization without an owner.
++	ErrLastOwner = errors.New("an organization needs at least one owner")
+ )
+ 
+ // Store holds everything.
+@@ -273,6 +275,63 @@ func (s *Store) RemoveMember(orgID, userID string) error {
+ 	return nil
+ }
+ 
++// UpdateMember changes a member with f, under the store's lock, so that the caller's checks see the role the change
++// replaces. f may refuse by returning an error, which is returned unchanged. A change that would leave the organization
++// without an owner fails with ErrLastOwner.
++func (s *Store) UpdateMember(orgID, userID string, f func(*Member) error) (Member, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	k := memberKey{orgID, userID}
++	old, ok := s.members[k]
++	if !ok {
++		return Member{}, ErrNotFound
++	}
++	m := old
++	if err := f(&m); err != nil {
++		return Member{}, err
++	}
++	if !m.Role.Valid() {
++		return Member{}, invalid("unknown role %q", m.Role)
++	}
++	if old.Role == RoleOwner && m.Role != RoleOwner && s.ownersLocked(orgID) == 1 {
++		return Member{}, ErrLastOwner
++	}
++	s.members[k] = m
++	return m, nil
++}
++
++// RemoveMemberChecked removes a member, under the store's lock, after check has approved the removal (check may refuse by
++// returning an error, which is returned unchanged). A removal that would leave the organization without an owner fails
++// with ErrLastOwner.
++func (s *Store) RemoveMemberChecked(orgID, userID string, check func(Member) error) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	k := memberKey{orgID, userID}
++	m, ok := s.members[k]
++	if !ok {
++		return ErrNotFound
++	}
++	if err := check(m); err != nil {
++		return err
++	}
++	if m.Role == RoleOwner && s.ownersLocked(orgID) == 1 {
++		return ErrLastOwner
++	}
++	delete(s.members, k)
++	return nil
++}
++
++// ownersLocked counts an organization's owners. The caller holds s.mu.
++func (s *Store) ownersLocked(orgID string) int {
++	n := 0
++	for _, m := range s.members {
++		if m.OrgID == orgID && m.Role == RoleOwner {
++			n++
++		}
++	}
++	return n
++}
++
+ // ---- API keys
+ 
+ // CreateAPIKey gives a member a new API key.
+diff --git a/start/internal/store/store_test.go b/result/internal/store/store_test.go
+index d2ef746..68bb98d 100644
+--- a/start/internal/store/store_test.go
++++ b/result/internal/store/store_test.go
+@@ -255,3 +255,50 @@ func TestExportAndFromState(t *testing.T) {
+ 		t.Fatalf("a repeated ID was accepted: %v", err)
+ 	}
+ }
++
++func TestMemberChangesKeepAnOwner(t *testing.T) {
++	s := New()
++	o := newOrg(t, s, "Acme")
++	a, _ := s.CreateUser("a@example.com", "A", t0)
++	b, _ := s.CreateUser("b@example.com", "B", t0)
++	if _, err := s.AddMember(o.ID, a.ID, RoleOwner, t0); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := s.AddMember(o.ID, b.ID, RoleAdmin, t0); err != nil {
++		t.Fatal(err)
++	}
++
++	if _, err := s.UpdateMember(o.ID, a.ID, func(m *Member) error { m.Role = RoleMember; return nil }); !errors.Is(err, ErrLastOwner) {
++		t.Fatalf("demoting the only owner: %v", err)
++	}
++	if err := s.RemoveMemberChecked(o.ID, a.ID, func(Member) error { return nil }); !errors.Is(err, ErrLastOwner) {
++		t.Fatalf("removing the only owner: %v", err)
++	}
++	if m, _ := s.Member(o.ID, a.ID); m.Role != RoleOwner {
++		t.Fatalf("the only owner's role = %s", m.Role)
++	}
++
++	refused := errors.New("refused")
++	if _, err := s.UpdateMember(o.ID, b.ID, func(m *Member) error { return refused }); !errors.Is(err, refused) {
++		t.Fatalf("refused change: %v", err)
++	}
++	if err := s.RemoveMemberChecked(o.ID, b.ID, func(Member) error { return refused }); !errors.Is(err, refused) {
++		t.Fatalf("refused removal: %v", err)
++	}
++	if _, err := s.UpdateMember(o.ID, b.ID, func(m *Member) error { m.Role = "superuser"; return nil }); !errors.Is(err, ErrInvalid) {
++		t.Fatalf("unknown role: %v", err)
++	}
++
++	if _, err := s.UpdateMember(o.ID, b.ID, func(m *Member) error { m.Role = RoleOwner; return nil }); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := s.UpdateMember(o.ID, a.ID, func(m *Member) error { m.Role = RoleAdmin; return nil }); err != nil {
++		t.Fatalf("demoting an owner while another owner remains: %v", err)
++	}
++	if err := s.RemoveMemberChecked(o.ID, b.ID, func(Member) error { return nil }); !errors.Is(err, ErrLastOwner) {
++		t.Fatalf("removing the only owner now: %v", err)
++	}
++	if _, err := s.UpdateMember(o.ID, "usr_nope", func(*Member) error { return nil }); !errors.Is(err, ErrNotFound) {
++		t.Fatalf("unknown member: %v", err)
++	}
++}

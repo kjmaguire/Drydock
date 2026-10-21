@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-coupons",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "fe471b62d41432495cddf27d76263d4ca8007c8c",
+  "startedAt": "2026-10-10T21:43:17.114458725Z",
+  "wallMs": 535929,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1138,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2751,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.030s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.007s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.007s\nok  \texample.com/tally/internal/payments\t0.009s\nok  \texample.com/tally/internal/reports\t0.007s\nok  \texample.com/tally/internal/snapshot\t0.020s\nok  \texample.com/tally/internal/store\t0.033s\nok  \texample.com/tally/internal/subscriptions\t0.038s\nok  \texample.com/tally/internal/webhooks\t0.009s\n"
+      }
+    ],
+    "durationMs": 3894
+  },
+  "costUsd": 0.56064574,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 122,
+    "output": 111409,
+    "cacheRead": 5886232,
+    "cacheWrite": 310463
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_ac53344694ca",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe core logic reads correctly: discounts, tax ordering, the once/repeating/forever windows, and the refusal order all match the spec. Two gaps against the stated requirements remain.\n\n1. **Wrong-typed coupon fields return 400, not 422.** `internal/api/coupons.go`, `createCoupon` (the `decode(w, r, \u0026in)` call near the top): `decode` answers 400 `invalid_json` for any decode error, including type mismatches such as `\"percent_off\": \"10\"` or `\"duration\": 5`. The spec says \"Anything else invalid: 422 {\"error\":\"invalid\"}\", and a wrong-typed field is invalid input. Fix: when decoding the coupon body, map a decode failure to `invalidCoupon(w, ...)`, or decode into a value that cannot fail on type and let the store validation reject it. Add a case to the `TestCoupons` invalid-body loop (for example a string `percent_off`) to cover it.\n\n2. **Snapshot survival is not tested.** `internal/snapshot/snapshot_test.go:24` only creates a coupon; nothing asserts it after `Save`/`Load`, and no test saves a subscription with an applied coupon (`Coupon`, `CouponRedeemedAt`) or an invoice with `Coupon`. The definition of done claims coupons and applied coupons survive a snapshot, and the code paths for that exist (`Export`, `FromState`, the JSON tags), but nothing verifies them. Fix: extend `TestSaveAndLoad` to apply the coupon to a subscription and check the loaded coupon, the subscription's `Coupon` and `CouponRedeemedAt`, and that an invoice carrying `Coupon` round-trips.\n\nOptional, not a reaso\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_ac53344694ca"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_8c6a168d137b"
+}

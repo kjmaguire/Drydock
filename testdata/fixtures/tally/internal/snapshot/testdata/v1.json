@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "seq": 8,
+  "orgs": [
+    {"id": "org_000001", "name": "Acme", "tax_rate_bp": 825, "created_at": "2024-05-01T09:00:00Z"}
+  ],
+  "users": [
+    {"id": "usr_000002", "email": "owner@acme.example", "name": "Acme Owner", "created_at": "2024-05-01T09:00:00Z"}
+  ],
+  "members": [
+    {"org_id": "org_000001", "user_id": "usr_000002", "role": "owner", "created_at": "2024-05-01T09:00:00Z"}
+  ],
+  "api_keys": [
+    {"id": "key_000003", "org_id": "org_000001", "user_id": "usr_000002", "name": "Owner key", "token": "tly_00000000000000000000000000000003", "created_at": "2024-05-01T09:00:00Z"}
+  ],
+  "customers": [
+    {"id": "cus_000004", "org_id": "org_000001", "full_name": "Jane Doe", "email": "jane@example.com", "created_at": "2024-05-02T10:00:00Z"}
+  ],
+  "plans": [
+    {"id": "plan_000005", "org_id": "org_000001", "name": "Starter", "price_cents": 1999, "interval": "month", "trial_days": 0, "created_at": "2024-05-02T10:00:00Z"}
+  ],
+  "subscriptions": [
+    {"id": "sub_000006", "org_id": "org_000001", "customer_id": "cus_000004", "plan_id": "plan_000005", "quantity": 1, "status": "active",
+     "discount_percent": 0, "started_at": "2024-05-02T10:00:00Z", "current_period_start": "2024-05-02T10:00:00Z",
+     "current_period_end": "2024-06-02T10:00:00Z", "cancel_at_period_end": false, "created_at": "2024-05-02T10:00:00Z"}
+  ],
+  "invoices": [
+    {"id": "in_000007", "org_id": "org_000001", "customer_id": "cus_000004", "subscription_id": "sub_000006", "currency": "USD",
+     "lines": [{"description": "Starter, May 2, 2024 to Jun 2, 2024", "quantity": 1, "unit_amount": 1999}],
+     "discount_percent": 0, "tax_rate_bp": 825, "status": "paid", "period_start": "2024-05-02T10:00:00Z",
+     "period_end": "2024-06-02T10:00:00Z", "created_at": "2024-05-02T10:00:00Z", "paid_at": "2024-05-02T10:00:01Z"}
+  ],
+  "payments": [
+    {"id": "pay_000008", "org_id": "org_000001", "invoice_id": "in_000007", "amount": 2164, "currency": "USD", "status": "succeeded",
+     "gateway_ref": "ch_000001", "created_at": "2024-05-02T10:00:01Z"}
+  ]
+}

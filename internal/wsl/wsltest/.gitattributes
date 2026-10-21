@@ -1,0 +1,2 @@
+# the stand-in claude runs under /bin/sh inside a distro: a CRLF checkout would break it
+*.sh text eol=lf

@@ -1,0 +1,116 @@
+# Drydock's own rules for JavaScript and TypeScript (decision P77). Each one names a pattern that is a security problem in
+# most code that has it; its message says why and what to do instead. Fixtures: internal/scan/testdata/rules/drydock.
+rules:
+  - id: drydock.js.eval-of-non-literal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      eval() runs whatever string it is given as code. A string built from data can run code an attacker chose. Parse the data
+      (JSON.parse) or look the action up in a table instead.
+    metadata: { category: security, cwe: "CWE-95: Eval Injection", confidence: HIGH }
+    patterns:
+      - pattern: eval($X)
+      - pattern-not: eval("...")
+  - id: drydock.js.function-constructor-of-non-literal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      new Function(...) compiles its last argument as code, like eval(). Code built from data can run what an attacker chose.
+    metadata: { category: security, cwe: "CWE-95: Eval Injection", confidence: HIGH }
+    patterns:
+      - pattern-either:
+          - pattern: new Function(..., $BODY)
+          - pattern: Function(..., $BODY)
+      - pattern-not: new Function(..., "...")
+      - pattern-not: Function(..., "...")
+  - id: drydock.js.shell-command-built-from-data
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      This command line is built from data and run through a shell, so a value with ; | & or $( ) runs other commands. Use
+      execFile or spawn with the arguments as an array, and no shell.
+    metadata: { category: security, cwe: "CWE-78: OS Command Injection", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec(`...${$X}...`, ...)
+          - pattern: $CP.execSync(`...${$X}...`, ...)
+          - pattern: $CP.exec("..." + $X, ...)
+          - pattern: $CP.exec("..." + $X + "...", ...)
+          - pattern: $CP.execSync("..." + $X, ...)
+          - pattern: $CP.execSync("..." + $X + "...", ...)
+          - pattern: exec(`...${$X}...`, ...)
+          - pattern: execSync(`...${$X}...`, ...)
+          - pattern: exec("..." + $X, ...)
+          - pattern: exec("..." + $X + "...", ...)
+          - pattern: execSync("..." + $X, ...)
+          - pattern: execSync("..." + $X + "...", ...)
+  - id: drydock.js.sql-built-from-data
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      This SQL text is built from data, so a value with a quote can change the query (SQL injection). Pass the values as
+      parameters (placeholders such as ? or $1) instead.
+    metadata: { category: security, cwe: "CWE-89: SQL Injection", confidence: MEDIUM }
+    pattern-either:
+      - pattern: $DB.query(`...${$X}...`, ...)
+      - pattern: $DB.query("..." + $X, ...)
+      - pattern: $DB.query("..." + $X + "...", ...)
+      - pattern: $DB.execute(`...${$X}...`, ...)
+      - pattern: $DB.execute("..." + $X, ...)
+      - pattern: $DB.execute("..." + $X + "...", ...)
+      - pattern: $DB.raw(`...${$X}...`, ...)
+      - pattern: $DB.$queryRawUnsafe(...)
+      - pattern: $DB.$executeRawUnsafe(...)
+  - id: drydock.js.inner-html-from-data
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Setting innerHTML or outerHTML to a value that is not a fixed string can put a script into the page (XSS). Set
+      textContent, build the elements, or sanitise the HTML first.
+    metadata: { category: security, cwe: "CWE-79: Cross-site Scripting", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: $EL.outerHTML = $X
+          - pattern: $EL.insertAdjacentHTML($POS, $X)
+          - pattern: document.write($X)
+      - pattern-not: $EL.innerHTML = "..."
+      - pattern-not: $EL.outerHTML = "..."
+      - pattern-not: $EL.insertAdjacentHTML($POS, "...")
+      - pattern-not: document.write("...")
+  - id: drydock.js.tls-certificate-check-off
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      This turns off the check of the server's certificate, so anyone on the network path can read and change the traffic.
+      Trust the server's own CA instead (the ca option, or NODE_EXTRA_CA_CERTS).
+    metadata: { category: security, cwe: "CWE-295: Improper Certificate Validation", confidence: HIGH }
+    pattern-either:
+      - pattern: |
+          { ..., rejectUnauthorized: false, ... }
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      - pattern: process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+  - id: drydock.js.weak-hash
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      MD5 and SHA-1 are broken for security: collisions can be made. For passwords use a password hash (bcrypt, scrypt,
+      argon2); for signatures and integrity use SHA-256 or better. A checksum that guards against accidents only is fine.
+    metadata: { category: security, cwe: "CWE-328: Use of Weak Hash", confidence: MEDIUM }
+    pattern-either:
+      - pattern: $C.createHash("md5")
+      - pattern: $C.createHash("sha1")
+      - pattern: $C.createHash("MD5")
+      - pattern: $C.createHash("SHA1")
+  - id: drydock.js.jwt-none-algorithm
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Accepting the "none" algorithm lets anyone make a token that verifies, with no key. List only the algorithms you sign
+      with.
+    metadata: { category: security, cwe: "CWE-347: Improper Verification of Cryptographic Signature", confidence: HIGH }
+    pattern-either:
+      - pattern: |
+          { ..., algorithms: [..., "none", ...], ... }
+      - pattern: |
+          { ..., algorithm: "none", ... }

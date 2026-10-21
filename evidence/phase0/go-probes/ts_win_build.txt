@@ -1,0 +1,2 @@
+COLD cross-compile windows/amd64 via zig cc 0.17.0, all 10 grammars: 104.322679375 s
+28486656

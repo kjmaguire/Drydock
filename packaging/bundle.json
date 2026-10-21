@@ -1,0 +1,8 @@
+{
+  "_comment": "The tools a Drydock download carries beside drydock.exe (decision P77), pinned. cmd/drydock-bundle fetches each release, checks it against the SHA-256 GitHub recorded, and writes them with tools/bundle.json. Changing a version here is a software change: follow docs/software-versions.md.",
+  "scan": [
+    { "tool": "osv-scanner", "tag": "v2.7.0" },
+    { "tool": "opengrep", "tag": "v1.31.0" }
+  ],
+  "llama": { "source": "turboquant", "backend": "vulkan", "tag": "b10298-2.0.0" }
+}

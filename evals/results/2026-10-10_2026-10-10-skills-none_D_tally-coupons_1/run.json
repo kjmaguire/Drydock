@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-coupons",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "fe471b62d41432495cddf27d76263d4ca8007c8c",
+  "startedAt": "2026-10-10T21:43:17.129926234Z",
+  "wallMs": 513683,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 3720,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 7096,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.118s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.063s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.025s\nok  \texample.com/tally/internal/payments\t0.018s\nok  \texample.com/tally/internal/reports\t0.004s\nok  \texample.com/tally/internal/snapshot\t0.090s\nok  \texample.com/tally/internal/store\t0.007s\nok  \texample.com/tally/internal/subscriptions\t0.033s\nok  \texample.com/tally/internal/webhooks\t0.010s\n"
+      }
+    ],
+    "durationMs": 10821
+  },
+  "costUsd": 0.3579673400000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 86,
+    "output": 104625,
+    "cacheRead": 3024828,
+    "cacheWrite": 234023
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_d713b3811eff",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe coupon endpoints, redemption rules and invoice discounting look right on reading. One spec mismatch remains: malformed coupon fields get the wrong status code.\n\n- `internal/api/coupons.go`, `createCoupon`: the body is decoded straight into typed fields, so a wrong-typed field (`\"percent_off\": \"10\"`, `\"duration_in_months\": \"3\"`, `\"max_redemptions\": 1.5`) or an unparseable `redeem_by` (`\"not-a-date\"`) fails in `decode` and returns 400 `invalid_json` (`internal/api/respond.go:27-34`). The task says anything invalid about a coupon gets 422 `{\"error\":\"invalid\"}`, and only malformed JSON is outside that. Fix: decode these fields so that type or parse failures become `writeError(w, http.StatusUnprocessableEntity, \"invalid\", ...)`, for example by decoding `percent_off`, `duration_in_months`, `max_redemptions` and `redeem_by` as `json.RawMessage` or strings and validating them, or by checking a decode error from a typed body and answering 422 when the JSON itself parses. Add test cases for a string `percent_off` and an invalid `redeem_by`, expecting 422 `invalid`.\n\nEverything else I checked matches the spec: the error codes, the redemption checks, the once/repeating/forever rules, tax after discount, and the `coupon` and `discount` fields.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"internal/api/coupons.go createCoupon: a wrong-typed field (e.g. \\\"percent_off\\\": \\\"10\\\", \\\"duration_in_months\\\": \\\"3\\\", \\\"max_redemptions\\\": 1.5) or an unparseable redeem_by (e.g. \\\"not-a-date\\\") fails the typed \n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_d713b3811eff"
+    }
+  ],
+  "coreTaskId": "task_e3cfcb69494f"
+}

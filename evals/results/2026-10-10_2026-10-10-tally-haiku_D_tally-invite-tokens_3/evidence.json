@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Invite tokens are 32 random bytes from crypto/rand, in unpadded base64url (43 characters), and only their SHA-256 hash is stored. The token appears only in the invitation email. No POST or GET answer and no snapshot contains it.\n- Accepting returns 404 `invite_not_found` for unknown or revoked tokens, 410 `invite_used` once accepted, and 410 `invite_expired` after 7 days on the service clock. Re-inviting an address (case-insensitive) revokes the older invite. GET lists only pending invites, each with `expires_at`.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and the new tests\n...[truncated]",
+    "data": {},
+    "created": 1791610141292
+  },
+  {
+    "id": 2,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 520ms",
+    "ref": "/tmp/drydock-trial-2379776319/tally-invite-tokens-D-3/data/runs/run_cc196f125e81/checks/build-1791610141359878288.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 522,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610141883
+  },
+  {
+    "id": 3,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 430ms",
+    "ref": "/tmp/drydock-trial-2379776319/tally-invite-tokens-D-3/data/runs/run_cc196f125e81/checks/test-1791610141884990608.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 431,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610142316
+  },
+  {
+    "id": 4,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 420ms",
+    "ref": "/tmp/drydock-trial-2379776319/tally-invite-tokens-D-3/data/runs/run_cc196f125e81/checks/lint-1791610142319442164.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 422,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610142742
+  },
+  {
+    "id": 5,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-2379776319/tally-invite-tokens-D-3/data/runs/run_cc196f125e81/checks/secrets-1791610142760842025.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 16,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610142761
+  },
+  {
+    "id": 6,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +194 -8",
+    "ref": "/tmp/drydock-trial-2379776319/tally-invite-tokens-D-3/data/runs/run_cc196f125e81/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 194,
+      "Deletions": 8,
+      "base": "dcb1e895ecd88b39808bbbaa818dc40a336c2c69",
+      "commit": "5ae8f1b728f766e59398e6c1f98f70c06b406479"
+    },
+    "created": 1791610142895
+  },
+  {
+    "id": 7,
+    "taskId": "task_6337e6dac479",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5ae8f1b728",
+    "ref": "5ae8f1b728f766e59398e6c1f98f70c06b406479",
+    "data": {},
+    "created": 1791610142897
+  }
+]

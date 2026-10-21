@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-relevant",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered relevant",
+  "taskId": "tally-tiered-pricing",
+  "taskClass": "iteration",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "2319882bb073973f57c79562d8f751d958ce5cfa",
+  "startedAt": "2026-10-10T21:59:15.127302135Z",
+  "wallMs": 262047,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1057,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2241,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.029s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.009s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.045s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.079s\nok  \texample.com/tally/internal/payments\t0.005s\nok  \texample.com/tally/internal/reports\t0.013s\nok  \texample.com/tally/internal/snapshot\t0.039s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.008s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 3305
+  },
+  "costUsd": 0.06829058000000002,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 84,
+    "output": 51978,
+    "cacheRead": 1669218,
+    "cacheWrite": 128005
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_fe3f7b3077dc",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe change is largely correct. I checked `TieredAmount` by hand against the spec's graduated and volume rules, and the renewal early return (`return true, nil` when there is no usage) still lets the period advance as before. One requirement is missed: a tier with the wrong JSON type gets the wrong error code.\n\n**Problem: wrong JSON types inside `tiers` return 400 `invalid_json`, not 422 `invalid_tiers`.**\nThe spec says invalid tiers must return 422 `invalid_tiers`. In `internal/api/plans.go`, `tierIn` is decoded as part of the top-level body in `createPlan`, so `decode` (`internal/api/respond.go:27-34`) answers first with 400 `invalid_json`. Examples:\n- `\"unit_amount\": 5` (a number, where the spec says a string) returns 400.\n- `\"up_to\": \"abc\"` returns 400.\n- `\"tiers\": \"x\"` returns 400.\n\nThe fix is to keep `tiers` out of the main decode, or to decode it as `json.RawMessage` and parse it in `readTiers`, so any tier that fails to parse returns `store.ErrInvalidTiers`. The same fix covers `\"up_to\": \"10\"`, which is currently accepted as 10 because `json.Number` takes a quoted number. The spec says \"whole number or null\". Add a test case for `\"unit_amount\": 5` expecting 422 `invalid_tiers`.\n\nEverything else checks out: the validation rules, the minor-unit output, the `UpdatePlan` tier lock, and the renewal billing with one line and no invoice when there is no usage.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"internal/api/plans.go (createPlan, tierIn): a tier with the wrong JSON type (e.g. \\\"\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_fe3f7b3077dc"
+    }
+  ],
+  "skills": "relevant",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_3a0f06dba81c"
+}

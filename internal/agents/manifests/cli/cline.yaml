@@ -1,0 +1,32 @@
+# Cline CLI over its ACP mode, `cline --acp` (decisions P29). Facts from the cline/cline source at 3.0.70 (apps/cli/src/acp) and
+# a live run of the published npm package on Linux (version and ACP initialize, no sign-in). The npm package installs a Node
+# launcher (bin/cline, `#!/usr/bin/env node`) that runs the bundled platform binary, so Node is needed to run it, not only to
+# install it (decision D9).
+meta: {schema: 1, id: cline, display_name: Cline, kind: agent_cli, license: Apache-2.0, tier: premium, run_modes: [native]}
+binaries: {native: [cline.cmd, cline.exe]}
+install:
+  - {shell: cmd, command: 'npm i -g --allow-scripts=cline cline', requires: [{tool: node, min: "22"}]}   # npm 12 runs no install script unless allowed; it has a postinstall
+requires: [{tool: node, min: "22"}]
+detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}     # prints the bare version ("3.0.70", observed)
+versions: {min: "3.0.70", recommended: "3.0.73"}
+auth:
+  # `cline auth` opens its own sign-in (Cline account, ClinePass, ChatGPT subscription, or an API key for a provider). ACP
+  # advertises the same OAuth methods (cline, cline-pass, openai-codex) but Drydock never drives a sign-in: the human signs in
+  # once in the embedded terminal.
+  login: {argv: [auth], terminal: true}
+  probe: none                                      # no status command; session/new answers "authentication required" (-32000)
+transports:
+  primary: acp
+  # Tool approval stays on: --auto-approve and --yolo are never passed, so every tool call reaches Drydock as a permission request.
+  acp: {argv: [cline, --acp]}
+  headless: none
+# Cline's ACP agent stores session/new.mcpServers but, at 3.0.70, nothing in apps/cli reads them back: the servers are most
+# likely ignored. The gateway is therefore unverified and off until the human allows it (mcp.try.set, decision P20).
+# Cline runs the hooks it finds in .clinerules/hooks/ (from its documentation; not run here).
+repo_config: [.clinerules/hooks/, .cline/]
+mcp: {inject: acp_session_new, transports: [stdio], unverified: true}
+# loadSession: true and image prompts come from initialize (observed); no usage or cost is reported over ACP (its usage events
+# are dropped by apps/cli/src/acp/session-updates.ts); modes are plan and act; model is a session config option; no effort option.
+capabilities_declared: {streaming: true, model_selection: true, effort_control: false, session_resume: true, interrupt: true, mcp: unknown, token_usage: false, cost_reporting: false, headless: true, permission_modes: true, image_input: true, tool_call_visibility: true}
+instructions: {primary: AGENTS.md, secondary: .clinerules}
+terms: {notice: open-source-provider-terms-v1}

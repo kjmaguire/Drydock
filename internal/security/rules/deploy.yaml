@@ -1,0 +1,89 @@
+# Command class: deploy. Production-affecting releases and infrastructure changes. Decision: ask (kind deploy, or
+# infra_change for cloud/IaC), except rules with hard_deny, which an agent process may never run (decisions D6, security.md s5
+# and s13: deploy, pages deploy, rollback, delete and remote D1 are denied; versions upload needs a separate preview account).
+# ILLUSTRATIVE, NOT EXHAUSTIVE (docs/security.md s7).
+class: deploy
+rules:
+  - id: deploy.wrangler.production
+    programs: [wrangler, cf]
+    subcommands: [deploy, publish, rollback, delete, "pages deploy", "pages publish", "pages deployment delete", "versions deploy", "triggers deploy", "pages project delete"]
+    kind: deploy
+    hard_deny: true
+    paths: none
+    reason: production deploy commands are never available to agent processes (D6)
+  - id: deploy.wrangler.versions_upload
+    programs: [wrangler, cf]
+    subcommands: ["versions upload"]
+    kind: deploy
+    paths: none
+    reason: version URLs reuse production bindings unless the preview credential is a separate account
+  - id: deploy.wrangler.remote_resources
+    programs: [wrangler, cf]
+    subcommands: ["kv key put", "kv key delete", "kv bulk put", "kv bulk delete", "r2 object put", "r2 object delete", "r2 bucket create", "r2 bucket delete", "queues delete", "vectorize delete"]
+    kind: infra_change
+    paths: none
+    reason: writes to Cloudflare resources that cannot be shown to be preview-only
+  - id: deploy.prod_flag
+    programs: [vercel, netlify, firebase, flyctl, fly, railway, heroku, surge, now, amplify, sam, cdk, serverless, sls]
+    args_regex: ['^(deploy|release|publish|up)$']
+    kind: deploy
+    paths: none
+    reason: deploy through a hosting CLI
+  - id: deploy.vercel_prod
+    programs: [vercel, netlify]
+    flags_any: ["--prod", "--prebuilt", "-p"]
+    kind: deploy
+    hard_deny: true
+    paths: none
+    reason: production deploy
+  - id: deploy.publish
+    programs: [npm, pnpm, yarn, cargo, twine, gem, dotnet, bun]
+    subcommands: [publish, unpublish, push, "nuget push", deprecate, "dist-tag add"]
+    kind: deploy
+    paths: none
+    reason: publishes a package
+  - id: deploy.package_script
+    programs: [npm, pnpm, yarn, bun]
+    subcommands: ["run", "run-script"]
+    args_regex: ['^(deploy|release|publish|ship|promote)([:_-]|$)']
+    kind: deploy
+    paths: none
+    reason: package script named like a deploy
+  - id: deploy.gh_release
+    programs: [gh]
+    subcommands: ["release create", "release delete", "release upload", "pr merge", "repo delete", "repo create", "workflow run"]
+    kind: deploy
+    paths: none
+    reason: releases and merges are human-initiated
+  - id: deploy.docker_push
+    programs: [docker, podman]
+    subcommands: [push]
+    kind: deploy
+    paths: none
+    reason: pushes an image
+  - id: deploy.docker_buildx_push
+    programs: [docker, podman]
+    subcommands: ["buildx build"]
+    flags_any: ["--push"]
+    kind: deploy
+    paths: none
+    reason: pushes an image
+  - id: deploy.iac
+    programs: [terraform, tofu, pulumi, terragrunt, cdktf, ansible-playbook, kubectl, helm, kustomize, oc, flux, argocd, eksctl]
+    subcommands: [apply, destroy, up, delete, create, replace, patch, scale, rollout, set, install, upgrade, uninstall, rollback, import, taint, "state rm", "workspace delete", annotate, label, drain, cordon, sync]
+    kind: infra_change
+    paths: none
+    reason: changes cloud or cluster infrastructure
+  - id: deploy.cloud_cli
+    programs: [aws, gcloud, az, doctl, linode-cli, ibmcloud, oci]
+    args_regex: ['^(deploy|delete|delete-.*|put-.*|create-.*|update-.*|terminate-.*|remove-.*|destroy|apply|sync|rm|cp|mv|set-.*|attach-.*|detach-.*|modify-.*|run-instances|stop-.*|start-.*)$']
+    kind: infra_change
+    paths: none
+    reason: mutating cloud CLI verb
+  - id: deploy.ps.cloud
+    programs: [publish-azwebapp, new-azresourcegroup, remove-azresourcegroup, set-azwebapp, publish-module, publish-script, update-azfunctionapp]
+    ci: true
+    shells: [powershell]
+    kind: infra_change
+    paths: none
+    reason: cloud mutation

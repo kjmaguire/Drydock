@@ -1,0 +1,7 @@
+{
+ "agentInfo": null,
+ "protocolVersion": null,
+ "agentCapabilities": null,
+ "authMethods": []
+}
+stderr: b''

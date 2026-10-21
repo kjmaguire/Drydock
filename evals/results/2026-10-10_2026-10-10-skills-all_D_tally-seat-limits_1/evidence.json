@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Seat counting and limit checks are in place for invite creation, member role changes, and plan changes, and `GET /v1/org` reports `seats`.\n- Concurrent invites cannot exceed the limit: with one seat left, only one of eight simultaneous invites succeeds.\n- New tests cover each rule, and `go build ./...`, `go test ./...`, and `go vet ./...` all pass.",
+    "data": {},
+    "created": 1791669757500
+  },
+  {
+    "id": 2,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 710ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/runs/run_0511f8747370/checks/build_cffa1d9d3cb5.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 709,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669758258
+  },
+  {
+    "id": 3,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 530ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/runs/run_0511f8747370/checks/test_63780748c38e.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 528,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669758789
+  },
+  {
+    "id": 4,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 530ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/runs/run_0511f8747370/checks/lint_ecb57504c2c9.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 530,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669759321
+  },
+  {
+    "id": 5,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/runs/run_0511f8747370/checks/secrets_9518bfd99e3a.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669759346
+  },
+  {
+    "id": 6,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +387 -5",
+    "ref": "<scratchpad>/trialwork/all-1-1/tally-seat-limits-D-1/data/runs/run_0511f8747370/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 387,
+      "Deletions": 5,
+      "base": "4fceb4e740f92363f4baad9b3d7267e51b515b92",
+      "commit": "39d80bdeaea7f92e5b613f6d1840fb9347190322"
+    },
+    "created": 1791669759506
+  },
+  {
+    "id": 7,
+    "taskId": "task_06f40d5fd80e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 39d80bdeae",
+    "ref": "39d80bdeaea7f92e5b613f6d1840fb9347190322",
+    "data": {},
+    "created": 1791669759506
+  }
+]

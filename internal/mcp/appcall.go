@@ -1,0 +1,291 @@
+package mcp
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// EventAppCall is published for every call the app itself makes to an upstream (as opposed to an agent run's call, which is
+// mcp.call). Like mcp.call it carries hashes and sizes, never arguments or results.
+const EventAppCall = "mcp.app_call"
+
+// AppUpstream is the gateway's client side for calls made by the app itself, not by an agent run: the integrations package
+// uses it to sync Linear, Notion, Sentry and Aikido (docs/integrations.md section 1, "App sync"). It reuses the same pooled
+// upstream as agent runs (same transports, credential resolution, circuit breaker, stdio servers under the process manager,
+// redirect refusal), but there is no run, so there is no agent allowlist: the caller (the integrations package) owns the
+// list of tools it may call and gates every write behind an approval.
+type AppUpstream struct {
+	g    *Gateway
+	spec ServerSpec
+	u    *upstream
+}
+
+// AppResult is a tool result as the app sees it. Text is the concatenated text content; Structured is the structuredContent
+// when the server sent one. The content is untrusted data and has not been scanned: the caller scans it.
+type AppResult struct {
+	Text       string
+	Structured json.RawMessage
+	IsError    bool
+}
+
+// AppUpstream returns a handle to the pooled upstream for spec, resolving its credential through Options.Credentials. A
+// changed credential yields a different pooled upstream (the pool key carries a hash of the credential, never the secret).
+func (g *Gateway) AppUpstream(ctx context.Context, spec ServerSpec) (*AppUpstream, error) {
+	spec.applyDefaults()
+	if err := spec.Validate(false); err != nil {
+		return nil, fmt.Errorf("mcp: server %q: %w", spec.ID, err)
+	}
+	ci := credInfo{id: "anon"}
+	if spec.Transport == TransportHTTP && spec.Auth.Kind != AuthNone {
+		if g.opts.Credentials == nil {
+			return nil, &unavailableError{spec.ID, errors.New("no credential source configured")}
+		}
+		tok, err := g.opts.Credentials.Credential(ctx, spec.ID, spec.Auth.Keyring)
+		if (err != nil || tok == "") && !spec.Auth.Optional {
+			if err == nil {
+				err = errors.New("credential is empty")
+			}
+			return nil, &unavailableError{spec.ID, fmt.Errorf("credentials for %s are not available: %w", spec.ID, err)}
+		}
+		if tok != "" {
+			sum := sha256.Sum256([]byte(tok))
+			ci = credInfo{token: tok, id: hex.EncodeToString(sum[:8])}
+		}
+	}
+	key := spec.ID + "|" + specPoolHash(spec) + "|" + ci.id
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	u := g.pool[key]
+	if u == nil {
+		u = &upstream{g: g, spec: spec, key: key, credID: ci.id, token: ci.token}
+		u.version = g.loadVersion(key)
+		u.touch()
+		g.pool[key] = u
+	}
+	return &AppUpstream{g: g, spec: spec, u: u}, nil
+}
+
+// Tools lists the tool names the server offers right now (a fresh tools/list, which also proves the server is reachable and
+// the credential is accepted).
+func (a *AppUpstream) Tools(ctx context.Context) ([]string, error) {
+	sess, err := a.u.ensure(ctx)
+	if err != nil {
+		return nil, err
+	}
+	a.u.touch()
+	all, err := listAll(ctx, sess)
+	if err != nil {
+		a.u.failedCall(ctx, err)
+		return nil, &unavailableError{a.spec.ID, err}
+	}
+	a.u.noteSuccess()
+	a.u.mu.Lock()
+	a.u.tools = all
+	a.u.mu.Unlock()
+	names := make([]string, 0, len(all))
+	for _, t := range all {
+		names = append(names, t.Name)
+	}
+	return names, nil
+}
+
+// ToolInfo is one tool a server offers, as discovery reports it. ReadOnlyHint is what the server CLAIMS: Drydock never relies on
+// it for a private server (the human decides which tools are read-only), it is only shown as a suggestion.
+type ToolInfo struct {
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"inputSchema,omitempty"`
+	ReadOnlyHint bool           `json:"readOnlyHint"`
+	// Flags are the instruction-like patterns Drydock found in the tool's name, description or input schema when it listed
+	// the tools (tool poisoning). A flagged tool is left out of the grants Drydock makes; a human can still name it.
+	Flags []string `json:"flags,omitempty"`
+	// Digest fingerprints the name, description and input schema as listed (ToolDigest): a run withholds the tool when the
+	// server's text no longer matches it.
+	Digest string `json:"digest,omitempty"`
+}
+
+// ToolList is Tools with the descriptions, input schemas and the servers' read-only claims. It makes a fresh tools/list.
+func (a *AppUpstream) ToolList(ctx context.Context) ([]ToolInfo, error) {
+	if _, err := a.Tools(ctx); err != nil {
+		return nil, err
+	}
+	a.u.mu.Lock()
+	all := a.u.tools
+	a.u.mu.Unlock()
+	out := make([]ToolInfo, 0, len(all))
+	for _, t := range all {
+		ti := ToolInfo{Name: t.Name, Description: t.Description, Digest: ToolDigest(t.Name, t.Description, t.InputSchema)}
+		if m, ok := t.InputSchema.(map[string]any); ok && m["type"] == "object" {
+			ti.InputSchema = m
+		}
+		ti.ReadOnlyHint, _ = toolHints(t)
+		out = append(out, ti)
+	}
+	return out, nil
+}
+
+// Call calls one tool. A returned error means the server could not be reached (errors.Is(err, ErrUpstreamUnavailable)); a
+// tool-level failure comes back as a result with IsError.
+func (a *AppUpstream) Call(ctx context.Context, tool string, args any) (*AppResult, error) {
+	start := a.g.now()
+	var raw json.RawMessage
+	if args != nil {
+		b, err := json.Marshal(args)
+		if err != nil {
+			return nil, fmt.Errorf("mcp: arguments are not valid JSON: %w", err)
+		}
+		raw = b
+	}
+	canon, _ := canonicalJSON(raw)
+	res, err := a.u.call(ctx, tool, raw)
+	status, size := "ok", 0
+	var out *AppResult
+	if err != nil {
+		status = "unavailable"
+	} else {
+		text, isErr := flattenResult(res)
+		out = &AppResult{Text: text, IsError: isErr}
+		if res.StructuredContent != nil {
+			if b, merr := json.Marshal(res.StructuredContent); merr == nil {
+				out.Structured = b
+			}
+		}
+		size = len(text) + len(out.Structured)
+		if isErr {
+			status = "error"
+		}
+	}
+	a.g.publish(ctx, EventAppCall, RunInfo{}, "", map[string]any{
+		"server": a.spec.ID, "tool": tool, "args_hash": sha256Hex(canon), "status": status, "bytes": size,
+		"duration_ms": ms(a.g.now().Sub(start)),
+	})
+	return out, err
+}
+
+// ServerIdentity is what a server says about itself in its answer to initialize (serverInfo and instructions). It is the
+// server's own claim, untrusted text: the UI shows it as data, and Drydock never passes the instructions to an agent.
+type ServerIdentity struct {
+	Name            string `json:"name"`
+	Title           string `json:"title,omitempty"`
+	Version         string `json:"version,omitempty"`
+	Description     string `json:"description,omitempty"`
+	WebsiteURL      string `json:"websiteUrl,omitempty"`
+	Instructions    string `json:"instructions,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+}
+
+// Limits on what is kept of a server's self-description.
+const (
+	maxIdentityField        = 200
+	maxIdentityInstructions = 4000
+)
+
+// Identity connects (when needed) and returns the server's serverInfo and instructions, trimmed to sane lengths.
+func (a *AppUpstream) Identity(ctx context.Context) (ServerIdentity, error) {
+	if _, err := a.u.ensure(ctx); err != nil {
+		return ServerIdentity{}, err
+	}
+	a.u.mu.Lock()
+	ir := a.u.init
+	a.u.mu.Unlock()
+	var id ServerIdentity
+	if ir == nil {
+		return id, nil
+	}
+	id.Instructions = clip(ir.Instructions, maxIdentityInstructions)
+	id.ProtocolVersion = clip(ir.ProtocolVersion, 40)
+	if si := ir.ServerInfo; si != nil {
+		id.Name, id.Title, id.Version = clip(si.Name, maxIdentityField), clip(si.Title, maxIdentityField), clip(si.Version, 80)
+		id.Description = clip(si.Description, 1000)
+		if u, err := url.Parse(si.WebsiteURL); err == nil && u.Scheme == "https" && u.Host != "" {
+			id.WebsiteURL = clip(si.WebsiteURL, 300)
+		}
+	}
+	return id, nil
+}
+
+// clip trims s and cuts it to at most n bytes on a rune boundary.
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s + "..."
+}
+
+// Account calls the identity tool spec names and reads who the credential belongs to: the first of spec.Fields found in a JSON
+// answer (at the top level or one object down), else the first line of a text answer. The answer is outside text: the result
+// is a single short line, and the caller scans it before keeping it.
+func (a *AppUpstream) Account(ctx context.Context, spec IdentitySpec) (string, error) {
+	args := spec.Args
+	if args == nil {
+		args = map[string]any{}
+	}
+	r, err := a.Call(ctx, spec.Tool, args)
+	if err != nil {
+		return "", err
+	}
+	if r.IsError {
+		return "", fmt.Errorf("%s answered with an error", spec.Tool)
+	}
+	return accountFrom(r.Structured, r.Text, spec.Fields), nil
+}
+
+func accountFrom(structured json.RawMessage, text string, fields []string) string {
+	var v any
+	if len(structured) == 0 || json.Unmarshal(structured, &v) != nil {
+		v = nil
+		t := strings.TrimSpace(text)
+		if strings.HasPrefix(t, "{") {
+			_ = json.Unmarshal([]byte(t), &v)
+		}
+	}
+	pick := func(m map[string]any) string {
+		for _, f := range fields {
+			if s, ok := m[f].(string); ok && strings.TrimSpace(s) != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	if m, ok := v.(map[string]any); ok {
+		if s := pick(m); s != "" {
+			return oneLine(s)
+		}
+		for _, x := range m {
+			if inner, ok := x.(map[string]any); ok {
+				if s := pick(inner); s != "" {
+					return oneLine(s)
+				}
+			}
+		}
+		return ""
+	}
+	return oneLine(text)
+}
+
+func oneLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+	return clip(s, 120)
+}

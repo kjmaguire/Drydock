@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `Currency.MinorUnits()` returns 2 for USD/EUR/GBP, 0 for JPY and 3 for KWD. `money.ParseMajor`, `money.Format`, plan `price`/`price_formatted`, and invoice `total_formatted` all use those decimals.\n- New tests cover parsing (padding, too many decimals rejected with `ErrInvalidAmount`, signs/spaces/separators/empty rejected), formatting (positive and negative in each currency), and the plan and invoice API answers.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and no existing exported name or signature was removed.",
+    "data": {},
+    "created": 1791609440865
+  },
+  {
+    "id": 2,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 530ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-currency-minor-units-D-2/data/runs/run_73f2f0f311e2/checks/build-1791609440987110853.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 530,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609441517
+  },
+  {
+    "id": 3,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 500ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-currency-minor-units-D-2/data/runs/run_73f2f0f311e2/checks/test-1791609441519753319.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 495,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609442015
+  },
+  {
+    "id": 4,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 390ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-currency-minor-units-D-2/data/runs/run_73f2f0f311e2/checks/lint-1791609442017882581.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 392,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609442411
+  },
+  {
+    "id": 5,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-3658036079/tally-currency-minor-units-D-2/data/runs/run_73f2f0f311e2/checks/secrets-1791609442425883045.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 12,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609442426
+  },
+  {
+    "id": 6,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +124 -13",
+    "ref": "/tmp/drydock-trial-3658036079/tally-currency-minor-units-D-2/data/runs/run_73f2f0f311e2/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 124,
+      "Deletions": 13,
+      "base": "1c2ca9c2750b457b2b72309e342cc2dc4525e874",
+      "commit": "b26ca14c04d5d29f7d15d4fcda3346d7b80219d0"
+    },
+    "created": 1791609442566
+  },
+  {
+    "id": 7,
+    "taskId": "task_eed97d5ead39",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit b26ca14c04",
+    "ref": "b26ca14c04d5d29f7d15d4fcda3346d7b80219d0",
+    "data": {},
+    "created": 1791609442567
+  }
+]

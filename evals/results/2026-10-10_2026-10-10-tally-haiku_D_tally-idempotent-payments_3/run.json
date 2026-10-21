@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-idempotent-payments",
+  "taskClass": "high-risk",
+  "repeat": 3,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "f26f82490219de2738bdd021abffb3a7a8703ef6",
+  "startedAt": "2026-10-10T05:26:32.076411586Z",
+  "wallMs": 354022,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1030,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2073,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.069s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.006s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.003s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.012s\nok  \texample.com/tally/internal/reports\t0.018s\nok  \texample.com/tally/internal/snapshot\t0.017s\nok  \texample.com/tally/internal/store\t0.010s\nok  \texample.com/tally/internal/subscriptions\t0.009s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 3106
+  },
+  "costUsd": 0.13789201,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 72,
+    "output": 70367,
+    "cacheRead": 1998675,
+    "cacheWrite": 194443
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_1ded01a896da",
+      "feedback": "1) internal/payments/payments.go:120-125: if Store.CreatePayment or markPaid fails after Gateway.Charge succeeded, Pay returns a plain error (API 500). The invoice stays open, so a retry (keyed, since 5xx is dropped, or keyless) charges the card again. This violates 'two pay requests for the same invoice never both charge'. Fix: before charging, check for an existing succeeded payment on the invoice and return ErrAlreadyPaid, or retry the payment/invoice writes until they succeed while the in-flight marker is held. Add a test that makes the store write fail after a successful charge and asserts a retry does not charge again. Optional notes: a kept payment_in_progress 409 is replayed for 24h even after the charge completes (spec-literal, but worth confirming); expired idempotency records are never purged from the map."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_1ded01a896da"
+    }
+  ],
+  "coreTaskId": "task_e2410874382a"
+}

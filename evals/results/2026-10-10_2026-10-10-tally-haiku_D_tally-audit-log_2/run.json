@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-audit-log",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "9cf3a2b374d863f98032b4930d44bb52aa903ccf",
+  "startedAt": "2026-10-10T05:18:38.456622563Z",
+  "wallMs": 579068,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1370,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2728,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.190s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.008s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.005s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.004s\nok  \texample.com/tally/internal/reports\t0.018s\nok  \texample.com/tally/internal/snapshot\t0.033s\nok  \texample.com/tally/internal/store\t0.019s\nok  \texample.com/tally/internal/subscriptions\t0.019s\nok  \texample.com/tally/internal/webhooks\t0.020s\n"
+      }
+    ],
+    "durationMs": 4103
+  },
+  "costUsd": 0.5487167700000001,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 154,
+    "output": 104249,
+    "cacheRead": 7196711,
+    "cacheWrite": 275253
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_5c5a07d917bd",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe change is mostly sound, but `auditChanges` misses cleared fields. That breaks the \"exactly the fields whose value changed\" requirement.\n\n**Problem: cleared fields are dropped from `changes`** (`internal/api/audit.go`, `auditChanges`, around lines 37–46)\n\nThe loop walks only `newFields`. Several struct fields are tagged `omitempty` (`internal/store/types.go:103–104` for `DefaultPaymentMethod` and `Metadata`, and `types.go:251` for `DisabledReason`). When one of these goes from a value to its zero value, the key disappears from the new JSON and is never visited. Two real paths hit this:\n\n- `PATCH /v1/customers/{id}` with `\"default_payment_method\": \"\"` (`internal/api/customers.go:97–98`). The entry gets no `default_payment_method` change, even though the value went from `\"pm_card_visa\"` to empty.\n- `PATCH /v1/webhook-endpoints/{id}` that re-enables an endpoint, which clears `DisabledReason` (`internal/api/webhooks.go:95`). The `disabled_reason` change is missing.\n\nFix: take the union of keys from `oldFields` and `newFields`. For a key missing on one side, use `null` (or the type's zero JSON) as that side's value. Skip keys in `auditSecrets`, and keep the `bytes.Equal` check. Also add a test case that clears `default_payment_method` (or re-enables a disabled endpoint) and asserts the `from`/`to` pair is recorded.\n\nEverything else I checked holds:\n- The store getters return values, not pointers, so the `before` snapshots in `updateSubscription` and `updateMember` are rea\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_5c5a07d917bd"
+    }
+  ],
+  "coreTaskId": "task_72379f8da720"
+}

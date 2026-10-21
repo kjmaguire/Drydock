@@ -1,0 +1,170 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 550ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/build_32c8ce3b50d5.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 549,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669354208
+  },
+  {
+    "id": 2,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "test",
+    "passed": false,
+    "summary": "test failed (exit 1) in 1.59s: TestStaleReadDoesNotRenewAgain",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/test_18c1009c624c.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1587,
+      "errored": false,
+      "exitCode": 1,
+      "failing": [
+        "TestStaleReadDoesNotRenewAgain"
+      ],
+      "skipped": false
+    },
+    "created": 1791669355797
+  },
+  {
+    "id": 3,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `TestStaleReadDoesNotRenewAgain` passes: a renew run working from a stale read of a subscription does not invoice that period again.\n- `go build ./...` and `go test ./...` pass, with no tests skipped, weakened or deleted.\n- Changes stay in `internal/subscriptions`, and nothing is committed.",
+    "data": {},
+    "created": 1791669383638
+  },
+  {
+    "id": 4,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 700ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/build_26873a859db9.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 702,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669384375
+  },
+  {
+    "id": 5,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 800ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/test_0caa7250dcfb.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 801,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669385178
+  },
+  {
+    "id": 6,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 590ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/lint_1846841b28ee.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 593,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669385774
+  },
+  {
+    "id": 7,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 80ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/checks/secrets_1e9184779ac3.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 79,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791669385865
+  },
+  {
+    "id": 8,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +271 -31",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-renewal-dedupe-D-1/data/runs/run_9aa3f53d7f83/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 271,
+      "Deletions": 31,
+      "base": "9e4c11a0935e494f20994c1b160f8c6f45905985",
+      "commit": "e9ec42657cfc6fd24cb9c308fee6558fb438ba4c"
+    },
+    "created": 1791669386117
+  },
+  {
+    "id": 9,
+    "taskId": "task_7395a60ea70a",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit e9ec42657c",
+    "ref": "e9ec42657cfc6fd24cb9c308fee6558fb438ba4c",
+    "data": {},
+    "created": 1791669386117
+  }
+]

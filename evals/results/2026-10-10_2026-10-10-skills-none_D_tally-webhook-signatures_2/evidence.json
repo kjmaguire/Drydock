@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `webhooks.SignatureHeader` and `webhooks.Verify` implement the timestamped `t=…,v1=…` scheme with the specified errors and tolerance. Deliveries send the header, carrying the previous secret's `v1` entry for 24 hours after a rotation.\n- `POST /v1/webhook-endpoints/{id}/rotate-secret` returns 200 with the endpoint and its new `whsec_` secret. Rotating again drops the oldest secret at once. Unknown or foreign endpoints get 404.\n- New tests cover Verify, SignatureHeader, the 24-hour window and double rotation, and the endpoint. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791671505668
+  },
+  {
+    "id": 2,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 560ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/build_34a5eb01bbcb.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 562,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671506263
+  },
+  {
+    "id": 3,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 420ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/test_8b1d33c115a8.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 417,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671506682
+  },
+  {
+    "id": 4,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 430ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/lint_24d03db666af.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 425,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671507109
+  },
+  {
+    "id": 5,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/secrets_41743bdd6e7c.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 19,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671507132
+  },
+  {
+    "id": 6,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +324 -6",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 324,
+      "Deletions": 6,
+      "base": "37b7aae708cbe8ad736388dcd1bb061ba49ef48f",
+      "commit": "cc56cd39c9420a0ff957ffb961d1f793b6b45f5d"
+    },
+    "created": 1791671507277
+  },
+  {
+    "id": 7,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit cc56cd39c9",
+    "ref": "cc56cd39c9420a0ff957ffb961d1f793b6b45f5d",
+    "data": {},
+    "created": 1791671507278
+  },
+  {
+    "id": 8,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Changes**\n- `internal/store/state.go`:\n- `State` has a new `WebhookSecretRotations` list (`omitempty`). Each entry holds the endpoint ID, the previous secret and the rotation time.",
+    "data": {},
+    "created": 1791671606730
+  },
+  {
+    "id": 9,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 610ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/build_b19b82860206.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 614,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671607384
+  },
+  {
+    "id": 10,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.35s",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/test_2de3f4402af8.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1352,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671608738
+  },
+  {
+    "id": 11,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 580ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/lint_582a7c67032d.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 578,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671609319
+  },
+  {
+    "id": 12,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/checks/secrets_dd3fedf2ec28.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 29,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671609351
+  },
+  {
+    "id": 13,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +398 -8",
+    "ref": "<scratchpad>/trialwork/none-0-1/tally-webhook-signatures-D-2/data/runs/run_da0ed614a7c9/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 398,
+      "Deletions": 8,
+      "base": "37b7aae708cbe8ad736388dcd1bb061ba49ef48f",
+      "commit": "ad8eddd350af42db5a6b0726d589df5f79a6ac09"
+    },
+    "created": 1791671609478
+  },
+  {
+    "id": 14,
+    "taskId": "task_02700da9fbe2",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit ad8eddd350",
+    "ref": "ad8eddd350af42db5a6b0726d589df5f79a6ac09",
+    "data": {},
+    "created": 1791671609479
+  }
+]

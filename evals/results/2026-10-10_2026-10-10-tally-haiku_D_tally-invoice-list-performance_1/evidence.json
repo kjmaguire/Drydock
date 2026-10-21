@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /v1/invoices` returns the same pages (items, order, fields, errors and `next_cursor`) with and without `customer_id`, `subscription_id` and `status`, and each page is served from a per-organization index instead of a full scan.\n- A test covers a 60,000-invoice organization with 5,000 customers and another organization's invoices in the store. Every filter combination, from the first page and from the middle, returns the right page in under 100 ms (best of three requests). Other tests check the walk order, every item's fields against `GET /v1/invoices/{id}`, and paging across invoices cr\n...[truncated]",
+    "data": {},
+    "created": 1791608174963
+  },
+  {
+    "id": 2,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 900ms",
+    "ref": "/tmp/drydock-trial-647084557/tally-invoice-list-performance-D-1/data/runs/run_e89bc606ad6a/checks/build-1791608175029556197.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 904,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608175934
+  },
+  {
+    "id": 3,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 830ms",
+    "ref": "/tmp/drydock-trial-647084557/tally-invoice-list-performance-D-1/data/runs/run_e89bc606ad6a/checks/test-1791608175936888822.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 834,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608176771
+  },
+  {
+    "id": 4,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 590ms",
+    "ref": "/tmp/drydock-trial-647084557/tally-invoice-list-performance-D-1/data/runs/run_e89bc606ad6a/checks/lint-1791608176776238050.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 591,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608177368
+  },
+  {
+    "id": 5,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-647084557/tally-invoice-list-performance-D-1/data/runs/run_e89bc606ad6a/checks/secrets-1791608177390267699.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608177390
+  },
+  {
+    "id": 6,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +441 -54",
+    "ref": "/tmp/drydock-trial-647084557/tally-invoice-list-performance-D-1/data/runs/run_e89bc606ad6a/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 441,
+      "Deletions": 54,
+      "base": "37a4cdb493d064ee82195fd33b02ae4a719c92b4",
+      "commit": "23396a1db76635ab03ddda19aad25edd707dfc31"
+    },
+    "created": 1791608177536
+  },
+  {
+    "id": 7,
+    "taskId": "task_a9e0af276fd0",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 23396a1db7",
+    "ref": "23396a1db76635ab03ddda19aad25edd707dfc31",
+    "data": {},
+    "created": 1791608177536
+  }
+]

@@ -1,0 +1,22 @@
+# The CodeQL configuration of .github/workflows/security.yml. Two queries are switched off, each with the reason, and
+# internal/ciconfig holds the code to what the reason says: a third query on this list, or a file the reason does not cover, fails
+# there. (A path filter does not help: for Go, CodeQL reports alerts in the paths it is told to ignore.)
+name: Drydock code scanning
+# The fixtures of the Code engine's built-in rules (decision P77) are insecure on purpose, so each rule has a line to find; they are
+# in no build. internal/ciconfig allows this one path and no other. (The Go fixture is in a testdata folder, which Go never builds,
+# so CodeQL never extracts it.)
+paths-ignore:
+  - internal/scan/testdata/rules
+query-filters:
+  # go/disabled-certificate-check flags InsecureSkipVerify and cannot see the check that replaces the chain check. The only use in
+  # the product is the pin of a provider's certificate by its SHA-256 (internal/providers/pinned_tls.go: InsecureSkipVerify with a
+  # VerifyPeerCertificate that compares the leaf), which is how Go's documentation says to pin. A test fails if any other
+  # non-test Go file names InsecureSkipVerify, which is a stricter rule than the query's.
+  - exclude:
+      id: go/disabled-certificate-check
+  # go/unvalidated-url-redirection flags an authorization server that redirects to the redirect_uri it is sent, which is what the
+  # protocol has it do. The product issues no redirect: the two in the Go code are in the stand-ins for authorization servers that
+  # the tests talk to (internal/integrations/itfixture, internal/mcp/oauthfake), and no build of the product contains them. A test
+  # fails if any other non-test Go file issues a redirect.
+  - exclude:
+      id: go/unvalidated-url-redirection

@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `PATCH /v1/subscriptions/{id}` prorates plan and quantity changes as specified: upgrades apply now and create a two-line proration invoice that is charged, downgrades set `pending_plan_id`/`pending_quantity` until renewal, and equal-value and trialing changes apply without billing.\n- Incompatible plans (currency, interval, or metered) return 422 `incompatible_plan`, and canceled subscriptions still return 409.\n- New tests cover each case, and `go build ./...`, `go test ./...`, and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791609760759
+  },
+  {
+    "id": 2,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 730ms",
+    "ref": "/tmp/drydock-trial-3119656392/tally-proration-D-2/data/runs/run_fda71000b2b8/checks/build-1791609760827073826.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 727,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609761554
+  },
+  {
+    "id": 3,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 790ms",
+    "ref": "/tmp/drydock-trial-3119656392/tally-proration-D-2/data/runs/run_fda71000b2b8/checks/test-1791609761556901335.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 790,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609762351
+  },
+  {
+    "id": 4,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 740ms",
+    "ref": "/tmp/drydock-trial-3119656392/tally-proration-D-2/data/runs/run_fda71000b2b8/checks/lint-1791609762353439818.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 741,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609763095
+  },
+  {
+    "id": 5,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3119656392/tally-proration-D-2/data/runs/run_fda71000b2b8/checks/secrets-1791609763125608296.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609763126
+  },
+  {
+    "id": 6,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +462 -14",
+    "ref": "/tmp/drydock-trial-3119656392/tally-proration-D-2/data/runs/run_fda71000b2b8/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 462,
+      "Deletions": 14,
+      "base": "006e4542899323b024c795d8bd016c9dd3094983",
+      "commit": "e428db58ffd98870a317e27177603711e453888b"
+    },
+    "created": 1791609763273
+  },
+  {
+    "id": 7,
+    "taskId": "task_0eeca13db4a8",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit e428db58ff",
+    "ref": "e428db58ffd98870a317e27177603711e453888b",
+    "data": {},
+    "created": 1791609763274
+  }
+]

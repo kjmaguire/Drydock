@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-renewal-dedupe",
+  "taskClass": "test-fix loop",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "c0f29f9872fcbbf3a38a2d7ab91e3cab1b0ec546",
+  "startedAt": "2026-10-10T22:14:04.890617165Z",
+  "wallMs": 826029,
+  "ceilingUsd": 3,
+  "outcome": "failed",
+  "reason": "Drydock asked the human (question): Iteration limit reached: a human needs to decide",
+  "costUsd": 0.45852721999999996,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 192,
+    "output": 162524,
+    "cacheRead": 7161942,
+    "cacheWrite": 496717
+  },
+  "sessions": 10,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_90b895fbf753",
+      "feedback": "Cross-instance duplicate renewals are not fixed. The task requires both causes to be fixed, and rule 1 requires at most one invoice and one charge per (subscription, period start) across any number of RenewDue calls. The change only serializes calls within one process: RenewSubscription in internal/store/billing.go guards with the in-memory s.mu, and cmd/tally/main.go:35 and :65 run an in-memory store loaded from a snapshot file in each instance that enqueues RenewDue. Two instances can both pass the CurrentPeriodEnd check and both create and charge the invoice. Fix: make the renewal claim durable and shared, e.g. a unique constraint on (subscription, period start) for invoices plus a conditional advance of current_period_end committed in the same write, or a lease held by a single writer. Add a test with two independent store/service instances over the same backing state; the existing TestOverlappingRenewalsInvoiceOnce only uses goroutines on one Store and does not cover this."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_90b895fbf753",
+      "feedback": "Cause 1 is not fixed across instances. The dedupe in internal/store/billing.go (RenewSubscription, UpdateSubscription) relies on s.mu, which only serializes calls inside one process (store.New at internal/store/store.go:59 is an in-memory map). Two server instances can still both pass the dueEnd check and create two invoices and two charges. Make the (subscription, period start) claim durable and shared across instances, for example a unique constraint on the renewal invoice's (subscription_id, period_start) with the period move in the same transaction, or a compare-and-swap on the subscription's period in a shared store. Then add a test that exercises two separate store/service instances against the same backing store. Also consider making the status update (internal/subscriptions/subscriptions.go:230 setStatus) part of the same atomic step as the period move, so a crash cannot leave a declined subscription active."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_90b895fbf753",
+      "feedback": "cmd/tally/main.go:35,84 gives each server instance its own in-memory store loaded from a snapshot file at startup and saved only at shutdown. The renewal claim (internal/store/billing.go RenewSubscription, renewals map) and the period-end check are therefore per process. Two instances can each renew and invoice/charge the same (subscription, period start), which is cause 1 of the task and must be fixed. Enforce the claim in storage shared by all instances (e.g. a unique key on (subscription, period start) committed in the same transaction as the period move and invoice, or a shared lease/lock), and add a test with two independent store instances over the same backing, not FromState copies taken after the first renewal. Optional: legacy invoices have no claim rows; setStatus after the period move can overwrite a concurrent Cancel."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_90b895fbf753",
+      "feedback": "internal/subscriptions/subscriptions.go, renew(): for licensed plans the period start is `start := now` (about line 160 in the new file), and that value is used as the claim key via RenewSubscription's inv.PeriodStart. Two instances running RenewDue at different real times get different `now` values, so the shared ledger's (subscription, periodStart) keys differ and both claims succeed. Each instance's store still shows the old CurrentPeriodEnd, so the dueEnd check does not stop the second one. The result is two renewal invoices and two charges, which is the reported bug across instances. Fix: key the claim on dueEnd (the period that was due, which every instance agrees on), for example by passing it to RenewSubscription separately from the invoice's display period. Add a test where the two instances use different clock times, because TestInstancesSharingALedgerInvoiceOnce passes only because apitest's clock is fixed and both instances see the same `now`."
+    },
+    {
+      "verdict": "REVISE",
+      "by": "agt_90b895fbf753",
+      "feedback": "internal/store/billing.go (RenewSubscription, the s.ledger.Claim block) writes the ledger claim before the subscription row and invoice are durable, and the snapshot is only saved on graceful shutdown (cmd/tally/main.go:94). After a crash between those, restart reloads the old snapshot: the subscription is still due, the invoice is missing, but the claim exists. RenewSubscription returns ErrNotDue and subscriptions.renew (internal/subscriptions/subscriptions.go) returns (false, nil), so RenewDue skips that subscription silently on every run and it is never renewed or invoiced. Fix: when the ledger holds a claim the store has no invoice for, return an error instead of ErrNotDue so it is visible; record the invoice ID in the claim so an orphaned claim can be told apart from a completed one. Add a test in internal/subscriptions that simulates a claim with no stored invoice and asserts RenewDue reports it rather than skipping silently."
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_56c0b012bce5"
+}

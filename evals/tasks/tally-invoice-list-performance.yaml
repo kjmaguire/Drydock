@@ -1,0 +1,27 @@
+# A performance fix that must not change a single byte of any answer.
+id: tally-invoice-list-performance
+title: "Make the invoice list fast"
+suite: tally
+fixture: testdata/fixtures/tally
+class: tested refactor
+risk: medium
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  GET /v1/invoices takes seconds per page for our largest organization (60,000 invoices, 5,000 customers) and slows every other
+  request down. Make it fast without changing any answer:
+
+  - Every page of GET /v1/invoices, with or without ?customer_id=, ?subscription_id= and ?status=, answers in well under 100
+    milliseconds for an organization with 60,000 invoices and 5,000 customers, with other organizations' invoices in the store
+    too. (Our check allows 250 milliseconds per request on a slower machine.)
+  - The answers stay exactly the same: the same items in the same order (oldest first, ties by ID), every field of every item,
+    the same errors, and paging with next_cursor keeps working while new invoices are created between pages.
+  - Creating, paying and voiding invoices must not become noticeably slower.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-invoice-list-performance
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

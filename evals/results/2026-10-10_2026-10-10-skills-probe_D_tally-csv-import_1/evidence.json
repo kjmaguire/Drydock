@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV and creates every customer or none, answering 201, 200 (dry run), 400, 413, 422 with the codes and shapes in the task. The check and the create run under one store lock, so the all-or-nothing rule holds under concurrent requests.\n- A new `TestImportCustomers` in `internal/api/api_test.go` covers each status, each row error code, header matching, quoted and CRLF line breaks, BOM and blank lines, row line numbers, dry run, the `customer.created` events, and the 10,000-row limit.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791672255302
+  },
+  {
+    "id": 2,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 490ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/build_326fab06c0ba.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 493,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672255864
+  },
+  {
+    "id": 3,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 440ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/test_48c7a7dae866.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 439,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672256306
+  },
+  {
+    "id": 4,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 370ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/lint_c6d10ccfcb40.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 368,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672256676
+  },
+  {
+    "id": 5,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/secrets_e9f4a92b632f.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 19,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672256697
+  },
+  {
+    "id": 6,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +377 -0",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 377,
+      "Deletions": 0,
+      "base": "5e541772be3a8f8b912feb7eff07ce0c18443f20",
+      "commit": "dd14ecf22882b809d1fa2deceaff0b429d2334d8"
+    },
+    "created": 1791672256840
+  },
+  {
+    "id": 7,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit dd14ecf228",
+    "ref": "dd14ecf22882b809d1fa2deceaff0b429d2334d8",
+    "data": {},
+    "created": 1791672256842
+  },
+  {
+    "id": 8,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` creates every customer or none, with the 201, 200 (dry run), 400, 413, and 422 responses from the task. `TestImportCustomers` covers them, and build, test and vet pass. Status: the reviewer's fix is in and the checks pass. I did not commit.",
+    "data": {},
+    "created": 1791672309859
+  },
+  {
+    "id": 9,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 470ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/build_9615dfd8cbc3.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 470,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672310365
+  },
+  {
+    "id": 10,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 400ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/test_a6a8bb1b65aa.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 403,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672310771
+  },
+  {
+    "id": 11,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 400ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/lint_ed2c2d43250f.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 400,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672311173
+  },
+  {
+    "id": 12,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/checks/secrets_ac1f40e0020f.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 19,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791672311204
+  },
+  {
+    "id": 13,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "4 file(s), +390 -0",
+    "ref": "<scratchpad>/trialwork/probe-tally-csv-import/tally-csv-import-D-1/data/runs/run_e67331481153/evidence/task.diff",
+    "data": {
+      "Files": 4,
+      "Insertions": 390,
+      "Deletions": 0,
+      "base": "5e541772be3a8f8b912feb7eff07ce0c18443f20",
+      "commit": "152b4dc3bda592ce14b27beac0572c77e1a5ef95"
+    },
+    "created": 1791672311331
+  },
+  {
+    "id": 14,
+    "taskId": "task_3747989aaafa",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 152b4dc3bd",
+    "ref": "152b4dc3bda592ce14b27beac0572c77e1a5ef95",
+    "data": {},
+    "created": 1791672311331
+  }
+]

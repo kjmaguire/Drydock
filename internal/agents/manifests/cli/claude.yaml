@@ -1,0 +1,55 @@
+# Claude Code, driven headlessly (decision D1): the user's own, unmodified, user-logged-in `claude`.
+# Drydock never reads, copies, refreshes or transmits Claude credentials. The ACP bridge is off until the owner records
+# written confirmation from Anthropic or counsel.
+meta: {schema: 1, id: claude, display_name: Claude Code, kind: agent_cli, license: proprietary, tier: premium, run_modes: [native, wsl]}
+binaries:
+  native: [claude.exe, claude.cmd]
+  wsl: [claude]
+  hints: ["~/.local/bin", "~/.claude/local"]   # install locations are unverified on Windows (docs/phase0/agent-clis.md section 1)
+install:                                         # display only; Drydock never executes these
+  - {shell: powershell, command: 'irm https://claude.ai/install.ps1 | iex'}
+  - {shell: cmd, command: 'curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd'}
+  - {shell: cmd, command: 'winget install Anthropic.ClaudeCode', note: no auto-update}
+  - {shell: cmd, command: 'npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code', requires: [{tool: node, min: "22"}]}   # npm 12 runs no install script unless allowed; this one links the native binary
+  # inside a WSL distro (the wsl run mode, decision P41): the native Linux installer, which puts claude in ~/.local/bin
+  - {shell: sh, run_mode: wsl, command: 'curl -fsSL https://claude.ai/install.sh | bash'}
+detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
+versions: {min: "2.1.205", recommended: "2.1.306"}   # 2.1.205: interrupt receipts; 2.1.277: AGENTS.md fallback
+auth:
+  login: {argv: [auth, login], variants: [[--claudeai], [--console], [--sso], [--email]], terminal: true}
+  probe: {argv: [auth, status, --json], parse: json, ready_when: '$.loggedIn == true'}   # logged-out exit code unverified: parse the JSON
+  warn_env: [ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN]
+  forbidden_flags: [--bare]                      # --bare disables OAuth and keychain use, which breaks subscription users
+transports:
+  primary: headless
+  headless:
+    # --verbose is mandatory with -p and stream-json output (verified against 2.1.294: "requires --verbose").
+    # --disable-slash-commands keeps the user's skills and slash commands out of every session (contract CLAUDE-QUIET-01).
+    # --disallowedTools: mcp__plugin_* because --strict-mcp-config does not keep installed plugins' MCP servers out (contract
+    # CLAUDE-MCP-01, 2.1.296; a sandboxed --restricted session loads no plugin and omits it), then the tools no Drydock
+    # session uses (claude.UnattendedDenied). The adapter also sets claude.QuietEnv in the environment and adds
+    # --setting-sources user (or --restricted) and --append-system-prompt-file; this argv is checked against the adapter.
+    argv: [-p, --input-format, stream-json, --output-format, stream-json, --verbose, --include-partial-messages, --disable-slash-commands,
+      --disallowedTools, "mcp__plugin_*,CronCreate,CronDelete,CronList,ScheduleWakeup,Monitor,Workflow,RemoteTrigger,SendMessage,ListAgents,PushNotification,ReadNotifications,SendUserFile,ListPlugins,SearchPlugins,SuggestPluginInstall,ListSkills,SearchSkills,SuggestSkills,ListConnectors,SuggestConnectors,SearchMcpRegistry,ShowOnboardingRolePicker,DesignSync,ReportFindings,EnterWorktree,ExitWorktree"]
+    optional:
+      model: [--model, "{{model}}"]
+      effort: [--effort, "{{effort}}"]
+      permission_mode: [--permission-mode, "{{mode}}"]
+      mcp: [--mcp-config, "{{mcp.config_path}}", --strict-mcp-config]
+      resume: [--resume, "{{session_id}}"]
+      system_append: [--append-system-prompt, "{{system_append}}"]
+      allowed_tools: [--allowedTools, "{{allowed_tools}}"]
+    prompt: stdin_stream_json
+    parser: claude_sdkmessage
+    interrupt: {via: stdin_control, message: interrupt}
+  acp:
+    enabled: false
+    argv: [npx, -y, "@agentclientprotocol/claude-agent-acp@0.94.0"]
+    env: {CLAUDE_CODE_EXECUTABLE: "{{resolved_binary}}"}
+    requires: [{tool: node, min: "22"}]
+    enable_when: written_confirmation_recorded
+mcp: {inject: config_file, transports: [stdio, http, sse], per_session: true}
+usage: {normalizer: claude_result_modelusage, quota: {source: stream, normalizer: claude_rate_limit_event}}
+capabilities_declared: {streaming: true, structured_output: true, model_selection: true, effort_control: true, session_resume: true, interrupt: true, mcp: true, token_usage: true, cost_reporting: estimate, headless: true, permission_modes: true, image_input: unknown, tool_call_visibility: true}
+instructions: {primary: CLAUDE.md, template: "@AGENTS.md", rules_dir: .claude/rules, rules_scope_key: paths, skills_dir: .claude/skills}
+terms: {notice: claude-own-login-v1}

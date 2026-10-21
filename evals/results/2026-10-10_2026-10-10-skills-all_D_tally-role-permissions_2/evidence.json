@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every endpoint in the role table enforces its role (403 `forbidden`, nothing changed). Role checks live in one route table in `internal/api/server.go`. The member rules, the last-owner 409 and the API key ownership rules are enforced too.\n- A role change applies to the member's existing keys on the next request, and anyone may leave.\n- New `internal/api/roles_test.go` covers the matrix, member rules, last owner and key rules. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791671220819
+  },
+  {
+    "id": 2,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 730ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/build_3a68f5b66790.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 727,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671221590
+  },
+  {
+    "id": 3,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1.41s",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/test_01ecd005d7fb.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 1407,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671223004
+  },
+  {
+    "id": 4,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.17s",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/lint_b4c49b1b145e.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1173,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671224186
+  },
+  {
+    "id": 5,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 120ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/secrets_e92cfb3a200e.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 115,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671224304
+  },
+  {
+    "id": 6,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +418 -82",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 418,
+      "Deletions": 82,
+      "base": "7f3dd690b1d30cbed946802f5f568544e3708b1a",
+      "commit": "31dfc46f323b5413fafb0891748172171c730aec"
+    },
+    "created": 1791671224490
+  },
+  {
+    "id": 7,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 31dfc46f32",
+    "ref": "31dfc46f323b5413fafb0891748172171c730aec",
+    "data": {},
+    "created": 1791671224491
+  },
+  {
+    "id": 8,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- every role-table endpoint enforces its role, the member rules, last-owner 409 and key rules are enforced, and `go build`, `go test` and `go vet` pass. This fix closes the one gap the reviewer found; the other checks were not re-audited this round.",
+    "data": {},
+    "created": 1791671287417
+  },
+  {
+    "id": 9,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 670ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/build_3d8d0c561674.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 671,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671288119
+  },
+  {
+    "id": 10,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 730ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/test_5b97fc099331.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 732,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671288854
+  },
+  {
+    "id": 11,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 620ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/lint_817517245fa6.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 624,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671289480
+  },
+  {
+    "id": 12,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 50ms",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/checks/secrets_103cf1f11875.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 48,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671289531
+  },
+  {
+    "id": 13,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +446 -84",
+    "ref": "<scratchpad>/trialwork/all-0-1/tally-role-permissions-D-2/data/runs/run_dda8907d3a6b/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 446,
+      "Deletions": 84,
+      "base": "7f3dd690b1d30cbed946802f5f568544e3708b1a",
+      "commit": "a4291e2c027d76d5e699724f56d3cf7bcc9b6c0e"
+    },
+    "created": 1791671289711
+  },
+  {
+    "id": 14,
+    "taskId": "task_67b4c3722a4e",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit a4291e2c02",
+    "ref": "a4291e2c027d76d5e699724f56d3cf7bcc9b6c0e",
+    "data": {},
+    "created": 1791671289712
+  }
+]

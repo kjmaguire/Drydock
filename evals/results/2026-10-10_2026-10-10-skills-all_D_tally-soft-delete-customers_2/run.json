@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-soft-delete-customers",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "1c34f6279ae9a9e0ef3026c7a193cd29dec9dda6",
+  "startedAt": "2026-10-10T22:27:51.252987694Z",
+  "wallMs": 371544,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1128,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1629,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.021s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.004s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.014s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.015s\nok  \texample.com/tally/internal/payments\t0.014s\nok  \texample.com/tally/internal/reports\t0.010s\nok  \texample.com/tally/internal/snapshot\t0.010s\nok  \texample.com/tally/internal/store\t0.007s\nok  \texample.com/tally/internal/subscriptions\t0.005s\nok  \texample.com/tally/internal/webhooks\t0.004s\n"
+      }
+    ],
+    "durationMs": 2763
+  },
+  "costUsd": 0.29766138000000003,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 96,
+    "output": 77474,
+    "cacheRead": 3699506,
+    "cacheWrite": 265864
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_1c73cad4b5fc",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe change covers the task's behaviors, and the store and API tests exercise them. One change is not asked for and should be reverted.\n\n- `internal/api/customers.go:60`: the rollback after a failed metadata update used to erase the new customer. It now calls `DeleteCustomerAt`, so a failed create leaves a hidden customer that `POST /v1/customers/{id}/restore` can bring back for 30 days. The fix is to erase it on that path. Either add a store method that removes the record outright, or keep the old `delete(s.customers, id)` and email-index cleanup for this call only.\n\nNotes that don't block the change:\n- `internal/store/customers.go:92`: `FindCustomerByEmail` ignores `orgID`, and `customersByEmail` is keyed by email alone. That predates this change, but `RestoreCustomer` (line 173) inherits it: restoring can overwrite another organization's index entry. Worth a separate fix.\n- `internal/payments/payments.go:83`: `Pay` now ignores a deleted customer's default payment method. The task only requires that payments stay readable, so this is acceptable.\n\n{\"verdict\":\"REVISE\",\"feedback\":\"internal/api/customers.go:60 (createCustomer rollback): the rollback that runs when UpdateCustomer fails after CreateCustomer now calls DeleteCustomerAt, which soft-deletes the new customer. A failed create used to leave nothing behind; now it leaves a hidden customer that POST /v1/customers/{id}/restore can restore for 30 days. This is an unrequested behavior change. Erase the half-created customer o\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_1c73cad4b5fc"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_0eaa2b400514"
+}

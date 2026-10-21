@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV, validates every record, and either creates all customers in file order with a `customer.created` event each (201), or creates none. Errors return the spec's status codes and bodies: 400 `invalid_csv`, 413 `too_many_rows`, 422 `invalid_header` / `invalid_rows`. `?dry_run=true` returns 200 `would_create`.\n- The all-or-nothing check and the create happen under one store lock, so a concurrent request cannot take an email between check and create.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass. New tests in `internal/api` and `internal/stor\n...[truncated]",
+    "data": {},
+    "created": 1791670296453
+  },
+  {
+    "id": 2,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 610ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/build_9ba29c005873.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 612,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670297105
+  },
+  {
+    "id": 3,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 650ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/test_c394b7c34be9.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 650,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670297758
+  },
+  {
+    "id": 4,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 580ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/lint_dc29990e51f4.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 581,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670298341
+  },
+  {
+    "id": 5,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/secrets_de66f0762ef1.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670298366
+  },
+  {
+    "id": 6,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +432 -0",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 432,
+      "Deletions": 0,
+      "base": "4e1a29b2b2ac0d063bd931ec982c5fa93134d007",
+      "commit": "54254c5e9740cc85ba2183557fc77b6438d920d6"
+    },
+    "created": 1791670298541
+  },
+  {
+    "id": 7,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 54254c5e97",
+    "ref": "54254c5e9740cc85ba2183557fc77b6438d920d6",
+    "data": {},
+    "created": 1791670298543
+  },
+  {
+    "id": 8,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- the import endpoint is in place and the reviewer's two items are fixed. Build, test and vet pass. I did not commit.",
+    "data": {},
+    "created": 1791670450556
+  },
+  {
+    "id": 9,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.5s",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/build_c1a4f2996783.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1502,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670452372
+  },
+  {
+    "id": 10,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 1s",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/test_04796abbd7df.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 999,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670453374
+  },
+  {
+    "id": 11,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 490ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/lint_b5bf8aee44f2.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 485,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670453862
+  },
+  {
+    "id": 12,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/checks/secrets_49f16a9b075b.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 29,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670453893
+  },
+  {
+    "id": 13,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +512 -10",
+    "ref": "<scratchpad>/trialwork/relevant-3-1/tally-csv-import-D-2/data/runs/run_31a9b4910186/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 512,
+      "Deletions": 10,
+      "base": "4e1a29b2b2ac0d063bd931ec982c5fa93134d007",
+      "commit": "5e5a1953f102b86b4ec69d978f46cc4c4eef5a2e"
+    },
+    "created": 1791670454019
+  },
+  {
+    "id": 14,
+    "taskId": "task_08ae1dbb810f",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 5e5a1953f1",
+    "ref": "5e5a1953f102b86b4ec69d978f46cc4c4eef5a2e",
+    "data": {},
+    "created": 1791670454020
+  }
+]

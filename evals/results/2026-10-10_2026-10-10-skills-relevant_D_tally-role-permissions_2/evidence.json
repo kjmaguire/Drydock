@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every endpoint in the role table refuses the roles it does not list with `403 {\"error\":\"forbidden\"}` and changes nothing. The member rules hold: only owners give or take the owner/admin roles, nobody changes their own role, anyone may leave, and the last owner is protected with `409 {\"error\":\"last_owner\"}`. Key revocation and listing follow the stated scope, and role changes apply to existing keys at once.\n- Checked by new tests in `internal/api/roles_test.go` (46 endpoint rules × 5 roles, plus scenario tests for members and keys) and `TestLastOwner` in the store, all run with `go test ./..\n...[truncated]",
+    "data": {},
+    "created": 1791671040147
+  },
+  {
+    "id": 2,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 490ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-role-permissions-D-2/data/runs/run_dea6ada2df5e/checks/build_847ecca4614a.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 490,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671040675
+  },
+  {
+    "id": 3,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 450ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-role-permissions-D-2/data/runs/run_dea6ada2df5e/checks/test_1eb91e408d38.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 451,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671041129
+  },
+  {
+    "id": 4,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 340ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-role-permissions-D-2/data/runs/run_dea6ada2df5e/checks/lint_c8e34b275126.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 342,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671041473
+  },
+  {
+    "id": 5,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-role-permissions-D-2/data/runs/run_dea6ada2df5e/checks/secrets_099e2733a06b.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 25,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671041501
+  },
+  {
+    "id": 6,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "7 file(s), +506 -82",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-role-permissions-D-2/data/runs/run_dea6ada2df5e/evidence/task.diff",
+    "data": {
+      "Files": 7,
+      "Insertions": 506,
+      "Deletions": 82,
+      "base": "8583b7298b84029ae25808ab1716e8745d04c752",
+      "commit": "bcd0870a542cbac8a2162ee636bb536c7116571c"
+    },
+    "created": 1791671041636
+  },
+  {
+    "id": 7,
+    "taskId": "task_68c75a6570db",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit bcd0870a54",
+    "ref": "bcd0870a542cbac8a2162ee636bb536c7116571c",
+    "data": {},
+    "created": 1791671041637
+  }
+]

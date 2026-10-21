@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-none",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-graceful-shutdown",
+  "taskClass": "high-risk",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "8db4b6dc5bd834a6cd146d7043eba27bafa29a5a",
+  "startedAt": "2026-10-10T22:01:51.589075708Z",
+  "wallMs": 228021,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 943,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 2992,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.015s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.003s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.647s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.003s\nok  \texample.com/tally/internal/snapshot\t0.008s\nok  \texample.com/tally/internal/store\t0.008s\nok  \texample.com/tally/internal/subscriptions\t0.007s\nok  \texample.com/tally/internal/webhooks\t0.010s\n"
+      }
+    ],
+    "durationMs": 3942
+  },
+  "costUsd": 0.0427671,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 48,
+    "output": 43289,
+    "cacheRead": 487900,
+    "cacheWrite": 81194
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_0db92cf5e92b",
+      "feedback": "internal/jobs/jobs.go Enqueue (~line 113): `if len(r.queue) \u003e= r.queueSize` makes NewRunner(n, 0, ...) reject every job, while the original unbuffered-channel code accepted a job whenever a worker was idle. Restore that by tracking idle workers under r.mu (increment before cond.Wait, decrement after it returns) and accepting when len(r.queue) \u003c r.queueSize+idle. Add a test that a zero-queue runner with an idle worker accepts one job and returns ErrQueueFull for the next."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_0db92cf5e92b"
+    }
+  ],
+  "coreTaskId": "task_4dd522e6896b"
+}

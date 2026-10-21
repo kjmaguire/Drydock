@@ -1,0 +1,26 @@
+# A money bug with exact rules: the kind of fix where a plausible change is easy and a correct one needs care.
+id: saasapi-invoice-rules
+title: Fix invoice totals with a coupon and a credit
+suite: pilot
+fixture: testdata/fixtures/saasapi
+class: test-fix loop
+risk: medium
+size: small
+expected_roles: [backend, reviewer]
+prompt: |
+  Customers report wrong invoice totals when an invoice has both a coupon and a credit, and some totals are off by a cent.
+  Fix `billing.Compute` (internal/billing) so that it follows these rules exactly, and add tests for them:
+
+  1. The subtotal is the sum of quantity times unit price over the lines.
+  2. The coupon (a percentage) applies to the subtotal first; its amount is rounded half up to a whole cent.
+  3. Then the credit is subtracted. The amount after discounts never goes below zero.
+  4. Tax is the account's rate (in basis points) of the amount after discounts, rounded half up to a whole cent.
+  5. The total is the amount after discounts plus tax. `DiscountCents` is the subtotal minus the amount after discounts.
+
+  Keep the existing exported functions, their signatures and the JSON field names.
+acceptance:
+  files: evals/testdata/hidden/saasapi-invoice-rules
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 300

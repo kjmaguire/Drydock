@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Every invoice has a `number` (\"INV-000001\", ...) assigned at creation from a per-organization sequence, and every invoice API answer shows it. Snapshot v3 stores the numbers and each organization's next number; v1 and v2 files get numbers in creation order.\n- Save writes version 3 atomically (temp file in the same folder, then rename). `snapshot.Upgrade(path)` backs up older files to `\u003cpath\u003e.v\u003cold\u003e.bak` and leaves version 3 alone. Versions above 3 fail with `ErrUnsupportedVersion` in both Load and Upgrade.\n- Tests cover numbering, the v2 to v3 migration, atomic save leaving no temp file, Upg\n...[truncated]",
+    "data": {},
+    "created": 1791671484091
+  },
+  {
+    "id": 2,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 610ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-2/data/runs/run_767a76f14afc/checks/build_d239b8173574.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 606,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671484750
+  },
+  {
+    "id": 3,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 690ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-2/data/runs/run_767a76f14afc/checks/test_563aa4c00558.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 686,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671485440
+  },
+  {
+    "id": 4,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 690ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-2/data/runs/run_767a76f14afc/checks/lint_27431495c66e.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 686,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671486129
+  },
+  {
+    "id": 5,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-2/data/runs/run_767a76f14afc/checks/secrets_38bba3ab13de.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 14,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671486146
+  },
+  {
+    "id": 6,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +393 -18",
+    "ref": "<scratchpad>/trialwork/all-2-1/tally-snapshot-v3-D-2/data/runs/run_767a76f14afc/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 393,
+      "Deletions": 18,
+      "base": "0fd8ebbbe317a3d6259b65a4ba789b3c0d352631",
+      "commit": "954326bbb1c8f583a8cd2a8c8d5740f05a77dbb1"
+    },
+    "created": 1791671486307
+  },
+  {
+    "id": 7,
+    "taskId": "task_4f551b888481",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 954326bbb1",
+    "ref": "954326bbb1c8f583a8cd2a8c8d5740f05a77dbb1",
+    "data": {},
+    "created": 1791671486307
+  }
+]

@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV, checks every record like `POST /v1/customers` (plus the duplicate rules), and either creates all customers in file order (201, one `customer.created` event each), reports every bad row (422 `invalid_rows`), or with `?dry_run=true` only counts them (200 `would_create`). The 400, 413 and 422 `invalid_header` answers follow the spec.\n- The store creates a batch under one lock, so a refused batch leaves nothing behind. Existing names, signatures and API fields are unchanged.\n- Checked by `go build ./...`, `go vet ./...` and `go test ./...`, with new AP\n...[truncated]",
+    "data": {},
+    "created": 1791608117971
+  },
+  {
+    "id": 2,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 470ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/build-1791608118040164589.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 469,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608118509
+  },
+  {
+    "id": 3,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 460ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/test-1791608118511490201.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 458,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608118970
+  },
+  {
+    "id": 4,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 370ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/lint-1791608118972256274.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 368,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608119341
+  },
+  {
+    "id": 5,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/secrets-1791608119360013200.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 17,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608119360
+  },
+  {
+    "id": 6,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +516 -0",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 516,
+      "Deletions": 0,
+      "base": "e128520648640683df3ba60864d73e62d7ca2268",
+      "commit": "40d6cdc8fb4bf756cfb5ccfd60bee647f0d7a54b"
+    },
+    "created": 1791608119491
+  },
+  {
+    "id": 7,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 40d6cdc8fb",
+    "ref": "40d6cdc8fb4bf756cfb5ccfd60bee647f0d7a54b",
+    "data": {},
+    "created": 1791608119492
+  },
+  {
+    "id": 8,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `POST /v1/customers/import` parses the CSV, checks every record like `POST /v1/customers` plus the duplicate rules, and either creates all customers in file order (201, one `customer.created` event each), reports every bad row (422 `invalid_rows`), or with `?dry_run=true` only counts them (200 `would_create`). The 400, 413 and 422 `invalid_header` answers follow the spec. This revision only changes how blank lines are detected; the rest of that definition was already in place.",
+    "data": {},
+    "created": 1791608193574
+  },
+  {
+    "id": 9,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 930ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/build-1791608193613963713.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 932,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608194546
+  },
+  {
+    "id": 10,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 670ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/test-1791608194548404552.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 673,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608195222
+  },
+  {
+    "id": 11,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 700ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/lint-1791608195223992562.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 700,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608195925
+  },
+  {
+    "id": 12,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/checks/secrets-1791608195947157599.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791608195948
+  },
+  {
+    "id": 13,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "5 file(s), +538 -0",
+    "ref": "/tmp/drydock-trial-3065831055/tally-csv-import-D-1/data/runs/run_b2535216b209/evidence/task.diff",
+    "data": {
+      "Files": 5,
+      "Insertions": 538,
+      "Deletions": 0,
+      "base": "e128520648640683df3ba60864d73e62d7ca2268",
+      "commit": "24fb509efd3d9ab27aa9e8aa74ab24718fadc8ea"
+    },
+    "created": 1791608196089
+  },
+  {
+    "id": 14,
+    "taskId": "task_0a7abe0095d2",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 24fb509efd",
+    "ref": "24fb509efd3d9ab27aa9e8aa74ab24718fadc8ea",
+    "data": {},
+    "created": 1791608196089
+  }
+]

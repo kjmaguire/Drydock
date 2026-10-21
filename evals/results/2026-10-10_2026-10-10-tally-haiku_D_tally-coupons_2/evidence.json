@@ -1,0 +1,246 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Coupon create, list and get endpoints, plus applying a coupon to a subscription, with the validation and error codes in the spec.\n- Invoices discount per the duration rules, with percent and amount discounts, tax after discount, and a \"coupon\" field on invoice and subscription answers. Existing fields and signatures keep working.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass, and new tests cover creation validation, apply refusals and discount math by duration.",
+    "data": {},
+    "created": 1791609955919
+  },
+  {
+    "id": 2,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 800ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/build-1791609956027160105.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 801,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609956828
+  },
+  {
+    "id": 3,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 800ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/test-1791609956831315010.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 795,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609957627
+  },
+  {
+    "id": 4,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 1.13s",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/lint-1791609957628578212.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 1128,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609958757
+  },
+  {
+    "id": 5,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/secrets-1791609958781147417.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 21,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791609958781
+  },
+  {
+    "id": 6,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "12 file(s), +748 -7",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/evidence/task.diff",
+    "data": {
+      "Files": 12,
+      "Insertions": 748,
+      "Deletions": 7,
+      "base": "39e18de2107d23c7743677be0ee9060e7faa4776",
+      "commit": "048f179e48577829e24102ba6048c6871ed8faf6"
+    },
+    "created": 1791609958937
+  },
+  {
+    "id": 7,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 048f179e48",
+    "ref": "048f179e48577829e24102ba6048c6871ed8faf6",
+    "data": {},
+    "created": 1791609958938
+  },
+  {
+    "id": 8,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- coupon create, list, get and apply endpoints with the spec's validation and error codes; invoice discounts by duration with tax after discount and a `coupon` field; `go build`, `go test` and `go vet` passing, with tests for creation validation, apply refusals and discount math. This pass only addressed the reviewer's one finding. The rest of the coupon work was not changed here, and the reviewer had already judged it consistent with the spec.",
+    "data": {},
+    "created": 1791610043284
+  },
+  {
+    "id": 9,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 430ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/build-1791610043330886247.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 433,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610043764
+  },
+  {
+    "id": 10,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 590ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/test-1791610043766696989.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 590,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610044358
+  },
+  {
+    "id": 11,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 610ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/lint-1791610044359577472.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 609,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610044969
+  },
+  {
+    "id": 12,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/checks/secrets-1791610045006441475.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 34,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610045008
+  },
+  {
+    "id": 13,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "12 file(s), +769 -9",
+    "ref": "/tmp/drydock-trial-1420086642/tally-coupons-D-2/data/runs/run_a996bb760ff2/evidence/task.diff",
+    "data": {
+      "Files": 12,
+      "Insertions": 769,
+      "Deletions": 9,
+      "base": "39e18de2107d23c7743677be0ee9060e7faa4776",
+      "commit": "3cfe1a36352fa4bb94c7e074139a76edbcb23eb1"
+    },
+    "created": 1791610045152
+  },
+  {
+    "id": 14,
+    "taskId": "task_3f89eb85c877",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 3cfe1a3635",
+    "ref": "3cfe1a36352fa4bb94c7e074139a76edbcb23eb1",
+    "data": {},
+    "created": 1791610045154
+  }
+]

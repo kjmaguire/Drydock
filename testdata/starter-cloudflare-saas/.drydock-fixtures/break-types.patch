@@ -1,0 +1,11 @@
+--- a/src/lib/rate-limit.ts
++++ b/src/lib/rate-limit.ts
+@@ -20,7 +20,7 @@
+ ): Promise<RateLimitResult> {
+   const nowSeconds = Math.floor(nowMs / 1000);
+   const window = Math.floor(nowSeconds / options.windowSeconds);
+-  const retryAfterSeconds = (window + 1) * options.windowSeconds - nowSeconds;
++  const retryAfterSeconds: string = (window + 1) * options.windowSeconds - nowSeconds;
+   const kvKey = `rl:${key}:${window}`;
+ 
+   const current = Number((await kv.get(kvKey)) ?? "0");

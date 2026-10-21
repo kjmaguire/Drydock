@@ -1,0 +1,97 @@
+# The contract suite against the real agent CLIs (docs/contract-tests.md): nightly, on demand, and when the adapters change.
+# It runs on GitHub-hosted runners since the repository went public (decision P2 resolved). A run whose paid checks all
+# skipped (no sign-in secret) says so in a warning annotation: it proves only the free contracts.
+#
+# The gh contracts (GH-*) read this repository with the job's own read-only token; nothing else is needed for them.
+# Sign-in: one secret, CLAUDE_CODE_OAUTH_TOKEN (made with `claude setup-token`) or ANTHROPIC_API_KEY. Without either
+# the paid checks skip and the free ones still run.
+#
+# Where the secrets live (audit 2026-10-16, M19): in the environment "contract" (Settings > Environments), not as repository
+# secrets, with "Deployment branches" set to main, so only code that is on main can read the sign-in. The job names that
+# environment; the owner creates it, moves the two secrets into it and deletes the repository secrets of the same names (a
+# repository secret would still be visible to every branch). Add a required reviewer there if every run should be approved.
+# A run from another branch (a manual run) is refused by the environment, which is the point; a push runs only on main.
+# The newest CLI releases are installed in a step of their own that holds no secret (their install scripts run there: Claude
+# Code's npm package links its native binary in one, so --ignore-scripts would leave a CLI that cannot start); the suite step,
+# which holds the sign-in, only runs what was installed. The checkout keeps no token in the workspace.
+# Runner: GitHub's windows-latest, the product's platform, so WIN-ARGV-01 (Windows only) runs too. A self-hosted runner is not
+# an option on a public repository, so there is no variable to name one. The suite step uses bash (Git Bash on Windows).
+name: contract
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: Spend cap in US dollars for the paid checks (haiku)
+        required: false
+        default: "1.50"
+      latest:
+        description: Also install the newest CLI releases and run against them
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "internal/agents/**"
+      - "internal/git/host/**"
+      - "internal/contract/**"
+      - "cmd/drydock-contract/**"
+      - ".github/workflows/contract.yml"
+permissions:
+  contents: read
+  # the gh contracts (GH-*) read this repository's pull requests, check runs and comments with the job's own token
+  pull-requests: read
+  checks: read
+  issues: read
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  contract:
+    runs-on: windows-latest
+    # the sign-in secrets are the environment's, and only a branch the environment allows can read them
+    environment: contract
+    timeout-minutes: 90
+    env:
+      GOFLAGS: -mod=mod
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
+      - name: Install the pinned Claude Code unless one is installed
+        run: go run ./cmd/drydock-contract --install-pinned claude
+      - name: Install the newest releases (no secret is in this step; the packages' install scripts run here)
+        if: ${{ inputs.latest }}
+        shell: bash
+        env:
+          LATEST_DIR: ${{ format('{0}/latest', runner.temp) }}
+        run: go run ./cmd/drydock-contract --install-latest "$LATEST_DIR"
+      - name: Contract suite (budget cap, version watch)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BUDGET: ${{ inputs.budget || '1.50' }}
+          LATEST_DIR: ${{ inputs.latest && format('{0}/latest', runner.temp) || '' }}
+        run: |
+          args=(--out contract-report --budget-usd "$BUDGET" --check-updates)
+          if [ -n "$LATEST_DIR" ]; then args+=(--latest-from "$LATEST_DIR"); fi
+          go run ./cmd/drydock-contract "${args[@]}"
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: contract-report
+          path: contract-report/
+          if-no-files-found: warn

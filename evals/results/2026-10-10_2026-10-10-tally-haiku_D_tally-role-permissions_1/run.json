@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "cba4f9eaa7b8",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-role-permissions",
+  "taskClass": "security review",
+  "repeat": 1,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "75add8088a1a3bc8dc8fc4a1146a9c0ed3ce2121",
+  "startedAt": "2026-10-10T05:01:23.644331362Z",
+  "wallMs": 374886,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 782,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 1800,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.129s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.020s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.006s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.004s\nok  \texample.com/tally/internal/payments\t0.010s\nok  \texample.com/tally/internal/reports\t0.015s\nok  \texample.com/tally/internal/snapshot\t0.014s\nok  \texample.com/tally/internal/store\t0.012s\nok  \texample.com/tally/internal/subscriptions\t0.009s\nok  \texample.com/tally/internal/webhooks\t0.003s\n"
+      }
+    ],
+    "durationMs": 2586
+  },
+  "costUsd": 0.16094221,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 78,
+    "output": 80864,
+    "cacheRead": 2278141,
+    "cacheWrite": 211655
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_5ed8ed20e04d",
+      "feedback": "internal/api/server.go:173: authed calls s.store.TouchAPIKey before the role gate in authedAs (server.go:144-151) and before the handler's own checks. A refused request (403) therefore still updates the key's last-used time, which breaks the task's rule that a refused request changes nothing. Move the touch so it runs only after the role check passes (e.g. have authedAs check the role before touching, or touch only when the handler is reached). Optionally add a test asserting the key's last-used time is unchanged after a 403."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_5ed8ed20e04d"
+    }
+  ],
+  "coreTaskId": "task_4bb10c6ab1a1"
+}

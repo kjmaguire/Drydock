@@ -1,0 +1,75 @@
+# go-task (https://taskfile.dev). Not installed by this repository; run `task <name>` where go-task is available.
+version: '3'
+
+tasks:
+  ui:install:
+    desc: Install the UI dependencies from the lockfile
+    dir: ui
+    cmds:
+      - npm ci
+
+  ui:build:
+    desc: Type-check and build the UI into ui/dist
+    dir: ui
+    cmds:
+      - npm run build
+
+  ui:test:
+    desc: UI unit tests (Node) and component tests (a real Chromium page) with remix test; needs Node 24
+    dir: ui
+    cmds:
+      - npm test
+
+  ui:e2e:
+    desc: Browser end-to-end tests against the real Go core with the scripted fake agent (needs a Chromium for Playwright)
+    deps: [ui:build]
+    dir: ui
+    cmds:
+      - npm run e2e
+
+  audit:
+    desc: Measure every piece of software against the newest release (writes docs/software-versions.json; see docs/software-versions.md)
+    cmds:
+      - go run ./cmd/drydock-audit
+
+  go:test:
+    desc: Go tests
+    cmds:
+      - go test ./...
+
+  build:egress:
+    desc: Build the sandbox's egress proxy for Linux containers (ships next to drydock.exe; docs/sandbox.md section 5)
+    env:
+      CGO_ENABLED: "0"
+      GOOS: linux
+    cmds:
+      - GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-amd64 ./cmd/drydock-egress
+      - GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-arm64 ./cmd/drydock-egress
+
+  build:windows:
+    desc: Build drydock.exe with the UI and the egress proxies into bin/ (CGO on for the repo map's tree-sitter parser; needs MinGW gcc, on Linux x86_64-w64-mingw32-gcc)
+    deps: [ui:build, build:egress]
+    env:
+      CGO_ENABLED: "1"
+      CC: '{{if eq OS "windows"}}gcc{{else}}x86_64-w64-mingw32-gcc{{end}}'
+      GOOS: windows
+      GOARCH: amd64
+    cmds:
+      - go build -tags production -ldflags "-w -s -H windowsgui" -o bin/drydock.exe .
+
+  verify:bundle:
+    desc: Build the Windows verification bundle (dist-windows/drydock-windows-verify.zip; see docs/windows-runner.md)
+    cmds:
+      - go run ./cmd/drydock-winbundle -goos windows -out dist-windows/verify
+
+  verify:linux:
+    desc: Build the same bundle for Linux and run it here (proves the orchestration on the development host)
+    cmds:
+      - go run ./cmd/drydock-winbundle -goos linux -out dist-windows/linux -with-go=false
+      - dist-windows/linux/drydock-verify
+
+  build:dev:
+    desc: Build the UI and the development server (cmd/drydock-dev serves ui/dist over HTTP + SSE)
+    deps: [ui:build]
+    cmds:
+      - go build -o bin/drydock-dev ./cmd/drydock-dev

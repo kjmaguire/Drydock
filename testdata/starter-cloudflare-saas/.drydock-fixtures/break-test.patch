@@ -1,0 +1,11 @@
+--- a/src/api/items.ts
++++ b/src/api/items.ts
+@@ -27,7 +27,7 @@
+   const body = await c.req.json<{ title?: unknown }>().catch(() => ({}) as { title?: unknown });
+   const title = validateTitle(body.title);
+   if (!title) throw new HttpError(400, "invalid_title", "title must be a string of 1 to 200 characters.");
+-  return c.json({ item: await createItem(c.env.DB, c.get("user").id, title) }, 201);
++  return c.json({ item: await createItem(c.env.DB, c.get("user").id, title) }, 200);
+ });
+ 
+ items.get("/:id", async (c) => c.json({ item: await requireItem(c, c.req.param("id")) }));

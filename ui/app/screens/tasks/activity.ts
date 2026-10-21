@@ -1,0 +1,206 @@
+// A task's agent activity as turns (decision P87): the typed events of one agent process (api/agui.gen.ts, modelled on
+// AG-UI 1.0) folded into what the task page draws. Each RUN_STARTED opens a turn; its messages, reasoning and tool calls
+// are listed in the order they happened; RUN_FINISHED and RUN_ERROR close it. The plan is the newest PLAN snapshot.
+
+import type { AguiEvent, PlanEntry } from '../../api/agui.gen.ts';
+
+export interface ToolItem {
+  kind: 'tool';
+  id: string;
+  name: string;
+  /** The arguments as the agent sent them (JSON text, bounded by the core). */
+  args: string;
+  result?: string;
+  isError: boolean;
+}
+
+/** A wait for a person (a permission request) and, once answered, how (P88). */
+export interface WaitItem {
+  kind: 'wait';
+  id: string;
+  title: string;
+  expiresAt?: number;
+  /** The gate's outcome: approved, approved_with_edits, rejected, timed_out, cancelled, denied. Absent while it waits. */
+  outcome?: string;
+}
+
+export type ActivityItem = { kind: 'text'; id: string; text: string } | { kind: 'reasoning'; id: string; text: string } | ToolItem | WaitItem;
+
+export type TurnStatus = 'running' | 'done' | 'stopped' | 'error';
+
+export interface Turn {
+  runId: string;
+  status: TurnStatus;
+  startedAt: number;
+  endedAt?: number;
+  stopReason?: string;
+  error?: string;
+  items: ActivityItem[];
+}
+
+/** Folds one thread's events into its turns, oldest first. Events that arrive outside a turn open one. */
+export function turnsOf(events: readonly AguiEvent[]): Turn[] {
+  const turns: Turn[] = [];
+  let cur: Turn | undefined;
+  const texts = new Map<string, { text: string }>();
+  const tools = new Map<string, ToolItem>();
+  const waits = new Map<string, WaitItem>();
+  const open = (runId: string, at: number): Turn => {
+    cur = { runId, status: 'running', startedAt: at, items: [] };
+    turns.push(cur);
+    return cur;
+  };
+  const turn = (at: number): Turn => cur ?? open('', at);
+  for (const e of events) {
+    switch (e.type) {
+      case 'RUN_STARTED':
+        open(e.runId, e.timestamp);
+        break;
+      case 'RUN_FINISHED': {
+        const t = turn(e.timestamp);
+        t.status = e.outcome === 'stopped' ? 'stopped' : 'done';
+        t.endedAt = e.timestamp;
+        if (e.stopReason) t.stopReason = e.stopReason;
+        cur = undefined;
+        break;
+      }
+      case 'RUN_ERROR': {
+        const t = turn(e.timestamp);
+        t.status = 'error';
+        t.endedAt = e.timestamp;
+        t.error = t.error ? `${t.error}; ${e.message}` : e.message;
+        cur = undefined;
+        break;
+      }
+      case 'TEXT_MESSAGE_START':
+      case 'REASONING_MESSAGE_START': {
+        const item = { kind: e.type === 'TEXT_MESSAGE_START' ? ('text' as const) : ('reasoning' as const), id: e.messageId, text: '' };
+        turn(e.timestamp).items.push(item);
+        texts.set(e.messageId, item);
+        break;
+      }
+      case 'TEXT_MESSAGE_CONTENT':
+      case 'REASONING_MESSAGE_CONTENT': {
+        let item = texts.get(e.messageId);
+        if (!item) {
+          // content whose start was before the events read: it still shows
+          const made = { kind: e.type === 'TEXT_MESSAGE_CONTENT' ? ('text' as const) : ('reasoning' as const), id: e.messageId, text: '' };
+          turn(e.timestamp).items.push(made);
+          texts.set(e.messageId, made);
+          item = made;
+        }
+        item.text += e.delta;
+        break;
+      }
+      case 'TOOL_CALL_START': {
+        const item: ToolItem = { kind: 'tool', id: e.toolCallId, name: e.toolCallName, args: '', isError: false };
+        turn(e.timestamp).items.push(item);
+        tools.set(e.toolCallId, item);
+        break;
+      }
+      case 'TOOL_CALL_ARGS': {
+        const item = tools.get(e.toolCallId);
+        if (item) item.args += e.delta;
+        break;
+      }
+      case 'TOOL_CALL_RESULT': {
+        let item = tools.get(e.toolCallId);
+        if (!item) {
+          item = { kind: 'tool', id: e.toolCallId, name: '', args: '', isError: false };
+          turn(e.timestamp).items.push(item);
+          tools.set(e.toolCallId, item);
+        }
+        item.result = e.content;
+        item.isError = !!e.isError;
+        break;
+      }
+      case 'CUSTOM':
+        if (e.name === 'drydock.interrupt') {
+          const item: WaitItem = { kind: 'wait', id: e.value.id, title: e.value.title, expiresAt: e.value.expiresAt };
+          turn(e.timestamp).items.push(item);
+          waits.set(item.id, item);
+        } else if (e.name === 'drydock.resume') {
+          const item = waits.get(e.value.id);
+          if (item) item.outcome = e.value.outcome;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return turns;
+}
+
+/** How a wait ended, in words. */
+export function waitOutcomeText(outcome: string | undefined): string {
+  switch (outcome) {
+    case undefined:
+    case '':
+      return 'Waiting for you';
+    case 'approved':
+      return 'Allowed once by you';
+    case 'approved_with_edits':
+      return 'Allowed by you with your changes';
+    case 'rejected':
+      return 'Refused by you';
+    case 'timed_out':
+      return 'Nobody answered in time, so it was refused';
+    case 'cancelled':
+      return 'Withdrawn before anyone answered';
+    case 'denied':
+      return "Refused by Drydock's rules";
+    default:
+      return outcome;
+  }
+}
+
+/** The thread's current plan: the newest PLAN snapshot, or undefined when the agent made none. */
+export function planOf(events: readonly AguiEvent[]): PlanEntry[] | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type === 'ACTIVITY_SNAPSHOT' && e.activityType === 'PLAN') return e.content.entries ?? [];
+  }
+  return undefined;
+}
+
+/** "3 of 5 done" for a plan. */
+export function planProgress(plan: readonly PlanEntry[]): string {
+  const done = plan.filter((p) => p.status === 'completed').length;
+  return `${done} of ${plan.length} done`;
+}
+
+/** A turn in one line: "4 tool calls, 1 failed" and how it ended. */
+export function turnSummary(t: Turn): string {
+  const tools = t.items.filter((i): i is ToolItem => i.kind === 'tool');
+  const failed = tools.filter((i) => i.isError).length;
+  const parts = [tools.length === 1 ? '1 tool call' : `${tools.length} tool calls`];
+  if (failed) parts.push(`${failed} failed`);
+  const end = t.status === 'running' ? 'working' : t.status === 'done' ? 'done' : t.status === 'stopped' ? 'stopped' : 'error';
+  return `${parts.join(', ')} · ${end}`;
+}
+
+/** The arguments as a value when they are JSON, else the text. */
+export function argsValue(args: string): unknown {
+  if (!args) return undefined;
+  try {
+    return JSON.parse(args);
+  } catch {
+    return args;
+  }
+}
+
+/** A tool call in one line: its most telling argument (a command, a path, a pattern, a URL, a query), else its arguments. */
+export function argsSummary(args: string): string {
+  const v = argsValue(args);
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const f = v as Record<string, unknown>;
+    for (const k of ['command', 'file_path', 'path', 'filePath', 'pattern', 'url', 'query', 'description']) {
+      const x = f[k];
+      if (typeof x === 'string' && x.trim()) return clip(x.trim().replace(/\s+/g, ' '), 160);
+    }
+  }
+  if (typeof v === 'string') return clip(v.replace(/\s+/g, ' '), 160);
+  return clip(args.replace(/\s+/g, ' '), 160);
+}
+
+const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);

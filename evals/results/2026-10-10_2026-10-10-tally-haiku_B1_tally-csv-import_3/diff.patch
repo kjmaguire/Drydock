@@ -1,0 +1,569 @@
+diff --git a/result/internal/api/import.go b/result/internal/api/import.go
+new file mode 100644
+index 0000000..544eaad
+--- /dev/null
++++ b/result/internal/api/import.go
+@@ -0,0 +1,228 @@
++package api
++
++import (
++	"bufio"
++	"bytes"
++	"encoding/csv"
++	"errors"
++	"io"
++	"net/http"
++	"strconv"
++	"strings"
++	"unicode/utf8"
++
++	"example.com/tally/internal/auth"
++	"example.com/tally/internal/store"
++)
++
++const (
++	maxImportRows  = 10000    // data records in one import
++	maxImportBytes = 16 << 20 // the body, so that a huge field cannot exhaust memory
++)
++
++var (
++	utf8BOM    = []byte{0xEF, 0xBB, 0xBF}
++	errNotUTF8 = errors.New("the body is not UTF-8")
++)
++
++// importRow is one record of an import: the line of the file where it starts, and the customer it asks for.
++type importRow struct {
++	line     int
++	customer store.NewCustomer
++}
++
++// importCustomers creates the customers in a CSV body, all or none. With ?dry_run=true it checks them and creates nothing.
++func (s *Server) importCustomers(w http.ResponseWriter, r *http.Request, p auth.Principal) {
++	dryRun := false
++	if v := r.URL.Query().Get("dry_run"); v != "" {
++		b, err := strconv.ParseBool(v)
++		if err != nil {
++			writeError(w, http.StatusBadRequest, "invalid_dry_run", "dry_run is true or false")
++			return
++		}
++		dryRun = b
++	}
++	rows, ok := readCustomerCSV(w, http.MaxBytesReader(w, r.Body, maxImportBytes))
++	if !ok {
++		return
++	}
++	batch := make([]store.NewCustomer, len(rows))
++	for i, row := range rows {
++		batch[i] = row.customer
++	}
++	if dryRun {
++		if problems := s.store.CheckCustomers(p.OrgID, batch); len(problems) > 0 {
++			writeImportProblems(w, rows, problems)
++			return
++		}
++		writeJSON(w, http.StatusOK, map[string]int{"created": 0, "would_create": len(batch)})
++		return
++	}
++	created, err := s.store.CreateCustomers(p.OrgID, batch, s.clock.Now())
++	var perr *store.CustomerProblemsError
++	if errors.As(err, &perr) {
++		writeImportProblems(w, rows, perr.Problems)
++		return
++	}
++	if err != nil {
++		s.storeError(w, err)
++		return
++	}
++	for _, c := range created {
++		s.publish(r.Context(), p.OrgID, "customer.created", c)
++	}
++	writeJSON(w, http.StatusCreated, map[string]any{"created": len(created), "items": created})
++}
++
++// writeImportProblems answers 422 invalid_rows, listing each bad record by the line where it starts.
++func writeImportProblems(w http.ResponseWriter, rows []importRow, problems []store.CustomerProblem) {
++	type rowError struct {
++		Row   int    `json:"row"`
++		Error string `json:"error"`
++	}
++	bad := make([]rowError, len(problems))
++	for i, pr := range problems {
++		bad[i] = rowError{Row: rows[pr.Index].line, Error: pr.Code}
++	}
++	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
++		"error": "invalid_rows", "message": "some records cannot be imported; none were", "rows": bad,
++	})
++}
++
++// readCustomerCSV reads an import body: RFC 4180 CSV whose first record is the header. The header needs the columns name
++// and email; default_payment_method and metadata.<key> are optional, and other columns are ignored. Blank lines are skipped
++// and a UTF-8 byte order mark is ignored. When the body cannot be read as such, it answers the request and returns false.
++func readCustomerCSV(w http.ResponseWriter, body io.Reader) ([]importRow, bool) {
++	br := bufio.NewReader(body)
++	if b, _ := br.Peek(len(utf8BOM)); bytes.Equal(b, utf8BOM) {
++		_, _ = br.Discard(len(utf8BOM))
++	}
++	cr := csv.NewReader(br)
++	cr.FieldsPerRecord = -1 // records may differ in length; the header says which cells matter
++
++	head, _, err := nextRecord(cr)
++	if errors.Is(err, io.EOF) {
++		writeError(w, http.StatusUnprocessableEntity, "invalid_header", "the first record must be a header with the columns name and email")
++		return nil, false
++	}
++	if err != nil {
++		csvFailure(w, err)
++		return nil, false
++	}
++	cols, ok := readImportHeader(head)
++	if !ok {
++		writeError(w, http.StatusUnprocessableEntity, "invalid_header", "the first record must be a header with the columns name and email")
++		return nil, false
++	}
++
++	var rows []importRow
++	for {
++		fields, line, err := nextRecord(cr)
++		if errors.Is(err, io.EOF) {
++			return rows, true
++		}
++		if err != nil {
++			csvFailure(w, err)
++			return nil, false
++		}
++		if len(rows) == maxImportRows {
++			writeError(w, http.StatusRequestEntityTooLarge, "too_many_rows", "an import has at most 10000 records")
++			return nil, false
++		}
++		rows = append(rows, importRow{line: line, customer: cols.customer(fields)})
++	}
++}
++
++// csvFailure answers for a body that could not be read as CSV.
++func csvFailure(w http.ResponseWriter, err error) {
++	var tooBig *http.MaxBytesError
++	if errors.As(err, &tooBig) {
++		writeError(w, http.StatusRequestEntityTooLarge, "too_large", "the body is larger than 16 MiB")
++		return
++	}
++	writeError(w, http.StatusBadRequest, "invalid_csv", "the body is not valid CSV: "+err.Error())
++}
++
++// nextRecord returns the next record that is not blank, and the line of the file where it starts. It returns io.EOF after
++// the last record.
++func nextRecord(cr *csv.Reader) ([]string, int, error) {
++	for {
++		fields, err := cr.Read()
++		if err != nil {
++			return nil, 0, err
++		}
++		if len(fields) == 1 && strings.TrimSpace(fields[0]) == "" {
++			continue
++		}
++		for _, f := range fields {
++			if !utf8.ValidString(f) {
++				return nil, 0, errNotUTF8
++			}
++		}
++		line, _ := cr.FieldPos(0)
++		return fields, line, nil
++	}
++}
++
++// importColumns says where the cells of a record are: the index of each column, or -1 when the header lacks it.
++type importColumns struct {
++	name, email, paymentMethod int
++	metadata                   []metadataColumn
++}
++
++type metadataColumn struct {
++	index int
++	key   string
++}
++
++// readImportHeader finds the columns of an import. Header names match ignoring case and surrounding spaces; when a column
++// appears twice, its first appearance counts. It reports false when there is no name or email column.
++func readImportHeader(head []string) (importColumns, bool) {
++	cols := importColumns{name: -1, email: -1, paymentMethod: -1}
++	const metaPrefix = "metadata."
++	seenKeys := map[string]bool{}
++	for i, h := range head {
++		h = strings.TrimSpace(h)
++		switch lower := strings.ToLower(h); {
++		case lower == "name" && cols.name < 0:
++			cols.name = i
++		case lower == "email" && cols.email < 0:
++			cols.email = i
++		case lower == "default_payment_method" && cols.paymentMethod < 0:
++			cols.paymentMethod = i
++		case len(h) > len(metaPrefix) && strings.EqualFold(h[:len(metaPrefix)], metaPrefix):
++			key := strings.TrimSpace(h[len(metaPrefix):])
++			if k := strings.ToLower(key); key != "" && !seenKeys[k] {
++				seenKeys[k] = true
++				cols.metadata = append(cols.metadata, metadataColumn{index: i, key: key})
++			}
++		}
++	}
++	return cols, cols.name >= 0 && cols.email >= 0
++}
++
++// customer reads the customer a record asks for. An empty metadata cell sets no key.
++func (cols importColumns) customer(fields []string) store.NewCustomer {
++	nc := store.NewCustomer{
++		Name:                 cell(fields, cols.name),
++		Email:                cell(fields, cols.email),
++		DefaultPaymentMethod: cell(fields, cols.paymentMethod),
++	}
++	for _, m := range cols.metadata {
++		if v := cell(fields, m.index); v != "" {
++			if nc.Metadata == nil {
++				nc.Metadata = map[string]string{}
++			}
++			nc.Metadata[m.key] = v
++		}
++	}
++	return nc
++}
++
++// cell returns the trimmed cell at index i, or "" when the record is shorter or the column is absent (i < 0).
++func cell(fields []string, i int) string {
++	if i < 0 || i >= len(fields) {
++		return ""
++	}
++	return strings.TrimSpace(fields[i])
++}
+diff --git a/result/internal/api/import_test.go b/result/internal/api/import_test.go
+new file mode 100644
+index 0000000..aba6b0c
+--- /dev/null
++++ b/result/internal/api/import_test.go
+@@ -0,0 +1,205 @@
++package api_test
++
++import (
++	"fmt"
++	"net/http"
++	"reflect"
++	"strings"
++	"testing"
++
++	"example.com/tally/internal/apitest"
++	"example.com/tally/internal/store"
++)
++
++type rowError struct {
++	Row   int    `json:"row"`
++	Error string `json:"error"`
++}
++
++// listedCustomers returns the organization's customers, up to the most one page holds.
++func listedCustomers(e *apitest.Env, key string) []store.Customer {
++	var page struct{ Items []store.Customer }
++	e.MustDo(http.StatusOK, "GET", "/v1/customers?limit=100", key, nil, &page)
++	return page.Items
++}
++
++func TestImportCustomers(t *testing.T) {
++	e := apitest.New(t)
++	e.CreateCustomer(e.Globex, "Gus", "shared@example.com")
++	body := "\xEF\xBB\xBF Email , NAME ,ignored,default_payment_method,Metadata.CRM ,metadata.plan\r\n" +
++		"jane@example.com,\"Doe, Jane \"\"JD\"\"\",x,pm_card_visa,7,gold\r\n" +
++		"\r\n" +
++		"   \r\n" +
++		"JOHN@example.com,\"John\nRoe\",y,,,\r\n" +
++		"shared@example.com,Shared,z,,,\n"
++
++	// A dry run checks the same things and creates nothing.
++	var dry struct {
++		Created     int `json:"created"`
++		WouldCreate int `json:"would_create"`
++	}
++	e.MustDo(http.StatusOK, "POST", "/v1/customers/import?dry_run=true", e.Acme.Key, body, &dry)
++	if dry.Created != 0 || dry.WouldCreate != 3 || len(listedCustomers(e, e.Acme.Key)) != 0 {
++		t.Fatalf("dry run = %+v", dry)
++	}
++
++	var out struct {
++		Created int              `json:"created"`
++		Items   []store.Customer `json:"items"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/customers/import", e.Acme.Key, body, &out)
++	if out.Created != 3 || len(out.Items) != 3 {
++		t.Fatalf("import = %+v", out)
++	}
++	jane, john, shared := out.Items[0], out.Items[1], out.Items[2]
++	if jane.Name != `Doe, Jane "JD"` || jane.Email != "jane@example.com" || jane.DefaultPaymentMethod != "pm_card_visa" ||
++		!reflect.DeepEqual(jane.Metadata, map[string]string{"CRM": "7", "plan": "gold"}) || jane.OrgID != e.Acme.ID {
++		t.Fatalf("jane = %+v", jane)
++	}
++	if john.Name != "John\nRoe" || john.Email != "JOHN@example.com" || len(john.Metadata) != 0 || john.DefaultPaymentMethod != "" {
++		t.Fatalf("john = %+v", john)
++	}
++	if shared.Email != "shared@example.com" || shared.OrgID != e.Acme.ID {
++		t.Fatalf("shared = %+v", shared)
++	}
++	if got := listedCustomers(e, e.Acme.Key); len(got) != 3 || got[0].ID != jane.ID || got[2].ID != shared.ID {
++		t.Fatalf("listed = %+v", got)
++	}
++
++	var evs struct{ Items []store.Event }
++	e.MustDo(http.StatusOK, "GET", "/v1/events?type=customer.created", e.Acme.Key, nil, &evs)
++	if len(evs.Items) != 3 {
++		t.Fatalf("events = %+v", evs.Items)
++	}
++
++	// Emails are unique within an organization: the same address again is taken.
++	r := e.Do("POST", "/v1/customers/import", e.Acme.Key, "name,email\nAgain,JANE@example.com\n")
++	if r.Code != http.StatusUnprocessableEntity || r.Map(t)["error"] != "invalid_rows" {
++		t.Fatalf("again: %s", r)
++	}
++}
++
++func TestImportHeaderOnly(t *testing.T) {
++	e := apitest.New(t)
++	var out struct {
++		Created int   `json:"created"`
++		Items   []any `json:"items"`
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/customers/import", e.Acme.Key, "name,email\n", &out)
++	if out.Created != 0 || out.Items == nil || len(out.Items) != 0 {
++		t.Fatalf("header only = %+v", out)
++	}
++}
++
++func TestImportBadHeaderOrCSV(t *testing.T) {
++	e := apitest.New(t)
++	for _, c := range []struct {
++		body   string
++		status int
++		code   string
++	}{
++		{"", http.StatusUnprocessableEntity, "invalid_header"},
++		{"\n\n  \n", http.StatusUnprocessableEntity, "invalid_header"},
++		{"name,phone\nJane,1\n", http.StatusUnprocessableEntity, "invalid_header"},
++		{"email\njane@example.com\n", http.StatusUnprocessableEntity, "invalid_header"},
++		{"name,email\n\"Jane,jane@example.com\n", http.StatusBadRequest, "invalid_csv"},
++		{"name,email\nJa\"ne,jane@example.com\n", http.StatusBadRequest, "invalid_csv"},
++		{"name,email\n\"Jane\"x,jane@example.com\n", http.StatusBadRequest, "invalid_csv"},
++		{"name,email\nJane,\xff@example.com\n", http.StatusBadRequest, "invalid_csv"},
++	} {
++		r := e.Do("POST", "/v1/customers/import", e.Acme.Key, c.body)
++		if r.Code != c.status || r.Map(t)["error"] != c.code {
++			t.Fatalf("%q: %s, want %d %s", c.body, r, c.status, c.code)
++		}
++	}
++	if n := len(listedCustomers(e, e.Acme.Key)); n != 0 {
++		t.Fatalf("%d customers created by bad bodies", n)
++	}
++}
++
++func TestImportRejectsBadRowsAndCreatesNone(t *testing.T) {
++	e := apitest.New(t)
++	e.CreateCustomer(e.Acme, "Jane", "jane@example.com")
++	body := strings.Join([]string{
++		"name,email,default_payment_method",
++		",x@example.com,",          // 2: no name
++		"Bob,not-an-email,",        // 3: bad address
++		"Cy,cy@example.com,card",   // 4: bad payment method
++		"Jane 2,JANE@example.com,", // 5: an existing customer has it
++		"Dan,dan@example.com,",     // 6: fine
++		"Dee,Dan@Example.com,",     // 7: an earlier record has it
++		"\"Fay",                    // 8: a record spanning two lines
++		"Lee\",bad-email,",         // 9
++		"",                         // 10 is blank and skipped
++		",jane@example.com,",       // 11: no name, and taken: the first problem counts
++		"Gil,gil@example.com,pm_ok",
++	}, "\n")
++	want := []rowError{
++		{2, "missing_name"}, {3, "invalid_email"}, {4, "invalid_payment_method"}, {5, "email_taken"},
++		{7, "duplicate_email"}, {8, "invalid_email"}, {11, "missing_name"},
++	}
++	for _, query := range []string{"", "?dry_run=true"} {
++		r := e.Do("POST", "/v1/customers/import"+query, e.Acme.Key, body)
++		var out struct {
++			Error string     `json:"error"`
++			Rows  []rowError `json:"rows"`
++		}
++		r.JSON(t, &out)
++		if r.Code != http.StatusUnprocessableEntity || out.Error != "invalid_rows" || !reflect.DeepEqual(out.Rows, want) {
++			t.Fatalf("%q: %s", query, r)
++		}
++	}
++	if got := listedCustomers(e, e.Acme.Key); len(got) != 1 || got[0].Name != "Jane" {
++		t.Fatalf("customers after a rejected import = %+v", got)
++	}
++}
++
++func TestImportDryRun(t *testing.T) {
++	e := apitest.New(t)
++	e.CreateCustomer(e.Globex, "Gus", "gus@example.com")
++	// Another organization's customer does not block an import here.
++	var out struct {
++		Created     int `json:"created"`
++		WouldCreate int `json:"would_create"`
++	}
++	e.MustDo(http.StatusOK, "POST", "/v1/customers/import?dry_run=true", e.Acme.Key, "name,email\nGus,gus@example.com\n", &out)
++	if out.Created != 0 || out.WouldCreate != 1 {
++		t.Fatalf("dry run = %+v", out)
++	}
++	if r := e.Do("POST", "/v1/customers/import?dry_run=maybe", e.Acme.Key, "name,email\n"); r.Code != http.StatusBadRequest || r.Map(t)["error"] != "invalid_dry_run" {
++		t.Fatalf("bad dry_run: %s", r)
++	}
++	if n := len(listedCustomers(e, e.Acme.Key)); n != 0 {
++		t.Fatalf("a dry run created %d customers", n)
++	}
++}
++
++func TestImportViewersOnlyRead(t *testing.T) {
++	e := apitest.New(t)
++	_, viewer := e.AddMember(e.Acme, "viewer@acme.example", store.RoleViewer)
++	if r := e.Do("POST", "/v1/customers/import", viewer, "name,email\nX,x@example.com\n"); r.Code != http.StatusForbidden {
++		t.Fatalf("viewer import: %s", r)
++	}
++}
++
++func TestImportLimit(t *testing.T) {
++	e := apitest.New(t)
++	var b strings.Builder
++	b.WriteString("name,email\n")
++	for i := range maxRows {
++		fmt.Fprintf(&b, "Customer %d,customer%d@example.com\n", i, i)
++	}
++	if r := e.Do("POST", "/v1/customers/import?dry_run=true", e.Acme.Key, b.String()); r.Code != http.StatusOK || r.Map(t)["would_create"] != float64(maxRows) {
++		t.Fatalf("%d records: %s", maxRows, r)
++	}
++	fmt.Fprintf(&b, "Too Many,too-many@example.com\n")
++	if r := e.Do("POST", "/v1/customers/import", e.Acme.Key, b.String()); r.Code != http.StatusRequestEntityTooLarge || r.Map(t)["error"] != "too_many_rows" {
++		t.Fatalf("%d records: %s", maxRows+1, r)
++	}
++	if n := len(listedCustomers(e, e.Acme.Key)); n != 0 {
++		t.Fatalf("a too-large import created %d customers", n)
++	}
++	e.MustDo(http.StatusCreated, "POST", "/v1/customers/import", e.Acme.Key, strings.TrimSuffix(b.String(), "Too Many,too-many@example.com\n"), nil)
++}
++
++const maxRows = 10000
+diff --git a/start/internal/api/server.go b/result/internal/api/server.go
+index 067937f..b2dada1 100644
+--- a/start/internal/api/server.go
++++ b/result/internal/api/server.go
+@@ -100,6 +100,7 @@ func (s *Server) routes() {
+ 
+ 	m.HandleFunc("GET /v1/customers", s.authed(s.listCustomers))
+ 	m.HandleFunc("POST /v1/customers", s.authed(s.createCustomer))
++	m.HandleFunc("POST /v1/customers/import", s.authed(s.importCustomers))
+ 	m.HandleFunc("GET /v1/customers/export.csv", s.authed(s.exportCustomers))
+ 	m.HandleFunc("GET /v1/customers/{id}", s.authed(s.getCustomer))
+ 	m.HandleFunc("PATCH /v1/customers/{id}", s.authed(s.updateCustomer))
+diff --git a/start/internal/store/customers.go b/result/internal/store/customers.go
+index 73ff6bc..ec7f3c8 100644
+--- a/start/internal/store/customers.go
++++ b/result/internal/store/customers.go
+@@ -1,11 +1,107 @@
+ package store
+ 
+ import (
++	"fmt"
+ 	"sort"
+ 	"strings"
+ 	"time"
+ )
+ 
++// NewCustomer is a customer of a batch for CheckCustomers and CreateCustomers.
++type NewCustomer struct {
++	Name                 string
++	Email                string
++	DefaultPaymentMethod string
++	Metadata             map[string]string
++}
++
++// CustomerProblem says why the customer at Index in a batch cannot be created. Code is the first of these that applies:
++// "missing_name", "invalid_email", "invalid_payment_method", "email_taken" (a customer of the organization has the address)
++// or "duplicate_email" (an earlier customer of the batch has it, ignoring case).
++type CustomerProblem struct {
++	Index int
++	Code  string
++}
++
++// CustomerProblemsError is returned by CreateCustomers when a batch has problems. Nothing was created.
++type CustomerProblemsError struct {
++	Problems []CustomerProblem
++}
++
++func (e *CustomerProblemsError) Error() string {
++	return fmt.Sprintf("%d customers cannot be created", len(e.Problems))
++}
++
++// CheckCustomers reports the problems CreateCustomers would find in a batch, in order, without creating anything.
++func (s *Store) CheckCustomers(orgID string, batch []NewCustomer) []CustomerProblem {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.checkCustomers(orgID, batch)
++}
++
++// CreateCustomers adds a batch of customers to an organization, in order, or none of them: when any customer has a problem
++// (see CustomerProblem) it returns a *CustomerProblemsError and creates nothing.
++func (s *Store) CreateCustomers(orgID string, batch []NewCustomer, now time.Time) ([]Customer, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if _, ok := s.orgs[orgID]; !ok {
++		return nil, ErrNotFound
++	}
++	if problems := s.checkCustomers(orgID, batch); len(problems) > 0 {
++		return nil, &CustomerProblemsError{Problems: problems}
++	}
++	out := make([]Customer, 0, len(batch))
++	for _, nc := range batch {
++		nc = trimNewCustomer(nc)
++		c := copyCustomer(Customer{ID: s.newID("cus"), OrgID: orgID, Name: nc.Name, Email: nc.Email,
++			DefaultPaymentMethod: nc.DefaultPaymentMethod, Metadata: nc.Metadata, CreatedAt: now.UTC()})
++		s.customers[c.ID] = c
++		s.customersByEmail[normEmail(c.Email)] = c.ID
++		out = append(out, copyCustomer(c))
++	}
++	return out, nil
++}
++
++// hasCustomerEmail reports whether one of the organization's customers has this (lower-case) email address. The caller
++// holds the lock.
++func (s *Store) hasCustomerEmail(orgID, key string) bool {
++	id, ok := s.customersByEmail[key]
++	return ok && s.customers[id].OrgID == orgID
++}
++
++// checkCustomers finds the problems in a batch. The caller holds the lock.
++func (s *Store) checkCustomers(orgID string, batch []NewCustomer) []CustomerProblem {
++	var problems []CustomerProblem
++	earlier := map[string]bool{} // lower-case email addresses of the batch's earlier customers
++	for i, nc := range batch {
++		nc = trimNewCustomer(nc)
++		key := normEmail(nc.Email)
++		code := ""
++		switch {
++		case nc.Name == "":
++			code = "missing_name"
++		case !validEmail(nc.Email):
++			code = "invalid_email"
++		case nc.DefaultPaymentMethod != "" && !strings.HasPrefix(nc.DefaultPaymentMethod, "pm_"):
++			code = "invalid_payment_method"
++		case s.hasCustomerEmail(orgID, key):
++			code = "email_taken"
++		case earlier[key]:
++			code = "duplicate_email"
++		}
++		if code != "" {
++			problems = append(problems, CustomerProblem{Index: i, Code: code})
++		}
++		earlier[key] = true
++	}
++	return problems
++}
++
++func trimNewCustomer(nc NewCustomer) NewCustomer {
++	nc.Name, nc.Email, nc.DefaultPaymentMethod = strings.TrimSpace(nc.Name), strings.TrimSpace(nc.Email), strings.TrimSpace(nc.DefaultPaymentMethod)
++	return nc
++}
++
+ // CreateCustomer adds a customer to an organization. A customer's email address is unique within the organization,
+ // ignoring case.
+ func (s *Store) CreateCustomer(orgID, name, email string, now time.Time) (Customer, error) {

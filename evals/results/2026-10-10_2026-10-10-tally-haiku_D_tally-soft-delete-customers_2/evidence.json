@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Deleting a customer soft-deletes it (204, or 409 `has_active_subscriptions` when a non-canceled subscription exists). Deleted customers are hidden from every customer endpoint, invoice and subscription creation, and the email is reusable. Restore works within 30 days.\n- Invoices and payments keep a `customer` stub with `\"deleted\": true`. `store.PurgeDeletedCustomers(now)` removes customers deleted more than 30 days ago.\n- New tests cover each rule above. `go build ./...`, `go test ./...` and `go vet ./...` pass.",
+    "data": {},
+    "created": 1791610057727
+  },
+  {
+    "id": 2,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 480ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-soft-delete-customers-D-2/data/runs/run_7b8bad40ee2c/checks/build-1791610057771829940.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 478,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610058250
+  },
+  {
+    "id": 3,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 520ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-soft-delete-customers-D-2/data/runs/run_7b8bad40ee2c/checks/test-1791610058252633182.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 524,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610058779
+  },
+  {
+    "id": 4,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 430ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-soft-delete-customers-D-2/data/runs/run_7b8bad40ee2c/checks/lint-1791610058781082347.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 429,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610059211
+  },
+  {
+    "id": 5,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "/tmp/drydock-trial-2183624454/tally-soft-delete-customers-D-2/data/runs/run_7b8bad40ee2c/checks/secrets-1791610059233604256.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 20,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610059233
+  },
+  {
+    "id": 6,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "11 file(s), +330 -20",
+    "ref": "/tmp/drydock-trial-2183624454/tally-soft-delete-customers-D-2/data/runs/run_7b8bad40ee2c/evidence/task.diff",
+    "data": {
+      "Files": 11,
+      "Insertions": 330,
+      "Deletions": 20,
+      "base": "6b90322ff8c785399da729f499cd275f891a2d52",
+      "commit": "62d26ed175f93cc3766e66a065eb00b49eb89018"
+    },
+    "created": 1791610059376
+  },
+  {
+    "id": 7,
+    "taskId": "task_86014ae300df",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 62d26ed175",
+    "ref": "62d26ed175f93cc3766e66a065eb00b49eb89018",
+    "data": {},
+    "created": 1791610059377
+  }
+]

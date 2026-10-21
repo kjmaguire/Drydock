@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-csv-import",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "c4b0d79664a674cad401099cef274d4f262fd1fb",
+  "startedAt": "2026-10-10T22:05:42.118167445Z",
+  "wallMs": 305510,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 5481,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 5805,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t3.766s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.022s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.019s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.072s\nok  \texample.com/tally/internal/payments\t0.006s\nok  \texample.com/tally/internal/reports\t0.007s\nok  \texample.com/tally/internal/snapshot\t0.030s\nok  \texample.com/tally/internal/store\t0.012s\nok  \texample.com/tally/internal/subscriptions\t0.018s\nok  \texample.com/tally/internal/webhooks\t0.015s\n"
+      }
+    ],
+    "durationMs": 11292
+  },
+  "costUsd": 0.12141596999999998,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 78,
+    "output": 51016,
+    "cacheRead": 2364621,
+    "cacheWrite": 188096
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_ca4e1690f35c",
+      "feedback": "internal/store/customers.go ImportCustomers (email_taken check, ~line 74-76): the lookup uses the global customersByEmail map, which keeps only one customer per email across all organizations. If Acme creates x@example.com, then Globex creates the same address via CreateCustomer (allowed; the map is overwritten to Globex's customer), an import into Acme of x@example.com finds Globex's customer, fails the OrgID check, and does not return email_taken. The row is then created, so Acme ends up with two customers sharing an email, which the spec forbids. Fix: check the importing organization's own customers instead of the global map, e.g. build the set of normalized emails of s.customers where OrgID == orgID under s.mu, and use it for email_taken. Add a test for the reverse order (Acme creates, Globex creates the same email, Acme imports it expecting 422 email_taken on that row). The CreateCustomer map overwrite is pre-existing and outside this task."
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_ca4e1690f35c"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_0e7564b56e7f"
+}

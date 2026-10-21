@@ -1,0 +1,40 @@
+# Input handling with many edge cases and an all-or-nothing contract with exact error reporting.
+id: tally-csv-import
+title: "Import customers from CSV"
+suite: tally
+fixture: testdata/fixtures/tally
+class: iteration
+risk: medium
+size: large
+expected_roles: [backend, reviewer]
+prompt: |
+  New organizations bring thousands of customers in a spreadsheet. Add POST /v1/customers/import, which takes a CSV body and
+  creates the customers.
+
+  - The first record is a header. It must have the columns "name" and "email", and may have "default_payment_method" and any
+    number of "metadata.<key>" columns (each fills that metadata key). Header names match ignoring case and surrounding
+    spaces, columns come in any order, and other columns are ignored. No header, or a header without name or email: 422
+    {"error":"invalid_header"}.
+  - The body is RFC 4180 CSV: quoted fields with commas, quotes and line breaks; LF or CRLF line ends; a UTF-8 byte order mark
+    at the start is ignored; blank lines are skipped. A body that is not valid CSV: 400 {"error":"invalid_csv"}.
+  - At most 10,000 data records: more is 413 {"error":"too_many_rows"}.
+  - Each record is checked like POST /v1/customers: a name, a valid email address, a payment method that starts with "pm_"
+    when given. Its email may not be used by an existing customer of the organization or by an earlier record of the file,
+    ignoring case.
+  - All or nothing: when any record has a problem, nothing is created and the answer is 422 {"error":"invalid_rows",
+    "rows": [{"row": <the line number in the file where the record starts, the header being line 1>, "error": <code>}, ...]}
+    listing every bad record in file order, one problem each, with the first that applies of: "missing_name",
+    "invalid_email", "invalid_payment_method", "email_taken" (an existing customer has it), "duplicate_email" (an earlier
+    record has it).
+  - Otherwise every customer is created in file order and the answer is 201 {"created": <count>, "items": [<customers>]};
+    each sends the customer.created event.
+  - With ?dry_run=true everything is checked the same way and nothing is created: 200 {"created": 0, "would_create": <count>}
+    when every record is fine, the same 422 otherwise.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-csv-import
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

@@ -1,0 +1,82 @@
+# Drydock's own rules for Java (decision P77). Each one names a pattern that is a security problem in most code that has it;
+# its message says why and what to do instead. Fixtures: internal/scan/testdata/rules/drydock.
+rules:
+  - id: drydock.java.sql-built-from-data
+    languages: [java]
+    severity: ERROR
+    message: >-
+      This SQL text is built by joining strings, so a value with a quote can change the query (SQL injection). Use a
+      PreparedStatement with ? placeholders and set the values.
+    metadata: { category: security, cwe: "CWE-89: SQL Injection", confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: $ST.executeQuery("..." + $X)
+          - pattern: $ST.executeQuery("..." + $X + "...")
+          - pattern: $ST.executeUpdate("..." + $X)
+          - pattern: $ST.executeUpdate("..." + $X + "...")
+          - pattern: $ST.execute("..." + $X)
+          - pattern: $ST.execute("..." + $X + "...")
+          - pattern: $ST.addBatch("..." + $X)
+          - pattern: $ST.addBatch("..." + $X + "...")
+          - pattern: $C.prepareStatement("..." + $X, ...)
+          - pattern: $C.prepareStatement("..." + $X + "...", ...)
+          - pattern: $ST.executeQuery(String.format(...))
+          - pattern: $ST.execute(String.format(...))
+  - id: drydock.java.command-built-from-data
+    languages: [java]
+    severity: ERROR
+    message: >-
+      Runtime.exec with one string splits it on spaces; built from data it runs what the data says. Use ProcessBuilder with
+      the program and each argument separately, and never a shell.
+    metadata: { category: security, cwe: "CWE-78: OS Command Injection", confidence: MEDIUM }
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec("..." + $X)
+      - pattern: Runtime.getRuntime().exec("..." + $X + "...")
+      - pattern: Runtime.getRuntime().exec(String.format(...))
+      - pattern: new ProcessBuilder("sh", "-c", $X)
+      - pattern: new ProcessBuilder("bash", "-c", $X)
+      - pattern: new ProcessBuilder("cmd", "/c", $X)
+  - id: drydock.java.weak-hash
+    languages: [java]
+    severity: WARNING
+    message: >-
+      MD5 and SHA-1 are broken for security: collisions can be made. Use SHA-256 or better, or a password hash for
+      passwords.
+    metadata: { category: security, cwe: "CWE-328: Use of Weak Hash", confidence: MEDIUM }
+    pattern-either:
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("SHA-1")
+      - pattern: MessageDigest.getInstance("SHA1")
+      - pattern: MessageDigest.getInstance("md5")
+  - id: drydock.java.object-input-stream
+    languages: [java]
+    severity: ERROR
+    message: >-
+      Java deserialization builds whatever classes the data names; data from outside this program can run code through
+      gadget chains. Use JSON, or an ObjectInputFilter that allows only your own classes.
+    metadata: { category: security, cwe: "CWE-502: Deserialization of Untrusted Data", confidence: MEDIUM }
+    patterns:
+      - pattern: (ObjectInputStream $IN).readObject()
+      - pattern-not-inside: |
+          $IN.setObjectInputFilter(...);
+          ...
+  - id: drydock.java.trust-all-certificates
+    languages: [java]
+    severity: ERROR
+    message: >-
+      A TrustManager that accepts every certificate, or a HostnameVerifier that accepts every host, lets anyone on the
+      network path read and change the traffic. Use the default checks, or a trust store with the server's CA.
+    metadata: { category: security, cwe: "CWE-295: Improper Certificate Validation", confidence: HIGH }
+    pattern-either:
+      - pattern: |
+          class $C implements X509TrustManager {
+            ...
+            public void checkServerTrusted(...) {}
+            ...
+          }
+      - pattern: |
+          (String $H, SSLSession $S) -> true
+      - pattern: |
+          new HostnameVerifier() {
+            public boolean verify(String $H, SSLSession $S) { return true; }
+          }

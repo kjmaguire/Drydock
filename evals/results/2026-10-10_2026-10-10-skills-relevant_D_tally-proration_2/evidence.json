@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Upgrades, downgrades, equal-value changes, trialing changes, incompatible plans and canceled subscriptions behave as the task specifies, and renewals apply a pending downgrade. The `pending_plan_id` and `pending_quantity` fields appear on the subscription JSON.\n- New tests in `internal/subscriptions`, `internal/api` and `internal/money` cover each rule, including the exact prorated invoice lines, the charge outcomes and the rounding.\n- `go build ./...`, `go test ./...` and `go vet ./...` pass. The baseline already passed, so any new failure would have been mine.",
+    "data": {},
+    "created": 1791671174135
+  },
+  {
+    "id": 2,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 1.22s",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-proration-D-2/data/runs/run_2c2e83872fa2/checks/build_1c7cc7531ed3.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 1222,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671175422
+  },
+  {
+    "id": 3,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 960ms",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-proration-D-2/data/runs/run_2c2e83872fa2/checks/test_8f180e3291ab.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 955,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671176379
+  },
+  {
+    "id": 4,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 820ms",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-proration-D-2/data/runs/run_2c2e83872fa2/checks/lint_82ac300ed029.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 815,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671177196
+  },
+  {
+    "id": 5,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 30ms",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-proration-D-2/data/runs/run_2c2e83872fa2/checks/secrets_547e5eeb9a5f.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 31,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791671177234
+  },
+  {
+    "id": 6,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "8 file(s), +501 -12",
+    "ref": "<scratchpad>/trialwork/relevant-2-1/tally-proration-D-2/data/runs/run_2c2e83872fa2/evidence/task.diff",
+    "data": {
+      "Files": 8,
+      "Insertions": 501,
+      "Deletions": 12,
+      "base": "8f1e8210c0d53679838d5d54b7d76d570030a660",
+      "commit": "3d15c58056b4c6f8a176faa78830e64715156f66"
+    },
+    "created": 1791671177436
+  },
+  {
+    "id": 7,
+    "taskId": "task_a124c219bd48",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 3d15c58056",
+    "ref": "3d15c58056b4c6f8a176faa78830e64715156f66",
+    "data": {},
+    "created": 1791671177437
+  }
+]

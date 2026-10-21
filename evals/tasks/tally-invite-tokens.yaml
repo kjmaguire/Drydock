@@ -1,0 +1,31 @@
+# Credential handling: hashing, single use, expiry and replacement, with the token only ever in the email.
+id: tally-invite-tokens
+title: "Harden invitation tokens"
+suite: tally
+fixture: testdata/fixtures/tally
+class: security review
+risk: high
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Invitations are weak: any member, even a viewer, can read every pending invite's token from GET /v1/invites and accept it
+  as the invited person, tokens never expire, and an invite can be accepted again by someone else after being used. Harden
+  them:
+
+  - A token is 32 random bytes from crypto/rand, written in unpadded base64url (43 characters). Only its SHA-256 hash is
+    stored. The token appears only in the email sent to the invited address (as today, as the link's token parameter): no API
+    answer contains it (neither POST nor GET /v1/invites) and snapshots do not.
+  - POST /v1/invites/accept with a token that is unknown or revoked: 404 {"error":"invite_not_found"}; already accepted: 410
+    {"error":"invite_used"}; created more than 7 days ago (on the service's clock): 410 {"error":"invite_expired"}. Otherwise
+    it works as today, and the invite is then accepted.
+  - Inviting an address that already has a pending invite to the organization (ignoring case) revokes the old invite and sends
+    a new one: only the newest token works.
+  - GET /v1/invites lists only pending invites (not accepted, not revoked, not expired), each with "expires_at".
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-invite-tokens
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

@@ -1,0 +1,359 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `Runner.Shutdown(ctx)`, `ErrStopped`, `Pending()` and panic recovery in `internal/jobs/jobs.go`, with `Stop()` rebuilt on `Shutdown` using a 30s timeout. Existing exported names and signatures are unchanged.\n- `cmd/tally/main.go` calls `runner.Shutdown` on SIGTERM before the snapshot save, instead of `Stop()`.\n- New tests in `internal/jobs/jobs_test.go` cover the rejected enqueue, unstarted jobs not running, the timeout path with `Pending` order, panic recovery and repeated calls. `go build ./...`, `go vet ./...` and `go test ./...` pass.",
+    "data": {},
+    "created": 1791610232669
+  },
+  {
+    "id": 2,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 490ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/build-1791610232712397501.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 488,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610233201
+  },
+  {
+    "id": 3,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 740ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/test-1791610233204294138.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 737,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610233942
+  },
+  {
+    "id": 4,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 460ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/lint-1791610233944571102.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 461,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610234406
+  },
+  {
+    "id": 5,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/secrets-1791610234420748181.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 12,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610234421
+  },
+  {
+    "id": 6,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +356 -11",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 356,
+      "Deletions": 11,
+      "base": "fd63404a00cd78c76d9fd80966926e54f1332f5b",
+      "commit": "bba0187fa9ce6508ff8a758f93effb0016e58e7c"
+    },
+    "created": 1791610234548
+  },
+  {
+    "id": 7,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit bba0187fa9",
+    "ref": "bba0187fa9ce6508ff8a758f93effb0016e58e7c",
+    "data": {},
+    "created": 1791610234549
+  },
+  {
+    "id": 8,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- Fix for the reviewer's finding**",
+    "data": {},
+    "created": 1791610301788
+  },
+  {
+    "id": 9,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 990ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/build-1791610301922455384.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 988,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610302911
+  },
+  {
+    "id": 10,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 630ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/test-1791610302915048142.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 632,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610303547
+  },
+  {
+    "id": 11,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 650ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/lint-1791610303558873294.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 648,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610304208
+  },
+  {
+    "id": 12,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/secrets-1791610304223851091.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 13,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610304224
+  },
+  {
+    "id": 13,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +413 -11",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 413,
+      "Deletions": 11,
+      "base": "fd63404a00cd78c76d9fd80966926e54f1332f5b",
+      "commit": "907f2c852da9fafcf114b1bcfa4283fe91353330"
+    },
+    "created": 1791610304478
+  },
+  {
+    "id": 14,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 907f2c852d",
+    "ref": "907f2c852da9fafcf114b1bcfa4283fe91353330",
+    "data": {},
+    "created": 1791610304479
+  },
+  {
+    "id": 15,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 540ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/build-1791610425368684682.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 541,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610425910
+  },
+  {
+    "id": 16,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 520ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/test-1791610425912603209.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 518,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610426432
+  },
+  {
+    "id": 17,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 460ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/lint-1791610426434613095.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 460,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610426895
+  },
+  {
+    "id": 18,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 10ms",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/checks/secrets-1791610426909742624.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 13,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791610426910
+  },
+  {
+    "id": 19,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "3 file(s), +442 -11",
+    "ref": "/tmp/drydock-trial-975724517/tally-graceful-shutdown-D-3/data/runs/run_1da3334fd269/evidence/task.diff",
+    "data": {
+      "Files": 3,
+      "Insertions": 442,
+      "Deletions": 11,
+      "base": "fd63404a00cd78c76d9fd80966926e54f1332f5b",
+      "commit": "cac6a2cb72c317be3112e7c811dde80d66a756f6"
+    },
+    "created": 1791610427035
+  },
+  {
+    "id": 20,
+    "taskId": "task_1181bbb1f8f9",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit cac6a2cb72",
+    "ref": "cac6a2cb72c317be3112e7c811dde80d66a756f6",
+    "data": {},
+    "created": 1791610427036
+  }
+]

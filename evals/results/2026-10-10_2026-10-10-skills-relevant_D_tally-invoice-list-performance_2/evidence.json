@@ -1,0 +1,124 @@
+[
+  {
+    "id": 1,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "definition_of_done",
+    "summary": "- `GET /v1/invoices` (with or without `customer_id`, `subscription_id`, `status`) now reads only the organization's invoices from a per-organization index kept in creation order, and builds views only for the page returned. The full-store scan, the JSON clone of every invoice, and the per-invoice customer scan are gone. Output, ordering, cursors and errors are unchanged.\n- New store and API tests check every filter combination page by page against the independently computed answer. They cover ties on creation time, out-of-order creation times, other organizations' invoices, invoices created be\n...[truncated]",
+    "data": {},
+    "created": 1791670744474
+  },
+  {
+    "id": 2,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "build",
+    "passed": true,
+    "summary": "build passed in 760ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-2/data/runs/run_f6b4e356da69/checks/build_b0793b1eaa66.log",
+    "data": {
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "durationMs": 761,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670745278
+  },
+  {
+    "id": 3,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "test",
+    "passed": true,
+    "summary": "test passed in 730ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-2/data/runs/run_f6b4e356da69/checks/test_185dfbd52372.log",
+    "data": {
+      "argv": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "durationMs": 725,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670746006
+  },
+  {
+    "id": 4,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "lint",
+    "passed": true,
+    "summary": "lint passed in 500ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-2/data/runs/run_f6b4e356da69/checks/lint_5245c40ef065.log",
+    "data": {
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "durationMs": 500,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670746508
+  },
+  {
+    "id": 5,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "secrets",
+    "passed": true,
+    "summary": "secrets passed in 20ms",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-2/data/runs/run_f6b4e356da69/checks/secrets_28776afd6649.log",
+    "data": {
+      "argv": [
+        "drydock",
+        "scan-added-lines"
+      ],
+      "durationMs": 22,
+      "errored": false,
+      "exitCode": 0,
+      "failing": null,
+      "skipped": false
+    },
+    "created": 1791670746532
+  },
+  {
+    "id": 6,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "diff",
+    "summary": "6 file(s), +434 -33",
+    "ref": "<scratchpad>/trialwork/relevant-0-1/tally-invoice-list-performance-D-2/data/runs/run_f6b4e356da69/evidence/task.diff",
+    "data": {
+      "Files": 6,
+      "Insertions": 434,
+      "Deletions": 33,
+      "base": "cbb0bea12d1c31231ac7a5106f838b9e6eabac46",
+      "commit": "9db27a4e836f7835d7e321dca7b01a9ad5682221"
+    },
+    "created": 1791670746703
+  },
+  {
+    "id": 7,
+    "taskId": "task_5ae616aa5018",
+    "attempt": 0,
+    "kind": "commit",
+    "summary": "commit 9db27a4e83",
+    "ref": "9db27a4e836f7835d7e321dca7b01a9ad5682221",
+    "data": {},
+    "created": 1791670746703
+  }
+]

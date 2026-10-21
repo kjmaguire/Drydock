@@ -1,0 +1,36 @@
+# SSRF: IP classification has several traps (CGNAT, IPv4-mapped IPv6, mixed answers) and a second check at delivery.
+id: tally-webhook-ssrf
+title: "Stop webhook URLs from reaching private networks"
+suite: tally
+fixture: testdata/fixtures/tally
+class: security review
+risk: high
+size: medium
+expected_roles: [backend, reviewer]
+prompt: |
+  Webhook endpoints are URLs our servers call, so an organization can point one at our own network: the cloud metadata
+  service, an admin port on localhost, a database on a private subnet (SSRF). Close that.
+
+  When an endpoint is created, or its URL is changed, refuse the URL with 422 {"error":"invalid_url"} unless all of this holds:
+  - the scheme is https;
+  - it has a host, and no user name or password (https://user:pass@host/ is refused);
+  - the host, when it is an IP address, or else every address it resolves to (with the webhooks Service's Resolver), is a
+    public address. Not public: loopback (127.0.0.0/8, ::1), private (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7),
+    link-local (169.254.0.0/16, which includes the metadata address 169.254.169.254, and fe80::/10), carrier-grade NAT
+    (100.64.0.0/10), "this network" (0.0.0.0/8), unspecified (::), multicast (224.0.0.0/4, ff00::/8) and broadcast
+    (255.255.255.255). An IPv4 address written as IPv6 (::ffff:127.0.0.1) is judged as the IPv4 address it holds. When any
+    one of the resolved addresses is not public the URL is refused, even if others are public.
+  - Port numbers stay allowed, and the existing check that the host resolves stays.
+
+  DNS answers can change after a URL was saved, so check again before every delivery attempt: resolve the host with the same
+  Resolver just before sending, and when any address is not public do not send the request; the attempt fails and its error
+  says that the endpoint's address is not public (the delivery's error text contains "not public"). The endpoint itself is
+  left as it is.
+
+  Add tests. Keep existing exported names, signatures and API fields working unless this task says otherwise; adding new ones is fine.
+acceptance:
+  files: evals/testdata/hidden/tally-webhook-ssrf
+  commands:
+    - go vet ./...
+    - go test -count=1 ./...
+  timeout_seconds: 600

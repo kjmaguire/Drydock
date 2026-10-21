@@ -1,0 +1,73 @@
+# go-task (https://taskfile.dev) entry points for the golden starter.
+# Every target delegates to an npm script in package.json, so `npm run <name>`
+# works identically where `task` is not installed.
+#
+# Verification targets (build, test, lint, typecheck) exit 0 on success and
+# non-zero on failure, and print failures in machine-parseable form:
+#   lint       GitHub annotation lines  ::error title=...,file=...,line=...::msg
+#   typecheck  tsc lines                file(line,col): error TSnnnn: msg
+#   test       Vitest's FAIL lines plus test-results/vitest.json
+#   e2e        Playwright's list output plus test-results/e2e-report.json
+version: "3"
+
+tasks:
+  install:
+    desc: Install dependencies exactly as locked (npm ci)
+    cmds:
+      - npm ci
+
+  build:
+    desc: Production build (React Router + Worker) into build/
+    cmds:
+      - npm run build
+
+  test:
+    desc: Unit and API tests in real workerd with D1/KV/R2 simulators (offline)
+    cmds:
+      - npm run test
+
+  lint:
+    desc: Biome lint
+    cmds:
+      - npm run lint
+
+  typecheck:
+    desc: react-router typegen, wrangler types --check, then tsc --noEmit
+    cmds:
+      - npm run typecheck
+
+  types:
+    desc: Regenerate worker-configuration.d.ts after editing wrangler.jsonc (commit the result)
+    cmds:
+      - npm run types
+
+  e2e:
+    desc: Playwright e2e against `wrangler dev` (needs a Chromium; see README)
+    cmds:
+      - npm run e2e
+
+  migrate-local:
+    desc: Apply D1 migrations to the LOCAL database in .wrangler/state
+    cmds:
+      - npm run migrate:local
+
+  dev:
+    desc: "wrangler dev; usage: PORT=8801 INSPECTOR_PORT=9301 task dev (unset = free ports)"
+    env:
+      PORT: "{{.PORT}}"
+      INSPECTOR_PORT: "{{.INSPECTOR_PORT}}"
+    cmds:
+      - npm run dev
+
+  preview:
+    desc: "wrangler preview ONLY (never deploy); usage: task preview -- --name my-branch"
+    cmds:
+      - npm run preview -- {{.CLI_ARGS}}
+
+  check:
+    desc: lint, typecheck, test and build in sequence
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+      - task: build

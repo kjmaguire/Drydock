@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-tally-haiku",
+  "commit": "babb3c1a149b+dirty",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24)",
+  "taskId": "tally-proration",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "006e4542899323b024c795d8bd016c9dd3094983",
+  "startedAt": "2026-10-10T05:19:09.341066945Z",
+  "wallMs": 274456,
+  "ceilingUsd": 3,
+  "outcome": "rejected",
+  "reason": "the hidden acceptance check failed",
+  "evalAccept": {
+    "passed": false,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 1454,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 1,
+        "durationMs": 1783,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\n--- FAIL: TestHiddenProrationPendingChangeIsCleared (0.00s)\n    --- FAIL: TestHiddenProrationPendingChangeIsCleared/by_a_later_upgrade_of_the_plan (0.00s)\n        zz_hidden_proration_test.go:446: PATCH plan Pro while quantity 3 is pending: subscription {plan_id plan_000010, quantity 3, status active, period 2026-01-15T10:00:00Z to 2026-02-15T10:00:00Z, pending_plan_id null, pending_quantity null}, want plan_id plan_000010, quantity 5, status active and pending_plan_id and pending_quantity null\nFAIL\nFAIL\texample.com/tally/internal/api\t0.050s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.009s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.005s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.005s\nok  \texample.com/tally/internal/payments\t0.009s\nok  \texample.com/tally/internal/reports\t0.013s\nok  \texample.com/tally/internal/snapshot\t0.021s\nok  \texample.com/tally/internal/store\t0.005s\nok  \texample.com/tally/internal/subscriptions\t0.008s\nok  \texample.com/tally/internal/webhooks\t0.005s\nFAIL\n"
+      }
+    ],
+    "durationMs": 3246
+  },
+  "costUsd": 0.15463101,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 56,
+    "output": 59215,
+    "cacheRead": 2084211,
+    "cacheWrite": 137031
+  },
+  "sessions": 2,
+  "reviews": [
+    {
+      "verdict": "SHIP",
+      "by": "agt_e9d1a229ac17"
+    }
+  ],
+  "coreTaskId": "task_0eeca13db4a8"
+}

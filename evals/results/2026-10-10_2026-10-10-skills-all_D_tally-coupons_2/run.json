@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "trial": "2026-10-10-skills-all",
+  "commit": "60019f9be6f2",
+  "arm": "D",
+  "armDetail": "Drydock: worker + independent reviewer (Claude Code), plain workflow, the worker may run the project's checks on this machine (P24), the bundle's skills delivered all",
+  "taskId": "tally-coupons",
+  "taskClass": "iteration",
+  "repeat": 2,
+  "model": "haiku",
+  "modelsUsed": [
+    "claude-haiku-5-5"
+  ],
+  "cli": "2.1.296 (Claude Code)",
+  "host": "linux/amd64",
+  "startCommit": "9a46ea78e16f13079b514fa6f06f741a57431648",
+  "startedAt": "2026-10-10T22:09:12.059330538Z",
+  "wallMs": 471399,
+  "ceilingUsd": 3,
+  "outcome": "accepted",
+  "evalAccept": {
+    "passed": true,
+    "commands": [
+      {
+        "command": "go vet ./...",
+        "exitCode": 0,
+        "durationMs": 2137,
+        "output": ""
+      },
+      {
+        "command": "go test -count=1 ./...",
+        "exitCode": 0,
+        "durationMs": 4264,
+        "output": "?   \texample.com/tally/cmd/tally\t[no test files]\nok  \texample.com/tally/internal/api\t0.185s\n?   \texample.com/tally/internal/apitest\t[no test files]\n?   \texample.com/tally/internal/auth\t[no test files]\nok  \texample.com/tally/internal/billing\t0.005s\n?   \texample.com/tally/internal/clock\t[no test files]\nok  \texample.com/tally/internal/jobs\t0.016s\n?   \texample.com/tally/internal/mail\t[no test files]\nok  \texample.com/tally/internal/money\t0.019s\nok  \texample.com/tally/internal/payments\t0.022s\nok  \texample.com/tally/internal/reports\t0.094s\nok  \texample.com/tally/internal/snapshot\t0.020s\nok  \texample.com/tally/internal/store\t0.010s\nok  \texample.com/tally/internal/subscriptions\t0.013s\nok  \texample.com/tally/internal/webhooks\t0.012s\n"
+      }
+    ],
+    "durationMs": 6408
+  },
+  "costUsd": 0.48167737999999993,
+  "callsWithoutCost": 0,
+  "tokens": {
+    "input": 98,
+    "output": 101059,
+    "cacheRead": 4495736,
+    "cacheWrite": 294322
+  },
+  "sessions": 4,
+  "reviews": [
+    {
+      "verdict": "REVISE",
+      "by": "agt_b5bec7e8b888",
+      "feedback": "The review response could not be parsed as a verdict; reviewer said:\nThe coupon work is solid on the points I checked: validation, code uniqueness, the redemption refusals, duration rules, and tax after discount all match the spec. One gap affects correctness, and the rest are notes.\n\n**Blocking: an amount_off coupon can discount an invoice in the wrong currency.** Currency is only checked when the coupon is applied (`internal/store/coupons.go`, `RedeemCoupon`). `PATCH /v1/subscriptions/{id}` with a new `plan_id` (`internal/subscriptions/subscriptions.go:100-115`) has no currency check. A subscription that holds a USD `amount_off` coupon can be moved to a EUR plan, and `couponFor` (`subscriptions.go:238-240`) then copies the USD amount into a EUR invoice. The spec's currency rule implies the coupon's currency must match the invoice's. Suggested fix: in `couponFor`, skip an amount_off coupon whose `Currency` differs from `plan.Currency` (or refuse the plan change with `currency_mismatch`). Add a test that changes the plan currency after applying an amount_off coupon.\n\n**Notes, not blocking:**\n- Malformed JSON on `POST /v1/coupons` and `/coupon` returns 400 `invalid_json` (`internal/api/respond.go:30` convention). The spec says \"anything else invalid\" is 422 `invalid`. The worker's choice matches the rest of the API, so I'd leave it unless the spec author meant it literally.\n- `couponFor` uses `now.Before(redeemedAt)`, so an invoice created at the exact redemption instant is discounted. \"Created after it was applied\" could mean strictly after. U\n...[truncated]"
+    },
+    {
+      "verdict": "SHIP",
+      "by": "agt_b5bec7e8b888"
+    }
+  ],
+  "skills": "all",
+  "skillNames": [
+    "cloudflare",
+    "composition-patterns",
+    "durable-objects",
+    "frontend-design",
+    "mcp-builder",
+    "microsoft-code-reference",
+    "microsoft-docs",
+    "react-best-practices",
+    "web-design-guidelines",
+    "workers-best-practices",
+    "wrangler",
+    "writing-guidelines"
+  ],
+  "coreTaskId": "task_33156e13219e"
+}
