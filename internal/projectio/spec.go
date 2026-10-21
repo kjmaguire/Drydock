@@ -221,6 +221,7 @@ var ExcludedTables = map[string]string{
 	"chats":                    "the human's own conversations with an agent CLI, not a project record; CLI session ids only resume on this machine (decisions P29)",
 	"chat_messages":            "messages of the chats above",
 	"chat_turns":               "turn bookkeeping of the chats above",
+	"chat_attachments":         "files the human attached to the chats above; the files themselves are on this machine's disk (decision P90)",
 	"chat_messages_fts":        "full-text index, rebuilt by triggers",
 	"chats_fts":                "full-text index, rebuilt by triggers",
 }

@@ -127,6 +127,7 @@ var KeptOnDelete = map[string]string{
 	"mcp_library":          "the workspace's MCP servers; the project's grants to them are deleted",
 	"chat_messages":        "messages of the human's own chats, which are kept (unlinked from the project)",
 	"chat_turns":           "turn bookkeeping of the chats above",
+	"chat_attachments":     "files attached to those chats, kept with them (decision P90)",
 }
 
 // DeleteResult says what deleting a project removed from the database, and the files that belonged to those rows (the
