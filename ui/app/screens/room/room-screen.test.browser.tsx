@@ -81,12 +81,16 @@ describe('Conversation', () => {
     // one author line: the name, then the agent's role (or the author kind) as a quiet label; people get none
     expect(messagesOf(r).map((m) => m.querySelector('.msg-role')?.textContent ?? null)).toEqual([null, 'backend', null, 'system']);
     expect(messagesOf(r)[1]!.querySelector('[data-kind="agent"]')).not.toBeNull();
-    // the person's own words are a bubble on the right, without an avatar (Crew HQ, decision P64)
+    // the person's own words are a left-aligned row with their avatar, tinted (UI review P1-6; no longer a bubble on the right)
     expect(messagesOf(r)[0]!.getAttribute('data-mine')).toBe('true');
-    expect(messagesOf(r)[0]!.querySelector('[data-kind="human"]')).toBeNull();
+    expect(messagesOf(r)[0]!.querySelector('[data-kind="human"]')).not.toBeNull();
+    expect(getComputedStyle(messagesOf(r)[0]!.querySelector('.msg-body')!).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(messagesOf(r)[0]!.querySelector('.msg-head')!.getBoundingClientRect().left).toBe(messagesOf(r)[1]!.querySelector('.msg-head')!.getBoundingClientRect().left);
     expect(messagesOf(r)[1]!.getAttribute('data-mine')).toBeNull();
     expect(qa(r, '[data-testid="message"] span').some((e) => e.textContent === 'DECISION')).toBe(true);
-    expect(messagesOf(r)[1]!.textContent).toContain('untrusted');
+    // "untrusted" is an icon with a tooltip, the word only for readers
+    const untrusted = messagesOf(r)[1]!.querySelector('[data-testid="msg-untrusted"]')!;
+    expect([untrusted.querySelector('svg') !== null, untrusted.getAttribute('title')!.startsWith('Untrusted: written by an agent'), untrusted.querySelector('.sr-only')!.textContent]).toEqual([true, true, 'untrusted']);
     const cards = qa(r, '[data-testid="check-card"]');
     expect(cards.map((c) => [c.getAttribute('data-tool'), c.getAttribute('data-status')])).toEqual([
       ['Tests', 'pass'],

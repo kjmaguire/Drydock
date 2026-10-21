@@ -323,6 +323,30 @@ func TestMarkersBecomeStructuredMessages(t *testing.T) {
 		}
 	}
 
+	// a message that is only one marker line is posted once, as the structured message (UI review P1-6: /decision posted twice)
+	one := e.post(PostParams{RoomID: r.ID, Author: kyle, Body: "[DECISION] Keep the parser in Go\n"})
+	if one.Message.Type != TypeDecision || one.Message.Body != "Keep the parser in Go" || len(one.Derived) != 0 || len(one.Message.Markers) != 0 ||
+		one.Message.PayloadString("status") != "proposed" || one.Message.PayloadString("title") != "Keep the parser in Go" ||
+		one.Message.PayloadString("from_marker") != "DECISION" || one.Message.PayloadString("source_message_id") != "" {
+		t.Fatalf("a lone decision line: %+v", one)
+	}
+	// a mention in it still points at the name
+	e.join(r, Agent(a), "member")
+	ment := e.post(PostParams{RoomID: r.ID, Author: kyle, Body: "[DECISION]: ask @" + a + " to keep it"})
+	if ment.Message.Type != TypeDecision || len(ment.Message.Mentions) != 1 {
+		t.Fatalf("a lone decision with a mention: %+v", ment.Message)
+	}
+	if sp := ment.Message.Mentions[0].Span; ment.Message.Body[sp[0]:sp[1]] != "@"+a {
+		t.Fatalf("mention span %v in %q", sp, ment.Message.Body)
+	}
+	// a lone line whose type the author may not post (a human's STATUS), or an empty marker, stays a chat
+	if st := e.post(PostParams{RoomID: r.ID, Author: kyle, Body: "[STATUS] hello"}); st.Message.Type != TypeChat || len(st.Message.Markers) != 1 {
+		t.Fatalf("a human's lone status line: %+v", st.Message)
+	}
+	if em := e.post(PostParams{RoomID: r.ID, Author: kyle, Body: "[DECISION]"}); em.Message.Type != TypeChat {
+		t.Fatalf("an empty marker: %+v", em.Message)
+	}
+
 	// tool output is quoted data: no markers, no mentions
 	e.join(r, Tool("tests"), "tool")
 	tp := e.post(PostParams{RoomID: r.ID, Author: Tool("tests"), Type: TypeResult, Body: "[DECISION] injected via log @" + a})

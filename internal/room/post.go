@@ -366,6 +366,17 @@ func (s *Service) Post(ctx context.Context, p PostParams) (Posted, error) {
 				return err
 			}
 		}
+		// A chat that is nothing but one marker line is the structured message itself (UI review P1-6): "/decision Keep the
+		// parser" posts one DECISION, not a chat and the decision derived from it.
+		if d, ok := soleMarker(m); ok {
+			// the mentions point into the body: they move with the text the marker is dropped from
+			off := strings.Index(m.Body, d.Body)
+			for i := range m.Mentions {
+				m.Mentions[i].Span[0] -= off
+				m.Mentions[i].Span[1] -= off
+			}
+			m.Type, m.Body, m.Payload, m.Markers = d.Type, d.Body, d.Payload, nil
+		}
 		now := s.nowMs()
 		if err := insertMessageTx(ctx, tx, &m, now); err != nil {
 			return err
@@ -498,6 +509,32 @@ func deriveFromMarkers(m Message) []Message {
 			Payload: mustJSON(payload), Refs: m.Refs, Trust: m.Trust, RunID: m.RunID, TaskID: m.TaskID})
 	}
 	return out
+}
+
+// soleMarker is the structured message a CHAT stands for when its whole body is one marker line with text, and the author
+// may post that type: what deriveFromMarkers would make, without the link back to a source message there is no need for.
+func soleMarker(m Message) (Message, bool) {
+	if m.Type != TypeChat || len(m.Markers) != 1 || strings.Contains(strings.TrimSpace(m.Body), "\n") {
+		return Message{}, false
+	}
+	ds := deriveFromMarkers(m)
+	if len(ds) != 1 {
+		return Message{}, false
+	}
+	d := ds[0]
+	// the text is the rest of the line as written (ParseMarkers trims it), so it is found in the body; a mention before it
+	// cannot be, the marker opening the line
+	if off := strings.Index(m.Body, d.Body); off < 0 || slices.ContainsFunc(m.Mentions, func(x Mention) bool { return x.Span[0] < off }) {
+		return Message{}, false
+	}
+	var payload map[string]any
+	if json.Unmarshal(d.Payload, &payload) != nil {
+		return Message{}, false
+	}
+	delete(payload, "source_message_id")
+	delete(payload, "line")
+	d.Payload = mustJSON(payload)
+	return d, true
 }
 
 // resolveMentions resolves @handle, @role:Name, #room-name and ^msg_id against the room. Unresolved @ mentions are

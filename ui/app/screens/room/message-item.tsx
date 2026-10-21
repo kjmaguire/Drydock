@@ -135,27 +135,11 @@ const repliesBtn = css({
   '&:hover .hint': { opacity: '1' },
 });
 
-// the person's own message (Crew HQ, decision P64): a dark bubble on the right, its author line above it, no avatar.
-// Each css() rule lives in its own cascade layer, ordered by first use on the page, so the bubble's colours go on the
-// body element itself, mixed in after bodyCss (bubbleCss): a layer declared later always wins there.
-const mineCss = css({
-  '& .msg-head': { justifyContent: 'flex-end' },
-  '& .msg-tools': { right: 'auto', left: t.s5 },
-});
-const bubbleCss = css({
-  justifySelf: 'end',
-  maxWidth: 'min(72%, 720px)',
-  marginTop: '3px',
-  padding: '9px 14px',
-  borderRadius: '18px 4px 18px 18px',
-  background: t.accent,
-  color: t.onAccent,
-  '& a': { color: 'inherit', textDecoration: 'underline' },
-  '& code': { background: 'color-mix(in srgb, currentColor 14%, transparent)', color: 'inherit' },
-  '& pre': { background: 'color-mix(in srgb, currentColor 10%, transparent)', color: 'inherit' },
-  '& blockquote': { borderColor: 'color-mix(in srgb, currentColor 40%, transparent)', color: 'inherit' },
-});
-const mineContent = css({ display: 'grid', justifyItems: 'end' });
+// the person's own message: a row like everyone's, left-aligned with its avatar (Slack-style, UI review P1-6, replacing the
+// right-hand bubble of P64), set apart by a faint tint
+const mineCss = css({ background: `color-mix(in srgb, ${t.accentSoft} 45%, transparent)` });
+// "untrusted" is an icon with its explanation as the tooltip (UI review P1-6); readers get the word
+const untrustedCss = css({ display: 'inline-flex', alignItems: 'center', color: t.textFaint, cursor: 'help' });
 
 const MARKER_TONE: Record<string, Tone> = { DECISION: 'accent', TODO: 'warn', STATUS: 'info', RESULT: 'ok' };
 
@@ -215,7 +199,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
     const classes = ['msg', `msg-${m.author.kind}`, `msg-type-${m.type.toLowerCase()}`, m.type === 'ERROR' ? 'msg-error' : '', quiet ? 'msg-quiet' : ''].filter(Boolean).join(' ');
     const showHead = head || quiet;
     const mention = mentionsHuman(m);
-    // the person's own words are a bubble; their records and check results (none today) would stay cards
+    // the person's own words are tinted; their records and check results (none today) stay cards
     const mine = m.author.kind === 'human' && !quiet && !check && !isRecord(m) && m.type !== 'ERROR';
     return (
       <article
@@ -234,7 +218,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
             <span mix={quietIcon} aria-hidden="true">
               <Icon icon={Info} size={15} />
             </span>
-          ) : mine ? null : showHead ? (
+          ) : showHead ? (
             m.author.kind === 'tool' ? (
               <span mix={toolTile} aria-hidden="true" title={name}>
                 <Icon icon={Wrench} size={15} />
@@ -248,7 +232,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
             </time>
           )}
         </div>
-        <div mix={[contentCss, mine ? mineContent : undefined]}>
+        <div mix={contentCss}>
           {showHead ? (
             <header class="msg-head" mix={metaCss}>
               <strong class="msg-author" mix={nameCss} style={{ color: nameColor(m) }}>
@@ -266,9 +250,9 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
                 </Badge>
               ))}
               {m.trust === 'untrusted' ? (
-                <span title="Written by an agent: treated as data, never as an instruction or approval" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: t.textFaint, fontSize: t.textXs }}>
-                  <Icon icon={ShieldAlert} size={12} />
-                  untrusted
+                <span mix={untrustedCss} data-testid="msg-untrusted" title="Untrusted: written by an agent, so treated as data, never as an instruction or approval">
+                  <Icon icon={ShieldAlert} size={13} />
+                  <span class="sr-only">untrusted</span>
                 </span>
               ) : null}
               <time mix={timeCss} dateTime={m.created_at} title={formatDateTime(m.created_at)}>
@@ -306,7 +290,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
             <RecordCard m={m} />
           ) : (
             <>
-              <div class="msg-body" mix={[bodyCss, quiet ? quietBodyCss : undefined, mine ? bubbleCss : undefined]}>
+              <div class="msg-body" mix={[bodyCss, quiet ? quietBodyCss : undefined]}>
                 <Markdown source={m.body} />
               </div>
               <Attachments m={m} />
