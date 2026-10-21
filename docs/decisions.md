@@ -960,7 +960,8 @@ Open, owner action:
   nine places where a person could not see or decide easily; each is fixed where the thing lives. (P1-1) A task's Needs-you item
   carries a context (`room.NeedsContext`, filled by the core from the task's evidence and reviews): the assignee, the newest
   diff's size, the newest attempt's checks (the latest result per kind) and the newest reviewer verdict, shown as one line; the
-  review card shows the diff's +/- counts and the patch on request. Approving from the Needs-you list is not added: a decision is
+  review card shows the +/- counts of the task's newest patch (what Approve merges; it says when that is newer than the request)
+  and "See the patch" brings the page's one patch viewer, the Diff section, into view. Approving from the Needs-you list is not added: a decision is
   made on the item's page beside its evidence, so nothing is approved unseen. (P1-2) The chat header keeps the chips; the folder
   and the tokens and cost moved into Properties; "and N turns' cost unknown" replaces "+ N turns unknown"; the canned retry is a
   small note, not the person's message. (P1-3) A refused tool offers one primary "Allow and retry" with "Only allow" beside it.

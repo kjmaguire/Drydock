@@ -171,6 +171,23 @@ describe('Task view: header, properties and content', () => {
     expect(taskDiff.calls).toEqual([['t1', 1]]);
   });
 
+  it("has one patch viewer: the review card's See the patch brings the Diff section into view (UI review P1-1)", async () => {
+    const ev: Evidence = { id: 3, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: '1 file', data: { Files: 1, Insertions: 2, Deletions: 0 }, created: 0 };
+    const d = detail({
+      evidence: [ev],
+      pending: [{ id: 'req-1', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge', payload: { files: ['a.go'], branch: 'drydock/t1', base: 'main', evidence: [ev] } } }],
+      run: { id: 'run-1', workflow: 'iterate-until-verified', status: 'WAITING_HUMAN', topology: 'x', created: 0, updated: 0, version: 1 },
+    });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
+    await waitFor(() => need(byText(r.container, 'button', 'See the patch')), r);
+    expect(buttonNames(r.container).filter((n) => n === 'Show the raw patch').length).toBe(1);
+    const section = r.$('[data-testid="task-diff"]')!;
+    let scrolled = 0;
+    section.scrollIntoView = () => void scrolled++;
+    await r.act(() => byText(r.container, 'button', 'See the patch').click());
+    expect(scrolled).toBe(1);
+  });
+
   describe('the raw patch is the one the card is about (L36)', () => {
     const ev = (id: number, kind: string): Evidence => ({ id, taskId: 't1', attempt: 1, kind, passed: null, summary: kind, created: id });
     const PATCHES: Record<number, string> = {

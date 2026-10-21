@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
-import type { PendingRequest, TaskDetail } from '../../api/types.ts';
+import type { Evidence, PendingRequest, TaskDetail } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/render.tsx';
 import { verdictGate } from './merge-gate.tsx';
@@ -36,17 +36,44 @@ describe('Review panel', () => {
     expect(r.$('[role="status"]')!.textContent).toContain('Answer sent');
   });
 
-  it("shows the change's size and its patch beside the decision (UI review P1-1)", async () => {
-    const taskDiff = recorder(async () => 'diff --git a/calc.go b/calc.go\n-\treturn a\n+\treturn a - b\n');
-    const payload = { taskId: 't1', files: ['calc.go'], branch: 'drydock/t1', base: 'main', evidence: [{ id: 5, kind: 'diff', data: { Files: 1, Insertions: 4, Deletions: 1 } }] };
-    const d = detail({ pending: [{ id: 'req-42', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge: T', payload } }] });
-    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ taskDiff }));
-    const card = r.$('[data-testid="pending-request"]')!;
-    expect(card.querySelector('summary')!.textContent).toBe('1 file changed·+4\u22121');
-    expect(card.querySelector('[data-testid="review-diffstat"]')!.textContent).toBe('·+4\u22121');
-    await r.act(() => byText(card, 'button', 'Show the patch here').click());
-    await waitFor(() => expect(card.textContent).toContain('return a - b'), r);
-    expect(taskDiff.calls).toEqual([['t1', 5]]);
+  describe("the change's size beside the decision (UI review P1-1)", () => {
+    const diffEv = (id: number, ins: number, del: number): Evidence => ({ id, taskId: 't1', attempt: 1, kind: 'diff', passed: null, summary: 'diff', data: { Files: 1, Insertions: ins, Deletions: del }, created: id });
+    const review = (evidence: unknown[]): PendingRequest[] => [
+      { id: 'req-42', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge: T', payload: { files: ['calc.go'], branch: 'drydock/t1', base: 'main', evidence } } },
+    ];
+
+    it('reads as words with spaces, and keeps 8 px between every part, the separator included', () => {
+      const d = detail({ evidence: [diffEv(5, 4, 1)], pending: review([diffEv(5, 4, 1)]) });
+      const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc());
+      const stat = r.$('[data-testid="review-diffstat"]')!;
+      expect(stat.textContent).toBe('1 file changed · +4 \u22121');
+      const parts = Array.from(stat.children).map((c) => c.getBoundingClientRect());
+      expect(parts.length).toBe(4);
+      for (let i = 0; i + 1 < parts.length; i++) {
+        const gap = parts[i + 1]!.left - parts[i]!.right;
+        // the density rule; the same gap on both sides of the dot
+        expect(gap >= 7.5 && gap <= 8.5).toBe(true);
+      }
+      expect(r.$('[data-testid="review-diff-newer"]')).toBeNull();
+    });
+
+    it('gives the counts of the newest patch, says when it is newer than the request, and offers no second patch viewer', () => {
+      const d = detail({ evidence: [diffEv(5, 4, 1), diffEv(9, 7, 3)], pending: review([diffEv(5, 4, 1)]) });
+      const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc());
+      expect(r.$('[data-testid="review-diffstat"]')!.textContent).toBe('1 file changed · +7 \u22123');
+      const note = r.$('[data-testid="review-diff-newer"]')!;
+      expect(note.getAttribute('role')).toBe('status');
+      expect(note.textContent).toContain('A newer patch was recorded after this request');
+      // the patch itself is the Diff section's: the card points there
+      expect(buttons(r.container)).toContain('See the patch');
+      expect(buttons(r.container)).not.toContain('Show the raw patch');
+    });
+
+    it('with no diff recorded, counts the files and does not point at a patch', () => {
+      const r = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc());
+      expect(r.$('[data-testid="review-diffstat"]')!.textContent).toBe('1 file changed');
+      expect(buttons(r.container)).not.toContain('See the patch');
+    });
   });
 
   // audit 2026-10-16, H8: the review card lists file names and a branch an agent chose

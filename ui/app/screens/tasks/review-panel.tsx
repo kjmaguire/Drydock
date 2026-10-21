@@ -26,9 +26,8 @@ import { BudgetPausePanel } from '../shared/budget-pause.tsx';
 import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../shared/escalation.tsx';
 import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
-import { DiffView } from './raw-diff.tsx';
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
-import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
+import { budgetPayload, criterionLine, editedCriteria, newestDiffStat, payloadOf, type PayloadDiff, specPayload } from './tasks.ts';
 import { plural } from '../../lib/format.ts';
 
 // The decide card (Crew HQ, decision P64): a soft yellow card with the requests as white cards inside; the primary answer is
@@ -64,6 +63,8 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; onChanged: () =
   return () => {
     const { detail, onChanged } = handle.props;
     if (detail.pending.length === 0) return null;
+    // the task's newest patch: what the Diff section shows and what Approve merges (L36), not the one the request was raised on
+    const diff = newestDiffStat(detail.evidence);
     return (
       <section mix={panelCss} aria-label="Needs your decision" data-testid="review-panel">
         <h2>
@@ -71,7 +72,7 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; onChanged: () =
           Needs your decision
         </h2>
         {detail.pending.map((p) => (
-          <PendingCard key={p.id} p={p} runId={detail.run?.id} onChanged={onChanged} />
+          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} onChanged={onChanged} />
         ))}
       </section>
     );
@@ -80,7 +81,7 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; onChanged: () =
 
 const textareaCss = css({ width: '100%', resize: 'vertical' });
 
-function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefined; onChanged: () => void }>) {
+function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefined; diff: PayloadDiff | undefined; onChanged: () => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   let mode: 'idle' | 'changes' = 'idle';
@@ -116,7 +117,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
   };
 
   return () => {
-    const { p, runId, onChanged } = handle.props;
+    const { p, runId, diff, onChanged } = handle.props;
     const info = payloadOf(p);
     const spec = specPayload(p);
     const budget = budgetPayload(p);
@@ -155,14 +156,18 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
             <summary>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle' }}>
                 <Icon icon={FileDiff} size={13} />
-                {plural(info.diff?.files || info.files.length, 'file')} changed
-                {info.diff ? (
-                  <span data-testid="review-diffstat" style={{ display: 'inline-flex', gap: '8px', fontVariantNumeric: 'tabular-nums' }}>
-                    <span aria-hidden="true">·</span>
-                    <span style={{ color: 'var(--success)' }}>+{info.diff.insertions}</span>
-                    <span style={{ color: 'var(--danger)' }}>&minus;{info.diff.deletions}</span>
-                  </span>
-                ) : null}
+                {/* one row, 8 px between every part (the density rule); the spaces are for copying and reading aloud, flex does not draw them */}
+                <span data-testid="review-diffstat" style={{ display: 'inline-flex', alignItems: 'baseline', gap: '8px', fontVariantNumeric: 'tabular-nums' }}>
+                  <span>{plural(diff?.files || info.files.length, 'file')} changed</span>
+                  {diff ? (
+                    <>
+                      {' '}
+                      <span aria-hidden="true">·</span>{' '}
+                      <span style={{ color: 'var(--success)' }}>+{diff.insertions}</span>{' '}
+                      <span style={{ color: 'var(--danger)' }}>&minus;{diff.deletions}</span>
+                    </>
+                  ) : null}
+                </span>
               </span>
             </summary>
             <ul>
@@ -172,8 +177,23 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
                 </li>
               ))}
             </ul>
-            {/* the patch itself, beside the decision (UI review P1-1); read on request, of the newest diff */}
-            {info.diff && info.taskId ? <DiffView taskId={info.taskId} diffId={info.diff.id} label="Show the patch here" /> : null}
+            {/* the patch itself is the Diff section's (one viewer per page, the task's newest patch); the card points there (UI review P1-1) */}
+            {diff ? (
+              <div style={{ display: 'grid', gap: '8px', justifyItems: 'start' }}>
+                {info.diff && info.diff.id < diff.id ? (
+                  <p mix={muted} role="status" data-testid="review-diff-newer" style={{ margin: '0' }}>
+                    A newer patch was recorded after this request. The counts and the Diff section are of the newer one.
+                  </p>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  mix={on('click', () => document.querySelector<HTMLElement>('[data-testid="task-diff"]')?.scrollIntoView({ block: 'start' }))}
+                >
+                  See the patch
+                </Button>
+              </div>
+            ) : null}
           </details>
         ) : null}
         <ErrorNote error={error} what="Not sent" />

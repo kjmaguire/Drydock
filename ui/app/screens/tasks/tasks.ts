@@ -190,24 +190,27 @@ export interface PayloadDiff {
   deletions: number;
 }
 
-/** The files, branches and newest diff a review request names (anything malformed is left out). */
-export function payloadOf(p: PendingRequest): { files: string[]; branch?: string; base?: string; taskId?: string; diff?: PayloadDiff } {
-  const v = (p.spec.payload ?? {}) as { files?: unknown; branch?: unknown; base?: unknown; taskId?: unknown; evidence?: unknown };
+/** The size of the newest diff evidence in `evidence` (a task's evidence, or the evidence a review request carries); malformed counts are 0. */
+export function newestDiffStat(evidence: unknown): PayloadDiff | undefined {
   let diff: PayloadDiff | undefined;
-  if (Array.isArray(v.evidence)) {
-    for (const e of v.evidence as { id?: unknown; kind?: unknown; data?: unknown }[]) {
-      if (!e || e.kind !== 'diff' || typeof e.id !== 'number' || (diff && e.id < diff.id)) continue;
-      const st = (e.data ?? {}) as { Files?: unknown; Insertions?: unknown; Deletions?: unknown };
-      const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : 0);
-      diff = { id: e.id, files: n(st.Files), insertions: n(st.Insertions), deletions: n(st.Deletions) };
-    }
+  if (!Array.isArray(evidence)) return undefined;
+  for (const e of evidence as { id?: unknown; kind?: unknown; data?: unknown }[]) {
+    if (!e || e.kind !== 'diff' || typeof e.id !== 'number' || (diff && e.id < diff.id)) continue;
+    const st = (e.data ?? {}) as { Files?: unknown; Insertions?: unknown; Deletions?: unknown };
+    const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : 0);
+    diff = { id: e.id, files: n(st.Files), insertions: n(st.Insertions), deletions: n(st.Deletions) };
   }
+  return diff;
+}
+
+/** The files, branches and newest diff a review request names (anything malformed is left out). */
+export function payloadOf(p: PendingRequest): { files: string[]; branch?: string; base?: string; diff?: PayloadDiff } {
+  const v = (p.spec.payload ?? {}) as { files?: unknown; branch?: unknown; base?: unknown; evidence?: unknown };
   return {
     files: Array.isArray(v.files) ? v.files.filter((f): f is string => typeof f === 'string') : [],
     branch: typeof v.branch === 'string' ? v.branch : undefined,
     base: typeof v.base === 'string' ? v.base : undefined,
-    taskId: typeof v.taskId === 'string' ? v.taskId : undefined,
-    diff,
+    diff: newestDiffStat(v.evidence),
   };
 }
 

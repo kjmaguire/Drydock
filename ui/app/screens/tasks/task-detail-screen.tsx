@@ -231,6 +231,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
             ) : null}
             <Section
               title="Diff"
+              testId="task-diff"
               actions={
                 <Button size="sm" variant="ghost" icon={Columns2} mix={on('click', () => s.ui.openDock('diff'))}>
                   Open in the dock
