@@ -1,11 +1,9 @@
 {
-  "generated": "2026-10-21T02:55:23Z",
-  "commit": "58c98a2",
+  "generated": "2026-10-21T03:28:03Z",
+  "commit": "9314da9",
   "summary": {
-    "current": 199,
-    "major": 1,
-    "minor": 3,
-    "patch": 2,
+    "current": 201,
+    "patch": 4,
     "unknown": 4
   },
   "items": [
@@ -15,8 +13,8 @@
       "name": "claude (@anthropic-ai/claude-code)",
       "kind": "cli",
       "used": "2.1.305",
-      "latest": "2.1.305",
-      "status": "current",
+      "latest": "2.1.306",
+      "status": "patch",
       "where": "internal/agents/manifests/cli/claude.yaml (recommended; minimum 2.1.205)",
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
       "note": "Recommended 2.1.304, moved to the newest release on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself. Installed in this sandbox: 2.1.305."
@@ -6149,8 +6147,8 @@
       "name": "@anthropic-ai/claude-code (windows-probes.yml)",
       "kind": "ci",
       "used": "2.1.305",
-      "latest": "2.1.305",
-      "status": "current",
+      "latest": "2.1.306",
+      "status": "patch",
       "where": ".github/workflows/windows-probes.yml"
     },
     {
@@ -6251,26 +6249,24 @@
       "group": "Language and toolchain",
       "name": "Node.js (installed in this sandbox)",
       "kind": "runtime",
-      "used": "22.22.0",
-      "latest": "22.23.3",
-      "status": "minor",
+      "used": "24.22.0",
+      "latest": "24.22.0",
+      "status": "current",
       "where": "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)",
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
-      "hold": "This row is the development host's own Node (22.22.0), which the sandbox provides and Drydock does not pin. CI installs the newest Node 24 on every run (actions/setup-node with node-version 24), and the UI asks for 24.3 or newer (ui/package.json engines). Putting Node 24 on this machine changes its setup, which is the owner's call (the environment's setup script).",
-      "note": "Newest Node release overall: 26.12.0. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
+      "note": "This row is the development host's own Node: 24.22.0 since 2026-10-21 (decision P81, the owner's words: \"update node, npm, git and docker on this machine too\"), installed from nodejs.org with its SHA-256 checked against SHASUMS256.txt, the same line CI installs (actions/setup-node with node-version 24). The newest line overall is 26, not yet LTS; the project line is 24 and the comparison is the newest release of the installed major. The machine is a cloud container rebuilt from its environment, so the version lasts until the environment's setup script installs it too. Newest Node release overall: 26.12.0. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
     },
     {
       "id": "npm",
       "group": "Language and toolchain",
       "name": "npm (installed in this sandbox)",
       "kind": "runtime",
-      "used": "10.9.4",
+      "used": "12.2.0",
       "latest": "12.2.0",
-      "status": "major",
+      "status": "current",
       "where": "this machine",
       "role": "Installs the UI packages.",
-      "hold": "This row is the development host's own npm (10.9.4, which comes with its Node 22.22.0); the sandbox provides it and Drydock does not pin it. CI uses the npm its Node 24 ships (11.x), and the lock file stays readable by both (lockfileVersion 3). Putting a newer Node or npm on this machine changes its setup, which is the owner's call (the environment's setup script).",
-      "note": "Ships with Node; a newer npm can be installed on top of it (npm install -g npm), which is what the development host does."
+      "note": "Ships with Node; the development host has npm 12.2.0 on top of its Node 24.22.0 (npm install -g npm@12.2.0, decision P81). CI uses the npm its Node 24 ships (11.19.1), and the lock file is the same under both (lockfileVersion 3; npm ci under 12.2.0 changed nothing). npm 12 runs no package's install script unless it is approved: esbuild's postinstall, which only checks its platform binary, is skipped, and the UI tests and build pass without it. Ships with Node; a newer npm can be installed on top of it (npm install -g npm), which is what the development host does."
     },
     {
       "id": "skills:anthropic-skills@dbd4588f9e10",
@@ -6421,14 +6417,13 @@
       "group": "Tools Drydock runs or you install",
       "name": "Docker-compatible container engine (docker)",
       "kind": "tool",
-      "used": "29.8.2",
+      "used": "29.9.2",
       "latest": "29.9.2",
-      "status": "minor",
+      "status": "current",
       "latestDate": "2026-10-20",
       "where": "docs/decisions.md section 2",
       "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
-      "hold": "29.9.1 is out; 29.8.2 stays documented: it is the engine the sandbox was measured with (decision P30), and nothing has run it on 29.9.1. Measured today with CI's ubuntu-latest image too, which carries Docker 28.0.4 (sandbox job of ci, 2026-10-16); the development sandbox has the 29.8.2 client and no daemon. It moves when a sandbox run on 29.9.1 happens, on the owner's PC with Docker Desktop updated.",
-      "note": "Version shown is the Docker Engine and CLI the sandbox was tested with on Linux. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
+      "note": "Version shown is the Docker Engine and CLI the sandbox is tested with on Linux: 29.9.2 on the development host since 2026-10-21 (decision P81, from Docker's apt repository), where its daemon ran the sandbox tests as CI's sandbox job runs them (DRYDOCK_REQUIRE_DOCKER=1: 24 passed, none skipped); CI's ubuntu-latest image carries its own engine. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
     },
     {
       "id": "tool:actions-runner",
@@ -6447,13 +6442,12 @@
       "group": "Tools Drydock runs or you install",
       "name": "Git (Drydock runs it for every repository; Git for Windows on a PC)",
       "kind": "tool",
-      "used": "2.43.0",
+      "used": "2.56.0",
       "latest": "2.56.0",
-      "status": "minor",
+      "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "Version control for every project: Drydock runs git for worktrees, commits, merges and the repository guard (internal/git), always with hooks, filters and external programs switched off. On a PC it is Git for Windows, which the person installs; nothing is bundled.",
-      "hold": "2.43.0 is the development host's distribution git, which the test suite runs; Drydock asks for no newer feature. A person's PC keeps its own Git for Windows, which its installer updates.",
-      "note": "The version shown is the git the development sandbox tests with (git --version). CI's Windows jobs use the Git for Windows of GitHub's windows-latest image, which is not pinned. Drydock uses only long-standing git commands."
+      "note": "The version shown is the git the development host tests with (git --version): 2.56.0, built from the v2.56.0 tag of github.com/git/git into /usr/local on 2026-10-21 (decision P81) because Ubuntu 24.04 ships 2.43.0 and the host's network reaches neither kernel.org nor the git-core PPA; the full Go suite passes on it. CI's Windows jobs use the Git for Windows of GitHub's windows-latest image, which is not pinned. Drydock uses only long-standing git commands; a person's PC keeps its own Git for Windows, which its installer updates."
     },
     {
       "id": "tool:semgrep",
@@ -6472,8 +6466,8 @@
       "group": "Tools Drydock runs or you install",
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
-      "used": "b11776",
-      "latest": "b11776",
+      "used": "b11778",
+      "latest": "b11778",
       "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6656,7 +6650,7 @@
       "name": "remix",
       "kind": "direct",
       "used": "3.0.0",
-      "latest": "2.17.5",
+      "latest": "3.0.0",
       "status": "current",
       "where": "ui/package.json",
       "role": "The UI framework: Remix 3 components (JSX, not React), the SPA router (remix/routes, remix/router, remix/spa), the test runner and assertions (remix test, remix/assert)."
