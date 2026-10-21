@@ -6,6 +6,7 @@ import { routes } from '../../routes.ts';
 import {
   clip,
   compact,
+  currentNode,
   connections,
   duration,
   edgeLabel,
@@ -16,6 +17,8 @@ import {
   MIN_ZOOM,
   neighbor,
   NODE_H,
+  READABLE_ZOOM,
+  readableView,
   NODE_W,
   runCost,
   statesAsOf,
@@ -179,6 +182,27 @@ describe('pan, zoom and keyboard moves', () => {
     expect(v.y).toBe(150);
     expect(fitView({ minX: 0, minY: 0, maxX: 100, maxY: 50 }, 2000, 2000).k).toBe(1.1);
     expect(fitView(b, 0, 0).k).toBe(1);
+  });
+
+  it('opens readable: the whole graph when it fits at 70 % or more, else 70 % around the current node (UI review P1-7)', () => {
+    const small = { minX: 0, minY: 0, maxX: 300, maxY: 100 };
+    expect(readableView(small, 800, 400, { x: 10, y: 10 })).toEqual(fitView(small, 800, 400));
+    const long = { minX: 0, minY: 0, maxX: 3000, maxY: 200 };
+    expect(fitView(long, 800, 400).k).toBeLessThan(READABLE_ZOOM);
+    // the focus point lands in the middle of the canvas
+    expect(readableView(long, 800, 400, { x: 1500, y: 100 })).toEqual({ x: 400 - 1500 * 0.7, y: 200 - 100 * 0.7, k: 0.7 });
+    // nothing to centre on, or no canvas yet: the fit
+    expect(readableView(long, 800, 400, undefined)).toEqual(fitView(long, 800, 400));
+    expect(readableView(long, 0, 0, { x: 1, y: 1 })).toEqual(fitView(long, 0, 0));
+  });
+
+  it('finds the node a run is at: waiting for you, then running, then failed, then the last that ran, then the entry', () => {
+    const st = (pairs: [string, 'started' | 'done' | 'failed' | 'waiting'][]) => new Map(pairs.map(([id, status]) => [id, { status, attempts: 1, runs: 1 }]));
+    expect(currentNode(g, st([['prepare', 'done'], ['work', 'started'], ['approve', 'waiting']]))).toBe('approve');
+    expect(currentNode(g, st([['prepare', 'done'], ['verify', 'failed'], ['work', 'started']]))).toBe('work');
+    expect(currentNode(g, st([['prepare', 'done'], ['verify', 'failed']]))).toBe('verify');
+    expect(currentNode(g, st([['prepare', 'done'], ['work', 'done']]))).toBe('work');
+    expect(currentNode(g, new Map())).toBe('prepare');
   });
 
   it('zooms about a point and clamps the zoom', () => {

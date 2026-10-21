@@ -213,6 +213,30 @@ export function fitView(b: Bounds, w: number, h: number, pad = 40): View {
   return { x: r1((w - bw * k) / 2 - b.minX * k), y: r1((h - bh * k) / 2 - b.minY * k), k };
 }
 
+/** The least zoom the graph opens at, where a node's text reads (UI review P1-7: a long graph fitted whole opened at 27 %). */
+export const READABLE_ZOOM = 0.7;
+
+/**
+ * The view a graph opens at: all of it when that fits at READABLE_ZOOM or more, else READABLE_ZOOM with the focus point (the
+ * current node's centre) in the middle of the canvas; pan, zoom or "Fit to view" see the rest.
+ */
+export function readableView(b: Bounds, w: number, h: number, focus: { x: number; y: number } | undefined): View {
+  const fit = fitView(b, w, h);
+  if (w <= 0 || h <= 0 || fit.k >= READABLE_ZOOM || !focus) return fit;
+  const k = READABLE_ZOOM;
+  return { x: r1(w / 2 - focus.x * k), y: r1(h / 2 - focus.y * k), k };
+}
+
+/** The node a run is at: one waiting for you, else one running, else one that failed, else the last that ran, else the entry. */
+export function currentNode(g: GraphView, states: Map<string, NodeState>): string | undefined {
+  for (const want of ['waiting', 'started', 'failed'] as const) {
+    const n = g.nodes.find((x) => states.get(x.id)?.status === want);
+    if (n) return n.id;
+  }
+  const ran = g.nodes.filter((x) => (states.get(x.id)?.status ?? 'pending') !== 'pending');
+  return ran.at(-1)?.id ?? g.entry[0] ?? g.nodes[0]?.id;
+}
+
 /** Zoom by a factor keeping the canvas point (cx, cy) still. */
 export function zoomAt(v: View, factor: number, cx: number, cy: number): View {
   const k = clampK(v.k * factor);

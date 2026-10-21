@@ -16,6 +16,7 @@ import { t, tone } from '../../ui/tokens.ts';
 import {
   clip,
   fitView,
+  readableView,
   graphGeometry,
   KIND_LABEL,
   neighbor,
@@ -206,6 +207,8 @@ export function WorkflowGraph(
     states: Map<string, NodeState>;
     asOf?: string;
     selected?: string;
+    /** The node the run is at: the graph opens readable around it. */
+    current?: string;
     onAsOf: (id: string | undefined) => void;
     onSelect: (id: string | undefined) => void;
     onOpenTurns: () => void;
@@ -218,7 +221,8 @@ export function WorkflowGraph(
   let geo: GraphGeom = { nodes: [], edges: [], bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 } };
   let canvas: HTMLDivElement | undefined;
   let size = { w: 0, h: 0 };
-  let view: View | undefined; // undefined: fit to the canvas (follows resizes)
+  let view: View | undefined; // undefined: the opening view, or all of it after "Fit to view" (both follow resizes)
+  let fit = false;
   let focusId: string | undefined;
   let drag: { x: number; y: number; vx: number; vy: number; moved: boolean } | undefined;
 
@@ -229,7 +233,11 @@ export function WorkflowGraph(
     }
     return geo;
   };
-  const current = (): View => view ?? fitView(geo.bounds, size.w, size.h);
+  const opening = (): View => {
+    const n = geo.nodes.find((b) => b.id === handle.props.current);
+    return readableView(geo.bounds, size.w, size.h, n ? { x: n.x + n.w / 2, y: n.y + n.h / 2 } : undefined);
+  };
+  const current = (): View => view ?? (fit ? fitView(geo.bounds, size.w, size.h) : opening());
   const setView = (v: View | undefined) => {
     view = v;
     void handle.update();
@@ -510,7 +518,7 @@ export function WorkflowGraph(
                 {Math.round(v.k * 100)}%
               </output>
               <IconButton icon={ZoomIn} label="Zoom in" size={15} mix={[on('click', () => zoomBy(1.2))]} />
-              <IconButton icon={Maximize} label="Fit to view" size={15} aria-pressed={view === undefined ? 'true' : 'false'} mix={[on('click', () => setView(undefined))]} />
+              <IconButton icon={Maximize} label="Fit to view" size={15} aria-pressed={view === undefined && fit ? 'true' : 'false'} mix={[on('click', () => ((fit = true), setView(undefined)))]} />
             </div>
             <span mix={hintCss} aria-hidden="true">
               Drag to pan · scroll to zoom

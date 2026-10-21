@@ -16,7 +16,7 @@ import { Page } from '../../ui/layout.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t } from '../../ui/tokens.ts';
 import { NodePanel, NoNodeSelected } from './node-panel.tsx';
-import { PENDING, runCost, runTone, statesAsOf } from './run-model.ts';
+import { currentNode, PENDING, runCost, runTone, statesAsOf } from './run-model.ts';
 import { Checkpoints, Events, McpCalls } from './run-tables.tsx';
 import { Turns } from './turns.tsx';
 import { WorkflowGraph } from './workflow-graph.tsx';
@@ -68,7 +68,8 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
 
   let tab: Tab = 'turns';
   let asOf: string | undefined;
-  let selected: string | undefined;
+  /** The node shown in the side panel; undefined: the node the run is at (UI review P1-7), null: none (the person closed it). */
+  let selected: string | null | undefined;
   let openTurn: string | undefined;
   let tabsEl: HTMLElement | undefined;
   let benchEl: HTMLElement | undefined;
@@ -92,7 +93,9 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
     const r = x?.run;
     const cp = x?.checkpoints.find((c) => c.id === asOf);
     const states = x ? statesAsOf(x, cp) : new Map();
-    const sel = selected && x?.graph?.nodes.some((n) => n.id === selected) ? selected : undefined;
+    const at = x?.graph ? currentNode(x.graph, states) : undefined;
+    const want = selected === null ? undefined : (selected ?? at);
+    const sel = want && x?.graph?.nodes.some((n) => n.id === want) ? want : undefined;
 
     return (
       <Page
@@ -182,12 +185,13 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                 states={states}
                 asOf={cp?.id}
                 selected={sel}
+                current={at}
                 onAsOf={(id) => {
                   asOf = id;
                   update();
                 }}
                 onSelect={(id) => {
-                  selected = id;
+                  selected = id ?? null;
                   update();
                 }}
                 onOpenTurns={() => showTab('turns')}
@@ -202,7 +206,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                     taskId={taskId}
                     asOfStep={cp?.step}
                     onSelect={(id) => {
-                      selected = id;
+                      selected = id ?? null;
                       update();
                     }}
                     onOpenTurn={(key) => {

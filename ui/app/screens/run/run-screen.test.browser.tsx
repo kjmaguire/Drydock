@@ -258,7 +258,8 @@ describe('RunScreen', () => {
     });
     const r = mount(<RunScreen taskId="t1" />, s);
     await ready(r);
-    expect(r.$('[data-testid="node-panel-empty"]')).toBeTruthy();
+    // it opens on the node the run is at (UI review P1-7): here the approval waiting for you
+    await waitFor(() => r.$('[data-testid="node-panel"][data-node="approve"]')!, r);
     await r.act(() => node(r, 'work')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     const panel = await waitFor(() => r.$('[data-testid="node-panel"][data-node="work"]')!, r);
     expect(node(r, 'work')!.getAttribute('aria-pressed')).toBe('true');
@@ -299,8 +300,9 @@ describe('RunScreen', () => {
   it('says what a node that has not run is waiting for', async () => {
     const r = mount(<RunScreen taskId="t1" />, setup());
     await ready(r);
-    await r.act(() => node(r, 'approve')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    // the run waits there, so it is the node shown first
     const panel = await waitFor(() => r.$('[data-testid="node-panel"][data-node="approve"]')!, r);
+    expect(node(r, 'approve')!.getAttribute('aria-pressed')).toBe('true');
     expect(panel.textContent).toContain('This node is waiting for you.');
     expect(panel.textContent).toContain('human');
   });
@@ -308,8 +310,12 @@ describe('RunScreen', () => {
   it('moves between nodes with the arrow keys, selects with Enter and clears with Escape', async () => {
     const r = mount(<RunScreen taskId="t1" />, setup());
     await ready(r);
+    // the node the run is at is selected, so Tab reaches it; Escape closes it and the first node takes the tab stop
+    expect(node(r, 'approve')!.getAttribute('tabindex')).toBe('0');
+    await r.act(() => key(node(r, 'approve')!, 'Escape'));
+    await waitFor(() => r.$('[data-testid="node-panel-empty"]')!, r);
     const first = node(r, 'prepare')!;
-    expect(first.getAttribute('tabindex')).toBe('0');
+    await waitFor(() => expect(first.getAttribute('tabindex')).toBe('0'), r);
     expect(node(r, 'work')!.getAttribute('tabindex')).toBe('-1');
     first.focus();
     expect(document.activeElement).toBe(first);
@@ -330,6 +336,11 @@ describe('RunScreen', () => {
     const vp = () => r.$('[data-testid="wf-viewport"]')!.getAttribute('transform')!;
     const zoom = () => r.$('[data-testid="wf-zoom"]')!.textContent!;
     const canvas = r.$('[data-testid="wf-canvas"]') as HTMLElement;
+    // it opens readable (UI review P1-7): at 70 % or more, not the whole graph squeezed small; Fit to view shows it all
+    expect(parseInt(zoom(), 10)).toBeGreaterThan(69);
+    expect(byText(r.container, 'button', 'Fit to view').getAttribute('aria-pressed')).toBe('false');
+    await r.act(() => byText(r.container, 'button', 'Fit to view').click());
+    expect(byText(r.container, 'button', 'Fit to view').getAttribute('aria-pressed')).toBe('true');
     const fitted = vp();
     const fittedZoom = zoom();
     await r.act(() => byText(r.container, 'button', 'Zoom in').click());
