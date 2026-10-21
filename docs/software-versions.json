@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-21T16:25:36Z",
-  "commit": "bc277da",
+  "generated": "2026-10-21T16:27:12Z",
+  "commit": "7616dbe",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -6733,19 +6733,5 @@
     "runtime": 4,
     "skill": 4,
     "tool": 14
-  },
-  "docDrift": [
-    {
-      "name": "github.com/openai/openai-go/v3",
-      "docs": "3.84.0",
-      "code": "3.85.0",
-      "ref": "docs/decisions.md"
-    },
-    {
-      "name": "modernc.org/sqlite",
-      "docs": "1.60.1",
-      "code": "1.61.0",
-      "ref": "docs/decisions.md"
-    }
-  ]
+  }
 }
