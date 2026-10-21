@@ -633,7 +633,9 @@ func TestOlderSchemaIsMigratedForwardOnImport(t *testing.T) {
 	good := exportAlpha(t, src, false)
 	old := filepath.Join(t.TempDir(), "old.zip")
 	rewrite(t, good, old, true, func(f map[string][]byte, m *Manifest) {
-		// turn project.db into a database as migration 00070 left it: no integrations tables, no agent purpose, goose at 70
+		// turn project.db into a database as migration 00070 left it: no integrations tables, no agent purpose, goose at 70.
+		// Every migration after 125 is rolled back too, so a new one is run again by the import (one that changes a table kept
+		// here fails the import loudly, which is the signal to undo its change above)
 		p := filepath.Join(t.TempDir(), "p.db")
 		os.WriteFile(p, f[DBName], 0o644)
 		raw, err := sql.Open("sqlite", "file:"+filepath.ToSlash(p))
@@ -643,7 +645,7 @@ func TestOlderSchemaIsMigratedForwardOnImport(t *testing.T) {
 		for _, q := range []string{`ALTER TABLE tasks DROP COLUMN origin`, `DROP TABLE recommendations`, `ALTER TABLE agent_templates DROP COLUMN practices`, `DROP TABLE skill_uses`, `DROP TABLE skill_library`, `DROP TABLE skill_registry_watch`, `DROP TABLE security_scans`, `DROP TABLE agent_templates`, `DROP TABLE agent_mcp_access`, `DROP TABLE project_mcp_servers`, `DROP TABLE mcp_library`, `DROP TABLE integration_assignments`, `DROP TABLE integration_outbox`, `DROP TABLE integration_rule_matches`, `DROP TABLE integration_rules`, `DROP TABLE external_items`,
 			`DROP TABLE integration_cursors`, `DROP TABLE integrations`, `ALTER TABLE agents DROP COLUMN practices`, `ALTER TABLE agents DROP COLUMN archived_at`, `ALTER TABLE agents DROP COLUMN purpose`, `DROP TABLE IF EXISTS room_attachments`, `ALTER TABLE agents DROP COLUMN route_models`, `ALTER TABLE agents DROP COLUMN wsl_distro`, `ALTER TABLE agents DROP COLUMN run_mode`, `ALTER TABLE projects DROP COLUMN brief`,
 			`DROP TABLE chats_fts`, `DROP TABLE chat_messages_fts`, `DROP TABLE chat_turns`, `DROP TABLE chat_messages`, `DROP TABLE chats`,
-			`DROP INDEX IF EXISTS events_project`, `ALTER TABLE task_reviews DROP COLUMN commit_sha`, `ALTER TABLE skills DROP COLUMN audience`, `DROP TABLE agent_skills`, `DROP TABLE lead_interventions`, `ALTER TABLE skills DROP COLUMN parse_notes`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 120, 121, 122, 123, 124, 125, 126)`} {
+			`DROP INDEX IF EXISTS events_project`, `ALTER TABLE task_reviews DROP COLUMN commit_sha`, `ALTER TABLE skills DROP COLUMN audience`, `DROP TABLE agent_skills`, `DROP TABLE lead_interventions`, `ALTER TABLE skills DROP COLUMN parse_notes`, `DELETE FROM goose_db_version WHERE version_id IN (80, 90, 91, 92, 93, 94, 95, 96, 97, 100, 101, 102, 103, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 120, 121, 122, 123, 124, 125) OR version_id > 125`} {
 			if _, err := raw.Exec(q); err != nil {
 				t.Fatalf("%s: %v", q, err)
 			}
