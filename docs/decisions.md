@@ -36,7 +36,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Policy and analysis | `cel.dev/cel-go` v0.32.0; `mvdan.cc/sh/v3` v3.14.1; `github.com/zricethezav/gitleaks/v8` v8.30.1 | mvdan/sh parses POSIX only: Windows command analysis needs a PowerShell/cmd strategy (see `security.md`). |
 | Terminal | `aymanbagabas/go-pty` v0.2.3 (ConPTY) plus `charmbracelet/x/ansi` v0.11.9 | Run on Windows to confirm; cannot take a job list (see D7). |
 | Verification tools | osv-scanner 2.7.0, Opengrep 1.31.0, Playwright 1.64.1, Wrangler 4.151.0 as external tools; osv-scanner and Opengrep come in the download (`packaging/bundle.json`, P77) and are updated by Drydock from their GitHub releases, checked against GitHub's SHA-256 digest (P66) | osv-scanner sends package metadata to osv.dev unless offline: disclosed. Opengrep (LGPL-2.1, native Windows binary) is the security scan's Code engine (P44); Drydock ships built-in rules for it (P77). |
-| Local models | llama.cpp's `llama-server`, the newest weekly Windows build (b11774 at the time of writing; not pinned), MIT, from `ggml-org/llama.cpp`'s GitHub release, checked against GitHub's SHA-256 digest; GGUF models from public Hugging Face repositories, checked against the Hub's SHA-256 | P65, `docs/local-models.md`. The TurboQuant fork (`AtomicBot-ai/atomic-llama-cpp-turboquant`) is the build the download carries (release `b10298-2.0.0`, P77). Not yet run against the real llama.cpp |
+| Local models | llama.cpp's `llama-server`, the newest weekly Windows build (not pinned: the Software Versions page shows the newest build as the one used), MIT, from `ggml-org/llama.cpp`'s GitHub release, checked against GitHub's SHA-256 digest; GGUF models from public Hugging Face repositories, checked against the Hub's SHA-256 | P65, `docs/local-models.md`. The TurboQuant fork (`AtomicBot-ai/atomic-llama-cpp-turboquant`) is the build the download carries (release `b10298-2.0.0`, P77). Not yet run against the real llama.cpp |
 | Repo map | `github.com/tree-sitter/go-tree-sitter` v0.25.0 (CGO) + MIT grammars: Go v0.25.0, TypeScript/TSX v0.23.2, JavaScript v0.25.0, Python v0.25.0, C# v0.23.5, Java v0.23.5, Rust v0.24.2; Aider algorithm | D5, P62: built in `internal/repomap` (Linux; the Windows CI jobs build it with MinGW gcc). The grammars' own `queries/tags.scm` plus our extra queries (TSX and JSX element references, which no upstream query covers, and TS, JS, Python, C#, Java, Rust additions). PHP and SQL, probed in Phase 0, are not built. The product exe is built with `CGO_ENABLED=1`. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
@@ -808,6 +808,10 @@ Open, owner action:
   not bundled). Semgrep OSS, the development-only engine that checks the built-in rules against their fixtures, is 1.182.0: every
   fixture passes under it, and the real SARIF capture the reader is tested on was taken again with it
   (`internal/scan/testdata/semgrep-oss-1.182.0.sarif`, the same two findings and the same matched code as 1.181.0's). llama.cpp is
-  not pinned (P65): Drydock installs the newest weekly build that carries the backend's archive with a SHA-256 digest, b11774 at
-  this audit; the TurboQuant build in the download (P77) is unchanged, b10298-2.0.0 being that fork's newest release. The same
-  audit found openai-go 3.84.0, taken the same way.
+  not pinned (P65): Drydock installs the newest build that carries the backend's archive with a SHA-256 digest. Its builds come out
+  several times a day (b11774 when this was written, b11776 an hour later), so a recorded number was behind by the next audit:
+  the audit now shows it at the newest build, and docs/software-notes.json records none. The TurboQuant build in the download
+  (P77) is unchanged, b10298-2.0.0 being that fork's newest release. The same audit found openai-go 3.84.0, taken the same way.
+  Govulncheck now runs from the audit again (through the database's mirror, `DRYDOCK_AUDIT_VULNDB`); a finding that stops at the
+  module, with the vulnerable package not imported, is no longer counted as in what is built (GO-2026-5932 on x/crypto's
+  openpgp, which Drydock never imports; govulncheck's own report leaves it out too).

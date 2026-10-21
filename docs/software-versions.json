@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-21T02:31:42Z",
-  "commit": "899ff2d-dirty",
+  "generated": "2026-10-21T02:52:03Z",
+  "commit": "e3854b3",
   "summary": {
     "current": 198,
     "major": 1,
@@ -6473,7 +6473,7 @@
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
       "used": "b11774",
-      "latest": "b11775",
+      "latest": "b11776",
       "status": "patch",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6714,16 +6714,9 @@
       "note": "The vendor lists its versions only on a web page (https://docs.anthropic.com/en/api/versioning): check it by hand."
     }
   ],
-  "vulnerabilities": [
-    {
-      "source": "govulncheck",
-      "id": "GO-2026-5932",
-      "package": "golang.org/x/crypto v0.58.0",
-      "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues"
-    }
-  ],
+  "vulnerabilities": [],
   "vulnerabilityScans": {
-    "govulncheck": "1 known vulnerabilities in what is built, 0 of them in code that is called",
+    "govulncheck": "0 known vulnerabilities in what is built, 0 of them in code that is called",
     "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {

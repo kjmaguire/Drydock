@@ -294,6 +294,19 @@ func agentSoftware(ctx context.Context) []Item {
 	return items
 }
 
+// followsNewest are the tools Drydock does not pin: it installs the newest release when a person presses Install or Update
+// (llama.cpp, decision P65, whose builds come out several times a day), so the version it uses is the newest one and
+// docs/software-notes.json carries none that would be a build or two behind by the next audit.
+var followsNewest = map[string]bool{"tool:llama.cpp": true}
+
+// usedVersion is the version a tool is shown as using: the newest for one Drydock does not pin, else the recorded one.
+func usedVersion(id, recorded, latest string) string {
+	if followsNewest[id] {
+		return latest
+	}
+	return recorded
+}
+
 // tools: programs Drydock runs or tells you to install, with the newest release. The version "used" is what the documentation
 // says the project is built and tested with (docs/software-notes.json "used"), because none of these is a dependency in a lock file.
 func tools(ctx context.Context) []Item {
@@ -351,6 +364,7 @@ func tools(ctx context.Context) []Item {
 		default:
 			it.Latest = npmLatest(ctx, t.npmPkg)
 		}
+		it.Used = usedVersion(t.id, it.Used, it.Latest)
 		if it.Used == "" {
 			it.Used, it.Status = "not pinned", "unknown"
 		}

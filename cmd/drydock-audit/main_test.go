@@ -272,6 +272,28 @@ func TestTheBundledToolsAreReadFromTheBundlePins(t *testing.T) {
 	}
 }
 
+// A tool Drydock does not pin (llama.cpp: the newest build is installed) is shown at the newest release, and
+// docs/software-notes.json records no version for it that the next build would leave behind.
+func TestAToolDrydockDoesNotPinIsShownAtTheNewestRelease(t *testing.T) {
+	old := root
+	root = sourceRoot(t)
+	t.Cleanup(func() { root = old })
+	if got := usedVersion("tool:llama.cpp", "b11774", "b11776"); got != "b11776" {
+		t.Errorf("llama.cpp is shown as using %q, want the newest build", got)
+	}
+	if got := usedVersion("tool:llama.cpp", "", ""); got != "" {
+		t.Errorf("with the newest unknown, llama.cpp is shown as using %q", got)
+	}
+	if got := usedVersion("tool:gh", "2.102.1", "2.103.0"); got != "2.102.1" {
+		t.Errorf("a pinned tool is shown as using %q, want the recorded version", got)
+	}
+	for id := range followsNewest {
+		if v, ok := toolUsed()[id]; ok {
+			t.Errorf("%s: docs/software-notes.json records %q for a tool Drydock does not pin", id, v)
+		}
+	}
+}
+
 // A lookup's own note (the fork read from its tags because GitHub's listing could not be read) survives the hand-written note.
 func TestALookupsNoteIsKeptBesideTheHandWrittenOne(t *testing.T) {
 	if got := withNote("The fork has not been reviewed.", "Newest release tag, read from the git tags."); got != "The fork has not been reviewed. Newest release tag, read from the git tags." {
