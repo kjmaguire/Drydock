@@ -222,7 +222,7 @@ func (s *Service) loadAttachments(ctx context.Context, c Chat, list []string) ([
 
 // recent returns up to limit messages of a chat before seq, oldest first.
 func (s *Service) recent(ctx context.Context, chatID string, beforeSeq int64, limit int) ([]Message, error) {
-	rows, err := s.d.DB.Reader().QueryContext(ctx, `SELECT id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at FROM chat_messages
+	rows, err := s.d.DB.Reader().QueryContext(ctx, `SELECT `+msgCols+` FROM chat_messages
 		WHERE chat_id=? AND seq<? ORDER BY seq DESC LIMIT ?`, chatID, beforeSeq, limit)
 	if err != nil {
 		return nil, err
@@ -366,6 +366,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	s.setTurnRun(t.turnID, m.RunID)
 	var pending strings.Builder
 	var lastDelta time.Time
+	calls := map[string]toolStart{} // tool calls of this attempt waiting for their result, by the CLI's call id
 	var deltaBuf strings.Builder
 	// flush publishes the buffered text. Unless all is set it stops at the last whitespace and keeps the rest, so a token that
 	// arrives in pieces is redacted whole (the scanner matches whole secrets, which contain no whitespace).
@@ -427,9 +428,31 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 				t.seen[tc.ID] = true
 			}
 			summary := s.d.Redact(ToolSummary(tc.Name, tc.Args))
-			if msg, ok := t.store(RoleTool, summary, tc.Name, tc.Args); ok {
-				s.publish(context.Background(), "chat.tool", c.ProjectID, map[string]any{"chatId": c.ID, "turnId": t.turnID, "name": msg.ToolName, "summary": summary, "messageId": msg.ID})
+			msg, err := s.insertMessage(context.Background(), c, t.turnID, RoleTool, summary, tc.Name, tc.Args, tc.ID)
+			if err != nil {
+				s.logf("chats: store tool message: %v", err)
+				return
 			}
+			if tc.ID != "" {
+				calls[tc.ID] = toolStart{msgID: msg.ID, at: time.Now()}
+			}
+			s.publish(context.Background(), "chat.tool", c.ProjectID, map[string]any{"chatId": c.ID, "turnId": t.turnID, "name": msg.ToolName, "summary": summary, "messageId": msg.ID})
+		case workflow.ChunkToolResult:
+			// how the call ended, on the call's own row: the UI shows it as done or failed with what it returned
+			var tr workflow.ToolResult
+			if ch.Decode(&tr) != nil || tr.ID == "" {
+				return
+			}
+			st, ok := calls[tr.ID]
+			if !ok {
+				return
+			}
+			delete(calls, tr.ID)
+			status := ToolOK
+			if tr.IsError {
+				status = ToolFailed
+			}
+			s.setToolResult(c, t.turnID, st.msgID, status, tr.Output, time.Since(st.at).Milliseconds())
 		case workflow.ChunkPermissionDenied:
 			var d workflow.PermissionDenial
 			if ch.Decode(&d) == nil && d.ToolName != "" {
@@ -483,6 +506,33 @@ func (s *Service) sessionUsage(ctx context.Context, chatID, sessionID string) js
 		return nil
 	}
 	return json.RawMessage(usage)
+}
+
+// toolStart is a tool call stored in this turn, waiting for its result.
+type toolStart struct {
+	msgID string
+	at    time.Time
+}
+
+// setToolResult records how a tool call ended on its message (redacted and bounded as its input is) and publishes
+// chat.tool_result; storage failures are logged and do not end the turn.
+func (s *Service) setToolResult(c Chat, turnID, msgID, status, output string, ms int64) {
+	out := s.d.Redact(strings.ToValidUTF8(output, "\uFFFD"))
+	if len(out) > s.o.MaxToolResult {
+		out = cutUTF8(out, s.o.MaxToolResult) + "\n[cut by Drydock: the result was longer than it keeps]"
+	}
+	if ms < 0 {
+		ms = 0
+	}
+	err := s.d.DB.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(context.Background(), `UPDATE chat_messages SET tool_status=?, tool_result=?, tool_ms=? WHERE id=? AND chat_id=?`, status, out, ms, msgID, c.ID)
+		return err
+	})
+	if err != nil {
+		s.logf("chats: store tool result: %v", err)
+		return
+	}
+	s.publish(context.Background(), "chat.tool_result", c.ProjectID, map[string]any{"chatId": c.ID, "turnId": turnID, "messageId": msgID, "status": status, "result": out, "ms": ms})
 }
 
 // store saves a message of this turn; storage failures are logged and do not end the turn.

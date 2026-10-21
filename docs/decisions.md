@@ -845,3 +845,11 @@ Open, owner action:
   and its input, Allow once or Refuse answers it, it expires after 30 minutes and is withdrawn when the turn ends. An approval
   selects the agent's `allow_once` option only, never `allow_always`. Read-only and sandboxed sessions still refuse. Not built:
   comparing the call the agent then makes with the approved one (docs/security.md s5).
+- **P84. Tool calls are shown as cards with how they went (2026-10-21, the CopilotKit/AG-UI comparison, phase 2).** A chat's tool
+  calls showed only the tool name and its input; whether a call succeeded, what it returned and how long it took were dropped
+  (chats stored no tool result). Each call now keeps the CLI's id of the call, its status (done or failed), its result
+  (redacted, at most 8 KiB) and its duration on its own message (migration 00126), `chat.tool_result` reports it as it happens,
+  and a fork carries it. The UI draws each call as a card: a status icon (a spinner while its turn runs, a check, a cross, or
+  "no result reported"), a readable name (MCP tools as "server · tool", Drydock's own as "Drydock · tool"), the call in one
+  line and its duration; opened, an edit shows the change as removed and added lines, a shell command shows `$ command` and its
+  output, anything else its input and result. All of it is text, never HTML.

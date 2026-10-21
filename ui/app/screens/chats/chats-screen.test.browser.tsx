@@ -593,6 +593,44 @@ describe('Conversation', () => {
     await waitFor(() => expect(sent).toEqual([['chat_a', RETRY_TEXT, []]]), r);
   });
 
+  it('tool calls are cards: an edit as a diff, a command with its output, a failure marked, one still running spinning', async () => {
+    const msgs = [
+      msg(1, 'user', 'fix it'),
+      msg(2, 'tool', 'Edit: calc.go', { toolName: 'Edit', toolInput: { file_path: 'calc.go', old_string: 'return 0', new_string: 'return a - b' }, toolStatus: 'ok', toolResult: 'The file was updated.', toolMs: 40 }),
+      msg(3, 'tool', 'Bash: go test ./...', { toolName: 'Bash', toolInput: { command: 'go test ./...' }, toolStatus: 'failed', toolResult: 'FAIL: TestSubtract', toolMs: 1234 }),
+      msg(4, 'tool', 'echo: hello', { toolName: 'mcp__drydock__chatmcp__echo', toolInput: { text: 'hello' } }),
+    ];
+    const { r } = conv(chat({ status: 'running' }), msgs);
+    const cards = await waitFor(() => {
+      const c = $$(r, '[data-testid="chat-tool"]');
+      if (c.length !== 3) throw new Error('three cards');
+      return c;
+    }, r);
+    const [edit, bash, echo] = cards as [HTMLElement, HTMLElement, HTMLElement];
+    expect(edit.getAttribute('data-state')).toBe('ok');
+    expect(edit.querySelector('summary strong')!.textContent).toBe('Edit');
+    expect(edit.querySelector('[data-testid="chat-tool-ms"]')!.textContent).toBe('40 ms');
+    expect(Array.from(edit.querySelectorAll('[data-testid="chat-tool-diff"] > div')).map((d) => [d.getAttribute('data-kind'), d.textContent])).toEqual([
+      ['-', '- return 0'],
+      ['+', '+ return a - b'],
+    ]);
+    expect(bash.getAttribute('data-state')).toBe('failed');
+    expect(bash.getAttribute('aria-label')).toBe('Bash: failed');
+    expect(bash.querySelector('[data-testid="chat-tool-command"]')!.textContent).toBe('$ go test ./...');
+    expect(bash.querySelector('[data-testid="chat-tool-result"]')!.textContent).toBe('FAIL: TestSubtract');
+    expect(bash.querySelector('[data-testid="chat-tool-ms"]')!.textContent).toBe('1.2 s');
+    expect(echo.getAttribute('data-state')).toBe('running'); // no result yet and its turn runs
+    expect(echo.querySelector('summary strong')!.textContent).toBe('chatmcp · echo');
+    expect(echo.querySelector('[role="status"]')).not.toBeNull();
+  });
+
+  it('a call that reported no result says so once its turn has ended', async () => {
+    const { r } = conv(chat(), [msg(1, 'user', 'look'), msg(2, 'tool', 'Read: a.go', { toolName: 'Read', toolInput: { file_path: 'a.go' } })]);
+    const card = await waitFor(() => must$(r, '[data-testid="chat-tool"]'), r);
+    expect(card.getAttribute('data-state')).toBe('unknown');
+    expect(card.textContent).toContain('No result was reported for this call.');
+  });
+
   it('a tool call the agent waits on is shown with its input, and Allow once or Refuse answers it', async () => {
     const answered: unknown[] = [];
     let waiting = [

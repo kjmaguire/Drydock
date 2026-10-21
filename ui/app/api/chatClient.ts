@@ -78,7 +78,24 @@ export interface ChatMessage {
   createdAt: number;
   /** The rule chat.allowTool would need (Claude chats only; empty when no safe exact rule exists). */
   suggestedRule?: string;
+  /** How a tool call ended: 'ok', 'failed', or absent while it runs (and when it reported no result). */
+  toolStatus?: 'ok' | 'failed' | string;
+  /** What the tool call returned, redacted and bounded (8 KB). */
+  toolResult?: string;
+  /** How long the tool call took, in milliseconds. */
+  toolMs?: number;
 }
+
+/** chat.tool_result: how one tool call of a chat ended. */
+export interface ChatToolResult {
+  chatId: string;
+  messageId: string;
+  status: string;
+  result: string;
+  ms: number;
+}
+export const isChatToolResult = (v: unknown): v is ChatToolResult =>
+  isRecord(v) && typeof v.chatId === 'string' && typeof v.messageId === 'string' && typeof v.status === 'string' && typeof v.result === 'string' && typeof v.ms === 'number';
 
 /** A page of messages, oldest first; hasMore says whether still older ones exist. */
 export interface ChatPage {

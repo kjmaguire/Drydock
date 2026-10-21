@@ -195,7 +195,7 @@ func (s *Service) ToolRead(ctx context.Context, callerID, chatID string, fromSeq
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := s.d.DB.Reader().QueryContext(ctx, `SELECT id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at FROM chat_messages
+	rows, err := s.d.DB.Reader().QueryContext(ctx, `SELECT `+msgCols+` FROM chat_messages
 		WHERE chat_id=? AND seq>=? ORDER BY seq LIMIT ?`, target.ID, fromSeq, limit+1)
 	if err != nil {
 		return ToolTranscript{}, err

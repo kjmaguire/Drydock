@@ -1141,3 +1141,49 @@ func TestAnACPChatsUnansweredRequestExpiresAndIsRefused(t *testing.T) {
 		t.Fatalf("an unanswered request: %s", all)
 	}
 }
+
+// A chat's tool calls keep how they ended: done or failed, what they returned (secrets redacted, the text bounded) and how
+// long they took, on the call's own message; chat.tool_result says so as it happens, and a fork carries it.
+func TestAChatsToolCallsKeepTheirResultAndStatus(t *testing.T) {
+	long := strings.Repeat("line of output\n", 1000) // well over the 8 KiB kept
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{
+		{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc.go"}`), Result: "package gocalc // token ghp_aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5"},
+		{Tool: "Bash", Input: json.RawMessage(`{"command":"go test ./..."}`), Result: "FAIL: TestSubtract", IsError: true},
+		{Tool: "Grep", Input: json.RawMessage(`{"pattern":"x"}`), Result: long},
+		{Say: "Done."},
+	}}, nil)
+	p, _ := e.setup("toolres")
+	c := e.create(map[string]any{"projectId": p.ID})
+	if ev := e.send(c.ID, "look"); ev["status"] != chats.TurnDone {
+		t.Fatalf("turn %v", ev)
+	}
+	d := e.get(c.ID)
+	if roles(d.Messages) != "user,tool,tool,tool,assistant" {
+		t.Fatalf("messages %s", roles(d.Messages))
+	}
+	read, bash, grep := d.Messages[1], d.Messages[2], d.Messages[3]
+	if read.ToolStatus != chats.ToolOK || !strings.HasPrefix(read.ToolResult, "package gocalc") || strings.Contains(read.ToolResult, "ghp_aB3dE5") || read.ToolMS < 0 {
+		t.Fatalf("read %+v", read)
+	}
+	if bash.ToolStatus != chats.ToolFailed || bash.ToolResult != "FAIL: TestSubtract" {
+		t.Fatalf("bash %+v", bash)
+	}
+	if grep.ToolStatus != chats.ToolOK || len(grep.ToolResult) > 8300 || !strings.HasSuffix(grep.ToolResult, "[cut by Drydock: the result was longer than it keeps]") {
+		t.Fatalf("a long result is bounded: %d bytes, ends %q", len(grep.ToolResult), grep.ToolResult[len(grep.ToolResult)-60:])
+	}
+	var got []string
+	for _, x := range e.eventsOf("chat.tool_result") {
+		if x["chatId"] == c.ID {
+			got = append(got, x["messageId"].(string)+"="+x["status"].(string))
+		}
+	}
+	if strings.Join(got, ",") != read.ID+"=ok,"+bash.ID+"=failed,"+grep.ID+"=ok" {
+		t.Fatalf("chat.tool_result %v", got)
+	}
+	var f chats.Chat
+	e.call("chat.fork", map[string]any{"id": c.ID}, &f)
+	fd := e.get(f.ID)
+	if fd.Messages[2].ToolStatus != chats.ToolFailed || fd.Messages[2].ToolResult != "FAIL: TestSubtract" {
+		t.Fatalf("a fork keeps the results: %+v", fd.Messages[2])
+	}
+}

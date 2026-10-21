@@ -1,9 +1,9 @@
 // One stored chat message, drawn like the room's compact comment thread: a 28px avatar and an author line at the head of a
-// group (you, or the agent), the text through ui/markdown.tsx (never innerHTML), tool calls as compact rows with the input
-// collapsible, refusals as a callout with the suggested allow rule, system notes and errors as quiet lines.
+// group (you, or the agent), the text through ui/markdown.tsx (never innerHTML), tool calls as cards with how they went
+// (chat-tool.tsx), refusals as a callout with the suggested allow rule, system notes and errors as quiet lines.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, ChevronRight, CircleAlert, GitFork, Info, ShieldOff, Wrench } from 'lucide';
+import { Check, CircleAlert, GitFork, Info, ShieldOff } from 'lucide';
 import type { ChatMessage } from '../../api/chatClient.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { Button } from '../../ui/button.tsx';
@@ -11,7 +11,8 @@ import { Avatar } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
-import { adapterLabel, agentWord, toolInputText } from './chats.ts';
+import { adapterLabel, agentWord } from './chats.ts';
+import { ToolCard } from './chat-tool.tsx';
 
 const rowCss = css({
   position: 'relative',
@@ -53,35 +54,6 @@ const bubbleCss = css({
   '& a': { color: 'inherit', textDecoration: 'underline' },
   '& code': { background: 'color-mix(in srgb, currentColor 14%, transparent)', color: 'inherit' },
   '& pre': { background: 'color-mix(in srgb, currentColor 10%, transparent)', color: 'inherit' },
-});
-
-const toolCss = css({
-  maxWidth: '760px',
-  margin: '2px 0',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rMd,
-  background: t.bgSurface,
-  fontSize: t.textSm,
-  '& > summary': {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    minWidth: '0',
-    height: '26px',
-    padding: `0 ${t.s2}`,
-    listStyle: 'none',
-    cursor: 'pointer',
-    borderRadius: t.rMd,
-    color: t.textMuted,
-  },
-  '& > summary::-webkit-details-marker': { display: 'none' },
-  '& > summary:hover': { color: t.text, background: t.bgHover },
-  '& > summary:focus-visible': { boxShadow: t.focus, outline: 'none' },
-  '& > summary .chev': { display: 'inline-flex', transition: `transform ${t.fast} ${t.ease}` },
-  '&[open] > summary .chev': { transform: 'rotate(90deg)' },
-  '& > summary strong': { color: t.text, fontWeight: '600', flex: 'none' },
-  '& > summary .sum': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: t.mono, fontSize: t.textXs },
-  '& pre': { margin: `0 ${t.s2} ${t.s2}`, maxHeight: '260px', fontSize: t.textXs },
 });
 
 const deniedCss = css({
@@ -189,17 +161,7 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
             </header>
           ) : null}
           {role === 'tool' ? (
-            <details mix={toolCss} data-testid="chat-tool">
-              <summary>
-                <span class="chev" aria-hidden="true">
-                  <Icon icon={ChevronRight} size={12} />
-                </span>
-                <Icon icon={Wrench} size={12} />
-                <strong>{m.toolName || 'Tool'}</strong>
-                <span class="sum">{summaryOf(m)}</span>
-              </summary>
-              {m.toolInput !== undefined ? <pre aria-label={`Input of ${m.toolName || 'the tool'}`}>{toolInputText(m.toolInput)}</pre> : <p style={{ margin: '0 8px 8px', color: t.textFaint }}>No input recorded.</p>}
-            </details>
+            <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
           ) : role === 'denied' ? (
             <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} />
           ) : quiet ? (
@@ -252,7 +214,7 @@ function DeniedCallout(
             <code>{rule}</code>
           </div>
         ) : (
-          <div class="rule">{claude ? 'No safe exact rule exists for this call (for example a pipeline). Change the permission mode in the chat settings if you want to allow it.' : 'Allow rules work only in Claude Code chats: this agent asks, and Drydock refuses on your behalf.'}</div>
+          <div class="rule">{claude ? 'No safe exact rule exists for this call (for example a pipeline). Change the permission mode in the chat settings if you want to allow it.' : 'Allow rules work only in Claude Code chats: this agent asks you each time it wants to use a tool.'}</div>
         )}
         {rule ? (
           <div class="actions">

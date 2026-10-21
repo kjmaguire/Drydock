@@ -44,6 +44,15 @@ const (
 	RoleSystem    = "system"
 )
 
+// How a tool call ended (Message.ToolStatus).
+const (
+	ToolOK     = "ok"
+	ToolFailed = "failed"
+)
+
+// msgCols are the columns scanMessage reads, in its order.
+const msgCols = `id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,tool_status,tool_result,tool_ms`
+
 // Chat statuses.
 const (
 	StatusIdle    = "idle"
@@ -152,6 +161,12 @@ type Message struct {
 	ToolInput json.RawMessage `json:"toolInput,omitempty"`
 	TurnID    string          `json:"turnId,omitempty"`
 	Created   int64           `json:"createdAt"`
+	// ToolStatus is how a tool call ended: ToolOK, ToolFailed, or "" while it runs (and for calls that reported no result, and
+	// rows from before results were kept). ToolResult is what it returned, redacted and bounded; ToolMS how long it took.
+	ToolStatus string `json:"toolStatus,omitempty"`
+	ToolResult string `json:"toolResult,omitempty"`
+	ToolMS     int64  `json:"toolMs,omitempty"`
+	toolCallID string // the CLI's id of the call, which its result names
 	// SuggestedRule is, for a denied message of an adapter that takes allow rules, the rule chat.allowTool would need so the
 	// next turn may use the tool ("Bash(npm test)", "Edit"). Computed when read; empty when no safe rule exists.
 	SuggestedRule string `json:"suggestedRule,omitempty"`
@@ -206,6 +221,7 @@ type Options struct {
 	MaxTextBytes    int           // a user message (default 100 KiB)
 	MaxBodyBytes    int           // a stored assistant message (default 256 KiB)
 	MaxToolInput    int           // stored tool input JSON (default 4096)
+	MaxToolResult   int           // stored tool result text (default 8192)
 	MaxRules        int           // allow rules per chat (default 50)
 	DeltaEvery      time.Duration // chat.delta coalescing (default 60ms)
 	AskTTL          time.Duration // how long a permission request waits for the person (default AskTTL)
@@ -232,6 +248,9 @@ func (o *Options) defaults() {
 	}
 	if o.MaxToolInput <= 0 {
 		o.MaxToolInput = 4096
+	}
+	if o.MaxToolResult <= 0 {
+		o.MaxToolResult = 8192
 	}
 	if o.MaxRules <= 0 {
 		o.MaxRules = 50
@@ -705,7 +724,7 @@ func (s *Service) Messages(ctx context.Context, id string, beforeSeq int64, limi
 	if beforeSeq <= 0 {
 		beforeSeq = 1 << 62
 	}
-	rows, err := s.d.DB.Reader().QueryContext(ctx, `SELECT id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at FROM chat_messages
+	rows, err := s.d.DB.Reader().QueryContext(ctx, `SELECT `+msgCols+` FROM chat_messages
 		WHERE chat_id=? AND seq<? ORDER BY seq DESC LIMIT ?`, id, beforeSeq, limit+1)
 	if err != nil {
 		return nil, false, err
@@ -744,7 +763,7 @@ func (s *Service) Messages(ctx context.Context, id string, beforeSeq int64, limi
 func scanMessage(r scanner) (Message, error) {
 	var m Message
 	var input string
-	if err := r.Scan(&m.ID, &m.ChatID, &m.Seq, &m.Role, &m.Body, &m.ToolName, &input, &m.TurnID, &m.Created); err != nil {
+	if err := r.Scan(&m.ID, &m.ChatID, &m.Seq, &m.Role, &m.Body, &m.ToolName, &input, &m.TurnID, &m.Created, &m.toolCallID, &m.ToolStatus, &m.ToolResult, &m.ToolMS); err != nil {
 		return m, err
 	}
 	if input != "" {
@@ -1104,19 +1123,19 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		if err := insertChatTx(ctx, tx, n); err != nil {
 			return err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)
+		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at,tool_status,tool_result,tool_ms FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)
 		if err != nil {
 			return err
 		}
 		type row struct {
-			seq                   int64
-			role, body, tool, inp string
-			created               int64
+			seq                                   int64
+			role, body, tool, inp, status, result string
+			created, ms                           int64
 		}
 		var copyRows []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.seq, &r.role, &r.body, &r.tool, &r.inp, &r.created); err != nil {
+			if err := rows.Scan(&r.seq, &r.role, &r.body, &r.tool, &r.inp, &r.created, &r.status, &r.result, &r.ms); err != nil {
 				rows.Close()
 				return err
 			}
@@ -1124,8 +1143,8 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		}
 		rows.Close()
 		for i, r := range copyRows {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-				ids.New("cmsg"), n.ID, i+1, r.role, r.body, r.tool, r.inp, "", r.created); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status,tool_result,tool_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+				ids.New("cmsg"), n.ID, i+1, r.role, r.body, r.tool, r.inp, "", r.created, r.status, r.result, r.ms); err != nil {
 				return err
 			}
 		}
@@ -1222,7 +1241,7 @@ func (s *Service) editRules(ctx context.Context, id string, edit func(Chat) (rul
 // ---- messages ----
 
 // insertMessage redacts and stores one message, then publishes chat.message.
-func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body, toolName string, toolInput json.RawMessage) (Message, error) {
+func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body, toolName string, toolInput json.RawMessage, toolCallID ...string) (Message, error) {
 	body = strings.ToValidUTF8(body, "�")
 	if len(body) > s.o.MaxBodyBytes {
 		body = cutUTF8(body, s.o.MaxBodyBytes) + "\n[cut by Drydock: the message was longer than it keeps]"
@@ -1231,12 +1250,15 @@ func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body,
 	if len(toolInput) > 0 {
 		m.ToolInput = s.boundInput(toolInput)
 	}
+	if len(toolCallID) > 0 {
+		m.toolCallID = toolCallID[0]
+	}
 	err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM chat_messages WHERE chat_id=?`, c.ID).Scan(&m.Seq); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created, m.toolCallID); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at=?, version=version+1 WHERE id=?`, m.Created, c.ID)

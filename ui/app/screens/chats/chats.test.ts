@@ -9,6 +9,7 @@ import { buildItems, isChatsPath } from '../../shell/palette-items.ts';
 import { EventStore } from '../../state/eventStore.ts';
 import { ev, FakeTransport } from '../../test/fakes.ts';
 import { ChatFeed } from './chat-feed.ts';
+import { durationText, editLines, toolLabel, toolState } from './chat-tool.tsx';
 import {
   adapterOptionText,
   adapterUnavailable,
@@ -244,6 +245,20 @@ describe('ChatFeed', () => {
     expect(f.lastTurn?.fallback).toBe(true);
   });
 
+  it('a tool result lands on its call: status, result and duration, and a malformed one is ignored', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.message', { chatId: 'c1', message: msg(3, 'tool', { id: 'm3', toolName: 'Bash', body: 'Bash: go test' }) });
+    expect(f.messages.find((m) => m.id === 'm3')?.toolStatus).toBeUndefined();
+    emit('chat.tool_result', { chatId: 'c1', messageId: 'm3', status: 'failed', result: 'FAIL', ms: 1200 });
+    const m = f.messages.find((x) => x.id === 'm3')!;
+    expect([m.toolStatus, m.toolResult, m.toolMs]).toEqual(['failed', 'FAIL', 1200]);
+    emit('chat.tool_result', { chatId: 'c1', messageId: 'm3', status: 'ok' }); // no result or duration: not what the feed reads
+    expect(f.messages.find((x) => x.id === 'm3')?.toolStatus).toBe('failed');
+    emit('chat.tool_result', { chatId: 'c1', messageId: 'unknown', status: 'ok', result: '', ms: 1 }); // a call not loaded
+    expect(f.messages).toHaveLength(3);
+  });
+
   it('ignores a chat.* event whose data is not what the feed reads, with a console warning, and goes on with the next (L43)', async () => {
     const { f, emit } = feed();
     await settle();
@@ -446,5 +461,42 @@ describe('ChatFeed', () => {
     expect(f.messages).toEqual([]);
     expect(f.hasMore).toBe(false);
     expect(f.error).toBeUndefined();
+  });
+});
+
+describe('Tool cards', () => {
+  it('names MCP tools as server and tool, Drydock\'s own as Drydock', () => {
+    expect(toolLabel('mcp__drydock__skills')).toBe('Drydock · skills');
+    expect(toolLabel('mcp__drydock__chatmcp__echo')).toBe('chatmcp · echo');
+    expect(toolLabel('mcp__github__create_issue')).toBe('github · create_issue');
+    expect(toolLabel('Bash')).toBe('Bash');
+    expect(toolLabel(undefined)).toBe('Tool');
+  });
+  it('says how long a call took', () => {
+    expect(durationText(undefined)).toBe('');
+    expect(durationText(840)).toBe('840 ms');
+    expect(durationText(1234)).toBe('1.2 s');
+    expect(durationText(42_000)).toBe('42 s');
+    expect(durationText(125_000)).toBe('2 min 5 s');
+  });
+  it('is running while its turn runs, then done, failed, or without a result', () => {
+    expect(toolState({}, true)).toBe('running');
+    expect(toolState({}, false)).toBe('unknown');
+    expect(toolState({ toolStatus: 'ok' }, true)).toBe('ok');
+    expect(toolState({ toolStatus: 'failed' }, false)).toBe('failed');
+  });
+  it('reads an edit as removed and added lines', () => {
+    expect(editLines({ file_path: 'a.go', old_string: 'return 0', new_string: 'return a - b\n// done' })).toEqual([
+      { kind: '-', text: 'return 0' },
+      { kind: '+', text: 'return a - b' },
+      { kind: '+', text: '// done' },
+    ]);
+    expect(editLines({ edits: [{ old_string: 'x', new_string: 'y' }, { old_string: '', new_string: 'z' }] })).toEqual([
+      { kind: '-', text: 'x' },
+      { kind: '+', text: 'y' },
+      { kind: '+', text: 'z' },
+    ]);
+    expect(editLines({ command: 'ls' })).toBeUndefined();
+    expect(editLines(undefined)).toBeUndefined();
   });
 });

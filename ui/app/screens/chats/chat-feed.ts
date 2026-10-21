@@ -10,7 +10,7 @@
 
 import { TypedEventTarget } from 'remix/component';
 import type { Chat, ChatClient, ChatMessage, ChatTurnEnd } from '../../api/chatClient.ts';
-import { isChat, isChatMessage, isChatTurnEnd, normalizeChat } from '../../api/chatClient.ts';
+import { isChat, isChatMessage, isChatToolResult, isChatTurnEnd, normalizeChat } from '../../api/chatClient.ts';
 import { LimitedWarn } from '../../api/guards.ts';
 import type { DrydockEvent } from '../../api/types.ts';
 import type { EventStore } from '../../state/eventStore.ts';
@@ -199,6 +199,15 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         this.messages = mergeMessages(this.messages, [m]);
         // the stored assistant block covers the text streamed so far (the core flushes deltas before it stores)
         if (m.role === 'assistant' && this.streaming) this.streaming = { ...this.streaming, text: '' };
+        break;
+      }
+      case 'chat.tool_result': {
+        if (!isChatToolResult(d)) return this.#ignore(e, 'result');
+        const i = this.messages.findIndex((m) => m.id === d.messageId);
+        if (i < 0) return; // a page not loaded: the stored row carries the result when it is read
+        const next = this.messages.slice();
+        next[i] = { ...next[i]!, toolStatus: d.status, toolResult: d.result, toolMs: d.ms };
+        this.messages = next;
         break;
       }
       case 'chat.updated': {
