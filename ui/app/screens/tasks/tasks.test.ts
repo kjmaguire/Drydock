@@ -152,8 +152,17 @@ describe('pending request payloads', () => {
   const req = (kind: string, payload: unknown): PendingRequest => ({ id: 'r', nodeId: 'n', step: 1, spec: { kind, title: 'x', payload } });
 
   it('reads files and branches and drops anything malformed', () => {
-    expect(payloadOf(req('review', { files: ['a.go', 3, 'b.go'], branch: 'drydock/t1', base: 7 }))).toEqual({ files: ['a.go', 'b.go'], branch: 'drydock/t1', base: undefined });
-    expect(payloadOf(req('review', undefined))).toEqual({ files: [], branch: undefined, base: undefined });
+    expect(payloadOf(req('review', { files: ['a.go', 3, 'b.go'], branch: 'drydock/t1', base: 7 }))).toEqual({ files: ['a.go', 'b.go'], branch: 'drydock/t1', base: undefined, taskId: undefined, diff: undefined });
+    expect(payloadOf(req('review', undefined))).toEqual({ files: [], branch: undefined, base: undefined, taskId: undefined, diff: undefined });
+    // the newest diff evidence gives the change's size and the patch to show (UI review P1-1)
+    const evidence = [
+      { id: 4, kind: 'diff', data: { Files: 3, Insertions: 40, Deletions: 2 } },
+      { id: 9, kind: 'diff', data: { Files: 1, Insertions: 4, Deletions: 'x' } },
+      { id: 7, kind: 'diff', data: { Files: 2, Insertions: 1, Deletions: 1 } },
+      { id: 12, kind: 'test', data: {} },
+    ];
+    expect(payloadOf(req('review', { taskId: 't1', evidence })).diff).toEqual({ id: 9, files: 1, insertions: 4, deletions: 0 });
+    expect(payloadOf(req('review', { taskId: 't1', evidence })).taskId).toBe('t1');
   });
 
   it('a spec payload is only a review in the spec phase; a budget pause has gate budget', () => {

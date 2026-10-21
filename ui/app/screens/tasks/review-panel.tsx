@@ -26,6 +26,7 @@ import { BudgetPausePanel } from '../shared/budget-pause.tsx';
 import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../shared/escalation.tsx';
 import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
+import { DiffView } from './raw-diff.tsx';
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, payloadOf, specPayload } from './tasks.ts';
 import { plural } from '../../lib/format.ts';
@@ -154,7 +155,13 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
             <summary>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', verticalAlign: 'middle' }}>
                 <Icon icon={FileDiff} size={13} />
-                {plural(info.files.length, 'file')} changed
+                {plural(info.diff?.files || info.files.length, 'file')} changed
+                {info.diff ? (
+                  <span data-testid="review-diffstat" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {' · '}
+                    <span style={{ color: 'var(--success)' }}>+{info.diff.insertions}</span> <span style={{ color: 'var(--danger)' }}>&minus;{info.diff.deletions}</span>
+                  </span>
+                ) : null}
               </span>
             </summary>
             <ul>
@@ -164,6 +171,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
                 </li>
               ))}
             </ul>
+            {/* the patch itself, beside the decision (UI review P1-1); read on request, of the newest diff */}
+            {info.diff && info.taskId ? <DiffView taskId={info.taskId} diffId={info.diff.id} /> : null}
           </details>
         ) : null}
         <ErrorNote error={error} what="Not sent" />

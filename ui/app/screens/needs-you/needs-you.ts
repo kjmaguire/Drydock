@@ -1,4 +1,5 @@
 import type { NeedsYouItem } from '../../api/types.ts';
+import { plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 
 export const KIND_LABEL: Record<string, string> = {
@@ -42,4 +43,21 @@ export function needsHint(it: NeedsYouItem): string {
   if (it.kind === 'chat_permission') return "A chat's agent asks to use a tool its rules do not allow, and its turn waits. Open the chat to see the exact call; allow it once or refuse. Nobody answering refuses it after 30 minutes.";
   if (it.kind === 'approval' && !it.taskId && !it.roomId) return "An outbound write to a connected service. Open the project's Integrations page to read the exact text and approve or decline.";
   return '';
+}
+
+/** The agent an item is about: the one that raised it, else the task's assignee. */
+export const needsAgent = (it: NeedsYouItem): string => it.agentId || it.context?.agent || '';
+
+/**
+ * The context line of a task's item, in parts (UI review P1-1): the change's size, the checks and the reviewer's verdict. The agent
+ * is shown beside it with its avatar. Empty when the item is not of a task or nothing was recorded yet.
+ */
+export function needsContextParts(it: NeedsYouItem): string[] {
+  const c = it.context;
+  if (!c) return [];
+  const out: string[] = [];
+  if (c.hasDiff) out.push(`${plural(c.files, 'file')} +${c.insertions} \u2212${c.deletions}`);
+  if (c.checksTotal > 0) out.push(`${c.checksPassed}/${c.checksTotal} checks passed`);
+  if (c.verdict) out.push(`reviewer: ${c.verdict}`);
+  return out;
 }

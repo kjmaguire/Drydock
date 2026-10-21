@@ -50,6 +50,7 @@ func (c *Core) NeedsYou(ctx context.Context, projectID string) ([]room.NeedsYouI
 	if err != nil {
 		return nil, err
 	}
+	c.addNeedsContext(ctx, out)
 	svc := c.Chats()
 	if svc == nil {
 		return out, nil

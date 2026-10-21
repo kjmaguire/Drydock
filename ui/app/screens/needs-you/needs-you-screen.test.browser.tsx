@@ -41,6 +41,26 @@ describe('NeedsYouScreen', () => {
     expect(r.$('h1')!.textContent).toContain('Needs you');
   });
 
+  it("shows what a task's review is about before it is opened: who, the change, checks and verdict (UI review P1-1)", async () => {
+    const s = servicesWith([
+      {
+        key: 'k1', kind: 'review', title: 'Review and merge: Fix rounding', severity: 2, taskId: 't1', createdAt: '2026-01-01T00:00:00Z',
+        context: { agent: 'a1', hasDiff: true, files: 1, insertions: 4, deletions: 1, checksPassed: 3, checksTotal: 4, verdict: 'SHIP' },
+      } as NeedsYouItem,
+    ]);
+    const r = mount(<NeedsYouScreen />, s);
+    const line = await waitFor(() => {
+      const el = r.$('[data-testid="needs-context"]');
+      if (!el) throw new Error('no context yet');
+      return el;
+    }, r);
+    expect(line.textContent).toBe('1 file +4 \u22121· 3/4 checks passed· reviewer: SHIP');
+    // the assignee is shown as the item's agent
+    expect(r.$('[data-testid="needs-item"] .meta')!.textContent).toContain('Ada');
+    const tones = Array.from(line.children).map((c) => c.getAttribute('data-tone'));
+    expect(tones).toEqual([null, 'err', 'ok']);
+  });
+
   it('says plainly when nothing is waiting', async () => {
     const r = mount(<NeedsYouScreen />, servicesWith([]));
     await waitFor(() => {

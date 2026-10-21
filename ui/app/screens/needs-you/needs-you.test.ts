@@ -2,11 +2,23 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { DrydockEvent, NeedsYouItem } from '../../api/types.ts';
 import { needsChanged } from '../../state/project.ts';
-import { needsHint, needsTarget } from './needs-you.ts';
+import { needsAgent, needsContextParts, needsHint, needsTarget } from './needs-you.ts';
 
 const base: NeedsYouItem = { key: 'k', kind: 'approval', title: 't', severity: 1, createdAt: '2026-01-01T00:00:00Z' } as NeedsYouItem;
 
 describe('Needs you targets and hints', () => {
+  it("gives a task's item a context line: the change's size, the checks and the verdict (UI review P1-1)", () => {
+    const base = { key: 'k', kind: 'review', severity: 2, title: 'Review and merge: Fix rounding', taskId: 't1', createdAt: '' } as NeedsYouItem;
+    const it1 = { ...base, context: { agent: 'agt_rita', hasDiff: true, files: 1, insertions: 4, deletions: 1, checksPassed: 4, checksTotal: 4, verdict: 'SHIP' } };
+    expect(needsContextParts(it1)).toEqual(['1 file +4 \u22121', '4/4 checks passed', 'reviewer: SHIP']);
+    expect(needsAgent(it1)).toBe('agt_rita');
+    // the agent that raised the item wins over the assignee; nothing recorded yet says nothing
+    expect(needsAgent({ ...it1, agentId: 'agt_other' })).toBe('agt_other');
+    expect(needsContextParts({ ...base, context: { hasDiff: false, files: 0, insertions: 0, deletions: 0, checksPassed: 0, checksTotal: 0 } })).toEqual([]);
+    expect(needsContextParts(base)).toEqual([]);
+    expect(needsContextParts({ ...base, context: { hasDiff: true, files: 3, insertions: 10, deletions: 0, checksPassed: 1, checksTotal: 2, verdict: 'REVISE' } })).toEqual(['3 files +10 \u22120', '1/2 checks passed', 'reviewer: REVISE']);
+  });
+
   it('goes to the task, else the room, else the page that holds the decision', () => {
     expect(needsTarget({ ...base, taskId: 'a b' })).toBe('/task/a%20b');
     expect(needsTarget({ ...base, kind: 'question', roomId: 'r1' })).toBe('/room/r1');

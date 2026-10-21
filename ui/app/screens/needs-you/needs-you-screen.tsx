@@ -1,5 +1,7 @@
 // Needs You: everything waiting on the human (approvals, reviews, questions, failed checks, watchdog pauses), most urgent
-// first, each a link to where it is decided. Nothing can be approved from here: the decision happens on the item's page.
+// first, each a link to where it is decided. A task's item carries a context line (who, the change's size, checks, verdict) so
+// the person sees what they are deciding. Nothing can be approved from here: the decision happens on the item's page, beside
+// its evidence (UI review P1-1 asked for Approve here; it stays on the page so nothing is approved unseen).
 
 import { css, type Handle } from 'remix/component';
 import { BadgeCheck, CircleHelp, CirclePause, Eye, Inbox, OctagonX } from 'lucide';
@@ -11,7 +13,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { KIND_LABEL, needsHint, needsTarget } from './needs-you.ts';
+import { KIND_LABEL, needsAgent, needsContextParts, needsHint, needsTarget } from './needs-you.ts';
 
 const KIND_ICON: Record<string, IconNode> = {
   approval: BadgeCheck,
@@ -42,6 +44,9 @@ const itemCss = css({
   '& > a:hover': { textDecoration: 'none', transform: 'translateY(-1px)' },
   '& .title': { fontWeight: '600', fontSize: t.textLg, letterSpacing: '-0.01em', minWidth: '0', overflowWrap: 'anywhere' },
   '& .meta': { gridColumn: '2', display: 'flex', alignItems: 'center', gap: t.s2, color: t.textMuted, fontSize: t.textSm },
+  '& .context': { gridColumn: '2', display: 'flex', flexWrap: 'wrap', gap: `2px ${t.s2}`, color: t.text, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' },
+  '& .context [data-tone="ok"]': { color: t.success },
+  '& .context [data-tone="err"]': { color: t.danger },
   '& .detail, & .hint': { gridColumn: '2', color: t.textMuted, fontSize: t.textSm, lineHeight: '1.5' },
   '& .hint': { color: t.text, marginTop: '4px' },
   '& .open': { gridColumn: '2', marginTop: t.s2, justifySelf: 'start' },
@@ -70,11 +75,14 @@ export function NeedsYouScreen(handle: Handle) {
             {items.map((it) => {
               const urgent = it.severity <= 1;
               const hint = needsHint(it);
+              const agentId = needsAgent(it);
+              const context = needsContextParts(it);
+              const c = it.context;
               return (
                 <li key={it.key} mix={itemCss} data-testid="needs-item" data-kind={it.kind} data-urgent={urgent ? 'true' : undefined}>
                   <a href={needsTarget(it)}>
-                    {it.agentId ? (
-                      <Avatar id={it.agentId} name={agentName(it.agentId, agents)} size={40} kind="agent" status={urgent ? 'var(--danger)' : 'var(--warning)'} />
+                    {agentId ? (
+                      <Avatar id={agentId} name={agentName(agentId, agents)} size={40} kind="agent" status={urgent ? 'var(--danger)' : 'var(--warning)'} />
                     ) : (
                       <span mix={kindIcon} style={{ background: urgent ? 'var(--danger-soft)' : 'var(--warning-soft)', color: urgent ? 'var(--danger)' : 'var(--warning)' }}>
                         <Icon icon={KIND_ICON[it.kind] ?? Inbox} size={18} />
@@ -83,15 +91,25 @@ export function NeedsYouScreen(handle: Handle) {
                     <span class="title">{it.title}</span>
                     <Badge tone={urgent ? 'err' : 'warn'}>{KIND_LABEL[it.kind] ?? it.kind}</Badge>
                     <span class="meta">
-                      {it.agentId ? (
+                      {agentId ? (
                         <>
-                          <Avatar id={it.agentId} name={agentName(it.agentId, agents)} size={16} kind="agent" />
-                          <span>{agentName(it.agentId, agents)}</span>
+                          <Avatar id={agentId} name={agentName(agentId, agents)} size={16} kind="agent" />
+                          <span>{agentName(agentId, agents)}</span>
                           <span aria-hidden="true">·</span>
                         </>
                       ) : null}
                       <span>{formatDateTime(it.createdAt)}</span>
                     </span>
+                    {context.length ? (
+                      <span class="context" data-testid="needs-context">
+                        {context.map((part, i) => (
+                          <span key={i} data-tone={/checks passed$/.test(part) ? (c!.checksPassed === c!.checksTotal ? 'ok' : 'err') : /^reviewer: /.test(part) ? (c!.verdict === 'SHIP' ? 'ok' : 'err') : undefined}>
+                            {i > 0 ? <span aria-hidden="true">· </span> : null}
+                            {part}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
                     {it.detail ? <span class="detail">{it.detail}</span> : null}
                     {hint ? (
                       <span class="hint" data-testid="needs-hint">

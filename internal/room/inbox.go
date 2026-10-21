@@ -128,6 +128,22 @@ type NeedsYouItem struct {
 	AgentID    string    `json:"agentId,omitempty"`
 	ChatID     string    `json:"chatId,omitempty"`
 	CreatedAt  time.Time `json:"createdAt"`
+	// Context is what a task's item is about, so the person can see what they are deciding before they open it (UI review
+	// P1-1). The core adds it to items of a task; nil for the rest.
+	Context *NeedsContext `json:"context,omitempty"`
+}
+
+// NeedsContext is a task's state in one line: who did the work, how big the change is, how its checks went and what its
+// reviewer said, as recorded in the task's evidence and reviews.
+type NeedsContext struct {
+	Agent        string `json:"agent,omitempty"` // the task's assignee
+	HasDiff      bool   `json:"hasDiff"`         // a diff was recorded; the counts below are of the newest one
+	Files        int    `json:"files"`
+	Insertions   int    `json:"insertions"`
+	Deletions    int    `json:"deletions"`
+	ChecksPassed int    `json:"checksPassed"` // of the newest attempt's checks, the latest result of each kind
+	ChecksTotal  int    `json:"checksTotal"`
+	Verdict      string `json:"verdict,omitempty"` // the newest reviewer verdict: SHIP or REVISE
 }
 
 // NeedsYou returns what a human must act on, approvals and failures first, then by age (oldest first). projectID may

@@ -36,6 +36,18 @@ describe('Review panel', () => {
     expect(r.$('[role="status"]')!.textContent).toContain('Answer sent');
   });
 
+  it("shows the change's size and its patch beside the decision (UI review P1-1)", async () => {
+    const taskDiff = recorder(async () => 'diff --git a/calc.go b/calc.go\n-\treturn a\n+\treturn a - b\n');
+    const payload = { taskId: 't1', files: ['calc.go'], branch: 'drydock/t1', base: 'main', evidence: [{ id: 5, kind: 'diff', data: { Files: 1, Insertions: 4, Deletions: 1 } }] };
+    const d = detail({ pending: [{ id: 'req-42', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge: T', payload } }] });
+    const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ taskDiff }));
+    const card = r.$('[data-testid="pending-request"]')!;
+    expect(card.querySelector('summary')!.textContent).toBe('1 file changed · +4 \u22121');
+    await r.act(() => byText(card, 'button', 'Show the raw patch').click());
+    await waitFor(() => expect(card.textContent).toContain('return a - b'), r);
+    expect(taskDiff.calls).toEqual([['t1', 5]]);
+  });
+
   // audit 2026-10-16, H8: the review card lists file names and a branch an agent chose
   it('writes out characters that are not drawn in the branch, the file names and the title', () => {
     const d = detail({

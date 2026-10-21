@@ -253,6 +253,16 @@ func TestUIMethodsDriveATaskFromCreationToHumanMerge(t *testing.T) {
 	if len(needs) == 0 {
 		t.Fatal("the pending approval must appear in Needs you")
 	}
+	// the item says what is being decided: the worker, the change's size, its checks and the reviewer's verdict (UI review P1-1)
+	var nc *room.NeedsContext
+	for _, n := range needs {
+		if n.TaskID == task.ID && n.Kind == room.NeedsReview {
+			nc = n.Context
+		}
+	}
+	if nc == nil || nc.Agent != worker.ID || !nc.HasDiff || nc.Files != 1 || nc.Insertions == 0 || nc.ChecksTotal == 0 || nc.ChecksPassed != nc.ChecksTotal || nc.Verdict != "SHIP" {
+		t.Fatalf("review item context = %+v", nc)
+	}
 
 	a.call("run.respond", map[string]any{"runId": runID, "requestId": detail.Pending[0].ID, "decision": "approved", "data": map[string]string{}}, nil)
 	a.waitFor("completion", func() bool {

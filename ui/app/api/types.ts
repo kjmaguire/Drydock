@@ -615,6 +615,19 @@ export interface NeedsYouItem {
   /** A chat whose CLI waits for the person to allow a tool call (kind chat_permission). */
   chatId?: string;
   createdAt: string;
+  /** What a task's item is about (UI review P1-1): the assignee, the newest diff's size, the checks and the reviewer's verdict. */
+  context?: NeedsContext;
+}
+
+export interface NeedsContext {
+  agent?: string;
+  hasDiff: boolean;
+  files: number;
+  insertions: number;
+  deletions: number;
+  checksPassed: number;
+  checksTotal: number;
+  verdict?: string;
 }
 
 export type PresenceName =
