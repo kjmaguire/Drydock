@@ -107,7 +107,9 @@ test("integrations: connect Linear without a project, see its fixed name and log
   await expect(row).toContainText('gocalc-linear');
   await expect(row).toContainText('Team: ENG');
   await row.getByRole('button', { name: 'Sync now' }).click();
-  await expect(row).toContainText('2 seen: 2 new');
+  // the background sync (every 15 s) may reach a new assignment before the click does: either way both items are in, and
+  // the second sync finds nothing new
+  await expect(row).toContainText(/2 seen: (2 new|0 new, 0 changed, 0 gone)/);
   await row.getByRole('button', { name: 'Items' }).click();
   await expect(row.getByTestId('ext-item')).toHaveCount(2);
   await expect(row.getByTestId('ext-item').first()).toContainText('ENG-10');
