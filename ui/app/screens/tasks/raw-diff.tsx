@@ -103,7 +103,7 @@ export function UnifiedDiff(handle: Handle<{ text: string }>) {
  * was recorded. When a newer patch is recorded the text shown is dropped and the person is told, never given the newer text
  * without asking.
  */
-export function DiffView(handle: Handle<{ taskId: string; diffId: number | undefined }>) {
+export function DiffView(handle: Handle<{ taskId: string; diffId: number | undefined; /** The button's words (the review card says where it shows the patch). */ label?: string }>) {
   const s = services(handle);
   const act = action(handle);
   let text: string | undefined;
@@ -144,7 +144,7 @@ export function DiffView(handle: Handle<{ taskId: string; diffId: number | undef
               </p>
             ) : null}
             <Button icon={FileCode} disabled={act.busy !== ''} mix={on('click', () => void show())}>
-              Show the raw patch
+              {handle.props.label ?? 'Show the raw patch'}
             </Button>
           </div>
         ) : text === '' ? (

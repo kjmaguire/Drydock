@@ -157,9 +157,10 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
                 <Icon icon={FileDiff} size={13} />
                 {plural(info.diff?.files || info.files.length, 'file')} changed
                 {info.diff ? (
-                  <span data-testid="review-diffstat" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {' · '}
-                    <span style={{ color: 'var(--success)' }}>+{info.diff.insertions}</span> <span style={{ color: 'var(--danger)' }}>&minus;{info.diff.deletions}</span>
+                  <span data-testid="review-diffstat" style={{ display: 'inline-flex', gap: '8px', fontVariantNumeric: 'tabular-nums' }}>
+                    <span aria-hidden="true">·</span>
+                    <span style={{ color: 'var(--success)' }}>+{info.diff.insertions}</span>
+                    <span style={{ color: 'var(--danger)' }}>&minus;{info.diff.deletions}</span>
                   </span>
                 ) : null}
               </span>
@@ -172,7 +173,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
               ))}
             </ul>
             {/* the patch itself, beside the decision (UI review P1-1); read on request, of the newest diff */}
-            {info.diff && info.taskId ? <DiffView taskId={info.taskId} diffId={info.diff.id} /> : null}
+            {info.diff && info.taskId ? <DiffView taskId={info.taskId} diffId={info.diff.id} label="Show the patch here" /> : null}
           </details>
         ) : null}
         <ErrorNote error={error} what="Not sent" />

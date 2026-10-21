@@ -42,8 +42,9 @@ describe('Review panel', () => {
     const d = detail({ pending: [{ id: 'req-42', nodeId: 'approve', step: 3, spec: { kind: 'review', title: 'Review and merge: T', payload } }] });
     const r = mount(<ReviewPanel detail={d} onChanged={() => undefined} />, svc({ taskDiff }));
     const card = r.$('[data-testid="pending-request"]')!;
-    expect(card.querySelector('summary')!.textContent).toBe('1 file changed · +4 \u22121');
-    await r.act(() => byText(card, 'button', 'Show the raw patch').click());
+    expect(card.querySelector('summary')!.textContent).toBe('1 file changed·+4\u22121');
+    expect(card.querySelector('[data-testid="review-diffstat"]')!.textContent).toBe('·+4\u22121');
+    await r.act(() => byText(card, 'button', 'Show the patch here').click());
     await waitFor(() => expect(card.textContent).toContain('return a - b'), r);
     expect(taskDiff.calls).toEqual([['t1', 5]]);
   });
