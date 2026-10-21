@@ -918,3 +918,19 @@ Open, owner action:
   the session reset happen in the transaction that claims the turn, so nothing is removed when the turn cannot start. Edit
   is offered on the person's messages and Regenerate on the newest answer, neither while a turn runs; the editor says that
   sending replaces the message and everything after it.
+- **P90. Files and pictures in chats (2026-10-21, the CopilotKit/AG-UI comparison, phase 4).** A chat could be given other
+  chats but no file. `chat.send` now takes up to four files (10 MB each). They are kept on disk under the chat's attachment
+  folder named by their id (the name the person gave is only shown and quoted, never a path, so no name reaches the file
+  system), readable by the owner only; the row holds name, type, size and hash, never content (migration 00128), and the message
+  lists them. A text file (UTF-8, no NUL, at most 1 MB) is quoted to the agent as data, redacted, at most 32 KB of it; a
+  picture (PNG, JPEG, GIF, WebP, at most 5 MB) is given beside the prompt to an agent that takes pictures
+  (`agents.ImageSender`: ACP image blocks for an agent that advertised `promptCapabilities.image`; Claude Code's stream-json
+  content blocks); anything else is named with its type and size. A chat whose agent does not take pictures is refused one
+  before anything is kept. Claude Code is not yet declared to take pictures: its manifest says `image_input: unknown`, and
+  the adapter declares it once the new paid contract CLAUDE-IMAGE-01 (a one-colour square the model must name) passes on a
+  signed-in run; the sending code and the stand-in that reads it are tested now. The person reads a file back through
+  `chat.attachment` (checked against its hash; a file changed on disk is refused, and a turn that would give it fails rather
+  than run without it). A fork copies the files under new ids, a resend keeps the replaced message's files, deleting the chat
+  deletes them, and the quoted history of a fresh session names them. The composer takes files from its button, a drop or a
+  paste, as removable chips; a message shows its files as the room's file cards (Save, and Show image for a picture; SVG is never
+  rendered), now shared by rooms and chats.

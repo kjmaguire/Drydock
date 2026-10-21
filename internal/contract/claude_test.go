@@ -1,10 +1,15 @@
 package contract_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"net"
 	"os"
@@ -1053,4 +1058,33 @@ func TestClaudeSessionTokensAndTheCacheAcrossWorktrees(t *testing.T) {
 	}
 	t.Logf("%sfirst request: Drydock %.0f tokens, the CLI's defaults with the user's settings %.0f; a second worktree wrote %.0f and read %.0f from the cache",
 		contract.NotePrefix, one.input, plain.input, two.written, two.read)
+}
+
+// CLAUDE-IMAGE-01 (paid): a picture beside the text, as claude.session.SendImages writes it (decision P90). The picture is a
+// small square of one colour made here; the model must name the colour.
+func TestClaudeReadsAPictureInStreamJSONInput(t *testing.T) {
+	exe, maxUSD := paidClaude(t, 0.01)
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	for x := 0; x < 32; x++ {
+		for y := 0; y < 32; y++ {
+			img.Set(x, y, color.RGBA{R: 220, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	args := drydockClaude().Args(agents.RunSpec{Model: "haiku", ExtraArgs: []string{"--tools", "", "--no-session-persistence", "--max-budget-usd", usd(maxUSD)}})
+	p := startClaude(t, "CLAUDE-IMAGE-01", exe, dir, childEnv(), args...)
+	tr := p.turnContent([]any{
+		map[string]any{"type": "text", "text": "What single colour fills this picture? Answer with one lowercase word."},
+		map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": "image/png", "data": base64.StdEncoding.EncodeToString(buf.Bytes())}},
+	}, 180*time.Second)
+	p.close()
+	text := strings.ToLower(tr.text)
+	if !strings.Contains(text, "red") {
+		t.Fatalf("the model did not see the picture (asked for its colour, said %q)", text)
+	}
+	t.Logf("%sthe picture was read: %q", contract.NotePrefix, strings.TrimSpace(text))
 }

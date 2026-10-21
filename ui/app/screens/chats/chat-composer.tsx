@@ -3,7 +3,7 @@
 // runs. A send while a turn runs is not possible (the core refuses it too: one turn at a time).
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { ArrowUp, MessagesSquare, Paperclip, Square, X } from 'lucide';
+import { ArrowUp, FileText, MessagesSquare, Paperclip, Square, X } from 'lucide';
 import type { Chat, ChatListItem } from '../../api/chatClient.ts';
 import { query, services } from '../../state/services.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -11,6 +11,8 @@ import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Popover } from '../../ui/popover.tsx';
 import { t } from '../../ui/tokens.ts';
 import { composerBar, composerBox, composerWrap, sendCss } from '../room/composer.tsx';
+import { checkFiles, formatSize, MAX_FILES } from '../room/messages.ts';
+import { IconButton } from '../../ui/button.tsx';
 import { adapterLabel, agentWord, chatTitle, MAX_ATTACH, relTime } from './chats.ts';
 
 const hintCss = css({ flex: '1', minWidth: '0', color: t.textFaint, fontSize: t.textXs, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', '& kbd': { margin: '0 2px' } });
@@ -45,6 +47,13 @@ const stopCss = css({
   fontWeight: '600',
   '&:hover': { background: t.dangerSoft, color: t.danger, borderColor: 'transparent' },
 });
+/** A file read in the composer, waiting to be sent. */
+export interface ComposerFile {
+  name: string;
+  size: number;
+  data: Uint8Array;
+}
+
 const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', margin: '0', padding: '10px 12px 0', listStyle: 'none' });
 const chipCss = css({
   display: 'inline-flex',
@@ -106,13 +115,31 @@ export function ChatComposer(
     disabledReason: string;
     sending: boolean;
     stopping: boolean;
-    onSend: (text: string, attach: string[]) => Promise<boolean>;
+    onSend: (text: string, attach: string[], files: ComposerFile[]) => Promise<boolean>;
     onStop: () => void;
   }>,
 ) {
   const s = services(handle);
   let text = '';
   let attach: string[] = [];
+  // files sent with the message (P90): read when added, so a send has them at hand
+  let files: ComposerFile[] = [];
+  let fileError: Error | undefined;
+  let fileInput: HTMLInputElement | undefined;
+  const addFiles = async (list: FileList | File[]) => {
+    fileError = undefined;
+    const incoming = Array.from(list);
+    const bad = checkFiles(files.length, incoming);
+    if (bad) {
+      fileError = new Error(bad);
+      void handle.update();
+      return;
+    }
+    const read: ComposerFile[] = [];
+    for (const f of incoming) read.push({ name: f.name, size: f.size, data: new Uint8Array(await f.arrayBuffer()) });
+    files = [...files, ...read];
+    void handle.update();
+  };
   let picking = false;
   let filter = '';
   /** The filter as searched (debounced): chat.list's full-text query, so any chat can be found, not only the recent ones. */
@@ -146,10 +173,12 @@ export function ChatComposer(
 
   const submit = async () => {
     if (!canSend()) return;
-    const ok = await handle.props.onSend(text, attach);
+    const ok = await handle.props.onSend(text, attach, files);
     if (ok) {
       text = '';
       attach = [];
+      files = [];
+      fileError = undefined;
       if (area) {
         area.value = '';
         area.style.height = '';
@@ -194,7 +223,45 @@ export function ChatComposer(
         aria-label="Send a message"
         data-testid="chat-composer"
       >
-        <div mix={composerBox} data-disabled={disabled ? 'true' : undefined}>
+        <div
+          mix={[
+            composerBox,
+            on('dragover', (e) => {
+              if (!disabled) e.preventDefault();
+            }),
+            on('drop', (e) => {
+              const fs = (e as DragEvent).dataTransfer?.files;
+              if (fs && fs.length && !disabled) {
+                e.preventDefault();
+                void addFiles(fs);
+              }
+            }),
+          ]}
+          data-disabled={disabled ? 'true' : undefined}
+        >
+          {files.length ? (
+            <ul mix={chipsCss} aria-label="Attached files">
+              {files.map((f, i) => (
+                <li key={`${i}:${f.name}`} mix={chipCss} data-testid="file-chip">
+                  <Icon icon={FileText} size={12} />
+                  <span class="name">{f.name}</span>
+                  <span>{formatSize(f.size)}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove attached file ${f.name}`}
+                    mix={on('click', () => {
+                      files = files.filter((_, j) => j !== i);
+                      void handle.update();
+                    })}
+                  >
+                    <Icon icon={X} size={12} />
+                  </button>
+                </li>
+              ))}
+              <li mix={explainCss}>A text file is quoted to {agentWord(chat.adapter)} as data; a picture goes only to an agent that takes pictures.</li>
+            </ul>
+          ) : null}
+          {fileError ? <ErrorNote error={fileError} /> : null}
           {attach.length ? (
             <div>
               <ul mix={chipsCss} aria-label="Attached chats">
@@ -230,9 +297,36 @@ export function ChatComposer(
                   void submit();
                 }
               }),
+              on('paste', (e) => {
+                const fs = (e as ClipboardEvent).clipboardData?.files;
+                if (fs && fs.length && !disabled) {
+                  e.preventDefault();
+                  void addFiles(fs);
+                }
+              }),
             ]}
           />
           <div mix={composerBar}>
+            <input
+              type="file"
+              multiple
+              hidden
+              data-testid="chat-file"
+              mix={[
+                ref((n) => (fileInput = n as HTMLInputElement)),
+                on('change', (e) => {
+                  const el = e.currentTarget as HTMLInputElement;
+                  if (el.files && el.files.length) void addFiles(el.files).then(() => (el.value = ''));
+                }),
+              ]}
+            />
+            <IconButton
+              icon={Paperclip}
+              label="Attach files"
+              title="Attach files (or drop or paste them here)"
+              disabled={disabled || files.length >= MAX_FILES}
+              mix={[on('click', () => fileInput?.click())]}
+            />
             <Popover
               open={picking}
               onOpen={() => ((picking = true), (filter = ''), (search = ''), clearTimeout(timer), void handle.update())}
@@ -243,7 +337,7 @@ export function ChatComposer(
               stopOutsideClick={false}
               trigger={(mix) => (
                 <button type="button" mix={[attachBtn, mix]} disabled={disabled} aria-expanded={picking ? 'true' : 'false'} title="Give the history of other chats to this message">
-                  <Icon icon={Paperclip} size={14} />
+                  <Icon icon={MessagesSquare} size={14} />
                   Attach chats{attach.length ? ` (${attach.length})` : ''}
                 </button>
               )}

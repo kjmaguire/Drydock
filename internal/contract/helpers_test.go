@@ -357,7 +357,13 @@ func (p *claudeProc) turn(prompt string) turn {
 // turnWithin is turn with a longer wait, for a turn that runs a long tool call.
 func (p *claudeProc) turnWithin(prompt string, limit time.Duration) turn {
 	p.t.Helper()
-	b, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": prompt}})
+	return p.turnContent(prompt, limit)
+}
+
+// turnContent sends a user message whose content is a string or a list of content blocks (text and image blocks, P90).
+func (p *claudeProc) turnContent(content any, limit time.Duration) turn {
+	p.t.Helper()
+	b, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 	if _, err := p.stdin.Write(append(b, '\n')); err != nil {
 		p.t.Fatalf("writing the prompt: %v (stderr: %s)", err, tail(p.stderr.String()))
 	}

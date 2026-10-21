@@ -40,6 +40,13 @@ func All() []Contract {
 			},
 		},
 		{
+			ID: "CLAUDE-IMAGE-01", CLI: "claude", Adapter: "claude",
+			Assumption: "stream-json input takes a user message whose content is a list of blocks, a text block then base64 image blocks, and the model sees the picture.",
+			Why:        "Pictures attached to a chat reach Claude Code this way (claude.session.SendImages, decision P90). The adapter does not declare image input until this passes.",
+			Files:      []string{"internal/agents/claude/adapter.go"},
+			Tests:      []TestRef{{Package: pkgContract, Test: "TestClaudeReadsAPictureInStreamJSONInput", EstUSD: 0.01, Env: real}},
+		},
+		{
 			ID: "CLAUDE-USAGE-01", CLI: "claude", Adapter: "claude",
 			Assumption: "The result event reports total_cost_usd and a modelUsage map keyed by model id with token counts and costUSD.",
 			Why:        "Budgets, the eval report and the cost shown for chats and runs come from these fields; a missing cost must show as unknown, never as zero.",

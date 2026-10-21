@@ -13,6 +13,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { adapterLabel, agentWord } from './chats.ts';
 import { ToolCard } from './chat-tool.tsx';
+import { ChatFiles } from './chat-files.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 
 const rowCss = css({
@@ -247,6 +248,7 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
               <Markdown source={m.body} />
             </div>
           )}
+          {m.attachments?.length && !editing ? <ChatFiles list={m.attachments} /> : null}
         </div>
         {forkable && !editing ? (
           <div class="chat-tools" mix={toolsCss}>

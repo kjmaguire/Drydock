@@ -24,6 +24,7 @@ import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
 import { ChatMessageRow } from './chat-message.tsx';
 import { ChatAsks } from './chat-asks.tsx';
+import type { ComposerFile } from './chat-composer.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
 import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
@@ -179,8 +180,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     return c;
   };
 
-  const send = async (text: string, attach: string[] = []): Promise<boolean> => {
-    const r = await act.run('send', () => s.client.chatSend(handle.props.id, text, attach));
+  const send = async (text: string, attach: string[] = [], files: ComposerFile[] = []): Promise<boolean> => {
+    const r = await act.run('send', () => s.client.chatSend(handle.props.id, text, attach, files));
     if (!r) return false;
     list.toBottom(); // before sent(): it may not emit (a turn that already ended), so this renders as well
     feed.sent(r.turnId, r.version);

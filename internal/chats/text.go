@@ -238,6 +238,13 @@ func renderTranscript(all []Message, budget, perMessage int) (string, int) {
 		if utf8.RuneCountInString(body) > perMessage {
 			body = clipRunes(body, perMessage) + " [cut]"
 		}
+		if len(m.Attachments) > 0 { // the files themselves are not quoted again: their names say what was there (P90)
+			var names []string
+			for _, a := range m.Attachments {
+				names = append(names, a.Name)
+			}
+			body += "\n[attached: " + strings.Join(names, ", ") + "]"
+		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "[%s, %s]\n", label, stamp(m.Created))
 		for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {

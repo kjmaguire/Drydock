@@ -78,7 +78,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.create` | `{projectId?, cwd?, title?, adapter?["claude"], wslDistro?[""], model?, effort?, permissionMode?, readHistory?[true], skills?[[]], mcpServers?[[]]}` | `Chat` |
 | `chat.get` | `{id}` | `{chat: Chat, messages: [Message] (latest 200, oldest first), hasMore}` |
 | `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `{messages: [Message] oldest first, hasMore}` (`hasMore`: still older messages exist) |
-| `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
+| `chat.send` | `{id, text, attach?: [chatId], files?: [{name, data (base64)}]}` (files: P90, at most 4, each at most 10 MB; a picture at most 5 MB and only to an agent that takes pictures) | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
 | `chat.resend` | `{id, seq, text?[the message's own text]}` | `{turnId, version}`: the person's message at `seq` and everything after it are replaced and a new turn runs from there; the session is dropped, so the turn starts a fresh one given the conversation before as quoted history (P89). Refused for a message that is not the person's, or while a turn runs (nothing is removed then) |
 | `chat.stop` | `{id}` | `{stopped}` (false when nothing was running) |
 | `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?, adapter?, wslDistro?, cwd?, skills?, mcpServers?}` | `Chat` |
@@ -87,6 +87,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.fork` | `{id, uptoSeq?[all]}` | `Chat` (new, messages copied up to and including `uptoSeq`, no session) |
 | `chat.allowTool` | `{id, tool}` | `Chat` |
 | `chat.disallowTool` | `{id, tool}` | `Chat` |
+| `chat.attachment` | `{id}` | `{id, name, mime, size, kind: text \| image \| file, data (base64)}`: a file sent with a message, checked against the hash kept when it was attached (P90) |
 | `chat.asks` | `{id}` | `[PendingAsk]`: the tool calls the chat's ACP agent waits to be allowed (P83) |
 | `chat.answer` | `{id, askId, allow}` | `{answered: true}`; allow lets exactly that call run once |
 

@@ -6,6 +6,7 @@ package fakeacp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -475,6 +476,14 @@ func promptText(p acp.PromptRequest) string {
 	for _, b := range p.Prompt {
 		if b.Text != nil {
 			sb.WriteString(b.Text.Text)
+		}
+		if b.Image != nil { // a picture beside the text (P90), noted so a test sees what arrived
+			raw, err := base64.StdEncoding.DecodeString(b.Image.Data)
+			if err != nil {
+				sb.WriteString("\n[image unreadable]")
+				continue
+			}
+			fmt.Fprintf(&sb, "\n[image %s, %d bytes]", b.Image.MimeType, len(raw))
 		}
 	}
 	return sb.String()

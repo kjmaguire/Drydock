@@ -506,6 +506,12 @@ func startedKind(kind string) bool {
 // RunTurn sends prompt and consumes the output until the turn ends. emit receives every chunk (may be nil). An error before
 // the session started wraps ErrNotStarted.
 func (m *Managed) RunTurn(ctx context.Context, prompt string, ctl *Controller, emit func(workflow.Chunk)) (TurnResult, error) {
+	return m.RunTurnImages(ctx, prompt, nil, ctl, emit)
+}
+
+// RunTurnImages is RunTurn with pictures beside the prompt (P90). The session must take them (agents.ImageSender); one that
+// does not refuses the turn before anything is sent.
+func (m *Managed) RunTurnImages(ctx context.Context, prompt string, images []agents.Image, ctl *Controller, emit func(workflow.Chunk)) (TurnResult, error) {
 	var res TurnResult
 	started := false
 	notStarted := func(err error) error {
@@ -519,7 +525,15 @@ func (m *Managed) RunTurn(ctx context.Context, prompt string, ctl *Controller, e
 		wait = 15 * time.Second
 	}
 	m.rt.publish(ctx, "agent.waiting", m.cfg, m.RunID, map[string]any{"state": "working"})
-	if err := m.Sess.Send(ctx, prompt); err != nil {
+	send := func() error { return m.Sess.Send(ctx, prompt) }
+	if len(images) > 0 {
+		is, ok := m.Sess.(agents.ImageSender)
+		if !ok {
+			return res, notStarted(errors.New("this agent does not take pictures"))
+		}
+		send = func() error { return is.SendImages(ctx, prompt, images) }
+	}
+	if err := send(); err != nil {
 		return res, notStarted(fmt.Errorf("send: %w", err))
 	}
 	for {

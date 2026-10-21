@@ -1,6 +1,8 @@
 // Typed client for the Chats section (docs/chats.md, decision P29): the human's own conversations with an agent CLI,
 // kept with every message, continued in the CLI's session, forked, searched and attached to later messages.
 
+import { encodeBase64 } from './attachClient.ts';
+import { decodeBase64 } from './dockClient.ts';
 import { isRecord } from './guards.ts';
 import type { Transport } from './transport.ts';
 
@@ -86,6 +88,17 @@ export interface ChatMessage {
   toolMs?: number;
   /** The agent's reasoning before this tool call or answer (P89), redacted and bounded. */
   thinking?: string;
+  /** The files the person sent with this message (P90). */
+  attachments?: ChatAttachment[];
+}
+
+/** A file attached to a chat message: text is quoted to the agent, a picture given beside the message, anything else named. */
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  kind: 'text' | 'image' | 'file' | string;
 }
 
 /** chat.tool_result: how one tool call of a chat ended. */
@@ -203,7 +216,10 @@ export interface ChatClient {
   /** Older messages, oldest first; hasMore says whether still older ones exist. */
   chatMessages(id: string, beforeSeq?: number, limit?: number): Promise<ChatPage>;
   /** The turn runs in the background; version is the chat's version once the turn was claimed (a snapshot at or after it shows the turn). */
-  chatSend(id: string, text: string, attach?: string[]): Promise<{ turnId: string; version: number }>;
+  /** files go with the message (P90): at most 4, each at most 10 MB; a picture only to an agent that takes pictures */
+  chatSend(id: string, text: string, attach?: string[], files?: { name: string; data: Uint8Array }[]): Promise<{ turnId: string; version: number }>;
+  /** A file attached to a chat message, with its bytes. */
+  chatAttachment(id: string): Promise<ChatAttachment & { data: Uint8Array }>;
   chatStop(id: string): Promise<{ stopped: boolean }>;
   chatUpdate(u: ChatUpdate): Promise<Chat>;
   chatDelete(id: string): Promise<void>;
@@ -241,7 +257,12 @@ export function createChatClient(t: Transport): ChatClient {
       return { chat: normalizeChat(d.chat), ...page(d) };
     },
     chatMessages: async (id, beforeSeq = 0, limit = 100) => page(await t.call<ChatPage | null>('chat.messages', { id, beforeSeq, limit })),
-    chatSend: (id, text, attach = []) => t.call('chat.send', { id, text, attach }),
+    chatSend: (id, text, attach = [], files = []) =>
+      t.call('chat.send', files.length ? { id, text, attach, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) } : { id, text, attach }),
+    chatAttachment: async (id) => {
+      const r = await t.call<ChatAttachment & { data: string | null }>('chat.attachment', { id });
+      return { ...r, data: decodeBase64(r.data) };
+    },
     chatStop: (id) => t.call('chat.stop', { id }),
     chatUpdate: async (u) => normalizeChat(await t.call<Chat>('chat.update', u)),
     chatDelete: async (id) => {

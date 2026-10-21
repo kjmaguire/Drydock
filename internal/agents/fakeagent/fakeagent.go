@@ -6,6 +6,7 @@ package fakeagent
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -335,6 +336,34 @@ func (a *agent) loop(in io.Reader) int {
 				text := ""
 				if len(m.Message.Content) > 0 && m.Message.Content[0] == '"' {
 					_ = json.Unmarshal(m.Message.Content, &text)
+				} else if len(m.Message.Content) > 0 && m.Message.Content[0] == '[' {
+					// a list of blocks (pictures beside the text, P90): the text blocks are the prompt, and each picture is noted
+					// in it as "[image <media type>, <n> bytes]" so a test sees what arrived
+					var blocks []struct {
+						Type   string `json:"type"`
+						Text   string `json:"text"`
+						Source struct {
+							Type      string `json:"type"`
+							MediaType string `json:"media_type"`
+							Data      string `json:"data"`
+						} `json:"source"`
+					}
+					_ = json.Unmarshal(m.Message.Content, &blocks)
+					var parts []string
+					for _, b := range blocks {
+						switch b.Type {
+						case "text":
+							parts = append(parts, b.Text)
+						case "image":
+							raw, err := base64.StdEncoding.DecodeString(b.Source.Data)
+							if err != nil || b.Source.Type != "base64" {
+								parts = append(parts, "[image unreadable]")
+								continue
+							}
+							parts = append(parts, fmt.Sprintf("[image %s, %d bytes]", b.Source.MediaType, len(raw)))
+						}
+					}
+					text = strings.Join(parts, "\n")
 				}
 				a.mu.Lock()
 				if a.running {

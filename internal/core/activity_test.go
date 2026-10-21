@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/agui"
 	"github.com/kjmaguire/drydock/internal/core"
-	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 

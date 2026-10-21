@@ -181,6 +181,19 @@ type Session interface {
 	PID() int
 }
 
+// Image is a picture a person gives an agent with a message (decision P90): its media type (image/png, image/jpeg,
+// image/gif, image/webp) and its bytes.
+type Image struct {
+	MIME string
+	Data []byte
+}
+
+// ImageSender is a Session that can start a turn with pictures beside the text (Capabilities.ImageInput). A session that is
+// not one takes text only.
+type ImageSender interface {
+	SendImages(ctx context.Context, msg string, images []Image) error
+}
+
 // Adapter knows one CLI.
 type Adapter interface {
 	ID() string

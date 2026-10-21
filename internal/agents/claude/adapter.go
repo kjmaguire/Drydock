@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -502,6 +503,21 @@ func (s *session) write(v any) error {
 
 func (s *session) Send(ctx context.Context, msg string) error {
 	return s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": msg}})
+}
+
+// SendImages implements agents.ImageSender (P90): stream-json input takes a user message whose content is a list of blocks,
+// the text then each picture as a base64 image block, as the Messages API spells them. The adapter does not declare
+// ImageInput until the live contract CLAUDE-IMAGE-01 has shown the CLI reads them, so Drydock does not offer pictures to
+// Claude chats yet; the method is here for that contract and for the day it passes.
+func (s *session) SendImages(ctx context.Context, msg string, images []agents.Image) error {
+	if len(images) == 0 {
+		return s.Send(ctx, msg)
+	}
+	content := []any{map[string]any{"type": "text", "text": msg}}
+	for _, im := range images {
+		content = append(content, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": im.MIME, "data": base64.StdEncoding.EncodeToString(im.Data)}})
+	}
+	return s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 }
 
 func (s *session) Interrupt(ctx context.Context) error {

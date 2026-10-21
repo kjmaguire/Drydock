@@ -47,22 +47,33 @@ const metaCss = css({
 const actsCss = css({ display: 'flex', alignItems: 'center', gap: '2px', flex: 'none' });
 const previewCss = css({ display: 'block', maxWidth: '100%', maxHeight: '320px', borderRadius: t.rMd, border: `1px solid ${t.border}` });
 
+/** Reads an attachment's bytes through the core (the room's or a chat's). */
+export type ReadAttachment = (id: string) => Promise<{ data: Uint8Array }>;
+
 export function Attachments(handle: Handle<{ m: Message }>) {
+  const s = services(handle);
   return () => {
     const list = attachmentsOf(handle.props.m);
+    return <FileCards list={list} read={(id) => s.client.roomAttachment(id)} />;
+  };
+}
+
+/** Attached files as cards, each read through `read` on request (rooms and chats, P90). */
+export function FileCards(handle: Handle<{ list: readonly AttachmentInfo[]; read: ReadAttachment }>) {
+  return () => {
+    const { list, read } = handle.props;
     if (list.length === 0) return null;
     return (
       <ul mix={listCss} aria-label="Attached files">
         {list.map((a) => (
-          <AttachmentItem key={a.id} a={a} />
+          <AttachmentItem key={a.id} a={a} read={read} />
         ))}
       </ul>
     );
   };
 }
 
-function AttachmentItem(handle: Handle<{ a: AttachmentInfo }>) {
-  const s = services(handle);
+function AttachmentItem(handle: Handle<{ a: AttachmentInfo; read: ReadAttachment }>) {
   let error: Error | undefined;
   let preview: string | undefined;
   let url: string | undefined;
@@ -76,7 +87,7 @@ function AttachmentItem(handle: Handle<{ a: AttachmentInfo }>) {
     busy = true;
     void handle.update();
     try {
-      return await s.client.roomAttachment(handle.props.a.id);
+      return await handle.props.read(handle.props.a.id);
     } catch (e) {
       error = e instanceof Error ? e : new Error(String(e));
       return undefined;

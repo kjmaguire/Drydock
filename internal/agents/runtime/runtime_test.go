@@ -388,3 +388,34 @@ func TestUsageThatCannotBeRecordedIsReportedInsteadOfLost(t *testing.T) {
 		t.Fatalf("%s", evs[0].Data)
 	}
 }
+
+// P90: a turn can carry pictures beside its prompt. Claude Code's stream-json input takes them as image blocks after the text
+// (what the scripted stand-in, a labelled test double, reads back); a session that cannot take pictures refuses the turn
+// before anything is sent.
+func TestATurnCarriesPicturesToASessionThatTakesThem(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "seen"}}})
+	ctx := context.Background()
+	m, err := h.rt.Spawn(ctx, h.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 40)...)
+	if _, err := m.RunTurnImages(ctx, "what is this?", []agents.Image{{MIME: "image/png", Data: png}, {MIME: "image/jpeg", Data: []byte{0xff, 0xd8, 0xff}}}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if pr := prompts(t, h.dir); len(pr) != 1 || pr[0] != "what is this?\n[image image/png, 48 bytes]\n[image image/jpeg, 3 bytes]" {
+		t.Fatalf("what the CLI read: %q", pr)
+	}
+	// a session that is not an agents.ImageSender is refused the pictures, and nothing reaches it
+	m.Sess = textOnly{m.Sess}
+	if _, err := m.RunTurnImages(ctx, "again", []agents.Image{{MIME: "image/png", Data: png}}, nil, nil); err == nil || !strings.Contains(err.Error(), "does not take pictures") || !errors.Is(err, rt.ErrNotStarted) {
+		t.Fatalf("err %v", err)
+	}
+	if pr := prompts(t, h.dir); len(pr) != 1 {
+		t.Fatalf("a refused turn sent something: %q", pr)
+	}
+	_ = m.Stop(ctx)
+}
+
+// textOnly hides a session's ImageSender (a labelled test double of a CLI that takes text only).
+type textOnly struct{ agents.Session }

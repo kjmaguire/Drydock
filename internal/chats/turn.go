@@ -37,9 +37,12 @@ type SendReq struct {
 	ID     string   `json:"id"`
 	Text   string   `json:"text"`
 	Attach []string `json:"attach"` // ids of other chats whose transcripts this turn is given
+	// Files are files and pictures sent with the message (P90): at most MaxFiles, each at most MaxFileBytes.
+	Files []FileIn `json:"files"`
 
-	replaceFrom int64  // Resend: the person's message this turn replaces, with everything after it
-	replaceID   string // and that message's id, checked again once the turn holds the chat
+	replaceFrom int64        // Resend: the person's message this turn replaces, with everything after it
+	replaceID   string       // and that message's id, checked again once the turn holds the chat
+	keep        []Attachment // and its files, which the new message keeps
 }
 
 // ResendReq is chat.resend: the person's message at Seq is replaced by Text (the same text when empty: regenerate), the
@@ -76,7 +79,9 @@ func (s *Service) Resend(ctx context.Context, r ResendReq) (SendResult, error) {
 	if strings.TrimSpace(text) == "" {
 		text = body
 	}
-	return s.Send(ctx, SendReq{ID: r.ID, Text: text, replaceFrom: r.Seq, replaceID: id})
+	var atts string
+	_ = s.d.DB.Reader().QueryRowContext(ctx, `SELECT attachments FROM chat_messages WHERE id=?`, id).Scan(&atts)
+	return s.Send(ctx, SendReq{ID: r.ID, Text: text, replaceFrom: r.Seq, replaceID: id, keep: attachmentsOf(atts)})
 }
 
 // SendResult is what chat.send returns.
@@ -117,6 +122,15 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	attached, err := s.loadAttachments(ctx, c, r.Attach)
 	if err != nil {
 		return SendResult{}, err
+	}
+	files, err := s.checkFiles(r.Files, caps)
+	if err != nil {
+		return SendResult{}, err
+	}
+	for _, k := range r.keep { // a resend keeps the replaced message's pictures: the chat's agent must still take them
+		if k.Kind == KindImage && !caps.ImageInput {
+			return SendResult{}, fmt.Errorf("%s is a picture, and this chat's agent does not take pictures in Drydock", k.Name)
+		}
 	}
 	if c.WSLDistro != "" {
 		// the distro may be gone, or its CLI signed out, since the chat was created: say so before anything is claimed
@@ -164,7 +178,9 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	}
 	aj, _ := json.Marshal(attachedIDs)
 	var claimed bool
+	var dropped []string // files of the messages a resend removes
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		dropped = nil
 		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=?, version=version+1 WHERE id=? AND status<>?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning)
 		if err != nil {
 			return err
@@ -178,6 +194,26 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 			var role string
 			if err := tx.QueryRowContext(ctx, `SELECT role FROM chat_messages WHERE id=? AND chat_id=? AND seq=?`, r.replaceID, c.ID, r.replaceFrom).Scan(&role); err != nil || role != RoleUser {
 				return ErrNotYourMessage
+			}
+			keep := map[string]bool{}
+			for _, k := range r.keep {
+				keep[k.ID] = true
+			}
+			rows, err := tx.QueryContext(ctx, `SELECT a.id FROM chat_attachments a JOIN chat_messages m ON m.id=a.message_id WHERE m.chat_id=? AND m.seq>=?`, c.ID, r.replaceFrom)
+			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				var id string
+				if rows.Scan(&id) == nil && !keep[id] {
+					dropped = append(dropped, id)
+				}
+			}
+			rows.Close()
+			for _, id := range dropped {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM chat_attachments WHERE id=?`, id); err != nil {
+					return err
+				}
 			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM chat_messages WHERE chat_id=? AND seq>=?`, c.ID, r.replaceFrom); err != nil {
 				return err
@@ -199,10 +235,17 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	c.Cwd, c.Status = cwd, StatusRunning
 	if r.replaceFrom > 0 {
 		c.SessionID = ""
+		s.removeAttachmentFiles(c.ID, dropped)
 		s.publish(ctx, "chat.rewound", c.ProjectID, map[string]any{"chatId": c.ID, "fromSeq": r.replaceFrom})
 	}
-	user, err := s.insertMessage(ctx, c, turnID, RoleUser, text, "", nil)
+	if err := s.storeFiles(c.ID, files); err != nil {
+		s.endTurnRow(c, turnID, TurnError, err.Error())
+		release()
+		return SendResult{}, fmt.Errorf("the attached files could not be kept: %w", err)
+	}
+	user, err := s.insertMessage(ctx, c, turnID, RoleUser, text, "", nil, msgExtra{files: files, keep: r.keep})
 	if err != nil {
+		s.dropFiles(c.ID, files)
 		s.endTurnRow(c, turnID, TurnError, err.Error())
 		release()
 		return SendResult{}, err
@@ -314,7 +357,13 @@ func hasConversation(ms []Message) bool {
 func (s *Service) run(ctx context.Context, c Chat, caps agents.Capabilities, turnID string, user Message, attachBlock string) {
 	tctx, cancel := context.WithTimeoutCause(ctx, s.o.TurnTimeout, fmt.Errorf("the turn took longer than %s and was stopped", s.o.TurnTimeout))
 	defer cancel()
-	base := attachBlock + user.Body
+	fileBlock, images, ferr := s.turnFiles(context.Background(), c.ID, user.Attachments)
+	if ferr != nil {
+		t := &turnRun{s: s, c: c, turnID: turnID, seen: map[string]bool{}}
+		t.finish(tctx, attemptOut{err: ferr}, false, false)
+		return
+	}
+	base := attachBlock + fileBlock + user.Body
 	earlier, err := s.recent(context.Background(), c.ID, user.Seq, 400)
 	if err != nil {
 		s.logf("chats: read history: %v", err)
@@ -333,7 +382,7 @@ func (s *Service) run(ctx context.Context, c Chat, caps agents.Capabilities, tur
 	if resume {
 		resumeID = c.SessionID
 	}
-	t := &turnRun{s: s, c: c, turnID: turnID, seen: map[string]bool{}}
+	t := &turnRun{s: s, c: c, turnID: turnID, seen: map[string]bool{}, images: images}
 	out := t.attempt(tctx, prompt, resumeID)
 	resumed := resume
 	if resume && out.resumeFailed() && ctx.Err() == nil {
@@ -356,6 +405,7 @@ type turnRun struct {
 	seen        map[string]bool // tool call ids already stored
 	lostSession bool            // the stored session is gone (resume failed)
 	assistant   bool            // an assistant message was stored in this turn
+	images      []agents.Image  // pictures the person sent with the message (P90), given beside the prompt
 	// thinking is the reasoning reported since the last stored tool call or answer: it is kept on the next one (P89)
 	thinking strings.Builder
 }
@@ -462,7 +512,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	// the reasoning streams as chat.thinking (P89) and is kept on the next tool call or answer
 	flushThink := func(all bool) { stream(&thinkBuf, &lastThink, "chat.thinking", all) }
 	flushDelta := func() { flush(true) }
-	res, err := m.RunTurn(ctx, prompt, nil, func(ch workflow.Chunk) {
+	res, err := m.RunTurnImages(ctx, prompt, t.images, nil, func(ch workflow.Chunk) {
 		if ch.Kind != workflow.ChunkText {
 			flushDelta()
 		}

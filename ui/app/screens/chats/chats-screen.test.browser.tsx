@@ -864,6 +864,46 @@ describe('Conversation', () => {
     await waitFor(() => expect(messages(r).map((m) => m.textContent!.includes('first, edited'))).toEqual([true]), r);
   });
 
+  it('sends files with a message, shows them on it and reads them back on request (P90)', async () => {
+    const sent: unknown[] = [];
+    const read: string[] = [];
+    const withFile = msg(3, 'user', 'see the notes', { attachments: [{ id: 'catt_1', name: 'notes.txt', mime: 'text/plain', size: 5, kind: 'text' }] });
+    const { r } = conv(chat(), [msg(1, 'user', 'first'), msg(2, 'assistant', 'answer'), withFile], {
+      chatSend: async (id, text, attach, files) => (sent.push([id, text, attach, (files ?? []).map((f) => [f.name, new TextDecoder().decode(f.data)])]), { turnId: 'turn_f', version: 4 }),
+      chatAttachment: async (id) => (read.push(id), { id, name: 'notes.txt', mime: 'text/plain', size: 5, kind: 'text', data: new TextEncoder().encode('hello') }),
+    });
+    await waitFor(() => expect(messages(r)).toHaveLength(3), r);
+    // the stored message lists its file as a card; Save reads it through the core
+    const card = must$(r, '[data-testid="attachment"]');
+    expect(card.textContent).toContain('notes.txt');
+    await r.act(() => byText(card, 'button', 'Save').click());
+    await waitFor(() => expect(read).toEqual(['catt_1']), r);
+    await waitFor(() => expect(card.querySelector('a[download="notes.txt"]')).not.toBeNull(), r);
+
+    // the composer takes files from its button, shows them as chips that can be removed, and sends them with the text
+    const input = must$(r, '[data-testid="chat-file"]') as HTMLInputElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File(['one'], 'a.txt', { type: 'text/plain' }));
+    dt.items.add(new File(['two'], 'b.txt', { type: 'text/plain' }));
+    input.files = dt.files;
+    await r.act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await waitFor(() => expect(Array.from(r.container.querySelectorAll('[data-testid="file-chip"]')).map((c) => c.querySelector('.name')!.textContent)).toEqual(['a.txt', 'b.txt']), r);
+    await r.act(() => byText(r.container, 'button', 'Remove attached file b.txt').click());
+    const box = byLabel<HTMLTextAreaElement>(r.container, 'Message');
+    type(box, 'read a.txt');
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    await waitFor(() => expect(sent).toEqual([['chat_a', 'read a.txt', [], [['a.txt', 'one']]]]), r);
+    await waitFor(() => expect(r.container.querySelectorAll('[data-testid="file-chip"]')).toHaveLength(0), r);
+
+    // more than four files are refused in the composer, before anything is read or sent
+    const many = new DataTransfer();
+    for (const n of ['1', '2', '3', '4', '5']) many.items.add(new File([n], `${n}.txt`));
+    input.files = many.files;
+    await r.act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await waitFor(() => expect(must$(r, '[data-testid="chat-composer"]').textContent).toContain('At most 4 files go with one message.'), r);
+    expect(r.container.querySelectorAll('[data-testid="file-chip"]')).toHaveLength(0);
+  });
+
   it('loads older messages before the oldest one shown', async () => {
     const latest = Array.from({ length: 5 }, (_, i) => msg(201 + i, i % 2 ? 'assistant' : 'user', `recent ${201 + i}`));
     const asked: unknown[] = [];

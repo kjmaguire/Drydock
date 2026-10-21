@@ -84,7 +84,7 @@ func TestATurnBecomesARunWithMessagesToolCallsAndAPlan(t *testing.T) {
 	s.out("r1", workflow.ChunkMessageEnd, workflow.TextDelta{Text: "Reading the file."})
 	s.out("r1", workflow.ChunkToolCall, workflow.ToolCall{ID: "c1", Name: "Read", Args: json.RawMessage(`{"path":"a.go"}`)})
 	s.out("r1", workflow.ChunkToolCall, workflow.ToolCall{ID: "c1", Name: "Read", Args: json.RawMessage(`{"path":"a.go"}`)}) // an update repeats the call
-	s.out("r1", workflow.ChunkUsage, workflow.UsageChunk{InputTokens: 5})                                                       // no place in the vocabulary
+	s.out("r1", workflow.ChunkUsage, workflow.UsageChunk{InputTokens: 5})                                                    // no place in the vocabulary
 	s.out("r1", workflow.ChunkToolResult, workflow.ToolResult{ID: "c1", Name: "Read", Output: "package a"})
 	s.out("r1", workflow.ChunkToolResult, workflow.ToolResult{Name: "Bash", Args: json.RawMessage(`{"command":"go test"}`), Output: "FAIL", IsError: true})
 	s.out("r1", workflow.ChunkPlan, workflow.PlanChunk{Entries: []workflow.PlanEntry{{Content: "read", Status: "completed"}, {Content: "fix", Status: "in_progress"}}})
@@ -136,7 +136,7 @@ func TestEachAgentProcessIsItsOwnThreadAndEndsCleanly(t *testing.T) {
 	s.add("agent.waiting", "w", map[string]any{"state": "working"})
 	s.out("w", workflow.ChunkText, workflow.TextDelta{Text: "half"})
 	s.out("rv", workflow.ChunkText, workflow.TextDelta{Text: "review"}) // a turn read from its middle opens a run
-	s.add("agent.stopped", "w", map[string]any{"exitCode": 1})         // the program ended during the turn
+	s.add("agent.stopped", "w", map[string]any{"exitCode": 1})          // the program ended during the turn
 	s.out("rv", workflow.ChunkError, workflow.ErrorChunk{Message: "rate limited"})
 	s.out("rv", workflow.ChunkError, workflow.ErrorChunk{Message: "boom", Fatal: true})
 	s.add("agent.failed", "rv", map[string]any{"error": "exit 2"})

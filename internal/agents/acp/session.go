@@ -3,6 +3,7 @@ package acp
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,7 +59,7 @@ type Session struct {
 	dead       bool // the connection ended; no new turns
 	turnActive bool
 	cancelReq  bool
-	queue      []string
+	queue      [][]acp.ContentBlock
 	replaying  bool
 	msg        strings.Builder
 	msgID      string
@@ -421,7 +422,14 @@ func (s *Session) mcpServers() ([]acp.McpServer, []string) {
 }
 
 // Send implements agents.Session: it starts a turn, or queues the message behind the running one.
-func (s *Session) Send(ctx context.Context, msg string) error {
+func (s *Session) Send(ctx context.Context, msg string) error { return s.SendImages(ctx, msg, nil) }
+
+// SendImages implements agents.ImageSender: the text, then each picture as an ACP image block (P90). Only an agent that
+// advertised promptCapabilities.image is given pictures; the caller checks Capabilities.ImageInput first, and this refuses too.
+func (s *Session) SendImages(ctx context.Context, msg string, images []agents.Image) error {
+	if len(images) > 0 && !s.Capabilities().ImageInput {
+		return errors.New("acp: this agent did not say it takes images")
+	}
 	s.mu.Lock()
 	if s.dead || s.sid == "" {
 		s.mu.Unlock()
@@ -432,22 +440,26 @@ func (s *Session) Send(ctx context.Context, msg string) error {
 		s.introSent = true
 		msg = strings.TrimSpace(s.spec.SystemAppend) + "\n\n---\n\n" + msg
 	}
+	blocks := []acp.ContentBlock{acp.TextBlock(msg)}
+	for _, im := range images {
+		blocks = append(blocks, acp.ImageBlock(base64.StdEncoding.EncodeToString(im.Data), im.MIME))
+	}
 	if s.turnActive {
-		s.queue = append(s.queue, msg)
+		s.queue = append(s.queue, blocks)
 		s.mu.Unlock()
 		return nil
 	}
 	s.turnActive, s.cancelReq = true, false
 	s.wg.Add(1)
 	s.mu.Unlock()
-	safe.Go("acp.Session.Send", func() { s.runTurn(msg) })
+	safe.Go("acp.Session.Send", func() { s.runTurn(blocks) })
 	return nil
 }
 
-func (s *Session) runTurn(msg string) {
+func (s *Session) runTurn(blocks []acp.ContentBlock) {
 	defer s.wg.Done()
 	for {
-		resp, err := s.conn.Prompt(s.ctx, acp.PromptRequest{SessionId: s.sid, Prompt: []acp.ContentBlock{acp.TextBlock(msg)}})
+		resp, err := s.conn.Prompt(s.ctx, acp.PromptRequest{SessionId: s.sid, Prompt: blocks})
 		s.endTurn(resp, err)
 		s.mu.Lock()
 		if len(s.queue) == 0 || s.dead {
@@ -455,7 +467,7 @@ func (s *Session) runTurn(msg string) {
 			s.mu.Unlock()
 			return
 		}
-		msg, s.queue = s.queue[0], s.queue[1:]
+		blocks, s.queue = s.queue[0], s.queue[1:]
 		s.cancelReq = false
 		s.mu.Unlock()
 	}

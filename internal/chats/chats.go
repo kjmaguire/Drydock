@@ -51,7 +51,7 @@ const (
 )
 
 // msgCols are the columns scanMessage reads, in its order.
-const msgCols = `id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,tool_status,tool_result,tool_ms,thinking`
+const msgCols = `id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,tool_status,tool_result,tool_ms,thinking,attachments`
 
 // Chat statuses.
 const (
@@ -168,7 +168,9 @@ type Message struct {
 	ToolMS     int64  `json:"toolMs,omitempty"`
 	// Thinking is the reasoning the CLI reported before this tool call or answer (P89), redacted and bounded.
 	Thinking string `json:"thinking,omitempty"`
-	toolCallID string // the CLI's id of the call, which its result names
+	// Attachments are the files the person sent with this message (P90).
+	Attachments []Attachment `json:"attachments,omitempty"`
+	toolCallID  string       // the CLI's id of the call, which its result names
 	// SuggestedRule is, for a denied message of an adapter that takes allow rules, the rule chat.allowTool would need so the
 	// next turn may use the tool ("Bash(npm test)", "Edit"). Computed when read; empty when no safe rule exists.
 	SuggestedRule string `json:"suggestedRule,omitempty"`
@@ -211,7 +213,9 @@ type Deps struct {
 	Instructions func(ctx context.Context, c Chat) string
 	// Licensed refuses starting work while the license is read-only. Optional.
 	Licensed func(ctx context.Context) error
-	Logf     func(format string, args ...any)
+	// AttachDir is the folder a chat's attached files are kept in (P90). Nil: files cannot be attached.
+	AttachDir func(chatID string) string
+	Logf      func(format string, args ...any)
 }
 
 // Options tune the service. The zero value is valid.
@@ -768,10 +772,11 @@ func (s *Service) Messages(ctx context.Context, id string, beforeSeq int64, limi
 
 func scanMessage(r scanner) (Message, error) {
 	var m Message
-	var input string
-	if err := r.Scan(&m.ID, &m.ChatID, &m.Seq, &m.Role, &m.Body, &m.ToolName, &input, &m.TurnID, &m.Created, &m.toolCallID, &m.ToolStatus, &m.ToolResult, &m.ToolMS, &m.Thinking); err != nil {
+	var input, atts string
+	if err := r.Scan(&m.ID, &m.ChatID, &m.Seq, &m.Role, &m.Body, &m.ToolName, &input, &m.TurnID, &m.Created, &m.toolCallID, &m.ToolStatus, &m.ToolResult, &m.ToolMS, &m.Thinking, &atts); err != nil {
 		return m, err
 	}
+	m.Attachments = attachmentsOf(atts)
 	if input != "" {
 		m.ToolInput = json.RawMessage(input)
 	}
@@ -1086,7 +1091,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return errors.New("stop the running turn before deleting the chat")
 	}
 	if err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		for _, q := range []string{`DELETE FROM chat_messages WHERE chat_id=?`, `DELETE FROM chat_turns WHERE chat_id=?`, `DELETE FROM chats WHERE id=?`} {
+		for _, q := range []string{`DELETE FROM chat_attachments WHERE chat_id=?`, `DELETE FROM chat_messages WHERE chat_id=?`, `DELETE FROM chat_turns WHERE chat_id=?`, `DELETE FROM chats WHERE id=?`} {
 			if _, err := tx.ExecContext(ctx, q, id); err != nil {
 				return err
 			}
@@ -1094,6 +1099,9 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+	if s.d.AttachDir != nil { // the chat's files go with it
+		_ = os.RemoveAll(s.d.AttachDir(id))
 	}
 	s.publish(ctx, "chat.deleted", c.ProjectID, map[string]any{"chatId": id})
 	return nil
@@ -1129,20 +1137,20 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		if err := insertChatTx(ctx, tx, n); err != nil {
 			return err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at,tool_status,tool_result,tool_ms,thinking FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)
+		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at,tool_status,tool_result,tool_ms,thinking,attachments FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)
 		if err != nil {
 			return err
 		}
 		type row struct {
 			seq                                   int64
 			role, body, tool, inp, status, result string
-			thinking                              string
+			thinking, atts                        string
 			created, ms                           int64
 		}
 		var copyRows []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.seq, &r.role, &r.body, &r.tool, &r.inp, &r.created, &r.status, &r.result, &r.ms, &r.thinking); err != nil {
+			if err := rows.Scan(&r.seq, &r.role, &r.body, &r.tool, &r.inp, &r.created, &r.status, &r.result, &r.ms, &r.thinking, &r.atts); err != nil {
 				rows.Close()
 				return err
 			}
@@ -1150,8 +1158,14 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		}
 		rows.Close()
 		for i, r := range copyRows {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status,tool_result,tool_ms,thinking) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				ids.New("cmsg"), n.ID, i+1, r.role, r.body, r.tool, r.inp, "", r.created, r.status, r.result, r.ms, r.thinking); err != nil {
+			msgID := ids.New("cmsg")
+			// the fork keeps its own copy of each attached file (P90), so either chat can be deleted without the other's
+			atts, err := s.copyAttachments(ctx, tx, src.ID, n.ID, msgID, attachmentsOf(r.atts))
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status,tool_result,tool_ms,thinking,attachments) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				msgID, n.ID, i+1, r.role, r.body, r.tool, r.inp, "", r.created, r.status, r.result, r.ms, r.thinking, attachmentsJSON(atts)); err != nil {
 				return err
 			}
 		}
@@ -1252,6 +1266,8 @@ func (s *Service) editRules(ctx context.Context, id string, edit func(Chat) (rul
 type msgExtra struct {
 	callID   string
 	thinking string
+	files    []pendingFile // new files sent with the message: their rows are written with it (P90)
+	keep     []Attachment  // files of a replaced message that the new one keeps (a resend)
 }
 
 func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body, toolName string, toolInput json.RawMessage, extra ...msgExtra) (Message, error) {
@@ -1263,17 +1279,34 @@ func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body,
 	if len(toolInput) > 0 {
 		m.ToolInput = s.boundInput(toolInput)
 	}
+	var ex msgExtra
 	if len(extra) > 0 {
-		m.toolCallID = extra[0].callID
-		m.Thinking = s.boundThinking(extra[0].thinking)
+		ex = extra[0]
+		m.toolCallID = ex.callID
+		m.Thinking = s.boundThinking(ex.thinking)
+		m.Attachments = append(append([]Attachment{}, ex.keep...), func() []Attachment {
+			var out []Attachment
+			for _, f := range ex.files {
+				out = append(out, f.att)
+			}
+			return out
+		}()...)
 	}
 	err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM chat_messages WHERE chat_id=?`, c.ID).Scan(&m.Seq); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,thinking) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created, m.toolCallID, m.Thinking); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,thinking,attachments) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created, m.toolCallID, m.Thinking, attachmentsJSON(m.Attachments)); err != nil {
 			return err
+		}
+		if err := insertFileRows(ctx, tx, c.ID, m.ID, ex.files); err != nil {
+			return err
+		}
+		for _, k := range ex.keep {
+			if _, err := tx.ExecContext(ctx, `UPDATE chat_attachments SET message_id=? WHERE id=? AND chat_id=?`, m.ID, k.ID, c.ID); err != nil {
+				return err
+			}
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at=?, version=version+1 WHERE id=?`, m.Created, c.ID)
 		return err
