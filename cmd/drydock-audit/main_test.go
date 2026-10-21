@@ -84,6 +84,27 @@ func TestDocDriftFindsDisagreementsAndIgnoresLookalikes(t *testing.T) {
 	}
 }
 
+// Only section 2 of docs/decisions.md (what the code uses) is compared: a dated entry after it that names the version current
+// when it was written is history. A module whose path ends in /vN is found by its name before the /vN.
+func TestDocDriftReadsTheStackTableOnly(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "docs"), 0o755)
+	doc := "## 1. Owner decisions\n\n## 2. Stack decisions\n| LLM clients | `github.com/openai/openai-go/v3` v3.83.0, `anthropic-sdk-go` v1.83.0 |\n" +
+		"## 3. Process decisions\n- **P78.** openai-go 3.82.0 and anthropic-sdk-go 1.80.0 were taken.\n"
+	os.WriteFile(filepath.Join(dir, "docs", "decisions.md"), []byte(doc), 0o644)
+	old := root
+	root = dir
+	defer func() { root = old }()
+	items := []Item{
+		{ID: "go:github.com/openai/openai-go/v3", Name: "github.com/openai/openai-go/v3", Kind: "direct", Used: "3.83.0"},
+		{ID: "go:github.com/anthropics/anthropic-sdk-go", Name: "github.com/anthropics/anthropic-sdk-go", Kind: "direct", Used: "1.84.0"},
+	}
+	got := docDrift(items)
+	if len(got) != 1 || got[0].Name != "github.com/anthropics/anthropic-sdk-go" || got[0].Docs != "1.83.0" {
+		t.Fatalf("drift = %+v (only the stack table's anthropic-sdk-go row disagrees)", got)
+	}
+}
+
 // A graph-only library is not part of what Drydock runs: it gets the P23 remark without a hand-written hold and is left out of
 // how far behind Drydock is, while a library compiled in is counted as before.
 func TestGraphOnlyLibrariesAreRemarkedAndNotCountedAsBehind(t *testing.T) {

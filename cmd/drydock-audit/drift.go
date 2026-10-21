@@ -16,7 +16,7 @@ func docDrift(items []Item) []DocDrift {
 	if err != nil {
 		return nil
 	}
-	text := string(b)
+	text := stackSection(string(b))
 	var out []DocDrift
 	for _, it := range items {
 		if it.Kind != "direct" && it.Kind != "dev" && it.ID != "go" {
@@ -35,7 +35,7 @@ func docDrift(items []Item) []DocDrift {
 		if regexp.MustCompile(`^v\d+$`).MatchString(last) && len(parts) > 1 {
 			last = parts[len(parts)-2]
 		}
-		re := regexp.MustCompile("(?i)(?:^|[^\\w-])" + regexp.QuoteMeta(last) + "[` ]{1,3}v?(\\d+\\.\\d+\\.\\d+)")
+		re := regexp.MustCompile("(?i)(?:^|[^\\w-])" + regexp.QuoteMeta(last) + "(?:/v\\d+)?[` ]{1,3}v?(\\d+\\.\\d+\\.\\d+)")
 		m := re.FindStringSubmatch(text)
 		if m == nil {
 			continue
@@ -45,4 +45,18 @@ func docDrift(items []Item) []DocDrift {
 		}
 	}
 	return out
+}
+
+// stackSection is section 2 of docs/decisions.md, the table of what the code uses: the dated entries after it name the versions
+// that were current when each was written, which is history, not drift. A file without that heading is read whole.
+func stackSection(text string) string {
+	start := strings.Index(text, "\n## 2.")
+	if start < 0 {
+		return text
+	}
+	rest := text[start+1:]
+	if end := strings.Index(rest, "\n## "); end >= 0 {
+		return rest[:end]
+	}
+	return rest
 }
