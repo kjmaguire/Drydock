@@ -91,7 +91,7 @@ const cardCss = css({
   '& > summary': {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: t.s2,
     minWidth: '0',
     minHeight: '28px',
     padding: `0 ${t.s2}`,
