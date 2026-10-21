@@ -214,11 +214,3 @@ func itoa(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
-
-func lastLine(out string, err error) string {
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	return strings.TrimSpace(lines[len(lines)-1])
-}
