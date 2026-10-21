@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-21T16:27:12Z",
-  "commit": "7616dbe",
+  "generated": "2026-10-21T20:08:59Z",
+  "commit": "7712da1",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -1254,10 +1254,10 @@
       "name": "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
       "kind": "indirect",
       "used": "1.6.3",
-      "latest": "1.7.22",
+      "latest": "1.7.23",
       "status": "minor",
       "usedDate": "2024-06-28",
-      "latestDate": "2026-10-09",
+      "latestDate": "2026-10-21",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -1450,10 +1450,10 @@
       "name": "github.com/aws/smithy-go",
       "kind": "indirect",
       "used": "1.28.1",
-      "latest": "1.28.5",
+      "latest": "1.28.6",
       "status": "patch",
       "usedDate": "2026-08-26",
-      "latestDate": "2026-10-09",
+      "latestDate": "2026-10-21",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -2854,10 +2854,10 @@
       "name": "github.com/googleapis/gax-go/v2",
       "kind": "indirect",
       "used": "2.16.0",
-      "latest": "2.26.2",
+      "latest": "2.27.0",
       "status": "minor",
       "usedDate": "2025-12-17",
-      "latestDate": "2026-09-26",
+      "latestDate": "2026-10-21",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5789,10 +5789,10 @@
       "name": "google.golang.org/api",
       "kind": "indirect",
       "used": "0.259.0",
-      "latest": "0.306.0",
+      "latest": "0.307.0",
       "status": "minor",
       "usedDate": "2026-01-06",
-      "latestDate": "2026-10-20",
+      "latestDate": "2026-10-21",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -6259,7 +6259,7 @@
       "status": "current",
       "where": "this machine; CI installs the newest Node 24 (.github/workflows/ci.yml)",
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
-      "note": "This row is the development host's own Node: 24.22.1 since 2026-10-21, the security release of 2026-10-20 (decision P94; 24.22.0 before it, decision P81), installed from nodejs.org with its SHA-256 checked against SHASUMS256.txt and that file's signature checked against the releaser's key. CI installs the same line (actions/setup-node with node-version 24 and check-latest: true, so a runner's cached older 24.x is never used). The newest line overall is 26, not yet LTS; the project line is 24 and the comparison is the newest release of the installed major. The machine is a cloud container rebuilt from its environment, so the version lasts until the environment's setup script installs it too. The newest 24.x (24.22.1, 2026-10-20) is a security release. Newest Node release overall: 26.12.0. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
+      "note": "This row is the development host's own Node: 24.22.1 since 2026-10-21, the security release of 2026-10-20 (decision P94; 24.22.0 before it, decision P81), installed from nodejs.org with its SHA-256 checked against SHASUMS256.txt and that file's signature checked against the releaser's key. CI installs the same line (actions/setup-node with node-version 24 and check-latest: true, so a runner's cached older 24.x is never used). The newest line overall is 26, not yet LTS; the project line is 24 and the comparison is the newest release of the installed major. The machine is a cloud container rebuilt from its environment, so the version lasts until the environment's setup script installs it too. Newest Node release overall: 26.12.1. The project line is 24 (CI installs the newest 24); the latest release of the installed major is the comparison."
     },
     {
       "id": "npm",
@@ -6471,8 +6471,8 @@
       "group": "Tools Drydock runs or you install",
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
-      "used": "b11798",
-      "latest": "b11798",
+      "used": "b11800",
+      "latest": "b11800",
       "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6676,8 +6676,8 @@
       "group": "Vendor APIs and protocols",
       "name": "Linear GraphQL API (schema of @linear/sdk)",
       "kind": "api",
-      "used": "98.0.0",
-      "latest": "98.0.0",
+      "used": "99.0.0",
+      "latest": "99.0.0",
       "status": "current",
       "where": "internal/integrations/catalog.go",
       "role": "Reading and writing Linear issues; the API is unversioned, so Drydock follows the schema of Linear's own SDK."
