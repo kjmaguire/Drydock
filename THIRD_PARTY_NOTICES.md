@@ -29,7 +29,7 @@ Imported by Drydock itself:
 | github.com/coder/acp-go-sdk | v0.13.5 | Apache-2.0 | Copyright 2025 Coder Technologies, Inc. | Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose. |
 | github.com/google/jsonschema-go | v0.4.3 | MIT | Copyright (c) 2025 JSON Schema Go Project Authors | Describes the workspace tools' inputs to MCP clients as JSON Schema. |
 | github.com/modelcontextprotocol/go-sdk | v1.8.0 | MIT and Apache-2.0 (the project is moving its code from MIT to Apache-2.0; its LICENSE holds both) | - | The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. |
-| github.com/openai/openai-go/v3 | v3.84.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
+| github.com/openai/openai-go/v3 | v3.85.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
 | github.com/pressly/goose/v3 | v3.29.0 | MIT | - | Runs the database migrations. |
 | github.com/tree-sitter/go-tree-sitter | v0.25.0 | MIT | - | The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build n... |
 | github.com/tree-sitter/tree-sitter-c-sharp | v0.23.5 | MIT | Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors. | C# grammar of the repo map, with its queries/tags.scm. |
@@ -45,7 +45,7 @@ Imported by Drydock itself:
 | golang.org/x/oauth2 | v0.37.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry... |
 | golang.org/x/sys | v0.49.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | Windows Job Objects (killing an agent's whole process tree) and other Windows calls. |
 | gopkg.in/yaml.v3 | v3.0.1 | MIT and Apache-2.0 (the library is MIT; its libyaml port is under the MIT-style license in LICENSE, and NOTICE names the Apache-2.0 files) | - | Reads YAML: agent manifests, the MCP catalog, expert packs, skills. |
-| modernc.org/sqlite | v1.60.1 | BSD-3-Clause (SQLite itself is in the public domain; code the module bundles is under the licenses listed in its LICENSE-3RD-PARTY.md) | - | The database. |
+| modernc.org/sqlite | v1.61.0 | BSD-3-Clause (SQLite itself is in the public domain; code the module bundles is under the licenses listed in its LICENSE-3RD-PARTY.md) | - | The database. |
 | mvdan.cc/sh/v3 | v3.14.1 | BSD-3-Clause | Copyright (c) 2016, Daniel Martí. All rights reserved. | Parses shell commands so permissions can be checked before an agent runs them (POSIX syntax only). |
 
 Pulled in by those, and compiled in:
@@ -94,7 +94,7 @@ Pulled in by those, and compiled in:
 | github.com/huandu/xstrings | v1.6.3 | MIT | Copyright (c) 2015 Huan Du | - |
 | github.com/invopop/jsonschema | v0.14.0 | MIT | Copyright (C) 2014 Alec Thomas | - |
 | github.com/klauspost/compress | v1.20.3 | BSD-3-Clause, with code under Apache-2.0, MIT | - | - |
-| github.com/klauspost/pgzip | v1.2.7 | MIT | Copyright (c) 2014 Klaus Post | - |
+| github.com/klauspost/pgzip | v1.3.0 | MIT | Copyright (c) 2014 Klaus Post | - |
 | github.com/lucasb-eyer/go-colorful | v1.4.1 | MIT | Copyright (c) 2013 Lucas Beyer | - |
 | github.com/mattn/go-colorable | v0.1.16 | MIT | Copyright (c) 2016 Yasuhiro Matsumoto | - |
 | github.com/mattn/go-isatty | v0.0.24 | MIT | - | - |
@@ -265,7 +265,7 @@ Listed in `ui/package.json` as what the UI needs to run:
 | @remix-run/ui | 0.12.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
 | @xterm/addon-fit | 0.11.0 | MIT | Sizes a terminal to its panel. |
 | @xterm/xterm | 6.0.0 | MIT | Draws the human's terminals in the bottom dock (lazy-loaded). |
-| lucide | 1.60.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
+| lucide | 1.61.0 | ISC | The UI icons (ISC), drawn as inline SVG from icon nodes; only the icons used are bundled. |
 | marked | 14.0.0 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
 | marked | 18.1.1 | MIT | Splits Markdown (agent messages, task text) into tokens; Drydock builds the elements from the tokens itself. |
 | monaco-editor | 0.57.0 | MIT | The read-only diff editor for a task's changes (lazy-loaded; only the diff editor, find, folding, copy and the language definitions are imported). |
