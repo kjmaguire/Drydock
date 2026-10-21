@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-21T00:03:51Z",
-  "commit": "96a49aa",
+  "generated": "2026-10-21T00:05:41Z",
+  "commit": "0eda9ff",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -227,7 +227,8 @@
       "used": "1.27.3",
       "latest": "1.27.3",
       "status": "current",
-      "where": ".github/workflows/windows-probes.yml"
+      "where": ".github/workflows/windows-probes.yml",
+      "role": "The Go version the Windows probe workflow installs (windows-probes.yml pins it outright; the other jobs read go.mod, also 1.27.3)."
     },
     {
       "id": "action:Vampire/setup-wsl",
@@ -6735,15 +6736,6 @@
     "indirect": 417,
     "runtime": 4,
     "skill": 4,
-    "tool": 14,
-    "withoutNote": 1
-  },
-  "docDrift": [
-    {
-      "name": "github.com/openai/openai-go/v3",
-      "docs": "3.82.0",
-      "code": "3.83.0",
-      "ref": "docs/decisions.md"
-    }
-  ]
+    "tool": 14
+  }
 }
