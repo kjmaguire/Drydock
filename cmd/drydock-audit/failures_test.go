@@ -84,7 +84,7 @@ func fakeGo(args []string) int {
 	case len(args) > 1 && args[0] == "run":
 		// the scanner's output: one vulnerability the code calls, whose summary says how the scanner was started
 		fmt.Printf(`{"osv":{"id":"GO-TEST-1","summary":"toolchain=%s args=%s"}}`+"\n", os.Getenv("GOTOOLCHAIN"), strings.Join(args[1:], " "))
-		fmt.Println(`{"finding":{"osv":"GO-TEST-1","fixed_version":"v1.0.1","trace":[{"module":"example.com/m","version":"v1.0.0","function":"F"}]}}`)
+		fmt.Println(`{"finding":{"osv":"GO-TEST-1","fixed_version":"v1.0.1","trace":[{"module":"example.com/m","version":"v1.0.0","package":"example.com/m","function":"F"}]}}`)
 		return 0
 	}
 	fmt.Fprintln(os.Stderr, "the fake go answers env GOVERSION and run only")
@@ -182,7 +182,8 @@ func TestAProgramThatFailsIsAnErrorEvenWithOutput(t *testing.T) {
 }
 
 // govulncheck's JSON stream: an entry per vulnerability database record, and a finding for each place the build is affected.
-// A finding whose trace starts at a function is reachable from the code; one that stops at the module is not called.
+// A finding whose trace starts at a function is reachable from the code; one that stops at a package is imported but not called;
+// one that stops at the module is in a module the build requires but not in a package it imports, and is not in what is built.
 func TestParseGovulncheckReadsFindingsAndRefusesHalfAnAnswer(t *testing.T) {
 	stream := strings.Join([]string{
 		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck"}}`,
@@ -192,19 +193,22 @@ func TestParseGovulncheckReadsFindingsAndRefusesHalfAnAnswer(t *testing.T) {
 		`{"finding":{"osv":"GO-2026-0001","fixed_version":"v1.2.4","trace":[{"module":"example.com/lib","version":"v1.2.3","package":"example.com/lib/x","function":"Do"}]}}`,
 		`{"finding":{"osv":"GO-2026-0001","fixed_version":"v1.2.4","trace":[{"module":"example.com/lib","version":"v1.2.3","package":"example.com/lib/x","function":"Other"}]}}`,
 		`{"finding":{"osv":"GO-2026-0002","fixed_version":"v0.5.0","trace":[{"module":"example.com/other","version":"v0.4.0"}]}}`,
+		`{"finding":{"osv":"GO-2026-0002","fixed_version":"v0.5.0","trace":[{"module":"example.com/other","version":"v0.4.0","package":"example.com/other/y"}]}}`,
+		`{"osv":{"id":"GO-2026-0003","summary":"Third problem, in a package nothing imports"}}`,
+		`{"finding":{"osv":"GO-2026-0003","trace":[{"module":"example.com/lib","version":"v1.2.3"}]}}`,
 	}, "\n")
 	vs, err := parseGovulncheck(stream)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(vs) != 2 || vs[0].ID != "GO-2026-0001" || vs[1].ID != "GO-2026-0002" {
-		t.Fatalf("findings, one per vulnerability and in order: %+v", vs)
+		t.Fatalf("findings, one per vulnerability in what is built and in order: %+v", vs)
 	}
 	if !vs[0].Called || vs[0].Package != "example.com/lib v1.2.3" || vs[0].Fixed != "1.2.4" || vs[0].Summary != "First problem" || vs[0].Source != "govulncheck" {
 		t.Errorf("a reachable finding: %+v", vs[0])
 	}
 	if vs[1].Called || vs[1].Fixed != "0.5.0" {
-		t.Errorf("a finding in a module the code does not call: %+v", vs[1])
+		t.Errorf("a finding in a package the code imports and does not call: %+v", vs[1])
 	}
 
 	// nothing found is an answer: a stream with a config and progress and no finding

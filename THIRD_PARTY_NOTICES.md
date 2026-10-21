@@ -29,7 +29,7 @@ Imported by Drydock itself:
 | github.com/coder/acp-go-sdk | v0.13.5 | Apache-2.0 | Copyright 2025 Coder Technologies, Inc. | Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose. |
 | github.com/google/jsonschema-go | v0.4.3 | MIT | Copyright (c) 2025 JSON Schema Go Project Authors | Describes the workspace tools' inputs to MCP clients as JSON Schema. |
 | github.com/modelcontextprotocol/go-sdk | v1.8.0 | MIT and Apache-2.0 (the project is moving its code from MIT to Apache-2.0; its LICENSE holds both) | - | The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. |
-| github.com/openai/openai-go/v3 | v3.83.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
+| github.com/openai/openai-go/v3 | v3.84.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
 | github.com/pressly/goose/v3 | v3.29.0 | MIT | - | Runs the database migrations. |
 | github.com/tree-sitter/go-tree-sitter | v0.25.0 | MIT | - | The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build n... |
 | github.com/tree-sitter/tree-sitter-c-sharp | v0.23.5 | MIT | Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors. | C# grammar of the repo map, with its queries/tags.scm. |

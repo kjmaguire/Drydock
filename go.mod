@@ -10,7 +10,7 @@ require (
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/openai/openai-go/v3 v3.83.0
+	github.com/openai/openai-go/v3 v3.84.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5

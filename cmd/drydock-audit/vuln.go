@@ -31,7 +31,7 @@ func govulncheckArgs() []string {
 }
 
 // govulncheck runs the Go vulnerability scanner over the whole module. A finding is "called" when the code can reach the
-// vulnerable function; the others are in a dependency or the standard library the build includes but does not call.
+// vulnerable function; the others are in a package of a dependency or the standard library the build imports but does not call.
 // The scanner is built with the Go the project is built with: one built with an older Go cannot load packages that need a newer
 // one ("package requires newer Go version"), and `go run pkg@version` builds with the oldest Go the scanner's own go.mod allows.
 func govulncheck(ctx context.Context) ([]Vuln, string) {
@@ -95,7 +95,9 @@ func parseGovulncheck(out string) ([]Vuln, error) {
 		if m.OSV != nil {
 			summ[m.OSV.ID] = m.OSV.Summary
 		}
-		if f := m.Finding; f != nil && len(f.Trace) > 0 {
+		// a finding that stops at the module is in a module the build requires but not in a package it imports: the vulnerable
+		// code is not in what is built (govulncheck's own report leaves it out too)
+		if f := m.Finding; f != nil && len(f.Trace) > 0 && f.Trace[0].Package != "" {
 			v := found[f.OSV]
 			if v == nil {
 				v = &Vuln{Source: "govulncheck", ID: f.OSV, Package: f.Trace[0].Module + " " + f.Trace[0].Version, Fixed: strings.TrimPrefix(f.Fixed, "v")}

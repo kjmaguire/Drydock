@@ -181,7 +181,7 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
   leaves the folder to scan alone, only the typed path where the window has no dialog; the help's sets, links, command and
   rule, open while the folder has no rules and a choice of the person standing) and `ui/e2e/security.spec.ts` (the folder
   dialog's stand-in, the help, the skipped reason on the page).
-- `internal/scan/sarif_real_test.go` reads the SARIF of a real run of Semgrep OSS 1.181.0 (`testdata/semgrep-oss-1.181.0.sarif`): a result
+- `internal/scan/sarif_real_test.go` reads the SARIF of a real run of Semgrep OSS 1.182.0 (`testdata/semgrep-oss-1.182.0.sarif`): a result
   with no `level` takes its rule's default, the matched code in `region.snippet` is in no finding.
 - Folder scans (P61): `internal/core/ext_security_folder_test.go` (a folder scan runs the three engines with the stand-ins,
   carries no project in its report, events and history, is found by folder and across folders, the workspace rules folder
@@ -197,8 +197,8 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
 - The scan runs where Drydock runs (Windows); a repository inside a WSL distro is scanned through its `\\wsl$` path by the
   Windows tools, which is slow and was not measured (decision P41).
 - A real Opengrep run was not captured in this repository: its SARIF reader is written from the SARIF 2.1.0 specification
-  and proven against the stand-in and against the SARIF of a real run of Semgrep OSS 1.181.0, the engine Opengrep was forked
-  from (`internal/scan/testdata/semgrep-oss-1.181.0.sarif`, made over the Security page's demo rule: two findings in two
+  and proven against the stand-in and against the SARIF of a real run of Semgrep OSS 1.182.0, the engine Opengrep was forked
+  from (`internal/scan/testdata/semgrep-oss-1.182.0.sarif`, made over the Security page's demo rule: two findings in two
   files, none for `fmt.Printf`, `fmt.Sprint` or a Python file); osv-scanner 2.7.0 was run for real (its JSON is `internal/checks/testdata/osv-scanner-2.7.0.json`).
   `--no-git-ignore` (P61) is written from Opengrep's documented flags, not run against the real binary here.
 - The installer (P66) was not run against the real GitHub releases: the asset names come from the tools' own release
@@ -208,7 +208,7 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
 - A folder is chosen with "Choose folder..." (the window's own dialog through `fs.pickFolder`, decision P58; shown only in the desktop app) or typed or pasted.
 - No rules are shipped: P44 stands. A starter set of Drydock's own would reverse it and is the owner's call; the one rule on the
   page (P74) is help text that the person saves themselves, not something Drydock applies.
-- Not verified (P74): the page's rule was run through Semgrep OSS 1.181.0 (two findings, none wrong) but not through Opengrep
+- Not verified (P74): the page's rule was run through Semgrep OSS 1.182.0 (two findings, none wrong) but not through Opengrep
   itself, and the Git command was not run against a real clone (no Opengrep binary can be run on the development host);
   the rule has the shape of the one in Opengrep's README and a test keeps it a valid rule file. The licence wording was read from the repositories on 2026-10-16, and the Semgrep Rules License's terms page could not
   be read there. Windows: how the Choose folder... button sits in the rules form and the folder dialog it opens.

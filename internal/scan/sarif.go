@@ -13,7 +13,7 @@ import (
 // sarifLog is the part of a SARIF 2.1.0 log the scan reads: each run's results (rule, level, message, first location) and
 // its driver's rules (the default level and a security severity when the tool gives one). Written from the SARIF 2.1.0
 // specification and the shape Semgrep-family tools emit (runs[].tool.driver.rules[], runs[].results[]); unknown fields are
-// ignored. This repository has no output captured from a real Opengrep run; testdata/semgrep-oss-1.181.0.sarif is a real run of
+// ignored. This repository has no output captured from a real Opengrep run; testdata/semgrep-oss-1.182.0.sarif is a real run of
 // Semgrep OSS, the engine Opengrep was forked from (sarif_real_test.go says how it was made).
 type sarifLog struct {
 	Runs []struct {

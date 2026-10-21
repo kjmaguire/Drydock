@@ -11,7 +11,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
-// TestSARIFFromARealSemgrepRunIsReadWithoutTheMatchedCode reads the SARIF that Semgrep OSS 1.181.0 wrote for the rule the Security
+// TestSARIFFromARealSemgrepRunIsReadWithoutTheMatchedCode reads the SARIF that Semgrep OSS 1.182.0 wrote for the rule the Security
 // page offers to try (ui/app/screens/security/rules-sources.ts, docs/security-scan.md section 5). Semgrep is the engine Opengrep was
 // forked from and the two write the same SARIF; this is the only output of a real engine of that family in the repository (not
 // Opengrep's own: the development host cannot fetch it). It was captured in a git repository holding main.go (a fmt.Println and a
@@ -24,7 +24,7 @@ import (
 // are not what the stand-in's log looks like and are the reason to keep it: a result carries no `level` (the rule's
 // defaultConfiguration has it), and every result carries the matched line of code (region.snippet), which no finding may keep.
 func TestSARIFFromARealSemgrepRunIsReadWithoutTheMatchedCode(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("testdata", "semgrep-oss-1.181.0.sarif"))
+	data, err := os.ReadFile(filepath.Join("testdata", "semgrep-oss-1.182.0.sarif"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestSARIFFromARealSemgrepRunIsReadWithoutTheMatchedCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != "1.181.0" {
+	if version != "1.182.0" {
 		t.Errorf("version %q", version)
 	}
 	want := []scan.Finding{

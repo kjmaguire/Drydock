@@ -1,6 +1,6 @@
 {
   "used": {
-    "tool:gh": "2.102.0",
+    "tool:gh": "2.102.1",
     "tool:task": "3.54.0",
     "tool:go-licenses": "2.0.1",
     "tool:govulncheck": "1.9.0",
@@ -8,9 +8,9 @@
     "tool:docker": "29.8.2",
     "tool:golangci-lint": "2.15.0",
     "tool:actions-runner": "2.338.0",
-    "tool:llama.cpp": "b11757",
+    "tool:llama.cpp": "b11774",
     "tool:git": "2.43.0",
-    "tool:semgrep": "1.181.0"
+    "tool:semgrep": "1.182.0"
   },
   "notes": {
     "go": {
