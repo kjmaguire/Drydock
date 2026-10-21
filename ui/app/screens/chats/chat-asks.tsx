@@ -10,6 +10,7 @@ import { visible } from '../../lib/visible.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
+import { t } from '../../ui/tokens.ts';
 
 /** The input as a person reads it: the JSON shown whole, or nothing when there was none. */
 export function askInput(a: Pick<ChatAsk, 'input'>): string {
@@ -50,7 +51,7 @@ export function ChatAsks(handle: Handle<{ chat: Chat; agentName: string }>) {
                 <Button size="sm" variant="secondary" disabled={!!act.busy} mix={[on('click', () => void answer(a.id, false))]}>
                   Refuse
                 </Button>
-                <span style={{ fontSize: '12px' }} data-testid="chat-ask-expiry">
+                <span style={{ fontSize: t.textXs }} data-testid="chat-ask-expiry">
                   Refused at {formatTime(a.expiresAt)} if nobody answers.
                 </span>
               </span>

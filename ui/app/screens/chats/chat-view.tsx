@@ -3,12 +3,12 @@
 // streamed assistant text in its own bubble outside the live region) and the composer (Ctrl+Enter, attached chats, Stop).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { ArrowDown, Bot, FolderOpen, GitFork, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
+import { ArrowDown, Bot, FolderOpen, GitFork, PanelLeftOpen, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
 import type { Chat } from '../../api/chatClient.ts';
 import type { AdapterInfo } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, services, watch } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field } from '../../ui/form.tsx';
@@ -146,7 +146,7 @@ const ruleList = css({
 const hintCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 
 /** The conversation of one chat. Keyed by chat id: a new chat is a new feed. */
-export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; onNavigate?: (href: string) => void }>) {
+export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; onNavigate?: (href: string) => void; onShowList?: () => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const feed = new ChatFeed(s.client, s.store, handle.props.id).start(handle.signal);
@@ -268,6 +268,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     return (
       <section mix={screenCss} aria-label={`Chat ${chatTitle(chat)}`} data-testid="chat-view" data-status={chat.status}>
         <header mix={headerCss}>
+          {handle.props.onShowList ? (
+            <IconButton icon={PanelLeftOpen} label="Show the chat list" mix={on('click', () => handle.props.onShowList!())} />
+          ) : null}
           <h1 style={{ minWidth: '0', marginLeft: '-6px' }}>
             {editing ? (
               <input

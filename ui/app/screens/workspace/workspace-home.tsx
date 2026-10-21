@@ -37,6 +37,7 @@ import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { card, Page, Section } from '../../ui/layout.tsx';
 import { tileCss, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
+import { needsChanged } from '../../state/project.ts';
 import { needsText, projectWhere } from './workspace.ts';
 
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
@@ -325,7 +326,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
     },
     key: () => s.workspace.projectList.map((p) => p.id),
     enabled: () => s.workspace.projectList.length > 0,
-    when: (e) => ['approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived'].some((p) => e.type.startsWith(p)),
+    when: needsChanged,
   });
 
   // each project's crew, for the dots on its card (a list that cannot be read leaves the card without them)

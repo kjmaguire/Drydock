@@ -24,6 +24,8 @@ const panelCss = css({
   minHeight: '0',
   borderLeft: `1px solid ${t.border}`,
   background: t.bgSidebar,
+  // a narrow window keeps the page its width: the panel, opened, floats over it from the right (ui.ts NARROW_DETAILS)
+  '@media (max-width: 1199px)': { position: 'absolute', top: '0', right: '0', bottom: '0', zIndex: '30', maxWidth: 'calc(100% - 48px)', boxShadow: t.shadowLg },
 });
 const closedCss = css({
   display: 'flex',

@@ -26,6 +26,25 @@ const DOCK_MIN_HEIGHT = 120;
 const DOCK_MAX_HEIGHT = 2400;
 const DETAILS_DEFAULT = { open: true, other: false };
 
+/** Below this width the details panel floats over the page instead of taking its width, and starts closed. */
+export const NARROW_DETAILS = '(max-width: 1199px)';
+/** Below this width the Rooms and Settings rails and the chat list are drawers a button opens. */
+export const NARROW_RAILS = '(max-width: 899px)';
+
+/** The window's answer to a media query (a test passes its own, so a test's layout does not depend on its runner's window). */
+export type MediaMatch = (query: string) => Pick<MediaQueryList, 'matches' | 'addEventListener'> | undefined;
+
+/** A window wider than every breakpoint (tests that do not test a narrow window). */
+export const wideWindow: MediaMatch = () => ({ matches: false, addEventListener: () => {} });
+
+const media: MediaMatch = (q) => {
+  try {
+    return typeof matchMedia === 'function' ? matchMedia(q) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * The dock states of the projects as stored in localStorage (audit 2026-10-16, L43). The stored text is whatever an older
  * version, another tool or a person left there: each field is checked, a bad one is the default, and an entry that is not an
@@ -85,14 +104,31 @@ export class UiModel extends Model {
   // and leaves the page its width (owner, 2026-10-13: pages read cramped at 1366-1536 px)
   #open = readStored(DETAILS_KEY, parseDetails);
   #page: DetailsPage = 'conversation';
+  // in a narrow window (a Windows half-screen beside an editor) the panel would take a third of the width: it starts closed
+  // and, opened, floats over the page; that choice lasts for the session and is not stored over the wide window's
+  #narrowOpen = false;
+  #narrowDetails: ReturnType<MediaMatch>;
+  #narrowRails: ReturnType<MediaMatch>;
+  /** A rail or the chat list shown as a drawer in a narrow window (closed again by a navigation). */
+  drawerOpen = false;
   paletteOpen = false;
   theme: ThemeChoice = 'system';
   #newChat = false;
   #dock: Record<string, DockState> = {};
   #project = '';
 
-  constructor(opts: { persist?: boolean } = {}) {
+  constructor(opts: { persist?: boolean; media?: MediaMatch } = {}) {
     super();
+    const m = opts.media ?? media;
+    this.#narrowDetails = m(NARROW_DETAILS);
+    this.#narrowRails = m(NARROW_RAILS);
+    // crossing a width redraws the shell (a drawer left open closes when the window widens past it)
+    const redraw = () => {
+      if (!this.narrowRails) this.drawerOpen = false;
+      this.changed();
+    };
+    this.#narrowDetails?.addEventListener('change', redraw);
+    this.#narrowRails?.addEventListener('change', redraw);
     if (opts.persist !== false) {
       this.theme = loadTheme();
       this.#dock = readStored(DOCK_KEY, parseDock);
@@ -124,7 +160,25 @@ export class UiModel extends Model {
 
   /** Whether the details panel is open on the kind of page showing now. */
   get detailsOpen(): boolean {
+    if (this.narrowDetails) return this.#narrowOpen;
     return this.#page === 'conversation' ? this.#open.open : this.#open.other;
+  }
+
+  /** The window is narrow enough that the details panel floats over the page. */
+  get narrowDetails(): boolean {
+    return !!this.#narrowDetails?.matches;
+  }
+
+  /** The window is narrow enough that the rails and the chat list are drawers. */
+  get narrowRails(): boolean {
+    return !!this.#narrowRails?.matches;
+  }
+
+  /** Open or close the drawer (a rail or the chat list) of a narrow window. */
+  setDrawer(open: boolean): void {
+    if (this.drawerOpen === open) return;
+    this.drawerOpen = open;
+    this.changed();
   }
 
   /** The panel says which kind of page it sits beside (no change event: it is read while rendering). */
@@ -134,6 +188,11 @@ export class UiModel extends Model {
 
   /** Open or close the details panel for the kind of page showing now (the other kind keeps its own choice). */
   setDetails(open: boolean): void {
+    if (this.narrowDetails) {
+      this.#narrowOpen = open;
+      this.changed();
+      return;
+    }
     if (this.#page === 'conversation') this.#open.open = open;
     else this.#open.other = open;
     writeJSON(DETAILS_KEY, this.#open);

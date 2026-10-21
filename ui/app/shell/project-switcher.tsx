@@ -19,6 +19,7 @@ const triggerCss = css({
   flex: 'none',
   minWidth: '0',
   maxWidth: '260px',
+  '@media (max-width: 719px)': { maxWidth: '150px' },
   height: '38px',
   padding: `0 ${t.s2} 0 8px`,
   border: `1px solid ${t.border}`,

@@ -9,7 +9,7 @@ import { MessageSquare, Pencil, Plug, Plus, ShieldAlert, ShieldCheck, Sparkles, 
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
-import { formatDateTime, formatUsd, presenceFor } from '../../lib/format.ts';
+import { formatDateTime, formatUsd, presenceFor, presenceWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -214,7 +214,7 @@ function heroTint(id: string): string {
 
 /** The chip of what an agent is on: its presence, with the task's number when it is on one. */
 export function nowChip(p: PresenceState | undefined, task: Task | undefined): string {
-  if (task) return p ? `${p.presence} on #${task.seq}` : `On #${task.seq}`;
+  if (task) return p ? `${presenceWords(p)} on #${task.seq}` : `On #${task.seq}`;
   return doing(p);
 }
 
@@ -396,7 +396,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
       <div mix={grid2}>
         <section mix={[panelCss, nowCss]} aria-label="Right now" data-testid="agent-now">
           <h2>
-            Right now <span>{p ? p.presence : 'no presence reported'}</span>
+            Right now <span>{presenceWords(p)}</span>
           </h2>
           {task ? (
             <>

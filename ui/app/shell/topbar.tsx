@@ -22,8 +22,17 @@ const barCss = css({
   padding: `0 ${t.s5}`,
   borderBottom: `1px solid ${t.border}`,
   background: t.bgApp,
+  // a phone-sized window: the tabs take a row of their own under the mark, the switcher and the buttons
+  '@media (max-width: 719px)': { height: 'auto', padding: `${t.s2} ${t.s3}` },
 });
-const navCss = css({ display: 'flex', alignItems: 'center', gap: t.s3, width: '100%', minWidth: '0' });
+const navCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s3,
+  width: '100%',
+  minWidth: '0',
+  '@media (max-width: 719px)': { flexWrap: 'wrap', rowGap: t.s2, gap: t.s2 },
+});
 
 // the Drydock mark: a monochrome dot with the agents' eyes
 const logoLink = css({ display: 'inline-flex', flex: 'none', borderRadius: t.rFull, '&:focus-visible': { boxShadow: t.focus, outline: 'none' } });
@@ -40,7 +49,17 @@ const logoCss = css({
   '& i': { display: 'block', width: '4px', height: '7px', borderRadius: '1.5px', background: 'currentColor' },
 });
 
-const tabsCss = css({ display: 'flex', alignItems: 'center', gap: '2px', margin: `0 0 0 ${t.s2}`, padding: '0', listStyle: 'none', minWidth: '0', overflow: 'hidden' });
+const tabsCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '2px',
+  margin: `0 0 0 ${t.s2}`,
+  padding: '0',
+  listStyle: 'none',
+  minWidth: '0',
+  overflow: 'hidden',
+  '@media (max-width: 719px)': { order: '3', flex: '1 0 100%', margin: '0', overflowX: 'auto' },
+});
 const tabCss = css({
   display: 'inline-flex',
   alignItems: 'center',
@@ -59,6 +78,11 @@ const tabCss = css({
   '&[aria-current="page"]': { background: t.accent, color: t.onAccent },
   '&[aria-current="page"] svg': { opacity: '1' },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  // a narrow window keeps every tab as its icon (the label stays its accessible name and its tooltip)
+  '@media (max-width: 1239px)': {
+    padding: `0 ${t.s3}`,
+    '& > .lbl': { position: 'absolute', width: '1px', height: '1px', padding: '0', margin: '-1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: '0' },
+  },
 });
 
 const rightCss = actionsEnd;
@@ -97,6 +121,8 @@ const iconLink = css({
   '&[aria-current="page"]': { background: t.accent, color: t.onAccent, borderColor: t.accent },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
+// a phone-sized window leaves the Guide to the Settings rail (it is a settings page too), so the bar fits on one row
+const guideLink = css({ '@media (max-width: 719px)': { display: 'none' } });
 // the count on the bell: a red pill while something waits, a quiet number otherwise (the e2e suite reads it either way)
 const countCss = css({
   position: 'absolute',
@@ -202,9 +228,9 @@ export function TopBar(handle: Handle<{ route: Route }>) {
           <ul mix={tabsCss} role="list">
             {tabs.map((tab) => (
               <li key={tab.id}>
-                <a href={tab.href} mix={tabCss} data-nav="" data-testid={tab.id} aria-current={hub === tab.hub ? 'page' : undefined}>
+                <a href={tab.href} mix={tabCss} data-nav="" data-testid={tab.id} title={tab.label} aria-current={hub === tab.hub ? 'page' : undefined}>
                   <Icon icon={tab.icon} size={16} />
-                  <span>{tab.label}</span>
+                  <span class="lbl">{tab.label}</span>
                 </a>
               </li>
             ))}
@@ -231,7 +257,7 @@ export function TopBar(handle: Handle<{ route: Route }>) {
                 </span>
               </a>
             ) : null}
-            <a href={routes.guide.href()} mix={iconLink} data-nav="" data-testid="nav-guide-top" aria-label="Guide" title="Guide" aria-current={route.name === 'guide' ? 'page' : undefined}>
+            <a href={routes.guide.href()} mix={[iconLink, guideLink]} data-nav="" data-testid="nav-guide-top" aria-label="Guide" title="Guide" aria-current={route.name === 'guide' ? 'page' : undefined}>
               <Icon icon={CircleHelp} size={17} />
             </a>
             <a href={routes.settings.href()} mix={iconLink} data-nav="" data-testid="nav-settings" aria-label="Settings" title="Settings" aria-current={hub === 'settings' && route.name !== 'guide' ? 'page' : undefined}>

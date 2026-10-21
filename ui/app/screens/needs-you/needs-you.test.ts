@@ -1,6 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import type { NeedsYouItem } from '../../api/types.ts';
+import type { DrydockEvent, NeedsYouItem } from '../../api/types.ts';
+import { needsChanged } from '../../state/project.ts';
 import { needsHint, needsTarget } from './needs-you.ts';
 
 const base: NeedsYouItem = { key: 'k', kind: 'approval', title: 't', severity: 1, createdAt: '2026-01-01T00:00:00Z' } as NeedsYouItem;
@@ -14,6 +15,18 @@ describe('Needs you targets and hints', () => {
     expect(needsTarget({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toBe('/project/integrations');
     expect(needsTarget({ ...base, title: 'integration:linear/create_comment' })).toBe('/project/integrations');
     expect(needsHint({ ...base, title: 'mcp_call: github/create_issue', taskId: 't1' })).toContain("project's Integrations page");
+  });
+
+  it("opens a chat whose agent waits to be allowed a tool call, where Allow once and Refuse are", () => {
+    const ask = { ...base, kind: 'chat_permission', title: 'Asks to use Bash: go test ./...', chatId: 'chat 1' };
+    expect(needsTarget(ask)).toBe('/chats/chat%201');
+    expect(needsHint(ask)).toContain('allow it once or refuse');
+  });
+
+  it('reloads every Needs you list on the same events, a chat asking among them', () => {
+    const ev = (type: string): DrydockEvent => ({ type, seq: 1, time: '' });
+    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted']) expect(needsChanged(ev(t))).toBe(true);
+    for (const t of ['chat.tool_result', 'agent.output', 'room.presence_changed']) expect(needsChanged(ev(t))).toBe(false);
   });
 
   it('explains the items that need more than a click, from a fixed set of hints', () => {

@@ -9,7 +9,7 @@ import type { DrydockEvent } from '../api/types.ts';
 import { EventStore } from '../state/eventStore.ts';
 import { Services, type AppServices } from '../state/services.tsx';
 import { ProjectData } from '../state/project.ts';
-import { UiModel } from '../state/ui.ts';
+import { UiModel, wideWindow } from '../state/ui.ts';
 import { Workspace } from '../state/workspace.ts';
 import { FakeTransport } from './fakes.ts';
 
@@ -31,7 +31,8 @@ export function testServices(client: Partial<Client> = {}): TestServices {
     client: c,
     store,
     transportName: 'fake',
-    ui: new UiModel({ persist: false }),
+    // a wide window: what a component draws does not depend on the size of the runner's window (a test of a narrow one says so)
+    ui: new UiModel({ persist: false, media: wideWindow }),
     workspace,
     project: new ProjectData(c, store, workspace),
     transport,

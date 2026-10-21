@@ -107,6 +107,9 @@ const (
 	NeedsQuestion      NeedsKind = "question"
 	NeedsFailedCheck   NeedsKind = "failed_check"
 	NeedsWatchdogPause NeedsKind = "watchdog_pause"
+	// NeedsChatPermission is a chat's CLI waiting for the person to allow a tool call (chats.PendingAsk). The core adds
+	// these; they live only while the request waits.
+	NeedsChatPermission NeedsKind = "chat_permission"
 )
 
 // NeedsYouItem is one row of the inbox. Rows are derived from source tables on every query, so they vanish when the
@@ -123,6 +126,7 @@ type NeedsYouItem struct {
 	ApprovalID string    `json:"approvalId,omitempty"`
 	TaskID     string    `json:"taskId,omitempty"`
 	AgentID    string    `json:"agentId,omitempty"`
+	ChatID     string    `json:"chatId,omitempty"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
@@ -253,6 +257,12 @@ WHERE t.stage = 2
 		return nil, err
 	}
 
+	SortNeedsYou(out)
+	return out, nil
+}
+
+// SortNeedsYou puts items in the inbox's order: by severity, then oldest first.
+func SortNeedsYou(out []NeedsYouItem) {
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Severity != out[j].Severity {
 			return out[i].Severity < out[j].Severity
@@ -262,7 +272,6 @@ WHERE t.stage = 2
 		}
 		return out[i].Key < out[j].Key
 	})
-	return out, nil
 }
 
 // AckNeedsYou dismisses an item that has no state to flip (a failed check, a watchdog pause, a question). Only a human can.

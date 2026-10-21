@@ -64,9 +64,10 @@ describe('team helpers', () => {
     expect(doing(p({ label: 'stopped', presence: 'Paused' }))).toBe('Stopped');
     expect(doing(p({ label: 'waiting for you', presence: 'Paused' }))).toBe('waiting for you');
     expect(doing(p({}))).toBe('Working');
-    expect(presenceWords(undefined)).toBe('Unknown');
+    expect(doing(p({ presence: 'Needs Attention' }))).toBe('Waiting for you');
+    expect(presenceWords(undefined)).toBe('Stopped');
     expect(presenceWords(p({ presence: 'Paused', label: 'stopped' }))).toBe('Stopped');
-    expect(presenceWords(p({ presence: 'Paused', label: 'budget' }))).toBe('Paused (budget)');
+    expect(presenceWords(p({ presence: 'Paused', label: 'budget' }))).toBe('Waiting for you');
     expect(runsWhere({ runMode: 'wsl', wslDistro: 'Ubuntu' })).toBe('in WSL Ubuntu');
     expect(runsWhere({ runMode: 'native' })).toBe('on Windows');
     expect(runsWhere({})).toBe('');

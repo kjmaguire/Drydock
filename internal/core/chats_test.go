@@ -24,6 +24,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/room"
 )
 
 // Chats are driven through the same methods the UI calls, against the scripted real-process agents (fakeagent speaks Claude's
@@ -1075,6 +1076,27 @@ func TestAnACPChatAsksThePersonAndAllowsOnce(t *testing.T) {
 	if len(e.eventsOf("chat.permission")) == 0 {
 		t.Fatal("no chat.permission event")
 	}
+	// Needs you lists it while it waits, in its project and in the list of every project, and not in another project's
+	needs := func(projectID string) []room.NeedsYouItem {
+		var out []room.NeedsYouItem
+		e.call("needsyou.list", map[string]string{"projectId": projectID}, &out)
+		var mine []room.NeedsYouItem
+		for _, it := range out {
+			if it.Kind == room.NeedsChatPermission {
+				mine = append(mine, it)
+			}
+		}
+		return mine
+	}
+	for _, pid := range []string{p.ID, ""} {
+		got := needs(pid)
+		if len(got) != 1 || got[0].ChatID != c.ID || got[0].Key != "chat-ask:"+ask.ID || got[0].Severity != 0 || !strings.HasPrefix(got[0].Title, "Asks to use ") || !strings.Contains(got[0].Title, "Run go test") || got[0].ProjectID != p.ID {
+			t.Fatalf("Needs you for %q: %+v", pid, got)
+		}
+	}
+	if got := needs("proj_other"); len(got) != 0 {
+		t.Fatalf("another project's Needs you: %+v", got)
+	}
 	// the waiting turn is visible as running; nothing answers on the person's behalf meanwhile
 	if err := e.callErr("chat.answer", map[string]any{"id": "chat_other", "askId": ask.ID, "allow": true}); err == nil {
 		t.Fatal("an answer through another chat must be refused")
@@ -1095,6 +1117,9 @@ func TestAnACPChatAsksThePersonAndAllowsOnce(t *testing.T) {
 	e.call("chat.asks", map[string]string{"id": c.ID}, &asks)
 	if len(asks) != 0 {
 		t.Fatalf("nothing waits after the answer: %+v", asks)
+	}
+	if got := needs(p.ID); len(got) != 0 {
+		t.Fatalf("Needs you after the answer: %+v", got)
 	}
 
 	// stopping the turn withdraws a request still waiting: the agent is told it was cancelled, never allowed

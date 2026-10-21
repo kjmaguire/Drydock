@@ -64,6 +64,7 @@ const hintCss = css({
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+  '@media (max-width: 719px)': { visibility: 'hidden' },
   '& kbd': { margin: '0 2px' },
 });
 // the send button is a round black disc with an arrow (Crew HQ, decision P64); its name stays "Send" for readers

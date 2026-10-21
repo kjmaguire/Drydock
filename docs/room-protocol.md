@@ -187,6 +187,7 @@ Each export stores `sha256` of its content and the covered `seq` range so it can
 | Budget paused | `budget.paused` scope state | resumed or limit raised |
 | Provider consent or Connection problem (`unauthenticated`, `degraded`, drift) | Connections status | fixed |
 | Mentions of me not yet read | `messages` with mention cursor | read |
+| A chat's CLI asking to use a tool (`chat_permission`, P86) | the chats service's waiting requests (in memory, `chats.PendingAsk`); added by the core, not `room.NeedsYou` | allowed, refused, expired (30 minutes) or withdrawn (the turn ended) |
 
 Ordering: severity (approvals and failures first), then age. The inbox is per user; in v1 there is one local user. Desktop notifications use the Wails notifications service (listed among built-in services, GP s1); behavior on Windows is unverified.
 

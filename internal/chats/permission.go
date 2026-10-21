@@ -32,6 +32,8 @@ const (
 type PendingAsk struct {
 	ID        string          `json:"id"`
 	ChatID    string          `json:"chatId"`
+	ChatTitle string          `json:"chatTitle,omitempty"`
+	ProjectID string          `json:"projectId,omitempty"`
 	TurnID    string          `json:"turnId"`
 	MessageID string          `json:"messageId"`
 	Tool      string          `json:"tool"`
@@ -61,7 +63,7 @@ func (t *turnRun) asker() agents.PermissionAsker {
 		msg, _ := t.store(RoleSystem, "Asks to use "+summary, name, q.Args)
 		ttl := s.o.AskTTL
 		now := storage.Now()
-		p := &pendingAsk{answer: make(chan bool, 1), info: PendingAsk{ID: ids.New("cask"), ChatID: c.ID, TurnID: t.turnID, MessageID: msg.ID,
+		p := &pendingAsk{answer: make(chan bool, 1), info: PendingAsk{ID: ids.New("cask"), ChatID: c.ID, ChatTitle: c.Title, ProjectID: c.ProjectID, TurnID: t.turnID, MessageID: msg.ID,
 			Tool: msg.ToolName, Summary: summary, Input: msg.ToolInput, Created: now, ExpiresAt: now + ttl.Milliseconds()}}
 		s.mu.Lock()
 		s.asks[p.info.ID] = p
@@ -114,13 +116,32 @@ func (s *Service) Asks(ctx context.Context, chatID string) ([]PendingAsk, error)
 			out = append(out, p.info)
 		}
 	}
+	sortAsks(out)
+	return out, nil
+}
+
+// Waiting lists the waiting permission requests of a project's chats, oldest first; "" lists every chat's, as Needs you
+// does for "". Needs you shows them.
+func (s *Service) Waiting(projectID string) []PendingAsk {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []PendingAsk{}
+	for _, p := range s.asks {
+		if projectID == "" || p.info.ProjectID == projectID {
+			out = append(out, p.info)
+		}
+	}
+	sortAsks(out)
+	return out
+}
+
+func sortAsks(out []PendingAsk) {
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Created != out[j].Created {
 			return out[i].Created < out[j].Created
 		}
 		return out[i].ID < out[j].ID
 	})
-	return out, nil
 }
 
 // Answer answers a waiting permission request of a chat: allow lets exactly that call run once.

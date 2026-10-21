@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { choose, appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav, openChecks } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -39,6 +39,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 
     // the task channel: Tests check card, the worker's message, the reviewer's verdict
     await openTaskChannel(page);
+    await openChecks(page);
     await expect(page.getByTestId('check-card').first()).toBeVisible();
     await expect(page.locator('[data-testid=check-card][data-tool=Tests]').first()).toHaveAttribute('data-status', /pass|fail/);
     await expect(page.locator('[data-testid=check-card][data-tool=Tests][data-status=pass]').last()).toBeVisible();
@@ -46,8 +47,10 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'Worker One' }).filter({ hasText: 'implemented Subtract' })).toBeVisible();
     await expect(page.locator('[data-testid=message][data-author-kind=agent]').filter({ hasText: 'Reviewer One' }).filter({ hasText: 'SHIP' })).toBeVisible();
 
-    // presence dots come from presence.list plus live events: some agent is no longer "Unknown"
-    await expect.poll(async () => (await page.getByTestId('presence').allInnerTexts()).filter((t) => !/Unknown/.test(t)).length, { timeout: 30_000 }).toBeGreaterThan(0);
+    // presence dots come from presence.list plus live events: some agent has a presence from the core, and every dot says one
+    // of the status words (P86)
+    await expect.poll(async () => (await page.getByTestId('presence').evaluateAll((ns) => ns.map((n) => n.getAttribute('data-presence')))).filter(Boolean).length, { timeout: 30_000 }).toBeGreaterThan(0);
+    for (const t of await page.getByTestId('presence').allInnerTexts()) expect(t.trim()).toMatch(/^(Working|Waiting for you|Waiting|Starting|Idle|Error|Stopped)$/);
 
     // approve with the button bound to the request
     await page.getByRole('link', { name: 'Task details' }).click();

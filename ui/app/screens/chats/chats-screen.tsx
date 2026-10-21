@@ -13,7 +13,8 @@ import { ChatList } from './chat-list.tsx';
 import { ChatView } from './chat-view.tsx';
 import { NewChatDialog } from './new-chat-dialog.tsx';
 
-const screenCss = css({ display: 'flex', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
+const screenCss = css({ position: 'relative', display: 'flex', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
+const scrimCss = css({ position: 'absolute', inset: '0', zIndex: '29', border: '0', borderRadius: '0', padding: '0', minHeight: '0', background: 'color-mix(in srgb, black 25%, transparent)', cursor: 'default' });
 const emptyCss = css({ flex: '1', minWidth: '0', display: 'grid', placeItems: 'center', '& kbd': { margin: '0 2px' } });
 
 export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: string) => void }>) {
@@ -44,12 +45,21 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
     const { id, onNavigate } = handle.props;
     if (s.ui.takeNewChat()) dialog = true;
     const ws = s.workspace;
+    // a narrow window (a Windows half-screen) shows the list or the chat, and the list over the chat when asked for
+    const narrow = s.ui.narrowRails;
+    const list = (layout: 'column' | 'full' | 'drawer') => <ChatList projectId={ws.projectId} selectedId={id} onNew={open} onNavigate={onNavigate} layout={layout} />;
     return (
       <div mix={screenCss} data-testid="chats-screen">
-        <ChatList projectId={ws.projectId} selectedId={id} onNew={open} onNavigate={onNavigate} />
+        {!narrow ? list('column') : !id ? list('full') : null}
+        {narrow && id && s.ui.drawerOpen ? (
+          <>
+            <button type="button" mix={[scrimCss, on('click', () => s.ui.setDrawer(false))]} aria-label="Close the chat list" />
+            {list('drawer')}
+          </>
+        ) : null}
         {id ? (
-          <ChatView key={id} id={id} adapters={adapters.data ?? []} onNavigate={onNavigate} />
-        ) : (
+          <ChatView key={id} id={id} adapters={adapters.data ?? []} onNavigate={onNavigate} onShowList={narrow ? () => s.ui.setDrawer(true) : undefined} />
+        ) : narrow ? null : (
           <div mix={emptyCss}>
             <Empty title="Chats" icon={MessagesSquare}>
               <p>Talk to Claude Code (or another agent CLI) directly. Every chat is kept with its history, continues the same session, and can be searched, forked, attached to a message or read by a later chat.</p>

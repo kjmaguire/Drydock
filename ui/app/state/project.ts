@@ -2,12 +2,16 @@
 // panel, the palette and most screens need them, so they are read once here and re-read on the events that change them.
 
 import type { Client } from '../api/client.ts';
-import type { Agent, NeedsYouItem, PresenceState, Room, Task, Unread } from '../api/types.ts';
+import type { Agent, DrydockEvent, NeedsYouItem, PresenceState, Room, Task, Unread } from '../api/types.ts';
 import { taskCoverage, type TaskCoverage } from '../lib/task-total.ts';
 import type { EventStore } from './eventStore.ts';
 import { Live, starts } from './live.ts';
 import { Model } from './services.tsx';
 import type { Workspace } from './workspace.ts';
+
+/** The events after which Needs you may have changed: every list or count of it reloads on these, so all of them agree. */
+export const needsChanged = (e: DrydockEvent): boolean =>
+  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived', 'chat.permission');
 
 /** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
 export interface TaskPage {
@@ -34,7 +38,7 @@ export class ProjectData extends Model {
     this.unread = new Live(store, { load: () => client.roomUnread(pid()), when: (e) => starts(e, 'room.message_posted', 'room.read_cursor', 'room.created', 'room.archived') });
     this.needs = new Live(store, {
       load: () => client.needsYouList(pid()),
-      when: (e) => starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived'),
+      when: needsChanged,
     });
     this.presence = new Live(store, { load: () => client.presenceList(), when: (e) => starts(e, 'room.presence_changed', 'agent.', 'watchdog.') });
     this.tasks = new Live(store, { load: () => this.#readTasks(client, pid()), when: (e) => starts(e, 'task.') && mine(e) });

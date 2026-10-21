@@ -132,6 +132,8 @@ const railCss = css({
   background: t.bgSidebar,
   // a group's heading is the first thing in its own box, so the space between two groups is the box's
   '& > div + div': { marginTop: t.s4 },
+  // a narrow window shows the rail only as a drawer over the page, opened from the shell's button (ui.ts NARROW_RAILS)
+  '@media (max-width: 899px)': { position: 'absolute', top: '0', left: '0', bottom: '0', zIndex: '30', maxWidth: 'calc(100% - 48px)', boxShadow: t.shadowLg },
 });
 // the Settings rail's labels are short: it is narrower than the Rooms rail, so the page beside it keeps its room
 const settingsRailCss = css({ width: '232px', gap: '0' });

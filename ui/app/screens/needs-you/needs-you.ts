@@ -7,10 +7,13 @@ export const KIND_LABEL: Record<string, string> = {
   question: 'Question',
   failed_check: 'Failed check',
   watchdog_pause: 'Watchdog pause',
+  chat_permission: 'Chat permission',
 };
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
 export function needsTarget(it: NeedsYouItem): string {
+  // a chat's CLI waiting to be allowed a tool call: Allow once and Refuse are in the chat
+  if (it.chatId) return routes.chat.href({ id: it.chatId });
   // a tool call an agent wants to make: its exact arguments and the Approve button are on the project's Integrations page
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.projectIntegrations.href();
   if (it.taskId) return routes.task.href({ id: it.taskId });
@@ -36,6 +39,7 @@ export function needsHint(it: NeedsYouItem): string {
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return "An agent wants to call a tool that is not marked read-only. Open the project's Integrations page to see the exact call and approve or reject it.";
   if (it.kind === 'approval' && /^Permission request: /.test(it.title))
     return "A worker asks to use a tool its rules do not allow, and its turn waits. Open the task to see the exact tool and input; allow it once or refuse.";
+  if (it.kind === 'chat_permission') return "A chat's agent asks to use a tool its rules do not allow, and its turn waits. Open the chat to see the exact call; allow it once or refuse. Nobody answering refuses it after 30 minutes.";
   if (it.kind === 'approval' && !it.taskId && !it.roomId) return "An outbound write to a connected service. Open the project's Integrations page to read the exact text and approve or decline.";
   return '';
 }

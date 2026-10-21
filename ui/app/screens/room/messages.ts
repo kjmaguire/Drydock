@@ -86,7 +86,9 @@ export function continues(prev: Message | undefined, m: Message): boolean {
 export type Row =
   | { kind: 'day'; key: string; label: string }
   | { kind: 'new'; key: string }
-  | { kind: 'message'; key: string; m: Message; head: boolean };
+  | { kind: 'message'; key: string; m: Message; head: boolean }
+  // check results posted one after another (types, tests, lint, secrets) are one row: "Checks: 4/4 passed" (decision P85)
+  | { kind: 'checks'; key: string; ms: Message[] };
 
 /**
  * The rows of the message list: a day divider before the first message of each day, a "new messages" divider before the
@@ -112,7 +114,14 @@ export function buildRows(messages: readonly Message[], opts: { newAfterSeq?: nu
       rows.push({ kind: 'new', key: 'new' });
       breakGroup = true;
     }
-    rows.push({ kind: 'message', key: m.id, m, head: breakGroup || !continues(prev, m) });
+    const last = rows[rows.length - 1];
+    if (checkOf(m) && !m.thread_root_id) {
+      // keyed by its first check: the windowed list anchors on keys, and later checks join the same row
+      if (!breakGroup && last?.kind === 'checks') last.ms.push(m);
+      else rows.push({ kind: 'checks', key: `checks-${m.id}`, ms: [m] });
+    } else {
+      rows.push({ kind: 'message', key: m.id, m, head: breakGroup || !continues(prev, m) });
+    }
     prev = m;
   }
   return rows;
@@ -126,6 +135,24 @@ export function replyCounts(messages: readonly Message[]): Map<string, number> {
 }
 
 export const repliesText = (n: number): string => `${n} ${n === 1 ? 'reply' : 'replies'}`;
+
+/** What a row of checks says closed: "4/4 passed", "1 failed: Tests", with the total time. */
+export function checksSummary(ms: readonly Message[]): { text: string; failed: number; ms: number } {
+  let passed = 0;
+  let total = 0;
+  let time = 0;
+  const failed: string[] = [];
+  for (const m of ms) {
+    const p = checkOf(m);
+    if (!p) continue;
+    total++;
+    if (typeof p.duration_ms === 'number') time += p.duration_ms;
+    if (p.check_status === 'pass') passed++;
+    else if (p.check_status !== 'skipped') failed.push(m.author.id.charAt(0).toUpperCase() + m.author.id.slice(1));
+  }
+  const text = failed.length ? `${failed.length} failed: ${failed.join(', ')}` : `${passed}/${total} passed`;
+  return { text, failed: failed.length, ms: time };
+}
 
 interface MentionLike {
   kind?: string;

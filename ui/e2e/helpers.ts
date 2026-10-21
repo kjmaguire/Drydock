@@ -332,3 +332,12 @@ export function readZip(path: string): Record<string, Buffer> {
   }
   return out;
 }
+
+/** Opens every closed group of checks in the room on screen (consecutive checks are one row, closed when all passed; P85). */
+export async function openChecks(page: Page): Promise<void> {
+  const groups = page.locator('details[data-testid=checks]');
+  await expect(groups.first()).toBeVisible();
+  for (const g of await groups.all()) {
+    if (!(await g.evaluate((d) => (d as HTMLDetailsElement).open))) await g.locator('summary').click();
+  }
+}

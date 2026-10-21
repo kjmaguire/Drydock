@@ -1,6 +1,6 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import type { PresenceState } from '../api/types.ts';
-import { presenceWords, statusLabel, statusTone } from '../lib/format.ts';
+import { STATUS_WORDS, agentStatus, statusLabel, statusTone, type AgentStatus } from '../lib/format.ts';
 import { LEAD_ORIGIN_LABEL, leadStep, leadStepText } from '../lib/task-origin.ts';
 import { t, tone, type Tone } from './tokens.ts';
 
@@ -63,15 +63,14 @@ export function OriginBadge(handle: Handle<{ origin: unknown }>) {
   };
 }
 
-const PRESENCE_TONE: Record<string, string> = {
+const STATUS_TONE: Record<AgentStatus, string> = {
   working: t.success,
-  thinking: t.info,
-  waiting: t.warning,
-  needs: t.warning,
-  failed: t.danger,
-  paused: t.textMuted,
-  completed: t.accentText,
+  'waiting-for-you': t.warning,
+  waiting: t.info,
+  starting: t.info,
   idle: t.textFaint,
+  error: t.danger,
+  stopped: t.textMuted,
 };
 
 const presenceCss = css({ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: t.textSm, color: t.textMuted });
@@ -80,12 +79,12 @@ const presenceCss = css({ display: 'inline-flex', alignItems: 'center', gap: '6p
 export function PresenceDot(handle: Handle<{ presence: PresenceState | undefined; compact?: boolean }>) {
   return () => {
     const p = handle.props.presence;
-    const name = p?.presence ?? 'Unknown';
-    const label = presenceWords(p);
-    const color = PRESENCE_TONE[name.toLowerCase().split(/\s/)[0] ?? ''] ?? t.textFaint;
+    const status = agentStatus(p);
+    const label = STATUS_WORDS[status];
+    const color = STATUS_TONE[status];
     return (
-      <span mix={presenceCss} title={p?.activity ? `${label}: ${p.activity}` : label} data-testid="presence">
-        <span mix={dotCss} aria-hidden="true" data-pulse={/^(working|thinking)/i.test(name) ? 'true' : undefined} style={{ background: color, color }} />
+      <span mix={presenceCss} title={p?.activity ? `${label}: ${p.activity}` : label} data-testid="presence" data-status={status} data-presence={p?.presence}>
+        <span mix={dotCss} aria-hidden="true" data-pulse={status === 'working' ? 'true' : undefined} style={{ background: color, color }} />
         <span class={handle.props.compact ? 'sr-only' : undefined}>{label}</span>
       </span>
     );
@@ -94,7 +93,7 @@ export function PresenceDot(handle: Handle<{ presence: PresenceState | undefined
 
 /** The presence color for an avatar's status ring. */
 export function presenceColor(p: PresenceState | undefined): string {
-  return PRESENCE_TONE[(p?.presence ?? '').toLowerCase().split(/\s/)[0] ?? ''] ?? t.textFaint;
+  return STATUS_TONE[agentStatus(p)];
 }
 
 // Avatar colors: chosen by a stable hash of the id so an agent keeps its color everywhere.
@@ -152,9 +151,20 @@ const eyesCss = css({
 /** The mood an agent's eyes show, from its presence color (the words sit beside the avatar). */
 export function moodFor(status: string | undefined): string {
   if (!status) return 'idle';
-  for (const [k, v] of Object.entries(PRESENCE_TONE)) if (v === status) return k === 'needs' ? 'waiting' : k;
+  for (const [k, v] of Object.entries(STATUS_TONE)) if (v === status) return STATUS_MOOD[k as AgentStatus];
   return 'idle';
 }
+
+/** The eyes (app.css .dot-eyes): looking around at work, up while waiting on you, closed while stopped. */
+const STATUS_MOOD: Record<AgentStatus, string> = {
+  working: 'working',
+  'waiting-for-you': 'waiting',
+  waiting: 'thinking',
+  starting: 'thinking',
+  idle: 'idle',
+  error: 'failed',
+  stopped: 'paused',
+};
 
 /**
  * An avatar. Agents are "dots" (OpenAI Dots, Grok Bot): a disc in the agent's own bright colour with two rounded-square

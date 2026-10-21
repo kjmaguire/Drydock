@@ -3,14 +3,15 @@
 // the dock (and a running terminal) and the details panel keep their state while the center changes. Under the top bar a
 // hub's pills (Tasks, Knowledge...), then the page, with the Rooms rail or the Settings rail beside it when the hub has one.
 
-import { css, navigate, type Handle, type RemixNode } from 'remix/component';
-import { PlugZap } from 'lucide';
+import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
+import { PanelLeftOpen, PlugZap } from 'lucide';
 import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys } from '../lib/keys.ts';
 import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
 import { services, watch } from '../state/services.tsx';
+import { Button } from '../ui/button.tsx';
 import { ErrorBoundary } from '../ui/error-boundary.tsx';
 import { ErrorNote, Loading } from '../ui/feedback.tsx';
 import { Page } from '../ui/layout.tsx';
@@ -25,7 +26,7 @@ import { CommandPalette } from './palette.tsx';
 import { TopBar } from './topbar.tsx';
 
 const rootCss = css({ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: t.bgApp });
-const appCss = css({ display: 'flex', flex: '1', minHeight: '0' });
+const appCss = css({ position: 'relative', display: 'flex', flex: '1', minHeight: '0', minWidth: '0' });
 const centerCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minWidth: '0', minHeight: '0', background: t.bgApp });
 const mainCss = css({ flex: '1', minHeight: '0', overflow: 'hidden', outline: 'none', '& > *': { height: '100%' } });
 const skipCss = css({
@@ -40,11 +41,15 @@ const skipCss = css({
   '&:focus': { left: t.s2 },
 });
 const skipNav = css({ position: 'absolute', top: '0', left: '0', zIndex: '10' });
+// a narrow window's rail is a drawer: a slim bar with the button that opens it, and a scrim that closes it
+const drawerBar = css({ display: 'flex', alignItems: 'center', gap: t.s2, flex: 'none', padding: `${t.s1} ${t.s3}`, borderBottom: `1px solid ${t.border}` });
+const scrimCss = css({ position: 'absolute', inset: '0', zIndex: '29', border: '0', borderRadius: '0', padding: '0', minHeight: '0', background: 'color-mix(in srgb, black 25%, transparent)', cursor: 'default' });
 
 export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.project);
+  watch(handle, s.ui); // the narrow window's drawer
   let dmError: Error | undefined;
 
   // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff; not inside the terminal or the diff editor, which use them
@@ -76,9 +81,15 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
     }
   };
 
+  let lastPath = '';
   return () => {
     const { url, children } = handle.props;
     const route = parseRoute(url.pathname);
+    if (url.pathname !== lastPath) {
+      // a navigation closes a drawer left open (the page it was opened over is gone)
+      if (lastPath && s.ui.drawerOpen) handle.queueTask(() => s.ui.setDrawer(false));
+      lastPath = url.pathname;
+    }
     const hub = hubOf(route);
     const ws = s.workspace;
     const project = ws.project;
@@ -110,7 +121,10 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
     const inProject = !!project && !isWorkspacePage(route);
     const taskContext =
       route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
-    const rail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;
+    const fullRail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;
+    const narrow = s.ui.narrowRails;
+    const rail = fullRail && narrow && !s.ui.drawerOpen ? null : fullRail;
+    const railName = hub === 'rooms' ? 'rooms' : 'settings pages';
 
     return (
       <div mix={rootCss}>
@@ -124,8 +138,16 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
         <TopBar route={route} />
         {project || isWorkspacePage(route) ? <SubNav route={route} /> : null}
         <div mix={appCss}>
+          {rail && narrow ? <button type="button" mix={[scrimCss, on('click', () => s.ui.setDrawer(false))]} aria-label={`Close the ${railName}`} /> : null}
           {rail}
           <div mix={centerCss}>
+            {fullRail && narrow ? (
+              <div mix={drawerBar}>
+                <Button size="sm" variant="ghost" icon={PanelLeftOpen} aria-expanded={s.ui.drawerOpen ? 'true' : 'false'} mix={[on('click', () => s.ui.setDrawer(!s.ui.drawerOpen))]}>
+                  {hub === 'rooms' ? 'Rooms' : 'Settings pages'}
+                </Button>
+              </div>
+            ) : null}
             {dmError ? (
               <div style={{ padding: '8px 16px' }}>
                 <ErrorNote error={dmError} what="Could not open the direct message" />

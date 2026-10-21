@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choose, appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom, openChecks } from './helpers';
 
 test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
@@ -129,6 +129,7 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   // the archived task channel still opens (room.get) and its composer is disabled
   await page.getByRole('link', { name: 'Open task channel' }).click();
   await expect(page.getByText('archived', { exact: true })).toBeVisible();
+  await openChecks(page);
   await expect(page.locator('[data-testid=check-card][data-tool=Tests]').first()).toBeVisible();
   await expect(page.getByLabel(/^Message to #/)).toBeDisabled();
 

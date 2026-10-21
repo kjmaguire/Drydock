@@ -71,7 +71,9 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   // the skill still reaches the session; the server no longer does
   const last = page.getByTestId('chat-message').last();
   await expect(last).toContainText('failed', { timeout: 30_000 });
-  await expect(page.getByTestId('chat-message').filter({ hasText: 'never guess flags' })).toHaveCount(2);
+  // in both turns the skills tool's card holds what it returned (P84) and the stand-in quotes it
+  await expect(page.locator('[data-testid=chat-message][data-role=tool]').filter({ hasText: 'never guess flags' })).toHaveCount(2);
+  await expect(page.locator('[data-testid=chat-message][data-role=assistant]').filter({ hasText: 'never guess flags' })).toHaveCount(2);
   await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
 
   // back on Home, the chat is among the latest chats without a project

@@ -121,7 +121,13 @@ const emptyCss = css({ padding: `${t.s6} ${t.s3}`, textAlign: 'center', color: t
 
 const DEBOUNCE_MS = 250;
 
-export function ChatList(handle: Handle<{ projectId: string | undefined; selectedId: string | undefined; onNew: () => void; onNavigate?: (href: string) => void }>) {
+// in a narrow window (ui.ts NARROW_RAILS) the list is either the whole screen (no chat open) or a drawer over the open chat
+const fullCss = css({ width: '100%', borderRight: '0' });
+const drawerCss = css({ position: 'absolute', top: '0', left: '0', bottom: '0', zIndex: '30', width: 'min(320px, calc(100% - 48px))', boxShadow: t.shadowLg });
+
+export function ChatList(
+  handle: Handle<{ projectId: string | undefined; selectedId: string | undefined; onNew: () => void; onNavigate?: (href: string) => void; layout?: 'column' | 'full' | 'drawer' }>,
+) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -263,7 +269,7 @@ export function ChatList(handle: Handle<{ projectId: string | undefined; selecte
     const searching = q.length > 0;
     const projectName = s.workspace.projectList.find((p) => p.id === projectId)?.name;
     return (
-      <aside mix={colCss} aria-label="Chats">
+      <aside mix={[colCss, handle.props.layout === 'full' ? fullCss : handle.props.layout === 'drawer' ? drawerCss : undefined]} aria-label="Chats" data-layout={handle.props.layout ?? 'column'}>
         <div mix={headCss}>
           <h1>
             <Icon icon={MessagesSquare} size={16} />

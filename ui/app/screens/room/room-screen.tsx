@@ -19,7 +19,7 @@ import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { Composer } from './composer.tsx';
 import { MessageFeed } from './feed.ts';
-import { MessageItem } from './message-item.tsx';
+import { CheckGroup, MessageItem } from './message-item.tsx';
 import { buildRows, lastHumanMessageId, replyCounts, type Row } from './messages.ts';
 import { RoomAgentsPanel } from './room-agents.tsx';
 import { RoomExports } from './room-exports.tsx';
@@ -75,7 +75,7 @@ const roomHead = css({
 const titleIcon = css({ display: 'grid', placeItems: 'center', flex: 'none', width: '38px', height: '38px', borderRadius: '12px', background: t.bgActive, color: t.textMuted });
 const topicCss = css({ minWidth: '0', color: t.textMuted, fontSize: t.textSm, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
 const actionsCss = actionsEnd;
-const modeCss = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap' });
+const modeCss = css({ display: 'inline-flex', alignItems: 'center', gap: '4px', color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap', '@media (max-width: 719px)': { display: 'none' } });
 
 const logWrap = css({ position: 'relative', flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' });
 const logCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', padding: `${t.s4} 0 ${t.s5}`, outline: 'none', '&:focus-visible': { boxShadow: `inset ${t.focus}` } });
@@ -242,6 +242,8 @@ export function Conversation(handle: Handle<{ room: Room }>) {
           <div mix={newCss} role="separator" aria-label="New messages">
             <span>New</span>
           </div>
+        ) : r.kind === 'checks' ? (
+          <CheckGroup ms={r.ms} />
         ) : (
           <MessageItem
             m={r.m}

@@ -57,7 +57,7 @@ const tabCss = css({
   '&[aria-selected="true"]': { background: t.bgActive, color: t.text },
 });
 const panelCss = css({ flex: '1', minHeight: '0', overflow: 'auto', borderTop: `1px solid ${t.border}`, background: t.bgApp });
-const hintCss = css({ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: t.s2, color: t.textFaint, fontSize: t.textXs });
+const hintCss = css({ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: t.s2, color: t.textFaint, fontSize: t.textXs, '& > span': { whiteSpace: 'nowrap' }, '@media (max-width: 719px)': { '& > span': { display: 'none' } } });
 const needCss = css({ padding: t.s4, color: t.textMuted });
 
 export function Dock(handle: Handle<{ projectId: string | undefined; taskId: string | undefined }>) {

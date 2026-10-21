@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
-import { parseDetails, parseDock, UiModel } from './ui.ts';
+import { parseDetails, parseDock, UiModel, wideWindow } from './ui.ts';
 
 // What is in localStorage can be anything (audit 2026-10-16, L43): an older version's shape, another tool's, a hand edit. A
 // value that is not what the UI expects is its default, and nothing else is trusted.
@@ -75,7 +75,7 @@ describe('UiModel reads its stored state with those checks (L43)', () => {
     for (const text of ['not json', '[]', 'null', '"string"', '42', '{"p1":"x"}', '{"p1":{"tab":"nope","height":"tall","open":"yes"}}']) {
       localStorage.setItem(DOCK, text);
       localStorage.setItem(DETAILS, text);
-      const ui = new UiModel();
+      const ui = new UiModel({ media: wideWindow });
       ui.setProject('p1');
       expect([text, ui.dock]).toEqual([text, { open: false, tab: 'diff', height: 280 }]);
       ui.detailsPage('conversation');
@@ -86,15 +86,42 @@ describe('UiModel reads its stored state with those checks (L43)', () => {
   });
 
   it('restores what it stored itself', () => {
-    const a = new UiModel();
+    const a = new UiModel({ media: wideWindow });
     a.setProject('p1');
     a.setDock({ open: true, tab: 'logs', height: 350 });
     a.detailsPage('other');
     a.setDetails(true);
-    const b = new UiModel();
+    const b = new UiModel({ media: wideWindow });
     b.setProject('p1');
     expect(b.dock).toEqual({ open: true, tab: 'logs', height: 350 });
     b.detailsPage('other');
     expect(b.detailsOpen).toBe(true);
+  });
+});
+
+describe('a narrow window (P85)', () => {
+  const narrow = (below: number) => (q: string) => ({ matches: Number(/max-width: (\d+)px/.exec(q)?.[1] ?? 0) >= below, addEventListener: () => {} });
+  it('starts with the details panel closed, whatever was stored, and keeps the choice for the session only', () => {
+    localStorage.setItem(DETAILS, JSON.stringify({ open: true, other: true }));
+    const ui = new UiModel({ media: narrow(1000) });
+    ui.detailsPage('conversation');
+    expect(ui.narrowDetails).toBe(true);
+    expect(ui.detailsOpen).toBe(false);
+    ui.setDetails(true);
+    expect(ui.detailsOpen).toBe(true);
+    expect(JSON.parse(localStorage.getItem(DETAILS)!)).toEqual({ open: true, other: true }); // the wide window's choice is kept
+  });
+  it('opens and closes the drawer of a rail or the chat list', () => {
+    const ui = new UiModel({ media: narrow(800) });
+    expect(ui.narrowRails).toBe(true);
+    expect(ui.drawerOpen).toBe(false);
+    ui.setDrawer(true);
+    expect(ui.drawerOpen).toBe(true);
+    ui.setDrawer(false);
+    expect(ui.drawerOpen).toBe(false);
+  });
+  it('is never narrow in a wide window', () => {
+    const ui = new UiModel({ media: wideWindow });
+    expect([ui.narrowDetails, ui.narrowRails]).toEqual([false, false]);
   });
 });

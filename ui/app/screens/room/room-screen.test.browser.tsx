@@ -74,11 +74,12 @@ describe('Conversation', () => {
     ];
     const s = servicesWith({ ...roomMessagesDouble(() => messages) });
     const r = mount(<Conversation room={taskRoom} />, s);
-    await waitFor(() => expect(messagesOf(r)).toHaveLength(5), r);
-    expect(messagesOf(r).map((m) => m.getAttribute('data-author-kind'))).toEqual(['human', 'agent', 'tool', 'tool', 'system']);
+    // the two checks posted one after another are one row (decision P85)
+    await waitFor(() => expect(messagesOf(r)).toHaveLength(4), r);
+    expect(messagesOf(r).map((m) => m.getAttribute('data-author-kind'))).toEqual(['human', 'agent', 'tool', 'system']);
     await waitFor(() => expect(qa(r, '.msg-author').some((e) => e.textContent === 'Backend #1')).toBe(true), r);
     // one author line: the name, then the agent's role (or the author kind) as a quiet label; people get none
-    expect(messagesOf(r).map((m) => m.querySelector('.msg-role')?.textContent ?? null)).toEqual([null, 'backend', 'tool', 'tool', 'system']);
+    expect(messagesOf(r).map((m) => m.querySelector('.msg-role')?.textContent ?? null)).toEqual([null, 'backend', null, 'system']);
     expect(messagesOf(r)[1]!.querySelector('[data-kind="agent"]')).not.toBeNull();
     // the person's own words are a bubble on the right, without an avatar (Crew HQ, decision P64)
     expect(messagesOf(r)[0]!.getAttribute('data-mine')).toBe('true');
@@ -92,12 +93,31 @@ describe('Conversation', () => {
       ['Lint', 'fail'],
     ]);
     expect(cards[1]!.textContent).toContain('calc.go:3: unused variable');
+    // one summary line, opened because a check failed; the log's path is on its line's title, not in the text
+    const checks = q<HTMLDetailsElement>(r, '[data-testid="checks"]')!;
+    expect(checks.open).toBe(true);
+    expect(q(r, '[data-testid="checks-summary"]')!.textContent).toBe('1 failed: Lint');
+    expect(cards[0]!.textContent).toContain('log log');
+    expect(cards[0]!.querySelector('[title="/x/log"]')).not.toBeNull();
     expect(q(r, 'script')).toBeNull();
     expect(r.container.textContent).toContain('<script>window.__xss=1</script>');
-    expect(q(r, '.msg-error')).not.toBeNull();
     expect(q(r, '[role="log"][aria-live="polite"]')!.getAttribute('aria-label')).toBe('Messages in task-1');
     // the task channel links its task
     expect(byText<HTMLAnchorElement>(r.container, 'a', 'Task details').getAttribute('href')).toBe('/task/t1');
+  });
+
+  it('checks that all passed are one closed row: "Checks 4/4 passed" with the total time', async () => {
+    const check = (seq: number, id: string, ms: number) =>
+      msg({ seq, type: 'RESULT', author: { kind: 'tool', id }, body: `${id} PASS`, payload: { check_kind: id, check_status: 'pass', duration_ms: ms, log_ref: `/runs/r1/checks/${id}.log` } });
+    const messages: Message[] = [check(1, 'types', 100), check(2, 'tests', 200), check(3, 'lint', 50), check(4, 'secrets', 50), msg({ seq: 5, author: { kind: 'agent', id: 'agt1' }, body: 'implemented Subtract' })];
+    const s = servicesWith({ ...roomMessagesDouble(() => messages) });
+    const r = mount(<Conversation room={taskRoom} />, s);
+    await waitFor(() => expect(messagesOf(r)).toHaveLength(2), r);
+    const checks = q<HTMLDetailsElement>(r, '[data-testid="checks"]')!;
+    expect(checks.open).toBe(false);
+    expect(checks.querySelector('summary')!.textContent).toContain("Checks4/4 passed400 ms");
+    expect(qa(r, '[data-testid="check-card"]').map((c) => c.getAttribute('data-tool'))).toEqual(['Types', 'Tests', 'Lint', 'Secrets']);
+    expect(r.container.textContent).not.toContain('/runs/r1/checks'); // a path is a title, never text
   });
 
   it('posts through room.post and shows the core error if refused', async () => {

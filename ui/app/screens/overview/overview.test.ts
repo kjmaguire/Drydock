@@ -17,7 +17,9 @@ describe('the day', () => {
     expect(doing(undefined)).toBe('Stopped');
     expect(doing({ agentId: 'a', presence: 'working', label: 'Working', activity: 'Writing tests' } as never)).toBe('Writing tests');
     expect(doing({ agentId: 'a', presence: 'idle', label: 'Idle' } as never)).toBe('Idle');
-    expect(doing({ agentId: 'a', presence: 'away' } as never)).toBe('away');
+    // a presence the UI does not know reads as one of the status words, never the core's raw word (P86)
+    expect(doing({ agentId: 'a', presence: 'away' } as never)).toBe('Idle');
+    expect(doing({ agentId: 'a', presence: 'Needs Attention' } as never)).toBe('Waiting for you');
   });
 
   it('reads seconds and milliseconds alike', () => {

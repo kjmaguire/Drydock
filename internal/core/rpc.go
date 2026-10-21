@@ -258,7 +258,7 @@ func (c *Core) Methods() map[string]Method {
 		"needsyou.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {
-			return c.Room.NeedsYou(ctx, p.ProjectID)
+			return c.NeedsYou(ctx, p.ProjectID)
 		}),
 		"presence.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Presence.Snapshot(), nil }),
 

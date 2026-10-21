@@ -1,7 +1,7 @@
 // Pure helpers for the team page, the agent editor and the template form (no DOM, no services).
 
 import type { AppliedTemplate, SkillsInstalled } from '../../api/libraryClient.ts';
-import { isStopped } from '../../lib/format.ts';
+import { isStopped, presenceWords } from '../../lib/format.ts';
 import type { AdapterInfo, Agent, AgentRun, Capabilities, PresenceState, RouteModel, Task, UsageTotals } from '../../api/types.ts';
 
 export const CAP_LABEL: [keyof Capabilities, string][] = [
@@ -88,10 +88,10 @@ export function presetUntouched(model: string, effort: string, last: { model: st
  */
 export function doing(p: PresenceState | undefined): string {
   if (isStopped(p)) return 'Stopped';
-  return p!.activity || p!.label || p!.presence;
+  return p!.activity || p!.label || presenceWords(p);
 }
 
-export { presenceWords } from '../../lib/format.ts';
+export { presenceWords };
 
 /** "Claude Code" for the claude adapter, else the adapter id (the chips of an agent's page). */
 export function adapterName(id: string): string {

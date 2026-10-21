@@ -598,7 +598,7 @@ export interface Unread {
   lastReadSeq: number;
 }
 
-export type NeedsKind = 'approval' | 'review' | 'question' | 'failed_check' | 'watchdog_pause';
+export type NeedsKind = 'approval' | 'review' | 'question' | 'failed_check' | 'watchdog_pause' | 'chat_permission';
 
 export interface NeedsYouItem {
   key: string;
@@ -612,6 +612,8 @@ export interface NeedsYouItem {
   approvalId?: string;
   taskId?: string;
   agentId?: string;
+  /** A chat whose CLI waits for the person to allow a tool call (kind chat_permission). */
+  chatId?: string;
   createdAt: string;
 }
 

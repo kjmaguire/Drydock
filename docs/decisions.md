@@ -853,3 +853,26 @@ Open, owner action:
   "no result reported"), a readable name (MCP tools as "server · tool", Drydock's own as "Drydock · tool"), the call in one
   line and its duration; opened, an edit shows the change as removed and added lines, a shell command shows `$ command` and its
   output, anything else its input and result. All of it is text, never HTML.
+- **P85. Narrow windows, and consecutive checks as one row (2026-10-21, the CopilotKit/AG-UI comparison, phase 2; the UI review's
+  P0 items).** On Windows people snap Drydock to half the screen beside their editor (about 960 px wide), and there the details
+  panel and the rails left a room's conversation a few hundred pixels wide; at phone width the page scrolled sideways. Below
+  1200 px the details panel starts as its slim strip and, opened, floats over the page instead of taking its width (the choice is
+  kept for the session only, so a wide window keeps the stored one). Below 900 px the Rooms rail, the settings rail and the chat
+  list become drawers behind a button and close on navigation; with no chat open, the chat list is the whole screen. Below 1240 px
+  the top tabs are icons that keep their names (title and accessible name), and below 720 px the bar wraps with the tabs on their
+  own row and the Guide link, the composer hint, the dock's keycaps and the room's mode switch hidden. In a room, consecutive tool
+  checks (lint, tests, review gates) outside a thread are one "Checks" row that says "N/M passed" or "K failed: A, B" with the
+  total time, closed when all passed and open when any failed; each check inside keeps its status, its log path and, for a
+  failure, its summary. A browser test measures both widths on the real app (nothing wider than the window, the log at least
+  480 px at 960 px).
+- **P86. One status vocabulary, and a chat's request in Needs you (2026-10-21, the CopilotKit/AG-UI comparison, phase 2; the UI
+  review's P0 "status vocabulary").** Pages said an agent's state in the core's own words, and differently: "Paused (budget)",
+  "Needs Attention", "Completed", a raw "away", and "Unknown" for an agent that had not run. Every page now says one of seven
+  words, from one mapping (`ui/app/lib/format.ts` `agentStatus`): Working (Working, Thinking), Waiting for you (Needs Attention,
+  Paused, or waiting on a permission request), Waiting (waiting on anything else), Starting, Idle (Idle, Completed), Error
+  (Failed) and Stopped (the program is not running, or never ran); never "Unknown". What the agent is doing stays in its
+  activity text (the tooltip, the Crew cards). The dot's color, pulse and the avatar's eyes follow the same status, and the
+  Guide's table says the seven words. Needs you also missed a kind of waiting: a chat whose CLI asks to use a tool (P83) waited
+  only inside the chat. The core's `needsyou.list` now adds each waiting chat request (kind `chat_permission`, with its chat;
+  opening it goes to the chat, where Allow once and Refuse are), so the count in the top bar is everything that waits for a
+  person, and every list and count of Needs you reloads on the same events (`needsChanged`).

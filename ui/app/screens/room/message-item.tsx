@@ -14,7 +14,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { Attachments } from './attachments.tsx';
-import { checkOf, isQuiet, isRecord, markersOf, mentionsHuman, repliesText, shortTime, type CheckPayload } from './messages.ts';
+import { checkOf, checksSummary, isQuiet, isRecord, markersOf, mentionsHuman, repliesText, shortTime } from './messages.ts';
 
 const rowCss = css({
   position: 'relative',
@@ -301,7 +301,7 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
             </>
           )}
           {check ? (
-            <CheckCard m={m} p={check} />
+            <CheckGroup ms={[m]} />
           ) : isRecord(m) ? (
             <RecordCard m={m} />
           ) : (
@@ -339,57 +339,101 @@ export function MessageItem(handle: Handle<MessageItemProps>) {
   };
 }
 
-const checkCss = css({
-  display: 'grid',
-  gap: t.s2,
-  marginTop: '4px',
-  padding: `10px ${t.s3}`,
+// a room's checks (types, tests, lint, secrets) posted one after another: one row, "Checks: 4/4 passed · 0.4 s", that opens
+// into a line per check; a failure opens it and shows what failed (decision P85). The log's path is on its line's title.
+const checksCss = css({
   maxWidth: '720px',
+  marginTop: '4px',
   border: `1px solid ${t.border}`,
   borderRadius: t.rLg,
   background: t.bgSurface,
-  '& details summary': { fontSize: t.textSm },
-  '& pre': { marginTop: t.s2, maxHeight: '280px' },
+  '& > summary': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.s2,
+    minHeight: '34px',
+    padding: `0 ${t.s3}`,
+    listStyle: 'none',
+    cursor: 'pointer',
+    borderRadius: t.rLg,
+    fontSize: t.textMd,
+  },
+  '& > summary::-webkit-details-marker': { display: 'none' },
+  '& > summary:hover': { background: t.bgHover },
+  '& > summary:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  '& > summary .muted': { color: t.textMuted, fontSize: t.textSm },
+  '& > ul': { display: 'grid', gap: '2px', margin: '0', padding: `0 ${t.s2} ${t.s2}`, listStyle: 'none' },
 });
-const checkHead = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, fontSize: t.textMd, '& .muted': { color: t.textMuted, fontSize: t.textSm } });
-const checkLog = css({ color: t.textFaint, fontSize: t.textSm, fontFamily: t.mono, overflowWrap: 'anywhere' });
+const checkRow = css({
+  display: 'grid',
+  gap: '4px',
+  padding: `4px ${t.s2}`,
+  borderRadius: t.rMd,
+  '& .line': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, fontSize: t.textSm },
+  '& .muted': { color: t.textMuted },
+  '& pre': { margin: '0', maxHeight: '240px', fontSize: t.textXs },
+});
 
-function CheckCard(handle: Handle<{ m: Message; p: CheckPayload }>) {
+const checkTone = (status: string): Tone => (status === 'pass' ? 'ok' : status === 'skipped' ? 'muted' : 'err');
+const checkIcon = (status: string) => (status === 'pass' ? CircleCheck : status === 'skipped' ? CircleSlash : CircleX);
+const toolName = (m: Message) => m.author.id.charAt(0).toUpperCase() + m.author.id.slice(1);
+const fileOf = (path: string) => path.split(/[\\/]/).pop() || path;
+
+/** A row of checks posted one after another. */
+export function CheckGroup(handle: Handle<{ ms: Message[] }>) {
   return () => {
-    const { m, p } = handle.props;
-    const status = p.check_status ?? 'unknown';
-    const ok = status === 'pass';
-    const skipped = status === 'skipped';
-    const tn: Tone = ok ? 'ok' : skipped ? 'muted' : 'err';
-    const tool = m.author.id.charAt(0).toUpperCase() + m.author.id.slice(1);
+    const ms = handle.props.ms;
+    const sum = checksSummary(ms);
+    const tn: Tone = sum.failed ? 'err' : 'ok';
+    const first = ms[0]!;
     return (
-      <div
-        class={`check-card check-${status}`}
-        mix={checkCss}
-        style={{ boxShadow: `inset 3px 0 0 ${tone[tn].fg}` }}
-        data-testid="check-card"
-        data-tool={tool}
-        data-kind={p.check_kind}
-        data-status={status}
-      >
-        <div mix={checkHead}>
-          <span style={{ display: 'inline-flex', color: tone[tn].fg }} aria-hidden="true">
-            <Icon icon={ok ? CircleCheck : skipped ? CircleSlash : CircleX} size={16} />
+      <article class="msg msg-tool msg-checks" data-testid="message" data-author-kind="tool" data-type="CHECKS" aria-label={`Checks: ${sum.text}`} mix={[rowCss, headCss]}>
+        <div mix={gutterCss}>
+          <span mix={toolTile} aria-hidden="true">
+            <Icon icon={Wrench} size={15} />
           </span>
-          <strong>{tool}</strong>
-          <span class="muted">{p.check_kind}</span>
-          <Badge tone={tn}>{status.toUpperCase()}</Badge>
-          {typeof p.duration_ms === 'number' ? <span class="muted">{p.duration_ms} ms</span> : null}
-          {p.failure_signature ? <code title="Normalized failure signature">{p.failure_signature}</code> : null}
         </div>
-        {!ok && p.summary ? (
-          <details open>
-            <summary>Failure summary{p.summary_truncated ? ' (truncated)' : ''}</summary>
-            <pre class="check-summary">{p.summary}</pre>
+        <div mix={contentCss}>
+          <details mix={checksCss} open={sum.failed > 0} data-testid="checks" data-failed={String(sum.failed)}>
+            <summary>
+              <span style={{ display: 'inline-flex', color: tone[tn].fg }} aria-hidden="true">
+                <Icon icon={sum.failed ? CircleX : CircleCheck} size={16} />
+              </span>
+              <strong>Checks</strong>
+              <span data-testid="checks-summary">{sum.text}</span>
+              {sum.ms ? <span class="muted">{sum.ms < 1000 ? `${sum.ms} ms` : `${(sum.ms / 1000).toFixed(1)} s`}</span> : null}
+              <time class="muted" dateTime={first.created_at} title={formatDateTime(first.created_at)} style={{ marginLeft: 'auto' }}>
+                {shortTime(first.created_at)}
+              </time>
+            </summary>
+            <ul>
+              {ms.map((m) => {
+                const p = checkOf(m)!;
+                const status = p.check_status ?? 'unknown';
+                return (
+                  <li key={m.id} class={`check-card check-${status}`} mix={checkRow} data-testid="check-card" data-tool={toolName(m)} data-kind={p.check_kind} data-status={status}>
+                    <div class="line">
+                      <span style={{ display: 'inline-flex', color: tone[checkTone(status)].fg }} aria-hidden="true">
+                        <Icon icon={checkIcon(status)} size={14} />
+                      </span>
+                      <strong>{toolName(m)}</strong>
+                      {status !== 'pass' ? <Badge tone={checkTone(status)}>{status.toUpperCase()}</Badge> : <span class="sr-only">passed</span>}
+                      {typeof p.duration_ms === 'number' ? <span class="muted">{p.duration_ms} ms</span> : null}
+                      {p.failure_signature ? <code title="Normalized failure signature">{p.failure_signature}</code> : null}
+                      {p.log_ref ? (
+                        <span class="muted" title={p.log_ref} style={{ marginLeft: 'auto' }}>
+                          log {fileOf(p.log_ref)}
+                        </span>
+                      ) : null}
+                    </div>
+                    {status !== 'pass' && p.summary ? <pre class="check-summary" aria-label={`What ${toolName(m)} reported${p.summary_truncated ? ' (truncated)' : ''}`}>{p.summary}</pre> : null}
+                  </li>
+                );
+              })}
+            </ul>
           </details>
-        ) : null}
-        {p.log_ref ? <div mix={checkLog}>log: {p.log_ref}</div> : null}
-      </div>
+        </div>
+      </article>
     );
   };
 }

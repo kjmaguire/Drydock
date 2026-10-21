@@ -123,11 +123,50 @@ export function formatBytes(n: number | undefined | null): string {
 /** An agent whose program is not running: the core says it as presence Paused with the label "stopped", and there is no presence at all before the first start. */
 export const isStopped = (p: PresenceState | undefined): boolean => !p || (p.presence === 'Paused' && p.label === 'stopped');
 
-/** The presence as words (PresenceDot says them too): "Working", "Paused (waiting for you)", "Stopped", "Unknown" when the core said nothing. */
+/**
+ * One status vocabulary for an agent, the same on every page (the UI review of 2026-10-21, P86). The core's presence has more
+ * states than a person needs to tell apart; each maps to one of these, and what the agent is doing stays in its activity text.
+ */
+export type AgentStatus = 'working' | 'waiting-for-you' | 'waiting' | 'starting' | 'idle' | 'error' | 'stopped';
+
+export const STATUS_WORDS: Record<AgentStatus, string> = {
+  working: 'Working',
+  'waiting-for-you': 'Waiting for you',
+  waiting: 'Waiting',
+  starting: 'Starting',
+  idle: 'Idle',
+  error: 'Error',
+  stopped: 'Stopped',
+};
+
+/**
+ * The status of an agent from its presence: on a turn (Working, Thinking) is working; held for a person (Needs Attention, Paused,
+ * or waiting on a permission request) is waiting for you; waiting on anything else is waiting; a failed turn is an error; a
+ * finished turn is idle; a program that is not running, or never ran, is stopped. Never "Unknown".
+ */
+export function agentStatus(p: PresenceState | undefined): AgentStatus {
+  if (isStopped(p)) return 'stopped';
+  switch (p!.presence) {
+    case 'Working':
+    case 'Thinking':
+      return 'working';
+    case 'Needs Attention':
+    case 'Paused':
+      return 'waiting-for-you';
+    case 'Waiting':
+      return /permission/i.test(p!.activity ?? '') ? 'waiting-for-you' : 'waiting';
+    case 'Failed':
+      return 'error';
+    case 'Idle':
+      return p!.label === 'starting' ? 'starting' : 'idle';
+    default:
+      return 'idle';
+  }
+}
+
+/** The status as words (PresenceDot says them too): "Working", "Waiting for you", "Waiting", "Starting", "Idle", "Error" or "Stopped". */
 export function presenceWords(p: PresenceState | undefined): string {
-  if (!p) return 'Unknown';
-  if (isStopped(p)) return 'Stopped';
-  return p.label ? `${p.presence} (${p.label})` : p.presence;
+  return STATUS_WORDS[agentStatus(p)];
 }
 
 /** "1 file", "2 files": a count with its noun, so a page never writes "file(s)". `many` is for nouns that do not take an s. */

@@ -14,6 +14,7 @@ import (
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/skills"
 )
 
@@ -40,6 +41,26 @@ func (c *Core) Chats() *chats.Service {
 		return v.(*chats.Service)
 	}
 	return nil
+}
+
+// NeedsYou is the inbox (room.NeedsYou) plus every chat whose CLI waits for the person to allow a tool call, so the count in
+// the top bar is everything that waits for a person. projectID "" lists all of them.
+func (c *Core) NeedsYou(ctx context.Context, projectID string) ([]room.NeedsYouItem, error) {
+	out, err := c.Room.NeedsYou(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	svc := c.Chats()
+	if svc == nil {
+		return out, nil
+	}
+	for _, a := range svc.Waiting(projectID) {
+		title := firstNonEmpty(a.ChatTitle, "A chat")
+		out = append(out, room.NeedsYouItem{Key: "chat-ask:" + a.ID, Kind: room.NeedsChatPermission, Title: "Asks to use " + a.Summary,
+			Detail: "In the chat " + title, ProjectID: a.ProjectID, ChatID: a.ChatID, CreatedAt: time.UnixMilli(a.Created).UTC()})
+	}
+	room.SortNeedsYou(out)
+	return out, nil
 }
 
 func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error) {
