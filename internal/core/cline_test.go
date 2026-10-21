@@ -23,7 +23,7 @@ func TestClineIsAConnectionATeamMemberAndAChatAdapter(t *testing.T) {
 		if c.Adapter == "cline" {
 			found = true
 			// (the Node prerequisite is checked once the CLI is found; cline is not installed here)
-			if c.InstallHint != "cmd: npm i -g cline" || c.Transport != "acp" {
+			if c.InstallHint != "cmd: npm i -g --allow-scripts=cline cline" || c.Transport != "acp" {
 				t.Fatalf("cline connection %+v", c)
 			}
 		}
