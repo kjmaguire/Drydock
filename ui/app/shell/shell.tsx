@@ -51,12 +51,14 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   watch(handle, s.project);
   watch(handle, s.ui); // the narrow window's drawer
   let dmError: Error | undefined;
+  /** The dock acts on a project: it is there only on a project's pages (UI review P1-8), and so are its shortcuts. */
+  let dockHere = false;
 
   // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff; not inside the terminal or the diff editor, which use them
   window.addEventListener(
     'keydown',
     (e) => {
-      if (ownsKeys(e.target)) return;
+      if (ownsKeys(e.target) || !dockHere) return;
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         s.ui.toggleDock();
@@ -117,8 +119,9 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
       center = children;
     }
 
-    // a workspace page shows nothing of a project: no repository banner, no details panel
+    // a workspace page shows nothing of a project: no repository banner, no details panel, no dock
     const inProject = !!project && !isWorkspacePage(route);
+    dockHere = inProject;
     const taskContext =
       route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
     const fullRail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;
@@ -161,7 +164,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
                 {center}
               </ErrorBoundary>
             </main>
-            {project ? (
+            {inProject && project ? (
               <ErrorBoundary label="the dock">
                 <Dock projectId={project.id} taskId={taskContext} />
               </ErrorBoundary>

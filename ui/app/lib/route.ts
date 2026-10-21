@@ -223,7 +223,8 @@ const HUB_OF: Record<Route['name'], Hub> = {
   'library-skills': 'library',
   'security-scan': 'scan',
   'project-new': 'project-new',
-  guide: 'settings',
+  // the Guide is the "?" button's own help surface, not a page inside the Settings rail (UI review P1-8)
+  guide: 'none',
   'not-found': 'none',
 };
 

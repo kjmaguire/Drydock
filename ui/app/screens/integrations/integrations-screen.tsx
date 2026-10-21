@@ -40,7 +40,7 @@ import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { card, Page, Section, stack } from '../../ui/layout.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { t, tone } from '../../ui/tokens.ts';
-import { ConnectorCard, connectorGrid, OwnServers } from '../mcp/gallery.tsx';
+import { ConnectorCard, connectorGrid } from '../mcp/gallery.tsx';
 import { full, head, panel, push, toolbar } from './assignments.tsx';
 import {
   connectReply,
@@ -998,7 +998,10 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string }>) {
               </p>
             )}
           </div>
-          <OwnServers linked={cards.map((c) => c.libraryId)} onChanged={gallery.reload} />
+          {/* MCP servers you add yourself live in one place, the Library (UI review P1-8): this page links there */}
+          <p mix={faint} data-testid="own-servers-link">
+            MCP servers you add yourself (a web address or a program on this computer) are in the <a href={routes.library.href()}>Library</a>, where you connect, test and remove them.
+          </p>
         </div>
       </Page>
     );

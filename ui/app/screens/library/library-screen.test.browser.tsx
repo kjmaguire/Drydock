@@ -204,11 +204,11 @@ describe('Library page', () => {
     expect(r.$('[data-testid="cli-gateway"]')).toBeNull();
   });
 
-  it('has no skills section of its own: skills have their own page, linked from a button of the page', async () => {
+  it('has no skills section of its own and no second link to them: the Skills pill under Library is the way (UI review P1-8)', async () => {
     const r = show();
     await one(r, '[data-testid="lib-mcp-empty"], [aria-label="MCP servers"]');
     expect(r.$('[data-testid="library-skills"]')).toBeNull();
-    expect(r.$('a[href="/library/skills"]')).not.toBeNull();
+    expect(r.$('a[href="/library/skills"]')).toBeNull();
   });
 
   it('shows the prebuilt agents as a read-only section next to the templates', async () => {

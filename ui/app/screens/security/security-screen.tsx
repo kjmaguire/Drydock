@@ -21,7 +21,7 @@ export function SecurityScreen(handle: Handle) {
     const pid = s.workspace.projectId;
     const hasRepo = projectHasRepo(project);
     return (
-      <Page title="Security scan" icon={ShieldCheck} testId="security-scan" subtitle={project?.name} guide="scan">
+      <Page title="Security" icon={ShieldCheck} testId="security-scan" subtitle={project ? `Scans of ${project.name}` : undefined} guide="scan">
         {!project ? <Notice tone="info">Choose a project to scan.</Notice> : null}
         {project && !hasRepo ? (
           <Notice tone="warn" testId="security-no-repo">

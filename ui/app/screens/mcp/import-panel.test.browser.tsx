@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { McpServerInput } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
 import { libServer } from './fixtures.ts';
 import { ImportServers } from './import-panel.tsx';
 
@@ -43,6 +43,16 @@ async function read(t: T, file: unknown = FILE) {
 const box = (li: HTMLElement) => li.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
 
 describe('Import from a file (M24)', () => {
+  it('keeps every key typed into the import box, and reads the whole file (H12)', async () => {
+    const t = show();
+    const json = JSON.stringify({ mcpServers: { docs: { url: 'https://learn.microsoft.com/api/mcp' } } });
+    const box = byLabel<HTMLTextAreaElement>(t.r.container, 'Configuration (JSON)');
+    await typeKeys(box, json, t.r);
+    expect(box.value).toBe(json);
+    await t.r.act(() => byText(t.r.container, 'button', 'Read servers').click());
+    await waitFor(() => expect(t.r.$$('[data-testid="import-candidate"]').length).toBe(1), t.r);
+  });
+
   it('a server that runs a program is not ticked and says so; one that reaches an address is ticked and shows the address', async () => {
     const t = show();
     const [gh, docs] = await read(t);

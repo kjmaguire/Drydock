@@ -22,9 +22,9 @@ const press = (target: EventTarget, key: string, mods: KeyboardEventInit = {}) =
   return e;
 };
 
-function shellServices() {
+function shellServices(projects: unknown[] = []) {
   const s = testServices({
-    projectList: async () => [],
+    projectList: async () => projects as never,
     licenseStatus: async () => lic(),
     appInfo: async () => ({}) as never,
     githubStatus: async () => ({ installed: false, loggedIn: false, login: '', error: 'gh is not installed' }),
@@ -41,8 +41,19 @@ function shellServices() {
 
 describe('global shortcuts (F20)', () => {
   it('Ctrl+J and Ctrl+K work on the page but not inside the terminal or the diff editor', async () => {
-    const s = shellServices();
-    const r = mount(<Shell url={new URL('http://localhost/settings')}>{null}</Shell>, s);
+    // the dock is a project's: on a workspace page (Settings) there is none and Ctrl+J leaves the key alone (UI review P1-8)
+    const ws = shellServices([{ id: 'p1', name: 'gocalc', hasRepo: true }]);
+    const w = mount(<Shell url={new URL('http://localhost/settings')}>{null}</Shell>, ws);
+    await waitFor(() => expect(ws.workspace.projectId).toBe('p1'), w);
+    w.root.flush();
+    expect(press(document.body, 'j', { ctrlKey: true }).defaultPrevented).toBe(false);
+    expect([ws.ui.dock.open, w.$('[aria-label="Dock"], [data-testid="dock"]')]).toEqual([false, null]);
+    cleanup();
+
+    const s = shellServices([{ id: 'p1', name: 'gocalc', hasRepo: true }]);
+    const r = mount(<Shell url={new URL('http://localhost/tasks')}>{null}</Shell>, s);
+    await waitFor(() => expect(s.workspace.projectId).toBe('p1'), r);
+    r.root.flush();
     // a widget host that owns its keys (the terminal and the diff editor carry data-own-keys), with xterm's own textarea
     const host = document.createElement('div');
     host.setAttribute('data-own-keys', '');

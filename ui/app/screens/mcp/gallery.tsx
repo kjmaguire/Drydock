@@ -7,27 +7,23 @@
 // (not from the catalog), by what each says about itself.
 
 import { css, on, type Handle } from 'remix/component';
-import { BookOpen, ExternalLink, FileUp, Plug, Plus, RefreshCw, Unplug } from 'lucide';
+import { ExternalLink, FileUp, Plug, Plus, RefreshCw, Unplug } from 'lucide';
 import type { McpGalleryCard, McpLibraryServer, McpServerIdentity } from '../../api/mcpClient.ts';
-import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
-import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { ClippedText } from '../../ui/clipped-text.tsx';
 import { Badge, faint, mono, muted } from '../../ui/data.tsx';
-import { Dialog } from '../../ui/dialog.tsx';
-import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { Section } from '../../ui/layout.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
-import { ReachNote } from './command-line.tsx';
-import { importedNote } from './import.ts';
 import { ImportServers } from './import-panel.tsx';
 import { OAuthPanel } from './oauth-panel.tsx';
 import { McpServerForm } from './server-form.tsx';
 
-/** The grid the connector cards and the own-server cards sit in. */
+/** The grid the connector cards sit in. */
 export const connectorGrid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
 const cardCss = css({
   display: 'grid',
@@ -298,185 +294,6 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
           </div>
         ) : null}
       </li>
-    );
-  };
-}
-
-/** A server the human described, shown by what it says about itself. */
-function OwnServerCard(handle: Handle<{ server: McpLibraryServer; onChanged: () => void }>) {
-  const s = services(handle);
-  const act = action(handle);
-  // the note beside the button says which program Test connection starts (M24): the button is described by it
-  const reachId = `reach-${handle.id}`;
-  return () => {
-    const { server: x, onChanged } = handle.props;
-    const id = identityLine(x.serverInfo);
-    const status = x.lastError ? STATUS.error! : x.discoveredAt > 0 ? STATUS.connected! : { label: 'Not reached yet', tone: 'muted' as Tone };
-    return (
-      <li mix={cardCss} data-testid="own-server" data-id={x.id} data-status={x.lastError ? 'error' : x.discoveredAt > 0 ? 'connected' : 'not_connected'} aria-label={x.display}>
-        <div class="head">
-          <div class="who">
-            <h4 title={x.display}>{x.display}</h4>
-            <span class="pub">
-              <code>{x.id}</code> · {x.transport === 'http' ? 'web address' : 'program'}
-            </span>
-          </div>
-          <Badge tone={status.tone}>{status.label}</Badge>
-        </div>
-        <p class="sum" data-testid="own-server-identity">
-          {id ? (
-            <>
-              Identifies itself as <strong>{id}</strong>
-            </>
-          ) : (
-            'Its identity is learned when Drydock first reaches it.'
-          )}
-        </p>
-        {x.serverInfo?.description ? <ClippedText text={x.serverInfo.description} mix={[faint]} data-testid="own-server-description" /> : null}
-        <ErrorNote error={act.error} what="Not reached" />
-        {x.lastError ? (
-          <p mix={errCss} role="alert">
-            {x.lastError}
-          </p>
-        ) : null}
-        {x.tools.length > 0 ? (
-          <details>
-            <summary>
-              {x.tools.length} {x.tools.length === 1 ? 'tool' : 'tools'}
-            </summary>
-            <ul aria-label={`Tools of ${x.display}`}>
-              {x.tools.map((tool) => (
-                <li key={tool.name}>
-                  <code>{tool.name}</code> {x.readOnlyTools.includes(tool.name) ? <span mix={faint}>reads only</span> : <span mix={faint}>asks you first</span>}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
-        {x.serverInfo?.instructions ? (
-          <details>
-            <summary>What the server tells clients</summary>
-            <p mix={instrCss}>{x.serverInfo.instructions}</p>
-          </details>
-        ) : null}
-        <ReachNote server={x} lead="Pressing Test connection" id={reachId} />
-        <div class="row">
-          <Button
-            size="sm"
-            icon={RefreshCw}
-            disabled={act.busy !== ''}
-            aria-describedby={reachId}
-            mix={[
-              on('click', async () => {
-                await act.run('discover', () => s.client.mcpLibDiscover(x.id));
-                onChanged();
-              }),
-            ]}
-          >
-            {act.busy === 'discover' ? 'Connecting...' : 'Test connection'}
-          </Button>
-          <a href={routes.library.href()} mix={buttonStyle('ghost', 'sm')}>
-            Edit in the Library
-          </a>
-        </div>
-      </li>
-    );
-  };
-}
-
-/**
- * "MCP servers you added": the servers the human added themselves (not from the catalog), by what each says about itself, with
- * Add an MCP server and Import from a file. `linked` are the library ids the catalog cards already show, so a server is on one
- * card only. The section's test id, own-servers, is unchanged.
- */
-export function OwnServers(handle: Handle<{ linked: readonly (string | undefined)[]; onChanged: () => void }>) {
-  const s = services(handle);
-  const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
-  let adding = false;
-  let importing = false;
-  let note = '';
-  const set = (f: () => void) => {
-    f();
-    void handle.update();
-  };
-  const reload = () => {
-    lib.reload();
-    handle.props.onChanged();
-  };
-
-  return () => {
-    const linked = new Set(handle.props.linked.filter(Boolean));
-    const own = (lib.data ?? []).filter((x) => !x.catalogId && !linked.has(x.id));
-    return (
-      <>
-        <Section
-          label="MCP servers you added"
-          testId="own-servers"
-          title="MCP servers you added"
-          description="Servers you added yourself: a web address or a program on this computer. Drydock shows each by what it says about itself."
-          actions={
-            <>
-              <Button size="sm" variant="ghost" icon={FileUp} mix={[on('click', () => set(() => (importing = true)))]}>
-                Import from a file
-              </Button>
-              <Button size="sm" variant="primary" icon={Plus} mix={[on('click', () => set(() => (adding = true)))]}>
-                Add an MCP server
-              </Button>
-            </>
-          }
-        >
-          <div role="status" aria-live="polite">
-            {note ? <Notice tone="ok">{note}</Notice> : null}
-          </div>
-          <ErrorNote error={lib.error} what="Could not load the servers you added" />
-          {lib.loading && !lib.data ? <Loading label="Loading the servers you added..." /> : null}
-          {lib.data && own.length === 0 ? (
-            <p mix={faint}>
-              <Icon icon={BookOpen} size={12} /> None yet. Add one by its address or command, or import the mcp.json or claude_desktop_config.json another app uses.
-            </p>
-          ) : null}
-          <ul mix={connectorGrid}>
-            {own.map((x) => (
-              <OwnServerCard key={x.id} server={x} onChanged={reload} />
-            ))}
-          </ul>
-        </Section>
-        <Dialog open={adding} title="Add an MCP server" wide onClose={() => set(() => (adding = false))}>
-          {adding ? (
-            <McpServerForm
-              onCancel={() => set(() => (adding = false))}
-              onDone={async (saved) => {
-                set(() => {
-                  adding = false;
-                  note = `${saved.display} was added. Drydock is reaching it to learn who it is and what it offers...`;
-                });
-                try {
-                  const r = await s.client.mcpLibDiscover(saved.id);
-                  set(() => (note = `${saved.display} identifies itself as ${identityLine(r.serverInfo) || 'nothing'} and offers ${r.tools.length} tools.`));
-                } catch (e) {
-                  set(() => (note = `${saved.display} was added, but Drydock could not reach it: ${(e as Error).message}`));
-                }
-                reload();
-              }}
-            />
-          ) : null}
-        </Dialog>
-        <Dialog open={importing} title="Import MCP servers from a file" wide onClose={() => set(() => (importing = false))}>
-          {importing ? (
-            <ImportServers
-              existingIds={(lib.data ?? []).map((x) => x.id)}
-              onCancel={() => set(() => (importing = false))}
-              onDone={(n) => {
-                set(() => {
-                  importing = false;
-                  note = importedNote(n, 'press Test connection on its card below');
-                });
-                reload();
-              }}
-            />
-          ) : null}
-        </Dialog>
-      </>
     );
   };
 }

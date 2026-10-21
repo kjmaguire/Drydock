@@ -13,7 +13,7 @@ import type { AdapterInfo } from '../../api/types.ts';
 import { skipsApprovals } from '../../lib/permission.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -438,11 +438,6 @@ export function LibraryScreen(handle: Handle) {
         icon={Library}
         wide
         guide="integrations"
-        actions={
-          <a href={routes.librarySkills.href()} mix={buttonStyle('ghost', 'sm')} data-testid="library-skills-link">
-            Skills
-          </a>
-        }
         subtitle={servers.data && templates.data ? `${libServers.length} server${libServers.length === 1 ? '' : 's'} · ${tpls.length} template${tpls.length === 1 ? '' : 's'}` : undefined}
       >
         <div mix={sectionsCss}>

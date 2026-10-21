@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import { byLabel, byText, cleanup, drain, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, typeKeys, waitFor } from '../../test/render.tsx';
 import { IntegrationsScreen } from '../integrations/integrations-screen.tsx';
 import { devLicense, galleryCard, libServer, pay, rev } from './fixtures.ts';
 import { identityLine } from './gallery.tsx';
@@ -347,102 +347,7 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(rows[1]!.querySelector('[data-testid="vendor-selective"]')).toBeNull();
   });
 
-  it('"MCP servers you added" shows them by what they say about themselves, offers Add an MCP server, and imports a claude_desktop_config.json', async () => {
-    const saves: unknown[] = [];
-    const discovered: unknown[] = [];
-    const r = show({
-      mcpLibList: async () => [
-        libServer({
-          id: 'mine',
-          display: 'My tracker',
-          serverInfo: { name: 'acme-tracker', title: 'Acme Tracker', version: '3.2.1', instructions: 'Use search first.' },
-        }),
-      ],
-      mcpLibSave: (async (i: unknown) => (saves.push(i), libServer())) as never,
-      mcpLibDiscover: (async (id: unknown) => (discovered.push(id), libServer())) as never,
-    });
-    const own = await waitFor(() => must(r.$('[data-testid="own-servers"] [data-testid="own-server"][data-id="mine"]')) as HTMLElement, r);
-    expect(own.querySelector('[data-testid="own-server-identity"]')!.textContent).toBe('Identifies itself as Acme Tracker (acme-tracker 3.2.1)');
-    expect(own.textContent).toContain('Use search first.');
-    // the section is named for what it holds: the servers you added yourself (the owner's words), not "your own servers"
-    const section = r.$('[data-testid="own-servers"]')!;
-    expect(section.getAttribute('aria-label')).toBe('MCP servers you added');
-    expect(section.querySelector('h2')!.textContent).toBe('MCP servers you added');
-    expect(section.textContent).toContain('Servers you added yourself: a web address or a program on this computer. Drydock shows each by what it says about itself.');
-    expect(byText(section, 'button', 'Add an MCP server')).not.toBeNull();
-    expect(section.textContent).not.toContain('Your own servers');
-    await r.act(() => byText(section, 'button', 'Add an MCP server').click());
-    const dialog = await waitFor(() => must(Array.from(document.querySelectorAll('dialog[open]')).find((d) => d.textContent?.includes('Add an MCP server'))) as HTMLElement, r);
-    expect(dialog.querySelector('h2, h1, [role="heading"]')?.textContent ?? dialog.textContent).toContain('Add an MCP server');
-    await r.act(() => byText(dialog, 'button', 'Cancel').click());
-
-    await r.act(() => byText(r.container, 'button', 'Import from a file').click());
-    const panel = await waitFor(() => must(document.querySelector('[data-testid="mcp-import"]')) as HTMLElement, r);
-    type(byLabel<HTMLTextAreaElement>(panel, 'Configuration (JSON)'), JSON.stringify({ mcpServers: { docs: { url: 'https://learn.microsoft.com/api/mcp' }, gh: { command: 'github-mcp-server', args: ['stdio'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_x' } } } }));
-    await r.act(() => byText(panel, 'button', 'Read servers').click());
-    await waitFor(() => expect(panel.querySelectorAll('[data-testid="import-candidate"]').length).toBe(2), r);
-    expect(panel.textContent).toContain('GITHUB_PERSONAL_ACCESS_TOKEN) are kept in the credential store');
-    // the address is ticked; the program is the person's to tick (M24)
-    const candidates = Array.from(panel.querySelectorAll<HTMLElement>('[data-testid="import-candidate"]'));
-    expect(candidates.map((c) => [c.getAttribute('data-id'), c.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked])).toEqual([
-      ['docs', true],
-      ['gh', false],
-    ]);
-    await r.act(() => candidates[1]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
-    await r.act(() => byText(panel, 'button', 'Import 2 servers').click());
-    await waitFor(() => expect(saves.length).toBe(2), r);
-    expect(saves).toEqual([
-      { id: 'docs', display: 'docs', transport: 'http', url: 'https://learn.microsoft.com/api/mcp' },
-      { id: 'gh', display: 'gh', transport: 'stdio', argv: ['github-mcp-server', 'stdio'], secretEnv: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_x' } },
-    ]);
-    // saving started nothing, and the page says so and where to start a server
-    const note = await waitFor(() => must(r.$('[data-testid="own-servers"] [role="status"]')) as HTMLElement, r);
-    await waitFor(() => expect(note.textContent).toContain('2 servers imported. Nothing has been started'), r);
-    expect(note.textContent).toContain('press Test connection on its card below');
-    await drain();
-    expect(discovered).toEqual([]);
-  });
-
-  it('an own server\'s Test connection says which program it starts or which address it reaches, whole, before it is pressed (M24)', async () => {
-    const discovered: unknown[] = [];
-    const long = Array.from({ length: 60 }, (_, i) => `--flag-${i}`);
-    const r = show({
-      mcpLibList: async () => [
-        libServer({ id: 'prog', display: 'My program', discoveredAt: 0, tools: [], argv: ['C:\\Tools\\my server.exe', ...long, 'LAST-ARGUMENT'] }),
-        libServer({ id: 'site', display: 'My site', transport: 'http', url: 'https://tracker.example.com/mcp', argv: undefined, discoveredAt: 0, tools: [] }),
-      ],
-      mcpLibDiscover: (async (id: unknown) => (discovered.push(id), libServer())) as never,
-    });
-    const prog = await waitFor(() => must(r.$('[data-testid="own-server"][data-id="prog"]')) as HTMLElement, r);
-    const note = prog.querySelector<HTMLElement>('[data-testid="reach-note"]')!;
-    expect(note.textContent).toContain('Pressing Test connection starts this program on this computer, with your rights:');
-    const cmd = note.querySelector<HTMLElement>('[data-testid="command-line"]')!;
-    expect(cmd.textContent!.startsWith('"C:\\Tools\\my server.exe" --flag-0 ')).toBe(true);
-    expect(cmd.textContent!.endsWith(' --flag-59 LAST-ARGUMENT')).toBe(true);
-    expect(getComputedStyle(cmd).overflowY).toBe('auto');
-    expect(byText(prog, 'button', 'Test connection').getAttribute('aria-describedby')).toBe(note.id);
-    const site = await waitFor(() => must(r.$('[data-testid="own-server"][data-id="site"]')) as HTMLElement, r);
-    expect(site.querySelector('[data-testid="reach-note"]')!.textContent).toBe('Pressing Test connection connects to this web address: https://tracker.example.com/mcp');
-    // the statement is there without a press; the press is what reaches the server
-    expect(discovered).toEqual([]);
-    await r.act(() => byText(prog, 'button', 'Test connection').click());
-    await waitFor(() => expect(discovered).toEqual(['prog']), r);
-  });
-
-  it('keeps every key typed into the import box, and reads the whole file (H12)', async () => {
-    const r = show({ mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker' })] });
-    await waitFor(() => must(r.$('[data-testid="own-servers"] [data-testid="own-server"][data-id="mine"]')), r);
-    await r.act(() => byText(r.container, 'button', 'Import from a file').click());
-    const panel = await waitFor(() => must(document.querySelector('[data-testid="mcp-import"]')) as HTMLElement, r);
-    const json = JSON.stringify({ mcpServers: { docs: { url: 'https://learn.microsoft.com/api/mcp' } } });
-    const box = byLabel<HTMLTextAreaElement>(panel, 'Configuration (JSON)');
-    await typeKeys(box, json, r);
-    expect(box.value).toBe(json);
-    await r.act(() => byText(panel, 'button', 'Read servers').click());
-    await waitFor(() => expect(panel.querySelectorAll('[data-testid="import-candidate"]').length).toBe(1), r);
-  });
-
-  it('clips the descriptions a server gives its tools and itself (L48)', async () => {
+  it('clips the descriptions a server gives its tools (L48)', async () => {
     const long = `${'Reads and writes everything. '.repeat(3000)}LAST WORDS`;
     const r = show({
       mcpGallery: async () => [galleryCard({ id: 'gh', display: 'GitHub', publisher: 'GitHub', brand: 'github', auth: 'bearer', integration: 'github', tools: [{ name: 'huge', description: long, readOnlyHint: true }] })],
@@ -454,10 +359,14 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     const tool = await waitFor(() => must(gh.querySelector('[data-testid="connector-tool-description"]')) as HTMLElement, r);
     expect(tool.textContent!.length).toBeLessThan(340);
     expect(gh.textContent).not.toContain('LAST WORDS');
-    const own = await waitFor(() => must(r.$('[data-testid="own-server"][data-id="mine"] [data-testid="own-server-description"]')) as HTMLElement, r);
-    expect(own.textContent!.length).toBeLessThan(340);
-    await r.act(() => byText(own, 'button', 'Show more').click());
-    expect(own.querySelector('.clip-full')!.textContent).toBe(long);
+  });
+
+  it('sends the servers you add yourself to the Library, their one home (UI review P1-8)', async () => {
+    const r = show({ mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker' })] });
+    const link = await waitFor(() => must(r.$('[data-testid="own-servers-link"] a')) as HTMLAnchorElement, r);
+    expect(link.getAttribute('href')).toBe('/library');
+    expect(r.$('[data-testid="own-servers"]')).toBeNull();
+    expect(r.container.textContent).not.toContain('My tracker');
   });
 
   it('names identities as plain text', () => {
