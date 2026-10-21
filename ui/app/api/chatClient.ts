@@ -84,6 +84,8 @@ export interface ChatMessage {
   toolResult?: string;
   /** How long the tool call took, in milliseconds. */
   toolMs?: number;
+  /** The agent's reasoning before this tool call or answer (P89), redacted and bounded. */
+  thinking?: string;
 }
 
 /** chat.tool_result: how one tool call of a chat ended. */
@@ -207,6 +209,8 @@ export interface ChatClient {
   chatDelete(id: string): Promise<void>;
   chatSearch(query: string, projectId?: string, limit?: number): Promise<ChatHit[]>;
   chatFork(id: string, uptoSeq?: number): Promise<Chat>;
+  /** Replaces the person's message at seq (and everything after it) with text, or the same text when none, and runs the turn again (P89). */
+  chatResend(id: string, seq: number, text?: string): Promise<{ turnId: string; version: number }>;
   chatAllowTool(id: string, tool: string): Promise<Chat>;
   chatDisallowTool(id: string, tool: string): Promise<Chat>;
   /** The tool calls the chat's CLI is waiting on, oldest first. */
@@ -245,6 +249,7 @@ export function createChatClient(t: Transport): ChatClient {
     },
     chatSearch: async (query, projectId = '', limit = 50) => arr(await t.call<ChatHit[] | null>('chat.search', { query, projectId, limit })),
     chatFork: async (id, uptoSeq = 0) => normalizeChat(await t.call<Chat>('chat.fork', { id, uptoSeq })),
+    chatResend: (id, seq, text = '') => t.call('chat.resend', { id, seq, text }),
     chatAllowTool: async (id, tool) => normalizeChat(await t.call<Chat>('chat.allowTool', { id, tool })),
     chatDisallowTool: async (id, tool) => normalizeChat(await t.call<Chat>('chat.disallowTool', { id, tool })),
     chatAsks: async (id) => arr(await t.call<ChatAsk[] | null>('chat.asks', { id })).filter(isChatAsk),

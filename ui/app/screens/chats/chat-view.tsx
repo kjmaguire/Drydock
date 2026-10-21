@@ -24,6 +24,7 @@ import { ChatComposer } from './chat-composer.tsx';
 import { ChatFeed } from './chat-feed.ts';
 import { ChatMessageRow } from './chat-message.tsx';
 import { ChatAsks } from './chat-asks.tsx';
+import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
 import { adapterLabel, chatTitle, chatWhere, compactNumber, costText, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
 
@@ -186,6 +187,15 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     return true;
   };
 
+  // P89: the person's message at seq, changed (or unchanged: regenerate), and everything after it, replaced by a new turn
+  const resend = async (seq: number, text?: string): Promise<boolean> => {
+    const r = await act.run('resend', () => s.client.chatResend(handle.props.id, seq, text));
+    if (!r) return false;
+    list.toBottom();
+    feed.sent(r.turnId, r.version);
+    return true;
+  };
+
   const fork = async (uptoSeq?: number) => {
     const c = await act.run('fork', () => s.client.chatFork(handle.props.id, uptoSeq));
     if (c) await go(routes.chat.href({ id: c.id }));
@@ -258,6 +268,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           onAllow={chat.adapter === 'claude' && !readOnly ? (r) => void allow(r) : undefined}
           onRetry={chat.archived || readOnly ? undefined : () => void send(RETRY_TEXT)}
           onFork={(seq) => void fork(seq)}
+          onEdit={chat.archived || readOnly ? undefined : (seq, text) => resend(seq, text)}
+          onRegenerate={chat.archived || readOnly || i !== msgs.length - 1 || !lastUserSeq ? undefined : () => void resend(lastUserSeq)}
         />
       ),
     );
@@ -489,6 +501,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               <div mix={streamCss} aria-live="off" data-testid="chat-streaming" aria-label={`${adapterLabel(chat.adapter)} is answering`}>
                 <div>{startsGroup(msgs[msgs.length - 1], { role: 'assistant' } as never) ? <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={32} kind="agent" /> : null}</div>
                 <div style={{ minWidth: '0' }}>
+                  {streaming.thinking ? <ThinkingFold text={streaming.thinking} live /> : null}
                   {streaming.text ? (
                     <Markdown source={streaming.text} />
                   ) : (

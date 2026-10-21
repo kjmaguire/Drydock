@@ -79,6 +79,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.get` | `{id}` | `{chat: Chat, messages: [Message] (latest 200, oldest first), hasMore}` |
 | `chat.messages` | `{id, beforeSeq?[latest], limit?[100, max 500]}` | `{messages: [Message] oldest first, hasMore}` (`hasMore`: still older messages exist) |
 | `chat.send` | `{id, text, attach?: [chatId]}` | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
+| `chat.resend` | `{id, seq, text?[the message's own text]}` | `{turnId, version}`: the person's message at `seq` and everything after it are replaced and a new turn runs from there; the session is dropped, so the turn starts a fresh one given the conversation before as quoted history (P89). Refused for a message that is not the person's, or while a turn runs (nothing is removed then) |
 | `chat.stop` | `{id}` | `{stopped}` (false when nothing was running) |
 | `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?, adapter?, wslDistro?, cwd?, skills?, mcpServers?}` | `Chat` |
 | `chat.delete` | `{id}` | `{deleted: true}` |
@@ -86,6 +87,8 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.fork` | `{id, uptoSeq?[all]}` | `Chat` (new, messages copied up to and including `uptoSeq`, no session) |
 | `chat.allowTool` | `{id, tool}` | `Chat` |
 | `chat.disallowTool` | `{id, tool}` | `Chat` |
+| `chat.asks` | `{id}` | `[PendingAsk]`: the tool calls the chat's ACP agent waits to be allowed (P83) |
+| `chat.answer` | `{id, askId, allow}` | `{answered: true}`; allow lets exactly that call run once |
 
 Rules worth knowing in the UI:
 
@@ -142,7 +145,11 @@ Every event carries `chatId` and the chat's project as `projectId` (empty for a 
 | `chat.deleted` | `{chatId}` |
 | `chat.turn_started` | `{chatId, turnId, attach: [chatId]}` |
 | `chat.delta` | `{chatId, turnId, text}`: streamed assistant text, coalesced (about 60 ms, cut at whitespace) |
+| `chat.thinking` | `{chatId, turnId, text}`: the agent's streamed reasoning, coalesced and cut like `chat.delta`; it is kept, redacted and bounded, as `thinking` on the next tool call or answer stored (P89) |
 | `chat.tool` | `{chatId, turnId, name, summary, messageId}` |
+| `chat.tool_result` | `{chatId, turnId, messageId, status: "ok" \| "failed", result, ms}`: how a tool call ended (P84) |
+| `chat.permission` | `{chatId, ask: PendingAsk}`; `chat.permission_answered` `{chatId, id, outcome: allowed \| refused \| expired \| withdrawn}` (P83) |
+| `chat.rewound` | `{chatId, fromSeq}`: a resend removed the messages from `fromSeq` on (P89) |
 | `chat.message` | `{chatId, message: Message}` for every stored message |
 | `chat.turn` | `{chatId, turnId, status: "done" \| "error" \| "stopped", usage: {inputTokens, outputTokens, costUsd (null = unknown)}, sessionId, resumed, fallback, error?}` |
 

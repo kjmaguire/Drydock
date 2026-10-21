@@ -150,6 +150,7 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 			return svc.Fork(ctx, p.ID, p.UptoSeq)
 		}),
 		// permission requests a chat's CLI is waiting on (chats/permission.go); only the person's UI calls these methods
+		"chat.resend": bind(func(ctx context.Context, p chats.ResendReq) (any, error) { return svc.Resend(ctx, p) }),
 		"chat.asks": bind(func(ctx context.Context, p idOnly) (any, error) { return svc.Asks(ctx, p.ID) }),
 		"chat.answer": bind(func(ctx context.Context, p struct {
 			ID    string `json:"id"`

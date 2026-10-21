@@ -341,3 +341,38 @@ describe('Markdown limits (H11)', () => {
     expect(m.container.querySelector('img')).toBeNull();
   });
 });
+
+describe('code blocks (P89)', () => {
+  it('names the language, colours what it knows as text, and copies exactly the code', async () => {
+    const code = 'const a = "<img src=x onerror=alert(1)>"; // note\nreturn 42';
+    const r = html('```ts\n' + code + '\n```\n\n```\nplain <b>text</b>\n```');
+    assertInert(r.container);
+    const blocks = Array.from(r.container.querySelectorAll<HTMLElement>('[data-testid="code-block"]'));
+    expect(blocks.map((b) => [b.dataset.lang, b.querySelector('.md-code-lang')!.textContent])).toEqual([
+      ['js', 'ts'],
+      [undefined, 'code'],
+    ]);
+    expect(blocks[0]!.querySelector('code')!.textContent).toBe(code);
+    expect(Array.from(blocks[0]!.querySelectorAll('.tok-keyword')).map((e) => e.textContent)).toEqual(['const', 'return']);
+    expect(blocks[0]!.querySelector('.tok-string')!.textContent).toBe('"<img src=x onerror=alert(1)>"');
+    expect(blocks[0]!.querySelector('.tok-comment')!.textContent).toBe('// note');
+    expect(blocks[1]!.querySelector('code')!.textContent).toBe('plain <b>text</b>');
+    expect(blocks[1]!.querySelector('b')).toBeNull();
+
+    const written: string[] = [];
+    const orig = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => void written.push(t) } });
+    try {
+      const btn = blocks[0]!.querySelector<HTMLButtonElement>('[data-testid="code-copy"]')!;
+      expect(btn.textContent).toBe('Copy');
+      btn.click();
+      await new Promise((res) => setTimeout(res, 20));
+      expect(written).toEqual([code]);
+      expect(btn.textContent).toBe('Copied');
+      expect(btn.getAttribute('aria-label')).toBe('Copied');
+    } finally {
+      if (orig) Object.defineProperty(navigator, 'clipboard', orig);
+    }
+  });
+});
+

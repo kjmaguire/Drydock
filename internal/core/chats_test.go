@@ -1212,3 +1212,135 @@ func TestAChatsToolCallsKeepTheirResultAndStatus(t *testing.T) {
 		t.Fatalf("a fork keeps the results: %+v", fd.Messages[2])
 	}
 }
+
+// P89: a chat keeps the agent's reasoning. It streams as chat.thinking while the turn runs, and is kept, redacted, on the tool
+// call or answer it came before; a fork carries it.
+func TestAChatKeepsTheAgentsReasoningOnTheRowItCameBefore(t *testing.T) {
+	dir := t.TempDir()
+	secret := "ghp_" + strings.Repeat("aB3dE5fG7h", 3) + "aB3dE5"
+	sc, _ := json.Marshal(fakeacp.Script{LoadSession: true, Default: []fakeacp.Step{
+		{Think: "The tests fail; I should read calc.go first. "},
+		{Think: "The token " + secret + " is in the env."},
+		{Tool: &fakeacp.Tool{ID: "t1", Title: "Read calc.go", Kind: "read", Input: map[string]any{"path": "calc.go"}, Output: "package gocalc"}},
+		{Think: "Subtract adds instead of subtracting."},
+		{Say: "Subtract was adding; fix it with a - b."},
+	}})
+	sp := filepath.Join(dir, "acp.json")
+	if err := os.WriteFile(sp, sc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ad := acp.New(acp.Config{ID: "acpthink", Command: os.Args[0], Env: []string{"DRYDOCK_FAKE_ACP=1", "DRYDOCK_FAKE_ACP_SCRIPT=" + sp}})
+	e := openChats(t, fakeagent.Script{}, map[string]agents.Adapter{"acpthink": ad})
+	p, _ := e.setup("acpthink")
+	c := e.create(map[string]any{"projectId": p.ID, "adapter": "acpthink"})
+	if ev := e.send(c.ID, "why do the tests fail?"); ev["status"] != chats.TurnDone {
+		t.Fatalf("turn %v", ev)
+	}
+	d := e.get(c.ID)
+	if roles(d.Messages) != "user,tool,assistant" {
+		t.Fatalf("messages %s", roles(d.Messages))
+	}
+	tool, answer := d.Messages[1], d.Messages[2]
+	if !strings.HasPrefix(tool.Thinking, "The tests fail; I should read calc.go first.") || strings.Contains(tool.Thinking, secret) || !strings.Contains(tool.Thinking, "is in the env") {
+		t.Fatalf("the reasoning before the tool call: %q", tool.Thinking)
+	}
+	if answer.Thinking != "Subtract adds instead of subtracting." || d.Messages[0].Thinking != "" {
+		t.Fatalf("the reasoning before the answer: %q (user %q)", answer.Thinking, d.Messages[0].Thinking)
+	}
+	// it streamed while the turn ran, redacted
+	var streamed string
+	for _, x := range e.eventsOf("chat.thinking") {
+		if x["chatId"] == c.ID {
+			streamed += x["text"].(string)
+		}
+	}
+	if !strings.Contains(streamed, "read calc.go first") || !strings.Contains(streamed, "Subtract adds") || strings.Contains(streamed, secret) {
+		t.Fatalf("chat.thinking: %q", streamed)
+	}
+	// nothing of it reached the database in the clear
+	var n int
+	_ = e.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE thinking LIKE ?`, "%"+secret+"%").Scan(&n)
+	if n != 0 {
+		t.Fatal("the secret in the reasoning was stored")
+	}
+	// a fork carries it
+	var fork chats.Chat
+	e.call("chat.fork", map[string]any{"id": c.ID}, &fork)
+	fd := e.get(fork.ID)
+	if len(fd.Messages) != 3 || fd.Messages[1].Thinking != tool.Thinking || fd.Messages[2].Thinking != answer.Thinking {
+		t.Fatalf("the fork's reasoning: %+v", fd.Messages)
+	}
+}
+
+// P89: the person can edit a message of theirs and send it again, or send it again unchanged (regenerate). The message and
+// everything after it are replaced; the CLI session is dropped (a session cannot be rewound), so the new turn starts a fresh
+// one given the conversation before it as quoted history; nothing is removed when the turn cannot start.
+func TestAPersonEditsTheirMessageAndTheTurnRunsAgainFromThere(t *testing.T) {
+	e := openChats(t, fakeagent.Script{Rules: []fakeagent.Rule{
+		// a fallback prompt quotes the history before the new message, so the rules for later questions come first
+		{Match: "colour code", Steps: []fakeagent.Step{{Say: "Teal is #008080."}}},
+		{Match: "colour name", Steps: []fakeagent.Step{{Say: "It is called teal."}}},
+		{Match: "favourite", Steps: []fakeagent.Step{{Say: "Noted: teal."}}},
+	}, Default: []fakeagent.Step{{Say: "ok"}}}, nil)
+	p, _ := e.setup("resend")
+	c := e.create(map[string]any{"projectId": p.ID})
+	e.send(c.ID, "My favourite colour is teal.")
+	e.send(c.ID, "What is its colour code?")
+	d := e.get(c.ID)
+	if roles(d.Messages) != "user,assistant,user,assistant" {
+		t.Fatalf("messages %s", roles(d.Messages))
+	}
+	second := d.Messages[2].Seq
+
+	// only the person's own messages can be sent again, and the message must be there
+	for _, seq := range []int64{d.Messages[1].Seq, 99, 0} {
+		if err := e.callErr("chat.resend", map[string]any{"id": c.ID, "seq": seq, "text": "x"}); err == nil {
+			t.Fatalf("seq %d must be refused", seq)
+		}
+	}
+
+	var res chats.SendResult
+	e.call("chat.resend", map[string]any{"id": c.ID, "seq": second, "text": "What is its colour name?"}, &res)
+	if ev := e.waitTurn(res.TurnID); ev["status"] != chats.TurnDone || ev["resumed"] != false || ev["fallback"] != true {
+		t.Fatalf("the edited turn starts a fresh session with the history quoted: %v", ev)
+	}
+	d = e.get(c.ID)
+	var bodies []string
+	for _, m := range d.Messages {
+		bodies = append(bodies, m.Role+": "+m.Body)
+	}
+	want := []string{"user: My favourite colour is teal.", "assistant: Noted: teal.", "user: What is its colour name?", "assistant: It is called teal."}
+	if strings.Join(bodies, " | ") != strings.Join(want, " | ") {
+		t.Fatalf("after the edit: %v", bodies)
+	}
+	pr := e.prompts()
+	last := pr[len(pr)-1]
+	if !strings.Contains(last, "> My favourite colour is teal.") || strings.Contains(last, "colour code") || !strings.HasSuffix(last, "What is its colour name?") {
+		t.Fatalf("the new turn is given the conversation before the edited message, not what it replaced:\n%s", last)
+	}
+	rewound := false
+	for _, x := range e.eventsOf("chat.rewound") {
+		if x["chatId"] == c.ID && x["fromSeq"] == float64(second) {
+			rewound = true
+		}
+	}
+	if !rewound {
+		t.Fatal("no chat.rewound event")
+	}
+	// the replaced messages are gone from search too
+	var found []chats.Hit
+	e.call("chat.search", map[string]any{"query": "code"}, &found)
+	for _, h := range found {
+		if h.ChatID == c.ID {
+			t.Fatalf("a replaced message is still found: %+v", h)
+		}
+	}
+
+	// regenerate: the same message again, its text unchanged
+	e.call("chat.resend", map[string]any{"id": c.ID, "seq": second}, &res)
+	e.waitTurn(res.TurnID)
+	d = e.get(c.ID)
+	if roles(d.Messages) != "user,assistant,user,assistant" || d.Messages[2].Body != "What is its colour name?" {
+		t.Fatalf("after regenerate: %s %+v", roles(d.Messages), d.Messages)
+	}
+}

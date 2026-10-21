@@ -902,3 +902,19 @@ Open, owner action:
   only `approved_with_edits` and the changed input's digest. In the task's Activity each permission request is a wait inside
   the worker's turn ("Waiting for you: Bash: npm install left-pad") until it is answered ("Allowed by you with your changes",
   "Refused by Drydock's rules", "Nobody answered in time"); docs/security.md s5 step 6.
+- **P89. Chat basics: code blocks, a reading column, the agent's reasoning, edit and regenerate (2026-10-21, the
+  CopilotKit/AG-UI comparison, phase 4).** Four gaps a person meets in every chat. (1) Code in a message was a plain block:
+  every fenced block now names its language, has a Copy button (a word, not an icon: a rendered message holds no svg) and
+  light colouring of comments, strings, numbers and keywords for the languages agents write most (`ui/app/lib/highlight.ts`,
+  a scanner of a few hundred lines; nothing installed; runs drawn as text, code past 20,000 characters left plain). (2) An
+  answer ran the full width of the window; it now stops at 760 px. (3) The CLI's reasoning (thinking) was dropped: it now
+  streams as `chat.thinking` (coalesced and cut at whitespace like `chat.delta`, so the redactor sees whole tokens) and is kept,
+  redacted and bounded to 16 KiB, as `thinking` on the tool call or answer it came before (migration 00127; a fork carries
+  it); the UI shows it open under the typing while it streams and folded on the row after. Reasoning with nothing after it
+  (a turn stopped mid-thought) is not kept. (4) There was no way to correct a question or ask again: `chat.resend` replaces the
+  person's message at a seq (edited, or unchanged to regenerate) and everything after it, and runs the turn again. A CLI
+  session cannot be rewound to an earlier message, so the session is dropped and the new turn starts a fresh one given the
+  conversation before it as quoted history (the path a fork's first turn takes, `fallback: true`); the check, the removal and
+  the session reset happen in the transaction that claims the turn, so nothing is removed when the turn cannot start. Edit
+  is offered on the person's messages and Regenerate on the newest answer, neither while a turn runs; the editor says that
+  sending replaces the message and everything after it.

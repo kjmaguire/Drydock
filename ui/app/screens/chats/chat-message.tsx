@@ -3,7 +3,7 @@
 // (chat-tool.tsx), refusals as a callout with the suggested allow rule, system notes and errors as quiet lines.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleAlert, GitFork, Info, ShieldOff } from 'lucide';
+import { Check, CircleAlert, GitFork, Info, Pencil, RotateCcw, ShieldOff } from 'lucide';
 import type { ChatMessage } from '../../api/chatClient.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { Button } from '../../ui/button.tsx';
@@ -13,6 +13,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { adapterLabel, agentWord } from './chats.ts';
 import { ToolCard } from './chat-tool.tsx';
+import { ThinkingFold } from './chat-thinking.tsx';
 
 const rowCss = css({
   position: 'relative',
@@ -28,8 +29,12 @@ const metaCss = css({ display: 'flex', alignItems: 'center', gap: '6px', minWidt
 const contentCss = css({ minWidth: '0' });
 const nameCss = css({ fontWeight: '600', fontSize: t.textMd, color: t.text });
 const timeCss = css({ fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' });
+// a reading column (P89): lines of prose past about 90 characters are hard to follow, so an answer stops at 760 px however
+// wide the window is (code blocks and tables inside scroll on their own)
+export const READING_COLUMN = '760px';
 const bodyCss = css({
   minWidth: '0',
+  maxWidth: READING_COLUMN,
   overflowWrap: 'anywhere',
   color: t.text,
   lineHeight: '1.5',
@@ -119,13 +124,44 @@ export interface ChatMessageProps {
   onAllow?: (rule: string) => void;
   onRetry?: () => void;
   onFork?: (seq: number) => void;
+  /** The person's own message can be changed and sent again: it and everything after it are replaced (P89). */
+  onEdit?: (seq: number, text: string) => Promise<boolean>;
+  /** The newest answer can be asked for again (its question sent again unchanged). */
+  onRegenerate?: () => void;
 }
+
+const editCss = css({
+  display: 'grid',
+  gap: '6px',
+  width: 'min(100%, 720px)',
+  justifySelf: 'end',
+  '& textarea': { width: '100%', minHeight: '72px', resize: 'vertical', fontSize: t.textMd },
+  '& .row': { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: t.s2 },
+  '& .note': { fontSize: t.textXs, color: t.textMuted, marginRight: 'auto' },
+});
 
 const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
+  let editing = false;
+  let draft = '';
+  let sending = false;
+  const startEdit = () => {
+    editing = true;
+    draft = handle.props.m.body;
+    void handle.update();
+  };
+  const sendEdit = async () => {
+    if (!draft.trim() || !handle.props.onEdit) return;
+    sending = true;
+    void handle.update();
+    const ok = await handle.props.onEdit(handle.props.m.seq, draft);
+    sending = false;
+    if (ok) editing = false;
+    void handle.update();
+  };
   return () => {
-    const { m, head, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onFork } = handle.props;
+    const { m, head, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onFork, onEdit, onRegenerate } = handle.props;
     const role = m.role;
     const quiet = role === 'system' || role === 'error';
     const showHead = head && (role === 'user' || role === 'assistant' || role === 'tool' || role === 'denied');
@@ -160,20 +196,70 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
               </time>
             </header>
           ) : null}
+          {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} /> : null}
           {role === 'tool' ? (
             <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
           ) : role === 'denied' ? (
             <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} />
           ) : quiet ? (
             <div mix={role === 'error' ? errorBody : quietBody}>{m.body}</div>
+          ) : mine && editing ? (
+            <div mix={editCss} data-testid="chat-edit">
+              <textarea
+                aria-label="Edit your message"
+                value={draft}
+                mix={[
+                  on('input', (e) => {
+                    draft = (e.currentTarget as HTMLTextAreaElement).value;
+                  }),
+                  on('keydown', (e) => {
+                    const k = e as KeyboardEvent;
+                    if (k.key === 'Enter' && (k.ctrlKey || k.metaKey)) {
+                      k.preventDefault();
+                      void sendEdit();
+                    } else if (k.key === 'Escape') {
+                      editing = false;
+                      void handle.update();
+                    }
+                  }),
+                ]}
+              />
+              <div class="row">
+                <span class="note">Sending replaces this message and everything after it.</span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={sending}
+                  mix={on('click', () => {
+                    editing = false;
+                    void handle.update();
+                  })}
+                >
+                  Cancel
+                </Button>
+                <Button size="sm" variant="primary" disabled={sending || running || !draft.trim()} mix={on('click', () => void sendEdit())}>
+                  Send again
+                </Button>
+              </div>
+            </div>
           ) : (
             <div mix={[bodyCss, mine ? bubbleCss : undefined]}>
               <Markdown source={m.body} />
             </div>
           )}
         </div>
-        {forkable ? (
+        {forkable && !editing ? (
           <div class="chat-tools" mix={toolsCss}>
+            {mine && onEdit && !running ? (
+              <button type="button" mix={[toolBtn, on('click', startEdit)]} aria-label="Edit and send again" title="Edit this message and send it again">
+                <Icon icon={Pencil} size={14} />
+              </button>
+            ) : null}
+            {role === 'assistant' && onRegenerate && !running ? (
+              <button type="button" mix={[toolBtn, on('click', () => onRegenerate())]} aria-label="Regenerate" title="Ask for this answer again">
+                <Icon icon={RotateCcw} size={14} />
+              </button>
+            ) : null}
             <button type="button" mix={[toolBtn, on('click', () => onFork!(m.seq))]} aria-label="Fork from here" title="Fork a new chat from this message">
               <Icon icon={GitFork} size={14} />
             </button>

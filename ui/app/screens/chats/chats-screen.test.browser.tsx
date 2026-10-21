@@ -530,8 +530,12 @@ describe('Conversation', () => {
     expect(bubble.textContent).not.toContain('NOT MINE');
     expect(bubble.closest('[role="log"]')).toBeNull(); // deltas are not announced
     expect(bubble.getAttribute('aria-live')).toBe('off');
+    // the reasoning streams open under the typing, then folds away on the row it came before (P89)
+    s.emit({ type: 'chat.thinking', data: { chatId: 'chat_a', turnId: 'turn_2', text: 'Multiply is next to Add. ' } });
+    const live = await waitFor(() => must$(r, '[data-testid="chat-thinking-live"]') as HTMLDetailsElement, r);
+    expect([live.open, live.querySelector('summary')!.textContent, live.textContent!.includes('next to Add')]).toEqual([true, 'Thinking…', true]);
     // a tool call, then the stored block replaces the streamed text
-    s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(4, 'tool', 'Read: calc.go', { toolName: 'Read', toolInput: { file_path: 'calc.go' }, turnId: 'turn_2' }) } });
+    s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(4, 'tool', 'Read: calc.go', { toolName: 'Read', toolInput: { file_path: 'calc.go' }, turnId: 'turn_2', thinking: 'Multiply is next to Add.' }) } });
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(5, 'assistant', 'Multiply goes in calc.go next to Add.', { turnId: 'turn_2' }) } });
     await waitFor(() => expect(messages(r).map((m) => m.getAttribute('data-role'))).toEqual(['user', 'assistant', 'user', 'tool', 'assistant']), r);
     // the person's own messages are a bubble on the right without an avatar; the agent's keep its dot (Crew HQ, P64)
@@ -543,6 +547,12 @@ describe('Conversation', () => {
     expect(tool.querySelector('summary')!.textContent).toContain('Read');
     expect(tool.querySelector('summary')!.textContent).toContain('calc.go');
     expect(tool.open).toBe(false);
+    await waitFor(() => expect($(r, '[data-testid="chat-thinking-live"]')).toBeNull(), r);
+    const fold = must$(r, '[data-testid="chat-thinking"]') as HTMLDetailsElement;
+    expect([fold.open, fold.querySelector('summary')!.textContent, fold.textContent!.includes('Multiply is next to Add.')]).toEqual([false, 'Thinking', true]);
+    expect(fold.closest('[data-testid="chat-message"]')!.getAttribute('data-role')).toBe('tool');
+    // an answer reads in a column, however wide the window
+    expect(getComputedStyle(messages(r)[4]!.querySelector('.md, [class*="md"]')?.parentElement ?? messages(r)[4]!).maxWidth).toBe('760px');
     expect(tool.querySelector('pre')!.textContent).toContain('"file_path": "calc.go"');
     s.emit({ type: 'chat.updated', data: { chatId: 'chat_a', chat: chat({ status: 'idle', tokensIn: 2000 }) } });
     s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_2', status: 'done', usage: { inputTokens: 800, outputTokens: 40, costUsd: 0.01 } } });
@@ -816,6 +826,42 @@ describe('Conversation', () => {
       ['chat_a', undefined],
       ['chat_a', 1],
     ]);
+  });
+
+  it('edits a message of the person and sends it again, and regenerates the newest answer (P89)', async () => {
+    const resent: unknown[] = [];
+    const { r, s } = conv(chat(), [msg(1, 'user', 'first'), msg(2, 'assistant', 'one answer'), msg(3, 'user', 'second'), msg(4, 'assistant', 'newest answer')], {
+      chatResend: async (id, seq, text) => (resent.push([id, seq, text]), { turnId: `turn_r${resent.length}`, version: 9 }),
+    });
+    await waitFor(() => expect(messages(r)).toHaveLength(4), r);
+    // Edit on the person's messages only; Regenerate on the newest answer only
+    const labels = (i: number) => Array.from(messages(r)[i]!.querySelectorAll('.chat-tools button')).map((b) => b.getAttribute('aria-label'));
+    expect([labels(0), labels(1), labels(2), labels(3)]).toEqual([
+      ['Edit and send again', 'Fork from here'],
+      ['Fork from here'],
+      ['Edit and send again', 'Fork from here'],
+      ['Regenerate', 'Fork from here'],
+    ]);
+    await r.act(() => byText(messages(r)[3]!, 'button', 'Regenerate').click());
+    await waitFor(() => expect(resent).toEqual([['chat_a', 3, undefined]]), r);
+    // while that turn runs nothing can be sent again; once it ends, Edit is back
+    await waitFor(() => expect(labels(0)).toEqual(['Fork from here']), r);
+    s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_r1', status: 'done', fallback: true } });
+    await waitFor(() => expect(labels(0)).toEqual(['Edit and send again', 'Fork from here']), r);
+
+    // Edit opens the message in place with what it says, and says what sending does
+    await r.act(() => byText(messages(r)[0]!, 'button', 'Edit and send again').click());
+    const box = byLabel<HTMLTextAreaElement>(r.container, 'Edit your message');
+    expect(box.value).toBe('first');
+    expect(must$(r, '[data-testid="chat-edit"]').textContent).toContain('replaces this message and everything after it');
+    type(box, 'first, edited');
+    await r.act(() => byText(r.container, 'button', 'Send again').click());
+    await waitFor(() => expect(resent).toEqual([['chat_a', 3, undefined], ['chat_a', 1, 'first, edited']]), r);
+    await waitFor(() => expect($(r, '[data-testid="chat-edit"]')).toBeNull(), r);
+    // the core says the messages from seq 1 on were replaced: the feed drops them until the new ones arrive
+    s.emit({ type: 'chat.rewound', data: { chatId: 'chat_a', fromSeq: 1 } });
+    s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(1, 'user', 'first, edited', { id: 'm_new' }) } });
+    await waitFor(() => expect(messages(r).map((m) => m.textContent!.includes('first, edited'))).toEqual([true]), r);
   });
 
   it('loads older messages before the oldest one shown', async () => {

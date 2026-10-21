@@ -51,7 +51,7 @@ const (
 )
 
 // msgCols are the columns scanMessage reads, in its order.
-const msgCols = `id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,tool_status,tool_result,tool_ms`
+const msgCols = `id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,tool_status,tool_result,tool_ms,thinking`
 
 // Chat statuses.
 const (
@@ -166,6 +166,8 @@ type Message struct {
 	ToolStatus string `json:"toolStatus,omitempty"`
 	ToolResult string `json:"toolResult,omitempty"`
 	ToolMS     int64  `json:"toolMs,omitempty"`
+	// Thinking is the reasoning the CLI reported before this tool call or answer (P89), redacted and bounded.
+	Thinking string `json:"thinking,omitempty"`
 	toolCallID string // the CLI's id of the call, which its result names
 	// SuggestedRule is, for a denied message of an adapter that takes allow rules, the rule chat.allowTool would need so the
 	// next turn may use the tool ("Bash(npm test)", "Edit"). Computed when read; empty when no safe rule exists.
@@ -222,6 +224,7 @@ type Options struct {
 	MaxBodyBytes    int           // a stored assistant message (default 256 KiB)
 	MaxToolInput    int           // stored tool input JSON (default 4096)
 	MaxToolResult   int           // stored tool result text (default 8192)
+	MaxThinking     int           // reasoning kept on one row (default 16384)
 	MaxRules        int           // allow rules per chat (default 50)
 	DeltaEvery      time.Duration // chat.delta coalescing (default 60ms)
 	AskTTL          time.Duration // how long a permission request waits for the person (default AskTTL)
@@ -248,6 +251,9 @@ func (o *Options) defaults() {
 	}
 	if o.MaxToolInput <= 0 {
 		o.MaxToolInput = 4096
+	}
+	if o.MaxThinking <= 0 {
+		o.MaxThinking = 16384
 	}
 	if o.MaxToolResult <= 0 {
 		o.MaxToolResult = 8192
@@ -763,7 +769,7 @@ func (s *Service) Messages(ctx context.Context, id string, beforeSeq int64, limi
 func scanMessage(r scanner) (Message, error) {
 	var m Message
 	var input string
-	if err := r.Scan(&m.ID, &m.ChatID, &m.Seq, &m.Role, &m.Body, &m.ToolName, &input, &m.TurnID, &m.Created, &m.toolCallID, &m.ToolStatus, &m.ToolResult, &m.ToolMS); err != nil {
+	if err := r.Scan(&m.ID, &m.ChatID, &m.Seq, &m.Role, &m.Body, &m.ToolName, &input, &m.TurnID, &m.Created, &m.toolCallID, &m.ToolStatus, &m.ToolResult, &m.ToolMS, &m.Thinking); err != nil {
 		return m, err
 	}
 	if input != "" {
@@ -1123,19 +1129,20 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		if err := insertChatTx(ctx, tx, n); err != nil {
 			return err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at,tool_status,tool_result,tool_ms FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)
+		rows, err := tx.QueryContext(ctx, `SELECT seq,role,body,tool_name,tool_input,created_at,tool_status,tool_result,tool_ms,thinking FROM chat_messages WHERE chat_id=? AND seq<=? ORDER BY seq`, src.ID, uptoSeq)
 		if err != nil {
 			return err
 		}
 		type row struct {
 			seq                                   int64
 			role, body, tool, inp, status, result string
+			thinking                              string
 			created, ms                           int64
 		}
 		var copyRows []row
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.seq, &r.role, &r.body, &r.tool, &r.inp, &r.created, &r.status, &r.result, &r.ms); err != nil {
+			if err := rows.Scan(&r.seq, &r.role, &r.body, &r.tool, &r.inp, &r.created, &r.status, &r.result, &r.ms, &r.thinking); err != nil {
 				rows.Close()
 				return err
 			}
@@ -1143,8 +1150,8 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		}
 		rows.Close()
 		for i, r := range copyRows {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status,tool_result,tool_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-				ids.New("cmsg"), n.ID, i+1, r.role, r.body, r.tool, r.inp, "", r.created, r.status, r.result, r.ms); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_status,tool_result,tool_ms,thinking) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				ids.New("cmsg"), n.ID, i+1, r.role, r.body, r.tool, r.inp, "", r.created, r.status, r.result, r.ms, r.thinking); err != nil {
 				return err
 			}
 		}
@@ -1241,7 +1248,13 @@ func (s *Service) editRules(ctx context.Context, id string, edit func(Chat) (rul
 // ---- messages ----
 
 // insertMessage redacts and stores one message, then publishes chat.message.
-func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body, toolName string, toolInput json.RawMessage, toolCallID ...string) (Message, error) {
+// msgExtra is what some rows carry beyond the common fields: a tool call's CLI id, and the reasoning before the row (P89).
+type msgExtra struct {
+	callID   string
+	thinking string
+}
+
+func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body, toolName string, toolInput json.RawMessage, extra ...msgExtra) (Message, error) {
 	body = strings.ToValidUTF8(body, "�")
 	if len(body) > s.o.MaxBodyBytes {
 		body = cutUTF8(body, s.o.MaxBodyBytes) + "\n[cut by Drydock: the message was longer than it keeps]"
@@ -1250,15 +1263,16 @@ func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body,
 	if len(toolInput) > 0 {
 		m.ToolInput = s.boundInput(toolInput)
 	}
-	if len(toolCallID) > 0 {
-		m.toolCallID = toolCallID[0]
+	if len(extra) > 0 {
+		m.toolCallID = extra[0].callID
+		m.Thinking = s.boundThinking(extra[0].thinking)
 	}
 	err := s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM chat_messages WHERE chat_id=?`, c.ID).Scan(&m.Seq); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created, m.toolCallID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_messages(id,chat_id,seq,role,body,tool_name,tool_input,turn_id,created_at,tool_call_id,thinking) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, m.ChatID, m.Seq, m.Role, m.Body, m.ToolName, string(m.ToolInput), m.TurnID, m.Created, m.toolCallID, m.Thinking); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at=?, version=version+1 WHERE id=?`, m.Created, c.ID)
@@ -1274,6 +1288,19 @@ func (s *Service) insertMessage(ctx context.Context, c Chat, turnID, role, body,
 	}
 	s.publish(ctx, "chat.message", c.ProjectID, map[string]any{"chatId": c.ID, "message": m})
 	return m, nil
+}
+
+// boundThinking redacts reasoning and keeps at most MaxThinking bytes of it.
+func (s *Service) boundThinking(text string) string {
+	text = strings.TrimSpace(strings.ToValidUTF8(text, "\uFFFD"))
+	if text == "" {
+		return ""
+	}
+	text = s.d.Redact(text)
+	if len(text) > s.o.MaxThinking {
+		text = cutUTF8(text, s.o.MaxThinking) + "\n[cut by Drydock: the reasoning was longer than it keeps]"
+	}
+	return text
 }
 
 // boundInput redacts tool input and keeps it valid JSON of at most MaxToolInput bytes.

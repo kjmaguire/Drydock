@@ -13,6 +13,7 @@
 import { createElement, css, on, type Handle, type RemixNode } from 'remix/component';
 import type { Token, Tokens } from 'marked';
 import { errorText } from '../lib/failure.ts';
+import { familyOf, highlight } from '../lib/highlight.ts';
 import { DEFAULT_CHARS, lexSafe, limitsFor, weight, type MarkdownLimits } from './markdown-lex.ts';
 import { t } from './tokens.ts';
 
@@ -115,12 +116,10 @@ function block(tk: Token): RemixNode {
       const level = Math.min(6, h.depth + 2); // message headings must not out-shout the UI
       return createElement(`h${level}`, {}, inlines(h.tokens));
     }
-    case 'code':
-      return (
-        <pre class="md-code">
-          <code>{(tk as Tokens.Code).text}</code>
-        </pre>
-      );
+    case 'code': {
+      const c = tk as Tokens.Code;
+      return <CodeBlock code={c.text} lang={c.lang} />;
+    }
     case 'blockquote':
       return <blockquote>{blocks((tk as Tokens.Blockquote).tokens)}</blockquote>;
     case 'hr':
@@ -240,6 +239,51 @@ function Rest(handle: Handle<{ text: string }>) {
   };
 }
 
+/**
+ * A code block (decision P89): its language when the fence names one, a Copy button, and light colouring for the languages
+ * lib/highlight.ts knows. The runs are text; the copied text is the code exactly as written.
+ */
+function CodeBlock(handle: Handle<{ code: string; lang?: string }>) {
+  let copied = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  handle.signal.addEventListener('abort', () => clearTimeout(timer));
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(handle.props.code);
+      copied = true;
+      void handle.update();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        copied = false;
+        void handle.update();
+      }, 1500);
+    } catch {
+      /* the clipboard can be refused; the code is still there to select */
+    }
+  };
+  return () => {
+    const { code, lang } = handle.props;
+    const name = (lang ?? '').trim().split(/\s+/)[0] ?? '';
+    const runs = highlight(code, lang);
+    return (
+      <div class="md-codeblock" data-testid="code-block" data-lang={familyOf(lang) ?? (name || undefined)}>
+        <div class="md-code-bar">
+          <span class="md-code-lang">{name || 'code'}</span>
+          {/* a word, not an icon: a rendered message holds no svg at all (the inert rule of this file) */}
+          <button type="button" class="md-copy" aria-label={copied ? 'Copied' : 'Copy code'} mix={on('click', () => void copy())} data-testid="code-copy">
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <pre class="md-code">
+          <code>
+            {runs.map((r) => (r.kind === 'plain' ? r.text : <span class={`tok-${r.kind}`}>{r.text}</span>))}
+          </code>
+        </pre>
+      </div>
+    );
+  };
+}
+
 const mdCss = css({
   fontSize: t.textMd,
   lineHeight: '1.55',
@@ -250,6 +294,38 @@ const mdCss = css({
   '& h3, & h4, & h5, & h6': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
   '& blockquote': { margin: '0', paddingLeft: t.s3, borderLeft: `3px solid ${t.borderStrong}`, color: t.textMuted },
   '& pre': { maxHeight: '420px' },
+  '& .md-codeblock': { border: `1px solid ${t.border}`, borderRadius: t.rMd, overflow: 'hidden', background: t.bgApp },
+  '& .md-codeblock > pre': { margin: '0', border: '0', borderRadius: '0' },
+  '& .md-code-bar': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: t.s2,
+    padding: `0 0 0 ${t.s3}`,
+    borderBottom: `1px solid ${t.border}`,
+    color: t.textFaint,
+    fontSize: t.textXs,
+  },
+  '& .md-copy': {
+    display: 'inline-grid',
+    placeItems: 'center',
+    minWidth: '56px',
+    height: '28px',
+    minHeight: '28px',
+    padding: `0 ${t.s2}`,
+    fontSize: t.textXs,
+    border: '0',
+    borderRadius: '0',
+    background: 'none',
+    color: t.textMuted,
+    cursor: 'pointer',
+    '&:hover': { color: t.text, background: t.bgHover },
+    '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  },
+  '& .tok-keyword': { color: t.accentText },
+  '& .tok-string': { color: t.success },
+  '& .tok-comment': { color: t.textFaint, fontStyle: 'italic' },
+  '& .tok-number': { color: t.warning },
   '& .md-plain': { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
   '& .md-more': {
     display: 'inline',

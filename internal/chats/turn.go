@@ -37,6 +37,46 @@ type SendReq struct {
 	ID     string   `json:"id"`
 	Text   string   `json:"text"`
 	Attach []string `json:"attach"` // ids of other chats whose transcripts this turn is given
+
+	replaceFrom int64  // Resend: the person's message this turn replaces, with everything after it
+	replaceID   string // and that message's id, checked again once the turn holds the chat
+}
+
+// ResendReq is chat.resend: the person's message at Seq is replaced by Text (the same text when empty: regenerate), the
+// messages after it are removed, and a new turn runs from there (P89).
+type ResendReq struct {
+	ID   string `json:"id"`
+	Seq  int64  `json:"seq"`
+	Text string `json:"text"`
+}
+
+// ErrNotYourMessage is returned for a resend of a message that is not the person's own.
+var ErrNotYourMessage = errors.New("only your own message can be edited and sent again")
+
+// Resend edits the person's message at r.Seq (or keeps its text, to regenerate the answer) and runs the turn again from there.
+// The messages from that one on are removed, and the CLI session is dropped, since a session cannot be rewound to an earlier
+// message: the new turn starts a fresh session that is given the conversation before it as quoted history (the fallback a
+// fork's first turn takes). Everything happens once the turn holds the chat, so nothing is removed if it cannot start.
+func (s *Service) Resend(ctx context.Context, r ResendReq) (SendResult, error) {
+	if r.Seq < 1 {
+		return SendResult{}, errors.New("name the message to send again")
+	}
+	var id, role, body string
+	err := s.d.DB.Reader().QueryRowContext(ctx, `SELECT id,role,body FROM chat_messages WHERE chat_id=? AND seq=?`, r.ID, r.Seq).Scan(&id, &role, &body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SendResult{}, errors.New("that message is not in this chat")
+	}
+	if err != nil {
+		return SendResult{}, err
+	}
+	if role != RoleUser {
+		return SendResult{}, ErrNotYourMessage
+	}
+	text := r.Text
+	if strings.TrimSpace(text) == "" {
+		text = body
+	}
+	return s.Send(ctx, SendReq{ID: r.ID, Text: text, replaceFrom: r.Seq, replaceID: id})
 }
 
 // SendResult is what chat.send returns.
@@ -133,6 +173,19 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		if claimed = n == 1; !claimed {
 			return nil
 		}
+		if r.replaceFrom > 0 {
+			// the message is still the person's one this resend names; it and everything after it go, and so does the session
+			var role string
+			if err := tx.QueryRowContext(ctx, `SELECT role FROM chat_messages WHERE id=? AND chat_id=? AND seq=?`, r.replaceID, c.ID, r.replaceFrom).Scan(&role); err != nil || role != RoleUser {
+				return ErrNotYourMessage
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM chat_messages WHERE chat_id=? AND seq>=?`, c.ID, r.replaceFrom); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE chats SET session_id='' WHERE id=?`, c.ID); err != nil {
+				return err
+			}
+		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO chat_turns(id,chat_id,status,attached,started_at) VALUES(?,?,?,?,?)`, turnID, c.ID, TurnRunning, string(aj), storage.Now())
 		return err
 	})
@@ -144,6 +197,10 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		return SendResult{}, err
 	}
 	c.Cwd, c.Status = cwd, StatusRunning
+	if r.replaceFrom > 0 {
+		c.SessionID = ""
+		s.publish(ctx, "chat.rewound", c.ProjectID, map[string]any{"chatId": c.ID, "fromSeq": r.replaceFrom})
+	}
 	user, err := s.insertMessage(ctx, c, turnID, RoleUser, text, "", nil)
 	if err != nil {
 		s.endTurnRow(c, turnID, TurnError, err.Error())
@@ -299,6 +356,15 @@ type turnRun struct {
 	seen        map[string]bool // tool call ids already stored
 	lostSession bool            // the stored session is gone (resume failed)
 	assistant   bool            // an assistant message was stored in this turn
+	// thinking is the reasoning reported since the last stored tool call or answer: it is kept on the next one (P89)
+	thinking strings.Builder
+}
+
+// takeThinking returns the reasoning waiting for a row and clears it.
+func (t *turnRun) takeThinking() string {
+	s := t.thinking.String()
+	t.thinking.Reset()
+	return s
 }
 
 // attemptOut is what one agent process did.
@@ -367,11 +433,12 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 	var pending strings.Builder
 	var lastDelta time.Time
 	calls := map[string]toolStart{} // tool calls of this attempt waiting for their result, by the CLI's call id
-	var deltaBuf strings.Builder
-	// flush publishes the buffered text. Unless all is set it stops at the last whitespace and keeps the rest, so a token that
-	// arrives in pieces is redacted whole (the scanner matches whole secrets, which contain no whitespace).
-	flush := func(all bool) {
-		text := deltaBuf.String()
+	var deltaBuf, thinkBuf strings.Builder
+	var lastThink time.Time
+	// stream publishes buffered text as event. Unless all is set it stops at the last whitespace and keeps the rest, so a token
+	// that arrives in pieces is redacted whole (the scanner matches whole secrets, which contain no whitespace).
+	stream := func(buf *strings.Builder, last *time.Time, event string, all bool) {
+		text := buf.String()
 		if !all {
 			i := strings.LastIndexAny(text, " \t\r\n")
 			if i < 0 {
@@ -385,18 +452,33 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 		if text == "" {
 			return
 		}
-		rest := deltaBuf.String()[len(text):]
-		deltaBuf.Reset()
-		deltaBuf.WriteString(rest)
-		lastDelta = time.Now()
-		s.publish(context.Background(), "chat.delta", c.ProjectID, map[string]any{"chatId": c.ID, "turnId": t.turnID, "text": s.d.Redact(text)})
+		rest := buf.String()[len(text):]
+		buf.Reset()
+		buf.WriteString(rest)
+		*last = time.Now()
+		s.publish(context.Background(), event, c.ProjectID, map[string]any{"chatId": c.ID, "turnId": t.turnID, "text": s.d.Redact(text)})
 	}
+	flush := func(all bool) { stream(&deltaBuf, &lastDelta, "chat.delta", all) }
+	// the reasoning streams as chat.thinking (P89) and is kept on the next tool call or answer
+	flushThink := func(all bool) { stream(&thinkBuf, &lastThink, "chat.thinking", all) }
 	flushDelta := func() { flush(true) }
 	res, err := m.RunTurn(ctx, prompt, nil, func(ch workflow.Chunk) {
 		if ch.Kind != workflow.ChunkText {
 			flushDelta()
 		}
+		if ch.Kind != workflow.ChunkThinking {
+			flushThink(true)
+		}
 		switch ch.Kind {
+		case workflow.ChunkThinking:
+			var d workflow.TextDelta
+			if ch.Decode(&d) == nil && d.Text != "" {
+				t.thinking.WriteString(d.Text)
+				thinkBuf.WriteString(d.Text)
+				if time.Since(lastThink) >= s.o.DeltaEvery {
+					flushThink(false)
+				}
+			}
 		case workflow.ChunkText:
 			var d workflow.TextDelta
 			if ch.Decode(&d) == nil && d.Text != "" {
@@ -428,7 +510,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 				t.seen[tc.ID] = true
 			}
 			summary := s.d.Redact(ToolSummary(tc.Name, tc.Args))
-			msg, err := s.insertMessage(context.Background(), c, t.turnID, RoleTool, summary, tc.Name, tc.Args, tc.ID)
+			msg, err := s.insertMessage(context.Background(), c, t.turnID, RoleTool, summary, tc.Name, tc.Args, msgExtra{callID: tc.ID, thinking: t.takeThinking()})
 			if err != nil {
 				s.logf("chats: store tool message: %v", err)
 				return
@@ -489,6 +571,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 		}
 	})
 	flushDelta()
+	flushThink(true)
 	o.stop, o.err, o.partial = res.StopReason, err, pending.String()
 	if id := m.Sess.ID(); id != "" {
 		o.sessionID = id
@@ -537,7 +620,11 @@ func (s *Service) setToolResult(c Chat, turnID, msgID, status, output string, ms
 
 // store saves a message of this turn; storage failures are logged and do not end the turn.
 func (t *turnRun) store(role, body, tool string, input json.RawMessage) (Message, bool) {
-	m, err := t.s.insertMessage(context.Background(), t.c, t.turnID, role, body, tool, input)
+	var extra []msgExtra
+	if role == RoleAssistant { // the answer keeps the reasoning that came before it
+		extra = append(extra, msgExtra{thinking: t.takeThinking()})
+	}
+	m, err := t.s.insertMessage(context.Background(), t.c, t.turnID, role, body, tool, input, extra...)
 	if err != nil {
 		t.s.logf("chats: store %s message: %v", role, err)
 		return Message{}, false

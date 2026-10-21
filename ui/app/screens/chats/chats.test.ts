@@ -245,6 +245,38 @@ describe('ChatFeed', () => {
     expect(f.lastTurn?.fallback).toBe(true);
   });
 
+  it('streams the reasoning and lets the stored row it came before take it (P89)', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.turn_started', { chatId: 'c1', turnId: 't2', attach: [] });
+    emit('chat.thinking', { chatId: 'c1', turnId: 't2', text: 'Read calc.go ' });
+    emit('chat.thinking', { chatId: 'c1', turnId: 't2', text: 'first.' });
+    emit('chat.thinking', { chatId: 'c9', turnId: 'x', text: 'other chat' });
+    expect(f.streaming).toEqual({ turnId: 't2', text: '', thinking: 'Read calc.go first.' });
+    emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'Looking' });
+    expect(f.streaming).toEqual({ turnId: 't2', text: 'Looking', thinking: 'Read calc.go first.' });
+    // the tool call stored next carries it: the live reasoning is cleared
+    emit('chat.message', { chatId: 'c1', message: msg(3, 'tool', { toolName: 'Read', body: 'Read: calc.go', thinking: 'Read calc.go first.' }) });
+    expect(f.streaming).toEqual({ turnId: 't2', text: 'Looking' });
+    expect(f.messages.find((m) => m.seq === 3)?.thinking).toBe('Read calc.go first.');
+    // a late chunk of a turn that already ended is dropped
+    emit('chat.turn', { chatId: 'c1', turnId: 't2', status: 'done' });
+    emit('chat.thinking', { chatId: 'c1', turnId: 't2', text: 'late' });
+    expect(f.streaming).toBeUndefined();
+  });
+
+  it('drops the messages a resend replaced (P89)', async () => {
+    const { f, emit } = feed();
+    await settle();
+    emit('chat.message', { chatId: 'c1', message: msg(3, 'user') });
+    emit('chat.message', { chatId: 'c1', message: msg(4, 'assistant') });
+    emit('chat.rewound', { chatId: 'c1', fromSeq: 3 });
+    expect(f.messages.map((m) => m.seq)).toEqual([1, 2]);
+    emit('chat.rewound', { chatId: 'c1', fromSeq: 'x' }); // malformed: ignored
+    emit('chat.rewound', { chatId: 'c9', fromSeq: 1 }); // another chat
+    expect(f.messages.map((m) => m.seq)).toEqual([1, 2]);
+  });
+
   it('a tool result lands on its call: status, result and duration, and a malformed one is ignored', async () => {
     const { f, emit } = feed();
     await settle();

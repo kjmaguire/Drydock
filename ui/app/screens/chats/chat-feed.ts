@@ -20,6 +20,8 @@ export interface Streaming {
   turnId: string;
   /** Streamed assistant text not yet stored as a message. */
   text: string;
+  /** Streamed reasoning not yet kept on a stored row (chat.thinking, P89). */
+  thinking?: string;
 }
 
 export const OLDER_PAGE = 100;
@@ -185,11 +187,21 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         this.lastTurn = undefined;
         break;
       }
+      case 'chat.thinking': {
+        const turnId = String(d.turnId ?? '');
+        if (this.lastTurn?.turnId === turnId) return;
+        const cur = this.streaming;
+        const same = cur && (cur.turnId === turnId || !cur.turnId);
+        this.streaming = { turnId, text: same ? cur.text : '', thinking: (same ? (cur.thinking ?? '') : '') + String(d.text ?? '') };
+        break;
+      }
       case 'chat.delta': {
         const turnId = String(d.turnId ?? '');
         if (this.lastTurn?.turnId === turnId) return; // a late delta of a turn that already ended
         const cur = this.streaming;
-        this.streaming = { turnId, text: (cur && (cur.turnId === turnId || !cur.turnId) ? cur.text : '') + String(d.text ?? '') };
+        const same = cur && (cur.turnId === turnId || !cur.turnId);
+        const thinking = same ? cur.thinking : undefined;
+        this.streaming = { turnId, text: (same ? cur.text : '') + String(d.text ?? ''), ...(thinking ? { thinking } : {}) };
         break;
       }
       case 'chat.message': {
@@ -199,6 +211,15 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         this.messages = mergeMessages(this.messages, [m]);
         // the stored assistant block covers the text streamed so far (the core flushes deltas before it stores)
         if (m.role === 'assistant' && this.streaming) this.streaming = { ...this.streaming, text: '' };
+        // the stored tool call or answer keeps the reasoning streamed before it (P89)
+        if ((m.role === 'assistant' || m.role === 'tool') && this.streaming?.thinking) this.streaming = { turnId: this.streaming.turnId, text: this.streaming.text };
+        break;
+      }
+      case 'chat.rewound': {
+        // a resend replaced the person's message at fromSeq and everything after it (P89)
+        const from = Number(d.fromSeq);
+        if (!Number.isInteger(from) || from < 1) return this.#ignore(e, 'rewound');
+        this.messages = this.messages.filter((m) => m.seq < from);
         break;
       }
       case 'chat.tool_result': {
