@@ -405,7 +405,16 @@ func TestChatStopAndOneTurnAtATime(t *testing.T) {
 	p, _ := e.setup("stop")
 	c := e.create(map[string]any{"projectId": p.ID})
 	turn := e.start(c.ID, "a long job")
-	e.waitFor("the turn to stream", func() bool { return len(e.eventsOf("chat.delta")) > 0 })
+	// the fake streams word by word: stop only once the whole line is in, or the partial answer is cut at the first word
+	e.waitFor("the turn to stream its line", func() bool {
+		var streamed strings.Builder
+		for _, x := range e.eventsOf("chat.delta") {
+			if x["chatId"] == c.ID {
+				streamed.WriteString(x["text"].(string))
+			}
+		}
+		return streamed.String() == "working on it "
+	})
 	if err := e.callErr("chat.send", map[string]any{"id": c.ID, "text": "quick question"}); err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("a second send while running must be refused: %v", err)
 	}
