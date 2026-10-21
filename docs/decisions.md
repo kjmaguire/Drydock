@@ -41,7 +41,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
 | Git hosting | `gh` v2.102.1 as a user-installed Connection | `gh` is not bundled. |
-| Per-task sandbox | A Docker-compatible container engine you install, driven only through the `docker` command (tested with Docker Engine 29.8.2 on Linux); egress proxy built from `cmd/drydock-egress` | P30. No engine is bundled and no image of Drydock's is pulled from a registry. |
+| Per-task sandbox | A Docker-compatible container engine you install, driven only through the `docker` command (tested with Docker Engine 29.9.2 on Linux; 29.8.2 when P30 was decided); egress proxy built from `cmd/drydock-egress` | P30. No engine is bundled and no image of Drydock's is pulled from a registry. |
 
 ## 3. Process decisions
 
@@ -815,3 +815,13 @@ Open, owner action:
   Govulncheck now runs from the audit again (through the database's mirror, `DRYDOCK_AUDIT_VULNDB`); a finding that stops at the
   module, with the vulnerable package not imported, is no longer counted as in what is built (GO-2026-5932 on x/crypto's
   openpgp, which Drydock never imports; govulncheck's own report leaves it out too).
+- **P81. The development host's Node, npm, git and Docker moved to their newest releases (2026-10-21, on the owner's words:
+  "update node, npm, git and docker on this machine too").** Node 24.22.0, the newest of the project's line and the one CI
+  installs (from nodejs.org, its SHA-256 checked against SHASUMS256.txt; 26 is newer but not yet LTS), with npm 12.2.0 on top;
+  git 2.56.0, built from the v2.56.0 tag of github.com/git/git into /usr/local (Ubuntu 24.04 ships 2.43.0, and the host's network
+  reaches neither kernel.org nor the git-core PPA); Docker Engine, CLI and plugins 29.9.2 from Docker's apt repository. Measured on
+  them: the full Go suite (82 packages), the UI's 1472 tests, its build and the browser tests, and the sandbox tests against a
+  running 29.9.2 daemon as CI's sandbox job runs them (24 passed, none skipped). npm 12 runs no package's install script unless it
+  is approved; esbuild's, which only checks its platform binary, is skipped with no effect, and the lock file is unchanged. The
+  holds on the four rows are gone. The host is a cloud container rebuilt from its environment: these versions last until it is
+  rebuilt, unless the environment's setup script installs them too.
