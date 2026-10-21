@@ -131,16 +131,19 @@ describe('Live on streaming events (P87)', () => {
     t.current.h.onOpen();
     let seq = 0;
     const out = (taskId = 't1') => t.current.h.onEvent({ ...ev(++seq), type: 'agent.output', taskId });
-    // a steady stream for about 100 ms, one event every 5 ms: a debounce would wait for its end, the throttle reads during it
+    // a steady stream, one event every few ms: a debounce would wait for its end, the throttle reads during it, at most once per
+    // 20 ms of the time the stream really took (timers are slower on a busy machine, so the bound is measured, not assumed)
+    const t0 = performance.now();
     for (let i = 0; i < 20; i++) {
       out();
       await wait(5);
     }
+    const took = performance.now() - t0;
     const during = loud;
     await wait(40);
     expect(quiet).toBe(0);
     expect(during).toBeGreaterThanOrEqual(2);
-    expect(loud).toBeLessThanOrEqual(8);
+    expect(loud).toBeLessThanOrEqual(Math.ceil((took + 40) / 20) + 1);
     // another task's stream is not this read's
     const before = loud;
     out('t2');
