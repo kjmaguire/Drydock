@@ -956,3 +956,21 @@ Open, owner action:
   (a request under 20 characters teaches nothing and proposes nothing). Accepting stays human-only (`DecideMemory`), and only
   accepted entries reach later agents. The Memory page says where each proposal came from in words ("Backend #1, working on #3
   ...", "your change request on #3 ...", "your edit of AGENTS.md").
+- **P93. The UI review's P1 items (2026-10-21, the CopilotKit/AG-UI comparison, phase 4).** The review of the running app named
+  nine places where a person could not see or decide easily; each is fixed where the thing lives. (P1-1) A task's Needs-you item
+  carries a context (`room.NeedsContext`, filled by the core from the task's evidence and reviews): the assignee, the newest
+  diff's size, the newest attempt's checks (the latest result per kind) and the newest reviewer verdict, shown as one line; the
+  review card shows the diff's +/- counts and the patch on request. Approving from the Needs-you list is not added: a decision is
+  made on the item's page beside its evidence, so nothing is approved unseen. (P1-2) The chat header keeps the chips; the folder
+  and the tokens and cost moved into Properties; "and N turns' cost unknown" replaces "+ N turns unknown"; the canned retry is a
+  small note, not the person's message. (P1-3) A refused tool offers one primary "Allow and retry" with "Only allow" beside it.
+  (P1-4) The chat list pins the open chat when its filter would hide it. (P1-5) A room's mode, agents and folded-away turn
+  telemetry are the details panel's Room tab, opened by the mode chip, not a bar over the messages. (P1-6) A chat that is only
+  one marker line is stored as the structured message itself (one DECISION for `/decision`, not a chat and its derived copy;
+  room-protocol s3); "untrusted" is an icon with its explanation as the tooltip; everyone's messages are left-aligned rows, the
+  person's own faintly tinted (replacing P64's right-hand bubble). (P1-7) The run graph opens at its fit only when that is 70 %
+  or more, else at 70 % around the node the run is at, which is selected. (P1-8) One home per thing: the MCP servers you add are
+  kept in the Library (Integrations links there), the Library has no second Skills link, a project's page is "Security" and the
+  workspace's "Security scan", the dock is only on a project's pages, and the Guide is the "?" button's own surface. (P1-9) The
+  Plan page leads with a proposal under review and folds the goal form under it. Found while testing: a chat opened mid-turn
+  could drop a tool result that came before its row; the chat feed now keeps results by message id.
