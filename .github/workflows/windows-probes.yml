@@ -138,6 +138,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
       - name: install CLIs from npm
         run: |
           npm install -g @anthropic-ai/claude-code@2.1.306 @openai/codex@0.163.0 @google/gemini-cli@0.65.0 opencode-ai@1.19.3 @aaif/goose-acp@1.55.0
@@ -189,6 +190,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
       - name: install wails3 CLI
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34

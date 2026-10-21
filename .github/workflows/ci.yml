@@ -36,6 +36,7 @@ jobs:
         # some Go tests drive Node projects (the e2e and preview checks, the npm templates); without Node they skip
         with:
           node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
       - name: Git identity for tests
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -190,6 +191,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
@@ -290,6 +292,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
       - run: npm ci && npm run build
         working-directory: ui
       - name: Build the Wails app (CGO on, for the repo map's tree-sitter parser; MinGW gcc from the runner image)

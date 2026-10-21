@@ -6,7 +6,7 @@ Evidence tags: `[tool §3]` = [`phase0/tooling-integrations.md`](phase0/tooling-
 
 ## 1. The `gh` Connection
 
-`gh` v2.102.1 (MIT) is a user-installed Connection, not bundled (decisions.md section 2); a Windows Defender false-positive report for `gh` exists (issue #13306, search snippet) [tool §3]. Manifest-driven like other tools ([`connections.md`](connections.md)): `kind: tool`, `detect: gh --version`, tested version recorded in `compat.yaml` (minimum unverified; start at the tested version).
+`gh` v2.103.0 (MIT) is a user-installed Connection, not bundled (decisions.md section 2); a Windows Defender false-positive report for `gh` exists (issue #13306, search snippet) [tool §3]. Manifest-driven like other tools ([`connections.md`](connections.md)): `kind: tool`, `detect: gh --version`, tested version recorded in `compat.yaml` (minimum unverified; start at the tested version).
 
 | Probe | Command | Handling |
 |---|---|---|

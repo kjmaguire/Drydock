@@ -1,6 +1,6 @@
 {
   "used": {
-    "tool:gh": "2.102.1",
+    "tool:gh": "2.103.0",
     "tool:task": "3.54.0",
     "tool:go-licenses": "2.0.1",
     "tool:govulncheck": "1.9.0",
@@ -20,11 +20,11 @@
     },
     "node": {
       "role": "Builds the UI and runs its tests (remix test and the Remix CLI need Node 24.3 or newer) and the browser tests. Agent CLIs installed through npm also need it (decision D9: Node 22+ on the user's machine).",
-      "note": "This row is the development host's own Node: 24.22.0 since 2026-10-21 (decision P81, the owner's words: \"update node, npm, git and docker on this machine too\"), installed from nodejs.org with its SHA-256 checked against SHASUMS256.txt, the same line CI installs (actions/setup-node with node-version 24). The newest line overall is 26, not yet LTS; the project line is 24 and the comparison is the newest release of the installed major. The machine is a cloud container rebuilt from its environment, so the version lasts until the environment's setup script installs it too."
+      "note": "This row is the development host's own Node: 24.22.1 since 2026-10-21, the security release of 2026-10-20 (decision P94; 24.22.0 before it, decision P81), installed from nodejs.org with its SHA-256 checked against SHASUMS256.txt and that file's signature checked against the releaser's key. CI installs the same line (actions/setup-node with node-version 24 and check-latest: true, so a runner's cached older 24.x is never used). The newest line overall is 26, not yet LTS; the project line is 24 and the comparison is the newest release of the installed major. The machine is a cloud container rebuilt from its environment, so the version lasts until the environment's setup script installs it too."
     },
     "npm": {
       "role": "Installs the UI packages.",
-      "note": "Ships with Node; the development host has npm 12.2.0 on top of its Node 24.22.0 (npm install -g npm@12.2.0, decision P81). CI uses the npm its Node 24 ships (11.19.1), and the lock file is the same under both (lockfileVersion 3; npm ci under 12.2.0 changed nothing). npm 12 runs no package's install script unless it is approved: esbuild's postinstall, which only checks its platform binary, is skipped, and the UI tests and build pass without it."
+      "note": "Ships with Node; the development host has npm 12.2.0 on top of its Node 24.22.1 (npm install -g npm@12.2.0, decision P81). CI uses the npm its Node 24 ships (11.19.1), and the lock file is the same under both (lockfileVersion 3; npm ci under 12.2.0 changed nothing). npm 12 runs no package's install script unless it is approved: esbuild's postinstall, which only checks its platform binary, is skipped, and the UI tests and build pass without it."
     },
     "go:cel.dev/cel-go": {
       "role": "Evaluates the rules a person writes (model routing, integration rules) in Google's CEL expression language."
@@ -177,7 +177,7 @@
     },
     "tool:gh": {
       "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
-      "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.89.0."
+      "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.103.0 (2026-10-21, installed from the release tarball with its SHA-256 checked against gh_2.103.0_checksums.txt)."
     },
     "tool:task": {
       "role": "Runs Taskfile targets (build, test, lint); optional, not bundled."
@@ -200,7 +200,7 @@
     },
     "tool:wrangler": {
       "role": "Cloudflare's CLI. The documentation lists it as an external verification tool for projects that deploy to Cloudflare; Drydock does not bundle or call it.",
-      "hold": "4.151.3 is out, but Cloudflare's newest @cloudflare/vite-plugin (1.64.0, which the starter template builds with) pins wrangler 4.151.0 exactly; the starter moves when that plugin does (checked 2026-10-20: 4.151.3 would put a second wrangler in its lock file). Drydock itself does not run wrangler."
+      "hold": "4.151.3 is out, but Cloudflare's newest @cloudflare/vite-plugin (1.64.0, which the starter template builds with) pins wrangler 4.151.0 exactly; the starter moves when that plugin does (checked 2026-10-20 and again 2026-10-21, plugin still 1.64.0: 4.151.3 would put a second wrangler in its lock file). Drydock itself does not run wrangler."
     },
     "go:golang.org/x/oauth2": {
       "role": "OAuth 2 token handling: the MCP SDK's sign-in (stored tokens, refreshing them), and the integrations' own sign-ins (Linear: authorization code with PKCE; Sentry: the device flow; refreshing their tokens)."

@@ -57,6 +57,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+          check-latest: true # the runner's cached 24.x can be older than a security release
       - name: Advisories of high severity or worse against the locked UI packages
         working-directory: ui
         run: npm audit --package-lock-only --audit-level=high

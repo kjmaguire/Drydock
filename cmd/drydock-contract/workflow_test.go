@@ -173,3 +173,41 @@ func TestContractWorkflowIsWhatTheDocsSay(t *testing.T) {
 		}
 	}
 }
+
+// Every workflow that installs Node asks for the newest release of its line. setup-node otherwise takes the version cached on the
+// runner image, which can lag a Node security release by days (2026-10-20/21: 24.22.1 and 22.23.4).
+func TestEverySetupNodeInstallsTheNewestRelease(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no workflows: %v", err)
+	}
+	seen := 0
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var w workflow
+		if err := yaml.Unmarshal(b, &w); err != nil {
+			t.Fatalf("%s does not parse: %v", filepath.Base(f), err)
+		}
+		for name, j := range w.Jobs {
+			for i, s := range j.Steps {
+				if !strings.HasPrefix(s.Uses, "actions/setup-node@") {
+					continue
+				}
+				seen++
+				if s.With["check-latest"] != true {
+					t.Errorf("%s job %s step %d: setup-node without check-latest: true", filepath.Base(f), name, i)
+				}
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no setup-node step found: the test reads nothing")
+	}
+}

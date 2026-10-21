@@ -40,7 +40,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Repo map | `github.com/tree-sitter/go-tree-sitter` v0.25.0 (CGO) + MIT grammars: Go v0.25.0, TypeScript/TSX v0.23.2, JavaScript v0.25.0, Python v0.25.0, C# v0.23.5, Java v0.23.5, Rust v0.24.2; Aider algorithm | D5, P62: built in `internal/repomap` (Linux; the Windows CI jobs build it with MinGW gcc). The grammars' own `queries/tags.scm` plus our extra queries (TSX and JSX element references, which no upstream query covers, and TS, JS, Python, C#, Java, Rust additions). PHP and SQL, probed in Phase 0, are not built. The product exe is built with `CGO_ENABLED=1`. |
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
-| Git hosting | `gh` v2.102.1 as a user-installed Connection | `gh` is not bundled. |
+| Git hosting | `gh` v2.103.0 as a user-installed Connection | `gh` is not bundled. |
 | Per-task sandbox | A Docker-compatible container engine you install, driven only through the `docker` command (tested with Docker Engine 29.9.2 on Linux; 29.8.2 when P30 was decided); egress proxy built from `cmd/drydock-egress` | P30. No engine is bundled and no image of Drydock's is pulled from a registry. |
 
 ## 3. Process decisions
@@ -975,3 +975,23 @@ Open, owner action:
   workspace's "Security scan", the dock is only on a project's pages, and the Guide is the "?" button's own surface. (P1-9) The
   Plan page leads with a proposal under review and folds the goal form under it. Found while testing: a chat opened mid-turn
   could drop a tool result that came before its row; the chat feed now keeps results by message id.
+- **P94. The 2026-10-21 security releases and the npm compromises (on the owner's words: "Do a full review of our app look for all
+  software packages and update the artifact. NPM and PHP were compromised to lets make sure were running the fixes").** What was
+  checked and what changed. (1) *Node.js* published security releases on 2026-10-20/21 (24.22.1, 22.23.4, 26.12.1; TLS hostname
+  checks, DNS name truncation, the Brotli decoder). The development host moved to 24.22.1 and its second Node to 22.23.4, each
+  checked against SHASUMS256.txt and that file's signature (releaser key 5BE8A3F6C8A5C01D106C0AD820B1A390B168D356). CI's
+  `actions/setup-node` steps now say `check-latest: true`: with `node-version: "24"` alone the action takes the runner image's
+  cached 24.x, which can lag a security release by days; a test (`cmd/drydock-contract`) holds every setup-node step to it.
+  (2) *npm compromises*: the UI and starter lock files were searched for the known bad releases (tensorlake 0.5.144, the
+  Shai-Hulud worm of 2026-10-08; axios 1.14.1 and 0.30.4 and plain-crypto-js, March; @nubjs/nub 0.9.4) and none is there;
+  `npm audit` (which carries npm's malware advisories) finds nothing in either; only esbuild, fsevents and workerd have install
+  scripts, as before. New releases taken in this pass (vite 8.3.5 with rolldown 1.2.15 and postcss 8.5.31, lucide 1.61.0) were
+  read before they were taken: each carries npm provenance, none has an install script, vite's and lucide's changes were
+  compared file by file with the versions they replace. (3) *PHP* published 8.5.12, 8.4.27, 8.3.36 and 8.2.35 for
+  CVE-2026-109618 and CVE-2026-109619 (remote code execution). Drydock has no PHP dependency (the PHP tree-sitter grammar is
+  only in the Go module graph); the development host's PHP 8.3 moved to Ubuntu's security build 8.3.6-0ubuntu0.24.04.13, whose
+  changelog names both CVEs, and its Composer to 2.10.3 (signature checked against the Packagist release key). (4) Also behind
+  and moved: openai-go 3.85.0, modernc.org/sqlite 1.61.0, klauspost/pgzip 1.3.0, gh 2.103.0, the LobeHub icon set 1.97.0
+  (the four copied marks are byte-identical). Wrangler stays at 4.151.0 (its hold still applies). Not done here: the
+  `npm audit signatures` check could not reach Sigstore from this machine and osv.dev was refused by its network policy, so
+  provenance was read from the registry's metadata instead of verified, and the Go vulnerability lookup ran in CI only.

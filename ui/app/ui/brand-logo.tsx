@@ -7,7 +7,7 @@
 // https://github.com/AikidoSec/safe-chain (also in AikidoSec/firewall-node), scaled into the 24-unit box. The marks are
 // trademarks of their owners, shown only to say which service a card connects to.
 //
-// Four marks that Simple Icons does not carry come from LobeHub's icon set, @lobehub/icons-static-svg 1.95.1 (MIT,
+// Four marks that Simple Icons does not carry come from LobeHub's icon set, @lobehub/icons-static-svg 1.97.0 (MIT,
 // https://github.com/lobehub/lobe-icons), the monochrome icons/codex.svg, goose.svg, antigravity.svg and openai.svg, copied as
 // single paths in the same 24-unit box (Codex's and OpenAI's are drawn with the even-odd rule, as in their files): Codex and
 // OpenAI (OpenAI) and Goose (Block) in black as their marks are, Antigravity (Google) in the blue of its colour mark.
