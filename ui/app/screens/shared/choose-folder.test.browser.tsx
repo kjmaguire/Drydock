@@ -38,6 +38,21 @@ describe('ChooseFolder', () => {
     expect(picked).toEqual(['D:\\code\\shop']);
   });
 
+  it('compact: an icon button named "Choose folder…" that does the same', async () => {
+    const picked: string[] = [];
+    const s = testServices({ fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }), fsPickFolder: async () => 'D:\\code\\shop' });
+    const r = mount(<ChooseFolder title="Choose the folder to scan" testId="pick" compact onPick={(p) => picked.push(p)} />, s);
+    const button = await waitFor(() => {
+      const b = r.$('[data-testid="pick"]') as HTMLButtonElement | null;
+      if (!b) throw new Error('not yet');
+      return b;
+    }, r);
+    expect(button.getAttribute('aria-label')).toBe('Choose folder…');
+    expect(button.textContent).toBe('');
+    await r.act(() => button.click());
+    await waitFor(() => expect(picked).toEqual(['D:\\code\\shop']), r);
+  });
+
   it('is not offered where the window has no folder dialog (the browser in development)', async () => {
     let asked = false;
     const r = show(

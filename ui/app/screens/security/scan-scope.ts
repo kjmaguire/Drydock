@@ -24,6 +24,9 @@ export interface ScanScope {
   toolsChanged(e: DrydockEvent): boolean;
 }
 
+/** The key of the scope a scan of the history belongs to (a folder's or a project's), as ScanScope.key names it. */
+export const summaryKey = (h: Pick<ScanSummary, 'folder' | 'projectId'>): string => (h.folder ? `folder:${h.folder}` : `project:${h.projectId}`);
+
 /** A tool is the workspace's: an install announced from any Security page counts on every one. */
 const toolChoice = (e: DrydockEvent) => (e.data as { tool?: string } | undefined)?.tool !== undefined;
 
@@ -62,7 +65,8 @@ export function folderScope(client: SecurityClient, folder: string, typed: () =>
     cancel: () => client.securityFolderScanCancel(folder),
     get: () => (folder ? client.securityFolderScanGet(folder) : Promise.resolve(null)),
     history: (limit) => client.securityScanFolders(limit),
-    mine: (e) => e.type.startsWith('security.scan.') && folderEvent(e),
+    // a scan's progress, and a finding dismissed or restored (security.finding.*), of a folder
+    mine: (e) => (e.type.startsWith('security.scan.') || e.type.startsWith('security.finding.')) && folderEvent(e),
     toolsChanged: (e) => e.type === 'security.settings' && ((!e.projectId && (e.data as { workspace?: boolean } | undefined)?.workspace === true) || toolChoice(e)),
   };
 }

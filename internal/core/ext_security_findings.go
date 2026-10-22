@@ -44,6 +44,10 @@ func (s *securityExt) findingMethods() map[string]Method {
 		"security.finding.context": bind(func(ctx context.Context, p findingRef) (any, error) {
 			return s.findingContext(ctx, p)
 		}),
+		// the whole file of a finding (the Security page's "Open the file"): read-only, masked as the context is
+		"security.file.read": bind(func(ctx context.Context, p findingRef) (any, error) {
+			return s.findingFile(ctx, p)
+		}),
 		"security.finding.task": bind(func(ctx context.Context, p findingTaskReq) (any, error) {
 			return s.findingTask(ctx, p, c.Human())
 		}),
@@ -299,6 +303,21 @@ func (s *securityExt) scanDir(ctx context.Context, rep *scan.Report) (string, er
 // findingContext is the code around a finding, read now from the folder its scan read, with every secret masked and every
 // line redacted; and what the finding means and what to do.
 func (s *securityExt) findingContext(ctx context.Context, p findingRef) (scan.FindingContext, error) {
+	return s.readFinding(ctx, p, func(ctx context.Context, dir string, f scan.Finding) (scan.FindingContext, error) {
+		return scan.ReadContext(ctx, dir, f, p.Around, s.c.Scanner.Redact)
+	})
+}
+
+// findingFile is the whole file of a finding (its first scan.MaxFileLines lines), read now from the folder its scan read under
+// the same folder rules, with every secret masked and every line redacted. Nothing in the folder runs and nothing is opened.
+func (s *securityExt) findingFile(ctx context.Context, p findingRef) (scan.FindingContext, error) {
+	return s.readFinding(ctx, p, func(ctx context.Context, dir string, f scan.Finding) (scan.FindingContext, error) {
+		return scan.ReadFile(ctx, dir, f, s.c.Scanner.Redact)
+	})
+}
+
+// readFinding finds a scan's finding and reads it with read, from the folder the scan read while that may still be read.
+func (s *securityExt) readFinding(ctx context.Context, p findingRef, read func(context.Context, string, scan.Finding) (scan.FindingContext, error)) (scan.FindingContext, error) {
 	rep, key, err := s.scanByID(ctx, p.ScanID)
 	if err != nil {
 		return scan.FindingContext{}, err
@@ -314,7 +333,7 @@ func (s *securityExt) findingContext(ctx context.Context, p findingRef) (scan.Fi
 	}
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	out, err := scan.ReadContext(cctx, dir, f, p.Around, s.c.Scanner.Redact)
+	out, err := read(cctx, dir, f)
 	out.ScanID = rep.ID
 	return out, err
 }
