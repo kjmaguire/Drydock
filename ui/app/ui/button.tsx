@@ -10,10 +10,10 @@ const base = css({
   alignItems: 'center',
   justifyContent: 'center',
   gap: '7px',
-  height: '34px',
-  padding: '0 15px',
+  height: '32px',
+  padding: '0 14px',
   border: '1px solid transparent',
-  borderRadius: t.rFull,
+  borderRadius: t.rMd,
   fontSize: t.textMd,
   fontWeight: '600',
   lineHeight: '1',
@@ -29,11 +29,10 @@ export const buttonVariant: Record<ButtonVariant, ReturnType<typeof css>> = {
   primary: css({
     background: t.accent,
     color: t.onAccent,
-    boxShadow: t.shadowSm,
     '&:hover': { background: t.accentHover, color: t.onAccent },
   }),
   secondary: css({
-    background: t.bgSurface,
+    background: t.bgRaised,
     color: t.text,
     borderColor: t.borderStrong,
     '&:hover': { background: t.bgHover, color: t.text },
@@ -59,7 +58,7 @@ export const buttonVariant: Record<ButtonVariant, ReturnType<typeof css>> = {
   }),
 };
 
-const small = css({ height: '28px', padding: '0 11px', fontSize: t.textSm, gap: '5px' });
+const small = css({ height: '26px', padding: '0 10px', fontSize: t.textSm, gap: '5px' });
 
 /** The mixins that make any element (a link, a label) look like a button. */
 export function buttonStyle(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md') {
@@ -88,7 +87,7 @@ const iconOnly = css({
   height: '30px',
   padding: '0',
   border: '0',
-  borderRadius: t.rFull,
+  borderRadius: t.rMd,
   background: 'transparent',
   color: t.textMuted,
   transition: `background-color ${t.fast} ${t.ease}, color ${t.fast} ${t.ease}`,

@@ -47,23 +47,23 @@ const tabCss = css({
   '&:focus-visible': { boxShadow: `inset ${t.focus}` },
 });
 
-// the pill variant (Crew HQ): a row of rounded pills, the active one a white card
+// the pill variant: a row of quiet buttons, the active one a raised chip (graphite, P97: Board, List, Timeline)
 const pillListCss = css({ display: 'flex', alignItems: 'center', gap: t.s1, borderBottom: '0', overflowX: 'auto', scrollbarWidth: 'none' });
 const pillCss = css({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '6px',
-  height: '36px',
-  padding: `0 ${t.s4}`,
+  height: '28px',
+  padding: `0 ${t.s3}`,
   border: '1px solid transparent',
-  borderRadius: t.rFull,
+  borderRadius: t.rMd,
   background: 'transparent',
   color: t.textMuted,
   fontSize: t.textMd,
   fontWeight: '500',
   whiteSpace: 'nowrap',
   '&:hover': { background: t.bgHover, color: t.text },
-  '&[data-state="active"]': { background: t.bgSurface, color: t.text, borderColor: t.border, boxShadow: t.shadowSm },
+  '&[data-state="active"]': { background: t.bgActive, color: t.text, borderColor: t.borderStrong },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
 

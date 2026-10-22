@@ -94,6 +94,9 @@
     "npm:@fontsource-variable/inter": {
       "role": "Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1)."
     },
+    "npm:@fontsource-variable/jetbrains-mono": {
+      "role": "Bundles the JetBrains Mono variable font for code, task keys and numbers in the graphite UI (decision P97), so the desktop app looks the same offline (OFL-1.1)."
+    },
     "npm:@playwright/test": {
       "role": "Runs the browser tests against the real Go core."
     },

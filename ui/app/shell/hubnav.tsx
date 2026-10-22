@@ -1,4 +1,4 @@
-// What a hub shows under the top bar (Crew HQ, decision P64): a row of pills for a hub's sub-pages (Overview, Tasks,
+// What a hub shows beside the sidebar (graphite, decision P97; first drawn for Crew HQ, P64): a row of pills for a hub's sub-pages (Overview, Tasks,
 // Knowledge, Library), the Settings rail (the workspace's and the app's settings pages, grouped), and the Rooms rail (the
 // project's channels, task rooms and direct messages). Every page the old sidebar linked is reached from one of these, with
 // the same test id. A project's own settings (Project settings, its Integrations) are pills of its Overview, set apart at the
@@ -21,7 +21,7 @@ const subCss = css({
   alignItems: 'center',
   gap: '4px',
   flex: 'none',
-  padding: `${t.s2} ${t.s5}`,
+  padding: `${t.s2} ${t.s6}`,
   borderBottom: `1px solid ${t.border}`,
   background: t.bgApp,
   overflowX: 'auto',
@@ -30,9 +30,9 @@ const pillCss = css({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '6px',
-  height: '30px',
+  height: '28px',
   padding: `0 ${t.s3}`,
-  borderRadius: t.rFull,
+  borderRadius: t.rMd,
   color: t.textMuted,
   fontSize: t.textSm,
   fontWeight: '500',
@@ -40,7 +40,7 @@ const pillCss = css({
   whiteSpace: 'nowrap',
   border: '1px solid transparent',
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
-  '&[aria-current="page"]': { background: t.bgSurface, color: t.text, borderColor: t.border, boxShadow: t.shadowSm },
+  '&[aria-current="page"]': { background: t.bgActive, color: t.text, borderColor: t.border },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
 // the project's own settings sit at the end of the Overview's row, after a gap and a hairline

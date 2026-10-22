@@ -4,7 +4,6 @@ import type { Client } from '../api/client.ts';
 import type { Room } from '../api/types.ts';
 import { cleanup, mount, testServices, waitFor } from '../test/render.tsx';
 import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
-import { TopBar } from './topbar.tsx';
 
 afterEach(cleanup);
 
@@ -27,90 +26,6 @@ function svc(over: Partial<Client> = {}) {
   s.project.start();
   return s;
 }
-
-const ids = (r: { $$: (s: string) => NodeListOf<Element> }) => Array.from(r.$$('[data-nav]')).map((e) => e.getAttribute('data-testid'));
-
-describe('the top bar', () => {
-  it("on a project's page: the mark (the way home), the switcher, the five tabs, search, the bell with its count, the gear, the stream", async () => {
-    const r = mount(<TopBar route={{ name: 'needs-you' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you'), r);
-    expect(r.$('nav[aria-label="Main"]')).not.toBeNull();
-    expect(r.$('[role="img"][aria-label="Drydock"]')).not.toBeNull();
-    expect(ids(r)).toEqual(['nav-workspace', 'nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', null, 'nav-needs-you', 'nav-guide-top', 'nav-settings']);
-    expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
-    expect(r.$('[data-testid="nav-rooms"]')!.getAttribute('href')).toBe('/rooms');
-    expect(r.$('[data-testid="nav-knowledge"]')!.getAttribute('href')).toBe('/knowledge');
-    expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
-    // Needs you is the bell: current on its page, and its count is read once
-    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('href')).toBe('/needs-you');
-    // the bell's page belongs to no tab: only the bell is current
-    expect(r.$('[data-testid="nav-overview"]')!.getAttribute('aria-current')).toBeNull();
-    expect(r.$$('[aria-current="page"]')).toHaveLength(1);
-    expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
-    expect(r.$('[data-testid="stream"]')).not.toBeNull();
-    for (const id of ['nav-library', 'nav-chats', 'nav-security-scan']) expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
-  });
-
-  it('marks the tab of each hub current: Tasks on a task and on Pull requests, Knowledge on the repo map, the gear on every settings page', async () => {
-    for (const [route, tab] of [
-      [{ name: 'task', id: 't1' }, 'nav-tasks'],
-      [{ name: 'pulls' }, 'nav-tasks'],
-      [{ name: 'repo-map' }, 'nav-knowledge'],
-      [{ name: 'room', id: 'r1' }, 'nav-rooms'],
-      [{ name: 'team' }, 'nav-team'],
-      [{ name: 'agent', id: 'agt1' }, 'nav-team'],
-      [{ name: 'activity' }, 'nav-overview'],
-      // a project's settings are the project's own: Overview is current, not the gear
-      [{ name: 'project' }, 'nav-overview'],
-      [{ name: 'project-integrations' }, 'nav-overview'],
-      [{ name: 'connections' }, 'nav-settings'],
-      [{ name: 'github' }, 'nav-settings'],
-      // the Guide has its own button next to the gear; the gear is not current there
-      [{ name: 'guide' }, 'nav-guide-top'],
-      [{ name: 'guide', topic: 'scan' }, 'nav-guide-top'],
-    ] as const) {
-      const r = mount(<TopBar route={route} />, svc());
-      await waitFor(() => expect(r.$(`[data-testid="${tab}"]`)!.getAttribute('aria-current')).toBe('page'), r);
-      expect(r.$$('[aria-current="page"]')).toHaveLength(1);
-      cleanup();
-    }
-  });
-
-  it('on a workspace page shows the workspace: Home, Chats, Library and Security scan, no bell, and the switcher says Home', async () => {
-    const r = mount(<TopBar route={{ name: 'workspace' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('aria-current')).toBe('page'), r);
-    // the mark has no test id here: the Home tab is the way home
-    expect(ids(r)).toEqual([null, 'nav-workspace', 'nav-chats', 'nav-library', 'nav-security-scan', null, 'nav-guide-top', 'nav-settings']);
-    expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
-    expect(r.$('[data-testid="nav-security-scan"]')!.getAttribute('href')).toBe('/security-scan');
-    expect(r.$('[data-testid="nav-needs-you"]')).toBeNull();
-    expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('Home');
-    cleanup();
-    const c = mount(<TopBar route={{ name: 'chat', id: 'c1' }} />, svc());
-    await waitFor(() => expect(c.$('[data-testid="nav-chats"]')!.getAttribute('aria-current')).toBe('page'), c);
-  });
-
-  it('without a project shows the workspace bar on every page', async () => {
-    const r = mount(<TopBar route={{ name: 'license' }} />, svc({ projectList: async () => [] }));
-    await waitFor(() => expect(r.$('[data-testid="nav-settings"]')!.getAttribute('aria-current')).toBe('page'), r);
-    expect(r.$('[data-testid="nav-tasks"]')).toBeNull();
-    expect(r.$('[data-testid="nav-chats"]')).not.toBeNull();
-  });
-
-  it('moves between its links with the arrow keys, but leaves keys from the switcher alone', async () => {
-    const r = mount(<TopBar route={{ name: 'home' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-tasks"]')).not.toBeNull(), r);
-    const first = r.$('[data-nav]') as HTMLElement;
-    first.focus();
-    await r.act(() => first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })));
-    expect(document.activeElement).toBe(r.$$('[data-nav]')[1]!);
-    const sw = r.$('button[aria-label="Switch project"]') as HTMLButtonElement;
-    sw.focus();
-    await r.act(() => sw.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true })));
-    expect(document.activeElement).toBe(sw);
-  });
-});
 
 describe('the hubs', () => {
   it('Tasks, Knowledge, Overview and Library show their pages as pills with the old test ids; Crew and Rooms have none', () => {

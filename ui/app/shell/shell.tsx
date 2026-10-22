@@ -1,6 +1,6 @@
-// The application shell (Crew HQ, decision P64). The SPA router renders every route's content inside it (render transform
-// in router.tsx), and the same Shell instance stays mounted across navigations, so the top bar (with the project switcher),
-// the dock (and a running terminal) and the details panel keep their state while the center changes. Under the top bar a
+// The application shell (graphite, decision P97). The SPA router renders every route's content inside it (render transform
+// in router.tsx), and the same Shell instance stays mounted across navigations, so the sidebar (with the project switcher),
+// the dock (and a running terminal) and the details panel keep their state while the center changes. Beside the sidebar a
 // hub's pills (Tasks, Knowledge...), then the page, with the Rooms rail or the Settings rail beside it when the hub has one.
 
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
@@ -23,9 +23,10 @@ import { LicenseBanner } from './license-banner.tsx';
 import { AgentConfigBanner } from './agent-config-banner.tsx';
 import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { CommandPalette } from './palette.tsx';
-import { TopBar } from './topbar.tsx';
+import { Sidebar } from './sidebar.tsx';
 
-const rootCss = css({ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: t.bgApp });
+const rootCss = css({ display: 'flex', height: '100vh', overflow: 'hidden', background: t.bgApp });
+const columnCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minWidth: '0', minHeight: '0' });
 const appCss = css({ position: 'relative', display: 'flex', flex: '1', minHeight: '0', minWidth: '0' });
 const centerCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minWidth: '0', minHeight: '0', background: t.bgApp });
 const mainCss = css({ flex: '1', minHeight: '0', overflow: 'hidden', outline: 'none', '& > *': { height: '100%' } });
@@ -131,14 +132,15 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
 
     return (
       <div mix={rootCss}>
-        <LicenseBanner />
         {/* in a landmark of its own, so every piece of the page is inside one (axe "region") */}
         <nav aria-label="Skip links" mix={skipNav}>
           <a href="#main" mix={skipCss} data-rmx-document>
             Skip to content
           </a>
         </nav>
-        <TopBar route={route} />
+        <Sidebar route={route} />
+        <div mix={columnCss}>
+        <LicenseBanner />
         {project || isWorkspacePage(route) ? <SubNav route={route} /> : null}
         <div mix={appCss}>
           {rail && narrow ? <button type="button" mix={[scrimCss, on('click', () => s.ui.setDrawer(false))]} aria-label={`Close the ${railName}`} /> : null}
@@ -175,6 +177,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
               <Details taskId={taskContext} roomId={route.name === 'room' ? route.id : undefined} page={route.name === 'room' || route.name === 'task' || route.name === 'run' ? 'conversation' : 'other'} />
             </ErrorBoundary>
           ) : null}
+        </div>
         </div>
         <CommandPalette onMessage={(id) => void openDM(id)} />
       </div>

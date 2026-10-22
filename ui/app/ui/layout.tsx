@@ -6,14 +6,15 @@ import { t } from './tokens.ts';
 
 const pageCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0' });
 
-/** The bar of a full-height screen (a room, a chat): a 56px row with the title, used by the conversation screens. */
+/** The bar on top of every screen (graphite, P97): the title, what it is about, its own tabs or filters, the actions at the end. */
 export const headerCss = css({
   display: 'flex',
   alignItems: 'center',
-  gap: t.s3,
+  flexWrap: 'wrap',
+  gap: `${t.s2} ${t.s3}`,
   flex: 'none',
-  height: '56px',
-  padding: `0 ${t.s5}`,
+  minHeight: 'var(--header-height)',
+  padding: `${t.s2} ${t.s6}`,
   borderBottom: `1px solid ${t.border}`,
   background: t.bgApp,
   '& h1': {
@@ -23,27 +24,19 @@ export const headerCss = css({
     minWidth: '0',
     fontSize: t.textLg,
     fontWeight: '600',
-    letterSpacing: '-0.01em',
+    letterSpacing: '-0.005em',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
 });
 
-// A page's head sits in the page itself (Crew HQ): a large title, the subtitle under it, the actions on the right.
-const pageHead = css({
-  display: 'flex',
-  alignItems: 'flex-end',
-  gap: t.s4,
-  flexWrap: 'wrap',
-  '& h1': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0', fontSize: t.textTitle, fontWeight: '700', letterSpacing: '-0.025em', lineHeight: '1.15' },
-});
 const headerIcon = css({ display: 'inline-flex', color: t.textMuted });
-const headerSub = css({ color: t.textMuted, fontSize: t.textMd, marginTop: '6px', maxWidth: '80ch' });
+const headerSub = css({ color: t.textFaint, fontSize: t.textMd, minWidth: '0', flex: '0 1 auto', maxWidth: '90ch' });
 const headerActions = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none', flexWrap: 'wrap' });
 
 const bodyCss = css({ flex: '1', minHeight: '0', overflow: 'auto' });
-const innerCss = css({ display: 'grid', gap: t.s6, padding: `${t.s6} ${t.s8} 56px`, maxWidth: '1320px', margin: '0 auto', width: '100%' });
+const innerCss = css({ display: 'grid', gap: t.s5, padding: `${t.s5} ${t.s6} 48px`, maxWidth: '1320px', width: '100%' });
 const wideCss = css({ maxWidth: 'none' });
 
 /**
@@ -85,43 +78,19 @@ export function Page(
     }
     return (
       <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>
-        {flush ? (
-          <header mix={headerCss}>
-            <h1 id={titleId}>
-              {icon ? (
-                <span mix={headerIcon}>
-                  <Icon icon={icon} size={16} />
-                </span>
-              ) : null}
-              {title}
-            </h1>
-            {sub ? <div mix={headerSub} style={{ marginTop: '0' }}>{sub}</div> : null}
-            {actions ? <div mix={headerActions}>{actions}</div> : null}
-          </header>
-        ) : null}
-        <div mix={bodyCss}>
-          {flush ? (
-            children
-          ) : (
-            <div mix={[innerCss, wide ? wideCss : undefined]}>
-              <header mix={pageHead}>
-                <div style={{ minWidth: '0' }}>
-                  <h1 id={titleId}>
-                    {icon ? (
-                      <span mix={headerIcon}>
-                        <Icon icon={icon} size={22} />
-                      </span>
-                    ) : null}
-                    {title}
-                  </h1>
-                  {sub ? <div mix={headerSub}>{sub}</div> : null}
-                </div>
-                {actions ? <div mix={headerActions}>{actions}</div> : null}
-              </header>
-              {children}
-            </div>
-          )}
-        </div>
+        <header mix={headerCss}>
+          <h1 id={titleId}>
+            {icon ? (
+              <span mix={headerIcon}>
+                <Icon icon={icon} size={16} />
+              </span>
+            ) : null}
+            {title}
+          </h1>
+          {sub ? <div mix={headerSub}>{sub}</div> : null}
+          {actions ? <div mix={headerActions}>{actions}</div> : null}
+        </header>
+        <div mix={bodyCss}>{flush ? children : <div mix={[innerCss, wide ? wideCss : undefined]}>{children}</div>}</div>
       </section>
     );
   };
@@ -133,7 +102,7 @@ const sectionHead = css({
   alignItems: 'flex-end',
   justifyContent: 'space-between',
   gap: t.s3,
-  '& h2': { fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em', margin: '0' },
+  '& h2': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
   '& h3': { fontSize: t.textMd, fontWeight: '600', margin: '0' },
   '& p': { color: t.textMuted, fontSize: t.textSm, marginTop: '3px' },
 });
@@ -166,7 +135,7 @@ export const card = css({
   border: `1px solid ${t.border}`,
   borderRadius: t.rLg,
   background: t.bgSurface,
-  padding: '18px',
+  padding: '14px',
   minWidth: '0',
 });
 
@@ -194,7 +163,7 @@ export const listCard = css({
     display: 'flex',
     alignItems: 'center',
     gap: t.s3,
-    padding: `11px 18px`,
+    padding: `10px ${t.s4}`,
     borderTop: `1px solid ${t.border}`,
     minWidth: '0',
   },
