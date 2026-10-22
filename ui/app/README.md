@@ -143,7 +143,8 @@ Use the kit before writing CSS:
 
 - `Page` (header bar with title, icon, subtitle, actions; `mark` instead of the icon for what the page belongs to, a project's
   colour square; `bar` for the page's own view tabs and filters after the title; scrolling body; `head` draws the head itself
-  around the h1 id it is given), `Section`, `card`, `listCard`, `tableCard`,
+  around the h1 id it is given; `head` with `flush` draws the whole page, its own bar and scrolling columns: the task page),
+  `Section`, `card`, `listCard`, `tableCard`,
   `row`, `stack`, `cardGrid` (layout.tsx).
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).

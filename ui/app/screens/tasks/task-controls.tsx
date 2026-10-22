@@ -1,11 +1,11 @@
-// Assignment and control of an open task: choose a worker and a different reviewer, assign, pick a workflow template, start,
-// or cancel (confirmed). While a run is in flight only cancel stays. A closed task shows nothing here.
+// Assignment and control of an open task that is not running: choose a worker and a different reviewer, assign, pick a workflow
+// template, start, or cancel (confirmed). While a run is in flight the task page offers only CancelTask (beside the run's
+// properties), and the steer box. A closed task shows nothing here.
 
 import { css, on, type Handle } from 'remix/component';
 import { Ban, Play, UserCheck } from 'lucide';
 import type { WorkflowTemplate } from '../../api/extTypes.ts';
 import type { Agent, TaskDetail } from '../../api/types.ts';
-import { statusLabel } from '../../lib/format.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -23,13 +23,12 @@ const boxCss = css({
   border: `1px solid ${t.border}`,
   borderRadius: t.rLg,
   background: t.bgSurface,
+  minWidth: '0',
   '& .fields': { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: t.s3, alignItems: 'end' },
   '& select': { width: '100%' },
   '& .actions': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2 },
-  '& .confirm': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, marginLeft: 'auto', fontSize: t.textMd },
   '& .info': { display: 'grid', gap: t.s1, padding: `${t.s2} ${t.s3}`, borderRadius: t.rMd, background: t.bgApp, fontSize: t.textSm },
   '& .info ul': { margin: '0', paddingLeft: '18px' },
-  '& .running': { flex: '1', minWidth: '200px', margin: '0', color: t.textMuted, fontSize: t.textMd },
 });
 
 const option = (a: Agent): SelectOption => ({ value: a.id, label: `${a.name} (${a.role})` });
@@ -44,7 +43,6 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
   let reviewer: string | undefined;
   let template: string | undefined;
   let notes: string[] = [];
-  let confirmCancel = false;
   const set = (fn: () => void) => {
     fn();
     void handle.update();
@@ -64,11 +62,10 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
     worker ??= task.assignee ?? '';
     reviewer ??= task.reviewer ?? '';
     template ??= task.template ?? '';
-    if (isTerminal(task.status)) return null;
+    if (isTerminal(task.status) || isRunActive(detail.run)) return null;
     const agents = s.project.agentList;
     const list = templates.data ?? [];
     const chosen: WorkflowTemplate | undefined = list.find((x) => x.name === template);
-    const runActive = isRunActive(detail.run);
     const ro = s.workspace.license;
     const busy = act.busy !== '';
     const w = worker;
@@ -83,8 +80,7 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
             {notes.join(' ')}
           </div>
         ) : null}
-        {!runActive ? (
-          <div class="fields">
+        <div class="fields">
             <Field label="Worker">
               {(id) => (
                 <Select id={id} label="Worker" value={w} options={[{ value: '', label: 'Choose a worker' }, ...agents.map(option)]} onChange={(v) => set(() => (worker = v))} />
@@ -106,9 +102,8 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
                 />
               )}
             </Field>
-          </div>
-        ) : null}
-        {chosen && !runActive ? (
+        </div>
+        {chosen ? (
           <div class="info" data-testid="template-info">
             <p>{chosen.description}</p>
             <p mix={muted}>Steps: {(chosen.steps ?? []).join(' > ')}</p>
@@ -125,63 +120,74 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
           </div>
         ) : null}
         <div class="actions">
-          {!runActive ? (
-            <>
-              <Button icon={UserCheck} disabled={!w || !r || w === r || busy} mix={on('click', () => void run('assign', () => s.client.taskAssign(task.id, w, r)))}>
-                Assign
-              </Button>
-              <Button
-                variant="primary"
-                icon={Play}
-                disabled={ro.readOnly || !task.assignee || !task.reviewer || busy || w !== (task.assignee ?? '') || r !== (task.reviewer ?? '')}
-                title={ro.readOnly ? ro.reason : !task.assignee || !task.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
-                mix={on(
-                  'click',
-                  () =>
-                    void run('start', async () => {
-                      if (!tpl) return s.client.taskStart(task.id);
-                      const res = await s.client.taskStartTemplate({ taskId: task.id, template: tpl });
-                      notes = res.notes ?? [];
-                      return res;
-                    }),
-                )}
-              >
-                Start
-              </Button>
-              {w && r && w === r ? <span mix={muted}>The reviewer must be a different agent from the worker.</span> : null}
-            </>
-          ) : (
-            <p class="running">
-              A run is in progress{detail.run ? ` (${statusLabel(detail.run.status).toLowerCase()})` : ''}. Answer its requests above, or cancel the task.
-            </p>
-          )}
-          <div class="confirm">
-            {confirmCancel ? (
-              <>
-                <span>Cancel this task and stop its run?</span>
-                <Button
-                  variant="danger"
-                  disabled={busy}
-                  mix={on(
-                    'click',
-                    () =>
-                      void run('cancel', async () => {
-                        await s.client.taskCancel(task.id);
-                        confirmCancel = false;
-                      }),
-                  )}
-                >
-                  Yes, cancel task
-                </Button>
-                <Button mix={on('click', () => set(() => (confirmCancel = false)))}>Keep</Button>
-              </>
-            ) : (
-              <Button variant="ghost" icon={Ban} mix={on('click', () => set(() => (confirmCancel = true)))}>
-                Cancel task
-              </Button>
+          <Button icon={UserCheck} disabled={!w || !r || w === r || busy} mix={on('click', () => void run('assign', () => s.client.taskAssign(task.id, w, r)))}>
+            Assign
+          </Button>
+          <Button
+            variant="primary"
+            icon={Play}
+            disabled={ro.readOnly || !task.assignee || !task.reviewer || busy || w !== (task.assignee ?? '') || r !== (task.reviewer ?? '')}
+            title={ro.readOnly ? ro.reason : !task.assignee || !task.reviewer ? 'Assign a worker and a reviewer first' : 'Start the task'}
+            mix={on(
+              'click',
+              () =>
+                void run('start', async () => {
+                  if (!tpl) return s.client.taskStart(task.id);
+                  const res = await s.client.taskStartTemplate({ taskId: task.id, template: tpl });
+                  notes = res.notes ?? [];
+                  return res;
+                }),
             )}
-          </div>
+          >
+            Start
+          </Button>
+          {w && r && w === r ? <span mix={muted}>The reviewer must be a different agent from the worker.</span> : null}
+          <CancelTask taskId={task.id} onChanged={handle.props.onChanged} />
         </div>
+      </div>
+    );
+  };
+}
+
+const cancelCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, marginLeft: 'auto', fontSize: t.textMd });
+
+/** Cancel the task and stop its run, asked twice ("Cancel this task and stop its run?"). */
+export function CancelTask(handle: Handle<{ taskId: string; onChanged: () => void }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let confirm = false;
+  const set = (v: boolean) => {
+    confirm = v;
+    void handle.update();
+  };
+  return () => {
+    const { taskId, onChanged } = handle.props;
+    const busy = act.busy !== '';
+    return (
+      <div mix={cancelCss} role="group" aria-label="Cancel the task">
+        <ErrorNote error={act.error} what="Could not cancel the task" />
+        {confirm ? (
+          <>
+            <span>Cancel this task and stop its run?</span>
+            <Button
+              variant="danger"
+              disabled={busy}
+              mix={on('click', async () => {
+                if ((await act.run('cancel', async () => (await s.client.taskCancel(taskId), true))) === true) {
+                  confirm = false;
+                  onChanged();
+                }
+              })}
+            >
+              Yes, cancel task
+            </Button>
+            <Button mix={on('click', () => set(false))}>Keep</Button>
+          </>
+        ) : (
+          <Button variant="ghost" icon={Ban} mix={on('click', () => set(true))}>
+            Cancel task
+          </Button>
+        )}
       </div>
     );
   };

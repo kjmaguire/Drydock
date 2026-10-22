@@ -8,7 +8,10 @@ import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'room' | 'task' | 'thread' | 'inspector';
 export type DockTab = 'terminal' | 'diff' | 'logs' | 'activity';
-/** The kind of page the details panel sits beside: a room, a task or a run ('conversation'), or any other page. */
+/**
+ * The kind of page the details panel sits beside: a room or a run ('conversation'), or any other page (the task page has its own
+ * properties panel, graphite P97, so the details panel starts closed beside it).
+ */
 export type DetailsPage = 'conversation' | 'other';
 
 interface DockState {
@@ -316,6 +319,24 @@ export class UiModel extends Model {
   /** Open the dock on a tab (the task view, the command palette, Ctrl+Shift+D). */
   openDock(tab: DockTab): void {
     this.setDock({ open: true, tab });
+  }
+
+  #terminalAsk: { taskId?: string; projectId?: string } | undefined;
+
+  /**
+   * Open a new terminal in the dock, in a task's worktree or the project's repository (the task page's "Open the worktree"):
+   * the dock's terminal panel opens it as its own "New terminal" button does (takeTerminalAsk).
+   */
+  openTerminal(where: { taskId?: string; projectId?: string }): void {
+    this.#terminalAsk = { ...where };
+    this.openDock('terminal');
+  }
+
+  /** The terminal asked for by openTerminal, once: the terminal panel takes it. */
+  takeTerminalAsk(): { taskId?: string; projectId?: string } | undefined {
+    const w = this.#terminalAsk;
+    this.#terminalAsk = undefined;
+    return w;
   }
 
   toggleDock(): void {

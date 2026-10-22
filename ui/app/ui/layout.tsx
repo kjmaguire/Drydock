@@ -43,7 +43,8 @@ const wideCss = css({ maxWidth: 'none' });
 /**
  * A screen: a header bar with the title (h1), an optional subtitle and actions, then a scrolling body. `wide` lets the body
  * use the full width (tables, boards). `head` draws the page's head itself (an agent's hero beside its crew list): it is
- * given the id the page's h1 must carry, and replaces the default header and the children.
+ * given the id the page's h1 must carry, and replaces the default header and the children; with `flush` it also replaces the
+ * scrolling body (the page draws its own bar and scrolls its own columns).
  */
 export function Page(
   handle: Handle<
@@ -72,6 +73,14 @@ export function Page(
   return () => {
     const { title, icon, mark, subtitle, actions, wide, flush, children, testId, head, guide, bar } = handle.props;
     const sub = subtitle || guide ? <>{subtitle}{subtitle && guide ? ' ' : null}{guide ? <LearnMore topic={guide} /> : null}</> : null;
+    // a page that lays itself out to the edges (the task page: its own bar, columns and scrolling) draws everything in `head`
+    if (head && flush) {
+      return (
+        <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>
+          {head(titleId)}
+        </section>
+      );
+    }
     if (head) {
       return (
         <section mix={pageCss} aria-labelledby={titleId} data-testid={testId}>

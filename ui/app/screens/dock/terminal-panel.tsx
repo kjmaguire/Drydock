@@ -66,12 +66,19 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
     await act.run('close', () => s.client.terminalClose(id));
     list.reload();
   };
+  // a terminal another page asked for (the task page's "Open the worktree"): opened here, as the New terminal button does
+  watch(handle, s.ui);
+  const takeAsk = () => {
+    const where = s.ui.takeTerminalAsk();
+    if (where) handle.queueTask(() => void open(where));
+  };
   const onExit = (id: string, code: number) => {
     exited[id] = code;
     void handle.update();
   };
 
   return () => {
+    takeAsk();
     const { projectId, taskId } = handle.props;
     const p = s.workspace.projectList.find((x) => x.id === projectId);
     const noRepo = !!p && !projectHasRepo(p);

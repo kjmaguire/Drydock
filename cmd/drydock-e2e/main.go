@@ -168,6 +168,11 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 				{MCP: "mcp__drydock__skills", Input: json.RawMessage(`{"action":"get","name":"wrangler"}`)},
 				{MCP: "mcp__drydock__chatmcp__echo", Input: json.RawMessage(`{"text":"hello from home"}`)},
 			}},
+			// The task page's live run (ui/e2e/task-page.spec.ts, decision P97): a worker that reads a file and then keeps working
+			// (blocked until it is interrupted), so the page can steer and pause it. The steer's text carries its own marker: the
+			// worker runs the tests and keeps working. This rule comes first so a steered turn is matched by its message.
+			{Match: "drydock-e2e steered", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"go test ./..."}`), Result: "ok  \tgocalc\t0.003s"}, {Block: true}}},
+			{Match: "drydock-e2e live run", Steps: []fakeagent.Step{{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc.go"}`), Result: "package calc"}, {Block: true}}},
 			// the independent reviewer (prompt text from internal/pipeline/review.go) always ships
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
 			// The Inbox (ui/e2e/inbox.spec.ts, decision P97): the worker asks the permission prompt tool to run a command its rules

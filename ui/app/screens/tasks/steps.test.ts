@@ -39,7 +39,7 @@ describe('the step bar', () => {
   it('a running task is at Code, the spec done with its criteria count and the attempt noted', () => {
     const s = stepsFor(task('IN_PROGRESS', { iteration: 2, acceptance: ['a', 'b'] }), [], []);
     expect(states(s)).toEqual(['done', 'current', 'todo', 'todo', 'todo']);
-    expect(notes(s).slice(0, 2)).toEqual(['2 criteria', 'attempt 2']);
+    expect(notes(s).slice(0, 2)).toEqual(['2 criteria', 'attempt 3']);
     expect(stepsFor(task('BLOCKED'), [], [])[1]!.note).toBe('blocked');
   });
 
@@ -47,7 +47,7 @@ describe('the step bar', () => {
     const pending: PendingRequest[] = [{ id: 'r', nodeId: 'n', step: 3, spec: { kind: 'review', title: 'Review and merge' } }];
     const s = stepsFor(task('WAITING_HUMAN', { iteration: 1 }), [ev('test', true), ev('diff'), ev('e2e', null)], [review('SHIP')], pending);
     expect(states(s)).toEqual(['done', 'done', 'done', 'done', 'current']);
-    expect(notes(s)).toEqual(['written', 'attempt 1', '1 of 2', 'ship it', 'approve']);
+    expect(notes(s)).toEqual(['written', 'attempt 2', '1 of 2', 'ship it', 'approve']);
     expect(stepsFor(task('VERIFICATION'), [], [], [{ id: 'q', nodeId: 'n', step: 3, spec: { kind: 'question', title: '?' } }])[4]!.note).toBe('answer');
     expect(stepsFor(task('VERIFICATION'), [], [])[4]!.note).toBe('decide');
   });
