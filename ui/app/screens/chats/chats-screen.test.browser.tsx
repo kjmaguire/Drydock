@@ -427,8 +427,8 @@ describe('New chat dialog', () => {
       () =>
         expect(optionsOf(agent).map((o) => [o.label, o.disabled])).toEqual([
           ['Claude Code on Windows 2.1.295', false],
-          ['Claude Code in Debian (WSL) (not signed in)', true],
-          ['Claude Code in Ubuntu (WSL) 2.1.296', false],
+          ['Claude Code WSL (Debian) (not signed in)', true], // the distro only because two offer it
+          ['Claude Code WSL (Ubuntu) 2.1.296', false],
           ['Cline 3.0.70', false],
           ['Gemini CLI (not installed)', true],
         ]),
@@ -445,10 +445,14 @@ describe('New chat dialog', () => {
     expect(created).toEqual([{ projectId: undefined, cwd: undefined, adapter: 'claude', wslDistro: 'Ubuntu', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true }]);
   });
 
-  it("shows where a chat in WSL runs on its adapter chip", async () => {
+  it('names a chat in WSL "Claude Code WSL" on its adapter chip, the distro in its tooltip', async () => {
     const c = chat({ wslDistro: 'Ubuntu', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a' });
     const { r } = setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }) }, { id: 'chat_a' });
-    await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toContain('Claude Code in Ubuntu (WSL)'), r);
+    // "Claude Code WSL", the distro in the chip's tooltip only
+    const chip = await waitFor(() => must$(r, '[data-testid="chip-adapter"]'), r);
+    await waitFor(() => expect(chip.textContent).toContain('Claude Code WSL'), r);
+    expect(chip.textContent).not.toContain('Ubuntu');
+    expect(chip.getAttribute('title')).toBe('Runs inside the WSL distro Ubuntu');
   });
 
   it('shows the error the core gave', async () => {

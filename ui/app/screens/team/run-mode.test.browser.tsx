@@ -99,7 +99,7 @@ describe('where an agent runs', () => {
       if (!c) throw new Error('no card');
       return c;
     }, r);
-    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('in WSL Ubuntu');
+    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('in WSL');
     await r.act(() => byText(card, 'button', 'Edit Pay').click());
     const ed = await waitFor(() => {
       const e = r.$('[data-testid="agent-editor"]');

@@ -40,13 +40,26 @@ export function netModeText(mode: string | undefined): string {
   return `${mode}: the distro cannot reach Windows localhost directly`;
 }
 
-/** The tile's and the card's name: the CLI's product name ("Claude Code"), "Claude Code WSL" for one inside a WSL distro (the
- * distro is named on the line below it, connectionBlurb, and on the card, runsText). */
-export const connectionName = (c: Pick<Connection, 'adapter' | 'runMode'>): string => (isWSL(c) ? `${adapterLabel(c.adapter)} WSL` : adapterLabel(c.adapter));
+/**
+ * The same CLI is installed in more than one WSL distro on this computer (`all` is the page's list), so the distro is what tells
+ * its WSL installs apart.
+ */
+export const wslTwins = (c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>, all: readonly Pick<Connection, 'adapter' | 'runMode' | 'distro'>[]): boolean =>
+  isWSL(c) && all.some((o) => isWSL(o) && o.adapter === c.adapter && o.distro !== c.distro);
 
-/** The tile's "what it is" line: the version found and where it runs ("2.1.0 in the WSL distro Ubuntu-26.04"). */
-export function connectionBlurb(c: Pick<Connection, 'version' | 'runMode' | 'distro'>): string {
-  const where = isWSL(c) ? `in the WSL distro ${c.distro ?? ''}` : 'on Windows';
+/**
+ * The tile's and the card's name: the CLI's product name ("Claude Code"), "Claude Code WSL" for one inside a WSL distro, without
+ * the distro (the owner: "we don't need to see the Ubuntu"; the card's Runs row names it). Only when the same CLI is in two
+ * distros does the name carry the distro, so the two can be told apart: "Claude Code WSL (Debian)".
+ */
+export function connectionName(c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>, all: readonly Pick<Connection, 'adapter' | 'runMode' | 'distro'>[] = []): string {
+  if (!isWSL(c)) return adapterLabel(c.adapter);
+  return wslTwins(c, all) ? `${adapterLabel(c.adapter)} WSL (${c.distro ?? ''})` : `${adapterLabel(c.adapter)} WSL`;
+}
+
+/** The tile's "what it is" line: the version found and where it runs ("2.1.0 in WSL", "2.1.0 on Windows"). */
+export function connectionBlurb(c: Pick<Connection, 'version' | 'runMode'>): string {
+  const where = isWSL(c) ? 'in WSL' : 'on Windows';
   return c.version ? `${c.version} ${where}` : `Agent CLI ${where}`;
 }
 

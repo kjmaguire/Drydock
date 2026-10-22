@@ -218,6 +218,80 @@ func TestTheLibraryFillsFromTheRegistriesAndTheProjectIsToldWhatIsNew(t *testing
 	}
 }
 
+// The owner's report: building a new agent template, the Remix skills were missing from "Add a skill". The form listed only
+// skills a project had imported and those the prebuilt agents name, never the workspace library (decision P48), so a registry
+// nobody had imported from offered nothing although its skills were in the Library (P69: the Remix registry's whole folder).
+// Now the form offers every library skill a project could add, pinned to the library's commit, and applying a template that
+// carries one installs it from the registry at that commit; a skill the registry dropped (gone) is not offered.
+func TestTheTemplateFormOffersTheLibrarysSkillsIncludingRemix(t *testing.T) {
+	a := open(t, "")
+	p, _ := a.setup("remixapp")
+	f := newWatchFixture(t)
+	f.publish("remix-run/remix", watchSha1, map[string]string{
+		".agents/skills/remix/SKILL.md":       fixtureSkill("remix", "", "Build Remix 3 apps with the remix package."),
+		".agents/skills/write-tests/SKILL.md": fixtureSkill("write-tests", "", "Tests for the framework itself."),
+		"packages/remix/README.md":            "not a skill",
+	})
+	f.use(a)
+	sts, err := a.c.RunSkillWatch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := statusOf(sts, "remix"); st.LastCommit != watchSha1 || st.Skills != 2 || st.LastError != "" {
+		t.Fatalf("the Remix registry synced: %+v", st)
+	}
+	choices := func() map[string]core.SkillChoice {
+		var list []core.SkillChoice
+		a.call("agenttemplate.skillChoices", nil, &list)
+		by := map[string]core.SkillChoice{}
+		for _, c := range list {
+			if c.Registry == "remix" {
+				by[c.Name+"@"+c.Ref] = c
+			}
+		}
+		return by
+	}
+	got := choices()
+	rx, ok := got["remix@"+watchSha1]
+	if !ok || len(got) != 2 || strings.Join(rx.From, ",") != "the Library" || rx.Description != "Stand-in skill remix for the test." {
+		t.Fatalf("the Remix skills are offered from the Library: %+v", got)
+	}
+	if _, ok := got["write-tests@"+watchSha1]; !ok {
+		t.Fatalf("every skill of the registry is offered, not only the app one: %+v", got)
+	}
+
+	// a template carrying it installs it into a project at that commit and gives it to the new agent
+	var tpl core.AgentTemplate
+	a.call("agenttemplate.save", map[string]any{"name": "Remix dev", "role": "frontend", "adapter": "claude",
+		"skills": []map[string]string{{"registry": "remix", "name": "remix", "ref": watchSha1}}}, &tpl)
+	var applied core.AppliedTemplate
+	a.call("agenttemplate.apply", map[string]any{"templateId": tpl.ID, "projectId": p.ID}, &applied)
+	if strings.Join(applied.Skills.Assigned, ",") != "remix" || len(applied.Skills.Failed)+len(applied.Skills.Pending) != 0 {
+		t.Fatalf("applied %+v", applied.Skills)
+	}
+	var k skills.Skill
+	a.call("skill.get", map[string]any{"projectId": p.ID, "name": "remix"}, &k)
+	if k.PinnedCommit != watchSha1 || k.Status != skills.StatusAccepted || strings.Join(k.Agents, ",") != applied.Agent.ID {
+		t.Fatalf("project copy %+v", k)
+	}
+
+	// upstream drops write-tests: the library marks it gone and the form stops offering it; remix moves to the new pin, where the
+	// project's copy (offered at its own commit) stays listed too
+	f.publish("remix-run/remix", watchSha2, map[string]string{
+		".agents/skills/remix/SKILL.md": fixtureSkill("remix", "", "Build Remix 3 apps with the remix package. Use remix/* imports."),
+	})
+	if _, err := a.c.RunSkillWatch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got = choices()
+	if _, ok := got["remix@"+watchSha2]; !ok || len(got) != 2 || strings.Join(got["remix@"+watchSha1].From, ",") != "project remixapp" {
+		t.Fatalf("after the registry moved: %+v", got)
+	}
+	if _, ok := got["write-tests@"+watchSha2]; ok {
+		t.Fatalf("a skill the registry dropped is offered: %+v", got)
+	}
+}
+
 // Decision P49: an agent reading a skill's on-demand file is recorded as a use, and the usage report counts it.
 func TestAnAgentOpeningASkillFileIsRecordedAsAUse(t *testing.T) {
 	a := open(t, "")

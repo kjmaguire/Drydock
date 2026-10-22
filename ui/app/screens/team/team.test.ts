@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AdapterInfo, Agent, AgentRun, PresenceState, Task } from '../../api/types.ts';
-import { adapterName, adapterOption, agentStats, appliedNote, crewFigures, currentTask, defaultRoutes, doing, minutesText, presenceWords, presetUntouched, purposeExcerpt, routesForUpdate, runsWhere, skillCount, sortAdapters, spentLabel, stepIndex } from './team.ts';
+import { adapterName, adapterOption, agentStats, appliedNote, crewFigures, currentTask, defaultRoutes, doing, minutesText, presenceWords, presetUntouched, purposeExcerpt, routesForUpdate, runsWhere, runsWhereTitle, skillCount, sortAdapters, spentLabel, stepIndex } from './team.ts';
 
 const mk = (id: string, status: string, installed: boolean) => ({ id, detection: { adapter: id, installed, status }, capabilities: {} as never }) as AdapterInfo;
 
@@ -68,7 +68,9 @@ describe('team helpers', () => {
     expect(presenceWords(undefined)).toBe('Stopped');
     expect(presenceWords(p({ presence: 'Paused', label: 'stopped' }))).toBe('Stopped');
     expect(presenceWords(p({ presence: 'Paused', label: 'budget' }))).toBe('Waiting for you');
-    expect(runsWhere({ runMode: 'wsl', wslDistro: 'Ubuntu' })).toBe('in WSL Ubuntu');
+    expect(runsWhere({ runMode: 'wsl', wslDistro: 'Ubuntu' })).toBe('in WSL'); // the distro in the tooltip only
+    expect(runsWhereTitle({ runMode: 'wsl', wslDistro: 'Ubuntu' })).toBe('Runs inside the WSL distro Ubuntu');
+    expect(runsWhereTitle({ runMode: 'native', wslDistro: '' })).toBeUndefined();
     expect(runsWhere({ runMode: 'native' })).toBe('on Windows');
     expect(runsWhere({})).toBe('');
     expect(adapterName('claude')).toBe('Claude Code');

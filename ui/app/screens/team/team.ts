@@ -99,12 +99,16 @@ export function adapterName(id: string): string {
   return names[id] ?? id;
 }
 
-/** Where the agent's CLI runs, in words, or '' when it follows the project. */
+/** Where the agent's CLI runs, in words ("in WSL", without the distro: runsWhereTitle names it), or '' when it follows the project. */
 export function runsWhere(a: Pick<Agent, 'runMode' | 'wslDistro'>): string {
-  if (a.runMode === 'wsl') return `in WSL ${a.wslDistro ?? ''}`.trim();
+  if (a.runMode === 'wsl') return 'in WSL';
   if (a.runMode === 'native') return 'on Windows';
   return '';
 }
+
+/** The tooltip of where the agent runs: which WSL distro ("Runs inside the WSL distro Ubuntu"), or undefined. */
+export const runsWhereTitle = (a: Pick<Agent, 'runMode' | 'wslDistro'>): string | undefined =>
+  a.runMode === 'wsl' && a.wslDistro ? `Runs inside the WSL distro ${a.wslDistro}` : undefined;
 
 const DONE = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
 

@@ -1,5 +1,6 @@
 // Define a team member once: the CLI, model, effort, role, purpose, the library servers it should get and the registry skills
-// it brings. The Library screen shows this form for a new template and for editing one.
+// it brings (any skill of the workspace skill library, the ones projects imported and the prebuilt agents'). The Library screen
+// shows this form for a new template and for editing one.
 
 import { css, on, type Handle } from 'remix/component';
 import { Cpu, Server } from 'lucide';
@@ -7,6 +8,7 @@ import type { AgentTemplate, SkillChoice } from '../../api/libraryClient.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, SkillRef } from '../../api/types.ts';
 import { confirmationFor, needsConfirmation, splitConfirmation } from '../../lib/permission.ts';
+import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -79,7 +81,9 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
     f();
     void handle.update();
   };
-  const choices = query(handle, { load: () => s.client.agentTemplateSkillChoices() });
+  // the project imports, the prebuilt agents' skills and the workspace library (every registry, Remix's too); read again when
+  // a sync brings something into the library or a project's skills change
+  const choices = query(handle, { load: () => s.client.agentTemplateSkillChoices(), when: (e) => e.type === 'skill.library_synced' || e.type === 'skill.imported' });
   // a template carries one entry per skill name (the core keeps the first)
   const available = (): SkillChoice[] => (choices.data ?? []).filter((c) => !skills.some((k) => k.name === c.name));
   const addSkill = () => {
@@ -245,7 +249,10 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
               </Button>
             </div>
           ) : choices.data ? (
-            <p mix={muted}>No other skill to add: import one on a project's Skills page, or put in a prebuilt agent that comes with skills.</p>
+            <p mix={muted}>
+              No other skill to add: the <a href={routes.librarySkills.href()}>Library</a> fills from your registries at start and twice a day,
+              and its Sync now fills it at once.
+            </p>
           ) : null}
         </fieldset>
         <div mix={formActions}>

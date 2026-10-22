@@ -218,6 +218,21 @@ func TestValidateFolder(t *testing.T) {
 	}
 }
 
+// The owner: "rename it everywhere just to say Claude CLI WSL, we don't need to see the Ubuntu". The note a chat gets when it
+// moves to the install inside a distro names it as the Connections page does.
+func TestCLINameLeavesTheDistroOut(t *testing.T) {
+	for _, c := range []struct{ adapter, distro, want string }{
+		{"claude", "", "Claude Code"},
+		{"claude", "Ubuntu-26.04", "Claude Code WSL"},
+		{"codex", "", "codex"},
+		{"codex", "Debian", "codex WSL"},
+	} {
+		if got := cliName(c.adapter, c.distro); got != c.want {
+			t.Errorf("%s in %q: %q, want %q", c.adapter, c.distro, got, c.want)
+		}
+	}
+}
+
 func TestVisibility(t *testing.T) {
 	p1, p2, none := Chat{ProjectID: "p1"}, Chat{ProjectID: "p2"}, Chat{}
 	if !visible(p1, p1) || !visible(p1, none) || visible(p1, p2) || !visible(none, p1) || !visible(none, none) {

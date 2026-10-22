@@ -41,7 +41,8 @@ describe('the prebuilt agents gallery', () => {
     e.availability.preferredUsable = true;
     const r = renderPlain(<AgentGallery entries={[e]} />);
     const card = r.container.querySelector('[data-id="team-lead"]')!;
-    expect(card.textContent).toContain('(installed in WSL Ubuntu-26.04)');
+    expect(card.textContent).toContain('(installed in WSL)');
+    expect(card.textContent).not.toContain('Ubuntu'); // the distro only in the tooltip
     expect(card.querySelector('.cli')!.getAttribute('title')).toBe('claude is installed in WSL Ubuntu-26.04');
   });
 

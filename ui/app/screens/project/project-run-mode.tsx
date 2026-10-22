@@ -56,7 +56,7 @@ export function RunModePanel(handle: Handle<{ projectId: string }>) {
             id={id}
             value={value}
             disabled={!!act.busy || !pr}
-            options={[{ value: 'native', label: 'On Windows' }, ...st.distros.map((d) => ({ value: `wsl:${d.name}`, label: distroLabel(d) }))]}
+            options={[{ value: 'native', label: 'On Windows' }, ...st.distros.map((d) => ({ value: `wsl:${d.name}`, label: distroLabel(d, st.distros.length > 1) }))]}
             onChange={(v) => void choose(v)}
           />
         </SettingRow>

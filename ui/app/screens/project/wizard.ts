@@ -302,7 +302,7 @@ export interface AdapterChoice {
 /**
  * The agent CLIs to offer for a member: a prebuilt agent's preferred CLI and alternatives first, then the others. A CLI
  * that is not installed (or not usable) is offered disabled with the reason, except the one already chosen. A CLI installed
- * only inside a WSL distro counts as available and names the distro.
+ * only inside a WSL distro counts as available, "in WSL" (the distro is wslDistro, not part of the label).
  */
 export function adapterChoices(adapters: readonly AdapterInfo[], entry: PrebuiltAgent | undefined, current: string): AdapterChoice[] {
   const first = entry ? [entry.preferred.adapter, ...entry.alternatives.map((a) => a.adapter)] : [];
@@ -319,7 +319,8 @@ export function adapterChoices(adapters: readonly AdapterInfo[], entry: Prebuilt
         : false;
     const reason = !installed ? avail?.reason || 'not installed on this machine' : !usable ? avail?.reason || info?.detection.status : undefined;
     const tag = entry && id === entry.preferred.adapter ? ' (recommended)' : entry && first.includes(id) ? ' (alternative)' : '';
-    const note = wslDistro && usable ? ` - in WSL ${wslDistro}` : reason ? ` - ${reason}` : '';
+    // "in WSL" without the distro (the owner: "we don't need to see the Ubuntu"); wslDistro says which one
+    const note = wslDistro && usable ? ' - in WSL' : reason ? ` - ${reason}` : '';
     return { id, label: `${id}${tag}${note}`, disabled: !usable && id !== current, reason, ...(wslDistro && usable ? { wslDistro } : {}) };
   });
 }

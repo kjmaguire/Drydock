@@ -86,9 +86,11 @@ func init() {
 				if in, ok := runningSignIn(m, signIns, conn.Key); ok {
 					return in, nil
 				}
+				// "Sign in: claude WSL" for the install inside a distro, without the distro (as the Connections page names it); the
+				// terminal opens in that distro's card
 				title := "Sign in: " + conn.Adapter
 				if conn.RunMode == "wsl" {
-					title += " in " + conn.Distro
+					title += " WSL"
 				}
 				var id string
 				ready := make(chan struct{})
