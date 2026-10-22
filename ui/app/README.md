@@ -33,7 +33,9 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
-  shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
+  shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, license banner, the command
+                      menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
+                      prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
   screens/tasks/      the Tasks board and list (tasks.ts: columns, elapsed), the task page with its step bar (steps.ts), the review panel
