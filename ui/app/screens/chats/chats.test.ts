@@ -8,6 +8,7 @@ import { routes } from '../../routes.ts';
 import { buildItems, isChatsPath } from '../../shell/palette-items.ts';
 import { EventStore } from '../../state/eventStore.ts';
 import { ev, FakeTransport } from '../../test/fakes.ts';
+import { cliName } from '../shared/cli-name.ts';
 import { ChatFeed } from './chat-feed.ts';
 import { durationText, editLines, toolLabel, toolState } from './chat-tool.tsx';
 import {
@@ -26,7 +27,6 @@ import {
   sortChatAdapters,
   startsGroup,
   toolInputText,
-  wslChoiceLabel,
   wslUnavailable,
 } from './chats.ts';
 
@@ -115,8 +115,6 @@ describe('chats helpers', () => {
     // one distro with the CLI: no distro in the name (the owner: "we don't need to see the Ubuntu")
     expect(noWindows.map((c) => c.text)).toEqual(['Claude Code on Windows (not installed)', 'Claude Code WSL 2.1.296']);
     expect(chatChoices([claude], [wslConn('Ubuntu'), wslConn('Alpine', { installed: false, status: 'not_installed' })]).map((c) => c.text)).toEqual(['Claude Code on Windows 2.1.295', 'Claude Code WSL 2.1.296']);
-    expect(wslChoiceLabel('claude', 'Ubuntu')).toBe('Claude Code WSL');
-    expect(wslChoiceLabel('claude', 'Ubuntu', true)).toBe('Claude Code WSL (Ubuntu)');
     expect(pickChatChoice(noWindows, '')?.value).toBe('claude@wsl:Ubuntu');
     expect(pickChatChoice([], '')).toBeUndefined();
 
@@ -127,6 +125,13 @@ describe('chats helpers', () => {
     expect(chatWhere({ wslDistro: 'Ubuntu' })).toBe('Runs inside the WSL distro Ubuntu');
     expect(chatCliText({ adapter: 'claude', wslDistro: 'Ubuntu' })).toBe('Claude Code WSL');
     expect(chatCliText({ adapter: 'claude', wslDistro: '' })).toBe('Claude Code');
+    // the header names the install as the Connections page and the pickers do (cliName with the Connections list): the distro
+    // only when the CLI is installed in another distro too; a distro without it does not count
+    expect(chatCliText({ adapter: 'claude', wslDistro: 'Ubuntu' }, conns)).toBe('Claude Code WSL (Ubuntu)');
+    expect(chatCliText({ adapter: 'claude', wslDistro: 'Ubuntu' }, conns)).toBe(cliName(conns[1]!, conns));
+    expect(chatCliText({ adapter: 'claude', wslDistro: '' }, conns)).toBe('Claude Code');
+    const one = [wslConn('Ubuntu'), wslConn('Alpine', { installed: false, status: 'not_installed' })];
+    expect(chatCliText({ adapter: 'claude', wslDistro: 'Ubuntu' }, one)).toBe('Claude Code WSL');
     expect(chatWhere({ wslDistro: '' })).toBe('');
   });
 

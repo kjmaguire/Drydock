@@ -84,6 +84,7 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		AttachDir:      func(id string) string { return filepath.Join(c.cfg.DataDir, "chat-attachments", id) },
 		CheckWSL:       c.checkChatWSL,
 		WSLFolder:      c.chatWSLFolder,
+		WSLInstalls:    c.Connections.InstalledWSL,
 		CheckSkills:    c.checkChatSkills,
 		CheckMCP:       c.checkChatMCP,
 		Instructions:   c.chatInstructions,

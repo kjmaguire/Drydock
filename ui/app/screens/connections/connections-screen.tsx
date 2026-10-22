@@ -12,6 +12,7 @@ import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../a
 import { query, services } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
 import { CliGateway } from '../mcp/cli-gateway.tsx';
+import { cliName } from '../shared/cli-name.ts';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, muted } from '../../ui/data.tsx';
@@ -26,7 +27,6 @@ import {
   cellText,
   connectionBlurb,
   connectionKey,
-  connectionName,
   connectionState,
   defaultConnection,
   distroBrand,
@@ -246,7 +246,7 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   };
 }
 
-/** `name` is the connection's name on the page (connectionName with the page's list: the distro only to tell two apart). */
+/** `name` is the connection's name on the page (cliName with the page's list: the distro only to tell two apart). */
 function ConnectionCard(handle: Handle<{ c: Connection; name: string; onChanged: () => void }>) {
   const s = services(handle);
   let confirming = false;
@@ -597,14 +597,14 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
               <ConnectionTile
                 key={connectionKey(c)}
                 c={c}
-                name={connectionName(c, list)}
+                name={cliName(c, list)}
                 selected={connectionKey(c) === key}
                 onSelect={() => ((selected = connectionKey(c)), void handle.update())}
               />
             ))}
           </ul>
         ) : null}
-        {open ? <ConnectionCard key={connectionKey(open)} c={open} name={connectionName(open, list)} onChanged={q.reload} /> : null}
+        {open ? <ConnectionCard key={connectionKey(open)} c={open} name={cliName(open, list)} onChanged={q.reload} /> : null}
         <CliGateway />
       </Page>
     );

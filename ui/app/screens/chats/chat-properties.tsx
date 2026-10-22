@@ -246,7 +246,7 @@ export function ChatPropertiesDialog(handle: Handle<{ open: boolean; chat: Chat;
                 id={id}
                 value={choice}
                 options={[
-                  ...(hasCurrent ? [] : [{ value: current(chat), label: `${chatCliText(chat)} (current)` }]),
+                  ...(hasCurrent ? [] : [{ value: current(chat), label: `${chatCliText(chat, conns.data ?? [])} (current)` }]),
                   ...choices.map((c) => ({ value: c.value, label: c.text, disabled: !!c.why && c.value !== current(chat) })),
                 ]}
                 onChange={(v) => set(() => (choice = v))}

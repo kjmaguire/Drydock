@@ -455,6 +455,44 @@ describe('New chat dialog', () => {
     expect(chip.getAttribute('title')).toBe('Runs inside the WSL distro Ubuntu');
   });
 
+  it('names the distro on the adapter chip of a chat in WSL when the CLI is installed in two distros, as the Connections page does', async () => {
+    const conn = (distro: string, over: Partial<Connection> = {}) =>
+      ({ adapter: 'claude', key: `claude@wsl:${distro}`, runMode: 'wsl', distro, installed: true, status: 'ready', usable: true, version: '2.1.296', platform: 'linux (WSL 2)', ...over }) as Connection;
+    let installs = [conn('Ubuntu'), conn('Debian')];
+    let reads = 0;
+    const c = chat({ wslDistro: 'Debian', cwd: '\\\\wsl.localhost\\Debian\\home\\kyle\\.drydock\\chats\\chat_a' });
+    const { r, s } = setup(
+      {
+        chatList: async () => [item(c)],
+        chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }),
+        connectionList: async () => (reads++, installs),
+      },
+      { id: 'chat_a' },
+    );
+    const chip = await waitFor(() => must$(r, '[data-testid="chip-adapter"]'), r);
+    await waitFor(() => expect(chip.textContent).toBe('Claude Code WSL (Debian)'), r);
+    expect(chip.getAttribute('title')).toBe('Runs inside the WSL distro Debian');
+    // the CLI is gone from the other distro (a check on the Connections page): the name drops the distro again
+    installs = [conn('Ubuntu', { installed: false, status: 'not_installed', usable: false }), conn('Debian')];
+    const before = reads;
+    s.emit({ type: 'connection.checked' });
+    await waitFor(() => expect(reads).toBeGreaterThan(before), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toBe('Claude Code WSL'), r);
+  });
+
+  it('does not read the Connections for a chat on Windows', async () => {
+    let reads = 0;
+    const c = chat();
+    const { r } = setup(
+      { chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }), connectionList: async () => (reads++, []) },
+      { id: 'chat_a' },
+    );
+    const chip = await waitFor(() => must$(r, '[data-testid="chip-adapter"]'), r);
+    expect(chip.textContent).toBe('Claude Code');
+    await new Promise((ok) => setTimeout(ok, 50));
+    expect(reads).toBe(0);
+  });
+
   it('shows the error the core gave', async () => {
     const { r } = setup({ chatCreate: async () => Promise.reject(new Error('the adapter claude has unacknowledged gates')) }, { newChat: true });
     const dlg = await waitFor(newChatDialog, r);
