@@ -329,9 +329,9 @@ func (s *store) commit(ctx context.Context, c stepCommit) error {
 			return err
 		}
 		for _, a := range c.newRequests {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,status,created_at)
-				VALUES(?,?,?,?,?,?,?,?,?,'REQUESTED',?)`, string(a.id), string(c.cp.RunID), string(a.nodeID), a.taskID, a.projectID,
-				a.spec.Kind, a.spec.Title, nz(a.spec.Payload), a.spec.ActionHash, now); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,phase,status,created_at)
+				VALUES(?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)`, string(a.id), string(c.cp.RunID), string(a.nodeID), a.taskID, a.projectID,
+				a.spec.Kind, a.spec.Title, nz(a.spec.Payload), a.spec.ActionHash, a.spec.Phase, now); err != nil {
 				return err
 			}
 		}

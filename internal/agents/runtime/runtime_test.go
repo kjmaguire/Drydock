@@ -218,6 +218,28 @@ func TestInterruptKeepsSessionAlive(t *testing.T) {
 	}
 }
 
+// A turn stopped before it finished (its context ended: the task was cancelled) leaves its run row CANCELLED, so the crew
+// timeline tells it from a run that finished; a turn that finished and was stopped after stays STOPPED.
+func TestACancelledTurnIsRecordedAsCancelled(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "starting"}, {Block: true}}}})
+	m, err := h.rt.Spawn(context.Background(), h.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, err := m.RunTurn(ctx, "go", nil, nil); err == nil {
+		t.Fatal("a cancelled turn must return its error")
+	}
+	h.settle(t)
+	var status string
+	var ended int64
+	h.db.Reader().QueryRow(`SELECT status, ended_at FROM agent_runs WHERE id=?`, m.RunID).Scan(&status, &ended)
+	if status != "CANCELLED" || ended == 0 {
+		t.Fatalf("run status=%s ended=%d", status, ended)
+	}
+}
+
 func TestAgentCrashIsReported(t *testing.T) {
 	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "about to crash"}, {Exit: 3}}}})
 	ctx := context.Background()

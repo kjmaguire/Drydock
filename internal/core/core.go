@@ -284,7 +284,10 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 				c.logf("task channel: %v", err)
 			}
 		},
-		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
+		OnTerminal: func(ctx context.Context, t tasks.Task) {
+			_ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status))
+			c.endTaskRules(ctx, t) // a person's "approve for this task" ends with the task
+		},
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
@@ -795,7 +798,7 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 		return Agent{}, err
 	}
 	agentID := ids.New("agt")
-	if err := c.confirmSkip(ctx, s.ProjectID, agentID, "this agent", s.PermissionMode, s.ConfirmSkipsApprovals); err != nil {
+	if err := c.confirmSkip(ctx, s.ProjectID, agentID, "this agent", "", s.PermissionMode, s.ConfirmSkipsApprovals); err != nil {
 		return Agent{}, err
 	}
 	a := Agent{ID: agentID, ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED",
@@ -824,7 +827,16 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 
 // Agents lists a project's team.
 func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
+	return c.agentsWhere(ctx, `project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
+}
+
+// AllAgents lists every project's team (the workspace's crew), by project, then as Agents orders them.
+func (c *Core) AllAgents(ctx context.Context) ([]Agent, error) {
+	return c.agentsWhere(ctx, `archived_at=0 ORDER BY project_id, created_at, id`)
+}
+
+func (c *Core) agentsWhere(ctx context.Context, where string, args ...any) ([]Agent, error) {
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}

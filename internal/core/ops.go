@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/runfiles"
+	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -155,6 +156,8 @@ type TaskDetail struct {
 	Run      *workflow.RunInfo         `json:"run,omitempty"`
 	Pending  []workflow.PendingRequest `json:"pending"`
 	RoomID   string                    `json:"roomId,omitempty"`
+	// AllowRules are the person's "approve for this task" rules in force for the task's agents (P97); they end with the task.
+	AllowRules []security.TaskAllowRule `json:"allowRules"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -163,7 +166,10 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	if err != nil {
 		return TaskDetail{}, err
 	}
-	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}}
+	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}}
+	if rules, err := c.TaskRules(ctx, id); err == nil {
+		d.AllowRules = rules
+	}
 	d.Evidence, _ = c.Tasks.Evidence(ctx, id)
 	d.Reviews, _ = c.Tasks.Reviews(ctx, id)
 	if t.RunID != "" {
@@ -214,6 +220,12 @@ func (c *Core) TaskDiffAt(ctx context.Context, id string, evidenceID int64) (str
 // Respond answers a pending request of a run as the human. Only the human identity is ever attached here: an agent has no
 // path to this method.
 func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, data []byte) error {
+	return c.RespondScoped(ctx, runID, requestID, decision, "", data)
+}
+
+// RespondScoped is Respond with the scope of an approval of an agent's tool permission request: "" or "once" for this request
+// only, "task" for the rest of its task (P97). Any other request takes no scope.
+func (c *Core) RespondScoped(ctx context.Context, runID, requestID, decision, scope string, data []byte) error {
 	// Rejecting only refuses work, so it stays available in read-only mode (an approval does not).
 	if decision != "rejected" {
 		if err := c.RequireLicensed(ctx, "approve"); err != nil {
@@ -221,7 +233,10 @@ func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, d
 		}
 	}
 	if taskID, ok := c.permissionRequestTask(ctx, requestID); ok {
-		return c.respondPermission(ctx, runID, requestID, taskID, decision, data)
+		return c.respondPermission(ctx, runID, requestID, taskID, decision, scope, data)
+	}
+	if scope != "" && scope != ScopeOnce {
+		return errors.New("only an agent's tool permission request can be approved for the rest of the task")
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
 	review := c.isReviewRequest(ctx, runID, requestID)

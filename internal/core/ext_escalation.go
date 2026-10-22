@@ -29,8 +29,10 @@ func (e *NeedsConfirmationError) Error() string {
 }
 
 // confirmSkip returns nil when mode keeps approvals, or when the person confirmed a mode that skips them (and records that as an
-// approved permission_mode_escalation approval for the agent, "" for a template). what names the subject for the message.
-func (c *Core) confirmSkip(ctx context.Context, project, agentID, what, mode string, confirmed bool) error {
+// approved permission_mode_escalation approval for the agent, "" for a template). what names the subject for the message; from
+// is the mode the agent or template had before ("" for a new one). The approval's action holds the change as Argv [from, mode]
+// and Command mode, so its detail (approval.get) can say from which mode to which.
+func (c *Core) confirmSkip(ctx context.Context, project, agentID, what, from, mode string, confirmed bool) error {
 	if !chats.SkipsApprovals(mode) {
 		return nil
 	}
@@ -38,7 +40,7 @@ func (c *Core) confirmSkip(ctx context.Context, project, agentID, what, mode str
 		return &NeedsConfirmationError{Mode: mode, What: what}
 	}
 	ap := security.NewApprovals(c.DB, c.Bus, security.NewAudit(c.DB, c.Scanner), security.WithApprovalRedactor(c.Scanner))
-	action := security.ActionDescriptor{Kind: security.KindPermissionEscalation, Project: project, AgentID: agentID, Tool: "agent.permissionMode", Command: mode}
+	action := security.ActionDescriptor{Kind: security.KindPermissionEscalation, Project: project, AgentID: agentID, Tool: "agent.permissionMode", Command: mode, Argv: []string{from, mode}}
 	id, err := ap.Request(ctx, action, "The person chose a permission mode that lets "+what+" act without asking: "+mode+".",
 		security.WithTitle("Permission mode "+mode+" for "+what))
 	if err != nil {

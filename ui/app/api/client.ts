@@ -20,6 +20,7 @@ import { createSecurityClient, type SecurityClient } from './securityClient.ts';
 import { createFolderClient, type FolderClient } from './folderClient.ts';
 import { createLocalClient, type LocalClient } from './localClient.ts';
 import { createShellClient, type ShellClient } from './shellClient.ts';
+import { createInboxClient, type InboxClient } from './inboxClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -68,7 +69,7 @@ const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   estimated: Number(v?.estimated) || 0,
 });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, InboxClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -177,6 +178,7 @@ export function createClient(t: Transport): Client {
     ...createRepoMapClient(t),
     ...createLocalClient(t),
     ...createShellClient(t),
+    ...createInboxClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
@@ -203,7 +205,7 @@ export function createClient(t: Transport): Client {
     taskCount: async (projectId, statuses = []) => ({ total: Number((await t.call<TaskCount | null>('task.count', { projectId, statuses }))?.total) || 0 }),
     taskGet: async (id) => {
       const d = await t.call<TaskDetail>('task.get', { id });
-      return { ...d, evidence: arr(d.evidence), reviews: arr(d.reviews), pending: arr(d.pending) };
+      return { ...d, evidence: arr(d.evidence), reviews: arr(d.reviews), pending: arr(d.pending), allowRules: arr(d.allowRules) };
     },
     taskDiff: async (id, evidenceId) => (await t.call<string | null>('task.diff', evidenceId === undefined ? { id } : { id, evidenceId })) ?? '',
     taskAssign: (id, assignee, reviewer) => t.call('task.assign', { id, assignee, reviewer }),

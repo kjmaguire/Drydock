@@ -120,6 +120,41 @@ describe('typed client', () => {
     ]);
   });
 
+  it('calls the inbox, approval and crew methods with the names the core decodes, and fills Go nil lists (P97)', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.includes('approval.get')) return json({ result: { id: 'apr_1', targets: null, rules: null } });
+      if (url.includes('agent.timeline')) return json({ result: { since: 1, until: 2, agents: [{ agentId: 'a', runs: null, waits: null }] } });
+      if (url.includes('security.scan.running')) return json({ result: [{ id: 's', engines: null, counts: null }] });
+      if (url.includes('task.get')) return json({ result: { task: { id: 't' }, evidence: [], reviews: [], pending: [], allowRules: null } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    const d = await c.approvalGet('apr_1');
+    expect([d.targets, d.rules]).toEqual([[], []]);
+    await c.runApproveForTask('run1', 'apr_1');
+    await c.approvalRuleRemove('par_1');
+    await c.needsYouAck('check:m1');
+    expect(await c.agentListAll()).toEqual([]);
+    const tl = await c.agentTimeline(1, 2);
+    expect([tl.agents[0]?.runs, tl.agents[0]?.waits]).toEqual([[], []]);
+    await c.agentTimeline(5, undefined, 'p');
+    const running = await c.securityScanRunning();
+    expect([running[0]?.engines, running[0]?.counts.total]).toEqual([[], 0]);
+    expect((await c.taskGet('t')).allowRules).toEqual([]);
+    const bodies = f.mock.calls.map((c) => c.arguments).map((c) => [(c as unknown as [string])[0], JSON.parse((c as unknown as [string, RequestInit])[1].body as string)]);
+    expect(bodies).toEqual([
+      ['/rpc/approval.get', { id: 'apr_1' }],
+      ['/rpc/run.respond', { runId: 'run1', requestId: 'apr_1', decision: 'approved', scope: 'task', data: {} }],
+      ['/rpc/approval.rule.remove', { id: 'par_1' }],
+      ['/rpc/needsyou.ack', { key: 'check:m1' }],
+      ['/rpc/agent.listAll', {}],
+      ['/rpc/agent.timeline', { projectId: '', since: 1, until: 2 }],
+      ['/rpc/agent.timeline', { projectId: 'p', since: 5, until: 0 }],
+      ['/rpc/security.scan.running', {}],
+      ['/rpc/task.get', { id: 't' }],
+    ]);
+  });
+
   it('never sends a backward read that the core would take as a forward read from the start', async () => {
     const f = mock.fn(async () => json({ result: [] }));
     const c = createClient(transport(f as unknown as typeof fetch));

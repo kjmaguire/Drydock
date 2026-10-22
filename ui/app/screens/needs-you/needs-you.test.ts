@@ -37,7 +37,7 @@ describe('Needs you targets and hints', () => {
 
   it('reloads every Needs you list on the same events, a chat asking among them', () => {
     const ev = (type: string): DrydockEvent => ({ type, seq: 1, time: '' });
-    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted']) expect(needsChanged(ev(t))).toBe(true);
+    for (const t of ['chat.permission', 'chat.permission_answered', 'approval.requested', 'task.updated', 'watchdog.paused', 'room.message_posted', 'needsyou.acked', 'approval.rule.added']) expect(needsChanged(ev(t))).toBe(true);
     for (const t of ['chat.tool_result', 'agent.output', 'room.presence_changed']) expect(needsChanged(ev(t))).toBe(false);
   });
 

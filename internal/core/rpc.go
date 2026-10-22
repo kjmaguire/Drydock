@@ -198,8 +198,11 @@ func (c *Core) Methods() map[string]Method {
 		"run.respond": bind(func(ctx context.Context, p struct {
 			RunID, RequestID, Decision string
 			Data                       json.RawMessage
+			// Scope is for an agent's tool permission request: "" or "once" approves this request, "task" the same call for the
+			// rest of the task (P97)
+			Scope string
 		}) (any, error) {
-			return nil, c.Respond(ctx, p.RunID, p.RequestID, p.Decision, p.Data)
+			return nil, c.RespondScoped(ctx, p.RunID, p.RequestID, p.Decision, p.Scope, p.Data)
 		}),
 
 		"room.list": bind(func(ctx context.Context, p struct {
