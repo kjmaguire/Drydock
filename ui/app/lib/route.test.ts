@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
+import { hashToPath, hubOf, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -46,8 +46,19 @@ describe('routes', () => {
     expect(isWorkspaceRoute({ name: 'library-skills' })).toBe(true);
   });
 
+  it("has the workspace's Crew page: every project's agents, outside any project", () => {
+    expect(routes.crew.href()).toBe('/crew');
+    expect(parseRoute('/crew')).toEqual({ name: 'crew' });
+    expect(parseRoute('/crew/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'crew' })).toBe(true);
+    expect(hubOf({ name: 'crew' })).toBe('workspace-crew');
+    expect(isWorkspaceHub(hubOf({ name: 'crew' }))).toBe(true);
+    // the project's own Crew stays a project page
+    expect(hubOf({ name: 'team' })).toBe('crew');
+  });
+
   it('tells workspace pages (the workspace sidebar) from project pages', () => {
-    for (const p of ['/home', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
+    for (const p of ['/home', '/crew', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, true]);
     }
     for (const p of ['/', '/needs-you', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team', '/project/integrations']) {

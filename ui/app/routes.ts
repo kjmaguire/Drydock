@@ -38,6 +38,8 @@ export const routes = route({
   knowledge: get('/knowledge'),
   // workspace screens: they open without a project
   workspace: get('/home'),
+  // every project's agents as one crew (graphite, decision P97): the same page as a project's Crew, the cards grouped by project
+  crew: get('/crew'),
   chats: get('/chats'),
   chat: get('/chats/:id'),
   library: get('/library'),

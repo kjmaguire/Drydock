@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choose, createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav, openRoom } from './helpers';
+import { choose, createAgent, createAndStartTask, createAssignedTask, createProject, docsDir, freshGreenRepo, roomLink, workspaceNav, projectNav, openRoom, openAgentPage } from './helpers';
 
 // Slice 2-5 screens against the real Go core. The agent process is the scripted fake agent; this integrations test has no
 // vendor server, so only the refusal paths are exercised (integrations.spec.ts runs against a protocol fixture).
@@ -341,7 +341,8 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await createProject(page, 'gocalc-routed-reply');
   await createAgent(page, 'Rita', 'backend');
   // the human lists the models the router may choose between for Rita
-  await page.getByTestId('agent').filter({ hasText: 'Rita' }).getByRole('button', { name: 'Edit Rita' }).click();
+  await openAgentPage(page, 'Rita');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
   await editor.getByLabel("Let the router choose this agent's model for each turn").check();
   await choose(editor.getByLabel('Routed model 1', { exact: true }), 'haiku');

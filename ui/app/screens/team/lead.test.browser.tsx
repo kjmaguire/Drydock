@@ -6,7 +6,6 @@ import type { Agent, Room } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
 import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
-import { TeamScreen } from './team-screen.tsx';
 
 afterEach(cleanup);
 
@@ -114,15 +113,5 @@ describe('the team lead', () => {
     const r = mount(<Interventions projectId="p1" taskId="t1" />, svc({ leadInterventions: async (p, t) => (asked.push([p, t]), []) }));
     await waitFor(() => expect(r.container.textContent).toContain('has not stepped in on this task'), r);
     expect(asked).toEqual([['p1', 't1']]);
-  });
-
-  it('the Team page has a Team lead section only when the project has a lead', async () => {
-    const withLead = mount(<TeamScreen />, svc({ leadInterventions: async () => [iv({})] }));
-    await waitFor(() => expect(withLead.$('[aria-label="Team lead"]')).not.toBeNull(), withLead);
-    await waitFor(() => byText(withLead.container, 'button', 'Run stand-up'), withLead);
-    await waitFor(() => expect(withLead.$$('[data-testid="intervention"]').length).toBe(1), withLead);
-    const without = mount(<TeamScreen />, svc({}, [ada]));
-    await waitFor(() => expect(without.container.textContent).toContain('Ada'), without);
-    expect(without.$('[aria-label="Team lead"]')).toBeNull();
   });
 });

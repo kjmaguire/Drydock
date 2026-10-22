@@ -40,8 +40,11 @@ app/
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
   screens/tasks/      the Tasks board and list (tasks.ts: columns, elapsed), the task page with its step bar (steps.ts), the review panel
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
-  screens/team/       the Crew tab: the agents as dots (team-screen.tsx) and an agent's own page (/team/:id, agent-screen.tsx: a hero
-                      with chips, then Overview, Skills & tools, Memory and History); the inspector stays in the details panel
+  screens/team/       Crew (team-screen.tsx, graphite P97): one project's crew (/team) or every project's (/crew, cards grouped by
+                      project): the header's figures, Templates and New agent (N) as dialogs, Today's timeline (crew-timeline.tsx; its
+                      window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
+                      hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
+                      page), Skills & tools, Memory and History); the inspector stays in the details panel
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
                       properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals)
   styles/app.css      design tokens (light-dark()) + base layer for native elements

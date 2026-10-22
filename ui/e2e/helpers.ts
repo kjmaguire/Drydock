@@ -153,7 +153,7 @@ export async function wizardNext(page: Page): Promise<void> {
 
 /**
  * Walk the open wizard to its Review step: Basics (the name, when given), Repository (a local folder, or Later), no
- * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Team page).
+ * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Crew page).
  */
 export async function wizardToReview(page: Page, opts: { name?: string; repo?: string; later?: boolean }): Promise<void> {
   if (opts.name) await page.getByLabel('Project name', { exact: true }).fill(opts.name);
@@ -254,17 +254,37 @@ export async function optionsOf(control: Locator, value?: string): Promise<Locat
   return control.page().locator(`#${listId} [role="option"]${one}`);
 }
 
-export async function createAgent(page: Page, name: string, role: string): Promise<void> {
-  // The form can be replaced while the page is still settling after a project change (seen once: the field detached and the
-  // test waited out its whole timeout), so open the page and fill the name as one step that is retried as a whole.
+/**
+ * Opens the Crew page's New agent dialog (the form to make an agent is in it). The page can be replaced while it is still
+ * settling after a project change (seen once: the field detached and the test waited out its whole timeout), so opening the
+ * page, the dialog and reaching its first field is one step that is retried as a whole.
+ */
+export async function openNewAgent(page: Page, nav = true): Promise<void> {
+  const form = page.locator('dialog[open]').getByTestId('agent-form');
   await expect(async () => {
-    await projectNav(page, 'nav-team');
-    await page.getByLabel('Agent name').fill(name, { timeout: 5_000 });
+    if (!(await form.isVisible())) {
+      if (nav) await projectNav(page, 'nav-team');
+      await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+    }
+    await expect(form.getByLabel('Agent name')).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
+}
+
+/** Opens an agent's own page from its card on the Crew page (Edit, Inspect, Message and Remove are there). */
+export async function openAgentPage(page: Page, name: string): Promise<void> {
+  await projectNav(page, 'nav-team');
+  await page.locator(`[data-testid="agent"][data-name="${name}"]`).getByTestId('agent-link').click();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+}
+
+export async function createAgent(page: Page, name: string, role: string): Promise<void> {
+  await openNewAgent(page);
+  await page.getByLabel('Agent name').fill(name);
   await page.getByLabel('Role', { exact: true }).fill(role);
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   await page.getByRole('button', { name: 'Create agent' }).click();
-  await expect(page.getByTestId('agent').filter({ hasText: name })).toBeVisible();
+  // by its name exactly: another card's text (a room chip such as "reviews") may contain this one's name
+  await expect(page.locator(`[data-testid="agent"][data-name="${name}"]`)).toBeVisible();
 }
 
 /** Create a task, assign it, and stop before Start (so a test can pick a template). */
