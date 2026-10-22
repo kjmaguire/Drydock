@@ -43,8 +43,9 @@ app/
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
   screens/team/       the Crew tab: the agents as dots (team-screen.tsx) and an agent's own page (/team/:id, agent-screen.tsx: a hero
                       with chips, then Overview, Skills & tools, Memory and History); the inspector stays in the details panel
-  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
-                      properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals)
+  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog (Ctrl+N), a chat's
+                      properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals), a waiting
+                      request as an inline card (chat-asks.tsx), Move to a project (chat-move.tsx)
   styles/app.css      design tokens (light-dark()) + base layer for native elements
   test/               labelled test doubles (fakes.ts) and render helpers (render.tsx)
 ```

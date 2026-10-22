@@ -38,6 +38,12 @@ func TestAllowInThisChatAllowsTheCallAndRemembersTheRule(t *testing.T) {
 	c := e.create(map[string]any{"projectId": p.ID, "adapter": "claude"})
 	turn := e.start(c.ID, "run the tests")
 	ask := e.waitAsk(c.ID)
+	// the request says which rule remembering it records, so the UI offers "Allow <tool> in this chat" only then
+	var waiting []chats.PendingAsk
+	e.call("chat.asks", map[string]string{"id": c.ID}, &waiting)
+	if len(waiting) != 1 || waiting[0].Rule != "Bash(go test ./...)" {
+		t.Fatalf("%+v", waiting)
+	}
 	if err := e.callErr("chat.answer", map[string]any{"id": c.ID, "askId": ask.ID, "allow": false, "remember": true}); err == nil || !strings.Contains(err.Error(), "only an allow") {
 		t.Fatal(err)
 	}
@@ -80,6 +86,9 @@ func TestAllowInThisChatIsRefusedForAnAgentWithoutAllowRules(t *testing.T) {
 	e.call("chat.asks", map[string]string{"id": c.ID}, &asks)
 	if len(asks) != 1 || asks[0].ID != ask.ID {
 		t.Fatalf("the request must still wait: %+v", asks)
+	}
+	if asks[0].Rule != "" {
+		t.Fatalf("no rule is offered for an agent without allow rules: %+v", asks[0])
 	}
 	e.call("chat.answer", map[string]any{"id": c.ID, "askId": ask.ID, "allow": true}, nil)
 	if ev := e.waitTurn(turn); ev["status"] != chats.TurnDone {

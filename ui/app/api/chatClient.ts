@@ -206,6 +206,11 @@ export interface ChatAsk {
   summary: string;
   /** The call's input as stored (redacted, bounded). */
   input?: unknown;
+  /**
+   * The allow rule chatAllowAndRemember would record for this call. Set only when the chat's agent takes per-chat allow rules
+   * and a safe rule names the call: the UI offers "Allow <tool> in this chat" only then.
+   */
+  rule?: string;
   created: number;
   /** When it is refused if nobody answered. */
   expiresAt: number;
