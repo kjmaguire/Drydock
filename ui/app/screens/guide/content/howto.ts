@@ -82,7 +82,7 @@ export const HOWTO: readonly Topic[] = [
     id: 'scan',
     section: 'howto',
     title: 'Scan a repository for problems',
-    summary: 'Three engines look for secrets, vulnerable packages and unsafe code; the Code engine needs rules you choose.',
+    summary: 'Three engines look for secrets, vulnerable packages and unsafe code; Drydock keeps the tools and their rules itself.',
     keywords: ['security scan', 'gitleaks', 'osv-scanner', 'opengrep', 'semgrep', 'rules', 'secrets', 'vulnerabilities', 'sast'],
     body: [
       { p: 'A scan reads the files of a folder with three engines at once: **Secrets** (gitleaks) finds keys, tokens and passwords left in files; **Dependencies** (osv-scanner) finds packages with known vulnerabilities; **Code** (Opengrep) finds unsafe code patterns. A secret’s value is never shown or stored. Findings name the rule, the file and the line.' },
