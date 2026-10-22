@@ -118,6 +118,19 @@ describe('ProvidersScreen', () => {
     await waitFor(() => expect(need(r, '[data-testid="provider-detail"]').getAttribute('aria-label')).toBe('FreeTier details'), r);
   });
 
+  it('leads to Models on this PC, which has a page of its own now, instead of holding its panel', async () => {
+    let localReads = 0;
+    const r = mountWith({ providerList: async () => [], localGet: async () => (localReads++, localNotSupported()) });
+    const link = await waitFor(() => need(r, '[data-testid="local-models-link"] a'), r);
+    expect(link.getAttribute('href')).toBe('/models');
+    expect(link.textContent).toBe('Models on this PC');
+    expect(need(r, '[data-testid="local-models-link"]').textContent).toBe('Models run on this computer have a page of their own: Models on this PC.');
+    // none of the old panel is left here, and the page reads nothing of the local models
+    expect(r.$('[data-testid="local-models"]')).toBeNull();
+    expect(r.$('[data-testid="local-runtime"]')).toBeNull();
+    expect(localReads).toBe(0);
+  });
+
   it('opens the first enabled provider that is down; the add tile opens the form; nothing set up opens the form', async () => {
     const list = [provider({ status: 'up' }), provider({ id: 'p2', name: 'Broken', status: 'down', baseUrl: 'https://api.anthropic.com/v1', kind: 'direct', flavor: 'anthropic' })];
     const r = mountWith({ providerList: async () => list, providerDetail: detailOf(() => list) });

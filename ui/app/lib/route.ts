@@ -49,6 +49,7 @@ export type WorkspaceRouteName =
   | 'github'
   | 'security-scan'
   | 'providers'
+  | 'models'
   | 'routing'
   | 'backups'
   | 'data'
@@ -70,6 +71,8 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'github',
   'security-scan',
   'providers',
+  // Models on this PC: a workspace page of its own, no project open in the sidebar (decision P97)
+  'models',
   'routing',
   'backups',
   'data',
@@ -182,7 +185,7 @@ export function redirectLegacyHash(loc: Pick<Location, 'hash' | 'search'>, histo
  * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills. The gear
  * holds the workspace's and the app's pages only; Project settings and the project's Integrations are pills of its Overview.
  */
-export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'inbox' | 'workspace-crew' | 'chats' | 'library' | 'scan' | 'project-new' | 'none';
+export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'inbox' | 'workspace-crew' | 'chats' | 'library' | 'scan' | 'models' | 'project-new' | 'none';
 
 const HUB_OF: Record<Route['name'], Hub> = {
   home: 'overview',
@@ -231,6 +234,7 @@ const HUB_OF: Record<Route['name'], Hub> = {
   library: 'library',
   'library-skills': 'library',
   'security-scan': 'scan',
+  models: 'models',
   'project-new': 'project-new',
   // the Guide is the "?" button's own help surface, not a page inside the Settings rail (UI review P1-8)
   guide: 'none',
@@ -243,5 +247,5 @@ export function hubOf(r: Route): Hub {
 
 /** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
 export function isWorkspaceHub(h: Hub): boolean {
-  return h === 'home' || h === 'inbox' || h === 'workspace-crew' || h === 'chats' || h === 'library' || h === 'scan' || h === 'project-new';
+  return h === 'home' || h === 'inbox' || h === 'workspace-crew' || h === 'chats' || h === 'library' || h === 'scan' || h === 'models' || h === 'project-new';
 }

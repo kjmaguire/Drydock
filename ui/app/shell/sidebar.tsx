@@ -399,17 +399,17 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             {link({ id: 'nav-crew', label: 'Crew', icon: Users, href: routes.crew.href(), current: route.name === 'crew' })}
             {link({ id: 'nav-security-scan', label: 'Security', icon: ShieldCheck, href: routes.securityScan.href(), current: is('scan') })}
             {link({ id: 'nav-side-connections', label: 'Connections', icon: PlugZap, href: routes.connections.href(), current: route.name === 'connections' })}
-            {link({ id: 'nav-side-models', label: 'Models on this PC', icon: Cpu, href: routes.providers.href(), current: route.name === 'providers' })}
+            {link({ id: 'nav-side-models', label: 'Models on this PC', icon: Cpu, href: routes.models.href(), current: is('models') })}
             {link({ id: 'nav-library', label: 'Library', icon: Library, href: routes.library.href(), current: is('library') })}
           </ul>
           </div>
         <div mix={footCss}>
           <ul mix={listCss} role="list" aria-label="App">
-            {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: hub === 'settings' && route.name !== 'guide' && route.name !== 'connections' && route.name !== 'providers' })}
+            {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: hub === 'settings' && route.name !== 'guide' && route.name !== 'connections' })}
             {link({ id: 'nav-guide-top', label: 'Guide', icon: CircleHelp, href: routes.guide.href(), current: route.name === 'guide' })}
           </ul>
           {eng ? (
-            <a href={routes.providers.href()} mix={engineCss} data-testid="engine-card" title={`${eng.title}: ${eng.sub}`}>
+            <a href={routes.models.href()} mix={engineCss} data-testid="engine-card" title={`${eng.title}: ${eng.sub}`}>
               <span class="line">
                 <span mix={dotCss} aria-hidden="true" style={{ background: eng.running ? t.success : t.textFaint }} />
                 {eng.title}

@@ -126,6 +126,7 @@ export const HOWTO: readonly Topic[] = [
     summary: 'Drydock comes with its own model engine, with Google’s TurboQuant; models come from the Hugging Face Hub.',
     keywords: ['local model', 'hugging face', 'gguf', 'kv cache', 'turboquant', 'cuda', 'vulkan', 'llama.cpp'],
     body: [
+      { p: '[Models on this PC](/models) shows the model served, the memory it takes and the models you can download from Hugging Face.' },
       { p: 'Drydock comes with its own model engine, built with Google’s TurboQuant. It is put in place at the first start (from the download, or fetched from GitHub and checked against the digest GitHub recorded), in Drydock’s own folder: nothing has to be installed by hand, and nothing is added to the PC’s `PATH`. Models come from the Hugging Face Hub, checked the same way.' },
       {
         ul: [

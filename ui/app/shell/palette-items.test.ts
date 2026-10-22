@@ -68,6 +68,19 @@ describe('command palette items', () => {
     expect(filterItems(items, 'runners').map((i) => i.label)).toContain('GitHub');
   });
 
+  it('offers Models on this PC, a workspace page of its own, found by what it holds; Providers no longer stands for it', () => {
+    const items = buildItems(rooms, tasks, agents);
+    const models = items.find((i) => i.label === 'Models on this PC')!;
+    expect(models).toMatchObject({ group: 'Navigate', href: '/models', what: 'Goes to Models on this PC.' });
+    // a workspace page, not a settings page: not listed by ">"
+    expect(models.scope).toBe(undefined);
+    expect(filterItems(items, 'models on this pc')[0]!.href).toBe('/models');
+    expect(filterItems(items, 'local models')[0]!.href).toBe('/models');
+    expect(filterItems(items, 'gguf')[0]!.href).toBe('/models');
+    expect(filterItems(items, 'hugging face').map((i) => i.href)).toContain('/models');
+    expect(filterItems(items, 'providers')[0]!.href).toBe('/providers');
+  });
+
   it('matches letters in order as a last resort and drops non-matches', () => {
     const it0 = { id: 'x', group: 'Navigate' as const, label: 'Settings and about' };
     expect(score(it0, 'stab')).toBeGreaterThan(0);
