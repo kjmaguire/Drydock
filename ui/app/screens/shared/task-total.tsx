@@ -4,16 +4,19 @@
 // pickers that link a task. It renders nothing while the screen has every task, and it does not go away by itself or on a click.
 
 import type { Handle, RemixNode } from 'remix/component';
-import { taskNoticeText } from '../../lib/task-total.ts';
+import { taskNoticeText, type TaskCoverage } from '../../lib/task-total.ts';
 import { services, watch } from '../../state/services.tsx';
 import { Notice } from '../../ui/feedback.tsx';
 
-/** `children` says what the cut means on this screen ("Older tasks are not on this board."). */
-export function TaskTotalNotice(handle: Handle<{ children?: RemixNode }>) {
+/**
+ * `children` says what the cut means on this screen ("Older tasks are not on this board."). `coverage` is the screen's own read
+ * when it does not show the project's shared task list (the board's task.summaries says total and partial itself).
+ */
+export function TaskTotalNotice(handle: Handle<{ children?: RemixNode; coverage?: TaskCoverage }>) {
   const s = services(handle);
   watch(handle, s.project);
   return () => {
-    const c = s.project.taskCoverage;
+    const c = handle.props.coverage ?? s.project.taskCoverage;
     if (!c.partial) return null;
     return (
       <Notice tone="warn" title={`${taskNoticeText(c)}.`} testId="task-total-notice">

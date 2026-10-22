@@ -33,6 +33,7 @@ export const headerCss = css({
 
 const headerIcon = css({ display: 'inline-flex', color: t.textMuted });
 const headerSub = css({ color: t.textFaint, fontSize: t.textMd, minWidth: '0', flex: '0 1 auto', maxWidth: '90ch' });
+const headerBar = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: `${t.s2} ${t.s3}`, minWidth: '0' });
 const headerActions = css({ display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', flex: 'none', flexWrap: 'wrap' });
 
 const bodyCss = css({ flex: '1', minHeight: '0', overflow: 'auto' });
@@ -56,16 +57,20 @@ export function Page(
       testId?: string;
       /** The Guide topic that explains this page: a "Learn more" link beside the subtitle (the page itself keeps to the basics). */
       guide?: GuideId;
+      /** The page's own view tabs and filters in the bar, after the title (a board's Board / List / Timeline and its filter chips). */
+      bar?: RemixNode;
     } & (
-      // every page title carries the icon of what the page is; only a page that draws its own head (an agent) may leave it out
-      | { icon: IconNode; head?: undefined }
-      | { icon?: IconNode; head: (titleId: string) => RemixNode }
+      // every page title carries the icon of what the page is, or the mark of what it belongs to (a project's colour square);
+      // only a page that draws its own head (an agent) may leave both out
+      | { icon: IconNode; mark?: undefined; head?: undefined }
+      | { icon?: undefined; mark: RemixNode; head?: undefined }
+      | { icon?: IconNode; mark?: undefined; head: (titleId: string) => RemixNode }
     )
   >,
 ) {
   const titleId = `page-title-${handle.id}`;
   return () => {
-    const { title, icon, subtitle, actions, wide, flush, children, testId, head, guide } = handle.props;
+    const { title, icon, mark, subtitle, actions, wide, flush, children, testId, head, guide, bar } = handle.props;
     const sub = subtitle || guide ? <>{subtitle}{subtitle && guide ? ' ' : null}{guide ? <LearnMore topic={guide} /> : null}</> : null;
     if (head) {
       return (
@@ -85,9 +90,11 @@ export function Page(
                 <Icon icon={icon} size={16} />
               </span>
             ) : null}
+            {mark ?? null}
             {title}
           </h1>
           {sub ? <div mix={headerSub}>{sub}</div> : null}
+          {bar ? <div mix={headerBar}>{bar}</div> : null}
           {actions ? <div mix={headerActions}>{actions}</div> : null}
         </header>
         <div mix={bodyCss}>{flush ? children : <div mix={[innerCss, wide ? wideCss : undefined]}>{children}</div>}</div>
