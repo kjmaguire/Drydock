@@ -1092,3 +1092,18 @@ Open, owner action:
   pausing and handing a task, assigning it to a person, asking the lead to split it, an assignment preview, dismissable
   security findings with their code context and a task made from one, a chat's project, and what a local model is used by,
   with its KV cache estimate. Each has Go tests end to end through `a.call`, and every screen has unit, browser and e2e tests.
+  (4) The eight screens, each with its e2e spec against the real core: the **Inbox** (`/needs-you`, every project's: Needs you,
+  Running, Done today; J/K, A, D, E, Enter; an approval's detail with "Approve for this task") and **My tasks**; the **board**
+  (Board, List, Timeline; filters Agent, Label, Needs me; cards with key, step, checks bar, verdict, Merge, View diff; C for a
+  new task); the **task page** (breadcrumb and key, the run's pill, the criteria as a checklist, the activity as steps, steer
+  with Ctrl+Enter, Pause, Open the worktree (O), Hand to another agent); the **command menu** (the page's task as a chip,
+  Assign / Actions / Go to, a "What happens" panel from `task.assignPreview`, prefixes > # @, G then I, T or C); **Crew**
+  (`/team` and every project's `/crew`: Today's timeline of runs and waits, a card per agent, N for a new agent); the
+  **Security scan** (engine tiles, findings with the code around each and the secret drawn as hidden, What to do, Make a task,
+  Open the file, Not a real key, Recent scans; R scans again); **Chats** (the list with project, CLI and when; your messages
+  as bubbles; a waiting request as an inline card with Allow once, Allow in this chat, Deny; Move to a project; Ctrl+N); and
+  **Models on this PC** (`/models`, its own workspace page: Serving, Memory split into the model and its KV cache, Engine,
+  the model table with fit badges, "/" to search the Hub; Providers links to it). Where a screen differs from its mockup it
+  is because the core has no such data (a diff hunk without context lines) or the app's rules (12 px is the smallest size,
+  Ctrl rather than Cmd on Windows, no "/ commands" a chat does not have). Every browser test now fails when a page draws two
+  siblings with one key, and a source rule holds every corner to the 14 px radius.

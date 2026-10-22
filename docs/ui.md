@@ -99,6 +99,8 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
 
 ## 3. Screens that exist in Slices 1A-1E
 
+Graphite (decision P97, 2026-10-22) rebuilt the Inbox, the board, the task page, the command menu, Crew, the Security scan, Chats and Models on this PC to its mockups; where a row below describes one of them differently, P97 is how it is now.
+
 | # | Screen | Slice | Content and rules |
 |---|---|---|---|
 | S1 | First-run and onboarding | 1A | Terms notice for D1 (own, unmodified, user-logged-in `claude`; Drydock never reads or transmits Claude credentials; ACP bridge off). Steps: Connections -> add provider (optional) -> create workspace/project -> team -> first message. Target under ten minutes (see `packaging.md`). As built: there is no terms notice and no Connections step at first run; the first run opens the new-project wizard (status paragraph). The D1 statement is on the Connections page ("uses your own installed CLI and its own sign-in; it never reads or transmits your credentials"), and a CLI whose manifest has a notice is not usable until a human ticks it and presses Accept there. |
