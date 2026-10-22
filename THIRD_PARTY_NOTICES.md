@@ -180,7 +180,7 @@ UI packages (the npm registry serves each at `https://registry.npmjs.org/<packag
 
 Offered under the MPL-2.0 or another license, and used under the other one:
 
-- `dompurify` 3.4.16: (MPL-2.0 OR Apache-2.0)
+- `dompurify` 3.4.17: (MPL-2.0 OR Apache-2.0)
 
 <!-- END GENERATED: MPL-2.0 modules -->
 
@@ -336,7 +336,7 @@ Pulled in by those:
 | chokidar | 5.0.0 | MIT | - |
 | convert-source-map | 2.0.0 | MIT | - |
 | detect-libc | 2.1.2 | Apache-2.0 | - |
-| dompurify | 3.4.16 | (MPL-2.0 OR Apache-2.0) | - |
+| dompurify | 3.4.17 | (MPL-2.0 OR Apache-2.0) | - |
 | es-module-lexer | 2.3.2 | MIT | - |
 | esbuild | 0.28.2 | MIT | - |
 | get-tsconfig | 4.14.3 | MIT | - |
