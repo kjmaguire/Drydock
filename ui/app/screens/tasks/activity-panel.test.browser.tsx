@@ -17,7 +17,7 @@ const activity: AguiActivity = {
         { type: 'TEXT_MESSAGE_START', seq: 2, timestamp: 2, messageId: 'm1', role: 'assistant' },
         { type: 'TEXT_MESSAGE_CONTENT', seq: 2, timestamp: 2, messageId: 'm1', delta: 'First turn.' },
         { type: 'TEXT_MESSAGE_END', seq: 3, timestamp: 3, messageId: 'm1' },
-        { type: 'RUN_FINISHED', seq: 4, timestamp: 4, threadId: 'run_w', runId: 'run_w:1', outcome: 'success' },
+        { type: 'RUN_FINISHED', seq: 4, timestamp: 4, threadId: 'run_w', runId: 'run_w:1', outcome: { type: 'success' } },
         { type: 'RUN_STARTED', seq: 5, timestamp: 5, threadId: 'run_w', runId: 'run_w:2' },
         {
           type: 'ACTIVITY_SNAPSHOT',
@@ -28,7 +28,7 @@ const activity: AguiActivity = {
           replace: true,
           content: { entries: [{ content: 'Read calc.go', status: 'completed' }, { content: 'Fix Subtract', status: 'in_progress' }, { content: 'Run the tests' }] },
         },
-        { type: 'REASONING_MESSAGE_START', seq: 7, timestamp: 7, messageId: 'r1' },
+        { type: 'REASONING_MESSAGE_START', seq: 7, timestamp: 7, messageId: 'r1', role: 'reasoning' },
         { type: 'REASONING_MESSAGE_CONTENT', seq: 7, timestamp: 7, messageId: 'r1', delta: 'Subtract adds; it should subtract.' },
         { type: 'REASONING_MESSAGE_END', seq: 8, timestamp: 8, messageId: 'r1' },
         { type: 'TOOL_CALL_START', seq: 9, timestamp: 9, toolCallId: 'c1', toolCallName: 'Bash' },
@@ -41,7 +41,18 @@ const activity: AguiActivity = {
         { type: 'CUSTOM', seq: 14, timestamp: 14, name: 'drydock.interrupt', value: { id: 'apr_2', title: 'Bash: rm -rf build' } },
       ],
     },
-    { threadId: 'run_r', agentId: 'a2', events: [{ type: 'RUN_ERROR', seq: 20, timestamp: 20, threadId: 'run_r', runId: '', message: 'rate limited' }] },
+    {
+      threadId: 'run_r',
+      agentId: 'a2',
+      events: [
+        // a turn interrupted while it waited for a person, then one that failed
+        { type: 'RUN_STARTED', seq: 18, timestamp: 18, threadId: 'run_r', runId: 'run_r:1' },
+        { type: 'CUSTOM', seq: 18, timestamp: 18, name: 'drydock.interrupt', value: { id: 'apr_3', title: 'Bash: git push' } },
+        { type: 'RUN_FINISHED', seq: 19, timestamp: 19, threadId: 'run_r', runId: 'run_r:1', outcome: { type: 'cancelled' }, stopReason: 'interrupted' },
+        { type: 'RUN_STARTED', seq: 20, timestamp: 20, threadId: 'run_r', runId: 'run_r:2' },
+        { type: 'RUN_ERROR', seq: 20, timestamp: 20, threadId: 'run_r', runId: 'run_r:2', message: 'rate limited' },
+      ],
+    },
   ],
 };
 
@@ -56,6 +67,16 @@ describe('the task page Activity (P87)', () => {
     const [rex, dana] = threads as [HTMLElement, HTMLElement];
     expect(rex.textContent).toContain('Rex');
     expect(rex.querySelector('[data-testid=activity-error]')!.textContent).toContain('rate limited');
+    // a cancelled turn is stopped, not done, and its unanswered wait is over
+    const rexTurns = Array.from(rex.querySelectorAll<HTMLDetailsElement>('[data-testid=activity-turn]'));
+    expect(rexTurns.map((t) => [t.dataset.status, t.querySelector('summary')!.textContent])).toEqual([
+      ['cancelled', 'Turn 1 · 0 tool calls · stopped'],
+      ['error', 'Turn 2 · 0 tool calls · error'],
+    ]);
+    expect(rexTurns[0]!.querySelector('[data-testid=activity-cancelled]')!.textContent).toBe('The turn was interrupted before it finished.');
+    const over = rexTurns[0]!.querySelector<HTMLElement>('[data-testid=activity-wait]')!;
+    expect([over.dataset.open ?? '', over.textContent]).toEqual(['', 'Not answered before the turn ended:Bash: git push']);
+    expect(rex.textContent).not.toContain('working now');
 
     // the plan as a checklist with its progress
     const plan = dana.querySelector('[data-testid=activity-plan]')!;

@@ -1,6 +1,8 @@
 // A task's agent activity as turns (decision P87): the typed events of one agent process (api/agui.gen.ts, modelled on
 // AG-UI 1.0) folded into what the task page draws. Each RUN_STARTED opens a turn; its messages, reasoning and tool calls
-// are listed in the order they happened; RUN_FINISHED and RUN_ERROR close it. The plan is the newest PLAN snapshot.
+// are listed in the order they happened; RUN_FINISHED and RUN_ERROR close it. A turn that failed (the core reads an agent's
+// failed turn as RUN_ERROR) is an error, one RUN_FINISHED with the cancelled outcome was stopped before it finished, and only
+// the success outcome (or none: AG-UI reads an absent outcome as success) is done. The plan is the newest PLAN snapshot.
 
 import type { AguiEvent, PlanEntry } from '../../api/agui.gen.ts';
 
@@ -26,13 +28,14 @@ export interface WaitItem {
 
 export type ActivityItem = { kind: 'text'; id: string; text: string } | { kind: 'reasoning'; id: string; text: string } | ToolItem | WaitItem;
 
-export type TurnStatus = 'running' | 'done' | 'stopped' | 'error';
+export type TurnStatus = 'running' | 'done' | 'cancelled' | 'error';
 
 export interface Turn {
   runId: string;
   status: TurnStatus;
   startedAt: number;
   endedAt?: number;
+  /** The agent's word for how the turn ended (end_turn, interrupted, ...); absent when its program ended during the turn. */
   stopReason?: string;
   error?: string;
   items: ActivityItem[];
@@ -58,7 +61,7 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
         break;
       case 'RUN_FINISHED': {
         const t = turn(e.timestamp);
-        t.status = e.outcome === 'stopped' ? 'stopped' : 'done';
+        t.status = e.outcome?.type === 'cancelled' ? 'cancelled' : 'done';
         t.endedAt = e.timestamp;
         if (e.stopReason) t.stopReason = e.stopReason;
         cur = undefined;
@@ -131,12 +134,12 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
   return turns;
 }
 
-/** How a wait ended, in words. */
-export function waitOutcomeText(outcome: string | undefined): string {
+/** How a wait ended, in words. A wait in a turn that ended with no answer (the answer came after it, or never) is over. */
+export function waitOutcomeText(outcome: string | undefined, running = true): string {
   switch (outcome) {
     case undefined:
     case '':
-      return 'Waiting for you';
+      return running ? 'Waiting for you' : 'Not answered before the turn ended';
     case 'approved':
       return 'Allowed once by you';
     case 'approved_with_edits':
@@ -175,7 +178,7 @@ export function turnSummary(t: Turn): string {
   const failed = tools.filter((i) => i.isError).length;
   const parts = [tools.length === 1 ? '1 tool call' : `${tools.length} tool calls`];
   if (failed) parts.push(`${failed} failed`);
-  const end = t.status === 'running' ? 'working' : t.status === 'done' ? 'done' : t.status === 'stopped' ? 'stopped' : 'error';
+  const end = t.status === 'running' ? 'working' : t.status === 'done' ? 'done' : t.status === 'cancelled' ? 'stopped' : 'error';
   return `${parts.join(', ')} · ${end}`;
 }
 

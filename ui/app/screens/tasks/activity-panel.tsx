@@ -105,10 +105,10 @@ function Item(handle: Handle<{ item: ActivityItem; running: boolean; seq: number
       );
     }
     if (item.kind === 'wait') {
-      const open = !item.outcome;
+      const open = !item.outcome && running;
       return (
         <div class="wait" data-open={open ? 'true' : undefined} data-outcome={item.outcome} data-testid="activity-wait">
-          <strong>{waitOutcomeText(item.outcome)}:</strong>
+          <strong>{waitOutcomeText(item.outcome, running)}:</strong>
           <span>{item.title}</span>
           {open ? <span>· answer it under Needs your decision</span> : null}
         </div>
@@ -139,8 +139,10 @@ function TurnView(handle: Handle<{ turn: Turn; n: number; open: boolean }>) {
           <span class="end" data-status="error" data-testid="activity-error">
             The turn failed: {turn.error}
           </span>
-        ) : turn.status === 'stopped' ? (
-          <span class="end">The agent's program stopped during the turn.</span>
+        ) : turn.status === 'cancelled' ? (
+          <span class="end" data-status="cancelled" data-testid="activity-cancelled">
+            {turn.stopReason ? 'The turn was interrupted before it finished.' : "The agent's program stopped during the turn."}
+          </span>
         ) : null}
       </>
     );

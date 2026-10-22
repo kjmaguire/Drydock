@@ -45,11 +45,15 @@ func TypeScript() (string, error) {
 //
 // What an agent does during a run, in a vocabulary modelled on the AG-UI protocol 1.0.
 `,
-		Consts: tsgen.SortedConsts(map[string]string{"ACTIVITY_PLAN": ActivityPlan, "OUTCOME_SUCCESS": OutcomeSuccess, "OUTCOME_STOPPED": OutcomeStopped, "CUSTOM_INTERRUPT": NameInterrupt, "CUSTOM_RESUME": NameResume}),
+		Consts: tsgen.SortedConsts(map[string]string{"ACTIVITY_PLAN": ActivityPlan, "OUTCOME_SUCCESS": OutcomeSuccess, "OUTCOME_CANCELLED": OutcomeCancelled, "CUSTOM_INTERRUPT": NameInterrupt, "CUSTOM_RESUME": NameResume}),
 	}
 	u := tsgen.Union{Name: "AguiEvent", Doc: "Any event of the vocabulary; narrow it on `type`."}
 	for _, e := range events {
-		f.Decls = append(f.Decls, tsgen.Decl{Name: e.name, Type: reflect.TypeOf(e.v), Literal: map[string]string{"type": e.typ}})
+		lit := map[string]string{"type": e.typ}
+		if e.typ == TypeReasoningMessageStart {
+			lit["role"] = "reasoning" // AG-UI fixes it
+		}
+		f.Decls = append(f.Decls, tsgen.Decl{Name: e.name, Type: reflect.TypeOf(e.v), Literal: lit})
 		u.Members = append(u.Members, e.name)
 	}
 	for _, c := range customs {
