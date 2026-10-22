@@ -10,10 +10,21 @@ import { EventStore } from '../../state/eventStore.ts';
 import { ev, FakeTransport } from '../../test/fakes.ts';
 import { cliName } from '../shared/cli-name.ts';
 import { ChatFeed } from './chat-feed.ts';
-import { durationText, editLines, toolLabel, toolState } from './chat-tool.tsx';
+import { durationText, editLines, toolLabel, toolState, toolVerb } from './chat-tool.tsx';
+import { sendsOnKey } from './chat-composer.tsx';
+import { moveEffect, OUT_OF_PROJECT } from './chat-move.tsx';
 import {
   adapterOptionText,
   adapterUnavailable,
+  askCallText,
+  askHead,
+  chatPlaceWords,
+  chatRowLine,
+  folderText,
+  inOwnFolder,
+  listWhen,
+  modeWords,
+  ruleWords,
   chatChoices,
   chatCliText,
   chatWhere,
@@ -48,6 +59,59 @@ describe('chats helpers', () => {
     expect(relTime(now - 2 * 86_400_000, now)).toBe('2d');
     expect(relTime(now - 30 * 86_400_000, now)).not.toBe('');
     expect(relTime(0, now)).toBe('');
+  });
+
+  it('says when a chat was last active as the list does: now, minutes, hours today, yesterday, a weekday, then the date', () => {
+    const now = new Date(2026, 9, 22, 15, 0).getTime(); // a Thursday afternoon
+    expect(listWhen(now - 10_000, now)).toBe('now');
+    expect(listWhen(now - 5 * 60_000, now)).toBe('5 min');
+    expect(listWhen(now - 2 * 3_600_000, now)).toBe('2 h');
+    expect(listWhen(new Date(2026, 9, 21, 23, 0).getTime(), now)).toBe('yesterday');
+    expect(listWhen(new Date(2026, 9, 19, 9, 0).getTime(), now)).toBe('Mon');
+    expect(listWhen(new Date(2026, 8, 1).getTime(), now)).not.toMatch(/min|h$|yesterday/);
+    expect(listWhen(0, now)).toBe('');
+    expect(chatRowLine({ project: 'gocalc', cli: 'Codex', when: '2 h' })).toBe('gocalc · Codex · 2 h');
+    expect(chatRowLine({ cli: 'Claude Code WSL', when: 'now' })).toBe('Claude Code WSL · now');
+  });
+
+  it('says the permission mode, where a chat runs and its folder in words from its fields', () => {
+    expect(['', 'default', 'acceptEdits', 'plan', 'bypassPermissions', 'auto', 'dontAsk', 'read-only'].map(modeWords)).toEqual([
+      'Asks before commands',
+      'Asks before commands',
+      'Edits files, asks before commands',
+      'Plans only, changes nothing',
+      'Never asks, skips approvals',
+      'Decides itself, skips approvals',
+      'Does not ask, skips approvals',
+      'read-only mode',
+    ]);
+    const own = { id: 'chat_a', projectId: '', wslDistro: '', cwd: 'C:\\Users\\kyle\\.drydock\\chats\\chat_a' };
+    expect(inOwnFolder(own)).toBe(true);
+    expect(chatPlaceWords(own)).toBe('No project · runs in its own folder');
+    expect(chatPlaceWords({ ...own, cwd: 'C:\\work\\notes' })).toBe('No project · runs in the folder you chose');
+    expect(chatPlaceWords({ ...own, wslDistro: 'Ubuntu' })).toBe('No project · runs inside the distro');
+    expect(chatPlaceWords({ ...own, projectId: 'p1' }, 'gocalc')).toBe("gocalc · runs in the project's folder");
+    expect(chatPlaceWords({ ...own, projectId: 'p1', wslDistro: 'Ubuntu' }, 'gocalc')).toBe("gocalc · runs in the project's folder, inside the distro");
+    expect(folderText({ cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a', wslDistro: 'Ubuntu' })).toBe('~/.drydock/chats/chat_a');
+    expect(folderText({ cwd: '\\\\wsl$\\Debian\\srv\\app', wslDistro: 'Debian' })).toBe('/srv/app');
+    expect(folderText({ cwd: '/home/kyle/notes', wslDistro: 'Ubuntu' })).toBe('~/notes');
+    expect(folderText({ cwd: 'C:\\repos\\gocalc', wslDistro: '' })).toBe('C:\\repos\\gocalc');
+    expect(moveEffect({ projectId: '' }, 'p1', 'gocalc')).toContain('It joins gocalc and runs in the project\'s folder.');
+    expect(moveEffect({ projectId: 'p1' }, 'p2', 'shop')).toContain('It moves to shop');
+    expect(moveEffect({ projectId: 'p1' }, OUT_OF_PROJECT, '')).toBe('It leaves the project and keeps the folder it runs in, so its session continues.');
+  });
+
+  it('words a waiting request and its rule, a tool card and the keys that send', () => {
+    const cmd = { tool: 'Bash', summary: 'Bash: git diff --stat', input: { command: 'git diff --stat' } };
+    expect([askHead('Claude Code', cmd), askCallText(cmd)]).toEqual(['Claude Code wants to run a command', 'git diff --stat']);
+    const fetch = { tool: 'Fetch', summary: 'Fetch: https://go.dev', input: { url: 'https://go.dev' } };
+    expect([askHead('Gemini CLI', fetch), askCallText(fetch)]).toEqual(['Gemini CLI wants to use Fetch', 'https://go.dev']);
+    expect(ruleWords('Bash(git diff --stat)')).toBe('git diff --stat');
+    expect(ruleWords('WebFetch')).toBe('WebFetch');
+    expect(ruleWords(`Bash(${'x'.repeat(60)})`)).toHaveLength(40);
+    expect([toolVerb('Bash', true, 'ok'), toolVerb('Bash', true, 'running'), toolVerb('Read', false, 'ok'), toolVerb('mcp__drydock__chatmcp__echo', false, 'ok')]).toEqual(['Ran', 'Running', 'Read', 'chatmcp · echo']);
+    const k = (key: string, o: Partial<KeyboardEvent> = {}) => sendsOnKey({ key, shiftKey: false, altKey: false, isComposing: false, ...o });
+    expect([k('Enter'), k('Enter', { shiftKey: true }), k('Enter', { isComposing: true }), k('a')]).toEqual([true, false, false, false]);
   });
 
   it('never shows an unknown cost as $0 and says how many turns had none', () => {

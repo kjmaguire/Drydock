@@ -88,7 +88,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.allowTool` | `{id, tool}` | `Chat` |
 | `chat.disallowTool` | `{id, tool}` | `Chat` |
 | `chat.attachment` | `{id}` | `{id, name, mime, size, kind: text \| image \| file, data (base64)}`: a file sent with a message, checked against the hash kept when it was attached (P90) |
-| `chat.asks` | `{id}` | `[PendingAsk]`: the tool calls the chat's ACP agent waits to be allowed (P83) |
+| `chat.asks` | `{id}` | `[PendingAsk]`: the tool calls the chat's ACP agent waits to be allowed (P83). `rule` (when set) is the allow rule `chat.answer` with `remember` would record: set only when the chat's agent takes per-chat allow rules and a safe rule names the call, so the UI offers "Allow <tool> in this chat" only then |
 | `chat.answer` | `{id, askId, allow, remember?}` | `{answered: true}`; allow lets exactly that call run once. With `remember` (and `allow`) also `{rule}`: the allow rule for the call is recorded as `chat.allowTool` records it, so later turns may make it without asking ("Allow Bash in this chat"); Claude chats only, any other adapter is refused with the reason and the request keeps waiting; refused too when the call's input was shortened or redacted or no safe rule names it. The rule is recorded before the call is allowed and taken back when the request is gone meanwhile |
 
 Rules worth knowing in the UI:

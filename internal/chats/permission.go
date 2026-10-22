@@ -41,8 +41,11 @@ type PendingAsk struct {
 	Tool      string          `json:"tool"`
 	Summary   string          `json:"summary"`
 	Input     json.RawMessage `json:"input,omitempty"`
-	Created   int64           `json:"created"`
-	ExpiresAt int64           `json:"expiresAt"`
+	// Rule is the allow rule "Allow <tool> in this chat" would record for the call (AllowAndRemember); empty when the chat's
+	// agent takes no per-chat allow rules, or no rule can name the call exactly. The UI offers the choice only when it is set.
+	Rule      string `json:"rule,omitempty"`
+	Created   int64  `json:"created"`
+	ExpiresAt int64  `json:"expiresAt"`
 }
 
 type pendingAsk struct {
@@ -71,8 +74,9 @@ func (t *turnRun) asker() agents.PermissionAsker {
 		msg, _ := t.store(RoleSystem, "Asks to use "+summary, name, q.Args)
 		ttl := s.o.AskTTL
 		now := storage.Now()
+		rule, _ := s.rememberRule(c.Adapter, msg.ToolName, msg.ToolInput)
 		p := &pendingAsk{answer: make(chan askAnswer, 1), info: PendingAsk{ID: ids.New("cask"), ChatID: c.ID, ChatTitle: c.Title, ProjectID: c.ProjectID, TurnID: t.turnID, MessageID: msg.ID,
-			Tool: msg.ToolName, Summary: summary, Input: msg.ToolInput, Created: now, ExpiresAt: now + ttl.Milliseconds()}}
+			Tool: msg.ToolName, Summary: summary, Input: msg.ToolInput, Rule: rule, Created: now, ExpiresAt: now + ttl.Milliseconds()}}
 		s.mu.Lock()
 		s.asks[p.info.ID] = p
 		s.mu.Unlock()
@@ -178,6 +182,23 @@ func (s *Service) answer(chatID, askID string, a askAnswer) error {
 	return nil
 }
 
+// rememberRule is the allow rule that remembering a call of tool with input records for a chat of adapter, or why none can:
+// the adapter takes no per-chat allow rules, the input was shortened or redacted, or no safe rule names the call.
+func (s *Service) rememberRule(adapter, tool string, input json.RawMessage) (string, error) {
+	if caps, _ := s.caps(adapter); !takesRules(adapter, caps) {
+		return "", fmt.Errorf("%s does not take per-chat allow rules, so Drydock cannot remember this for the chat: allow it once instead", adapter)
+	}
+	in := string(input)
+	if strings.Contains(in, "[REDACTED") || strings.Contains(in, `"truncated"`) {
+		return "", errors.New("the call's input was shortened or hides a secret, so no rule can name it exactly: allow it once instead")
+	}
+	rule := SuggestRule(tool, input)
+	if rule == "" {
+		return "", fmt.Errorf("no safe rule names this %s call for the chat: allow it once instead", firstNonEmpty(tool, "tool"))
+	}
+	return rule, nil
+}
+
 // waitingAsk is a request still waiting in a chat, without taking it.
 func (s *Service) waitingAsk(chatID, askID string) (PendingAsk, bool) {
 	s.mu.Lock()
@@ -204,16 +225,9 @@ func (s *Service) AllowAndRemember(ctx context.Context, chatID, askID string) (s
 	if err != nil {
 		return "", err
 	}
-	if caps, _ := s.caps(c.Adapter); !takesRules(c.Adapter, caps) {
-		return "", fmt.Errorf("%s does not take per-chat allow rules, so Drydock cannot remember this for the chat: allow it once instead", c.Adapter)
-	}
-	in := string(ask.Input)
-	if strings.Contains(in, "[REDACTED") || strings.Contains(in, `"truncated"`) {
-		return "", errors.New("the call's input was shortened or hides a secret, so no rule can name it exactly: allow it once instead")
-	}
-	rule := SuggestRule(ask.Tool, ask.Input)
-	if rule == "" {
-		return "", fmt.Errorf("no safe rule names this %s call for the chat: allow it once instead", firstNonEmpty(ask.Tool, "tool"))
+	rule, err := s.rememberRule(c.Adapter, ask.Tool, ask.Input)
+	if err != nil {
+		return "", err
 	}
 	had := contains(c.AllowedTools, rule)
 	if _, err := s.AllowTool(ctx, chatID, rule); err != nil {

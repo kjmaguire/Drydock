@@ -259,3 +259,104 @@ export function startsGroup(prev: ChatMessage | undefined, m: ChatMessage): bool
   if (side(m) === 'note') return false;
   return side(prev) !== side(m);
 }
+
+// --- the graphite Chats screen (decision P97) ---
+
+/**
+ * When a chat was last active, for its row in the list: "now", "5 min", "3 h" (today), "yesterday", the weekday within a week
+ * ("Mon"), then the date.
+ */
+export function listWhen(ms: number, now = Date.now()): string {
+  if (!ms) return '';
+  const d = Math.max(0, now - ms);
+  const min = Math.floor(d / 60_000);
+  if (min < 1) return 'now';
+  if (min < 60) return `${min} min`;
+  const then = new Date(ms);
+  const today = new Date(now);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((day(today) - day(then)) / 86_400_000);
+  if (days <= 0) return `${Math.floor(min / 60)} h`;
+  if (days === 1) return 'yesterday';
+  if (days < 7) return then.toLocaleDateString('en-US', { weekday: 'short' });
+  return then.toLocaleDateString([], then.getFullYear() === today.getFullYear() ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/** The faint line of a chat's row: its project (when it is in one), its CLI and when it was last active, joined by " · ". */
+export function chatRowLine(parts: { project?: string; cli: string; when: string }): string {
+  return [parts.project, parts.cli, parts.when].filter(Boolean).join(' · ');
+}
+
+/** A permission mode in plain words, for the composer's approval button. A mode Drydock does not know is named as it is. */
+export function modeWords(mode: string): string {
+  switch (mode) {
+    case '':
+    case 'default':
+      return 'Asks before commands';
+    case 'acceptEdits':
+      return 'Edits files, asks before commands';
+    case 'plan':
+      return 'Plans only, changes nothing';
+    case 'bypassPermissions':
+      return 'Never asks, skips approvals';
+    case 'auto':
+      return 'Decides itself, skips approvals';
+    case 'dontAsk':
+      return 'Does not ask, skips approvals';
+    default:
+      return `${mode} mode`;
+  }
+}
+
+/** The chat runs in its own private folder (the core's chats/<id> folder, on Windows or in a distro's home). */
+export function inOwnFolder(c: Pick<Chat, 'id' | 'cwd'>): boolean {
+  const p = c.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+  return p.endsWith(`/chats/${c.id}`);
+}
+
+/**
+ * Where the chat runs, in words for the right of its header, from its fields: in a project, the project's folder; without
+ * one, inside its WSL distro, in its own folder, or in the folder chosen for it.
+ */
+export function chatPlaceWords(c: Pick<Chat, 'id' | 'projectId' | 'wslDistro' | 'cwd'>, projectName?: string): string {
+  if (c.projectId) return `${projectName || 'Project'} · runs in the project's folder${c.wslDistro ? ', inside the distro' : ''}`;
+  if (c.wslDistro) return 'No project · runs inside the distro';
+  return inOwnFolder(c) ? 'No project · runs in its own folder' : 'No project · runs in the folder you chose';
+}
+
+/**
+ * The chat's folder for its header, as its CLI sees it: a folder inside a WSL distro as the distro names it
+ * (\\wsl.localhost\Ubuntu\home\kyle\x is /home/kyle/x), the home folder there as ~; then shortened in the middle.
+ */
+export function folderText(c: Pick<Chat, 'cwd' | 'wslDistro'>, max = 48): string {
+  let p = c.cwd;
+  const m = /^\\\\(?:wsl\.localhost|wsl\$)\\[^\\]+(\\.*)?$/i.exec(p);
+  if (m) p = (m[1] ?? '\\').replace(/\\/g, '/');
+  if (c.wslDistro || m) p = p.replace(/^\/home\/[^/]+(?=\/|$)/, '~').replace(/^\/root(?=\/|$)/, '~');
+  return shortPath(p, max);
+}
+
+/** The command a waiting request would run, or '' when it is not a shell command. */
+export function askCommandOf(a: { input?: unknown }): string {
+  const f = a.input && typeof a.input === 'object' && !Array.isArray(a.input) ? (a.input as Record<string, unknown>) : {};
+  return typeof f.command === 'string' ? f.command : '';
+}
+
+/** What a waiting request shows in its box: the command, else the call in one line without its tool's name. */
+export function askCallText(a: { tool: string; summary: string; input?: unknown }): string {
+  const cmd = askCommandOf(a);
+  if (cmd) return cmd;
+  return a.tool && a.summary.startsWith(`${a.tool}: `) ? a.summary.slice(a.tool.length + 2) : a.summary;
+}
+
+/** The head of a waiting request: "Claude Code wants to run a command", or "... wants to use Fetch". */
+export function askHead(cli: string, a: { tool: string; input?: unknown }): string {
+  return askCommandOf(a) ? `${cli} wants to run a command` : `${cli} wants to use ${a.tool || 'a tool'}`;
+}
+
+/** An allow rule in the words of its button: Bash(git diff --stat) is "git diff --stat" (shortened past 40 characters). */
+export function ruleWords(rule: string): string {
+  const m = /^Bash\((.*)\)$/s.exec(rule);
+  const w = m ? m[1]!.trim() : rule;
+  return w.length > 40 ? `${w.slice(0, 39)}…` : w;
+}
