@@ -14,7 +14,7 @@ import { appUrl, choose, createAgent, createProject, projectNav } from './helper
 const ROUTES = [
   '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
   '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
-  '/library', '/library/skills', '/connections', '/github', '/security-scan', '/providers', '/routing', '/backups', '/data', '/support', '/license',
+  '/library', '/library/skills', '/connections', '/github', '/security-scan', '/providers', '/models', '/routing', '/backups', '/data', '/support', '/license',
   '/settings', '/guide', '/guide/scan',
 ];
 

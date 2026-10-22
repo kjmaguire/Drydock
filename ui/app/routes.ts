@@ -52,6 +52,8 @@ export const routes = route({
   // scan any folder on this computer, or one of the projects (decision P61)
   securityScan: get('/security-scan'),
   providers: get('/providers'),
+  // Models on this PC (decisions P65, P97): the engine, the model served, the memory it takes, the models from Hugging Face
+  models: get('/models'),
   routing: get('/routing'),
   backups: get('/backups'),
   data: get('/data'),

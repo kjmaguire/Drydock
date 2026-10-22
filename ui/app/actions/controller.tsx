@@ -164,6 +164,10 @@ export const controller = createController(routes, {
       const { ProvidersScreen } = await import('../screens/providers/providers-screen.tsx');
       return render(<ProvidersScreen />);
     },
+    async models({ render }) {
+      const { ModelsScreen } = await import('../screens/models/models-screen.tsx');
+      return render(<ModelsScreen />);
+    },
     async routing({ render }) {
       const { RoutingScreen } = await import('../screens/routing/routing-screen.tsx');
       return render(<RoutingScreen />);

@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
+import { hashToPath, hubOf, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -75,6 +75,17 @@ describe('routes', () => {
     // the page is the workspace's: it opens without a project, like Connections
     expect(isWorkspaceRoute({ name: 'github' })).toBe(true);
     expect(isWorkspacePage(parseRoute('/github'))).toBe(true);
+  });
+
+  it('has Models on this PC as a workspace page of its own, in its own hub (no Settings rail, no project in the sidebar; decision P97)', () => {
+    expect(routes.models.href()).toBe('/models');
+    expect(parseRoute('/models')).toEqual({ name: 'models' });
+    expect(parseRoute('/models/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'models' })).toBe(true);
+    expect(isWorkspacePage(parseRoute('/models'))).toBe(true);
+    expect(hubOf({ name: 'models' })).toBe('models');
+    expect(isWorkspaceHub(hubOf({ name: 'models' }))).toBe(true);
+    expect(hubOf({ name: 'providers' })).toBe('settings');
   });
 
   it('has a workspace Security scan of any folder, beside the project\'s own Security page (decision P61)', () => {

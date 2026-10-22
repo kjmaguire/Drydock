@@ -116,7 +116,9 @@ describe('the sidebar', () => {
       [{ name: 'chat', id: 'c1' }, 'nav-chats'],
       [{ name: 'security-scan' }, 'nav-security-scan'],
       [{ name: 'connections' }, 'nav-side-connections'],
-      [{ name: 'providers' }, 'nav-side-models'],
+      // Models on this PC is a page of its own; Providers is a settings page again (it keeps a link to Models on this PC)
+      [{ name: 'models' }, 'nav-side-models'],
+      [{ name: 'providers' }, 'nav-settings'],
       [{ name: 'github' }, 'nav-settings'],
       [{ name: 'guide', topic: 'scan' }, 'nav-guide-top'],
       [{ name: 'workspace' }, 'nav-workspace'],
@@ -134,6 +136,22 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-overview"]')).toBeNull();
     expect(r.$('[data-testid="nav-chats"]')).not.toBeNull();
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('Home');
+  });
+
+  it('Models on this PC is a workspace page of its own: its link and the engine card lead to /models, and no project is open there', async () => {
+    const v = {
+      supported: true,
+      runtime: { installed: true, sourceName: 'TurboQuant build', tag: 'b10298-2.0.0', backend: 'vulkan' },
+      backends: [{ id: 'vulkan', label: 'Vulkan' }],
+      server: { state: 'running' },
+    } as unknown as LocalView;
+    const r = mount(<Sidebar route={{ name: 'models' }} />, svc({ localGet: async () => v }));
+    await waitFor(() => expect(r.$$('[data-testid="nav-project-item"]')).toHaveLength(2), r);
+    expect(r.$('[data-testid="nav-overview"]')).toBeNull();
+    expect(r.$('[data-testid="nav-side-models"]')!.getAttribute('href')).toBe('/models');
+    expect(r.$('[data-testid="nav-side-models"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-settings"]')!.getAttribute('aria-current')).toBeNull();
+    await waitFor(() => expect(r.$('[data-testid="engine-card"]')?.getAttribute('href')).toBe('/models'), r);
   });
 
   it('folds to the rail with its button or "[" and remembers it; a text field keeps the key', async () => {
