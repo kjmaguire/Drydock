@@ -720,16 +720,34 @@ func (s *securityExt) folders(ctx context.Context, limit int) ([]scan.Summary, e
 		out = append(out, scan.Summary{ID: rep.ID, Folder: rep.Dir, Status: rep.Status, By: rep.By, StartedAt: rep.StartedAt, Counts: rep.Counts})
 	}
 	s.mu.Unlock()
-	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt > out[j].StartedAt })
+	// read after the running scans: a scan that finishes meanwhile is stored before it leaves them, so it is in one or both
 	stored, err := s.summaries(ctx, `substr(project_id,1,?)=? ORDER BY started_at DESC, id DESC LIMIT ?`, len(folderPrefix), folderPrefix, limit)
 	if err != nil {
 		return nil, err
 	}
+	return mergeFolderScans(out, stored, limit), nil
+}
+
+// mergeFolderScans lists the running folder scans, newest first, then the stored ones. A scan that has just finished is
+// stored a moment before it leaves the running ones (changed()), so in that moment it is in both: its stored row, which has
+// its end and summary, is the one shown, once.
+func mergeFolderScans(running, stored []scan.Summary, limit int) []scan.Summary {
+	have := make(map[string]bool, len(stored))
+	for _, sm := range stored {
+		have[sm.ID] = true
+	}
+	out := make([]scan.Summary, 0, len(running)+len(stored))
+	for _, sm := range running {
+		if !have[sm.ID] {
+			out = append(out, sm)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt > out[j].StartedAt })
 	out = append(out, stored...)
 	if len(out) > limit {
 		out = out[:limit]
 	}
-	return out, nil
+	return out
 }
 
 // close cancels the scans still running and waits for them, so no tool outlives the core.
