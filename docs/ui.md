@@ -52,28 +52,34 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
 - The UI holds no authority: SQLite is the single authority (brief 3). The UI is a projection of persisted events plus service calls; it can be closed and reopened at any time and must catch up from the log (brief 24, Slice 1A).
 - Estimated and reported numbers are never mixed silently (brief 7): every token or cost figure carries a source badge (`reported` or `estimated`), and a value a CLI does not report is shown as `not reported`, never as 0.
 
-## 2. Layout (brief 21; rebuilt as Crew HQ, decision P64)
+## 2. Layout (brief 21; rebuilt as Crew HQ, decision P64; the sidebar and look of Graphite, decision P97)
 
 ```
-+----------------------------------------------------------------------------------+
-| Top bar: mark | project switcher | Overview Tasks Rooms Crew Knowledge | search bell gear |
-| Hub pills (Tasks: Board Plan Pull requests Milestones; Knowledge: ...; Overview: ...)     |
-+-----------+-----------------------------------------------------+------------------+
-| Rail      | Center: a page (Overview, the Tasks board, a task,   | Right column     |
-| (Rooms or | Crew, Knowledge, Settings...) or a conversation     | tabs: Agents |   |
-| Settings) | (message cards + composer)                          | Task | Thread |  |
-|           |                                                     | Inspector        |
-|           +-----------------------------------------------------+------------------+
-|           | Bottom dock: Terminal | Diff | Logs | Activity (model/tokens)           |
-+-----------+-----------------------------------------------------------------------+
++-------------+--------------------------------------------------------------------+
+| Sidebar     | Page top bar: title, subtitle | the page's tabs and filters | actions |
+| switcher    | Hub pills (Tasks: Board Plan Pull requests Milestones; ...)        |
+| search      +-----------+-----------------------------------------+--------------+
+| Inbox  3    | Rail      | Center: a page (the Inbox, the board,   | Right column |
+| Running     | (Rooms or | a task, Crew, Settings...) or a         | (beside a    |
+| My tasks    | Settings) | conversation (messages + composer)      | conversation)|
+| Chats       |           +-----------------------------------------+--------------+
+| Projects    |           | Bottom dock: Terminal | Diff | Logs | Activity           |
+|  Overview.. +-----------+----------------------------------------------------------+
+| Workspace   |
+| Settings    |
+| engine      |
++-------------+
 ```
 
-- **Top bar (`ui/app/shell/topbar.tsx`, the "Main" navigation landmark):** the Drydock mark (on a project's page the way
-  back to Home), the project switcher (a menu: Home, the projects as radio items, New project, App settings), then the tabs.
-  **On a project's page:** Overview (`/`), Tasks, Rooms, Crew (`/team`), Knowledge. **On a workspace page** (Home, Chats, the
-  Library, Security scan, New project; and every page while there is no project): Home, Chats, Library, Security scan; the
-  switcher says Home. Then search (Ctrl+K), the bell (Needs you, `/needs-you`, with the count that needs you; only with a
-  project), the gear (Settings) and the event stream's state. The arrow keys move along the bar.
+- **Sidebar (`ui/app/shell/sidebar.tsx`, the "Main" navigation landmark; 248 px, folded a 56 px rail):** the workspace
+  switcher (a menu: Home, the projects as radio items, New project, App settings), search (Ctrl+K), **Inbox** (`/needs-you`,
+  with the count of what needs you across every project), **Running** (the Inbox's Running tab), **My tasks**, **Chats**,
+  then **Projects**: the open project shows its tabs **Overview** (`/`), **Tasks**, **Rooms**, **Crew** (`/team`),
+  **Knowledge** nested under it, the others are one line that opens them; then **Workspace**: Security (the security scan),
+  Connections, Models on this PC and the Library; at the foot Settings, the Guide, the local engine's state and build, and
+  the event stream's state. On a workspace page no project's tabs show and the switcher says Home. The arrow keys, Home and
+  End move through the links; "[" (never while typing) or the fold button folds it to the rail, whose icons keep the labels
+  as their names; the choice is kept, and a window under 1024 px starts folded (a phone-sized one with a 44 px rail).
 - **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a tab with sub-pages shows them as pills under the
   bar: Tasks (Board, Plan, Pull requests, Milestones), Knowledge (Overview, Requirements, Expert packs, Skills, Memory, Repo
   map), Overview (Overview, Activity, Budgets, Evals report, Security, then set apart at the end of the row after a gap and a
@@ -89,7 +95,7 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
 - **Repository configuration banner (built 2026-10-11, `ui/app/shell/repo-config-banner.tsx`):** above every screen of a project whose repository's own git configuration, hooks or `info/attributes` changed since a person last trusted them (`project.gitConfig` answers `trusted: false`; docs/security.md s3), a warning region named "Repository git configuration changed" says so in plain words, lists the changed items (config keys, `hooks/<file>`, `info/attributes`; names only, never values) and offers **Trust this configuration**. Only that click trusts, and it sends the fingerprint of the state on screen (`project.trustGitConfig`); a configuration that changed again since is refused by the core, and the banner then shows the newer items to review again. The status is re-read on `security.repo_config_trusted` (also published when a run's approval trusted it), approval and request events, a reopened stream and window focus (a change made in a terminal publishes no event). Not shown for a project without a repository; read-only turns the button off.
 - **Right column (resizable, collapsible):** tabs Thread, Task details, Agent Inspector. Selecting an agent presence dot, a card author or a task opens the matching tab. It never shows a feature that is not built.
 - **Bottom dock (resizable, collapsible):** Terminal (xterm.js, one tab per terminal), Diff (Monaco diff for the selected task), Logs (agent raw output and process stderr), Activity (model and token activity: per-run usage rows, source badges). The dock keeps its tab state per project.
-- Window chrome: Wails window (WebView2). Minimum supported layout width: 1100 px with the right column collapsed; below 1100 px the search box shrinks to its icon (measured in the e2e layout audit at 1366 px; narrower windows are a **proposal**, not measured on Windows).
+- Window chrome: Wails window (WebView2). Minimum supported layout width: 1100 px with the right column collapsed; under 1024 px the sidebar starts folded to its rail (measured in the e2e layout audit at 1366 px; narrower windows are a **proposal**, not measured on Windows).
 
 ## 3. Screens that exist in Slices 1A-1E
 
