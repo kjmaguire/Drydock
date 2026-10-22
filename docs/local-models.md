@@ -75,9 +75,16 @@ is "Not recommended". The badge stays short; its tooltip and, for the two that w
 in full with the numbers the core measured (`Fit.availableBytes`, the larger of the free VRAM and the RAM budget): "Not
 recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free)", "Runs on the CPU (slow): no GPU has room for it, so
 llama.cpp keeps it in RAM (needs about 32.0 GB, 24.0 GB free)". A variant that is not recommended cannot be downloaded (the
-button is disabled and says why): a model llama.cpp could not load would only take gigabytes of disk. This counts the weights
-only, not the KV cache; a model near the limit may still not load with a large context. For the rest the person decides;
-the fit is a hint.
+button is disabled and says why): a model llama.cpp could not load would only take gigabytes of disk. A variant on the Hub is
+counted by its weights only. A downloaded model's fit counts its KV cache too (decision P97, `Fit.kvBytes`, `Fit.needBytes`):
+the cache is estimated from the model's GGUF header (`localllm.ReadGGUF`, pure Go, only the metadata is read): for each layer
+the attention heads that keep keys and values (`<arch>.attention.head_count_kv`, per layer when the model gives a list) times
+the key and value lengths (`attention.key_length`/`value_length`, else `embedding_length / head_count`), times the context size
+(the setting, else the model's own `context_length`), times the bytes a value takes in the cache type (f16 2, q8_0 34/32, q4_0
+18/32, and the other ggml block types). A model with sliding-window layers or a compressed (MLA) cache is counted at the full
+size and the estimate says it is an upper bound. The TurboQuant build's `turbo3` and `turbo4` are not documented by the fork, so
+their estimate is unknown (`kv.known` false, with the reason), as is a model whose header has no attention heads (a recurrent
+model) or cannot be read; the fit then counts the weights alone. For the rest the person decides; the fit is a hint.
 
 **Downloading.** Files download in the background (several at once if asked), resume a part that was cut off, and are
 checked before they count as present. A drive with less than the file plus 2 GB free refuses the download.
@@ -138,8 +145,11 @@ and take its GPU.
 
 ## 7. Interfaces
 
-Core methods (`internal/core/ext_localllm.go`): `local.get` (the whole view: runtime, devices, models with fit, downloads
-in progress, server state, settings, memory, disk), `local.install {source?, backend?}`, `local.runtime.remove`,
+Core methods (`internal/core/ext_localllm.go`): `local.get` (the whole view: runtime, devices, models with fit and `kv`,
+downloads in progress, server state (with `startedAt`, `autostarted`: Drydock started it at its own start, and the
+`cacheType` and `contextSize` it runs with), `served` (the served model's `modelBytes`, `kvBytes`, `kv`, and the `device`, gpu or
+ram, with its `deviceTotal` and `deviceFree` as read by the device probe, for the memory bar), `usedBy` (every agent, of any
+project, whose provider is the server's row: `agentId`, `name`, `projectId`, `projectName`), settings, memory, disk), `local.install {source?, backend?}`, `local.runtime.remove`,
 `local.settings.set` (any subset of the settings), `local.models.suggested`, `local.models.search {query}`,
 `local.model.variants {repo}`, `local.model.download {repo, variant}`, `local.model.download.cancel {id}` (also clears a
 finished row), `local.model.remove {id}`, `local.server.start {modelId}`, `local.server.stop`. Event: `local.changed`

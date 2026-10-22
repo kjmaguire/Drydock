@@ -93,6 +93,34 @@ type LocalView struct {
 	FreeBytes        uint64                 `json:"freeBytes"`
 	ModelsBytes      uint64                 `json:"modelsBytes"`
 	Log              []string               `json:"log"`
+	// UsedBy are the agents, of every project, whose provider is the server's provider row (Settings.ProviderID).
+	UsedBy []LocalUser `json:"usedBy"`
+	// Served is the memory the served model takes, for the memory bar: set while the server starts or runs (decision P97).
+	Served *LocalServed `json:"served,omitempty"`
+}
+
+// LocalUser is an agent that uses the models on this PC.
+type LocalUser struct {
+	AgentID     string `json:"agentId"`
+	Name        string `json:"name"`
+	ProjectID   string `json:"projectId"`
+	ProjectName string `json:"projectName"`
+}
+
+// LocalServed is the served model's memory: its file, its KV cache as estimated from its GGUF header at the context size and
+// cache type the server was started with, and the device it is measured against (the GPU with the most free memory, else the
+// RAM). DeviceFree is what was free when the devices were read, before the model was loaded as a rule.
+type LocalServed struct {
+	ModelID    string           `json:"modelId"`
+	ModelBytes uint64           `json:"modelBytes"`
+	KVBytes    uint64           `json:"kvBytes"`
+	KV         localllm.KVCache `json:"kv"`
+	// Device is "gpu" or "ram"; DeviceName names the GPU.
+	Device      string       `json:"device"`
+	DeviceName  string       `json:"deviceName,omitempty"`
+	DeviceTotal uint64       `json:"deviceTotal"`
+	DeviceFree  uint64       `json:"deviceFree"`
+	Fit         localllm.Fit `json:"fit"`
 }
 
 func init() {
@@ -198,6 +226,16 @@ type localExt struct {
 	starting  bool
 	latest    string // the installed build's newest release, as the last update check read it (under mu)
 	stopWatch context.CancelFunc
+	// gguf holds each model file's header as read (under mu), kept while the file's size and time stay the same: a header
+	// with its vocabulary is megabytes, and the page reads the view often
+	gguf map[string]ggufEntry
+}
+
+type ggufEntry struct {
+	size int64
+	mod  time.Time
+	info localllm.GGUFInfo
+	err  error
 }
 
 type localDownload struct {
@@ -349,11 +387,23 @@ func (l *localExt) view(ctx context.Context) LocalView {
 		v.Runtime.Devices.Devices = []localllm.Device{}
 	}
 	v.Models = l.m.Store.List()
+	// a model's fit counts its KV cache at the settings the next start uses; the served one's at the settings it runs with
+	cache, ctxSize := l.launchCache(s), s.ContextSize
 	for i := range v.Models {
-		f := localllm.FitOf(v.Models[i].Size, v.Runtime.Devices, v.Memory)
+		c, n := cache, ctxSize
+		if v.Server.ModelID == v.Models[i].ID && (v.Server.State == "running" || v.Server.State == "starting") {
+			c, n = v.Server.CacheType, v.Server.ContextSize
+		}
+		kv := l.kvOf(v.Models[i], n, c)
+		v.Models[i].KV = &kv
+		f := localllm.FitWithKV(v.Models[i].Size, &kv, v.Runtime.Devices, v.Memory)
 		v.Models[i].Fit = &f
 		v.ModelsBytes += v.Models[i].Size
+		if v.Server.ModelID == v.Models[i].ID && (v.Server.State == "running" || v.Server.State == "starting") {
+			v.Served = servedOf(v.Models[i], kv, f, v.Runtime.Devices, v.Memory)
+		}
 	}
+	v.UsedBy = l.usedBy(ctx, s.ProviderID)
 	if free, err := runners.FreeBytes(l.m.Root); err == nil {
 		v.FreeBytes = free
 	} else if free, err := runners.FreeBytes(l.c.cfg.DataDir); err == nil {
@@ -485,13 +535,13 @@ func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend 
 	// the server runs the build about to be replaced: it is stopped, and started again on the build installed (or, when the
 	// install fails, on the one still in place), so an update does not take the provider down
 	if st := l.m.Server.State(); st.State == "running" || st.State == "starting" {
-		model := st.ModelID
+		model, auto := st.ModelID, st.Autostarted
 		if model == "" {
 			model = l.settings(ctx).ModelID
 		}
 		l.m.Server.Stop()
 		defer func() {
-			if err := l.serve(context.Background(), model); err != nil {
+			if err := l.serve(context.Background(), model, auto); err != nil {
 				l.c.logf("local models: starting the server again after the install: %v", err)
 			}
 		}()
@@ -689,13 +739,15 @@ func (l *localExt) startServer(ctx context.Context, modelID string, by string) (
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may start the local model server")
 	}
-	if err := l.serve(ctx, modelID); err != nil {
+	if err := l.serve(ctx, modelID, false); err != nil {
 		return LocalView{}, err
 	}
 	return l.view(ctx), nil
 }
 
-func (l *localExt) serve(ctx context.Context, modelID string) error {
+// serve starts the server on a model; auto says Drydock started it by itself (autostart, or again after an install of a server
+// it had started so), not a person.
+func (l *localExt) serve(ctx context.Context, modelID string, auto bool) error {
 	// the load outlives the request that asked for it: a page reload or a closed window while a large model loads must not
 	// kill the server (installs and downloads are detached the same way), and the provider row is written after the load
 	ctx = context.WithoutCancel(ctx)
@@ -731,7 +783,8 @@ func (l *localExt) serve(ctx context.Context, modelID string) error {
 	prog, args := l.m.ServerProgram(in)
 	// a new key for every start: the server demands it, and only the provider row made for it holds it (audit 2026-10-16, L32)
 	key := localllm.NewAPIKey()
-	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key}
+	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key,
+		Autostarted: auto}
 	if err := l.m.Server.Start(ctx, launch); err != nil {
 		return err
 	}
@@ -830,7 +883,7 @@ func (l *localExt) autostart(ctx context.Context) {
 		return
 	}
 	safe.Go("core.localExt.autostart", func() {
-		if err := l.serve(context.Background(), s.ModelID); err != nil {
+		if err := l.serve(context.Background(), s.ModelID, true); err != nil {
 			l.c.logf("local models: autostart: %v", err)
 		}
 	})
