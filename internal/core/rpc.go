@@ -154,10 +154,12 @@ func (c *Core) Methods() map[string]Method {
 		"task.list": bind(func(ctx context.Context, p struct {
 			ProjectID string   `json:"projectId"`
 			Statuses  []string `json:"statuses"`
+			// Assignee keeps the tasks of one assignee: an agent id, or the person's identity (app.info's human) for "My tasks".
+			Assignee string `json:"assignee"`
 			// Limit is how many of the newest tasks to return (default and ceiling: see TaskListDefault and TaskListMax).
 			Limit int `json:"limit"`
 		}) (any, error) {
-			f := tasks.Filter{ProjectID: p.ProjectID, Limit: p.Limit}
+			f := tasks.Filter{ProjectID: p.ProjectID, Assignee: p.Assignee, Limit: p.Limit}
 			if f.Limit <= 0 {
 				f.Limit = TaskListDefault
 			}
@@ -174,8 +176,9 @@ func (c *Core) Methods() map[string]Method {
 		"task.count": bind(func(ctx context.Context, p struct {
 			ProjectID string   `json:"projectId"`
 			Statuses  []string `json:"statuses"`
+			Assignee  string   `json:"assignee"`
 		}) (any, error) {
-			f := tasks.Filter{ProjectID: p.ProjectID}
+			f := tasks.Filter{ProjectID: p.ProjectID, Assignee: p.Assignee}
 			for _, s := range p.Statuses {
 				f.Statuses = append(f.Statuses, tasks.Status(s))
 			}
@@ -189,8 +192,10 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.TaskDiffAt(ctx, p.ID, p.EvidenceID)
 		}),
+		// task.assign hands a task to an agent (the reviewer is optional) or to the person themselves, also while its run is
+		// active (HandTask)
 		"task.assign": bind(func(ctx context.Context, p struct{ ID, Assignee, Reviewer string }) (any, error) {
-			return c.AssignTask(ctx, p.ID, p.Assignee, p.Reviewer)
+			return c.HandTask(ctx, p.ID, p.Assignee, p.Reviewer, c.Human())
 		}),
 		"task.start":  bind(func(ctx context.Context, p idParam) (any, error) { return c.StartTask(ctx, p.ID) }),
 		"task.cancel": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.CancelTask(ctx, p.ID) }),

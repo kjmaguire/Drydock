@@ -126,6 +126,9 @@ func (s *Scheduler) Tick(ctx context.Context, projectID string) (TickResult, err
 			res.Skipped = append(res.Skipped, Skip{t.ID, why})
 		}
 		switch {
+		case t.OwnedByPerson():
+			skip("a person owns this task: no agent works on it")
+			continue
 		case t.Assignee == "" || t.Reviewer == "":
 			skip("no worker or reviewer assigned")
 			continue
@@ -192,6 +195,47 @@ func (s *Scheduler) Tick(ctx context.Context, projectID string) (TickResult, err
 		}
 	}
 	return res, nil
+}
+
+// Wait is why a task, started now, would wait before its agent works: Behind is the earlier task it waits for (the collision
+// guard), nil when it waits for a free slot.
+type Wait struct {
+	Reason string      `json:"reason"`
+	Behind *tasks.Task `json:"-"`
+}
+
+// WouldWait applies Tick's rules for one task without starting anything: the collision guard against the tasks under way (it
+// waits for the earlier one that changes the same code), then the project's parallel-agent limit. nil: it would start now. A
+// provider's max_concurrent is left out (it changes by the second), and nothing else makes a task wait: an agent works on
+// several tasks side by side, each in its own session and worktree.
+func (s *Scheduler) WouldWait(ctx context.Context, t tasks.Task) (*Wait, error) {
+	dev := DefaultDevSettings()
+	if s.d.Dev != nil {
+		dev = s.d.Dev(ctx, t.ProjectID)
+	}
+	if dev.GuardOn() {
+		underway, err := s.d.Tasks.List(ctx, tasks.Filter{ProjectID: t.ProjectID, Statuses: activeStatuses})
+		if err != nil {
+			return nil, err
+		}
+		if c := declaredCollision(t, underway); c != nil {
+			return &Wait{Reason: fmt.Sprintf("waits for #%d %q, which changes the same code (%s)", c.Task.Seq, c.Task.Title, strings.Join(c.Files, ", ")), Behind: &c.Task}, nil
+		}
+	}
+	active, err := s.activeRuns(ctx, t.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if st, ok := s.runActive(ctx, t.RunID); ok && t.RunID != "" {
+		switch workflow.RunStatus(st) {
+		case workflow.StatusPending, workflow.StatusRunning, workflow.StatusRecovering:
+			active-- // its own run holds a slot already
+		}
+	}
+	if active >= dev.MaxParallel {
+		return &Wait{Reason: fmt.Sprintf("the project is at its limit of %d parallel agents", dev.MaxParallel)}, nil
+	}
+	return nil, nil
 }
 
 func (s *Scheduler) runActive(ctx context.Context, runID string) (string, bool) {

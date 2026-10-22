@@ -53,6 +53,15 @@ type Task struct {
 	DependsOn      []string `json:"dependsOn,omitempty"`
 }
 
+// PersonPrefix starts the assignee of a task a person took on themselves ("human:<name>", the core's human identity).
+const PersonPrefix = "human:"
+
+// OwnedByPerson reports whether a person owns the task (its assignee is "human:<name>"): no agent works on it, so nothing
+// starts a run for it, the scheduler skips it and the team lead does not look for a worker for it.
+func (t Task) OwnedByPerson() bool {
+	return strings.HasPrefix(t.Assignee, PersonPrefix) && len(t.Assignee) > len(PersonPrefix)
+}
+
 // Imported reports whether the task was made from text outside Drydock (an issue, an error report, a finding): such a task
 // carries the reference of its source.
 func (t Task) Imported() bool { return t.IssueRef != "" }
@@ -599,6 +608,9 @@ func (s *Service) guard(ctx context.Context, t Task, to Status, o TransitionOpts
 	case Claimed:
 		if t.Assignee == "" {
 			return bad("no assignee")
+		}
+		if t.OwnedByPerson() {
+			return bad("a person owns this task: no agent claims it")
 		}
 	case Review:
 		ev, err := s.Evidence(ctx, t.ID)

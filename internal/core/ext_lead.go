@@ -94,6 +94,12 @@ func startLead(ctx context.Context, c *Core) (map[string]Method, func(), error) 
 		}) (any, error) {
 			return pipeline.Interventions(ctx, c.DB, p.ProjectID, p.TaskID)
 		}),
+		// a person asks the team lead to split a task (trigger requested): its follow-ups wait in the backlog
+		"lead.split": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+		}) (any, error) {
+			return c.RequestSplit(ctx, p.TaskID, c.Human())
+		}),
 		// the monitor's pass on demand (the loop runs it every LeadMonitorEvery)
 		"lead.tick": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
@@ -102,6 +108,47 @@ func startLead(ctx context.Context, c *Core) (map[string]Method, func(), error) 
 		}),
 	}
 	return methods, func() { cancel(); wg.Wait() }, nil
+}
+
+// SplitResult is what lead.split returns: the lead's decision (split, or escalate when it thinks the task should not be split,
+// with its reason in message), the follow-up tasks it made (in BACKLOG), and the stored intervention.
+type SplitResult struct {
+	Action         string       `json:"action"`
+	Message        string       `json:"message"`
+	Reason         string       `json:"reason"`
+	LeadID         string       `json:"leadId"`
+	LeadName       string       `json:"leadName"`
+	CreatedTasks   []tasks.Task `json:"createdTasks"`
+	InterventionID string       `json:"interventionId"`
+	// Invalid is true when the lead's answers could not be used twice and the decision became an escalation.
+	Invalid bool `json:"invalid,omitempty"`
+}
+
+// RequestSplit is lead.split: a person asks the project's team lead to split a task into follow-ups (pipeline.Lead.RequestSplit,
+// trigger requested). Refused without a lead on the team, and for a finished task.
+func (c *Core) RequestSplit(ctx context.Context, taskID, by string) (SplitResult, error) {
+	if !isPerson(by) {
+		return SplitResult{}, errors.New("only a person asks the team lead to split a task")
+	}
+	if err := c.RequireLicensed(ctx, "start_work"); err != nil {
+		return SplitResult{}, err
+	}
+	l := c.lead.Load()
+	if l == nil {
+		return SplitResult{}, pipeline.ErrNoLead
+	}
+	o, err := l.RequestSplit(ctx, taskID, by)
+	if err != nil {
+		return SplitResult{}, err
+	}
+	res := SplitResult{Action: o.Decision.Action, Message: o.Decision.Message, Reason: o.Decision.Reason, LeadID: o.LeadID, LeadName: o.LeadName,
+		CreatedTasks: []tasks.Task{}, InterventionID: o.InterventionID, Invalid: o.Invalid}
+	for _, id := range o.CreatedTasks {
+		if t, err := c.Tasks.Get(ctx, id); err == nil {
+			res.CreatedTasks = append(res.CreatedTasks, t)
+		}
+	}
+	return res, nil
 }
 
 // ---- hooks the base wiring (core.go) points at ----

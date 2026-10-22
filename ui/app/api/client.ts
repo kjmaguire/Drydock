@@ -20,6 +20,7 @@ import { createSecurityClient, type SecurityClient } from './securityClient.ts';
 import { createFolderClient, type FolderClient } from './folderClient.ts';
 import { createLocalClient, type LocalClient } from './localClient.ts';
 import { createShellClient, type ShellClient } from './shellClient.ts';
+import { createControlClient, type ControlClient } from './controlClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -68,7 +69,7 @@ const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   estimated: Number(v?.estimated) || 0,
 });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, ControlClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -102,17 +103,25 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;
   taskCreate(req: TaskCreateReq): Promise<Task>;
-  /** The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. */
-  taskList(projectId: string, statuses?: string[]): Promise<Task[]>;
-  /** How many tasks the project has (those in the given statuses when any are named). */
-  taskCount(projectId: string, statuses?: string[]): Promise<TaskCount>;
+  /**
+   * The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. An
+   * empty projectId lists every project's. `assignee` keeps one assignee's: an agent id, or app.info's human for "My tasks".
+   */
+  taskList(projectId: string, statuses?: string[], assignee?: string): Promise<Task[]>;
+  /** How many tasks the project has (those in the given statuses, and of the given assignee, when named). */
+  taskCount(projectId: string, statuses?: string[], assignee?: string): Promise<TaskCount>;
   taskGet(id: string): Promise<TaskDetail>;
   /**
    * The task's diff evidence as text: the one with `evidenceId` (the core refuses an id that is not a diff of the task), or the
    * newest when none is given. A screen that shows a patch beside an Approve button asks for the evidence its card is keyed on.
    */
   taskDiff(id: string, evidenceId?: number): Promise<string>;
-  taskAssign(id: string, assignee: string, reviewer: string): Promise<Task>;
+  /**
+   * Hands the task to an agent, also while its run is active (its current turn stops and the new agent goes on in the same
+   * worktree), or to the person themselves (assignee = app.info's human: no agent works on it). Without a reviewer the task
+   * keeps its own unless that is the new worker; then the project's reviewer-role agent reviews, else the first other agent.
+   */
+  taskAssign(id: string, assignee: string, reviewer?: string): Promise<Task>;
   /** Returns the run id. */
   taskStart(id: string): Promise<string>;
   taskCancel(id: string): Promise<void>;
@@ -177,6 +186,7 @@ export function createClient(t: Transport): Client {
     ...createRepoMapClient(t),
     ...createLocalClient(t),
     ...createShellClient(t),
+    ...createControlClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
@@ -199,14 +209,17 @@ export function createClient(t: Transport): Client {
     agentArchive: (id) => t.call('agent.archive', { id }),
     agentList: async (projectId) => arr(await t.call<Agent[] | null>('agent.list', { projectId })),
     taskCreate: (req) => t.call('task.create', req),
-    taskList: async (projectId, statuses = []) => arr(await t.call<Task[] | null>('task.list', { projectId, statuses })),
-    taskCount: async (projectId, statuses = []) => ({ total: Number((await t.call<TaskCount | null>('task.count', { projectId, statuses }))?.total) || 0 }),
+    taskList: async (projectId, statuses = [], assignee = '') =>
+      arr(await t.call<Task[] | null>('task.list', assignee ? { projectId, statuses, assignee } : { projectId, statuses })),
+    taskCount: async (projectId, statuses = [], assignee = '') => ({
+      total: Number((await t.call<TaskCount | null>('task.count', assignee ? { projectId, statuses, assignee } : { projectId, statuses }))?.total) || 0,
+    }),
     taskGet: async (id) => {
       const d = await t.call<TaskDetail>('task.get', { id });
       return { ...d, evidence: arr(d.evidence), reviews: arr(d.reviews), pending: arr(d.pending) };
     },
     taskDiff: async (id, evidenceId) => (await t.call<string | null>('task.diff', evidenceId === undefined ? { id } : { id, evidenceId })) ?? '',
-    taskAssign: (id, assignee, reviewer) => t.call('task.assign', { id, assignee, reviewer }),
+    taskAssign: (id, assignee, reviewer = '') => t.call('task.assign', { id, assignee, reviewer }),
     taskStart: (id) => t.call('task.start', { id }),
     taskCancel: async (id) => {
       await t.call('task.cancel', { id });

@@ -514,6 +514,14 @@ export interface TaskDetail {
   run?: RunInfo;
   pending: PendingRequest[];
   roomId?: string;
+  /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
+  paused?: TaskPause;
+}
+
+/** core.TaskPause: who paused a task's run (a "human:<name>" identity), and when (Unix ms). */
+export interface TaskPause {
+  by: string;
+  at: number;
 }
 
 export type RoomKind = 'channel' | 'task' | 'dm' | 'group';

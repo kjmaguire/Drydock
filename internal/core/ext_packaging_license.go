@@ -354,6 +354,8 @@ var gatedMethods = map[string]string{
 	"agent.create": "create_agent", "agent.update": "create_agent", "project.create": "create_project", "project.attachRepo": "create_project", "project.setup": "create_project", "github.clone": "create_project", "provider.create": "add_connection", "integration.connect": "add_connection",
 	"chat.create": "chat", "chat.send": "chat",
 	"recommend.start": "start_work", // a paid turn of the team lead (audit 2026-10-16, L1); Core.Recommend checks it too, for the automatic path
+	"task.resume":     "start_task", // a paused run goes on; pausing only stops work, so it stays available
+	"lead.split":      "start_work", // a paid turn of the team lead
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an

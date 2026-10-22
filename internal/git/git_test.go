@@ -240,6 +240,9 @@ func TestSlug(t *testing.T) {
 			t.Errorf("Slug(%q)=%q want %q", in, got, want)
 		}
 	}
+	if got := BranchName("tsk_1", "Add Subtract!"); got != "drydock/tsk_1-add-subtract" {
+		t.Errorf("BranchName = %q", got)
+	}
 }
 
 // A task's diff is its own work. Once another task has merged into the base branch, a diff taken against the branch's current

@@ -71,9 +71,13 @@ func TypeScript() (string, error) {
 
 // threadTS and activityTS are Thread and Activity as the UI reads them: their events are the union.
 type threadTS struct {
-	ThreadID string     `json:"threadId"`
-	AgentID  string     `json:"agentId,omitempty"`
-	Events   []aguiTSEv `json:"events"`
+	ThreadID  string     `json:"threadId"`
+	AgentID   string     `json:"agentId,omitempty"`
+	Adapter   string     `json:"adapter,omitempty"`
+	Model     string     `json:"model,omitempty"`
+	RunMode   string     `json:"runMode,omitempty"`
+	WSLDistro string     `json:"wslDistro,omitempty"`
+	Events    []aguiTSEv `json:"events"`
 }
 
 // aguiTSEv stands for the AguiEvent union in the generated types.
