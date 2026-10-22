@@ -1024,3 +1024,9 @@ Open, owner action:
   updates, which installs a newer build of the same source and backend (it reads "Update to <tag>" when the twice-daily check
   found one); the engine's Update and Remove buttons are gone. The provider Drydock registers is "Models on this PC" (one
   registered earlier keeps its name), and the build sources are "TurboQuant build" and "Official weekly build".
+  (5) *CI runners* ("migrate/merge that into the GitHub Window") are a section of the GitHub page, where its read-only runner
+  summary was; Connections no longer shows them (this changes where P56 and P68 put them). (6) *A project's Integrations* ("make
+  those more like the cards we see under Integrations under Workspace") use the workspace page's order and tiles: Services
+  (the app-sync tiles, formerly "App sync"), then Agent tools, one tile per MCP server (the project's own first, then the
+  library's not yet added) with what it is, which of the project's agents may use it and an on/off/not added badge; the open
+  tile's panel holds the grants, Turn off, Take out or Add. A vendor's app sync and its MCP server stay two tiles.
