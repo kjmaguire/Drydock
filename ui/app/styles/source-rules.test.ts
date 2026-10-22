@@ -79,3 +79,17 @@ describe('the type rules the UI audit set (B1-B3)', () => {
     expect(sizes).toEqual(['xs=12', 'sm=12.5', 'md=13', 'lg=15', 'xl=18', '2xl=22', 'title=22']);
   });
 });
+
+describe('the shape rules of Graphite (decision P97)', () => {
+  it('rounds no corner more than the largest radius token (14px): the 16-26px cards of Crew HQ are gone', () => {
+    const bad: string[] = [];
+    for (const f of FILES) {
+      f.text.split('\n').forEach((line, i) => {
+        const m = /(?:borderRadius\s*:|border-radius\s*:)\s*['"`]?([^'"`;,}]*)/.exec(line);
+        if (!m) return;
+        if (m[1]!.match(/\d+(?:\.\d+)?px/g)?.some((v) => parseFloat(v) > 14)) bad.push(`${f.path}:${i + 1}: ${line.trim().slice(0, 90)}`);
+      });
+    }
+    expect(bad).toEqual([]);
+  });
+});

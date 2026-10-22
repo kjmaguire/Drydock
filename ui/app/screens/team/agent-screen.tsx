@@ -91,7 +91,7 @@ const heroCss = css({
   gap: t.s6,
   padding: t.s6,
   border: `1px solid ${t.border}`,
-  borderRadius: '26px',
+  borderRadius: t.rXl,
   background: t.bgSurface,
   minWidth: '0',
   '& .who': { flex: '1', minWidth: '0' },

@@ -40,7 +40,7 @@ function el<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, style:
   return node;
 }
 
-const BUTTON = 'font:inherit;font-weight:600;padding:6px 16px;border:1px solid GrayText;border-radius:999px;background:ButtonFace;color:ButtonText;cursor:pointer;';
+const BUTTON = 'font:inherit;font-weight:600;padding:6px 16px;border:1px solid GrayText;border-radius:7px;background:ButtonFace;color:ButtonText;cursor:pointer;';
 const PRE = 'margin:0 0 16px;padding:12px;border:1px solid GrayText;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 ui-monospace,Consolas,monospace;';
 
 function defaultReload(doc: Document): void {
