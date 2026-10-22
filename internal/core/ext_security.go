@@ -133,6 +133,10 @@ func init() {
 			}) (any, error) {
 				return s.folders(ctx, p.Limit)
 			}),
+			// every scan in progress, of a project or a folder (the sidebar's Running count, the inbox's Running tab)
+			"security.scan.running": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				return s.runningScans(ctx), nil
+			}),
 			"security.scan.report": bind(func(ctx context.Context, p struct {
 				ID string `json:"id"`
 			}) (any, error) {
@@ -616,6 +620,57 @@ func mergeFolderScans(running, stored []scan.Summary, limit int) []scan.Summary 
 	if len(out) > limit {
 		out = out[:limit]
 	}
+	return out
+}
+
+// RunningScan is a scan in progress as the workspace lists it: what it reads, by whom, and each engine's state and count.
+type RunningScan struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId,omitempty"`
+	Folder    string `json:"folder,omitempty"` // a folder scan's folder (decision P61)
+	// Name is what the scan reads, as a person names it: the project's name, or the folder's last element.
+	Name      string              `json:"name"`
+	By        string              `json:"by"`
+	StartedAt int64               `json:"startedAt"`
+	Engines   []scan.EngineResult `json:"engines"`
+	Counts    scan.Counts         `json:"counts"`
+}
+
+// runningScans lists every scan in progress, newest first.
+func (s *securityExt) runningScans(ctx context.Context) []RunningScan {
+	type entry struct {
+		key string
+		rep scan.Report
+	}
+	var live []entry
+	s.mu.Lock()
+	for key, r := range s.running {
+		live = append(live, entry{key, r.Snapshot()})
+	}
+	s.mu.Unlock()
+	out := []RunningScan{}
+	for _, e := range live {
+		if e.rep.Status != scan.StatusRunning { // finished a moment ago, about to leave the running ones
+			continue
+		}
+		rs := RunningScan{ID: e.rep.ID, ProjectID: e.rep.ProjectID, By: e.rep.By, StartedAt: e.rep.StartedAt, Engines: e.rep.Engines, Counts: e.rep.Counts}
+		if strings.HasPrefix(e.key, folderPrefix) {
+			rs.Folder = e.rep.Dir
+			rs.Name = filepath.Base(e.rep.Dir)
+		} else if p, err := s.c.GetProject(ctx, e.rep.ProjectID); err == nil {
+			rs.Name = p.Name
+		}
+		if rs.Engines == nil {
+			rs.Engines = []scan.EngineResult{}
+		}
+		out = append(out, rs)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].StartedAt != out[j].StartedAt {
+			return out[i].StartedAt > out[j].StartedAt
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 

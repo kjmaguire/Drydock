@@ -87,6 +87,10 @@ type RequestSpec struct {
 	Title      string          `json:"title"`
 	Payload    json.RawMessage `json:"payload,omitempty"`
 	ActionHash string          `json:"actionHash,omitempty"` // approvals are bound to the exact action
+	// Phase says which gate a review request is: "spec" (accept the spec), "merge" (review and merge) or "plan"
+	// (review a plan). It is stored with the
+	// request (approvals.phase), so the inbox tells them apart without reading the title.
+	Phase string `json:"phase,omitempty"`
 	// Retry makes the node run again after the human answers, instead of completing with the answer as its output. The
 	// node's original inbox is restored, so the second execution sees what the first saw. A gate in front of an agent
 	// turn (the budget gate) uses it: the turn is still owed once the human has decided. Whatever the decision, the node

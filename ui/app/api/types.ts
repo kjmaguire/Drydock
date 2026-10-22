@@ -485,6 +485,35 @@ export interface RequestSpec {
   title: string;
   payload?: unknown;
   actionHash?: string;
+  /** Which gate a review request is (from the pipeline): accept the spec, review and merge, or review a plan. */
+  phase?: ReviewPhase;
+}
+
+/** The gate a review request is (workflow.RequestSpec.Phase): "spec", "merge" or "plan". */
+export type ReviewPhase = 'spec' | 'merge' | 'plan' | string;
+
+/**
+ * security.TaskAllowRule: a person's "approve for this task" of one call of an agent (decision P97). Later requests of the same
+ * task, agent and tool that are the same call are approved without asking until the task ends: for a shell tool the same
+ * programs with the same arguments (`commands`), for any other tool the same input (`inputDigest`).
+ */
+export interface TaskAllowRule {
+  id: string;
+  projectId: string;
+  taskId: string;
+  agentId: string;
+  /** The approval's tool, "<cli>:<tool>" ("claude:Bash"). */
+  tool: string;
+  /** A shell command's first program ("go"). */
+  program?: string;
+  commands?: { program: string; args: string[] }[];
+  inputDigest?: string;
+  /** What it allows as a person reads it: the command, or where the call goes. */
+  summary: string;
+  /** The request it was approved on. */
+  approvalId: string;
+  createdBy: string;
+  createdAt: number;
 }
 
 export interface PendingRequest {
@@ -514,6 +543,8 @@ export interface TaskDetail {
   run?: RunInfo;
   pending: PendingRequest[];
   roomId?: string;
+  /** The person's "approve for this task" rules in force for the task's agents (P97); they end with the task. taskGet always fills it. */
+  allowRules?: TaskAllowRule[];
 }
 
 export type RoomKind = 'channel' | 'task' | 'dm' | 'group';
@@ -617,6 +648,14 @@ export interface NeedsYouItem {
   createdAt: string;
   /** What a task's item is about (UI review P1-1): the assignee, the newest diff's size, the checks and the reviewer's verdict. */
   context?: NeedsContext;
+  /** The task's number in its project (with the project, its key); absent for an item of no task. */
+  taskSeq?: number;
+  /** For kind review: which gate it is, from the request that made it. */
+  phase?: ReviewPhase;
+  /** The name of the agent the item is about (agentId): the one asking, or the task's assignee for a review. */
+  agentName?: string;
+  /** When an approval lapses unanswered (RFC 3339, like createdAt). */
+  expiresAt?: string;
 }
 
 export interface NeedsContext {

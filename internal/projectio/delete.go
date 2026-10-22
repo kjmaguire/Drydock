@@ -79,6 +79,7 @@ var DeleteSteps = []DeleteStep{
 	{Table: "dead_letters", Where: `task_id IN ` + taskIDs},
 	{Table: "handoffs", Where: `task_id IN ` + taskIDs},
 	{Table: "watchdog_trips", Where: `task_id IN ` + taskIDs},
+	{Table: "permission_allow_rules", Where: `project_id=@p OR task_id IN ` + taskIDs},
 	{Table: "approvals", Where: `project_id=@p OR run_id IN ` + runIDs + ` OR task_id IN ` + taskIDs},
 	{Table: "run_leases", Where: `run_id IN ` + runIDs},
 	{Table: "node_executions", Where: `run_id IN ` + runIDs},

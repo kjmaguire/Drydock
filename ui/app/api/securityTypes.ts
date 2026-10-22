@@ -66,6 +66,21 @@ export interface ScanReport {
   storeError?: string;
 }
 
+/** core.RunningScan (security.scan.running): a scan in progress anywhere in the workspace, newest first. */
+export interface RunningScan {
+  id: string;
+  /** Set for a project's scan. */
+  projectId?: string;
+  /** Set for a folder scan (decision P61). */
+  folder?: string;
+  /** What it reads as a person names it: the project's name, or the folder's last element. */
+  name: string;
+  by: string;
+  startedAt: number;
+  engines: EngineResult[];
+  counts: ScanCounts;
+}
+
 export interface ScanSummary {
   id: string;
   projectId: string;

@@ -2,7 +2,7 @@
 // nil slices (JSON null) into empty arrays.
 
 import type { Transport } from './transport.ts';
-import type { ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools } from './securityTypes.ts';
+import type { RunningScan, ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools } from './securityTypes.ts';
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const ZERO: ScanCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 };
@@ -32,6 +32,8 @@ export interface SecurityClient {
   securityFolderScanGet(folder: string): Promise<ScanReport | null>;
   /** The recent folder scans of every folder, running ones first, then newest first. */
   securityScanFolders(limit?: number): Promise<ScanSummary[]>;
+  /** Every scan in progress, of a project or a folder, newest first (the sidebar's Running count, the inbox's Running tab). */
+  securityScanRunning(): Promise<RunningScan[]>;
 }
 
 export function createSecurityClient(t: Transport): SecurityClient {
@@ -53,5 +55,7 @@ export function createSecurityClient(t: Transport): SecurityClient {
       return r ? report(r) : null;
     },
     securityScanFolders: async (limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.folders', { limit })).map(summary),
+    securityScanRunning: async () =>
+      arr(await t.call<RunningScan[] | null>('security.scan.running', {})).map((r) => ({ ...r, engines: arr(r.engines), counts: counts(r.counts) })),
   };
 }
