@@ -7,7 +7,7 @@ import { byLabel, byText, cleanup, mount, optionsOf, renderPlain, type, valueOf,
 import { EvidenceList } from './evidence.tsx';
 import { UnifiedDiff } from './raw-diff.tsx';
 import { TaskDetailScreen } from './task-detail-screen.tsx';
-import { detail, recorder, svc, task } from './testing.ts';
+import { AGENTS, detail, recorder, svc, task } from './testing.ts';
 
 afterEach(cleanup);
 
@@ -37,42 +37,141 @@ async function ready(r: ReturnType<typeof mount>) {
 }
 
 describe('Task view: header, properties and content', () => {
-  it('shows the number and title as the heading, the status, the properties and the description', async () => {
+  it('shows the breadcrumb, the status pill, the title, the description, the criteria with their state and the properties', async () => {
     const d = detail({
-      task: task({ status: 'IN_PROGRESS', description: 'Make **Multiply** work.', acceptance: ['Given 3 and 4 When Multiply Then 12'], branch: 'drydock/t1', iteration: 2, costUsd: 0.5 }),
+      task: task({
+        status: 'IN_PROGRESS',
+        description: 'Make **Multiply** work.',
+        acceptance: ['Given 3 and 4 When Multiply Then 12', 'Given 0 When Multiply Then 0', 'Existing tests still pass'],
+        branch: 'drydock/t1-add-multiply',
+        iteration: 2,
+        costUsd: 0.5,
+        template: 'bugfix',
+        labels: ['parser'],
+        worktree: '/w/t1',
+        started: Date.now() - 65_000,
+        seq: 43,
+      }),
+      acceptanceState: [
+        { index: 0, id: 'AC1', state: 'passed' },
+        { index: 1, id: 'AC2', state: 'failing' },
+      ],
       roomId: 'room_9',
+      evidence: [
+        { id: 1, taskId: 't1', attempt: 2, kind: 'test', passed: false, summary: '1 failed', created: 0 },
+        { id: 2, taskId: 't1', attempt: 2, kind: 'test', passed: true, summary: 'ok', created: 0 },
+        { id: 3, taskId: 't1', attempt: 1, kind: 'test', passed: true, summary: 'ok', created: 0 },
+      ],
       run: { id: 'run-1', workflow: 'iterate-until-verified', status: 'RUNNING', topology: '', created: 0, updated: 0, version: 1 },
     });
-    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, usageList: async () => [usage({ source: 'estimated' })] }));
-    await waitFor(() => expect(r.$('h1')!.textContent).toContain('#1 Add Multiply'), r);
-    expect(r.$('[data-testid="task-status"]')!.textContent).toContain('In progress');
+    const s = svc(
+      { taskGet: async () => d, usageList: async () => [usage({ source: 'estimated' })], projectList: async () => [{ id: 'prj_1', name: 'gocalc', key: 'GOC' } as never] },
+      { agents: [{ ...AGENTS[0]!, model: 'sonnet', runMode: 'wsl', wslDistro: 'Ubuntu' }, AGENTS[1]!] },
+    );
+    const r = mount(<TaskDetailScreen id="t1" />, s);
+    await waitFor(() => expect(r.$('h1')!.textContent).toBe('Add Multiply'), r);
+    // the bar: project › key, the pill with the run
+    const bar = r.$('header')!;
+    await waitFor(() => expect(byText(bar, 'a', 'gocalc').getAttribute('href')).toBe('/tasks'), r);
+    await waitFor(() => expect(r.$('[data-testid="task-key"]')!.textContent).toBe('GOC-43'), r);
+    expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Building · run 3');
+    expect(r.$('[data-testid="task-status"]')!.getAttribute('data-tone')).toBe('accent');
+    expect(byText(bar, 'a', 'Open task channel').getAttribute('href')).toBe('/room/room_9');
+    // description as Markdown, the criteria with their state in words
+    expect(r.$('.md strong')!.textContent).toBe('Multiply');
+    const crit = Array.from(r.$$('[data-testid="task-criteria"] li'));
+    expect(crit.map((li) => [li.getAttribute('data-state'), li.textContent, li.querySelector('svg')!.getAttribute('aria-label')])).toEqual([
+      ['passed', 'Given 3 and 4 When Multiply Then 12', 'passes'],
+      ['failing', 'Given 0 When Multiply Then 0', 'fails'],
+      ['unknown', 'Existing tests still pass', 'not checked yet'],
+    ]);
+    expect(crit[0]!.getAttribute('title')).toBe('AC1: passes');
+    // the properties
     const meta = r.$('.task-meta')!;
     await waitFor(() => expect(meta.textContent).toContain('Dana'), r);
+    expect(r.$('[data-testid="task-state"]')!.textContent).toBe('Building');
     expect(meta.textContent).toContain('Rex');
-    expect(meta.textContent).toContain('drydock/t1');
-    expect(meta.textContent).toContain('2 of 5');
     expect(meta.querySelectorAll('[data-dot="true"]').length).toBe(2);
+    expect(r.$('[data-testid="task-runs-on"]')!.textContent).toBe('Claude Code WSL');
+    expect(meta.textContent).toContain('sonnet');
+    expect(meta.querySelector('code')!.textContent).toBe('drydock/t1-add-multiply');
+    expect(meta.textContent).toContain('bugfix');
+    expect(Array.from(r.$$('[data-testid="task-label"]')).map((e) => e.textContent)).toEqual(['parser']);
+    expect(meta.textContent).toContain('iterate-until-verified · running');
+    // this run: the elapsed clock, the test runs of the newest attempt, the cost with its source
+    expect(r.$('[data-testid="task-elapsed"]')!.textContent).toMatch(/^1:0[5-7]$/);
+    expect(r.$('[data-testid="task-test-runs"]')!.textContent).toBe('2');
+    expect(meta.textContent).toContain('run 3 of 5');
     expect(r.$('[data-testid="task-cost"]')!.textContent).toBe('$0.50');
     await waitFor(() => expect(r.$('[data-testid="task-cost"]')!.parentElement!.textContent).toContain('estimated'), r);
-    expect(byText(r.container, 'a', 'Open task channel').getAttribute('href')).toBe('/room/room_9');
     expect(byText(r.container, 'a', 'Workflow and explanation').getAttribute('href')).toBe('/task/t1/run');
-    expect(r.$('strong')).toBeTruthy();
-    expect(r.container.textContent).toContain('Given 3 and 4 When Multiply Then 12');
-    expect(r.$('.md strong')!.textContent).toBe('Multiply');
-    // while a run is active, only cancel is offered (no assignment)
+    // while a run is active: no assignment, cancel beside the properties, the steer box
     expect(r.$('[role="combobox"][aria-label="Worker"]')).toBeNull();
+    expect(meta.querySelector('[role="group"][aria-label="Cancel the task"]')).toBeTruthy();
     expect(buttonNames(r.container)).toContain('Cancel task');
+    expect(byLabel<HTMLInputElement>(r.container, 'Message the agent').placeholder).toBe('Steer Dana: it reads this before its next step');
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(1), r);
-    // the step bar: the spec is done (one criterion), the code is being written on attempt 2
+    // the steps: the spec is done (three criteria), the code is being written on attempt 3, a check of the newest attempt failed
     const steps = Array.from(r.$$('[data-testid="task-steps"] li[data-step]'));
     expect(steps.map((x) => x.getAttribute('data-step'))).toEqual(['spec', 'code', 'checks', 'review', 'you']);
-    expect(steps.map((x) => x.getAttribute('data-state'))).toEqual(['done', 'current', 'todo', 'todo', 'todo']);
-    expect(steps[0]!.textContent).toContain('1 criteria');
-    expect(steps[1]!.textContent).toContain('attempt 2');
+    expect(steps.map((x) => x.getAttribute('data-state'))).toEqual(['done', 'current', 'failed', 'todo', 'todo']);
+    expect(steps[0]!.textContent).toContain('3 criteria');
+    expect(steps[1]!.textContent).toContain('attempt 3');
     expect(steps[1]!.getAttribute('aria-current')).toBe('step');
-    // the task's model and time are properties
-    expect(meta.textContent).toContain('Model');
-    expect(meta.textContent).toContain('Time');
+    // the activity follows the criteria in the main column; the properties are their own landmark
+    const main = r.$('article')!;
+    expect(main.querySelector('[data-testid="task-activity"]')).toBeTruthy();
+    expect(r.$('aside[aria-label="Properties"] .task-meta')).toBeTruthy();
+  });
+
+  it("the elapsed time counts live while the task runs; Runs on is the core's resolution of the agent's CLI", async () => {
+    const d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 1, started: Date.now() - 3_000 }), run: { id: 'run-1', workflow: 'w', status: 'RUNNING', topology: '', created: 0, updated: 0, version: 1 } });
+    const taskAssignPreview = recorder(async (_id: string, _a: string) => ({ agent: { id: 'a1', name: 'Dana', role: 'backend', adapter: 'codex', model: '', runMode: 'native', status: '' } }) as never);
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskAssignPreview }));
+    const el = await waitFor(() => need(r.$('[data-testid="task-elapsed"]')), r);
+    const first = el.textContent!;
+    await waitFor(() => expect(r.$('[data-testid="task-elapsed"]')!.textContent).not.toBe(first), r, 3000);
+    await waitFor(() => expect(r.$('[data-testid="task-runs-on"]')!.textContent).toBe('Codex'), r);
+    expect(taskAssignPreview.calls[0]).toEqual(['t1', 'a1']);
+  });
+
+  it('the Checks grid shows the check kinds of the task with their state, from task.summaries', async () => {
+    const taskSummaries = recorder(async () => ({
+      summaries: [
+        {
+          taskId: 't1',
+          checks: [
+            { kind: 'test', status: 'running' },
+            { kind: 'lint', status: 'passed' },
+            { kind: 'typecheck', status: 'failed', reason: 'calc.go:3: undefined: x' },
+            { kind: 'ci', status: 'not_run' },
+          ],
+        } as never,
+      ],
+      total: 1,
+      partial: false,
+    }));
+    const d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 1 }) });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d, taskSummaries }));
+    await waitFor(() => expect(r.$$('[data-testid="task-checks"] li').length).toBe(4), r);
+    const items = Array.from(r.$$('[data-testid="task-checks"] li'));
+    expect(items.map((li) => [li.getAttribute('data-state'), li.textContent])).toEqual([
+      ['running', 'tests, running'],
+      ['passed', 'lint, passed'],
+      ['failed', 'types, failed'],
+      ['not_run', 'ci, not run yet'],
+    ]);
+    expect(items[2]!.getAttribute('title')).toBe('failed: calc.go:3: undefined: x');
+    expect(taskSummaries.calls[0]).toEqual([{ projectId: 'prj_1', ids: ['t1'] }]);
+    // a check that runs is in the pill's words
+    expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Running checks · run 2');
+  });
+
+  it('says when no check has run, and a task that never started has no elapsed time', async () => {
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail() }));
+    await waitFor(() => expect(r.container.textContent).toContain('No checks have run yet.'), r);
+    expect(r.$('[data-testid="task-elapsed"]')!.textContent).toBe('not started');
+    expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Backlog');
   });
 
   // audit 2026-10-16, M27: the team lead's follow-up waits in the backlog for a person; the page says where it came from and why
@@ -80,7 +179,7 @@ describe('Task view: header, properties and content', () => {
     const SENTENCE = 'It waits in the backlog until you move it on; the lead cannot start it by itself.';
     const open = async (over: Parameters<typeof task>[0]) => {
       const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail({ task: task(over) }) }));
-      await waitFor(() => expect(r.$('h1')!.textContent).toContain('#1 Add Multiply'), r);
+      await waitFor(() => expect(r.$('h1')!.textContent).toContain('Add Multiply'), r);
       return r;
     };
     const split = await open({ status: 'BACKLOG', origin: 'lead:2' });
@@ -88,7 +187,7 @@ describe('Task view: header, properties and content', () => {
     expect(note.querySelector('[data-testid="task-origin"]')!.textContent).toBe('Split off by the team lead');
     expect(note.querySelector('[data-testid="task-origin"]')!.getAttribute('title')).toBe('Step 2 from a task you made');
     expect(note.textContent).toBe(`Split off by the team lead${SENTENCE}`);
-    // the sentence is under the badge, in the header beside the title, and not part of the heading's name
+    // the sentence is under the badge, beside the title, and not part of the heading's name
     expect(split.$('h1')!.textContent).not.toContain('Split off');
     expect(note.firstElementChild!.getAttribute('data-testid')).toBe('task-origin');
     cleanup();
@@ -108,7 +207,7 @@ describe('Task view: header, properties and content', () => {
     }
   });
 
-  it('a task waiting for you shows the decide card beside the work, with You lit on the step bar', async () => {
+  it('a task waiting for you shows the decide card above the Activity, with You lit in the steps', async () => {
     const d = detail({
       task: task({ status: 'WAITING_HUMAN', iteration: 1, started: 1_700_000_000_000, model: 'model-x' }),
       evidence: [{ id: 1, taskId: 't1', attempt: 1, kind: 'test', passed: true, summary: 'ok', created: 0 }],
@@ -118,21 +217,23 @@ describe('Task view: header, properties and content', () => {
     });
     const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
     await waitFor(() => expect(r.$('[data-testid="review-panel"]')).toBeTruthy(), r);
-    expect(r.$('[data-testid="task-status"]')!.textContent).toContain('Waiting for you');
-    // the decide card is in the side column, above the properties
-    const side = r.$('aside')!;
-    const panel = side.querySelector('[data-testid="review-panel"]')!;
-    const meta = side.querySelector('.task-meta')!;
-    expect(panel.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(buttonNames(side)).toContain('Approve');
-    expect(buttonNames(side)).toContain('Request changes');
+    expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Waiting for you · run 2');
+    expect(r.$('[data-testid="task-status"]')!.getAttribute('data-tone')).toBe('warn');
+    // the decide card is in the main column, above the Activity
+    const main = r.$('article')!;
+    const panel = main.querySelector('[data-testid="review-panel"]')!;
+    const activity = main.querySelector('[data-testid="task-activity"]')!;
+    expect(panel.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(buttonNames(panel)).toContain('Approve');
+    expect(buttonNames(panel)).toContain('Request changes');
     const steps = Array.from(r.$$('[data-testid="task-steps"] li[data-step]'));
     expect(steps.map((x) => x.getAttribute('data-state'))).toEqual(['done', 'done', 'done', 'done', 'current']);
     expect(steps[2]!.textContent).toContain('1 of 1');
     expect(steps[3]!.textContent).toContain('ship it');
     expect(steps[4]!.textContent).toContain('approve');
+    const meta = r.$('.task-meta')!;
     expect(meta.textContent).toContain('model-x');
-    expect(meta.textContent).not.toContain('not started');
+    expect(r.$('[data-testid="task-elapsed"]')!.textContent).not.toBe('not started');
   });
 
   it('a cost with no usage rows is marked as of unknown source; no cost says not reported', async () => {
@@ -155,8 +256,6 @@ describe('Task view: header, properties and content', () => {
     expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'logs' });
     await r.act(() => byText(r.container, 'button', 'Open in the dock').click());
     expect(s.ui.dock.tab).toBe('diff');
-    await r.act(() => byText(r.container, 'button', 'Terminal').click());
-    expect(s.ui.dock.tab).toBe('terminal');
   });
 
   it('shows the raw patch on request, as text lines classed by kind', async () => {
@@ -392,7 +491,7 @@ describe('Task view: assignment and control', () => {
     let status = 'IN_PROGRESS';
     const s = svc({ taskGet: async () => detail({ task: task({ status }) }) });
     const r = mount(<TaskDetailScreen id="t1" />, s);
-    await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toContain('In progress'), r);
+    await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toBe('Building'), r);
     status = 'VERIFICATION';
     s.emit({ type: 'task.status_changed', taskId: 't1' });
     await waitFor(() => expect(r.$('[data-testid="task-status"]')!.textContent).toContain('Awaiting your approval'), r);

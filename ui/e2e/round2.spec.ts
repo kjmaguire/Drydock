@@ -141,7 +141,8 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await expect(page.getByTestId('task-cost').locator('xpath=..')).toContainText(/reported|estimated/);
 
   // the Agent Inspector (from the details panel's Agents tab: the thread opened earlier still holds the panel): runs with PID
-  // and working directory, usage with sources
+  // and working directory, usage with sources. The task page has its own properties, so the panel starts closed beside it.
+  await page.getByRole('complementary', { name: 'Details' }).getByRole('button', { name: 'Show details' }).click();
   await page.getByRole('complementary', { name: 'Details' }).getByRole('tab', { name: 'Agents' }).click();
   await page.getByRole('button', { name: 'Inspect' }).first().click();
   const insp = page.getByTestId('inspector');

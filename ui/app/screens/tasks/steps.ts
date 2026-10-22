@@ -105,7 +105,8 @@ export function stepsFor(
 
   // Code
   if (status === 'BLOCKED' && code.state === 'current') code.note = 'blocked';
-  else if (code.state !== 'todo' && task.iteration > 0) code.note = `attempt ${task.iteration}`;
+  // the core counts iterations from 0 (task.summaries' attempt is iteration + 1); the page's pill says the same run
+  else if (code.state !== 'todo' && (task.started || task.iteration > 0)) code.note = `attempt ${task.iteration + 1}`;
 
   // Checks
   if (checks.length > 0) {

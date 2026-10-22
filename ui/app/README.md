@@ -135,7 +135,7 @@ bar, the hub's pills, the page (with a rail beside it on Rooms and Settings), an
 Use the kit before writing CSS:
 
 - `Page` (header bar with title, icon, subtitle, actions; scrolling body; `head` draws the head itself around the h1 id it is
-  given), `Section`, `card`, `listCard`, `tableCard`,
+  given; `head` with `flush` draws the whole page, its own bar and scrolling columns: the task page), `Section`, `card`, `listCard`, `tableCard`,
   `row`, `stack`, `cardGrid` (layout.tsx).
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).

@@ -37,11 +37,16 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.getByRole('button', { name: 'Show the raw patch' }).click();
     await expect(page.locator('.diff-add', { hasText: 'return a - b' })).toBeVisible();
 
-    // Activity (P87): the worker's and the reviewer's processes, each turn read from the core's typed activity
+    // Activity (P87, P97): the worker's and the reviewer's processes, each a line in the feed with its steps after it (every row
+    // names its process in data-thread), read from the core's typed activity
     const activity = page.getByTestId('task-activity');
     await expect(activity.getByTestId('activity-thread')).toHaveCount(2);
-    await expect(activity.getByTestId('activity-thread').filter({ hasText: 'Worker One' }).getByTestId('activity-text').filter({ hasText: 'implemented Subtract' })).toBeVisible();
-    await expect(activity.getByTestId('activity-thread').filter({ hasText: 'Reviewer One' })).toContainText('SHIP');
+    const rowsOf = async (name: string) => activity.locator(`[data-thread="${await activity.getByTestId('activity-thread').filter({ hasText: name }).getAttribute('data-thread')}"]`);
+    await expect((await rowsOf('Worker One')).getByTestId('activity-text').filter({ hasText: 'implemented Subtract' })).toBeVisible();
+    await expect((await rowsOf('Worker One')).locator('[data-testid=activity-step][data-kind=edit]').first()).toContainText('calc.go');
+    await expect((await rowsOf('Reviewer One')).getByTestId('activity-text').filter({ hasText: 'SHIP' })).toBeVisible();
+    // the head names the newest process's agent and CLI
+    await expect(activity.getByTestId('activity-agent')).toContainText('Reviewer One · Claude Code');
 
     // the task channel: Tests check card, the worker's message, the reviewer's verdict
     await openTaskChannel(page);

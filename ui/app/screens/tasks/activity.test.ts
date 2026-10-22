@@ -86,10 +86,12 @@ describe('a task agent activity as turns (P87)', () => {
       { type: 'CUSTOM', ...at(), name: 'drydock.resume', value: { id: 'apr_1', outcome: 'approved_with_edits' } },
       { type: 'CUSTOM', ...at(), name: 'drydock.resume', value: { id: 'apr_9', outcome: 'rejected' } },
     ]);
-    expect(turns[0]!.items).toEqual([
-      { kind: 'wait', id: 'apr_1', title: 'Bash: npm install', expiresAt: 5, outcome: 'approved_with_edits' },
-      { kind: 'wait', id: 'apr_2', title: 'Write: a.txt', expiresAt: undefined },
+    expect(turns[0]!.items.map((i) => ({ ...i, at: undefined }))).toEqual([
+      { kind: 'wait', id: 'apr_1', title: 'Bash: npm install', expiresAt: 5, outcome: 'approved_with_edits', at: undefined },
+      { kind: 'wait', id: 'apr_2', title: 'Write: a.txt', expiresAt: undefined, at: undefined },
     ]);
+    // each wait says when it began (the event's time)
+    expect(turns[0]!.items.map((i) => i.at > 0)).toEqual([true, true]);
     expect(['', 'approved', 'approved_with_edits', 'rejected', 'timed_out', 'cancelled', 'denied'].map((o) => waitOutcomeText(o))).toEqual([
       'Waiting for you',
       'Allowed once by you',
