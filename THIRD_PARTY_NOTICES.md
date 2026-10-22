@@ -262,6 +262,7 @@ Listed in `ui/package.json` as what the UI needs to run:
 | Package | Version | License | Used for |
 |---|---|---|---|
 | @fontsource-variable/inter | 5.3.0 | OFL-1.1 | Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1). |
+| @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | Bundles the JetBrains Mono variable font for code, task keys and numbers in the graphite UI (decision P97), so the desktop app looks the same offline (OFL-1.1). |
 | @remix-run/ui | 0.12.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
 | @xterm/addon-fit | 0.11.0 | MIT | Sizes a terminal to its panel. |
 | @xterm/xterm | 6.0.0 | MIT | Draws the human's terminals in the bottom dock (lazy-loaded). |
