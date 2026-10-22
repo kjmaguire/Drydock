@@ -253,7 +253,7 @@ func Approve(d Deps) workflow.NodeHandler {
 			rememberReviewed(ctx, d, t, head)
 		}
 		payload, _ := json.Marshal(ApproveSummary{TaskID: t.ID, Title: t.Title, Branch: t.Branch, Base: t.BaseBranch, Head: head, Files: t.Files, Evidence: ev, Reviews: rv, Cost: t.CostUSD})
-		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Title: "Review and merge: " + t.Title, Payload: payload}}, nil
+		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Title: MergeRequestTitlePrefix + t.Title, Payload: payload}}, nil
 	}
 }
 

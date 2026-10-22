@@ -331,7 +331,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// running yet, and what an agent was last doing is not worth reading a month of tool output for: the last two days of
 	// lifecycle events say which agents failed or need a person, and the rest are shown as stopped (audit 2026-10-16, M15).
 	c.Presence = room.NewTracker(c.Bus, room.TrackerOptions{EmitEvery: time.Second, Window: 48 * time.Hour, LifecycleOnly: true,
-		Alive: func(string) bool { return false }})
+		Alive: func(string) bool { return false }, Redact: c.Scanner.Redact})
 	if err := c.Presence.Start(bg); err != nil {
 		c.logf("presence: %v", err)
 	}
@@ -355,6 +355,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	safe.Go("core.Open", func() { _ = c.Room.WatchTasks(bg) })
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
+	}
+	if err := c.backfillProjectKeys(ctx); err != nil { // the projects made before migration 00129
+		c.logf("project keys: %v", err)
 	}
 	if n, err := c.Runtime.CloseStale(ctx); err != nil {
 		c.logf("close stale agent runs: %v", err)
@@ -427,8 +430,10 @@ func (c *Core) RegisterAdapter(id string, a agents.Adapter) {
 // agents work in. A project can start without a repository: the team can plan and talk, and nothing that changes code runs
 // until a repository is attached (AttachRepository).
 type Project struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Key is the prefix of the project's task identifiers: GOC for "GOC-41" (projectkey.go). Unique; the person can change it.
+	Key           string `json:"key"`
 	RepoPath      string `json:"repoPath"` // empty: no repository attached yet
 	HasRepo       bool   `json:"hasRepo"`
 	DefaultBranch string `json:"defaultBranch"`
@@ -446,11 +451,11 @@ const MaxBriefLen = 8000
 // ErrNoRepository is returned by everything that needs the project's repository while none is attached.
 var ErrNoRepository = errors.New("this project has no repository yet: attach one in the project's settings first")
 
-const projectCols = `id,name,repo_path,default_branch,merge_strategy,mode,brief,created_at`
+const projectCols = `id,name,key,repo_path,default_branch,merge_strategy,mode,brief,created_at`
 
 func scanProject(sc interface{ Scan(...any) error }) (Project, error) {
 	var p Project
-	err := sc.Scan(&p.ID, &p.Name, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Brief, &p.Created)
+	err := sc.Scan(&p.ID, &p.Name, &p.Key, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Brief, &p.Created)
 	p.HasRepo = p.RepoPath != ""
 	if !p.HasRepo {
 		p.DefaultBranch = ""
@@ -508,8 +513,16 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	}
 	p := Project{ID: ids.New("prj"), Name: name, RepoPath: root, HasRepo: root != "", DefaultBranch: branch, MergeStrategy: "merge", Mode: "local_merge", Created: storage.Now()}
 	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO projects(id,name,repo_path,default_branch,merge_strategy,mode,created_at) VALUES(?,?,?,?,?,?,?)`,
-			p.ID, p.Name, p.RepoPath, p.DefaultBranch, p.MergeStrategy, p.Mode, p.Created)
+		// the key is chosen in the transaction that inserts, so two projects made at once cannot both take it
+		taken, err := takenKeys(ctx, tx, "")
+		if err != nil {
+			return err
+		}
+		if p.Key, err = deriveProjectKey(p.Name, taken); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO projects(id,name,key,repo_path,default_branch,merge_strategy,mode,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			p.ID, p.Name, p.Key, p.RepoPath, p.DefaultBranch, p.MergeStrategy, p.Mode, p.Created)
 		return err
 	})
 	if err != nil {

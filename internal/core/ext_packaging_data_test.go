@@ -354,7 +354,8 @@ func TestProjectExportImportThroughTheMethods(t *testing.T) {
 	a.call("project.import", map[string]any{"path": dest, "name": "gocalc (no repo)"}, &norepo)
 	var np core.Project
 	a.call("project.get", map[string]string{"id": norepo.ProjectID}, &np)
-	if np.HasRepo || np.RepoPath != "" || np.Name != "gocalc (no repo)" {
+	// the archive has no key (it is unique to an installation): the imported project gets one from its name (P97)
+	if np.HasRepo || np.RepoPath != "" || np.Name != "gocalc (no repo)" || np.Key != "GNR" {
 		t.Fatalf("import without a repository: %+v", np)
 	}
 	if err := a.callErr("project.import", map[string]any{"path": dest, "repoPath": t.TempDir()}); err == nil || !strings.Contains(err.Error(), "not a usable Git repository") {
@@ -370,7 +371,7 @@ func TestProjectExportImportThroughTheMethods(t *testing.T) {
 	}
 	var imported core.Project
 	a.call("project.get", map[string]string{"id": res.ProjectID}, &imported)
-	if imported.Name != "gocalc (copy)" || imported.RepoPath == "" || imported.RepoPath == p.RepoPath {
+	if imported.Name != "gocalc (copy)" || imported.RepoPath == "" || imported.RepoPath == p.RepoPath || imported.Key != "GC" {
 		t.Fatalf("imported project %+v", imported)
 	}
 	var ts []tasks.Task

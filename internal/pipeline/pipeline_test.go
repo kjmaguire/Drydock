@@ -237,6 +237,29 @@ func TestPipelineLoopsOnFailingChecksWithMinimalContext(t *testing.T) {
 	if fails != 1 {
 		t.Fatalf("expected exactly one failing test evidence, got %d", fails)
 	}
+	// each pass of the checks has a round of its own, announced check by check; the newest pass is what LatestChecks reads
+	var rounds []string
+	for _, x := range ev {
+		if r := pipeline.CheckRound(x.Data); pipeline.CheckKinds[x.Kind] && (len(rounds) == 0 || rounds[len(rounds)-1] != r) {
+			rounds = append(rounds, r)
+		}
+	}
+	if len(rounds) != 2 || rounds[0] == "" || rounds[1] == "" {
+		t.Fatalf("two passes with a round each, got %q", rounds)
+	}
+	started, _ := e.bus.Replay(context.Background(), 0, events.Filter{TaskID: task.ID, Types: []string{pipeline.CheckStartedEvent}}, 100)
+	var announced []string
+	for _, x := range started {
+		var d struct{ Kind, Round string }
+		_ = json.Unmarshal(x.Data, &d)
+		announced = append(announced, d.Kind+"@"+map[string]string{rounds[0]: "1", rounds[1]: "2"}[d.Round])
+	}
+	if strings.Join(announced, " ") != "build@1 test@1 build@2 test@2 lint@2 secrets@2" {
+		t.Fatalf("announced checks %q", announced)
+	}
+	if got := pipeline.LatestChecks(ev, nil); len(got) != 4 || got[0].Status != pipeline.CheckPassed || got[1].Status != pipeline.CheckPassed || got[2].Kind != "lint" || got[3].Kind != "secrets" {
+		t.Fatalf("latest checks %+v", got)
+	}
 	// the work is committed on the task branch, the main branch is untouched
 	main, _ := os.ReadFile(filepath.Join(e.repo.Root, "calc.go"))
 	if strings.Contains(string(main), "return a - b") {
