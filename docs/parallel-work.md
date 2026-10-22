@@ -1,7 +1,7 @@
 # Parallel work: keeping agents from colliding
 
 Status: implemented and tested on Linux with scripted agents: Go tests in `internal/pipeline`, `internal/git`, `internal/tasks` and
-`internal/core`, and a Playwright test through the real core (`ui/e2e/round8.spec.ts`). Not run on Windows. Not tested: a real
+`internal/core`, and a Playwright test through the real core (`ui/e2e/round8.spec.ts`), all of which also run on `windows-latest` in CI. Not tested: a real
 agent (no scripted one) handed conflict markers, so how well a real worker resolves a conflict is unknown; the mechanism around it
 is tested (section 6).
 

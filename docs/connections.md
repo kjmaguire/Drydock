@@ -252,7 +252,7 @@ node: {min: "22"}
 blocked: []
 ```
 
-Classes: `docs_only` < `inspected` (Linux, no login) < `verified_short` (Windows Test passed) < `verified_full` (Windows full suite). Until Actions or a Windows host runs the suite (P2), no entry may exceed `inspected`. Bridge packages are pinned exactly (D9); `@zed-industries/*-acp` packages are deprecated and must not be used [cli §0, §7].
+Classes: `docs_only` < `inspected` (Linux, no login) < `verified_linux` (a real turn on Linux with the user's own login) < `verified_short` (Windows Test passed) < `verified_full` (Windows full suite). GitHub's Windows runners have no CLI logins, so no entry goes above `verified_linux` until a signed-in Test passes on a Windows PC. Bridge packages are pinned exactly (D9); `@zed-industries/*-acp` packages are deprecated and must not be used [cli §0, §7].
 
 ## 9. The headless contract
 
@@ -313,7 +313,7 @@ Ownership: each generated file starts with `<!-- drydock:generated sha256=<hash 
 
 ## 15. Open questions / unverified
 
-- Windows behavior of every step: install paths, `.cmd` shims, `npx.cmd` argument escaping, Ctrl-C/Ctrl-Break delivery, credential file locations (phase0 section 7, items 1, 7, 8). No Test step has run on Windows (P2). The WSL run mode is proven against a real WSL 2 distro only with a stand-in claude (CI's `wsl` job, P41); a real, signed-in Claude Code inside a distro, mirrored networking and the 9P speed of a Dev Drive are not.
+- Windows behavior of every step: install paths, `.cmd` shims, `npx.cmd` argument escaping, Ctrl-C/Ctrl-Break delivery, credential file locations (phase0 section 7, items 1, 7, 8). No signed-in Test step has run on Windows: CI's Windows runners install the CLIs from npm and run an ACP initialize through `npx.cmd` (`windows-probes`), but have no logins. The WSL run mode is proven against a real WSL 2 distro only with a stand-in claude (CI's `wsl` job, P41); a real, signed-in Claude Code inside a distro, mirrored networking and the 9P speed of a Dev Drive are not.
 - `claude auth status` logged-out exit code; whether `--verbose` is required for `stream-json`; `--permission-prompt-tool` versus `--permission-prompts host` as the approval path (both exist in `--help` [cli §1]; D1 names the former).
 - `codex login status` logged-in output; `codex exec` interrupt; whether the Codex bridge uses the user's `codex` or its own bundled copy, and `CODEX_PATH` semantics [cli §12]. Gemini and Goose have no auth probe; Antigravity's `--version`, `--mode` value set, `-p "/usage"` as an auth probe, `--acp`, resume and interrupt behavior are all unverified; Antigravity terms evidence is snippet-level. Gemini consumer cut-off date must be re-verified from an unrestricted network.
 - Contradictions: [cli §3] says Gemini CLI needs Node >=20, D9 says 22 (D9 wins). [cli §12] lists Claude ACP and the Antigravity registry binary as primary; D1 and D2 make headless primary (decisions win).
