@@ -497,6 +497,45 @@ describe('team lead client methods', () => {
   });
 });
 
+describe('task control client methods', () => {
+  it('sends the parameter names the core decodes and normalizes nulls', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.endsWith('task.steer')) return json({ result: { delivered: 'now', messageId: 'm1' } });
+      if (url.endsWith('task.pause') || url.endsWith('task.resume')) return json({ result: { task: { id: 't1' }, evidence: null, reviews: null, pending: null, paused: { by: 'human:kyle', at: 5 } } });
+      if (url.endsWith('task.assignPreview')) return json({ result: { taskId: 't1', branch: 'drydock/t1-x', checks: null, queue: null, waits: false } });
+      if (url.endsWith('lead.split')) return json({ result: { action: 'split', createdTasks: null } });
+      if (url.endsWith('task.count')) return json({ result: { total: 2 } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.taskSteer('t1', 'use the helper')).toEqual({ delivered: 'now', messageId: 'm1' });
+    const d = await c.taskPause('t1');
+    expect(d.paused).toEqual({ by: 'human:kyle', at: 5 });
+    expect(d.evidence).toEqual([]);
+    expect((await c.taskResume('t1')).pending).toEqual([]);
+    const pv = await c.taskAssignPreview('t1', 'agt_1');
+    expect(pv.checks).toEqual([]);
+    expect(pv.queue).toEqual([]);
+    expect((await c.leadSplit('t1')).createdTasks).toEqual([]);
+    await c.taskList('', [], { assignee: 'human:kyle' });
+    await c.taskList('p1');
+    expect(await c.taskCount('', [], { assignee: 'human:kyle' })).toEqual({ total: 2 });
+    await c.taskAssign('t1', 'human:kyle');
+    const sent = f.mock.calls.map((c) => c.arguments).map((x) => [(x as unknown as [string])[0].replace('/rpc/', ''), JSON.parse((x as unknown as [string, RequestInit])[1].body as string)]);
+    expect(sent).toEqual([
+      ['task.steer', { id: 't1', message: 'use the helper' }],
+      ['task.pause', { id: 't1' }],
+      ['task.resume', { id: 't1' }],
+      ['task.assignPreview', { id: 't1', assignee: 'agt_1' }],
+      ['lead.split', { taskId: 't1' }],
+      ['task.list', { projectId: '', statuses: [], assignee: 'human:kyle' }],
+      ['task.list', { projectId: 'p1', statuses: [] }],
+      ['task.count', { projectId: '', statuses: [], assignee: 'human:kyle' }],
+      ['task.assign', { id: 't1', assignee: 'human:kyle', reviewer: '' }],
+    ]);
+  });
+});
+
 describe('shell client method (audit M23)', () => {
   it('asks the shell to open an address with the name the core decodes, and shows the core refusal as it came', async () => {
     const f = mock.fn(async (url: string) => (url.endsWith('shell.openExternal') ? json({ result: { opened: true } }) : json({ result: null })));

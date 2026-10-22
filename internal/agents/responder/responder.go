@@ -318,6 +318,10 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 		out.Stopped = "only a human message starts a conversation"
 		return out, nil
 	}
+	if trig.IsSteer() {
+		out.Stopped = "a person's steer went to the task's running agent itself"
+		return out, nil
+	}
 	rs := r.state(trig.RoomID)
 	rs.run.Lock()
 	defer rs.run.Unlock()

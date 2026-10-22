@@ -15,7 +15,7 @@ import (
 // ActivityEventCap is how many of a task's newest agent events the activity is read from.
 var ActivityEventCap = 20000
 
-var activityTypes = []string{"agent.waiting", "agent.output", "agent.completed", "agent.failed", "agent.stopped", "approval.requested", "permission.decided"}
+var activityTypes = []string{"agent.started", "agent.waiting", "agent.output", "agent.completed", "agent.failed", "agent.stopped", "approval.requested", "permission.decided"}
 
 func init() {
 	RegisterExtension(Extension{Name: "activity", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
@@ -61,8 +61,15 @@ func (c *Core) TaskActivity(ctx context.Context, taskID string) (agui.Activity, 
 		a.Threads = []agui.Thread{}
 	}
 	for i := range a.Threads {
-		if a.Threads[i].Events == nil {
-			a.Threads[i].Events = []agui.Event{}
+		th := &a.Threads[i]
+		if th.Events == nil {
+			th.Events = []agui.Event{}
+		}
+		// a thread whose agent.started was not read (cut off by the cap, or older than the event) says what its agent is set to
+		if th.Adapter == "" && th.AgentID != "" {
+			if ag, err := c.agent(ctx, th.AgentID); err == nil {
+				th.Adapter, th.Model = ag.Adapter, ag.Model
+			}
 		}
 	}
 	a.Truncated = truncated

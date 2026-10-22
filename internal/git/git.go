@@ -511,6 +511,9 @@ func Slug(s string) string {
 	return s
 }
 
+// BranchName is the branch a task's worktree is made on: drydock/<task>-<slug of its title>.
+func BranchName(taskID, title string) string { return "drydock/" + taskID + "-" + Slug(title) }
+
 // WorktreeReq describes a new worktree.
 type WorktreeReq struct {
 	TaskID string
@@ -530,7 +533,7 @@ func (r *Repo) CreateWorktree(ctx context.Context, req WorktreeReq) (Worktree, e
 		}
 		base = b
 	}
-	branch := "drydock/" + req.TaskID + "-" + Slug(req.Title)
+	branch := BranchName(req.TaskID, req.Title)
 	path := filepath.Join(req.Parent, req.TaskID)
 	w := Worktree{Path: path, Branch: branch, Base: base, TaskID: req.TaskID}
 	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {

@@ -570,6 +570,14 @@ export interface TaskDetail {
   allowRules?: TaskAllowRule[];
   /** Each acceptance criterion's state by the newest test check, in the order of task.acceptance. Absent from older cores. */
   acceptanceState?: CriterionState[];
+  /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
+  paused?: TaskPause;
+}
+
+/** core.TaskPause: who paused a task's run (a "human:<name>" identity), and when (Unix ms). */
+export interface TaskPause {
+  by: string;
+  at: number;
 }
 
 /**

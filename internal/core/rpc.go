@@ -224,8 +224,10 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.TaskDiffAt(ctx, p.ID, p.EvidenceID)
 		}),
+		// task.assign hands a task to an agent (the reviewer is optional) or to the person themselves, also while its run is
+		// active (HandTask)
 		"task.assign": bind(func(ctx context.Context, p struct{ ID, Assignee, Reviewer string }) (any, error) {
-			return c.AssignTask(ctx, p.ID, p.Assignee, p.Reviewer)
+			return c.HandTask(ctx, p.ID, p.Assignee, p.Reviewer, c.Human())
 		}),
 		"task.start":  bind(func(ctx context.Context, p idParam) (any, error) { return c.StartTask(ctx, p.ID) }),
 		"task.cancel": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.CancelTask(ctx, p.ID) }),

@@ -7,6 +7,7 @@
 //
 // Mapping (one agent process is a thread; each turn is a run):
 //
+//	agent.started                             the thread's adapter, model, runMode and wslDistro (no event)
 //	agent.waiting {state: working}            RUN_STARTED
 //	agent.output text                         TEXT_MESSAGE_START (first delta) + TEXT_MESSAGE_CONTENT
 //	agent.output message_end                  TEXT_MESSAGE_END (or START, CONTENT, END for a message that came whole)
@@ -233,11 +234,17 @@ type Resume struct {
 	Value ResumeValue `json:"value"`
 }
 
-// Thread is one agent process's events: a valid stream on its own.
+// Thread is one agent process's events: a valid stream on its own. Adapter, Model, RunMode and WSLDistro say what the process
+// ran as (the CLI, its model, and the WSL distribution when it ran inside one), from its agent.started; a thread read without
+// that event has them from the agent's settings (TaskActivity) or not at all.
 type Thread struct {
-	ThreadID string  `json:"threadId"` // the agent run
-	AgentID  string  `json:"agentId,omitempty"`
-	Events   []Event `json:"events"`
+	ThreadID  string  `json:"threadId"` // the agent run
+	AgentID   string  `json:"agentId,omitempty"`
+	Adapter   string  `json:"adapter,omitempty"`
+	Model     string  `json:"model,omitempty"`
+	RunMode   string  `json:"runMode,omitempty"`
+	WSLDistro string  `json:"wslDistro,omitempty"`
+	Events    []Event `json:"events"`
 }
 
 // Activity is a task's threads in the order they started. Truncated says the oldest stored events were left out.
@@ -267,6 +274,10 @@ func Project(evs []events.Event) Activity {
 			StopReason string          `json:"stopReason"`
 			Error      string          `json:"error"`
 			Phase      string          `json:"phase"`
+			Adapter    string          `json:"adapter"`
+			Model      string          `json:"model"`
+			RunMode    string          `json:"runMode"`
+			WSLDistro  string          `json:"wslDistro"`
 		}
 		if json.Unmarshal(e.Data, &d) != nil {
 			continue
@@ -294,6 +305,10 @@ func Project(evs []events.Event) Activity {
 		}
 		p.base = Base{Seq: e.Seq, Timestamp: e.Time.UnixMilli()}
 		switch e.Type {
+		case "agent.started":
+			// what the process runs as; the event itself has no place in the vocabulary
+			t := &out.Threads[idx[d.AgentRun]]
+			t.Adapter, t.Model, t.RunMode, t.WSLDistro = d.Adapter, d.Model, d.RunMode, d.WSLDistro
 		case "agent.waiting":
 			if strings.EqualFold(d.State, "working") {
 				p.startRun()

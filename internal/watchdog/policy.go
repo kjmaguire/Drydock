@@ -182,6 +182,34 @@ func (w *Watchdog) Reset(ctx context.Context, taskID string) error {
 // interrupted and the same session continues with the message. With no turn running, a nudge is queued for the task's next
 // turn (an escalation then has nothing to park). It reports whether a running turn was found.
 func (w *Watchdog) Steer(ctx context.Context, taskID, msg string, escalate bool) bool {
+	found, _ := w.steer(ctx, taskID, msg, escalate, false)
+	return found
+}
+
+// SteerOutcome is what Nudge did with a message.
+type SteerOutcome string
+
+const (
+	// SteerDelivered: a running turn was interrupted at its current step and goes on in the same session with the message.
+	SteerDelivered SteerOutcome = "delivered"
+	// SteerQueued: no turn was running, or the running one was already being stopped (by the watchdog or the team lead): the
+	// message goes with the task's next turn.
+	SteerQueued SteerOutcome = "queued"
+)
+
+// Nudge is Steer without escalation, for a person's message to the task's running agent (task.steer): the same delivery, and
+// the message is never dropped: when the running turn is already being stopped it waits for the next turn, and it is added
+// to a nudge already queued instead of replacing it.
+func (w *Watchdog) Nudge(ctx context.Context, taskID, msg string) SteerOutcome {
+	if _, sent := w.steer(ctx, taskID, msg, false, true); sent {
+		return SteerDelivered
+	}
+	return SteerQueued
+}
+
+// steer is Steer; sent reports that the message went into the running turn. keep queues the message when it could not be
+// sent (also when the turn is already being stopped) and adds it to a nudge already queued.
+func (w *Watchdog) steer(ctx context.Context, taskID, msg string, escalate, keep bool) (found, sent bool) {
 	w.mu.Lock()
 	var keys []string
 	for k, s := range w.execs {
@@ -196,16 +224,21 @@ func (w *Watchdog) Steer(ctx context.Context, taskID, msg string, escalate bool)
 	}
 	if st == nil {
 		if !escalate {
-			w.nudge[taskID] = msg
+			w.queueLocked(taskID, msg, keep)
 		}
 		w.mu.Unlock()
-		return false
+		return false, false
 	}
 	w.mu.Unlock()
 	st.mu.Lock()
 	if st.enforcing || st.pause != nil || st.cancel == nil {
 		st.mu.Unlock()
-		return true // something is already stopping this turn
+		if keep {
+			w.mu.Lock()
+			w.queueLocked(taskID, msg, true)
+			w.mu.Unlock()
+		}
+		return true, false // something is already stopping this turn
 	}
 	n := st.info
 	if escalate {
@@ -215,7 +248,7 @@ func (w *Watchdog) Steer(ctx context.Context, taskID, msg string, escalate bool)
 		cancel := st.cancel
 		st.mu.Unlock()
 		cancel(workflow.ErrWatchdogTrip{Signal: SignalLeadEscalation, Stage: 2, Evidence: msg})
-		return true
+		return true, true
 	}
 	st.enforcing = true
 	slot := st.slot
@@ -223,16 +256,25 @@ func (w *Watchdog) Steer(ctx context.Context, taskID, msg string, escalate bool)
 	if tc := slot.Get(); tc != nil {
 		_ = tc.CancelTurn()
 		_ = tc.Send(ctx, msg)
+		sent = true
 	} else {
 		w.mu.Lock()
-		w.nudge[taskID] = msg
+		w.queueLocked(taskID, msg, keep)
 		w.mu.Unlock()
 	}
 	st.mu.Lock()
 	st.turn = NewTurn(st.cfgv)
 	st.enforcing = false
 	st.mu.Unlock()
-	return true
+	return true, sent
+}
+
+// queueLocked queues msg for the task's next turn: in place of a nudge already queued, or after it with add. w.mu is held.
+func (w *Watchdog) queueLocked(taskID, msg string, add bool) {
+	if prev := w.nudge[taskID]; add && prev != "" {
+		msg = prev + "\n\n" + msg
+	}
+	w.nudge[taskID] = msg
 }
 
 // Observer returns the per-execution stream observer (agent_task nodes only).
