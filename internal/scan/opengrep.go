@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 )
 
-// opengrepArgs are Opengrep's arguments: `scan -f <rules> [-f <more rules>] --sarif-output=<file> --no-progress-bar -q
-// [--no-git-ignore] .`, one -f per rules folder (the built-in rules first, decision P77).
+// opengrepArgs are Opengrep's arguments: `scan -f <rules> [-f <more rules>] --sarif-output=<file> -q [--no-git-ignore] .`,
+// one -f per rules folder (the built-in rules first, decision P77). -q keeps the progress bar off; Opengrep 1.31.0 refuses
+// --no-progress-bar (exit 2, "unknown option"), which every scan passed until 2026-10-22.
 // Opengrep is static analysis: it parses the files and runs none of them. Inside a git repository it lists the files with
 // `git ls-files` unless told --no-git-ignore; noGit (folder scans, decision P61) tells it, so git never runs in a folder
 // whose .git/config came from somewhere else.
@@ -17,7 +18,7 @@ func opengrepArgs(tool Tool, rules []string, out string, noGit bool) []string {
 	for _, r := range rules {
 		args = append(args, "-f", r)
 	}
-	args = append(args, "--sarif-output="+out, "--no-progress-bar", "-q")
+	args = append(args, "--sarif-output="+out, "-q")
 	if noGit {
 		args = append(args, "--no-git-ignore")
 	}

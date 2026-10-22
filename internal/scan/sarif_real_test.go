@@ -19,7 +19,7 @@ import (
 //
 //	semgrep scan -f <folder>/rules --sarif-output=out.sarif -q --metrics=off --disable-version-check .
 //
-// run in it (Drydock also passes --no-progress-bar, which Opengrep documents and Semgrep does not know), the rule folder's long
+// run in it (the arguments Drydock gives Opengrep, plus Semgrep's own two), the rule folder's long
 // path in the rule id shortened to home.dev.rules, and the JSON indented. Two things in it
 // are not what the stand-in's log looks like and are the reason to keep it: a result carries no `level` (the rule's
 // defaultConfiguration has it), and every result carries the matched line of code (region.snippet), which no finding may keep.

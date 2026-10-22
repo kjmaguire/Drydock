@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -130,14 +131,27 @@ func runTool(ctx context.Context, pm proc.Manager, path string, args []string, d
 	return r
 }
 
-// firstStderrLine is the first non-blank line of a tool's stderr, cleaned and capped, for a reason.
+// ansiEscape matches a terminal colour or cursor sequence (ESC [ ... letter); Opengrep colours its errors even into a pipe.
+var ansiEscape = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
+
+// firstStderrLine is the line of a tool's stderr that says what went wrong, cleaned and capped, for a reason: the first
+// non-blank one that is not the usage boilerplate a command-line parser prints around its error ("Usage: opengrep scan
+// [--help] [OPTION]… [TARGETS]…" and "Try 'opengrep scan --help'"), else the first non-blank one.
 func firstStderrLine(b []byte) string {
-	for _, l := range strings.Split(string(b), "\n") {
-		if s := strings.TrimSpace(l); s != "" {
+	first := ""
+	for _, l := range strings.Split(ansiEscape.ReplaceAllString(string(b), ""), "\n") {
+		s := strings.TrimSpace(l)
+		if s == "" {
+			continue
+		}
+		if first == "" {
+			first = s
+		}
+		if !strings.HasPrefix(s, "Usage:") && !strings.HasPrefix(s, "Try '") {
 			return cleanLine(s, 160)
 		}
 	}
-	return ""
+	return cleanLine(first, 160)
 }
 
 // programNames are the file names a program called name may have here.

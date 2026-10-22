@@ -221,7 +221,7 @@ func TestTheCodeEngineRunsTheBuiltinRulesAndThePersonsFolder(t *testing.T) {
 			t.Errorf("case %d: %v, want %v", i, got, c.want)
 		}
 	}
-	if got := strings.Join(opengrepArgs(Tool{Path: "opengrep"}, []string{"/b", own}, "/o.sarif", false), " "); got != "scan -f /b -f "+own+" --sarif-output=/o.sarif --no-progress-bar -q ." {
+	if got := strings.Join(opengrepArgs(Tool{Path: "opengrep"}, []string{"/b", own}, "/o.sarif", false), " "); got != "scan -f /b -f "+own+" --sarif-output=/o.sarif -q ." {
 		t.Fatal(got)
 	}
 }

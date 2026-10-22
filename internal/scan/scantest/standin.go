@@ -120,16 +120,23 @@ const SARIF = `{
   }]
 }`
 
-// opengrep checks that each rules folder given with -f is there, writes SARIF to the --sarif-output file and exits 0.
+// opengrep checks that each rules folder given with -f is there, writes SARIF to the --sarif-output file and exits 0. Like
+// Opengrep 1.31.0 it refuses an option it does not know with exit 2, the usage line, then the error, in colour (what the real
+// one printed for --no-progress-bar, decision P95).
 func opengrep(args []string, empty bool) int {
 	out, rules := "", []string{}
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "scan" || args[i] == "-q" || args[i] == "--no-git-ignore" || !strings.HasPrefix(args[i], "-"):
 		case strings.HasPrefix(args[i], "--sarif-output="):
 			out = strings.TrimPrefix(args[i], "--sarif-output=")
 		case args[i] == "-f" && i+1 < len(args):
 			rules = append(rules, args[i+1])
 			i++
+		default:
+			fmt.Fprintln(os.Stderr, "Usage: \x1b[01mopengrep scan\x1b[m [\x1b[01m--help\x1b[m] [\x1b[04mOPTION\x1b[m]… [\x1b[04mTARGETS\x1b[m]…")
+			fmt.Fprintf(os.Stderr, "opengrep scan: \x1b[31munknown\x1b[m option \x1b[01m%s\x1b[m\n", args[i])
+			return 2
 		}
 	}
 	if len(rules) == 0 {
