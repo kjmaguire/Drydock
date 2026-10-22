@@ -396,6 +396,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             <span>Workspace</span>
           </div>
           <ul mix={listCss} role="list" aria-label="Workspace">
+            {link({ id: 'nav-crew', label: 'Crew', icon: Users, href: routes.crew.href(), current: route.name === 'crew' })}
             {link({ id: 'nav-security-scan', label: 'Security', icon: ShieldCheck, href: routes.securityScan.href(), current: is('scan') })}
             {link({ id: 'nav-side-connections', label: 'Connections', icon: PlugZap, href: routes.connections.href(), current: route.name === 'connections' })}
             {link({ id: 'nav-side-models', label: 'Models on this PC', icon: Cpu, href: routes.providers.href(), current: route.name === 'providers' })}

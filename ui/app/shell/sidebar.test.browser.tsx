@@ -53,6 +53,7 @@ describe('the sidebar', () => {
       'nav-team',
       'nav-knowledge',
       'nav-project-item',
+      'nav-crew',
       'nav-security-scan',
       'nav-side-connections',
       'nav-side-models',
@@ -64,6 +65,9 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-tasks"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-needs-you"]')!.textContent).toContain('Inbox');
     expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
+    // every project's crew is a workspace page, under Workspace
+    expect(r.$('ul[aria-label="Workspace"] [data-testid="nav-crew"]')!.getAttribute('href')).toBe('/crew');
+    expect(r.$('[data-testid="nav-crew"]')!.textContent).toBe('Crew');
     expect(r.$('[data-testid="nav-settings"]')).not.toBeNull();
     expect(r.$('[data-testid="nav-guide-top"]')).not.toBeNull();
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
@@ -105,7 +109,7 @@ describe('the sidebar', () => {
     expect(mine.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('marks the page current: a tab of the project, Chats, Security, Connections, Models on this PC, Settings, the Guide', async () => {
+  it('marks the page current: a tab of the project, Chats, the workspace Crew, Security, Connections, Models on this PC, Settings, the Guide', async () => {
     for (const [route, id] of [
       [{ name: 'task', id: 't1' }, 'nav-tasks'],
       [{ name: 'pulls' }, 'nav-tasks'],
@@ -114,6 +118,7 @@ describe('the sidebar', () => {
       [{ name: 'agent', id: 'agt1' }, 'nav-team'],
       [{ name: 'project' }, 'nav-overview'],
       [{ name: 'chat', id: 'c1' }, 'nav-chats'],
+      [{ name: 'crew' }, 'nav-crew'],
       [{ name: 'security-scan' }, 'nav-security-scan'],
       [{ name: 'connections' }, 'nav-side-connections'],
       [{ name: 'providers' }, 'nav-side-models'],

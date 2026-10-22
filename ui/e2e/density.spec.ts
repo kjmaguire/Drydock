@@ -9,10 +9,10 @@
 //   - no two controls overlapping, and a button beside a dropdown or a text box centred on it (2026-10-20).
 // A page that has a reason to break one lists it in EXEMPT with the reason.
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, choose, createAgent, createProject, projectNav } from './helpers';
+import { appUrl, choose, createAgent, createProject, openNewAgent, projectNav } from './helpers';
 
 const ROUTES = [
-  '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
+  '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
   '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
   '/library', '/library/skills', '/connections', '/github', '/security-scan', '/providers', '/routing', '/backups', '/data', '/support', '/license',
   '/settings', '/guide', '/guide/scan',
@@ -200,10 +200,8 @@ test('every page keeps to the density budget: short text, the type scale, room b
   await page.setViewportSize({ width: 1366, height: 768 });
   await createProject(page, 'gocalc-density');
   await createAgent(page, 'Worker One', 'backend');
-  await expect(async () => {
-    await projectNav(page, 'nav-team');
-    await page.getByLabel('Agent name').fill('Reviewer One', { timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+  await openNewAgent(page);
+  await page.getByLabel('Agent name').fill('Reviewer One');
   await page.getByLabel('Role', { exact: true }).fill('reviewer');
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   await page.getByRole('button', { name: 'Create agent' }).click();

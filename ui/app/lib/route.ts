@@ -41,6 +41,7 @@ export type WorkspaceRouteName =
   | 'workspace'
   | 'needs-you'
   | 'my-tasks'
+  | 'crew'
   | 'library'
   | 'library-skills'
   | 'integrations'
@@ -61,6 +62,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   // the Inbox and the person's own tasks list every project's (decision P97)
   'needs-you',
   'my-tasks',
+  'crew',
   'library',
   'library-skills',
   'integrations',
@@ -180,7 +182,7 @@ export function redirectLegacyHash(loc: Pick<Location, 'hash' | 'search'>, histo
  * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills. The gear
  * holds the workspace's and the app's pages only; Project settings and the project's Integrations are pills of its Overview.
  */
-export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'inbox' | 'chats' | 'library' | 'scan' | 'project-new' | 'none';
+export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'inbox' | 'workspace-crew' | 'chats' | 'library' | 'scan' | 'project-new' | 'none';
 
 const HUB_OF: Record<Route['name'], Hub> = {
   home: 'overview',
@@ -223,6 +225,7 @@ const HUB_OF: Record<Route['name'], Hub> = {
   support: 'settings',
   settings: 'settings',
   workspace: 'home',
+  crew: 'workspace-crew',
   chats: 'chats',
   chat: 'chats',
   library: 'library',
@@ -240,5 +243,5 @@ export function hubOf(r: Route): Hub {
 
 /** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
 export function isWorkspaceHub(h: Hub): boolean {
-  return h === 'home' || h === 'inbox' || h === 'chats' || h === 'library' || h === 'scan' || h === 'project-new';
+  return h === 'home' || h === 'inbox' || h === 'workspace-crew' || h === 'chats' || h === 'library' || h === 'scan' || h === 'project-new';
 }

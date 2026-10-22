@@ -136,20 +136,22 @@ describe('team helpers', () => {
     expect(spentLabel({ rows: 1234, estimated: 0 })).toBe('spent in all 1,234 usage rows');
   });
 
-  it('counts the Crew page figures: at work, stopped, tasks in flight and waiting, skills given and agents without one', () => {
-    const agents = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  it("counts the Crew page's figures: agents, at work, waiting on you (by presence or an open request), stopped", () => {
+    const agents = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }];
     const presence = [
       { agentId: 'a', presence: 'Working', since: '', updated: '', seq: 1 },
       { agentId: 'b', presence: 'Paused', label: 'stopped', since: '', updated: '', seq: 1 },
+      { agentId: 'd', presence: 'Needs Attention', since: '', updated: '', seq: 1 },
+      { agentId: 'e', presence: 'Thinking', since: '', updated: '', seq: 1 },
     ] as PresenceState[];
-    const tasks = [{ status: 'IN_PROGRESS' }, { status: 'REVIEW' }, { status: 'WAITING_HUMAN' }, { status: 'COMPLETED' }, { status: 'BACKLOG' }];
+    // c has no presence at all: stopped too (it never started); e works but has a request open: it waits on you
+    expect(crewFigures(agents, presence, new Set(['e']))).toEqual({ agents: 5, working: 1, waiting: 2, stopped: 2 });
+    expect(crewFigures(agents, presence)).toEqual({ agents: 5, working: 2, waiting: 1, stopped: 2 });
     const skills = [
       { status: 'accepted', agents: ['a', 'b'] },
-      { status: 'accepted', agents: ['a', 'gone'] }, // an agent off the team is not counted
+      { status: 'accepted', agents: ['a', 'gone'] },
       { status: 'offered', agents: ['c'] }, // not accepted: given to nobody yet
     ];
-    // c has no presence at all: stopped too (it never started)
-    expect(crewFigures(agents, presence, tasks, skills)).toEqual({ agents: 3, working: 1, stopped: 2, inFlight: 2, waiting: 1, skillsGiven: 3, withoutSkills: 1 });
     expect(skillCount(skills, 'a')).toBe(2);
     expect(skillCount(skills, 'c')).toBe(0);
   });

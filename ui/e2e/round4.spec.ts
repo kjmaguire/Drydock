@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom } from './helpers';
+import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -21,11 +21,12 @@ test('no license keys in this build: no banner, the License page says so plainly
   await expect(page.getByLabel('License token')).toHaveCount(0);
   // still no banner, and a mutating control is not disabled
   await expect(banner).toHaveCount(0);
-  await projectNav(page, 'nav-team');
+  await openNewAgent(page);
   await expect(page.getByTestId('readonly-note')).toHaveCount(0);
   await page.getByLabel('Agent name').fill('x');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await expect(page.getByRole('button', { name: 'Create agent' })).toBeEnabled();
+  await page.keyboard.press('Escape');
 
   await workspaceNav(page, 'nav-settings');
   const up = page.getByTestId('updates-section');
@@ -345,6 +346,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
 
   await projectNav(page, 'nav-team');
   await expect(page.getByTestId('agent').filter({ hasText: 'lic-worker' })).toBeVisible(); // reading still works
+  await openNewAgent(page, false);
   await page.getByLabel('Agent name').fill('blocked');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await expect(page.getByTestId('readonly-note')).toBeVisible();
@@ -354,6 +356,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   const refusedAgent = await page.request.post(`${new URL(url).origin}/rpc/agent.create`, { headers: { 'X-Drydock-Token': token }, data: { projectId: 'x', name: 'n', role: 'r', adapter: 'claude' } });
   expect(refusedAgent.ok()).toBe(false);
   expect(await refusedAgent.text()).toContain('read-only');
+  await page.keyboard.press('Escape');
 
   await workspaceNav(page, 'nav-providers');
   await page.getByTestId('provider-add-tile').click();
@@ -379,7 +382,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.getByRole('button', { name: 'Import license' }).click();
   await expect(page.getByTestId('license-state')).toHaveText('Active');
   await expect(page.getByTestId('license-banner')).toHaveCount(0);
-  await projectNav(page, 'nav-team');
+  await openNewAgent(page);
   await page.getByLabel('Agent name').fill('now-ok');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await expect(page.getByRole('button', { name: 'Create agent' })).toBeEnabled();

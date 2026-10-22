@@ -3,7 +3,7 @@ import { choose, createProject, projectNav, workspaceNav } from './helpers';
 
 // A permission mode that lets an agent act without asking (audit 2026-10-16, M1; docs/security.md s4), against the real Go core.
 // The core gives such a mode to a template or an agent only when the request carries the person's confirmation
-// (confirmSkipsApprovals), so the Library's template form and the Team page keep their button off until the box is ticked, send
+// (confirmSkipsApprovals), so the Library's template form and the Crew page's Templates keep their button off until the box is ticked, send
 // the confirmation only then, and the template and the agent made from it keep the red badge.
 const BOX = 'I understand this agent will act without asking me first';
 
@@ -43,8 +43,9 @@ test('a permission mode that skips approvals needs the box ticked; the template 
   await expect(page.getByTestId('lib-template').filter({ hasText: 'Free hand' }).getByTestId('skips-approvals-badge')).toHaveText('skips approvals');
   await expect(tf).toHaveCount(0);
 
-  // the template joins the team from the Team page: again only after the box is ticked
+  // the template joins the team from the Crew page's Templates: again only after the box is ticked
   await projectNav(page, 'nav-team');
+  await page.getByRole('button', { name: 'Templates' }).click();
   await expect(page.getByLabel('Template', { exact: true })).toContainText('Free hand');
   const add = page.getByRole('button', { name: 'Add to this team' });
   await expect(page.getByTestId('skip-approvals')).toContainText('bypassPermissions');

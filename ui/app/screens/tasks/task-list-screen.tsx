@@ -826,7 +826,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
     const board = boardOf(shown, (x) => needsMe(x, asked));
     const labels = labelsOf(all);
     const now = Date.now();
-    const working = crewFigures(agents, presence ?? [], s.project.taskList, []).working;
+    const working = crewFigures(agents, presence ?? []).working;
     const waiting = all.filter((x) => needsMe(x, asked)).length;
     const readOnly = s.workspace.license.readOnly;
     const agentOn = filter.agent ? agents.find((a) => a.id === filter.agent) : undefined;

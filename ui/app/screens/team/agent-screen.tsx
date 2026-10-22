@@ -5,7 +5,7 @@
 // Everything is a projection of what the core reports; nothing is estimated and nothing is invented.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { MessageSquare, Pencil, Plug, Plus, ShieldAlert, ShieldCheck, Sparkles, UserX } from 'lucide';
+import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, UserX } from 'lucide';
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
@@ -28,7 +28,8 @@ import { TaskDecisions } from '../shared/explain.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
-import { AgentEditor } from './agent-forms.tsx';
+import { AgentEditor, RemoveAgent } from './agent-forms.tsx';
+import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { Run } from './inspector.tsx';
 import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
 
@@ -132,6 +133,8 @@ const panelCss = css({
   '& > h2 span, & > h3 span': { color: t.textFaint, fontSize: t.textSm, fontWeight: '500', textAlign: 'right' },
   '& .quiet': { color: t.textMuted, fontSize: t.textMd },
 });
+
+const leadCss = css({ gridColumn: '1 / -1' });
 
 const grid2 = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)', gap: t.s4, alignItems: 'start', '@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)' } });
 
@@ -312,6 +315,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   const dm = action(handle);
   let tab: TabName = 'overview';
   let editing = false;
+  let removing = false;
   const pid = () => s.workspace.projectId ?? '';
 
   const detail = query(handle, {
@@ -354,6 +358,8 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
     const where = a ? runsWhere(a) : '';
     const mine = tasks.filter((x) => x.assignee === id || x.reviewer === id);
     const latestTask = runs.find((r) => r.taskId)?.taskId;
+    // the team lead's page carries its stand-up and its interventions (they were on the Crew page before the graphite one)
+    const lead = a && leadOf(agents)?.id === a.id ? a : undefined;
 
     const crew = (
       <nav aria-label="Crew">
@@ -481,6 +487,14 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             ) : null}
           </section>
         </div>
+        {lead && pid() ? (
+          <section mix={[panelCss, leadCss]} aria-label="Team lead" data-testid="agent-lead">
+            <h2>Team lead</h2>
+            <p class="quiet">{a.name} supervises the team: it steps in when a task loops, stalls or trips the watchdog, and can post a stand-up.</p>
+            <RunStandup projectId={pid()} lead={lead} size="sm" />
+            <Interventions projectId={pid()} limit={20} />
+          </section>
+        ) : null}
       </div>
     ) : null;
 
@@ -662,6 +676,12 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       <Button variant="secondary" icon={Pencil} aria-haspopup="dialog" aria-expanded={editing} mix={on('click', () => ((editing = true), void handle.update()))}>
                         Edit
                       </Button>
+                      <Button variant="ghost" icon={ScanSearch} title={`Inspect ${a.name}`} mix={on('click', () => s.ui.openInspector(a.id))}>
+                        Inspect
+                      </Button>
+                      <Button variant="ghost" icon={Trash2} aria-label={`Remove ${a.name}`} aria-haspopup="dialog" mix={on('click', () => ((removing = true), void handle.update()))}>
+                        Remove
+                      </Button>
                       <a href={routes.team.href()} mix={buttonStyle('ghost')}>
                         All agents
                       </a>
@@ -684,6 +704,19 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                   >
                     {(name) => (name === 'overview' ? overview : name === 'skills' ? skillsTab : name === 'memory' ? memoryTab : historyTab)}
                   </Tabs>
+                  <Dialog open={removing} title={`Remove ${a.name}?`} onClose={() => ((removing = false), void handle.update())}>
+                    {removing ? (
+                      <RemoveAgent
+                        agent={a}
+                        onDone={() => {
+                          removing = false;
+                          s.project.agents.reload();
+                          go(routes.team.href());
+                        }}
+                        onCancel={() => ((removing = false), void handle.update())}
+                      />
+                    ) : null}
+                  </Dialog>
                   <Dialog open={editing} title={`Edit ${a.name}`} label={`Edit ${a.name}`} wide onClose={() => ((editing = false), void handle.update())}>
                     {editing ? (
                       <EditWithAdapter

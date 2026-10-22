@@ -61,6 +61,10 @@ export const controller = createController(routes, {
       const { TeamScreen } = await import('../screens/team/team-screen.tsx');
       return render(<TeamScreen />);
     },
+    async crew({ render }) {
+      const { WorkspaceCrewScreen } = await import('../screens/team/team-screen.tsx');
+      return render(<WorkspaceCrewScreen />);
+    },
     async agent({ render, params }) {
       const { AgentScreen } = await import('../screens/team/agent-screen.tsx');
       return render(<AgentScreen key={params.id} id={params.id} />);
