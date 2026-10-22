@@ -30,5 +30,5 @@ test('collision guard: a task that changes the same file as an earlier running t
   // the first task was never disturbed: it is still waiting for its approval
   await projectNav(page, 'nav-tasks');
   const first = page.getByTestId('task-row').filter({ hasText: 'First change to calc' });
-  await expect(first).toContainText(/Waiting|Verification|Review/i);
+  await expect(first).toContainText(/Ready to merge|Waiting on you/);
 });

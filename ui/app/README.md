@@ -38,7 +38,8 @@ app/
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
-  screens/tasks/      the Tasks board and list (tasks.ts: columns, elapsed), the task page with its step bar (steps.ts), the review panel
+  screens/tasks/      the project board (Board / List / Timeline of task.summaries; tasks.ts: columns, cards, checks bar, filters,
+                      timeline), the task page with its step bar (steps.ts), the review panel
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
   screens/team/       the Crew tab: the agents as dots (team-screen.tsx) and an agent's own page (/team/:id, agent-screen.tsx: a hero
                       with chips, then Overview, Skills & tools, Memory and History); the inspector stays in the details panel
@@ -134,8 +135,9 @@ bar, the hub's pills, the page (with a rail beside it on Rooms and Settings), an
 
 Use the kit before writing CSS:
 
-- `Page` (header bar with title, icon, subtitle, actions; scrolling body; `head` draws the head itself around the h1 id it is
-  given), `Section`, `card`, `listCard`, `tableCard`,
+- `Page` (header bar with title, icon, subtitle, actions; `mark` instead of the icon for what the page belongs to, a project's
+  colour square; `bar` for the page's own view tabs and filters after the title; scrolling body; `head` draws the head itself
+  around the h1 id it is given), `Section`, `card`, `listCard`, `tableCard`,
   `row`, `stack`, `cardGrid` (layout.tsx).
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).
