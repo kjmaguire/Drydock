@@ -286,6 +286,7 @@ func (r *Run) run(ctx context.Context) {
 		r.rep.Status = StatusCancelled
 	}
 	sortFindings(r.rep.Findings)
+	numberFingerprints(r.rep.Findings)
 	r.rep.Summary = summarize(r.rep)
 	rep := r.rep.copy()
 	r.mu.Unlock()
@@ -339,6 +340,9 @@ func summarize(rep Report) string {
 	}
 	if len(notRun) > 0 {
 		s += "; " + strings.Join(notRun, "; ")
+	}
+	if n := dismissedNote(rep.Dismissed); n != "" {
+		s += "; " + n
 	}
 	return s + "."
 }

@@ -82,7 +82,8 @@ func Main(args []string) int {
 	return 3
 }
 
-// osv prints the documented osv-scanner JSON (results[].packages[].vulnerabilities[]) for one vulnerable Go package and
+// osv prints the documented osv-scanner JSON (results[].packages[].vulnerabilities[], each with its OSV record's affected
+// ranges) for one vulnerable Go package and
 // exits 1, as the real tool does when it finds something; with --empty it prints an empty result and exits 0.
 func osv(empty bool) int {
 	if empty {
@@ -92,8 +93,14 @@ func osv(empty bool) int {
 	b, _ := json.Marshal(map[string]any{"results": []any{map[string]any{
 		"source": map[string]any{"path": "go.mod", "type": "lockfile"},
 		"packages": []any{map[string]any{
-			"package":         map[string]any{"name": "golang.org/x/text", "version": "0.3.7", "ecosystem": "Go"},
-			"vulnerabilities": []any{map[string]any{"id": "GO-2021-0113"}, map[string]any{"id": "CVE-2021-38561"}},
+			"package": map[string]any{"name": "golang.org/x/text", "version": "0.3.7", "ecosystem": "Go"},
+			// each vulnerability is an OSV record: its affected ranges name the version that fixes it
+			"vulnerabilities": []any{
+				map[string]any{"id": "GO-2021-0113", "affected": []any{map[string]any{"package": map[string]any{"name": "golang.org/x/text", "ecosystem": "Go"},
+					"ranges": []any{map[string]any{"type": "SEMVER", "events": []any{map[string]any{"introduced": "0"}, map[string]any{"fixed": "0.3.7-rc1"}, map[string]any{"fixed": "0.3.8"}}}}}}},
+				map[string]any{"id": "CVE-2021-38561", "affected": []any{map[string]any{"package": map[string]any{"name": "golang.org/x/text", "ecosystem": "Go"},
+					"ranges": []any{map[string]any{"type": "SEMVER", "events": []any{map[string]any{"introduced": "0"}, map[string]any{"fixed": "0.3.8"}}}}}}},
+			},
 		}},
 	}}})
 	fmt.Println(string(b))

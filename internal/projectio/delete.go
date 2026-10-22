@@ -51,6 +51,7 @@ var DeleteSteps = []DeleteStep{
 	{Table: "agent_skills", Where: `project_id=@p`},
 	{Table: "skills", Where: `project_id=@p`},
 	{Table: "security_scans", Where: `project_id=@p`},
+	{Table: "security_dismissals", Where: `target_key=@p`},
 	{Table: "recommendations", Where: `project_id=@p`},
 	{Table: "lead_interventions", Where: `project_id=@p`},
 	{Table: "generated_files", Where: `project_id=@p`},
