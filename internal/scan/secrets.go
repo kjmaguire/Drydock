@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/zricethezav/gitleaks/v8/detect"
+	"github.com/zricethezav/gitleaks/v8/report"
 )
 
 // Folders the secrets engine does not enter: the repository's own database, other tools' trees, and Drydock's worktrees.
@@ -73,7 +74,7 @@ func scanSecrets(ctx context.Context, dir string, redact func(string) string, pr
 			unread++
 		}
 		if ok {
-			for _, f := range det.DetectContext(ctx, detect.Fragment{Raw: string(b), FilePath: rel, StartLine: 1}) {
+			for _, f := range detectIn(ctx, det, string(b), rel) {
 				fd := Finding{Engine: Secrets, Severity: High, Rule: cleanLine(f.RuleID, 120), Title: cleanLine(redact(f.Description), 200),
 					File: cleanLine(rel, 300), Line: f.StartLine, EndLine: endLine(f.StartLine, f.EndLine)}
 				// the line with the secret masked is what the fingerprint hashes; the value itself never leaves this loop
@@ -87,6 +88,11 @@ func scanSecrets(ctx context.Context, dir string, redact func(string) string, pr
 		}
 	}
 	return out, unread, nil
+}
+
+// detectIn runs the gitleaks rules over one file's text (rel names it), lines counted from 1.
+func detectIn(ctx context.Context, det *detect.Detector, raw, rel string) []report.Finding {
+	return det.DetectContext(ctx, detect.Fragment{Raw: raw, FilePath: rel, StartLine: 1})
 }
 
 func endLine(start, end int) int {

@@ -131,14 +131,6 @@ func (s *securityExt) overlay(ctx context.Context, key string, rep *scan.Report)
 	scan.ApplyDismissals(rep, d)
 }
 
-// reportKey is the target key of a report: its project, or its folder.
-func reportKey(rep scan.Report) string {
-	if rep.ProjectID != "" {
-		return rep.ProjectID
-	}
-	return folderKey(rep.Dir)
-}
-
 // scanByID is a scan's report: the running one, one the database refused, or a stored one; with its target key.
 func (s *securityExt) scanByID(ctx context.Context, id string) (*scan.Report, string, error) {
 	s.mu.Lock()

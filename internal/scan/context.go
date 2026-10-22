@@ -147,7 +147,7 @@ func ReadContext(ctx context.Context, dir string, f Finding, around int, redact 
 	}
 	ownFound := false
 	ownText := ""
-	for _, d := range det.DetectContext(ctx, detect.Fragment{Raw: text, FilePath: f.File, StartLine: 1}) {
+	for _, d := range detectIn(ctx, det, text, f.File) {
 		if d.EndLine > d.StartLine || strings.Contains(d.Secret, "\n") {
 			for n := d.StartLine; n <= d.EndLine; n++ {
 				whole[n] = true
