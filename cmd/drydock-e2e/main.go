@@ -170,6 +170,12 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			}},
 			// the independent reviewer (prompt text from internal/pipeline/review.go) always ships
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
+			// The Inbox (ui/e2e/inbox.spec.ts, decision P97): the worker asks the permission prompt tool to run a command its rules
+			// do not allow, waits for the person's answer in the Inbox, then does the work
+			{Match: "drydock-e2e inbox ask", Steps: []fakeagent.Step{
+				{Tool: "Bash", Input: json.RawMessage(`{"command":"curl https://example.com","description":"fetch the example page"}`), Ask: true, Result: "ran: curl https://example.com"},
+				{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implPlain}}, {Say: "implemented Subtract"},
+			}},
 			// after a human "request changes" the worker's prompt carries "Changes requested by the human:"
 			{Match: "Changes requested by the human", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implDoc}}, {Say: "addressed the feedback: added the doc comment"}}},
 			// the Feature template (spec gate, tests first) and PlanTeam: each Drydock prompt starts with a phase line

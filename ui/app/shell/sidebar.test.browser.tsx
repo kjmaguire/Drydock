@@ -36,13 +36,15 @@ function svc(over: Partial<Client> = {}) {
 const links = (r: { $$: (s: string) => NodeListOf<Element> }) => Array.from(r.$$('nav[aria-label="Main"] a[data-testid]')).map((e) => e.getAttribute('data-testid'));
 
 describe('the sidebar', () => {
-  it("on a project's page: the mark, the switcher, search, Inbox with its count, Chats, the projects with the open one's tabs, the workspace's pages", async () => {
-    const r = mount(<Sidebar route={{ name: 'needs-you' }} />, svc());
+  it("on a project's page: the mark, the switcher, search, Inbox with its count, Running, My tasks, Chats, the projects with the open one's tabs, the workspace's pages", async () => {
+    const r = mount(<Sidebar route={{ name: 'tasks' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="nav-overview"]')).not.toBeNull(), r);
     expect(r.$('nav[aria-label="Main"]')).not.toBeNull();
     expect(links(r)).toEqual([
       'nav-workspace',
       'nav-needs-you',
+      'nav-running',
+      'nav-my-tasks',
       'nav-chats',
       'nav-project-item',
       'nav-overview',
@@ -59,7 +61,7 @@ describe('the sidebar', () => {
       'nav-guide-top',
     ]);
     expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you');
-    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-tasks"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-needs-you"]')!.textContent).toContain('Inbox');
     expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
     expect(r.$('[data-testid="nav-settings"]')).not.toBeNull();
@@ -72,6 +74,35 @@ describe('the sidebar', () => {
     expect(items[0]!.getAttribute('aria-expanded')).toBe('true');
     expect(items[1]!.getAttribute('aria-expanded')).toBe('false');
     expect(r.$$('[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it("counts every project's items that need you and what runs; the Inbox, Running and My tasks are the workspace's pages", async () => {
+    const s = svc({
+      // a project's own list is not the count: the workspace's (no project) is
+      needsYouList: async (pid: string) => (pid === '' ? [{ key: 'a' }, { key: 'b' }, { key: 'c' }] : [{ key: 'a' }]) as never,
+      taskSummaries: async () => ({ summaries: [{ taskId: 't1', status: 'IN_PROGRESS' }, { taskId: 't2', status: 'REVIEW' }, { taskId: 't3', status: 'WAITING_HUMAN' }, { taskId: 't4', status: 'COMPLETED' }] as never, total: 4, partial: false }),
+      securityScanRunning: async () => [{ id: 's1', name: 'shop-api', engines: [] }] as never,
+    });
+    const r = mount(<Sidebar route={{ name: 'needs-you' }} />, s);
+    await waitFor(() => expect(r.$('[data-testid="needs-count"]')!.textContent).toBe('3'), r);
+    expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('3 items need you');
+    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-label')).toBe('Inbox: 3 items need you');
+    await waitFor(() => expect(r.$('[data-testid="running-count"]')!.textContent).toBe('3'), r);
+    expect(r.$('[data-testid="nav-running"]')!.getAttribute('href')).toBe('/needs-you?tab=running');
+    expect(r.$('[data-testid="nav-running"]')!.getAttribute('aria-label')).toBe('Running: 3 tasks and scans run');
+    expect(r.$('[data-testid="nav-my-tasks"]')!.getAttribute('href')).toBe('/my-tasks');
+    // the Inbox is the workspace's page: no project is open in the sidebar
+    expect(r.$('[data-testid="nav-overview"]')).toBeNull();
+    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-running"]')!.getAttribute('aria-current')).toBeNull();
+    // its Running tab lights Running instead
+    await r.act(() => s.ui.setInboxTab('running'));
+    expect(r.$('[data-testid="nav-running"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBeNull();
+    cleanup();
+    const mine = mount(<Sidebar route={{ name: 'my-tasks' }} />, svc());
+    await waitFor(() => expect(mine.$('[data-testid="nav-my-tasks"]')!.getAttribute('aria-current')).toBe('page'), mine);
+    expect(mine.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
   it('marks the page current: a tab of the project, Chats, Security, Connections, Models on this PC, Settings, the Guide', async () => {

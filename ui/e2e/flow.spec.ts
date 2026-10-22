@@ -63,7 +63,6 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.getByRole('button', { name: 'Approve' }).click();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
-    await expect(page.getByTestId('needs-count')).toHaveText('0');
 
     // reload: everything is a projection of the core, so the page shows the same state. The task turns Completed a moment
     // before the run commits its own completion (both arrive as events), so the comparison starts once the run says so too.
@@ -72,7 +71,10 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.reload();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/);
     await expect.poll(() => snapshot(page)).toEqual(before);
-    await expect(page.getByTestId('needs-count')).toHaveText('0');
+    // nothing of the project waits in the Inbox (the sidebar's count is every project's, and other specs leave theirs)
+    await page.getByTestId('nav-needs-you').click();
+    await expect(page.getByTestId('inbox-needs')).toBeVisible();
+    await expect(page.getByTestId('needs-item').filter({ hasText: 'gocalc-approve' })).toHaveCount(0);
   });
 
   test('request changes with feedback, the worker reworks, then approve', async ({ page }) => {
@@ -164,6 +166,10 @@ test("the sidebar is keyboard navigable: the Drydock mark comes first (the way h
   await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
   await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-running')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-my-tasks')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-chats')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-project-item').first()).toBeFocused();
@@ -171,9 +177,9 @@ test("the sidebar is keyboard navigable: the Drydock mark comes first (the way h
   await expect(page.getByTestId('nav-guide-top')).toBeFocused();
   await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-settings')).toBeFocused();
-  await page.getByTestId('nav-chats').focus();
+  await page.getByTestId('nav-running').focus();
   await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { level: 1, name: 'Needs you' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
 });

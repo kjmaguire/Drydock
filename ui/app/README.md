@@ -35,6 +35,8 @@ app/
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
   shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
   screens/<area>/     one folder per screen area, each with its tests
+  screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
+                      with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
   screens/tasks/      the Tasks board and list (tasks.ts: columns, elapsed), the task page with its step bar (steps.ts), the review panel
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)

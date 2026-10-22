@@ -1,4 +1,6 @@
-import type { NeedsYouItem } from '../../api/types.ts';
+import type { ApprovalDetail } from '../../api/inboxClient.ts';
+import type { RunningScan } from '../../api/securityTypes.ts';
+import type { NeedsYouItem, TaskSummary } from '../../api/types.ts';
 import { plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 
@@ -60,4 +62,169 @@ export function needsContextParts(it: NeedsYouItem): string[] {
   if (c.checksTotal > 0) out.push(`${c.checksPassed}/${c.checksTotal} checks passed`);
   if (c.verdict) out.push(`reviewer: ${c.verdict}`);
   return out;
+}
+
+// --- the Inbox (graphite, decision P97): every project's items, what runs and what was done today ---
+
+/** What an item is, for its icon tile and its words: a spec gate and a review and merge are both reviews to the core. */
+export type NeedsLook = 'approval' | 'spec' | 'merge' | 'plan' | 'review' | 'question' | 'failed_check' | 'watchdog' | 'chat';
+
+export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
+  switch (it.kind) {
+    case 'review':
+      return it.phase === 'spec' ? 'spec' : it.phase === 'merge' ? 'merge' : it.phase === 'plan' ? 'plan' : 'review';
+    case 'question':
+      return 'question';
+    case 'failed_check':
+      return 'failed_check';
+    case 'watchdog_pause':
+      return 'watchdog';
+    case 'chat_permission':
+      return 'chat';
+    default:
+      return 'approval';
+  }
+}
+
+/** The item's kind in the words of a row's subtitle ("approval", "spec gate", "ready to merge"). */
+export const LOOK_WORDS: Record<NeedsLook, string> = {
+  approval: 'approval',
+  spec: 'spec gate',
+  merge: 'ready to merge',
+  plan: 'plan to review',
+  review: 'review',
+  question: 'question',
+  failed_check: 'failed check',
+  watchdog: 'watchdog pause',
+  chat: 'chat permission',
+};
+
+/** A task's key, "GOC-41": the project's key and the task's number; empty when either is unknown. */
+export const taskKey = (projectKey: string | undefined, seq: number | undefined): string => (projectKey && seq ? `${projectKey}-${seq}` : '');
+
+/** "just now", "1 min ago", "14 min ago", "3 h ago", "2 d ago": how long ago a time was. */
+export function agoWords(ms: number, now = Date.now()): string {
+  if (!ms) return '';
+  const s = Math.max(0, Math.floor((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
+
+/** "in 58 min", "in 2 h", "in 1 d"; "now" once it has passed. */
+export function untilWords(ms: number, now = Date.now()): string {
+  const s = Math.floor((ms - now) / 1000);
+  if (s <= 0) return 'now';
+  if (s < 3600) return `in ${Math.max(1, Math.floor(s / 60))} min`;
+  if (s < 86400) return `in ${Math.floor(s / 3600)} h`;
+  return `in ${Math.floor(s / 86400)} d`;
+}
+
+/** Elapsed time as a clock: "0:58", "4:12", "1:02:03". */
+export function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+/** An action hash shortened for reading: its first 8 and last 5 characters. */
+export const shortHash = (h: string): string => (h.length > 16 ? `${h.slice(0, 8)}…${h.slice(-5)}` : h);
+
+/** A time the core sent as RFC 3339 text or as milliseconds (some fields are seconds), in milliseconds; 0 when there is none. */
+export function msOf(v: string | number | undefined): number {
+  if (typeof v === 'number') return v > 0 && v < 1e11 ? v * 1000 : v;
+  const n = v ? Date.parse(v) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** The start of today, local time. */
+export function startOfToday(now = Date.now()): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+const PERMISSION_PREFIX = 'Permission request: ';
+
+/**
+ * A row's title: what the person decides. A spec gate is the task's title and "the spec is ready", a review and merge the task's
+ * title and how its checks went, a worker's permission request who asks for what; anything else the core's own title.
+ */
+export function needsRowTitle(it: NeedsYouItem, summary?: Pick<TaskSummary, 'title'>): string {
+  const look = needsLook(it);
+  const task = summary?.title;
+  if (look === 'spec' && task) return `${task}: the spec is ready`;
+  if (look === 'merge' && task) {
+    const c = it.context;
+    return c && c.checksTotal > 0 ? `${task}: ${c.checksPassed} of ${c.checksTotal} checks passed` : `${task}: ready to merge`;
+  }
+  if (look === 'approval' && it.title.startsWith(PERMISSION_PREFIX)) return `${it.agentName || 'An agent'} asks to use ${it.title.slice(PERMISSION_PREFIX.length)}`;
+  return it.title;
+}
+
+const titleCase = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** A row's subtitle: "gocalc · approval · asked 2 min ago", "gocalc · spec gate · Feature template · 6 min ago". */
+export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined, summary?: Pick<TaskSummary, 'template'>, now = Date.now()): string {
+  const look = needsLook(it);
+  const when = agoWords(msOf(it.createdAt), now);
+  const asked = look === 'approval' || look === 'question' || look === 'chat';
+  const parts = [projectName, LOOK_WORDS[look]];
+  if (look === 'spec' && summary?.template) parts.push(`${titleCase(summary.template)} template`);
+  else if (!asked && it.agentName) parts.push(it.agentName);
+  parts.push(when && asked ? `asked ${when}` : when);
+  return parts.filter(Boolean).join(' · ');
+}
+
+/** Whether an item can be marked done (needsyou.ack): a failed check, a watchdog pause, a question in a room. A request is answered instead. */
+export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog):/.test(it.key);
+
+/** The agent's latest step as a row says it after the title: "editing limiter.go". */
+export const doingWords = (doing: string | undefined): string => (doing ? doing.charAt(0).toLowerCase() + doing.slice(1) : '');
+
+/** How far a task has come: its step of the steps it has, 0 to 1; undefined when the core says nothing. */
+export function stepFraction(s: Pick<TaskSummary, 'stepIndex' | 'stepCount'>): number | undefined {
+  return s.stepCount > 0 ? Math.min(1, Math.max(0, s.stepIndex / s.stepCount)) : undefined;
+}
+
+const ENGINE_DONE = ['done', 'skipped', 'errored', 'cancelled'];
+
+/** A running scan's row: the engine at work and how many of its engines finished. */
+export function scanProgress(scan: Pick<RunningScan, 'engines'>): { engine: string; done: number; total: number } {
+  const engines = scan.engines;
+  const running = engines.find((e) => e.status === 'running') ?? engines.find((e) => e.status === 'pending');
+  return { engine: running ? `${running.name} running` : '', done: engines.filter((e) => ENGINE_DONE.includes(e.status)).length, total: engines.length };
+}
+
+/** How the right pane answers a request (approval.get), from what the core says of it. */
+export type Answer =
+  /** A worker's tool permission request: Approve (for the task when the core allows it), Approve once, Deny. */
+  | { kind: 'permission'; runId: string; forTask: boolean; note?: string }
+  /** A plain workflow approval: Approve or Deny on its run. */
+  | { kind: 'approval'; runId: string }
+  /** A spec gate: Accept the spec as written (editing the criteria and sending it back are on the task's page). */
+  | { kind: 'spec'; runId: string }
+  /** A review and merge: Merge (asking for changes, with the feedback, is on the task's page). */
+  | { kind: 'merge'; runId: string }
+  /** Decided on its page (a budget pause, a CI gate, a question to answer, an outbound write...), or decided already. */
+  | { kind: 'open' };
+
+/** Whether a request's payload is one a special panel of the task's page answers (a budget pause, a gate, a limit, a watchdog pause). */
+function special(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const v = payload as Record<string, unknown>;
+  return (typeof v.gate === 'string' && v.gate !== '') || v.phase === 'limit' || (typeof v.signal === 'string' && v.signal !== '' && typeof v.stage === 'number');
+}
+
+export function answerOf(d: ApprovalDetail): Answer {
+  if (d.status !== 'REQUESTED' || !d.runId) return { kind: 'open' };
+  if (d.gate === 'permission_prompt') return { kind: 'permission', runId: d.runId, forTask: d.approveForTask, note: d.approveForTask ? undefined : d.approveForTaskNote };
+  if (special(d.payload)) return { kind: 'open' };
+  if (d.kind === 'review' && d.phase === 'spec') return { kind: 'spec', runId: d.runId };
+  if (d.kind === 'review' && d.phase === 'merge') return { kind: 'merge', runId: d.runId };
+  if (d.kind === 'approval') return { kind: 'approval', runId: d.runId };
+  return { kind: 'open' };
 }

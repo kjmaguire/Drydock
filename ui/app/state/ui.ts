@@ -98,6 +98,9 @@ function writeJSON(key: string, v: unknown): void {
   }
 }
 
+/** The Inbox's tabs. */
+export type InboxTab = 'needs' | 'running' | 'done';
+
 /** A one-time note one page leaves for the next. */
 export interface Flash {
   text: string;
@@ -123,6 +126,8 @@ export class UiModel extends Model {
   /** A rail or the chat list shown as a drawer in a narrow window (closed again by a navigation). */
   drawerOpen = false;
   paletteOpen = false;
+  /** The Inbox's tab (Needs you, Running, Done today): the sidebar's Inbox or Running is current with it. */
+  inboxTab: InboxTab = 'needs';
   theme: ThemeChoice = 'system';
   #newChat = false;
   #dock: Record<string, DockState> = {};
@@ -228,6 +233,12 @@ export class UiModel extends Model {
     if (this.#page === 'conversation') this.#open.open = open;
     else this.#open.other = open;
     writeJSON(DETAILS_KEY, this.#open);
+    this.changed();
+  }
+
+  setInboxTab(tab: InboxTab): void {
+    if (this.inboxTab === tab) return;
+    this.inboxTab = tab;
     this.changed();
   }
 

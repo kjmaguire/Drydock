@@ -47,10 +47,10 @@ describe('routes', () => {
   });
 
   it('tells workspace pages (the workspace sidebar) from project pages', () => {
-    for (const p of ['/home', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
+    for (const p of ['/home', '/needs-you', '/my-tasks', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, true]);
     }
-    for (const p of ['/', '/needs-you', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team', '/project/integrations']) {
+    for (const p of ['/', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team', '/project/integrations']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, false]);
     }
   });
@@ -99,7 +99,13 @@ describe('routes', () => {
     expect(parseRoute('/team')).toEqual({ name: 'team' });
     expect(parseRoute('/team/agt_1')).toEqual({ name: 'agent', id: 'agt_1' });
     expect(hubOf({ name: 'agent', id: 'agt_1' })).toBe('crew');
-    expect(hubOf({ name: 'needs-you' })).toBe('none'); // the bell's page lights no tab
+    // the Inbox and My tasks are the workspace's (decision P97): they open without a project and light no project's tab
+    expect(hubOf({ name: 'needs-you' })).toBe('inbox');
+    expect(hubOf({ name: 'my-tasks' })).toBe('inbox');
+    expect(isWorkspaceRoute({ name: 'needs-you' })).toBe(true);
+    expect(parseRoute('/my-tasks')).toEqual({ name: 'my-tasks' });
+    expect(routes.myTasks.href()).toBe('/my-tasks');
+    expect(parseRoute('/needs-you/x')).toEqual({ name: 'not-found' });
     expect(isWorkspacePage({ name: 'agent', id: 'agt_1' })).toBe(false);
   });
 

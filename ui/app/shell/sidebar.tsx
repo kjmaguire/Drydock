@@ -1,7 +1,7 @@
 // The sidebar (graphite, decision P97): the app's main navigation landmark, on the left of every page. It folds to a 56px
 // rail of icons (the toggle, or "[" outside a text field; a narrow window starts folded) and remembers the choice. From the
 // top: the Drydock mark (the way home), the project switcher, search (Ctrl+K), the person's own lists (Inbox with what waits
-// on them, Chats), the projects (the open one shows its tabs under it), the workspace's pages, then Settings, the Guide, the
+// on them in every project, Running with what runs, My tasks, Chats), the projects (the open one shows its tabs under it), the workspace's pages, then Settings, the Guide, the
 // local engine's state and the event stream's. The test ids are the ones the top bar had, so the e2e helpers find the same
 // links (e2e/helpers.ts).
 
@@ -10,10 +10,12 @@ import {
   BookOpen,
   CircleHelp,
   ClipboardList,
+  Clock,
   Cpu,
   House,
   Inbox,
   Library,
+  ListTodo,
   MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -262,7 +264,10 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     const project = ws.project;
     const hub = hubOf(route);
     const workspace = workspaceView(route, !!project);
-    const needs = s.project.needsCount;
+    // the Inbox and Running count every project's (decision P97)
+    const needs = ws.needsCount;
+    const running = ws.runningCount;
+    const inbox = route.name === 'needs-you';
     const status = s.store.getSnapshot().status;
     const live = status === 'open';
     const eng = engineWords(engine.data);
@@ -310,12 +315,12 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             <li style={{ position: 'relative' }}>
               <a
                 href={routes.needsYou.href()}
-                mix={itemCss}
+                mix={[itemCss, on('click', () => s.ui.setInboxTab('needs'))]}
                 data-nav=""
                 data-testid="nav-needs-you"
                 aria-label={`Inbox: ${needs} ${needs === 1 ? 'item needs' : 'items need'} you`}
                 title="Inbox"
-                aria-current={route.name === 'needs-you' ? 'page' : undefined}
+                aria-current={inbox && s.ui.inboxTab !== 'running' ? 'page' : undefined}
               >
                 <Icon icon={Inbox} size={15} />
                 <span class="lbl">Inbox</span>
@@ -324,6 +329,24 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 </span>
               </a>
             </li>
+            <li style={{ position: 'relative' }}>
+              <a
+                href={`${routes.needsYou.href()}?tab=running`}
+                mix={[itemCss, on('click', () => s.ui.setInboxTab('running'))]}
+                data-nav=""
+                data-testid="nav-running"
+                aria-label={`Running: ${running} ${running === 1 ? 'task or scan runs' : 'tasks and scans run'}`}
+                title="Running"
+                aria-current={inbox && s.ui.inboxTab === 'running' ? 'page' : undefined}
+              >
+                <Icon icon={Clock} size={15} />
+                <span class="lbl">Running</span>
+                <span class="count" mix={countCss} data-testid="running-count">
+                  {running}
+                </span>
+              </a>
+            </li>
+            {link({ id: 'nav-my-tasks', label: 'My tasks', icon: ListTodo, href: routes.myTasks.href(), current: route.name === 'my-tasks' })}
             {link({ id: 'nav-chats', label: 'Chats', icon: MessagesSquare, href: routes.chats.href(), current: is('chats') })}
           </ul>
 
