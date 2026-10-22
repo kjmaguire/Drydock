@@ -317,7 +317,9 @@ func (m Message) PayloadField(name string, v any) bool {
 const ViaSteer = "steer"
 
 // IsSteer reports whether the message is a person's steer of a running agent (ViaSteer).
-func (m Message) IsSteer() bool { return m.Author.Kind == AuthorHuman && m.PayloadString("via") == ViaSteer }
+func (m Message) IsSteer() bool {
+	return m.Author.Kind == AuthorHuman && m.PayloadString("via") == ViaSteer
+}
 
 // PayloadString returns a string payload field or "".
 func (m Message) PayloadString(name string) string {

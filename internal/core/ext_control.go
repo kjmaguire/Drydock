@@ -41,7 +41,9 @@ type controlExt struct {
 
 func startControl(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	x := &controlExt{c: c, sched: pipeline.NewScheduler(pipeline.SchedulerDeps{Tasks: c.Tasks, DB: c.DB, Bus: c.Bus,
-		Dev: func(ctx context.Context, projectID string) pipeline.DevSettings { return pipeline.LoadDevSettings(ctx, c.DB, projectID) }})}
+		Dev: func(ctx context.Context, projectID string) pipeline.DevSettings {
+			return pipeline.LoadDevSettings(ctx, c.DB, projectID)
+		}})}
 	return map[string]Method{
 		"task.steer": bind(func(ctx context.Context, p struct {
 			ID      string `json:"id"`

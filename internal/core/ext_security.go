@@ -351,13 +351,14 @@ func (s *securityExt) forgetChoices(ctx context.Context) {
 func (s *securityExt) rulesDir(_ context.Context, _ string) string { return s.c.cfg.ScanRulesDir }
 
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
+	jobs := s.installJobs() // first: see installJobs
 	paths, rules := s.paths(ctx), s.rulesDir(ctx, projectID)
 	key := fmt.Sprintf("%s|%v|%v|%s|%v|%v|%s", paths.OSV.Path, paths.OSV.Chosen, paths.OSV.Installed, paths.Opengrep.Path, paths.Opengrep.Chosen, paths.Opengrep.Installed, rules)
 	s.memoMu.Lock()
 	if s.memo.key == key && time.Since(s.memo.at) < toolsMemoTTL && toolsStamp(s.memo.v) == s.memo.stamp {
 		t := s.memo.v
 		s.memoMu.Unlock()
-		return s.withInstalls(t)
+		return s.withInstalls(t, jobs)
 	}
 	s.memoMu.Unlock()
 	// the external tools read the whole project: they get what every project command gets (checks.CommandEnv), no more
@@ -366,7 +367,7 @@ func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	s.memoMu.Lock()
 	s.memo.key, s.memo.stamp, s.memo.at, s.memo.v = key, toolsStamp(t), time.Now(), t
 	s.memoMu.Unlock()
-	return s.withInstalls(t)
+	return s.withInstalls(t, jobs)
 }
 
 // paths are the configured tools with the one Drydock installed in place of each (decision P66).

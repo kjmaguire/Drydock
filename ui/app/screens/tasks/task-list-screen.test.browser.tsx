@@ -150,7 +150,8 @@ describe('TaskListScreen: the board', () => {
     expect(add.getAttribute('href')).toBe('/tasks/new');
     expect(add.getAttribute('aria-keyshortcuts')).toBe('C');
     expect(add.querySelector('kbd')!.textContent).toBe('C');
-    expect(taskSummaries.calls[0]).toEqual([{ projectId: 'prj_1' }]);
+    // the board reads its project's summaries (the sidebar's Running count reads the workspace's, projectId "")
+    expect(taskSummaries.calls.filter((c) => ((c as unknown[])[0] as { projectId: string }).projectId !== '')[0]).toEqual([{ projectId: 'prj_1' }]);
   });
 
   it('five columns from the steps, each with its glyph, name and count; Merged counts this week; failed tasks under Stopped', async () => {
@@ -367,16 +368,18 @@ describe('TaskListScreen: the board', () => {
 
   it('reads again on the task, run, presence and Needs you events of the project, not on another project\'s', async () => {
     const { r, s, taskSummaries } = board();
+    // the board's own reads: the sidebar's Running count reads the workspace's summaries (projectId "") on any project's events
+    const reads = () => taskSummaries.calls.filter((c) => ((c as unknown[])[0] as { projectId: string }).projectId === 'prj_1').length;
     await shown(r, 8);
     for (const type of ['task.updated', 'workflow.request_raised', 'room.presence_changed', 'needsyou.ack']) {
-      const before = taskSummaries.calls.length;
+      const before = reads();
       s.emit({ type, projectId: 'prj_1', taskId: 'build' });
-      await waitFor(() => expect(taskSummaries.calls.length).toBeGreaterThan(before), r, 3000);
+      await waitFor(() => expect(reads()).toBeGreaterThan(before), r, 3000);
     }
-    const before = taskSummaries.calls.length;
+    const before = reads();
     s.emit({ type: 'task.updated', projectId: 'prj_other' });
     await new Promise((res) => setTimeout(res, 400));
-    expect(taskSummaries.calls.length).toBe(before);
+    expect(reads()).toBe(before);
   });
 
   it('says when the list is cut, as the core says (summaries.partial)', async () => {
