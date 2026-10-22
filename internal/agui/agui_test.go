@@ -196,21 +196,21 @@ func TestATurnThatFailedEndsWithRunErrorAndItsError(t *testing.T) {
 }
 
 // A failure outside a turn (a start that failed, a crash between turns) is a run of its own that errored, so it shows; the
-// failures that follow it before another run add their words to it.
+// failures that follow it before the agent moves on add their words to it (the same words once).
 func TestAFailureOutsideATurnIsARunThatErrored(t *testing.T) {
 	var s stream
 	s.add("agent.failed", "start", map[string]any{"error": "the folder has configuration nobody trusted", "phase": "start"})
 	s.add("agent.waiting", "r", map[string]any{"state": "working"})
 	s.add("agent.completed", "r", map[string]any{"stopReason": "end_turn"})
 	s.add("agent.failed", "r", map[string]any{"exitCode": 2, "error": "exit 2: boom", "phase": "run"})
-	s.add("agent.stopped", "r", map[string]any{"exitCode": 2})
 	s.add("agent.failed", "r", map[string]any{"error": "exit 2: boom"}) // said already
-	s.add("agent.failed", "r", map[string]any{"error": "record run end: disk full", "phase": "bookkeeping"})
+	s.add("agent.failed", "r", map[string]any{"error": "the app stopped while this agent was running", "phase": "app_stopped"})
+	s.add("agent.stopped", "r", map[string]any{"exitCode": 2})
 	s.out("q", workflow.ChunkError, workflow.ErrorChunk{Message: "stdout: closed", Fatal: true}) // before any turn
 	s.add("agent.failed", "q", map[string]any{"exitCode": 1})                                    // no words
 	a := project(t, s.evs)
 	eq(t, types(a.Threads[0]), []string{"RUN_STARTED start:1", "RUN_ERROR start:1 the folder has configuration nobody trusted"})
-	eq(t, types(a.Threads[1]), []string{"RUN_STARTED r:1", "RUN_FINISHED r:1 success end_turn", "RUN_STARTED r:2", "RUN_ERROR r:2 exit 2: boom; record run end: disk full"})
+	eq(t, types(a.Threads[1]), []string{"RUN_STARTED r:1", "RUN_FINISHED r:1 success end_turn", "RUN_STARTED r:2", "RUN_ERROR r:2 exit 2: boom; the app stopped while this agent was running"})
 	eq(t, types(a.Threads[2]), []string{"RUN_STARTED q:1", "RUN_ERROR q:1 stdout: closed"})
 	if a.Threads[0].AgentID != "ag_start" {
 		t.Fatalf("the failed start's agent: %+v", a.Threads[0])
@@ -304,4 +304,118 @@ func TestAWorkflowsOwnRequestOpensNoThread(t *testing.T) {
 	if len(a.Threads) != 0 {
 		t.Fatalf("threads %+v", a.Threads)
 	}
+}
+
+// ends lists how each run of a thread ended.
+func ends(th Thread) []string {
+	var out []string
+	for _, l := range types(th) {
+		if strings.HasPrefix(l, "RUN_FINISHED") || strings.HasPrefix(l, "RUN_ERROR") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// A warning (an ACP agent asked for a model it does not offer) does not fail a turn that then answered, whatever its stop
+// reason: the chat's rule (an error, no answer and no end_turn is a failed turn). Without an answer the warning is why it failed.
+func TestAWarningDoesNotFailATurnThatAnswered(t *testing.T) {
+	warn := workflow.ErrorChunk{Message: `model "x" was requested but this agent does not offer it (offered: a, b); the agent's default is in use`}
+	var s stream
+	turn := func(stop, answer string) {
+		s.add("agent.waiting", "r", map[string]any{"state": "working"})
+		s.out("r", workflow.ChunkError, warn) // session.warn: no code
+		s.out("r", workflow.ChunkText, workflow.TextDelta{Text: answer + "…"})
+		if answer != "" {
+			s.out("r", workflow.ChunkMessageEnd, workflow.TextDelta{Text: answer}) // ACP flushes the whole message
+		}
+		s.add("agent.completed", "r", map[string]any{"stopReason": stop})
+	}
+	turn("max_tokens", "The whole answer.")
+	turn("refusal", "I can't help with that.")
+	turn("max_tokens", "") // text began but no message was finished: no answer, as the chat counts one
+	turn("refusal", "   ") // nothing but space is no answer either
+	turn("end_turn", "")   // end_turn is a success whatever came before
+	eq(t, ends(project(t, s.evs).Threads[0]), []string{
+		"RUN_FINISHED r:1 success max_tokens",
+		"RUN_FINISHED r:2 success refusal",
+		"RUN_ERROR r:3 " + warn.Message + " (max_tokens)",
+		"RUN_ERROR r:4 " + warn.Message + " (refusal)",
+		"RUN_FINISHED r:5 success end_turn",
+	})
+}
+
+// A turn that never reported its end (the next turn started while it was open) ends as agent.completed with no stop reason
+// would end it: a warning and no answer is a failure, not a success.
+func TestARunLeftOpenEndsAsItsCompletionWould(t *testing.T) {
+	var s stream
+	s.add("agent.waiting", "r", map[string]any{"state": "working"})
+	s.out("r", workflow.ChunkError, workflow.ErrorChunk{Message: "rate limited"})
+	s.out("r", workflow.ChunkThinking, workflow.TextDelta{Text: "hm"})
+	s.add("agent.waiting", "r", map[string]any{"state": "working"}) // r:1 never completed
+	s.out("r", workflow.ChunkError, workflow.ErrorChunk{Message: "rate limited"})
+	s.out("r", workflow.ChunkMessageEnd, workflow.TextDelta{Text: "an answer"})
+	s.add("agent.waiting", "r", map[string]any{"state": "working"}) // r:2 answered
+	s.out("r", workflow.ChunkError, workflow.ErrorChunk{Message: "adapter drift: ...", Code: workflow.CodeAdapterDrift})
+	s.out("r", workflow.ChunkToolCall, workflow.ToolCall{ID: "c1", Name: "Read"})
+	s.add("agent.waiting", "r", map[string]any{"state": "working"}) // r:3 had only a coded warning
+	s.add("agent.completed", "r", map[string]any{"stopReason": "end_turn"})
+	eq(t, ends(project(t, s.evs).Threads[0]), []string{
+		"RUN_ERROR r:1 rate limited",
+		"RUN_FINISHED r:2 success ",
+		"RUN_FINISHED r:3 success ",
+		"RUN_FINISHED r:4 success end_turn",
+	})
+}
+
+// One RUN_ERROR per failed turn: the process's failure right after a fatal error chunk adds its words to it. Once the agent
+// has moved on from the failed turn (it completed, went idle, or its process stopped), a later failure is its own.
+func TestAFailureAfterTheFailedTurnClosedIsItsOwn(t *testing.T) {
+	var s stream
+	// a Claude turn that failed (is_error), then a crash while the agent sat idle
+	s.add("agent.waiting", "a", map[string]any{"state": "working"})
+	s.out("a", workflow.ChunkError, workflow.ErrorChunk{Message: "Reached maximum number of turns (3)"})
+	s.add("agent.completed", "a", map[string]any{"stopReason": "error_max_turns"})
+	s.add("agent.failed", "a", map[string]any{"exitCode": 1, "error": "exit 1: panic", "phase": "run"})
+	s.add("agent.stopped", "a", map[string]any{"exitCode": 1})
+	// a fatal error, the agent idle afterwards, then a crash
+	s.add("agent.waiting", "b", map[string]any{"state": "working"})
+	s.out("b", workflow.ChunkError, workflow.ErrorChunk{Message: "boom", Fatal: true})
+	s.add("agent.waiting", "b", map[string]any{"state": "idle"})
+	s.add("agent.failed", "b", map[string]any{"exitCode": 2, "error": "exit 2", "phase": "run"})
+	// a fatal error and the process's failure (one RUN_ERROR); its end went unrecorded, so the next start reports it again
+	s.add("agent.waiting", "c", map[string]any{"state": "working"})
+	s.out("c", workflow.ChunkError, workflow.ErrorChunk{Message: "connection to the agent ended during the turn: EOF", Fatal: true})
+	s.add("agent.failed", "c", map[string]any{"exitCode": 1, "error": "exit 1", "phase": "run"})
+	s.add("agent.failed", "c", map[string]any{"error": "record run end: disk full", "phase": "bookkeeping"})
+	s.add("agent.stopped", "c", map[string]any{"exitCode": 1})
+	s.add("agent.failed", "c", map[string]any{"error": "the app stopped while this agent was running", "phase": "app_stopped"})
+	a := project(t, s.evs)
+	if len(a.Threads) != 3 {
+		t.Fatalf("threads %+v", a.Threads)
+	}
+	eq(t, types(a.Threads[0]), []string{"RUN_STARTED a:1", "RUN_ERROR a:1 Reached maximum number of turns (3) (error_max_turns)", "RUN_STARTED a:2", "RUN_ERROR a:2 exit 1: panic"})
+	eq(t, types(a.Threads[1]), []string{"RUN_STARTED b:1", "RUN_ERROR b:1 boom", "RUN_STARTED b:2", "RUN_ERROR b:2 exit 2"})
+	eq(t, types(a.Threads[2]), []string{"RUN_STARTED c:1", "RUN_ERROR c:1 connection to the agent ended during the turn: EOF; exit 1", "RUN_STARTED c:2", "RUN_ERROR c:2 the app stopped while this agent was running"})
+}
+
+// The runtime's agent.failed {phase: bookkeeping} says Drydock could not record a run's end (its database), not that the
+// agent's turn failed: it opens no run, ends none, and adds nothing to a turn's error.
+func TestABookkeepingFailureIsNoTurnFailure(t *testing.T) {
+	var s stream
+	s.add("agent.waiting", "r", map[string]any{"state": "working"})
+	s.out("r", workflow.ChunkMessageEnd, workflow.TextDelta{Text: "done"})
+	s.add("agent.completed", "r", map[string]any{"stopReason": "end_turn"})
+	s.add("agent.failed", "r", map[string]any{"error": "record run end: database is locked", "phase": "bookkeeping"}) // after a clean exit
+	s.add("agent.stopped", "r", map[string]any{"exitCode": 0})
+	s.add("agent.failed", "only", map[string]any{"error": "record run end: disk full", "phase": "bookkeeping"}) // nothing else
+	s.add("agent.failed", "f", map[string]any{"exitCode": 2, "error": "exit 2", "phase": "run"})
+	s.add("agent.failed", "f", map[string]any{"error": "record run end: disk full", "phase": "bookkeeping"})
+	s.add("agent.stopped", "f", map[string]any{"exitCode": 2})
+	a := project(t, s.evs)
+	if len(a.Threads) != 2 || a.Threads[0].ThreadID != "r" || a.Threads[1].ThreadID != "f" {
+		t.Fatalf("threads %+v", a.Threads)
+	}
+	eq(t, types(a.Threads[0]), []string{"RUN_STARTED r:1", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT done", "TEXT_MESSAGE_END", "RUN_FINISHED r:1 success end_turn"})
+	eq(t, types(a.Threads[1]), []string{"RUN_STARTED f:1", "RUN_ERROR f:1 exit 2"})
 }
