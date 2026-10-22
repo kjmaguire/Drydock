@@ -29,9 +29,13 @@ export const controller = createController(routes, {
       const { RoomScreen } = await import('../screens/room/room-screen.tsx');
       return render(<RoomScreen key={params.id} id={params.id} />);
     },
-    async needsYou({ render }) {
+    async needsYou({ render, url }) {
       const { NeedsYouScreen } = await import('../screens/needs-you/needs-you-screen.tsx');
-      return render(<NeedsYouScreen />);
+      return render(<NeedsYouScreen tab={url.searchParams.get('tab') ?? undefined} />);
+    },
+    async myTasks({ render }) {
+      const { MyTasksScreen } = await import('../screens/needs-you/my-tasks-screen.tsx');
+      return render(<MyTasksScreen />);
     },
     async tasks({ render }) {
       const { TaskListScreen } = await import('../screens/tasks/task-list-screen.tsx');

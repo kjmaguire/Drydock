@@ -37,6 +37,8 @@ app/
                       menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
+  screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
+                      with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
   screens/tasks/      the project board (Board / List / Timeline of task.summaries; tasks.ts: columns, cards, checks bar, filters,
                       timeline), the task page with its step bar (steps.ts), the review panel

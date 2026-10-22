@@ -5,7 +5,10 @@ import { get, route } from 'remix/routes';
 
 export const routes = route({
   home: get('/'),
+  // the Inbox (decision P97): what needs the person, what runs and what was done today, in every project (?tab=running|done)
   needsYou: get('/needs-you'),
+  // the tasks assigned to the person, in every project
+  myTasks: get('/my-tasks'),
   room: get('/room/:id'),
   // the Rooms tab: opens the project's general channel (decision P64)
   rooms: get('/rooms'),

@@ -96,7 +96,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
     const hub = hubOf(route);
     const ws = s.workspace;
     const project = ws.project;
-    const needs = s.project.needsCount;
+    const needs = ws.needsCount;
     handle.queueTask(() => {
       s.ui.setProject(project?.id); // the dock keeps its state per project
       document.title = needs > 0 ? `(${needs}) Drydock` : 'Drydock';

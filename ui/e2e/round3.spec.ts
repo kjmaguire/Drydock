@@ -251,11 +251,15 @@ test('development flow: the Feature template stops at the spec gate; reject with
   await expect(page.getByTestId('task-status').first()).toContainText('Waiting for you');
   // nothing has been built: no red or green evidence yet
   await expect(page.locator('[data-testid=evidence][data-kind=red_test]')).toHaveCount(0);
-  // it is in Needs you with a plain hint
+  // it is in the Inbox as the project's spec gate, with the task's criteria beside it
   await projectNav(page, 'nav-needs-you');
-  await expect(page.getByTestId('needs-item').first()).toContainText('Accept the spec');
-  await expect(page.getByTestId('needs-hint').first()).toContainText('spec gate');
-  await page.getByTestId('needs-item').first().getByRole('link').click();
+  const specItem = page.getByTestId('needs-item').filter({ hasText: 'gocalc-feature' }).filter({ hasText: 'spec gate' });
+  await expect(specItem).toContainText('Add Multiply: the spec is ready');
+  await specItem.getByRole('button').click();
+  const pane = page.getByRole('complementary', { name: 'Selected item' });
+  await expect(pane.getByTestId('detail-kind')).toHaveText('Spec gate · gocalc-feature');
+  await expect(pane.getByTestId('detail-criteria').locator('li')).toHaveCount(2);
+  await pane.getByTestId('detail-open').click();
 
   // reject with feedback: a NEW request (new id) comes back after the PM revises
   const first = await page.getByTestId('pending-request').getAttribute('data-request-id');
@@ -325,8 +329,13 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await expect(pause).toContainText('Budget limit reached');
   await expect(page.getByTestId('pending-request').first()).toHaveAttribute('data-kind', 'approval');
   await projectNav(page, 'nav-needs-you');
-  await expect(page.getByTestId('needs-hint').first()).toContainText('budget stopped the next agent turn');
-  await page.getByTestId('needs-item').first().getByRole('link').click();
+  const budgetItem = page.getByTestId('needs-item').filter({ hasText: 'gocalc-budget' }).filter({ hasText: 'Budget limit' });
+  await budgetItem.getByRole('button').click();
+  // the Inbox does not answer a budget pause: it says where, and opens the task
+  const pane = page.getByRole('complementary', { name: 'Selected item' });
+  await expect(pane.getByTestId('needs-hint')).toContainText('budget stopped the next agent turn');
+  await expect(pane.getByTestId('detail-approve')).toHaveCount(0);
+  await pane.getByTestId('detail-open').click();
 
   // raise the limit and resume: the run continues to the review panel
   await page.getByLabel('New turn limit').fill('10');
