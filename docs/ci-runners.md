@@ -81,7 +81,7 @@ after "No Dev Drive was found:", in the core's words: "no fixed drive on this PC
 Drives"); "the Dev Drive check is not available on this Windows version (the volume state query for D: failed: <error>), and
 fsutil devdrv query, which needs administrator rights, said "<its first line>"" (or "said nothing"); "Windows did not list this
 PC's drives: <error>". The same answer feeds the new project's folder hint (`fs.folderHints`, decision P58). The folder itself
-is set on the Connections page: **Choose folder…** opens the window's folder dialog and saves the choice at once (it stays in
+is set on the GitHub page: **Choose folder…** opens the window's folder dialog and saves the choice at once (it stays in
 the box when the save is refused, for example while a Windows runner is on), or a path is typed or pasted and saved with
 **Use this folder**; **Back to automatic** returns to the Dev Drive or Drydock's folder.
 
@@ -104,7 +104,7 @@ disk file grows and does not shrink by itself (`wsl --manage docker-desktop-data
 - `internal/core/ext_runners.go`: `runners.get`, `runners.add {repo, kind, acceptRunsAsYou}`, `runners.remove`,
   `runners.enable {enabled}`, `runners.root.set {path}` (refused while a Windows runner is on), `runners.log`. Settings
   `runners:slots` and `runners:root`. Event `runners.changed` (key, state, job, count; never a configuration).
-- UI: Connections page, "CI runners" (`ui/app/screens/connections/ci-runners.tsx`).
+- UI: GitHub page (`/github`), "CI runners" (`ui/app/screens/github/ci-runners.tsx`; on the Connections page until 2026-10-22).
 - Tests: `internal/runners` (release parsing, checksum refusal, unzip refusals, the Windows launcher with a stand-in runner
   program, the container launcher with a stand-in engine client, the pool with the in-memory GitHub and launcher of
   `runnerstest`, the Dev Drive decision and its reasons in `disk_test.go`, and on Windows `disk_windows_test.go`, which runs

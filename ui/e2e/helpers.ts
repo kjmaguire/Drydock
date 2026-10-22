@@ -233,6 +233,16 @@ export async function choose(control: Locator, option: string | { label: string 
 }
 
 /**
+ * Opens a tile's panel (ui/app/ui/tiles.tsx): a click on a tile that is not chosen yet. A click on the chosen one would close its
+ * panel, and a page may open its first tile by itself.
+ */
+export async function openTile(tile: Locator): Promise<void> {
+  await expect(tile).toBeVisible();
+  if ((await tile.getAttribute('aria-pressed')) !== 'true') await tile.click();
+  await expect(tile).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
  * The options of a dropdown, as a locator, or the one option with `value`: the kit's Select keeps them in the page while the
  * list is closed (hidden), so they can be counted and read without opening it; a native <select> gives its <option>s.
  */
