@@ -46,7 +46,8 @@ Never in a report, an event, a log or the database:
 
 - **the secret's value**. The secrets engine drops gitleaks' matched text before the finding leaves its function; the page
   says "The value is not shown".
-- **the vulnerable line of code**. Only the file and line are kept.
+- **the vulnerable line of code**. Only the file and line are kept, and the finding's fingerprint, a hash (section 9). The
+  code around a finding is read from the folder when a person asks for it, secrets masked, and is never stored.
 - **a tool's raw output**. A reason is the tool's first stderr line, control characters removed, capped, and passed through
   the app's secret scanner (`security.Scanner.Redact`); every title is too. The whole report is redacted once more as a
   JSON document before it is stored.
@@ -221,3 +222,48 @@ the repository.
 
 The tools run as before: through the Process Manager, with the scrubbed tool environment, in the folder, ten minutes at most.
 Only a person starts a folder scan (`human:` identity, like a project's).
+
+## 9. One finding: fingerprint, dismiss, the code around it, a task (decision P97)
+
+**Fingerprint.** Every finding has `fingerprint`: 24 hex digits of a SHA-256 over the engine, the rule, the file and a hash of
+the finding's line text, whitespace collapsed and redacted by the app's scanner. The secrets engine hashes the line with the
+secret replaced by the scanner's mask (`[REDACTED:<rule>]`), so the value is never part of it (another value on the same line
+has the same fingerprint); a code finding's lines (at most 20) are read from the file at scan time; a dependency finding
+hashes `package@version` and its advisory ids. A finding without text hashes its line number. A built-in rule is named by its
+own id, not the folder Opengrep read it from, so a new version of the rules keeps the fingerprints. Two findings with the
+same fingerprint in one report get `-2`, `-3` in report order. The fingerprint stays the same in later scans while the line
+reads the same, wherever it moves.
+
+**Dismiss.** `security.finding.dismiss {projectId | folder, fingerprint, reason}` (`not_real`, `accepted_risk`,
+`false_positive`; the finding must be in the target's last scan) and `security.finding.restore {projectId | folder,
+fingerprint}` keep a row per target and fingerprint (`security_dismissals`, migration 00132; deleted with the project, not
+exported). Every report that is read (`security.scan.get`, `security.scan.report`) and every finished scan before it is stored
+marks the dismissed findings (`dismissed`, `dismissedBy`, `dismissedAt`, `dismissReason`) and leaves them out of `counts`,
+the engines' `findings` and the summary ("1 finding you dismissed is not counted"); `dismissed` on the report and on each
+engine counts them. The history (`security.scan.list`) keeps each scan's counts as it was stored. `security.finding.dismissed
+{projectId | folder}` lists them, newest first. Only a person dismisses or restores. Events `security.finding.dismissed` and
+`security.finding.restored` carry the fingerprint.
+
+**The code around it.** `security.finding.context {scanId, fingerprint | index, around}` reads the finding's file now, from the
+folder its scan read (a folder scan's folder must still pass section 8's rules; a project's scan's folder must still be the
+project's repository): `around` lines before and after (2 by default, at most 10, 40 lines in all, each at most 400 bytes).
+gitleaks' rules run over the whole file and every secret they find is masked, a match over several lines masked whole; a
+secrets finding whose secret is no longer where it was has its lines masked whole; every line goes through the app's scanner.
+`changed` says the line no longer reads as at the scan. A path that leaves the folder (`..`, an absolute path, a link that
+leads out) is refused; a binary file, one over 2 MiB, one that is gone and a dependency finding answer with a `note` and no
+lines. It is read-only.
+
+**Plain words.** The same answer carries `advice {meaning, steps, refs}`: for a secret by its gitleaks rule family (AWS,
+GitHub, GitLab, private key, generic API key, JWT, Slack, Stripe, OpenAI, Anthropic, Google Cloud, Azure, npm, PyPI, Hugging
+Face; others by gitleaks' own description); for a dependency the advisories and the version to upgrade to (`fixed`: the lowest
+version above the installed one that fixes every advisory osv.dev names a fix for, read from the records' affected ranges;
+`unfixed` lists the advisories without one); for a built-in code rule its own message (first sentence: the meaning; the rest:
+the steps) and its CWE; for any other rule the finding's title.
+
+**A task.** `security.finding.task {scanId, fingerprint | index, assignee?}` makes a BACKLOG task in the scan's project: the
+title names what to do and where ("Remove the secret in notes.txt:3 and revoke it", "Upgrade x from 1.0 to 1.2 (known
+vulnerabilities)"), the description the rule, engine, severity, file and line, the advice, and the finding; never a secret.
+`issueRef` is `scan:<scanId>:<fingerprint>` (an imported task: no scheduler moves it on by itself). With `assignee` the task is
+given to that agent with another agent of the team as reviewer (a reviewer-role one first, never the lead). A finding with a
+task that is not failed or cancelled gets no second one. A folder scan has no project and is refused with the reason. Only a
+person makes one.

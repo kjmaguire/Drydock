@@ -41,8 +41,10 @@ func scanDeps(ctx context.Context, o *Options, path string, tool Tool) ([]Findin
 		}
 		var out []Finding
 		for _, f := range fs {
-			out = append(out, Finding{Engine: Deps, Severity: High, Rule: f.Ecosystem, Package: f.Package, Version: f.Version, IDs: f.IDs,
-				File: relativeURI(f.Source, o.Dir), Title: cleanLine(fmt.Sprintf("%s %s has known vulnerabilities: %s", f.Package, f.Version, strings.Join(f.IDs, ", ")), 200)})
+			fd := Finding{Engine: Deps, Severity: High, Rule: f.Ecosystem, Package: f.Package, Version: f.Version, IDs: f.IDs, Fixed: f.Fixed, Unfixed: f.Unfixed,
+				File: relativeURI(f.Source, o.Dir), Title: cleanLine(fmt.Sprintf("%s %s has known vulnerabilities: %s", f.Package, f.Version, strings.Join(f.IDs, ", ")), 200)}
+			fd.Fingerprint = Fingerprint(Deps, fd.Rule, fd.File, depsText(fd), 0)
+			out = append(out, fd)
 		}
 		return out, Done, ""
 	case 128:

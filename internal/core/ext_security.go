@@ -69,7 +69,7 @@ func init() {
 				r.Cancel()
 			}
 		})
-		return map[string]Method{
+		methods := map[string]Method{
 			// without a project: the tools and the rules folder of folder scans
 			"security.tools": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -142,7 +142,12 @@ func init() {
 			}) (any, error) {
 				return s.report(ctx, p.ID)
 			}),
-		}, s.close, nil
+		}
+		// one finding: dismiss, restore, the code around it, a task from it (ext_security_findings.go, decision P97)
+		for name, m := range s.findingMethods() {
+			methods[name] = m
+		}
+		return methods, s.close, nil
 	}})
 }
 
@@ -442,6 +447,8 @@ func (s *securityExt) changed(t target, rep scan.Report, engine scan.EngineID) {
 		}
 		return
 	}
+	// the findings a person dismissed before are marked and left out of the counts and the summary it is stored with
+	s.overlay(ctx, t.Key, &rep)
 	stored := true
 	if err := s.store(ctx, t, rep); err != nil {
 		s.c.logf("security scan %s: store: %v", rep.ID, err)
@@ -492,27 +499,15 @@ func (s *securityExt) cancel(t target) (any, error) {
 	return r.Snapshot(), nil
 }
 
-// current is the running scan, else a finished one the database refused, else the last stored one, else nil.
+// current is the running scan, else a finished one the database refused, else the last stored one, else nil; its findings
+// marked with the dismissals as they are now.
 func (s *securityExt) current(ctx context.Context, t target) (any, error) {
-	s.mu.Lock()
-	r, ok := s.running[t.Key]
-	kept, held := s.unstored[t.Key]
-	s.mu.Unlock()
-	if ok {
-		return r.Snapshot(), nil
-	}
-	if held {
-		return kept, nil
-	}
-	var doc string
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE project_id=? ORDER BY started_at DESC, id DESC LIMIT 1`, t.Key).Scan(&doc)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
+	rep, err := s.lastReport(ctx, t)
+	if err != nil || rep == nil {
 		return nil, err
 	}
-	return decodeReport(doc)
+	s.overlay(ctx, t.Key, rep)
+	return rep, nil
 }
 
 func decodeReport(doc string) (*scan.Report, error) {
@@ -529,16 +524,22 @@ func decodeReport(doc string) (*scan.Report, error) {
 	return &rep, nil
 }
 
+// report is a stored scan's report, its findings marked with the dismissals as they are now.
 func (s *securityExt) report(ctx context.Context, id string) (*scan.Report, error) {
-	var doc string
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE id=?`, id).Scan(&doc)
+	var key, doc string
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT project_id, report_json FROM security_scans WHERE id=?`, id).Scan(&key, &doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("there is no scan %s", id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return decodeReport(doc)
+	rep, err := decodeReport(doc)
+	if err != nil {
+		return nil, err
+	}
+	s.overlay(ctx, key, rep)
+	return rep, nil
 }
 
 func historyLimit(limit int) int {

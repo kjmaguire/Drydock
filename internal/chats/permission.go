@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
@@ -45,7 +47,13 @@ type PendingAsk struct {
 
 type pendingAsk struct {
 	info   PendingAsk
-	answer chan bool
+	answer chan askAnswer
+}
+
+// askAnswer is the person's answer: allow or refuse, and the allow rule recorded with an allow that is remembered for the chat.
+type askAnswer struct {
+	allow bool
+	rule  string
 }
 
 // ErrNoAsk is returned for an answer to a request that is not waiting (answered, expired, or never asked in that chat).
@@ -63,7 +71,7 @@ func (t *turnRun) asker() agents.PermissionAsker {
 		msg, _ := t.store(RoleSystem, "Asks to use "+summary, name, q.Args)
 		ttl := s.o.AskTTL
 		now := storage.Now()
-		p := &pendingAsk{answer: make(chan bool, 1), info: PendingAsk{ID: ids.New("cask"), ChatID: c.ID, ChatTitle: c.Title, ProjectID: c.ProjectID, TurnID: t.turnID, MessageID: msg.ID,
+		p := &pendingAsk{answer: make(chan askAnswer, 1), info: PendingAsk{ID: ids.New("cask"), ChatID: c.ID, ChatTitle: c.Title, ProjectID: c.ProjectID, TurnID: t.turnID, MessageID: msg.ID,
 			Tool: msg.ToolName, Summary: summary, Input: msg.ToolInput, Created: now, ExpiresAt: now + ttl.Milliseconds()}}
 		s.mu.Lock()
 		s.asks[p.info.ID] = p
@@ -72,12 +80,12 @@ func (t *turnRun) asker() agents.PermissionAsker {
 
 		timer := time.NewTimer(ttl)
 		defer timer.Stop()
-		var allow bool
+		var ans askAnswer
 		outcome := AskWithdrawn
 		select {
-		case allow = <-p.answer:
+		case ans = <-p.answer:
 			outcome = AskRefused
-			if allow {
+			if ans.allow {
 				outcome = AskAllowed
 			}
 		case <-timer.C:
@@ -90,7 +98,11 @@ func (t *turnRun) asker() agents.PermissionAsker {
 		s.publish(context.Background(), "chat.permission_answered", c.ProjectID, map[string]any{"chatId": c.ID, "id": p.info.ID, "outcome": outcome})
 		switch outcome {
 		case AskAllowed:
-			t.store(RoleSystem, "Allowed once by you: "+summary, "", nil)
+			if ans.rule != "" {
+				t.store(RoleSystem, "Allowed by you, and from the next message on in this chat ("+ans.rule+"): "+summary, "", nil)
+			} else {
+				t.store(RoleSystem, "Allowed once by you: "+summary, "", nil)
+			}
 			return true, ""
 		case AskRefused:
 			t.store(RoleDenied, "Refused by you: "+summary, name, q.Args)
@@ -146,6 +158,10 @@ func sortAsks(out []PendingAsk) {
 
 // Answer answers a waiting permission request of a chat: allow lets exactly that call run once.
 func (s *Service) Answer(_ context.Context, chatID, askID string, allow bool) error {
+	return s.answer(chatID, askID, askAnswer{allow: allow})
+}
+
+func (s *Service) answer(chatID, askID string, a askAnswer) error {
 	s.mu.Lock()
 	p, ok := s.asks[askID]
 	if ok && p.info.ChatID != chatID {
@@ -158,6 +174,58 @@ func (s *Service) Answer(_ context.Context, chatID, askID string, allow bool) er
 	if !ok {
 		return ErrNoAsk
 	}
-	p.answer <- allow
+	p.answer <- a
 	return nil
+}
+
+// waitingAsk is a request still waiting in a chat, without taking it.
+func (s *Service) waitingAsk(chatID, askID string) (PendingAsk, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.asks[askID]
+	if !ok || p.info.ChatID != chatID {
+		return PendingAsk{}, false
+	}
+	return p.info, true
+}
+
+// AllowAndRemember answers a waiting request with allow and records the allow rule for its tool call in the chat, as
+// AllowTool does, so the chat's later turns may make the same call without asking ("Allow <tool> in this chat"). Only an
+// adapter that takes per-chat allow rules (Claude Code) can remember; for any other the request is left waiting, to be
+// answered once. A call whose input was shortened or redacted, or that no safe rule names, is refused the same way. The rule
+// is recorded before the call is allowed; when the request is gone meanwhile (answered, expired, or its turn ended) a rule
+// the chat did not have before is taken back. It returns the rule.
+func (s *Service) AllowAndRemember(ctx context.Context, chatID, askID string) (string, error) {
+	ask, ok := s.waitingAsk(chatID, askID)
+	if !ok {
+		return "", ErrNoAsk
+	}
+	c, err := s.Get(ctx, chatID)
+	if err != nil {
+		return "", err
+	}
+	if caps, _ := s.caps(c.Adapter); !takesRules(c.Adapter, caps) {
+		return "", fmt.Errorf("%s does not take per-chat allow rules, so Drydock cannot remember this for the chat: allow it once instead", c.Adapter)
+	}
+	in := string(ask.Input)
+	if strings.Contains(in, "[REDACTED") || strings.Contains(in, `"truncated"`) {
+		return "", errors.New("the call's input was shortened or hides a secret, so no rule can name it exactly: allow it once instead")
+	}
+	rule := SuggestRule(ask.Tool, ask.Input)
+	if rule == "" {
+		return "", fmt.Errorf("no safe rule names this %s call for the chat: allow it once instead", firstNonEmpty(ask.Tool, "tool"))
+	}
+	had := contains(c.AllowedTools, rule)
+	if _, err := s.AllowTool(ctx, chatID, rule); err != nil {
+		return "", err
+	}
+	if err := s.answer(chatID, askID, askAnswer{allow: true, rule: rule}); err != nil {
+		if !had {
+			if _, derr := s.DisallowTool(ctx, chatID, rule); derr != nil {
+				s.logf("chats: taking back the rule %s: %v", rule, derr)
+			}
+		}
+		return "", err
+	}
+	return rule, nil
 }

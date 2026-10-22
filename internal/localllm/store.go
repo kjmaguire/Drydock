@@ -22,6 +22,8 @@ type Model struct {
 	Size         uint64    `json:"sizeBytes"`
 	DownloadedAt time.Time `json:"downloadedAt"`
 	Fit          *Fit      `json:"fit,omitempty"`
+	// KV is the estimated KV cache at the server's context size and cache type (read from the GGUF header; the core fills it).
+	KV *KVCache `json:"kv,omitempty"`
 }
 
 // ModelID is "owner/repo:VARIANT".

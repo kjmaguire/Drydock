@@ -20,6 +20,23 @@ func TestOnlyAPersonStartsAScan(t *testing.T) {
 	}
 }
 
+// Only a person dismisses a finding, restores one, or makes a task from one (decision P97); refused before anything is read.
+func TestOnlyAPersonDismissesRestoresOrMakesATaskFromAFinding(t *testing.T) {
+	s := &securityExt{}
+	req := findingDismissReq{scanTarget: scanTarget{ProjectID: "prj"}, Fingerprint: strings.Repeat("a", 24), Reason: scan.ReasonNotReal}
+	for _, by := range []string{"", "human:", "agent:bot", "system"} {
+		if _, err := s.dismiss(context.Background(), req, by); err == nil || !strings.Contains(err.Error(), "only a person") {
+			t.Fatalf("dismiss %q: %v", by, err)
+		}
+		if _, err := s.restore(context.Background(), req, by); err == nil || !strings.Contains(err.Error(), "only a person") {
+			t.Fatalf("restore %q: %v", by, err)
+		}
+		if _, err := s.findingTask(context.Background(), findingTaskReq{ScanID: "scn", Fingerprint: req.Fingerprint}, by); err == nil || !strings.Contains(err.Error(), "only a person") {
+			t.Fatalf("task %q: %v", by, err)
+		}
+	}
+}
+
 // A folder scan that has just finished is stored a moment before it leaves the running scans: the recent folder scans list it
 // once, as its stored row (with its end and summary), not twice (seen on the Windows CI, 2026-10-21: the scan's ID twice).
 func TestAFolderScanThatJustFinishedIsListedOnceAsItsStoredRow(t *testing.T) {

@@ -81,7 +81,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.send` | `{id, text, attach?: [chatId], files?: [{name, data (base64)}]}` (files: P90, at most 4, each at most 10 MB; a picture at most 5 MB and only to an agent that takes pictures) | `{turnId, version}`; the turn runs in the background. `version` is the chat's version once the turn was claimed: a snapshot at that version or later shows the turn (running or over) |
 | `chat.resend` | `{id, seq, text?[the message's own text]}` | `{turnId, version}`: the person's message at `seq` and everything after it are replaced and a new turn runs from there; the session is dropped, so the turn starts a fresh one given the conversation before as quoted history (P89). Refused for a message that is not the person's, or while a turn runs (nothing is removed then) |
 | `chat.stop` | `{id}` | `{stopped}` (false when nothing was running) |
-| `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?, adapter?, wslDistro?, cwd?, skills?, mcpServers?}` | `Chat` |
+| `chat.update` | `{id, title?, pinned?, archived?, model?, effort?, permissionMode?, readHistory?, adapter?, wslDistro?, cwd?, skills?, mcpServers?, projectId?}` | `Chat` |
 | `chat.delete` | `{id}` | `{deleted: true}` |
 | `chat.search` | `{query, projectId?, limit?[50, max 200]}` | `[Hit]` (archived chats included and marked) |
 | `chat.fork` | `{id, uptoSeq?[all]}` | `Chat` (new, messages copied up to and including `uptoSeq`, no session) |
@@ -89,7 +89,7 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.disallowTool` | `{id, tool}` | `Chat` |
 | `chat.attachment` | `{id}` | `{id, name, mime, size, kind: text \| image \| file, data (base64)}`: a file sent with a message, checked against the hash kept when it was attached (P90) |
 | `chat.asks` | `{id}` | `[PendingAsk]`: the tool calls the chat's ACP agent waits to be allowed (P83) |
-| `chat.answer` | `{id, askId, allow}` | `{answered: true}`; allow lets exactly that call run once |
+| `chat.answer` | `{id, askId, allow, remember?}` | `{answered: true}`; allow lets exactly that call run once. With `remember` (and `allow`) also `{rule}`: the allow rule for the call is recorded as `chat.allowTool` records it, so later turns may make it without asking ("Allow Bash in this chat"); Claude chats only, any other adapter is refused with the reason and the request keeps waiting; refused too when the call's input was shortened or redacted or no safe rule names it. The rule is recorded before the call is allowed and taken back when the request is gone meanwhile |
 
 Rules worth knowing in the UI:
 
@@ -122,6 +122,14 @@ Rules worth knowing in the UI:
   and the CLI session is dropped, so the next turn starts a new session given the conversation so far (`fallback: true`). A new
   adapter keeps model, effort and permission mode only when it takes them, and checks the chat's skills and servers again. Each
   change of where the chat runs, of its skills and of its servers is recorded as a `system` message.
+- `projectId` moves the chat into a project (`""` takes it out; decision P97), refused while a turn runs and for a project that
+  is not there. The chat then lists under the project and runs as a project chat does: in the project's folder (the repository
+  root, or the project's workspace folder), a WSL chat checked for the project. A CLI session cannot change its folder, so when
+  the move changes the folder the session is dropped and the next turn starts a new one given the conversation so far (the
+  honest choice: the session's history still names the old folder's files, and keeping the old folder would run a project chat
+  outside its project); when the chat already ran there the session continues. Taken out of a project it keeps the folder it
+  ran in, and so its session (its private folder when that folder is gone). Allow rules, skills and MCP servers are the chat's
+  own and stay. `chat.updated` is published under the old project as well as the new one.
 - `skills` (at most 20): each `{registryId, name}` must be in the workspace skill library, available (not blocked) and still in
   its registry; two chosen skills may not share a name. `mcpServers` (at most 10): each `serverId` must be connected in the
   workspace MCP library; a grant without `tools` gets the server's tools as known now, by name, without the flagged ones
