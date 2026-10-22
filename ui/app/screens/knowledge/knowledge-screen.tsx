@@ -27,7 +27,7 @@ const askCss = css({
   alignItems: 'center',
   gap: t.s3,
   padding: '12px 14px 12px 18px',
-  borderRadius: '24px',
+  borderRadius: t.rXl,
   border: `1px solid ${t.borderStrong}`,
   background: t.bgSurface,
   boxShadow: t.shadowMd,
@@ -61,14 +61,14 @@ const srcCss = css({
   alignContent: 'start',
   height: '100%',
   padding: '16px',
-  borderRadius: '20px',
+  borderRadius: t.rXl,
   border: `1px solid ${t.border}`,
   background: t.bgSurface,
   color: t.text,
   textDecoration: 'none',
   transition: `border-color ${t.fast} ${t.ease}, transform ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong, textDecoration: 'none', transform: 'translateY(-1px)' },
-  '& .ic': { display: 'grid', placeItems: 'center', width: '38px', height: '38px', marginBottom: t.s2, borderRadius: '12px' },
+  '& .ic': { display: 'grid', placeItems: 'center', width: '38px', height: '38px', marginBottom: t.s2, borderRadius: t.rLg },
   '& .n': { fontSize: t.text2xl, fontWeight: '700', letterSpacing: '-0.02em', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' },
   '& .n[data-empty]': { color: t.textFaint },
   '& b': { fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em' },
@@ -76,7 +76,7 @@ const srcCss = css({
 });
 
 const twoCss = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: t.s4, alignItems: 'start', '@media (max-width: 1000px)': { gridTemplateColumns: 'minmax(0, 1fr)' } });
-const panelCss = css({ borderRadius: '20px' });
+const panelCss = css({ borderRadius: t.rXl });
 const panelTitle = css({
   display: 'flex',
   alignItems: 'baseline',

@@ -158,8 +158,8 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
                 <ErrorNote error={dmError} what="Could not open the direct message" />
               </div>
             ) : null}
-            {inProject && project && projectHasRepo(project) ? <RepoConfigBanner key={project.id} projectId={project.id} /> : null}
-            {inProject && project && projectHasRepo(project) ? <AgentConfigBanner key={project.id} projectId={project.id} /> : null}
+            {inProject && project && projectHasRepo(project) ? <RepoConfigBanner key={`repo:${project.id}`} projectId={project.id} /> : null}
+            {inProject && project && projectHasRepo(project) ? <AgentConfigBanner key={`agents:${project.id}`} projectId={project.id} /> : null}
             <main id="main" tabIndex={-1} mix={mainCss}>
               {/* a page that fails to draw shows what failed here and leaves the top bar, the dock and the panel working */}
               <ErrorBoundary label="this page" resetKey={url.pathname}>

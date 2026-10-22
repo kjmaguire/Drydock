@@ -119,6 +119,21 @@ describe('Connections page', () => {
     await waitFor(() => expect(r.$('[data-testid="gate"]')!.getAttribute('data-acked')).toBe('true'), r);
   });
 
+  it('shows a problem and a warning side by side without a key the two share (the runtime warned "Duplicate keys" "0")', async () => {
+    const warned: string[] = [];
+    const warn = console.warn;
+    console.warn = (...a: unknown[]) => void warned.push(a.map(String).join(' '));
+    try {
+      const r = show({ connectionList: async () => [conn({ problems: ['claude is not on PATH'], warnings: ['version not tested'] })] });
+      const c = await card(r);
+      expect(c.textContent).toContain('claude is not on PATH');
+      expect(c.textContent).toContain('version not tested');
+    } finally {
+      console.warn = warn;
+    }
+    expect(warned.filter((w) => w.includes('Duplicate keys'))).toEqual([]);
+  });
+
   it('shows status, usable, warnings, prerequisites with guidance, and an accepted gate without a button', async () => {
     const r = show({
       connectionList: async () => [conn({ usable: true, gates: [{ id: 'g', text: 'notice', acked: true }], authenticated: null, installHint: 'winget install X' })],

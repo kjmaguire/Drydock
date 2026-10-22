@@ -138,7 +138,7 @@ const chatForm = css({
   display: 'grid',
   gap: t.s2,
   padding: `${t.s4} ${t.s4} ${t.s3}`,
-  borderRadius: '24px',
+  borderRadius: t.rXl,
   borderColor: t.borderStrong,
   boxShadow: `0 18px 50px -30px ${t.scrim}`,
   '&:focus-within': { borderColor: t.textFaint },
