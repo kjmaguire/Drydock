@@ -298,7 +298,7 @@ export async function createAssignedTask(page: Page, title: string, worker: stri
   await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (${workerRole})` });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (${reviewerRole})` });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeEnabled();
 }
 
 export async function createAndStartTask(page: Page, title: string, worker: string, reviewer: string): Promise<void> {
@@ -312,8 +312,8 @@ export async function createAndStartTask(page: Page, title: string, worker: stri
   await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (backend)` });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (reviewer)` });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
 }
 
 /** The `-licensed` TEST HARNESS (a build with a throwaway license key, starting with no license). */

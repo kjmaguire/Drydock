@@ -218,7 +218,7 @@ test('every page keeps to the density budget: short text, the type scale, room b
   await choose(page.getByLabel('Worker', { exact: true }), { label: 'Worker One (backend)' });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: 'Reviewer One (reviewer)' });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await page.getByRole('button', { name: 'Start' }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByText('Needs your decision')).toBeVisible({ timeout: 120_000 });
 
   const base = new URL(appUrl());

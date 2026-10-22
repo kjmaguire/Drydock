@@ -11,7 +11,7 @@ test("the Inbox approves a worker's permission request for its task, and the run
   await createAgent(page, 'Reviewer In', 'reviewer');
   await createAndStartTask(page, 'Fetch the page, drydock-e2e inbox ask', 'Worker In', 'Reviewer In');
   // the run has started (the start is not left in flight when the next page opens)
-  await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toHaveCount(0, { timeout: 30_000 });
   // a second project, open when the Inbox is: the Inbox is the workspace's, and lists the first project's request all the same
   await createProjectWithoutRepo(page, 'shop-inbox');
 

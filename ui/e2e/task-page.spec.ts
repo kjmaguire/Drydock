@@ -35,8 +35,8 @@ test('steer, pause and resume a running task from its page', async ({ page }) =>
   await choose(page.getByLabel('Worker', { exact: true }), { label: 'Builder (backend)' });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: 'Rex (reviewer)' });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   // the run: Building · run 1, the agent line, the step it took
   const pill = page.getByTestId('task-status');

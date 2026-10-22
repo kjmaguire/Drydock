@@ -242,7 +242,7 @@ test('development flow: the Feature template stops at the spec gate; reject with
   await createAssignedTask(page, 'Add Multiply', 'Dana', 'Rex');
   await choose(page.getByLabel('Template', { exact: true }), { label: 'Feature' });
   await expect(page.getByTestId('template-info')).toContainText('accept the spec before anything is built');
-  await page.getByRole('button', { name: 'Start' }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   // the spec gate
   const gate = page.getByTestId('spec-gate');
