@@ -4,7 +4,7 @@
 import type { Connection, ConnectionReport, MatrixCell, Prereq } from '../../api/types.ts';
 import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
-import { adapterLabel } from '../chats/chats.ts';
+import { adapterLabel } from '../shared/cli-name.ts';
 
 /** observed: seen during the test. declared: the CLI says so. unknown: not verified. */
 export const provTone = (p: string): Tone => (p === 'observed' ? 'ok' : p === 'declared' ? 'warn' : 'muted');
@@ -38,23 +38,6 @@ export function netModeText(mode: string | undefined): string {
   if (!mode) return 'not reported (WSL uses NAT unless .wslconfig says otherwise)';
   if (mode === 'mirrored') return 'mirrored: the distro shares Windows localhost';
   return `${mode}: the distro cannot reach Windows localhost directly`;
-}
-
-/**
- * The same CLI is installed in more than one WSL distro on this computer (`all` is the page's list), so the distro is what tells
- * its WSL installs apart.
- */
-export const wslTwins = (c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>, all: readonly Pick<Connection, 'adapter' | 'runMode' | 'distro'>[]): boolean =>
-  isWSL(c) && all.some((o) => isWSL(o) && o.adapter === c.adapter && o.distro !== c.distro);
-
-/**
- * The tile's and the card's name: the CLI's product name ("Claude Code"), "Claude Code WSL" for one inside a WSL distro, without
- * the distro (the owner: "we don't need to see the Ubuntu"; the card's Runs row names it). Only when the same CLI is in two
- * distros does the name carry the distro, so the two can be told apart: "Claude Code WSL (Debian)".
- */
-export function connectionName(c: Pick<Connection, 'adapter' | 'runMode' | 'distro'>, all: readonly Pick<Connection, 'adapter' | 'runMode' | 'distro'>[] = []): string {
-  if (!isWSL(c)) return adapterLabel(c.adapter);
-  return wslTwins(c, all) ? `${adapterLabel(c.adapter)} WSL (${c.distro ?? ''})` : `${adapterLabel(c.adapter)} WSL`;
 }
 
 /** The tile's "what it is" line: the version found and where it runs ("2.1.0 in WSL", "2.1.0 on Windows"). */

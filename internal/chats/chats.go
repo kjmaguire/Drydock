@@ -29,6 +29,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -202,6 +203,9 @@ type Deps struct {
 	// \\wsl.localhost\<distro>\...) must exist there; a Windows folder must exist on Windows (the distro reaches it through
 	// its mount root).
 	WSLFolder func(ctx context.Context, distro, chatID, cwd string) (string, error)
+	// WSLInstalls lists the WSL distros where adapter's CLI is installed, so a chat's note names its install as the app does
+	// (connections.CLIName: the distro only when another distro has the CLI too). Nil: none.
+	WSLInstalls func(ctx context.Context, adapter string) []string
 	// CheckSkills validates the library skills chosen for a chat of adapter and returns them cleaned (trimmed, without
 	// repeats, in the order given). It refuses a skill the library does not hold or holds blocked or gone, and an adapter that
 	// cannot reach Drydock's MCP gateway. Nil: chats take no skills.
@@ -885,8 +889,16 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 		return Chat{}, err
 	}
 	adapter := before.Adapter
+	cli := "" // the moved chat's CLI as the app names it, for its note (read before the transaction: it may probe the distros)
 	if place != nil {
 		adapter = place.adapter
+		if place.moved {
+			var installs []string
+			if place.distro != "" && s.d.WSLInstalls != nil {
+				installs = s.d.WSLInstalls(ctx, place.adapter)
+			}
+			cli = connections.CLIName(place.adapter, place.distro, installs)
+		}
 	}
 	var skills *[]SkillRef
 	if r.Skills != nil || (adapter != before.Adapter && len(before.Skills) > 0) {
@@ -939,7 +951,7 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 			}
 			c.Adapter, c.WSLDistro, c.Cwd = place.adapter, place.distro, place.cwd
 			reset = true
-			notes = append(notes, "Now runs with "+cliName(c.Adapter, c.WSLDistro)+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
+			notes = append(notes, "Now runs with "+cli+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
 		}
 		if skills != nil && !sameSkills(c.Skills, *skills) {
 			c.Skills = *skills
@@ -1021,22 +1033,6 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 	}
 	s.publish(ctx, "chat.updated", out.ProjectID, map[string]any{"chatId": out.ID, "chat": out})
 	return out, nil
-}
-
-func adapterName(id string) string {
-	if id == "claude" {
-		return "Claude Code"
-	}
-	return id
-}
-
-// cliName is the chat's CLI as the app names it: "Claude Code", or "Claude Code WSL" for its install inside a WSL distro
-// (the distro is not part of the name, as on the Connections page; the chat's folder, a \\wsl.localhost path, names it).
-func cliName(adapter, distro string) string {
-	if distro != "" {
-		return adapterName(adapter) + " WSL"
-	}
-	return adapterName(adapter)
 }
 
 func sameSkills(a, b []SkillRef) bool {

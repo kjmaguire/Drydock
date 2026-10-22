@@ -5,6 +5,7 @@ import type { Chat, ChatMcpGrant, ChatMessage, ChatSkillRef } from '../../api/ch
 import type { LibrarySkill } from '../../api/extTypes.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatUsd } from '../../lib/format.ts';
+import { adapterLabel, chatInstall, cliName, type CliInstall } from '../shared/cli-name.ts';
 
 // --- a chat's properties (decision P60): library skills and MCP servers ---
 
@@ -115,11 +116,7 @@ export function costText(c: Pick<Chat, 'costUsd' | 'costUnknownTurns'>): string 
   return c.costUnknownTurns > 0 ? `${money}, and ${c.costUnknownTurns} ${c.costUnknownTurns === 1 ? "turn's" : "turns'"} cost unknown` : money;
 }
 
-/** "Claude Code" for the claude adapter, else the adapter id. */
-export function adapterLabel(id: string): string {
-  const names: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', cline: 'Cline', opencode: 'OpenCode', goose: 'Goose' };
-  return names[id] ?? id;
-}
+export { adapterLabel };
 
 /** "Claude" for the claude adapter (how the callouts speak about the agent), else its label. */
 export function agentWord(id: string): string {
@@ -151,13 +148,6 @@ export function adapterOptionText(a: AdapterInfo, where = ''): string {
 }
 
 /**
- * "Claude Code WSL": a CLI installed inside a WSL distro, its own Connection (decision P41), named as the Connections page names
- * it, without the distro (the owner: "we don't need to see the Ubuntu"). `named` (the CLI is in more than one distro) adds the
- * distro so the choices can be told apart: "Claude Code WSL (Debian)".
- */
-export const wslChoiceLabel = (adapter: string, distro: string, named = false): string => `${adapterLabel(adapter)} WSL${named ? ` (${distro})` : ''}`;
-
-/**
  * Why a CLI install inside a WSL distro cannot start a chat, or '' when it can: as for one on Windows (adapterUnavailable), a
  * degraded install (an untested version, interop off, a failed Test) is offered, and the Connections page says what it lacks.
  */
@@ -184,7 +174,8 @@ export interface ChatChoice {
  * The Agent CLI choices of the new chat dialog: every adapter on Windows (sortChatAdapters order), each followed by its
  * installs inside WSL distros (the WSL Connections the Connections page shows, by distro). A distro without the CLI is not
  * offered; one that cannot start a chat (wslUnavailable) is offered disabled with the reason. With an install in WSL, the
- * Windows one says "on Windows". A WSL choice names its distro only when the CLI is offered from more than one.
+ * Windows one says "on Windows". A WSL choice is named as the Connections page names it (cliName): "Claude Code WSL", with
+ * the distro only when the CLI is installed in another distro too.
  */
 export function chatChoices(adapters: readonly AdapterInfo[], connections: readonly Connection[]): ChatChoice[] {
   const inWSL = connections.filter((c) => c.runMode === 'wsl' && !!c.distro && c.installed && c.status !== 'not_installed');
@@ -194,7 +185,7 @@ export function chatChoices(adapters: readonly AdapterInfo[], connections: reado
     out.push({ value: a.id, adapter: a, wslDistro: '', text: adapterOptionText(a, mine.length ? 'on Windows' : ''), why: adapterUnavailable(a) });
     for (const c of mine) {
       const why = wslUnavailable(c);
-      const label = wslChoiceLabel(a.id, c.distro!, mine.length > 1);
+      const label = cliName(c, connections);
       out.push({ value: c.key || `${a.id}@wsl:${c.distro}`, adapter: a, wslDistro: c.distro!, text: why ? `${label} (${why})` : c.version ? `${label} ${c.version}` : label, why });
     }
   }
@@ -207,8 +198,12 @@ export function pickChatChoice(choices: readonly ChatChoice[], picked: string): 
   return ok.find((c) => c.value === picked) ?? ok.find((c) => c.adapter.id === 'claude') ?? ok[0];
 }
 
-/** The chat's CLI for its header: "Claude Code", or "Claude Code WSL" inside a distro (which distro: chatWhere, its tooltip). */
-export const chatCliText = (c: Pick<Chat, 'adapter' | 'wslDistro'>): string => (c.wslDistro ? `${adapterLabel(c.adapter)} WSL` : adapterLabel(c.adapter));
+/**
+ * The chat's CLI for its header: "Claude Code", or "Claude Code WSL" inside a distro, named as the Connections page names that
+ * install (cliName with `installs`, the Connections list): the distro only when the CLI is installed in another distro too
+ * (which distro otherwise: chatWhere, its tooltip).
+ */
+export const chatCliText = (c: Pick<Chat, 'adapter' | 'wslDistro'>, installs: readonly CliInstall[] = []): string => cliName(chatInstall(c), installs);
 
 /** Where a chat's CLI runs, in words for a tooltip: "Runs inside the WSL distro Ubuntu", or '' on Windows. */
 export const chatWhere = (c: Pick<Chat, 'wslDistro'>): string => (c.wslDistro ? `Runs inside the WSL distro ${c.wslDistro}` : '');

@@ -1,0 +1,23 @@
+{
+  "_": "The names of agent CLI installs (internal/connections/name.go CLIName and ui/app/screens/shared/cli-name.ts cliName): both sides' tests pass every case, so the rule is the same in the core and the UI.",
+  "products": {
+    "claude": "Claude Code",
+    "codex": "Codex",
+    "gemini": "Gemini CLI",
+    "cline": "Cline",
+    "opencode": "OpenCode",
+    "goose": "Goose",
+    "my-cli": "my-cli"
+  },
+  "cases": [
+    { "adapter": "claude", "distro": "", "installedIn": [], "want": "Claude Code" },
+    { "adapter": "claude", "distro": "", "installedIn": ["Ubuntu", "Debian"], "want": "Claude Code" },
+    { "adapter": "claude", "distro": "Ubuntu-26.04", "installedIn": [], "want": "Claude Code WSL" },
+    { "adapter": "claude", "distro": "Ubuntu-26.04", "installedIn": ["Ubuntu-26.04"], "want": "Claude Code WSL" },
+    { "adapter": "claude", "distro": "Debian", "installedIn": ["Ubuntu", "Debian"], "want": "Claude Code WSL (Debian)" },
+    { "adapter": "claude", "distro": "Debian", "installedIn": ["Ubuntu"], "want": "Claude Code WSL (Debian)" },
+    { "adapter": "codex", "distro": "", "installedIn": [], "want": "Codex" },
+    { "adapter": "codex", "distro": "Debian", "installedIn": ["Debian"], "want": "Codex WSL" },
+    { "adapter": "my-cli", "distro": "Kali", "installedIn": ["Kali", "Ubuntu"], "want": "my-cli WSL (Kali)" }
+  ]
+}

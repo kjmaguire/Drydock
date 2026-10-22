@@ -5,9 +5,9 @@
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { ArrowDown, Bot, GitFork, PanelLeftOpen, Pencil, ShieldCheck, SlidersHorizontal, TriangleAlert } from 'lucide';
 import type { Chat } from '../../api/chatClient.ts';
-import type { AdapterInfo } from '../../api/types.ts';
+import type { AdapterInfo, Connection } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
-import { action, services, watch } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
@@ -164,7 +164,21 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   const openProps = () => ((propsOpen = true), void handle.update());
 
   feed.addEventListener('change', () => void handle.update());
-  const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
+  // a chat in WSL names its install as the Connections page does, which needs the other installs (the distro only when the
+  // CLI is in another distro too): the Connections list, read only for such a chat, and again when a sign-in or a gate changes
+  // one. A core without it names the install without the distro.
+  const installs = query(handle, {
+    enabled: () => !!feed.chat?.wslDistro,
+    when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started',
+    load: async (): Promise<Connection[]> => {
+      try {
+        return await s.client.connectionList();
+      } catch {
+        return [];
+      }
+    },
+  });
+  const go =(href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
 
   // the page is added above; the list keeps the row at the top of the view where it was
   const loadOlder = async () => {
@@ -401,7 +415,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
               <button type="button" mix={[chipsBtn, mix]} aria-label="Chat settings" aria-expanded={settingsOpen ? 'true' : 'false'} title="Change the model, effort, permission mode or history access">
                 <span mix={chipCss} data-testid="chip-adapter" title={chatWhere(chat) || undefined}>
                   <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={16} kind="agent" />
-                  {chatCliText(chat)}
+                  {chatCliText(chat, installs.data ?? [])}
                 </span>
                 <span mix={chipCss} data-testid="chip-model">
                   {chat.model || 'default model'}
