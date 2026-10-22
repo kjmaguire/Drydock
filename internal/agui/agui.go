@@ -15,14 +15,21 @@
 //	agent.output tool_result                  TOOL_CALL_RESULT
 //	agent.output plan                         ACTIVITY_SNAPSHOT {activityType: PLAN}
 //	agent.output error {fatal}                RUN_ERROR
-//	agent.completed                           RUN_FINISHED {outcome: success}
-//	agent.failed                              RUN_ERROR
-//	agent.stopped during a turn               RUN_FINISHED {outcome: stopped}
+//	agent.completed                           RUN_FINISHED {outcome: {type: success}}
+//	agent.completed {stopReason: error*}      RUN_ERROR with the turn's last error (also: an error and no end_turn)
+//	agent.completed {stopReason: interrupted} RUN_FINISHED {outcome: {type: cancelled}} (and cancelled)
+//	agent.failed                              RUN_ERROR (a failure outside a turn is a run of its own that errored)
+//	agent.stopped during a turn               RUN_FINISHED {outcome: {type: cancelled}}
 //	approval.requested (a permission request) CUSTOM drydock.interrupt: the turn waits for a person (P88)
 //	permission.decided after a request        CUSTOM drydock.resume: how the person (or nobody) answered
 //
 // AG-UI 1.0 ends a run with outcome "interrupt" and resumes it as a new run; a Drydock agent's turn does not end while it
 // waits, so the wait and its answer are AG-UI CUSTOM events inside the turn, named drydock.interrupt and drydock.resume.
+//
+// A thread keeps the ordering AG-UI's verifier checks (CheckOrder): a run opens with RUN_STARTED and ends once, with
+// RUN_FINISHED or RUN_ERROR, and nothing comes between its end and the next RUN_STARTED. A failure right after a run already
+// failed (the fatal error chunk, then the process's agent.failed) adds its words to that RUN_ERROR instead of sending another;
+// an answer to a permission request that comes after its turn ended is left out.
 //
 // Everything else (usage, session, log, rate limits) has no place in the vocabulary and is left out. The text is the
 // redacted text the bus stored; arguments and results are cut to MaxText.
@@ -63,10 +70,11 @@ const (
 	NameResume    = "drydock.resume"
 )
 
-// Run outcomes (RUN_FINISHED).
+// Run outcomes (RUN_FINISHED's outcome type), as in AG-UI 1.0. A run that failed ends with RUN_ERROR instead; AG-UI's third
+// outcome, "interrupt", is not used (a Drydock turn waits for a person inside the run: drydock.interrupt).
 const (
-	OutcomeSuccess = "success"
-	OutcomeStopped = "stopped" // the agent's program ended during the turn
+	OutcomeSuccess   = "success"
+	OutcomeCancelled = "cancelled" // stopped before it completed, without failing: interrupted, or its program ended
 )
 
 // ActivityPlan is the activity type of an agent's own plan.
@@ -93,12 +101,19 @@ type RunStarted struct {
 	RunID    string `json:"runId"`
 }
 
+// RunOutcome is why a run that did not fail ended: AG-UI 1.0's RunFinishedOutcome, an object discriminated on type.
+type RunOutcome struct {
+	Type string `json:"type"` // OutcomeSuccess or OutcomeCancelled
+}
+
+// RunFinished ends a run that did not fail. StopReason is the agent's own word for the end (end_turn, interrupted, ...), a
+// Drydock field AG-UI does not have; it is absent when the agent's program ended during the turn.
 type RunFinished struct {
 	Base
-	ThreadID   string `json:"threadId"`
-	RunID      string `json:"runId"`
-	Outcome    string `json:"outcome"`
-	StopReason string `json:"stopReason,omitempty"`
+	ThreadID   string     `json:"threadId"`
+	RunID      string     `json:"runId"`
+	Outcome    RunOutcome `json:"outcome"`
+	StopReason string     `json:"stopReason,omitempty"`
 }
 
 type RunError struct {
@@ -129,6 +144,7 @@ type TextMessageEnd struct {
 type ReasoningMessageStart struct {
 	Base
 	MessageID string `json:"messageId"`
+	Role      string `json:"role"` // always "reasoning"
 }
 
 type ReasoningMessageContent struct {
@@ -279,14 +295,12 @@ func Project(evs []events.Event) Activity {
 		case "agent.output":
 			p.output(d.Kind, d.Data)
 		case "agent.completed":
-			p.finish(OutcomeSuccess, d.StopReason)
+			p.complete(d.StopReason)
 		case "agent.failed":
-			p.closeOpen()
-			p.emit(&RunError{Base: p.b(TypeRunError), ThreadID: p.thread, RunID: p.run, Message: clip(d.Error, 500)})
-			p.run = ""
+			p.fail(d.Error, "")
 		case "agent.stopped":
 			if p.run != "" {
-				p.finish(OutcomeStopped, "")
+				p.finish(OutcomeCancelled, "")
 			}
 		case "approval.requested":
 			if strings.HasPrefix(d.Title, permissionTitlePrefix) && d.Request != "" {
@@ -295,7 +309,7 @@ func Project(evs []events.Event) Activity {
 				p.emit(&Interrupt{Base: p.b(TypeCustom), Name: NameInterrupt, Value: InterruptValue{ID: d.Request, Title: clip(strings.TrimPrefix(d.Title, permissionTitlePrefix), 300), ExpiresAt: d.ExpiresAt}})
 			}
 		case "permission.decided":
-			if d.Approval != "" && p.isWaiting(d.Approval) {
+			if d.Approval != "" && p.run != "" && p.isWaiting(d.Approval) { // an answer after its turn ended has no run to go in
 				p.emit(&Resume{Base: p.b(TypeCustom), Name: NameResume, Value: ResumeValue{ID: d.Approval, Outcome: d.Outcome}})
 			}
 		}
@@ -319,7 +333,9 @@ type projector struct {
 	n         int
 	base      Base
 	pending   []Event
-	waiting   []string // interrupts announced in this thread, so a decision is resumed only where it was asked
+	waiting   []string  // interrupts announced in this thread, so a decision is resumed only where it was asked
+	lastErr   string    // the open run's last non-fatal error, which is why the run failed if it then ends without success
+	failed    *RunError // the RUN_ERROR that ended the last run, while no run has started since
 }
 
 // permissionTitlePrefix is security.PermissionTitlePrefix (not imported: the vocabulary does not depend on the gate).
@@ -351,6 +367,7 @@ func (p *projector) startRun() {
 	}
 	p.turn++
 	p.run = p.thread + ":" + strconv.Itoa(p.turn)
+	p.lastErr, p.failed = "", nil
 	p.emit(&RunStarted{Base: p.b(TypeRunStarted), ThreadID: p.thread, RunID: p.run})
 }
 
@@ -367,8 +384,55 @@ func (p *projector) finish(outcome, stopReason string) {
 	if p.run == "" {
 		return
 	}
-	p.emit(&RunFinished{Base: p.b(TypeRunFinished), ThreadID: p.thread, RunID: p.run, Outcome: outcome, StopReason: stopReason})
+	p.emit(&RunFinished{Base: p.b(TypeRunFinished), ThreadID: p.thread, RunID: p.run, Outcome: RunOutcome{Type: outcome}, StopReason: stopReason})
 	p.run = ""
+}
+
+// complete ends the open run as the agent reported it (agent.completed). An adapter reports a turn that failed with a done
+// chunk too: a Claude result with is_error (stop reason error_max_turns, error_during_execution, ... after a non-fatal error
+// chunk), an ACP prompt that failed (stop reason "error"). Such a run ends with RUN_ERROR and the turn's last error, as does a
+// run that carried an error and did not end with end_turn (the rule the chat reads a turn by). An interrupted or cancelled
+// turn is the cancelled outcome.
+func (p *projector) complete(stopReason string) {
+	if p.run == "" {
+		p.closeOpen()
+		return
+	}
+	switch {
+	case stopReason == "interrupted" || stopReason == "cancelled":
+		p.finish(OutcomeCancelled, stopReason)
+	case stopReason == "error" || strings.HasPrefix(stopReason, "error_"):
+		msg := p.lastErr
+		if msg == "" {
+			msg = "the turn ended with " + stopReason
+		}
+		p.fail(msg, stopReason)
+	case p.lastErr != "" && stopReason != "end_turn":
+		p.fail(p.lastErr, stopReason)
+	default:
+		p.finish(OutcomeSuccess, stopReason)
+	}
+}
+
+// fail ends the open run with RUN_ERROR. A failure outside a run (a start that failed, a crash between turns) is a run of its
+// own that errored: RUN_STARTED then RUN_ERROR. A failure right after the last run failed, with no run since, adds its words
+// to that RUN_ERROR: AG-UI allows nothing but RUN_STARTED after RUN_ERROR.
+func (p *projector) fail(msg, code string) {
+	msg = strings.TrimSpace(msg)
+	if p.run == "" && p.failed != nil {
+		if msg != "" && !strings.Contains(p.failed.Message, msg) {
+			p.failed.Message = clip(p.failed.Message+"; "+clip(msg, 500), 1000)
+		}
+		return
+	}
+	if msg == "" {
+		msg = "the agent failed"
+	}
+	p.ensureRun()
+	p.closeOpen()
+	e := &RunError{Base: p.b(TypeRunError), ThreadID: p.thread, RunID: p.run, Message: clip(msg, 500), Code: code}
+	p.emit(e)
+	p.run, p.failed = "", e
 }
 
 func (p *projector) closeText() {
@@ -429,7 +493,7 @@ func (p *projector) output(kind string, raw json.RawMessage) {
 		p.closeText()
 		if p.reasoning == "" {
 			p.reasoning = p.id("r")
-			p.emit(&ReasoningMessageStart{Base: p.b(TypeReasoningMessageStart), MessageID: p.reasoning})
+			p.emit(&ReasoningMessageStart{Base: p.b(TypeReasoningMessageStart), MessageID: p.reasoning, Role: "reasoning"})
 		}
 		p.emit(&ReasoningMessageContent{Base: p.b(TypeReasoningMessageContent), MessageID: p.reasoning, Delta: t.Text})
 	case workflow.ChunkToolCall:
@@ -465,12 +529,18 @@ func (p *projector) output(kind string, raw json.RawMessage) {
 		p.emit(&ActivitySnapshot{Base: p.b(TypeActivitySnapshot), MessageID: p.thread + ":plan", ActivityType: ActivityPlan, Content: PlanActivity{Entries: entries}, Replace: true})
 	case workflow.ChunkError:
 		var er workflow.ErrorChunk
-		if json.Unmarshal(raw, &er) != nil || !er.Fatal {
+		if json.Unmarshal(raw, &er) != nil {
 			return
 		}
-		p.closeOpen()
-		p.emit(&RunError{Base: p.b(TypeRunError), ThreadID: p.thread, RunID: p.run, Message: clip(er.Message, 500), Code: er.Code})
-		p.run = ""
+		if !er.Fatal {
+			// a warning the turn goes on after; it is why the turn failed if the turn then ends without success. A coded one
+			// (adapter drift) is only a warning.
+			if p.run != "" && er.Code == "" && strings.TrimSpace(er.Message) != "" {
+				p.lastErr = strings.TrimSpace(er.Message)
+			}
+			return
+		}
+		p.fail(er.Message, er.Code)
 	}
 }
 

@@ -33,7 +33,9 @@ func TestATasksActivityIsItsAgentsTurnsInTheTypedVocabulary(t *testing.T) {
 		ToolCallID   string `json:"toolCallId"`
 		Content      string `json:"content"`
 		Delta        string `json:"delta"`
-		Outcome      string `json:"outcome"`
+		Outcome      struct {
+			Type string `json:"type"`
+		} `json:"outcome"`
 	}
 	type thread struct {
 		ThreadID string `json:"threadId"`
@@ -79,7 +81,7 @@ func TestATasksActivityIsItsAgentsTurnsInTheTypedVocabulary(t *testing.T) {
 		case agui.TypeToolCallResult:
 			shape = append(shape, e.Type+" "+e.Content)
 		case agui.TypeRunStarted, agui.TypeRunFinished:
-			shape = append(shape, strings.TrimSpace(e.Type+" "+e.Outcome))
+			shape = append(shape, strings.TrimSpace(e.Type+" "+e.Outcome.Type))
 		case agui.TypeTextMessageContent:
 			text += e.Delta
 		}
@@ -99,10 +101,64 @@ func TestATasksActivityIsItsAgentsTurnsInTheTypedVocabulary(t *testing.T) {
 		t.Fatalf("the reviewer's turn: %+v", r.Events)
 	}
 
+	checkOrder(t, a, task.ID)
+
 	if err := a.callErr("task.activity", map[string]string{"taskId": "task_none"}); err == nil {
 		t.Fatal("an unknown task must be refused")
 	}
 	if err := a.callErr("task.activity", map[string]string{}); err == nil {
 		t.Fatal("no task must be refused")
+	}
+}
+
+// checkOrder fails the test when a thread of the task's activity breaks AG-UI's ordering (agui.CheckOrder).
+func checkOrder(t *testing.T, a *app, taskID string) agui.Activity {
+	t.Helper()
+	act, err := a.c.TaskActivity(t.Context(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, th := range act.Threads {
+		if err := agui.CheckOrder(th.Events); err != nil {
+			b, _ := json.Marshal(th.Events)
+			t.Fatalf("thread %s breaks AG-UI's ordering: %v\n%s", th.ThreadID, err, b)
+		}
+	}
+	return act
+}
+
+// A turn Claude Code reports as failed (a result with is_error: here an overloaded model, through the real claude adapter
+// and parser and the labelled fake agent) is a run that errored, with the API's error, in the task's Activity: not a finished
+// run. The fallback turn on the next model is a run that finished.
+func TestAFailedTurnIsARunThatErroredInTheTasksActivity(t *testing.T) {
+	g := newFallbackRig(t, map[string]string{"haiku": overloaded}, []string{"haiku", "sonnet"}, []string{"sonnet"})
+	g.start()
+	g.a.waitFor("the review of the work", func() bool {
+		for _, s := range g.capt.all() {
+			if s.Spec.AgentID == g.review.ID {
+				return true
+			}
+		}
+		return false
+	})
+	var ends []string
+	for _, th := range checkOrder(t, g.a, g.task.ID).Threads {
+		if th.AgentID != g.worker.ID {
+			continue
+		}
+		for _, e := range th.Events {
+			switch x := e.(type) {
+			case *agui.RunFinished:
+				ends = append(ends, "finished "+x.Outcome.Type)
+			case *agui.RunError:
+				if !strings.Contains(x.Message, "529") || !strings.Contains(x.Message, "Overloaded") {
+					t.Fatalf("the failed turn's error: %+v", x)
+				}
+				ends = append(ends, "error")
+			}
+		}
+	}
+	if got := strings.Join(ends, ", "); got != "error, finished success" {
+		t.Fatalf("the worker's turns ended %q, want the overloaded turn as an error, then its fallback finished", got)
 	}
 }

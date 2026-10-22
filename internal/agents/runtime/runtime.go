@@ -142,17 +142,20 @@ func (m *Managed) releaseMCPRun() {
 	})
 }
 
-// Spawn starts the agent process and records the run.
+// Spawn starts the agent process and records the run. A start that fails is announced (agent.failed, phase start) with the
+// run id the process would have had, so the task's Activity shows it as a run that errored (P87); no agent_runs row is
+// written for it.
 func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	ad, ok := r.Adapters[cfg.Adapter]
 	if !ok {
 		return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
 	}
+	runID := ids.New("arun")
 	if cfg.Spec.RunMode == "" && r.RunMode != nil && cfg.AgentID != "" {
 		cfg.Spec.RunMode, cfg.Spec.WSLDistro, cfg.Spec.RunModeWhy = r.RunMode(ctx, cfg.AgentID)
 	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
-		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
+		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})
 		return nil, err
 	}
 	if err := r.checkRepoConfig(ctx, ad, cfg); err != nil {
@@ -161,10 +164,9 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		if errors.As(err, &rc) {
 			data["repoConfig"] = map[string]any{"adapter": rc.Agent, "files": rc.Files, "fingerprint": rc.Fingerprint}
 		}
-		r.publish(ctx, "agent.failed", cfg, "", data)
+		r.publish(ctx, "agent.failed", cfg, runID, data)
 		return nil, err
 	}
-	runID := ids.New("arun")
 	if cfg.Spec.RunModeWhy != "" {
 		// Drydock chose where the CLI runs (decision P58): the run's events say so before anything starts
 		r.publish(ctx, "agent.run_mode_auto", cfg, runID, map[string]any{"runMode": cfg.Spec.RunMode, "wslDistro": cfg.Spec.WSLDistro, "why": cfg.Spec.RunModeWhy})
@@ -196,7 +198,7 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		if att.Release != nil {
 			att.Release()
 		}
-		r.publish(ctx, "agent.failed", cfg, "", map[string]any{"error": err.Error(), "phase": "start"})
+		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})
 		return nil, err
 	}
 	m := &Managed{rt: r, cfg: cfg, RunID: runID, Sess: sess, releaseMCP: att.Release, recorded: make(chan struct{})}

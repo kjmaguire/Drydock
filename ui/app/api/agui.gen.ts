@@ -6,7 +6,7 @@
 export const ACTIVITY_PLAN = 'PLAN' as const;
 export const CUSTOM_INTERRUPT = 'drydock.interrupt' as const;
 export const CUSTOM_RESUME = 'drydock.resume' as const;
-export const OUTCOME_STOPPED = 'stopped' as const;
+export const OUTCOME_CANCELLED = 'cancelled' as const;
 export const OUTCOME_SUCCESS = 'success' as const;
 
 export interface RunStartedEvent {
@@ -23,7 +23,7 @@ export interface RunFinishedEvent {
   timestamp: number;
   threadId: string;
   runId: string;
-  outcome: string;
+  outcome: RunOutcome;
   stopReason?: string;
 }
 
@@ -65,6 +65,7 @@ export interface ReasoningMessageStartEvent {
   seq: number;
   timestamp: number;
   messageId: string;
+  role: 'reasoning';
 }
 
 export interface ReasoningMessageContentEvent {
@@ -153,6 +154,10 @@ export interface AguiThread {
 export interface AguiActivity {
   threads: AguiThread[];
   truncated?: boolean;
+}
+
+export interface RunOutcome {
+  type: string;
 }
 
 export interface PlanActivity {

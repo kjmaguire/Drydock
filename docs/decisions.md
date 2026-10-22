@@ -883,7 +883,17 @@ Open, owner action:
   TOOL_CALL_START / ARGS / END / RESULT, ACTIVITY_SNAPSHOT for an agent's plan (ACP `plan` updates), and AG-UI CUSTOM events
   `drydock.interrupt` / `drydock.resume` for a turn that waits for a person (P88). It is not a second record: `agui.Project` reads
   the `agent.*`, `approval.requested` and `permission.decided` events the bus already stored for a task (pure, deterministic; one
-  thread per agent process; consecutive deltas joined; arguments and results cut to 8 KiB) and `task.activity` returns it. The
+  thread per agent process; consecutive deltas joined; arguments and results cut to 8 KiB) and `task.activity` returns it.
+  A turn ends once: RUN_FINISHED with AG-UI's outcome object (`{type: "success"}`, or `{type: "cancelled"}` for a turn that
+  was interrupted or whose program ended during it), or RUN_ERROR for a turn that failed, including one the agent reported
+  with a done chunk (a Claude result with `is_error`, stop reason `error_*`; an ACP prompt that failed, stop reason `error`; a
+  turn that carried a non-fatal error and did not end with `end_turn`), with the turn's last error as the message. A failure
+  outside a turn (a start that failed: the runtime stamps that `agent.failed` with the run id the process would have had; a
+  crash between turns) is a run of its own that errored, and the failures that follow a RUN_ERROR before another run (the
+  process's `agent.failed` after a fatal error chunk) add their words to it rather than sending a second one; a permission
+  answer that comes after its turn ended is left out. REASONING_MESSAGE_START carries `role: "reasoning"`. `agui.CheckOrder`
+  applies the ordering rules of AG-UI's verifier (client `verify/verify.ts`) and the tests run every projected thread through
+  it. The
   UI's types are generated from the Go structs (`internal/tsgen`, a reflection-based writer that reads types as encoding/json
   does; `go run ./cmd/drydock-tsgen` writes `ui/app/api/agui.gen.ts`, and a Go test fails while the file is out of date), so the
   core and the page cannot disagree on a field. The task page's new Activity section draws each agent process: its plan as a
