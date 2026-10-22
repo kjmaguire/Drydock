@@ -1,8 +1,7 @@
 // Security scan of the workspace (/security-scan, decision P61): scan any folder on this computer, a repository just
 // downloaded or imported from elsewhere, before it becomes a project, or one of the projects. The same engines, progress,
-// findings, tools and history as the project's Security page (ScanPanel); a folder scan belongs to no project, its history is
-// the recent folder scans and its Opengrep rules folder is the workspace's. The scan only reads files and never runs the
-// repository's code.
+// findings and history as the project's Security page (ScanPanel); a folder scan belongs to no project and its history is
+// the recent folder scans. The scan only reads files and never runs the repository's code.
 
 import { css, on, type Handle } from 'remix/component';
 import { ShieldCheck } from 'lucide';
@@ -152,7 +151,7 @@ export function WorkspaceSecurityScreen(handle: Handle) {
                     }}
                   />
                 )}
-                <p class="hint">Scans the project's working tree, with the project's own rules folder and history, as its Security page does.</p>
+                <p class="hint">Scans the project's working tree and keeps it in the project's history, as its Security page does.</p>
               </div>
             )}
           </fieldset>
@@ -163,7 +162,6 @@ export function WorkspaceSecurityScreen(handle: Handle) {
             scope={scope}
             canScan={canScan}
             historyTitle={mode === 'folder' ? 'Recent folder scans' : `History of ${project?.name ?? 'the project'}`}
-            rulesHint={mode === 'folder' ? 'Folder scans use this rules folder; each project keeps its own on its Security page.' : undefined}
             onPick={mode === 'folder' ? pickHistory : undefined}
           />
         ) : null}

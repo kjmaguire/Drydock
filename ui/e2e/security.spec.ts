@@ -16,8 +16,9 @@ test('one button scans the working tree with three engines, names the findings w
 
   await projectNav(page, 'nav-security');
   await expect(page.getByTestId('security-scan')).toBeVisible();
-  await expect(page.locator('[data-testid=tool][data-tool=osv-scanner][data-found=true]')).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator('[data-testid=tool][data-tool=opengrep][data-found=true]')).toBeVisible();
+  await expect(page.locator('[data-testid=scan-engine][data-engine=deps][data-status=ready]')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('[data-testid=scan-engine][data-engine=sast][data-status=ready]')).toBeVisible();
+  await expect(page.getByTestId('security-tools')).toHaveCount(0); // the tools are Drydock's own (decision P95)
   await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'idle');
 
   await page.getByTestId('scan-button').click();
@@ -68,104 +69,6 @@ test('one button scans the working tree with three engines, names the findings w
   await expect(page.locator('body')).not.toContainText(PLANTED);
 });
 
-// "Choose file..." on the tools panel: the harness's stand-in file dialog (cmd/drydock-e2e) answers with a copy of its own
-// binary named like the tool; the panel shows the chosen file, a scan runs it, and "Use PATH instead" forgets it.
-test("a tool's program is chosen with the file dialog and forgotten again", async ({ page }) => {
-  // three waits of up to 60 s below (found, chosen, forgotten) plus a scan: more than the 120 s a test gets by default
-  test.setTimeout(300_000);
-  const repo = freshRepo();
-  await createProject(page, 'gocalc-security-pick', repo);
-  await projectNav(page, 'nav-security');
-  const osv = page.locator('[data-testid=tool][data-tool=osv-scanner]');
-  await expect(osv).toHaveAttribute('data-found', 'true', { timeout: 60_000 });
-  const pick = page.locator('[data-testid=tool-pick][data-tool=osv-scanner]');
-  await pick.getByTestId('tool-choose').click();
-  // the core stores the choice and probes the programs once (both --version runs in parallel, 10 s cap and a 5 s output
-  // drain each) before it answers; the row shows that answer. The same budget as the "found" wait above, for a loaded
-  // Windows runner; the version proves the chosen program ran, not only that its path was stored
-  await expect(osv).toContainText('Chosen file', { timeout: 60_000 });
-  await expect(osv).toContainText('picked');
-  await expect(osv).toContainText('0.0.0-standin');
-  await page.getByTestId('scan-button').click();
-  await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
-  await expect(page.locator('[data-testid=scan-engine][data-engine=deps]')).toHaveAttribute('data-status', 'done');
-  await pick.getByTestId('tool-clear').click();
-  await expect(osv).not.toContainText('Chosen file', { timeout: 60_000 }); // the same probe as above
-  await expect(osv).toContainText('Found at');
-  await expect(pick.getByTestId('tool-clear')).toHaveCount(0);
-});
-
-// The rules (decision P77): the built-in rules run on every scan, so the Code engine needs no folder. A folder of the person's
-// own is optional: "Choose folder..." saves what the harness's stand-in folder dialog (cmd/drydock-e2e) answers, a folder
-// that is not there says so and is left out, and the scan still runs the Code engine with the built-in rules. The help for
-// more rules is folded away.
-test('the built-in rules run without a folder; a folder of your own that is not there is left out and said; the help is folded', async ({ page }) => {
-  test.setTimeout(300_000);
-  const repo = freshRepo();
-  await createProject(page, 'gocalc-security-rules', repo);
-  await projectNav(page, 'nav-security');
-  await expect(page.locator('[data-testid=tool][data-tool=opengrep][data-found=true]')).toBeVisible({ timeout: 60_000 });
-  // the built-in sets, each with its rules and licence
-  const builtin = page.getByTestId('builtin-rules');
-  await expect(builtin).toContainText('built into Drydock and run on every scan');
-  await expect(builtin.getByTestId('rule-set')).toHaveCount(3);
-  await expect(builtin.getByTestId('rule-set').filter({ hasText: 'dgryski/semgrep-go' })).toContainText('Licence: MIT');
-  // the folder of your own: open its section
-  const own = page.getByTestId('own-rules');
-  if (!(await own.evaluate((d) => (d as HTMLDetailsElement).open))) await own.locator(':scope > summary').click();
-  // the help for more rules, inside it, is folded; opening it lists the sets, the command and the rule to try
-  const help = page.getByTestId('rules-sources');
-  await expect(help).toHaveJSProperty('open', false);
-  await help.locator('summary').click();
-  await expect(help).toHaveJSProperty('open', true);
-  await expect(help.getByTestId('rules-source')).toHaveCount(5);
-  await expect(help.getByTestId('rules-source').filter({ hasText: 'opengrep/opengrep-rules' })).toContainText('Commons Clause');
-  await expect(help.getByTestId('rules-clone')).toContainText('git clone -c core.longpaths=true --depth 1');
-  await expect(help.getByTestId('rules-demo')).toContainText('pattern: fmt.Println(...)');
-  // Choose folder... saves the folder the dialog answered, at once, and the page says it is not there; the engine stays ready
-  await page.getByTestId('rules-choose').click();
-  await expect(page.getByTestId('rules-dir')).toHaveValue(/picked-folders[\\/]Fresh Project \d+$/);
-  await expect(page.getByTestId('rules-note')).toContainText('does not exist');
-  await expect(page.locator('[data-testid=scan-engine][data-engine=sast]')).toHaveAttribute('data-status', 'ready');
-  // a scan runs the Code engine with the built-in rules (the stand-in opengrep refuses a -f folder that is not there)
-  await page.getByTestId('scan-button').click();
-  await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
-  await expect(page.locator('[data-testid=scan-engine][data-engine=sast]')).toHaveAttribute('data-status', 'done');
-  await expect(page.locator('[data-testid=scan-engine][data-engine=secrets]')).toHaveAttribute('data-status', 'done');
-});
-
-// Decision P66: Install makes Drydock download a tool's newest release itself (the harness serves a fixture release and a
-// stand-in program), the row says it is installed by Drydock with the release, Update finds nothing newer, the scan runs the
-// installed tool, and Remove goes back to the program found on PATH.
-test("Install downloads a tool's newest release into Drydock, Update checks for a newer one, Remove deletes it", async ({ page }) => {
-  test.setTimeout(300_000);
-  const repo = freshRepo();
-  await createProject(page, 'gocalc-security-install', repo);
-  await projectNav(page, 'nav-security');
-  const osv = page.locator('[data-testid=tool][data-tool=osv-scanner]');
-  await expect(osv).toHaveAttribute('data-found', 'true', { timeout: 60_000 });
-  const row = page.locator('[data-testid=tool-install-row][data-tool=osv-scanner]');
-  await expect(row.getByTestId('tool-install')).toHaveText('Install');
-  await row.getByTestId('tool-install').click();
-  // the install runs in the background; the row shows the installed release once the core announced the end and probed it
-  await expect(osv).toHaveAttribute('data-source', 'installed', { timeout: 60_000 });
-  await expect(osv).toContainText('Installed by Drydock (v2.7.0)');
-  await expect(osv).toContainText('0.0.0-standin');
-  await expect(row.getByTestId('tool-job')).toHaveText('Installed v2.7.0.');
-  await expect(row.getByTestId('tool-install')).toHaveText('Update');
-  // Update: nothing newer in the release listing
-  await row.getByTestId('tool-install').click();
-  await expect(row.getByTestId('tool-job')).toHaveText('Checked: already the newest release (v2.7.0).', { timeout: 60_000 });
-  // the scan runs the installed program
-  await page.getByTestId('scan-button').click();
-  await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
-  await expect(page.locator('[data-testid=scan-engine][data-engine=deps]')).toHaveAttribute('data-status', 'done');
-  await row.getByTestId('tool-remove').click();
-  await expect(osv).not.toHaveAttribute('data-source', 'installed', { timeout: 60_000 });
-  await expect(osv).toContainText('Found at');
-  await expect(row.getByTestId('tool-install')).toHaveText('Install');
-});
-
 // Decision P61: from Home, the workspace's Security scan reads a folder that is not a project (a repository just downloaded):
 // the same three engines, the finding named without the key's value, and the scan kept in the recent folder scans.
 test('Home opens the Security scan, which scans a folder that is not a project and keeps it in the history', async ({ page }) => {
@@ -180,7 +83,7 @@ test('Home opens the Security scan, which scans a folder that is not a project a
     await expect(page).toHaveURL(/\/security-scan$/);
     await expect(page.getByTestId('workspace-security')).toBeVisible();
     await expect(page.getByTestId('scan-reads-only')).toContainText("never runs the repository's code");
-    await expect(page.locator('[data-testid=tool][data-tool=osv-scanner][data-found=true]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-testid=scan-engine][data-engine=deps][data-status=ready]')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('scan-button')).toBeDisabled();
 
     await page.getByTestId('scan-folder').fill(dir);

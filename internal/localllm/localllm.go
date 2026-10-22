@@ -204,7 +204,7 @@ const (
 // Sources in the order the page offers them: the official build first.
 var Sources = []Source{
 	{
-		ID: SourceOfficial, Name: "llama.cpp (official weekly build)", Repo: "ggml-org/llama.cpp",
+		ID: SourceOfficial, Name: "Official weekly build", Repo: "ggml-org/llama.cpp",
 		CacheTypes: []string{"q8_0", "q4_0", "f16"}, Prerelease: true,
 		assets: func(tag string, b Backend) string {
 			switch b {
@@ -225,7 +225,7 @@ var Sources = []Source{
 		releaseTag: regexp.MustCompile(`^b(\d+)$`), order: []int{1}, tagForm: "bNNNN",
 	},
 	{
-		ID: SourceTurboQuant, Name: "TurboQuant fork (AtomicBot-ai/atomic-llama-cpp-turboquant)", Repo: "AtomicBot-ai/atomic-llama-cpp-turboquant",
+		ID: SourceTurboQuant, Name: "TurboQuant build", Repo: "AtomicBot-ai/atomic-llama-cpp-turboquant",
 		Warning: "A community fork of llama.cpp that Drydock has not reviewed. It adds Google's TurboQuant KV cache types (turbo3, turbo4) " +
 			"but trails the official build by weeks to months. Drydock checks the archive against the SHA-256 GitHub recorded " +
 			"when the maintainer uploaded it, nothing more. Use it only if you trust its maintainers.",

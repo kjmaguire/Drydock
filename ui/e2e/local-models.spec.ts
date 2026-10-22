@@ -1,29 +1,29 @@
-// Models on this PC end to end against the real Go core (decision P65). The harness (cmd/drydock-e2e) gives the core PROTOCOL
-// FIXTURES: GitHub's releases API for llama.cpp's repository (builds b11600 and b11669, the newer with a Vulkan and a CPU
+// Models on this PC end to end against the real Go core (decisions P65, P95). The harness (cmd/drydock-e2e) gives the core PROTOCOL
+// FIXTURES: GitHub's releases API for the TurboQuant build's repository (b10269-1.7.1 and b10298-2.0.0, the newer with a Vulkan and a CPU
 // archive holding a placeholder llama-server) and the Hugging Face Hub with small GGUF repositories; the "server" started is
 // the harness's own stand-in (internal/localllm/llamatest), which loads its model for a second. Nothing reaches GitHub or
 // Hugging Face; no llama.cpp runs. The core reports one CUDA device with 14 GB free and 20 GB of RAM available.
 import { expect, test } from '@playwright/test';
 import { choose, appUrl, workspaceNav } from './helpers';
 
-test('Models on this PC: install llama.cpp, find and download a model, serve it as a provider, stop', async ({ page }) => {
+test('Models on this PC: set up the engine, find and download a model, serve it as a provider, stop', async ({ page }) => {
   test.setTimeout(240_000);
   await page.goto(appUrl());
   await workspaceNav(page, 'nav-providers');
   const section = page.getByTestId('local-models');
   await expect(section).toBeVisible();
-  await expect(section).toContainText('Run open models with llama.cpp on this computer.');
-  await expect(section.getByTestId('local-runtime')).toContainText('Drydock downloads and runs llama.cpp itself');
+  await expect(section).toContainText("Run open models on this computer with the model engine built into Drydock, with Google's TurboQuant.");
 
-  // not installed: the backend and the source to choose, then Install
+  // not set up (the harness has no AutoSetup and no tools folder): Set up, with nothing to choose and no llama.cpp named
   const runtime = section.getByTestId('local-runtime');
   await expect(runtime).toHaveAttribute('data-installed', 'false');
-  await expect(section.getByTestId('local-source')).toHaveAttribute('data-value', 'official');
-  await choose(section.getByTestId('local-backend'), 'vulkan');
+  await expect(section.getByTestId('local-source')).toHaveCount(0);
+  await expect(section.getByTestId('local-backend')).toHaveCount(0);
+  await expect(section).not.toContainText('llama');
   await section.getByTestId('local-install').click();
-  // the install runs in the background; the page follows it through local.changed until the newest build is in
+  // the setup runs in the background; the page follows it through local.changed until the newest TurboQuant build is in
   await expect(runtime).toHaveAttribute('data-installed', 'true', { timeout: 60_000 });
-  await expect(runtime).toContainText('llama.cpp b11669 · Vulkan · llama.cpp (official weekly build)');
+  await expect(runtime).toContainText('TurboQuant build b10298-2.0.0 · Vulkan');
   await expect(runtime.locator('[data-testid=local-device][data-id=CUDA0]')).toBeVisible({ timeout: 60_000 });
   await expect(runtime.getByTestId('local-job')).toHaveAttribute('data-state', 'done');
   await expect(section.getByTestId('local-memory')).toContainText('RAM: 20.0 GB free of 32.0 GB');
@@ -62,9 +62,9 @@ test('Models on this PC: install llama.cpp, find and download a model, serve it 
   await expect(server.getByTestId('local-server-state')).toHaveText('running');
   await expect(server.getByTestId('local-server-url')).toHaveText('http://127.0.0.1:9933/v1');
   await expect(server).toContainText('acme/tiny-GGUF:Q4_0');
-  await expect(server).toContainText("Registered as the provider 'Models on this PC (llama.cpp)' below.");
+  await expect(server).toContainText("Registered as the provider 'Models on this PC' below.");
   await expect(model).toContainText('serving');
-  const tile = page.locator('[data-testid=provider-tile][data-name="Models on this PC (llama.cpp)"]');
+  const tile = page.locator('[data-testid=provider-tile][data-name="Models on this PC"]');
   await expect(tile).toBeVisible();
   await expect(tile).toContainText('127.0.0.1:9933');
   // the log shows the stand-in's lines

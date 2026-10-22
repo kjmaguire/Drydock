@@ -60,17 +60,42 @@ func (s *securityExt) installTool(ctx context.Context, projectID, tool, by strin
 	if !s.inst.Supported() {
 		return scan.Tools{}, fmt.Errorf("%s's Windows program cannot run here: install it on Windows", src.Label)
 	}
-	s.mu.Lock()
-	if j, ok := s.jobs[tool]; ok && j.job.State == "running" {
-		s.mu.Unlock()
+	if !s.startInstall(projectID, src, by) {
 		return s.tools(ctx, projectID), fmt.Errorf("%s is already being installed", src.Label)
 	}
-	jctx, cancel := context.WithCancel(context.Background())
-	s.jobs[tool] = &toolJob{job: scan.ToolJob{State: "running", Phase: "looking up the newest release", Started: time.Now().UTC()}, cancel: cancel}
-	s.mu.Unlock()
-	s.announce(ctx, projectID, tool, "running", by)
-	safe.Go("core.securityExt.installTool", func() { s.runInstall(jctx, projectID, src, by) })
 	return s.tools(ctx, projectID), nil
+}
+
+// startInstall starts the install (or update) of a tool in the background, unless one is running, and reports whether it
+// did. by is who asked: a person, or Drydock itself (drydock:auto for a missing tool, drydock:update-check for a newer release).
+func (s *securityExt) startInstall(projectID string, src scan.ToolSource, by string) bool {
+	s.mu.Lock()
+	if j, ok := s.jobs[src.Tool]; ok && j.job.State == "running" {
+		s.mu.Unlock()
+		return false
+	}
+	jctx, cancel := context.WithCancel(context.Background())
+	s.jobs[src.Tool] = &toolJob{job: scan.ToolJob{State: "running", Phase: "looking up the newest release", Started: time.Now().UTC()}, cancel: cancel}
+	s.mu.Unlock()
+	s.announce(context.Background(), projectID, src.Tool, "running", by)
+	safe.Go("core.securityExt.installTool", func() { s.runInstall(jctx, projectID, src, by) })
+	return true
+}
+
+// installMissing installs, in the background, each scan tool Drydock can install here that is not installed and that no
+// person removed (AutoSetup, decision P95): a download without its tools folder still scans from the first start.
+func (s *securityExt) installMissing() {
+	if !s.c.cfg.AutoSetup || !s.inst.Supported() {
+		return
+	}
+	for _, src := range scan.ToolSources {
+		if _, ok := s.inst.Installed(src.Tool); ok || s.inst.Removed(src.Tool) {
+			continue
+		}
+		if s.startInstall("", src, "drydock:auto") {
+			s.c.logf("security: %s is not installed: installing its newest release", src.Tool)
+		}
+	}
 }
 
 // runInstall is the background part: look the release up, skip it when it is the one installed, else download and place it.
@@ -171,7 +196,7 @@ func (s *securityExt) removeTool(ctx context.Context, projectID, tool, by string
 // seedBundled installs, in the background, the scan tools the download carries (decision P77: "I want the app to already have
 // the dependencies installed"). Each is put in place only when the tool has no release here or an earlier bundled one; a
 // release the person installed, or a tool the person removed, is left as it is (scan.Installer.SeedFromBundle). A seed that
-// fails is logged and the tool's Install button still works.
+// fails is logged; with AutoSetup the tool is then downloaded instead (installMissing).
 func (s *securityExt) seedBundled(ctx context.Context) {
 	m, err := bundle.Read(s.c.cfg.BundleDir)
 	if err != nil {
@@ -179,10 +204,12 @@ func (s *securityExt) seedBundled(ctx context.Context) {
 		return
 	}
 	if m == nil || len(m.Scan) == 0 {
+		s.installMissing()
 		return
 	}
 	dir := s.c.cfg.BundleDir
 	safe.Go("core.securityExt.seedBundled", func() {
+		defer s.installMissing() // a tool the download did not carry, or whose copy failed its check
 		for _, b := range m.Scan {
 			// the seed is an install job like a person's: the page shows it, and an Install pressed meanwhile waits for it
 			s.mu.Lock()
@@ -219,8 +246,9 @@ func (s *securityExt) seedBundled(ctx context.Context) {
 
 // Tool updates (decision P77, on the owner's words: "have the ability to update them if they are out of date"): three minutes
 // after start (after the download's tools are in place) and every twelve hours, each installed tool's newest stable release is
-// read from its GitHub repository; a newer one than installed is offered on the Security page (security.tools: latest). A check
-// that cannot reach GitHub keeps what it knew. Nothing is installed without the person pressing Update.
+// read from its GitHub repository; a newer one than installed is installed (decision P95: "Check for update should then install
+// the update"; the Security page no longer shows the tools) when AutoSetup is on or a person pressed Check for updates, and is
+// otherwise offered (security.tools: latest). A check that cannot reach GitHub keeps what it knew.
 const (
 	toolUpdatesFirst = 3 * time.Minute
 	toolUpdatesEvery = 12 * time.Hour
@@ -236,7 +264,7 @@ func (s *securityExt) watchUpdates(ctx context.Context) {
 		t := time.NewTicker(toolUpdatesEvery)
 		defer t.Stop()
 		for {
-			s.checkUpdates(ctx)
+			s.checkUpdates(ctx, s.c.cfg.AutoSetup)
 			select {
 			case <-ctx.Done():
 				return
@@ -246,8 +274,9 @@ func (s *securityExt) watchUpdates(ctx context.Context) {
 	})
 }
 
-// checkUpdates reads the newest release of every installed tool and announces the ones that changed.
-func (s *securityExt) checkUpdates(ctx context.Context) {
+// checkUpdates reads the newest release of every installed tool and announces the ones that changed; with install, a newer
+// release than the one installed is installed (by Drydock's own install job, so the tools' view shows it).
+func (s *securityExt) checkUpdates(ctx context.Context, install bool) {
 	for _, src := range scan.ToolSources {
 		if _, ok := s.inst.Installed(src.Tool); !ok {
 			continue
@@ -265,6 +294,9 @@ func (s *securityExt) checkUpdates(ctx context.Context) {
 		s.mu.Unlock()
 		if changed {
 			s.announce(context.Background(), "", src.Tool, "checked", "drydock:update-check")
+		}
+		if in, ok := s.inst.Installed(src.Tool); install && ok && in.Tag != rel.Tag && s.startInstall("", src, "drydock:update-check") {
+			s.c.logf("security: %s %s is out (installed %s): installing it", src.Tool, rel.Tag, in.Tag)
 		}
 	}
 }

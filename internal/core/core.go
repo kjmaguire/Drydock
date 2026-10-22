@@ -113,6 +113,11 @@ type Config struct {
 	// llama.cpp build with the TurboQuant KV cache types, each with the SHA-256 its release recorded, installed from there at
 	// start. The desktop app sets it (bundle.Dir()); empty, or a folder without bundle.json, carries nothing.
 	BundleDir string
+	// AutoSetup makes the app set itself up (decision P95, on the owner's words: "I don't want to hit a button that says
+	// install llama.cpp"): at start, a scan tool or the local models' runtime that is neither installed (nor bundled) nor
+	// removed by a person is downloaded and installed, and the twice-daily update check installs a newer scan tool release
+	// instead of only offering it. The desktop app sets it; tests leave it off so nothing installs behind their back.
+	AutoSetup bool
 }
 
 // FilePick is what a file dialog asks for.

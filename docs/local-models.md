@@ -29,12 +29,15 @@ The archive is unpacked with the same guarded unzip the CI runners use (`interna
 links, size limits), into Drydock's own folder: `<data>\local-models\<source>-<tag>-<backend>\`. Models go to
 `<data>\local-models\models\<owner>\<repo>\<variant>\`. Nothing is written anywhere else, and nothing is added to PATH.
 
-**Built in, not side-loaded.** The person installs nothing by hand: the runtime card says so before Install ("Drydock
-downloads and runs llama.cpp itself: the newest Windows build of the source below, for the backend you pick, checked against
-the digest GitHub recorded and unpacked into Drydock's own folder. Nothing has to be installed by hand, and nothing is added
-to the PC's PATH"), and the installed card says the build was downloaded and is run by Drydock, with Update fetching the
-newest one the same way. The Source box offers the official build (default) and the TurboQuant fork, the fork behind its
-warning (2026-10-16, on the owner's question whether llama.cpp and TurboQuant could be "built right into the app").
+**Built in, not side-loaded (decision P95).** The engine is Drydock's own and the page never calls it llama.cpp. It is the
+TurboQuant build: from the download's tools folder at the first start, or, with `AutoSetup` (the desktop app) when the folder
+did not carry it, fetched from the fork's releases at start with the digest check above, for the suggested backend when the
+fork builds it, else Vulkan, with `turbo4` as the cache type unless the person chose one. While that runs the card says
+"Setting up local models" with the progress; when the start could not do it, the card offers **Set up** (the same, with
+nothing to choose) and, after a failure, **Retry**. An installed engine reads "TurboQuant build <tag> · <backend>" and has one
+button, **Check for updates**, which installs a newer build of the same source and backend (it reads **Update to <tag>** when
+the twice-daily check found one). The page offers no source, backend, Update or Remove for the engine any more; the official
+build stays a source the core can install (`local.install`), and a build installed earlier keeps its source.
 
 **What leaves the machine.** The release listing (`api.github.com`, unauthenticated, 20 releases), the archives
 (`github.com`), the model listings and files (`huggingface.co` and its download hosts). No code, no prompt and no project
@@ -108,7 +111,7 @@ llama-server --host 127.0.0.1 --port 9933 -m <file.gguf> --alias <owner/repo:VAR
 
 Drydock waits for `GET /health` to answer 200 (the model is loaded; up to 15 minutes) and for `GET /props` to accept the key (so
 a different program that took the port is not taken for the server), then makes the server a provider:
-name "Models on this PC (llama.cpp)", `kind=host`, `flavor=llamacpp`, `data_class=private`, `tier=cheap`,
+name "Models on this PC" (one registered before decision P95 keeps "Models on this PC (llama.cpp)"), `kind=host`, `flavor=llamacpp`, `data_class=private`, `tier=cheap`,
 `max_concurrent=1`, base URL `http://127.0.0.1:9933/v1`. The provider probe (`internal/providers`) tells a llama-server apart
 by `GET /props`, lists its model as taking tool calls (the listing says nothing about it; the server's template handles
 them) with the context the server runs with (`default_generation_settings.n_ctx`), and warns below 64k. The health loop

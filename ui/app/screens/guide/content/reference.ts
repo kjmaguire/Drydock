@@ -159,7 +159,7 @@ export const REFERENCE: readonly Topic[] = [
     summary: 'Public sets of Semgrep-syntax rules and what each licence says, as read on one day.',
     keywords: ['rules', 'licence', 'license', 'semgrep', 'opengrep', 'commons clause', 'lgpl', 'agpl', 'mit'],
     body: [
-      { p: `Drydock comes with rules built in: its own, and two sets under the MIT licence (dgryski/semgrep-go for Go and 0xdea/semgrep-rules for C and C++). The Security page lists them. To run more, get a set yourself and choose its folder. Opengrep reads rules written for Semgrep, so a Semgrep rule set works unchanged. These public repositories hold sets, with what each one’s own licence file or README said on ${RULES_READ_ON}. A licence can change, so read it yourself and use a set only in the way it allows. This is not a recommendation and not legal advice.` },
+      { p: `Drydock comes with rules built in: its own, and two sets under the MIT licence (dgryski/semgrep-go for Go and 0xdea/semgrep-rules for C and C++). They run on every scan. The other public sets below are not built in, on the terms of their licences. These public repositories hold sets, with what each one’s own licence file or README said on ${RULES_READ_ON}. A licence can change, so read it yourself and use a set only in the way it allows. This is not a recommendation and not legal advice.` },
       {
         table: {
           head: ['Repository', 'Licence, as the repository said', 'For'],

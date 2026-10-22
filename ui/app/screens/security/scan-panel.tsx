@@ -1,5 +1,6 @@
 // The security scan's shared parts (decisions P44, P61): the Scan button with its status and progress, one row per engine,
-// the findings with their filters, the tools on this computer with the rules folder, and the history. The project's Security
+// the findings with their filters, and the history. The tools are Drydock's own (decision P95): installed and kept current by
+// the core, so the page shows no tools section, only each engine's readiness. The project's Security
 // page and the workspace Security page both render ScanPanel over a scope (scan-scope.ts). A finding names the rule, the file
 // and the line; a secret's value is never shown. The core does the work (internal/scan); this is a projection of
 // security.scan.get re-read on security.* events and, while a scan runs, read again for the counters: one read at a time, the next
@@ -7,22 +8,18 @@
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { KeyRound, Package, ScanSearch, type IconNode } from 'lucide';
-import type { ScanToolName } from '../../api/securityClient.ts';
-import type { EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity, ToolInfo, ToolJob } from '../../api/securityTypes.ts';
-import { formatBytes, formatDateTime } from '../../lib/format.ts';
+import type { EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity } from '../../api/securityTypes.ts';
+import { formatDateTime } from '../../lib/format.ts';
 import { pollWhile } from '../../lib/poll.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { Section, card, listCard, spacer } from '../../ui/layout.tsx';
+import { Section, card, listCard } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { listOf, WindowedList } from '../../ui/windowed-list.tsx';
 import { Meter } from '../budgets/meter.tsx';
-import { Disclosure } from '../../ui/disclosure.tsx';
-import { ChooseFolder } from '../shared/choose-folder.tsx';
-import { RulesSources } from './rules-sources.tsx';
 import type { ScanScope } from './scan-scope.ts';
 import {
   advisoryUrl,
@@ -39,7 +36,6 @@ import {
   filesText,
   filterFindings,
   findingsText,
-  languageName,
   overallPercent,
   SEVERITIES,
   severityTone,
@@ -132,48 +128,6 @@ const idBadge = css({
   fontSize: t.textXs,
   textDecoration: 'none',
   '&:hover': { textDecoration: 'underline' },
-});
-
-// A tool that can be installed or chosen is one block of the list (its row, the install row, the program field): listCard lays out
-// only its direct rows, so the block carries the rule between blocks and gives its own row the same layout.
-const toolBlock = css({
-  borderTop: `1px solid ${t.border}`,
-  '& > .row': { display: 'flex', alignItems: 'center', gap: t.s3, padding: '11px 18px', minWidth: '0' },
-});
-const toolRow = css({
-  '& strong': { fontWeight: '600', minWidth: '96px' },
-  '& .state': { color: t.textMuted, fontSize: t.textSm, minWidth: '0', overflowWrap: 'anywhere' },
-  '& .install': { display: 'block', marginTop: '2px' },
-});
-const pickCss = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: t.s2,
-  flexWrap: 'wrap',
-  margin: '0',
-  padding: `0 ${t.s4} ${t.s3}`,
-  '& input': { flex: '1', minWidth: '220px', fontFamily: t.mono, fontSize: t.textSm },
-});
-const installCss = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: t.s2,
-  flexWrap: 'wrap',
-  padding: `0 ${t.s4} ${t.s2}`,
-  '& .job': { fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere', minWidth: '0' },
-  '&[data-state="failed"] .job': { color: tone.err.fg },
-});
-const rulesCss = css({
-  display: 'grid',
-  gap: t.s2,
-  padding: `${t.s3} ${t.s4}`,
-  borderTop: `1px solid ${t.border}`,
-  '& label': { fontSize: t.textSm, fontWeight: '500' },
-  '& .line': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
-  '& .line input': { flex: '1', minWidth: '220px', fontFamily: t.mono, fontSize: t.textSm },
-  '& .note': { margin: '0', fontSize: t.textSm, color: t.textMuted },
-  '& ul': { margin: '0', paddingLeft: t.s4, display: 'grid', gap: '2px', fontSize: t.textSm, color: t.textMuted },
-  '& li strong': { fontWeight: '600', color: t.text },
 });
 
 const historyBtn = css({
@@ -344,79 +298,14 @@ function Where(handle: Handle<{ f: ScanFinding }>) {
   };
 }
 
-const TOOL_ROWS: { key: keyof Pick<SecurityTools, 'gitleaks' | 'osv' | 'opengrep'>; name: string }[] = [
-  { key: 'gitleaks', name: 'gitleaks' },
-  { key: 'osv', name: 'osv-scanner' },
-  { key: 'opengrep', name: 'opengrep' },
-];
-
-function toolState(name: string, info: ToolInfo | undefined, canInstall: boolean): RemixNode {
-  if (!info) return <span class="state">not reported</span>;
-  if (info.builtIn || name === 'gitleaks') {
-    return (
-      <span class="state">
-        built into Drydock
-        {info.version ? `, ${info.version}` : ''}
-      </span>
-    );
-  }
-  if (info.found) {
-    if (info.source === 'installed') {
-      return (
-        <span class="state">
-          Installed by Drydock{info.tag ? ` (${info.tag})` : ''} at <span mix={mono}>{info.path || '?'}</span>
-          {info.version ? ` (${info.version})` : ''}
-        </span>
-      );
-    }
-    const how = info.source === 'chosen' ? 'Chosen file' : info.source === 'folder' ? 'Found (not on the PATH Drydock started with) at' : 'Found at';
-    return (
-      <span class="state">
-        {how} <span mix={mono}>{info.path || '?'}</span>
-        {info.version ? ` (${info.version})` : ''}
-      </span>
-    );
-  }
-  if (info.chosen) {
-    return (
-      <span class="state">
-        The chosen file <span mix={mono}>{info.chosen}</span> is not there: choose it again, or use PATH.
-      </span>
-    );
-  }
-  return (
-    <span class="state">
-      Not installed
-      {info.install ? (
-        <span class="install">
-          {info.install} {canInstall ? 'Or choose its program below.' : 'Or choose its program below. Drydock installs it itself on Windows only.'}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-/** What an install (or update) of a tool is doing, or how the last one ended (decision P66). */
-function jobText(job: ToolJob): string {
-  if (job.state === 'running') {
-    if (job.phase?.startsWith('downloading') && job.total > 0) return `${job.phase}: ${formatBytes(job.done)} of ${formatBytes(job.total)}`;
-    return job.phase || 'installing';
-  }
-  if (job.state === 'failed') return `The install failed: ${job.error || 'unknown reason'}`;
-  if (job.state === 'cancelled') return 'The install was cancelled.';
-  if (job.phase?.startsWith('already')) return `Checked: ${job.phase}.`;
-  return `Installed${job.tag ? ` ${job.tag}` : ''}.`;
-}
-
 /**
  * The scan itself, shared by the project's Security page and the workspace Security page (decision P61): the Scan button and
- * its status, the overall and per-engine progress, the findings, the tools on this computer with the rules folder, and the
- * history. It reads and acts only through `scope` (a project or a folder); `canScan` says whether Scan may be pressed (a
+ * its status, the overall and per-engine progress, the findings and the history. It reads and acts only through `scope` (a project or a folder); `canScan` says whether Scan may be pressed (a
  * project with a repository, a folder typed). A history item of another folder is handed to `onPick` first, so the page can
  * show that folder.
  */
 export function ScanPanel(
-  handle: Handle<{ scope: ScanScope; canScan: boolean; historyTitle?: string; rulesHint?: string; onPick?: (h: ScanSummary) => void }>,
+  handle: Handle<{ scope: ScanScope; canScan: boolean; historyTitle?: string; onPick?: (h: ScanSummary) => void }>,
 ) {
   const s = services(handle);
   const act = action(handle);
@@ -455,14 +344,8 @@ export function ScanPanel(
   // a report opened from the history (for the scope it was opened in); a running scan always takes over the display
   let opened: { report: ScanReport; key: string } | undefined;
   let shownId: string | undefined;
-  let shownKey: string | undefined;
   let sev: Severity | 'all' = 'all';
   let eng: EngineID | 'all' = 'all';
-  let rulesEdit: string | undefined;
-  let rulesSaved = false;
-  /** A path typed for a tool's program, by tool name, until it is used. */
-  const pathEdit: Partial<Record<ScanToolName, string>> = {};
-
   const scan = async () => {
     const r = await act.run('scan', () => scope().start());
     if (r) {
@@ -490,67 +373,14 @@ export function ScanPanel(
       void handle.update();
     }
   };
-  const saveRules = async () => {
-    const value = rulesEdit ?? tools.data?.rulesDir ?? '';
-    const r = await act.run('rules', () => scope().setRules(value));
-    if (r) {
-      rulesEdit = undefined;
-      rulesSaved = true;
-      tools.set(r);
-      void handle.update();
-    }
-  };
-  // the core answers each change with the tools as they are now (one probe of the programs): shown as is, not read again
-  const chooseTool = async (tool: ScanToolName) => {
-    const r = await act.run(`choose:${tool}`, () => scope().chooseTool(tool));
-    if (r) tools.set(r);
-  };
-  const setTool = async (tool: ScanToolName, path: string) => {
-    const r = await act.run(`path:${tool}`, () => scope().setTool(tool, path));
-    if (r) {
-      delete pathEdit[tool];
-      tools.set(r);
-      void handle.update();
-    }
-  };
-  // Drydock installs the tool itself (decision P66); the install runs in the background and its progress comes with the
-  // tools on each security.settings event
-  const installTool = async (tool: ScanToolName) => {
-    const r = await act.run(`install:${tool}`, () => scope().installTool(tool));
-    if (r) tools.set(r);
-  };
-  const cancelInstall = async (tool: ScanToolName) => {
-    const r = await act.run(`install-cancel:${tool}`, () => scope().cancelInstall(tool));
-    if (r) tools.set(r);
-  };
-  const removeTool = async (tool: ScanToolName) => {
-    const r = await act.run(`remove:${tool}`, () => scope().removeTool(tool));
-    if (r) tools.set(r);
-  };
-  // the newest release of each installed tool, now instead of at the next twice-daily check (decision P77)
-  let checked = false;
-  const checkUpdates = async () => {
-    const r = await act.run('check-updates', () => scope().checkUpdates());
-    if (r) {
-      tools.set(r);
-      checked = true;
-      void handle.update();
-    }
-  };
   const pick = (f: () => void) => {
     f();
     void handle.update();
   };
 
   return () => {
-    const { canScan, historyTitle, rulesHint } = handle.props;
+    const { canScan, historyTitle } = handle.props;
     const folderScope = scope().kind === 'folder';
-    if (shownKey !== key()) {
-      // another project or folder: what was typed for the last one does not carry over
-      shownKey = key();
-      rulesEdit = undefined;
-      rulesSaved = false;
-    }
     const live = current.data ?? undefined;
     const running = live?.status === 'running';
     if (running || (opened && opened.key !== key())) opened = undefined;
@@ -570,7 +400,6 @@ export function ScanPanel(
     const pct = overallPercent(report);
     const busy = act.busy !== '';
     const tl = tools.data;
-    const rulesValue = rulesEdit ?? tl?.rulesDir ?? '';
     const list = history.data ?? [];
 
     return (
@@ -692,213 +521,6 @@ export function ScanPanel(
             ) : null}
           </Section>
         ) : null}
-
-        <Section
-          title="Tools on this computer"
-          testId="security-tools"
-          actions={
-            tl?.canInstall ? (
-              <Button type="button" variant="secondary" size="sm" data-testid="tools-check-updates" disabled={busy} mix={on('click', () => void checkUpdates())}>
-                {act.busy === 'check-updates' ? 'Checking…' : 'Check for updates'}
-              </Button>
-            ) : undefined
-          }
-        >
-          {checked && tl && !tl.osv.latest && !tl.opengrep.latest ? (
-            <p mix={muted} role="status" data-testid="tools-up-to-date">
-              The installed tools are the newest releases.
-            </p>
-          ) : null}
-          <ErrorNote error={tools.error} what="Could not read the tools" />
-          {!tl && tools.loading ? <Loading /> : null}
-          {tl ? (
-            <div mix={listCard}>
-              {TOOL_ROWS.map(({ key: k, name }) => {
-                const info = tl[k];
-                const row = (
-                  <div
-                    key={k}
-                    class="row"
-                    mix={toolRow}
-                    data-testid="tool"
-                    data-tool={name}
-                    data-found={info?.found ? 'true' : 'false'}
-                    data-source={info?.source ?? ''}
-                  >
-                    <strong>{name}</strong>
-                    {toolState(name, info, tl.canInstall === true)}
-                  </div>
-                );
-                if (k === 'gitleaks' || !info) return row;
-                const tool = name as ScanToolName;
-                const typed = pathEdit[tool] ?? '';
-                const job = info.job;
-                const installing = job?.state === 'running';
-                const installed = info.source === 'installed';
-                return (
-                  <div key={k} mix={toolBlock}>
-                    {row}
-                    {tl.canInstall ? (
-                      <div mix={installCss} data-testid="tool-install-row" data-tool={name} data-state={job?.state ?? 'none'}>
-                        {installing ? (
-                          <Button type="button" variant="secondary" size="sm" data-testid="tool-install-cancel" disabled={busy} mix={on('click', () => void cancelInstall(tool))}>
-                            {act.busy === `install-cancel:${tool}` ? 'Cancelling…' : 'Cancel'}
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant={!info.found || info.latest ? 'primary' : 'secondary'}
-                            size="sm"
-                            data-testid="tool-install"
-                            disabled={busy}
-                            title={installed ? 'Look up the newest release and install it if it is newer' : "Download the newest release from the tool's GitHub repository, check it and keep it in Drydock's own folder"}
-                            mix={on('click', () => void installTool(tool))}
-                          >
-                            {act.busy === `install:${tool}` ? 'Starting…' : installed ? (info.latest ? `Update to ${info.latest}` : 'Update') : 'Install'}
-                          </Button>
-                        )}
-                        {installed && !installing ? (
-                          <Button type="button" variant="ghost" size="sm" data-testid="tool-remove" disabled={busy} mix={on('click', () => void removeTool(tool))}>
-                            {act.busy === `remove:${tool}` ? 'Removing…' : 'Remove'}
-                          </Button>
-                        ) : null}
-                        {job ? (
-                          <span class="job" role="status" data-testid="tool-job" data-state={job.state}>
-                            {jobText(job)}
-                          </span>
-                        ) : (
-                          <span class="job" data-testid={info.latest ? 'tool-latest' : undefined}>
-                            {installed
-                              ? info.latest
-                                ? `${info.latest} is out (this is ${info.tag ?? 'an older release'}).`
-                                : 'Update looks up the newest release.'
-                              : `Install downloads the newest release from GitHub, checks its SHA-256 and keeps it in Drydock's own folder.`}
-                          </span>
-                        )}
-                      </div>
-                    ) : null}
-                    <form
-                      data-testid="tool-pick"
-                      data-tool={name}
-                      mix={[
-                        pickCss,
-                        on('submit', (e) => {
-                          e.preventDefault();
-                          if (!busy && typed.trim()) void setTool(tool, typed);
-                        }),
-                      ]}
-                    >
-                      {tl.canChoose ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          data-testid="tool-choose"
-                          disabled={busy}
-                          mix={on('click', () => void chooseTool(tool))}
-                        >
-                          {act.busy === `choose:${tool}` ? 'Choosing…' : 'Choose file…'}
-                        </Button>
-                      ) : null}
-                      <input
-                        aria-label={`Full path of ${name}'s program`}
-                        data-testid="tool-path"
-                        spellcheck={false}
-                        placeholder={`${tl.canChoose ? 'or type the full path, ' : ''}for example C:\\tools\\${name}.exe`}
-                        value={typed}
-                        mix={on('input', (e) => {
-                          pathEdit[tool] = e.currentTarget.value;
-                          void handle.update();
-                        })}
-                      />
-                      <Button type="submit" variant="secondary" size="sm" data-testid="tool-path-save" disabled={busy || !typed.trim()}>
-                        {act.busy === `path:${tool}` ? 'Saving…' : 'Use this file'}
-                      </Button>
-                      {info.chosen ? (
-                        <Button type="button" variant="ghost" size="sm" data-testid="tool-clear" disabled={busy} mix={on('click', () => void setTool(tool, ''))}>
-                          Use PATH instead
-                        </Button>
-                      ) : null}
-                    </form>
-                  </div>
-                );
-              })}
-              <div mix={rulesCss} data-testid="builtin-rules">
-                <strong>Opengrep rules</strong>
-                {tl.builtinRules ? (
-                  <p class="note">
-                    {tl.builtinRuleCount ?? 0} rules are built into Drydock and run on every scan:
-                  </p>
-                ) : (
-                  <Notice tone="warn" testId="builtin-rules-missing">
-                    The built-in rules could not be written to Drydock's data folder, so only a folder of your own rules can run.
-                  </Notice>
-                )}
-                <ul aria-label="Built-in rule sets">
-                  {(tl.ruleSets ?? []).map((r) => (
-                    <li key={r.id} data-testid="rule-set" data-set={r.id}>
-                      <strong>{r.name}</strong>: {r.rules} rules for {(r.languages ?? []).map(languageName).join(', ')}. Licence: {r.licence}.
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <Disclosure summary={tl.rulesDir ? 'Your own rules folder (used with the built-in rules)' : 'Add a folder of your own rules (optional)'} open={!!tl.rulesDir && !tl.rulesOk} testId="own-rules">
-                <form
-                  mix={[
-                    rulesCss,
-                    on('submit', (e) => {
-                      e.preventDefault();
-                      if (!busy) void saveRules();
-                    }),
-                  ]}
-                >
-                  <label for={`rules-${handle.id}`}>Your rules folder</label>
-                  <div class="line">
-                    {/* the window's own folder dialog, in the desktop app; a folder chosen there is saved at once, like a program chosen with Choose file... */}
-                    <ChooseFolder
-                      title="Choose the Opengrep rules folder"
-                      testId="rules-choose"
-                      disabled={busy}
-                      onPick={(path) => {
-                        rulesEdit = path;
-                        void saveRules();
-                      }}
-                    />
-                    <input
-                      id={`rules-${handle.id}`}
-                      aria-label="Rules folder"
-                      data-testid="rules-dir"
-                      spellcheck={false}
-                      placeholder="for example C:\tools\opengrep-rules"
-                      value={rulesValue}
-                      mix={on('input', (e) => {
-                        rulesEdit = e.currentTarget.value;
-                        rulesSaved = false;
-                        void handle.update();
-                      })}
-                    />
-                    <Button type="submit" variant="secondary" size="sm" disabled={busy}>
-                      {act.busy === 'rules' ? 'Saving…' : 'Save'}
-                    </Button>
-                    {rulesSaved && rulesEdit === undefined ? <span role="status">Saved.</span> : null}
-                    <span mix={spacer} />
-                    {tl.rulesOk ? <Badge tone="ok">Rules found.</Badge> : null}
-                  </div>
-                  {!tl.rulesOk && tl.rulesNote ? (
-                    <Notice tone="warn" testId="rules-note">
-                      {tl.rulesNote}
-                    </Notice>
-                  ) : null}
-                  <p class="note">
-                    The rules in this folder (.yaml files you are licensed to use) run with the built-in ones.
-                    {rulesHint ? ` ${rulesHint}` : ''}
-                  </p>
-                  <RulesSources />
-                </form>
-              </Disclosure>
-            </div>
-          ) : null}
-        </Section>
 
         <Section title={historyTitle ?? 'History'} testId="scan-history">
           {history.data && list.length === 0 ? <p mix={[card, muted]}>No scans yet.</p> : null}

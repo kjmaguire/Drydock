@@ -1,5 +1,6 @@
-// Models on this PC (decision P65): llama.cpp on this computer, at the top of the Providers page. A person installs an official
-// llama.cpp build (checked against the digest GitHub recorded), downloads GGUF models from the Hugging Face Hub (checked
+// Models on this PC (decision P65): llama.cpp on this computer, at the top of the Providers page, never named on it (decision
+// P95): the engine is part of Drydock. Drydock sets up the TurboQuant build itself (from the download, else from GitHub, checked
+// against the digest GitHub recorded); a person downloads GGUF models from the Hugging Face Hub (checked
 // against the Hub's SHA-256) and serves one; the server is then registered as an ordinary provider, which appears as a tile
 // below. Installs and downloads run in the background: their progress lives in the view (local.get), which the event
 // local.changed re-reads; methods that change things answer with the fresh view, shown at once (q.set).
@@ -39,6 +40,9 @@ import {
   serverTone,
   wholeNumber,
 } from "./local-models.ts";
+
+/** The build Drydock sets up (decision P95): the TurboQuant one, with Google's TurboQuant KV cache types. */
+const TURBOQUANT = "turboquant";
 
 const cardCss = css({
   display: "grid",
@@ -163,10 +167,6 @@ export function LocalModels(handle: Handle) {
   // Stop has an action of its own: a start waits for the core until the model is loaded (up to 15 minutes) and holds `act` all
   // that time, and Stop has to work meanwhile (audit 2026-10-16, L44)
   const stopAct = action(handle);
-  // the person's picks before an install ('' until picked: the settings', else the suggested backend)
-  let source = "";
-  let backend: LocalBackend | "" = "";
-  let confirmRemove = false;
   let showLog = false;
   let restartNeeded = false; // a cache, context or port change while the server ran
   // Stop was pressed while a start was waiting: the core answers that start with an error ("the server was stopped before
@@ -344,7 +344,7 @@ export function LocalModels(handle: Handle) {
         <Section
           title="Models on this PC"
           testId="local-models"
-          description={<>Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
+          description={<>Run open models on this computer with the model engine built into Drydock, with Google&apos;s TurboQuant. Nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
         >
           <ErrorNote error={q.error} what="Models on this PC" />
           {q.loading ? <Loading /> : null}
@@ -357,7 +357,7 @@ export function LocalModels(handle: Handle) {
         <Section
           title="Models on this PC"
           testId="local-models"
-          description={<>Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
+          description={<>Run open models on this computer with the model engine built into Drydock, with Google&apos;s TurboQuant. Nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
         >
           <ErrorNote error={q.error} what="Models on this PC" />
           <div mix={cardCss} data-testid="local-runtime">
@@ -372,10 +372,9 @@ export function LocalModels(handle: Handle) {
       v.backends.find((b) => b.id === id)?.label ?? id;
     const job = v.runtime.job;
     const installing = job?.state === "running";
-    const srcId = source || v.settings.source || v.sources[0]?.id || "";
-    const src = v.sources.find((x) => x.id === srcId);
+    const src = v.sources.find((x) => x.id === TURBOQUANT);
     const chosenBackend: LocalBackend | "" =
-      backend || v.settings.backend || v.suggestedBackend;
+      v.settings.backend || v.suggestedBackend;
     const server = v.server;
     const serverOn = server.state === "running" || server.state === "starting";
     if (!serverOn) restartNeeded = false;
@@ -393,7 +392,7 @@ export function LocalModels(handle: Handle) {
       <Section
         title="Models on this PC"
         testId="local-models"
-        description={<>Run open models with llama.cpp on this computer. Drydock downloads and runs llama.cpp itself; nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
+        description={<>Run open models on this computer with the model engine built into Drydock, with Google&apos;s TurboQuant. Nothing leaves the PC, and the server joins the providers below. <LearnMore topic="local-models" /></>}
       >
         <ErrorNote error={q.error ?? act.error ?? stopAct.error} what="Models on this PC" />
         {stoppedNote ? (
@@ -402,7 +401,7 @@ export function LocalModels(handle: Handle) {
           </Notice>
         ) : null}
         <>
-          {/* the runtime: the llama.cpp build on this PC */}
+          {/* the runtime: the model engine (a llama.cpp build) on this PC */}
           <div
             mix={cardCss}
             data-testid="local-runtime"
@@ -424,80 +423,21 @@ export function LocalModels(handle: Handle) {
                   <span class="acts">
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant={v.runtime.latest ? "primary" : "ghost"}
                       data-testid="local-check-updates"
                       disabled={busy || installing}
                       mix={on("click", () => void checkUpdates())}
                     >
                       {act.busy === "check-updates"
                         ? "Checking…"
-                        : "Check for updates"}
+                        : v.runtime.latest
+                          ? `Update to ${v.runtime.latest}`
+                          : "Check for updates"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant={v.runtime.latest ? "primary" : "secondary"}
-                      data-testid="local-update"
-                      disabled={busy || installing}
-                      mix={on(
-                        "click",
-                        () =>
-                          void install(
-                            v.settings.source,
-                            v.settings.backend || v.runtime.backend || "",
-                          ),
-                      )}
-                    >
-                      {v.runtime.latest
-                        ? `Update to ${v.runtime.latest}`
-                        : "Update"}
-                    </Button>
-                    {confirmRemove ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={busy || installing}
-                          data-testid="local-runtime-remove-confirm"
-                          mix={on("click", async () => {
-                            await change("remove-runtime", () =>
-                              s.client.localRuntimeRemove(),
-                            );
-                            confirmRemove = false;
-                            redraw();
-                          })}
-                        >
-                          Yes, remove llama.cpp
-                        </Button>
-                        <Button
-                          size="sm"
-                          mix={on("click", () => {
-                            confirmRemove = false;
-                            redraw();
-                          })}
-                        >
-                          Keep
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        data-testid="local-runtime-remove"
-                        disabled={busy || installing}
-                        mix={on("click", () => {
-                          confirmRemove = true;
-                          redraw();
-                        })}
-                      >
-                        Remove
-                      </Button>
-                    )}
                   </span>
                 </div>
                 <p mix={muted} data-testid="local-runtime-note">
-                  {v.runtime.bundled
-                    ? "Came installed with Drydock and runs from its own folder. Drydock looks for a newer build twice a day; Update fetches it, checked against GitHub's digest."
-                    : "Downloaded and run by Drydock from its own folder; Update fetches the newest build the same way."}
+                  Built into Drydock and run from its own folder. Drydock looks for a newer build twice a day; Check for updates installs it, checked against GitHub&apos;s digest.
                 </p>
                 {installedSrc && installedSrc.cacheTypes.some((c) => c.startsWith("turbo")) ? (
                   <p mix={muted} data-testid="local-turboquant">
@@ -511,7 +451,7 @@ export function LocalModels(handle: Handle) {
                 ) : null}
                 {v.runtime.latest ? (
                   <p role="status" data-testid="local-latest">
-                    {v.runtime.latest} is out (this is {v.runtime.tag}).
+                    {v.runtime.latest} is out (this is {v.runtime.tag}). Update installs it.
                   </p>
                 ) : checked ? (
                   <p mix={muted} role="status" data-testid="local-up-to-date">
@@ -545,76 +485,27 @@ export function LocalModels(handle: Handle) {
             ) : (
               <>
                 <div class="line">
-                  <h3>Install llama.cpp</h3>
+                  <h3>{installing ? "Setting up local models" : "Local models are not set up"}</h3>
                   <Badge>built in</Badge>
                 </div>
                 <p>
-                  Drydock downloads and runs llama.cpp itself, checked against GitHub&apos;s digest, in its own folder. Nothing has to be installed by hand or added to PATH; models come from the Hugging Face Hub.
+                  {installing
+                    ? "Drydock is putting its model engine in place, with Google's TurboQuant, checked against GitHub's digest. Nothing has to be installed by hand."
+                    : "Drydock puts its model engine in place by itself when it starts. Set up does it now."}
                 </p>
-                <div mix={pickCss}>
-                  <Field
-                    label="Backend"
-                    hint={v.backends.find((b) => b.id === chosenBackend)?.for}
-                  >
-                    {(id) => (
-                      <Select
-                        id={id}
-                        testId="local-backend"
-                        value={chosenBackend}
-                        disabled={busy || installing}
-                        options={v.backends.map((b) => ({
-                          value: b.id,
-                          label: b.label,
-                          hint:
-                            b.id === v.suggestedBackend
-                              ? "suggested for this PC"
-                              : undefined,
-                        }))}
-                        onChange={(val) => {
-                          backend = val as LocalBackend;
-                          redraw();
-                        }}
-                      />
-                    )}
-                  </Field>
-                  <Field
-                    label="Source"
-                    hint="Drydock's download comes with the TurboQuant fork, which adds Google's turbo4 and turbo3 cache types. The official weekly build is the other choice."
-                  >
-                    {(id) => (
-                      <Select
-                        id={id}
-                        testId="local-source"
-                        value={srcId}
-                        disabled={busy || installing}
-                        options={v.sources.map((x) => ({
-                          value: x.id,
-                          label: x.name,
-                        }))}
-                        onChange={(val) => {
-                          source = val;
-                          redraw();
-                        }}
-                      />
-                    )}
-                  </Field>
-                </div>
-                {src?.warning ? (
-                  <Notice tone="warn" testId="local-source-warning">
-                    {src.warning}
-                  </Notice>
+                {!installing && job?.state !== "failed" ? (
+                  <div class="line">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      data-testid="local-install"
+                      disabled={busy}
+                      mix={on("click", () => void install(TURBOQUANT, ""))}
+                    >
+                      Set up
+                    </Button>
+                  </div>
                 ) : null}
-                <div class="line">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    data-testid="local-install"
-                    disabled={busy || installing}
-                    mix={on("click", () => void install(srcId, chosenBackend))}
-                  >
-                    {installing ? "Installing…" : "Install llama.cpp"}
-                  </Button>
-                </div>
               </>
             )}
             {job ? (
@@ -648,8 +539,8 @@ export function LocalModels(handle: Handle) {
                         "click",
                         () =>
                           void install(
-                            v.settings.source,
-                            v.settings.backend || chosenBackend,
+                            v.runtime.installed ? v.settings.source : TURBOQUANT,
+                            v.runtime.installed ? v.settings.backend || chosenBackend : "",
                           ),
                       )}
                     >
@@ -847,7 +738,7 @@ export function LocalModels(handle: Handle) {
                                     disabled={busy || tooBig}
                                     title={
                                       tooBig
-                                        ? "Too big for this PC: Drydock does not download a model llama.cpp could not load."
+                                        ? "Too big for this PC: Drydock does not download a model it could not load."
                                         : undefined
                                     }
                                     mix={on(
@@ -935,8 +826,8 @@ export function LocalModels(handle: Handle) {
             ) : null}
             {v.settings.providerId ? (
               <p mix={muted} data-testid="local-provider-note">
-                Registered as the provider &apos;Models on this PC
-                (llama.cpp)&apos; below.
+                Registered as the provider &apos;Models on this PC&apos;
+                below.
               </p>
             ) : null}
             {restartNeeded ? (
@@ -959,7 +850,7 @@ export function LocalModels(handle: Handle) {
             <div mix={pickCss}>
               <Field
                 label="KV cache type"
-                hint="q8_0: near-lossless, half the KV memory of f16. q4_0: a quarter, with llama.cpp's Hadamard rotation (most of TurboQuant's gain)"
+                hint="q8_0: near-lossless, half the KV memory of f16. q4_0: a quarter, with a Hadamard rotation (most of TurboQuant's gain)"
               >
                 {(id) => (
                   <Select

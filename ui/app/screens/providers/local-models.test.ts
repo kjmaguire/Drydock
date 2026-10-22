@@ -21,7 +21,7 @@ describe('local models helpers', () => {
     expect(fitText({ target: 'gpu', fits: true, availableBytes: 0 })).toEqual({ text: 'Fits the GPU', long: 'Fits the GPU.', tone: 'ok' });
     expect(fitText({ target: 'cpu', fits: true, availableBytes: 0 })).toEqual({
       text: 'Runs on the CPU (slow)',
-      long: 'Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM.',
+      long: 'Runs on the CPU (slow): no GPU has room for it, so it is kept in RAM.',
       tone: 'warn',
     });
     expect(fitText({ target: 'none', fits: false, availableBytes: 0 })).toEqual({ text: 'Not recommended', long: 'Not recommended: too big for this PC.', tone: 'err' });
@@ -35,7 +35,7 @@ describe('local models helpers', () => {
     expect(none.long).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
     const cpu = fitText({ target: 'cpu', fits: true, availableBytes: 15 * GiB }, 12 * GiB)!;
     expect(cpu.text).toBe('Runs on the CPU (slow)');
-    expect(cpu.long).toBe('Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM (needs about 12.0 GB, 15.0 GB free).');
+    expect(cpu.long).toBe('Runs on the CPU (slow): no GPU has room for it, so it is kept in RAM (needs about 12.0 GB, 15.0 GB free).');
     expect(fitText({ target: 'gpu', fits: true, availableBytes: 14 * GiB }, 2 * MiB)!.long).toBe('Fits the GPU (needs about 2 MB, 14.0 GB free).');
     // half the numbers is no number: the plain sentence
     expect(fitText({ target: 'none', fits: false, availableBytes: 0 }, 80 * GiB)!.long).toBe('Not recommended: too big for this PC.');
@@ -65,8 +65,8 @@ describe('local models helpers', () => {
     expect(compactCount(10)).toBe('10');
     expect(compactCount(0)).toBe('0');
     const label = (id: string) => (id === 'vulkan' ? 'Vulkan' : id);
-    expect(runtimeLine({ installed: true, tag: 'b11669', backend: 'vulkan', sourceName: 'llama.cpp (official weekly build)', devices: { probed: false, devices: [] } }, label)).toBe(
-      'llama.cpp b11669 · Vulkan · llama.cpp (official weekly build)',
+    expect(runtimeLine({ installed: true, tag: 'b11669', backend: 'vulkan', sourceName: 'Official weekly build', devices: { probed: false, devices: [] } }, label)).toBe(
+      'Official weekly build b11669 · Vulkan',
     );
     expect(deviceLine({ id: 'CUDA0', kind: 'CUDA', name: 'NVIDIA GeForce RTX 4060 Ti', totalBytes: 16 * GiB, freeBytes: 14 * GiB })).toBe('CUDA0: NVIDIA GeForce RTX 4060 Ti, 14.0 GB free of 16.0 GB');
     expect(gpus([{ id: 'CPU', kind: 'CPU', name: 'cpu', totalBytes: 0, freeBytes: 0 }, { id: 'Vulkan0', kind: 'Vulkan', name: 'g', totalBytes: 1, freeBytes: 1 }]).map((d) => d.id)).toEqual(['Vulkan0']);

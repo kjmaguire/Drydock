@@ -324,7 +324,7 @@ preselected, the TurboQuant fork behind a warning; progress of the download; the
 found; Update and Remove), the downloaded models with a fit hint and Serve and Remove, downloads in progress, suggestions and
 a search over the Hugging Face Hub with a repository's variants and Download, the server (its state, model, address, log,
 Stop) and the settings (KV cache type from the chosen source's list, context size, port, autostart). The server registers
-itself as the provider "Models on this PC (llama.cpp)", which appears among the tiles below like any other host.
+itself as the provider "Models on this PC", which appears among the tiles below like any other host.
 
 **As built (2026-10-09; since 2026-10-12 on the page under the selected provider's card, no longer a dialog).** The provider detail (`ui/app/screens/providers/provider-detail.tsx` over
 `provider.detail`, `provider.update`, `provider.setPrice`, `provider.setQuota`): the settings (name, base URL, tier, data class,

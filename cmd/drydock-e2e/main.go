@@ -366,16 +366,16 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	runnerWin := &runnerstest.Launcher{K: runners.Windows, FreeB: 120 << 30, JobTime: 1500 * time.Millisecond}
 	runnerLinux := &runnerstest.Launcher{K: runners.Linux, JobTime: 1500 * time.Millisecond}
 	runnerLinux.Queue("build", "Succeeded")
-	// PROTOCOL FIXTURES for the local models (decision P65): GitHub's releases API and downloads for llama.cpp's repository
-	// (two builds, the newer with a Vulkan and a CPU archive, each holding a placeholder llama-server), and the Hugging Face
-	// Hub with two small GGUF repositories. The installed placeholder is never run: the core starts the stand-in above instead.
-	// Nothing reaches GitHub or Hugging Face; no llama.cpp runs.
-	officialSrc, _ := localllm.SourceByID(localllm.SourceOfficial)
-	llamaReleases := llamatest.StartReleases(officialSrc.Repo)
+	// PROTOCOL FIXTURES for the local models (decisions P65, P95): GitHub's releases API and downloads for the TurboQuant
+	// build's repository, the one Drydock sets up (two builds, the newer with a Vulkan and a CPU archive, each holding a
+	// placeholder llama-server), and the Hugging Face Hub with two small GGUF repositories. The installed placeholder is never
+	// run: the core starts the stand-in above instead. Nothing reaches GitHub or Hugging Face; no llama.cpp runs.
+	tqSrc, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	llamaReleases := llamatest.StartReleases(tqSrc.Repo)
 	defer llamaReleases.Close()
-	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11600", Prerelease: true, Body: "an older build", Assets: map[string][]byte{"llama-b11600-bin-win-vulkan-x64.zip": llamatest.ServerZip()}})
-	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11669", Prerelease: true, Body: "## What's new\nLiliCorr speculative decoding and MTP for GLM5-Next", Assets: map[string][]byte{
-		"llama-b11669-bin-win-vulkan-x64.zip": llamatest.ServerZip(), "llama-b11669-bin-win-cpu-x64.zip": llamatest.ServerZip(),
+	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b10269-1.7.1", Body: "an older build", Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": llamatest.ServerZip()}})
+	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b10298-2.0.0", Body: "## What's new\nTurboQuant turbo4 and turbo3 KV cache types", Assets: map[string][]byte{
+		"llama-turboquant-windows-x64-vulkan.zip": llamatest.ServerZip(), "llama-turboquant-windows-x64-cpu.zip": llamatest.ServerZip(),
 	}})
 	// PROTOCOL FIXTURE for the security scan's tool installer (decision P66): GitHub's releases API and downloads for
 	// osv-scanner's and Opengrep's repositories, each with one release whose Windows "program" is a few bytes; the core

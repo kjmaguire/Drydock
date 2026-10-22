@@ -34,7 +34,7 @@ export function fitText(fit: Fit | undefined, sizeBytes?: number): FitWords | un
     case 'gpu':
       return { text: 'Fits the GPU', long: `Fits the GPU${sizes}.`, tone: 'ok' };
     case 'cpu':
-      return { text: 'Runs on the CPU (slow)', long: `Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM${sizes}.`, tone: 'warn' };
+      return { text: 'Runs on the CPU (slow)', long: `Runs on the CPU (slow): no GPU has room for it, so it is kept in RAM${sizes}.`, tone: 'warn' };
     case 'none':
       return { text: 'Not recommended', long: `Not recommended: too big for this PC${sizes}.`, tone: 'err' };
     default:
@@ -79,11 +79,10 @@ export function compactCount(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/** "llama.cpp b11669 · Vulkan · llama.cpp (official weekly build)". */
+/** "TurboQuant build b10298-2.0.0 · Vulkan": the engine is Drydock's own and is never called llama.cpp here (decision P95). */
 export function runtimeLine(r: LocalRuntime, backendLabel: (id: string) => string): string {
-  const parts = [`llama.cpp ${r.tag ?? ''}`.trim()];
+  const parts = [`${r.sourceName || 'Model engine'} ${r.tag ?? ''}`.trim()];
   if (r.backend) parts.push(backendLabel(r.backend));
-  if (r.sourceName) parts.push(r.sourceName);
   return parts.join(' · ');
 }
 

@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { EngineResult, ScanCounts, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
-import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { cleanup, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { WorkspaceSecurityScreen } from './workspace-security-screen.tsx';
 
 afterEach(cleanup);
@@ -90,9 +90,9 @@ describe('the workspace Security page', () => {
     expect((r.$('[data-testid="scan-target-folder"]') as HTMLInputElement).checked).toBe(true);
     expect(scanButton(r).disabled).toBe(true);
     expect(status(r)).toBe('idle');
-    // the workspace's tools and rules folder, and what that rules folder is for
-    await waitFor(() => expect(r.$$('[data-testid="tool"]').length).toBe(3), r);
-    expect(r.$('[data-testid="security-tools"]')!.textContent).toContain('Folder scans use this rules folder; each project keeps its own');
+    // the engines and whether each tool is ready; no tools section (decision P95)
+    await waitFor(() => expect(r.$$('[data-testid="scan-engine"]').length).toBe(3), r);
+    expect(r.$('[data-testid="security-tools"]')).toBeNull();
 
     type(folderField(r), `  ${DIR}\\  `);
     await waitFor(() => expect(scanButton(r).disabled).toBe(false), r);
@@ -113,41 +113,6 @@ describe('the workspace Security page', () => {
     expect(item.getAttribute('data-folder')).toBe(DIR);
     expect(item.textContent).toContain(DIR);
     expect(r.$('[data-testid="scan-history"]')!.textContent).toContain('Recent folder scans');
-  });
-
-  it("saves the folder scans' rules folder, not a project's", async () => {
-    const saved: string[] = [];
-    const { r } = show({ securityWorkspaceRulesSet: async (dir: string) => (saved.push(dir), tools({ rulesDir: dir, rulesOk: true, ready: true })) });
-    const panel = await waitFor(() => {
-      const p = r.$('[data-testid="security-tools"]');
-      if (!p || !p.querySelector('[data-testid="rules-dir"]')) throw new Error('not yet');
-      return p as HTMLElement;
-    }, r);
-    type(byLabel<HTMLInputElement>(panel, 'Rules folder'), 'D:\\rules');
-    await r.act(() => byText(panel, 'button', 'Save').click());
-    await waitFor(() => expect(saved).toEqual(['D:\\rules']), r);
-  });
-
-  it("Choose folder… on the rules folder saves the folder scans' rules folder and leaves the folder to scan alone", async () => {
-    const saved: string[] = [];
-    const titles: string[] = [];
-    const { r } = show({
-      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }),
-      fsPickFolder: async (title?: string) => (titles.push(title ?? ''), 'D:\\rules\\mine'),
-      securityWorkspaceRulesSet: async (dir: string) => (saved.push(dir), tools({ rulesDir: dir, rulesOk: true, ready: true })),
-    });
-    const choose = await waitFor(() => {
-      const b = r.$('[data-testid="rules-choose"]');
-      if (!b) throw new Error('not yet');
-      return b as HTMLButtonElement;
-    }, r);
-    const scanFolder = folderField(r).value;
-    await r.act(() => choose.click());
-    await waitFor(() => expect(saved).toEqual(['D:\\rules\\mine']), r);
-    expect(titles).toEqual(['Choose the Opengrep rules folder']);
-    await waitFor(() => expect((r.$('[data-testid="rules-dir"]') as HTMLInputElement).value).toBe('D:\\rules\\mine'), r);
-    // the folder to scan is another field with its own button
-    expect(folderField(r).value).toBe(scanFolder);
   });
 
   it('opens a past folder scan from the history and shows its folder', async () => {
@@ -182,7 +147,7 @@ describe('the workspace Security page', () => {
     expect(r.$('[data-testid="cancel-button"]')).not.toBeNull();
   });
 
-  it("scans one of the projects instead: its working tree, its rules folder and its history; a project without a repository can't be chosen", async () => {
+  it("scans one of the projects instead: its working tree and its history; a project without a repository can't be chosen", async () => {
     const starts: string[] = [];
     const { r } = show({
       securityScanStart: async (projectId: string) => (starts.push(projectId), report({ projectId, status: 'running', finishedAt: undefined })),
@@ -207,8 +172,7 @@ describe('the workspace Security page', () => {
     expect(options[1]!.label).toContain('no repository yet');
     expect(valueOf(select)).toBe('p1');
     expect(r.$('[data-testid="scan-folder"]')).toBeNull();
-    // the project's own rules folder and history, as on its Security page
-    await waitFor(() => expect((r.$('[data-testid="rules-dir"]') as HTMLInputElement).value).toBe('C:\\rules\\gocalc'), r);
+    // the project's own history, as on its Security page
     await waitFor(() => expect(r.$$('[data-testid="scan-history-item"]').length).toBe(1), r);
     expect(r.$('[data-testid="scan-history"]')!.textContent).toContain('History of gocalc');
     await waitFor(() => expect(scanButton(r).disabled).toBe(false), r);

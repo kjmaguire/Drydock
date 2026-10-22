@@ -10,10 +10,10 @@ afterEach(cleanup);
 const GiB = 2 ** 30;
 const MiB = 2 ** 20;
 
-const OFFICIAL = { id: 'official', name: 'llama.cpp (official weekly build)', repo: 'ggml-org/llama.cpp', cacheTypes: ['q8_0', 'q4_0', 'f16'] };
+const OFFICIAL = { id: 'official', name: 'Official weekly build', repo: 'ggml-org/llama.cpp', cacheTypes: ['q8_0', 'q4_0', 'f16'] };
 const FORK = {
   id: 'turboquant',
-  name: 'TurboQuant fork (AtomicBot-ai/atomic-llama-cpp-turboquant)',
+  name: 'TurboQuant build',
   repo: 'AtomicBot-ai/atomic-llama-cpp-turboquant',
   warning: 'A community fork of llama.cpp that Drydock has not reviewed.',
   cacheTypes: ['turbo4', 'turbo3', 'q8_0', 'q4_0', 'f16'],
@@ -95,7 +95,9 @@ describe('Models on this PC', () => {
     expect(q(r, '[data-testid="local-server"]')).toBe(null);
   });
 
-  it('not installed: the suggested backend is preselected, the fork shows its warning when chosen, and Install carries source and backend', async () => {
+  // decision P95, on the owner's words: "I don't want to hit a button that says install llama.cpp, I don't even want it to say
+  // llama.cpp". Drydock sets its engine up by itself; while it does, the card shows the progress and offers nothing to pick.
+  it('not set up: the card names no llama.cpp and offers no source or backend; Set up asks for the TurboQuant build, and the setup shows its progress', async () => {
     const calls: [string, LocalBackend | ''][] = [];
     let state = view();
     const { r } = show({
@@ -106,69 +108,58 @@ describe('Models on this PC', () => {
           runtime: {
             installed: false,
             devices: { probed: false, devices: [] },
-            job: { kind: 'install', target: 'llama.cpp (official weekly build) for Vulkan', state: 'running', phase: 'downloading b11669', file: 'llama-b11669-bin-win-vulkan-x64.zip', done: 25 * MiB, total: 100 * MiB, started: '' },
+            job: { kind: 'install', target: 'TurboQuant build for Vulkan', state: 'running', phase: 'downloading b10298-2.0.0', file: 'llama-turboquant-windows-x64-vulkan.zip', done: 25 * MiB, total: 100 * MiB, started: '' },
           },
         });
         return state;
       },
     });
     await waitFor(() => need(r, '[data-testid="local-install"]'), r);
-    expect(need(r, '[data-testid="local-runtime"]').getAttribute('data-installed')).toBe('false');
-    // the card says that llama.cpp is built in: Drydock downloads and runs it, nothing is installed by hand
-    expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Drydock downloads and runs llama.cpp itself');
-    expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Nothing has to be installed by hand');
-    expect(need(r, '[data-testid="local-models"]').textContent).toContain('Drydock downloads and runs llama.cpp itself; nothing leaves the PC');
-    expect(valueOf(sel(r, '[data-testid="local-backend"]'))).toBe('cuda');
-    expect(sel(r, '[data-testid="local-backend"]').textContent).toContain('suggested for this PC');
-    expect(valueOf(sel(r, '[data-testid="local-source"]'))).toBe('official');
-    expect(q(r, '[data-testid="local-source-warning"]')).toBe(null);
-
-    type(sel(r, '[data-testid="local-source"]'), 'turboquant');
-    await waitFor(() => expect(need(r, '[data-testid="local-source-warning"]').textContent).toContain('community fork of llama.cpp that Drydock has not reviewed'), r);
-    type(sel(r, '[data-testid="local-source"]'), 'official');
-    await waitFor(() => expect(q(r, '[data-testid="local-source-warning"]')).toBe(null), r);
-    type(sel(r, '[data-testid="local-backend"]'), 'vulkan');
-    await waitFor(() => expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Any recent GPU'), r);
+    const rt = need(r, '[data-testid="local-runtime"]');
+    expect(rt.getAttribute('data-installed')).toBe('false');
+    expect(rt.querySelector('h3')!.textContent).toBe('Local models are not set up');
+    expect(need(r, '[data-testid="local-install"]').textContent).toBe('Set up');
+    expect(need(r, '[data-testid="local-models"]').textContent).toContain("built into Drydock, with Google's TurboQuant");
+    expect(q(r, '[data-testid="local-backend"]')).toBe(null);
+    expect(q(r, '[data-testid="local-source"]')).toBe(null);
+    expect(need(r, '[data-testid="local-models"]').textContent!.toLowerCase()).not.toContain('llama');
 
     await r.act(() => (need(r, '[data-testid="local-install"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(calls).toEqual([['official', 'vulkan']]), r);
-    // the answer is shown at once: the install runs, with its progress
+    await waitFor(() => expect(calls).toEqual([['turboquant', '']]), r);
+    // the answer is shown at once: the setup runs, with its progress, and there is nothing to press meanwhile
     const job = await waitFor(() => need(r, '[data-testid="local-job"]'), r);
     expect(job.getAttribute('data-state')).toBe('running');
     expect(job.querySelector('[role="progressbar"]')!.getAttribute('aria-valuenow')).toBe('25');
-    expect(job.textContent).toContain('25 MB of 100 MB (25%), downloading b11669');
-    expect(job.textContent).toContain('llama-b11669-bin-win-vulkan-x64.zip');
-    expect((need(r, '[data-testid="local-install"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(job.textContent).toContain('25 MB of 100 MB (25%), downloading b10298-2.0.0');
+    expect(need(r, '[data-testid="local-runtime"]').querySelector('h3')!.textContent).toBe('Setting up local models');
+    expect(q(r, '[data-testid="local-install"]')).toBe(null);
   });
 
-  it('a failed install shows its error with a Retry', async () => {
+  it('a failed setup shows its error with a Retry, which asks for the TurboQuant build again', async () => {
     const retried: unknown[] = [];
     const { r } = show({
       localGet: async () =>
-        view({ runtime: { installed: false, devices: { probed: false, devices: [] }, job: { kind: 'install', target: 'llama.cpp for Vulkan', state: 'failed', error: 'digest mismatch', done: 0, total: 0, started: '' } } }),
+        view({ runtime: { installed: false, devices: { probed: false, devices: [] }, job: { kind: 'install', target: 'TurboQuant build for Vulkan', state: 'failed', error: 'digest mismatch', done: 0, total: 0, started: '' } } }),
       localInstall: async (...a) => (retried.push(a), view()),
     });
     const job = await waitFor(() => need(r, '[data-testid="local-job"][data-state="failed"]'), r);
     expect(job.querySelector('[role="alert"]')!.textContent).toContain('digest mismatch');
+    expect(q(r, '[data-testid="local-install"]')).toBe(null);
     await r.act(() => (need(r, '[data-testid="local-retry"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(retried).toEqual([['official', 'cuda']]), r);
+    await waitFor(() => expect(retried).toEqual([['turboquant', '']]), r);
   });
 
-  it('installed: the tag, the backend, the source, the devices, and Update calls install with the settings', async () => {
-    const calls: unknown[] = [];
-    const { r } = show({
-      localGet: async () => installed(),
-      localInstall: async (...a) => (calls.push(a), installed({ runtime: { ...installed().runtime, job: { kind: 'install', target: 'x', state: 'done', phase: 'already the newest build (b11669)', done: 0, total: 0, started: '' } } })),
-    });
+  it('installed: the build, the backend and the devices; no Update or Remove of the engine, only Check for updates', async () => {
+    const { r } = show({ localGet: async () => installed() });
     const rt = await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
-    expect(rt.querySelector('h3')!.textContent).toBe('llama.cpp b11669 · Vulkan · llama.cpp (official weekly build)');
+    expect(rt.querySelector('h3')!.textContent).toBe('Official weekly build b11669 · Vulkan');
     expect(rt.textContent).toContain('installed');
-    expect(rt.textContent).toContain('Downloaded and run by Drydock from its own folder');
+    expect(rt.textContent).toContain('Built into Drydock and run from its own folder');
     expect(need(r, '[data-testid="local-device"][data-id="CUDA0"]').textContent).toBe('CUDA0: NVIDIA GeForce RTX 4060 Ti, 14.0 GB free of 16.0 GB');
     expect(q(r, '[data-testid="local-install"]')).toBe(null);
-    await r.act(() => (need(r, '[data-testid="local-update"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(calls).toEqual([['official', 'vulkan']]), r);
-    await waitFor(() => expect(need(r, '[data-testid="local-job"]').textContent).toContain('already the newest build (b11669)'), r);
+    expect(q(r, '[data-testid="local-update"]')).toBe(null);
+    expect(q(r, '[data-testid="local-runtime-remove"]')).toBe(null);
+    expect(need(r, '[data-testid="local-check-updates"]').textContent).toBe('Check for updates');
     expect(need(r, '[data-testid="local-memory"]').textContent).toBe('RAM: 20.0 GB free of 32.0 GB · Models on disk: 0 MB · Free disk: 120.0 GB');
   });
 
@@ -216,7 +207,7 @@ describe('Models on this PC', () => {
     // a model that will not run well says so in the row, with the numbers; the badge stays short and carries the sentence as its tooltip
     expect(row(models[1]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Runs on the CPU (slow)');
     expect(row(models[1]!.id).querySelector('[data-testid="local-fit-why"]')!.textContent).toBe(
-      'Runs on the CPU (slow): no GPU has room for it, so llama.cpp keeps it in RAM (needs about 32.0 GB, 15.0 GB free).',
+      'Runs on the CPU (slow): no GPU has room for it, so it is kept in RAM (needs about 32.0 GB, 15.0 GB free).',
     );
     expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Not recommended');
     expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('data-tone')).toBe('err');
@@ -234,7 +225,7 @@ describe('Models on this PC', () => {
     expect(server.querySelector('[data-testid="local-server-state"]')!.textContent).toBe('running');
     expect(server.querySelector('[data-testid="local-server-url"]')!.textContent).toBe('http://127.0.0.1:9933/v1');
     expect(server.textContent).toContain(models[0]!.id);
-    expect(need(r, '[data-testid="local-provider-note"]').textContent).toContain("Registered as the provider 'Models on this PC (llama.cpp)' below.");
+    expect(need(r, '[data-testid="local-provider-note"]').textContent).toContain("Registered as the provider 'Models on this PC' below.");
     expect(row(models[0]!.id).textContent).toContain('serving');
     // the model served cannot be served again; the others wait while nothing starts
     expect((row(models[0]!.id).querySelector('[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
@@ -307,7 +298,7 @@ describe('Models on this PC', () => {
       expect(stopBtn(r).disabled).toBe(false);
       expect(sel(r, '[data-testid="local-serve"]').textContent).toBe('Starting…');
       // every other control waits for the start
-      for (const t of ['local-serve', 'local-model-remove', 'local-update', 'local-suggested', 'local-context', 'local-port']) {
+      for (const t of ['local-serve', 'local-model-remove', 'local-check-updates', 'local-suggested', 'local-context', 'local-port']) {
         expect((q(r, `[data-testid="${t}"]`) as HTMLButtonElement).disabled).toBe(true);
       }
       await r.act(() => stopBtn(r).click());
@@ -536,7 +527,7 @@ describe('Models on this PC', () => {
     expect(f16.querySelector('[data-testid="local-fit"]')!.textContent).toBe('Not recommended');
     expect(f16.querySelector('[data-testid="local-fit-why"]')!.textContent).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
     expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(true);
-    expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).title).toContain('Drydock does not download a model llama.cpp could not load');
+    expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).title).toContain('Drydock does not download a model it could not load');
     expect(q4.querySelector('[data-testid="local-fit-why"]')).toBe(null);
     expect((q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(false);
     await r.act(() => (q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).click());
@@ -637,45 +628,51 @@ describe('Models on this PC', () => {
     expect(valueOf(sel(r, '[data-testid="local-cache"]'))).toBe('turbo4');
   });
 
-  // decision P77: llama.cpp comes installed with Drydock, with Google's TurboQuant built in; newer builds are offered, not forced
-  it('the build that came with Drydock says so and names the TurboQuant cache types; Check for updates offers Update to the newer build', async () => {
-    const bundled = (latest?: string) =>
+  // decision P77: the engine comes installed with Drydock, with Google's TurboQuant built in. Decision P95: "Check for update
+  // should then install the update": the check installs a newer build itself, and a newer build found by the twice-daily check
+  // turns the button into Update to, which does the same.
+  it('the build that came with Drydock says so and names the TurboQuant cache types; Check for updates installs a newer build', async () => {
+    const bundled = (over: Partial<LocalView['runtime']> = {}) =>
       installed({
-        runtime: { ...installed().runtime, source: 'turboquant', sourceName: FORK.name, tag: 'b10298-2.0.0', bundled: true, ...(latest ? { latest } : {}) },
+        runtime: { ...installed().runtime, source: 'turboquant', sourceName: FORK.name, tag: 'b10298-2.0.0', bundled: true, ...over },
         settings: { ...installed().settings, source: 'turboquant', cacheType: 'turbo4' },
       });
     let next = bundled();
+    let state = bundled();
     const calls: unknown[] = [];
-    const { r } = show({
-      localGet: async () => bundled(),
+    const { r, s } = show({
+      localGet: async () => state,
       localCheckUpdates: async () => (calls.push('check'), next),
       localInstall: async (...a) => (calls.push(a), next),
     });
     await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
     expect(need(r, '[data-testid="local-bundled"]').textContent).toBe('came with Drydock');
-    expect(need(r, '[data-testid="local-runtime-note"]').textContent).toContain('Came installed with Drydock');
+    expect(need(r, '[data-testid="local-runtime"]').querySelector('h3')!.textContent).toBe('TurboQuant build b10298-2.0.0 · Vulkan');
     expect(need(r, '[data-testid="local-turboquant"]').textContent).toContain("Google's TurboQuant is built in: the turbo4 and turbo3 KV cache types");
-    expect(need(r, '[data-testid="local-update"]').textContent).toBe('Update');
     expect(q(r, '[data-testid="local-up-to-date"]')).toBe(null);
     // nothing newer: said once the check is back
     await r.act(() => (need(r, '[data-testid="local-check-updates"]') as HTMLButtonElement).click());
     await waitFor(() => expect(need(r, '[data-testid="local-up-to-date"]').textContent).toBe('This is the newest build.'), r);
-    // a newer build: named, and the Update button names it and installs the settings' source and backend
-    next = bundled('b10350-2.1.0');
+    // a newer build: the check's answer is its install running, shown at once
+    next = bundled({ job: { kind: 'install', target: 'TurboQuant build for Vulkan', state: 'running', phase: 'downloading b10350-2.1.0', done: 0, total: 100 * MiB, started: '' } });
     await r.act(async () => (await enabled(r, '[data-testid="local-check-updates"]')).click());
-    await waitFor(() => expect(need(r, '[data-testid="local-update"]').textContent).toBe('Update to b10350-2.1.0'), r);
-    expect(need(r, '[data-testid="local-latest"]').textContent).toBe('b10350-2.1.0 is out (this is b10298-2.0.0).');
-    expect(q(r, '[data-testid="local-up-to-date"]')).toBe(null);
-    await r.act(async () => (await enabled(r, '[data-testid="local-update"]')).click());
-    await waitFor(() => expect(calls).toEqual(['check', 'check', ['turboquant', 'vulkan']]), r);
+    await waitFor(() => expect(need(r, '[data-testid="local-job"]').textContent).toContain('downloading b10350-2.1.0'), r);
+    expect(calls).toEqual(['check', 'check']);
+    // the twice-daily check found a newer build: the button names it and asks the core to check and install, as above
+    state = bundled({ latest: 'b10400-2.2.0' });
+    next = bundled({ latest: 'b10400-2.2.0', job: { kind: 'install', target: 'TurboQuant build for Vulkan', state: 'running', phase: 'downloading b10400-2.2.0', done: 0, total: 100 * MiB, started: '' } });
+    s.emit({ type: 'local.changed', data: { what: 'runtime' } });
+    await waitFor(() => expect(need(r, '[data-testid="local-check-updates"]').textContent).toBe('Update to b10400-2.2.0'), r);
+    expect(need(r, '[data-testid="local-latest"]').textContent).toBe('b10400-2.2.0 is out (this is b10298-2.0.0). Update installs it.');
+    await r.act(async () => (await enabled(r, '[data-testid="local-check-updates"]')).click());
+    await waitFor(() => expect(calls).toEqual(['check', 'check', 'check']), r);
   });
 
-  it('a build the person installed (not the one that came with Drydock) says so, and the official build has no TurboQuant note', async () => {
+  it('a build the person installed (not the one that came with Drydock) has no came-with badge, and the official build has no TurboQuant note', async () => {
     const { r } = show({ localGet: async () => installed() });
     await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
     expect(q(r, '[data-testid="local-bundled"]')).toBe(null);
     expect(q(r, '[data-testid="local-turboquant"]')).toBe(null);
-    expect(need(r, '[data-testid="local-runtime-note"]').textContent).toContain('Downloaded and run by Drydock');
   });
 
   it('the event local.changed reads the view again', async () => {

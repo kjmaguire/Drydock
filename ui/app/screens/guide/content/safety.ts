@@ -14,7 +14,7 @@ export const SAFETY: readonly Topic[] = [
         ul: [
           '**Agent CLIs and model providers** receive what an agent sends them, the way they do outside Drydock. Providers are the ones you added; agent CLIs use their own sign-in.',
           '**osv-scanner** sends package names and versions to osv.dev during a security scan. Nothing else leaves in a scan.',
-          '**Downloads** Drydock makes: the newest release of a scan tool from GitHub (checked by its SHA-256), llama.cpp and models if you ask for them.',
+          '**Downloads** Drydock makes: its scan tools and its model engine from GitHub when the download did not carry them or a newer release is out (checked by their SHA-256), and models if you ask for them.',
           '**GitHub** receives what a pull request contains, through your `gh` sign-in.',
         ],
       },

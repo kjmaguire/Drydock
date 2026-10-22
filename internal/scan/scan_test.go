@@ -285,18 +285,18 @@ func TestWithoutARulesFolderTheCodeEngineRunsTheBuiltinRules(t *testing.T) {
 	if e := engine(rep, scan.SAST); e.Status != scan.Done || e.Reason != "" {
 		t.Fatalf("%+v", e)
 	}
-	// nothing to run at all: skipped, with what to check and where to choose rules
+	// nothing to run at all: skipped, with what to check
 	rep = scan.Start(context.Background(), scan.Options{Dir: tree(t),
 		Paths: scan.Paths{OSV: tool("osv-scanner", "--empty"), Opengrep: tool("opengrep")}}).Wait()
 	e := engine(rep, scan.SAST)
-	if e.Status != scan.Skipped || !strings.Contains(e.Reason, "built-in rules could not be written") || !strings.Contains(e.Reason, `"Tools on this computer"`) {
+	if e.Status != scan.Skipped || !strings.Contains(e.Reason, "built-in rules could not be written") || !strings.Contains(e.Reason, "data folder can be written to") {
 		t.Fatalf("%+v", e)
 	}
 	if e := engine(rep, scan.Deps); e.Status != scan.Done || e.Findings != 0 {
 		t.Fatalf("%+v", e)
 	}
 	// the summary keeps the first sentence only
-	if !strings.Contains(rep.Summary, "the Code engine was skipped (The built-in rules could not be written") || strings.Contains(rep.Summary, "Tools on this computer") {
+	if !strings.Contains(rep.Summary, "the Code engine was skipped (The built-in rules could not be written") || strings.Contains(rep.Summary, "Check that") {
 		t.Fatalf("%q", rep.Summary)
 	}
 }

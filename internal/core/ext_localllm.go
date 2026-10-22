@@ -22,12 +22,13 @@ import (
 // official build, downloads GGUF models from Hugging Face and starts llama-server on one of them; the server is registered
 // as a provider (kind host, flavor llamacpp) so the router and the agents use it like any other. Installs and downloads run in
 // the background here, their progress is read with local.get and announced with the event local.changed. Only a person
-// installs, downloads, starts or stops: these bring programs and gigabytes onto the PC and take its GPU.
+// downloads a model, starts or stops: these bring gigabytes onto the PC and take its GPU. The runtime is Drydock's own
+// (decision P95): with AutoSetup it is put in place at start, and Check for updates installs a newer build.
 
 const (
 	settingLocal      = "local:settings"
 	defaultLocalPort  = 9933 // one above llama.cpp's own default, so a llama-server a person runs by hand keeps its port
-	localProviderName = "Models on this PC (llama.cpp)"
+	localProviderName = "Models on this PC"
 )
 
 // LocalSettings are the person's choices.
@@ -117,10 +118,10 @@ func init() {
 			}) (any, error) {
 				return l.install(ctx, p.Source, p.Backend, c.Human())
 			}),
-			// the installed build's newest release, read now instead of at the next twice-daily check (decision P77)
+			// the installed build's newest release, read now instead of at the next twice-daily check (decision P77), and
+			// installed when it is newer (decision P95: "Check for update should then install the update")
 			"local.checkUpdates": bind(func(ctx context.Context, _ struct{}) (any, error) {
-				l.checkUpdates(ctx)
-				return l.view(ctx), nil
+				return l.checkAndInstall(ctx)
 			}),
 			"local.runtime.remove": bind(func(ctx context.Context, _ struct{}) (any, error) {
 				return l.removeRuntime(ctx, c.Human())
@@ -384,6 +385,12 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may install the local models' runtime")
 	}
+	return l.startInstall(ctx, source, backend)
+}
+
+// startInstall installs, in the background, the newest build of source for backend (the saved settings, then the suggested
+// backend, fill what is empty) and answers with the view; a person's install and Drydock's own setup both come here.
+func (l *localExt) startInstall(ctx context.Context, source string, backend localllm.Backend) (LocalView, error) {
 	if !l.m.Supported() {
 		return LocalView{}, errors.New("local models run on Windows only")
 	}
@@ -404,6 +411,9 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 		s.Backend = localllm.SuggestBackend()
 	}
 	src, _ := localllm.SourceByID(s.Source)
+	if !src.Supports(s.Backend) && backend == "" && src.Supports(localllm.Vulkan) {
+		s.Backend = localllm.Vulkan // no backend asked for (Set up): the one every GPU runs, as the download carries
+	}
 	if !src.Supports(s.Backend) {
 		return LocalView{}, fmt.Errorf("%s has no Windows build for %s", src.Name, localllm.Describe(s.Backend).Label)
 	}
@@ -807,6 +817,7 @@ func (l *localExt) seedBundled(ctx context.Context) {
 		return
 	}
 	if m == nil || m.Llama == nil {
+		l.setupMissing(ctx)
 		return
 	}
 	b, dir := *m.Llama, l.c.cfg.BundleDir
@@ -840,6 +851,7 @@ func (l *localExt) seedBundled(ctx context.Context) {
 		l.mu.Unlock()
 		if err != nil {
 			l.c.logf("local models: llama.cpp from the download: %v", err)
+			l.setupMissing(context.Background()) // the download's copy failed its check: fetch the build instead
 		}
 		if did {
 			l.c.logf("local models: %s %s (%s) installed from the download", src.Name, in.Tag, in.Backend)
@@ -855,6 +867,40 @@ func (l *localExt) seedBundled(ctx context.Context) {
 			l.changed("runtime", nil)
 		}
 	})
+}
+
+// setupMissing installs the TurboQuant build (decision P95, on the owner's words: "You didn't build llama.cpp into the app
+// merged with the TurboQwant from Google ... I don't want to hit a button that says install llama.cpp") when AutoSetup is on,
+// local models can run here, and there is no build that a person has not removed: a download without its tools folder sets
+// local models up by itself. The backend is the saved one, else the one suggested for this PC when the fork builds it, else
+// Vulkan (the download's own choice, which runs on any GPU).
+func (l *localExt) setupMissing(ctx context.Context) {
+	if !l.c.cfg.AutoSetup || !l.m.Supported() || l.m.Runtime.Removed() {
+		return
+	}
+	if _, ok := l.m.Runtime.Installed(); ok {
+		return
+	}
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	backend := l.settings(ctx).Backend
+	if backend == "" {
+		backend = localllm.SuggestBackend()
+	}
+	if !src.Supports(backend) {
+		backend = localllm.Vulkan
+	}
+	// as with the bundled build: when nobody chose yet, the settings follow the build (its first cache type, turbo4)
+	if s, chosen := l.savedSettings(ctx); !chosen {
+		s.Source, s.CacheType = src.ID, src.CacheTypes[0]
+		if err := l.save(ctx, s); err != nil {
+			l.c.logf("local models: settings for the runtime: %v", err)
+		}
+	}
+	if _, err := l.startInstall(ctx, src.ID, backend); err != nil {
+		l.c.logf("local models: setting up the runtime: %v", err)
+		return
+	}
+	l.c.logf("local models: no runtime here: installing %s for %s", src.Name, localllm.Describe(backend).Label)
 }
 
 // savedSettings reads the stored settings and whether a person (or an earlier start) saved any.
@@ -888,6 +934,17 @@ func (l *localExt) watchUpdates(ctx context.Context) {
 			}
 		}
 	})
+}
+
+// checkAndInstall is Check for updates: the newest release is read, and a newer build than the one installed is installed
+// (same source and backend) in the background; the answer is the view, with the install's job when one started.
+func (l *localExt) checkAndInstall(ctx context.Context) (LocalView, error) {
+	l.checkUpdates(ctx)
+	v := l.view(ctx)
+	if v.Runtime.Latest == "" {
+		return v, nil
+	}
+	return l.startInstall(ctx, v.Runtime.Source, v.Runtime.Backend)
 }
 
 // checkUpdates reads the newest release of the installed build's source and backend; a change is announced.

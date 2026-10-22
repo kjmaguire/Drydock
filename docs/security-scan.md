@@ -82,16 +82,17 @@ it (a cancelled scan is stored as cancelled).
 
 ## 5. Installing the tools (Windows)
 
-Drydock comes with both tools and with rules (decision P77). The Windows download carries a `tools` folder beside
-`drydock.exe` with the pinned releases of `packaging/bundle.json` (built by `cmd/drydock-bundle` in CI, each asset checked
-against the SHA-256 digest GitHub recorded, listed in `tools/bundle.json`). At its first start Drydock installs them from that
-folder with the same check and placement as **Install** below, so a scan works with nothing downloaded. A tool the person
-removed (`<tool>.removed` beside the installs) is not installed again from the folder.
+Drydock comes with both tools and with rules (decision P77), and keeps them itself (decision P95): the Security page has no
+tools section, only each engine's readiness. The Windows download carries a `tools` folder beside `drydock.exe` with the
+pinned releases of `packaging/bundle.json` (built by `cmd/drydock-bundle`, each asset checked against the SHA-256 digest GitHub
+recorded, listed in `tools/bundle.json`). At its first start Drydock installs them from that folder with the same check and
+placement as the install below, so a scan works with nothing downloaded. With `AutoSetup` (the desktop app), a tool the folder
+did not carry, or whose copy failed its check, is downloaded instead. A tool a person removed (`<tool>.removed` beside the
+installs) is not installed again.
 
-Drydock looks for newer releases of an installed tool three minutes after it starts and then twice a day; the Security page's
-**Check for updates** looks now. A newer release is named on the tool's row ("v1.32.0 is out") and its button reads **Update to
-v1.32.0**. Nothing is installed without the person pressing it. On the Security page each external tool's row has **Install**
-(or **Update** once Drydock installed it) and, for an installed one, **Remove** (decision P66):
+Drydock looks for newer releases of an installed tool three minutes after it starts and then twice a day, and installs a newer
+one itself under `AutoSetup` (`security.tools.checkUpdates`, the person's Check for updates, installs it too). The install
+(`security.tool.install`, which the page no longer offers; Drydock runs the same job) works like this:
 
 - **Install** reads the tool's own GitHub release listing (`google/osv-scanner`, `opengrep/opengrep`; no sign-in, the
   repositories are public), takes the newest stable release (no draft, no pre-release) that carries the Windows program with

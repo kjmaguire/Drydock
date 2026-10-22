@@ -305,6 +305,12 @@ func (i *Installer) Remove(tool string) error {
 	return os.WriteFile(filepath.Join(i.Root, tool+removedMarker), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 }
 
+// Removed reports whether a person removed the tool (Remove) and has not installed it again since.
+func (i *Installer) Removed(tool string) bool {
+	_, err := os.Stat(filepath.Join(i.Root, tool+removedMarker))
+	return err == nil
+}
+
 // removedMarker beside a tool's folder says a person removed the tool: the bundled copy stays out until they install it again.
 const removedMarker = ".removed"
 

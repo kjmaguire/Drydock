@@ -1001,3 +1001,26 @@ Open, owner action:
   moved to 99.0.0. The audit's Node row now reads the newest Node overall from nodejs.org too, names every security release of
   the installed line newer than the installed version, and reports a failed nodejs.org lookup instead of falling back to the
   npm package that lags.
+- **P95. The scan's tools and the model engine are Drydock's own: no tools section, no "Install llama.cpp", and Check for
+  updates installs (2026-10-22, on the owner's words: "OpenGrep has an error when scanning", "Under Security, lets delete the UI
+  part where it has gitleaks, osv-scanner, opengrep and open grep rules", "Check for update should then install the update",
+  "You didn't build llama.cpp into the app merged with the TurboQwant from Google ... I don't want to hit a button that says
+  install llama.cpp, I don't even want it to say llama.cpp").** (1) *The Opengrep error.* Every scan passed `--no-progress-bar`,
+  which Opengrep 1.31.0 does not know: it exited 2 and printed its usage line, which the page showed as the reason. The option is
+  gone (`-q` already keeps the progress bar off); the reason for a tool's error is now its error line without terminal colours;
+  the stand-in refuses an unknown option as Opengrep does; and a test runs the real Opengrep with the scan's exact arguments and
+  the built-in rules (`DRYDOCK_TEST_OPENGREP`), which CI's app job points at the Opengrep in the Windows download. (2) *Why the
+  engine was missing.* The zips built by hand on 2026-10-21 carried `drydock.exe` and its checksums only, without the tools
+  folder `cmd/drydock-bundle` writes (CI's download has it), and the app installed tools only from that folder. With the new
+  `core.Config.AutoSetup` (set by the desktop app, off in tests) a scan tool or the model engine that is neither installed nor
+  removed by a person is fetched from its GitHub releases at start, checked against GitHub's SHA-256, as an install job the
+  pages show; the engine is the TurboQuant build with `turbo4` unless the person chose otherwise, for the suggested backend when
+  the fork builds it, else Vulkan. So a download without the tools folder sets itself up at its first start (CI's download carries the folder; a zip built on the development host cannot, since `cmd/drydock-bundle` reads the releases through GitHub's API, which this host may not reach). (3) *The Security page* shows no
+  tools section: no Install, Update, Remove, program path or rules folder, and no rule-set help; each engine row still says
+  whether its tool is ready. The core keeps those methods (a folder chosen before still runs with the built-in rules). The
+  twice-daily check installs a newer osv-scanner or Opengrep release itself under AutoSetup. (4) *Local models* never name
+  llama.cpp: the card says "Setting up local models" with the progress, or "Set up" (the TurboQuant build, nothing to choose)
+  when the start could not do it; an installed engine is "TurboQuant build <tag> · <backend>" with one button, Check for
+  updates, which installs a newer build of the same source and backend (it reads "Update to <tag>" when the twice-daily check
+  found one); the engine's Update and Remove buttons are gone. The provider Drydock registers is "Models on this PC" (one
+  registered earlier keeps its name), and the build sources are "TurboQuant build" and "Official weekly build".

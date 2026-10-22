@@ -8,7 +8,7 @@ import type { Tone } from '../../ui/tokens.ts';
 export const ENGINES: readonly { id: EngineID; name: string; tool: string; blurb: string }[] = [
   { id: 'secrets', name: 'Secrets', tool: 'gitleaks', blurb: 'Keys, tokens and passwords left in files.' },
   { id: 'deps', name: 'Dependencies', tool: 'osv-scanner', blurb: 'Packages in the lockfiles and manifests with known vulnerabilities.' },
-  { id: 'sast', name: 'Code', tool: 'opengrep', blurb: 'Code patterns the rules folder marks as unsafe.' },
+  { id: 'sast', name: 'Code', tool: 'opengrep', blurb: 'Code patterns the built-in rules mark as unsafe.' },
 ];
 
 export const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low', 'info'];

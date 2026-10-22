@@ -109,7 +109,7 @@ func init() {
 			"security.tools.checkUpdates": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
 			}) (any, error) {
-				s.checkUpdates(ctx)
+				s.checkUpdates(ctx, true) // a person pressed Check for updates: a newer release is installed (decision P95)
 				s.memoMu.Lock()
 				s.memo.key = "" // the answer must carry what was just read
 				s.memoMu.Unlock()
