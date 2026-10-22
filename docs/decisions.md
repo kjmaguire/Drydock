@@ -887,11 +887,13 @@ Open, owner action:
   A turn ends once: RUN_FINISHED with AG-UI's outcome object (`{type: "success"}`, or `{type: "cancelled"}` for a turn that
   was interrupted or whose program ended during it), or RUN_ERROR for a turn that failed, including one the agent reported
   with a done chunk (a Claude result with `is_error`, stop reason `error_*`; an ACP prompt that failed, stop reason `error`; a
-  turn that carried a non-fatal error and did not end with `end_turn`), with the turn's last error as the message. A failure
+  turn that carried a non-fatal error, gave no answer and did not end with `end_turn`, as the chat reads a turn; a turn left
+  open when the next starts is read the same way), with the turn's last error as the message. A failure
   outside a turn (a start that failed: the runtime stamps that `agent.failed` with the run id the process would have had; a
-  crash between turns) is a run of its own that errored, and the failures that follow a RUN_ERROR before another run (the
-  process's `agent.failed` after a fatal error chunk) add their words to it rather than sending a second one; a permission
-  answer that comes after its turn ended is left out. REASONING_MESSAGE_START carries `role: "reasoning"`. `agui.CheckOrder`
+  crash between turns) is a run of its own that errored, and the failures that follow a RUN_ERROR before the agent moves on
+  from that turn (the process's `agent.failed` after a fatal error chunk) add their words to it rather than sending a second
+  one; an `agent.failed` with phase `bookkeeping` (Drydock could not record the run's end) is no turn failure and is left out,
+  as is a permission answer that comes after its turn ended. REASONING_MESSAGE_START carries `role: "reasoning"`. `agui.CheckOrder`
   applies the ordering rules of AG-UI's verifier (client `verify/verify.ts`) and the tests run every projected thread through
   it. The
   UI's types are generated from the Go structs (`internal/tsgen`, a reflection-based writer that reads types as encoding/json
