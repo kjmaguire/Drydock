@@ -97,6 +97,9 @@ function board(client: Opts = {}, opts: Parameters<typeof svc>[1] = {}, list: Ta
   return { s, r, taskSummaries, taskCount, navigated };
 }
 
+/** The board's own reads of task.summaries (the workspace model reads every project's too, with projectId "", for the Inbox). */
+const boardReads = (rec: { calls: unknown[][] }) => rec.calls.filter((c) => (c[0] as { projectId?: string }).projectId === 'prj_1');
+
 const cards = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="task-row"]')) as HTMLElement[];
 const card = (r: ReturnType<typeof mount>, id: string) => r.$(`[data-testid="task-row"][data-task-id="${id}"]`) as HTMLElement;
 const column = (r: ReturnType<typeof mount>, name: string) => r.$(`[data-testid="board-column"][data-column="${name}"]`) as HTMLElement;
@@ -150,7 +153,7 @@ describe('TaskListScreen: the board', () => {
     expect(add.getAttribute('href')).toBe('/tasks/new');
     expect(add.getAttribute('aria-keyshortcuts')).toBe('C');
     expect(add.querySelector('kbd')!.textContent).toBe('C');
-    expect(taskSummaries.calls[0]).toEqual([{ projectId: 'prj_1' }]);
+    expect(boardReads(taskSummaries)[0]).toEqual([{ projectId: 'prj_1' }]);
   });
 
   it('five columns from the steps, each with its glyph, name and count; Merged counts this week; failed tasks under Stopped', async () => {
@@ -369,14 +372,14 @@ describe('TaskListScreen: the board', () => {
     const { r, s, taskSummaries } = board();
     await shown(r, 8);
     for (const type of ['task.updated', 'workflow.request_raised', 'room.presence_changed', 'needsyou.ack']) {
-      const before = taskSummaries.calls.length;
+      const before = boardReads(taskSummaries).length;
       s.emit({ type, projectId: 'prj_1', taskId: 'build' });
-      await waitFor(() => expect(taskSummaries.calls.length).toBeGreaterThan(before), r, 3000);
+      await waitFor(() => expect(boardReads(taskSummaries).length).toBeGreaterThan(before), r, 3000);
     }
-    const before = taskSummaries.calls.length;
+    const before = boardReads(taskSummaries).length;
     s.emit({ type: 'task.updated', projectId: 'prj_other' });
     await new Promise((res) => setTimeout(res, 400));
-    expect(taskSummaries.calls.length).toBe(before);
+    expect(boardReads(taskSummaries).length).toBe(before);
   });
 
   it('says when the list is cut, as the core says (summaries.partial)', async () => {
