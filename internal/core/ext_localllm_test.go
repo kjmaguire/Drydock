@@ -276,7 +276,7 @@ func TestAFailedDeviceProbeIsKeptAndTheInstalledBuildDecidesTheCacheTypes(t *tes
 	if v.Settings.Source != "turboquant" || v.Runtime.Source != "official" {
 		t.Fatalf("%+v %+v", v.Settings, v.Runtime)
 	}
-	if err := a.callErr("local.settings.set", map[string]any{"cacheType": "turbo4"}); err == nil || !strings.Contains(err.Error(), "official") {
+	if err := a.callErr("local.settings.set", map[string]any{"cacheType": "turbo4"}); err == nil || !strings.Contains(err.Error(), "Official weekly build") {
 		t.Fatalf("turbo4 on the official build: %v", err)
 	}
 	if v = localCall(a, "local.settings.set", map[string]any{"cacheType": "f16"}); v.Settings.CacheType != "f16" {
