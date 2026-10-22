@@ -202,6 +202,21 @@ func TestAPersonInstallsLlamaCppDownloadsAModelAndServesIt(t *testing.T) {
 	if err := a.callErr("local.model.remove", map[string]any{"id": "acme/tiny-GGUF:Q4_0"}); err == nil || !strings.Contains(err.Error(), "stop the server") {
 		t.Fatal(err)
 	}
+	if prov.Name != "Models on this PC" {
+		t.Fatalf("the provider is named %q", prov.Name)
+	}
+
+	// a newer build: Check for updates installs it (decision P95) and starts the server again on the same model, so the
+	// provider is not left down
+	rig.releases.Add(llamatest.ReleaseSpec{Tag: "b11700", Prerelease: true, Assets: map[string][]byte{"llama-b11700-bin-win-vulkan-x64.zip": llamatest.ServerZip()}})
+	localCall(a, "local.checkUpdates", nil)
+	a.waitFor("the newer build to be installed and served again", func() bool {
+		v = localCall(a, "local.get", nil)
+		return v.Runtime.Tag == "b11700" && v.Runtime.Job != nil && v.Runtime.Job.State == "done" && v.Server.State == "running"
+	})
+	if v.Server.ModelID != "acme/tiny-GGUF:Q4_0" || v.Settings.ProviderID != prov.ID {
+		t.Fatalf("after the update: %+v %+v", v.Server, v.Settings)
+	}
 	if len(v.Log) == 0 || !strings.Contains(strings.Join(v.Log, "\n"), "cache q8_0") {
 		t.Fatalf("log: %v", v.Log)
 	}
@@ -325,5 +340,41 @@ func TestAServerThatFailsIsReportedAndARestartReplacesIt(t *testing.T) {
 	v = localCall(a, "local.model.download.cancel", map[string]any{"id": "acme/tiny-GGUF:Q8_0"})
 	if len(v.Downloads) != 0 {
 		t.Fatalf("%+v", v.Downloads)
+	}
+}
+
+// Earlier versions named the provider row "Models on this PC (llama.cpp)"; the next start gives it the name it has now
+// (decision P95: the page never names llama.cpp). A host provider with any other name is the person's and keeps it.
+func TestTheLocalProviderMadeByAnEarlierVersionIsRenamed(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	creds := providers.NewMemoryCredentialStoreForTests()
+	open := func() *core.Core {
+		c, err := core.Open(context.Background(), core.Config{DataDir: data, User: "kyle", LeaseTTL: 3 * time.Second,
+			Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: "claude-not-used"}}, Credentials: creds})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	c := open()
+	ctx := context.Background()
+	old, err := c.Providers.Create(ctx, providers.NewProvider{Name: "Models on this PC (llama.cpp)", Kind: providers.KindHost, BaseURL: "http://127.0.0.1:9933/v1",
+		DataClass: providers.DataPrivate, Tier: providers.TierCheap, Flavor: providers.FlavorLlamaCpp, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, err := c.Providers.Create(ctx, providers.NewProvider{Name: "GPU box (llama.cpp)", Kind: providers.KindHost, BaseURL: "http://127.0.0.1:8080/v1",
+		DataClass: providers.DataPrivate, Tier: providers.TierCheap, Flavor: providers.FlavorLlamaCpp, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	c = open()
+	t.Cleanup(c.Close)
+	for id, want := range map[string]string{old.ID: "Models on this PC", mine.ID: "GPU box (llama.cpp)"} {
+		p, err := c.Providers.Get(ctx, id)
+		if err != nil || p.Name != want {
+			t.Fatalf("%s: %q %v, want %q", id, p.Name, err, want)
+		}
 	}
 }

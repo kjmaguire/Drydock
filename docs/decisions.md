@@ -1022,18 +1022,25 @@ Open, owner action:
   the built-in rules (`DRYDOCK_TEST_OPENGREP`), which CI's app job points at the Opengrep in the Windows download. (2) *Why the
   engine was missing.* The zips built by hand on 2026-10-21 carried `drydock.exe` and its checksums only, without the tools
   folder `cmd/drydock-bundle` writes (CI's download has it), and the app installed tools only from that folder. With the new
-  `core.Config.AutoSetup` (set by the desktop app, off in tests) a scan tool or the model engine that is neither installed nor
-  removed by a person is fetched from its GitHub releases at start, checked against GitHub's SHA-256, as an install job the
+  `core.Config.AutoSetup` (set by the desktop app, off in tests) a scan tool that is not installed, or the model engine when it is neither installed nor
+  removed by a person, is fetched from its GitHub releases at start, checked against GitHub's SHA-256, as an install job the
   pages show; the engine is the TurboQuant build with `turbo4` unless the person chose otherwise, for the suggested backend when
   the fork builds it, else Vulkan. So a download without the tools folder sets itself up at its first start (CI's download carries the folder; a zip built on the development host cannot, since `cmd/drydock-bundle` reads the releases through GitHub's API, which this host may not reach). (3) *The Security page* shows no
   tools section: no Install, Update, Remove, program path or rules folder, and no rule-set help; each engine row still says
-  whether its tool is ready. The core keeps those methods (a folder chosen before still runs with the built-in rules). The
-  twice-daily check installs a newer osv-scanner or Opengrep release itself under AutoSetup. (4) *Local models* never name
+  whether its tool is ready. What the page could set and no longer shows is gone from the core too (`security.settings.set`,
+  `security.tool.set`, `security.tool.choose`, `security.tool.remove`): a rules folder or program chosen before, and the
+  marker a removed tool left, would have applied where nobody can see or clear them, so the next start deletes them and the
+  scan runs Drydock's own tools with the built-in rules. The twice-daily check installs a newer osv-scanner or Opengrep
+  release itself under AutoSetup, only when its tag is newer than the one installed (no downgrade to an older "latest"), and
+  only once it has run the way a scan runs it (`scan.SelfCheck`, a small folder of its own): a release that breaks an option
+  Drydock passes, as 1.31.0 did, is deleted and the one in use stays. A tools folder whose `bundle.json` cannot be read is
+  set up like one that is missing. (4) *Local models* never name
   llama.cpp: the card says "Setting up local models" with the progress, or "Set up" (the TurboQuant build, nothing to choose)
   when the start could not do it; an installed engine is "TurboQuant build <tag> · <backend>" with one button, Check for
   updates, which installs a newer build of the same source and backend (it reads "Update to <tag>" when the twice-daily check
-  found one); the engine's Update and Remove buttons are gone. The provider Drydock registers is "Models on this PC" (one
-  registered earlier keeps its name), and the build sources are "TurboQuant build" and "Official weekly build".
+  found one); the engine's Update and Remove buttons are gone. The provider Drydock registers is "Models on this PC" (a row an
+  earlier version named "Models on this PC (llama.cpp)" is renamed at start; any other name is the person's); Check for
+  updates stops the server for the install and starts it again on the same model, and the build sources are "TurboQuant build" and "Official weekly build".
   (5) *CI runners* ("migrate/merge that into the GitHub Window") are a section of the GitHub page, where its read-only runner
   summary was; Connections no longer shows them (this changes where P56 and P68 put them). (6) *A project's Integrations* ("make
   those more like the cards we see under Integrations under Workspace") use the workspace page's order and tiles: Services

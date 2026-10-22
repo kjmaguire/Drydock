@@ -24,15 +24,20 @@ import (
 // downloaded can be scanned before it becomes one. A scan in progress lives here in memory (its progress counters change many
 // times a second and are read, not published); it is stored when it ends. Events: security.scan.started, security.scan.engine
 // (an engine changed state), security.scan.finished, security.settings; a folder scan's carry no project and name the folder.
-// Only a person starts a scan or chooses the rules folder.
+// Only a person starts a scan.
 
 func init() {
 	RegisterExtension(Extension{Name: "security", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		s := &securityExt{c: c, running: map[string]*scan.Run{}, unstored: map[string]scan.Report{}, jobs: map[string]*toolJob{}, latest: map[string]string{},
 			inst: scan.NewInstaller(filepath.Join(c.cfg.DataDir, "tools"))}
+		// a release becomes the one in use only once it ran the way a scan runs it (decision P95)
+		s.inst.Check = func(ctx context.Context, tool string, t scan.Tool) error {
+			return scan.SelfCheck(ctx, scan.Options{Procs: c.Deps.PM, Redact: c.Scanner.Redact, Env: checks.CommandEnv}, tool, t)
+		}
 		if c.cfg.ScanInstall != nil {
 			c.cfg.ScanInstall(s.inst)
 		}
+		s.forgetChoices(ctx)
 		s.seedBundled(ctx)
 		wctx, stopWatch := context.WithCancel(context.Background())
 		s.stopWatch = stopWatch
@@ -71,33 +76,6 @@ func init() {
 			}) (any, error) {
 				return s.tools(ctx, p.ProjectID), nil
 			}),
-			// {projectId, rulesDir} for a project, {workspace: true, rulesDir} for folder scans
-			"security.settings.set": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-				Workspace bool   `json:"workspace"`
-				RulesDir  string `json:"rulesDir"`
-			}) (any, error) {
-				if p.Workspace {
-					if p.ProjectID != "" {
-						return nil, errors.New("give a project or the workspace, not both")
-					}
-					return s.setWorkspaceRulesDir(ctx, p.RulesDir, c.Human())
-				}
-				return s.setRulesDir(ctx, p.ProjectID, p.RulesDir, c.Human())
-			}),
-			"security.tool.set": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-				Tool      string `json:"tool"`
-				Path      string `json:"path"`
-			}) (any, error) {
-				return s.setToolPath(ctx, p.ProjectID, p.Tool, p.Path, c.Human())
-			}),
-			"security.tool.choose": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-				Tool      string `json:"tool"`
-			}) (any, error) {
-				return s.chooseTool(ctx, p.ProjectID, p.Tool, c.Human())
-			}),
 			// Drydock installs the tool's newest release itself (decision P66); the same call updates an installed one
 			"security.tool.install": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -109,7 +87,7 @@ func init() {
 			"security.tools.checkUpdates": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
 			}) (any, error) {
-				s.checkUpdates(ctx, true) // a person pressed Check for updates: a newer release is installed (decision P95)
+				s.checkUpdates(ctx, true) // checked now: a newer release is installed (decision P95)
 				s.memoMu.Lock()
 				s.memo.key = "" // the answer must carry what was just read
 				s.memoMu.Unlock()
@@ -120,12 +98,6 @@ func init() {
 				Tool      string `json:"tool"`
 			}) (any, error) {
 				return s.cancelInstall(ctx, p.ProjectID, p.Tool)
-			}),
-			"security.tool.remove": bind(func(ctx context.Context, p struct {
-				ProjectID string `json:"projectId"`
-				Tool      string `json:"tool"`
-			}) (any, error) {
-				return s.removeTool(ctx, p.ProjectID, p.Tool, c.Human())
 			}),
 			// the scan methods take {projectId} (the project's working tree) or {folder} (a full path, decision P61)
 			"security.scan.start": bind(func(ctx context.Context, p scanTarget) (any, error) {
@@ -336,24 +308,38 @@ func withinFolder(path, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// settingRules + project id holds the project's Opengrep rules folder; settingWorkspaceRules the folder scans' (P61).
+// Earlier versions let a person choose an Opengrep rules folder (per project, and one for folder scans) and a program for
+// each external tool, on the Security page. The page no longer shows the tools (decision P95), so a choice stored then would
+// apply where nobody can see, change or clear it: the scan uses Drydock's own tools and its built-in rules, and the stored
+// choices are deleted at start (forgetChoices).
 const (
 	settingRules          = "security:rules:"
 	settingWorkspaceRules = "security:workspace-rules"
+	settingToolPath       = "security:toolpath:"
 )
 
-// rulesDir is the project's rules folder, or with no project the folder scans'.
-func (s *securityExt) rulesDir(ctx context.Context, projectID string) string {
-	key := settingRules + projectID
-	if projectID == "" {
-		key = settingWorkspaceRules
+// forgetChoices deletes the rules folders and programs chosen in earlier versions.
+func (s *securityExt) forgetChoices(ctx context.Context) {
+	var n int64
+	err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		r, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=? OR substr(key,1,?)=? OR substr(key,1,?)=?`,
+			settingWorkspaceRules, len(settingRules), settingRules, len(settingToolPath), settingToolPath)
+		if err == nil {
+			n, _ = r.RowsAffected()
+		}
+		return err
+	})
+	switch {
+	case err != nil:
+		s.c.logf("security: forgetting the rules folders and programs chosen before: %v", err)
+	case n > 0:
+		s.c.logf("security: %d rules folder or program choices from an earlier version forgotten: the scan uses Drydock's own tools and rules", n)
 	}
-	var v string
-	if err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&v); err == nil {
-		return v
-	}
-	return s.c.cfg.ScanRulesDir
 }
+
+// rulesDir is the folder of extra Opengrep rules: the configuration's (the e2e harness's; the product leaves it empty and
+// runs the built-in rules alone).
+func (s *securityExt) rulesDir(_ context.Context, _ string) string { return s.c.cfg.ScanRulesDir }
 
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	paths, rules := s.paths(ctx), s.rulesDir(ctx, projectID)
@@ -374,28 +360,10 @@ func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	return s.withInstalls(t)
 }
 
-// The programs a person chose for the external tools, workspace-wide (a program is on the computer, not in a project):
-// settingToolPath + tool name.
-const settingToolPath = "security:toolpath:"
-
-// scanTools are the external tools a person may choose a program for.
-var scanTools = map[string]string{"osv-scanner": "osv-scanner", "opengrep": "Opengrep"}
-
-func (s *securityExt) chosenTool(ctx context.Context, tool string) string {
-	var v string
-	_ = s.c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingToolPath+tool).Scan(&v)
-	return v
-}
-
-// paths are the configured tools with each program a person chose in place of the default, else the one Drydock installed
-// (decision P66). A choice replaces the program only: the leading arguments stay what the configuration says (none in the
-// product; the e2e harness's stand-ins need them).
-func (s *securityExt) paths(ctx context.Context) scan.Paths {
+// paths are the configured tools with the one Drydock installed in place of each (decision P66).
+func (s *securityExt) paths(_ context.Context) scan.Paths {
 	p := s.c.cfg.ScanTools
 	pick := func(tool string, dflt scan.Tool) scan.Tool {
-		if v := s.chosenTool(ctx, tool); v != "" {
-			return scan.Tool{Path: v, Args: dflt.Args, Chosen: true}
-		}
 		if in, ok := s.inst.Installed(tool); ok {
 			return s.inst.ToolFor(in)
 		}
@@ -405,105 +373,6 @@ func (s *securityExt) paths(ctx context.Context) scan.Paths {
 	p.Opengrep = pick("opengrep", p.Opengrep)
 	p.BuiltinRules = s.builtinRules
 	return p
-}
-
-// setToolPath stores the program a person chose for a tool; "" goes back to finding it on PATH. Only a person may: the
-// program reads the whole project.
-func (s *securityExt) setToolPath(ctx context.Context, projectID, tool, path, by string) (scan.Tools, error) {
-	if !isPerson(by) {
-		return scan.Tools{}, errors.New("only a person may choose a scan tool's program")
-	}
-	label, ok := scanTools[tool]
-	if !ok {
-		return scan.Tools{}, fmt.Errorf("%q is not a scan tool Drydock runs (osv-scanner or opengrep)", tool)
-	}
-	path = strings.TrimSpace(strings.Trim(strings.TrimSpace(path), `"`))
-	if path != "" {
-		if !filepath.IsAbs(path) {
-			return scan.Tools{}, fmt.Errorf("give the full path of %s's program, for example C:\\tools\\%s.exe", label, tool)
-		}
-		st, err := os.Stat(path)
-		if err != nil || !st.Mode().IsRegular() {
-			return scan.Tools{}, fmt.Errorf("there is no file at %s", path)
-		}
-		if runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(path), ".exe") {
-			return scan.Tools{}, fmt.Errorf("%s is not a program (.exe)", filepath.Base(path))
-		}
-	}
-	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		if path == "" {
-			_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingToolPath+tool)
-			return err
-		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingToolPath+tool, path)
-		return err
-	}); err != nil {
-		return scan.Tools{}, err
-	}
-	// the programs are probed once, here; the pages that re-read on the event get this answer from the memo
-	t := s.tools(ctx, projectID)
-	s.c.publish(ctx, "security.settings", projectID, map[string]any{"tool": tool, "path": path, "by": by})
-	return t, nil
-}
-
-// chooseTool opens the window's file dialog for a tool's program and stores what the person chose; cancelling changes nothing.
-func (s *securityExt) chooseTool(ctx context.Context, projectID, tool, by string) (scan.Tools, error) {
-	label, ok := scanTools[tool]
-	if !ok {
-		return scan.Tools{}, fmt.Errorf("%q is not a scan tool Drydock runs (osv-scanner or opengrep)", tool)
-	}
-	if s.c.cfg.PickFile == nil {
-		return scan.Tools{}, fmt.Errorf("this window cannot open a file dialog: type the full path of %s's program instead", label)
-	}
-	if !isPerson(by) {
-		return scan.Tools{}, errors.New("only a person may choose a scan tool's program")
-	}
-	path, err := s.c.cfg.PickFile(ctx, FilePick{Title: "Choose " + label + "'s program (" + tool + ".exe)", FilterName: "Programs", FilterPattern: "*.exe"})
-	if err != nil {
-		return scan.Tools{}, fmt.Errorf("the file dialog: %w", err)
-	}
-	if strings.TrimSpace(path) == "" {
-		return s.tools(ctx, projectID), nil
-	}
-	return s.setToolPath(ctx, projectID, tool, path, by)
-}
-
-// setRulesDir stores the project's rules folder. Only a person may: the folder decides which rules read the whole project.
-func (s *securityExt) setRulesDir(ctx context.Context, projectID, dir, by string) (scan.Tools, error) {
-	if !isPerson(by) {
-		return scan.Tools{}, errors.New("only a person may choose the rules folder")
-	}
-	if _, err := s.c.GetProject(ctx, projectID); err != nil {
-		return scan.Tools{}, err
-	}
-	return s.saveRulesDir(ctx, settingRules+projectID, projectID, dir, by)
-}
-
-// setWorkspaceRulesDir stores the rules folder of folder scans (decision P61); each project keeps its own.
-func (s *securityExt) setWorkspaceRulesDir(ctx context.Context, dir, by string) (scan.Tools, error) {
-	if !isPerson(by) {
-		return scan.Tools{}, errors.New("only a person may choose the rules folder")
-	}
-	return s.saveRulesDir(ctx, settingWorkspaceRules, "", dir, by)
-}
-
-func (s *securityExt) saveRulesDir(ctx context.Context, key, projectID, dir, by string) (scan.Tools, error) {
-	dir = cleanFolderInput(dir)
-	if dir != "" && !filepath.IsAbs(dir) {
-		return scan.Tools{}, errors.New("give the full path of the rules folder (Opengrep runs in the repository, so a relative path would point elsewhere)")
-	}
-	if err := s.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, dir)
-		return err
-	}); err != nil {
-		return scan.Tools{}, err
-	}
-	data := map[string]any{"rulesDir": dir, "by": by}
-	if projectID == "" {
-		data["workspace"] = true
-	}
-	s.c.publish(ctx, "security.settings", projectID, data)
-	return s.tools(ctx, projectID), nil
 }
 
 // isPerson reports whether an identity is a person's ("human:<name>"): only a person starts a scan or chooses what it runs.

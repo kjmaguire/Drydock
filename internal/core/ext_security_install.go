@@ -12,11 +12,12 @@ import (
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
-// Installing the scan's external tools (decision P66, docs/security-scan.md section 5): a person presses Install (or Update)
-// on the Security page and Drydock downloads the tool's newest stable release from its own GitHub repository, checks it
-// against the digest GitHub recorded, and keeps it under <data>/tools. The install runs in the background; its progress
-// lives here (security.tools shows it) and each change is announced on security.settings so every open Security page
-// re-reads. Only a person may install or remove: the program reads the whole project.
+// Installing the scan's external tools (decision P66, docs/security-scan.md section 5): Drydock puts the download's copy in
+// place, or downloads the tool's newest stable release from its own GitHub repository, checks it against the digest GitHub
+// recorded, runs it once the way a scan does (scan.SelfCheck), and keeps it under <data>/tools. The tools are Drydock's own
+// (decision P95: the Security page no longer shows them); security.tool.install is how a person installs one now. The
+// install runs in the background; its progress lives here (security.tools shows it) and each change is announced on
+// security.settings so every open Security page re-reads.
 
 // toolJob is one tool's install in progress, or how its last one ended.
 type toolJob struct {
@@ -35,7 +36,7 @@ func (s *securityExt) withInstalls(t scan.Tools) scan.Tools {
 			if in, ok := s.inst.Installed(info.Tool); ok {
 				info.Tag = in.Tag
 				// a newer release than the one installed (the twice-daily check, decision P77): the page offers it
-				if l := s.latest[info.Tool]; l != "" && l != in.Tag {
+				if l := s.latest[info.Tool]; newerTag(l, in.Tag) {
 					info.Latest = l
 				}
 			}
@@ -82,14 +83,14 @@ func (s *securityExt) startInstall(projectID string, src scan.ToolSource, by str
 	return true
 }
 
-// installMissing installs, in the background, each scan tool Drydock can install here that is not installed and that no
-// person removed (AutoSetup, decision P95): a download without its tools folder still scans from the first start.
+// installMissing installs, in the background, each scan tool Drydock can install here that is not installed (AutoSetup,
+// decision P95): a download without its tools folder, or with one that cannot be read, still scans from the first start.
 func (s *securityExt) installMissing() {
 	if !s.c.cfg.AutoSetup || !s.inst.Supported() {
 		return
 	}
 	for _, src := range scan.ToolSources {
-		if _, ok := s.inst.Installed(src.Tool); ok || s.inst.Removed(src.Tool) {
+		if _, ok := s.inst.Installed(src.Tool); ok {
 			continue
 		}
 		if s.startInstall("", src, "drydock:auto") {
@@ -125,9 +126,10 @@ func (s *securityExt) runInstall(ctx context.Context, projectID string, src scan
 		finish(err)
 		return
 	}
-	if in, ok := s.inst.Installed(src.Tool); ok && in.Tag == rel.Tag {
+	// the release installed is the newest, or newer than what GitHub lists as latest (no downgrade)
+	if in, ok := s.inst.Installed(src.Tool); ok && !newerTag(rel.Tag, in.Tag) {
 		s.mu.Lock()
-		s.jobs[src.Tool].job.Phase, s.jobs[src.Tool].job.Tag = "already the newest release ("+rel.Tag+")", rel.Tag
+		s.jobs[src.Tool].job.Phase, s.jobs[src.Tool].job.Tag = "already the newest release ("+in.Tag+")", in.Tag
 		s.mu.Unlock()
 		finish(nil)
 		return
@@ -150,6 +152,12 @@ func (s *securityExt) runInstall(ctx context.Context, projectID string, src scan
 	finish(err)
 }
 
+// newerTag says whether release a is newer than the installed b; a tag that cannot be ordered is not (no downgrade).
+func newerTag(a, b string) bool {
+	newer, _ := scan.NewerTag(a, b)
+	return newer
+}
+
 // announce tells every Security page the tool's install changed; the event carries the tool, so each page re-reads the tools
 // (a tool is the workspace's, whichever project's page asked).
 func (s *securityExt) announce(ctx context.Context, projectID, tool, state, by string) {
@@ -170,37 +178,15 @@ func (s *securityExt) cancelInstall(ctx context.Context, projectID, tool string)
 	return s.tools(ctx, projectID), nil
 }
 
-// removeTool deletes the release Drydock installed; the tool is then looked for on PATH again. Only a person may.
-func (s *securityExt) removeTool(ctx context.Context, projectID, tool, by string) (scan.Tools, error) {
-	if !isPerson(by) {
-		return scan.Tools{}, errors.New("only a person may remove a scan tool")
-	}
-	src, ok := scan.SourceOf(tool)
-	if !ok {
-		return scan.Tools{}, fmt.Errorf("%q is not a scan tool Drydock installs (osv-scanner or opengrep)", tool)
-	}
-	s.mu.Lock()
-	if j, ok := s.jobs[tool]; ok && j.job.State == "running" {
-		s.mu.Unlock()
-		return scan.Tools{}, fmt.Errorf("%s is being installed", src.Label)
-	}
-	delete(s.jobs, tool)
-	s.mu.Unlock()
-	if err := s.inst.Remove(tool); err != nil {
-		return scan.Tools{}, err
-	}
-	s.announce(ctx, projectID, tool, "removed", by)
-	return s.tools(ctx, projectID), nil
-}
-
 // seedBundled installs, in the background, the scan tools the download carries (decision P77: "I want the app to already have
 // the dependencies installed"). Each is put in place only when the tool has no release here or an earlier bundled one; a
-// release the person installed, or a tool the person removed, is left as it is (scan.Installer.SeedFromBundle). A seed that
-// fails is logged; with AutoSetup the tool is then downloaded instead (installMissing).
+// newer release installed from GitHub is left as it is (scan.Installer.SeedFromBundle). A seed that fails, or a tools folder
+// that cannot be read, is logged; with AutoSetup the tool is then downloaded instead (installMissing).
 func (s *securityExt) seedBundled(ctx context.Context) {
 	m, err := bundle.Read(s.c.cfg.BundleDir)
 	if err != nil {
 		s.c.logf("security: the download's tools: %v", err)
+		s.installMissing()
 		return
 	}
 	if m == nil || len(m.Scan) == 0 {
@@ -247,8 +233,10 @@ func (s *securityExt) seedBundled(ctx context.Context) {
 // Tool updates (decision P77, on the owner's words: "have the ability to update them if they are out of date"): three minutes
 // after start (after the download's tools are in place) and every twelve hours, each installed tool's newest stable release is
 // read from its GitHub repository; a newer one than installed is installed (decision P95: "Check for update should then install
-// the update"; the Security page no longer shows the tools) when AutoSetup is on or a person pressed Check for updates, and is
-// otherwise offered (security.tools: latest). A check that cannot reach GitHub keeps what it knew.
+// the update"; the Security page no longer shows the tools) when AutoSetup is on or security.tools.checkUpdates asked, and is
+// otherwise offered (security.tools: latest). It is used only once it passed scan.SelfCheck, so a release that broke an
+// option Drydock passes never replaces the one in use. An older or unordered tag is never installed (no downgrade). A check
+// that cannot reach GitHub keeps what it knew.
 const (
 	toolUpdatesFirst = 3 * time.Minute
 	toolUpdatesEvery = 12 * time.Hour
@@ -295,7 +283,11 @@ func (s *securityExt) checkUpdates(ctx context.Context, install bool) {
 		if changed {
 			s.announce(context.Background(), "", src.Tool, "checked", "drydock:update-check")
 		}
-		if in, ok := s.inst.Installed(src.Tool); install && ok && in.Tag != rel.Tag && s.startInstall("", src, "drydock:update-check") {
+		in, ok := s.inst.Installed(src.Tool)
+		if !install || !ok {
+			continue
+		}
+		if newerTag(rel.Tag, in.Tag) && s.startInstall("", src, "drydock:update-check") {
 			s.c.logf("security: %s %s is out (installed %s): installing it", src.Tool, rel.Tag, in.Tag)
 		}
 	}

@@ -29,6 +29,9 @@ const (
 	settingLocal      = "local:settings"
 	defaultLocalPort  = 9933 // one above llama.cpp's own default, so a llama-server a person runs by hand keeps its port
 	localProviderName = "Models on this PC"
+	// oldLocalProviderName is the name earlier versions gave the provider row; renameProvider moves it to localProviderName
+	// (decision P95: the page never names llama.cpp)
+	oldLocalProviderName = "Models on this PC (llama.cpp)"
 )
 
 // LocalSettings are the person's choices.
@@ -103,6 +106,7 @@ func init() {
 		l.m.Server.OnChange = func(st localllm.ServerState) {
 			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "server", "state": st.State})
 		}
+		l.renameProvider(ctx)
 		l.seedBundled(ctx)
 		wctx, stopWatch := context.WithCancel(context.Background())
 		l.stopWatch = stopWatch
@@ -478,9 +482,19 @@ func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend 
 		finish(nil)
 		return
 	}
-	// the server runs the build about to be replaced
+	// the server runs the build about to be replaced: it is stopped, and started again on the build installed (or, when the
+	// install fails, on the one still in place), so an update does not take the provider down
 	if st := l.m.Server.State(); st.State == "running" || st.State == "starting" {
+		model := st.ModelID
+		if model == "" {
+			model = l.settings(ctx).ModelID
+		}
 		l.m.Server.Stop()
+		defer func() {
+			if err := l.serve(context.Background(), model); err != nil {
+				l.c.logf("local models: starting the server again after the install: %v", err)
+			}
+		}()
 	}
 	last := time.Time{}
 	in, err := l.m.Runtime.Install(ctx, rel, func(p localllm.Progress) {
@@ -738,6 +752,23 @@ func (l *localExt) serve(ctx context.Context, modelID string) error {
 	return nil
 }
 
+// renameProvider gives the provider row an earlier version made the name it has now. A name the person changed is theirs.
+func (l *localExt) renameProvider(ctx context.Context) {
+	list, err := l.c.Providers.List(ctx)
+	if err != nil {
+		return
+	}
+	for _, p := range list {
+		if p.Kind != providers.KindHost || p.Name != oldLocalProviderName {
+			continue
+		}
+		p.Name = localProviderName
+		if _, err := l.c.Providers.Update(ctx, p, ""); err != nil {
+			l.c.logf("local models: renaming the provider: %v", err)
+		}
+	}
+}
+
 // ensureProvider makes the server a provider: one row, kept at the server's address and holding the key of this start.
 func (l *localExt) ensureProvider(ctx context.Context, s LocalSettings, key string) (string, error) {
 	base := fmt.Sprintf("http://127.0.0.1:%d/v1", s.Port)
@@ -809,11 +840,13 @@ func (l *localExt) autostart(ctx context.Context) {
 // don't want to install llama.cpp, I want it already installed with Google's TurboQuant built in"). It is put in place only when
 // there is no build here or an earlier bundled one; a build the person installed or removed is left as it is
 // (localllm.Runtime.SeedFromBundle). The first time, the settings follow the build: its source, and its first KV cache type
-// (turbo4 for the TurboQuant build), unless the person already chose.
+// (turbo4 for the TurboQuant build), unless the person already chose. A tools folder that cannot be read, or that names a
+// source Drydock does not know, is logged and set up like a download without one (setupMissing).
 func (l *localExt) seedBundled(ctx context.Context) {
 	m, err := bundle.Read(l.c.cfg.BundleDir)
 	if err != nil {
 		l.c.logf("local models: the download's tools: %v", err)
+		l.setupMissing(ctx)
 		return
 	}
 	if m == nil || m.Llama == nil {
@@ -824,6 +857,7 @@ func (l *localExt) seedBundled(ctx context.Context) {
 	src, ok := localllm.SourceByID(b.Source)
 	if !ok {
 		l.c.logf("local models: the download names %q, not a build source", b.Source)
+		l.setupMissing(ctx)
 		return
 	}
 	l.mu.Lock()
