@@ -30,7 +30,7 @@ import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
 import { AgentEditor } from './agent-forms.tsx';
 import { Run } from './inspector.tsx';
-import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runsWhere, spentLabel, stepIndex } from './team.ts';
+import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
 
 const layoutCss = css({
   display: 'grid',
@@ -636,7 +636,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                           </span>
                         ) : null}
                         {where ? (
-                          <span mix={chipCss} data-testid="agent-chip">
+                          <span mix={chipCss} data-testid="agent-chip" title={runsWhereTitle(a)}>
                             runs {where}
                           </span>
                         ) : null}

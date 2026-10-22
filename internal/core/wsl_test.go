@@ -284,7 +284,7 @@ func TestSignInInsideADistroRunsInATerminalAndLeavesNothingBehind(t *testing.T) 
 
 	var in terminal.Info
 	a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": "ubuntu"}, &in)
-	if in.Title != "Sign in: claude in Ubuntu" || in.Shell != f.Exe {
+	if in.Title != "Sign in: claude WSL" || in.Shell != f.Exe { // no distro in the title (the owner: "we don't need to see the Ubuntu")
 		t.Fatalf("%+v", in)
 	}
 	out := a.readTerm(in.ID, "Press Enter")

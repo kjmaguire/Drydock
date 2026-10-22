@@ -46,6 +46,7 @@ import {
 
 const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
 const head = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& h2': { fontSize: t.textLg, fontWeight: '600', margin: '0', marginRight: 'auto' } });
+const runsCss = css({ display: 'flex', alignItems: 'center', gap: t.s2 });
 const subhead = css({ fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase', color: t.textMuted, margin: '0' });
 const gateCss = css({
   display: 'grid',
@@ -245,7 +246,8 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   };
 }
 
-function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>) {
+/** `name` is the connection's name on the page (connectionName with the page's list: the distro only to tell two apart). */
+function ConnectionCard(handle: Handle<{ c: Connection; name: string; onChanged: () => void }>) {
   const s = services(handle);
   let confirming = false;
   let testing = false;
@@ -360,8 +362,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
       >
         <header mix={head}>
           {brandKey(c.adapter) ? <BrandLogo id={c.adapter} size={32} /> : <Avatar id={c.adapter} name={c.adapter} size={32} square />}
-          {inWSL ? <BrandLogo id={distroBrand(c.distro)} size={24} label /> : null}
-          <h2>{connectionName(c)}</h2>
+          <h2>{handle.props.name}</h2>
           <Badge tone={statusTone(c.status)}>{c.status}</Badge>
           <Badge tone={c.usable ? 'ok' : 'warn'} title="Usable means the CLI is ready and every notice below is accepted">
             {c.usable ? 'usable' : 'not usable yet'}
@@ -369,7 +370,11 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
         </header>
         <dl mix={kv}>
           <dt>Runs</dt>
-          <dd>{runsText(c)}</dd>
+          {/* the distro is named here, in the card's details, not in its name (the owner: "we don't need to see the Ubuntu") */}
+          <dd mix={inWSL ? runsCss : undefined}>
+            {inWSL ? <BrandLogo id={distroBrand(c.distro)} size={16} label /> : null}
+            {runsText(c)}
+          </dd>
           <dt>Installed</dt>
           <dd>{c.installed ? 'yes' : 'no'}</dd>
           {c.version ? (
@@ -539,14 +544,14 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
   };
 }
 
-/** One connection on the overview: the CLI's logo, its name (with the distro for a WSL install), what it is and its state. */
-function ConnectionTile(handle: Handle<{ c: Connection; selected: boolean; onSelect: () => void }>) {
+/** One connection on the overview: the CLI's logo, its name ("Claude Code WSL" for a WSL install), what it is and its state. */
+function ConnectionTile(handle: Handle<{ c: Connection; name: string; selected: boolean; onSelect: () => void }>) {
   return () => {
-    const { c, selected, onSelect } = handle.props;
+    const { c, name, selected, onSelect } = handle.props;
     const st = connectionState(c);
     return (
       <Tile
-        title={connectionName(c)}
+        title={name}
         logo={c.adapter}
         icon={Terminal}
         blurb={connectionBlurb(c)}
@@ -589,11 +594,17 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
         {list.length > 0 ? (
           <ul mix={tileGrid} aria-label="Agent CLIs">
             {list.map((c) => (
-              <ConnectionTile key={connectionKey(c)} c={c} selected={connectionKey(c) === key} onSelect={() => ((selected = connectionKey(c)), void handle.update())} />
+              <ConnectionTile
+                key={connectionKey(c)}
+                c={c}
+                name={connectionName(c, list)}
+                selected={connectionKey(c) === key}
+                onSelect={() => ((selected = connectionKey(c)), void handle.update())}
+              />
             ))}
           </ul>
         ) : null}
-        {open ? <ConnectionCard key={connectionKey(open)} c={open} onChanged={q.reload} /> : null}
+        {open ? <ConnectionCard key={connectionKey(open)} c={open} name={connectionName(open, list)} onChanged={q.reload} /> : null}
         <CliGateway />
       </Page>
     );

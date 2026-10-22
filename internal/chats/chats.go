@@ -939,11 +939,7 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 			}
 			c.Adapter, c.WSLDistro, c.Cwd = place.adapter, place.distro, place.cwd
 			reset = true
-			where := adapterName(c.Adapter)
-			if c.WSLDistro != "" {
-				where += " in " + c.WSLDistro + " (WSL)"
-			}
-			notes = append(notes, "Now runs with "+where+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
+			notes = append(notes, "Now runs with "+cliName(c.Adapter, c.WSLDistro)+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
 		}
 		if skills != nil && !sameSkills(c.Skills, *skills) {
 			c.Skills = *skills
@@ -1032,6 +1028,15 @@ func adapterName(id string) string {
 		return "Claude Code"
 	}
 	return id
+}
+
+// cliName is the chat's CLI as the app names it: "Claude Code", or "Claude Code WSL" for its install inside a WSL distro
+// (the distro is not part of the name, as on the Connections page; the chat's folder, a \\wsl.localhost path, names it).
+func cliName(adapter, distro string) string {
+	if distro != "" {
+		return adapterName(adapter) + " WSL"
+	}
+	return adapterName(adapter)
 }
 
 func sameSkills(a, b []SkillRef) bool {

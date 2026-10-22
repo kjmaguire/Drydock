@@ -27,7 +27,7 @@ import { ChatAsks } from './chat-asks.tsx';
 import type { ComposerFile } from './chat-composer.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
-import { adapterLabel, chatTitle, chatWhere, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
+import { adapterLabel, chatCliText, chatTitle, chatWhere, propsChips, RETRY_TEXT, shortPath, skipsApprovals, startsGroup } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
 const titleBtn = css({
@@ -399,9 +399,9 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             testId="chat-settings"
             trigger={(mix) => (
               <button type="button" mix={[chipsBtn, mix]} aria-label="Chat settings" aria-expanded={settingsOpen ? 'true' : 'false'} title="Change the model, effort, permission mode or history access">
-                <span mix={chipCss} data-testid="chip-adapter">
+                <span mix={chipCss} data-testid="chip-adapter" title={chatWhere(chat) || undefined}>
                   <Avatar id={chat.adapter} name={adapterLabel(chat.adapter)} size={16} kind="agent" />
-                  {chat.wslDistro ? `${adapterLabel(chat.adapter)} ${chatWhere(chat)}` : adapterLabel(chat.adapter)}
+                  {chatCliText(chat)}
                 </span>
                 <span mix={chipCss} data-testid="chip-model">
                   {chat.model || 'default model'}

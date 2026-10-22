@@ -23,7 +23,7 @@ import { AddPrebuilt } from './add-prebuilt.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { AgentEditor, AgentForm, FromTemplate, RemoveAgent } from './agent-forms.tsx';
 import { CapabilityList } from './fields.tsx';
-import { CAP_LABEL, crewFigures, currentTask, doing, presenceWords, purposeExcerpt, runsWhere, skillCount, sortAdapters } from './team.ts';
+import { CAP_LABEL, crewFigures, currentTask, doing, presenceWords, purposeExcerpt, runsWhere, runsWhereTitle, skillCount, sortAdapters } from './team.ts';
 
 const figuresCss = css({
   display: 'grid',
@@ -302,7 +302,11 @@ export function TeamScreen(handle: Handle<{ onNavigate?: (href: string) => void 
                           effort <b>{a.effort}</b>
                         </span>
                       ) : null}
-                      {where ? <span data-testid="agent-runs">{where}</span> : null}
+                      {where ? (
+                        <span data-testid="agent-runs" title={runsWhereTitle(a)}>
+                          {where}
+                        </span>
+                      ) : null}
                     </div>
                     <span class="skills" data-testid="agent-skill-count" data-none={skills.data && n === 0 ? 'true' : undefined}>
                       {skills.data ? (n === 0 ? 'No skill yet' : plural(n, 'skill')) : ''}

@@ -132,7 +132,8 @@ describe('Team: purpose, model and effort', () => {
     expect(card.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_1');
     expect(card.querySelector('h3')!.textContent).toBe('Pay');
     await waitFor(() => expect(card.querySelector('.now')!.textContent).toContain('Running tests for webhook retries'), r);
-    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('in WSL Ubuntu');
+    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('in WSL');
+    expect(card.querySelector('[data-testid="agent-runs"]')!.getAttribute('title')).toBe('Runs inside the WSL distro Ubuntu');
     expect(r.$('h1')!.textContent).toBe('Crew');
     // without presence the card says the agent rests, in words
     cleanup();

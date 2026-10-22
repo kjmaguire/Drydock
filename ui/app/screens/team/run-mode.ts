@@ -15,10 +15,14 @@ export function parseRunMode(v: string): { runMode: string; wslDistro: string } 
   return { runMode: v === 'native' ? 'native' : '', wslDistro: '' };
 }
 
-/** "In WSL: Ubuntu", with what the last check found about Claude Code there. */
-export function distroLabel(d: WSLDistroInfo): string {
-  let s = `In WSL: ${d.name}`;
-  if (d.default) s += ' (default distro)';
+/**
+ * "In WSL", with what the last check found about Claude Code there. The distro is named only when there are several to choose
+ * from (`several`): "In WSL: Ubuntu (default distro)"; with one, its name tells nothing (the owner: "we don't need to see the
+ * Ubuntu").
+ */
+export function distroLabel(d: WSLDistroInfo, several: boolean): string {
+  let s = several ? `In WSL: ${d.name}` : 'In WSL';
+  if (several && d.default) s += ' (default distro)';
   if (d.probed && !d.claude) s += ' - Claude Code not found there';
   else if (d.probed && d.signedIn === false) s += ' - not signed in there';
   return s;

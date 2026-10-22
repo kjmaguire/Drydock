@@ -14,6 +14,7 @@ import {
   adapterOptionText,
   adapterUnavailable,
   chatChoices,
+  chatCliText,
   chatWhere,
   compactNumber,
   costText,
@@ -25,6 +26,7 @@ import {
   sortChatAdapters,
   startsGroup,
   toolInputText,
+  wslChoiceLabel,
   wslUnavailable,
 } from './chats.ts';
 
@@ -80,7 +82,7 @@ describe('chats helpers', () => {
     expect(adapterOptionText(adapter('codex', 'unauthenticated'))).toBe('Codex (not signed in)');
   });
 
-  it('offers each install of a CLI inside WSL as its own choice, labelled with its distro (decision P41)', () => {
+  it('offers each install of a CLI inside WSL as its own choice, "Claude Code WSL", with the distro only to tell two apart (decision P41)', () => {
     const claude: AdapterInfo = { ...adapter('claude', 'ready', true, '2.1.295'), capabilities: { runModes: ['native', 'wsl'] } as AdapterInfo['capabilities'] };
     const cline = adapter('cline', 'ready', true, '3.0.70');
     const wslConn = (distro: string, over: Partial<Connection> = {}): Connection =>
@@ -96,9 +98,9 @@ describe('chats helpers', () => {
     const choices = chatChoices([cline, claude], conns);
     expect(choices.map((c) => [c.value, c.text, c.wslDistro, c.why])).toEqual([
       ['claude', 'Claude Code on Windows 2.1.295', '', ''],
-      ['claude@wsl:Debian', 'Claude Code in Debian (WSL) (not signed in)', 'Debian', 'not signed in'],
-      ['claude@wsl:Kali', 'Claude Code in Kali (WSL) 2.1.297', 'Kali', ''],
-      ['claude@wsl:Ubuntu', 'Claude Code in Ubuntu (WSL) 2.1.296', 'Ubuntu', ''],
+      ['claude@wsl:Debian', 'Claude Code WSL (Debian) (not signed in)', 'Debian', 'not signed in'],
+      ['claude@wsl:Kali', 'Claude Code WSL (Kali) 2.1.297', 'Kali', ''],
+      ['claude@wsl:Ubuntu', 'Claude Code WSL (Ubuntu) 2.1.296', 'Ubuntu', ''],
       ['cline', 'Cline 3.0.70', '', ''],
     ]);
     expect(choices[2]!.adapter).toBe(claude);
@@ -110,7 +112,11 @@ describe('chats helpers', () => {
     expect(pickChatChoice(choices, 'claude@wsl:Debian')?.value).toBe('claude');
     expect(pickChatChoice(choices, '')?.value).toBe('claude');
     const noWindows = chatChoices([{ ...claude, detection: { adapter: 'claude', installed: false, status: 'not_installed' } }], [wslConn('Ubuntu')]);
-    expect(noWindows.map((c) => c.text)).toEqual(['Claude Code on Windows (not installed)', 'Claude Code in Ubuntu (WSL) 2.1.296']);
+    // one distro with the CLI: no distro in the name (the owner: "we don't need to see the Ubuntu")
+    expect(noWindows.map((c) => c.text)).toEqual(['Claude Code on Windows (not installed)', 'Claude Code WSL 2.1.296']);
+    expect(chatChoices([claude], [wslConn('Ubuntu'), wslConn('Alpine', { installed: false, status: 'not_installed' })]).map((c) => c.text)).toEqual(['Claude Code on Windows 2.1.295', 'Claude Code WSL 2.1.296']);
+    expect(wslChoiceLabel('claude', 'Ubuntu')).toBe('Claude Code WSL');
+    expect(wslChoiceLabel('claude', 'Ubuntu', true)).toBe('Claude Code WSL (Ubuntu)');
     expect(pickChatChoice(noWindows, '')?.value).toBe('claude@wsl:Ubuntu');
     expect(pickChatChoice([], '')).toBeUndefined();
 
@@ -118,7 +124,9 @@ describe('chats helpers', () => {
     expect(wslUnavailable({ status: 'ready', gates: [{ id: 'g', text: 't', acked: false }] })).toBe('a notice to accept on the Connections page');
     // degraded (interop off, an untested version, a failed Test) is offered, as a degraded install on Windows is
     expect(wslUnavailable({ status: 'degraded' })).toBe('');
-    expect(chatWhere({ wslDistro: 'Ubuntu' })).toBe('in Ubuntu (WSL)');
+    expect(chatWhere({ wslDistro: 'Ubuntu' })).toBe('Runs inside the WSL distro Ubuntu');
+    expect(chatCliText({ adapter: 'claude', wslDistro: 'Ubuntu' })).toBe('Claude Code WSL');
+    expect(chatCliText({ adapter: 'claude', wslDistro: '' })).toBe('Claude Code');
     expect(chatWhere({ wslDistro: '' })).toBe('');
   });
 

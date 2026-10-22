@@ -22,9 +22,12 @@ describe('run mode helpers', () => {
   });
 
   it('a distro says what the last check found about Claude Code there', () => {
-    expect(distroLabel({ name: 'Ubuntu', default: true, probed: false, interop: true })).toBe('In WSL: Ubuntu (default distro)');
-    expect(distroLabel({ name: 'Debian', probed: true, claude: '', interop: true })).toBe('In WSL: Debian - Claude Code not found there');
-    expect(distroLabel({ name: 'Debian', probed: true, claude: '/home/k/.local/bin/claude', signedIn: false, interop: true })).toBe('In WSL: Debian - not signed in there');
-    expect(distroLabel({ name: 'Debian', probed: true, claude: '/x', signedIn: true, interop: true })).toBe('In WSL: Debian');
+    expect(distroLabel({ name: 'Ubuntu', default: true, probed: false, interop: true }, true)).toBe('In WSL: Ubuntu (default distro)');
+    expect(distroLabel({ name: 'Debian', probed: true, claude: '', interop: true }, true)).toBe('In WSL: Debian - Claude Code not found there');
+    expect(distroLabel({ name: 'Debian', probed: true, claude: '/home/k/.local/bin/claude', signedIn: false, interop: true }, true)).toBe('In WSL: Debian - not signed in there');
+    expect(distroLabel({ name: 'Debian', probed: true, claude: '/x', signedIn: true, interop: true }, true)).toBe('In WSL: Debian');
+    // the only distro is not named (the owner: "we don't need to see the Ubuntu")
+    expect(distroLabel({ name: 'Ubuntu', default: true, probed: true, claude: '/x', signedIn: true, interop: true }, false)).toBe('In WSL');
+    expect(distroLabel({ name: 'Ubuntu', default: true, probed: true, claude: '', interop: true }, false)).toBe('In WSL - Claude Code not found there');
   });
 });

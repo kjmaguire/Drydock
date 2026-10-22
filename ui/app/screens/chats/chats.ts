@@ -150,8 +150,12 @@ export function adapterOptionText(a: AdapterInfo, where = ''): string {
   return a.detection.version ? `${name} ${a.detection.version}` : name;
 }
 
-/** "Claude Code in Ubuntu (WSL)": a CLI installed inside a WSL distro, its own Connection (decision P41). */
-export const wslChoiceLabel = (adapter: string, distro: string): string => `${adapterLabel(adapter)} in ${distro} (WSL)`;
+/**
+ * "Claude Code WSL": a CLI installed inside a WSL distro, its own Connection (decision P41), named as the Connections page names
+ * it, without the distro (the owner: "we don't need to see the Ubuntu"). `named` (the CLI is in more than one distro) adds the
+ * distro so the choices can be told apart: "Claude Code WSL (Debian)".
+ */
+export const wslChoiceLabel = (adapter: string, distro: string, named = false): string => `${adapterLabel(adapter)} WSL${named ? ` (${distro})` : ''}`;
 
 /**
  * Why a CLI install inside a WSL distro cannot start a chat, or '' when it can: as for one on Windows (adapterUnavailable), a
@@ -180,7 +184,7 @@ export interface ChatChoice {
  * The Agent CLI choices of the new chat dialog: every adapter on Windows (sortChatAdapters order), each followed by its
  * installs inside WSL distros (the WSL Connections the Connections page shows, by distro). A distro without the CLI is not
  * offered; one that cannot start a chat (wslUnavailable) is offered disabled with the reason. With an install in WSL, the
- * Windows one says "on Windows".
+ * Windows one says "on Windows". A WSL choice names its distro only when the CLI is offered from more than one.
  */
 export function chatChoices(adapters: readonly AdapterInfo[], connections: readonly Connection[]): ChatChoice[] {
   const inWSL = connections.filter((c) => c.runMode === 'wsl' && !!c.distro && c.installed && c.status !== 'not_installed');
@@ -190,7 +194,7 @@ export function chatChoices(adapters: readonly AdapterInfo[], connections: reado
     out.push({ value: a.id, adapter: a, wslDistro: '', text: adapterOptionText(a, mine.length ? 'on Windows' : ''), why: adapterUnavailable(a) });
     for (const c of mine) {
       const why = wslUnavailable(c);
-      const label = wslChoiceLabel(a.id, c.distro!);
+      const label = wslChoiceLabel(a.id, c.distro!, mine.length > 1);
       out.push({ value: c.key || `${a.id}@wsl:${c.distro}`, adapter: a, wslDistro: c.distro!, text: why ? `${label} (${why})` : c.version ? `${label} ${c.version}` : label, why });
     }
   }
@@ -203,8 +207,11 @@ export function pickChatChoice(choices: readonly ChatChoice[], picked: string): 
   return ok.find((c) => c.value === picked) ?? ok.find((c) => c.adapter.id === 'claude') ?? ok[0];
 }
 
-/** Where a chat's CLI runs, for its header: "in Ubuntu (WSL)", or '' on Windows. */
-export const chatWhere = (c: Pick<Chat, 'wslDistro'>): string => (c.wslDistro ? `in ${c.wslDistro} (WSL)` : '');
+/** The chat's CLI for its header: "Claude Code", or "Claude Code WSL" inside a distro (which distro: chatWhere, its tooltip). */
+export const chatCliText = (c: Pick<Chat, 'adapter' | 'wslDistro'>): string => (c.wslDistro ? `${adapterLabel(c.adapter)} WSL` : adapterLabel(c.adapter));
+
+/** Where a chat's CLI runs, in words for a tooltip: "Runs inside the WSL distro Ubuntu", or '' on Windows. */
+export const chatWhere = (c: Pick<Chat, 'wslDistro'>): string => (c.wslDistro ? `Runs inside the WSL distro ${c.wslDistro}` : '');
 
 /** Split a search snippet into plain and matched parts ([brackets] mark the matches). */
 export function snippetParts(snippet: string): { text: string; hit: boolean }[] {

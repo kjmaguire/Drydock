@@ -127,7 +127,7 @@ describe("an agent's page", () => {
     expect(r.$('[data-testid="agent-page-purpose"]')!.textContent).toContain('Owns webhooks and invoices');
     await waitFor(() => expect(chips(r)).toContain('Working on #12'), r);
     await waitFor(() => expect(chips(r)).toContain('guarded'), r);
-    expect(chips(r)).toEqual(['Working on #12', 'Claude Code · sonnet', 'effort: high', 'runs in WSL Ubuntu', 'guarded']);
+    expect(chips(r)).toEqual(['Working on #12', 'Claude Code · sonnet', 'effort: high', 'runs in WSL', 'guarded']);
     expect(r.$('[data-testid="agent-chip"][data-live="true"]')!.getAttribute('href')).toBe('/task/t12');
     expect(r.$('[data-testid="agent-chip"][data-isolation="guarded"]')!.getAttribute('title')).toContain('acceptEdits');
   });
