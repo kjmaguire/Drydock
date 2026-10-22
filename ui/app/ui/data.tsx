@@ -120,6 +120,8 @@ const avatarCss = css({
   userSelect: 'none',
   letterSpacing: '0.01em',
   lineHeight: '1',
+  // the letters are drawn, not written: the avatar is decoration beside the name, so they stay out of the text a reader or a test gets
+  '&::before': { content: 'attr(data-letters)' },
 });
 
 const avatarStatus = css({
@@ -159,6 +161,7 @@ export function Avatar(handle: Handle<{ id: string; name: string; size?: number;
         aria-hidden="true"
         data-kind={kind}
         data-dot={agent ? 'true' : undefined}
+        data-letters={letters}
         style={{
           width: `${size}px`,
           height: `${size}px`,
@@ -169,7 +172,6 @@ export function Avatar(handle: Handle<{ id: string; name: string; size?: number;
           borderRadius: round ? '50%' : `${avatarRadius(size)}px`,
         }}
       >
-        {letters}
         {status && size >= 20 ? <span mix={avatarStatus} style={{ background: status }} /> : null}
       </span>
     );

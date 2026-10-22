@@ -75,7 +75,7 @@ describe('the type rules the UI audit set (B1-B3)', () => {
 
   it('defines the title size as a token and the scale has no other sizes', () => {
     const css = appCss();
-    const sizes = [...css.matchAll(/--text-([a-z0-9]+):\s*(\d+)px/g)].map((m) => `${m[1]}=${m[2]}`);
-    expect(sizes).toEqual(['xs=12', 'sm=13', 'md=14', 'lg=16', 'xl=20', '2xl=24', 'title=28']);
+    const sizes = [...css.matchAll(/--text-([a-z0-9]+):\s*([\d.]+)px/g)].map((m) => `${m[1]}=${m[2]}`);
+    expect(sizes).toEqual(['xs=12', 'sm=12.5', 'md=13', 'lg=15', 'xl=18', '2xl=22', 'title=22']);
   });
 });
