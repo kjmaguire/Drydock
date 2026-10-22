@@ -77,9 +77,10 @@ test("workspace pages name no project; a project's own settings are pills of its
   await expect(sidebar(page).getByTestId('nav-settings')).not.toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0);
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
-  await expect(page.getByTestId('project-mcp')).toBeVisible();
-  await expect(page.getByTestId('add-from-library')).toBeVisible();
-  await expect(page.getByTestId('project-app-sync')).toBeVisible();
+  // laid out like the workspace's Integrations page: Services, then Agent tools, each a group of tiles
+  await expect(page.getByTestId('project-app-sync').getByRole('heading', { name: 'Services', level: 2 })).toBeVisible();
+  await expect(page.getByTestId('project-mcp').getByRole('heading', { name: 'Agent tools', level: 2 })).toBeVisible();
+  await expect(page.getByTestId('add-from-library')).toHaveCount(0);
 
   // the workspace's Library and Integrations name no project and none of its agents
   for (const nav of ['nav-library', 'nav-integrations']) {

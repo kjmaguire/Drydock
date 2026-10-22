@@ -1,14 +1,15 @@
 // A project's Integrations page (/project/integrations, in the project sidebar's Project group; decision P51 keeps everything of
 // one project off the workspace pages). What the project reaches outside Drydock: the tool calls of its agents waiting for the
-// human's approval, its MCP servers with which of its agents may use each one (ServerCard), adding a server the workspace has
-// connected (your own, or one built into Drydock that you connected) from the library, and the app-sync connections assigned to
-// it: what each imports, its items, rules and outbound writes (assignments.tsx). Services and servers are connected once for the
-// workspace, on the workspace's Integrations page and in the Library; this page only puts them into the project. Laid out like
-// Home and the workspace's Integrations page (P59): groups under a heading, the connected services as tiles (logo, name, the
-// scope this project imports, a state badge) with the selected one's panel under them.
+// human's approval, the app-sync connections assigned to it (what each imports, its items, rules and outbound writes:
+// assignments.tsx), and its agent tools: the MCP servers the workspace has connected, with which of its agents may use each one
+// (ProjectServers in screens/mcp/mcp-screen.tsx; one it does not have yet is added from its tile). Services and servers are
+// connected once for the workspace, on the workspace's Integrations page and in the Library; this page only puts them into the
+// project. Laid out like the workspace's Integrations page (P59, and on the owner's request of 2026-10-22 for the servers too):
+// Services, then Agent tools, each a grid of tiles (logo, name, what it is, what this project has of it, a state badge) with the
+// selected tile's panel under its grid.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { Blocks, CirclePlus, FolderPlus, Plug, ShieldAlert } from 'lucide';
+import { Blocks, FolderPlus, Plug, ShieldAlert } from 'lucide';
 import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
@@ -18,12 +19,12 @@ import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { card, Page, Section, stack } from '../../ui/layout.tsx';
+import { card, Page, Section } from '../../ui/layout.tsx';
 import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
-import { AddFromLibrary, Approvals, ServerCard } from '../mcp/mcp-screen.tsx';
+import { Approvals, ProjectServers } from '../mcp/mcp-screen.tsx';
 import { AssignForm, AssignmentRow, head, type OpenTask } from './assignments.tsx';
-import { kindLabel, projectConnState, statusTone } from './integrations.ts';
+import { KINDS, kindLabel, projectConnState, statusTone } from './integrations.ts';
 import { plural } from '../../lib/format.ts';
 
 const defaultOpen: OpenTask = (href) => void navigate(href);
@@ -87,12 +88,6 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
   watch(handle, s.project);
   const conns = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
   const kinds = query(handle, { load: () => s.client.integrationKinds() });
-  const servers = query(handle, {
-    load: () => s.client.mcpServerList(s.workspace.projectId!),
-    key: () => s.workspace.projectId,
-    enabled: () => !!s.workspace.projectId,
-    when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'),
-  });
   // the service whose panel is open: undefined = the first one assigned to this project (else the first), '' = none
   let selected: string | undefined;
 
@@ -114,7 +109,6 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
       );
     }
     const agents = s.project.agentList;
-    const inProject = servers.data ?? [];
     const list: IntegrationView[] = conns.data ?? [];
     const mine = (c: IntegrationView) => (c.assignments ?? []).some((a) => a.projectId === project.id);
     const current = selected === undefined ? (list.find(mine) ?? list[0]) : list.find((c) => c.id === selected);
@@ -136,31 +130,10 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
         <div mix={sectionsCss}>
           <Approvals projectId={project.id} agents={agents} />
           <Section
-            label="MCP servers in this project"
-            testId="project-mcp"
-            title="MCP servers"
-            description="Which of this project's agents may use each connected server. A server nobody was granted is never reached; every tool not marked read-only waits for your approval."
-          >
-            <ErrorNote error={servers.error} what="Could not load the servers" />
-            {servers.loading && !servers.data ? <Loading /> : null}
-            {servers.data && inProject.length === 0 ? (
-              <p mix={emptyLine} data-testid="no-project-servers">
-                <Icon icon={CirclePlus} size={14} />
-                <strong>No MCP servers in this project yet.</strong> Add a connected server from the library below.
-              </p>
-            ) : null}
-            <div mix={stack}>
-              {inProject.map((srv) => (
-                <ServerCard key={srv.id} s={srv} agents={agents} onChanged={servers.reload} />
-              ))}
-            </div>
-          </Section>
-          <AddFromLibrary projectId={project.id} have={inProject.map((x) => x.id)} onAdded={servers.reload} />
-          <Section
-            label="App sync"
+            label="Services"
             testId="project-app-sync"
-            title="App sync"
-            description={`The services connected for the workspace, and what ${project.name} imports from each, as untrusted text: its scope, items, rules and writes back. Choose a service to open it.`}
+            title="Services"
+            description={`The services connected for the workspace, and what ${project.name} imports from each by app sync, as untrusted text: its scope, items, rules and writes back. Choose a service to open it.`}
           >
             <ErrorNote error={conns.error ?? kinds.error} what="Could not load the services" />
             {conns.loading && !conns.data ? <Loading /> : null}
@@ -180,7 +153,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
                       key={c.id}
                       title={info?.label ?? kindLabel(c.kind)}
                       logo={c.kind}
-                      blurb={info?.blurb}
+                      blurb={info?.blurb ?? KINDS.find((k) => k.kind === c.kind)?.blurb}
                       state={st.text}
                       tone={st.tone}
                       badge={st.badge}
@@ -204,6 +177,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
               />
             ) : null}
           </Section>
+          <ProjectServers projectId={project.id} agents={agents} />
         </div>
       </Page>
     );

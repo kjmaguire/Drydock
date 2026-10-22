@@ -6,8 +6,9 @@ import { appUrl, workspaceNav } from './helpers';
 
 test('CI runners: a public repository is refused; a Linux runner runs a job; a Windows one needs the person to accept it; off and remove unregister', async ({ page }) => {
   await page.goto(appUrl());
-  await workspaceNav(page, 'nav-connections');
-  const section = page.getByTestId('ci-runners-section');
+  // the runners are on the GitHub page (they moved from Connections, 2026-10-22)
+  await workspaceNav(page, 'nav-github');
+  const section = page.getByTestId('github-page').getByTestId('ci-runners-section');
   await expect(section).toBeVisible();
   await expect(section.getByTestId('runner-private-only')).toContainText('Private repositories only');
   await expect(section.locator('[data-testid=runner-kind][data-kind=linux]')).toHaveAttribute('data-available', 'true');

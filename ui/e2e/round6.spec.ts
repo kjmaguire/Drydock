@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, choose, createAgent, createProject, workspaceNav, projectNav, switchProject } from './helpers';
+import { appUrl, choose, createAgent, createProject, openTile, workspaceNav, projectNav, switchProject } from './helpers';
 
 // Round 6: the Library, against the real Go core. An MCP server is connected once, for the workspace, in the Library (the dialog
 // lists the servers built into Drydock first, then a custom server); a project adds it from its own Integrations page and grants
@@ -93,15 +93,21 @@ test("Library: connect an MCP server once; a project adds it and grants it to an
   await switchProject(page, 'lib-a');
   await projectNav(page, 'nav-project-integrations');
   await expect(page.getByTestId('project-integrations')).toBeVisible();
-  const lib = page.getByTestId('add-from-library');
+  // the connected servers are tiles, like the workspace's Integrations page: Test server is not in the project yet
+  const tstTile = page.locator('[data-testid="project-server-tile"][data-server="tst"]');
+  await expect(tstTile).toHaveAttribute('data-added', 'false');
+  await openTile(tstTile);
+  const lib = page.locator('[data-testid="library-server"][data-server="tst"]');
   await lib.getByRole('button', { name: 'Add Test server to this project' }).click();
   const onA = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
   await expect(onA).toBeVisible();
-  await expect(lib.locator('[data-testid="library-server"][data-server="tst"]')).toHaveCount(0);
+  await expect(lib).toHaveCount(0);
+  await expect(tstTile).toHaveAttribute('data-added', 'true');
   await onA.getByLabel('Pay may use Test server').check();
   await expect(onA.getByLabel('Pay may use Test server')).toBeChecked();
   await expect(onA.getByLabel('Rev may use Test server')).not.toBeChecked();
   await expect(onA.getByText('reads only')).toHaveCount(1);
+  await expect(tstTile).toContainText('Pay may use it');
 
   // the template joins lib-b's team from its Team page, with the server it names
   await switchProject(page, 'lib-b');
@@ -112,6 +118,7 @@ test("Library: connect an MCP server once; a project adds it and grants it to an
 
   // lib-b's Integrations page agrees: granting put the server into lib-b, for Payments dev only; lib-a's grants are not here
   await projectNav(page, 'nav-project-integrations');
+  await openTile(page.locator('[data-testid="project-server-tile"][data-server="tst"]'));
   const onB = page.getByTestId('mcp-server').filter({ hasText: 'Test server' });
   await expect(onB.getByLabel('Payments dev may use Test server')).toBeChecked();
   await expect(onB.getByLabel('Pay may use Test server')).toHaveCount(0);

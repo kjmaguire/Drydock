@@ -1,11 +1,12 @@
-// MCP servers of one project: which connected servers the project has (ServerCard), which of its agents may use each one, the
-// tool calls waiting for the human's approval (Approvals) and putting a connected server into the project (AddFromLibrary).
-// They sit on the project's own Integrations page (/project/integrations, screens/integrations/project-integrations-screen.tsx);
-// servers are connected once for the workspace, in the Library or on the workspace's Integrations page. A server nobody was
-// granted is never reached.
+// MCP servers of one project: the tool calls waiting for the human's approval (Approvals) and the project's agent tools
+// (ProjectServers): a tile per connected server, laid out like the workspace's Integrations tiles (P59), the ones the project
+// has first. The selected tile opens its panel under the grid: which of the project's agents may use the server (ServerCard), or
+// Add to this project for one it does not have yet (LibraryServerPanel). They sit on the project's own Integrations page
+// (/project/integrations, screens/integrations/project-integrations-screen.tsx); servers are connected once for the workspace,
+// in the Library or on the workspace's Integrations page. A server nobody was granted is never reached.
 
 import { css, on, type Handle } from 'remix/component';
-import { BadgeCheck, FolderPlus, Globe, Plug, Power, ShieldAlert } from 'lucide';
+import { BadgeCheck, CirclePlus, FolderPlus, Globe, Plug, Power, ShieldAlert } from 'lucide';
 import type { McpApproval, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
@@ -17,8 +18,10 @@ import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { card, listCard, Section } from '../../ui/layout.tsx';
+import { card, Section } from '../../ui/layout.tsx';
+import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
+import { projectServerState, serverBlurb } from '../integrations/integrations.ts';
 import { ShownNotes, Targets } from '../shared/approval-text.tsx';
 import { ReachNote } from './command-line.tsx';
 import { whereOf } from './server-input.ts';
@@ -97,12 +100,8 @@ const agentList = css({
 const grantRow = css({ display: 'flex', alignItems: 'center', gap: t.s2, cursor: 'pointer', minWidth: '0' });
 const approvalCard = css({ borderColor: `color-mix(in srgb, ${t.warning} 45%, ${t.border})` });
 const argsCss = css({ margin: '0', maxHeight: '240px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
-const libRow = css({
-  gap: t.s3,
-  '& .who': { display: 'grid', flex: '1', minWidth: '0' },
-  '& .who strong': { fontWeight: '600' },
-  '& .who > span': { fontSize: t.textSm, overflowWrap: 'anywhere' },
-});
+// the selected tile's panel, right under the grid (the same card as the workspace page's panel)
+const panelCss = css({ borderColor: t.borderStrong });
 
 /** The tool calls of this project's agents that wait for the human; nothing while there are none. */
 export function Approvals(handle: Handle<{ projectId: string; agents: readonly Agent[] }>) {
@@ -192,7 +191,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
     // a grant lists the server's tools first when they were never listed, and for a program that means starting it
     const startsOnGrant = srv.tools.length === 0 && srv.discoveredAt === 0;
     return (
-      <article mix={[card, cardBody]} data-testid="mcp-server" data-server={srv.id}>
+      <article mix={[card, cardBody, panelCss]} data-testid="mcp-server" data-server={srv.id}>
         <header mix={cardHead}>
           <ServerMark s={srv} />
           <h3>{srv.display}</h3>
@@ -319,65 +318,131 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
   };
 }
 
-/**
- * The workspace's connected servers (the library: the built-in servers you connected and your own) that this project does not
- * have yet, each with its logo and Add to this project.
- */
-export function AddFromLibrary(handle: Handle<{ projectId: string; have: readonly string[]; onAdded: () => void }>) {
+/** A connected server this project does not have yet, as the panel under its tile: what it is, and Add to this project. */
+function LibraryServerPanel(handle: Handle<{ x: McpLibraryServer; projectId: string; onAdded: (id: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
-  const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
 
   return () => {
-    const { projectId, have, onAdded } = handle.props;
+    const { x, projectId, onAdded } = handle.props;
     const ro = s.workspace.license;
-    const all = lib.data ?? [];
-    const options = all.filter((x) => !have.includes(x.id));
+    return (
+      <article mix={[card, cardBody, panelCss]} data-testid="library-server" data-server={x.id}>
+        <header mix={cardHead}>
+          <ServerMark s={x} />
+          <h3>{x.display}</h3>
+          <code mix={faint}>{x.id}</code>
+          <span mix={faint}>{serverBlurb(x)}</span>
+        </header>
+        <ErrorNote error={act.error} what="Not added" />
+        <p mix={muted} style={{ margin: '0' }}>
+          Connected once for the whole workspace. Add it to this project, then tick which of its agents may use it.
+        </p>
+        <div mix={actionsRow}>
+          <Button
+            size="sm"
+            icon={FolderPlus}
+            disabled={act.busy !== '' || ro.readOnly}
+            title={ro.readOnly ? ro.reason : undefined}
+            aria-label={`Add ${x.display} to this project`}
+            mix={[
+              on('click', async () => {
+                const r = await act.run(`add-${x.id}`, () => s.client.mcpServerAdd(projectId, x.id));
+                if (r) onAdded(x.id);
+              }),
+            ]}
+          >
+            {act.busy === `add-${x.id}` ? 'Adding...' : 'Add to this project'}
+          </Button>
+        </div>
+      </article>
+    );
+  };
+}
+
+/**
+ * The project's agent tools, laid out like the workspace's Integrations tiles: one tile per connected server (the library: the
+ * built-in servers you connected and your own), the ones in this project first with who may use them, then the rest as "not
+ * added". The selected tile's panel opens under the grid.
+ */
+export function ProjectServers(handle: Handle<{ projectId: string; agents: readonly Agent[] }>) {
+  const s = services(handle);
+  const servers = query(handle, {
+    load: () => s.client.mcpServerList(handle.props.projectId),
+    key: () => handle.props.projectId,
+    when: (e) => e.type.startsWith('mcp.server') || e.type === 'mcp.access_changed' || e.type.startsWith('agent.'),
+  });
+  const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
+  // the server whose panel is open: undefined = the first in this project (else the first of the library), '' = none
+  let selected: string | undefined;
+
+  return () => {
+    const { projectId, agents } = handle.props;
+    const inProject = servers.data ?? [];
+    const rest = (lib.data ?? []).filter((x) => !inProject.some((p) => p.id === x.id));
+    const all: McpLibraryServer[] = [...inProject, ...rest];
+    const current = selected === undefined ? all[0] : all.find((x) => x.id === selected);
+    const mine = current && inProject.find((p) => p.id === current.id);
     return (
       <Section
-        label="Add a server from the library"
-        title="Add from the library"
-        description="The servers connected once for the whole workspace: the ones built into Drydock that you connected, and your own."
-        testId="add-from-library"
+        label="Agent tools"
+        testId="project-mcp"
+        title="Agent tools"
+        description="The MCP servers connected for the workspace, and which of this project's agents may use each. A server nobody was granted is never reached; every tool not marked read-only waits for your approval."
       >
-        <ErrorNote error={lib.error ?? act.error} what="Not added" />
-        {lib.loading && !lib.data ? <Loading /> : null}
-        {lib.data && options.length === 0 ? (
-          <p mix={[card, muted]} style={{ margin: '0' }}>
-            {all.length === 0 ? 'No servers are connected yet.' : 'Every connected server is already in this project.'} Connect servers once in the{' '}
-            <a href={routes.library.href()}>Library</a> or on the <a href={routes.integrations.href()}>Integrations</a> page, then add them here.
+        <ErrorNote error={servers.error ?? lib.error} what="Could not load the servers" />
+        {(servers.loading && !servers.data) || (lib.loading && !lib.data) ? <Loading /> : null}
+        {servers.data && lib.data && inProject.length === 0 ? (
+          <p mix={emptyLine} data-testid="no-project-servers">
+            <Icon icon={CirclePlus} size={14} />
+            <strong>No MCP servers in this project yet.</strong>
+            {rest.length > 0 ? (
+              'Choose a connected server to add it.'
+            ) : (
+              <span>
+                No servers are connected yet. Connect servers once in the <a href={routes.library.href()}>Library</a> or on the{' '}
+                <a href={routes.integrations.href()}>Integrations</a> page, then add them here.
+              </span>
+            )}
           </p>
         ) : null}
-        {options.length > 0 ? (
-          <ul mix={listCard} aria-label="Connected servers this project does not have">
-            {options.map((x) => (
-              <li key={x.id} mix={libRow} data-testid="library-server" data-server={x.id}>
-                <ServerMark s={x} size={28} />
-                <span class="who">
-                  <strong>{x.display}</strong>
-                  <span mix={faint}>
-                    <code>{x.id}</code> · {x.catalogId ? 'built into Drydock' : 'your own'} · {x.tools.length > 0 ? `${x.tools.length} tool${x.tools.length === 1 ? '' : 's'}` : 'tools not found yet'}
-                  </span>
-                </span>
-                <Button
-                  size="sm"
-                  icon={FolderPlus}
-                  disabled={act.busy !== '' || ro.readOnly}
-                  title={ro.readOnly ? ro.reason : undefined}
-                  aria-label={`Add ${x.display} to this project`}
-                  mix={[
-                    on('click', async () => {
-                      const r = await act.run(`add-${x.id}`, () => s.client.mcpServerAdd(projectId, x.id));
-                      if (r) onAdded();
-                    }),
-                  ]}
-                >
-                  {act.busy === `add-${x.id}` ? 'Adding...' : 'Add to this project'}
-                </Button>
-              </li>
-            ))}
+        {all.length > 0 ? (
+          <ul mix={tileGrid} aria-label="MCP servers">
+            {all.map((x) => {
+              const p = inProject.find((y) => y.id === x.id);
+              const st = projectServerState(p, agents);
+              return (
+                <Tile
+                  key={x.id}
+                  title={x.display}
+                  logo={serverLogo(x) || undefined}
+                  icon={x.transport === 'http' ? Globe : Plug}
+                  blurb={serverBlurb(x)}
+                  state={st.text}
+                  tone={st.tone}
+                  badge={st.badge}
+                  selected={current?.id === x.id}
+                  onSelect={() => ((selected = current?.id === x.id ? '' : x.id), void handle.update())}
+                  testId="project-server-tile"
+                  data={{ server: x.id, added: String(!!p) }}
+                />
+              );
+            })}
           </ul>
+        ) : null}
+        {mine ? (
+          <ServerCard key={mine.id} s={mine} agents={agents} onChanged={servers.reload} />
+        ) : current ? (
+          <LibraryServerPanel
+            key={current.id}
+            x={current}
+            projectId={projectId}
+            onAdded={(id) => {
+              selected = id; // the added server opens, to tick who may use it
+              servers.reload();
+            }}
+          />
         ) : null}
       </Section>
     );

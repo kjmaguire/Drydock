@@ -81,7 +81,6 @@ function show(client: Partial<Client>) {
   // the MCP gateway's state (the panel below the tiles) is a TEST DOUBLE too: Claude verified, nothing else reported
   const gateway: Partial<Client> = {
     mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }),
-    runnersGet: async () => ({ kinds: [], devDrives: [], slots: [], minFreeBytes: 10 * 2 ** 30, max: 8 }),
   };
   const r = mount(<ConnectionsScreen />, testServices({ ...gateway, ...client }));
   return r;
@@ -526,6 +525,8 @@ describe('Connections page', () => {
     // after the tiles of the agent CLIs, on the same page
     const tiles = r.$('ul[aria-label="Agent CLIs"]')!;
     expect(tiles.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // the gateway is the last part: the CI runners are on the GitHub page now
+    expect(r.$('[data-testid="ci-runners-section"]')).toBeNull();
     const list = section.querySelector('[data-testid="cli-gateway"]') as HTMLElement;
     expect(list.querySelector('[data-adapter="claude"]')!.textContent).toContain('verified');
     expect(() => byLabel(list, 'Let claude use the gateway')).toThrow();

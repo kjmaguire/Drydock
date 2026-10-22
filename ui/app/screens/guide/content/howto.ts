@@ -73,7 +73,7 @@ export const HOWTO: readonly Topic[] = [
       },
       { p: 'A **rule** creates backlog tasks from matching items. Only you can create, change or enable a rule. A new rule starts disabled and in dry-run: it lists what it would create and creates nothing until you turn both on. Items with an injection risk of 3 or more are never created by a rule, and item text cannot set a rule parameter.' },
       { h: 'Agent tools (MCP servers)' },
-      { p: 'MCP servers give agents a vendor’s tools. Connect one once (here or in the [Library](/library)), add it to a project, and grant it per agent on that project’s Integrations page. Every tool not marked read-only waits for your approval, call by call. A project only ever reaches the servers it was given, and an agent only the servers you gave it.' },
+      { p: 'MCP servers give agents a vendor’s tools. Connect one once (here or in the [Library](/library)). Then, on a project’s Integrations page, choose its tile under **Agent tools**, add it to the project and tick which agents may use it. Every tool not marked read-only waits for your approval, call by call. A project only ever reaches the servers it was given, and an agent only the servers you gave it.' },
       { p: 'Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on [Connections](/connections). A server with a sign-in: after you save it, press **Sign in** on its card. Your browser opens the server’s own sign-in page and Drydock keeps the tokens in the Windows credential store.' },
     ],
     related: ['github', 'connect-cli', 'untrusted-text'],
@@ -182,6 +182,7 @@ export const HOWTO: readonly Topic[] = [
     keywords: ['runner', 'self-hosted', 'actions', 'ci', 'dev drive', 'windows'],
     body: [
       { p: 'GitHub Actions self-hosted runners let your private repositories run CI on this PC. Each runner takes one job; then its files are deleted and a fresh one waits. Runners only run CI and report the result to GitHub: when CI fails, Drydock’s task reads the failure, fixes it and pushes, as with GitHub’s own runners.' },
+      { p: 'Add, switch off and remove runners on the [GitHub](/github) page, under **CI runners**.' },
       { p: '**Private repositories only.** On a public repository anyone\u2019s pull request could run its own code on this PC, so Drydock refuses it. Windows jobs run on the PC in a fresh folder each (on a Dev Drive when there is one); Linux jobs run in a fresh container each.' },
       { note: 'Windows has no container for each job like Linux has. Use runners for repositories whose workflows you trust. A workflow an agent adds to a task branch runs here too once the branch is pushed; Drydock asks you before it pushes a branch that changes workflows, and shows which.', tone: 'warn' },
       { p: 'Runners are kept in Drydock’s own folder, on a trusted Dev Drive when one is found (Microsoft Defender scans a trusted Dev Drive in performance mode), or in the folder you chose.' },

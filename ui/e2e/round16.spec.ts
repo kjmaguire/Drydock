@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject, projectNav, workspaceNav } from './helpers';
+import { createAgent, createProject, openTile, projectNav, workspaceNav } from './helpers';
 
 // Round 16: the MCP connector cards (decision P43) on the Integrations page (decision P47), against the real Go core. The
 // harness adds one card to the built-in catalog, "Hosted tracker (test double)", whose server is internal/mcp/oauthfake: a
@@ -70,7 +70,11 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   // add it to the project from the project's Integrations page, where the connected built-in server is in the library
   await projectNav(page, 'nav-project-integrations', 'gallery-a');
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
-  const lib = page.getByTestId('add-from-library').getByTestId('library-server').filter({ hasText: 'Hosted tracker (test double)' });
+  const trkServer = page.getByTestId('project-server-tile').filter({ hasText: 'Hosted tracker (test double)' });
+  await expect(trkServer).toHaveAttribute('data-added', 'false');
+  await expect(trkServer).toContainText('built into Drydock');
+  await openTile(trkServer);
+  const lib = page.getByTestId('library-server').filter({ hasText: 'Hosted tracker (test double)' });
   await expect(lib).toContainText('built into Drydock');
   await lib.getByRole('button', { name: 'Add Hosted tracker (test double) to this project' }).click();
   const inProject = page.locator('[data-testid="mcp-server"]').filter({ hasText: 'Hosted tracker (test double)' });

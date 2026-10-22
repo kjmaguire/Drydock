@@ -1,7 +1,8 @@
 // CI runners (decision P56): GitHub Actions self-hosted runners for the person's private repositories, kept by Drydock on this
 // PC. Windows jobs run on the PC in a fresh folder each (on a Dev Drive when there is one); Linux jobs run in a fresh container
 // each. Every runner takes one job, then its files go and a new one waits. Runners only run CI and report to GitHub: fixing
-// and pushing stay with Drydock's tasks. It sits on the Connections page, after the MCP gateway. The folder for Windows jobs
+// and pushing stay with Drydock's tasks. It sits on the GitHub page, after the connection (on the owner's request, 2026-10-22;
+// it was on Connections). The folder for Windows jobs
 // is chosen with the window's folder dialog (ChooseFolder; the choice is saved at once) or typed and saved with "Use this
 // folder"; when no Dev Drive was found the core's reason is shown (the check needs no administrator rights).
 
