@@ -21,6 +21,12 @@ const counts = (c: ScanCounts | null | undefined): ScanCounts => ({ ...ZERO, ...
 const finding = (f: ScanFinding): ScanFinding => ({ ...f, ids: arr(f.ids), unfixed: arr(f.unfixed) });
 const report = (r: ScanReport): ScanReport => ({ ...r, engines: arr(r.engines), findings: arr(r.findings).map(finding), counts: counts(r.counts) });
 const summary = (s: ScanSummary): ScanSummary => ({ ...s, counts: counts(s.counts) });
+const context = (c: ScanFindingContext): ScanFindingContext => ({
+  ...c,
+  finding: finding(c.finding),
+  lines: arr(c.lines),
+  advice: { ...c.advice, steps: arr(c.advice?.steps), refs: arr(c.advice?.refs) },
+});
 
 export interface SecurityClient {
   /** The scan tools on this computer (Drydock's own, decision P95) and the built-in rules. */
@@ -54,6 +60,8 @@ export interface SecurityClient {
   securityFindingsDismissed(target: ScanTarget): Promise<ScanDismissal[]>;
   /** The lines around a finding (around before and after, default 2), read now with every secret masked, and what it means. */
   securityFindingContext(scanId: string, fingerprint: string, around?: number): Promise<ScanFindingContext>;
+  /** The finding's whole file (its first 2,000 lines; `more` says there are more), read now under the same rules and masking as the context. */
+  securityFileRead(scanId: string, fingerprint: string): Promise<ScanFindingContext>;
   /** Makes a task in the scan's project from a finding (refused for a folder scan), optionally given to an agent. */
   securityFindingTask(scanId: string, fingerprint: string, assignee?: string): Promise<{ task: Task; finding: ScanFinding }>;
 }
@@ -84,10 +92,8 @@ export function createSecurityClient(t: Transport): SecurityClient {
     securityFindingDismiss: async (target, fingerprint, reason) => report(await t.call<ScanReport>('security.finding.dismiss', { ...target, fingerprint, reason })),
     securityFindingRestore: async (target, fingerprint) => report(await t.call<ScanReport>('security.finding.restore', { ...target, fingerprint })),
     securityFindingsDismissed: async (target) => arr(await t.call<ScanDismissal[] | null>('security.finding.dismissed', target)),
-    securityFindingContext: async (scanId, fingerprint, around = 0) => {
-      const c = await t.call<ScanFindingContext>('security.finding.context', { scanId, fingerprint, around });
-      return { ...c, finding: finding(c.finding), lines: arr(c.lines), advice: { ...c.advice, steps: arr(c.advice?.steps), refs: arr(c.advice?.refs) } };
-    },
+    securityFindingContext: async (scanId, fingerprint, around = 0) => context(await t.call<ScanFindingContext>('security.finding.context', { scanId, fingerprint, around })),
+    securityFileRead: async (scanId, fingerprint) => context(await t.call<ScanFindingContext>('security.file.read', { scanId, fingerprint })),
     securityFindingTask: async (scanId, fingerprint, assignee = '') => {
       const r = await t.call<{ task: Task; finding: ScanFinding }>('security.finding.task', { scanId, fingerprint, assignee });
       return { task: r.task, finding: finding(r.finding) };

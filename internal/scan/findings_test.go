@@ -170,6 +170,80 @@ func TestTheCodeAroundAFindingMasksTheSecretAndStaysInTheFolder(t *testing.T) {
 	}
 }
 
+// "Open the file" (decision P97): the whole file from line 1 with every secret masked, also far from the finding, the
+// finding's lines marked; at most MaxFileLines lines (More says there are more); a dependency's manifest whole; the same
+// folder rules as the context.
+func TestTheWholeFileOfAFindingMasksEverySecretAndStaysInTheFolder(t *testing.T) {
+	dir := tree(t)
+	var b strings.Builder
+	b.WriteString("one\ntwo\nthree\naws_access_key_id = " + fakeKey + "\n")
+	for i := 5; i <= 60; i++ {
+		b.WriteString("line\n")
+	}
+	b.WriteString("again = " + fakeKey + "\nlast\n")
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte(b.String()), 0o644)
+	os.WriteFile(filepath.Join(dir, "calc.go"), []byte(calcGo), 0o644)
+	rep := scanAll(t, dir)
+	var secret scan.Finding
+	for _, f := range byEngine(rep, scan.Secrets) {
+		if f.File == "notes.txt" && f.Line == 4 {
+			secret = f
+		}
+	}
+	if secret.Line != 4 {
+		t.Fatalf("%+v", rep.Findings)
+	}
+	redacted := 0
+	fx, err := scan.ReadFile(context.Background(), dir, secret, func(s string) string { redacted++; return s })
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(fx)
+	if strings.Contains(string(raw), fakeKey) || strings.Contains(string(raw), "KQ5ZV4") {
+		t.Fatalf("the file carries the secret: %s", raw)
+	}
+	if len(fx.Lines) != 62 || fx.More || fx.Lines[0].N != 1 || fx.Lines[0].Text != "one" || fx.Lines[0].Hit || !fx.Lines[3].Hit || !fx.Lines[3].Masked ||
+		fx.Lines[60].Text != "again = [REDACTED:secret]" || !fx.Lines[60].Masked || fx.Lines[60].Hit || fx.Lines[61].Text != "last" || redacted < 62 {
+		t.Fatalf("%s (redacted %d)", raw, redacted)
+	}
+	for _, l := range fx.Lines {
+		if l.Hit != (l.N == 4) {
+			t.Fatalf("line %d marked %v", l.N, l.Hit)
+		}
+	}
+	// a dependency finding: its manifest, whole
+	dep := byEngine(rep, scan.Deps)[0]
+	os.WriteFile(filepath.Join(dir, dep.File), []byte("module calc\n\nrequire golang.org/x/text v0.3.7\n"), 0o644)
+	fx, err = scan.ReadFile(context.Background(), dir, dep, nil)
+	if err != nil || fx.Note != "" || len(fx.Lines) != 3 || fx.Lines[2].Text != "require golang.org/x/text v0.3.7" || fx.Lines[2].Hit {
+		t.Fatalf("%+v %v", fx, err)
+	}
+	// a file longer than the cap: its first MaxFileLines lines, and More
+	long := strings.Repeat("x\n", scan.MaxFileLines+5)
+	os.WriteFile(filepath.Join(dir, "long.txt"), []byte(long), 0o644)
+	f := scan.Finding{Engine: scan.SAST, Rule: "r", File: "long.txt", Line: 3}
+	fx, err = scan.ReadFile(context.Background(), dir, f, nil)
+	if err != nil || len(fx.Lines) != scan.MaxFileLines || !fx.More || !fx.Lines[2].Hit {
+		t.Fatalf("%d lines, more %v, %v", len(fx.Lines), fx.More, err)
+	}
+	// a line past the end of the file now: the file is shown and says it changed
+	f.Line = scan.MaxFileLines + 50
+	fx, err = scan.ReadFile(context.Background(), dir, f, nil)
+	if err != nil || !fx.Changed || len(fx.Lines) != scan.MaxFileLines || !strings.Contains(fx.Note, "when the scan ran") {
+		t.Fatalf("%+v %v", fx.Note, err)
+	}
+	// outside the folder: refused
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	os.WriteFile(outside, []byte("secret plans\n"), 0o644)
+	for _, file := range []string{"../outside.txt", filepath.ToSlash(outside)} {
+		f := secret
+		f.File = file
+		if _, err := scan.ReadFile(context.Background(), dir, f, nil); !errors.Is(err, scan.ErrOutsideFolder) {
+			t.Fatalf("%s: %v", file, err)
+		}
+	}
+}
+
 // Plain words: a secret by its rule family, a dependency by its advisories and its fix, a built-in Code rule by its own
 // message and CWE (also under the name Opengrep gives it), and a rule Drydock does not know by its finding's title.
 func TestAdviceSaysWhatAFindingMeansAndWhatToDo(t *testing.T) {

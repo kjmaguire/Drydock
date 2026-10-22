@@ -96,6 +96,8 @@ export interface ScanFindingContext {
   changed?: boolean;
   /** Why there are no lines (a dependency finding, a file that is gone, binary or too big). */
   note?: string;
+  /** security.file.read: the file has more lines than it answered with. */
+  more?: boolean;
   advice: ScanAdvice;
 }
 

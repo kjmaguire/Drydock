@@ -253,6 +253,11 @@ secrets finding whose secret is no longer where it was has its lines masked whol
 leads out) is refused; a binary file, one over 2 MiB, one that is gone and a dependency finding answer with a `note` and no
 lines. It is read-only.
 
+**The whole file.** `security.file.read {scanId, fingerprint | index}` (the page's "Open the file": Drydock opens no editor) answers
+the same shape with the finding's whole file from its first line: at most 2,000 lines (`more` says the file has more), the
+finding's own lines marked `hit`, under the same folder rules, masking and redaction as the code around it. A dependency
+finding's manifest is read whole too. It is read-only and nothing in the folder runs.
+
 **Plain words.** The same answer carries `advice {meaning, steps, refs}`: for a secret by its gitleaks rule family (AWS,
 GitHub, GitLab, private key, generic API key, JWT, Slack, Stripe, OpenAI, Anthropic, Google Cloud, Azure, npm, PyPI, Hugging
 Face; others by gitleaks' own description); for a dependency the advisories and the version to upgrade to (`fixed`: the lowest

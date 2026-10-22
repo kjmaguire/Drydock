@@ -30,6 +30,8 @@ const (
 	maxContextAround = 10
 	maxContextLines  = 40
 	maxContextLine   = 400
+	// MaxFileLines is the most lines ReadFile answers with.
+	MaxFileLines = 2000
 )
 
 // ContextLine is one line of the code around a finding.
@@ -51,7 +53,9 @@ type FindingContext struct {
 	// what the file holds now.
 	Changed bool `json:"changed,omitempty"`
 	// Note says why there are no lines (a dependency finding, a file that is gone, a binary or very large file).
-	Note   string `json:"note,omitempty"`
+	Note string `json:"note,omitempty"`
+	// More says the file has more lines than ReadFile answered with (MaxFileLines).
+	More   bool   `json:"more,omitempty"`
 	Advice Advice `json:"advice"`
 }
 
@@ -92,13 +96,25 @@ func resolveInside(dir, rel string) (string, error) {
 // with ErrOutsideFolder; a file that cannot be shown (gone, binary, too big) and a finding without a line answer with a Note
 // and no lines.
 func ReadContext(ctx context.Context, dir string, f Finding, around int, redact func(string) string) (FindingContext, error) {
-	if redact == nil {
-		redact = func(s string) string { return s }
-	}
 	if around <= 0 {
 		around = ContextAround
 	}
-	around = min(around, maxContextAround)
+	return readFinding(ctx, dir, f, min(around, maxContextAround), false, redact)
+}
+
+// ReadFile reads the whole file of a finding from dir (the Security page's "Open the file", decision P97), with the same
+// masking, redaction and folder rules as ReadContext: its first MaxFileLines lines (More says the file has more), the
+// finding's own lines marked. A dependency finding's manifest is read whole too; a finding that names no file, and a file that
+// cannot be shown, answer with a Note and no lines.
+func ReadFile(ctx context.Context, dir string, f Finding, redact func(string) string) (FindingContext, error) {
+	return readFinding(ctx, dir, f, 0, true, redact)
+}
+
+// readFinding is ReadContext (around lines about the finding) and, with entire, ReadFile (the file from its first line).
+func readFinding(ctx context.Context, dir string, f Finding, around int, entire bool, redact func(string) string) (FindingContext, error) {
+	if redact == nil {
+		redact = func(s string) string { return s }
+	}
 	out := FindingContext{Finding: f, Lines: []ContextLine{}, Advice: AdviceFor(f)}
 	if f.File == "" {
 		out.Note = "This finding names no file."
@@ -108,7 +124,7 @@ func ReadContext(ctx context.Context, dir string, f Finding, around int, redact 
 	if errors.Is(err, ErrOutsideFolder) {
 		return out, err
 	}
-	if f.Line <= 0 {
+	if f.Line <= 0 && !entire {
 		if f.Engine == Deps {
 			out.Note = "A dependency finding names a package in " + f.File + ", not a line of code."
 		} else {
@@ -130,12 +146,22 @@ func ReadContext(ctx context.Context, dir string, f Finding, around int, redact 
 	if f.Line > len(lines) {
 		out.Changed = true
 		out.Note = fmt.Sprintf("The file has %d lines now; the finding was on line %d when the scan ran.", len(lines), f.Line)
-		return out, nil
+		if !entire {
+			return out, nil
+		}
 	}
+	// lineNow: the finding's line is in the file as it reads now
+	lineNow := f.Line >= 1 && f.Line <= len(lines)
 	last := max(f.Line, f.EndLine)
-	from, to := max(1, f.Line-around), min(len(lines), last+around)
-	if to-from+1 > maxContextLines {
-		to = from + maxContextLines - 1
+	var from, to int
+	if entire {
+		from, to = 1, min(len(lines), MaxFileLines)
+		out.More = len(lines) > to
+	} else {
+		from, to = max(1, f.Line-around), min(len(lines), last+around)
+		if to-from+1 > maxContextLines {
+			to = from + maxContextLines - 1
+		}
 	}
 
 	// every secret in the file, by line: the value to mask on single-line matches, whole lines for a match over several
@@ -177,9 +203,11 @@ func ReadContext(ctx context.Context, dir string, f Finding, around int, redact 
 	case Deps:
 		now = depsText(f)
 	default:
-		now = redact(strings.Join(lines[f.Line-1:min(len(lines), max(f.EndLine, f.Line), f.Line+maxHashedLines-1)], "\n"))
+		if lineNow {
+			now = redact(strings.Join(lines[f.Line-1:min(len(lines), max(f.EndLine, f.Line), f.Line+maxHashedLines-1)], "\n"))
+		}
 	}
-	if f.Fingerprint != "" {
+	if f.Fingerprint != "" && (lineNow || f.Engine == Deps) {
 		out.Changed = Fingerprint(f.Engine, f.Rule, f.File, now, f.Line) != BaseFingerprint(f.Fingerprint)
 	}
 	for n := from; n <= to; n++ {

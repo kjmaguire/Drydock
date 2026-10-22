@@ -1,6 +1,7 @@
-// Security scan of the project: one button scans the project's working tree with three engines at once (secrets,
-// dependencies, code patterns), with live progress, the findings, the tools on this computer and the history of scans. The
-// scan itself is ScanPanel (scan-panel.tsx), shared with the workspace Security page that scans any folder (decision P61).
+// Security scan of the project (its Security pill): Scan again (R) reads the project's working tree with three engines at once
+// (secrets, dependencies, code patterns), with the engines' tiles, the findings and the selected finding's pane, and the recent
+// scans of the project. The screen itself is ScanPanel (scan-panel.tsx), shared with the workspace Security scan that scans any
+// folder (decision P61); its target field names the project's repository.
 
 import { type Handle } from 'remix/component';
 import { ShieldCheck } from 'lucide';
@@ -9,7 +10,7 @@ import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
 import { Notice } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
-import { ScanPanel } from './scan-panel.tsx';
+import { ScanPanel, TargetBox } from './scan-panel.tsx';
 import { projectScope } from './scan-scope.ts';
 
 export function SecurityScreen(handle: Handle) {
@@ -20,16 +21,35 @@ export function SecurityScreen(handle: Handle) {
     const project = s.workspace.project;
     const pid = s.workspace.projectId;
     const hasRepo = projectHasRepo(project);
+    if (!pid) {
+      return (
+        <Page title="Security scan" icon={ShieldCheck} testId="security-scan">
+          <Notice tone="info">Choose a project to scan.</Notice>
+        </Page>
+      );
+    }
     return (
-      <Page title="Security" icon={ShieldCheck} testId="security-scan" subtitle={project ? `Scans of ${project.name}` : undefined} guide="scan">
-        {!project ? <Notice tone="info">Choose a project to scan.</Notice> : null}
-        {project && !hasRepo ? (
-          <Notice tone="warn" testId="security-no-repo">
-            The scan needs a repository. <a href={routes.project.href()}>Open Project settings</a> to attach one.
-          </Notice>
-        ) : null}
-        {pid ? <ScanPanel scope={projectScope(s.client, pid)} canScan={!!project && hasRepo} /> : null}
-      </Page>
+      <ScanPanel
+        scope={projectScope(s.client, pid)}
+        canScan={!!project && hasRepo}
+        title="Security scan"
+        testId="security-scan"
+        nameOf={() => project?.name ?? 'project'}
+        target={
+          <TargetBox note={project?.name}>
+            <span class="value" title={project?.repoPath || undefined} data-testid="scan-target-path">
+              {project?.repoPath || 'No repository yet'}
+            </span>
+          </TargetBox>
+        }
+        notice={
+          project && !hasRepo ? (
+            <Notice tone="warn" testId="security-no-repo">
+              The scan needs a repository. <a href={routes.project.href()}>Open Project settings</a> to attach one.
+            </Notice>
+          ) : undefined
+        }
+      />
     );
   };
 }

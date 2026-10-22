@@ -14,7 +14,7 @@ describe('decision P97 client methods', () => {
     const f = mock.fn(async (url: string) => {
       if (url.endsWith('security.finding.dismiss') || url.endsWith('security.finding.restore')) return json({ result: rep });
       if (url.endsWith('security.finding.dismissed')) return json({ result: null });
-      if (url.endsWith('security.finding.context'))
+      if (url.endsWith('security.finding.context') || url.endsWith('security.file.read'))
         return json({ result: { scanId: 's1', finding: rep.findings[0], lines: null, advice: { meaning: 'm', steps: null } } });
       if (url.endsWith('security.finding.task')) return json({ result: { task: { id: 't1' }, finding: rep.findings[0] } });
       if (url.endsWith('chat.answer')) return json({ result: { answered: true, rule: 'Bash(go test ./...)' } });
@@ -32,6 +32,9 @@ describe('decision P97 client methods', () => {
     const cx = await c.securityFindingContext('s1', 'fp1');
     expect(cx.lines).toEqual([]);
     expect(cx.advice).toMatchObject({ meaning: 'm', steps: [], refs: [] });
+    const file = await c.securityFileRead('s1', 'fp1');
+    expect(file.lines).toEqual([]);
+    expect(file.finding).toMatchObject({ ids: [], unfixed: [] });
     expect((await c.securityFindingTask('s1', 'fp1', 'agt_1')).task.id).toBe('t1');
     expect(await c.chatAllowAndRemember('chat_1', 'cask_1')).toEqual({ answered: true, rule: 'Bash(go test ./...)' });
     expect(await c.chatUpdate({ id: 'chat_1', projectId: 'p' })).toMatchObject({ projectId: 'p', allowedTools: [] });
@@ -45,6 +48,7 @@ describe('decision P97 client methods', () => {
     expect(all('security.finding.restore')).toEqual([{ folder: 'C:\\code\\shop', fingerprint: 'fp1' }]);
     expect(all('security.finding.dismissed')).toEqual([{ projectId: 'p' }]);
     expect(all('security.finding.context')).toEqual([{ scanId: 's1', fingerprint: 'fp1', around: 0 }]);
+    expect(all('security.file.read')).toEqual([{ scanId: 's1', fingerprint: 'fp1' }]);
     expect(all('security.finding.task')).toEqual([{ scanId: 's1', fingerprint: 'fp1', assignee: 'agt_1' }]);
     expect(all('chat.answer')).toEqual([{ id: 'chat_1', askId: 'cask_1', allow: true, remember: true }]);
     expect(all('chat.update')).toEqual([{ id: 'chat_1', projectId: 'p' }]);

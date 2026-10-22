@@ -1,7 +1,10 @@
-// Pure helpers of the Security scan screen: progress arithmetic, tones, and the words for counts, states and durations.
+// Pure helpers of the Security scan screen: progress arithmetic, tones, and the words for counts, states and durations; the
+// words of the engine tiles, a finding's place, the masked lines of the code around it, and who a task from it goes to.
 
-import type { EngineID, EngineResult, ScanCounts, ScanFinding, ScanReport, Severity } from '../../api/securityTypes.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import type { ScanTarget } from '../../api/securityClient.ts';
+import type { DismissReason, EngineID, EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSummary, Severity } from '../../api/securityTypes.ts';
+import type { Agent } from '../../api/types.ts';
+import { formatDate, formatDateTime } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
 /** The engines in the order they are shown. The core sends name and tool with each result; the blurb is the UI's. */
@@ -129,17 +132,6 @@ export function sortFindings(list: readonly ScanFinding[]): ScanFinding[] {
   return [...list].sort((a, b) => rank(a.severity) - rank(b.severity) || place(a).localeCompare(place(b)) || (a.line ?? 0) - (b.line ?? 0) || a.rule.localeCompare(b.rule));
 }
 
-export function filterFindings(list: readonly ScanFinding[], sev: Severity | 'all', engine: EngineID | 'all'): ScanFinding[] {
-  return list.filter((f) => (sev === 'all' || f.severity === sev) && (engine === 'all' || f.engine === engine));
-}
-
-/** How many findings each engine has in a list. */
-export function engineCounts(list: readonly ScanFinding[]): Record<EngineID, number> {
-  const out: Record<EngineID, number> = { secrets: 0, deps: 0, sast: 0 };
-  for (const f of list) if (f.engine in out) out[f.engine]++;
-  return out;
-}
-
 /** "notes.txt:1" for a file finding, "pkg@1.2.3" for a dependency, else "". */
 export function whereText(f: ScanFinding): string {
   if (f.package) {
@@ -175,4 +167,169 @@ export function emptyFindingsText(report: Pick<ScanReport, 'status' | 'engines'>
 export function languageName(id: string): string {
   const names: Record<string, string> = { javascript: 'JavaScript', typescript: 'TypeScript', python: 'Python', go: 'Go', java: 'Java', csharp: 'C#', c: 'C', cpp: 'C++' };
   return names[id] ?? id;
+}
+
+// ---- The graphite screen (decision P97): tiles, the findings list, the finding's pane, the recent scans.
+
+/** The screen is wide enough for the list and the finding's pane side by side (the bases of the two columns, 560 + 380 px). */
+export const SPLIT_QUERY = '@container (min-width: 940px)';
+
+const SEVERITY_LABEL: Record<string, string> = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
+
+/** "High", "Critical": a severity as its badge says it. */
+export const severityLabel = (s: Severity | string): string => SEVERITY_LABEL[s] ?? (s ? `${s.charAt(0).toUpperCase()}${s.slice(1)}` : '');
+
+/** The words after an engine's count on its tile: "1 secret, value never shown", "2 unsafe patterns". */
+export function engineWords(id: EngineID, n: number): string {
+  const one = n === 1;
+  switch (id) {
+    case 'secrets':
+      return one ? 'secret, value never shown' : 'secrets, values never shown';
+    case 'deps':
+      return one ? 'vulnerable package' : 'vulnerable packages';
+    default:
+      return one ? 'unsafe pattern' : 'unsafe patterns';
+  }
+}
+
+/** A tool as its own project writes its name (Opengrep with a capital; gitleaks and osv-scanner in lower case). */
+export const toolLabel = (tool: string): string => (tool === 'opengrep' ? 'Opengrep' : tool);
+
+/** An engine's state on its tile: "done · 0.1 s", "running · 10 of 20 files", "waiting", "skipped", "errored · 2.0 s". */
+export function engineStateText(e: EngineResult): string {
+  const took = elapsed(e);
+  switch (e.status) {
+    case 'done':
+      return took === undefined ? 'done' : `done · ${durationText(took)}`;
+    case 'running':
+      return engineDeterminate(e) ? `running · ${filesText(e)}` : 'running';
+    case 'pending':
+      return 'waiting';
+    case 'errored':
+    case 'cancelled':
+      return took === undefined ? e.status : `${e.status} · ${durationText(took)}`;
+    default:
+      return e.status;
+  }
+}
+
+/** The last part of a rule's id: "dangerous-exec-command" for "go.lang.security.audit.dangerous-exec-command". */
+export const shortRule = (rule: string): string => rule.split('.').filter(Boolean).at(-1) ?? rule;
+
+/** A finding's place, the list's mono line: "config/dev.env:4 · aws-access-token", "go.mod · GO-2021-0113, CVE-2021-38561". */
+export function placeText(f: ScanFinding): string {
+  if (f.engine === 'deps') {
+    const ids = f.ids && f.ids.length > 0 ? f.ids.join(', ') : f.rule;
+    return [f.file ?? (f.package ? `${f.package}${f.version ? `@${f.version}` : ''}` : ''), ids].filter(Boolean).join(' · ');
+  }
+  const where = f.file ? (f.line ? `${f.file}:${f.line}` : f.file) : '';
+  return [where, shortRule(f.rule)].filter(Boolean).join(' · ');
+}
+
+/** A finding's title; a dependency's without the advisory ids its place already names. */
+export function findingTitle(f: ScanFinding): string {
+  if (f.engine === 'deps' && f.ids && f.ids.length > 0) {
+    const tail = `: ${f.ids.join(', ')}`;
+    if (f.title.endsWith(tail)) return f.title.slice(0, -tail.length);
+  }
+  return f.title;
+}
+
+/** Names a finding in the list: its fingerprint, else (a report from before fingerprints) its engine, rule and place. */
+export const findingId = (f: ScanFinding): string => f.fingerprint || `${f.engine}:${f.rule}:${f.file ?? ''}:${f.line ?? 0}:${f.package ?? ''}`;
+
+/** The project or folder a report's findings are dismissed under. */
+export const reportTarget = (r: Pick<ScanReport, 'projectId' | 'dir'>): ScanTarget => (r.projectId ? { projectId: r.projectId } : { folder: r.dir });
+
+/** A line of the code around a finding, as text and the masks the core put in place of each secret ("[REDACTED:<rule>]"). */
+export type LinePart = { text: string } | { mask: string };
+
+const MASK = /\[REDACTED(?::([^\]]*))?\]/g;
+
+/** Splits a line at its masks: the page draws each as a "hidden" chip, never as the text the core wrote. */
+export function lineParts(text: string): LinePart[] {
+  const out: LinePart[] = [];
+  let at = 0;
+  for (const m of text.matchAll(MASK)) {
+    if (m.index > at) out.push({ text: text.slice(at, m.index) });
+    out.push({ mask: m[1] ?? 'secret' });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length || out.length === 0) out.push({ text: text.slice(at) });
+  return out;
+}
+
+/** Where a reference of the advice is read: an advisory on osv.dev, a weakness on cwe.mitre.org; else nowhere. */
+export function refUrl(ref: string): string | undefined {
+  const cwe = /^CWE-(\d+)/i.exec(ref.trim());
+  if (cwe) return `https://cwe.mitre.org/data/definitions/${cwe[1]}.html`;
+  if (/^(GO|CVE|GHSA|PYSEC|RUSTSEC|OSV|GSD|MAL|RLSA|ALSA|DLA|DSA|USN)-[\w.-]+$/i.test(ref.trim())) return advisoryUrl(ref.trim());
+  return undefined;
+}
+
+/** A reference as its link says it: "CWE-78" for "CWE-78: Improper Neutralization of ...". */
+export const refLabel = (ref: string): string => /^(CWE-\d+)/i.exec(ref.trim())?.[1] ?? ref.trim();
+
+const LEAD_ROLES = new Set(['lead', 'team lead', 'teamlead', 'manager', 'supervisor', 'engineering manager']);
+const BUILD_ROLES = new Set(['builder', 'build', 'backend', 'back end', 'backend engineer', 'developer', 'dev', 'engineer', 'software engineer', 'coder', 'fullstack', 'full stack', 'implementer']);
+const normRole = (r: string): string => r.trim().toLowerCase().replace(/[_-]/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+function roleRank(role: string): number {
+  const r = normRole(role);
+  if (BUILD_ROLES.has(r)) return 0;
+  if (r === 'frontend' || r === 'front end' || r === 'frontend engineer') return 1;
+  if (r === 'reviewer' || r === 'review') return 4;
+  return r === 'security' || r === 'security engineer' ? 2 : 3;
+}
+
+/**
+ * The agents a task from a finding can go to, the one it goes to first: a builder or backend agent before the others, a
+ * reviewer last, never the team lead (the core gives the task another agent of the team to review).
+ */
+export function taskAgents(agents: readonly Agent[]): Agent[] {
+  return agents
+    .filter((a) => !LEAD_ROLES.has(normRole(a.role)))
+    .map((a, i) => ({ a, i, r: roleRank(a.role) }))
+    .sort((x, y) => x.r - y.r || x.i - y.i)
+    .map((x) => x.a);
+}
+
+/** Why a finding was dismissed, in words. */
+export const DISMISS_WORDS: Record<DismissReason, string> = {
+  not_real: 'not real',
+  false_positive: 'a false positive',
+  accepted_risk: 'an accepted risk',
+};
+
+/** When a scan ran, as a chip says it: "now", "5 min ago", "2 h ago", "yesterday", else the date. */
+export function agoText(ms: number, now: number = Date.now()): string {
+  const d = now - ms;
+  if (d < 60_000) return 'now';
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)} min ago`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)} h ago`;
+  if (d < 2 * 86_400_000) return 'yesterday';
+  return formatDate(ms);
+}
+
+/** The tone of a scan's count on its chip: red with something high or critical, amber with anything else, green with nothing. */
+export function summaryTone(h: Pick<ScanSummary, 'status' | 'counts'>): Tone {
+  if (h.status === 'running') return 'accent';
+  if (h.status !== 'done') return 'muted';
+  if (h.counts.critical + h.counts.high > 0) return 'err';
+  return h.counts.total > 0 ? 'warn' : 'ok';
+}
+
+/** A folder by its last part ("shop-api" for C:\code\shop-api). */
+export function folderName(path: string): string {
+  return path.split(/[\\/]+/).filter(Boolean).at(-1) ?? path;
+}
+
+/** The words of the line above the findings: "4 findings", "Nothing found", "Scanning… 1 of 3 engines finished", "No scan yet". */
+export function lineText(report: ScanReport | null | undefined): string {
+  if (!report) return 'No scan yet';
+  if (report.status === 'running') return statusText(report);
+  if (report.status === 'done') {
+    const n = report.counts.total;
+    return n > 0 ? findingsText(n) : 'Nothing found';
+  }
+  return statusText(report).replace(/\.$/, '');
 }

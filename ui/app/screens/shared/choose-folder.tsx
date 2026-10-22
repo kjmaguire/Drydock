@@ -7,14 +7,15 @@ import { css, on, type Handle } from 'remix/component';
 import { FolderOpen } from 'lucide';
 import type { FolderHints } from '../../api/folderClient.ts';
 import { action, query, services } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 
 /** A row holding the path input and the button: the input takes the room. */
 export const folderRow = css({ display: 'flex', gap: '8px', alignItems: 'center', minWidth: '0', '& input': { flex: '1', minWidth: '0' }, '& button': { flex: 'none' } });
 
 const noHints: FolderHints = { canPick: false, windows: false, devDrives: [] };
 
-export function ChooseFolder(handle: Handle<{ title: string; onPick: (path: string) => void; disabled?: boolean; testId?: string }>) {
+/** `compact` draws it as an icon button named "Choose folder…" (inside a path field, as the Security scan's header has it). */
+export function ChooseFolder(handle: Handle<{ title: string; onPick: (path: string) => void; disabled?: boolean; testId?: string; compact?: boolean }>) {
   const s = services(handle);
   const act = action(handle);
   const hints = query(handle, {
@@ -33,6 +34,17 @@ export function ChooseFolder(handle: Handle<{ title: string; onPick: (path: stri
   };
   return () => {
     if (!hints.data?.canPick) return null;
+    if (handle.props.compact) {
+      return (
+        <IconButton
+          icon={FolderOpen}
+          label={act.busy ? 'Choosing…' : 'Choose folder…'}
+          data-testid={handle.props.testId ?? 'choose-folder'}
+          disabled={handle.props.disabled || act.busy !== ''}
+          mix={on('click', () => void pick())}
+        />
+      );
+    }
     return (
       <Button
         type="button"

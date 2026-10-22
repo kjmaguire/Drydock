@@ -195,6 +195,53 @@ func TestTheCodeAroundAFindingNeverCarriesTheKeyAndAPathOutOfTheFolderIsRefused(
 	}
 }
 
+// "Open the file" (decision P97): security.file.read answers the finding's whole file from its first line, the finding's line
+// marked and the key masked, a dependency finding's manifest whole; a file outside the scanned folder is refused as the context is.
+func TestTheWholeFileOfAFindingIsReadWithTheKeyMaskedAndStaysInTheFolder(t *testing.T) {
+	a, _, rep := scanned(t)
+	secret := secretOf(t, rep)
+	var fx scan.FindingContext
+	a.call("security.file.read", map[string]any{"scanId": rep.ID, "fingerprint": secret.Fingerprint}, &fx)
+	raw, _ := json.Marshal(fx)
+	if strings.Contains(string(raw), plantedKey) {
+		t.Fatalf("the file carries the key: %s", raw)
+	}
+	if fx.ScanID != rep.ID || fx.More || len(fx.Lines) != 5 || fx.Lines[0].N != 1 || fx.Lines[0].Text != "# deploy notes" || fx.Lines[0].Hit ||
+		!fx.Lines[2].Hit || !fx.Lines[2].Masked || !strings.HasPrefix(fx.Lines[2].Text, "key = [REDACTED:") || fx.Lines[4].Text != "owner = ops" {
+		t.Fatalf("%s", raw)
+	}
+	// a dependency finding names a package in its manifest: the manifest is read whole, no line is the finding's
+	for _, f := range rep.Findings {
+		if f.Engine != scan.Deps {
+			continue
+		}
+		fx = scan.FindingContext{}
+		a.call("security.file.read", map[string]any{"scanId": rep.ID, "fingerprint": f.Fingerprint}, &fx)
+		text := ""
+		for _, l := range fx.Lines {
+			text += l.Text + "\n"
+			if l.Hit {
+				t.Fatalf("a manifest line marked as the finding: %+v", l)
+			}
+		}
+		if f.File != "go.mod" || len(fx.Lines) == 0 || !strings.HasPrefix(text, "module gocalc\n") || fx.Note != "" {
+			t.Fatalf("%+v", fx)
+		}
+	}
+	if err := a.callErr("security.file.read", map[string]any{"scanId": rep.ID, "fingerprint": strings.Repeat("a", 24)}); err == nil {
+		t.Fatal("an unknown finding")
+	}
+	// the stored report names a file outside the scanned folder: refused
+	outside := filepath.Join(filepath.Dir(rep.Dir), "outside.txt")
+	os.WriteFile(outside, []byte("not the repository's\n"), 0o644)
+	if _, err := a.c.DB.Writer().Exec(`UPDATE security_scans SET report_json=json_set(report_json, '$.findings[0].file', ?) WHERE id=?`, "../outside.txt", rep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.callErr("security.file.read", map[string]any{"scanId": rep.ID, "index": 0}); err == nil || !strings.Contains(err.Error(), "not inside the scanned folder") {
+		t.Fatal(err)
+	}
+}
+
 // A task is made from a finding in the scan's project: it names the rule, the file and the line and what to do, never the
 // key, links back to the finding, and can be given to an agent (with another agent to review). A finding has one task, and a
 // folder scan, with no project, says why it cannot have one.
