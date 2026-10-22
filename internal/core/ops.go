@@ -158,6 +158,9 @@ type TaskDetail struct {
 	RoomID   string                    `json:"roomId,omitempty"`
 	// AllowRules are the person's "approve for this task" rules in force for the task's agents (P97); they end with the task.
 	AllowRules []security.TaskAllowRule `json:"allowRules"`
+	// AcceptanceState is each acceptance criterion's state by the newest test check (pipeline.AcceptanceState): passed,
+	// failing or unknown, in the order of Task.Acceptance.
+	AcceptanceState []pipeline.CriterionState `json:"acceptanceState"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -172,6 +175,7 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	}
 	d.Evidence, _ = c.Tasks.Evidence(ctx, id)
 	d.Reviews, _ = c.Tasks.Reviews(ctx, id)
+	d.AcceptanceState = pipeline.AcceptanceState(t.Acceptance, d.Evidence)
 	if t.RunID != "" {
 		if info, err := c.Engine.Status(ctx, workflow.RunID(t.RunID)); err == nil {
 			d.Run = &info

@@ -244,7 +244,7 @@ func (td TemplateDeps) specReview() workflow.NodeHandler {
 		}
 		payload, _ := json.Marshal(SpecReviewPayload{Phase: "spec", TaskID: t.ID, Title: v.Spec.Title, Spec: clip(v.Spec.Body, 40000), Criteria: v.Spec.Criteria, SHA: v.SHA, Ref: v.Ref,
 			Note: "Approve to accept the spec and start building. Reject with feedback to send it back to the PM. Optionally answer with data.criteria (a list of Given/When/Then lines) to replace the criteria."})
-		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Phase: "spec", Title: "Accept the spec: " + t.Title, Payload: payload}}, nil
+		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Phase: "spec", Title: SpecRequestTitlePrefix + t.Title, Payload: payload}}, nil
 	}
 }
 

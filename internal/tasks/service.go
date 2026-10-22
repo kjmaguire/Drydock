@@ -29,6 +29,7 @@ type Task struct {
 	Template       string   `json:"template,omitempty"`
 	Files          []string `json:"files,omitempty"`
 	Acceptance     []string `json:"acceptance,omitempty"` // Given/When/Then criteria
+	Labels         []string `json:"labels"`               // NormalizeLabels; [] when it has none
 	Worktree       string   `json:"worktree,omitempty"`
 	Branch         string   `json:"branch,omitempty"`
 	BaseBranch     string   `json:"baseBranch,omitempty"`
@@ -157,6 +158,8 @@ type CreateReq struct {
 	// Origin is LeadOrigin(depth) for a follow-up the team lead split off; empty for any other task.
 	Origin        string
 	MaxIterations int
+	// Labels are normalized by NormalizeLabels (refused past its limits).
+	Labels []string
 }
 
 // Limits of a task a request may set.
@@ -208,9 +211,14 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
 	if maxIt <= 0 {
 		maxIt = 5
 	}
+	labels, err := NormalizeLabels(req.Labels)
+	if err != nil {
+		return Task{}, err
+	}
 	files, _ := json.Marshal(nz(req.Files))
 	acc, _ := json.Marshal(nz(req.Acceptance))
-	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+	lbl, _ := json.Marshal(labels)
+	err = s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		var seq int
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM tasks WHERE project_id=?`, req.ProjectID).Scan(&seq); err != nil {
 			return err
@@ -225,8 +233,8 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
 				return fmt.Errorf("tasks: the team lead already has %d follow-ups open in this project (the limit is %d); finish or cancel some first", open, MaxLeadOpen)
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id,project_id,seq,title,description,status,priority,template,files,acceptance,issue_ref,origin,max_iterations,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, req.ProjectID, seq, req.Title, req.Description, string(Backlog), req.Priority, req.Template, string(files), string(acc), req.IssueRef, req.Origin, maxIt, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id,project_id,seq,title,description,status,priority,template,files,acceptance,labels,issue_ref,origin,max_iterations,created_at,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, req.ProjectID, seq, req.Title, req.Description, string(Backlog), req.Priority, req.Template, string(files), string(acc), string(lbl), req.IssueRef, req.Origin, maxIt, now, now); err != nil {
 			return err
 		}
 		for _, d := range req.DependsOn {
@@ -267,7 +275,7 @@ func nz(s []string) []string {
 	return s
 }
 
-const taskCols = `id,project_id,seq,title,description,status,priority,assignee,reviewer,template,files,acceptance,worktree,branch,base_branch,
+const taskCols = `id,project_id,seq,title,description,status,priority,assignee,reviewer,template,files,acceptance,labels,worktree,branch,base_branch,
 	iteration,max_iterations,review_feedback,verdict,model,effort,cost_usd,issue_ref,origin,pr_ref,run_id,blocked_reason,accepted_by,
 	created_at,updated_at,started_at,completed_at,version`
 
@@ -275,13 +283,15 @@ type rower interface{ Scan(dest ...any) error }
 
 func scanTask(r rower) (Task, error) {
 	var t Task
-	var status, files, acc string
-	err := r.Scan(&t.ID, &t.ProjectID, &t.Seq, &t.Title, &t.Description, &status, &t.Priority, &t.Assignee, &t.Reviewer, &t.Template, &files, &acc,
+	var status, files, acc, labels string
+	err := r.Scan(&t.ID, &t.ProjectID, &t.Seq, &t.Title, &t.Description, &status, &t.Priority, &t.Assignee, &t.Reviewer, &t.Template, &files, &acc, &labels,
 		&t.Worktree, &t.Branch, &t.BaseBranch, &t.Iteration, &t.MaxIterations, &t.ReviewFeedback, &t.Verdict, &t.Model, &t.Effort, &t.CostUSD,
 		&t.IssueRef, &t.Origin, &t.PRRef, &t.RunID, &t.BlockedReason, &t.AcceptedBy, &t.Created, &t.Updated, &t.Started, &t.Completed, &t.Version)
 	t.Status = Status(status)
 	_ = json.Unmarshal([]byte(files), &t.Files)
 	_ = json.Unmarshal([]byte(acc), &t.Acceptance)
+	_ = json.Unmarshal([]byte(labels), &t.Labels)
+	t.Labels = nz(t.Labels)
 	return t, err
 }
 
@@ -309,17 +319,25 @@ func (s *Service) Get(ctx context.Context, id string) (Task, error) {
 	return t, rows.Err()
 }
 
-// Filter selects tasks.
+// Filter selects tasks. Every field set narrows the selection.
 type Filter struct {
 	ProjectID string
 	Statuses  []Status
 	Assignee  string
-	Limit     int
+	// Label selects the tasks that have this label (compared as NormalizeLabels keeps it).
+	Label string
+	// CompletedSince > 0 selects the tasks that ended (completed, failed or cancelled) at or after it (ms since the epoch).
+	CompletedSince int64
+	// OpenOrEndedSince > 0 selects the unfinished tasks and those that ended at or after it (ms since the epoch).
+	OpenOrEndedSince int64
+	// IDs, when set, selects only these tasks.
+	IDs   []string
+	Limit int
 }
 
-// List returns tasks, newest first.
-func (s *Service) List(ctx context.Context, f Filter) ([]Task, error) {
-	q := `SELECT ` + taskCols + ` FROM tasks WHERE 1=1`
+// where is the filter's WHERE clause (Limit aside) and its arguments.
+func (f Filter) where() (string, []any) {
+	q := ` WHERE 1=1`
 	var args []any
 	if f.ProjectID != "" {
 		q += ` AND project_id=?`
@@ -330,12 +348,43 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Task, error) {
 		args = append(args, f.Assignee)
 	}
 	if len(f.Statuses) > 0 {
-		q += ` AND status IN (` + strings.TrimSuffix(strings.Repeat("?,", len(f.Statuses)), ",") + `)`
+		q += ` AND status IN (` + placeholders(len(f.Statuses)) + `)`
 		for _, st := range f.Statuses {
 			args = append(args, string(st))
 		}
 	}
-	q += ` ORDER BY seq DESC`
+	if l := strings.ToLower(strings.Join(strings.Fields(f.Label), " ")); l != "" {
+		q += ` AND EXISTS (SELECT 1 FROM json_each(tasks.labels) WHERE json_each.value=?)`
+		args = append(args, l)
+	}
+	if f.CompletedSince > 0 {
+		q += ` AND completed_at >= ? AND completed_at > 0`
+		args = append(args, f.CompletedSince)
+	}
+	if f.OpenOrEndedSince > 0 {
+		q += ` AND (status NOT IN (?,?,?) OR completed_at >= ?)`
+		args = append(args, string(Completed), string(Failed), string(Cancelled), f.OpenOrEndedSince)
+	}
+	if len(f.IDs) > 0 {
+		q += ` AND id IN (` + placeholders(len(f.IDs)) + `)`
+		for _, id := range f.IDs {
+			args = append(args, id)
+		}
+	}
+	return q, args
+}
+
+func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
+
+// List returns tasks, newest first: by number within a project, by creation across projects.
+func (s *Service) List(ctx context.Context, f Filter) ([]Task, error) {
+	where, args := f.where()
+	q := `SELECT ` + taskCols + ` FROM tasks` + where
+	if f.ProjectID != "" {
+		q += ` ORDER BY seq DESC`
+	} else {
+		q += ` ORDER BY created_at DESC, seq DESC, id DESC`
+	}
 	if f.Limit > 0 {
 		q += fmt.Sprintf(` LIMIT %d`, f.Limit)
 	}
@@ -357,22 +406,8 @@ func (s *Service) List(ctx context.Context, f Filter) ([]Task, error) {
 
 // Count returns how many tasks match the filter (its Limit is ignored).
 func (s *Service) Count(ctx context.Context, f Filter) (int, error) {
-	q := `SELECT COUNT(*) FROM tasks WHERE 1=1`
-	var args []any
-	if f.ProjectID != "" {
-		q += ` AND project_id=?`
-		args = append(args, f.ProjectID)
-	}
-	if f.Assignee != "" {
-		q += ` AND assignee=?`
-		args = append(args, f.Assignee)
-	}
-	if len(f.Statuses) > 0 {
-		q += ` AND status IN (` + strings.TrimSuffix(strings.Repeat("?,", len(f.Statuses)), ",") + `)`
-		for _, st := range f.Statuses {
-			args = append(args, string(st))
-		}
-	}
+	where, args := f.where()
+	q := `SELECT COUNT(*) FROM tasks` + where
 	var n int
 	err := s.DB.Reader().QueryRowContext(ctx, q, args...).Scan(&n)
 	return n, err

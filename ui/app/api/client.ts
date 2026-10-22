@@ -21,6 +21,7 @@ import { createFolderClient, type FolderClient } from './folderClient.ts';
 import { createLocalClient, type LocalClient } from './localClient.ts';
 import { createShellClient, type ShellClient } from './shellClient.ts';
 import { createInboxClient, type InboxClient } from './inboxClient.ts';
+import { createTaskDataClient, type TaskDataClient } from './taskDataClient.ts';
 import type {
   AdapterInfo,
   Agent,
@@ -54,6 +55,7 @@ import type {
   TaskCount,
   TaskCreateReq,
   TaskDetail,
+  TaskFilter,
   Unread,
   UsageTotals,
 } from './types.ts';
@@ -69,7 +71,7 @@ const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   estimated: Number(v?.estimated) || 0,
 });
 
-export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, InboxClient {
+export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, DockClient, RunClient, AttachClient, ProviderClient, SetupClient, LeadClient, ChatClient, WSLClient, SecurityClient, RunnersClient, FolderClient, RepoMapClient, LocalClient, ShellClient, InboxClient, TaskDataClient {
   appInfo(): Promise<AppInfo>;
   /** An empty repoPath makes a project without a repository (attach one later). */
   projectCreate(name: string, repoPath?: string): Promise<Project>;
@@ -103,10 +105,13 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;
   taskCreate(req: TaskCreateReq): Promise<Task>;
-  /** The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. */
-  taskList(projectId: string, statuses?: string[]): Promise<Task[]>;
-  /** How many tasks the project has (those in the given statuses when any are named). */
-  taskCount(projectId: string, statuses?: string[]): Promise<TaskCount>;
+  /**
+   * The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. An empty
+   * projectId is every project; `filter` narrows to an agent's tasks, a label, or the tasks that ended since a time.
+   */
+  taskList(projectId: string, statuses?: string[], filter?: TaskFilter): Promise<Task[]>;
+  /** How many tasks the project has (those in the given statuses, and matching `filter`, when any are named). */
+  taskCount(projectId: string, statuses?: string[], filter?: TaskFilter): Promise<TaskCount>;
   taskGet(id: string): Promise<TaskDetail>;
   /**
    * The task's diff evidence as text: the one with `evidenceId` (the core refuses an id that is not a diff of the task), or the
@@ -179,6 +184,7 @@ export function createClient(t: Transport): Client {
     ...createLocalClient(t),
     ...createShellClient(t),
     ...createInboxClient(t),
+    ...createTaskDataClient(t),
     appInfo: () => t.call('app.info'),
     projectCreate: (name, repoPath = '') => t.call('project.create', { name, repoPath }),
     projectList: async () => arr(await t.call<Project[] | null>('project.list')),
@@ -201,8 +207,8 @@ export function createClient(t: Transport): Client {
     agentArchive: (id) => t.call('agent.archive', { id }),
     agentList: async (projectId) => arr(await t.call<Agent[] | null>('agent.list', { projectId })),
     taskCreate: (req) => t.call('task.create', req),
-    taskList: async (projectId, statuses = []) => arr(await t.call<Task[] | null>('task.list', { projectId, statuses })),
-    taskCount: async (projectId, statuses = []) => ({ total: Number((await t.call<TaskCount | null>('task.count', { projectId, statuses }))?.total) || 0 }),
+    taskList: async (projectId, statuses = [], filter) => arr(await t.call<Task[] | null>('task.list', { projectId, statuses, ...filter })),
+    taskCount: async (projectId, statuses = [], filter) => ({ total: Number((await t.call<TaskCount | null>('task.count', { projectId, statuses, ...filter }))?.total) || 0 }),
     taskGet: async (id) => {
       const d = await t.call<TaskDetail>('task.get', { id });
       return { ...d, evidence: arr(d.evidence), reviews: arr(d.reviews), pending: arr(d.pending), allowRules: arr(d.allowRules) };

@@ -1,7 +1,22 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Evidence, PendingRequest, ReviewRecord } from '../../api/types.ts';
-import { stepsFor } from './steps.ts';
+import { STEP_NAMES, stepIndex, stepsFor } from './steps.ts';
+
+// internal/tasks/testdata/steps.json: the cases internal/tasks (TestTheStepRuleMatchesTheTaskPage) passes too, so the board's
+// task.summaries and this page put a task at the same step. fileURLToPath, not .pathname: on Windows the pathname is "/D:/a/...".
+const STEP_CASES = fileURLToPath(new URL('../../../../internal/tasks/testdata/steps.json', import.meta.url));
+
+interface StepCase {
+  name: string;
+  task: { status: string; started?: number };
+  evidence: { kind: string; passed: boolean | null }[];
+  reviews: number;
+  specGate: boolean;
+  want: { step: string; index: number };
+}
 
 const ev = (kind: string, passed: boolean | null = null, attempt = 1): Evidence => ({ id: 1, taskId: 't', attempt, kind, passed, summary: '', created: 0 });
 const review = (verdict: string, attempt = 1, created = 0): ReviewRecord => ({ id: 1, taskId: 't', attempt, reviewer: 'a2', verdict, feedback: '', created });
@@ -80,5 +95,21 @@ describe('the step bar', () => {
 
   it('an unknown status reads as work in progress', () => {
     expect(states(stepsFor(task('SOMETHING_NEW'), [], []))).toEqual(['done', 'current', 'todo', 'todo', 'todo']);
+  });
+
+  it('is at the step the core puts it at (the shared cases)', () => {
+    const cases = (JSON.parse(readFileSync(STEP_CASES, 'utf8')) as { cases: StepCase[] }).cases;
+    expect(cases.length >= 10).toBe(true);
+    const spec: PendingRequest = { id: 'r', nodeId: 'n', step: 0, spec: { kind: 'review', title: 'Accept the spec: x', payload: { phase: 'spec' } } };
+    for (const c of cases) {
+      const evidence = c.evidence.map((e) => ev(e.kind, e.passed, 0));
+      const reviews = Array.from({ length: c.reviews }, () => review('SHIP', 0));
+      const i = stepIndex({ status: c.task.status, started: c.task.started }, evidence, reviews, c.specGate ? [spec] : []);
+      expect([c.name, i, STEP_NAMES[i] ?? 'done']).toEqual([c.name, c.want.index, c.want.step]);
+      // the step bar lights the same step
+      const bar = stepsFor({ ...task(c.task.status), started: c.task.started }, evidence, reviews, c.specGate ? [spec] : []);
+      if (i < STEP_NAMES.length) expect([c.name, bar[i]!.state === 'current' || bar[i]!.state === 'failed']).toEqual([c.name, true]);
+      else expect([c.name, bar.every((st) => st.state === 'done')]).toEqual([c.name, true]);
+    }
   });
 });
