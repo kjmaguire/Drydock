@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-22T19:48:16Z",
-  "commit": "d99976b-dirty",
+  "generated": "2026-10-22T22:40:37Z",
+  "commit": "f971da9",
   "lookupsFailed": [
     "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
   ],
@@ -18,7 +18,7 @@
       "name": "claude (@anthropic-ai/claude-code)",
       "kind": "cli",
       "used": "2.1.306",
-      "latest": "2.1.308",
+      "latest": "2.1.309",
       "status": "patch",
       "where": "internal/agents/manifests/cli/claude.yaml (recommended; minimum 2.1.205)",
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
@@ -797,10 +797,10 @@
       "name": "cloud.google.com/go/iam",
       "kind": "indirect",
       "used": "1.5.3",
-      "latest": "1.14.0",
+      "latest": "1.15.0",
       "status": "minor",
       "usedDate": "2025-10-08",
-      "latestDate": "2026-09-24",
+      "latestDate": "2026-10-22",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -811,10 +811,10 @@
       "name": "cloud.google.com/go/monitoring",
       "kind": "indirect",
       "used": "1.24.3",
-      "latest": "1.31.0",
+      "latest": "1.32.0",
       "status": "minor",
       "usedDate": "2025-10-08",
-      "latestDate": "2026-09-24",
+      "latestDate": "2026-10-22",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -6155,7 +6155,7 @@
       "name": "@anthropic-ai/claude-code (windows-probes.yml)",
       "kind": "ci",
       "used": "2.1.306",
-      "latest": "2.1.308",
+      "latest": "2.1.309",
       "status": "patch",
       "where": ".github/workflows/windows-probes.yml"
     },
@@ -6727,24 +6727,10 @@
       "note": "The vendor lists its versions only on a web page (https://docs.anthropic.com/en/api/versioning): check it by hand."
     }
   ],
-  "vulnerabilities": [
-    {
-      "source": "npm audit",
-      "id": "dompurify",
-      "package": "dompurify \u003c=3.4.16",
-      "severity": "critical",
-      "summary": "DOMPurify SAFE_FOR_TEMPLATES bypass: split template expressions survive in attached shadow root content on DOM output modes"
-    },
-    {
-      "source": "npm audit",
-      "id": "monaco-editor",
-      "package": "monaco-editor \u003e=0.56.0-dev-20260113",
-      "severity": "critical"
-    }
-  ],
+  "vulnerabilities": [],
   "vulnerabilityScans": {
     "govulncheck": "did not run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden",
-    "npm audit": "2 advisories against installed UI packages"
+    "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {
     "action": 8,
