@@ -43,8 +43,11 @@ const asideCss = css({
   borderRight: `1px solid ${t.border}`,
   background: t.bgSidebar,
   '&[data-rail="true"]': { width: 'var(--rail-width)' },
+  // a phone-sized window keeps the rail slimmer, so a conversation keeps its width
+  '@media (max-width: 719px)': { '&[data-rail="true"]': { width: '44px' } },
 });
-const navCss = css({
+const navCss = css({ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' });
+const scrollCss = css({
   display: 'flex',
   flexDirection: 'column',
   gap: '2px',
@@ -53,6 +56,7 @@ const navCss = css({
   overflowY: 'auto',
   overflowX: 'hidden',
   padding: `${t.s3} 10px`,
+  ':is([data-rail="true"]) &': { padding: `${t.s3} 6px` },
 });
 const headCss = css({
   display: 'flex',
@@ -139,7 +143,7 @@ const itemCss = css({
   ':is([data-rail="true"]) &': { justifyContent: 'center', padding: '0', width: '36px', height: '36px', margin: '0 auto', '& > .lbl, & > .count': { display: 'none' } },
 });
 // a project's own tabs, under the open project
-const subItemCss = css({ paddingLeft: '30px', height: '28px', ':is([data-rail="true"]) &': { display: 'none' } });
+const subItemCss = css({ paddingLeft: '30px', height: '28px', ':is([data-rail="true"]) &': { paddingLeft: '0' } });
 const squareCss = css({ display: 'inline-block', flex: 'none', width: '9px', height: '9px', borderRadius: '3px' });
 const countCss = css({ flex: 'none', color: t.textFaint, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' });
 // the Inbox count: amber while something waits on the person, a quiet number otherwise (the e2e suite reads it either way)
@@ -229,9 +233,22 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     { signal: handle.signal },
   );
 
+  // roving focus: the arrow keys move up and down the sidebar's links (the switcher's menu keeps its own keys)
+  const onKey = (e: KeyboardEvent) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const nav = e.currentTarget as HTMLElement;
+    if (!(e.target instanceof HTMLElement) || !e.target.hasAttribute('data-nav')) return;
+    const items = Array.from(nav.querySelectorAll<HTMLElement>('[data-nav]')).filter((n) => n.offsetParent !== null);
+    const i = items.indexOf(e.target);
+    if (i < 0) return;
+    const n = e.key === 'ArrowDown' ? Math.min(items.length - 1, i + 1) : e.key === 'ArrowUp' ? Math.max(0, i - 1) : e.key === 'Home' ? 0 : items.length - 1;
+    e.preventDefault();
+    items[n]?.focus();
+  };
+
   const link = (it: Item) => (
     <li key={it.id}>
-      <a href={it.href} mix={itemCss} data-testid={it.id} title={it.label} aria-current={it.current ? 'page' : undefined}>
+      <a href={it.href} mix={itemCss} data-nav="" data-testid={it.id} title={it.label} aria-current={it.current ? 'page' : undefined}>
         <Icon icon={it.icon} size={15} />
         <span class="lbl">{it.label}</span>
       </a>
@@ -261,9 +278,10 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
 
     return (
       <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar">
-        <nav aria-label="Main" mix={navCss}>
+        <nav aria-label="Main" mix={[navCss, on<HTMLElement, 'keydown'>('keydown', onKey)]}>
+          <div mix={scrollCss}>
           <div mix={headCss}>
-            <a href={routes.workspace.href()} mix={markCss} aria-label="Drydock home" title="Home" data-testid="nav-workspace" aria-current={route.name === 'workspace' ? 'page' : undefined}>
+            <a href={routes.workspace.href()} mix={markCss} data-nav="" aria-label="Drydock home" title="Home" data-testid="nav-workspace" aria-current={route.name === 'workspace' ? 'page' : undefined}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
                 <path d="M3 17h18M6 17V8h12v9M9 8V5h6v3" />
               </svg>
@@ -293,6 +311,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
               <a
                 href={routes.needsYou.href()}
                 mix={itemCss}
+                data-nav=""
                 data-testid="nav-needs-you"
                 aria-label={`Inbox: ${needs} ${needs === 1 ? 'item needs' : 'items need'} you`}
                 title="Inbox"
@@ -323,6 +342,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                       if (open) e.preventDefault();
                     })]}
                     title={p.name}
+                    data-nav=""
                     data-testid="nav-project-item"
                     data-project={p.id}
                     aria-current={open && route.name === 'home' ? 'page' : undefined}
@@ -336,7 +356,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                     <ul mix={listCss} role="list" aria-label={`${p.name} pages`}>
                       {projectTabs.map((it) => (
                         <li key={it.id}>
-                          <a href={it.href} mix={[itemCss, subItemCss]} data-testid={it.id} title={it.label} aria-current={it.current ? 'page' : undefined}>
+                          <a href={it.href} mix={[itemCss, subItemCss]} data-nav="" data-testid={it.id} title={it.label} aria-current={it.current ? 'page' : undefined}>
                             <Icon icon={it.icon} size={14} />
                             <span class="lbl">{it.label}</span>
                           </a>
@@ -358,7 +378,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             {link({ id: 'nav-side-models', label: 'Models on this PC', icon: Cpu, href: routes.providers.href(), current: route.name === 'providers' })}
             {link({ id: 'nav-library', label: 'Library', icon: Library, href: routes.library.href(), current: is('library') })}
           </ul>
-        </nav>
+          </div>
         <div mix={footCss}>
           <ul mix={listCss} role="list" aria-label="App">
             {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: hub === 'settings' && route.name !== 'guide' && route.name !== 'connections' && route.name !== 'providers' })}
@@ -379,6 +399,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             <span class="sr-only">Event stream: {status}</span>
           </span>
         </div>
+        </nav>
       </aside>
     );
   };

@@ -58,7 +58,7 @@ export const buttonVariant: Record<ButtonVariant, ReturnType<typeof css>> = {
   }),
 };
 
-const small = css({ height: '26px', padding: '0 10px', fontSize: t.textSm, gap: '5px' });
+const small = css({ height: '28px', padding: '0 10px', fontSize: t.textSm, gap: '5px' });
 
 /** The mixins that make any element (a link, a label) look like a button. */
 export function buttonStyle(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md') {

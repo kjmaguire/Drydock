@@ -11,10 +11,12 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   const repo = freshRepo();
   await createProject(page, 'ws-delete-me', repo);
 
-  // a project page: the project's tabs and the bell, the Drydock mark as the way home, none of the workspace's tabs (the gear is on every page)
+  // a project page (graphite sidebar, P97): the Inbox, the Drydock mark as the way home, the open project's tabs under it, the
+  // workspace's pages and Settings on every page
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-workspace')).toBeVisible();
-  await expect(sidebar(page).getByTestId('nav-library')).toHaveCount(0);
+  await expect(sidebar(page).getByTestId('nav-overview')).toBeVisible();
+  await expect(sidebar(page).getByTestId('nav-library')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-settings')).toBeVisible();
 
   // Home: the projects and the workspace areas; the switcher says Home
@@ -24,7 +26,9 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   await expect(page.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening)$/ })).toBeVisible();
   await expect(projectSwitcher(page)).toContainText('Home');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toBeVisible();
-  await expect(sidebar(page).getByTestId('nav-needs-you')).toHaveCount(0);
+  // the project's tabs leave with it; the Inbox stays
+  await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
+  await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Details' })).toHaveCount(0);
 
   // the skill library is a page of the Library tab

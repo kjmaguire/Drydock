@@ -147,14 +147,26 @@ export function TerminalPanel(handle: Handle<{ projectId: string | undefined; ta
  * it for shells; a Connection's card uses it for that CLI's own sign-in (decision P50), whatever project is open or none.
  * `program` names what runs in it for the line printed when it ends ("the shell" by default).
  */
+/** Resolves once the code font (--font-mono's first family) has loaded, or after a second when it cannot be told. */
+export function monoFontReady(): Promise<void> {
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  if (!fonts?.load) return Promise.resolve();
+  const family = getComputedStyle(document.documentElement).getPropertyValue('--font-mono').split(',')[0]?.trim();
+  if (!family) return Promise.resolve();
+  const timeout = new Promise<void>((r) => setTimeout(r, 1000));
+  return Promise.race([fonts.load(`13px ${family}`).then(() => undefined, () => undefined), timeout]);
+}
+
 export function TerminalHost(handle: Handle<{ id: string; onExit: (code: number) => void; program?: string }>) {
   const s = services(handle);
   let starting = true;
   let error: unknown;
 
   const mount = (node: HTMLElement, signal: AbortSignal) => {
-    loadTerminal().then(
-      (create) => {
+    // the terminal measures its cells once, from the code font: it waits for that font, or a cell measured from a fallback that
+    // has not loaded yet sizes the grid wrong and nothing it prints shows (graphite, P97 bundles JetBrains Mono)
+    Promise.all([loadTerminal(), monoFontReady()]).then(
+      ([create]) => {
         if (signal.aborted) return;
         const id = handle.props.id;
         const client = s.client;
@@ -176,6 +188,9 @@ export function TerminalHost(handle: Handle<{ id: string; onExit: (code: number)
         const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : undefined;
         ro?.observe(node);
         resize();
+        // a terminal that opens out of view (a Connection's sign-in under its card) is brought into view: it is what the person
+        // answers next, and the terminal draws nothing while it is off screen
+        node.scrollIntoView?.({ block: 'nearest' });
         term.focus();
         signal.addEventListener('abort', () => {
           alive = false;

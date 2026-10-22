@@ -157,18 +157,22 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('origin');
 });
 
-test("the top bar is keyboard navigable: the Drydock mark comes first (the way home), the arrows move along the bar, Enter opens the bell's page", async ({ page }) => {
+test("the sidebar is keyboard navigable: the Drydock mark comes first (the way home), the arrows move along it, Enter opens the Inbox", async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
   await expect(items.first()).toHaveAttribute('href', '/home');
-  await expect(items.nth(1)).toHaveAttribute('href', '/');
+  await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-chats')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-project-item').first()).toBeFocused();
+  await page.keyboard.press('End');
   await expect(page.getByTestId('nav-guide-top')).toBeFocused();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-settings')).toBeFocused();
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowLeft');
+  await page.getByTestId('nav-chats').focus();
+  await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { level: 1, name: 'Needs you' })).toBeVisible();

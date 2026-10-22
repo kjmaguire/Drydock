@@ -55,6 +55,8 @@ describe('the sidebar', () => {
       'nav-side-connections',
       'nav-side-models',
       'nav-library',
+      'nav-settings',
+      'nav-guide-top',
     ]);
     expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you');
     expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');

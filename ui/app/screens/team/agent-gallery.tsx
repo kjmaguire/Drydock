@@ -36,9 +36,10 @@ const cardCss = css({
   minWidth: '0',
   transition: `border-color ${t.fast} ${t.ease}`,
   '&:hover': { borderColor: t.borderStrong },
-  '& .head': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
-  '& h4': { margin: '0', fontSize: t.textMd, fontWeight: '600', flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  '& h4 button': { all: 'unset', display: 'inline-flex', alignItems: 'center', minHeight: '28px', cursor: 'pointer', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& .head': { display: 'flex', alignItems: 'center', gap: t.s3, minWidth: '0' },
+  // a long name wraps under itself rather than running into the role
+  '& h4': { margin: '0', fontSize: t.textMd, fontWeight: '600', flex: '1', minWidth: '0', overflowWrap: 'anywhere' },
+  '& h4 button': { all: 'unset', display: 'inline-flex', alignItems: 'center', minHeight: '28px', cursor: 'pointer', maxWidth: '100%' },
   '& h4 button:hover': { textDecoration: 'underline' },
   '& h4 button:focus-visible': { outline: `2px solid ${t.accent}`, outlineOffset: '2px', borderRadius: t.rSm },
   '& .sum': {
