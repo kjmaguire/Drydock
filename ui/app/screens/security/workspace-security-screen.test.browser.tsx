@@ -83,6 +83,24 @@ const radio = async (r: R, id: string) =>
   });
 
 describe('the workspace Security scan (graphite, P97)', () => {
+  it('keeps the folder field wide enough to type in and its Choose button whole at every width: the note gives way first', async () => {
+    const { r } = show({ fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }) });
+    await waitFor(() => expect(r.$('[data-testid="scan-choose-folder"]')).not.toBeNull(), r);
+    // at a 1300 px window the field was 23 px wide beside its note
+    const narrow: string[] = [];
+    for (let w = 500; w <= 1400; w += 25) {
+      r.container.style.width = `${w}px`;
+      await r.act(() => {});
+      const field = folderField(r).getBoundingClientRect().width;
+      const box = r.$('[data-testid="scan-target"]')!.getBoundingClientRect();
+      const note = r.$('[data-testid="scan-target-note"]')!.getBoundingClientRect();
+      const choose = r.$('[data-testid="scan-choose-folder"]')!.getBoundingClientRect();
+      if (field < 120 || note.right > box.right + 0.5) narrow.push(`${w}px: field ${Math.round(field)} px`);
+      if (choose.width < 28 || choose.right > box.right + 0.5) narrow.push(`${w}px: Choose folder ${Math.round(choose.width)} px`);
+    }
+    expect(narrow).toEqual([]);
+  });
+
   it('scans a typed folder: "a folder, not a project", only files read, the finding without the value, the folder in the recent scans', async () => {
     const started: string[] = [];
     const asked: string[] = [];

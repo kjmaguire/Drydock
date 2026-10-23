@@ -195,7 +195,8 @@ const targetCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s2,
-  minWidth: '0',
+  // the icon, 120 px of path and the Choose button: below that the header wraps it to a row of its own
+  minWidth: '200px',
   height: '32px',
   padding: '0 10px',
   border: `1px solid ${t.border}`,
@@ -203,10 +204,12 @@ const targetCss = css({
   background: t.bgInput,
   color: t.textFaint,
   '&:focus-within': { borderColor: t.borderStrong },
-  '& > svg': { flex: 'none' },
+  '& > svg, & > .end': { flex: 'none' },
+  '& > .end': { display: 'flex' },
   '& input, & .value': {
     flex: '1',
-    minWidth: '0',
+    // room to read and type a path: the note gives way first (at a 1300 px window the field was 23 px beside it)
+    minWidth: '120px',
     height: '30px',
     padding: '0',
     border: '0',
@@ -221,7 +224,7 @@ const targetCss = css({
     whiteSpace: 'nowrap',
   },
   '& .value': { lineHeight: '30px' },
-  '& .note': { flex: 'none', color: t.textFaint, fontSize: t.textXs, whiteSpace: 'nowrap' },
+  '& .note': { flex: '0 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', color: t.textFaint, fontSize: t.textXs, whiteSpace: 'nowrap' },
 });
 /** The header's target field: a folder icon, the path (an input or the repository's path, in mono) and a quiet note. */
 export function TargetBox(handle: Handle<{ note?: string; end?: RemixNode; children?: RemixNode }>) {
@@ -234,7 +237,7 @@ export function TargetBox(handle: Handle<{ note?: string; end?: RemixNode; child
           {handle.props.note}
         </span>
       ) : null}
-      {handle.props.end}
+      {handle.props.end ? <span class="end">{handle.props.end}</span> : null}
     </div>
   );
 }

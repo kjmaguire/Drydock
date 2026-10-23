@@ -70,10 +70,18 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
       if (sub && (sub.innerText ?? '').trim().length > 140) out.subtitle.push(`${(sub.innerText ?? '').trim().length}: ${(sub.innerText ?? '').trim().slice(0, 80)}`);
     }
     // text that touches the next text in a row
+    // the text an editor or a terminal draws is not the element's: they draw their lines in their own clipped viewport (on the
+    // Windows runner, whose column is narrower, a clipped line of the task page's diff ran under the properties beside it)
+    const DRAWN = '.monaco-editor, .xterm';
     const textBox = (el: Element) => {
-      const rg = document.createRange();
-      rg.selectNodeContents(el);
-      const rects = Array.from(rg.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+      const rects: DOMRect[] = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.textContent?.trim() || n.parentElement?.closest(DRAWN)) continue;
+        const rg = document.createRange();
+        rg.selectNodeContents(n);
+        rects.push(...Array.from(rg.getClientRects()).filter((r) => r.width > 0 && r.height > 0));
+      }
       if (!rects.length) return null;
       return { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)), top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)) };
     };
