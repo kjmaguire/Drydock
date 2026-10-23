@@ -5,7 +5,6 @@ import {
   cellText,
   connectionBlurb,
   connectionKey,
-  connectionName,
   connectionState,
   defaultConnection,
   distroBrand,
@@ -22,6 +21,7 @@ import {
   statusTone,
   stepTone,
 } from './connections.ts';
+import { cliName, wslTwins } from '../shared/cli-name.ts';
 
 const report = (over: Partial<ConnectionReport> = {}): ConnectionReport =>
   ({ adapter: 'claude', platform: 'windows', transport: 'headless', form: 'short', steps: [], capabilities: {} as never, matrix: null, summary: '', tokensUsed: 0, ok: false, elapsed: 31_500_000_000, ...over }) as ConnectionReport;
@@ -58,15 +58,26 @@ describe('connections helpers', () => {
   it('tiles: the product name, what it is, the state with its tone, and which one opens first', () => {
     const base = { adapter: 'claude', installed: true, status: 'ready', usable: true, platform: 'windows', version: '2.1.0', gates: [] } as Connection;
     const inWSL = { ...base, key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu' } as Connection;
-    expect(connectionName(base)).toBe('Claude Code');
-    // a WSL install is "<product> WSL"; the distro is on the line below the name
-    expect(connectionName(inWSL)).toBe('Claude Code WSL');
-    expect(connectionName({ adapter: 'codex', runMode: 'wsl' })).toBe('Codex WSL');
-    expect(connectionName({ adapter: 'custom' })).toBe('custom');
+    expect(cliName(base)).toBe('Claude Code');
+    // a WSL install is "<product> WSL", without the distro (the owner: "we don't need to see the Ubuntu"), on the tile's line too
+    expect(cliName(inWSL)).toBe('Claude Code WSL');
+    expect(cliName(inWSL, [base, inWSL])).toBe('Claude Code WSL');
+    expect(cliName({ adapter: 'codex', runMode: 'wsl' })).toBe('Codex WSL');
+    expect(cliName({ adapter: 'custom' })).toBe('custom');
     expect(connectionBlurb(base)).toBe('2.1.0 on Windows');
-    expect(connectionBlurb(inWSL)).toBe('2.1.0 in the WSL distro Ubuntu');
-    expect(connectionBlurb({ runMode: 'wsl', distro: 'Ubuntu-26.04' })).toBe('Agent CLI in the WSL distro Ubuntu-26.04');
+    expect(connectionBlurb(inWSL)).toBe('2.1.0 in WSL');
+    expect(connectionBlurb({ runMode: 'wsl' })).toBe('Agent CLI in WSL');
     expect(connectionBlurb({ runMode: 'native' })).toBe('Agent CLI on Windows');
+    // only the same CLI in two distros names them, so the two tiles can be told apart; another CLI's distro does not count
+    const debian = { ...inWSL, key: 'claude@wsl:Debian', distro: 'Debian' } as Connection;
+    const codexDebian = { ...debian, adapter: 'codex', key: 'codex@wsl:Debian' } as Connection;
+    expect([base, inWSL, debian].map((c) => cliName(c, [base, inWSL, debian]))).toEqual(['Claude Code', 'Claude Code WSL (Ubuntu)', 'Claude Code WSL (Debian)']);
+    expect(cliName(inWSL, [base, inWSL, codexDebian])).toBe('Claude Code WSL');
+    expect(wslTwins(base, [base, inWSL, debian])).toBe(false);
+    // a distro where the CLI is not installed is not a second install: the one install keeps the name without its distro, and
+    // the distro without the CLI is told apart from it by its own
+    const noCLI = { ...debian, installed: false, status: 'not_installed', usable: false } as Connection;
+    expect([inWSL, noCLI].map((c) => cliName(c, [base, inWSL, noCLI]))).toEqual(['Claude Code WSL', 'Claude Code WSL (Debian)']);
 
     expect(connectionState(base)).toEqual({ text: 'Ready', tone: 'ok' });
     expect(connectionState({ ...base, usable: false })).toEqual({ text: 'Not usable yet', tone: 'warn' });
@@ -133,7 +144,7 @@ describe('connections helpers', () => {
     expect(defaultConnection(orderConnections([c('codex', { usable: false }), c('claude', { key: 'claude@wsl:Ubuntu', runMode: 'wsl', usable: false })]))).toBe('claude@wsl:Ubuntu');
   });
 
-  it('a WSL install is its own card, named by its distro', () => {
+  it('a WSL install is its own card, its distro in the Runs row', () => {
     const native = { adapter: 'claude', key: 'claude', runMode: 'native' };
     const inWSL = { adapter: 'claude', key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', wsl: { distro: 'Ubuntu', wsl2: true, interop: true, setsid: true, default: true } };
     expect(connectionKey(native)).toBe('claude');

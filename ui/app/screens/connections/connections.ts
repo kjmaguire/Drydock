@@ -4,7 +4,7 @@
 import type { Connection, ConnectionReport, MatrixCell, Prereq } from '../../api/types.ts';
 import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
-import { adapterLabel } from '../chats/chats.ts';
+import { adapterLabel } from '../shared/cli-name.ts';
 
 /** observed: seen during the test. declared: the CLI says so. unknown: not verified. */
 export const provTone = (p: string): Tone => (p === 'observed' ? 'ok' : p === 'declared' ? 'warn' : 'muted');
@@ -40,13 +40,9 @@ export function netModeText(mode: string | undefined): string {
   return `${mode}: the distro cannot reach Windows localhost directly`;
 }
 
-/** The tile's and the card's name: the CLI's product name ("Claude Code"), "Claude Code WSL" for one inside a WSL distro (the
- * distro is named on the line below it, connectionBlurb, and on the card, runsText). */
-export const connectionName = (c: Pick<Connection, 'adapter' | 'runMode'>): string => (isWSL(c) ? `${adapterLabel(c.adapter)} WSL` : adapterLabel(c.adapter));
-
-/** The tile's "what it is" line: the version found and where it runs ("2.1.0 in the WSL distro Ubuntu-26.04"). */
-export function connectionBlurb(c: Pick<Connection, 'version' | 'runMode' | 'distro'>): string {
-  const where = isWSL(c) ? `in the WSL distro ${c.distro ?? ''}` : 'on Windows';
+/** The tile's "what it is" line: the version found and where it runs ("2.1.0 in WSL", "2.1.0 on Windows"). */
+export function connectionBlurb(c: Pick<Connection, 'version' | 'runMode'>): string {
+  const where = isWSL(c) ? 'in WSL' : 'on Windows';
   return c.version ? `${c.version} ${where}` : `Agent CLI ${where}`;
 }
 

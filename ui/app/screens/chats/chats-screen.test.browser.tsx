@@ -427,8 +427,8 @@ describe('New chat dialog', () => {
       () =>
         expect(optionsOf(agent).map((o) => [o.label, o.disabled])).toEqual([
           ['Claude Code on Windows 2.1.295', false],
-          ['Claude Code in Debian (WSL) (not signed in)', true],
-          ['Claude Code in Ubuntu (WSL) 2.1.296', false],
+          ['Claude Code WSL (Debian) (not signed in)', true], // the distro only because two offer it
+          ['Claude Code WSL (Ubuntu) 2.1.296', false],
           ['Cline 3.0.70', false],
           ['Gemini CLI (not installed)', true],
         ]),
@@ -445,10 +445,52 @@ describe('New chat dialog', () => {
     expect(created).toEqual([{ projectId: undefined, cwd: undefined, adapter: 'claude', wslDistro: 'Ubuntu', model: undefined, effort: undefined, permissionMode: undefined, readHistory: true }]);
   });
 
-  it("shows where a chat in WSL runs on its adapter chip", async () => {
+  it('names a chat in WSL "Claude Code WSL" on its adapter chip, the distro in its tooltip', async () => {
     const c = chat({ wslDistro: 'Ubuntu', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a' });
     const { r } = setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }) }, { id: 'chat_a' });
-    await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toContain('Claude Code in Ubuntu (WSL)'), r);
+    // "Claude Code WSL", the distro in the chip's tooltip only
+    const chip = await waitFor(() => must$(r, '[data-testid="chip-adapter"]'), r);
+    await waitFor(() => expect(chip.textContent).toContain('Claude Code WSL'), r);
+    expect(chip.textContent).not.toContain('Ubuntu');
+    expect(chip.getAttribute('title')).toBe('Runs inside the WSL distro Ubuntu');
+  });
+
+  it('names the distro on the adapter chip of a chat in WSL when the CLI is installed in two distros, as the Connections page does', async () => {
+    const conn = (distro: string, over: Partial<Connection> = {}) =>
+      ({ adapter: 'claude', key: `claude@wsl:${distro}`, runMode: 'wsl', distro, installed: true, status: 'ready', usable: true, version: '2.1.296', platform: 'linux (WSL 2)', ...over }) as Connection;
+    let installs = [conn('Ubuntu'), conn('Debian')];
+    let reads = 0;
+    const c = chat({ wslDistro: 'Debian', cwd: '\\\\wsl.localhost\\Debian\\home\\kyle\\.drydock\\chats\\chat_a' });
+    const { r, s } = setup(
+      {
+        chatList: async () => [item(c)],
+        chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }),
+        connectionList: async () => (reads++, installs),
+      },
+      { id: 'chat_a' },
+    );
+    const chip = await waitFor(() => must$(r, '[data-testid="chip-adapter"]'), r);
+    await waitFor(() => expect(chip.textContent).toBe('Claude Code WSL (Debian)'), r);
+    expect(chip.getAttribute('title')).toBe('Runs inside the WSL distro Debian');
+    // the CLI is gone from the other distro (a check on the Connections page): the name drops the distro again
+    installs = [conn('Ubuntu', { installed: false, status: 'not_installed', usable: false }), conn('Debian')];
+    const before = reads;
+    s.emit({ type: 'connection.checked' });
+    await waitFor(() => expect(reads).toBeGreaterThan(before), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toBe('Claude Code WSL'), r);
+  });
+
+  it('does not read the Connections for a chat on Windows', async () => {
+    let reads = 0;
+    const c = chat();
+    const { r } = setup(
+      { chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [msg(1, 'user', 'hi')], hasMore: false }), connectionList: async () => (reads++, []) },
+      { id: 'chat_a' },
+    );
+    const chip = await waitFor(() => must$(r, '[data-testid="chip-adapter"]'), r);
+    expect(chip.textContent).toBe('Claude Code');
+    await new Promise((ok) => setTimeout(ok, 50));
+    expect(reads).toBe(0);
   });
 
   it('shows the error the core gave', async () => {
@@ -564,10 +606,9 @@ describe('Conversation', () => {
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(4, 'tool', 'Read: calc.go', { toolName: 'Read', toolInput: { file_path: 'calc.go' }, turnId: 'turn_2', thinking: 'Multiply is next to Add.' }) } });
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(5, 'assistant', 'Multiply goes in calc.go next to Add.', { turnId: 'turn_2' }) } });
     await waitFor(() => expect(messages(r).map((m) => m.getAttribute('data-role'))).toEqual(['user', 'assistant', 'user', 'tool', 'assistant']), r);
-    // the person's own messages are a bubble on the right without an avatar; the agent's keep its dot (Crew HQ, P64)
+    // the person's own messages are a bubble on the right; the agent's answer is text on the left, neither with an avatar (P97)
     expect(messages(r).map((m) => m.getAttribute('data-mine'))).toEqual(['true', null, 'true', null, null]);
-    expect(messages(r)[0]!.querySelector('[data-kind]')).toBeNull();
-    expect(messages(r)[1]!.querySelector('[data-kind="agent"]')).not.toBeNull();
+    expect(messages(r).map((m) => m.querySelector('[data-kind]'))).toEqual([null, null, null, null, null]);
     await waitFor(() => expect($(r, '[data-testid="chat-streaming"]')?.textContent ?? '').not.toContain('in calc.go'), r);
     const tool = $(r, '[data-testid="chat-tool"]') as HTMLDetailsElement;
     expect(tool.querySelector('summary')!.textContent).toContain('Read');
@@ -578,7 +619,7 @@ describe('Conversation', () => {
     expect([fold.open, fold.querySelector('summary')!.textContent, fold.textContent!.includes('Multiply is next to Add.')]).toEqual([false, 'Thinking', true]);
     expect(fold.closest('[data-testid="chat-message"]')!.getAttribute('data-role')).toBe('tool');
     // an answer reads in a column, however wide the window
-    expect(getComputedStyle(messages(r)[4]!.querySelector('.md, [class*="md"]')?.parentElement ?? messages(r)[4]!).maxWidth).toBe('760px');
+    expect(getComputedStyle(messages(r)[4]!.querySelector('.md, [class*="md"]')?.parentElement ?? messages(r)[4]!).maxWidth).toBe('720px');
     expect(tool.querySelector('pre')!.textContent).toContain('"file_path": "calc.go"');
     s.emit({ type: 'chat.updated', data: { chatId: 'chat_a', chat: chat({ status: 'idle', tokensIn: 2000 }) } });
     s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_2', status: 'done', usage: { inputTokens: 800, outputTokens: 40, costUsd: 0.01 } } });
@@ -623,11 +664,11 @@ describe('Conversation', () => {
     expect(callout.textContent).toContain('Bash(touch probe.txt)');
     // the newest refusal leads with Allow and retry (UI review P1-3); Only allow keeps the two steps apart
     expect(Array.from(callout.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow and retry', 'Only allow']);
-    expect(byText(r.container, 'button', /Allowed tools/).textContent).toBe('Allowed tools');
+    expect(byText(r.container, 'button', /Allowed tools/).getAttribute('aria-label')).toBe('Allowed tools');
     await r.act(() => byText(callout, 'button', 'Only allow').click());
     await waitFor(() => expect(allowed).toEqual([['chat_a', 'Bash(touch probe.txt)']]), r);
     await waitFor(() => expect(callout.textContent).toContain('Allowed for this chat'), r);
-    expect(byText(r.container, 'button', /Allowed tools/).textContent).toBe('Allowed tools (1)');
+    expect(byText(r.container, 'button', /Allowed tools/).getAttribute('aria-label')).toBe('Allowed tools (1)');
     await r.act(() => byText(callout, 'button', 'Retry').click());
     await waitFor(() => expect(sent).toEqual([['chat_a', RETRY_TEXT, []]]), r);
   });
@@ -692,11 +733,12 @@ describe('Conversation', () => {
     expect(card.textContent).toContain('No result was reported for this call.');
   });
 
-  it('a tool call the agent waits on is shown with its input, and Allow once or Refuse answers it', async () => {
+  it('a request the agent waits on is an amber card where it was made, answered with Allow once or Deny (P97)', async () => {
     const answered: unknown[] = [];
+    const remembered: unknown[] = [];
     let waiting = [
       { id: 'cask_1', chatId: 'chat_a', turnId: 't1', messageId: 'm2', tool: 'Run go test', summary: 'Run go test: go test ./...', input: { command: 'go test ./...' }, created: Date.now(), expiresAt: Date.now() + 30 * 60_000 },
-      { id: 'cask_2', chatId: 'chat_a', turnId: 't1', messageId: 'm3', tool: 'Fetch', summary: 'Fetch: https://go.dev', input: { url: 'https://go.dev' }, created: Date.now() + 1, expiresAt: Date.now() + 30 * 60_000 },
+      { id: 'cask_2', chatId: 'chat_a', turnId: 't1', messageId: 'm_older', tool: 'Fetch', summary: 'Fetch: https://go.dev', input: { url: 'https://go.dev' }, created: Date.now() + 1, expiresAt: Date.now() + 30 * 60_000 },
     ];
     const { r } = conv(chat({ adapter: 'gemini' }), [msg(1, 'user', 'run the tests'), msg(2, 'system', 'Asks to use Run go test: go test ./...')], {
       chatAsks: async () => waiting,
@@ -704,22 +746,64 @@ describe('Conversation', () => {
         answered.push([id, askId, allow]);
         waiting = waiting.filter((a) => a.id !== askId);
       },
+      chatAllowAndRemember: async (id, askId) => (remembered.push([id, askId]), { answered: true, rule: '' }),
     });
     const cards = await waitFor(() => {
       const c = $$(r, '[data-testid="chat-ask"]');
       if (c.length !== 2) throw new Error('two requests');
       return c;
     }, r);
-    expect(cards[0]!.getAttribute('role')).toBe('alert');
-    expect(cards[0]!.textContent).toContain('asks to use Run go test: go test ./...');
-    expect(cards[0]!.querySelector('[data-testid="chat-ask-input"]')!.textContent).toContain('"command": "go test ./..."');
+    // the first is in the conversation, in the place of the note that records it; the other's note is not loaded: above the composer
+    expect(cards[0]!.closest('[data-testid="chat-message"]')!.getAttribute('data-seq')).toBe('2');
+    expect(cards[1]!.closest('[data-testid="chat-message"]')).toBeNull();
+    expect(cards[1]!.closest('[data-testid="chat-asks"]')).not.toBeNull();
+    expect(cards[0]!.getAttribute('aria-label')).toBe('Gemini CLI wants to run a command, waiting on you');
+    expect(cards[0]!.textContent).toContain('waiting on you');
+    expect(cards[0]!.querySelector('[data-testid="chat-ask-input"]')!.textContent).toBe('go test ./...');
+    expect(cards[1]!.textContent).toContain('Gemini CLI wants to use Fetch');
+    expect(cards[1]!.querySelector('[data-testid="chat-ask-input"]')!.textContent).toBe('https://go.dev');
     expect(cards[0]!.querySelector('[data-testid="chat-ask-expiry"]')!.textContent).toMatch(/^Refused at .+ if nobody answers\.$/);
+    // the core names no rule for an agent without per-chat rules: no "Allow ... in this chat"
+    expect(Array.from(cards[0]!.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow once', 'Deny']);
     await r.act(() => byText(cards[0]!, 'button', 'Allow once').click());
     await waitFor(() => expect(answered).toEqual([['chat_a', 'cask_1', true]]), r);
     await waitFor(() => expect($$(r, '[data-testid="chat-ask"]')).toHaveLength(1), r);
-    await r.act(() => byText(must$(r, '[data-testid="chat-ask"]'), 'button', 'Refuse').click());
+    // answered, the note is a quiet line again
+    expect(messages(r)[1]!.textContent).toContain('Asks to use Run go test');
+    await r.act(() => byText(must$(r, '[data-testid="chat-ask"]'), 'button', 'Deny').click());
     await waitFor(() => expect(answered).toEqual([['chat_a', 'cask_1', true], ['chat_a', 'cask_2', false]]), r);
     await waitFor(() => expect($(r, '[data-testid="chat-asks"]')).toBeNull(), r);
+    expect(remembered).toEqual([]);
+  });
+
+  it('"Allow <tool> in this chat" remembers the call\'s rule (chat.answer remember), and shows the core\'s reason when it cannot (P97)', async () => {
+    const remembered: unknown[] = [];
+    let refuse = true;
+    let waiting = [
+      { id: 'cask_1', chatId: 'chat_a', turnId: 't1', messageId: 'm2', tool: 'Bash', summary: 'Bash: git diff --stat', input: { command: 'git diff --stat' }, rule: 'Bash(git diff --stat)', created: Date.now(), expiresAt: Date.now() + 30 * 60_000 },
+    ];
+    const { r } = conv(chat(), [msg(1, 'user', 'what changed?'), msg(2, 'system', 'Asks to use Bash: git diff --stat')], {
+      chatAsks: async () => waiting,
+      chatAllowAndRemember: async (id, askId) => {
+        remembered.push([id, askId]);
+        if (refuse) throw new Error('the call\'s input was shortened or hides a secret, so no rule can name it exactly: allow it once instead');
+        waiting = [];
+        return { answered: true, rule: 'Bash(git diff --stat)' };
+      },
+    });
+    const card = await waitFor(() => must$(r, '[data-testid="chat-ask"]'), r);
+    expect(card.getAttribute('aria-label')).toBe('Claude Code wants to run a command, waiting on you');
+    expect(Array.from(card.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow once', 'Allow git diff --stat in this chat', 'Deny']);
+    expect(must$(r, '[data-testid="chat-ask-remember"]').getAttribute('title')).toContain('Bash(git diff --stat)');
+    await r.act(() => byText(card, 'button', 'Allow git diff --stat in this chat').click());
+    await waitFor(() => expect(remembered).toEqual([['chat_a', 'cask_1']]), r);
+    // refused: the reason is on the request, which still waits to be allowed once or denied
+    await waitFor(() => expect(must(card.querySelector('[role="alert"]'), 'reason').textContent).toContain('allow it once instead'), r);
+    expect(byText<HTMLButtonElement>(card, 'button', 'Allow once').disabled).toBe(false);
+    refuse = false;
+    await r.act(() => byText(card, 'button', 'Allow git diff --stat in this chat').click());
+    await waitFor(() => expect(remembered).toHaveLength(2), r);
+    await waitFor(() => expect($(r, '[data-testid="chat-ask"]')).toBeNull(), r);
   });
 
   it('lists the allowed tools and removes one', async () => {
@@ -737,10 +821,14 @@ describe('Conversation', () => {
     await waitFor(() => expect(byText(r.container, 'button', 'Allowed tools (1)')).toBeDefined(), r);
   });
 
-  it('changes the settings through the chips popover, with the skip-approvals warning', async () => {
+  it('changes the settings from the model button, a mode that skips approvals only once confirmed', async () => {
     const updates: unknown[] = [];
     const { r } = conv(chat(), [], { chatUpdate: async (u) => (updates.push(u), chat({ ...u, skipsApprovals: u.permissionMode === 'bypassPermissions' } as Partial<Chat>)) });
-    const btn = await waitFor(() => byText(r.container, 'button', 'Chat settings'), r);
+    const btn = await waitFor(() => must$(r, '[data-testid="chat-settings-open"]'), r);
+    expect(btn.closest('[data-testid="chat-composer"]')).not.toBeNull(); // in the composer's row
+    expect(btn.getAttribute('aria-label')).toBe('Model sonnet: chat settings');
+    expect(must$(r, '[data-testid="chip-model"]').textContent).toBe('sonnet');
+    expect(must$(r, '[data-testid="chip-effort"]').textContent).toBe('high effort');
     await r.act(() => btn.click());
     const pop = await waitFor(() => {
       const p = must$(r, '[data-testid="chat-settings"]');
@@ -750,15 +838,19 @@ describe('Conversation', () => {
     await waitFor(() => expect(valueOf(byLabel(pop, 'Permission mode'))).toBe('default'), r);
     type(byLabel(pop, 'Model'), 'opus');
     type(byLabel<HTMLElement>(pop, 'Permission mode'), 'bypassPermissions');
-    await waitFor(() => expect(pop.querySelector('[data-testid="skip-warning"]')).not.toBeNull(), r);
+    await waitFor(() => expect(pop.querySelector('[data-testid="skip-approvals-warning"]')).not.toBeNull(), r);
+    // Save waits for the confirmation (lib/permission.ts)
+    expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(true);
+    await r.act(() => byLabel(pop, 'I understand this agent will act without asking me first').click());
+    await waitFor(() => expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(false), r);
     await r.act(() => byText(pop, 'button', 'Save').click());
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', model: 'opus', effort: 'high', permissionMode: 'bypassPermissions', readHistory: true }]), r);
     await waitFor(() => expect($(r, '[data-testid="chip-mode"]')!.getAttribute('data-warn')).toBe('true'), r);
   });
 
-  it('a header popover takes the focus when it opens and Escape closes it', async () => {
+  it('the settings popover takes the focus on its model field when it opens and Escape closes it', async () => {
     const { r } = conv(chat(), []);
-    const btn = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'Chat settings'), r);
+    const btn = await waitFor(() => must$(r, '[data-testid="chat-settings-open"]') as HTMLButtonElement, r);
     await r.act(() => btn.click());
     const model = await waitFor(() => {
       const el = must$(r, '[data-testid="chat-settings"]').querySelector<HTMLElement>('[role="combobox"]');
@@ -1104,5 +1196,169 @@ describe("The palette's New chat", () => {
       const r = mount(<ChatsScreen onNavigate={(h) => void navigated.push(h)} />, s);
       await waitFor(newChatDialog, r);
     });
+  });
+});
+
+describe('The graphite Chats screen (P97)', () => {
+  function conv(c: Chat, msgs: ChatMessage[], client: Partial<Client> = {}) {
+    return setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: msgs, hasMore: false }), ...client }, { id: c.id });
+  }
+  const conn = (distro: string) =>
+    ({ adapter: 'claude', key: `claude@wsl:${distro}`, runMode: 'wsl', distro, installed: true, status: 'ready', usable: true, version: '2.1.296', platform: 'linux (WSL 2)' }) as Connection;
+  const press = (target: EventTarget, key: string, init: KeyboardEventInit = {}) => {
+    const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+    target.dispatchEvent(e);
+    return e;
+  };
+
+  it('lists each chat with its title and a faint line: the project, the CLI ("Claude Code WSL") and when; the open one highlighted', async () => {
+    const now = Date.now();
+    const list = [
+      item({ id: 'chat_a', title: 'Why does WSL git see every file as changed?', projectId: '', wslDistro: 'Ubuntu', updatedAt: now - 10_000 }),
+      item({ id: 'c2', title: 'Explain the routing rules', adapter: 'codex', updatedAt: now - 5 * 60_000 }),
+      item({ id: 'c3', title: 'Long job', status: 'running' }),
+    ];
+    const { r } = setup({ chatList: async () => list, connectionList: async () => [conn('Ubuntu')], chatGet: async () => ({ chat: chat(list[0]), messages: [], hasMore: false }) }, { id: 'chat_a' });
+    await waitFor(() => expect(rows(r).map((x) => x.querySelector('.line')!.textContent)).toEqual(['Claude Code WSL · now', 'gocalc · Codex · 5 min', 'gocalc · Claude Coderunning']), r);
+    // the title is the row's first line, and the open chat is the current page
+    expect(rows(r)[0]!.querySelector('.title > span')!.textContent).toBe('Why does WSL git see every file as changed?');
+    expect(rows(r).map((x) => x.querySelector('a')!.getAttribute('aria-current'))).toEqual(['page', null, null]);
+    expect(rows(r)[2]!.querySelector('[data-testid="chat-running"]')).not.toBeNull();
+    // the column: "Chats" and New with its shortcut
+    const col = must$(r, '[aria-label="Chats"]');
+    expect(col.querySelector('h1')!.textContent).toBe('Chats');
+    const btn = must$(r, '[data-testid="chat-new"]');
+    expect([btn.textContent, btn.getAttribute('aria-label'), btn.getAttribute('aria-keyshortcuts'), btn.querySelector('kbd')!.textContent]).toEqual(['NewCtrl+N', 'New chat', 'Control+N', 'Ctrl+N']);
+  });
+
+  it('Ctrl+N opens the new chat dialog, but not while typing in a field', async () => {
+    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'One' })] });
+    await waitFor(() => expect(rows(r)).toHaveLength(1), r);
+    // typing in the search box: Ctrl+N is the field's (and the browser's), not the screen's
+    const box = byLabel(r.container, 'Search chats');
+    const typed = press(box, 'n', { ctrlKey: true });
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect([typed.defaultPrevented, doc$$('dialog[open]').length]).toEqual([false, 0]);
+    // a plain N does nothing
+    press(document.body, 'n');
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(doc$$('dialog[open]')).toHaveLength(0);
+    let e: KeyboardEvent | undefined;
+    await r.act(() => void (e = press(document.body, 'n', { ctrlKey: true })));
+    expect(e!.defaultPrevented).toBe(true);
+    await waitFor(newChatDialog, r);
+  });
+
+  it('the header says the CLI with its state, the folder as the CLI sees it and where the chat runs, from its fields', async () => {
+    const wsl = chat({ projectId: '', wslDistro: 'Ubuntu', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a' });
+    const { r } = conv(wsl, [msg(1, 'user', 'hi')], { connectionList: async () => [conn('Ubuntu')] });
+    await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toBe('Claude Code WSL'), r);
+    const header = must$(r, '[data-testid="chat-view"] > header');
+    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('~/.drydock/chats/chat_a');
+    expect(must$(r, '[data-testid="chat-folder"]').getAttribute('title')).toBe(wsl.cwd);
+    expect(must$(r, '[data-testid="chat-place"]').textContent).toBe('No project · runs inside the distro');
+    // the state is the dot (green: a session is kept); its words are for readers
+    const status = must$(r, '[data-testid="chat-status"]');
+    expect([status.textContent, status.className, status.parentElement!.getAttribute('data-state')]).toEqual(['Session kept', 'sr-only', 'session']);
+    expect(header.contains(status)).toBe(true);
+  });
+
+  it("a project chat runs in the project's folder; a running turn shows on the chip", async () => {
+    const { r } = conv(chat({ status: 'running' }), [msg(1, 'user', 'long job')]);
+    await waitFor(() => expect(must$(r, '[data-testid="chat-place"]').textContent).toBe("gocalc · runs in the project's folder"), r);
+    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('C:\\repos\\gocalc');
+    const status = must$(r, '[data-testid="chat-status"]');
+    expect([status.textContent, status.className, status.parentElement!.getAttribute('data-state')]).toEqual(['Running', '', 'running']);
+  });
+
+  it('the approval mode button says the mode in words and changes it, a mode that skips approvals only once confirmed', async () => {
+    const updates: unknown[] = [];
+    const { r } = conv(chat(), [msg(1, 'user', 'hi')], { chatUpdate: async (u) => (updates.push(u), chat({ ...u, skipsApprovals: u.permissionMode === 'bypassPermissions' } as Partial<Chat>)) });
+    const mode = await waitFor(() => must$(r, '[data-testid="chip-mode"]'), r);
+    expect([mode.tagName, mode.textContent, mode.getAttribute('data-warn')]).toEqual(['BUTTON', 'Asks before commands', null]);
+    await r.act(() => mode.click());
+    const pop = await waitFor(() => {
+      const p = must$(r, '[data-testid="chat-mode-settings"]');
+      if (!p.querySelector('form')) throw new Error('closed');
+      return p;
+    }, r);
+    type(byLabel<HTMLElement>(pop, 'Permission mode'), 'bypassPermissions');
+    await waitFor(() => expect(pop.querySelector('[data-testid="skip-approvals-warning"]')).not.toBeNull(), r);
+    expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(true);
+    await r.act(() => byLabel(pop, 'I understand this agent will act without asking me first').click());
+    await waitFor(() => expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(false), r);
+    await r.act(() => byText(pop, 'button', 'Save').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', permissionMode: 'bypassPermissions' }]), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Never asks, skips approvals'), r);
+    expect(must$(r, '[data-testid="chip-mode"]').getAttribute('data-warn')).toBe('true');
+  });
+
+  it('Move to a project lists the projects, says what happens to the folder and moves the chat (chat.update projectId)', async () => {
+    const updates: unknown[] = [];
+    let fail = true;
+    const home = chat({ projectId: '', cwd: 'C:\\Users\\kyle\\.drydock\\chats\\chat_a' });
+    const { r } = conv(home, [msg(1, 'user', 'hi')], {
+      chatUpdate: async (u) => {
+        updates.push(u);
+        if (fail) throw new Error('stop the running turn before moving the chat to another project');
+        return chat({ projectId: u.projectId, cwd: 'C:\\repos\\payments-api', sessionId: '' });
+      },
+    });
+    await waitFor(() => expect(must$(r, '[data-testid="chat-place"]').textContent).toBe('No project · runs in its own folder'), r);
+    const move = must$(r, '[data-testid="chat-move"]');
+    expect(move.textContent).toBe('Move to a project');
+    expect(move.closest('[data-testid="chat-composer"]')).not.toBeNull();
+    await r.act(() => move.click());
+    const dlg = await waitFor(() => dialogWith('Move to a project'), r);
+    const project = byLabel<HTMLElement>(dlg, 'Project');
+    expect(optionsOf(project).map((o) => o.label)).toEqual(['gocalc', 'payments-api']);
+    expect(valueOf(project)).toBe('prj_1');
+    expect(must(dlg.querySelector('[data-testid="chat-move-effect"]'), 'effect').textContent).toBe(
+      "It joins gocalc and runs in the project's folder. When that is another folder, the next message starts a new session, given the conversation so far. Its allow rules, skills and MCP servers stay.",
+    );
+    type(project, 'prj_2');
+    await waitFor(() => expect(dlg.textContent).toContain('It joins payments-api'), r);
+    // the core's refusal stays in the dialog
+    await r.act(() => byText(dlg, 'button', 'Move').click());
+    await waitFor(() => expect(must(dlg.querySelector('[role="alert"]'), 'refusal').textContent).toContain('stop the running turn'), r);
+    fail = false;
+    await r.act(() => byText(dlg, 'button', 'Move').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', projectId: 'prj_2' }, { id: 'chat_a', projectId: 'prj_2' }]), r);
+    await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chat-place"]').textContent).toBe("payments-api · runs in the project's folder"), r);
+    expect(must$(r, '[data-testid="chat-move"]').textContent).toBe('Move to another project');
+  });
+
+  it('a chat in a project can be taken out of it, and nothing moves while a turn runs', async () => {
+    const updates: unknown[] = [];
+    const { r, s } = conv(chat(), [msg(1, 'user', 'hi')], { chatUpdate: async (u) => (updates.push(u), chat({ projectId: '' })) });
+    const move = await waitFor(() => must$(r, '[data-testid="chat-move"]') as HTMLButtonElement, r);
+    await r.act(() => move.click());
+    const dlg = await waitFor(() => dialogWith('Move to another project'), r);
+    const project = byLabel<HTMLElement>(dlg, 'Project');
+    expect(optionsOf(project).map((o) => o.label)).toEqual(['payments-api', 'No project']);
+    type(project, '__none');
+    await waitFor(() => expect(dlg.textContent).toContain('It leaves the project and keeps the folder it runs in, so its session continues.'), r);
+    await r.act(() => byText(dlg, 'button', 'Move').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', projectId: '' }]), r);
+    // a running turn: the button is off
+    s.emit({ type: 'chat.updated', data: { chatId: 'chat_a', chat: chat({ projectId: '', status: 'running', version: 5 }) } });
+    await waitFor(() => expect((must$(r, '[data-testid="chat-move"]') as HTMLButtonElement).disabled).toBe(true), r);
+  });
+
+  it('Enter sends, Shift+Enter is a new line; the send button reads "↵ send"', async () => {
+    const sent: unknown[] = [];
+    const { r } = conv(chat(), [msg(1, 'user', 'hi'), msg(2, 'assistant', 'hello')], { chatSend: async (id, text) => (sent.push([id, text]), { turnId: 't2', version: 2 }) });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
+    expect(box.placeholder).toBe('Reply to Claude Code');
+    const send = byText<HTMLButtonElement>(r.container, 'button', 'Send');
+    expect([send.textContent, send.getAttribute('aria-keyshortcuts'), send.querySelector('kbd')!.textContent]).toEqual(['↵send', 'Enter', '↵']);
+    type(box, 'first line');
+    let shift: KeyboardEvent | undefined;
+    await r.act(() => void (shift = press(box, 'Enter', { shiftKey: true })));
+    expect(shift!.defaultPrevented).toBe(false);
+    expect(sent).toEqual([]);
+    await r.act(() => press(box, 'Enter'));
+    await waitFor(() => expect(sent).toEqual([['chat_a', 'first line']]), r);
   });
 });

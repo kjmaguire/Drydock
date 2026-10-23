@@ -82,7 +82,8 @@ func Main(args []string) int {
 	return 3
 }
 
-// osv prints the documented osv-scanner JSON (results[].packages[].vulnerabilities[]) for one vulnerable Go package and
+// osv prints the documented osv-scanner JSON (results[].packages[].vulnerabilities[], each with its OSV record's affected
+// ranges) for one vulnerable Go package and
 // exits 1, as the real tool does when it finds something; with --empty it prints an empty result and exits 0.
 func osv(empty bool) int {
 	if empty {
@@ -92,8 +93,14 @@ func osv(empty bool) int {
 	b, _ := json.Marshal(map[string]any{"results": []any{map[string]any{
 		"source": map[string]any{"path": "go.mod", "type": "lockfile"},
 		"packages": []any{map[string]any{
-			"package":         map[string]any{"name": "golang.org/x/text", "version": "0.3.7", "ecosystem": "Go"},
-			"vulnerabilities": []any{map[string]any{"id": "GO-2021-0113"}, map[string]any{"id": "CVE-2021-38561"}},
+			"package": map[string]any{"name": "golang.org/x/text", "version": "0.3.7", "ecosystem": "Go"},
+			// each vulnerability is an OSV record: its affected ranges name the version that fixes it
+			"vulnerabilities": []any{
+				map[string]any{"id": "GO-2021-0113", "affected": []any{map[string]any{"package": map[string]any{"name": "golang.org/x/text", "ecosystem": "Go"},
+					"ranges": []any{map[string]any{"type": "SEMVER", "events": []any{map[string]any{"introduced": "0"}, map[string]any{"fixed": "0.3.7-rc1"}, map[string]any{"fixed": "0.3.8"}}}}}}},
+				map[string]any{"id": "CVE-2021-38561", "affected": []any{map[string]any{"package": map[string]any{"name": "golang.org/x/text", "ecosystem": "Go"},
+					"ranges": []any{map[string]any{"type": "SEMVER", "events": []any{map[string]any{"introduced": "0"}, map[string]any{"fixed": "0.3.8"}}}}}}},
+			},
 		}},
 	}}})
 	fmt.Println(string(b))
@@ -120,16 +127,23 @@ const SARIF = `{
   }]
 }`
 
-// opengrep checks that each rules folder given with -f is there, writes SARIF to the --sarif-output file and exits 0.
+// opengrep checks that each rules folder given with -f is there, writes SARIF to the --sarif-output file and exits 0. Like
+// Opengrep 1.31.0 it refuses an option it does not know with exit 2, the usage line, then the error, in colour (what the real
+// one printed for --no-progress-bar, decision P95).
 func opengrep(args []string, empty bool) int {
 	out, rules := "", []string{}
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "scan" || args[i] == "-q" || args[i] == "--no-git-ignore" || !strings.HasPrefix(args[i], "-"):
 		case strings.HasPrefix(args[i], "--sarif-output="):
 			out = strings.TrimPrefix(args[i], "--sarif-output=")
 		case args[i] == "-f" && i+1 < len(args):
 			rules = append(rules, args[i+1])
 			i++
+		default:
+			fmt.Fprintln(os.Stderr, "Usage: \x1b[01mopengrep scan\x1b[m [\x1b[01m--help\x1b[m] [\x1b[04mOPTION\x1b[m]… [\x1b[04mTARGETS\x1b[m]…")
+			fmt.Fprintf(os.Stderr, "opengrep scan: \x1b[31munknown\x1b[m option \x1b[01m%s\x1b[m\n", args[i])
+			return 2
 		}
 	}
 	if len(rules) == 0 {

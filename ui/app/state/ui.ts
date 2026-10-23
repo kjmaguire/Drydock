@@ -8,7 +8,10 @@ import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'room' | 'task' | 'thread' | 'inspector';
 export type DockTab = 'terminal' | 'diff' | 'logs' | 'activity';
-/** The kind of page the details panel sits beside: a room, a task or a run ('conversation'), or any other page. */
+/**
+ * The kind of page the details panel sits beside: a room or a run ('conversation'), or any other page (the task page has its own
+ * properties panel, graphite P97, so the details panel starts closed beside it).
+ */
 export type DetailsPage = 'conversation' | 'other';
 
 interface DockState {
@@ -19,6 +22,7 @@ interface DockState {
 
 const DOCK_KEY = 'drydock.dock';
 const DETAILS_KEY = 'drydock.details';
+const SIDEBAR_KEY = 'drydock.sidebar';
 
 const DOCK_TABS: readonly DockTab[] = ['terminal', 'diff', 'logs', 'activity'];
 const DOCK_DEFAULT: DockState = { open: false, tab: 'diff', height: 280 };
@@ -30,6 +34,14 @@ const DETAILS_DEFAULT = { open: true, other: false };
 export const NARROW_DETAILS = '(max-width: 1199px)';
 /** Below this width the Rooms and Settings rails and the chat list are drawers a button opens. */
 export const NARROW_RAILS = '(max-width: 899px)';
+
+/** Below this width the sidebar starts folded to its rail (graphite, P97); a choice the person made stays. */
+export const NARROW_SIDEBAR = '(max-width: 1023px)';
+
+/** The sidebar's stored choice: 'rail' or 'full', or undefined when the person has not chosen (the window's width decides). */
+export function parseSidebar(raw: unknown): 'rail' | 'full' | undefined {
+  return raw === 'rail' || raw === 'full' ? raw : undefined;
+}
 
 /** The window's answer to a media query (a test passes its own, so a test's layout does not depend on its runner's window). */
 export type MediaMatch = (query: string) => Pick<MediaQueryList, 'matches' | 'addEventListener'> | undefined;
@@ -89,6 +101,9 @@ function writeJSON(key: string, v: unknown): void {
   }
 }
 
+/** The Inbox's tabs. */
+export type InboxTab = 'needs' | 'running' | 'done';
+
 /** A one-time note one page leaves for the next. */
 export interface Flash {
   text: string;
@@ -109,9 +124,13 @@ export class UiModel extends Model {
   #narrowOpen = false;
   #narrowDetails: ReturnType<MediaMatch>;
   #narrowRails: ReturnType<MediaMatch>;
+  #narrowSidebar: ReturnType<MediaMatch>;
+  #sidebar: 'rail' | 'full' | undefined;
   /** A rail or the chat list shown as a drawer in a narrow window (closed again by a navigation). */
   drawerOpen = false;
   paletteOpen = false;
+  /** The Inbox's tab (Needs you, Running, Done today): the sidebar's Inbox or Running is current with it. */
+  inboxTab: InboxTab = 'needs';
   theme: ThemeChoice = 'system';
   #newChat = false;
   #dock: Record<string, DockState> = {};
@@ -122,6 +141,8 @@ export class UiModel extends Model {
     const m = opts.media ?? media;
     this.#narrowDetails = m(NARROW_DETAILS);
     this.#narrowRails = m(NARROW_RAILS);
+    this.#narrowSidebar = m(NARROW_SIDEBAR);
+    this.#narrowSidebar?.addEventListener('change', () => this.changed());
     // crossing a width redraws the shell (a drawer left open closes when the window widens past it)
     const redraw = () => {
       if (!this.narrowRails) this.drawerOpen = false;
@@ -131,8 +152,21 @@ export class UiModel extends Model {
     this.#narrowRails?.addEventListener('change', redraw);
     if (opts.persist !== false) {
       this.theme = loadTheme();
+      this.#sidebar = readStored(SIDEBAR_KEY, parseSidebar);
       this.#dock = readStored(DOCK_KEY, parseDock);
     }
+  }
+
+  /** Whether the sidebar is folded to its rail: the person's choice, else a narrow window folds it. */
+  get sidebarRail(): boolean {
+    return this.#sidebar ? this.#sidebar === 'rail' : !!this.#narrowSidebar?.matches;
+  }
+
+  /** Fold the sidebar to its rail or open it again; the choice is remembered. */
+  toggleSidebar(): void {
+    this.#sidebar = this.sidebarRail ? 'full' : 'rail';
+    writeJSON(SIDEBAR_KEY, this.#sidebar);
+    this.changed();
   }
 
   setTab(t: DetailsTab): void {
@@ -202,6 +236,12 @@ export class UiModel extends Model {
     if (this.#page === 'conversation') this.#open.open = open;
     else this.#open.other = open;
     writeJSON(DETAILS_KEY, this.#open);
+    this.changed();
+  }
+
+  setInboxTab(tab: InboxTab): void {
+    if (this.inboxTab === tab) return;
+    this.inboxTab = tab;
     this.changed();
   }
 
@@ -279,6 +319,24 @@ export class UiModel extends Model {
   /** Open the dock on a tab (the task view, the command palette, Ctrl+Shift+D). */
   openDock(tab: DockTab): void {
     this.setDock({ open: true, tab });
+  }
+
+  #terminalAsk: { taskId?: string; projectId?: string } | undefined;
+
+  /**
+   * Open a new terminal in the dock, in a task's worktree or the project's repository (the task page's "Open the worktree"):
+   * the dock's terminal panel opens it as its own "New terminal" button does (takeTerminalAsk).
+   */
+  openTerminal(where: { taskId?: string; projectId?: string }): void {
+    this.#terminalAsk = { ...where };
+    this.openDock('terminal');
+  }
+
+  /** The terminal asked for by openTerminal, once: the terminal panel takes it. */
+  takeTerminalAsk(): { taskId?: string; projectId?: string } | undefined {
+    const w = this.#terminalAsk;
+    this.#terminalAsk = undefined;
+    return w;
   }
 
   toggleDock(): void {

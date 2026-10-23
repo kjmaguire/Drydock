@@ -8,17 +8,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/scan"
 )
 
-// The rules folder decides which rules read the whole project: only a person chooses it (decision P44).
-func TestOnlyAPersonChoosesTheRulesFolder(t *testing.T) {
-	s := &securityExt{}
-	for _, by := range []string{"", "human:", "agent:bot", "system"} {
-		if _, err := s.setRulesDir(context.Background(), "prj", "C:/rules", by); err == nil || !strings.Contains(err.Error(), "only a person") {
-			t.Fatalf("%q: %v", by, err)
-		}
-	}
-}
-
-// Only a person starts a scan, of a project or of a folder (decision P61), and chooses the folder scans' rules folder.
+// Only a person starts a scan, of a project or of a folder (decision P61).
 func TestOnlyAPersonStartsAScan(t *testing.T) {
 	s := &securityExt{}
 	for _, by := range []string{"", "human:", "agent:bot", "system"} {
@@ -27,8 +17,22 @@ func TestOnlyAPersonStartsAScan(t *testing.T) {
 				t.Fatalf("%q %+v: %v", by, p, err)
 			}
 		}
-		if _, err := s.setWorkspaceRulesDir(context.Background(), "C:/rules", by); err == nil || !strings.Contains(err.Error(), "only a person") {
-			t.Fatalf("%q: %v", by, err)
+	}
+}
+
+// Only a person dismisses a finding, restores one, or makes a task from one (decision P97); refused before anything is read.
+func TestOnlyAPersonDismissesRestoresOrMakesATaskFromAFinding(t *testing.T) {
+	s := &securityExt{}
+	req := findingDismissReq{scanTarget: scanTarget{ProjectID: "prj"}, Fingerprint: strings.Repeat("a", 24), Reason: scan.ReasonNotReal}
+	for _, by := range []string{"", "human:", "agent:bot", "system"} {
+		if _, err := s.dismiss(context.Background(), req, by); err == nil || !strings.Contains(err.Error(), "only a person") {
+			t.Fatalf("dismiss %q: %v", by, err)
+		}
+		if _, err := s.restore(context.Background(), req, by); err == nil || !strings.Contains(err.Error(), "only a person") {
+			t.Fatalf("restore %q: %v", by, err)
+		}
+		if _, err := s.findingTask(context.Background(), findingTaskReq{ScanID: "scn", Fingerprint: req.Fingerprint}, by); err == nil || !strings.Contains(err.Error(), "only a person") {
+			t.Fatalf("task %q: %v", by, err)
 		}
 	}
 }

@@ -70,6 +70,12 @@ type ToolDecision struct {
 	Display string
 	// Shortened is set when a long value is cut in Display; the approval still covers the whole input.
 	Shortened bool
+
+	// what a task allow rule is checked against (taskrules.go): the analysis of a shell command and its decision, and whether a
+	// file tool writes inside .git
+	report  *CommandReport
+	command *CommandDecision
+	gitDir  bool
 }
 
 // shellTools are the command tools of Claude Code, with the flavor their command is parsed as.
@@ -165,6 +171,7 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 		desc := DescribeCommand(in, rep, cd.Kind)
 		desc.Tool, desc.ArgvDigest = d.Action.Tool, digest
 		d.Action = desc
+		d.report, d.command = &rep, &cd
 		d.Reasons = append(d.Reasons, cd.Reasons...)
 		switch {
 		case cd.Verdict == VerdictDeny:
@@ -224,6 +231,7 @@ func ClassifyToolRequest(ctx context.Context, an *RuleAnalyzer, pol *Policy, req
 			root = r // resolved the way full was (on Windows an 8.3 short name such as RUNNER~1 is expanded in both)
 		}
 		if writes && touchesGitDir(root, full) {
+			d.gitDir = true
 			return ask(KindAgentTool, "it writes inside .git, where hooks and configuration run code")
 		}
 		if writes {
@@ -297,6 +305,8 @@ type PermissionOutcome struct {
 	// UpdatedInput, when set, is the input the person approved instead of the agent's (canonical JSON): the CLI runs the
 	// tool with it. Only an approval with edits sets it.
 	UpdatedInput json.RawMessage
+	// Rule is the person's task allow rule that approved the call without asking (outcome PermissionApprovedForTask).
+	Rule string
 }
 
 // PermissionGate answers permission requests: analyzer first, then a person on a hashed approval.
@@ -309,8 +319,12 @@ type PermissionGate struct {
 	Bus    events.Bus
 	TTL    time.Duration // how long a person has to answer (default DefaultApprovalTTL)
 	Poll   time.Duration // how often the approval is read while waiting (default 250 ms)
+	// TaskRules returns the person's allow rules of the task for this agent and tool (TaskAllowRule, taskrules.go); nil or
+	// none means every request that is asked waits for a person.
+	TaskRules func(ctx context.Context, scope PermissionScope, tool string) []TaskAllowRule
 
 	edits sync.Map // approval id -> json.RawMessage: input a person changed before approving (kept in memory only)
+	asks  sync.Map // approval id -> waitingAsk: the request a waiting approval is for, while its call waits
 }
 
 // ErrEditNotPossible is returned for an edit the request cannot take: not a JSON object, or a CLI that cannot run an
@@ -370,6 +384,11 @@ func (g *PermissionGate) Decide(ctx context.Context, scope PermissionScope, req 
 		g.record(ctx, scope, req, td, out)
 		return out
 	}
+	if r, ok := g.taskRule(ctx, scope, td); ok {
+		out := PermissionOutcome{Allow: true, Outcome: PermissionApprovedForTask, Kind: td.Kind, Rule: r.ID}
+		g.record(ctx, scope, req, td, out)
+		return out
+	}
 	out := g.ask(ctx, scope, req, td, pol)
 	g.record(ctx, scope, req, td, out)
 	return out
@@ -408,6 +427,8 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 		return out
 	}
 	out.ApprovalID = id
+	g.asks.Store(id, waitingAsk{scope: scope, td: td})
+	defer g.asks.Delete(id)
 	tick := time.NewTicker(poll)
 	defer tick.Stop()
 	for {
@@ -486,6 +507,9 @@ func (g *PermissionGate) record(ctx context.Context, scope PermissionScope, req 
 	}
 	if out.ApprovalID != "" {
 		data["approval"] = out.ApprovalID
+	}
+	if out.Rule != "" {
+		data["rule"] = out.Rule
 	}
 	ctx = context.WithoutCancel(ctx)
 	if g.Audit != nil {

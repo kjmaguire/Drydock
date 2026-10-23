@@ -1,37 +1,48 @@
-// Security scan of the workspace (/security-scan, decision P61): scan any folder on this computer, a repository just
-// downloaded or imported from elsewhere, before it becomes a project, or one of the projects. The same engines, progress,
-// findings, tools and history as the project's Security page (ScanPanel); a folder scan belongs to no project, its history is
-// the recent folder scans and its Opengrep rules folder is the workspace's. The scan only reads files and never runs the
-// repository's code.
+// Security scan of the workspace (/security-scan, the sidebar's Security; decisions P61, P97): scan any folder on this computer,
+// a repository just downloaded or imported from elsewhere, before it becomes a project, or one of the projects. The same
+// screen as the project's Security page (ScanPanel); the target field is the folder's path (typed, or chosen with Choose
+// folder…) or a project picked beside it. The recent scans are every folder's and every project's. The scan only reads files
+// and never runs the repository's code.
 
 import { css, on, type Handle } from 'remix/component';
-import { ShieldCheck } from 'lucide';
 import type { ScanSummary } from '../../api/securityTypes.ts';
-import { projectHasRepo } from '../../api/types.ts';
+import { projectHasRepo, type DrydockEvent } from '../../api/types.ts';
 import { services, watch } from '../../state/services.tsx';
-import { Notice } from '../../ui/feedback.tsx';
-import { Page, card } from '../../ui/layout.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ScanPanel } from './scan-panel.tsx';
+import { ChooseFolder } from '../shared/choose-folder.tsx';
+import { ScanPanel, TargetBox, type ScanHistory } from './scan-panel.tsx';
 import { folderScope, projectScope } from './scan-scope.ts';
-import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
+import { folderName } from './security.ts';
 
 type Mode = 'folder' | 'project';
 
-const targetCss = css({
-  display: 'grid',
-  gap: t.s3,
-  margin: '0',
-  '& legend': { padding: '0', marginBottom: t.s2, fontSize: t.textMd, fontWeight: '600' },
-  '& .modes': { display: 'flex', gap: t.s4, flexWrap: 'wrap' },
-  '& .modes label': { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: t.textMd },
-  '& .field': { display: 'grid', gap: '6px' },
-  '& .field label': { fontSize: t.textSm, fontWeight: '500' },
-  '& .field input': { fontFamily: t.mono, fontSize: t.textSm, width: '100%', minWidth: '0' },
-  '& .field select': { maxWidth: '100%' },
-  '& .hint': { margin: '0', fontSize: t.textSm, color: t.textMuted },
+// "Folder | Project": two radios drawn as one segmented control
+const modesCss = css({
+  display: 'inline-flex',
+  flex: 'none',
+  padding: '2px',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: t.bgSurface,
+  '& label': {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: '28px',
+    padding: '0 10px',
+    borderRadius: t.rSm,
+    color: t.textMuted,
+    fontSize: t.textMd,
+    cursor: 'pointer',
+  },
+  '& label:has(input:checked)': { background: t.bgActive, color: t.text },
+  '& label:has(input:focus-visible)': { boxShadow: t.focus },
+  '& input': { position: 'absolute', inset: '0', margin: '0', opacity: '0', cursor: 'pointer' },
 });
+
+/** Running scans first, then the newest. */
+const byRecent = (a: ScanSummary, b: ScanSummary) => (a.status === 'running' ? 0 : 1) - (b.status === 'running' ? 0 : 1) || b.startedAt - a.startedAt;
 
 export function WorkspaceSecurityScreen(handle: Handle) {
   const s = services(handle);
@@ -41,7 +52,7 @@ export function WorkspaceSecurityScreen(handle: Handle) {
   let typed = '';
   /** The folder whose scans are shown: the core's full path once one was scanned or picked from the history ('' before). */
   let folder = '';
-  /** The project chosen in the list ('' until one is chosen: then the open project, else the first with a repository). */
+  /** The project chosen ('' until one is chosen: then the open project, else the first with a repository). */
   let chosen = '';
 
   const showFolder = (f: string) => {
@@ -59,115 +70,138 @@ export function WorkspaceSecurityScreen(handle: Handle) {
     .catch(() => {});
 
   const pickHistory = (h: ScanSummary) => {
-    if (h.folder) showFolder(h.folder);
+    if (h.folder) {
+      mode = 'folder';
+      showFolder(h.folder);
+    } else if (h.projectId) {
+      mode = 'project';
+      chosen = h.projectId;
+      void handle.update();
+    }
   };
   const setMode = (m: Mode) => {
     mode = m;
     void handle.update();
   };
 
+  // the recent scans of every folder and every project with a repository, kept until the projects change
+  let history: ScanHistory | undefined;
+  const historyOf = (ids: string[]): ScanHistory => {
+    const key = `workspace:${ids.join(',')}`;
+    if (history?.key === key) return history;
+    history = {
+      key,
+      load: async (limit) => {
+        const lists = await Promise.all([
+          s.client.securityScanFolders(limit),
+          ...ids.map((id) => s.client.securityScanList(id, limit).catch((): ScanSummary[] => [])),
+        ]);
+        return lists.flat().sort(byRecent).slice(0, limit);
+      },
+      when: (e: DrydockEvent) => e.type.startsWith('security.scan.') || e.type.startsWith('security.finding.'),
+    };
+    return history;
+  };
+
   return () => {
     const projects = s.workspace.projectList;
-    const fallback = projects.find((p) => p.id === s.workspace.projectId && projectHasRepo(p)) ?? projects.find((p) => projectHasRepo(p));
+    const scannable = projects.filter((p) => projectHasRepo(p));
+    const fallback = scannable.find((p) => p.id === s.workspace.projectId) ?? scannable[0];
     const projectId = chosen || fallback?.id || '';
     const project = projects.find((p) => p.id === projectId);
     const scope =
-      mode === 'project'
-        ? projectId
-          ? projectScope(s.client, projectId)
-          : undefined
+      mode === 'project' && projectId
+        ? projectScope(s.client, projectId)
         : folderScope(
             s.client,
-            folder,
+            mode === 'folder' ? folder : '',
             () => typed,
             (r) => showFolder(r.dir),
           );
     const canScan = mode === 'folder' ? typed.trim() !== '' : projectHasRepo(project);
+    const nameOf = (h: ScanSummary) => (h.folder ? folderName(h.folder) : (projects.find((p) => p.id === h.projectId)?.name ?? 'a project'));
+
+    const target = (
+      <>
+        <div mix={modesCss} role="radiogroup" aria-label="Scan a folder or a project">
+          <label>
+            <input type="radio" name={`scan-target-${handle.id}`} data-testid="scan-target-folder" checked={mode === 'folder'} mix={on('change', () => setMode('folder'))} />
+            Folder
+          </label>
+          <label>
+            <input type="radio" name={`scan-target-${handle.id}`} data-testid="scan-target-project" checked={mode === 'project'} mix={on('change', () => setMode('project'))} />
+            Project
+          </label>
+        </div>
+        {mode === 'folder' ? (
+          <>
+            <TargetBox
+              note="a folder, not a project"
+              end={
+                <ChooseFolder
+                  title="Choose the folder to scan"
+                  testId="scan-choose-folder"
+                  compact
+                  onPick={(path) => {
+                    typed = path;
+                    void handle.update();
+                  }}
+                />
+              }
+            >
+              <input
+                id={`scan-folder-${handle.id}`}
+                aria-label="Folder to scan"
+                data-testid="scan-folder"
+                spellcheck={false}
+                autocomplete="off"
+                placeholder="C:\Users\you\Downloads\some-repo"
+                title="The folder's full path. It does not need to be a project, and nothing is added to one."
+                value={typed}
+                mix={on('input', (e) => {
+                  typed = e.currentTarget.value;
+                  void handle.update();
+                })}
+              />
+            </TargetBox>
+          </>
+        ) : (
+          <>
+            <TargetBox note={scannable.length === 0 ? 'no project has a repository yet' : "the project's repository"}>
+              <span class="value" title={project?.repoPath || undefined} data-testid="scan-target-path">
+                {project?.repoPath || 'Choose a project'}
+              </span>
+            </TargetBox>
+            {projects.length > 0 ? (
+              <Select
+                label="Project"
+                testId="scan-project"
+                size="sm"
+                value={projectId}
+                options={projects.map((p) => ({ value: p.id, label: p.name, disabled: !projectHasRepo(p), hint: projectHasRepo(p) ? undefined : 'no repository yet' }))}
+                onChange={(v) => {
+                  chosen = v;
+                  void handle.update();
+                }}
+                style={{ width: 'auto', maxWidth: '200px' }}
+              />
+            ) : null}
+          </>
+        )}
+      </>
+    );
 
     return (
-      <Page title="Security scan" icon={ShieldCheck} testId="workspace-security" subtitle="Any repository on this computer" guide="scan">
-        <Notice tone="info" testId="scan-reads-only">
-          The scan only reads files: it never runs the repository's code, its scripts or its package manager, so it is safe for a repository you just downloaded.
-        </Notice>
-
-        <form
-          mix={[card, on('submit', (e) => e.preventDefault())]}
-          aria-label="What to scan"
-        >
-          <fieldset mix={targetCss} style={{ border: '0', padding: '0' }}>
-            <legend>What to scan</legend>
-            <div class="modes" role="radiogroup" aria-label="Scan a folder or a project">
-              <label>
-                <input type="radio" name={`scan-target-${handle.id}`} data-testid="scan-target-folder" checked={mode === 'folder'} mix={on('change', () => setMode('folder'))} />
-                A folder on this computer
-              </label>
-              <label>
-                <input type="radio" name={`scan-target-${handle.id}`} data-testid="scan-target-project" checked={mode === 'project'} mix={on('change', () => setMode('project'))} />
-                One of your projects
-              </label>
-            </div>
-            {mode === 'folder' ? (
-              <div class="field">
-                <label for={`scan-folder-${handle.id}`}>Folder</label>
-                <div mix={folderRow}>
-                  <input
-                    id={`scan-folder-${handle.id}`}
-                    data-testid="scan-folder"
-                    spellcheck={false}
-                    autocomplete="off"
-                    placeholder="The full path, for example C:\Users\you\Downloads\some-repo"
-                    value={typed}
-                    mix={on('input', (e) => {
-                      typed = e.currentTarget.value;
-                      void handle.update();
-                    })}
-                  />
-                  <ChooseFolder
-                    title="Choose the folder to scan"
-                    testId="scan-choose-folder"
-                    onPick={(path) => {
-                      typed = path;
-                      void handle.update();
-                    }}
-                  />
-                </div>
-                <p class="hint">
-                  Choose the folder or paste its full path. It does not need to be a project, and nothing is added to one.
-                </p>
-              </div>
-            ) : (
-              <div class="field">
-                <label for={`scan-project-${handle.id}`}>Project</label>
-                {projects.length === 0 ? (
-                  <p class="hint">You have no projects yet: scan a folder instead.</p>
-                ) : (
-                  <Select
-                    id={`scan-project-${handle.id}`}
-                    testId="scan-project"
-                    value={projectId}
-                    options={projects.map((p) => ({ value: p.id, label: p.name, disabled: !projectHasRepo(p), hint: projectHasRepo(p) ? undefined : 'no repository yet' }))}
-                    onChange={(v) => {
-                      chosen = v;
-                      void handle.update();
-                    }}
-                  />
-                )}
-                <p class="hint">Scans the project's working tree, with the project's own rules folder and history, as its Security page does.</p>
-              </div>
-            )}
-          </fieldset>
-        </form>
-
-        {scope ? (
-          <ScanPanel
-            scope={scope}
-            canScan={canScan}
-            historyTitle={mode === 'folder' ? 'Recent folder scans' : `History of ${project?.name ?? 'the project'}`}
-            rulesHint={mode === 'folder' ? 'Folder scans use this rules folder; each project keeps its own on its Security page.' : undefined}
-            onPick={mode === 'folder' ? pickHistory : undefined}
-          />
-        ) : null}
-      </Page>
+      <ScanPanel
+        scope={scope}
+        canScan={canScan}
+        title="Security scan"
+        testId="workspace-security"
+        target={target}
+        nameOf={nameOf}
+        history={historyOf(scannable.map((p) => p.id))}
+        onPick={pickHistory}
+      />
     );
   };
 }

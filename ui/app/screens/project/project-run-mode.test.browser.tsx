@@ -33,7 +33,7 @@ describe('Where agents run (project settings)', () => {
       if (optionsOf(s).length < 2) throw new Error('no distros yet');
       return s;
     }, r);
-    expect(optionsOf(sel).map((o) => o.label)).toEqual(['On Windows', 'In WSL: Ubuntu (default distro)']);
+    expect(optionsOf(sel).map((o) => o.label)).toEqual(['On Windows', 'In WSL']); // the only distro is not named
     expect(r.container.textContent).toContain('A repository on a Windows drive is slower to read');
     type(sel, 'wsl:Ubuntu');
     await waitFor(() => expect(calls).toEqual(['prj_1:wsl:Ubuntu']), r);

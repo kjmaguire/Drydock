@@ -312,6 +312,15 @@ func (m Message) PayloadField(name string, v any) bool {
 	return json.Unmarshal(f, v) == nil
 }
 
+// ViaSteer is the payload "via" of a person's message to a task's running agent (task.steer): it was delivered into the agent's
+// turn itself and is in the channel for the history, so it starts no room conversation.
+const ViaSteer = "steer"
+
+// IsSteer reports whether the message is a person's steer of a running agent (ViaSteer).
+func (m Message) IsSteer() bool {
+	return m.Author.Kind == AuthorHuman && m.PayloadString("via") == ViaSteer
+}
+
 // PayloadString returns a string payload field or "".
 func (m Message) PayloadString(name string) string {
 	var s string

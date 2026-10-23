@@ -38,7 +38,7 @@ func securityCore(t *testing.T, opts ...string) (*app, string) {
 
 // Decision P44 through the UI methods: the tools, one button, the engines' states as events, the stored report and history.
 func TestTheSecurityScanRunsThreeEnginesAndKeepsAReportWithoutTheSecret(t *testing.T) {
-	a, rules := securityCore(t)
+	a, _ := securityCore(t)
 	repo := newRepo(t)
 	os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("key = "+plantedKey+"\n"), 0o644)
 	var p core.Project
@@ -49,14 +49,6 @@ func TestTheSecurityScanRunsThreeEnginesAndKeepsAReportWithoutTheSecret(t *testi
 	var tools scan.Tools
 	a.call("security.tools", map[string]any{"projectId": p.ID}, &tools)
 	if !tools.Gitleaks.BuiltIn || !tools.OSV.Found || !tools.Opengrep.Found || tools.RulesOK || !tools.Ready || !tools.BuiltinRules || tools.BuiltinRuleCount != 34+66+49 || tools.RulesNote != "" {
-		t.Fatalf("%+v", tools)
-	}
-	// a relative folder is refused: Opengrep runs in the repository, Drydock elsewhere
-	if _, err := a.c.Call(context.Background(), "security.settings.set", []byte(`{"projectId":"`+p.ID+`","rulesDir":"rules"}`)); err == nil || !strings.Contains(err.Error(), "full path") {
-		t.Fatal(err)
-	}
-	a.call("security.settings.set", map[string]any{"projectId": p.ID, "rulesDir": rules}, &tools)
-	if !tools.RulesOK || !tools.Ready || tools.RulesDir != rules {
 		t.Fatalf("%+v", tools)
 	}
 
@@ -162,9 +154,9 @@ func TestAScanNeedsARepositoryAndCanBeCancelled(t *testing.T) {
 	}
 }
 
-// A change to a tool's program is answered with one probe of the programs: the answer serves the caller and the reads the
-// security.settings event triggers on every open Security page (toolsMemoTTL), so a slow first run of a program is paid once.
-func TestAToolChoiceProbesTheProgramsOnce(t *testing.T) {
+// The tools are probed once for the reads that come close together (toolsMemoTTL): every open Security page re-reads on a
+// security.settings event, and a slow first run of a program is paid once.
+func TestReadsOfTheToolsCloseTogetherProbeTheProgramsOnce(t *testing.T) {
 	count := filepath.Join(t.TempDir(), "runs.log")
 	a, _ := securityCore(t, "--count="+count)
 	var p core.Project
@@ -178,24 +170,9 @@ func TestAToolChoiceProbesTheProgramsOnce(t *testing.T) {
 	if got := runs(); got != 2 { // osv-scanner and opengrep, --version each
 		t.Fatalf("the first read probed %d times, want 2", got)
 	}
-	// choosing a program (the stand-in itself here) probes once more, and the reads that follow the change use that answer
-	a.call("security.tool.set", map[string]any{"projectId": p.ID, "tool": "osv-scanner", "path": os.Args[0]}, &tools)
-	if tools.OSV.Chosen != os.Args[0] || !tools.OSV.Found {
-		t.Fatalf("%+v", tools.OSV)
-	}
 	a.call("security.tools", map[string]any{"projectId": p.ID}, &tools)
 	a.call("security.tools", map[string]any{"projectId": p.ID}, &tools)
-	if got := runs(); got != 4 {
-		t.Fatalf("after the choice and two reads the programs were probed %d times in all, want 4", got)
-	}
-	if tools.OSV.Chosen != os.Args[0] {
-		t.Fatalf("the memo answered with stale tools: %+v", tools.OSV)
-	}
-	// forgetting the choice is a change of its own: probed once, then served (a fresh value: an omitted field is not decoded)
-	var after scan.Tools
-	a.call("security.tool.set", map[string]any{"projectId": p.ID, "tool": "osv-scanner", "path": ""}, nil)
-	a.call("security.tools", map[string]any{"projectId": p.ID}, &after)
-	if got := runs(); got != 6 || after.OSV.Chosen != "" || !after.OSV.Found {
-		t.Fatalf("after Use PATH instead: %d probes (want 6), %+v", got, after.OSV)
+	if got := runs(); got != 2 || !tools.OSV.Found || !tools.Opengrep.Found {
+		t.Fatalf("after two more reads the programs were probed %d times in all, want 2: %+v", got, tools)
 	}
 }

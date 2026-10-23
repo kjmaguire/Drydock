@@ -4,8 +4,9 @@
 
 import { isRecord } from '../../api/guards.ts';
 import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
-import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import { formatDate } from '../../lib/format.ts';
+import type { McpGalleryCard, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
+import type { Agent } from '../../api/types.ts';
+import { formatDate, plural } from '../../lib/format.ts';
 import type { TileBadge, TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -200,6 +201,24 @@ export function projectConnState(info: IntegrationKindInfo | undefined, conn: In
   if (st === 'error' || st === 'forbidden' || st === 'unauthenticated') return { text: `${scope} · sync: ${st}`, tone: 'bad', badge: { text: 'sync failing', tone: 'err' } };
   if (conn.status !== 'ok' && conn.status !== 'untested') return { text: `${scope} · ${conn.status}`, tone: 'warn', badge: { text: 'needs attention', tone: 'warn' } };
   return { text: scope, tone: st === 'ok' ? 'ok' : '', badge: { text: 'assigned', tone: 'ok' } };
+}
+
+/** What a connected MCP server is, for its tile on the project's Integrations page: built in or your own, and its tools. */
+export function serverBlurb(x: Pick<McpLibraryServer, 'catalogId' | 'tools'>): string {
+  return `${x.catalogId ? 'built into Drydock' : 'your own'} · ${x.tools.length > 0 ? plural(x.tools.length, 'tool') : 'tools not found yet'}`;
+}
+
+/**
+ * A server as one project has it, for its tile on the project's Integrations page (laid out like the workspace's tiles): which of
+ * the project's agents may use it, and on or off here. One the project does not have yet is "not added".
+ */
+export function projectServerState(srv: McpServer | undefined, agents: readonly Pick<Agent, 'id' | 'name'>[]): { text: string; tone: TileTone; badge: TileBadge } {
+  if (!srv) return { text: 'Not in this project', tone: '', badge: { text: 'not added', tone: 'muted' } };
+  const names = agents.filter((a) => srv.agents.some((g) => g.agentId === a.id)).map((a) => a.name);
+  const who =
+    names.length === 0 ? 'No agent may use it yet' : names.length <= 2 ? `${names.join(' and ')} may use it` : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more may use it`;
+  if (!srv.enabled) return { text: who, tone: '', badge: { text: 'off', tone: 'muted' } };
+  return { text: who, tone: names.length > 0 ? 'ok' : '', badge: { text: 'on', tone: 'ok' } };
 }
 
 /** The tone of the state line: warn when something needs the human, ok when something is connected and nothing is wrong. */

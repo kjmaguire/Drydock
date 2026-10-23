@@ -45,7 +45,7 @@ export function RunModeField(
               options={[
                 { value: '', label: 'As the project says' },
                 { value: 'native', label: 'On Windows' },
-                ...st.distros.map((d) => ({ value: `wsl:${d.name}`, label: distroLabel(d) })),
+                ...st.distros.map((d) => ({ value: `wsl:${d.name}`, label: distroLabel(d, st.distros.length > 1) })),
                 ...(value.startsWith('wsl:') && !known ? [{ value, label: `In WSL: ${wslDistro}`, hint: 'not found on this machine' }] : []),
               ]}
               onChange={(v) => {

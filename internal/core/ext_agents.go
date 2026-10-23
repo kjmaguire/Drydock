@@ -419,6 +419,9 @@ func (c *Core) StartTemplate(ctx context.Context, req StartTemplateReq) (StartTe
 			return StartTemplateResult{}, err
 		}
 	}
+	if t.OwnedByPerson() {
+		return StartTemplateResult{}, errTakenOn
+	}
 	if tpl.Workflow == pipeline.WorkflowIUV {
 		id, err := c.StartTask(ctx, t.ID)
 		return StartTemplateResult{RunID: id, Template: tpl.Name, Workflow: pipeline.WorkflowIUV, Roles: map[string]string{}}, err

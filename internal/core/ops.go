@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/runfiles"
+	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -70,6 +71,117 @@ func (c *Core) AssignTask(ctx context.Context, taskID, assignee, reviewer string
 	return nt, nil
 }
 
+// HandTask is task.assign: a person gives the task to an agent, or takes it on themselves (assignee c.Human()).
+//
+// The reviewer is optional: without one the task keeps its reviewer, unless that is the new worker; then (or when it has none)
+// the project's reviewer-role agent reviews, else the first other agent of the team (never a lead, never the worker:
+// pipeline.PickReviewer). A task can be handed on while its run is active: a run being driven now is paused
+// (workflow.Engine.Pause), the task given to the new agent and the run resumed, so the step that was in flight (the worker's
+// turn) runs again with the new agent, in the same worktree, from the run's latest checkpoint, with the session handoff an
+// agent change gets. A run that waits for a person, or is paused, just goes on with the new agent at its next turn.
+//
+// Taking the task on yourself (assignee c.Human()) means no agent works on it: its run, if one is active, is cancelled (the
+// worktree stays), and nothing starts a run for it until it is handed to an agent again (StartTask, the scheduler and the team
+// lead leave it alone: tasks.Task.OwnedByPerson). It is listed under task.list {assignee: <you>}.
+func (c *Core) HandTask(ctx context.Context, taskID, assignee, reviewer, by string) (tasks.Task, error) {
+	if !isPerson(by) {
+		return tasks.Task{}, errors.New("only a person hands a task on")
+	}
+	ctx, unlock := c.lockTaskStart(ctx, taskID)
+	defer unlock()
+	t, err := c.Tasks.Get(ctx, taskID)
+	if err != nil {
+		return t, err
+	}
+	if t.Status.Terminal() {
+		return t, fmt.Errorf("task #%d is %s: it cannot be handed on", t.Seq, t.Status)
+	}
+	if strings.HasPrefix(assignee, tasks.PersonPrefix) {
+		return c.takeOn(ctx, t, assignee, by)
+	}
+	if assignee == "" {
+		return t, errors.New("a task needs a worker and a different agent as reviewer")
+	}
+	if reviewer == "" {
+		if reviewer, err = c.reviewerFor(ctx, t, assignee, ""); err != nil {
+			return t, err
+		}
+	}
+	info, active := c.activeRun(ctx, t)
+	handing := active && t.Assignee != assignee
+	paused := false
+	if handing && executing(info.Status) {
+		if paused, err = c.Engine.Pause(ctx, info.ID, "handed on by "+by); err != nil {
+			return t, err
+		}
+	}
+	from := t.Assignee
+	nt, err := c.AssignTask(ctx, taskID, assignee, reviewer)
+	if paused {
+		// resumed whether or not the assignment held: a refused one leaves the run with its old worker
+		if _, rerr := c.Engine.ResumePaused(ctx, info.ID); rerr != nil {
+			c.logf("resume after handing %s on: %v", taskID, rerr)
+		}
+	}
+	if err != nil {
+		return nt, err
+	}
+	if from != assignee {
+		c.publishTask(ctx, "task.handed", nt, assignee, map[string]any{"taskId": nt.ID, "from": from, "to": assignee, "reviewer": reviewer, "by": by, "restarted": paused})
+		if active {
+			name := assignee
+			if a, err := c.agent(ctx, assignee); err == nil {
+				name = a.Name
+			}
+			c.noteInRoom(ctx, nt, fmt.Sprintf("%s handed the task to %s, who goes on in the same worktree.", personName(by), name), map[string]any{"code": "task_handed", "by": by, "to": assignee})
+		}
+	}
+	return nt, nil
+}
+
+// takeOn makes the person the task's owner: no agent works on it. Only the person themselves can be named.
+func (c *Core) takeOn(ctx context.Context, t tasks.Task, assignee, by string) (tasks.Task, error) {
+	if assignee != c.Human() || assignee != by {
+		return t, fmt.Errorf("%s is not you: a task can be given to an agent of the team, or taken on by you (%s)", assignee, c.Human())
+	}
+	from := t.Assignee
+	if info, ok := c.activeRun(ctx, t); ok {
+		if err := c.Engine.Cancel(ctx, info.ID); err != nil && !errors.Is(err, workflow.ErrRunTerminal) {
+			return t, err
+		}
+	}
+	nt, err := c.Tasks.Patch(ctx, t.ID, tasks.Update{Assignee: &assignee})
+	if err != nil {
+		return nt, err
+	}
+	if from != assignee {
+		c.publishTask(ctx, "task.handed", nt, "", map[string]any{"taskId": nt.ID, "from": from, "to": assignee, "by": by, "restarted": false})
+		c.noteInRoom(ctx, nt, fmt.Sprintf("%s took the task on: no agent works on it now.", personName(by)), map[string]any{"code": "task_taken_on", "by": by})
+	}
+	return nt, nil
+}
+
+// reviewerFor is who reviews worker's work on t when the caller names nobody (want ""): the task's reviewer unless it is the
+// worker, else the project's reviewer-role agent, else the first other agent of the team (pipeline.PickReviewer).
+func (c *Core) reviewerFor(ctx context.Context, t tasks.Task, worker, want string) (string, error) {
+	if want != "" {
+		return want, nil
+	}
+	if t.Reviewer != "" && t.Reviewer != worker && !strings.HasPrefix(t.Reviewer, tasks.PersonPrefix) {
+		if a, err := c.agent(ctx, t.Reviewer); err == nil && !a.Archived && a.ProjectID == t.ProjectID {
+			return t.Reviewer, nil
+		}
+	}
+	team, err := c.leadTeam(ctx, t.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	if r := pipeline.PickReviewer(team, worker); r != "" {
+		return r, nil
+	}
+	return "", errors.New("no other agent on the team can review the work: add one, or name a reviewer")
+}
+
 // requireRepo refuses work that changes code in a project without a repository, with an error that says what to do.
 func (c *Core) requireRepo(ctx context.Context, projectID string) error {
 	p, err := c.GetProject(ctx, projectID)
@@ -81,6 +193,9 @@ func (c *Core) requireRepo(ctx context.Context, projectID string) error {
 	}
 	return nil
 }
+
+// errTakenOn refuses to start agent work on a task a person owns.
+var errTakenOn = errors.New("a person owns this task, so no agent works on it: hand it to an agent first")
 
 type taskStartKey struct{ id string }
 
@@ -110,6 +225,9 @@ func (c *Core) StartTask(ctx context.Context, taskID string) (workflow.RunID, er
 	}
 	if err := c.requireRepo(ctx, t.ProjectID); err != nil {
 		return "", err
+	}
+	if t.OwnedByPerson() {
+		return "", errTakenOn
 	}
 	if t.Assignee == "" || t.Reviewer == "" {
 		return "", errors.New("assign a worker and a reviewer before starting the task")
@@ -155,6 +273,13 @@ type TaskDetail struct {
 	Run      *workflow.RunInfo         `json:"run,omitempty"`
 	Pending  []workflow.PendingRequest `json:"pending"`
 	RoomID   string                    `json:"roomId,omitempty"`
+	// AllowRules are the person's "approve for this task" rules in force for the task's agents (P97); they end with the task.
+	AllowRules []security.TaskAllowRule `json:"allowRules"`
+	// AcceptanceState is each acceptance criterion's state by the newest test check (pipeline.AcceptanceState): passed,
+	// failing or unknown, in the order of Task.Acceptance.
+	AcceptanceState []pipeline.CriterionState `json:"acceptanceState"`
+	// Paused says a person paused the task's run (task.pause), who and when; absent otherwise.
+	Paused *TaskPause `json:"paused,omitempty"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -163,12 +288,17 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	if err != nil {
 		return TaskDetail{}, err
 	}
-	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}}
+	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}}
+	if rules, err := c.TaskRules(ctx, id); err == nil {
+		d.AllowRules = rules
+	}
 	d.Evidence, _ = c.Tasks.Evidence(ctx, id)
 	d.Reviews, _ = c.Tasks.Reviews(ctx, id)
+	d.AcceptanceState = pipeline.AcceptanceState(t.Acceptance, d.Evidence)
 	if t.RunID != "" {
 		if info, err := c.Engine.Status(ctx, workflow.RunID(t.RunID)); err == nil {
 			d.Run = &info
+			d.Paused = pauseOf(info)
 			// a finished, failed or cancelled run waits for nobody: its last checkpoint may still list a request, which can no
 			// longer be answered ("run is in a terminal state")
 			if p, err := c.Engine.Pending(ctx, info.ID); err == nil && p != nil && !info.Status.Terminal() {
@@ -214,6 +344,12 @@ func (c *Core) TaskDiffAt(ctx context.Context, id string, evidenceID int64) (str
 // Respond answers a pending request of a run as the human. Only the human identity is ever attached here: an agent has no
 // path to this method.
 func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, data []byte) error {
+	return c.RespondScoped(ctx, runID, requestID, decision, "", data)
+}
+
+// RespondScoped is Respond with the scope of an approval of an agent's tool permission request: "" or "once" for this request
+// only, "task" for the rest of its task (P97). Any other request takes no scope.
+func (c *Core) RespondScoped(ctx context.Context, runID, requestID, decision, scope string, data []byte) error {
 	// Rejecting only refuses work, so it stays available in read-only mode (an approval does not).
 	if decision != "rejected" {
 		if err := c.RequireLicensed(ctx, "approve"); err != nil {
@@ -221,7 +357,10 @@ func (c *Core) Respond(ctx context.Context, runID, requestID, decision string, d
 		}
 	}
 	if taskID, ok := c.permissionRequestTask(ctx, requestID); ok {
-		return c.respondPermission(ctx, runID, requestID, taskID, decision, data)
+		return c.respondPermission(ctx, runID, requestID, taskID, decision, scope, data)
+	}
+	if scope != "" && scope != ScopeOnce {
+		return errors.New("only an agent's tool permission request can be approved for the rest of the task")
 	}
 	c.trustOnApproval(ctx, runID, requestID, decision)
 	review := c.isReviewRequest(ctx, runID, requestID)

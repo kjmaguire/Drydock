@@ -54,8 +54,8 @@ func (a *app) waitInstall(projectID, tool string, want string) scan.Tools {
 	return tools
 }
 
-// The Security page's Install: Drydock downloads osv-scanner's newest checked release and uses it, the scan runs it, Update
-// installs a newer release and says when there is none, a chosen program still comes first, and Remove deletes Drydock's copy.
+// security.tool.install: Drydock downloads osv-scanner's newest checked release and uses it, the scan runs it, the same call
+// installs a newer release and says when there is none, and a listed release older than the installed one is never installed.
 func TestAPersonInstallsAScanToolAndUpdatesIt(t *testing.T) {
 	fx := scantest.NewReleases(t)
 	fx.Add(scantest.ReleaseSpec{Repo: "google/osv-scanner", Tag: "v2.6.0", Assets: map[string][]byte{"osv-scanner_windows_amd64.exe": []byte("MZ 2.6.0")}})
@@ -123,24 +123,20 @@ func TestAPersonInstallsAScanToolAndUpdatesIt(t *testing.T) {
 		t.Fatalf("install events %v", states)
 	}
 
-	// a program a person chooses comes before the installed one; forgetting it goes back to the installed one
-	prog := copyProgram(t, t.TempDir(), "osv-scanner")
-	a.call("security.tool.set", map[string]any{"projectId": p.ID, "tool": "osv-scanner", "path": prog}, &tools)
-	if tools.OSV.Source != "chosen" {
-		t.Fatalf("chosen: %+v", tools.OSV)
+	// GitHub's latest is an older release than the one installed (a backport published later): nothing is downgraded, by
+	// the install nor by the update check
+	fx.Add(scantest.ReleaseSpec{Repo: "google/osv-scanner", Tag: "v2.6.9", Assets: map[string][]byte{"osv-scanner_windows_amd64.exe": []byte("MZ 2.6.9")}})
+	a.call("security.tool.install", map[string]any{"projectId": p.ID, "tool": "osv-scanner"}, &tools)
+	tools = a.waitInstall(p.ID, "osv-scanner", "done")
+	if tools.OSV.Tag != "v2.7.0" || !strings.Contains(tools.OSV.Job.Phase, "already the newest release (v2.7.0)") {
+		t.Fatalf("downgraded: %+v (job %+v)", tools.OSV, tools.OSV.Job)
 	}
 	tools = scan.Tools{}
-	a.call("security.tool.set", map[string]any{"projectId": p.ID, "tool": "osv-scanner", "path": ""}, &tools)
-	if tools.OSV.Source != "installed" || tools.OSV.Tag != "v2.7.0" {
-		t.Fatalf("back to installed: %+v", tools.OSV)
+	a.call("security.tools.checkUpdates", map[string]any{"projectId": p.ID}, &tools)
+	if tools.OSV.Latest != "" || tools.OSV.Tag != "v2.7.0" || tools.OSV.Job.State != "done" {
+		t.Fatalf("the check offered or started a downgrade: %+v (job %+v)", tools.OSV, tools.OSV.Job)
 	}
 
-	// Remove deletes Drydock's copy: the tool is looked for on PATH again (and is not there)
-	tools = scan.Tools{}
-	a.call("security.tool.remove", map[string]any{"projectId": p.ID, "tool": "osv-scanner"}, &tools)
-	if tools.OSV.Found || tools.OSV.Source != "" || tools.OSV.Job != nil || tools.OSV.Tag != "" {
-		t.Fatalf("after Remove: %+v", tools.OSV)
-	}
 	// a tool Drydock does not install is refused
 	if _, err := a.c.Call(context.Background(), "security.tool.install", []byte(`{"projectId":"`+p.ID+`","tool":"semgrep"}`)); err == nil || !strings.Contains(err.Error(), "not a scan tool") {
 		t.Fatal(err)
@@ -167,9 +163,6 @@ func TestAScanToolInstallCanBeCancelledAndAFailureIsNamed(t *testing.T) {
 	})
 	// a second Install while one runs is refused
 	if _, err := a.c.Call(context.Background(), "security.tool.install", []byte(`{"projectId":"`+p.ID+`","tool":"opengrep"}`)); err == nil || !strings.Contains(err.Error(), "already being installed") {
-		t.Fatal(err)
-	}
-	if _, err := a.c.Call(context.Background(), "security.tool.remove", []byte(`{"projectId":"`+p.ID+`","tool":"opengrep"}`)); err == nil || !strings.Contains(err.Error(), "being installed") {
 		t.Fatal(err)
 	}
 	a.call("security.tool.install.cancel", map[string]any{"projectId": p.ID, "tool": "opengrep"}, &tools)

@@ -3,8 +3,8 @@
 // The overview is a grid of tiles (the shared kit in ui/tiles.tsx, as on Integrations): one per connection, the Windows install
 // and each WSL distro's own, with the CLI's logo, what it is and its state, Claude Code first and the CLIs of custom manifests
 // last (orderConnections). The selected tile's full card opens below the grid.
-// Then the MCP gateway (screens/mcp/cli-gateway.tsx): which agent CLIs receive the MCP servers given to an agent. Last, the
-// CI runners (ci-runners.tsx, decision P56).
+// Then the MCP gateway (screens/mcp/cli-gateway.tsx): which agent CLIs receive the MCP servers given to an agent. The CI
+// runners (decision P56) are on the GitHub page (screens/github/ci-runners.tsx).
 
 import { css, on, type Handle } from 'remix/component';
 import { Check, CircleCheck, FlaskConical, Link2, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
@@ -12,7 +12,7 @@ import type { Connection, ConnectionReport, GateStatus, WSLFacts } from '../../a
 import { query, services } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
 import { CliGateway } from '../mcp/cli-gateway.tsx';
-import { CiRunners } from './ci-runners.tsx';
+import { cliName } from '../shared/cli-name.ts';
 import { BrandLogo, brandKey } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, kv, muted } from '../../ui/data.tsx';
@@ -27,7 +27,6 @@ import {
   cellText,
   connectionBlurb,
   connectionKey,
-  connectionName,
   connectionState,
   defaultConnection,
   distroBrand,
@@ -47,6 +46,7 @@ import {
 
 const cardCss = css({ display: 'grid', gap: t.s3, '& p': { margin: '0' } });
 const head = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& h2': { fontSize: t.textLg, fontWeight: '600', margin: '0', marginRight: 'auto' } });
+const runsCss = css({ display: 'flex', alignItems: 'center', gap: t.s2 });
 const subhead = css({ fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase', color: t.textMuted, margin: '0' });
 const gateCss = css({
   display: 'grid',
@@ -246,7 +246,8 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   };
 }
 
-function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>) {
+/** `name` is the connection's name on the page (cliName with the page's list: the distro only to tell two apart). */
+function ConnectionCard(handle: Handle<{ c: Connection; name: string; onChanged: () => void }>) {
   const s = services(handle);
   let confirming = false;
   let testing = false;
@@ -361,8 +362,7 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
       >
         <header mix={head}>
           {brandKey(c.adapter) ? <BrandLogo id={c.adapter} size={32} /> : <Avatar id={c.adapter} name={c.adapter} size={32} square />}
-          {inWSL ? <BrandLogo id={distroBrand(c.distro)} size={24} label /> : null}
-          <h2>{connectionName(c)}</h2>
+          <h2>{handle.props.name}</h2>
           <Badge tone={statusTone(c.status)}>{c.status}</Badge>
           <Badge tone={c.usable ? 'ok' : 'warn'} title="Usable means the CLI is ready and every notice below is accepted">
             {c.usable ? 'usable' : 'not usable yet'}
@@ -370,7 +370,11 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
         </header>
         <dl mix={kv}>
           <dt>Runs</dt>
-          <dd>{runsText(c)}</dd>
+          {/* the distro is named here, in the card's details, not in its name (the owner: "we don't need to see the Ubuntu") */}
+          <dd mix={inWSL ? runsCss : undefined}>
+            {inWSL ? <BrandLogo id={distroBrand(c.distro)} size={16} label /> : null}
+            {runsText(c)}
+          </dd>
           <dt>Installed</dt>
           <dd>{c.installed ? 'yes' : 'no'}</dd>
           {c.version ? (
@@ -474,12 +478,12 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
         ) : null}
         {c.wsl ? <DistroFacts f={c.wsl} /> : null}
         {(c.problems ?? []).map((p, i) => (
-          <p key={i} mix={problemCss}>
+          <p key={`problem:${i}`} mix={problemCss}>
             {p}
           </p>
         ))}
         {(c.warnings ?? []).map((w, i) => (
-          <Notice key={i} tone="warn">
+          <Notice key={`warning:${i}`} tone="warn">
             {w}
           </Notice>
         ))}
@@ -540,14 +544,14 @@ function ConnectionCard(handle: Handle<{ c: Connection; onChanged: () => void }>
   };
 }
 
-/** One connection on the overview: the CLI's logo, its name (with the distro for a WSL install), what it is and its state. */
-function ConnectionTile(handle: Handle<{ c: Connection; selected: boolean; onSelect: () => void }>) {
+/** One connection on the overview: the CLI's logo, its name ("Claude Code WSL" for a WSL install), what it is and its state. */
+function ConnectionTile(handle: Handle<{ c: Connection; name: string; selected: boolean; onSelect: () => void }>) {
   return () => {
-    const { c, selected, onSelect } = handle.props;
+    const { c, name, selected, onSelect } = handle.props;
     const st = connectionState(c);
     return (
       <Tile
-        title={connectionName(c)}
+        title={name}
         logo={c.adapter}
         icon={Terminal}
         blurb={connectionBlurb(c)}
@@ -590,13 +594,18 @@ export function ConnectionsScreen(handle: Handle<{ initial?: string }>) {
         {list.length > 0 ? (
           <ul mix={tileGrid} aria-label="Agent CLIs">
             {list.map((c) => (
-              <ConnectionTile key={connectionKey(c)} c={c} selected={connectionKey(c) === key} onSelect={() => ((selected = connectionKey(c)), void handle.update())} />
+              <ConnectionTile
+                key={connectionKey(c)}
+                c={c}
+                name={cliName(c, list)}
+                selected={connectionKey(c) === key}
+                onSelect={() => ((selected = connectionKey(c)), void handle.update())}
+              />
             ))}
           </ul>
         ) : null}
-        {open ? <ConnectionCard key={connectionKey(open)} c={open} onChanged={q.reload} /> : null}
+        {open ? <ConnectionCard key={connectionKey(open)} c={open} name={cliName(open, list)} onChanged={q.reload} /> : null}
         <CliGateway />
-        <CiRunners />
       </Page>
     );
   };

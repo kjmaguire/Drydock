@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,19 @@ type osvReport struct {
 			} `json:"package"`
 			Vulnerabilities []struct {
 				ID string `json:"id"`
+				// Affected is the OSV record's list of affected packages; the fixed versions of the package's own ranges say what
+				// to upgrade to (https://ossf.github.io/osv-schema/#affectedranges-field).
+				Affected []struct {
+					Package struct {
+						Name      string `json:"name"`
+						Ecosystem string `json:"ecosystem"`
+					} `json:"package"`
+					Ranges []struct {
+						Events []struct {
+							Fixed string `json:"fixed"`
+						} `json:"events"`
+					} `json:"ranges"`
+				} `json:"affected"`
 			} `json:"vulnerabilities"`
 		} `json:"packages"`
 	} `json:"results"`
@@ -61,6 +75,86 @@ type DepsFinding struct {
 	Version   string   `json:"version"`
 	IDs       []string `json:"ids"`
 	Source    string   `json:"source"`
+	// Fixed is the lowest version that fixes every advisory the record names a fix for (the highest of their fixes); Unfixed
+	// are the advisories that name no fixed version newer than Version. Versions are kept only when they look like one.
+	Fixed   string   `json:"fixed,omitempty"`
+	Unfixed []string `json:"unfixed,omitempty"`
+}
+
+// safeVersion is what a fixed version from an advisory may look like (it comes from an outside database).
+var safeVersion = regexp.MustCompile(`^[A-Za-z0-9._+~:-]{1,40}$`)
+
+// fixFor is the lowest fixed version above the installed one among an advisory's ranges ("" when there is none).
+func fixFor(installed string, fixed []string) string {
+	best := ""
+	for _, f := range fixed {
+		if !safeVersion.MatchString(f) || CompareVersions(f, installed) <= 0 {
+			continue
+		}
+		if best == "" || CompareVersions(f, best) < 0 {
+			best = f
+		}
+	}
+	return best
+}
+
+// CompareVersions orders two version strings the way most ecosystems do: a leading "v" is ignored, the parts between
+// dots, dashes and pluses are compared as numbers when both are numbers and as text otherwise, and a version with a
+// pre-release part ("1.2.0-rc1") comes before the same version without one. It returns -1, 0 or 1.
+func CompareVersions(a, b string) int {
+	a, b = strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v")
+	ma, pa, _ := strings.Cut(a, "-")
+	mb, pb, _ := strings.Cut(b, "-")
+	if c := compareParts(ma, mb); c != 0 {
+		return c
+	}
+	switch {
+	case pa == pb:
+		return 0
+	case pa == "":
+		return 1
+	case pb == "":
+		return -1
+	}
+	return compareParts(pa, pb)
+}
+
+func compareParts(a, b string) int {
+	split := func(s string) []string {
+		return strings.FieldsFunc(s, func(r rune) bool { return r == '.' || r == '+' || r == '-' || r == '_' })
+	}
+	pa, pb := split(a), split(b)
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var x, y string
+		if i < len(pa) {
+			x = pa[i]
+		}
+		if i < len(pb) {
+			y = pb[i]
+		}
+		nx, ex := strconv.Atoi(x)
+		ny, ey := strconv.Atoi(y)
+		switch {
+		case x == y:
+			continue
+		case ex == nil && ey == nil:
+			if nx < ny {
+				return -1
+			}
+			if nx > ny {
+				return 1
+			}
+		case x == "":
+			return -1
+		case y == "":
+			return 1
+		case x < y:
+			return -1
+		default:
+			return 1
+		}
+	}
+	return 0
 }
 
 // ParseOSV parses osv-scanner JSON into findings.
@@ -78,12 +172,32 @@ func ParseOSV(data []byte) ([]DepsFinding, error) {
 			f := DepsFinding{Ecosystem: clean(p.Package.Ecosystem, 40), Package: clean(p.Package.Name, 120), Version: clean(p.Package.Version, 60), Source: clean(r.Source.Path, 200)}
 			seen := map[string]bool{}
 			for _, v := range p.Vulnerabilities {
-				if safeID.MatchString(v.ID) && !seen[v.ID] {
-					seen[v.ID] = true
-					f.IDs = append(f.IDs, v.ID)
+				if !safeID.MatchString(v.ID) || seen[v.ID] {
+					continue
+				}
+				seen[v.ID] = true
+				f.IDs = append(f.IDs, v.ID)
+				var fixed []string
+				for _, a := range v.Affected {
+					if a.Package.Name != p.Package.Name || !strings.EqualFold(a.Package.Ecosystem, p.Package.Ecosystem) {
+						continue
+					}
+					for _, r := range a.Ranges {
+						for _, e := range r.Events {
+							if e.Fixed != "" {
+								fixed = append(fixed, e.Fixed)
+							}
+						}
+					}
+				}
+				if fix := fixFor(f.Version, fixed); fix == "" {
+					f.Unfixed = append(f.Unfixed, v.ID)
+				} else if f.Fixed == "" || CompareVersions(fix, f.Fixed) > 0 {
+					f.Fixed = fix
 				}
 			}
 			sort.Strings(f.IDs)
+			sort.Strings(f.Unfixed)
 			out = append(out, f)
 		}
 	}

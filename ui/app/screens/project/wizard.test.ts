@@ -122,18 +122,18 @@ describe('new-project wizard rules', () => {
     expect(adapterChoices([adapter('gemini', false)], undefined, '').map((x) => x.disabled)).toEqual([true]);
   });
 
-  it('counts a CLI installed only in a WSL distro as available and names the distro (P58)', () => {
+  it('counts a CLI installed only in a WSL distro as available, "in WSL" without the distro, which it keeps (P58)', () => {
     const e = prebuilt('team-lead', { claude: false, gemini: false, codex: false });
     e.availability.adapters[0] = { adapter: 'claude', preferred: true, installed: true, usable: true, status: 'degraded', wslDistro: 'Ubuntu-26.04' };
     e.availability.preferredUsable = true;
     const c = adapterChoices([adapter('claude', false)], e, 'claude');
-    expect(c[0]).toEqual({ id: 'claude', label: 'claude (recommended) - in WSL Ubuntu-26.04', disabled: false, reason: undefined, wslDistro: 'Ubuntu-26.04' });
+    expect(c[0]).toEqual({ id: 'claude', label: 'claude (recommended) - in WSL', disabled: false, reason: undefined, wslDistro: 'Ubuntu-26.04' });
     expect(memberFromPrebuilt(e, []).adapter).toBe('claude');
     // a custom member: adapter.list says where it is
     const inWSL: AdapterInfo = { ...adapter('claude', false), wslDistro: 'Ubuntu-26.04' };
     const custom = adapterChoices([inWSL, adapter('codex', false)], undefined, '');
     expect(custom.map((x) => [x.label, x.disabled])).toEqual([
-      ['claude - in WSL Ubuntu-26.04', false],
+      ['claude - in WSL', false],
       ['codex - not installed on this machine', true],
     ]);
   });

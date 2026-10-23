@@ -81,7 +81,6 @@ function show(client: Partial<Client>) {
   // the MCP gateway's state (the panel below the tiles) is a TEST DOUBLE too: Claude verified, nothing else reported
   const gateway: Partial<Client> = {
     mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }),
-    runnersGet: async () => ({ kinds: [], devDrives: [], slots: [], minFreeBytes: 10 * 2 ** 30, max: 8 }),
   };
   const r = mount(<ConnectionsScreen />, testServices({ ...gateway, ...client }));
   return r;
@@ -118,6 +117,21 @@ describe('Connections page', () => {
     await r.act(() => accept.click());
     await waitFor(() => expect(acks).toEqual(['claude-terms']), r);
     await waitFor(() => expect(r.$('[data-testid="gate"]')!.getAttribute('data-acked')).toBe('true'), r);
+  });
+
+  it('shows a problem and a warning side by side without a key the two share (the runtime warned "Duplicate keys" "0")', async () => {
+    const warned: string[] = [];
+    const warn = console.warn;
+    console.warn = (...a: unknown[]) => void warned.push(a.map(String).join(' '));
+    try {
+      const r = show({ connectionList: async () => [conn({ problems: ['claude is not on PATH'], warnings: ['version not tested'] })] });
+      const c = await card(r);
+      expect(c.textContent).toContain('claude is not on PATH');
+      expect(c.textContent).toContain('version not tested');
+    } finally {
+      console.warn = warn;
+    }
+    expect(warned.filter((w) => w.includes('Duplicate keys'))).toEqual([]);
   });
 
   it('shows status, usable, warnings, prerequisites with guidance, and an accepted gate without a button', async () => {
@@ -218,7 +232,7 @@ describe('Connections page', () => {
       connectionList: async () => [conn({ key: 'claude', runMode: 'native', gates: [], prereqs: [], warnings: [] }), inWSL],
       connectionTest: async (a: string, prompt?: boolean, distro?: string) => (tests.push(`${a}:${prompt}:${distro ?? ''}`), report()),
     });
-    // a tile of its own, named by its distro; its card opens below the grid when it is chosen
+    // a tile of its own; its card opens below the grid when it is chosen
     const tile = await waitFor(() => {
       const x = r.$('[data-testid="connection-tile"][data-key="claude@wsl:Ubuntu"]');
       if (!x) throw new Error('not yet');
@@ -226,8 +240,8 @@ describe('Connections page', () => {
     }, r);
     expect(r.$$('[data-testid="connection-tile"]').length).toBe(2);
     expect(tile.getAttribute('data-run-mode')).toBe('wsl');
-    // "<product> WSL", with the distro on the line below the name
-    expect(tile.textContent).toBe('Claude Code WSL2.1.0 in the WSL distro UbuntuNot signed in');
+    // "<product> WSL", and the distro is not on the tile (the owner: "we don't need to see the Ubuntu")
+    expect(tile.textContent).toBe('Claude Code WSL2.1.0 in WSLNot signed in');
     await r.act(() => tile.click());
     const c = await waitFor(() => {
       const x = r.$('[data-testid="connection"][data-key="claude@wsl:Ubuntu"]');
@@ -237,9 +251,11 @@ describe('Connections page', () => {
     expect(r.$$('[data-testid="connection"]').length).toBe(1);
     expect(c.getAttribute('data-run-mode')).toBe('wsl');
     expect(c.querySelector('h2')!.textContent).toBe('Claude Code WSL');
-    // the CLI's logo and the distro's
-    expect(c.querySelector('[data-brand="claude"]')).not.toBeNull();
-    expect(c.querySelector('[data-brand="ubuntu"]')!.getAttribute('aria-label')).toBe('Ubuntu');
+    // the CLI's logo in the heading; the distro's logo and name only in the Runs row, the card's details
+    expect(c.querySelector('header [data-brand="claude"]')).not.toBeNull();
+    expect(c.querySelector('header [data-brand="ubuntu"]')).toBeNull();
+    expect(c.querySelector('header')!.textContent).not.toContain('Ubuntu');
+    expect(c.querySelector('dd [data-brand="ubuntu"]')!.getAttribute('aria-label')).toBe('Ubuntu');
     const text = c.textContent ?? '';
     expect(text).toContain('inside the WSL 2 distro Ubuntu (the default distro)');
     expect(text).toContain("this install's sign-in is separate from the Windows one");
@@ -352,7 +368,7 @@ describe('Connections page', () => {
     const closes: string[] = [];
     const enc = new TextEncoder();
     let release: (() => void) | undefined;
-    const term = { id: 'term_9', title: 'Sign in: claude in Ubuntu-26.04', cwd: 'C:\\Users\\k', shell: 'wsl.exe', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 };
+    const term = { id: 'term_9', title: 'Sign in: claude WSL', cwd: 'C:\\Users\\k', shell: 'wsl.exe', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 };
     const wslConn = (signedIn: boolean) =>
       conn({
         key: 'claude@wsl:Ubuntu-26.04',
@@ -526,6 +542,8 @@ describe('Connections page', () => {
     // after the tiles of the agent CLIs, on the same page
     const tiles = r.$('ul[aria-label="Agent CLIs"]')!;
     expect(tiles.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // the gateway is the last part: the CI runners are on the GitHub page now
+    expect(r.$('[data-testid="ci-runners-section"]')).toBeNull();
     const list = section.querySelector('[data-testid="cli-gateway"]') as HTMLElement;
     expect(list.querySelector('[data-adapter="claude"]')!.textContent).toContain('verified');
     expect(() => byLabel(list, 'Let claude use the gateway')).toThrow();

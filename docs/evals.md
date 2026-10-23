@@ -7,7 +7,7 @@ Scope (updated 2026-10-08 with the Slice 2 evaluation code, section 11): how Dry
 1. Every claimed improvement needs numbers, the task set, `n`, the arm, and the commit (brief 23). A number without those is not recorded.
 2. Estimated and reported values are different columns and are never summed silently (brief 7). A CLI that does not report a value yields `not reported`, not 0.
 3. Real systems only: real CLIs, real Git, real fixture repositories, real checks (brief 0). A mock is allowed only to test a failure boundary and is labeled; mocked runs are never entered in the results table.
-4. Runs that cannot execute in the current environment are recorded as **skipped with a reason** (P3): the sandbox has the Claude Code CLI with the session's credentials but no route to OpenRouter, Google or OpenAI and no other CLI logins; Windows-only behavior is unproven while Actions is unavailable (P2).
+4. Runs that cannot execute in the current environment are recorded as **skipped with a reason** (P3): the sandbox has the Claude Code CLI with the session's credentials but no route to OpenRouter, Google or OpenAI and no other CLI logins; Windows-only behavior has been tested on GitHub's Windows runners on every push since 2026-10-10 (P2 resolved); those runners have no CLI logins, so real-session tests are skipped there as well.
 5. Eval overhead is separated from product cost (section 3.9) so measurement does not inflate or hide spend.
 6. Small samples are reported as raw per-task rows with medians and ranges, never with significance claims.
 
@@ -107,7 +107,7 @@ This file's tables are regenerated from the run records by a script (to be writt
 
 ## 7. Per-slice results
 
-Legend: `not measured` = no run exists; `n/a (slice)` = the metric cannot be observed in that slice because the feature does not exist yet; `skipped (reason)` = a run was attempted or planned and could not execute. All Windows-dependent cells are `not measured` while P2 holds.
+Legend: `not measured` = no run exists; `n/a (slice)` = the metric cannot be observed in that slice because the feature does not exist yet; `skipped (reason)` = a run was attempted or planned and could not execute. Windows-dependent cells were `not measured` while P2 held and have not been re-measured since it was resolved (2026-10-10); the Windows tests themselves now run on every push (section 7.4).
 
 ### 7.1 Economics
 
@@ -128,7 +128,7 @@ Legend: `not measured` = no run exists; `n/a (slice)` = the metric cannot be obs
 
 | Slice | Premium REVISE rate | Watchdog trips / accepted | False-trip rate (label coverage) | Watchdog false-positive control | Resume success rate | Duplicate effects | Orphan processes | UI catch-up misses | Iterations to SHIP | Engine acceptance suite (Windows) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 1A | n/a (no reviews) | n/a (watchdog is 1C) | n/a | n/a | n/a | n/a | not measured (tree-kill proof is blocked, D7/P2) | not measured | n/a | n/a |
+| 1A | n/a (no reviews) | n/a (watchdog is 1C) | n/a | n/a | n/a | n/a | not measured (the tree-kill tests pass on `windows-latest` since 2026-10-10; no orphan count is recorded per run) | not measured | n/a | n/a |
 | 1B | n/a | n/a | n/a | n/a | n/a (trivial runner) | n/a | not measured | not measured | n/a | n/a |
 | 1C | n/a (reviews arrive in 1D) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a | not measured (needs Windows runner) |
 | 1D | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured |
@@ -150,7 +150,7 @@ Legend: `not measured` = no run exists; `n/a (slice)` = the metric cannot be obs
 | Claude Code CLI real-session tests | skipped unless the CLI is installed and authenticated in the running environment; reason recorded per run |
 | Codex, Gemini CLI, OpenCode, Goose, Antigravity real-session tests | skipped (no logins in the Phase 0 sandbox) |
 | OpenRouter, Google, OpenAI calls | skipped (no network route / no key) |
-| Windows-only tests (`internal/proc` tree kill, ConPTY, Job Objects, installer) | skipped (Actions unavailable, P2) |
+| Windows-only tests (`internal/proc` tree kill, ConPTY, Job Objects, installer) | run on `windows-latest` (`ci`, `verify`, `windows-probes`) since 2026-10-10; the installer job builds a Wails sample app's NSIS installer, not Drydock's |
 
 ## 8. Dogfooding rule (decision P4)
 

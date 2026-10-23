@@ -44,6 +44,17 @@ export function testServices(client: Partial<Client> = {}): TestServices {
 
 const mounted: RenderResult[] = [];
 
+// Two siblings with one key make the runtime match the wrong nodes (it only warns: "Duplicate keys detected in siblings").
+// Every browser test fails on it at cleanup(), so a list keyed by index next to another, or two components keyed by the
+// same id, is caught where it is drawn.
+const duplicateKeys: string[] = [];
+const consoleWarn = console.warn.bind(console);
+console.warn = (...args: unknown[]) => {
+  const text = args.map(String).join(' ');
+  if (text.includes('Duplicate keys')) duplicateKeys.push(text);
+  consoleWarn(...args);
+};
+
 /** Render inside Services. Call cleanup() in afterEach. */
 export function mount(node: RemixNode, s: AppServices = testServices()): RenderResult & { services: AppServices } {
   const r = rmxRender(<Services value={s}>{node}</Services>);
@@ -60,6 +71,8 @@ export function renderPlain(node: RemixNode): RenderResult {
 
 export function cleanup(): void {
   for (const r of mounted.splice(0)) r.cleanup();
+  const found = duplicateKeys.splice(0);
+  if (found.length) throw new Error(`the page drew siblings with one key: ${[...new Set(found)].join('; ')}`);
 }
 
 /**

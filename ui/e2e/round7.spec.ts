@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject, projectNav, workspaceNav } from './helpers';
+import { createAgent, createProject, openAgentPage, projectNav, workspaceNav } from './helpers';
 
 // Round 7: what agents inherit, and how isolation is stated, against the real Go core.
 
@@ -33,13 +33,13 @@ test('Settings: extra environment variables are named, never valued; the Inspect
   await expect(page.getByTestId('agent-env').getByLabel(/Also pass these variables/)).toHaveValue('AWS_PROFILE\nCLAUDE_CODE_USE_BEDROCK');
 
   // isolation, stated plainly, in the Inspector
-  await projectNav(page, 'nav-team');
-  await page.getByTestId('agent').filter({ hasText: 'Pay' }).getByRole('button', { name: 'Inspect' }).click();
+  await openAgentPage(page, 'Pay');
+  await page.getByRole('button', { name: 'Inspect', exact: true }).click();
   const iso = page.getByTestId('inspector-isolation');
   await expect(iso).toHaveAttribute('data-level', 'guarded');
   await expect(iso).toContainText('not an operating-system sandbox');
 
   // a permission mode that skips approvals is called what it is
-  await page.getByTestId('agent').filter({ hasText: 'Pay' }).getByRole('button', { name: 'Edit Pay' }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   // (the mode is set through the template/agent API; the editor does not offer it, so only the guarded state is shown here)
 });

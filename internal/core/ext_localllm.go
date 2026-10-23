@@ -22,12 +22,16 @@ import (
 // official build, downloads GGUF models from Hugging Face and starts llama-server on one of them; the server is registered
 // as a provider (kind host, flavor llamacpp) so the router and the agents use it like any other. Installs and downloads run in
 // the background here, their progress is read with local.get and announced with the event local.changed. Only a person
-// installs, downloads, starts or stops: these bring programs and gigabytes onto the PC and take its GPU.
+// downloads a model, starts or stops: these bring gigabytes onto the PC and take its GPU. The runtime is Drydock's own
+// (decision P95): with AutoSetup it is put in place at start, and Check for updates installs a newer build.
 
 const (
 	settingLocal      = "local:settings"
 	defaultLocalPort  = 9933 // one above llama.cpp's own default, so a llama-server a person runs by hand keeps its port
-	localProviderName = "Models on this PC (llama.cpp)"
+	localProviderName = "Models on this PC"
+	// oldLocalProviderName is the name earlier versions gave the provider row; renameProvider moves it to localProviderName
+	// (decision P95: the page never names llama.cpp)
+	oldLocalProviderName = "Models on this PC (llama.cpp)"
 )
 
 // LocalSettings are the person's choices.
@@ -89,6 +93,34 @@ type LocalView struct {
 	FreeBytes        uint64                 `json:"freeBytes"`
 	ModelsBytes      uint64                 `json:"modelsBytes"`
 	Log              []string               `json:"log"`
+	// UsedBy are the agents, of every project, whose provider is the server's provider row (Settings.ProviderID).
+	UsedBy []LocalUser `json:"usedBy"`
+	// Served is the memory the served model takes, for the memory bar: set while the server starts or runs (decision P97).
+	Served *LocalServed `json:"served,omitempty"`
+}
+
+// LocalUser is an agent that uses the models on this PC.
+type LocalUser struct {
+	AgentID     string `json:"agentId"`
+	Name        string `json:"name"`
+	ProjectID   string `json:"projectId"`
+	ProjectName string `json:"projectName"`
+}
+
+// LocalServed is the served model's memory: its file, its KV cache as estimated from its GGUF header at the context size and
+// cache type the server was started with, and the device it is measured against (the GPU with the most free memory, else the
+// RAM). DeviceFree is what was free when the devices were read, before the model was loaded as a rule.
+type LocalServed struct {
+	ModelID    string           `json:"modelId"`
+	ModelBytes uint64           `json:"modelBytes"`
+	KVBytes    uint64           `json:"kvBytes"`
+	KV         localllm.KVCache `json:"kv"`
+	// Device is "gpu" or "ram"; DeviceName names the GPU.
+	Device      string       `json:"device"`
+	DeviceName  string       `json:"deviceName,omitempty"`
+	DeviceTotal uint64       `json:"deviceTotal"`
+	DeviceFree  uint64       `json:"deviceFree"`
+	Fit         localllm.Fit `json:"fit"`
 }
 
 func init() {
@@ -102,6 +134,7 @@ func init() {
 		l.m.Server.OnChange = func(st localllm.ServerState) {
 			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "server", "state": st.State})
 		}
+		l.renameProvider(ctx)
 		l.seedBundled(ctx)
 		wctx, stopWatch := context.WithCancel(context.Background())
 		l.stopWatch = stopWatch
@@ -117,10 +150,10 @@ func init() {
 			}) (any, error) {
 				return l.install(ctx, p.Source, p.Backend, c.Human())
 			}),
-			// the installed build's newest release, read now instead of at the next twice-daily check (decision P77)
+			// the installed build's newest release, read now instead of at the next twice-daily check (decision P77), and
+			// installed when it is newer (decision P95: "Check for update should then install the update")
 			"local.checkUpdates": bind(func(ctx context.Context, _ struct{}) (any, error) {
-				l.checkUpdates(ctx)
-				return l.view(ctx), nil
+				return l.checkAndInstall(ctx)
 			}),
 			"local.runtime.remove": bind(func(ctx context.Context, _ struct{}) (any, error) {
 				return l.removeRuntime(ctx, c.Human())
@@ -193,6 +226,16 @@ type localExt struct {
 	starting  bool
 	latest    string // the installed build's newest release, as the last update check read it (under mu)
 	stopWatch context.CancelFunc
+	// gguf holds each model file's header as read (under mu), kept while the file's size and time stay the same: a header
+	// with its vocabulary is megabytes, and the page reads the view often
+	gguf map[string]ggufEntry
+}
+
+type ggufEntry struct {
+	size int64
+	mod  time.Time
+	info localllm.GGUFInfo
+	err  error
 }
 
 type localDownload struct {
@@ -344,11 +387,23 @@ func (l *localExt) view(ctx context.Context) LocalView {
 		v.Runtime.Devices.Devices = []localllm.Device{}
 	}
 	v.Models = l.m.Store.List()
+	// a model's fit counts its KV cache at the settings the next start uses; the served one's at the settings it runs with
+	cache, ctxSize := l.launchCache(s), s.ContextSize
 	for i := range v.Models {
-		f := localllm.FitOf(v.Models[i].Size, v.Runtime.Devices, v.Memory)
+		c, n := cache, ctxSize
+		if v.Server.ModelID == v.Models[i].ID && (v.Server.State == "running" || v.Server.State == "starting") {
+			c, n = v.Server.CacheType, v.Server.ContextSize
+		}
+		kv := l.kvOf(v.Models[i], n, c)
+		v.Models[i].KV = &kv
+		f := localllm.FitWithKV(v.Models[i].Size, &kv, v.Runtime.Devices, v.Memory)
 		v.Models[i].Fit = &f
 		v.ModelsBytes += v.Models[i].Size
+		if v.Server.ModelID == v.Models[i].ID && (v.Server.State == "running" || v.Server.State == "starting") {
+			v.Served = servedOf(v.Models[i], kv, f, v.Runtime.Devices, v.Memory)
+		}
 	}
+	v.UsedBy = l.usedBy(ctx, s.ProviderID)
 	if free, err := runners.FreeBytes(l.m.Root); err == nil {
 		v.FreeBytes = free
 	} else if free, err := runners.FreeBytes(l.c.cfg.DataDir); err == nil {
@@ -384,6 +439,12 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may install the local models' runtime")
 	}
+	return l.startInstall(ctx, source, backend)
+}
+
+// startInstall installs, in the background, the newest build of source for backend (the saved settings, then the suggested
+// backend, fill what is empty) and answers with the view; a person's install and Drydock's own setup both come here.
+func (l *localExt) startInstall(ctx context.Context, source string, backend localllm.Backend) (LocalView, error) {
 	if !l.m.Supported() {
 		return LocalView{}, errors.New("local models run on Windows only")
 	}
@@ -404,6 +465,9 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 		s.Backend = localllm.SuggestBackend()
 	}
 	src, _ := localllm.SourceByID(s.Source)
+	if !src.Supports(s.Backend) && backend == "" && src.Supports(localllm.Vulkan) {
+		s.Backend = localllm.Vulkan // no backend asked for (Set up): the one every GPU runs, as the download carries
+	}
 	if !src.Supports(s.Backend) {
 		return LocalView{}, fmt.Errorf("%s has no Windows build for %s", src.Name, localllm.Describe(s.Backend).Label)
 	}
@@ -468,9 +532,19 @@ func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend 
 		finish(nil)
 		return
 	}
-	// the server runs the build about to be replaced
+	// the server runs the build about to be replaced: it is stopped, and started again on the build installed (or, when the
+	// install fails, on the one still in place), so an update does not take the provider down
 	if st := l.m.Server.State(); st.State == "running" || st.State == "starting" {
+		model, auto := st.ModelID, st.Autostarted
+		if model == "" {
+			model = l.settings(ctx).ModelID
+		}
 		l.m.Server.Stop()
+		defer func() {
+			if err := l.serve(context.Background(), model, auto); err != nil {
+				l.c.logf("local models: starting the server again after the install: %v", err)
+			}
+		}()
 	}
 	last := time.Time{}
 	in, err := l.m.Runtime.Install(ctx, rel, func(p localllm.Progress) {
@@ -665,13 +739,15 @@ func (l *localExt) startServer(ctx context.Context, modelID string, by string) (
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may start the local model server")
 	}
-	if err := l.serve(ctx, modelID); err != nil {
+	if err := l.serve(ctx, modelID, false); err != nil {
 		return LocalView{}, err
 	}
 	return l.view(ctx), nil
 }
 
-func (l *localExt) serve(ctx context.Context, modelID string) error {
+// serve starts the server on a model; auto says Drydock started it by itself (autostart, or again after an install of a server
+// it had started so), not a person.
+func (l *localExt) serve(ctx context.Context, modelID string, auto bool) error {
 	// the load outlives the request that asked for it: a page reload or a closed window while a large model loads must not
 	// kill the server (installs and downloads are detached the same way), and the provider row is written after the load
 	ctx = context.WithoutCancel(ctx)
@@ -707,7 +783,8 @@ func (l *localExt) serve(ctx context.Context, modelID string) error {
 	prog, args := l.m.ServerProgram(in)
 	// a new key for every start: the server demands it, and only the provider row made for it holds it (audit 2026-10-16, L32)
 	key := localllm.NewAPIKey()
-	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key}
+	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key,
+		Autostarted: auto}
 	if err := l.m.Server.Start(ctx, launch); err != nil {
 		return err
 	}
@@ -726,6 +803,23 @@ func (l *localExt) serve(ctx context.Context, modelID string) error {
 	}
 	l.changed("server", map[string]any{"state": "running", "modelId": modelID})
 	return nil
+}
+
+// renameProvider gives the provider row an earlier version made the name it has now. A name the person changed is theirs.
+func (l *localExt) renameProvider(ctx context.Context) {
+	list, err := l.c.Providers.List(ctx)
+	if err != nil {
+		return
+	}
+	for _, p := range list {
+		if p.Kind != providers.KindHost || p.Name != oldLocalProviderName {
+			continue
+		}
+		p.Name = localProviderName
+		if _, err := l.c.Providers.Update(ctx, p, ""); err != nil {
+			l.c.logf("local models: renaming the provider: %v", err)
+		}
+	}
 }
 
 // ensureProvider makes the server a provider: one row, kept at the server's address and holding the key of this start.
@@ -789,7 +883,7 @@ func (l *localExt) autostart(ctx context.Context) {
 		return
 	}
 	safe.Go("core.localExt.autostart", func() {
-		if err := l.serve(context.Background(), s.ModelID); err != nil {
+		if err := l.serve(context.Background(), s.ModelID, true); err != nil {
 			l.c.logf("local models: autostart: %v", err)
 		}
 	})
@@ -799,20 +893,24 @@ func (l *localExt) autostart(ctx context.Context) {
 // don't want to install llama.cpp, I want it already installed with Google's TurboQuant built in"). It is put in place only when
 // there is no build here or an earlier bundled one; a build the person installed or removed is left as it is
 // (localllm.Runtime.SeedFromBundle). The first time, the settings follow the build: its source, and its first KV cache type
-// (turbo4 for the TurboQuant build), unless the person already chose.
+// (turbo4 for the TurboQuant build), unless the person already chose. A tools folder that cannot be read, or that names a
+// source Drydock does not know, is logged and set up like a download without one (setupMissing).
 func (l *localExt) seedBundled(ctx context.Context) {
 	m, err := bundle.Read(l.c.cfg.BundleDir)
 	if err != nil {
 		l.c.logf("local models: the download's tools: %v", err)
+		l.setupMissing(ctx)
 		return
 	}
 	if m == nil || m.Llama == nil {
+		l.setupMissing(ctx)
 		return
 	}
 	b, dir := *m.Llama, l.c.cfg.BundleDir
 	src, ok := localllm.SourceByID(b.Source)
 	if !ok {
 		l.c.logf("local models: the download names %q, not a build source", b.Source)
+		l.setupMissing(ctx)
 		return
 	}
 	l.mu.Lock()
@@ -840,6 +938,7 @@ func (l *localExt) seedBundled(ctx context.Context) {
 		l.mu.Unlock()
 		if err != nil {
 			l.c.logf("local models: llama.cpp from the download: %v", err)
+			l.setupMissing(context.Background()) // the download's copy failed its check: fetch the build instead
 		}
 		if did {
 			l.c.logf("local models: %s %s (%s) installed from the download", src.Name, in.Tag, in.Backend)
@@ -855,6 +954,40 @@ func (l *localExt) seedBundled(ctx context.Context) {
 			l.changed("runtime", nil)
 		}
 	})
+}
+
+// setupMissing installs the TurboQuant build (decision P95, on the owner's words: "You didn't build llama.cpp into the app
+// merged with the TurboQwant from Google ... I don't want to hit a button that says install llama.cpp") when AutoSetup is on,
+// local models can run here, and there is no build that a person has not removed: a download without its tools folder sets
+// local models up by itself. The backend is the saved one, else the one suggested for this PC when the fork builds it, else
+// Vulkan (the download's own choice, which runs on any GPU).
+func (l *localExt) setupMissing(ctx context.Context) {
+	if !l.c.cfg.AutoSetup || !l.m.Supported() || l.m.Runtime.Removed() {
+		return
+	}
+	if _, ok := l.m.Runtime.Installed(); ok {
+		return
+	}
+	src, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	backend := l.settings(ctx).Backend
+	if backend == "" {
+		backend = localllm.SuggestBackend()
+	}
+	if !src.Supports(backend) {
+		backend = localllm.Vulkan
+	}
+	// as with the bundled build: when nobody chose yet, the settings follow the build (its first cache type, turbo4)
+	if s, chosen := l.savedSettings(ctx); !chosen {
+		s.Source, s.CacheType = src.ID, src.CacheTypes[0]
+		if err := l.save(ctx, s); err != nil {
+			l.c.logf("local models: settings for the runtime: %v", err)
+		}
+	}
+	if _, err := l.startInstall(ctx, src.ID, backend); err != nil {
+		l.c.logf("local models: setting up the runtime: %v", err)
+		return
+	}
+	l.c.logf("local models: no runtime here: installing %s for %s", src.Name, localllm.Describe(backend).Label)
 }
 
 // savedSettings reads the stored settings and whether a person (or an earlier start) saved any.
@@ -888,6 +1021,17 @@ func (l *localExt) watchUpdates(ctx context.Context) {
 			}
 		}
 	})
+}
+
+// checkAndInstall is Check for updates: the newest release is read, and a newer build than the one installed is installed
+// (same source and backend) in the background; the answer is the view, with the install's job when one started.
+func (l *localExt) checkAndInstall(ctx context.Context) (LocalView, error) {
+	l.checkUpdates(ctx)
+	v := l.view(ctx)
+	if v.Runtime.Latest == "" {
+		return v, nil
+	}
+	return l.startInstall(ctx, v.Runtime.Source, v.Runtime.Backend)
 }
 
 // checkUpdates reads the newest release of the installed build's source and backend; a change is announced.

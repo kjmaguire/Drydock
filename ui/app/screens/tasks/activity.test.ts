@@ -10,7 +10,7 @@ describe('a task agent activity as turns (P87)', () => {
   it('folds a thread into turns with messages, reasoning and tool calls in the order they happened', () => {
     const evs: AguiEvent[] = [
       { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:1' },
-      { type: 'REASONING_MESSAGE_START', ...at(), messageId: 'x' },
+      { type: 'REASONING_MESSAGE_START', ...at(), messageId: 'x', role: 'reasoning' },
       { type: 'REASONING_MESSAGE_CONTENT', ...at(), messageId: 'x', delta: 'look first' },
       { type: 'REASONING_MESSAGE_END', ...at(), messageId: 'x' },
       { type: 'TEXT_MESSAGE_START', ...at(), messageId: 'm', role: 'assistant' },
@@ -22,7 +22,7 @@ describe('a task agent activity as turns (P87)', () => {
       { type: 'TOOL_CALL_END', ...at(), toolCallId: 'c1' },
       { type: 'TOOL_CALL_RESULT', ...at(), messageId: 't', toolCallId: 'c1', role: 'tool', content: 'FAIL', isError: true },
       { type: 'TOOL_CALL_START', ...at(), toolCallId: 'c2', toolCallName: 'Read' },
-      { type: 'RUN_FINISHED', ...at(), threadId: 'r', runId: 'r:1', outcome: 'success', stopReason: 'end_turn' },
+      { type: 'RUN_FINISHED', ...at(), threadId: 'r', runId: 'r:1', outcome: { type: 'success' }, stopReason: 'end_turn' },
       { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:2' },
       { type: 'RUN_ERROR', ...at(), threadId: 'r', runId: 'r:2', message: 'exit 2' },
       // output read from the middle of a turn opens one
@@ -50,6 +50,34 @@ describe('a task agent activity as turns (P87)', () => {
     expect(turnSummary(three!)).toBe('1 tool call · working');
   });
 
+  it('reads a failed turn as an error and a cancelled one as stopped, never as done', () => {
+    const turns = turnsOf([
+      // a turn the agent reported as failed (a Claude result with is_error, an ACP prompt that failed): the core sends RUN_ERROR
+      { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:1' },
+      { type: 'TOOL_CALL_START', ...at(), toolCallId: 'c1', toolCallName: 'Bash' },
+      { type: 'TOOL_CALL_END', ...at(), toolCallId: 'c1' },
+      { type: 'RUN_ERROR', ...at(), threadId: 'r', runId: 'r:1', message: 'Reached maximum number of turns (3)', code: 'error_max_turns' },
+      // interrupted by a person
+      { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:2' },
+      { type: 'CUSTOM', ...at(), name: 'drydock.interrupt', value: { id: 'apr_1', title: 'Bash: ls' } },
+      { type: 'RUN_FINISHED', ...at(), threadId: 'r', runId: 'r:2', outcome: { type: 'cancelled' }, stopReason: 'interrupted' },
+      // its program ended during the turn
+      { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:3' },
+      { type: 'RUN_FINISHED', ...at(), threadId: 'r', runId: 'r:3', outcome: { type: 'cancelled' } },
+      { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:4' },
+      { type: 'RUN_FINISHED', ...at(), threadId: 'r', runId: 'r:4', outcome: { type: 'success' }, stopReason: 'end_turn' },
+    ]);
+    expect(turns.map((t) => [t.runId, t.status, t.stopReason ?? '', t.error ?? ''])).toEqual([
+      ['r:1', 'error', '', 'Reached maximum number of turns (3)'],
+      ['r:2', 'cancelled', 'interrupted', ''],
+      ['r:3', 'cancelled', '', ''],
+      ['r:4', 'done', 'end_turn', ''],
+    ]);
+    expect(turns.map(turnSummary)).toEqual(['1 tool call · error', '0 tool calls · stopped', '0 tool calls · stopped', '0 tool calls · done']);
+    // the wait of the interrupted turn is over without an answer
+    expect(waitOutcomeText(undefined, false)).toBe('Not answered before the turn ended');
+  });
+
   it('shows each wait for a person in its turn and how it was answered (P88)', () => {
     const turns = turnsOf([
       { type: 'RUN_STARTED', ...at(), threadId: 'r', runId: 'r:1' },
@@ -58,10 +86,12 @@ describe('a task agent activity as turns (P87)', () => {
       { type: 'CUSTOM', ...at(), name: 'drydock.resume', value: { id: 'apr_1', outcome: 'approved_with_edits' } },
       { type: 'CUSTOM', ...at(), name: 'drydock.resume', value: { id: 'apr_9', outcome: 'rejected' } },
     ]);
-    expect(turns[0]!.items).toEqual([
-      { kind: 'wait', id: 'apr_1', title: 'Bash: npm install', expiresAt: 5, outcome: 'approved_with_edits' },
-      { kind: 'wait', id: 'apr_2', title: 'Write: a.txt', expiresAt: undefined },
+    expect(turns[0]!.items.map((i) => ({ ...i, at: undefined }))).toEqual([
+      { kind: 'wait', id: 'apr_1', title: 'Bash: npm install', expiresAt: 5, outcome: 'approved_with_edits', at: undefined },
+      { kind: 'wait', id: 'apr_2', title: 'Write: a.txt', expiresAt: undefined, at: undefined },
     ]);
+    // each wait says when it began (the event's time)
+    expect(turns[0]!.items.map((i) => i.at > 0)).toEqual([true, true]);
     expect(['', 'approved', 'approved_with_edits', 'rejected', 'timed_out', 'cancelled', 'denied'].map((o) => waitOutcomeText(o))).toEqual([
       'Waiting for you',
       'Allowed once by you',

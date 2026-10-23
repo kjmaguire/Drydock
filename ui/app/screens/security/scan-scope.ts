@@ -1,9 +1,9 @@
 // What a security scan page scans: a project's working tree (the project's Security page, and a project chosen on the workspace
 // Security page) or a folder on this computer (the workspace Security page, decision P61). The shared ScanPanel reads and acts
-// only through a scope, so both pages show the same engines, findings, tools and history.
+// only through a scope, so both pages show the same engines, findings and history.
 
 import type { DrydockEvent } from '../../api/types.ts';
-import type { ScanToolName, SecurityClient } from '../../api/securityClient.ts';
+import type { SecurityClient } from '../../api/securityClient.ts';
 import type { ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
 
 export interface ScanScope {
@@ -12,15 +12,6 @@ export interface ScanScope {
   /** What is scanned: a project's working tree, or a folder (the panel then names the folder a report read). */
   kind: 'project' | 'folder';
   tools(): Promise<SecurityTools>;
-  setRules(rulesDir: string): Promise<SecurityTools>;
-  chooseTool(tool: ScanToolName): Promise<SecurityTools>;
-  setTool(tool: ScanToolName, path: string): Promise<SecurityTools>;
-  /** Drydock installs (or updates) the tool itself (decision P66). */
-  installTool(tool: ScanToolName): Promise<SecurityTools>;
-  cancelInstall(tool: ScanToolName): Promise<SecurityTools>;
-  removeTool(tool: ScanToolName): Promise<SecurityTools>;
-  /** Look up every installed tool's newest release now (decision P77). */
-  checkUpdates(): Promise<SecurityTools>;
   start(): Promise<ScanReport>;
   cancel(): Promise<ScanReport>;
   /** The running scan, else the last finished one, else null. */
@@ -33,7 +24,10 @@ export interface ScanScope {
   toolsChanged(e: DrydockEvent): boolean;
 }
 
-/** A tool's program is the workspace's: a choice made on any Security page counts on every one. */
+/** The key of the scope a scan of the history belongs to (a folder's or a project's), as ScanScope.key names it. */
+export const summaryKey = (h: Pick<ScanSummary, 'folder' | 'projectId'>): string => (h.folder ? `folder:${h.folder}` : `project:${h.projectId}`);
+
+/** A tool is the workspace's: an install announced from any Security page counts on every one. */
 const toolChoice = (e: DrydockEvent) => (e.data as { tool?: string } | undefined)?.tool !== undefined;
 
 /** A project's working tree. */
@@ -43,13 +37,6 @@ export function projectScope(client: SecurityClient, projectId: string): ScanSco
     key: `project:${projectId}`,
     kind: 'project',
     tools: () => client.securityTools(projectId),
-    setRules: (dir) => client.securitySettingsSet(projectId, dir),
-    chooseTool: (tool) => client.securityToolChoose(projectId, tool),
-    setTool: (tool, path) => client.securityToolSet(projectId, tool, path),
-    installTool: (tool) => client.securityToolInstall(projectId, tool),
-    cancelInstall: (tool) => client.securityToolInstallCancel(projectId, tool),
-    removeTool: (tool) => client.securityToolRemove(projectId, tool),
-    checkUpdates: () => client.securityToolsCheckUpdates(projectId),
     start: () => client.securityScanStart(projectId),
     cancel: () => client.securityScanCancel(projectId),
     get: () => client.securityScanGet(projectId),
@@ -62,7 +49,7 @@ export function projectScope(client: SecurityClient, projectId: string): ScanSco
 /**
  * A folder on this computer, without a project. `folder` is the folder whose last scan is shown ('' before any); `typed()` is
  * the path in the field, which Scan reads; `onStarted` hears the folder the core scans (its cleaned full path). The history is
- * the recent folder scans of every folder; the tools panel shows the workspace's rules folder.
+ * the recent folder scans of every folder.
  */
 export function folderScope(client: SecurityClient, folder: string, typed: () => string, onStarted: (report: ScanReport) => void): ScanScope {
   const folderEvent = (e: DrydockEvent) => !e.projectId && (e.data as { folder?: string } | undefined)?.folder !== undefined;
@@ -70,13 +57,6 @@ export function folderScope(client: SecurityClient, folder: string, typed: () =>
     key: `folder:${folder}`,
     kind: 'folder',
     tools: () => client.securityWorkspaceTools(),
-    setRules: (dir) => client.securityWorkspaceRulesSet(dir),
-    chooseTool: (tool) => client.securityToolChoose('', tool),
-    setTool: (tool, path) => client.securityToolSet('', tool, path),
-    installTool: (tool) => client.securityToolInstall('', tool),
-    cancelInstall: (tool) => client.securityToolInstallCancel('', tool),
-    removeTool: (tool) => client.securityToolRemove('', tool),
-    checkUpdates: () => client.securityToolsCheckUpdates(''),
     start: async () => {
       const r = await client.securityFolderScanStart(typed().trim());
       onStarted(r);
@@ -85,7 +65,8 @@ export function folderScope(client: SecurityClient, folder: string, typed: () =>
     cancel: () => client.securityFolderScanCancel(folder),
     get: () => (folder ? client.securityFolderScanGet(folder) : Promise.resolve(null)),
     history: (limit) => client.securityScanFolders(limit),
-    mine: (e) => e.type.startsWith('security.scan.') && folderEvent(e),
+    // a scan's progress, and a finding dismissed or restored (security.finding.*), of a folder
+    mine: (e) => (e.type.startsWith('security.scan.') || e.type.startsWith('security.finding.')) && folderEvent(e),
     toolsChanged: (e) => e.type === 'security.settings' && ((!e.projectId && (e.data as { workspace?: boolean } | undefined)?.workspace === true) || toolChoice(e)),
   };
 }

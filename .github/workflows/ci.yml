@@ -320,6 +320,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: go run ./cmd/drydock-bundle -pins packaging/bundle.json -out dist/drydock/tools
+      # the Opengrep in the download, run with exactly the arguments a scan gives it (1.31.0 refused --no-progress-bar with
+      # exit 2 and no stand-in noticed, decision P95)
+      - name: The bundled Opengrep runs a scan with the built-in rules
+        shell: pwsh
+        run: |
+          # the release file as downloaded: opengrep_windows_x86.exe up to 1.x, a zip with opengrep.exe and its DLLs from 2.0
+          $f = Get-ChildItem dist/drydock/tools -Recurse -File | Where-Object Name -like 'opengrep_windows*' | Select-Object -First 1
+          if (-not $f) { throw "the download has no Opengrep" }
+          if ($f.Extension -eq '.zip') {
+            Expand-Archive $f.FullName -DestinationPath "$env:RUNNER_TEMP/opengrep"
+            $f = Get-ChildItem "$env:RUNNER_TEMP/opengrep" -Recurse -Filter opengrep.exe | Select-Object -First 1
+          }
+          $env:DRYDOCK_TEST_OPENGREP = $f.FullName
+          go test ./internal/scan -run TestTheRealOpengrepRunsTheBuiltInRules -count=1 -v
       - name: The download (drydock.exe, its tools folder and the SHA-256 of every file)
         shell: pwsh
         run: |

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -164,6 +165,37 @@ func LatestToolRelease(ctx context.Context, api host.API, src ToolSource) (ToolR
 	return pickToolRelease(src, list)
 }
 
+// NewerTag reports whether release tag a is newer than b, both vMAJOR.MINOR.PATCH (the tools' release tags; a pre-release
+// suffix is not one). known is false when either is not such a tag; the caller then cannot order them.
+func NewerTag(a, b string) (newer, known bool) {
+	va, vb := tagVersion(a), tagVersion(b)
+	if va == nil || vb == nil {
+		return false, false
+	}
+	for k := range va {
+		if va[k] != vb[k] {
+			return va[k] > vb[k], true
+		}
+	}
+	return false, true
+}
+
+func tagVersion(tag string) []int {
+	parts := strings.Split(strings.TrimPrefix(tag, "v"), ".")
+	if len(parts) != 3 {
+		return nil
+	}
+	v := make([]int, 3)
+	for k, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || p == "" {
+			return nil
+		}
+		v[k] = n
+	}
+	return v
+}
+
 // InstalledTool is a tool Drydock installed: the release and where its program is.
 type InstalledTool struct {
 	Tool        string    `json:"tool"`
@@ -194,6 +226,9 @@ type Installer struct {
 	// development host that cannot run a Windows program can still install one); the leading arguments it returns come
 	// first. The product leaves it nil.
 	Program func(in InstalledTool) (path string, args []string)
+	// Check, when set, runs a release's program once it is unpacked and before it becomes the one in use (SelfCheck, decision
+	// P95); a release that fails it is deleted and the one in use stays.
+	Check func(ctx context.Context, tool string, t Tool) error
 }
 
 // NewInstaller wires the defaults under root.
@@ -235,8 +270,8 @@ func (i *Installer) ToolFor(in InstalledTool) Tool {
 }
 
 // Install downloads the release's asset, checks it against its digest, puts the program (unpacked from an archive, or the
-// asset itself renamed) in its own folder and makes it the tool's current release. Older releases are removed, except the
-// one that was current until now when the new one failed.
+// asset itself renamed) in its own folder, runs Check on it, and makes it the tool's current release. Older releases are
+// removed, except the one that was current until now when the new one failed.
 func (i *Installer) Install(ctx context.Context, rel ToolRelease, report func(InstallProgress)) (InstalledTool, error) {
 	src, ok := SourceOf(rel.Tool)
 	if !ok {
@@ -278,19 +313,31 @@ func (i *Installer) Install(ctx context.Context, rel ToolRelease, report func(In
 		}
 	}
 	in := InstalledTool{Tool: src.Tool, Tag: rel.Tag, Path: program, InstalledAt: time.Now().UTC()}
+	if i.Check != nil {
+		report(InstallProgress{Phase: "checking"})
+		if err := i.Check(ctx, src.Tool, i.ToolFor(in)); err != nil {
+			_ = os.RemoveAll(dir)
+			_ = os.Remove(asset)
+			if errors.Is(err, context.Canceled) {
+				return InstalledTool{}, err
+			}
+			return InstalledTool{}, fmt.Errorf("%s %s failed Drydock's test scan, so it is not used: %w", src.Label, rel.Tag, err)
+		}
+	}
 	b, _ := json.Marshal(in)
 	if err := os.WriteFile(filepath.Join(root, installedToolFile), b, 0o644); err != nil {
 		return InstalledTool{}, err
 	}
-	_ = os.Remove(filepath.Join(i.Root, src.Tool+removedMarker)) // installed again: the person wants it
+	_ = os.Remove(filepath.Join(i.Root, src.Tool+removedMarker)) // a marker an earlier version left (see removedMarker)
 	i.prune(root, dir)
 	_ = os.Remove(asset) // the checked download is in place; the cache keeps nothing
 	report(InstallProgress{Phase: "done"})
 	return in, nil
 }
 
-// Remove forgets the tool's current release and deletes every release and cached download of it. It also records that the
-// person removed it, so the copy the download carries is not put back at the next start (SeedFromBundle).
+// Remove forgets the tool's current release and deletes every release and cached download of it. The tools are Drydock's
+// own (decision P95: the Security page no longer shows them), so nothing keeps it out: the next start puts the download's
+// copy back, or installs the newest release.
 func (i *Installer) Remove(tool string) error {
 	if _, ok := SourceOf(tool); !ok {
 		return fmt.Errorf("%q is not a tool Drydock installs", tool)
@@ -299,13 +346,13 @@ func (i *Installer) Remove(tool string) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if err := os.MkdirAll(i.Root, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(i.Root, tool+removedMarker), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+	_ = os.Remove(filepath.Join(i.Root, tool+removedMarker))
+	return nil
 }
 
-// removedMarker beside a tool's folder says a person removed the tool: the bundled copy stays out until they install it again.
+// removedMarker beside a tool's folder is what earlier versions wrote when a person removed the tool, to keep the download's
+// copy out. Nothing reads it now (a person can no longer remove a tool, so a marker would keep it out for good); it is
+// deleted when the tool is installed or seeded again.
 const removedMarker = ".removed"
 
 // bundledFile in a tool's folder names the bundled release last put in place from the download (SeedFromBundle).
@@ -313,16 +360,13 @@ const bundledFile = "bundled.json"
 
 // SeedFromBundle puts the release the download carries in place (decision P77: the tools come installed). It does so when
 // the tool has no release here, or when the one here is an earlier bundled release (the app was updated with a newer one).
-// A release the person installed (Install, Update) is left alone, as is a tool the person removed. The bundled file is checked
+// A release installed from GitHub (a newer one, decision P95) is left alone. The bundled file is checked
 // against the SHA-256 the bundle recorded, copied into the download cache, and installed by the ordinary Install, which
 // checks the digest again and fetches nothing. It reports whether it installed.
 func (i *Installer) SeedFromBundle(ctx context.Context, dir string, b bundle.ScanTool) (InstalledTool, bool, error) {
 	src, ok := SourceOf(b.Tool)
 	if !ok {
 		return InstalledTool{}, false, fmt.Errorf("%q is not a tool Drydock installs", b.Tool)
-	}
-	if _, err := os.Stat(filepath.Join(i.Root, b.Tool+removedMarker)); err == nil {
-		return InstalledTool{}, false, nil
 	}
 	last := ""
 	if raw, err := os.ReadFile(filepath.Join(i.dir(b.Tool), bundledFile)); err == nil {

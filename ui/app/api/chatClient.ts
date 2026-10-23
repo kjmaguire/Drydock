@@ -166,6 +166,12 @@ export interface ChatUpdate {
   cwd?: string;
   skills?: ChatSkillRef[];
   mcpServers?: ChatMcpGrant[];
+  /**
+   * Moves the chat into a project ('' takes it out; decision P97), only while no turn runs. It then runs in the project's
+   * folder: when that is another folder, the next message starts a new session given the conversation so far. Taken out of a
+   * project it keeps its folder and its session.
+   */
+  projectId?: string;
 }
 
 /** chat.turn data. */
@@ -200,6 +206,11 @@ export interface ChatAsk {
   summary: string;
   /** The call's input as stored (redacted, bounded). */
   input?: unknown;
+  /**
+   * The allow rule chatAllowAndRemember would record for this call. Set only when the chat's agent takes per-chat allow rules
+   * and a safe rule names the call: the UI offers "Allow <tool> in this chat" only then.
+   */
+  rule?: string;
   created: number;
   /** When it is refused if nobody answered. */
   expiresAt: number;
@@ -233,6 +244,11 @@ export interface ChatClient {
   chatAsks(id: string): Promise<ChatAsk[]>;
   /** Answers one: allow lets exactly that call run once. */
   chatAnswer(id: string, askId: string, allow: boolean): Promise<void>;
+  /**
+   * "Allow <tool> in this chat" (decision P97): allows the waiting call and records its allow rule for the chat's later turns,
+   * as chatAllowTool does. Claude chats only: for any other agent it is refused with the reason, and the request keeps waiting.
+   */
+  chatAllowAndRemember(id: string, askId: string): Promise<{ answered: boolean; rule: string }>;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
@@ -277,5 +293,6 @@ export function createChatClient(t: Transport): ChatClient {
     chatAnswer: async (id, askId, allow) => {
       await t.call('chat.answer', { id, askId, allow });
     },
+    chatAllowAndRemember: (id, askId) => t.call('chat.answer', { id, askId, allow: true, remember: true }),
   };
 }

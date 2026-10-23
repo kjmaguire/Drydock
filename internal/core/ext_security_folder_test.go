@@ -16,35 +16,19 @@ import (
 // engines, events, stored report and history as a project's scan, under the folder's own history and the workspace's rules
 // folder. Nothing of it is attached to a project.
 func TestAFolderScanRunsTheEnginesWithoutAProjectAndKeepsItsHistory(t *testing.T) {
-	a, rules := securityCore(t, "--sleep-ms=300")
+	a, _ := securityCore(t, "--sleep-ms=300")
 	folder := realDir(t, t.TempDir())
 	os.WriteFile(filepath.Join(folder, "notes.txt"), []byte("key = "+plantedKey+"\n"), 0o644)
 	os.WriteFile(filepath.Join(folder, "go.mod"), []byte("module example.com/downloaded\n"), 0o644)
 
-	// without a project the tools say what folder scans use: no rules folder yet
+	// without a project the tools say what folder scans use: Drydock's own tools and the built-in rules
 	var tools scan.Tools
 	a.call("security.tools", map[string]any{}, &tools)
-	if !tools.OSV.Found || !tools.Opengrep.Found || tools.RulesOK || tools.RulesDir != "" {
+	if !tools.OSV.Found || !tools.Opengrep.Found || tools.RulesOK || tools.RulesDir != "" || !tools.Ready || !tools.BuiltinRules {
 		t.Fatalf("%+v", tools)
 	}
-	if err := a.callErr("security.settings.set", map[string]any{"workspace": true, "rulesDir": "rules"}); err == nil || !strings.Contains(err.Error(), "full path") {
-		t.Fatal(err)
-	}
-	a.call("security.settings.set", map[string]any{"workspace": true, "rulesDir": `"` + rules + `"`}, &tools)
-	if !tools.RulesOK || !tools.Ready || tools.RulesDir != rules {
-		t.Fatalf("%+v", tools)
-	}
-	a.call("security.tools", map[string]any{}, &tools)
-	if tools.RulesDir != rules {
-		t.Fatalf("the workspace rules folder was not kept: %+v", tools)
-	}
-	// a project keeps its own rules folder: the workspace's does not become every project's
 	var p struct{ ID string }
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
-	a.call("security.tools", map[string]any{"projectId": p.ID}, &tools)
-	if tools.RulesDir != "" {
-		t.Fatalf("a project took the workspace's rules folder: %+v", tools)
-	}
 
 	var cur *scan.Report
 	a.call("security.scan.get", map[string]any{"folder": folder}, &cur)
@@ -189,9 +173,6 @@ func TestAFolderScanRefusesFoldersItMustNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := a.callErr("security.scan.cancel", map[string]any{"folder": t.TempDir()}); err == nil || !strings.Contains(err.Error(), "no scan of this folder") {
-		t.Fatal(err)
-	}
-	if err := a.callErr("security.settings.set", map[string]any{"workspace": true, "projectId": "prj_x", "rulesDir": ""}); err == nil || !strings.Contains(err.Error(), "not both") {
 		t.Fatal(err)
 	}
 	var list []scan.Summary

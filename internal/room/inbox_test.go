@@ -360,3 +360,33 @@ func TestAnUnreadBacklogIsCountedOnlyUpToTheCap(t *testing.T) {
 		t.Fatalf("mentions %d, want the 3 messages that mention sam", us[0].Mentions)
 	}
 }
+
+// An approval's item carries the phase of its request, the task's number, the agent it is about and when it lapses: the asking
+// agent of a security-service request (its payload's action), the task's assignee for a workflow request, and none for a
+// payload that is not JSON.
+func TestAnApprovalItemCarriesItsPhaseTaskNumberAgentAndExpiry(t *testing.T) {
+	e := newEnv(t)
+	dana, rex := e.agent("Dana"), e.agent("Rex")
+	e.exec(`INSERT INTO tasks(id,project_id,seq,title,status,assignee,created_at,updated_at) VALUES('task_7','proj_1',7,'Add Multiply','REVIEW',?,1,1)`, dana)
+	e.exec(`INSERT INTO approvals(id,run_id,task_id,project_id,kind,title,phase,status,created_at) VALUES('apr_merge','run_1','task_7','proj_1','review','Review and merge: Add Multiply','merge','REQUESTED',1)`)
+	e.exec(`INSERT INTO approvals(id,run_id,task_id,project_id,kind,title,payload,status,created_at,expires_at,action_kind) VALUES('apr_tool','','task_7','proj_1','approval','Permission request: Bash: curl x',?,'REQUESTED',2,5000,'shell_command')`,
+		[]byte(`{"action":{"agentId":"`+rex+`"}}`))
+	e.exec(`INSERT INTO approvals(id,run_id,project_id,kind,title,payload,status,created_at) VALUES('apr_odd','','proj_1','approval','Odd',x'00ff','REQUESTED',3)`)
+	items, err := e.svc.NeedsYou(e.ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]NeedsYouItem{}
+	for _, it := range items {
+		got[it.Key] = it
+	}
+	if m := got["approval:apr_merge"]; m.Phase != "merge" || m.TaskSeq != 7 || m.AgentID != dana || m.AgentName != "Dana" || m.ExpiresAt != nil {
+		t.Fatalf("merge %+v", m)
+	}
+	if a := got["approval:apr_tool"]; a.Phase != "" || a.TaskSeq != 7 || a.AgentID != rex || a.AgentName != "Rex" || a.ExpiresAt == nil || a.ExpiresAt.UnixMilli() != 5000 {
+		t.Fatalf("tool %+v", a)
+	}
+	if o, ok := got["approval:apr_odd"]; !ok || o.AgentID != "" || o.TaskSeq != 0 {
+		t.Fatalf("odd %+v", o)
+	}
+}

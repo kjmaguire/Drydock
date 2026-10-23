@@ -488,6 +488,8 @@ holds for the connection. Nothing is typed and the credential is never shown; th
 
 The page's layout changed in the same decision: both Integrations pages are laid out like Home (groups of tiles under headings,
 the vendor's logo, name, purpose, state and a state badge on each tile, the selected tile's panel as one card under its group).
+Since 2026-10-22 a project's MCP servers are tiles too (Agent tools, after Services: who of the project may use each, on or off,
+and the connected servers the project does not have yet, added from their panel); docs/ui.md has the details.
 
 Tests: `internal/integrations/verify_test.go` against the protocol fixtures (Linear assigned and not, Sentry without an
 assignment and its latest event, Notion's markdown, Aikido's token exchange; a revoked credential answering 401, a field of

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choose, appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom, openChecks } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom, openChecks, openAgentPage } from './helpers';
 
 test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
@@ -114,8 +114,8 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await expect(page.locator('details.members')).toContainText('Worker R2');
 
   // a direct message with an agent
-  await projectNav(page, 'nav-team');
-  await page.getByTestId('agent').filter({ hasText: 'Worker R2' }).getByRole('button', { name: 'Message' }).click();
+  await openAgentPage(page, 'Worker R2');
+  await page.getByRole('button', { name: 'Message Worker R2' }).click();
   await expect(page.getByLabel('Messages in dm:', { exact: false })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Direct messages' })).toBeVisible();
   await expect(page.locator('[data-testid=room-link]').filter({ hasText: 'Worker R2' })).toBeVisible();
@@ -141,7 +141,8 @@ test('threads, direct messages, archived task channels, the inspector and usage 
   await expect(page.getByTestId('task-cost').locator('xpath=..')).toContainText(/reported|estimated/);
 
   // the Agent Inspector (from the details panel's Agents tab: the thread opened earlier still holds the panel): runs with PID
-  // and working directory, usage with sources
+  // and working directory, usage with sources. The task page has its own properties, so the panel starts closed beside it.
+  await page.getByRole('complementary', { name: 'Details' }).getByRole('button', { name: 'Show details' }).click();
   await page.getByRole('complementary', { name: 'Details' }).getByRole('tab', { name: 'Agents' }).click();
   await page.getByRole('button', { name: 'Inspect' }).first().click();
   const insp = page.getByTestId('inspector');

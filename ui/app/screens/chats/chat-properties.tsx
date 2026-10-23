@@ -17,7 +17,7 @@ import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
-import { chatChoices, compactNumber, costText, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
+import { chatChoices, chatCliText, compactNumber, costText, firstSentence, grantableTools, pickableSkills, sameServers, sameSkills, skillKey, skillUsable, toggleServer, toggleSkill } from './chats.ts';
 import { ShownNotes, Targets } from '../shared/approval-text.tsx';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 
@@ -246,7 +246,7 @@ export function ChatPropertiesDialog(handle: Handle<{ open: boolean; chat: Chat;
                 id={id}
                 value={choice}
                 options={[
-                  ...(hasCurrent ? [] : [{ value: current(chat), label: `${chat.adapter}${chat.wslDistro ? ` in ${chat.wslDistro} (WSL)` : ''} (current)` }]),
+                  ...(hasCurrent ? [] : [{ value: current(chat), label: `${chatCliText(chat, conns.data ?? [])} (current)` }]),
                   ...choices.map((c) => ({ value: c.value, label: c.text, disabled: !!c.why && c.value !== current(chat) })),
                 ]}
                 onChange={(v) => set(() => (choice = v))}

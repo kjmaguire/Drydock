@@ -168,8 +168,19 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 				{MCP: "mcp__drydock__skills", Input: json.RawMessage(`{"action":"get","name":"wrangler"}`)},
 				{MCP: "mcp__drydock__chatmcp__echo", Input: json.RawMessage(`{"text":"hello from home"}`)},
 			}},
+			// The task page's live run (ui/e2e/task-page.spec.ts, decision P97): a worker that reads a file and then keeps working
+			// (blocked until it is interrupted), so the page can steer and pause it. The steer's text carries its own marker: the
+			// worker runs the tests and keeps working. This rule comes first so a steered turn is matched by its message.
+			{Match: "drydock-e2e steered", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"go test ./..."}`), Result: "ok  \tgocalc\t0.003s"}, {Block: true}}},
+			{Match: "drydock-e2e live run", Steps: []fakeagent.Step{{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc.go"}`), Result: "package calc"}, {Block: true}}},
 			// the independent reviewer (prompt text from internal/pipeline/review.go) always ships
 			{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}},
+			// The Inbox (ui/e2e/inbox.spec.ts, decision P97): the worker asks the permission prompt tool to run a command its rules
+			// do not allow, waits for the person's answer in the Inbox, then does the work
+			{Match: "drydock-e2e inbox ask", Steps: []fakeagent.Step{
+				{Tool: "Bash", Input: json.RawMessage(`{"command":"curl https://example.com","description":"fetch the example page"}`), Ask: true, Result: "ran: curl https://example.com"},
+				{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implPlain}}, {Say: "implemented Subtract"},
+			}},
 			// after a human "request changes" the worker's prompt carries "Changes requested by the human:"
 			{Match: "Changes requested by the human", Steps: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: implDoc}}, {Say: "addressed the feedback: added the doc comment"}}},
 			// the Feature template (spec gate, tests first) and PlanTeam: each Drydock prompt starts with a phase line
@@ -366,16 +377,16 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	runnerWin := &runnerstest.Launcher{K: runners.Windows, FreeB: 120 << 30, JobTime: 1500 * time.Millisecond}
 	runnerLinux := &runnerstest.Launcher{K: runners.Linux, JobTime: 1500 * time.Millisecond}
 	runnerLinux.Queue("build", "Succeeded")
-	// PROTOCOL FIXTURES for the local models (decision P65): GitHub's releases API and downloads for llama.cpp's repository
-	// (two builds, the newer with a Vulkan and a CPU archive, each holding a placeholder llama-server), and the Hugging Face
-	// Hub with two small GGUF repositories. The installed placeholder is never run: the core starts the stand-in above instead.
-	// Nothing reaches GitHub or Hugging Face; no llama.cpp runs.
-	officialSrc, _ := localllm.SourceByID(localllm.SourceOfficial)
-	llamaReleases := llamatest.StartReleases(officialSrc.Repo)
+	// PROTOCOL FIXTURES for the local models (decisions P65, P95): GitHub's releases API and downloads for the TurboQuant
+	// build's repository, the one Drydock sets up (two builds, the newer with a Vulkan and a CPU archive, each holding a
+	// placeholder llama-server), and the Hugging Face Hub with two small GGUF repositories. The installed placeholder is never
+	// run: the core starts the stand-in above instead. Nothing reaches GitHub or Hugging Face; no llama.cpp runs.
+	tqSrc, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	llamaReleases := llamatest.StartReleases(tqSrc.Repo)
 	defer llamaReleases.Close()
-	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11600", Prerelease: true, Body: "an older build", Assets: map[string][]byte{"llama-b11600-bin-win-vulkan-x64.zip": llamatest.ServerZip()}})
-	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b11669", Prerelease: true, Body: "## What's new\nLiliCorr speculative decoding and MTP for GLM5-Next", Assets: map[string][]byte{
-		"llama-b11669-bin-win-vulkan-x64.zip": llamatest.ServerZip(), "llama-b11669-bin-win-cpu-x64.zip": llamatest.ServerZip(),
+	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b10269-1.7.1", Body: "an older build", Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": llamatest.ServerZip()}})
+	llamaReleases.Add(llamatest.ReleaseSpec{Tag: "b10298-2.0.0", Body: "## What's new\nTurboQuant turbo4 and turbo3 KV cache types", Assets: map[string][]byte{
+		"llama-turboquant-windows-x64-vulkan.zip": llamatest.ServerZip(), "llama-turboquant-windows-x64-cpu.zip": llamatest.ServerZip(),
 	}})
 	// PROTOCOL FIXTURE for the security scan's tool installer (decision P66): GitHub's releases API and downloads for
 	// osv-scanner's and Opengrep's repositories, each with one release whose Windows "program" is a few bytes; the core

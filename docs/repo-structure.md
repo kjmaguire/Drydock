@@ -5,7 +5,7 @@ Scope: where things live and the dependency rules between packages. `internal/` 
 ```
 /go.mod                  module github.com/kjmaguire/drydock (go 1.26.0)
 /main.go, /app/          Wails v3 shell and services — the only place that imports Wails    [not built]
-/ui/                     Remix 3 + TypeScript (Vite; source in ui/app): HTTP/SSE dev transport, screens for what the core has [built; tested in Chromium on Linux against the Go core, never run in WebView2]
+/ui/                     Remix 3 + TypeScript (Vite; source in ui/app): HTTP/SSE dev transport, screens for what the core has [built; tested in Chromium on Linux and Windows against the Go core; in WebView2 only through the owner's use of the download]
 /Taskfile.yml            go-task: ui:install, ui:build, ui:test, ui:e2e, go:test, build:dev  [written; go-task itself not run here; lint, generate, package tasks not built]
 /cmd/
   drydock-dev/           core + HTTP/SSE dev transport serving ui/dist (development tool)

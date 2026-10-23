@@ -141,7 +141,14 @@ export async function showNewProjectForm(page: Page): Promise<void> {
   await field.or(projectSwitcher(page)).first().waitFor();
   if (!(await field.isVisible())) {
     await projectSwitcher(page).click();
-    await page.getByRole('menuitem', { name: 'New project…', exact: true }).click();
+    // by the keyboard, as a person can: with many projects "New project…" is far down the menu's scroll, and on the
+    // Windows runner a click did not scroll it into view (End is App settings, the last item; New project… is above it)
+    const item = page.getByRole('menuitem', { name: 'New project…', exact: true });
+    await expect(page.getByRole('menu', { name: 'Projects' })).toBeVisible();
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowUp');
+    await expect(item).toHaveAttribute('data-highlighted', 'true');
+    await page.keyboard.press('Enter');
   }
   await expect(field).toBeVisible();
 }
@@ -153,7 +160,7 @@ export async function wizardNext(page: Page): Promise<void> {
 
 /**
  * Walk the open wizard to its Review step: Basics (the name, when given), Repository (a local folder, or Later), no
- * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Team page).
+ * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Crew page).
  */
 export async function wizardToReview(page: Page, opts: { name?: string; repo?: string; later?: boolean }): Promise<void> {
   if (opts.name) await page.getByLabel('Project name', { exact: true }).fill(opts.name);
@@ -218,6 +225,8 @@ export async function createProjectWithoutRepo(page: Page, name: string): Promis
  * `data-value` (`toHaveAttribute('data-value', ...)` stands in for `toHaveValue`).
  */
 export async function choose(control: Locator, option: string | { label: string }): Promise<void> {
+  // a model field is a text box until its CLI's models load, then a list (shared/model-field.tsx): wait for the list
+  await expect.poll(() => control.evaluate((el) => el.tagName === 'SELECT' || el.hasAttribute('aria-controls')), { message: 'the control is a list to choose from' }).toBe(true);
   const tag = await control.evaluate((el) => el.tagName);
   if (tag === 'SELECT') {
     await control.selectOption(option);
@@ -226,10 +235,28 @@ export async function choose(control: Locator, option: string | { label: string 
   await control.click();
   const listId = await control.getAttribute('aria-controls');
   const list = control.page().locator(`#${listId}`);
-  const item = typeof option === 'string' ? list.locator(`[role="option"][data-value="${option.replace(/"/g, '\\"')}"]`) : list.getByRole('option', { name: option.label, exact: true });
+  const item = typeof option === 'string' ? list.locator(`[role="option"][data-value=${cssString(option)}]`) : list.getByRole('option', { name: option.label, exact: true });
   await item.click();
   // the list has closed (or the control turned into something else, as the model field does for "Another model...")
   await expect(control).not.toHaveAttribute('aria-expanded', 'true');
+}
+
+/**
+ * `v` as a quoted CSS string, for an attribute selector: a backslash and a double quote are escaped, and a line break, which a
+ * CSS string cannot hold as itself, is written as its hex escape.
+ */
+export function cssString(v: string): string {
+  return `"${v.replace(/[\\"]/g, '\\$&').replace(/[\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}"`;
+}
+
+/**
+ * Opens a tile's panel (ui/app/ui/tiles.tsx): a click on a tile that is not chosen yet. A click on the chosen one would close its
+ * panel, and a page may open its first tile by itself.
+ */
+export async function openTile(tile: Locator): Promise<void> {
+  await expect(tile).toBeVisible();
+  if ((await tile.getAttribute('aria-pressed')) !== 'true') await tile.click();
+  await expect(tile).toHaveAttribute('aria-pressed', 'true');
 }
 
 /**
@@ -238,23 +265,43 @@ export async function choose(control: Locator, option: string | { label: string 
  */
 export async function optionsOf(control: Locator, value?: string): Promise<Locator> {
   const tag = await control.evaluate((el) => el.tagName);
-  const one = value === undefined ? '' : `[${tag === 'SELECT' ? 'value' : 'data-value'}="${value.replace(/"/g, '\\"')}"]`;
+  const one = value === undefined ? '' : `[${tag === 'SELECT' ? 'value' : 'data-value'}=${cssString(value)}]`;
   if (tag === 'SELECT') return control.locator(`option${one}`);
   const listId = await control.getAttribute('aria-controls');
   return control.page().locator(`#${listId} [role="option"]${one}`);
 }
 
-export async function createAgent(page: Page, name: string, role: string): Promise<void> {
-  // The form can be replaced while the page is still settling after a project change (seen once: the field detached and the
-  // test waited out its whole timeout), so open the page and fill the name as one step that is retried as a whole.
+/**
+ * Opens the Crew page's New agent dialog (the form to make an agent is in it). The page can be replaced while it is still
+ * settling after a project change (seen once: the field detached and the test waited out its whole timeout), so opening the
+ * page, the dialog and reaching its first field is one step that is retried as a whole.
+ */
+export async function openNewAgent(page: Page, nav = true): Promise<void> {
+  const form = page.locator('dialog[open]').getByTestId('agent-form');
   await expect(async () => {
-    await projectNav(page, 'nav-team');
-    await page.getByLabel('Agent name').fill(name, { timeout: 5_000 });
+    if (!(await form.isVisible())) {
+      if (nav) await projectNav(page, 'nav-team');
+      await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+    }
+    await expect(form.getByLabel('Agent name')).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
+}
+
+/** Opens an agent's own page from its card on the Crew page (Edit, Inspect, Message and Remove are there). */
+export async function openAgentPage(page: Page, name: string): Promise<void> {
+  await projectNav(page, 'nav-team');
+  await page.locator(`[data-testid="agent"][data-name="${name}"]`).getByTestId('agent-link').click();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+}
+
+export async function createAgent(page: Page, name: string, role: string): Promise<void> {
+  await openNewAgent(page);
+  await page.getByLabel('Agent name').fill(name);
   await page.getByLabel('Role', { exact: true }).fill(role);
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   await page.getByRole('button', { name: 'Create agent' }).click();
-  await expect(page.getByTestId('agent').filter({ hasText: name })).toBeVisible();
+  // by its name exactly: another card's text (a room chip such as "reviews") may contain this one's name
+  await expect(page.locator(`[data-testid="agent"][data-name="${name}"]`)).toBeVisible();
 }
 
 /** Create a task, assign it, and stop before Start (so a test can pick a template). */
@@ -268,7 +315,7 @@ export async function createAssignedTask(page: Page, title: string, worker: stri
   await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (${workerRole})` });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (${reviewerRole})` });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeEnabled();
 }
 
 export async function createAndStartTask(page: Page, title: string, worker: string, reviewer: string): Promise<void> {
@@ -282,8 +329,8 @@ export async function createAndStartTask(page: Page, title: string, worker: stri
   await choose(page.getByLabel('Worker', { exact: true }), { label: `${worker} (backend)` });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: `${reviewer} (reviewer)` });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
 }
 
 /** The `-licensed` TEST HARNESS (a build with a throwaway license key, starting with no license). */

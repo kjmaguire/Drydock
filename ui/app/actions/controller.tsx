@@ -29,9 +29,13 @@ export const controller = createController(routes, {
       const { RoomScreen } = await import('../screens/room/room-screen.tsx');
       return render(<RoomScreen key={params.id} id={params.id} />);
     },
-    async needsYou({ render }) {
+    async needsYou({ render, url }) {
       const { NeedsYouScreen } = await import('../screens/needs-you/needs-you-screen.tsx');
-      return render(<NeedsYouScreen />);
+      return render(<NeedsYouScreen tab={url.searchParams.get('tab') ?? undefined} />);
+    },
+    async myTasks({ render }) {
+      const { MyTasksScreen } = await import('../screens/needs-you/my-tasks-screen.tsx');
+      return render(<MyTasksScreen />);
     },
     async tasks({ render }) {
       const { TaskListScreen } = await import('../screens/tasks/task-list-screen.tsx');
@@ -56,6 +60,10 @@ export const controller = createController(routes, {
     async team({ render }) {
       const { TeamScreen } = await import('../screens/team/team-screen.tsx');
       return render(<TeamScreen />);
+    },
+    async crew({ render }) {
+      const { WorkspaceCrewScreen } = await import('../screens/team/team-screen.tsx');
+      return render(<WorkspaceCrewScreen />);
     },
     async agent({ render, params }) {
       const { AgentScreen } = await import('../screens/team/agent-screen.tsx');
@@ -159,6 +167,10 @@ export const controller = createController(routes, {
     async providers({ render }) {
       const { ProvidersScreen } = await import('../screens/providers/providers-screen.tsx');
       return render(<ProvidersScreen />);
+    },
+    async models({ render }) {
+      const { ModelsScreen } = await import('../screens/models/models-screen.tsx');
+      return render(<ModelsScreen />);
     },
     async routing({ render }) {
       const { RoutingScreen } = await import('../screens/routing/routing-screen.tsx');

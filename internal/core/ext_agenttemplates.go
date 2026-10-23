@@ -181,7 +181,7 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 	practices := b2i(in.Practices == nil || *in.Practices)
 	now := storage.Now()
 	if in.ID == "" {
-		if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
+		if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", "", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
 			return AgentTemplate{}, err
 		}
 		in.ID = ids.New("tpl")
@@ -199,7 +199,7 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 			return AgentTemplate{}, err
 		}
 		if in.PermissionMode != old.PermissionMode { // a template that has such a mode keeps it while its other fields are edited
-			if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
+			if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", old.PermissionMode, in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
 				return AgentTemplate{}, err
 			}
 		}
@@ -272,17 +272,21 @@ func (t *agentTemplates) cleanSkills(ctx context.Context, in []agentcatalog.Skil
 	return out, nil
 }
 
-// SkillChoice is a registry skill, pinned to a commit, that a template can carry: one a prebuilt agent comes with or one a
-// project here imported.
+// SkillChoice is a registry skill, pinned to a commit, that a template can carry: one a project here imported, one a prebuilt
+// agent comes with, or one the workspace skill library holds (decision P48).
 type SkillChoice struct {
 	agentcatalog.SkillRef
 	Description string `json:"description"`
-	// From says where Drydock knows the skill from: the prebuilt agents that come with it and the projects that imported it.
+	// From says where Drydock knows the skill from: the projects that imported it, the prebuilt agents that come with it, and
+	// "the Library" when the workspace skill library holds it at this commit.
 	From []string `json:"from"`
 }
 
-// skillChoices lists the registry skills a template can carry, one per registry, name and commit: those the prebuilt agents
-// come with and those imported into a project here (blocked or rejected ones left out), from allowlisted registries only.
+// skillChoices lists the registry skills a template can carry, one per registry, name and commit: those imported into a
+// project here (blocked or rejected ones left out), those the prebuilt agents come with, and every skill of the workspace
+// library a project could add (available and still in its registry, at the commit the library pins: the skills the Skills
+// page, an agent's page and a chat offer), from allowlisted registries only. The library is what offers a registry no project
+// imported from and no prebuilt agent names (the Remix registry's skills were missing from the form without it).
 func (t *agentTemplates) skillChoices(ctx context.Context) ([]SkillChoice, error) {
 	out := []SkillChoice{}
 	k := t.c.Knowledge()
@@ -341,6 +345,15 @@ func (t *agentTemplates) skillChoices(ctx context.Context) ([]SkillChoice, error
 	for _, e := range entries {
 		for _, r := range e.Skills {
 			add(r, "", "prebuilt "+e.Name)
+		}
+	}
+	lib, err := k.Skills.LibraryList(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range lib {
+		if l.Usable() {
+			add(agentcatalog.SkillRef{Registry: l.RegistryID, Name: l.Name, Ref: l.PinnedCommit}, l.Description, "the Library")
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {

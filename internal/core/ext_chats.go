@@ -84,6 +84,7 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		AttachDir:      func(id string) string { return filepath.Join(c.cfg.DataDir, "chat-attachments", id) },
 		CheckWSL:       c.checkChatWSL,
 		WSLFolder:      c.chatWSLFolder,
+		WSLInstalls:    c.Connections.InstalledWSL,
 		CheckSkills:    c.checkChatSkills,
 		CheckMCP:       c.checkChatMCP,
 		Instructions:   c.chatInstructions,
@@ -155,11 +156,24 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		"chat.attachment": bind(func(ctx context.Context, p idOnly) (any, error) { return svc.ReadAttachment(ctx, p.ID) }),
 		"chat.resend":     bind(func(ctx context.Context, p chats.ResendReq) (any, error) { return svc.Resend(ctx, p) }),
 		"chat.asks":       bind(func(ctx context.Context, p idOnly) (any, error) { return svc.Asks(ctx, p.ID) }),
+		// remember (with allow) also records the allow rule for the call in the chat, as chat.allowTool does ("Allow <tool> in
+		// this chat"); only an adapter that takes per-chat rules (Claude Code) can, any other is refused and the request waits
 		"chat.answer": bind(func(ctx context.Context, p struct {
-			ID    string `json:"id"`
-			AskID string `json:"askId"`
-			Allow bool   `json:"allow"`
+			ID       string `json:"id"`
+			AskID    string `json:"askId"`
+			Allow    bool   `json:"allow"`
+			Remember bool   `json:"remember"`
 		}) (any, error) {
+			if p.Remember {
+				if !p.Allow {
+					return nil, errors.New("only an allow is remembered for the chat: refuse it without remember")
+				}
+				rule, err := svc.AllowAndRemember(ctx, p.ID, p.AskID)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"answered": true, "rule": rule}, nil
+			}
 			return map[string]bool{"answered": true}, svc.Answer(ctx, p.ID, p.AskID, p.Allow)
 		}),
 		"chat.allowTool":    bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.AllowTool(ctx, p.ID, p.Tool) }),

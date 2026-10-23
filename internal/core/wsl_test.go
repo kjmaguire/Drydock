@@ -12,6 +12,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -284,7 +285,7 @@ func TestSignInInsideADistroRunsInATerminalAndLeavesNothingBehind(t *testing.T) 
 
 	var in terminal.Info
 	a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": "ubuntu"}, &in)
-	if in.Title != "Sign in: claude in Ubuntu" || in.Shell != f.Exe {
+	if in.Title != "Sign in: claude WSL" || in.Shell != f.Exe { // no distro in the title (the owner: "we don't need to see the Ubuntu")
 		t.Fatalf("%+v", in)
 	}
 	out := a.readTerm(in.ID, "Press Enter")
@@ -349,6 +350,46 @@ func TestSignInInsideADistroRunsInATerminalAndLeavesNothingBehind(t *testing.T) 
 		pids, err := host.Marked(context.Background(), "Ubuntu", marker)
 		return err == nil && len(pids) == 0
 	})
+}
+
+// The core names an install as the Connections page and a chat's header do (connections.CLIName, the UI's
+// screens/shared/cli-name.ts): "Claude Code WSL", with the distro only when the CLI is installed in another distro too. The
+// note of a chat moved into a distro and the sign-in terminal's title ("Sign in: claude WSL", the adapter id, P96) say so.
+func TestTheSignInAndAMovedChatNameTheDistroOnlyWhenTheCLIIsInTwo(t *testing.T) {
+	for _, tc := range []struct {
+		distros     []string
+		want, title string
+	}{
+		{[]string{"Ubuntu", "docker-desktop"}, "Claude Code WSL", "Sign in: claude WSL"}, // a container engine's own distro is not an install
+		{[]string{"Ubuntu", "Debian"}, "Claude Code WSL (Debian)", "Sign in: claude WSL (Debian)"},
+	} {
+		a, _ := openWSLHost(t, 0, true, tc.distros...)
+		distro := tc.distros[len(tc.distros)-1]
+		if distro == "docker-desktop" {
+			distro = tc.distros[0]
+		}
+		var in terminal.Info
+		a.call("connection.signIn", map[string]string{"adapter": "claude", "distro": distro}, &in)
+		if in.Title != tc.title {
+			t.Errorf("%v: the sign-in's title is %q, want %q", tc.distros, in.Title, tc.title)
+		}
+		a.call("terminal.close", map[string]string{"id": in.ID}, nil)
+
+		e := &chatEnv{app: a}
+		c := e.create(map[string]any{"adapter": "claude"})
+		var moved chats.Chat
+		e.call("chat.update", map[string]any{"id": c.ID, "wslDistro": distro}, &moved)
+		e.call("chat.update", map[string]any{"id": c.ID, "wslDistro": ""}, &moved)
+		var notes []string
+		for _, m := range e.get(c.ID).Messages {
+			if m.Role == chats.RoleSystem && strings.HasPrefix(m.Body, "Now runs with ") {
+				notes = append(notes, m.Body)
+			}
+		}
+		if len(notes) != 2 || !strings.HasPrefix(notes[0], "Now runs with "+tc.want+" in ") || !strings.HasPrefix(notes[1], "Now runs with Claude Code in ") {
+			t.Errorf("%v: the notes of the moves: %q", tc.distros, notes)
+		}
+	}
 }
 
 // A sign-in that ends re-checks its Connection past the probe cache: a distro's probe (with the sign-in state) is kept for

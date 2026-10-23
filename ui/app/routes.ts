@@ -5,7 +5,10 @@ import { get, route } from 'remix/routes';
 
 export const routes = route({
   home: get('/'),
+  // the Inbox (decision P97): what needs the person, what runs and what was done today, in every project (?tab=running|done)
   needsYou: get('/needs-you'),
+  // the tasks assigned to the person, in every project
+  myTasks: get('/my-tasks'),
   room: get('/room/:id'),
   // the Rooms tab: opens the project's general channel (decision P64)
   rooms: get('/rooms'),
@@ -38,6 +41,8 @@ export const routes = route({
   knowledge: get('/knowledge'),
   // workspace screens: they open without a project
   workspace: get('/home'),
+  // every project's agents as one crew (graphite, decision P97): the same page as a project's Crew, the cards grouped by project
+  crew: get('/crew'),
   chats: get('/chats'),
   chat: get('/chats/:id'),
   library: get('/library'),
@@ -49,6 +54,8 @@ export const routes = route({
   // scan any folder on this computer, or one of the projects (decision P61)
   securityScan: get('/security-scan'),
   providers: get('/providers'),
+  // Models on this PC (decisions P65, P97): the engine, the model served, the memory it takes, the models from Hugging Face
+  models: get('/models'),
   routing: get('/routing'),
   backups: get('/backups'),
   data: get('/data'),

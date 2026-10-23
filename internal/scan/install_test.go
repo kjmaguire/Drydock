@@ -187,3 +187,19 @@ func TestAProgramThatDoesNotMatchItsDigestIsRefused(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// Release tags are ordered by their numbers, not as text; a tag that is not vMAJOR.MINOR.PATCH cannot be ordered.
+func TestReleaseTagsAreOrderedByTheirNumbers(t *testing.T) {
+	for _, c := range []struct {
+		a, b         string
+		newer, known bool
+	}{
+		{"v1.32.0", "v1.31.0", true, true}, {"v1.31.0", "v1.32.0", false, true}, {"v1.31.0", "v1.31.0", false, true},
+		{"v2.10.0", "v2.9.9", true, true}, {"v2.6.9", "v2.7.0", false, true}, {"1.4.0", "v1.3.9", true, true},
+		{"v1.32.0-rc1", "v1.31.0", false, false}, {"nightly", "v1.0.0", false, false}, {"", "v1.0.0", false, false}, {"v1.2", "v1.1.0", false, false},
+	} {
+		if newer, known := scan.NewerTag(c.a, c.b); newer != c.newer || known != c.known {
+			t.Errorf("NewerTag(%q, %q) = %v, %v; want %v, %v", c.a, c.b, newer, known, c.newer, c.known)
+		}
+	}
+}

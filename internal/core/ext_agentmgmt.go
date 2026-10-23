@@ -203,6 +203,7 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		return Agent{}, errors.New("this agent was removed from the team")
 	}
 	var changed []string
+	fromMode := a.PermissionMode // what a change of permission mode is recorded as coming from
 	set := func(name string, dst *string, src *string) {
 		if src != nil && strings.TrimSpace(*src) != *dst {
 			*dst = strings.TrimSpace(*src)
@@ -261,7 +262,7 @@ func (c *Core) UpdateAgent(ctx context.Context, u AgentUpdate) (Agent, error) {
 		}
 		// only a change into such a mode asks: an agent that has it already keeps it while its other fields are edited
 		if slices.Contains(changed, "permissionMode") {
-			if err := c.confirmSkip(ctx, a.ProjectID, a.ID, "this agent", a.PermissionMode, u.ConfirmSkipsApprovals); err != nil {
+			if err := c.confirmSkip(ctx, a.ProjectID, a.ID, "this agent", fromMode, a.PermissionMode, u.ConfirmSkipsApprovals); err != nil {
 				return Agent{}, err
 			}
 		}

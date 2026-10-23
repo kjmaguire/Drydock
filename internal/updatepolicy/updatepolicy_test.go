@@ -69,7 +69,8 @@ func TestPrepareKeepsBackupAndPreviousExecutableAndFailsClosed(t *testing.T) {
 	exe := filepath.Join(dir, "Drydock.exe")
 	os.WriteFile(exe, []byte("MZ-old-version"), 0o755)
 
-	p, err := updatepolicy.Prepare(ctx, db, dir, exe, "1.4.0", "1.5.0", time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC))
+	at := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	p, err := updatepolicy.Prepare(ctx, db, dir, exe, "1.4.0", "1.5.0", at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestPrepareKeepsBackupAndPreviousExecutableAndFailsClosed(t *testing.T) {
 		t.Fatalf("backup %+v", p.Backup)
 	}
 	// the pre-update backup survives pruning until the new version is confirmed healthy
-	if _, err := backup.Prune(filepath.Join(dir, "backups"), 0, 0); err != nil {
+	if _, err := backup.Prune(filepath.Join(dir, "backups"), 0, 0, at.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(p.Backup.Path); err != nil {

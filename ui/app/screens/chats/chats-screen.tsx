@@ -1,6 +1,7 @@
-// The Chats section (docs/chats.md, decision P29): the human's own conversations with an agent CLI (Claude Code by
+// The Chats section (docs/chats.md, decisions P29, P97): the human's own conversations with an agent CLI (Claude Code by
 // default). A list column on the left (search, pinned first, the current project's chats or all of them) and the open
-// conversation on the right. It opens with or without a project: a chat may have none.
+// conversation on the right. It opens with or without a project: a chat may have none. Ctrl+N (outside a field) starts a
+// new chat.
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { MessagesSquare, Plus } from 'lucide';
@@ -9,7 +10,7 @@ import { query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Empty } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ChatList } from './chat-list.tsx';
+import { ChatList, isNewChatKey } from './chat-list.tsx';
 import { ChatView } from './chat-view.tsx';
 import { NewChatDialog } from './new-chat-dialog.tsx';
 
@@ -33,6 +34,16 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
     dialog = false;
     void handle.update();
   };
+  // Ctrl+N: the new chat dialog (WebView2 would open a new window: the app keeps the key)
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!isNewChatKey(e)) return;
+      e.preventDefault();
+      open();
+    },
+    { signal: handle.signal },
+  );
   const created = (chatId: string) => {
     dialog = false;
     void handle.update();
@@ -67,8 +78,7 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
                 New chat
               </Button>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-faint)' }}>
-                Or press <kbd>Ctrl</kbd>
-                <kbd>K</kbd> and type "New chat".
+                Or press <kbd>Ctrl+N</kbd>.
               </p>
             </Empty>
           </div>

@@ -783,6 +783,23 @@ func TestRejectedRequestRoutesByDecision(t *testing.T) {
 	}
 }
 
+// A request's phase is stored with its approvals row, so the inbox tells a spec gate from a review and merge without its title.
+func TestARequestsPhaseIsStoredWithIt(t *testing.T) {
+	dir := t.TempDir()
+	e := openEnv(t, dir)
+	g := wf.NewGraph("phase").
+		Add(wf.AgentTask("A", eff(dir, "A", "")), wf.Request("R", wf.RequestSpec{Kind: "review", Phase: "spec", Title: "Accept it"})).
+		Edge("A", "R").Start("A")
+	e.eng.Register(g)
+	run, _ := e.eng.Start(context.Background(), "phase", nil, wf.StartOptions{})
+	waitStatus(t, e.eng, run, wf.StatusWaitingHuman)
+	pend, _ := e.eng.Pending(context.Background(), run)
+	var phase string
+	if err := e.db.Reader().QueryRow(`SELECT phase FROM approvals WHERE id=?`, string(pend[0].ID)).Scan(&phase); err != nil || phase != "spec" || pend[0].Spec.Phase != "spec" {
+		t.Fatalf("phase %q (%v), pending %+v", phase, err, pend[0].Spec)
+	}
+}
+
 func TestGraphValidation(t *testing.T) {
 	bad := []*wf.Graph{
 		wf.NewGraph("x").Add(wf.AgentTask("a", nil)).Start("a"),

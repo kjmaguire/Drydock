@@ -113,6 +113,11 @@ type Config struct {
 	// llama.cpp build with the TurboQuant KV cache types, each with the SHA-256 its release recorded, installed from there at
 	// start. The desktop app sets it (bundle.Dir()); empty, or a folder without bundle.json, carries nothing.
 	BundleDir string
+	// AutoSetup makes the app set itself up (decision P95, on the owner's words: "I don't want to hit a button that says
+	// install llama.cpp"): at start, a scan tool or the local models' runtime that is neither installed (nor bundled) nor
+	// removed by a person is downloaded and installed, and the twice-daily update check installs a newer scan tool release
+	// instead of only offering it. The desktop app sets it; tests leave it off so nothing installs behind their back.
+	AutoSetup bool
 }
 
 // FilePick is what a file dialog asks for.
@@ -279,7 +284,10 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 				c.logf("task channel: %v", err)
 			}
 		},
-		OnTerminal: func(ctx context.Context, t tasks.Task) { _ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status)) },
+		OnTerminal: func(ctx context.Context, t tasks.Task) {
+			_ = c.Room.ArchiveTaskChannel(ctx, t.ID, string(t.Status))
+			c.endTaskRules(ctx, t) // a person's "approve for this task" ends with the task
+		},
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
@@ -326,7 +334,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	// running yet, and what an agent was last doing is not worth reading a month of tool output for: the last two days of
 	// lifecycle events say which agents failed or need a person, and the rest are shown as stopped (audit 2026-10-16, M15).
 	c.Presence = room.NewTracker(c.Bus, room.TrackerOptions{EmitEvery: time.Second, Window: 48 * time.Hour, LifecycleOnly: true,
-		Alive: func(string) bool { return false }})
+		Alive: func(string) bool { return false }, Redact: c.Scanner.Redact})
 	if err := c.Presence.Start(bg); err != nil {
 		c.logf("presence: %v", err)
 	}
@@ -350,6 +358,9 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	safe.Go("core.Open", func() { _ = c.Room.WatchTasks(bg) })
 	if _, err := c.Room.Reconcile(ctx); err != nil {
 		c.logf("room reconcile: %v", err)
+	}
+	if err := c.backfillProjectKeys(ctx); err != nil { // the projects made before migration 00129
+		c.logf("project keys: %v", err)
 	}
 	if n, err := c.Runtime.CloseStale(ctx); err != nil {
 		c.logf("close stale agent runs: %v", err)
@@ -422,8 +433,10 @@ func (c *Core) RegisterAdapter(id string, a agents.Adapter) {
 // agents work in. A project can start without a repository: the team can plan and talk, and nothing that changes code runs
 // until a repository is attached (AttachRepository).
 type Project struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Key is the prefix of the project's task identifiers: GOC for "GOC-41" (projectkey.go). Unique; the person can change it.
+	Key           string `json:"key"`
 	RepoPath      string `json:"repoPath"` // empty: no repository attached yet
 	HasRepo       bool   `json:"hasRepo"`
 	DefaultBranch string `json:"defaultBranch"`
@@ -441,11 +454,11 @@ const MaxBriefLen = 8000
 // ErrNoRepository is returned by everything that needs the project's repository while none is attached.
 var ErrNoRepository = errors.New("this project has no repository yet: attach one in the project's settings first")
 
-const projectCols = `id,name,repo_path,default_branch,merge_strategy,mode,brief,created_at`
+const projectCols = `id,name,key,repo_path,default_branch,merge_strategy,mode,brief,created_at`
 
 func scanProject(sc interface{ Scan(...any) error }) (Project, error) {
 	var p Project
-	err := sc.Scan(&p.ID, &p.Name, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Brief, &p.Created)
+	err := sc.Scan(&p.ID, &p.Name, &p.Key, &p.RepoPath, &p.DefaultBranch, &p.MergeStrategy, &p.Mode, &p.Brief, &p.Created)
 	p.HasRepo = p.RepoPath != ""
 	if !p.HasRepo {
 		p.DefaultBranch = ""
@@ -503,8 +516,16 @@ func (c *Core) CreateProject(ctx context.Context, name, repoPath string) (Projec
 	}
 	p := Project{ID: ids.New("prj"), Name: name, RepoPath: root, HasRepo: root != "", DefaultBranch: branch, MergeStrategy: "merge", Mode: "local_merge", Created: storage.Now()}
 	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO projects(id,name,repo_path,default_branch,merge_strategy,mode,created_at) VALUES(?,?,?,?,?,?,?)`,
-			p.ID, p.Name, p.RepoPath, p.DefaultBranch, p.MergeStrategy, p.Mode, p.Created)
+		// the key is chosen in the transaction that inserts, so two projects made at once cannot both take it
+		taken, err := takenKeys(ctx, tx, "")
+		if err != nil {
+			return err
+		}
+		if p.Key, err = deriveProjectKey(p.Name, taken); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO projects(id,name,key,repo_path,default_branch,merge_strategy,mode,created_at) VALUES(?,?,?,?,?,?,?,?)`,
+			p.ID, p.Name, p.Key, p.RepoPath, p.DefaultBranch, p.MergeStrategy, p.Mode, p.Created)
 		return err
 	})
 	if err != nil {
@@ -790,7 +811,7 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 		return Agent{}, err
 	}
 	agentID := ids.New("agt")
-	if err := c.confirmSkip(ctx, s.ProjectID, agentID, "this agent", s.PermissionMode, s.ConfirmSkipsApprovals); err != nil {
+	if err := c.confirmSkip(ctx, s.ProjectID, agentID, "this agent", "", s.PermissionMode, s.ConfirmSkipsApprovals); err != nil {
 		return Agent{}, err
 	}
 	a := Agent{ID: agentID, ProjectID: s.ProjectID, Name: s.Name, Adapter: s.Adapter, Role: s.Role, Model: s.Model, Effort: s.Effort, ProviderID: s.ProviderID, PermissionMode: s.PermissionMode, Purpose: s.Purpose, Practices: s.Practices == nil || *s.Practices, Status: "STOPPED",
@@ -819,7 +840,16 @@ func (c *Core) CreateAgent(ctx context.Context, s AgentSpec) (Agent, error) {
 
 // Agents lists a project's team.
 func (c *Core) Agents(ctx context.Context, projectID string) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
+	return c.agentsWhere(ctx, `project_id=? AND archived_at=0 ORDER BY created_at, id`, projectID)
+}
+
+// AllAgents lists every project's team (the workspace's crew), by project, then as Agents orders them.
+func (c *Core) AllAgents(ctx context.Context) ([]Agent, error) {
+	return c.agentsWhere(ctx, `archived_at=0 ORDER BY project_id, created_at, id`)
+}
+
+func (c *Core) agentsWhere(ctx context.Context, where string, args ...any) ([]Agent, error) {
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}

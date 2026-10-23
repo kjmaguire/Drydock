@@ -15,15 +15,16 @@ import (
 	"github.com/kjmaguire/drydock/internal/safe"
 )
 
-// Install hints, shown when a tool is missing. Drydock installs nothing itself.
+// Install hints, shown when a tool is missing. Drydock installs both itself at start (decisions P66, P95); the Security page
+// has no tools section any more, so a hint names what a person can still do.
 const (
-	osvInstall      = "Install osv-scanner: press Install below, or download osv-scanner_windows_amd64.exe from https://github.com/google/osv-scanner/releases, name it osv-scanner.exe and put it on your PATH (or `go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`)."
-	opengrepInstall = "Install Opengrep: press Install below, or download opengrep_windows_x86.zip (opengrep_windows_x86.exe before 2.0) from https://github.com/opengrep/opengrep/releases, keep opengrep.exe with its DLLs and put that folder on your PATH (or run the repository's install.ps1)."
+	osvInstall      = "Drydock installs osv-scanner by itself when it starts on Windows. If that did not work (no network, for example), start Drydock again, or put osv-scanner.exe from https://github.com/google/osv-scanner/releases on your PATH."
+	opengrepInstall = "Drydock installs Opengrep by itself when it starts on Windows. If that did not work (no network, for example), start Drydock again, or put opengrep.exe (with its DLLs) from https://github.com/opengrep/opengrep/releases on your PATH."
 )
 
 // rulesHelp ends the Code engine's skipped reason when no rules could be given to it at all (the built-in rules could not be
 // written, and no folder of the person's own is usable). A report is read away from the field that mends it.
-const rulesHelp = ` Check that the app's data folder can be written to, or choose a folder of your own rules under "Tools on this computer" on this page.`
+const rulesHelp = ` Check that the app's data folder can be written to.`
 
 // gitleaksVersion is the version of the gitleaks rules and engine compiled into Drydock, read from the build's module list.
 func gitleaksVersion() string {

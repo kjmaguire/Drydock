@@ -40,6 +40,35 @@ type idParam struct {
 	ID string `json:"id"`
 }
 
+// taskFilterParams are the selection task.list and task.count share: a project (empty for every project), statuses, an assignee
+// (agent id), a label, and the tasks that ended at or after completedSince (ms since the epoch).
+type taskFilterParams struct {
+	ProjectID      string   `json:"projectId"`
+	Statuses       []string `json:"statuses"`
+	Assignee       string   `json:"assignee"`
+	Label          string   `json:"label"`
+	CompletedSince int64    `json:"completedSince"`
+}
+
+func (p taskFilterParams) filter() tasks.Filter {
+	f := tasks.Filter{ProjectID: p.ProjectID, Assignee: p.Assignee, Label: p.Label, CompletedSince: p.CompletedSince}
+	for _, s := range p.Statuses {
+		f.Statuses = append(f.Statuses, tasks.Status(s))
+	}
+	return f
+}
+
+// taskListLimit is the number of tasks a list returns for a requested limit: TaskListDefault when none, at most TaskListMax.
+func taskListLimit(n int) int {
+	switch {
+	case n <= 0:
+		return TaskListDefault
+	case n > TaskListMax:
+		return TaskListMax
+	}
+	return n
+}
+
 // Methods returns the registry of UI-callable operations.
 func (c *Core) Methods() map[string]Method {
 	base := map[string]Method{
@@ -69,8 +98,23 @@ func (c *Core) Methods() map[string]Method {
 			ID            string `json:"id"`
 			Mode          string `json:"mode"`
 			MergeStrategy string `json:"mergeStrategy"`
+			// Key, when given, is the project's new key (projectkey.go); empty keeps it.
+			Key string `json:"key"`
 		}) (any, error) {
-			return c.UpdateProject(ctx, p.ID, p.Mode, p.MergeStrategy)
+			if p.Key != "" {
+				if _, err := normalizeProjectKey(p.Key); err != nil { // refused before anything else changes
+					return nil, err
+				}
+			}
+			if p.Mode != "" || p.MergeStrategy != "" || p.Key == "" {
+				if _, err := c.UpdateProject(ctx, p.ID, p.Mode, p.MergeStrategy); err != nil {
+					return nil, err
+				}
+			}
+			if p.Key != "" {
+				return c.SetProjectKey(ctx, p.ID, p.Key)
+			}
+			return c.GetProject(ctx, p.ID)
 		}),
 		"project.delete": bind(func(ctx context.Context, p struct {
 			ID          string `json:"id"`
@@ -152,45 +196,38 @@ func (c *Core) Methods() map[string]Method {
 
 		"task.create": bind(func(ctx context.Context, p tasks.CreateReq) (any, error) { return c.CreateTask(ctx, p) }),
 		"task.list": bind(func(ctx context.Context, p struct {
-			ProjectID string   `json:"projectId"`
-			Statuses  []string `json:"statuses"`
+			taskFilterParams
 			// Limit is how many of the newest tasks to return (default and ceiling: see TaskListDefault and TaskListMax).
 			Limit int `json:"limit"`
 		}) (any, error) {
-			f := tasks.Filter{ProjectID: p.ProjectID, Limit: p.Limit}
-			if f.Limit <= 0 {
-				f.Limit = TaskListDefault
-			}
-			if f.Limit > TaskListMax {
-				f.Limit = TaskListMax
-			}
-			for _, s := range p.Statuses {
-				f.Statuses = append(f.Statuses, tasks.Status(s))
-			}
+			f := p.filter()
+			f.Limit = taskListLimit(p.Limit)
 			return c.Tasks.List(ctx, f)
 		}),
 		// task.count is how many tasks match, so a screen that shows the newest TaskListDefault can say it is not showing all of
 		// them (audit 2026-10-16, M21)
-		"task.count": bind(func(ctx context.Context, p struct {
-			ProjectID string   `json:"projectId"`
-			Statuses  []string `json:"statuses"`
-		}) (any, error) {
-			f := tasks.Filter{ProjectID: p.ProjectID}
-			for _, s := range p.Statuses {
-				f.Statuses = append(f.Statuses, tasks.Status(s))
-			}
-			n, err := c.Tasks.Count(ctx, f)
+		"task.count": bind(func(ctx context.Context, p taskFilterParams) (any, error) {
+			n, err := c.Tasks.Count(ctx, p.filter())
 			return map[string]int{"total": n}, err
 		}),
 		"task.get": bind(func(ctx context.Context, p idParam) (any, error) { return c.GetTask(ctx, p.ID) }),
+		// task.labels.set replaces a task's labels (tasks.NormalizeLabels: trimmed, lower-case, at most 8 of up to 24 characters)
+		"task.labels.set": bind(func(ctx context.Context, p struct {
+			ID     string   `json:"id"`
+			Labels []string `json:"labels"`
+		}) (any, error) {
+			return c.Tasks.SetLabels(ctx, p.ID, p.Labels)
+		}),
 		"task.diff": bind(func(ctx context.Context, p struct {
 			ID         string `json:"id"`
 			EvidenceID int64  `json:"evidenceId"`
 		}) (any, error) {
 			return c.TaskDiffAt(ctx, p.ID, p.EvidenceID)
 		}),
+		// task.assign hands a task to an agent (the reviewer is optional) or to the person themselves, also while its run is
+		// active (HandTask)
 		"task.assign": bind(func(ctx context.Context, p struct{ ID, Assignee, Reviewer string }) (any, error) {
-			return c.AssignTask(ctx, p.ID, p.Assignee, p.Reviewer)
+			return c.HandTask(ctx, p.ID, p.Assignee, p.Reviewer, c.Human())
 		}),
 		"task.start":  bind(func(ctx context.Context, p idParam) (any, error) { return c.StartTask(ctx, p.ID) }),
 		"task.cancel": bind(func(ctx context.Context, p idParam) (any, error) { return nil, c.CancelTask(ctx, p.ID) }),
@@ -198,8 +235,11 @@ func (c *Core) Methods() map[string]Method {
 		"run.respond": bind(func(ctx context.Context, p struct {
 			RunID, RequestID, Decision string
 			Data                       json.RawMessage
+			// Scope is for an agent's tool permission request: "" or "once" approves this request, "task" the same call for the
+			// rest of the task (P97)
+			Scope string
 		}) (any, error) {
-			return nil, c.Respond(ctx, p.RunID, p.RequestID, p.Decision, p.Data)
+			return nil, c.RespondScoped(ctx, p.RunID, p.RequestID, p.Decision, p.Scope, p.Data)
 		}),
 
 		"room.list": bind(func(ctx context.Context, p struct {

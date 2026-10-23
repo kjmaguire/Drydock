@@ -4,7 +4,7 @@
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { choose, createProject, optionsOf, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, openNewAgent, optionsOf, workspaceNav, projectNav } from './helpers';
 
 const distro = (): string => process.env.DRYDOCK_E2E_WSL ?? '';
 
@@ -12,12 +12,14 @@ test('Connections: Claude Code inside a WSL distro is its own card with its own 
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-conn');
   await workspaceNav(page, 'nav-connections');
-  // a tile of its own on the overview, "Claude Code WSL" with its distro on the line below; the tile opens its card below the grid
+  // a tile of its own on the overview, "Claude Code WSL" without the distro (the card's Runs row names it); the tile opens its
+  // card below the grid
   const tile = page.locator(`[data-testid=connection-tile][data-key="claude@wsl:${distro()}"]`);
   await expect(tile).toBeVisible({ timeout: 60_000 });
   await expect(tile).toHaveAttribute('data-run-mode', 'wsl');
   await expect(tile).toContainText('Claude Code WSL');
-  await expect(tile).toContainText(`in the WSL distro ${distro()}`);
+  await expect(tile).toContainText(' in WSL');
+  await expect(tile).not.toContainText(distro());
   await tile.click();
   const card = page.locator(`[data-testid=connection][data-key="claude@wsl:${distro()}"]`);
   await expect(card).toBeVisible();
@@ -100,7 +102,7 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   // the distro's install is its own choice, named as on the Connections page (its Connection is probed when the dialog opens)
   const agent = dialog.getByLabel('Agent CLI', { exact: true });
   const choice = await optionsOf(agent, `claude@wsl:${distro()}`);
-  await expect(choice).toHaveText(new RegExp(`^Claude Code in ${distro()} \\(WSL\\) 2\\.1\\.306$`), { timeout: 60_000 });
+  await expect(choice).toHaveText(/^Claude Code WSL 2\.1\.306$/, { timeout: 60_000 }); // one distro: not named
   await expect(choice).toBeEnabled();
   await expect(await optionsOf(agent, 'claude')).toContainText('Claude Code on Windows');
   await choose(agent, `claude@wsl:${distro()}`);
@@ -108,7 +110,12 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   await dialog.getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
   const chatId = page.url().split('/').pop() ?? '';
-  await expect(page.getByTestId('chip-adapter')).toContainText(`Claude Code in ${distro()} (WSL)`);
+  await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code WSL');
+  await expect(page.getByTestId('chip-adapter')).toHaveAttribute('title', `Runs inside the WSL distro ${distro()}`);
+  // the header (graphite, P97): the folder as the distro names it (a Linux path, its middle cut when long: the stand-in's home is
+  // a temporary folder), and where the chat runs in words
+  await expect(page.getByTestId('chat-folder')).toHaveText(new RegExp(`^[~/][^\\\\]*/chats/${chatId}$`));
+  await expect(page.getByTestId('chat-place')).toHaveText('No project · runs inside the distro');
   // the private folder inside the distro, named the Windows way
   await page.getByRole('button', { name: 'Properties' }).click();
   await expect(page.getByTestId('chat-cwd')).toHaveAttribute('title', new RegExp(`^\\\\\\\\wsl\\.localhost\\\\${distro()}\\\\.*\\\\\\.drydock\\\\chats\\\\${chatId}$`));
@@ -130,10 +137,8 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
 test('Team: a Claude Code agent is made to run inside the WSL distro and its card says so', async ({ page }) => {
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-team');
-  await expect(async () => {
-    await projectNav(page, 'nav-team');
-    await page.getByLabel('Agent name').fill('Linux worker', { timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+  await openNewAgent(page);
+  await page.getByLabel('Agent name').fill('Linux worker');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   const runs = page.getByLabel('Runs', { exact: true });
@@ -142,7 +147,8 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
   await expect(page.getByTestId('run-mode')).toContainText('one inside the distro is fast');
   await page.getByRole('button', { name: 'Create agent' }).click();
   const card = page.getByTestId('agent').filter({ hasText: 'Linux worker' });
-  await expect(card.getByTestId('agent-runs')).toHaveText(`in WSL ${distro()}`);
+  await expect(card.getByTestId('agent-runs')).toHaveText(/^Claude Code WSL · /);
+  await expect(card.getByTestId('agent-runs')).toHaveAttribute('title', `Role: backend. Runs inside the WSL distro ${distro()}`);
 
   // the project's default for agents that do not choose
   await projectNav(page, 'nav-project');

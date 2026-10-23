@@ -27,16 +27,27 @@ describe('previewOf', () => {
   });
 
   it('reads only as much of a huge payload as it writes', () => {
-    const t0 = performance.now();
-    const hugeString = previewOf({ diff: 'x'.repeat(50_000_000) }, 2048);
-    const hugeArray = previewOf(Array.from({ length: 2_000_000 }, (_, i) => i), 2048);
-    const manyKeys = previewOf(Object.fromEntries(Array.from({ length: 300_000 }, (_, i) => [`k${i}`, i])), 2048);
-    const ms = performance.now() - t0;
-    for (const p of [hugeString, hugeArray, manyKeys]) {
+    // counted, not timed: a timer also measured the machine (it failed under load while the payloads were built)
+    let reads = 0;
+    const counted = <T extends object>(o: T): T =>
+      new Proxy(o, {
+        get(target, key, receiver) {
+          if (typeof key === 'string' && key !== 'length') reads++;
+          return Reflect.get(target, key, receiver);
+        },
+      });
+    const hugeArray = counted(Array.from({ length: 2_000_000 }, (_, i) => i));
+    const manyKeys = counted(Object.fromEntries(Array.from({ length: 300_000 }, (_, i) => [`k${i}`, i])));
+    const nested = counted({ rows: counted(Array.from({ length: 1_000_000 }, (_, i) => counted({ i }))) });
+    for (const payload of [hugeArray, manyKeys, nested]) {
+      reads = 0;
+      const p = previewOf(payload, 2048);
       expect(p.cut).toBe(true);
       expect(p.text.length).toBe(2048);
+      expect(reads).toBeLessThan(2048); // every value read writes at least one character
     }
-    expect(ms).toBeLessThan(2000); // building the three payloads takes most of it
+    const hugeString = previewOf({ diff: 'x'.repeat(50_000_000) }, 2048);
+    expect(hugeString).toEqual({ text: `{"diff":"${'x'.repeat(2048 - 9)}`, cut: true });
   });
 
   it('survives nesting, cycles and values that throw', () => {

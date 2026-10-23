@@ -164,6 +164,20 @@ describe('the agent configuration banner in the shell', () => {
     expect(banner(r)!.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('sits beside the repository banner without a key the two share (the runtime warned "Duplicate keys")', async () => {
+    const warned: string[] = [];
+    const warn = console.warn;
+    console.warn = (...a: unknown[]) => void warned.push(a.map(String).join(' '));
+    try {
+      const r = shell(project({}), guard([finding()]));
+      await waitFor(() => need(banner(r)), r);
+      await drain();
+    } finally {
+      console.warn = warn;
+    }
+    expect(warned.filter((w) => w.includes('Duplicate keys'))).toEqual([]);
+  });
+
   it('is not asked for a project without a repository', async () => {
     const g = guard([finding()]);
     const r = shell(project({ hasRepo: false, repoPath: '' }), g);

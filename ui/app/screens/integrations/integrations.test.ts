@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
-import { galleryCard } from '../mcp/fixtures.ts';
+import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts';
 import {
   agentsStateText,
   connectReply,
@@ -13,9 +13,11 @@ import {
   outboxTone,
   parseParams,
   projectConnState,
+  projectServerState,
   riskText,
   riskTone,
   scopeSummary,
+  serverBlurb,
   statusTone,
   syncStateText,
   syncText,
@@ -170,6 +172,22 @@ describe('integrations helpers', () => {
     const failing = { ...a, sync: { ...a.sync, state: 'forbidden' } };
     expect(projectConnState(kinds[0], view({ assignments: [failing] }), 'prj_1')).toEqual({ text: 'Team: ENG · sync: forbidden', tone: 'bad', badge: { text: 'sync failing', tone: 'err' } });
     expect(projectConnState(kinds[0], view({ status: 'unreachable', assignments: [a] }), 'prj_1').badge).toEqual({ text: 'needs attention', tone: 'warn' });
+  });
+
+  it("says on a server's tile what it is, which of the project's agents may use it, and whether it is on here", () => {
+    expect(serverBlurb(libServer())).toBe('your own · 2 tools');
+    expect(serverBlurb(libServer({ catalogId: 'ctx7', tools: [] }))).toBe('built into Drydock · tools not found yet');
+    expect(serverBlurb(libServer({ tools: [{ name: 'one', readOnlyHint: true }] }))).toBe('your own · 1 tool');
+    const agents = [pay, rev, { id: 'agt_3', name: 'Ops' }, { id: 'agt_4', name: 'Docs' }];
+    expect(projectServerState(undefined, agents)).toEqual({ text: 'Not in this project', tone: '', badge: { text: 'not added', tone: 'muted' } });
+    expect(projectServerState(projServer(), agents)).toEqual({ text: 'No agent may use it yet', tone: '', badge: { text: 'on', tone: 'ok' } });
+    const grant = (...ids: string[]) => ids.map((agentId) => ({ agentId, tools: ['*'] }));
+    expect(projectServerState(projServer({ agents: grant('agt_1') }), agents).text).toBe('Pay may use it');
+    expect(projectServerState(projServer({ agents: grant('agt_2', 'agt_1') }), agents)).toEqual({ text: 'Pay and Rev may use it', tone: 'ok', badge: { text: 'on', tone: 'ok' } });
+    expect(projectServerState(projServer({ agents: grant('agt_1', 'agt_2', 'agt_3', 'agt_4') }), agents).text).toBe('Pay, Rev and 2 more may use it');
+    // a grant of an agent that left the project names nobody
+    expect(projectServerState(projServer({ agents: grant('agt_9') }), agents).text).toBe('No agent may use it yet');
+    expect(projectServerState(projServer({ enabled: false, agents: grant('agt_1') }), agents)).toEqual({ text: 'Pay may use it', tone: '', badge: { text: 'off', tone: 'muted' } });
   });
 });
 

@@ -20,6 +20,7 @@ import (
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/skills"
@@ -490,6 +491,9 @@ func Verify(d Deps) workflow.NodeHandler {
 		if specs, err = d.sandboxChecks(ctx, t, specs); err != nil {
 			return sandboxTrouble(in, err)
 		}
+		// every result of this pass carries its round, so a reader tells this pass's results from an earlier one's (a pass stops at
+		// the first failure, so the kinds after it keep an older result): CheckRound
+		round := ids.New("chk")
 		// a merge that brought the base branch in and was not resolved cannot pass: markers are not code
 		if repo.MergeInProgress(ctx, worktreeOf(t)) {
 			left, lerr := repo.UnresolvedConflicts(ctx, worktreeOf(t))
@@ -500,7 +504,8 @@ func Verify(d Deps) workflow.NodeHandler {
 				cr := workflow.CheckResult{Name: "merge-conflicts", Passed: false, ExitCode: 1,
 					Output: "Conflict markers are still in: " + strings.Join(left, ", ") + ". Edit each file so it keeps what both changes were for and remove every <<<<<<<, ======= and >>>>>>> line."}
 				failedFlag := false
-				_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "merge-conflicts", Passed: &failedFlag, Summary: "conflict markers remain in " + strings.Join(left, ", ")})
+				rd, _ := json.Marshal(map[string]any{"round": round})
+				_, _ = d.Tasks.AddEvidence(ctx, t.ID, tasks.Evidence{Kind: "merge-conflicts", Passed: &failedFlag, Summary: "conflict markers remain in " + strings.Join(left, ", "), Data: rd})
 				b, _ := json.Marshal(cr)
 				return workflow.NodeOutput{Value: b, Route: "fail"}, nil
 			}
@@ -518,6 +523,7 @@ func Verify(d Deps) workflow.NodeHandler {
 		failed := false
 		for _, spec := range specs {
 			spec.LogDir = logDir
+			d.emit(ctx, CheckStartedEvent, t, map[string]any{"kind": spec.Name, "round": round})
 			res, err := checks.Run(ctx, d.PM, spec, func(line string) {
 				in.Emit(workflow.NewChunk(workflow.ChunkLog, workflow.TextDelta{Text: line}))
 			})
@@ -527,7 +533,7 @@ func Verify(d Deps) workflow.NodeHandler {
 			res.DiffHash = diffHash
 			kind := spec.Name
 			data, _ := json.Marshal(map[string]any{"argv": res.Argv, "exitCode": res.ExitCode, "failing": res.FailingTests, "durationMs": res.Duration.Milliseconds(),
-				"skipped": res.Skipped, "errored": res.Errored})
+				"skipped": res.Skipped, "errored": res.Errored, "round": round})
 			if res.Inconclusive() {
 				status := "skipped"
 				if res.Errored {

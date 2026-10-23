@@ -18,7 +18,7 @@ never carries, and what is not built.
    |---|---|---|---|
    | Secrets | gitleaks (compiled into Drydock, the default rules) | keys, tokens and passwords in files | Drydock walks the tree itself and runs the rules over every text file, so it can count files and show "1,204 of 5,330 files". It does not enter `.git`, `node_modules` or `.drydock-worktrees`, skips symlinks, files over 2 MiB and files with a NUL byte in their first 8 KiB. |
    | Dependencies | osv-scanner (comes installed with Drydock, section 5) | packages in lockfiles and manifests with known vulnerabilities | `osv-scanner scan source --format json --no-call-analysis=all -r .`, read with the same parser as the `deps` check (`checks.ParseOSV`): only package names, versions and advisory ids are kept. Unless the tool is run offline it sends package names to osv.dev; nothing else leaves the machine. Call analysis is off (P61): it is the one part of osv-scanner that runs other programs (Go's, on by default, runs the go toolchain over the repository). |
-   | Code | Opengrep (comes installed with Drydock) with the built-in rules, and a folder of your own if you add one | code patterns the rules mark as unsafe | `opengrep scan -f <built-in rules> [-f <your rules folder>] --sarif-output=<temp file> --no-progress-bar -q [--no-git-ignore] .` (`--no-git-ignore` for a folder scan, section 8); the SARIF 2.1.0 file is read (`scan.ParseSARIF`): rule id, level, the message's first line, file and line. |
+   | Code | Opengrep (comes installed with Drydock) with the built-in rules | code patterns the rules mark as unsafe | `opengrep scan -f <built-in rules> --sarif-output=<temp file> -q [--no-git-ignore] .` (`--no-git-ignore` for a folder scan, section 8); the SARIF 2.1.0 file is read (`scan.ParseSARIF`): rule id, level, the message's first line, file and line. |
 
 3. Each engine ends done, skipped (the tool is not installed, there are no rules, osv-scanner found no lockfile),
    errored (the tool broke or ran past the ten-minute cap) or cancelled. A skipped or errored engine says why on the page and
@@ -46,7 +46,8 @@ Never in a report, an event, a log or the database:
 
 - **the secret's value**. The secrets engine drops gitleaks' matched text before the finding leaves its function; the page
   says "The value is not shown".
-- **the vulnerable line of code**. Only the file and line are kept.
+- **the vulnerable line of code**. Only the file and line are kept, and the finding's fingerprint, a hash (section 9). The
+  code around a finding is read from the folder when a person asks for it, secrets masked, and is never stored.
 - **a tool's raw output**. A reason is the tool's first stderr line, control characters removed, capped, and passed through
   the app's secret scanner (`security.Scanner.Redact`); every title is too. The whole report is redacted once more as a
   JSON document before it is stored.
@@ -58,7 +59,7 @@ A report keeps at most 2,000 findings; past that the rest are counted (`counts`)
 `security.scan.started`, `security.scan.engine` (one per engine state change, naming the engine), `security.scan.finished`
 (with `stored`: whether the report reached the database) and `security.settings` are published with the project id, in that
 order (started is published before the scan can report anything). A folder scan's events carry no project id and name the
-folder (`folder`); the workspace rules folder's `security.settings` carries `workspace: true`. Progress counters (files scanned) are not events: the page reads `security.scan.get`
+folder (`folder`). Progress counters (files scanned) are not events: the page reads `security.scan.get`
 every half second while a scan runs and re-reads on the events. A scan in progress lives in memory; closing the app cancels
 it (a cancelled scan is stored as cancelled).
 
@@ -66,13 +67,9 @@ it (a cancelled scan is stored as cancelled).
 
 | Method | Does |
 |---|---|
-| `security.tools {projectId}` (or `{}`: the folder scans') | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (path, `--version` and how each was found: `chosen`, `path` or `folder`, or an install hint; a chosen file that is gone is named), the project's rules folder and whether it holds `.yaml`/`.yml` files, and `ready` (every engine can run). |
-| `security.settings.set {projectId, rulesDir}` or `{workspace: true, rulesDir}` | stores the project's rules folder, or the one folder scans use (a full path: Opengrep runs in the repository and Drydock elsewhere, so a relative path would name two folders). Only a person may: the folder decides which rules read the whole project. The page's **Choose folder...** asks the window's folder dialog (`fs.pickFolder`, P58) and then makes this call with the folder chosen; cancelling changes nothing. |
-| `security.tool.set {projectId, tool, path}` | stores the program a person chose for `osv-scanner` or `opengrep`, for the whole workspace (a program is on the computer, not in a project); `""` goes back to finding it. The path must be a full path to an existing file (an `.exe` on Windows); quotes from Explorer's "Copy as path" are removed. Only a person may: the program reads the whole project. The programs are probed (`--version`) once per change: the answer goes to the caller and, for the next three seconds, to every page that re-reads on the `security.settings` event, so a program whose first run is slow is paid for once; a program deleted or replaced meanwhile is probed again at once. |
-| `security.tool.choose {projectId, tool}` | opens the window's own Open dialog (the desktop app, through Wails; filter `*.exe`) and stores the file chosen; cancelling changes nothing. Where the window has no dialog (the browser in development) it is refused and the page offers only the path field (`security.tools` says `canChoose`). |
+| `security.tools {projectId}` (or `{}`: the folder scans') | what this machine has: gitleaks (built in, its version), osv-scanner and Opengrep (path, `--version` and how each was found: `installed`, `path` or `folder`, or an install hint), the built-in rules, and `ready` (every engine can run). |
 | `security.tool.install {projectId, tool}` | Drydock installs the tool itself (decision P66): in the background it reads the tool's GitHub release listing (no sign-in), picks the newest stable release that carries the Windows program with a SHA-256 digest, downloads it from that repository only, refuses it unless the digest matches, and puts the program (unpacked from Opengrep's archive with its DLLs, or the exe renamed) under `<data>\tools\<tool>\<tag>\`. The same call is **Update**: with the installed release already the newest it ends "already the newest release (vX)". Only a person may. The answer, and every later `security.tools`, carries the install's state in `job` (`running` with the phase and the bytes so far, `done`, `failed` with the reason, `cancelled`); each change is announced on `security.settings` (`tool`, `install`). `security.tools` says `canInstall` (Windows). |
 | `security.tool.install.cancel {projectId, tool}` | stops a running install; nothing is left half installed (a download is checked and placed as a whole). |
-| `security.tool.remove {projectId, tool}` | deletes the release Drydock installed; the tool is looked for on PATH again. Only a person may. |
 | `security.scan.start {projectId}` or `{folder}` | starts a scan; refused while one of the same project or folder runs, when the project has no repository, for a folder section 8 refuses, and for anyone but a person. |
 | `security.scan.cancel {projectId}` or `{folder}` | cancels the running scan. |
 | `security.scan.get {projectId}` or `{folder}` | the running scan's snapshot, else the last stored report, else null. |
@@ -82,16 +79,21 @@ it (a cancelled scan is stored as cancelled).
 
 ## 5. Installing the tools (Windows)
 
-Drydock comes with both tools and with rules (decision P77). The Windows download carries a `tools` folder beside
-`drydock.exe` with the pinned releases of `packaging/bundle.json` (built by `cmd/drydock-bundle` in CI, each asset checked
-against the SHA-256 digest GitHub recorded, listed in `tools/bundle.json`). At its first start Drydock installs them from that
-folder with the same check and placement as **Install** below, so a scan works with nothing downloaded. A tool the person
-removed (`<tool>.removed` beside the installs) is not installed again from the folder.
+Drydock comes with both tools and with rules (decision P77), and keeps them itself (decision P95): the Security page has no
+tools section, only each engine's readiness. The Windows download carries a `tools` folder beside `drydock.exe` with the
+pinned releases of `packaging/bundle.json` (built by `cmd/drydock-bundle`, each asset checked against the SHA-256 digest GitHub
+recorded, listed in `tools/bundle.json`). At its first start Drydock installs them from that folder with the same check and
+placement as the install below, so a scan works with nothing downloaded. With `AutoSetup` (the desktop app), a tool the folder
+did not carry, or whose copy failed its check, is downloaded instead, and so is every tool when the folder's `bundle.json`
+cannot be read. Earlier versions let a person remove a tool and kept it out with a `<tool>.removed` marker; nothing can install
+it from the page now, so the marker is ignored (and deleted when the tool is installed again). A rules folder or program a
+person chose in an earlier version (`security:rules:*`, `security:workspace-rules`, `security:toolpath:*`) is deleted at start
+for the same reason.
 
-Drydock looks for newer releases of an installed tool three minutes after it starts and then twice a day; the Security page's
-**Check for updates** looks now. A newer release is named on the tool's row ("v1.32.0 is out") and its button reads **Update to
-v1.32.0**. Nothing is installed without the person pressing it. On the Security page each external tool's row has **Install**
-(or **Update** once Drydock installed it) and, for an installed one, **Remove** (decision P66):
+Drydock looks for newer releases of an installed tool three minutes after it starts and then twice a day, and installs a newer
+one itself under `AutoSetup` (`security.tools.checkUpdates` installs it too), but only a release whose tag is newer than the
+one installed: an older release GitHub lists as latest is never installed. The install (`security.tool.install`, which the
+page no longer offers; Drydock runs the same job) works like this:
 
 - **Install** reads the tool's own GitHub release listing (`google/osv-scanner`, `opengrep/opengrep`; no sign-in, the
   repositories are public), takes the newest stable release (no draft, no pre-release) that carries the Windows program with
@@ -100,10 +102,12 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
   (the app's data folder): `osv-scanner_windows_amd64.exe` renamed `osv-scanner.exe`; Opengrep's `opengrep_windows_x86.zip`
   (2.0 and later; `opengrep_windows_x86.exe` before) unpacked with the runners' guarded unzip so `opengrep.exe` keeps its DLLs
   beside it. No install script from the internet runs (Opengrep's `install.ps1` is not used). The row shows the download's
-  progress; the install runs in the background and survives leaving the page.
+  progress; the install runs in the background and survives leaving the page. Before the release becomes the one in use it
+  is run the way a scan runs it (`scan.SelfCheck`: Opengrep with the built-in rules over one Go file, osv-scanner over a
+  folder with a `go.mod`); a release that fails, such as one that dropped an option Drydock passes, is deleted and the one in
+  use stays ("Opengrep vX failed Drydock's test scan, so it is not used: ...").
 - **Update** is the same call: it looks the newest release up and installs it when it is newer than the one installed,
   otherwise says "already the newest release (vX)".
-- **Remove** deletes Drydock's copy; the tool is then looked for on PATH again.
 - Without Drydock's install, the page still says how to get each tool by hand: `osv-scanner_windows_amd64.exe` from
   https://github.com/google/osv-scanner/releases named `osv-scanner.exe` on your PATH (or `go install
   github.com/google/osv-scanner/v2/cmd/osv-scanner@latest`); `opengrep_windows_x86.zip` from
@@ -111,13 +115,11 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
   the repository's `install.ps1`). Opengrep is LGPL-2.1 and ships a native Windows binary; that is why it was chosen over
   Semgrep (a Python distribution with partial Windows support, and registry rules under a licence that does not allow use
   inside a commercial product).
-- **Finding them** (decision P55): a program a person chose on the Security page ("Choose file..." or its full path) comes
-  first, then the release Drydock installed, then the PATH Drydock started with, then the folders where installers put
+- **Finding them** (decision P55): the release Drydock installed comes first, then the PATH Drydock started with, then the folders where installers put
   programs: on Windows the user's and the machine's PATH as they are now in the registry (so a tool installed while Drydock
   runs is found without restarting it), WinGet's `%LOCALAPPDATA%\Microsoft\WinGet\Links`, Scoop's
   `%USERPROFILE%\scoop\shims`, `%USERPROFILE%\go\bin` (and `%GOBIN%`) and Chocolatey's `%ProgramData%\chocolatey\bin`.
-  The panel says which: "Chosen file", "Installed by Drydock (vX) at", "Found at", or "Found (not on the PATH Drydock
-  started with) at".
+  `security.tools` says which.
 - **Built-in rules** (P77): the rules in `internal/scan/rules` are compiled into Drydock, written once per version to
   `<data>\rules\builtin-<digest>\` (rule files and each set's `LICENSE` only), and given to Opengrep first on every scan.
   They are Drydock's own rules (34, for JavaScript and TypeScript, Python, Go, Java and C#, each with a test fixture under
@@ -126,31 +128,9 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
   are not built in: `opengrep-rules` carries the Commons Clause and says it is for research, testing and benchmarking (P44),
   Semgrep's own set is under the Semgrep Rules License, and Trail of Bits' set is AGPL-3.0. The page lists each built-in set
   with its rules, languages and licence.
-- **Your own rules** (optional): a folder of Semgrep-syntax rule files (`.yaml` or `.yml`, found through its sub-folders;
-  `.git` is skipped) runs as well as the built-in rules. The person chooses it under **Add a folder of your own rules** with
-  **Choose folder...** (the window's own folder dialog, shown in the desktop app, saved at once) or types its full path and
-  presses Save (P74). A folder that cannot be used is left out of the scan and the page says why.
-- **Where to get more rules** (P74) is a help on the page, folded away. It is text and links only: nothing is fetched or run
-  by the page, the links open in the person's browser, and it recommends no set. It lists public repositories of Semgrep-syntax
-  rules with what each one's own licence file or README said on 2026-10-16, a Git command that clones one into a folder
-  (`git clone -c core.longpaths=true --depth 1 https://github.com/OWNER/REPOSITORY C:\tools\REPOSITORY`), and one rule of
-  Drydock's own to try the Code engine with: saved as a `.yaml` file in an empty folder that is then chosen, it flags each
-  `fmt.Println` call in the Go files Opengrep scans. A test (`TestTheDemoRuleOnTheSecurityPageIsAValidRuleFile`) reads the rule
-  from the page's source and requires a valid rule file that Drydock accepts as a rules folder. What was read:
-
-  | Repository | What its licence file or README said | Rules for |
-  |---|---|---|
-  | `opengrep/opengrep-rules` | `LICENSE`: LGPL 2.1 with the "Commons Clause" License Condition v1.0 (no right to Sell the rules: practising the rights to provide third parties, for a fee or other consideration, a product or service whose value derives entirely or substantially from them). README: "These rules are intended for research, testing & benchmarking." | a fork of Semgrep's rules |
-  | `semgrep/semgrep-rules` | `LICENSE`: "Semgrep Rules License v1.0. For more details, visit https://semgrep.dev/legal/rules-license". The terms page could not be reached from the development host, so they are linked, not restated. | Semgrep's own rules |
-  | `trailofbits/semgrep-rules` | `LICENSE`: GNU Affero General Public License, version 3 | Trail of Bits' public rules |
-  | `0xdea/semgrep-rules` | `LICENSE`: MIT | C (and sometimes C++) |
-  | `dgryski/semgrep-go` | `LICENSE`: MIT | Go |
-
-  A licence can change, and what applies depends on how the rules are used (your own code, inside a company, in a product): the
-  page tells the person to read it. The Code engine is skipped for want of rules only when the built-in rules could not be
-  written. Its reason, when it is skipped because the rules folder is not usable, ends
-  with where to choose rules and where to get them (`rulesHelp`), because a report is read away from the field that mends it;
-  the scan's summary keeps only the reason's first sentence.
+- **Rules of your own** were a folder a person could add on the Security page (P74), with a help on where to get more. The
+  page no longer has it (decision P95); the Code engine runs the built-in rules. The e2e harness still gives Opengrep a folder
+  of extra rules through `core.Config.ScanRulesDir`.
 
 ## 6. Tests
 
@@ -160,32 +140,28 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
   Opengrep that writes a SARIF 2.1.0 log with two results) and their running state is visible; a tool that breaks is errored;
   cancel ends the scan cancelled; no rules folder skips the Code engine; `Detect` names what is installed; SARIF severities
   and paths.
-- `internal/core/ext_security_test.go`: the methods above end to end against a core: tools, the rules folder, start, a second
+- `internal/core/ext_security_test.go`: the methods above end to end against a core: tools, the built-in rules, start, a second
   start refused, the events, the stored report without the secret, history, cancel, no repository.
 - Installing the tools (P66): `internal/scan/install_test.go` (the newest checked release is picked, drafts, pre-releases,
   releases without the Windows asset and assets without a digest passed over, Opengrep's archive preferred to its exe; the
   program placed, renamed or unpacked with its DLLs, the replaced release removed, a mismatching digest refused, a download
-  from another repository refused, Remove) against a PROTOCOL FIXTURE of GitHub's releases API (`scantest.ReleaseFixture`);
+  from another repository refused, Remove; release tags ordered by their numbers) against a PROTOCOL FIXTURE of GitHub's
+  releases API (`scantest.ReleaseFixture`); `internal/scan/selfcheck_test.go` (the test scan passes the stand-ins and fails a
+  program that breaks or no longer knows an option; a release that fails it is not used and the one in use stays);
   `internal/core/ext_security_install_test.go` (Install runs in the background and the tools say so, the scan runs the
-  installed program, Update with nothing newer says so and with a newer release installs it, the settings events, a chosen
-  program still first, Remove, cancel while downloading, a second Install or a Remove while one runs refused, a failed install
-  named and retried); the browser tests of the tools panel; `ui/e2e/security.spec.ts` (Install, Update, the scan with the
-  installed tool, Remove, against the harness's fixture release and stand-in program).
+  installed program, Update with nothing newer says so and with a newer release installs it, an older "latest" is neither
+  installed nor offered, the settings events, cancel while downloading, a second Install while one runs refused, a failed
+  install named and retried); `ext_security_tools_test.go` (the choices of an earlier version are forgotten at start and the
+  methods that stored them are gone); `ext_bundle_test.go` (AutoSetup with no tools folder and with a broken one, a tool an
+  earlier version removed comes back).
 - `ui/e2e/security.spec.ts`: the page against the real core and the stand-in tools: Scan, the three engines done, the
   findings, the key's value absent from the page, the history; and from Home's tile, a folder that is not a project scanned
   the same way, its report reopened from the recent folder scans, no project made.
-- The rules folder's help and picker (P74): `internal/scan` (`TestEveryUnusableRulesFolderSkipsTheCodeEngineWithWhereToChoose`:
-  each way the folder can be unusable ends the Code engine skipped with where to choose rules; the summary keeps the first
-  sentence; `TestTheDemoRuleOnTheSecurityPageIsAValidRuleFile`), `rules-sources.test.ts`, the browser tests of both Security
-  pages (Choose folder... saves at once and cancelling saves nothing, the workspace page's saves the folder scans' folder and
-  leaves the folder to scan alone, only the typed path where the window has no dialog; the help's sets, links, command and
-  rule, open while the folder has no rules and a choice of the person standing) and `ui/e2e/security.spec.ts` (the folder
-  dialog's stand-in, the help, the skipped reason on the page).
+- An unusable rules folder (the harness's): `internal/scan` (`TestEveryUnusableRulesFolderSkipsTheCodeEngineWithWhereToChoose`).
 - `internal/scan/sarif_real_test.go` reads the SARIF of a real run of Semgrep OSS 1.182.0 (`testdata/semgrep-oss-1.182.0.sarif`): a result
   with no `level` takes its rule's default, the matched code in `region.snippet` is in no finding.
 - Folder scans (P61): `internal/core/ext_security_folder_test.go` (a folder scan runs the three engines with the stand-ins,
-  carries no project in its report, events and history, is found by folder and across folders, the workspace rules folder
-  is not a project's, refused folders, cancel), `ext_security_internal_test.go` (only a person starts a scan of either
+  carries no project in its report, events and history, is found by folder and across folders, refused folders, cancel), `ext_security_internal_test.go` (only a person starts a scan of either
   kind), `internal/scan` (osv-scanner's and Opengrep's arguments), and the browser tests of
   `workspace-security-screen.test.browser.tsx`, Home and the sidebar.
 
@@ -217,7 +193,7 @@ v1.32.0**. Nothing is installed without the person pressing it. On the Security 
 ## 8. Scanning a folder that is not a project (decision P61)
 
 The workspace page **Security scan** (`/security-scan`; Home's "Security scan" tile, the workspace sidebar, Ctrl+K) scans a
-folder by its full path, or one of the projects (its working tree, its rules folder and its history, as on its own page).
+folder by its full path, or one of the projects (its working tree and its history, as on its own page).
 It shows the same engines, progress, findings and tools (`ScanPanel`), and as history the recent folder scans of every folder;
 picking one shows that folder again.
 
@@ -226,8 +202,7 @@ there. Refused: a relative path, a file, a whole drive, Drydock's own data folde
 task worktrees: a project's are scanned as the project) and a folder that holds it. Symbolic links are resolved before the
 checks, and the engines read the resolved folder.
 
-**Rules folder.** Folder scans use the workspace's rules folder (`security.settings.set {workspace: true}`; the harness's
-`ScanRulesDir` until one is set); each project keeps its own. The tools' programs (P55) are the workspace's already.
+**Rules.** Folder scans run the built-in rules, as a project's scans do (the harness adds `ScanRulesDir`).
 
 **It only reads files.** Nothing in this path runs the folder's own code:
 
@@ -247,3 +222,53 @@ the repository.
 
 The tools run as before: through the Process Manager, with the scrubbed tool environment, in the folder, ten minutes at most.
 Only a person starts a folder scan (`human:` identity, like a project's).
+
+## 9. One finding: fingerprint, dismiss, the code around it, a task (decision P97)
+
+**Fingerprint.** Every finding has `fingerprint`: 24 hex digits of a SHA-256 over the engine, the rule, the file and a hash of
+the finding's line text, whitespace collapsed and redacted by the app's scanner. The secrets engine hashes the line with the
+secret replaced by the scanner's mask (`[REDACTED:<rule>]`), so the value is never part of it (another value on the same line
+has the same fingerprint); a code finding's lines (at most 20) are read from the file at scan time; a dependency finding
+hashes `package@version` and its advisory ids. A finding without text hashes its line number. A built-in rule is named by its
+own id, not the folder Opengrep read it from, so a new version of the rules keeps the fingerprints. Two findings with the
+same fingerprint in one report get `-2`, `-3` in report order. The fingerprint stays the same in later scans while the line
+reads the same, wherever it moves.
+
+**Dismiss.** `security.finding.dismiss {projectId | folder, fingerprint, reason}` (`not_real`, `accepted_risk`,
+`false_positive`; the finding must be in the target's last scan) and `security.finding.restore {projectId | folder,
+fingerprint}` keep a row per target and fingerprint (`security_dismissals`, migration 00132; deleted with the project, not
+exported). Every report that is read (`security.scan.get`, `security.scan.report`) and every finished scan before it is stored
+marks the dismissed findings (`dismissed`, `dismissedBy`, `dismissedAt`, `dismissReason`) and leaves them out of `counts`,
+the engines' `findings` and the summary ("1 finding you dismissed is not counted"); `dismissed` on the report and on each
+engine counts them. The history (`security.scan.list`) keeps each scan's counts as it was stored. `security.finding.dismissed
+{projectId | folder}` lists them, newest first. Only a person dismisses or restores. Events `security.finding.dismissed` and
+`security.finding.restored` carry the fingerprint.
+
+**The code around it.** `security.finding.context {scanId, fingerprint | index, around}` reads the finding's file now, from the
+folder its scan read (a folder scan's folder must still pass section 8's rules; a project's scan's folder must still be the
+project's repository): `around` lines before and after (2 by default, at most 10, 40 lines in all, each at most 400 bytes).
+gitleaks' rules run over the whole file and every secret they find is masked, a match over several lines masked whole; a
+secrets finding whose secret is no longer where it was has its lines masked whole; every line goes through the app's scanner.
+`changed` says the line no longer reads as at the scan. A path that leaves the folder (`..`, an absolute path, a link that
+leads out) is refused; a binary file, one over 2 MiB, one that is gone and a dependency finding answer with a `note` and no
+lines. It is read-only.
+
+**The whole file.** `security.file.read {scanId, fingerprint | index}` (the page's "Open the file": Drydock opens no editor) answers
+the same shape with the finding's whole file from its first line: at most 2,000 lines (`more` says the file has more), the
+finding's own lines marked `hit`, under the same folder rules, masking and redaction as the code around it. A dependency
+finding's manifest is read whole too. It is read-only and nothing in the folder runs.
+
+**Plain words.** The same answer carries `advice {meaning, steps, refs}`: for a secret by its gitleaks rule family (AWS,
+GitHub, GitLab, private key, generic API key, JWT, Slack, Stripe, OpenAI, Anthropic, Google Cloud, Azure, npm, PyPI, Hugging
+Face; others by gitleaks' own description); for a dependency the advisories and the version to upgrade to (`fixed`: the lowest
+version above the installed one that fixes every advisory osv.dev names a fix for, read from the records' affected ranges;
+`unfixed` lists the advisories without one); for a built-in code rule its own message (first sentence: the meaning; the rest:
+the steps) and its CWE; for any other rule the finding's title.
+
+**A task.** `security.finding.task {scanId, fingerprint | index, assignee?}` makes a BACKLOG task in the scan's project: the
+title names what to do and where ("Remove the secret in notes.txt:3 and revoke it", "Upgrade x from 1.0 to 1.2 (known
+vulnerabilities)"), the description the rule, engine, severity, file and line, the advice, and the finding; never a secret.
+`issueRef` is `scan:<scanId>:<fingerprint>` (an imported task: no scheduler moves it on by itself). With `assignee` the task is
+given to that agent with another agent of the team as reviewer (a reviewer-role one first, never the lead). A finding with a
+task that is not failed or cancelled gets no second one. A folder scan has no project and is refused with the reason. Only a
+person makes one.

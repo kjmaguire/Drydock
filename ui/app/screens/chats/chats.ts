@@ -5,6 +5,7 @@ import type { Chat, ChatMcpGrant, ChatMessage, ChatSkillRef } from '../../api/ch
 import type { LibrarySkill } from '../../api/extTypes.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatUsd } from '../../lib/format.ts';
+import { adapterLabel, chatInstall, cliName, type CliInstall } from '../shared/cli-name.ts';
 
 // --- a chat's properties (decision P60): library skills and MCP servers ---
 
@@ -115,11 +116,7 @@ export function costText(c: Pick<Chat, 'costUsd' | 'costUnknownTurns'>): string 
   return c.costUnknownTurns > 0 ? `${money}, and ${c.costUnknownTurns} ${c.costUnknownTurns === 1 ? "turn's" : "turns'"} cost unknown` : money;
 }
 
-/** "Claude Code" for the claude adapter, else the adapter id. */
-export function adapterLabel(id: string): string {
-  const names: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', cline: 'Cline', opencode: 'OpenCode', goose: 'Goose' };
-  return names[id] ?? id;
-}
+export { adapterLabel };
 
 /** "Claude" for the claude adapter (how the callouts speak about the agent), else its label. */
 export function agentWord(id: string): string {
@@ -150,9 +147,6 @@ export function adapterOptionText(a: AdapterInfo, where = ''): string {
   return a.detection.version ? `${name} ${a.detection.version}` : name;
 }
 
-/** "Claude Code in Ubuntu (WSL)": a CLI installed inside a WSL distro, its own Connection (decision P41). */
-export const wslChoiceLabel = (adapter: string, distro: string): string => `${adapterLabel(adapter)} in ${distro} (WSL)`;
-
 /**
  * Why a CLI install inside a WSL distro cannot start a chat, or '' when it can: as for one on Windows (adapterUnavailable), a
  * degraded install (an untested version, interop off, a failed Test) is offered, and the Connections page says what it lacks.
@@ -180,7 +174,8 @@ export interface ChatChoice {
  * The Agent CLI choices of the new chat dialog: every adapter on Windows (sortChatAdapters order), each followed by its
  * installs inside WSL distros (the WSL Connections the Connections page shows, by distro). A distro without the CLI is not
  * offered; one that cannot start a chat (wslUnavailable) is offered disabled with the reason. With an install in WSL, the
- * Windows one says "on Windows".
+ * Windows one says "on Windows". A WSL choice is named as the Connections page names it (cliName): "Claude Code WSL", with
+ * the distro only when the CLI is installed in another distro too.
  */
 export function chatChoices(adapters: readonly AdapterInfo[], connections: readonly Connection[]): ChatChoice[] {
   const inWSL = connections.filter((c) => c.runMode === 'wsl' && !!c.distro && c.installed && c.status !== 'not_installed');
@@ -190,7 +185,7 @@ export function chatChoices(adapters: readonly AdapterInfo[], connections: reado
     out.push({ value: a.id, adapter: a, wslDistro: '', text: adapterOptionText(a, mine.length ? 'on Windows' : ''), why: adapterUnavailable(a) });
     for (const c of mine) {
       const why = wslUnavailable(c);
-      const label = wslChoiceLabel(a.id, c.distro!);
+      const label = cliName(c, connections);
       out.push({ value: c.key || `${a.id}@wsl:${c.distro}`, adapter: a, wslDistro: c.distro!, text: why ? `${label} (${why})` : c.version ? `${label} ${c.version}` : label, why });
     }
   }
@@ -203,8 +198,15 @@ export function pickChatChoice(choices: readonly ChatChoice[], picked: string): 
   return ok.find((c) => c.value === picked) ?? ok.find((c) => c.adapter.id === 'claude') ?? ok[0];
 }
 
-/** Where a chat's CLI runs, for its header: "in Ubuntu (WSL)", or '' on Windows. */
-export const chatWhere = (c: Pick<Chat, 'wslDistro'>): string => (c.wslDistro ? `in ${c.wslDistro} (WSL)` : '');
+/**
+ * The chat's CLI for its header: "Claude Code", or "Claude Code WSL" inside a distro, named as the Connections page names that
+ * install (cliName with `installs`, the Connections list): the distro only when the CLI is installed in another distro too
+ * (which distro otherwise: chatWhere, its tooltip).
+ */
+export const chatCliText = (c: Pick<Chat, 'adapter' | 'wslDistro'>, installs: readonly CliInstall[] = []): string => cliName(chatInstall(c), installs);
+
+/** Where a chat's CLI runs, in words for a tooltip: "Runs inside the WSL distro Ubuntu", or '' on Windows. */
+export const chatWhere = (c: Pick<Chat, 'wslDistro'>): string => (c.wslDistro ? `Runs inside the WSL distro ${c.wslDistro}` : '');
 
 /** Split a search snippet into plain and matched parts ([brackets] mark the matches). */
 export function snippetParts(snippet: string): { text: string; hit: boolean }[] {
@@ -256,4 +258,105 @@ export function startsGroup(prev: ChatMessage | undefined, m: ChatMessage): bool
   const side = (x: ChatMessage) => (x.role === 'user' ? 'user' : x.role === 'assistant' || x.role === 'tool' ? 'agent' : 'note');
   if (side(m) === 'note') return false;
   return side(prev) !== side(m);
+}
+
+// --- the graphite Chats screen (decision P97) ---
+
+/**
+ * When a chat was last active, for its row in the list: "now", "5 min", "3 h" (today), "yesterday", the weekday within a week
+ * ("Mon"), then the date.
+ */
+export function listWhen(ms: number, now = Date.now()): string {
+  if (!ms) return '';
+  const d = Math.max(0, now - ms);
+  const min = Math.floor(d / 60_000);
+  if (min < 1) return 'now';
+  if (min < 60) return `${min} min`;
+  const then = new Date(ms);
+  const today = new Date(now);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((day(today) - day(then)) / 86_400_000);
+  if (days <= 0) return `${Math.floor(min / 60)} h`;
+  if (days === 1) return 'yesterday';
+  if (days < 7) return then.toLocaleDateString('en-US', { weekday: 'short' });
+  return then.toLocaleDateString([], then.getFullYear() === today.getFullYear() ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/** The faint line of a chat's row: its project (when it is in one), its CLI and when it was last active, joined by " · ". */
+export function chatRowLine(parts: { project?: string; cli: string; when: string }): string {
+  return [parts.project, parts.cli, parts.when].filter(Boolean).join(' · ');
+}
+
+/** A permission mode in plain words, for the composer's approval button. A mode Drydock does not know is named as it is. */
+export function modeWords(mode: string): string {
+  switch (mode) {
+    case '':
+    case 'default':
+      return 'Asks before commands';
+    case 'acceptEdits':
+      return 'Edits files, asks before commands';
+    case 'plan':
+      return 'Plans only, changes nothing';
+    case 'bypassPermissions':
+      return 'Never asks, skips approvals';
+    case 'auto':
+      return 'Decides itself, skips approvals';
+    case 'dontAsk':
+      return 'Does not ask, skips approvals';
+    default:
+      return `${mode} mode`;
+  }
+}
+
+/** The chat runs in its own private folder (the core's chats/<id> folder, on Windows or in a distro's home). */
+export function inOwnFolder(c: Pick<Chat, 'id' | 'cwd'>): boolean {
+  const p = c.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+  return p.endsWith(`/chats/${c.id}`);
+}
+
+/**
+ * Where the chat runs, in words for the right of its header, from its fields: in a project, the project's folder; without
+ * one, inside its WSL distro, in its own folder, or in the folder chosen for it.
+ */
+export function chatPlaceWords(c: Pick<Chat, 'id' | 'projectId' | 'wslDistro' | 'cwd'>, projectName?: string): string {
+  if (c.projectId) return `${projectName || 'Project'} · runs in the project's folder${c.wslDistro ? ', inside the distro' : ''}`;
+  if (c.wslDistro) return 'No project · runs inside the distro';
+  return inOwnFolder(c) ? 'No project · runs in its own folder' : 'No project · runs in the folder you chose';
+}
+
+/**
+ * The chat's folder for its header, as its CLI sees it: a folder inside a WSL distro as the distro names it
+ * (\\wsl.localhost\Ubuntu\home\kyle\x is /home/kyle/x), the home folder there as ~; then shortened in the middle.
+ */
+export function folderText(c: Pick<Chat, 'cwd' | 'wslDistro'>, max = 48): string {
+  let p = c.cwd;
+  const m = /^\\\\(?:wsl\.localhost|wsl\$)\\[^\\]+(\\.*)?$/i.exec(p);
+  if (m) p = (m[1] ?? '\\').replace(/\\/g, '/');
+  if (c.wslDistro || m) p = p.replace(/^\/home\/[^/]+(?=\/|$)/, '~').replace(/^\/root(?=\/|$)/, '~');
+  return shortPath(p, max);
+}
+
+/** The command a waiting request would run, or '' when it is not a shell command. */
+export function askCommandOf(a: { input?: unknown }): string {
+  const f = a.input && typeof a.input === 'object' && !Array.isArray(a.input) ? (a.input as Record<string, unknown>) : {};
+  return typeof f.command === 'string' ? f.command : '';
+}
+
+/** What a waiting request shows in its box: the command, else the call in one line without its tool's name. */
+export function askCallText(a: { tool: string; summary: string; input?: unknown }): string {
+  const cmd = askCommandOf(a);
+  if (cmd) return cmd;
+  return a.tool && a.summary.startsWith(`${a.tool}: `) ? a.summary.slice(a.tool.length + 2) : a.summary;
+}
+
+/** The head of a waiting request: "Claude Code wants to run a command", or "... wants to use Fetch". */
+export function askHead(cli: string, a: { tool: string; input?: unknown }): string {
+  return askCommandOf(a) ? `${cli} wants to run a command` : `${cli} wants to use ${a.tool || 'a tool'}`;
+}
+
+/** An allow rule in the words of its button: Bash(git diff --stat) is "git diff --stat" (shortened past 40 characters). */
+export function ruleWords(rule: string): string {
+  const m = /^Bash\((.*)\)$/s.exec(rule);
+  const w = m ? m[1]!.trim() : rule;
+  return w.length > 40 ? `${w.slice(0, 39)}…` : w;
 }

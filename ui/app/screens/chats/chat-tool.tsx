@@ -1,13 +1,13 @@
-// A tool call in a chat as a card (decision P84): how it is going (running, done, failed, or no result reported), a readable
-// name, the call in one line and how long it took; opened, the call is shown the way a person reads that kind of tool (an
+// A tool call in a chat as a compact card (decisions P84, P97): an icon of the kind of tool, "Ran" and the command (or the tool's
+// readable name and the call) in one line, how long it took and how it went (done, failed, running, or no result reported); opened, the call is shown the way a person reads that kind of tool (an
 // edit as a diff, a shell command with its output, a read with what it returned) and anything else as its input and result.
 // Everything shown is text the core stored (redacted, bounded); nothing is rendered as HTML.
 
 import { css, type Handle } from 'remix/component';
-import { Check, ChevronRight, Minus, X } from 'lucide';
+import { FilePen, FileText, Globe, Search, Terminal, Wrench } from 'lucide';
 import type { ChatMessage } from '../../api/chatClient.ts';
 import { Spinner } from '../../ui/feedback.tsx';
-import { Icon } from '../../ui/icon.tsx';
+import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { toolInputText } from './chats.ts';
 
@@ -80,39 +80,40 @@ export function editLines(input: unknown): DiffLine[] | undefined {
   return out;
 }
 
+// a compact card (graphite, P97): an icon of the kind of tool, a verb ("Ran" for a command), the call in mono, how long it took
+// and how it went on the right (done in teal, failed in red, running with a spinner)
 const cardCss = css({
-  maxWidth: '760px',
+  maxWidth: '720px',
   margin: '2px 0',
   border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
   background: t.bgSurface,
-  fontSize: t.textSm,
+  fontSize: t.textMd,
   '&[data-state="failed"]': { borderColor: `color-mix(in srgb, ${t.danger} 40%, ${t.border})` },
   '& > summary': {
     display: 'flex',
     alignItems: 'center',
-    gap: t.s2,
+    gap: '10px',
     minWidth: '0',
-    minHeight: '28px',
-    padding: `0 ${t.s2}`,
+    minHeight: '34px',
+    padding: '0 12px',
     listStyle: 'none',
     cursor: 'pointer',
     borderRadius: t.rMd,
-    color: t.textMuted,
+    color: t.text,
   },
   '& > summary::-webkit-details-marker': { display: 'none' },
-  '& > summary:hover': { color: t.text, background: t.bgHover },
+  '& > summary:hover': { background: t.bgHover },
   '& > summary:focus-visible': { boxShadow: t.focus, outline: 'none' },
-  '& > summary .chev': { display: 'inline-flex', transition: `transform ${t.fast} ${t.ease}` },
-  '&[open] > summary .chev': { transform: 'rotate(90deg)' },
-  '& > summary .state': { display: 'inline-grid', placeItems: 'center', width: '16px', height: '16px', flex: 'none', borderRadius: '50%' },
+  '& > summary .ic': { display: 'inline-flex', flex: 'none', color: t.textMuted },
+  '& > summary strong': { flex: 'none', maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: '400' },
+  '& > summary .sum': { flex: '1 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: t.mono, fontSize: t.textXs, color: t.textMuted },
+  '& > summary .ms': { flex: 'none', fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' },
+  '& > summary .state': { display: 'inline-flex', alignItems: 'center', gap: '5px', flex: 'none', fontSize: t.textXs, color: t.textFaint },
   '& > summary .state[data-state="ok"]': { color: t.success },
   '& > summary .state[data-state="failed"]': { color: t.danger },
-  '& > summary .state[data-state="unknown"]': { color: t.textFaint },
-  '& > summary strong': { color: t.text, fontWeight: '600', flex: 'none', maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  '& > summary .sum': { flex: '1 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: t.mono, fontSize: t.textXs },
-  '& > summary .ms': { flex: 'none', fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' },
-  '& .body': { display: 'grid', gap: t.s2, padding: `0 ${t.s2} ${t.s2}` },
+  '& > summary .state[data-state="running"]': { color: t.textMuted },
+  '& .body': { display: 'grid', gap: t.s2, padding: `2px 12px 10px`, fontSize: t.textSm },
   '& .label': { fontSize: t.textXs, color: t.textFaint, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.03em' },
   '& pre': { margin: '0', maxHeight: '300px', overflow: 'auto', fontSize: t.textXs, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
   '& .diff': { margin: '0', maxHeight: '300px', overflow: 'auto', fontFamily: t.mono, fontSize: t.textXs, borderRadius: t.rSm, border: `1px solid ${t.border}` },
@@ -125,15 +126,20 @@ const cardCss = css({
 
 const STATE_TEXT: Record<ToolState, string> = { running: 'running', ok: 'done', failed: 'failed', unknown: 'no result reported' };
 
-function StateIcon(handle: Handle<{ state: ToolState }>) {
-  return () => {
-    const s = handle.props.state;
-    return (
-      <span class="state" data-state={s} title={STATE_TEXT[s]}>
-        {s === 'running' ? <Spinner label="Running" /> : <Icon icon={s === 'ok' ? Check : s === 'failed' ? X : Minus} size={13} />}
-      </span>
-    );
-  };
+/** The icon of a kind of tool: a terminal for a command, a file for a read, a pen for an edit, a lens for a search. */
+function toolIcon(name: string, command: boolean): IconNode {
+  if (command || name === 'Bash') return Terminal;
+  if (name === 'Read' || name === 'NotebookRead') return FileText;
+  if (name === 'Edit' || name === 'MultiEdit' || name === 'Write' || name === 'NotebookEdit') return FilePen;
+  if (name === 'Grep' || name === 'Glob') return Search;
+  if (name === 'WebFetch' || name === 'WebSearch') return Globe;
+  return Wrench;
+}
+
+/** What the card says before the call: "Ran" (or "Running") for a shell command, else the tool's readable name. */
+export function toolVerb(name: string | undefined, command: boolean, state: ToolState): string {
+  if (command || name === 'Bash') return state === 'running' ? 'Running' : 'Ran';
+  return toolLabel(name);
 }
 
 export function ToolCard(handle: Handle<{ m: ChatMessage; summary: string; running: boolean }>) {
@@ -145,21 +151,25 @@ export function ToolCard(handle: Handle<{ m: ChatMessage; summary: string; runni
     const f = fields(m.toolInput);
     const diff = editLines(m.toolInput);
     const command = str(f, 'command');
+    const shell = !!command || m.toolName === 'Bash';
     const result = m.toolResult ?? '';
     return (
       <details mix={cardCss} data-testid="chat-tool" data-state={state} aria-label={`${label}: ${STATE_TEXT[state]}`}>
         <summary>
-          <span class="chev" aria-hidden="true">
-            <Icon icon={ChevronRight} size={12} />
+          <span class="ic" aria-hidden="true">
+            <Icon icon={toolIcon(m.toolName ?? '', !!command)} size={14} />
           </span>
-          <StateIcon state={state} />
-          <strong title={m.toolName}>{label}</strong>
+          <strong title={m.toolName}>{toolVerb(m.toolName, shell, state)}</strong>
           <span class="sum">{summary}</span>
           {ms ? (
             <span class="ms" data-testid="chat-tool-ms">
               {ms}
             </span>
           ) : null}
+          <span class="state" data-state={state}>
+            {state === 'running' ? <Spinner label="Running" /> : null}
+            {STATE_TEXT[state]}
+          </span>
         </summary>
         <div class="body">
           {diff ? (

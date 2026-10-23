@@ -153,6 +153,12 @@ func (r *Runtime) Remove() error {
 	return os.WriteFile(filepath.Join(r.Root, removedFile), []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 }
 
+// Removed reports whether a person removed the build (Remove) and has not installed one since.
+func (r *Runtime) Removed() bool {
+	_, err := os.Stat(filepath.Join(r.Root, removedFile))
+	return err == nil
+}
+
 // removedFile says a person removed the build: the bundled build stays out until they install one again.
 const removedFile = "removed.json"
 

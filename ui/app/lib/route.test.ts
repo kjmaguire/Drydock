@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
+import { hashToPath, hubOf, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -46,11 +46,22 @@ describe('routes', () => {
     expect(isWorkspaceRoute({ name: 'library-skills' })).toBe(true);
   });
 
+  it("has the workspace's Crew page: every project's agents, outside any project", () => {
+    expect(routes.crew.href()).toBe('/crew');
+    expect(parseRoute('/crew')).toEqual({ name: 'crew' });
+    expect(parseRoute('/crew/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'crew' })).toBe(true);
+    expect(hubOf({ name: 'crew' })).toBe('workspace-crew');
+    expect(isWorkspaceHub(hubOf({ name: 'crew' }))).toBe(true);
+    // the project's own Crew stays a project page
+    expect(hubOf({ name: 'team' })).toBe('crew');
+  });
+
   it('tells workspace pages (the workspace sidebar) from project pages', () => {
-    for (const p of ['/home', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
+    for (const p of ['/home', '/needs-you', '/my-tasks', '/crew', '/chats', '/chats/c1', '/library', '/library/skills', '/integrations', '/mcp', '/settings', '/project/new']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, true]);
     }
-    for (const p of ['/', '/needs-you', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team', '/project/integrations']) {
+    for (const p of ['/', '/room/r', '/tasks', '/task/t', '/skills', '/project', '/team', '/project/integrations']) {
       expect([p, isWorkspacePage(parseRoute(p))]).toEqual([p, false]);
     }
   });
@@ -77,6 +88,17 @@ describe('routes', () => {
     expect(isWorkspacePage(parseRoute('/github'))).toBe(true);
   });
 
+  it('has Models on this PC as a workspace page of its own, in its own hub (no Settings rail, no project in the sidebar; decision P97)', () => {
+    expect(routes.models.href()).toBe('/models');
+    expect(parseRoute('/models')).toEqual({ name: 'models' });
+    expect(parseRoute('/models/x')).toEqual({ name: 'not-found' });
+    expect(isWorkspaceRoute({ name: 'models' })).toBe(true);
+    expect(isWorkspacePage(parseRoute('/models'))).toBe(true);
+    expect(hubOf({ name: 'models' })).toBe('models');
+    expect(isWorkspaceHub(hubOf({ name: 'models' }))).toBe(true);
+    expect(hubOf({ name: 'providers' })).toBe('settings');
+  });
+
   it('has a workspace Security scan of any folder, beside the project\'s own Security page (decision P61)', () => {
     expect(routes.securityScan.href()).toBe('/security-scan');
     expect(parseRoute('/security-scan')).toEqual({ name: 'security-scan' });
@@ -99,7 +121,13 @@ describe('routes', () => {
     expect(parseRoute('/team')).toEqual({ name: 'team' });
     expect(parseRoute('/team/agt_1')).toEqual({ name: 'agent', id: 'agt_1' });
     expect(hubOf({ name: 'agent', id: 'agt_1' })).toBe('crew');
-    expect(hubOf({ name: 'needs-you' })).toBe('none'); // the bell's page lights no tab
+    // the Inbox and My tasks are the workspace's (decision P97): they open without a project and light no project's tab
+    expect(hubOf({ name: 'needs-you' })).toBe('inbox');
+    expect(hubOf({ name: 'my-tasks' })).toBe('inbox');
+    expect(isWorkspaceRoute({ name: 'needs-you' })).toBe(true);
+    expect(parseRoute('/my-tasks')).toEqual({ name: 'my-tasks' });
+    expect(routes.myTasks.href()).toBe('/my-tasks');
+    expect(parseRoute('/needs-you/x')).toEqual({ name: 'not-found' });
     expect(isWorkspacePage({ name: 'agent', id: 'agt_1' })).toBe(false);
   });
 

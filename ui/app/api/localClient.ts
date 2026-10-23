@@ -54,6 +54,20 @@ export interface Fit {
   target: FitTarget;
   fits: boolean;
   availableBytes: number;
+  /** A downloaded model's estimated KV cache, and the model with it, which target and fits then compare (decision P97). Absent when the cache could not be estimated. */
+  kvBytes?: number;
+  needBytes?: number;
+}
+
+/** The estimated KV cache of a downloaded model at a context size and cache type (localllm.KVCache, read from its GGUF header). */
+export interface KVCache {
+  /** false when it cannot be estimated (note says why: the TurboQuant types, a recurrent model, an unreadable header). */
+  known: boolean;
+  bytes?: number;
+  /** The tokens it is for: the setting, or the model's own context when the setting is 0. */
+  contextSize: number;
+  cacheType: string;
+  note?: string;
 }
 
 /** An install or a download in progress, or how the last one ended. */
@@ -145,6 +159,8 @@ export interface LocalModel {
   sizeBytes: number;
   downloadedAt: string;
   fit?: Fit;
+  /** The KV cache at the settings the next start uses (for the served model: the ones it runs with). */
+  kv?: KVCache;
 }
 
 export interface ServerState {
@@ -155,6 +171,34 @@ export interface ServerState {
   error?: string;
   startedAt?: string;
   pid?: number;
+  /** Drydock started it when it started (the Autostart setting); false when a person did. */
+  autostarted?: boolean;
+  /** What it was started with (contextSize 0 or absent: the model's own). */
+  cacheType?: string;
+  contextSize?: number;
+}
+
+/** An agent, of any project, whose provider is the server's provider row. */
+export interface LocalUser {
+  agentId: string;
+  name: string;
+  projectId: string;
+  projectName: string;
+}
+
+/** The served model's memory, for the memory bar (decision P97). deviceFree is what the device probe read, before the model loaded as a rule. */
+export interface LocalServed {
+  modelId: string;
+  modelBytes: number;
+  /** 0 when kv.known is false. */
+  kvBytes: number;
+  kv: KVCache;
+  /** The GPU with the most free memory, else the RAM. */
+  device: 'gpu' | 'ram';
+  deviceName?: string;
+  deviceTotal: number;
+  deviceFree: number;
+  fit: Fit;
 }
 
 /** The Providers page's "Models on this PC" section. */
@@ -173,6 +217,10 @@ export interface LocalView {
   freeBytes: number;
   modelsBytes: number;
   log: string[];
+  /** The agents that use the models on this PC (the client always gives an array). */
+  usedBy?: LocalUser[];
+  /** Set while the server starts or runs. */
+  served?: LocalServed;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
@@ -186,6 +234,7 @@ const view = (v: LocalView): LocalView => ({
   models: arr(v.models).map((m) => ({ ...m, files: arr(m.files) })),
   downloads: arr(v.downloads),
   log: arr(v.log),
+  usedBy: arr(v.usedBy),
 });
 
 export interface LocalClient {

@@ -31,10 +31,10 @@ func TestOSVScannerRunsWithoutCallAnalysis(t *testing.T) {
 // a project's scan keeps git's view of its files.
 func TestOpengrepRunsNoGitInAFolderScan(t *testing.T) {
 	lead := Tool{Path: "opengrep", Args: []string{"lead"}}
-	if got := strings.Join(opengrepArgs(lead, []string{"/rules"}, "/tmp/o.sarif", true), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q --no-git-ignore ." {
+	if got := strings.Join(opengrepArgs(lead, []string{"/rules"}, "/tmp/o.sarif", true), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif -q --no-git-ignore ." {
 		t.Fatal(got)
 	}
-	if got := strings.Join(opengrepArgs(lead, []string{"/rules"}, "/tmp/o.sarif", false), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif --no-progress-bar -q ." {
+	if got := strings.Join(opengrepArgs(lead, []string{"/rules"}, "/tmp/o.sarif", false), " "); got != "lead scan -f /rules --sarif-output=/tmp/o.sarif -q ." {
 		t.Fatal(got)
 	}
 }
@@ -146,5 +146,20 @@ func TestEveryToolRunsWithGitHardenedAgainstTheProjectsConfiguration(t *testing.
 	_ = o.env()
 	if len(base) != 2 || cap(base) != 10 || base[:3][2] != "" {
 		t.Fatalf("the caller's environment was extended in place: %v", base[:3])
+	}
+}
+
+func TestTheReasonForAToolErrorIsTheErrorLineNotTheUsageLine(t *testing.T) {
+	// what Opengrep 1.31.0 printed for an option it does not know (--no-progress-bar, which every scan passed), colours included
+	real := "Usage: \x1b[01mopengrep scan\x1b[m [\x1b[01m--help\x1b[m] [\x1b[04mOPTION\x1b[m]… [\x1b[04mTARGETS\x1b[m]…\n" +
+		"opengrep scan: \x1b[31munknown\x1b[m option \x1b[01m--no-progress-bar\x1b[m\n"
+	if got := firstStderrLine([]byte(real)); got != "opengrep scan: unknown option --no-progress-bar" {
+		t.Fatalf("%q", got)
+	}
+	if got := firstStderrLine([]byte("\nUsage: tool [OPTION]\n")); got != "Usage: tool [OPTION]" {
+		t.Fatalf("a usage line alone is still the reason: %q", got)
+	}
+	if got := firstStderrLine([]byte("  rules folder x is not there\nmore\n")); got != "rules folder x is not there" {
+		t.Fatalf("%q", got)
 	}
 }

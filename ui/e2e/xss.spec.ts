@@ -49,9 +49,11 @@ test('message text is inert: no script, no element, no javascript: link, no remo
   expect(requests.filter((u) => u.includes('pixel.png') || new URL(u).pathname.endsWith('/x'))).toEqual([]);
   expect(page.url()).not.toContain('approve');
 
-  // and the text "APPROVED" created no approval: the inbox is still empty
+  // and the text "APPROVED" created no approval: the inbox holds nothing of this project (it lists every project's)
   await projectNav(page, 'nav-needs-you');
-  await expect(page.getByText('Nothing is waiting for you')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+  await expect(page.getByTestId('inbox-needs').getByRole('heading', { name: 'Needs you' })).toBeVisible();
+  await expect(page.getByTestId('needs-item').filter({ hasText: 'gocalc-xss' })).toHaveCount(0);
 
   // the same text survives a reload as inert text (it is what the core stored, not a render-time accident)
   await page.reload();

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/safe"
 )
 
@@ -28,20 +29,23 @@ const (
 
 // PresenceState is one agent's current presence with its activity text.
 type PresenceState struct {
-	AgentID   string    `json:"agentId"`
-	ProjectID string    `json:"projectId,omitempty"`
-	TaskID    string    `json:"taskId,omitempty"`
-	RunID     string    `json:"runId,omitempty"`
-	Presence  Presence  `json:"presence"`
-	Label     string    `json:"label,omitempty"`    // "starting" and "stopped" have no presence of their own (room-protocol s4)
-	Activity  string    `json:"activity,omitempty"` // short text, for example "tool: Read"
-	Since     time.Time `json:"since"`              // when Presence last changed
-	Updated   time.Time `json:"updated"`
-	Seq       uint64    `json:"seq"` // bus seq of the last event applied
+	AgentID   string   `json:"agentId"`
+	ProjectID string   `json:"projectId,omitempty"`
+	TaskID    string   `json:"taskId,omitempty"`
+	RunID     string   `json:"runId,omitempty"`
+	Presence  Presence `json:"presence"`
+	Label     string   `json:"label,omitempty"`    // "starting" and "stopped" have no presence of their own (room-protocol s4)
+	Activity  string   `json:"activity,omitempty"` // short text, for example "tool: Read"
+	// Doing is the agent's latest tool call in this turn with its argument, "Editing limiter.go" (DoingLine); empty outside a
+	// turn and before its first call.
+	Doing   string    `json:"doing,omitempty"`
+	Since   time.Time `json:"since"` // when Presence last changed
+	Updated time.Time `json:"updated"`
+	Seq     uint64    `json:"seq"` // bus seq of the last event applied
 }
 
 func (p PresenceState) sameView(q PresenceState) bool {
-	return p.Presence == q.Presence && p.Label == q.Label && p.Activity == q.Activity
+	return p.Presence == q.Presence && p.Label == q.Label && p.Activity == q.Activity && p.Doing == q.Doing
 }
 
 // sticky states are left only by an explicit lifecycle event, so late output from a dying process cannot revive them.
@@ -116,9 +120,11 @@ func Derive(prev PresenceState, e events.Event) (PresenceState, bool) {
 	}
 	next := prev
 	next.AgentID = id
+	// set changes the presence; what the agent is doing ends with it unless the event is more of the same turn (keep)
 	set := func(p Presence, label, activity string) {
-		next.Presence, next.Label, next.Activity = p, label, activity
+		next.Presence, next.Label, next.Activity, next.Doing = p, label, activity, ""
 	}
+	keep := func() { next.Doing = prev.Doing }
 	switch e.Type {
 	case "agent.starting":
 		set(PresenceIdle, "starting", "starting")
@@ -159,18 +165,26 @@ func Derive(prev PresenceState, e events.Event) (PresenceState, bool) {
 		switch d.Kind {
 		case "text":
 			set(PresenceWorking, "", "writing")
+			keep()
 		case "thinking":
 			set(PresenceThinking, "", "thinking")
+			keep()
 		case "tool_call":
-			var tc struct{ Name string }
+			var tc struct {
+				Name string
+				Args json.RawMessage
+			}
 			_ = json.Unmarshal(d.Data, &tc)
 			set(PresenceWorking, "", "tool: "+firstNonEmpty(tc.Name, "call"))
+			next.Doing = DoingLine(tc.Name, tc.Args)
 		case "tool_result":
 			var tr struct{ Name string }
 			_ = json.Unmarshal(d.Data, &tr)
 			set(PresenceThinking, "", "after tool: "+firstNonEmpty(tr.Name, "call"))
+			keep()
 		case "permission_request":
 			set(PresenceWaiting, "", "awaiting permission")
+			keep()
 		case "error":
 			var er struct{ Message string }
 			_ = json.Unmarshal(d.Data, &er)
@@ -240,6 +254,9 @@ type TrackerOptions struct {
 	// LifecycleOnly rebuilds from LifecycleFilter: what each agent was last doing is the live stream's to say, so use it with an
 	// Alive that tells the truth about the agents that are running now.
 	LifecycleOnly bool
+	// Redact, if set, removes secrets from a tool call's arguments before its doing line is made (a command can carry a token);
+	// the core passes its scanner's Redact. The bus scans the events it stores too; this does not rely on it.
+	Redact func(string) string
 }
 
 // Tracker keeps current presence for the UI by folding agent.* and watchdog.* events. It is replay-safe: Start rebuilds
@@ -368,6 +385,15 @@ func (t *Tracker) apply(e events.Event) {
 		id = firstNonEmpty(d.AgentID, d.AgentID2, d.Agent)
 	}
 	prev := t.st[id]
+	if t.opt.Redact != nil && e.Type == "agent.output" {
+		// a tool call's arguments are scanned whole, before the doing line keeps a part of them: a token cut in two is not found
+		var k struct {
+			Kind string `json:"kind"`
+		}
+		if json.Unmarshal(e.Data, &k) == nil && k.Kind == "tool_call" {
+			e.Data = redact.JSON(e.Data, t.opt.Redact)
+		}
+	}
 	next, ok := Derive(prev, e)
 	if !ok || id == "" {
 		t.mu.Unlock()
@@ -448,7 +474,7 @@ func (t *Tracker) emitLoop(ctx context.Context) {
 		sort.Slice(out, func(i, j int) bool { return out[i].AgentID < out[j].AgentID })
 		for _, s := range out {
 			_, _ = events.Emit(ctx, t.bus, "room.presence_changed", events.Event{ProjectID: s.ProjectID, TaskID: s.TaskID},
-				map[string]any{"member": s.AgentID, "presence": s.Presence, "label": s.Label, "activity": s.Activity})
+				map[string]any{"member": s.AgentID, "presence": s.Presence, "label": s.Label, "activity": s.Activity, "doing": s.Doing})
 		}
 	}
 }

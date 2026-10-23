@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/agui"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -217,6 +218,28 @@ func TestInterruptKeepsSessionAlive(t *testing.T) {
 	}
 }
 
+// A turn stopped before it finished (its context ended: the task was cancelled) leaves its run row CANCELLED, so the crew
+// timeline tells it from a run that finished; a turn that finished and was stopped after stays STOPPED.
+func TestACancelledTurnIsRecordedAsCancelled(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "starting"}, {Block: true}}}})
+	m, err := h.rt.Spawn(context.Background(), h.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, err := m.RunTurn(ctx, "go", nil, nil); err == nil {
+		t.Fatal("a cancelled turn must return its error")
+	}
+	h.settle(t)
+	var status string
+	var ended int64
+	h.db.Reader().QueryRow(`SELECT status, ended_at FROM agent_runs WHERE id=?`, m.RunID).Scan(&status, &ended)
+	if status != "CANCELLED" || ended == 0 {
+		t.Fatalf("run status=%s ended=%d", status, ended)
+	}
+}
+
 func TestAgentCrashIsReported(t *testing.T) {
 	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "about to crash"}, {Exit: 3}}}})
 	ctx := context.Background()
@@ -297,6 +320,22 @@ func TestMissingExecutableFailsSpawn(t *testing.T) {
 	evs, _ := h.bus.Replay(context.Background(), 0, events.Filter{Types: []string{"agent.failed"}}, 0)
 	if len(evs) != 1 {
 		t.Fatalf("want one agent.failed, got %d", len(evs))
+	}
+	// the failed start carries the run id it would have had, so the task's Activity shows it as a run that errored (P87)
+	var d struct{ AgentRun, Phase, Error string }
+	if json.Unmarshal(evs[0].Data, &d) != nil || !strings.HasPrefix(d.AgentRun, "arun_") || d.Phase != "start" {
+		t.Fatalf("the failed start: %s", evs[0].Data)
+	}
+	act := agui.Project(evs)
+	if len(act.Threads) != 1 || act.Threads[0].ThreadID != d.AgentRun || len(act.Threads[0].Events) != 2 ||
+		act.Threads[0].Events[0].EventType() != agui.TypeRunStarted || act.Threads[0].Events[1].EventType() != agui.TypeRunError {
+		t.Fatalf("the failed start in the activity: %+v", act.Threads)
+	}
+	if err := agui.CheckOrder(act.Threads[0].Events); err != nil {
+		t.Fatal(err)
+	}
+	if e := act.Threads[0].Events[1].(*agui.RunError); e.Message != d.Error || d.Error == "" {
+		t.Fatalf("the error: %+v", e)
 	}
 }
 

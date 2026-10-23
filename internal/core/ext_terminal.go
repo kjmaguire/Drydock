@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/terminal"
 )
@@ -86,10 +87,15 @@ func init() {
 				if in, ok := runningSignIn(m, signIns, conn.Key); ok {
 					return in, nil
 				}
-				title := "Sign in: " + conn.Adapter
-				if conn.RunMode == "wsl" {
-					title += " in " + conn.Distro
+				// "Sign in: claude WSL" for the install inside a distro (P96), by the rule the Connections page names it with
+				// (connections.InstallName): the distro only when another distro has the CLI too; the terminal opens in that
+				// distro's card
+				distro := ""
+				var installs []string
+				if conn.RunMode == agents.RunModeWSL {
+					distro, installs = conn.Distro, c.Connections.InstalledWSL(ctx, conn.Adapter)
 				}
+				title := "Sign in: " + connections.InstallName(conn.Adapter, distro, installs)
 				var id string
 				ready := make(chan struct{})
 				info, err := m.OpenProgram(si.Dir, title, 100, 24, terminal.Program{Path: si.Program, Args: si.Args, Env: si.Env, OnExit: func(code int) {

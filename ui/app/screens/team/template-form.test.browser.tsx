@@ -48,7 +48,7 @@ function setup(client: Partial<Client>, props: { initial?: AgentTemplate; adapte
     <TemplateForm initial={props.initial} adapters={props.adapters ?? [codex, claude]} servers={[server]} onDone={(t) => done.push(t)} onCancel={() => void cancelled++} />,
     s,
   );
-  return { r, done, cancelled: () => cancelled };
+  return { r, s, done, cancelled: () => cancelled };
 }
 
 describe('TemplateForm', () => {
@@ -147,9 +147,22 @@ describe('TemplateForm', () => {
     expect(calls[0]!.skills).toEqual([{ registry: 'vercel-agent-skills', name: 'web-design-guidelines', ref: choices[2]!.ref }]);
   });
 
-  it('says when there is no other skill to add', async () => {
+  it('says when there is no other skill to add, and where the skills come from', async () => {
     const { r } = setup({ agentTemplateSkillChoices: async () => [choices[0]!] }, { initial: { ...tplOf('Edge'), skills: [wrangler] }, adapters: [claude] });
     await waitFor(() => expect(r.container.textContent).toContain('No other skill to add'), r);
+    expect(r.container.querySelector('[data-testid="template-skills"] a')!.getAttribute('href')).toBe('/library/skills');
+  });
+
+  it("offers the Library's skills (the Remix registry's too) and reads them again when a sync fills the library", async () => {
+    // the owner's report: the Remix skills were missing from a new template's list
+    const remix: SkillChoice = { registry: 'remix', name: 'remix', ref: 'a'.repeat(40), description: 'Build Remix 3 apps', from: ['the Library'] };
+    let synced = false;
+    const { r, s } = setup({ agentTemplateSkillChoices: async () => (synced ? [...choices, remix] : choices) }, { adapters: [claude] });
+    const form = r.container.querySelector<HTMLElement>('[data-testid="template-form"]')!;
+    await waitFor(() => expect(optionsOf(byLabel<HTMLElement>(form, 'Add a skill')).length).toBe(3), r);
+    synced = true;
+    s.emit({ type: 'skill.library_synced', data: { registry: 'remix', commit: remix.ref, added: 1, changed: 0 } });
+    await waitFor(() => expect(optionsOf(byLabel<HTMLElement>(form, 'Add a skill')).map((o) => o.label)).toContain('remix (remix), from the Library'), r);
   });
 
   it('shows the core refusal and does not finish', async () => {

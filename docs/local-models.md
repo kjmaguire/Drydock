@@ -29,12 +29,15 @@ The archive is unpacked with the same guarded unzip the CI runners use (`interna
 links, size limits), into Drydock's own folder: `<data>\local-models\<source>-<tag>-<backend>\`. Models go to
 `<data>\local-models\models\<owner>\<repo>\<variant>\`. Nothing is written anywhere else, and nothing is added to PATH.
 
-**Built in, not side-loaded.** The person installs nothing by hand: the runtime card says so before Install ("Drydock
-downloads and runs llama.cpp itself: the newest Windows build of the source below, for the backend you pick, checked against
-the digest GitHub recorded and unpacked into Drydock's own folder. Nothing has to be installed by hand, and nothing is added
-to the PC's PATH"), and the installed card says the build was downloaded and is run by Drydock, with Update fetching the
-newest one the same way. The Source box offers the official build (default) and the TurboQuant fork, the fork behind its
-warning (2026-10-16, on the owner's question whether llama.cpp and TurboQuant could be "built right into the app").
+**Built in, not side-loaded (decision P95).** The engine is Drydock's own and the page never calls it llama.cpp. It is the
+TurboQuant build: from the download's tools folder at the first start, or, with `AutoSetup` (the desktop app) when the folder
+did not carry it, fetched from the fork's releases at start with the digest check above, for the suggested backend when the
+fork builds it, else Vulkan, with `turbo4` as the cache type unless the person chose one. While that runs the card says
+"Setting up local models" with the progress; when the start could not do it, the card offers **Set up** (the same, with
+nothing to choose) and, after a failure, **Retry**. An installed engine reads "TurboQuant build <tag> · <backend>" and has one
+button, **Check for updates**, which installs a newer build of the same source and backend (it reads **Update to <tag>** when
+the twice-daily check found one). The page offers no source, backend, Update or Remove for the engine any more; the official
+build stays a source the core can install (`local.install`), and a build installed earlier keeps its source.
 
 **What leaves the machine.** The release listing (`api.github.com`, unauthenticated, 20 releases), the archives
 (`github.com`), the model listings and files (`huggingface.co` and its download hosts). No code, no prompt and no project
@@ -72,9 +75,16 @@ is "Not recommended". The badge stays short; its tooltip and, for the two that w
 in full with the numbers the core measured (`Fit.availableBytes`, the larger of the free VRAM and the RAM budget): "Not
 recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free)", "Runs on the CPU (slow): no GPU has room for it, so
 llama.cpp keeps it in RAM (needs about 32.0 GB, 24.0 GB free)". A variant that is not recommended cannot be downloaded (the
-button is disabled and says why): a model llama.cpp could not load would only take gigabytes of disk. This counts the weights
-only, not the KV cache; a model near the limit may still not load with a large context. For the rest the person decides;
-the fit is a hint.
+button is disabled and says why): a model llama.cpp could not load would only take gigabytes of disk. A variant on the Hub is
+counted by its weights only. A downloaded model's fit counts its KV cache too (decision P97, `Fit.kvBytes`, `Fit.needBytes`):
+the cache is estimated from the model's GGUF header (`localllm.ReadGGUF`, pure Go, only the metadata is read): for each layer
+the attention heads that keep keys and values (`<arch>.attention.head_count_kv`, per layer when the model gives a list) times
+the key and value lengths (`attention.key_length`/`value_length`, else `embedding_length / head_count`), times the context size
+(the setting, else the model's own `context_length`), times the bytes a value takes in the cache type (f16 2, q8_0 34/32, q4_0
+18/32, and the other ggml block types). A model with sliding-window layers or a compressed (MLA) cache is counted at the full
+size and the estimate says it is an upper bound. The TurboQuant build's `turbo3` and `turbo4` are not documented by the fork, so
+their estimate is unknown (`kv.known` false, with the reason), as is a model whose header has no attention heads (a recurrent
+model) or cannot be read; the fit then counts the weights alone. For the rest the person decides; the fit is a hint.
 
 **Downloading.** Files download in the background (several at once if asked), resume a part that was cut off, and are
 checked before they count as present. A drive with less than the file plus 2 GB free refuses the download.
@@ -108,7 +118,7 @@ llama-server --host 127.0.0.1 --port 9933 -m <file.gguf> --alias <owner/repo:VAR
 
 Drydock waits for `GET /health` to answer 200 (the model is loaded; up to 15 minutes) and for `GET /props` to accept the key (so
 a different program that took the port is not taken for the server), then makes the server a provider:
-name "Models on this PC (llama.cpp)", `kind=host`, `flavor=llamacpp`, `data_class=private`, `tier=cheap`,
+name "Models on this PC" (one registered before decision P95 keeps "Models on this PC (llama.cpp)"), `kind=host`, `flavor=llamacpp`, `data_class=private`, `tier=cheap`,
 `max_concurrent=1`, base URL `http://127.0.0.1:9933/v1`. The provider probe (`internal/providers`) tells a llama-server apart
 by `GET /props`, lists its model as taking tool calls (the listing says nothing about it; the server's template handles
 them) with the context the server runs with (`default_generation_settings.n_ctx`), and warns below 64k. The health loop
@@ -135,8 +145,11 @@ and take its GPU.
 
 ## 7. Interfaces
 
-Core methods (`internal/core/ext_localllm.go`): `local.get` (the whole view: runtime, devices, models with fit, downloads
-in progress, server state, settings, memory, disk), `local.install {source?, backend?}`, `local.runtime.remove`,
+Core methods (`internal/core/ext_localllm.go`): `local.get` (the whole view: runtime, devices, models with fit and `kv`,
+downloads in progress, server state (with `startedAt`, `autostarted`: Drydock started it at its own start, and the
+`cacheType` and `contextSize` it runs with), `served` (the served model's `modelBytes`, `kvBytes`, `kv`, and the `device`, gpu or
+ram, with its `deviceTotal` and `deviceFree` as read by the device probe, for the memory bar), `usedBy` (every agent, of any
+project, whose provider is the server's row: `agentId`, `name`, `projectId`, `projectName`), settings, memory, disk), `local.install {source?, backend?}`, `local.runtime.remove`,
 `local.settings.set` (any subset of the settings), `local.models.suggested`, `local.models.search {query}`,
 `local.model.variants {repo}`, `local.model.download {repo, variant}`, `local.model.download.cancel {id}` (also clears a
 finished row), `local.model.remove {id}`, `local.server.start {modelId}`, `local.server.stop`. Event: `local.changed`

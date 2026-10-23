@@ -2,7 +2,7 @@
 // speaks Claude Code's stream-json): it answers messages that carry "drydock-e2e chat", refuses a Bash call for
 // "drydock-e2e touch" in the default permission mode, and runs it once Allow and retry allows the rule and sends the retry text.
 import { expect, test } from '@playwright/test';
-import { createProject, sidebar, workspaceNav } from './helpers';
+import { choose, createProject, createProjectWithoutRepo, workspaceNav } from './helpers';
 
 test('a chat keeps its history across a reload, continues its session, and a refused tool can be allowed and retried', async ({ page }) => {
   await createProject(page, 'chats-e2e');
@@ -59,4 +59,48 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   // the retry Drydock sent shows as a note, not as words the person typed
   await expect(log.locator('[data-retry="true"]')).toHaveText('You allowed the tool and asked to continue.');
   await expect(page.getByTestId('chat-denied')).toHaveCount(1); // the retry ran the tool without a new refusal
+});
+
+// The graphite Chats screen (decision P97) against the real core: Ctrl+N starts a chat, here without a project; the header says
+// where it runs; "Move to a project" moves it into one (chat.update projectId), the header and the list follow, the move is a
+// note in the conversation, and the chat answers in the project's folder in a new session given the conversation so far.
+test('Ctrl+N starts a chat without a project, and Move to a project moves it into one, where it answers', async ({ page }) => {
+  await createProjectWithoutRepo(page, 'chats-move-e2e');
+  await workspaceNav(page, 'nav-chats');
+  const list = page.getByRole('complementary', { name: 'Chats' });
+  await expect(list).toBeVisible();
+  await page.locator('body').press('Control+n');
+  const dialog = page.getByRole('dialog', { name: 'New chat' });
+  await expect(dialog).toBeVisible();
+  await choose(dialog.getByLabel('Project', { exact: true }), { label: 'No project' });
+  await dialog.getByRole('button', { name: 'Start chat' }).click();
+  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await expect(page.getByTestId('chat-place')).toHaveText('No project · runs in its own folder');
+  await expect(page.getByTestId('chip-mode')).toHaveText('Asks before commands');
+
+  const message = page.getByLabel('Message', { exact: true });
+  await message.fill('drydock-e2e chat: before the move');
+  await message.press('Enter');
+  const log = page.getByTestId('chat-log');
+  await expect(log.getByText('Hello from the scripted chat stand-in')).toBeVisible();
+  await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
+
+  await page.getByTestId('chat-move').click();
+  const move = page.getByRole('dialog', { name: 'Move to a project' });
+  await choose(move.getByLabel('Project', { exact: true }), { label: 'chats-move-e2e' });
+  await expect(move.getByTestId('chat-move-effect')).toContainText("It joins chats-move-e2e and runs in the project's folder.");
+  await move.getByRole('button', { name: 'Move' }).click();
+  await expect(move).toBeHidden();
+  await expect(page.getByTestId('chat-place')).toHaveText("chats-move-e2e · runs in the project's folder");
+  await expect(page.getByTestId('chat-move')).toHaveText('Move to another project');
+  await expect(log).toContainText('Now in a project.');
+  // the list shows the current project's chats: the moved chat is among them, its line names the project
+  const row = list.getByTestId('chat-row').filter({ hasText: 'drydock-e2e chat: before the move' });
+  await expect(row).toContainText('chats-move-e2e · Claude Code');
+  await expect(list.getByTestId('chat-list-open')).toHaveCount(0);
+
+  await message.fill('drydock-e2e chat: after the move');
+  await message.press('Enter');
+  await expect(log.getByText('Hello from the scripted chat stand-in')).toHaveCount(2);
+  await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
 });

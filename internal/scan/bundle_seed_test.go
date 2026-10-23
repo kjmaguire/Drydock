@@ -84,15 +84,23 @@ func TestTheBundledToolsArePutInPlaceOnceAndThePersonsChoicesStand(t *testing.T)
 		t.Fatalf("the person's own install was replaced: %v %v %+v", err, did, in)
 	}
 
-	// removed by the person: the bundled copy is not put back; installed again, the mark goes
+	// removed (decision P95: the tools are Drydock's own, nothing keeps one out): the bundled copy is put back, and the
+	// marker an earlier version wrote on Remove is ignored and deleted
 	if err := inst.Remove("osv-scanner"); err != nil {
 		t.Fatal(err)
 	}
-	if _, did, err = inst.SeedFromBundle(ctx, dl2, osv2); err != nil || did {
-		t.Fatalf("a removed tool came back: %v %v", err, did)
-	}
 	if _, ok := inst.Installed("osv-scanner"); ok {
 		t.Fatal("installed after removal")
+	}
+	marker := filepath.Join(root, "osv-scanner.removed")
+	if err := os.WriteFile(marker, []byte("2026-10-01T00:00:00Z\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if in, did, err = inst.SeedFromBundle(ctx, dl2, osv2); err != nil || !did || in.Tag != "v2.8.0" {
+		t.Fatalf("a removed tool was kept out: %v %v %+v", err, did, in)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the old marker is still there")
 	}
 
 	// a file that does not match the bundle's SHA-256 is refused, and nothing is installed from it

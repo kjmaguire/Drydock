@@ -48,10 +48,31 @@ function reach(status: string): number {
 const SPEC_NOTE: Record<string, string> = { BACKLOG: 'not started', READY: 'ready', CLAIMED: 'claimed' };
 
 /**
- * The five steps with their state. The current step is the one the status puts the task at; the steps before it are done
- * (their notes come from the evidence: the criteria count, the attempt, the checks passed, the verdict), the ones after it
- * are to do. A pending spec review keeps the task at Spec with You lit too. A failed or cancelled task fails at the first
- * step the evidence does not cover; a completed one has every step done.
+ * The index in STEP_NAMES of the step the task is at, 5 when it is completed. A pending spec review keeps it at Spec; a failed or
+ * cancelled task is at the first step its evidence does not cover; any other task is where its status puts it. The core reads
+ * the step of task.summaries by the same rule (tasks.StepIndex): both pass the cases in internal/tasks/testdata/steps.json.
+ */
+export function stepIndex(
+  task: Pick<Task, 'status' | 'started'>,
+  evidence: readonly Pick<Evidence, 'kind' | 'passed'>[],
+  reviews: readonly unknown[],
+  pending: readonly PendingRequest[] = [],
+): number {
+  if (pending.some((p) => !!specPayload(p))) return 0;
+  if (task.status === 'FAILED' || task.status === 'CANCELLED') {
+    const specAccepted = evidence.some((e) => e.kind === 'spec_accept' && e.passed !== false);
+    const coded = evidence.some((e) => e.kind === 'diff' || e.kind === 'commit' || e.kind === 'green_test');
+    const checked = evidence.some((e) => CHECK_KINDS.has(e.kind));
+    return coded ? (checked ? (reviews.length ? 4 : 3) : 2) : specAccepted || task.started ? 1 : 0;
+  }
+  return reach(task.status);
+}
+
+/**
+ * The five steps with their state. The current step is the one the status puts the task at (stepIndex); the steps before it
+ * are done (their notes come from the evidence: the criteria count, the attempt, the checks passed, the verdict), the ones
+ * after it are to do. A pending spec review keeps the task at Spec with You lit too. A failed or cancelled task fails at the
+ * first step the evidence does not cover; a completed one has every step done.
  */
 export function stepsFor(
   task: Pick<Task, 'status' | 'iteration' | 'acceptance' | 'acceptedBy' | 'started'>,
@@ -62,7 +83,6 @@ export function stepsFor(
   const status = task.status;
   const specGate = pending.some((p) => !!specPayload(p));
   const specAccepted = evidence.some((e) => e.kind === 'spec_accept' && e.passed !== false);
-  const coded = evidence.some((e) => e.kind === 'diff' || e.kind === 'commit' || e.kind === 'green_test');
   const checks = evidence.filter((e) => CHECK_KINDS.has(e.kind));
   const latestAttempt = checks.reduce((m, e) => Math.max(m, e.attempt), 0);
   const latest = checks.filter((e) => e.attempt === latestAttempt).map(evidenceResult);
@@ -72,10 +92,7 @@ export function stepsFor(
   const closed = status === 'FAILED' || status === 'CANCELLED';
 
   // the current step's index
-  let p: number;
-  if (specGate) p = 0;
-  else if (closed) p = coded ? (checks.length ? (reviews.length ? 4 : 3) : 2) : specAccepted || task.started ? 1 : 0;
-  else p = reach(status);
+  const p = stepIndex(task, evidence, reviews, pending);
 
   const state = (i: number): StepState => (i < p ? 'done' : i === p ? 'current' : 'todo');
   const steps: Step[] = STEP_NAMES.map((name, i) => ({ name, label: LABEL[name], state: state(i), note: '' }));
@@ -88,7 +105,8 @@ export function stepsFor(
 
   // Code
   if (status === 'BLOCKED' && code.state === 'current') code.note = 'blocked';
-  else if (code.state !== 'todo' && task.iteration > 0) code.note = `attempt ${task.iteration}`;
+  // the core counts iterations from 0 (task.summaries' attempt is iteration + 1); the page's pill says the same run
+  else if (code.state !== 'todo' && (task.started || task.iteration > 0)) code.note = `attempt ${task.iteration + 1}`;
 
   // Checks
   if (checks.length > 0) {

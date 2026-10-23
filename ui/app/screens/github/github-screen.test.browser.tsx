@@ -52,7 +52,7 @@ const find = (r: R, sel: string) =>
   }, r);
 
 describe('the GitHub settings page', () => {
-  it('gathers the gh sign-in, the GitHub connection with its MCP server, and the repositories with runners', async () => {
+  it('gathers the gh sign-in, the GitHub connection with its MCP server, and the CI runners', async () => {
     const r = show({
       integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', identity: { account: 'kyle', scopes: ['repo'] }, assignments: [] })],
       runnersGet: async () => runners({ slots: [slot('kyle/pay', 'windows', 'idle'), slot('kyle/pay', 'linux', 'paused'), slot('kyle/web', 'windows', 'busy', 'build')] }),
@@ -74,18 +74,23 @@ describe('the GitHub settings page', () => {
     expect(r.$$('[data-testid="integration-panel"]')).toHaveLength(1);
     expect(r.$('[data-testid="integration-tile"]')).toBeNull();
     expect(r.$('[data-testid="gh-integrations-link"]')!.getAttribute('href')).toBe('/integrations');
-    // the runners: one row per repository, each runner's state in words, managed on Connections
-    await waitFor(() => expect(r.$$('[data-testid="gh-runner-repo"]')).toHaveLength(2), r);
-    const rows = Array.from(r.$$('[data-testid="gh-runner-repo"]')) as HTMLElement[];
-    expect(rows.map((x) => x.getAttribute('data-repo'))).toEqual(['kyle/pay', 'kyle/web']);
-    expect(rows[0]!.textContent).toContain('Windows: waiting for a job');
-    expect(rows[0]!.textContent).toContain('Linux: off');
-    expect(rows[1]!.textContent).toContain('Windows: running build');
-    expect(r.$('[data-testid="gh-runners-none"]')).toBeNull();
-    expect(r.$('[data-testid="gh-runners-link"]')!.getAttribute('href')).toBe('/connections');
-    // nothing on the page adds, enables or removes a runner: that stays on Connections
-    expect(r.$('[data-testid="ci-runners-section"]')).toBeNull();
-    expect(Array.from(r.$$('button')).some((b) => /add runner|remove/i.test(b.textContent ?? ''))).toBe(false);
+    // the CI runners are managed here, after the connection (they moved from Connections): each runner with its state in words,
+    // and the form that adds one
+    const section = await find(r, '[data-testid="github-page"] [data-testid="ci-runners-section"]');
+    expect(r.$('[data-testid="gh-connection"]')!.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await waitFor(() => expect(section.querySelectorAll('[data-testid="runner-slot"]')).toHaveLength(3), r);
+    const states = Array.from(section.querySelectorAll('[data-testid="runner-slot"]')).map((x) => [x.getAttribute('data-key'), x.querySelector('[data-testid="runner-state"]')!.textContent]);
+    expect(states).toEqual([
+      ['kyle/pay:windows', 'waiting for a job'],
+      ['kyle/pay:linux', 'off'],
+      ['kyle/web:windows', 'running build'],
+    ]);
+    expect(section.querySelector('[data-testid="runner-private-only"]')!.textContent).toContain('Private repositories only');
+    expect(section.querySelector('[data-testid="runner-add"] [data-testid="runner-add-button"]')).not.toBeNull();
+    expect(section.querySelector('a[data-testid="learn-more"]')!.getAttribute('href')).toBe('/guide/runners');
+    // the old summary that pointed to Connections is gone
+    expect(r.$('[data-testid="gh-runners"]')).toBeNull();
+    expect(r.$('a[href="/connections"]')).toBeNull();
   });
 
   // audit 2026-10-16, L45: Drydock does hold a GitHub sign-in or token where a person connects the GitHub MCP server or uses Sign
@@ -137,7 +142,7 @@ describe('the GitHub settings page', () => {
     expect(sign.querySelector('[data-testid="gh-login"]')).toBeNull();
     // the connection panel still offers the connection (its connect form asks gh too), and the runners say none
     await find(r, '[data-testid="integration"][data-kind="github"]');
-    await find(r, '[data-testid="gh-runners-none"]');
+    await waitFor(() => expect(r.$('[data-testid="runner-slots"]')!.textContent).toContain('No runners yet.'), r);
     const before = calls;
     await r.act(() => byText(r.container, 'button', 'Check again').click());
     await waitFor(() => expect(calls).toBe(before + 1), r);

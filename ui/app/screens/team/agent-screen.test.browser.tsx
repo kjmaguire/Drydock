@@ -127,7 +127,7 @@ describe("an agent's page", () => {
     expect(r.$('[data-testid="agent-page-purpose"]')!.textContent).toContain('Owns webhooks and invoices');
     await waitFor(() => expect(chips(r)).toContain('Working on #12'), r);
     await waitFor(() => expect(chips(r)).toContain('guarded'), r);
-    expect(chips(r)).toEqual(['Working on #12', 'Claude Code · sonnet', 'effort: high', 'runs in WSL Ubuntu', 'guarded']);
+    expect(chips(r)).toEqual(['Working on #12', 'Claude Code · sonnet', 'effort: high', 'runs in WSL', 'guarded']);
     expect(r.$('[data-testid="agent-chip"][data-live="true"]')!.getAttribute('href')).toBe('/task/t12');
     expect(r.$('[data-testid="agent-chip"][data-isolation="guarded"]')!.getAttribute('title')).toContain('acceptEdits');
   });
@@ -144,6 +144,39 @@ describe("an agent's page", () => {
     await r.act(() => byText(r.container, 'button', 'Message Ada').click());
     await waitFor(() => expect(navigated).toEqual(['/room/room_dm']), r);
     expect(dms).toEqual([['prj_1', 'agt_1']]);
+  });
+
+  it('Inspect opens the inspector in the details panel; Remove asks first, then removes the agent and goes back to the crew', async () => {
+    const archived: string[] = [];
+    const { r, s, navigated } = show('agt_1', { agentArchive: async (id) => (archived.push(id), agent()) });
+    await hero(r);
+    await r.act(() => byText(r.container, 'button', 'Inspect').click());
+    expect(s.ui.inspectId).toBe('agt_1');
+    expect(s.ui.tab).toBe('inspector');
+    await r.act(() => (r.$('button[aria-label="Remove Ada"]') as HTMLButtonElement).click());
+    const box = await waitFor(() => r.$('[data-testid="agent-remove"]') ?? (() => { throw new Error('no dialog'); })(), r);
+    expect(archived).toEqual([]);
+    expect(box.textContent).toContain('Remove Ada from the team? Its history stays.');
+    await r.act(() => byText(box as HTMLElement, 'button', 'Yes, remove').click());
+    await waitFor(() => expect(archived).toEqual(['agt_1']), r);
+    await waitFor(() => expect(navigated).toEqual(['/team']), r);
+  });
+
+  it("the team lead's page carries its stand-up and its interventions; another agent's page has neither", async () => {
+    const lead = agent({ id: 'agt_l', name: 'Lead', role: 'lead' });
+    const { r } = show('agt_l', {
+      agentList: async () => [agent(), lead],
+      agentGet: async () => ({ ...detail, agent: lead }),
+      leadInterventions: async () => [],
+    });
+    await hero(r);
+    const sec = await waitFor(() => r.$('section[aria-label="Team lead"]') ?? (() => { throw new Error('no lead section'); })(), r);
+    await waitFor(() => byText(sec as HTMLElement, 'button', 'Run stand-up'), r);
+    expect(sec.textContent).toContain('steps in when a task loops');
+    cleanup();
+    const other = show('agt_1', { agentList: async () => [agent(), lead], leadInterventions: async () => [] });
+    await hero(other.r);
+    expect(other.r.$('section[aria-label="Team lead"]')).toBeNull();
   });
 
   it('Overview: the task it is on with its step and status, its activity and latest run, numbers counted from the task list, its skills, tools and what the crew remembers', async () => {

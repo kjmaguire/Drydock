@@ -9,7 +9,7 @@ Scope: how Drydock is built, installed, signed, updated, licensed, backed up, ex
 | D8 | NSIS installer with `INSTALL_SCOPE=user`; no MSIX or WiX in v1. Updates via Wails v3 built-in updater (`app.Updater`) with a custom `Provider` on Drydock's own release feed (not GitHub Releases), `Channel` `stable` or `beta`, SHA-256 digests, Ed25519-signed manifest with the public key pinned in the app, release notes in the built-in update window, previous executable kept for rollback. Signing: Azure Artifact Signing or an OV certificate, decided at company-account creation; `wails3 tool sign` (signtool) until then. |
 | Brief 21 | Code-signed installer, stable and beta channels with rollback, offline Ed25519 license tokens with grace period and trial, expired license = read-only and never deletes data, export/import, scheduled local backups, support bundle, diagnostics off by default, onboarding under ten minutes. |
 | Brief 0, 16 | No cloud component; never upload user source code automatically. Windows-only; no macOS/Linux targets. |
-| P2 | Windows CI is unavailable; every Windows claim here is unproven until it runs. |
+| P2 | Resolved 2026-10-10: the repository is public, and GitHub's Windows runners run the Go and UI suites and build `drydock.exe` and the download on every push (`windows-probes` also builds a Wails sample app's NSIS installer). The updater, signing, SmartScreen and Drydock's own installer have not run on Windows. |
 | D1, D2 | First-run notices about Claude (own login only) and Antigravity/Gemini terms ship in the product; Claude subscription support does not ship commercially before written confirmation from Anthropic or counsel (decisions section 4, open item 4). |
 
 ## 2. Build and installer
@@ -191,7 +191,7 @@ Plan:
 
 ## As built (2026-10-08, Linux sandbox: license, backups, project export/import, support bundle)
 
-Everything below is built and tested on Linux with real SQLite, real files and real zip; nothing here has run on Windows (P1, P2). The work is one extension, `internal/core/ext_packaging*.go`, plus the packages `internal/projectio`, `internal/supportbundle`, `internal/scrub`, `internal/applog`, `internal/backup/location*.go`, `internal/storage/schema.go` and `internal/workflow/suspend.go`. The base files only gained single-line hooks: `RequireLicensed` in `Core.CreateProject`, `CreateAgent`, `StartTask`, `Respond` and `StartTemplate`; `gateMethods` in `Core.Methods()`; `fileLog` in `Core.logf`; `applyPendingRestore` at the top of `Core.Open`; `licenseChannelAllowed` behind `Core.ChannelAllowed`; the room responder's `Enabled` hook.
+Everything below is built and tested on Linux with real SQLite, real files and real zip; since 2026-10-10 the same tests also pass on `windows-latest` (`go test ./...` in `ci`; P2 resolved). The work is one extension, `internal/core/ext_packaging*.go`, plus the packages `internal/projectio`, `internal/supportbundle`, `internal/scrub`, `internal/applog`, `internal/backup/location*.go`, `internal/storage/schema.go` and `internal/workflow/suspend.go`. The base files only gained single-line hooks: `RequireLicensed` in `Core.CreateProject`, `CreateAgent`, `StartTask`, `Respond` and `StartTemplate`; `gateMethods` in `Core.Methods()`; `fileLog` in `Core.logf`; `applyPendingRestore` at the top of `Core.Open`; `licenseChannelAllowed` behind `Core.ChannelAllowed`; the room responder's `Enabled` hook.
 
 ### License (sections 10)
 
@@ -236,7 +236,7 @@ Everything below is built and tested on Linux with real SQLite, real files and r
 
 ### Not built, or unverified
 
-- Windows: none of this has run there. Sync-folder and network-location detection is a path heuristic (plus a `GetDriveType` check on Windows, compiled with `GOOS=windows go vet` but never run); the Windows version string (`RtlGetVersion`), disk free space (`GetDiskFreeSpaceEx`) and `VACUUM INTO` under Defender and concurrent writes are unproven. WebView2 version is not read (the bundle field stays empty); "last conformance results" are not included in the bundle (the Connections service does not expose them).
+- Windows: these packages' tests pass on `windows-latest`, so the support bundle's Windows version string (`RtlGetVersion`) and disk free space (`GetDiskFreeSpaceEx`) and a `VACUUM INTO` backup run there. Not covered on Windows: a real network drive or sync folder (detection is a path heuristic plus a `GetDriveType` check), and `VACUUM INTO` while other writes run. WebView2 version is not read (the bundle field stays empty); "last conformance results" are not included in the bundle (the Connections service does not expose them).
 - Diagnostics consent categories (crash reports, usage counters, OTel) are not part of this work.
 - The UI is built (Linux only): the sidebar's Workspace section has License (`/license`), Backups (`/backups`: back up now, schedule and location, verify, staged restore, databases kept from earlier restores), Export and import (`/data`) and Support bundle (`/support`), all in `ui/app/screens`; they open without a project and work in every license state. No machine binding, no revocation, no `min_app`/`max_app` window.
 - A restore is applied at the next start; there is no in-app "restart now" (the shell must offer it).

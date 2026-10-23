@@ -106,7 +106,7 @@ func Run(assets fs.FS) error {
 	})
 	bridge.app = wa
 	// the tools folder the download carries beside drydock.exe (decision P77): installed from there at the first start
-	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), PickFile: func(_ context.Context, p core.FilePick) (string, error) {
+	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, PickFile: func(_ context.Context, p core.FilePick) (string, error) {
 		// the window's own Open dialog (the Security page's "Choose file..."); "" when the person cancels
 		if wa == nil {
 			return "", fmt.Errorf("the window is not open yet")

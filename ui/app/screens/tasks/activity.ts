@@ -1,6 +1,8 @@
 // A task's agent activity as turns (decision P87): the typed events of one agent process (api/agui.gen.ts, modelled on
 // AG-UI 1.0) folded into what the task page draws. Each RUN_STARTED opens a turn; its messages, reasoning and tool calls
-// are listed in the order they happened; RUN_FINISHED and RUN_ERROR close it. The plan is the newest PLAN snapshot.
+// are listed in the order they happened; RUN_FINISHED and RUN_ERROR close it. A turn that failed (the core reads an agent's
+// failed turn as RUN_ERROR) is an error, one RUN_FINISHED with the cancelled outcome was stopped before it finished, and only
+// the success outcome (or none: AG-UI reads an absent outcome as success) is done. The plan is the newest PLAN snapshot.
 
 import type { AguiEvent, PlanEntry } from '../../api/agui.gen.ts';
 
@@ -12,6 +14,9 @@ export interface ToolItem {
   args: string;
   result?: string;
   isError: boolean;
+  /** When the call started and when its result came (ms since the epoch, from the events). */
+  at: number;
+  endAt?: number;
 }
 
 /** A wait for a person (a permission request) and, once answered, how (P88). */
@@ -22,17 +27,28 @@ export interface WaitItem {
   expiresAt?: number;
   /** The gate's outcome: approved, approved_with_edits, rejected, timed_out, cancelled, denied. Absent while it waits. */
   outcome?: string;
+  at: number;
 }
 
-export type ActivityItem = { kind: 'text'; id: string; text: string } | { kind: 'reasoning'; id: string; text: string } | ToolItem | WaitItem;
+/** A message or the reasoning, with when it started and when its last part came (ms since the epoch). */
+export interface TextItem {
+  kind: 'text' | 'reasoning';
+  id: string;
+  text: string;
+  at: number;
+  endAt?: number;
+}
 
-export type TurnStatus = 'running' | 'done' | 'stopped' | 'error';
+export type ActivityItem = TextItem | ToolItem | WaitItem;
+
+export type TurnStatus = 'running' | 'done' | 'cancelled' | 'error';
 
 export interface Turn {
   runId: string;
   status: TurnStatus;
   startedAt: number;
   endedAt?: number;
+  /** The agent's word for how the turn ended (end_turn, interrupted, ...); absent when its program ended during the turn. */
   stopReason?: string;
   error?: string;
   items: ActivityItem[];
@@ -42,7 +58,7 @@ export interface Turn {
 export function turnsOf(events: readonly AguiEvent[]): Turn[] {
   const turns: Turn[] = [];
   let cur: Turn | undefined;
-  const texts = new Map<string, { text: string }>();
+  const texts = new Map<string, TextItem>();
   const tools = new Map<string, ToolItem>();
   const waits = new Map<string, WaitItem>();
   const open = (runId: string, at: number): Turn => {
@@ -58,7 +74,7 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
         break;
       case 'RUN_FINISHED': {
         const t = turn(e.timestamp);
-        t.status = e.outcome === 'stopped' ? 'stopped' : 'done';
+        t.status = e.outcome?.type === 'cancelled' ? 'cancelled' : 'done';
         t.endedAt = e.timestamp;
         if (e.stopReason) t.stopReason = e.stopReason;
         cur = undefined;
@@ -74,7 +90,7 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
       }
       case 'TEXT_MESSAGE_START':
       case 'REASONING_MESSAGE_START': {
-        const item = { kind: e.type === 'TEXT_MESSAGE_START' ? ('text' as const) : ('reasoning' as const), id: e.messageId, text: '' };
+        const item: TextItem = { kind: e.type === 'TEXT_MESSAGE_START' ? 'text' : 'reasoning', id: e.messageId, text: '', at: e.timestamp };
         turn(e.timestamp).items.push(item);
         texts.set(e.messageId, item);
         break;
@@ -84,16 +100,23 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
         let item = texts.get(e.messageId);
         if (!item) {
           // content whose start was before the events read: it still shows
-          const made = { kind: e.type === 'TEXT_MESSAGE_CONTENT' ? ('text' as const) : ('reasoning' as const), id: e.messageId, text: '' };
+          const made: TextItem = { kind: e.type === 'TEXT_MESSAGE_CONTENT' ? 'text' : 'reasoning', id: e.messageId, text: '', at: e.timestamp };
           turn(e.timestamp).items.push(made);
           texts.set(e.messageId, made);
           item = made;
         }
         item.text += e.delta;
+        item.endAt = e.timestamp;
+        break;
+      }
+      case 'TEXT_MESSAGE_END':
+      case 'REASONING_MESSAGE_END': {
+        const item = texts.get(e.messageId);
+        if (item) item.endAt = e.timestamp;
         break;
       }
       case 'TOOL_CALL_START': {
-        const item: ToolItem = { kind: 'tool', id: e.toolCallId, name: e.toolCallName, args: '', isError: false };
+        const item: ToolItem = { kind: 'tool', id: e.toolCallId, name: e.toolCallName, args: '', isError: false, at: e.timestamp };
         turn(e.timestamp).items.push(item);
         tools.set(e.toolCallId, item);
         break;
@@ -106,17 +129,18 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
       case 'TOOL_CALL_RESULT': {
         let item = tools.get(e.toolCallId);
         if (!item) {
-          item = { kind: 'tool', id: e.toolCallId, name: '', args: '', isError: false };
+          item = { kind: 'tool', id: e.toolCallId, name: '', args: '', isError: false, at: e.timestamp };
           turn(e.timestamp).items.push(item);
           tools.set(e.toolCallId, item);
         }
         item.result = e.content;
         item.isError = !!e.isError;
+        item.endAt = e.timestamp;
         break;
       }
       case 'CUSTOM':
         if (e.name === 'drydock.interrupt') {
-          const item: WaitItem = { kind: 'wait', id: e.value.id, title: e.value.title, expiresAt: e.value.expiresAt };
+          const item: WaitItem = { kind: 'wait', id: e.value.id, title: e.value.title, expiresAt: e.value.expiresAt, at: e.timestamp };
           turn(e.timestamp).items.push(item);
           waits.set(item.id, item);
         } else if (e.name === 'drydock.resume') {
@@ -131,12 +155,12 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
   return turns;
 }
 
-/** How a wait ended, in words. */
-export function waitOutcomeText(outcome: string | undefined): string {
+/** How a wait ended, in words. A wait in a turn that ended with no answer (the answer came after it, or never) is over. */
+export function waitOutcomeText(outcome: string | undefined, running = true): string {
   switch (outcome) {
     case undefined:
     case '':
-      return 'Waiting for you';
+      return running ? 'Waiting for you' : 'Not answered before the turn ended';
     case 'approved':
       return 'Allowed once by you';
     case 'approved_with_edits':
@@ -175,7 +199,7 @@ export function turnSummary(t: Turn): string {
   const failed = tools.filter((i) => i.isError).length;
   const parts = [tools.length === 1 ? '1 tool call' : `${tools.length} tool calls`];
   if (failed) parts.push(`${failed} failed`);
-  const end = t.status === 'running' ? 'working' : t.status === 'done' ? 'done' : t.status === 'stopped' ? 'stopped' : 'error';
+  const end = t.status === 'running' ? 'working' : t.status === 'done' ? 'done' : t.status === 'cancelled' ? 'stopped' : 'error';
   return `${parts.join(', ')} · ${end}`;
 }
 

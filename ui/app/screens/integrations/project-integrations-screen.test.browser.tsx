@@ -80,6 +80,8 @@ describe("a project's Integrations page: app sync", () => {
     expect(tiles[1]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('not assigned');
     expect(tiles[1]!.textContent).toContain('Not assigned to this project');
     expect(r.$$('[data-testid="project-integration"]').length).toBe(1);
+    // the group is named as on the workspace's page
+    expect(r.$('[data-testid="project-app-sync"] h2')!.textContent).toBe('Services');
     const lin = await open(r, 'linear');
     expect(lin.getAttribute('data-assigned')).toBe('true');
     expect(lin.querySelector('[role="img"][aria-label="Linear"]')).not.toBeNull();
