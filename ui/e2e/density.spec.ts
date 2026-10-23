@@ -1,7 +1,7 @@
 // The density budget (the UI audit of 2026-10-19, docs/ui-audit-2026-10-19.md, "Keeping it fixed"). Every page of the real app on the
 // real core is measured at a laptop's usual size (1366 x 768) and at 1024 wide, and held to what the audit set:
 //   - no paragraph over 200 characters on a page (the detail belongs in the Guide), no subtitle over 140 characters;
-//   - text only at the sizes of the type scale (12, 13, 14, 16, 20, 24, 28 px) and the weights 400, 500, 600 and 700;
+//   - text only at the sizes of the type scale (12, 12.5, 13, 15, 18, 22 px: graphite, P97) and the weights 400, 500, 600 and 700;
 //   - no two neighbouring texts in a row closer than 8 px;
 //   - no control smaller than 28 px high and 24 px wide (the label of a box or a switch is its target);
 //   - no text said more than twice on a page outside a table or a list;
@@ -9,12 +9,12 @@
 //   - no two controls overlapping, and a button beside a dropdown or a text box centred on it (2026-10-20).
 // A page that has a reason to break one lists it in EXEMPT with the reason.
 import { expect, test, type Page } from '@playwright/test';
-import { appUrl, choose, createAgent, createProject, projectNav } from './helpers';
+import { appUrl, choose, createAgent, createProject, openNewAgent, projectNav } from './helpers';
 
 const ROUTES = [
-  '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
+  '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
   '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
-  '/library', '/library/skills', '/connections', '/github', '/security-scan', '/providers', '/routing', '/backups', '/data', '/support', '/license',
+  '/library', '/library/skills', '/connections', '/github', '/security-scan', '/providers', '/models', '/routing', '/backups', '/data', '/support', '/license',
   '/settings', '/guide', '/guide/scan',
 ];
 
@@ -58,7 +58,7 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
       const s = getComputedStyle(el);
       const size = parseFloat(s.fontSize);
       const weight = s.fontWeight;
-      if (![12, 13, 14, 16, 20, 24, 28].includes(size) || !['400', '500', '600', '700'].includes(weight)) out.sizes.push(`${label(el)} ${size}px/${weight} "${o.slice(0, 40)}"`);
+      if (![12, 12.5, 13, 15, 18, 22].includes(size) || !['400', '500', '600', '700'].includes(weight)) out.sizes.push(`${label(el)} ${size}px/${weight} "${o.slice(0, 40)}"`);
       if (o.length > 200 && !inGuide && /^(p|div|span|li|small|label)$/i.test(el.tagName)) out.long.push(`${o.length}: ${o.slice(0, 90)}`);
       const norm = o.replace(/\s+/g, ' ').toLowerCase();
       if (norm.length >= 12 && !el.closest('table, ul, ol, dl, [role=list], [role=table], nav, h1, h2, h3, h4, a, button, label, summary, [role=tab]')) texts.set(norm, (texts.get(norm) ?? 0) + 1);
@@ -70,10 +70,18 @@ async function measure(page: Page): Promise<{ findings: Finding[]; overflowX: bo
       if (sub && (sub.innerText ?? '').trim().length > 140) out.subtitle.push(`${(sub.innerText ?? '').trim().length}: ${(sub.innerText ?? '').trim().slice(0, 80)}`);
     }
     // text that touches the next text in a row
+    // the text an editor or a terminal draws is not the element's: they draw their lines in their own clipped viewport (on the
+    // Windows runner, whose column is narrower, a clipped line of the task page's diff ran under the properties beside it)
+    const DRAWN = '.monaco-editor, .xterm';
     const textBox = (el: Element) => {
-      const rg = document.createRange();
-      rg.selectNodeContents(el);
-      const rects = Array.from(rg.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+      const rects: DOMRect[] = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.textContent?.trim() || n.parentElement?.closest(DRAWN)) continue;
+        const rg = document.createRange();
+        rg.selectNodeContents(n);
+        rects.push(...Array.from(rg.getClientRects()).filter((r) => r.width > 0 && r.height > 0));
+      }
       if (!rects.length) return null;
       return { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)), top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)) };
     };
@@ -200,10 +208,8 @@ test('every page keeps to the density budget: short text, the type scale, room b
   await page.setViewportSize({ width: 1366, height: 768 });
   await createProject(page, 'gocalc-density');
   await createAgent(page, 'Worker One', 'backend');
-  await expect(async () => {
-    await projectNav(page, 'nav-team');
-    await page.getByLabel('Agent name').fill('Reviewer One', { timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+  await openNewAgent(page);
+  await page.getByLabel('Agent name').fill('Reviewer One');
   await page.getByLabel('Role', { exact: true }).fill('reviewer');
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   await page.getByRole('button', { name: 'Create agent' }).click();
@@ -220,7 +226,7 @@ test('every page keeps to the density budget: short text, the type scale, room b
   await choose(page.getByLabel('Worker', { exact: true }), { label: 'Worker One (backend)' });
   await choose(page.getByLabel('Reviewer', { exact: true }), { label: 'Reviewer One (reviewer)' });
   await page.getByRole('button', { name: 'Assign' }).click();
-  await page.getByRole('button', { name: 'Start' }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByText('Needs your decision')).toBeVisible({ timeout: 120_000 });
 
   const base = new URL(appUrl());

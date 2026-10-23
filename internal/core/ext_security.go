@@ -69,7 +69,7 @@ func init() {
 				r.Cancel()
 			}
 		})
-		return map[string]Method{
+		methods := map[string]Method{
 			// without a project: the tools and the rules folder of folder scans
 			"security.tools": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -133,12 +133,21 @@ func init() {
 			}) (any, error) {
 				return s.folders(ctx, p.Limit)
 			}),
+			// every scan in progress, of a project or a folder (the sidebar's Running count, the inbox's Running tab)
+			"security.scan.running": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				return s.runningScans(ctx), nil
+			}),
 			"security.scan.report": bind(func(ctx context.Context, p struct {
 				ID string `json:"id"`
 			}) (any, error) {
 				return s.report(ctx, p.ID)
 			}),
-		}, s.close, nil
+		}
+		// one finding: dismiss, restore, the code around it, a task from it (ext_security_findings.go, decision P97)
+		for name, m := range s.findingMethods() {
+			methods[name] = m
+		}
+		return methods, s.close, nil
 	}})
 }
 
@@ -342,13 +351,14 @@ func (s *securityExt) forgetChoices(ctx context.Context) {
 func (s *securityExt) rulesDir(_ context.Context, _ string) string { return s.c.cfg.ScanRulesDir }
 
 func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
+	jobs := s.installJobs() // first: see installJobs
 	paths, rules := s.paths(ctx), s.rulesDir(ctx, projectID)
 	key := fmt.Sprintf("%s|%v|%v|%s|%v|%v|%s", paths.OSV.Path, paths.OSV.Chosen, paths.OSV.Installed, paths.Opengrep.Path, paths.Opengrep.Chosen, paths.Opengrep.Installed, rules)
 	s.memoMu.Lock()
 	if s.memo.key == key && time.Since(s.memo.at) < toolsMemoTTL && toolsStamp(s.memo.v) == s.memo.stamp {
 		t := s.memo.v
 		s.memoMu.Unlock()
-		return s.withInstalls(t)
+		return s.withInstalls(t, jobs)
 	}
 	s.memoMu.Unlock()
 	// the external tools read the whole project: they get what every project command gets (checks.CommandEnv), no more
@@ -357,7 +367,7 @@ func (s *securityExt) tools(ctx context.Context, projectID string) scan.Tools {
 	s.memoMu.Lock()
 	s.memo.key, s.memo.stamp, s.memo.at, s.memo.v = key, toolsStamp(t), time.Now(), t
 	s.memoMu.Unlock()
-	return s.withInstalls(t)
+	return s.withInstalls(t, jobs)
 }
 
 // paths are the configured tools with the one Drydock installed in place of each (decision P66).
@@ -438,6 +448,8 @@ func (s *securityExt) changed(t target, rep scan.Report, engine scan.EngineID) {
 		}
 		return
 	}
+	// the findings a person dismissed before are marked and left out of the counts and the summary it is stored with
+	s.overlay(ctx, t.Key, &rep)
 	stored := true
 	if err := s.store(ctx, t, rep); err != nil {
 		s.c.logf("security scan %s: store: %v", rep.ID, err)
@@ -488,27 +500,15 @@ func (s *securityExt) cancel(t target) (any, error) {
 	return r.Snapshot(), nil
 }
 
-// current is the running scan, else a finished one the database refused, else the last stored one, else nil.
+// current is the running scan, else a finished one the database refused, else the last stored one, else nil; its findings
+// marked with the dismissals as they are now.
 func (s *securityExt) current(ctx context.Context, t target) (any, error) {
-	s.mu.Lock()
-	r, ok := s.running[t.Key]
-	kept, held := s.unstored[t.Key]
-	s.mu.Unlock()
-	if ok {
-		return r.Snapshot(), nil
-	}
-	if held {
-		return kept, nil
-	}
-	var doc string
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE project_id=? ORDER BY started_at DESC, id DESC LIMIT 1`, t.Key).Scan(&doc)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
+	rep, err := s.lastReport(ctx, t)
+	if err != nil || rep == nil {
 		return nil, err
 	}
-	return decodeReport(doc)
+	s.overlay(ctx, t.Key, rep)
+	return rep, nil
 }
 
 func decodeReport(doc string) (*scan.Report, error) {
@@ -525,16 +525,22 @@ func decodeReport(doc string) (*scan.Report, error) {
 	return &rep, nil
 }
 
+// report is a stored scan's report, its findings marked with the dismissals as they are now.
 func (s *securityExt) report(ctx context.Context, id string) (*scan.Report, error) {
-	var doc string
-	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT report_json FROM security_scans WHERE id=?`, id).Scan(&doc)
+	var key, doc string
+	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT project_id, report_json FROM security_scans WHERE id=?`, id).Scan(&key, &doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("there is no scan %s", id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return decodeReport(doc)
+	rep, err := decodeReport(doc)
+	if err != nil {
+		return nil, err
+	}
+	s.overlay(ctx, key, rep)
+	return rep, nil
 }
 
 func historyLimit(limit int) int {
@@ -616,6 +622,57 @@ func mergeFolderScans(running, stored []scan.Summary, limit int) []scan.Summary 
 	if len(out) > limit {
 		out = out[:limit]
 	}
+	return out
+}
+
+// RunningScan is a scan in progress as the workspace lists it: what it reads, by whom, and each engine's state and count.
+type RunningScan struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId,omitempty"`
+	Folder    string `json:"folder,omitempty"` // a folder scan's folder (decision P61)
+	// Name is what the scan reads, as a person names it: the project's name, or the folder's last element.
+	Name      string              `json:"name"`
+	By        string              `json:"by"`
+	StartedAt int64               `json:"startedAt"`
+	Engines   []scan.EngineResult `json:"engines"`
+	Counts    scan.Counts         `json:"counts"`
+}
+
+// runningScans lists every scan in progress, newest first.
+func (s *securityExt) runningScans(ctx context.Context) []RunningScan {
+	type entry struct {
+		key string
+		rep scan.Report
+	}
+	var live []entry
+	s.mu.Lock()
+	for key, r := range s.running {
+		live = append(live, entry{key, r.Snapshot()})
+	}
+	s.mu.Unlock()
+	out := []RunningScan{}
+	for _, e := range live {
+		if e.rep.Status != scan.StatusRunning { // finished a moment ago, about to leave the running ones
+			continue
+		}
+		rs := RunningScan{ID: e.rep.ID, ProjectID: e.rep.ProjectID, By: e.rep.By, StartedAt: e.rep.StartedAt, Engines: e.rep.Engines, Counts: e.rep.Counts}
+		if strings.HasPrefix(e.key, folderPrefix) {
+			rs.Folder = e.rep.Dir
+			rs.Name = filepath.Base(e.rep.Dir)
+		} else if p, err := s.c.GetProject(ctx, e.rep.ProjectID); err == nil {
+			rs.Name = p.Name
+		}
+		if rs.Engines == nil {
+			rs.Engines = []scan.EngineResult{}
+		}
+		out = append(out, rs)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].StartedAt != out[j].StartedAt {
+			return out[i].StartedAt > out[j].StartedAt
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 

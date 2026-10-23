@@ -1,8 +1,8 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
-import type { Task } from '../../api/types.ts';
+import type { Task, TaskSummary } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, drain, mount, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/render.tsx';
 import { SchedulerPanel } from './scheduler-panel.tsx';
 import { TaskCreateScreen } from './task-create-screen.tsx';
 import { TaskListScreen } from './task-list-screen.tsx';
@@ -11,7 +11,6 @@ import { recorder, svc, task } from './testing.ts';
 afterEach(() => {
   cleanup();
   try {
-    localStorage.removeItem('drydock.tasks.filter');
     localStorage.removeItem('drydock.tasks.view');
   } catch {
     /* ignore */
@@ -20,227 +19,439 @@ afterEach(() => {
 
 const status = { settings: { maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } }, activeRuns: 0, agentSlotsInUse: 0, peakAgentSlots: 1 } as never;
 
-const tasks: Task[] = [
-  task({ id: 't1', seq: 1, title: 'Add Multiply', status: 'VERIFICATION', updated: Date.now() - 120_000, costUsd: 0.25 }),
-  task({ id: 't2', seq: 2, title: 'Add Divide', status: 'BACKLOG', assignee: undefined, reviewer: undefined }),
-  task({ id: 't3', seq: 3, title: 'Fix rounding', status: 'COMPLETED', branch: 'drydock/t3' }),
+const NOW = Date.now();
+
+// TEST DOUBLES (labelled): task.summaries rows as the core writes them, one per step of the board
+const sum = (over: Partial<TaskSummary>): TaskSummary => ({
+  taskId: 't',
+  projectId: 'prj_1',
+  projectKey: 'GOC',
+  seq: 1,
+  title: 'T',
+  status: 'IN_PROGRESS',
+  labels: [],
+  criteria: 0,
+  step: 'code',
+  stepIndex: 1,
+  stepCount: 5,
+  attempt: 1,
+  maxAttempts: 5,
+  checks: [],
+  pendingCount: 0,
+  updatedAt: NOW - 60_000,
+  ...over,
+});
+
+const pending = (phase: string, requestId = 'req_1', runId = 'run_1') => ({ kind: phase === 'spec' || phase === 'merge' ? 'review' : phase, phase, title: `Request ${phase}`, requestId, runId, createdAt: NOW - 60_000 });
+
+const allPassed = ['build', 'test', 'lint', 'typecheck', 'secrets', 'deps', 'ci', 'preview'].map((kind) => ({ kind, status: 'passed' }));
+
+const SUMMARIES: TaskSummary[] = [
+  sum({ taskId: 'gate', seq: 41, title: 'Add a changelog entry', status: 'WAITING_HUMAN', step: 'spec', stepIndex: 0, criteria: 4, template: 'Feature', labels: ['docs'], assignee: 'a1', startedAt: NOW - 120_000, pending: pending('spec', 'req_spec'), pendingCount: 1 }),
+  sum({ taskId: 'draft', seq: 44, title: 'Support hex input', status: 'IN_PROGRESS', step: 'spec', stepIndex: 0, assignee: 'a1', presence: 'Working', startedAt: NOW - 30_000 }),
+  sum({ taskId: 'next', seq: 46, title: 'Write the README', status: 'BACKLOG', step: 'spec', stepIndex: 0 }),
+  sum({ taskId: 'build', seq: 43, title: 'Parse negative exponents', step: 'code', stepIndex: 1, attempt: 3, assignee: 'a1', presence: 'Working', doing: 'Running go test ./...', startedAt: NOW - 587_000, diff: { files: 2, insertions: 48, deletions: 6 }, labels: ['parser'] }),
+  sum({
+    taskId: 'check',
+    seq: 40,
+    title: 'Divide by zero says so',
+    step: 'code',
+    stepIndex: 1,
+    assignee: 'a1',
+    presence: 'Working',
+    startedAt: NOW - 100_000,
+    checks: [
+      { kind: 'test', status: 'passed' },
+      { kind: 'lint', status: 'passed' },
+      { kind: 'typecheck', status: 'passed' },
+      { kind: 'secrets', status: 'passed' },
+      { kind: 'deps', status: 'passed' },
+      { kind: 'ci', status: 'running' },
+      { kind: 'preview', status: 'failed', reason: 'the page did not start on port 5173' },
+    ],
+  }),
+  sum({ taskId: 'merge', seq: 38, title: 'Cover the empty case', status: 'VERIFICATION', step: 'you', stepIndex: 4, assignee: 'a1', reviewer: 'a2', verdict: 'SHIP', checks: allPassed, diff: { files: 2, insertions: 31, deletions: 2 }, pending: pending('merge', 'req_merge', 'run_38'), pendingCount: 1, startedAt: NOW - 900_000 }),
+  sum({ taskId: 'done', seq: 37, title: 'Trim spaces in input', status: 'COMPLETED', step: 'done', stepIndex: 5, completedAt: NOW - 60_000, startedAt: NOW - 120_000, assignee: 'a1' }),
+  sum({ taskId: 'gone', seq: 36, title: 'Try a faster parser', status: 'FAILED', step: 'code', stepIndex: 1, completedAt: NOW - 7_200_000 }),
 ];
 
-const rows = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="task-row"]'));
-const columns = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="board-column"]'));
-const pressed = (r: ReturnType<typeof mount>, id: string) => r.$(`[data-testid="${id}"]`)!.getAttribute('aria-pressed');
+const LEAD_TASKS: Task[] = [task({ id: 'next', seq: 46, title: 'Write the README', origin: 'lead:2' })];
 
-async function listed(r: ReturnType<typeof mount>, n: number) {
+type Opts = Parameters<typeof svc>[0];
+
+function board(client: Opts = {}, opts: Parameters<typeof svc>[1] = {}, list: TaskSummary[] = SUMMARIES, extra: { partial?: boolean; total?: number } = {}) {
+  const taskSummaries = recorder(async () => ({ summaries: list, total: extra.total ?? list.length, partial: extra.partial ?? false }));
+  const taskCount = recorder(async (_p: string, statuses?: string[]) => ({ total: statuses?.length ? 6 : list.length }));
+  const navigated: string[] = [];
+  const s = svc(
+    {
+      schedulerStatus: async () => status,
+      taskSummaries,
+      taskCount: taskCount as never,
+      presenceList: async () => [{ agentId: 'a1', presence: 'Working', taskId: 'build' } as never],
+      ...client,
+    },
+    { tasks: LEAD_TASKS, ...opts },
+  );
+  const r = mount(<TaskListScreen onNavigate={(h) => void navigated.push(h)} />, s);
+  return { s, r, taskSummaries, taskCount, navigated };
+}
+
+const cards = (r: ReturnType<typeof mount>) => Array.from(r.$$('[data-testid="task-row"]')) as HTMLElement[];
+const card = (r: ReturnType<typeof mount>, id: string) => r.$(`[data-testid="task-row"][data-task-id="${id}"]`) as HTMLElement;
+const column = (r: ReturnType<typeof mount>, name: string) => r.$(`[data-testid="board-column"][data-column="${name}"]`) as HTMLElement;
+const idsIn = (el: Element) => Array.from(el.querySelectorAll('[data-testid="task-row"]')).map((c) => c.getAttribute('data-task-id'));
+
+async function shown(r: ReturnType<typeof mount>, n: number) {
   await waitFor(() => {
-    if (rows(r).length !== n) throw new Error(`have ${rows(r).length}`);
+    if (cards(r).length !== n) throw new Error(`have ${cards(r).length}`);
   }, r);
 }
 
-async function showList(r: ReturnType<typeof mount>) {
-  await r.act(() => (r.$('[data-testid="task-view-list"]') as HTMLButtonElement).click());
-  await waitFor(() => expect(pressed(r, 'task-view-list')).toBe('true'), r);
+/** The menu's popover surface is showing (role="menu" is the list inside it). */
+const menuOpen = (r: ReturnType<typeof mount>) => Array.from(r.$$('[role="menu"]')).some((m) => m.closest('[popover]')?.matches(':popover-open'));
+
+/** Open a menu by its trigger (a menu still finishing its last selection ignores a click, so it is repeated until it shows). */
+async function openMenu(r: ReturnType<typeof mount>, trigger: HTMLElement) {
+  await r.act(() => trigger.click());
+  await waitFor(() => {
+    if (!menuOpen(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+    expect(menuOpen(r)).toBe(true);
+  }, r);
 }
 
+async function pick(r: ReturnType<typeof mount>, trigger: HTMLElement, selector: string) {
+  await openMenu(r, trigger);
+  const item = r.$(selector) as HTMLElement;
+  await r.act(() => item.click());
+  await waitFor(() => expect(menuOpen(r)).toBe(false), r);
+}
+
+const key = (k: string, target: EventTarget = document.body, init: KeyboardEventInit = {}) =>
+  target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }));
+
 describe('TaskListScreen: the board', () => {
-  it('is the default view: four columns, each card a link with the number, status, crew dots, cost and age', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
-    await listed(r, 3);
-    expect(pressed(r, 'task-view-board')).toBe('true');
-    expect(pressed(r, 'task-view-list')).toBe('false');
-    expect(columns(r).map((c) => c.getAttribute('data-column'))).toEqual(['next', 'working', 'needs', 'done']);
-    expect(columns(r).map((c) => c.getAttribute('aria-label'))).toEqual(['Up next', 'Crew working', 'Needs you', 'Merged / Done']);
-    // Up next holds the backlog, Crew working the task awaiting approval, Merged / Done the completed one
-    const [next, working, needs, done] = columns(r);
-    expect(next!.querySelector('[data-testid="task-row"]')!.textContent).toContain('Add Divide');
-    expect(working!.querySelector('[data-testid="task-row"]')!.textContent).toContain('Add Multiply');
-    expect(needs!.querySelectorAll('[data-testid="task-row"]').length).toBe(0);
-    expect(needs!.textContent).toContain('Nothing needs you');
-    expect(done!.querySelector('[data-testid="task-row"]')!.textContent).toContain('Fix rounding');
-    expect(byText(r.container, 'a', /Describe a task/).getAttribute('href')).toBe('/tasks/new');
-
-    const card = working!.querySelector('[data-testid="task-row"]')!;
-    expect(card.getAttribute('data-status')).toBe('VERIFICATION');
-    expect(card.querySelector('a')!.getAttribute('href')).toBe('/task/t1');
-    expect(card.querySelector('a')!.textContent).toBe('Add Multiply');
-    expect(card.querySelector('[data-testid="task-status"]')!.textContent).toContain('Awaiting your approval');
-    expect(card.textContent).toContain('#1');
-    expect(card.textContent).toContain('$0.25');
-    expect(card.textContent).toContain('2m');
-    await waitFor(() => expect(card.textContent).toContain('Worker: Dana. Reviewer: Rex.'), r);
-    expect(card.textContent).toContain('Dana writes · Rex reviews');
-    expect(card.querySelectorAll('[data-dot="true"]').length).toBe(2);
-    const backlog = next!.querySelector('[data-testid="task-row"]')!;
-    expect(backlog.textContent).toContain('Worker: unassigned. Reviewer: unassigned.');
-    expect(backlog.textContent).toContain('cost not reported');
-    expect(done!.querySelector('[data-testid="task-row"]')!.textContent).toContain('drydock/t3');
-    // nothing is approved from the board
-    expect(Array.from(r.$$('button')).map((b) => b.textContent?.trim())).not.toContain('Approve');
-    expect(byText(r.container, 'a', 'New task').getAttribute('href')).toBe('/tasks/new');
-    expect(r.$('h1')!.textContent).toContain('Tasks');
-    expect(r.container.textContent).toContain('3 tasks · 1 needs you');
+  it('has the bar of the mockup: the project, Board / List / Timeline, the filters, the crew line and New task (C)', async () => {
+    const { r, taskSummaries } = board();
+    await shown(r, 8);
+    expect(r.$('h1')!.textContent).toContain('gocalc');
+    const tabs = Array.from(r.$$('[role="tab"]')).map((x) => [x.textContent, x.getAttribute('data-testid'), x.getAttribute('aria-selected')]);
+    expect(tabs).toEqual([
+      ['Board', 'task-view-board', 'true'],
+      ['List', 'task-view-list', 'false'],
+      ['Timeline', 'task-view-timeline', 'false'],
+    ]);
+    expect(r.$('[data-testid="filter-agent"]')!.textContent).toBe('Agent');
+    expect(r.$('[data-testid="filter-label"]')!.textContent).toBe('Label');
+    expect(r.$('[data-testid="filter-needs-me"]')!.getAttribute('aria-pressed')).toBe('false');
+    // one agent works (its presence), two tasks wait for the person (the spec gate and the merge)
+    await waitFor(() => expect(r.$('[data-testid="crew-line"]')!.textContent).toBe('1 agent working · 2 waiting on you'), r);
+    const add = byText(r.container, 'a', /New task/);
+    expect(add.getAttribute('href')).toBe('/tasks/new');
+    expect(add.getAttribute('aria-keyshortcuts')).toBe('C');
+    expect(add.querySelector('kbd')!.textContent).toBe('C');
+    // the board reads its project's summaries (the sidebar's Running count reads the workspace's, projectId "")
+    expect(taskSummaries.calls.filter((c) => ((c as unknown[])[0] as { projectId: string }).projectId !== '')[0]).toEqual([{ projectId: 'prj_1' }]);
   });
 
-  it('a task waiting for you is highlighted in Needs you with an Open link to its page; so is a task whose run asks for you', async () => {
-    const list = [...tasks, task({ id: 't4', seq: 4, title: 'Ship the invoice export', status: 'WAITING_HUMAN' })];
-    const needsYouList = async () => [{ key: 'k1', kind: 'question', severity: 2, title: 'Which API?', taskId: 't2', createdAt: '' }] as never;
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, needsYouList }, { tasks: list }));
-    await listed(r, 4);
-    const needs = columns(r)[2]!;
-    await waitFor(() => expect(needs.querySelectorAll('[data-testid="task-row"]').length).toBe(2), r);
-    const cards = Array.from(needs.querySelectorAll('[data-testid="task-row"]'));
-    expect(cards.map((c) => c.getAttribute('data-needs'))).toEqual(['true', 'true']);
-    expect(cards.map((c) => c.textContent?.includes('Ship the invoice export') || c.textContent?.includes('Add Divide'))).toEqual([true, true]);
-    const open = cards.find((c) => c.textContent?.includes('Ship the invoice export'))!.querySelector('a[aria-label^="Open"]')!;
-    expect(open.textContent?.trim()).toBe('Open');
-    expect(open.getAttribute('href')).toBe('/task/t4');
-    expect(columns(r)[0]!.querySelectorAll('[data-testid="task-row"]').length).toBe(0);
-    expect(r.container.textContent).toContain('4 tasks · 3 need you');
+  it('five columns from the steps, each with its glyph, name and count; Merged counts this week; failed tasks under Stopped', async () => {
+    const { r, taskCount } = board();
+    await shown(r, 8);
+    const cols = Array.from(r.$$('[data-testid="board-column"]'));
+    expect(cols.map((c) => c.getAttribute('aria-label'))).toEqual(['Spec', 'Building', 'Checks', 'Review', 'Merged']);
+    expect(cols.map((c) => c.querySelector('h2 svg')?.getAttribute('aria-hidden'))).toEqual(['true', 'true', 'true', 'true', 'true']);
+    expect(idsIn(column(r, 'spec'))).toEqual(['gate', 'draft', 'next']);
+    expect(idsIn(column(r, 'building'))).toEqual(['build']);
+    // a pass under way: Checks
+    expect(idsIn(column(r, 'checks'))).toEqual(['check']);
+    expect(idsIn(column(r, 'review'))).toEqual(['merge']);
+    expect(idsIn(column(r, 'merged'))).toEqual(['done', 'gone']);
+    expect(Array.from(column(r, 'merged').querySelectorAll('[data-testid="stopped"] [data-testid="task-row"]')).map((c) => c.getAttribute('data-task-id'))).toEqual(['gone']);
+    expect(card(r, 'gone').getAttribute('data-column')).toBe('stopped');
+    expect(card(r, 'gone').textContent).toContain('Failed');
+    expect(r.$('[data-testid="stopped-head"]')!.textContent).toContain('Stopped1');
+    const counts = cols.map((c) => c.querySelector('[data-testid="column-count"]')!.textContent);
+    await waitFor(() => expect(column(r, 'merged').querySelector('[data-testid="column-count"]')!.textContent).toBe('6 this week'), r);
+    expect(counts.slice(0, 4)).toEqual(['3', '1', '1', '1']);
+    // the week's count is the core's: completed tasks since seven days ago
+    const week = taskCount.calls.find((c) => (c[1] as string[] | undefined)?.length);
+    expect(week![1]).toEqual(['COMPLETED']);
+    const since = (week as unknown as [string, string[], { completedSince: number }])[2].completedSince;
+    expect(Math.abs(Date.now() - 7 * 86_400_000 - since)).toBeLessThan(60_000);
   });
 
-  it('switches to the list and back, and remembers the choice', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
-    await listed(r, 3);
-    await showList(r);
-    expect(r.$('[data-testid="task-board"]')).toBeNull();
-    expect(r.$('[data-testid="task-filter-waiting"]')).toBeTruthy();
-    expect(localStorage.getItem('drydock.tasks.view')).toBe('list');
-    await r.act(() => (r.$('[data-testid="task-view-board"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(r.$('[data-testid="task-board"]')).toBeTruthy(), r);
-    expect(localStorage.getItem('drydock.tasks.view')).toBe('board');
-    localStorage.setItem('drydock.tasks.view', 'list');
-    const r2 = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
-    await listed(r2, 3);
-    expect(pressed(r2, 'task-view-list')).toBe('true');
-    expect(r2.$('[data-testid="task-board"]')).toBeNull();
+  it('a card is a link to its task, with its key, its tag and its title', async () => {
+    const { r } = board();
+    await shown(r, 8);
+    const c = card(r, 'gate');
+    expect(c.querySelector('h3 a')!.getAttribute('href')).toBe('/task/gate');
+    expect(c.querySelector('h3 a')!.textContent).toBe('Add a changelog entry');
+    expect(c.querySelector('.key')!.textContent).toBe('GOC-41');
+    expect(c.querySelector('[data-testid="card-tag"]')!.textContent).toBe('Waiting on you');
+    expect(c.getAttribute('data-waiting')).toBe('true');
+    expect(card(r, 'merge').querySelector('[data-testid="card-tag"]')!.textContent).toBe('Ready to merge');
+    expect(card(r, 'merge').getAttribute('data-waiting')).toBe('true');
+    expect(card(r, 'build').querySelector('[data-testid="card-tag"]')!.getAttribute('data-kind')).toBe('elapsed');
+    expect(card(r, 'build').querySelector('[data-testid="card-tag"]')!.textContent).toMatch(/^9:4[78]$/);
+    expect(card(r, 'build').getAttribute('data-waiting')).toBeNull();
+    expect(card(r, 'next').querySelector('[data-testid="card-tag"]')!.textContent).toBe('Backlog');
+    expect(card(r, 'done').getAttribute('data-column')).toBe('merged');
+    expect(card(r, 'done').textContent).toContain('Today');
+    expect(card(r, 'done').querySelector('[data-testid="card-tag"]')).toBeNull();
   });
 
-  it('the text filter applies to the board', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
-    await listed(r, 3);
-    await r.act(() => type(byLabel(r.container, 'Filter tasks'), '#3'));
-    await listed(r, 1);
-    expect(rows(r)[0]!.textContent).toContain('Fix rounding');
-    await r.act(() => type(byLabel(r.container, 'Filter tasks'), 'nothing like this'));
-    await listed(r, 0);
-    expect(r.container.textContent).toContain('No tasks match');
+  it('says what each step has to say: the spec gate, the drafting agent, the doing line on its try with progress, the checks and their failure, the verdict', async () => {
+    const { r } = board();
+    await shown(r, 8);
+    // Spec: the gate, the template and the labels; the planner drafting; an unassigned task in the backlog
+    expect(card(r, 'gate').querySelector('[data-testid="spec-gate"]')!.textContent).toBe('Spec gate: 4 acceptance criteria written. Accept, edit or send back with feedback.');
+    expect(Array.from(card(r, 'gate').querySelectorAll('.chips > span')).map((x) => x.textContent)).toEqual(['Feature', 'docs']);
+    expect(card(r, 'gate').querySelector('.who')).toBeNull();
+    expect(card(r, 'draft').querySelector('.who')!.textContent).toBe('Dana is drafting');
+    expect(card(r, 'draft').querySelector('.who [data-dot="true"]')!.getAttribute('data-letters')).toBe('D');
+    expect(card(r, 'next').querySelector('.who')!.textContent).toBe('Not assigned yet');
+    // Building: what the agent does on which try, how far along, who it is, the diff
+    const b = card(r, 'build');
+    expect(b.querySelector('[data-testid="doing"]')!.textContent).toBe('Running go test ./... · 3rd try');
+    const bar = b.querySelector('[role="progressbar"]')!;
+    expect(bar.getAttribute('aria-valuenow')).toBe('20');
+    expect(bar.getAttribute('aria-label')).toBe('GOC-43 progress');
+    expect(b.querySelector('.who .name')!.textContent).toBe('Dana · Claude Code');
+    expect(b.querySelector('.who .chip')!.textContent).toBe('+48\u00a0−6');
+    expect(b.querySelector('[data-testid="checks-bar"]')).toBeNull();
+    // Checks: the bar of the kinds the project runs, the failing check's reason, the agent fixing it
+    const c = card(r, 'check');
+    const checks = c.querySelector('[data-testid="checks-bar"]')!;
+    expect(checks.getAttribute('role')).toBe('img');
+    expect(checks.getAttribute('aria-label')).toBe('Checks: 5 passed, 1 running, 1 failed');
+    expect(Array.from(checks.querySelectorAll('span')).map((x) => [x.getAttribute('data-segment'), x.getAttribute('data-state')])).toEqual([
+      ['tests', 'passed'],
+      ['lint', 'passed'],
+      ['types', 'passed'],
+      ['secrets', 'passed'],
+      ['deps', 'passed'],
+      ['ci', 'running'],
+      ['preview', 'failed'],
+    ]);
+    expect(c.querySelector('[data-testid="failing-check"]')!.textContent).toBe('preview: the page did not start on port 5173');
+    expect(c.querySelector('.who .name')!.textContent).toBe('Dana is fixing it');
+    // Review: every check passed, the verdict with the files and the diff, Merge and View diff
+    const m = card(r, 'merge');
+    expect(m.querySelector('[data-testid="checks-bar"]')!.getAttribute('aria-label')).toBe('Checks: 7 passed');
+    expect(m.querySelector('[data-testid="verdict"]')!.textContent).toBe('Rex approved · 2 files · +31\u00a0−2');
+    expect(byText(m, 'button', 'Merge GOC-38').textContent).toBe('Merge');
+    expect(byText(m, 'a', 'View diff of GOC-38').getAttribute('href')).toBe('/task/merge');
+    expect(byText(m, 'a', 'View diff of GOC-38').textContent).toBe('View diff');
+    // only the ready-to-merge card has buttons to act on; nothing else is decided from the board
+    expect(Array.from(r.$$('[data-testid="task-board"] button')).map((x) => x.textContent?.trim()).filter(Boolean)).toEqual(['Merge']);
   });
-});
 
-// audit 2026-10-16, M27: a task the team lead split off (origin "lead:N") is marked on its card and in its row; every other task,
-// whatever the core sent as its origin, says nothing and draws as before.
-describe('TaskListScreen: tasks the team lead split off', () => {
-  const BADGE = 'Split off by the team lead';
-  const odd: unknown[] = [7, true, {}, ['lead:2'], 'lead:', 'lead:abc', 'lead:-1', 'lead:0', 'lead:1000', 'LEAD:1', ' lead:1', 'lead:1 ', 'user:1', '\u202Elead:1'];
-  const mixed: Task[] = [
-    task({ id: 'a', seq: 11, title: 'Follow-up from the lead', status: 'BACKLOG', origin: 'lead:2' }),
-    task({ id: 'b', seq: 12, title: 'A deeper follow-up', status: 'BACKLOG', origin: 'lead:1' }),
-    task({ id: 'c', seq: 13, title: 'Made by you', status: 'BACKLOG' }),
-    task({ id: 'd', seq: 14, title: 'Empty origin', status: 'BACKLOG', origin: '' }),
-    ...odd.map((origin, i) => task({ id: `o${i}`, seq: 20 + i, title: `Odd origin ${i}`, status: 'BACKLOG', origin: origin as never })),
-  ];
-  const badges = (root: ParentNode) => Array.from(root.querySelectorAll('[data-testid="task-origin"]')) as HTMLElement[];
-  const rowOf = (r: ReturnType<typeof mount>, title: string) => rows(r).find((x) => x.querySelector('a')!.textContent === title)!;
+  it('Merge answers the pending merge request with the run and request ids, as the review panel does, then reads again', async () => {
+    const runRespond = recorder(async () => undefined);
+    const { r, taskSummaries } = board({ runRespond });
+    await shown(r, 8);
+    const before = taskSummaries.calls.length;
+    await r.act(() => byText(card(r, 'merge'), 'button', 'Merge GOC-38').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run_38', 'req_merge', 'approved']]), r);
+    await waitFor(() => expect(taskSummaries.calls.length).toBeGreaterThan(before), r);
+  });
 
-  it('the board marks them on the card, with the step as the tooltip, and nothing else', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks: mixed }));
-    await listed(r, mixed.length);
-    expect(badges(r.container).map((b) => b.textContent)).toEqual([BADGE, BADGE]);
-    const a = badges(rowOf(r, 'Follow-up from the lead'));
-    expect(a).toHaveLength(1);
-    expect(a[0]!.getAttribute('title')).toBe('Step 2 from a task you made');
-    expect(a[0]!.getAttribute('data-tone')).toBe('info');
-    expect(badges(rowOf(r, 'A deeper follow-up'))[0]!.getAttribute('title')).toBe('Step 1 from a task you made');
-    // the badge sits beside the status, and the card is otherwise as before
-    expect(rowOf(r, 'Follow-up from the lead').querySelector('[data-testid="task-status"]')!.textContent).toContain('Backlog');
-    for (const title of ['Made by you', 'Empty origin', ...odd.map((_, i) => `Odd origin ${i}`)]) {
-      const card = rowOf(r, title);
-      expect(card).toBeTruthy();
-      expect(badges(card)).toHaveLength(0);
-      expect(card.textContent).not.toContain(BADGE);
-      expect(card.querySelector('a')!.textContent).toBe(title);
-      expect(card.querySelector('[data-testid="task-status"]')).toBeTruthy();
+  it('shows why a merge failed, and keeps Merge off while read-only', async () => {
+    const { r } = board({ runRespond: async () => Promise.reject(new Error('the request was already answered')) });
+    await shown(r, 8);
+    await r.act(() => byText(card(r, 'merge'), 'button', 'Merge GOC-38').click());
+    await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('the request was already answered'), r);
+    cleanup();
+    const ro = board({}, { license: expiredLicense });
+    await shown(ro.r, 8);
+    await waitFor(() => expect(byText<HTMLButtonElement>(card(ro.r, 'merge'), 'button', 'Merge GOC-38').disabled).toBe(true), ro.r);
+  });
+
+  it('View diff opens the task with the diff in the dock', async () => {
+    const { r, s } = board();
+    await shown(r, 8);
+    const link = byText(card(r, 'merge'), 'a', 'View diff of GOC-38');
+    link.addEventListener('click', (e) => e.preventDefault());
+    await r.act(() => link.click());
+    expect(s.ui.dock.open).toBe(true);
+    expect(s.ui.dock.tab).toBe('diff');
+  });
+
+  it('filters by agent, by label and to what needs the person', async () => {
+    const list = SUMMARIES.map((x) => (x.taskId === 'check' ? { ...x, assignee: 'a2' } : x));
+    const { r } = board({}, {}, list);
+    await shown(r, 8);
+    await pick(r, r.$('[data-testid="filter-agent"]') as HTMLElement, '[role="menu"][aria-label="Agent"] [role="menuitemradio"][data-value="a2"]');
+    // Rex works on one and reviews another
+    await waitFor(() => expect(cards(r).map((c) => c.getAttribute('data-task-id'))).toEqual(['check', 'merge']), r);
+    expect(r.$('[data-testid="filter-agent"]')!.textContent).toContain('Agent: Rex');
+    expect(r.$('[data-testid="filter-agent"]')!.getAttribute('data-on')).toBe('true');
+    await pick(r, r.$('[data-testid="filter-agent"]') as HTMLElement, '[role="menu"][aria-label="Agent"] [role="menuitemradio"][data-value=""]');
+    await shown(r, 8);
+    // the labels the tasks carry
+    await openMenu(r, r.$('[data-testid="filter-label"]') as HTMLElement);
+    expect(Array.from(r.$$('[role="menu"][aria-label="Label"] [role="menuitemradio"]')).map((x) => x.textContent!.trim())).toEqual(['Any label', 'docs', 'parser']);
+    await r.act(() => (r.$('[role="menu"][aria-label="Label"] [role="menuitemradio"][data-value="parser"]') as HTMLElement).click());
+    await waitFor(() => expect(cards(r).map((c) => c.getAttribute('data-task-id'))).toEqual(['build']), r);
+    await pick(r, r.$('[data-testid="filter-label"]') as HTMLElement, '[role="menu"][aria-label="Label"] [role="menuitemradio"][data-value=""]');
+    await shown(r, 8);
+    // Needs me: the spec gate and the merge
+    await r.act(() => (r.$('[data-testid="filter-needs-me"]') as HTMLElement).click());
+    await waitFor(() => expect(cards(r).map((c) => c.getAttribute('data-task-id'))).toEqual(['gate', 'merge']), r);
+    expect(r.$('[data-testid="filter-needs-me"]')!.getAttribute('aria-pressed')).toBe('true');
+    await r.act(() => (r.$('[data-testid="filter-needs-me"]') as HTMLElement).click());
+    await shown(r, 8);
+  });
+
+  it('Needs me also takes a task whose run asks through Needs you, without a request of its own', async () => {
+    const needsYouList = async () => [{ key: 'k1', kind: 'question', severity: 2, title: 'Which API?', taskId: 'build', createdAt: '' }] as never;
+    const { r } = board({ needsYouList });
+    await shown(r, 8);
+    await waitFor(() => expect(card(r, 'build').querySelector('[data-testid="card-tag"]')!.textContent).toBe('Waiting on you'), r);
+    await r.act(() => (r.$('[data-testid="filter-needs-me"]') as HTMLElement).click());
+    await waitFor(() => expect(cards(r).map((c) => c.getAttribute('data-task-id')).sort()).toEqual(['build', 'gate', 'merge']), r);
+    expect(r.$('[data-testid="crew-line"]')!.textContent).toBe('1 agent working · 3 waiting on you');
+  });
+
+  it('C opens a new task, but not while typing, with a modifier, or in a menu', async () => {
+    const { r, navigated } = board();
+    await shown(r, 8);
+    key('c');
+    expect(navigated).toEqual(['/tasks/new']);
+    key('c', document.body, { ctrlKey: true });
+    key('c', document.body, { metaKey: true });
+    const input = document.createElement('input');
+    r.container.append(input);
+    key('c', input);
+    expect(navigated).toEqual(['/tasks/new']);
+    key('C');
+    expect(navigated).toEqual(['/tasks/new', '/tasks/new']);
+  });
+
+  it('marks the tasks the team lead split off, on the board and in the list', async () => {
+    const { r } = board();
+    await shown(r, 8);
+    await waitFor(() => expect(card(r, 'next').querySelector('[data-testid="task-origin"]')!.textContent).toBe('Split off by the team lead'), r);
+    expect(card(r, 'next').querySelector('[data-testid="task-origin"]')!.getAttribute('title')).toBe('Step 2 from a task you made');
+    expect(r.$$('[data-testid="task-origin"]').length).toBe(1);
+    await r.act(() => (r.$('[data-testid="task-view-list"]') as HTMLElement).click());
+    await waitFor(() => expect(r.$('[data-testid="task-list"]')).toBeTruthy(), r);
+    expect(card(r, 'next').querySelector('[data-testid="task-origin"]')!.textContent).toBe('Split off by the team lead');
+    expect(r.$$('[data-testid="task-origin"]').length).toBe(1);
+  });
+
+  it('edits a card\'s labels from its menu, checking them before anything is sent', async () => {
+    const taskLabelsSet = recorder(async () => task({ id: 'build' }));
+    const { r, taskSummaries } = board({ taskLabelsSet });
+    await shown(r, 8);
+    const more = card(r, 'build').querySelector('button[aria-label="More for GOC-43"]') as HTMLElement;
+    await pick(r, more, '[role="menu"][aria-label="More for GOC-43"] [role="menuitem"]');
+    await waitFor(() => expect(r.$('dialog[open]')).toBeTruthy(), r);
+    expect(r.$('dialog h2')!.textContent).toBe('Labels of GOC-43');
+    const field = byLabel(r.$('dialog')!, 'Labels');
+    expect(field.value).toBe('parser');
+    // the project's other labels are one click away
+    await r.act(() => byText(r.$('dialog')!, 'button', 'Add docs').click());
+    expect(byLabel(r.$('dialog')!, 'Labels').value).toBe('parser, docs');
+    await r.act(() => type(byLabel(r.$('dialog')!, 'Labels'), 'a,b,c,d,e,f,g,h,i'));
+    await r.act(() => byText(r.$('dialog')!, 'button', 'Save labels').click());
+    await waitFor(() => expect(r.$('dialog')!.textContent).toContain('A task takes up to 8 labels; this is 9.'), r);
+    expect(byLabel(r.$('dialog')!, 'Labels').getAttribute('aria-invalid')).toBe('true');
+    expect(taskLabelsSet.calls).toEqual([]);
+    await r.act(() => type(byLabel(r.$('dialog')!, 'Labels'), 'Parser, API'));
+    const before = taskSummaries.calls.length;
+    await r.act(() => byText(r.$('dialog')!, 'button', 'Save labels').click());
+    await waitFor(() => expect(taskLabelsSet.calls).toEqual([['build', ['parser', 'api']]]), r);
+    await waitFor(() => expect(r.$('dialog[open]')).toBeNull(), r);
+    await waitFor(() => expect(taskSummaries.calls.length).toBeGreaterThan(before), r);
+  });
+
+  it('reads again on the task, run, presence and Needs you events of the project, not on another project\'s', async () => {
+    const { r, s, taskSummaries } = board();
+    // the board's own reads: the sidebar's Running count reads the workspace's summaries (projectId "") on any project's events
+    const reads = () => taskSummaries.calls.filter((c) => ((c as unknown[])[0] as { projectId: string }).projectId === 'prj_1').length;
+    await shown(r, 8);
+    for (const type of ['task.updated', 'workflow.request_raised', 'room.presence_changed', 'needsyou.ack']) {
+      const before = reads();
+      s.emit({ type, projectId: 'prj_1', taskId: 'build' });
+      await waitFor(() => expect(reads()).toBeGreaterThan(before), r, 3000);
     }
+    const before = reads();
+    s.emit({ type: 'task.updated', projectId: 'prj_other' });
+    await new Promise((res) => setTimeout(res, 400));
+    expect(reads()).toBe(before);
   });
 
-  it('the list marks them in the row, and nothing else', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks: mixed }));
-    await listed(r, mixed.length);
-    await showList(r);
-    await listed(r, mixed.length);
-    expect(badges(r.container).map((b) => b.textContent)).toEqual([BADGE, BADGE]);
-    const a = rowOf(r, 'Follow-up from the lead');
-    expect(badges(a)).toHaveLength(1);
-    expect(badges(a)[0]!.getAttribute('title')).toBe('Step 2 from a task you made');
-    expect(a.querySelector('a')!.textContent).toBe('Follow-up from the lead');
-    expect(badges(rowOf(r, 'Made by you'))).toHaveLength(0);
-    for (const i of odd.keys()) expect(badges(rowOf(r, `Odd origin ${i}`))).toHaveLength(0);
-  });
-});
-
-describe('TaskListScreen: the list', () => {
-  it('lists tasks grouped by status, each row a link with the status, people and cost', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
-    await listed(r, 3);
-    await showList(r);
-    await listed(r, 3);
-    const [first, second, third] = rows(r);
-    // waiting on you first, then the backlog, then done
-    expect(first!.textContent).toContain('Add Multiply');
-    expect(second!.textContent).toContain('Add Divide');
-    expect(third!.textContent).toContain('Fix rounding');
-    expect(first!.querySelector('a')!.getAttribute('href')).toBe('/task/t1');
-    expect(first!.querySelector('a')!.textContent).toBe('Add Multiply');
-    expect(first!.querySelector('[data-testid="task-status"]')!.textContent).toContain('Awaiting your approval');
-    expect(first!.textContent).toContain('#1');
-    expect(first!.textContent).toContain('$0.25');
-    expect(first!.textContent).toContain('2m');
-    await waitFor(() => expect(first!.textContent).toContain('Worker: Dana. Reviewer: Rex.'), r);
-    expect(second!.textContent).toContain('Worker: unassigned. Reviewer: unassigned.');
-    expect(second!.textContent).toContain('cost not reported');
-    expect(third!.textContent).toContain('drydock/t3');
-    expect(byText(r.container, 'a', 'New task').getAttribute('href')).toBe('/tasks/new');
-    expect(r.$('h1')!.textContent).toContain('Tasks');
-  });
-
-  it('filters by status and by text', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }, { tasks }));
-    await listed(r, 3);
-    await showList(r);
-    await r.act(() => (r.$('[data-testid="task-filter-waiting"]') as HTMLButtonElement).click());
-    await listed(r, 1);
-    expect(rows(r)[0]!.textContent).toContain('Add Multiply');
-    await r.act(() => (r.$('[data-testid="task-filter-done"]') as HTMLButtonElement).click());
-    await listed(r, 1);
-    expect(rows(r)[0]!.textContent).toContain('Fix rounding');
-    await r.act(() => (r.$('[data-testid="task-filter-all"]') as HTMLButtonElement).click());
-    await listed(r, 3);
-    await r.act(() => type(byLabel(r.container, 'Filter tasks'), 'divide'));
-    await listed(r, 1);
-    await r.act(() => type(byLabel(r.container, 'Filter tasks'), 'nothing like this'));
-    await listed(r, 0);
-    expect(r.container.textContent).toContain('No tasks match');
+  it('says when the list is cut, as the core says (summaries.partial)', async () => {
+    const { r } = board({}, {}, SUMMARIES, { partial: true, total: 612 });
+    await shown(r, 8);
+    const notice = await waitFor(() => r.$('[data-testid="task-total-notice"]')!, r);
+    expect(notice.textContent).toContain('Showing the newest 8 of 612 tasks.');
+    expect(notice.textContent).toContain('Older tasks are not on this board');
+    cleanup();
+    const whole = board();
+    await shown(whole.r, 8);
+    expect(whole.r.$('[data-testid="task-total-notice"]')).toBeNull();
   });
 
   it('explains what a task is when there are none, and still shows the scheduler', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status }));
+    const { r } = board({}, {}, []);
     await waitFor(() => expect(r.container.textContent).toContain('No tasks yet'), r);
-    expect(r.container.textContent).toContain('assign a worker and a different reviewer');
-    await waitFor(() => expect(r.$('[data-testid="scheduler"]')!.textContent).toContain('manual'), r);
-  });
-
-  it('re-reads when a task event arrives', async () => {
-    let list: Task[] = [];
-    const s = svc({ schedulerStatus: async () => status, taskList: async () => list });
-    const r = mount(<TaskListScreen />, s);
-    await waitFor(() => expect(r.container.textContent).toContain('No tasks yet'), r);
-    list = [tasks[0]!];
-    s.emit({ type: 'task.created', projectId: 'prj_1', taskId: 't1' });
-    await listed(r, 1);
+    await waitFor(() => expect(r.$('[data-testid="scheduler"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="task-board"]')).toBeNull();
   });
 
   it('shows the core error when tasks cannot be read', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, taskList: async () => Promise.reject(new Error('database is locked')) }));
+    const { r } = board({ taskSummaries: async () => Promise.reject(new Error('database is locked')) });
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('database is locked'), r);
+  });
+});
+
+describe('TaskListScreen: the list and the timeline', () => {
+  it('the list has the same tasks as dense rows in the board\'s order, each a link with its key, stage, tag, agent and labels; it is remembered', async () => {
+    const { r } = board();
+    await shown(r, 8);
+    await r.act(() => (r.$('[data-testid="task-view-list"]') as HTMLElement).click());
+    await waitFor(() => expect(r.$('[data-testid="task-list"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="task-board"]')).toBeNull();
+    expect(r.$('[data-testid="task-view-list"]')!.getAttribute('aria-selected')).toBe('true');
+    expect(cards(r).map((c) => c.getAttribute('data-task-id'))).toEqual(['gate', 'draft', 'next', 'build', 'check', 'merge', 'done', 'gone']);
+    const row = card(r, 'build');
+    expect(row.querySelector('a')!.getAttribute('href')).toBe('/task/build');
+    expect(row.querySelector('.key')!.textContent).toBe('GOC-43');
+    expect(row.querySelector('.stage')!.textContent).toBe('Building');
+    expect(row.querySelector('.who')!.textContent).toBe('Dana');
+    expect(row.querySelector('[data-testid="card-label"]')!.textContent).toBe('parser');
+    expect(card(r, 'merge').querySelector('.tag')!.textContent).toBe('Ready to merge');
+    expect(card(r, 'gone').querySelector('.stage')!.textContent).toBe('Stopped');
+    expect(card(r, 'gone').querySelector('.tag')!.textContent).toBe('Failed');
+    expect(localStorage.getItem('drydock.tasks.view')).toBe('list');
+    cleanup();
+    const again = board();
+    await shown(again.r, 8);
+    expect(again.r.$('[data-testid="task-view-list"]')!.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('the timeline lays the started tasks along today or this week, one lane per agent, each block a link', async () => {
+    const { r } = board();
+    await shown(r, 8);
+    await r.act(() => (r.$('[data-testid="task-view-timeline"]') as HTMLElement).click());
+    const tl = await waitFor(() => r.$('[data-testid="task-timeline"]')!, r);
+    expect(r.$('[data-testid="timeline-today"]')!.getAttribute('aria-pressed')).toBe('true');
+    // the never-started backlog task is not on it, and that is said
+    expect(tl.textContent).toContain('1 task not started yet, so not on the timeline');
+    await r.act(() => (r.$('[data-testid="timeline-week"]') as HTMLElement).click());
+    await waitFor(() => expect(r.$('[data-testid="timeline-week"]')!.getAttribute('aria-pressed')).toBe('true'), r);
+    const lanes = Array.from(r.$$('[data-testid="timeline-lane"]'));
+    expect(lanes.map((l) => l.getAttribute('data-agent'))).toEqual(['a1']);
+    expect(lanes[0]!.textContent).toContain('Dana');
+    const blocks = Array.from(r.$$('[data-testid="timeline-block"]')) as HTMLAnchorElement[];
+    expect(blocks.map((b) => b.textContent).sort()).toEqual(['GOC-37', 'GOC-38', 'GOC-40', 'GOC-41', 'GOC-43', 'GOC-44']);
+    const merged = blocks.find((b) => b.textContent === 'GOC-37')!;
+    expect(merged.getAttribute('href')).toBe('/task/done');
+    expect(merged.getAttribute('data-state')).toBe('done');
+    expect(merged.getAttribute('aria-label')).toBe('GOC-37 Trim spaces in input, merged');
+    expect(blocks.find((b) => b.textContent === 'GOC-38')!.getAttribute('data-state')).toBe('waiting');
   });
 });
 
@@ -294,61 +505,5 @@ describe('TaskCreateScreen', () => {
     await r.act(() => byText(r.container, 'button', 'Create task').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('Task not created: title is required'), r);
     expect(byLabel<HTMLInputElement>(r.container, 'Task title').value).toBe('x');
-  });
-});
-
-describe('TaskListScreen: a list that is not every task (M21)', () => {
-  const notice = (r: ReturnType<typeof mount>) => r.$('[data-testid="task-total-notice"]');
-
-  it('says "Showing the newest N of M tasks" on the board while the project has more, and counts "N of M" in its head', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, taskCount: async () => ({ total: 612 }) }, { tasks }));
-    await listed(r, 3);
-    await waitFor(() => expect(notice(r)).not.toBeNull(), r);
-    expect(notice(r)!.textContent).toContain('Showing the newest 3 of 612 tasks.');
-    expect(notice(r)!.textContent).toContain('Older tasks are not on this board or in this list');
-    expect(r.container.textContent).toContain('3 of 612 tasks · 1 needs you');
-    expect(r.container.textContent).not.toContain('3 tasks · 1 needs you');
-  });
-
-  it('keeps saying it in the list view, and does not go away by itself', async () => {
-    let counts = 0;
-    const s = svc({ schedulerStatus: async () => status, taskCount: async () => (counts++, { total: 612 }) }, { tasks });
-    const r = mount(<TaskListScreen />, s);
-    await listed(r, 3);
-    await waitFor(() => expect(notice(r)).not.toBeNull(), r);
-    await showList(r);
-    expect(notice(r)!.textContent).toContain('Showing the newest 3 of 612 tasks.');
-    // a task event reads the list and the count again; the notice stays
-    const before = counts;
-    s.emit({ type: 'task.updated', projectId: 'prj_1' });
-    await waitFor(() => expect(counts).toBeGreaterThan(before), r);
-    await drain();
-    r.root.flush();
-    expect(notice(r)!.textContent).toContain('Showing the newest 3 of 612 tasks.');
-  });
-
-  it('shows nothing while the list is every task', async () => {
-    const r = mount(<TaskListScreen />, svc({ schedulerStatus: async () => status, taskCount: async () => ({ total: 3 }) }, { tasks }));
-    await listed(r, 3);
-    await waitFor(() => expect(r.container.textContent).toContain('3 tasks · 1 needs you'), r);
-    expect(notice(r)).toBeNull();
-  });
-
-  it('does not take a list as long as the core sends it for complete when the count cannot be read', async () => {
-    const full = Array.from({ length: 500 }, (_, i) => task({ id: `t${i}`, seq: 500 - i, title: `Task ${500 - i}` }));
-    const r = mount(
-      <TaskListScreen />,
-      svc(
-        {
-          schedulerStatus: async () => status,
-          taskCount: async () => {
-            throw new Error('the database is busy');
-          },
-        },
-        { tasks: full },
-      ),
-    );
-    await waitFor(() => expect(notice(r)).not.toBeNull(), r);
-    expect(notice(r)!.textContent).toContain('Showing the newest 500 tasks; there may be more.');
   });
 });

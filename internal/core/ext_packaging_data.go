@@ -140,6 +140,10 @@ func (p *packaging) importProject(ctx context.Context, r importReq) (any, error)
 	if root != "" {
 		c.trustGitConfigNow(ctx, res.ProjectID)
 	}
+	// an archive carries no project key (it is unique to an installation): the project gets one from its name here
+	if err := c.backfillProjectKeys(ctx); err != nil {
+		c.logf("import: project key: %v", err)
+	}
 	// an archive from before decision P76 brings whole-team skills: they go to the agents they reached
 	if k := c.Knowledge(); k != nil {
 		if _, err := k.Skills.GiveTeamSkillsToAgents(ctx); err != nil {

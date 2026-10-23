@@ -37,11 +37,16 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.getByRole('button', { name: 'Show the raw patch' }).click();
     await expect(page.locator('.diff-add', { hasText: 'return a - b' })).toBeVisible();
 
-    // Activity (P87): the worker's and the reviewer's processes, each turn read from the core's typed activity
+    // Activity (P87, P97): the worker's and the reviewer's processes, each a line in the feed with its steps after it (every row
+    // names its process in data-thread), read from the core's typed activity
     const activity = page.getByTestId('task-activity');
     await expect(activity.getByTestId('activity-thread')).toHaveCount(2);
-    await expect(activity.getByTestId('activity-thread').filter({ hasText: 'Worker One' }).getByTestId('activity-text').filter({ hasText: 'implemented Subtract' })).toBeVisible();
-    await expect(activity.getByTestId('activity-thread').filter({ hasText: 'Reviewer One' })).toContainText('SHIP');
+    const rowsOf = async (name: string) => activity.locator(`[data-thread="${await activity.getByTestId('activity-thread').filter({ hasText: name }).getAttribute('data-thread')}"]`);
+    await expect((await rowsOf('Worker One')).getByTestId('activity-text').filter({ hasText: 'implemented Subtract' })).toBeVisible();
+    await expect((await rowsOf('Worker One')).locator('[data-testid=activity-step][data-kind=edit]').first()).toContainText('calc.go');
+    await expect((await rowsOf('Reviewer One')).getByTestId('activity-text').filter({ hasText: 'SHIP' })).toBeVisible();
+    // the head names the newest process's agent and CLI
+    await expect(activity.getByTestId('activity-agent')).toContainText('Reviewer One · Claude Code');
 
     // the task channel: Tests check card, the worker's message, the reviewer's verdict
     await openTaskChannel(page);
@@ -63,7 +68,6 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.getByRole('button', { name: 'Approve' }).click();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/, { timeout: 60_000 });
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
-    await expect(page.getByTestId('needs-count')).toHaveText('0');
 
     // reload: everything is a projection of the core, so the page shows the same state. The task turns Completed a moment
     // before the run commits its own completion (both arrive as events), so the comparison starts once the run says so too.
@@ -72,7 +76,10 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await page.reload();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/);
     await expect.poll(() => snapshot(page)).toEqual(before);
-    await expect(page.getByTestId('needs-count')).toHaveText('0');
+    // nothing of the project waits in the Inbox (the sidebar's count is every project's, and other specs leave theirs)
+    await page.getByTestId('nav-needs-you').click();
+    await expect(page.getByTestId('inbox-needs')).toBeVisible();
+    await expect(page.getByTestId('needs-item').filter({ hasText: 'gocalc-approve' })).toHaveCount(0);
   });
 
   test('request changes with feedback, the worker reworks, then approve', async ({ page }) => {
@@ -157,19 +164,27 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('origin');
 });
 
-test("the top bar is keyboard navigable: the Drydock mark comes first (the way home), the arrows move along the bar, Enter opens the bell's page", async ({ page }) => {
+test("the sidebar is keyboard navigable: the Drydock mark comes first (the way home), the arrows move along it, Enter opens the Inbox", async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
   await expect(items.first()).toHaveAttribute('href', '/home');
-  await expect(items.nth(1)).toHaveAttribute('href', '/');
+  await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-running')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-my-tasks')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-chats')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('nav-project-item').first()).toBeFocused();
+  await page.keyboard.press('End');
   await expect(page.getByTestId('nav-guide-top')).toBeFocused();
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-settings')).toBeFocused();
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowLeft');
+  await page.getByTestId('nav-running').focus();
+  await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { level: 1, name: 'Needs you' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
 });

@@ -120,6 +120,41 @@ describe('typed client', () => {
     ]);
   });
 
+  it('calls the inbox, approval and crew methods with the names the core decodes, and fills Go nil lists (P97)', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.includes('approval.get')) return json({ result: { id: 'apr_1', targets: null, rules: null } });
+      if (url.includes('agent.timeline')) return json({ result: { since: 1, until: 2, agents: [{ agentId: 'a', runs: null, waits: null }] } });
+      if (url.includes('security.scan.running')) return json({ result: [{ id: 's', engines: null, counts: null }] });
+      if (url.includes('task.get')) return json({ result: { task: { id: 't' }, evidence: [], reviews: [], pending: [], allowRules: null } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    const d = await c.approvalGet('apr_1');
+    expect([d.targets, d.rules]).toEqual([[], []]);
+    await c.runApproveForTask('run1', 'apr_1');
+    await c.approvalRuleRemove('par_1');
+    await c.needsYouAck('check:m1');
+    expect(await c.agentListAll()).toEqual([]);
+    const tl = await c.agentTimeline(1, 2);
+    expect([tl.agents[0]?.runs, tl.agents[0]?.waits]).toEqual([[], []]);
+    await c.agentTimeline(5, undefined, 'p');
+    const running = await c.securityScanRunning();
+    expect([running[0]?.engines, running[0]?.counts.total]).toEqual([[], 0]);
+    expect((await c.taskGet('t')).allowRules).toEqual([]);
+    const bodies = f.mock.calls.map((c) => c.arguments).map((c) => [(c as unknown as [string])[0], JSON.parse((c as unknown as [string, RequestInit])[1].body as string)]);
+    expect(bodies).toEqual([
+      ['/rpc/approval.get', { id: 'apr_1' }],
+      ['/rpc/run.respond', { runId: 'run1', requestId: 'apr_1', decision: 'approved', scope: 'task', data: {} }],
+      ['/rpc/approval.rule.remove', { id: 'par_1' }],
+      ['/rpc/needsyou.ack', { key: 'check:m1' }],
+      ['/rpc/agent.listAll', {}],
+      ['/rpc/agent.timeline', { projectId: '', since: 1, until: 2 }],
+      ['/rpc/agent.timeline', { projectId: 'p', since: 5, until: 0 }],
+      ['/rpc/security.scan.running', {}],
+      ['/rpc/task.get', { id: 't' }],
+    ]);
+  });
+
   it('never sends a backward read that the core would take as a forward read from the start', async () => {
     const f = mock.fn(async () => json({ result: [] }));
     const c = createClient(transport(f as unknown as typeof fetch));
@@ -458,6 +493,45 @@ describe('team lead client methods', () => {
       ['lead.standup', { projectId: 'p1' }],
       ['lead.interventions', { projectId: 'p1', taskId: '' }],
       ['lead.interventions', { projectId: 'p1', taskId: 't1' }],
+    ]);
+  });
+});
+
+describe('task control client methods', () => {
+  it('sends the parameter names the core decodes and normalizes nulls', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.endsWith('task.steer')) return json({ result: { delivered: 'now', messageId: 'm1' } });
+      if (url.endsWith('task.pause') || url.endsWith('task.resume')) return json({ result: { task: { id: 't1' }, evidence: null, reviews: null, pending: null, paused: { by: 'human:kyle', at: 5 } } });
+      if (url.endsWith('task.assignPreview')) return json({ result: { taskId: 't1', branch: 'drydock/t1-x', checks: null, queue: null, waits: false } });
+      if (url.endsWith('lead.split')) return json({ result: { action: 'split', createdTasks: null } });
+      if (url.endsWith('task.count')) return json({ result: { total: 2 } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.taskSteer('t1', 'use the helper')).toEqual({ delivered: 'now', messageId: 'm1' });
+    const d = await c.taskPause('t1');
+    expect(d.paused).toEqual({ by: 'human:kyle', at: 5 });
+    expect(d.evidence).toEqual([]);
+    expect((await c.taskResume('t1')).pending).toEqual([]);
+    const pv = await c.taskAssignPreview('t1', 'agt_1');
+    expect(pv.checks).toEqual([]);
+    expect(pv.queue).toEqual([]);
+    expect((await c.leadSplit('t1')).createdTasks).toEqual([]);
+    await c.taskList('', [], { assignee: 'human:kyle' });
+    await c.taskList('p1');
+    expect(await c.taskCount('', [], { assignee: 'human:kyle' })).toEqual({ total: 2 });
+    await c.taskAssign('t1', 'human:kyle');
+    const sent = f.mock.calls.map((c) => c.arguments).map((x) => [(x as unknown as [string])[0].replace('/rpc/', ''), JSON.parse((x as unknown as [string, RequestInit])[1].body as string)]);
+    expect(sent).toEqual([
+      ['task.steer', { id: 't1', message: 'use the helper' }],
+      ['task.pause', { id: 't1' }],
+      ['task.resume', { id: 't1' }],
+      ['task.assignPreview', { id: 't1', assignee: 'agt_1' }],
+      ['lead.split', { taskId: 't1' }],
+      ['task.list', { projectId: '', statuses: [], assignee: 'human:kyle' }],
+      ['task.list', { projectId: 'p1', statuses: [] }],
+      ['task.count', { projectId: '', statuses: [], assignee: 'human:kyle' }],
+      ['task.assign', { id: 't1', assignee: 'human:kyle', reviewer: '' }],
     ]);
   });
 });

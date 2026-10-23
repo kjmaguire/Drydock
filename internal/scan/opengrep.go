@@ -61,5 +61,6 @@ func scanCode(ctx context.Context, o *Options, path string, tool Tool) ([]Findin
 	if err != nil {
 		return nil, Errored, cleanLine(err.Error(), 160), ""
 	}
+	fingerprintFindings(o.Dir, fs, o.redact)
 	return fs, Done, "", version
 }

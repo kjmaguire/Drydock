@@ -811,20 +811,34 @@ type UpdateReq struct {
 	Cwd        *string     `json:"cwd"`
 	Skills     *[]SkillRef `json:"skills"`
 	MCPServers *[]MCPGrant `json:"mcpServers"`
+	// ProjectID moves the chat into a project ("" takes it out of one), only while no turn runs. The chat then lists under
+	// the project, and its turns run as a project chat's do: in the project's folder (its repository root, or its own
+	// workspace folder), with the project's checks (a WSL chat's distro is checked for the project). A CLI session's folder
+	// cannot change during the session, so a chat whose folder changes with the move starts its next turn as a new session,
+	// given the conversation so far; one already running in that folder continues its session. A chat taken out of a project
+	// keeps running in the folder it ran in (the session continues), unless that folder is not there any more. Its allow
+	// rules, skills and MCP servers are its own and stay as they are.
+	ProjectID *string `json:"projectId"`
 }
 
 // placeChange is a change of where a chat runs, checked before the transaction that stores it (the checks start programs).
 type placeChange struct {
 	adapter, distro, cwd string
+	project              string
 	moved                bool // the adapter, the distro or the folder changed: the CLI session cannot be continued
+	relinked             bool // the project changed
 }
 
 // checkPlace validates a change of the chat's adapter, WSL distro or folder. It returns nil when the request changes none.
 func (s *Service) checkPlace(ctx context.Context, c Chat, r UpdateReq) (*placeChange, error) {
-	if r.Adapter == nil && r.WSLDistro == nil && r.Cwd == nil {
+	if r.Adapter == nil && r.WSLDistro == nil && r.Cwd == nil && r.ProjectID == nil {
 		return nil, nil
 	}
-	p := &placeChange{adapter: c.Adapter, distro: c.WSLDistro, cwd: c.Cwd}
+	p := &placeChange{adapter: c.Adapter, distro: c.WSLDistro, cwd: c.Cwd, project: c.ProjectID}
+	if r.ProjectID != nil {
+		p.project = strings.TrimSpace(*r.ProjectID)
+	}
+	relinked := p.project != c.ProjectID
 	if r.Adapter != nil {
 		if p.adapter = strings.TrimSpace(*r.Adapter); p.adapter == "" {
 			p.adapter = "claude"
@@ -843,21 +857,29 @@ func (s *Service) checkPlace(ctx context.Context, c Chat, r UpdateReq) (*placeCh
 			}
 		}
 	}
-	if p.distro != "" && (p.distro != c.WSLDistro || p.adapter != c.Adapter) {
+	if p.distro != "" && (p.distro != c.WSLDistro || p.adapter != c.Adapter || relinked) {
 		if s.d.CheckWSL == nil || s.d.WSLFolder == nil {
 			return nil, errors.New("a chat cannot run in WSL here")
 		}
-		d, err := s.d.CheckWSL(ctx, c.ProjectID, p.adapter, p.distro)
+		d, err := s.d.CheckWSL(ctx, p.project, p.adapter, p.distro)
 		if err != nil {
 			return nil, err
 		}
 		p.distro = d
 	}
-	if c.ProjectID != "" {
+	switch {
+	case p.project != "":
 		if r.Cwd != nil && strings.TrimSpace(*r.Cwd) != "" {
 			return nil, errors.New("a chat in a project runs in the project's folder; pick a folder only for a chat without a project")
 		}
-	} else if r.Cwd != nil || p.distro != c.WSLDistro {
+		if relinked {
+			dir, err := s.d.ProjectDir(ctx, p.project)
+			if err != nil {
+				return nil, err
+			}
+			p.cwd = dir
+		}
+	case r.Cwd != nil || p.distro != c.WSLDistro || relinked:
 		want := c.Cwd
 		switch {
 		case r.Cwd != nil:
@@ -867,11 +889,18 @@ func (s *Service) checkPlace(ctx context.Context, c Chat, r UpdateReq) (*placeCh
 		}
 		dir, err := s.folder(ctx, "", p.distro, c.ID, want)
 		if err != nil {
-			return nil, err
+			if !relinked || r.Cwd != nil {
+				return nil, err
+			}
+			// taken out of a project whose folder is gone: the chat's own private folder
+			if dir, err = s.folder(ctx, "", p.distro, c.ID, ""); err != nil {
+				return nil, err
+			}
 		}
 		p.cwd = dir
 	}
 	p.moved = p.adapter != c.Adapter || p.distro != c.WSLDistro || p.cwd != c.Cwd
+	p.relinked = relinked
 	return p, nil
 }
 
@@ -933,10 +962,24 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 			return err
 		}
 		reset := false
-		if place != nil && place.moved {
-			if s.isRunning(c.ID) || c.Status == StatusRunning {
-				return errors.New("stop the running turn before changing where the chat runs")
+		if place != nil && (place.moved || place.relinked) && (s.isRunning(c.ID) || c.Status == StatusRunning) {
+			if place.relinked {
+				return errors.New("stop the running turn before moving the chat to another project")
 			}
+			return errors.New("stop the running turn before changing where the chat runs")
+		}
+		where := ""
+		if place != nil && place.relinked {
+			c.ProjectID = place.project
+			where = "No longer in a project. "
+			if c.ProjectID != "" {
+				where = "Now in a project. "
+			}
+			if !place.moved {
+				notes = append(notes, where+"It still runs in "+c.Cwd+", so the session continues.")
+			}
+		}
+		if place != nil && place.moved {
 			if c.Adapter != place.adapter {
 				caps, _ := s.caps(place.adapter)
 				// what the old agent took and the new one does not is reset to the new one's defaults
@@ -951,7 +994,7 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 			}
 			c.Adapter, c.WSLDistro, c.Cwd = place.adapter, place.distro, place.cwd
 			reset = true
-			notes = append(notes, "Now runs with "+cli+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
+			notes = append(notes, where+"Now runs with "+cli+" in "+c.Cwd+": the next message starts a new session, given the conversation so far.")
 		}
 		if skills != nil && !sameSkills(c.Skills, *skills) {
 			c.Skills = *skills
@@ -1006,13 +1049,13 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 		}
 		sk, _ := json.Marshal(nz(c.Skills))
 		ms, _ := json.Marshal(nz(c.MCPServers))
-		q := `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, adapter=?, wsl_distro=?, cwd=?, skills=?, mcp_servers=?, updated_at=?, version=version+1`
+		q := `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, adapter=?, wsl_distro=?, cwd=?, skills=?, mcp_servers=?, project_id=?, updated_at=?, version=version+1`
 		if reset {
 			// the CLI's session belongs to the old agent or folder: the next turn starts a new one, given the transcript
 			q += `, session_id='', cli_usage=''`
 		}
 		if _, err := tx.ExecContext(ctx, q+` WHERE id=?`, c.Title, b2i(c.Pinned), c.ArchivedAt, c.Model, c.Effort, c.PermissionMode, b2i(c.ReadHistory),
-			c.Adapter, c.WSLDistro, c.Cwd, string(sk), string(ms), storage.Now(), c.ID); err != nil {
+			c.Adapter, c.WSLDistro, c.Cwd, string(sk), string(ms), c.ProjectID, storage.Now(), c.ID); err != nil {
 			return err
 		}
 		out, err = getTx(ctx, tx, c.ID)
@@ -1032,6 +1075,10 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 		}
 	}
 	s.publish(ctx, "chat.updated", out.ProjectID, map[string]any{"chatId": out.ID, "chat": out})
+	if before.ProjectID != "" && before.ProjectID != out.ProjectID {
+		// the project the chat left hears of it too, so its list drops the chat
+		s.publish(ctx, "chat.updated", before.ProjectID, map[string]any{"chatId": out.ID, "chat": out})
+	}
 	return out, nil
 }
 

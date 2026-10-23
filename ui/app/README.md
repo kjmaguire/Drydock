@@ -33,15 +33,26 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
-  shell/              top bar (with the project switcher), hub pills and rails, details panel, dock host, command palette, license banner
+  shell/              sidebar (with the project switcher), hub pills and rails, details panel, dock host, license banner, the command
+                      menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
+                      prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
+  screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
+                      with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
   screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
-  screens/tasks/      the Tasks board and list (tasks.ts: columns, elapsed), the task page with its step bar (steps.ts), the review panel
+  screens/tasks/      the project board (Board / List / Timeline of task.summaries; tasks.ts: columns, cards, checks bar, filters,
+                      timeline), the task page with its step bar (steps.ts), the review panel
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
-  screens/team/       the Crew tab: the agents as dots (team-screen.tsx) and an agent's own page (/team/:id, agent-screen.tsx: a hero
-                      with chips, then Overview, Skills & tools, Memory and History); the inspector stays in the details panel
-  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog, a chat's
-                      properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals)
+  screens/team/       Crew (team-screen.tsx, graphite P97): one project's crew (/team) or every project's (/crew, cards grouped by
+                      project): the header's figures, Templates and New agent (N) as dialogs, Today's timeline (crew-timeline.tsx; its
+                      window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
+                      hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
+                      page), Skills & tools, Memory and History); the inspector stays in the details panel
+  screens/models/     Models on this PC (/models, a workspace page): the Serving card, Memory (each GPU split into the model and its
+                      KV cache, the RAM), Engine, the model table with the Hub search ("/"), the server settings (helpers in models.ts)
+  screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog (Ctrl+N), a chat's
+                      properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals), a waiting
+                      request as an inline card (chat-asks.tsx), Move to a project (chat-move.tsx)
   styles/app.css      design tokens (light-dark()) + base layer for native elements
   test/               labelled test doubles (fakes.ts) and render helpers (render.tsx)
 ```
@@ -104,36 +115,42 @@ export function Thing(handle: Handle<{ id: string }>) {
 
 ## Design
 
-Crew HQ (decision P64): light and friendly, the agents as characters. A warm canvas (`--bg-app`) with white cards
-(radius 16-22px), black pill buttons, blue links; the dark theme is the same page at night (every colour is a
-`light-dark()` token in `styles/app.css`, and `styles/contrast.test.ts` holds every text pair at 4.5:1). The shell is one top
-bar, the hub's pills, the page (with a rail beside it on Rooms and Settings), and the details panel beside a conversation:
+Graphite (decision P97, after the next generation of Linear; it replaced P64's look and top bar): a near-black canvas
+(`--bg-app`) with raised greys for surfaces, one periwinkle accent, amber for "waiting on you", teal for "passed"; the light
+theme is the same page by day (every colour is a `light-dark()` token in `styles/app.css`, and `styles/contrast.test.ts` holds
+every text pair at 4.5:1). Inter for text, JetBrains Mono (`t.mono`) for task keys (`GOC-41`), paths, numbers and commands. Type
+sizes are only 12, 12.5, 13, 15, 18 and 22 px (`t.text*`; `e2e/density.spec.ts` checks the page against them); radii 5, 7, 10, 14.
+The shell is the sidebar, the page (with the hub's pills, and a rail on Rooms and Settings), and the details panel beside a
+conversation:
 
-- **Top bar** (`shell/topbar.tsx`, landmark "Main"): the Drydock mark (a monochrome dot with the agents' eyes; on a
-  project's page it is the way home), the **project switcher** (`shell/project-switcher.tsx`: monogram + name + chevron,
-  accessible name "Switch project"; it opens the kit `Menu` with the projects as `menuitemradio`, then "New project…" and
-  "App settings"), the project's tabs **Overview, Tasks, Rooms, Crew, Knowledge** (or the workspace's **Home, Chats,
-  Library, Security scan**), search (Ctrl+K), the bell (Needs you, with its count) and the gear (Settings). There is no
-  sidebar.
-- **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills under the bar (landmark "Section"); the Rooms rail lists the
-  rooms (landmark "Rooms", `data-rooms`); the Settings rail lists every settings page (landmark "Settings"). The old
-  sidebar's test ids live on: `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts`
-  opens the hub first when a link is not on the page.
+- **Sidebar** (`shell/sidebar.tsx`, landmark "Main"; the arrow keys, Home and End move through its links): the workspace
+  switcher ("Switch project", the kit `Menu`), search (Ctrl+K), **Inbox** (`/needs-you`, the count of what needs you in every
+  project), **Running**, **My tasks**, **Chats**, the projects (the open one shows its tabs **Overview, Tasks, Rooms, Crew,
+  Knowledge** under it; another is one line), the workspace's **Security**, **Connections**, **Models on this PC** and
+  **Library**, then **Settings**, the **Guide**, the local engine's state and the event stream. "[" (never while typing) or its
+  button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
+  (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1024 px starts folded, a phone-sized one with a 44 px rail.
+- **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
+  "Rooms", `data-rooms`); the Settings rail lists every settings page (landmark "Settings"). The old test ids live on:
+  `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is
+  not on the page.
 - **Rooms are named without "#"**: a small lucide icon (`roomIcon(kind)` in `ui/icon.tsx`), then the name; a direct
-  message shows the agent's dot. A link's accessible name starts with the room name (an unread count adds ", 3 unread").
-- **Agents are dots** (`Avatar` with `kind="agent"` in `ui/data.tsx`): a disc in a stable per-id hue with two
-  rounded-square eyes whose mood follows `status` (the presence colour): they blink when idle, look around while working,
-  look up while waiting on you, close while paused. Decoration only: presence is always in words beside the avatar.
-  People are round with initials; projects and tools are rounded squares with initials.
-- **Pages** (`Page` in `ui/layout.tsx`) put a 28px title in the body with the subtitle under it and the actions on the
-  right; `Section` titles are 16px. A conversation screen (`flush`) keeps a 56px bar instead.
-- **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: a 28px dot, one author line (name, a
+  message shows the agent's avatar. A link's accessible name starts with the room name (an unread count adds ", 3 unread").
+- **Avatars** (`Avatar` in `ui/data.tsx`): an agent is a disc in a stable per-id hue with its first letter, drawn by CSS from
+  `data-letters` so the name is not read twice; presence is always in words beside it. People are round with initials;
+  projects and tools are rounded squares with initials.
+- **Pages** (`Page` in `ui/layout.tsx`) have a top bar: the title (18 px), the subtitle, the page's own tabs and filters
+  (`bar`) and the actions on the right; the body scrolls, at most 1320 px wide. A conversation screen (`flush`) keeps its bar.
+- **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: an avatar, one author line (name, a
   quiet outlined role label, time), consecutive messages from the same author grouped under it, a faint hover tint.
+- **Keys** are shown as `<kbd>` and work as named: single letters only without Ctrl, Alt or Meta and never while typing.
 
 Use the kit before writing CSS:
 
-- `Page` (header bar with title, icon, subtitle, actions; scrolling body; `head` draws the head itself around the h1 id it is
-  given), `Section`, `card`, `listCard`, `tableCard`,
+- `Page` (header bar with title, icon, subtitle, actions; `mark` instead of the icon for what the page belongs to, a project's
+  colour square; `bar` for the page's own view tabs and filters after the title; scrolling body; `head` draws the head itself
+  around the h1 id it is given; `head` with `flush` draws the whole page, its own bar and scrolling columns: the task page),
+  `Section`, `card`, `listCard`, `tableCard`,
   `row`, `stack`, `cardGrid` (layout.tsx).
 - `Button` (primary, secondary, ghost, danger, link; sizes md, sm), `IconButton`, `buttonStyle()` for links that look like
   buttons (button.tsx).

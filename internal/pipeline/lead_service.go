@@ -154,9 +154,10 @@ func (l *Lead) ownTurn(t tasks.Task, nodeAgent, leadID string) bool {
 	return false
 }
 
+// count is how many interventions the triggers made on the task in the run: a person's request (TriggerRequested) is not one.
 func (l *Lead) count(ctx context.Context, taskID, runID string) (int, error) {
 	var n int
-	err := l.d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM lead_interventions WHERE task_id=? AND run_id=?`, taskID, runID).Scan(&n)
+	err := l.d.Tasks.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM lead_interventions WHERE task_id=? AND run_id=? AND trigger_kind<>?`, taskID, runID, TriggerRequested).Scan(&n)
 	return n, err
 }
 
@@ -207,15 +208,75 @@ func (l *Lead) Supervise(ctx context.Context, tr LeadTrigger) LeadOutcome {
 			return LeadOutcome{}
 		}
 	}
+	out, err := l.decide(ctx, t, tr, team, lead, n)
+	if err != nil {
+		return LeadOutcome{}
+	}
+	return out
+}
+
+// ErrNoLead refuses a request for the team lead in a project without one.
+var ErrNoLead = errors.New("this project has no team lead: add an agent with the role \"lead\" to the team first")
+
+// RequestSplit is a person asking the team lead to split a task (lead.split, trigger requested): one supervision turn whose
+// answer must be a split, or an escalation when the lead thinks the task should not be split. The follow-ups are made as for
+// any split (in BACKLOG, until a person moves them on), the intervention is stored, posted in the task channel and
+// published, and a turn of the task that is running gets the narrowed scope. A person asked, so the request is not bounded
+// by MaxPerRun and does not count toward it; one supervision turn per task at a time still holds, and so do the budgets.
+func (l *Lead) RequestSplit(ctx context.Context, taskID, by string) (LeadOutcome, error) {
+	t, err := l.d.Tasks.Get(ctx, taskID)
+	if err != nil {
+		return LeadOutcome{}, err
+	}
+	if t.Status.Terminal() {
+		return LeadOutcome{}, fmt.Errorf("task #%d is %s: there is nothing left to split", t.Seq, t.Status)
+	}
+	team, err := l.d.Team(ctx, t.ProjectID)
+	if err != nil {
+		return LeadOutcome{}, err
+	}
+	lead, ok := FindLead(team)
+	if !ok {
+		return LeadOutcome{}, ErrNoLead
+	}
+	if !l.acquire(t.ID) {
+		return LeadOutcome{}, errors.New("the team lead is already looking at this task; try again when it has answered")
+	}
+	defer l.release(t.ID)
+	if l.d.Budget != nil {
+		if err := l.d.Budget(ctx, t.ProjectID, t.ID, lead.ID); err != nil {
+			return LeadOutcome{}, err
+		}
+	}
+	n, err := l.count(ctx, t.ID, t.RunID)
+	if err != nil {
+		return LeadOutcome{}, err
+	}
+	tr := LeadTrigger{Kind: TriggerRequested, TaskID: t.ID, RunID: t.RunID,
+		Evidence: fmt.Sprintf("%s asked you to split this task into smaller follow-up tasks.", strings.TrimPrefix(by, "human:"))}
+	out, err := l.decide(ctx, t, tr, team, lead, n)
+	if err != nil {
+		return LeadOutcome{}, fmt.Errorf("the team lead's turn failed: %w", err)
+	}
+	if out.Decision.Action == LeadSplit && l.d.Steer != nil && t.RunID != "" && l.runRunning(ctx, t.RunID) {
+		if m := strings.TrimSpace(out.Decision.Message); m != "" {
+			l.d.Steer(ctx, t.ID, "Message from the team lead:\n"+m, false)
+		}
+	}
+	return out, nil
+}
+
+// decide runs the lead's turn for a trigger, applies the reassignment or split it decides, and stores, posts and publishes the
+// intervention. A turn that failed is stored as such (it counts toward the bound: a lead whose turns keep failing on a stalled
+// run would otherwise be asked again at every silence, each time spending tokens) and returned as the error.
+func (l *Lead) decide(ctx context.Context, t tasks.Task, tr LeadTrigger, team []LeadMember, lead LeadMember, n int) (LeadOutcome, error) {
 	prompt := LeadPrompt(l.digest(ctx, t, tr, team, lead, n))
 	dec, agentID, problems, err := l.ask(ctx, t, tr.RunID, lead, prompt, func(text string) (LeadDecision, string, []string) {
 		return ParseLeadDecision(text, LeadCheck{Team: team, Lead: lead, Task: t, Trigger: tr.Kind})
 	})
 	if err != nil {
-		// stored, so it counts toward the bound: a lead whose turns keep failing on a stalled run would otherwise be asked
-		// again at every silence, each time spending tokens; the trigger site still behaves as without a lead
 		l.recordFailed(ctx, t, tr, lead, err)
-		return LeadOutcome{}
+		return LeadOutcome{}, err
 	}
 	out := LeadOutcome{Intervened: true, LeadID: lead.ID, LeadName: lead.Name}
 	if len(problems) > 0 {
@@ -239,7 +300,7 @@ func (l *Lead) Supervise(ctx context.Context, tr LeadTrigger) LeadOutcome {
 	dec.Message, dec.Reason = l.redact(dec.Message), l.redact(dec.Reason)
 	out.Decision = dec
 	out.InterventionID = l.record(ctx, t, tr, lead, out)
-	return out
+	return out, nil
 }
 
 // ask runs the lead's turn and validates the answer; an invalid answer gets one retry with the validator's problems.
@@ -311,6 +372,10 @@ func (l *Lead) reassign(ctx context.Context, t tasks.Task, team []LeadMember, le
 	}
 	return l.d.Assign(ctx, t.ID, agentID, reviewer)
 }
+
+// PickReviewer is who reviews worker's work when nobody is named: a reviewer-role agent of the team first, else the first other
+// member; never the worker, never a lead. "" when the team has nobody else.
+func PickReviewer(team []LeadMember, worker string) string { return pickReviewer(team, worker, "") }
 
 func pickReviewer(team []LeadMember, worker, leadID string) string {
 	for _, pass := range []bool{true, false} {
@@ -429,6 +494,7 @@ var triggerLabels = map[string]string{
 	TriggerRepeatedRevise: "the reviewer repeated the same feedback",
 	TriggerStalled:        "no progress for a while",
 	TriggerUnassigned:     "nobody is assigned",
+	TriggerRequested:      "a person asked you to split this task",
 }
 
 func (l *Lead) postBody(ctx context.Context, t tasks.Task, tr LeadTrigger, lead LeadMember, o LeadOutcome) string {
@@ -510,6 +576,9 @@ func ParseLeadDecision(text string, c LeadCheck) (LeadDecision, string, []string
 	}
 	if c.Trigger == TriggerUnassigned && (d.Action == LeadNudge || d.Action == LeadSplit) {
 		add("nobody works on this task yet: answer reassign (name the worker), escalate or continue")
+	}
+	if c.Trigger == TriggerRequested && d.Action != LeadSplit && d.Action != LeadEscalate {
+		add("a person asked you to split this task: answer split with 1 to %d follow-up tasks, or escalate to tell them why it should not be split", maxLeadSplitTasks)
 	}
 	agentID := ""
 	if d.Action == LeadReassign {
@@ -823,8 +892,8 @@ func (l *Lead) Tick(ctx context.Context, projectID string) (MonitorResult, error
 			return res, err
 		}
 		for _, t := range waiting {
-			if t.Assignee != "" && t.Reviewer != "" {
-				continue
+			if (t.Assignee != "" && t.Reviewer != "") || t.OwnedByPerson() {
+				continue // a person who took the task on needs no worker found for it
 			}
 			if t.Status == tasks.Backlog && t.WaitsForAHuman() {
 				continue // imported work and the lead's own follow-ups wait for a human to move them on; the lead is not paid to look at them before that

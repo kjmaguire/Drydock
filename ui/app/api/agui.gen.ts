@@ -147,6 +147,10 @@ export interface ResumeEvent {
 export interface AguiThread {
   threadId: string;
   agentId?: string;
+  adapter?: string;
+  model?: string;
+  runMode?: string;
+  wslDistro?: string;
   events: AguiEvent[];
 }
 

@@ -1,18 +1,35 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { EngineResult, ScanCounts, ScanFinding, ScanReport } from '../../api/securityTypes.ts';
+import { formatDate } from '../../lib/format.ts';
 import {
+  agoText,
   byName,
   countsText,
   durationText,
   engineFraction,
+  engineStateText,
   engineTone,
-  filterFindings,
+  engineWords,
+  findingId,
   findingsText,
+  findingTitle,
+  folderName,
+  lineParts,
+  lineText,
   overallPercent,
+  placeText,
+  refLabel,
+  refUrl,
+  reportTarget,
+  severityLabel,
   severityTone,
+  shortRule,
   sortFindings,
   statusText,
+  summaryTone,
+  taskAgents,
+  toolLabel,
   whereText,
   emptyFindingsText,
 } from './security.ts';
@@ -144,12 +161,100 @@ describe('findings lists', () => {
     expect(list[0]!.rule).toBe('b');
   });
 
-  it('filters by severity and engine', () => {
-    expect(filterFindings(list, 'all', 'all')).toHaveLength(6);
-    expect(filterFindings(list, 'high', 'all').map((f) => f.rule)).toEqual(['d', 'e', 'f']);
-    expect(filterFindings(list, 'all', 'sast').map((f) => f.rule)).toEqual(['b', 'e', 'f', 'a']);
-    expect(filterFindings(list, 'high', 'secrets').map((f) => f.rule)).toEqual(['d']);
-    expect(filterFindings(list, 'info', 'all')).toEqual([]);
+});
+
+describe('the graphite screen (P97)', () => {
+  it('names severities and says what each engine counted', () => {
+    expect(['critical', 'high', 'medium', 'low', 'info'].map(severityLabel)).toEqual(['Critical', 'High', 'Medium', 'Low', 'Info']);
+    expect(severityLabel('weird')).toBe('Weird');
+    expect(engineWords('secrets', 1)).toBe('secret, value never shown');
+    expect(engineWords('secrets', 3)).toBe('secrets, values never shown');
+    expect(engineWords('deps', 1)).toBe('vulnerable package');
+    expect(engineWords('deps', 0)).toBe('vulnerable packages');
+    expect(engineWords('sast', 2)).toBe('unsafe patterns');
+    expect(engineWords('sast', 1)).toBe('unsafe pattern');
+    expect(toolLabel('opengrep')).toBe('Opengrep');
+    expect(toolLabel('gitleaks')).toBe('gitleaks');
+  });
+
+  it("an engine's state with its time, its files while it counts them, and why it stopped", () => {
+    expect(engineStateText(engine({ status: 'done', startedAt: 1000, finishedAt: 1100 }))).toBe('done · 100 ms');
+    expect(engineStateText(engine({ status: 'done', startedAt: 1000, finishedAt: 2700 }))).toBe('done · 1.7 s');
+    expect(engineStateText(engine({ status: 'done' }))).toBe('done');
+    expect(engineStateText(engine({ status: 'running', done: 3, total: 9 }))).toBe('running · 3 of 9 files');
+    expect(engineStateText(engine({ status: 'running' }))).toBe('running');
+    expect(engineStateText(engine({ status: 'pending' }))).toBe('waiting');
+    expect(engineStateText(engine({ status: 'skipped' }))).toBe('skipped');
+    expect(engineStateText(engine({ status: 'errored', startedAt: 0 + 1, finishedAt: 2001 }))).toBe('errored · 2.0 s');
+  });
+
+  it("a finding's place: file and line with the rule's last part, a dependency's manifest with its advisories", () => {
+    expect(placeText(finding({ engine: 'secrets', file: 'config/dev.env', line: 4, rule: 'aws-access-token' }))).toBe('config/dev.env:4 · aws-access-token');
+    expect(placeText(finding({ file: 'run.go', line: 5, rule: 'go.lang.security.audit.dangerous-exec-command' }))).toBe('run.go:5 · dangerous-exec-command');
+    expect(placeText(finding({ file: 'run.go', rule: 'r' }))).toBe('run.go · r');
+    expect(placeText(finding({ engine: 'deps', file: 'go.mod', rule: 'Go', ids: ['GO-2021-0113', 'CVE-2021-38561'] }))).toBe('go.mod · GO-2021-0113, CVE-2021-38561');
+    expect(placeText(finding({ engine: 'deps', package: 'left-pad', version: '1.0.0', rule: 'npm', ids: [] }))).toBe('left-pad@1.0.0 · npm');
+    expect(shortRule('a.b.c')).toBe('c');
+    expect(shortRule('aws-access-token')).toBe('aws-access-token');
+    // a dependency's title loses the ids its place already names
+    expect(findingTitle(finding({ engine: 'deps', title: 'x 1.0 has known vulnerabilities: A-1, B-2', ids: ['A-1', 'B-2'] }))).toBe('x 1.0 has known vulnerabilities');
+    expect(findingTitle(finding({ engine: 'deps', title: 'x 1.0 has known vulnerabilities: A-1', ids: ['B-2'] }))).toBe('x 1.0 has known vulnerabilities: A-1');
+    expect(findingTitle(finding({ title: 'A command is built from input' }))).toBe('A command is built from input');
+    expect(findingId(finding({ fingerprint: 'abc' }))).toBe('abc');
+    expect(findingId(finding({ file: 'a.go', line: 3, rule: 'r' }))).toBe('sast:r:a.go:3:');
+    expect(reportTarget({ projectId: 'p1', dir: 'C:\\x' })).toEqual({ projectId: 'p1' });
+    expect(reportTarget({ projectId: '', dir: 'C:\\x' })).toEqual({ folder: 'C:\\x' });
+  });
+
+  it("splits a line at the core's masks, so a secret is drawn as a chip and never as text", () => {
+    expect(lineParts('AWS_ACCESS_KEY_ID=[REDACTED:aws-access-token]')).toEqual([{ text: 'AWS_ACCESS_KEY_ID=' }, { mask: 'aws-access-token' }]);
+    expect(lineParts('a [REDACTED] b [REDACTED:secret] c')).toEqual([{ text: 'a ' }, { mask: 'secret' }, { text: ' b ' }, { mask: 'secret' }, { text: ' c' }]);
+    expect(lineParts('[REDACTED:secret]')).toEqual([{ mask: 'secret' }]);
+    expect(lineParts('')).toEqual([{ text: '' }]);
+    expect(lineParts('plain')).toEqual([{ text: 'plain' }]);
+  });
+
+  it('links an advisory to osv.dev and a weakness to cwe.mitre.org', () => {
+    expect(refUrl('GO-2021-0113')).toBe('https://osv.dev/vulnerability/GO-2021-0113');
+    expect(refUrl('CVE-2021-38561')).toBe('https://osv.dev/vulnerability/CVE-2021-38561');
+    expect(refUrl('GHSA-abcd-efgh-ijkl')).toBe('https://osv.dev/vulnerability/GHSA-abcd-efgh-ijkl');
+    expect(refUrl("CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')")).toBe('https://cwe.mitre.org/data/definitions/78.html');
+    expect(refUrl('a note')).toBeUndefined();
+    expect(refLabel('CWE-78: Improper Neutralization')).toBe('CWE-78');
+    expect(refLabel('GO-2021-0113')).toBe('GO-2021-0113');
+  });
+
+  it('gives a task to a builder or backend agent first, a reviewer last, never the lead', () => {
+    const a = (id: string, role: string) => ({ id, name: id, role }) as never;
+    const list = taskAgents([a('lead', 'Team Lead'), a('rev', 'reviewer'), a('pm', 'PM'), a('be', 'Backend'), a('fe', 'frontend'), a('b', 'builder')]);
+    expect(list.map((x: { id: string }) => x.id)).toEqual(['be', 'b', 'fe', 'pm', 'rev']);
+    expect(taskAgents([a('m', 'manager')])).toEqual([]);
+  });
+
+  it('when, names and tones of the recent scans', () => {
+    const now = 1_700_000_000_000;
+    expect(agoText(now - 5_000, now)).toBe('now');
+    expect(agoText(now - 5 * 60_000, now)).toBe('5 min ago');
+    expect(agoText(now - 60 * 60_000, now)).toBe('1 h ago');
+    expect(agoText(now - 30 * 3_600_000, now)).toBe('yesterday');
+    expect(agoText(now - 5 * 86_400_000, now)).toBe(formatDate(now - 5 * 86_400_000));
+    expect(folderName('C:\\code\\shop-api')).toBe('shop-api');
+    expect(folderName('C:\\Users\\kyle\\Downloads\\left-pad-fork\\')).toBe('left-pad-fork');
+    expect(folderName('/home/k/repo')).toBe('repo');
+    expect(summaryTone({ status: 'done', counts: counts({ high: 1, total: 1 }) })).toBe('err');
+    expect(summaryTone({ status: 'done', counts: counts({ critical: 1, total: 1 }) })).toBe('err');
+    expect(summaryTone({ status: 'done', counts: counts({ medium: 1, total: 1 }) })).toBe('warn');
+    expect(summaryTone({ status: 'done', counts: counts() })).toBe('ok');
+    expect(summaryTone({ status: 'running', counts: counts() })).toBe('accent');
+    expect(summaryTone({ status: 'cancelled', counts: counts() })).toBe('muted');
+  });
+
+  it('the line above the findings', () => {
+    expect(lineText(undefined)).toBe('No scan yet');
+    expect(lineText(report({ counts: counts({ high: 3, medium: 1, total: 4 }) }))).toBe('4 findings');
+    expect(lineText(report({}))).toBe('Nothing found');
+    expect(lineText(report({ status: 'running', engines: [engine({ status: 'done' })] }))).toBe('Scanning… 1 of 1 engines finished');
+    expect(lineText(report({ status: 'cancelled' }))).toBe('Cancelled after 2.3 s');
   });
 });
 

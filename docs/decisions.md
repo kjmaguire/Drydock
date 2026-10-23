@@ -1071,3 +1071,39 @@ Open, owner action:
   `TestTheTemplateFormOffersTheLibrarysSkillsIncludingRemix` (internal/core, against the GitHub stand-in; it fails on the old
   list), `TestCLINameLeavesTheDistroOut` (internal/chats), the core's sign-in title in `wsl_test.go`, and the UI's
   `connections`, `chats`, `team`, `run-mode`, `wizard` unit tests and their browser tests; `ui/e2e/wsl.spec.ts` follows the new names.
+- **P97. Graphite: the UI's third design, after the next generation of Linear (2026-10-22, on the owner's words).** The owner
+  asked for "a few screenshot design ideas of what this app would look like if it was like the next generation Linear", chose
+  the fresh look, asked for more screens, and then said "okay build this exactly" about the eight-screen canvas (Inbox, Board,
+  Task page, Command menu, Crew, Security scan, Chat, Models on this PC). Their answers: a dark theme with a matching light one,
+  a sidebar that folds, and the screens' features built in the core too. Graphite replaces P64's look and its top bar; P64's
+  hub pages, rails and test ids stay. (1) The look: a near-black canvas (`--bg-app` #0b0c0f, the light theme #f8f8f9) with
+  raised greys for surfaces, one periwinkle accent, amber for "waiting on you" and teal for "passed"; Inter for text and
+  JetBrains Mono (`@fontsource-variable/jetbrains-mono`, pinned exactly) for task keys, paths, numbers and commands; a type scale
+  of 12, 12.5, 13, 15, 18 and 22 px (the density budget follows it); radii 5, 7, 10 and 14; 32 px buttons (28 small); pill tabs.
+  Agents are discs in their own hue with their first letter (drawn by CSS, so a name is never read twice); the eyes went. Every
+  colour is still a `light-dark()` token held at 4.5:1 by `styles/contrast.test.ts`. (2) The shell is a sidebar
+  (`shell/sidebar.tsx`, landmark "Main", arrow keys move through it): the workspace switcher, search (Ctrl+K), the Inbox with
+  its count, Running, My tasks, Chats, the projects (the open one shows its tabs Overview, Tasks, Rooms, Crew, Knowledge), the
+  workspace's Security, Connections, Models on this PC and Library, then Settings, the Guide, the local engine's state and the
+  event stream. "[" or its button folds it to a 56 px rail of icons whose names stay the links' names; the choice is kept
+  (`drydock.sidebar`), and a window under 1024 px starts folded (a phone-sized one uses a 44 px rail). (3) The core gained what
+  the screens show: a project key and task numbers (`GOC-41`), task labels, workspace-wide lists (needs you, agents, running
+  scans, task summaries with step, checks and what an agent is doing), `approval.get` and "allow for this task" rules, steering,
+  pausing and handing a task, assigning it to a person, asking the lead to split it, an assignment preview, dismissable
+  security findings with their code context and a task made from one, a chat's project, and what a local model is used by,
+  with its KV cache estimate. Each has Go tests end to end through `a.call`, and every screen has unit, browser and e2e tests.
+  (4) The eight screens, each with its e2e spec against the real core: the **Inbox** (`/needs-you`, every project's: Needs you,
+  Running, Done today; J/K, A, D, E, Enter; an approval's detail with "Approve for this task") and **My tasks**; the **board**
+  (Board, List, Timeline; filters Agent, Label, Needs me; cards with key, step, checks bar, verdict, Merge, View diff; C for a
+  new task); the **task page** (breadcrumb and key, the run's pill, the criteria as a checklist, the activity as steps, steer
+  with Ctrl+Enter, Pause, Open the worktree (O), Hand to another agent); the **command menu** (the page's task as a chip,
+  Assign / Actions / Go to, a "What happens" panel from `task.assignPreview`, prefixes > # @, G then I, T or C); **Crew**
+  (`/team` and every project's `/crew`: Today's timeline of runs and waits, a card per agent, N for a new agent); the
+  **Security scan** (engine tiles, findings with the code around each and the secret drawn as hidden, What to do, Make a task,
+  Open the file, Not a real key, Recent scans; R scans again); **Chats** (the list with project, CLI and when; your messages
+  as bubbles; a waiting request as an inline card with Allow once, Allow in this chat, Deny; Move to a project; Ctrl+N); and
+  **Models on this PC** (`/models`, its own workspace page: Serving, Memory split into the model and its KV cache, Engine,
+  the model table with fit badges, "/" to search the Hub; Providers links to it). Where a screen differs from its mockup it
+  is because the core has no such data (a diff hunk without context lines) or the app's rules (12 px is the smallest size,
+  Ctrl rather than Cmd on Windows, no "/ commands" a chat does not have). Every browser test now fails when a page draws two
+  siblings with one key, and a source rule holds every corner to the 14 px radius.

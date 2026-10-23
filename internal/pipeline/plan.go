@@ -601,7 +601,7 @@ func (pd PlanDeps) planReview() workflow.NodeHandler {
 		}
 		payload, _ := json.Marshal(PlanReviewPayload{Phase: "plan", PlanID: pi.PlanID, Goal: pi.Goal, Tasks: views, Notes: p.Notes, Order: TopoOrder(p),
 			Note: "Approve to create the tasks in BACKLOG (all of them, or only data.accept = a list of keys that is closed under dependsOn). data.edits may change title, description, role, template, priority or acceptance of a task. Reject to discard the plan."})
-		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Title: fmt.Sprintf("Review the plan: %s (%d tasks)", truncate(pi.Goal, 60), len(p.Tasks)), Payload: payload}}, nil
+		return workflow.NodeOutput{Request: &workflow.RequestSpec{Kind: "review", Phase: "plan", Title: fmt.Sprintf("Review the plan: %s (%d tasks)", truncate(pi.Goal, 60), len(p.Tasks)), Payload: payload}}, nil
 	}
 }
 

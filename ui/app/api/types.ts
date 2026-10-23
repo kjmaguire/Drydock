@@ -27,6 +27,11 @@ export type MergeStrategy = 'merge' | 'squash' | 'rebase';
 export interface Project {
   id: string;
   name: string;
+  /**
+   * The prefix of the project's task identifiers: GOC for "GOC-41" (2 to 5 upper-case letters or digits, unique). Made from the
+   * name when the project is made; projectSetKey changes it. Absent from older cores.
+   */
+  key?: string;
   /** Empty while no repository is attached. */
   repoPath: string;
   /** False for a project made without a repository (attach one in Project settings). Absent from older cores: treat as true. */
@@ -409,6 +414,8 @@ export interface Task {
   template?: string;
   files?: string[];
   acceptance?: string[];
+  /** Lower-case labels (at most TASK_LABELS_MAX of up to TASK_LABEL_LEN characters); [] when none. Absent from older cores. */
+  labels?: string[];
   worktree?: string;
   branch?: string;
   baseBranch?: string;
@@ -444,6 +451,22 @@ export interface TaskCreateReq {
   description?: string;
   acceptance?: string[];
   priority?: number;
+  /** Trimmed, lower-cased and deduplicated by the core; too many or too long is refused. */
+  labels?: string[];
+}
+
+/** tasks.MaxLabels and tasks.MaxLabelLen */
+export const TASK_LABELS_MAX = 8;
+export const TASK_LABEL_LEN = 24;
+
+/**
+ * What task.list and task.count select besides the project and the statuses: the tasks of an agent (its id), with a label, and
+ * those that ended (completed, failed or cancelled) at or after completedSince (ms since the epoch).
+ */
+export interface TaskFilter {
+  assignee?: string;
+  label?: string;
+  completedSince?: number;
 }
 
 /**
@@ -485,6 +508,35 @@ export interface RequestSpec {
   title: string;
   payload?: unknown;
   actionHash?: string;
+  /** Which gate a review request is (from the pipeline): accept the spec, review and merge, or review a plan. */
+  phase?: ReviewPhase;
+}
+
+/** The gate a review request is (workflow.RequestSpec.Phase): "spec", "merge" or "plan". */
+export type ReviewPhase = 'spec' | 'merge' | 'plan' | string;
+
+/**
+ * security.TaskAllowRule: a person's "approve for this task" of one call of an agent (decision P97). Later requests of the same
+ * task, agent and tool that are the same call are approved without asking until the task ends: for a shell tool the same
+ * programs with the same arguments (`commands`), for any other tool the same input (`inputDigest`).
+ */
+export interface TaskAllowRule {
+  id: string;
+  projectId: string;
+  taskId: string;
+  agentId: string;
+  /** The approval's tool, "<cli>:<tool>" ("claude:Bash"). */
+  tool: string;
+  /** A shell command's first program ("go"). */
+  program?: string;
+  commands?: { program: string; args: string[] }[];
+  inputDigest?: string;
+  /** What it allows as a person reads it: the command, or where the call goes. */
+  summary: string;
+  /** The request it was approved on. */
+  approvalId: string;
+  createdBy: string;
+  createdAt: number;
 }
 
 export interface PendingRequest {
@@ -514,6 +566,108 @@ export interface TaskDetail {
   run?: RunInfo;
   pending: PendingRequest[];
   roomId?: string;
+  /** The person's "approve for this task" rules in force for the task's agents (P97); they end with the task. taskGet always fills it. */
+  allowRules?: TaskAllowRule[];
+  /** Each acceptance criterion's state by the newest test check, in the order of task.acceptance. Absent from older cores. */
+  acceptanceState?: CriterionState[];
+  /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
+  paused?: TaskPause;
+}
+
+/** core.TaskPause: who paused a task's run (a "human:<name>" identity), and when (Unix ms). */
+export interface TaskPause {
+  by: string;
+  at: number;
+}
+
+/**
+ * pipeline.CriterionState. failing: a failing test's name carries the id; passed: the newest test check passed and a test is
+ * known to carry the id; unknown otherwise (also for a criterion written without an id, whose id is empty).
+ */
+export interface CriterionState {
+  index: number;
+  id: string;
+  state: 'passed' | 'failing' | 'unknown' | string;
+}
+
+/** The steps a task goes through; done is a completed task (tasks.StepNames, the rule of screens/tasks/steps.ts). */
+export type SummaryStep = 'spec' | 'code' | 'checks' | 'review' | 'you' | 'done';
+
+/** pipeline.CheckState: the newest attempt's result of one kind of check. */
+export interface SummaryCheck {
+  /** build, test, lint, typecheck, secrets, deps, e2e, ci, preview, merge-conflicts */
+  kind: string;
+  /** not_run: not in the newest pass (it stopped at an earlier failure, or has not got there yet). */
+  status: 'passed' | 'failed' | 'running' | 'inconclusive' | 'not_run' | string;
+  /** The result's summary on one line. */
+  reason?: string;
+  /** What failed (tests, findings), at most 10. */
+  failing?: string[];
+}
+
+/** A request waiting for a person; answer it with runRespond(runId, requestId, ...). */
+export interface SummaryRequest {
+  kind: 'approval' | 'question' | 'review' | string;
+  /** spec: accept the spec; merge: review and merge; else the kind. */
+  phase: 'spec' | 'merge' | 'approval' | 'question' | 'review' | string;
+  title: string;
+  requestId: string;
+  runId: string;
+  createdAt: number;
+}
+
+/** core.TaskSummary: one task as a card shows it, without a task.get. */
+export interface TaskSummary {
+  taskId: string;
+  projectId: string;
+  /** With seq, the task's identifier: `${projectKey}-${seq}`. */
+  projectKey: string;
+  seq: number;
+  title: string;
+  status: TaskStatus | string;
+  template?: string;
+  labels: string[];
+  assignee?: string;
+  reviewer?: string;
+  /** How many acceptance criteria the task has. */
+  criteria: number;
+  step: SummaryStep | string;
+  /** 0 to stepCount (5 when done): a real fraction of the way, stepIndex / stepCount. */
+  stepIndex: number;
+  stepCount: number;
+  /** The iteration the task is on, from 1, of maxAttempts. */
+  attempt: number;
+  maxAttempts: number;
+  checks: SummaryCheck[];
+  /** The newest diff's size; absent before the first. */
+  diff?: { files: number; insertions: number; deletions: number };
+  verdict?: 'SHIP' | 'REVISE' | string;
+  /** The oldest request waiting for a person; pendingCount is how many wait. */
+  pending?: SummaryRequest;
+  pendingCount: number;
+  startedAt?: number;
+  completedAt?: number;
+  updatedAt: number;
+  /** The assignee's presence while it works on this task (Working, Thinking, Waiting). */
+  presence?: PresenceName | string;
+  /** The assignee's latest tool call with its argument: "Editing limiter.go", "Running go test ./...". */
+  doing?: string;
+}
+
+/** task.summaries: at most TASK_LIST_LIMIT (or the limit asked) of the newest tasks; total is how many match, partial says it is cut. */
+export interface TaskSummaries {
+  summaries: TaskSummary[];
+  total: number;
+  partial: boolean;
+}
+
+/** What task.summaries describes: the open tasks and those that ended since finishedSince (default: a week ago), or the ids. */
+export interface TaskSummaryReq {
+  /** Empty for every project. */
+  projectId: string;
+  ids?: string[];
+  finishedSince?: number;
+  limit?: number;
 }
 
 export type RoomKind = 'channel' | 'task' | 'dm' | 'group';
@@ -617,6 +771,14 @@ export interface NeedsYouItem {
   createdAt: string;
   /** What a task's item is about (UI review P1-1): the assignee, the newest diff's size, the checks and the reviewer's verdict. */
   context?: NeedsContext;
+  /** The task's number in its project (with the project, its key); absent for an item of no task. */
+  taskSeq?: number;
+  /** For kind review: which gate it is, from the request that made it. */
+  phase?: ReviewPhase;
+  /** The name of the agent the item is about (agentId): the one asking, or the task's assignee for a review. */
+  agentName?: string;
+  /** When an approval lapses unanswered (RFC 3339, like createdAt). */
+  expiresAt?: string;
 }
 
 export interface NeedsContext {
@@ -648,6 +810,8 @@ export interface PresenceState {
   presence: PresenceName | string;
   label?: string;
   activity?: string;
+  /** The latest tool call of this turn with its argument: "Editing limiter.go". Absent outside a turn and from older cores. */
+  doing?: string;
   since: string;
   updated: string;
   seq: number;

@@ -5,7 +5,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createAgent, createProject, roomLink, projectNav, openRoom } from './helpers';
 
-const ROUTES = ['/needs-you', '/tasks', '/tasks/new', '/pulls', '/team', '/activity', '/project', '/project/integrations', '/plan', '/requirements', '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/chats', '/library', '/connections', '/github', '/providers', '/routing', '/backups', '/data', '/support', '/license', '/settings', '/home', '/library/skills', '/security-scan'];
+const ROUTES = ['/needs-you', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements', '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/chats', '/library', '/connections', '/github', '/providers', '/routing', '/backups', '/data', '/support', '/license', '/settings', '/home', '/library/skills', '/security-scan', '/models'];
 
 /** The visible text under 12 px, outside decoration hidden from assistive tech, and whether anything overflows the window. */
 async function measure(page: Page) {

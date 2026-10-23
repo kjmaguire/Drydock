@@ -40,6 +40,9 @@ type Launch struct {
 	APIKey string
 	// Timeout bounds the wait for the model to load (default 15 minutes: a large model from a slow disk).
 	Timeout time.Duration
+	// Autostarted says Drydock started the server by itself when it started (the Autostart setting), not a person; the state
+	// says so.
+	Autostarted bool
 }
 
 // NewAPIKey is a random key for one start of the server.
@@ -63,6 +66,11 @@ type ServerState struct {
 	Error     string    `json:"error,omitempty"`
 	StartedAt time.Time `json:"startedAt,omitempty"`
 	PID       int       `json:"pid,omitempty"`
+	// Autostarted says Drydock started the server when it started (Launch.Autostarted); false when a person did. CacheType and
+	// ContextSize are what the server was started with (ContextSize 0: the model's own).
+	Autostarted bool   `json:"autostarted"`
+	CacheType   string `json:"cacheType,omitempty"`
+	ContextSize int    `json:"contextSize,omitempty"`
 }
 
 // Server runs one llama-server at a time.
@@ -165,7 +173,8 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 	s.mu.Unlock()
 	base := "http://127.0.0.1:" + strconv.Itoa(l.Port)
 	s.set(func(st *ServerState) {
-		*st = ServerState{State: "starting", ModelID: l.Model.ID, Port: l.Port, BaseURL: base + "/v1", StartedAt: time.Now().UTC()}
+		*st = ServerState{State: "starting", ModelID: l.Model.ID, Port: l.Port, BaseURL: base + "/v1", StartedAt: time.Now().UTC(),
+			Autostarted: l.Autostarted, CacheType: l.CacheType, ContextSize: l.ContextSize}
 	})
 	if err := portFree(l.Port); err != nil {
 		s.set(func(st *ServerState) { st.State, st.Error = "failed", err.Error() })

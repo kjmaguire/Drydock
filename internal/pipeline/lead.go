@@ -12,6 +12,7 @@ const (
 	TriggerRepeatedRevise = "repeated_revise" // the reviewer sent the same REVISE feedback in consecutive rounds
 	TriggerStalled        = "stalled"         // a RUNNING task produced no progress events for the configured minutes
 	TriggerUnassigned     = "unassigned"      // a READY/BACKLOG task has no worker or reviewer while automatic scheduling is on
+	TriggerRequested      = "requested"       // a person asked the lead to split the task (lead.split); not bounded by MaxPerRun
 )
 
 // Lead actions.

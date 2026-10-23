@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, choose, createAgent, createProject, openTile, workspaceNav, projectNav, switchProject } from './helpers';
+import { appUrl, choose, createAgent, createProject, openAgentPage, openTile, workspaceNav, projectNav, switchProject } from './helpers';
 
 // Round 6: the Library, against the real Go core. An MCP server is connected once, for the workspace, in the Library (the dialog
 // lists the servers built into Drydock first, then a custom server); a project adds it from its own Integrations page and grants
-// it to one of its agents there. A team member is defined once as a template and added to another project from its Team page.
+// it to one of its agents there. A team member is defined once as a template and added to another project from its Crew page.
 // The Library itself names no project (decision P51). The server is a real stdio MCP server (the e2e binary re-executed with
 // DRYDOCK_E2E_MCP_SERVER=1, a test fixture). What an agent does with it is covered by the Go tests.
 
@@ -109,12 +109,16 @@ test("Library: connect an MCP server once; a project adds it and grants it to an
   await expect(onA.getByText('reads only')).toHaveCount(1);
   await expect(tstTile).toContainText('Pay may use it');
 
-  // the template joins lib-b's team from its Team page, with the server it names
+  // the template joins lib-b's team from its Crew page (Templates), with the server it names
   await switchProject(page, 'lib-b');
   await projectNav(page, 'nav-team');
+  await page.getByRole('button', { name: 'Templates' }).click();
   await expect(page.getByLabel('Template', { exact: true })).toContainText('Payments dev'); // the only template, chosen
   await page.getByRole('button', { name: 'Add to this team' }).click();
-  await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toContainText('effort high');
+  await expect(page.getByTestId('agent').filter({ hasText: 'Payments dev' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await openAgentPage(page, 'Payments dev');
+  await expect(page.getByTestId('agent-chip').filter({ hasText: 'effort: high' })).toBeVisible();
 
   // lib-b's Integrations page agrees: granting put the server into lib-b, for Payments dev only; lib-a's grants are not here
   await projectNav(page, 'nav-project-integrations');

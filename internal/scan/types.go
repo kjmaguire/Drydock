@@ -59,6 +59,8 @@ type EngineResult struct {
 	Done       int    `json:"done,omitempty"`
 	Total      int    `json:"total,omitempty"`
 	Findings   int    `json:"findings"`
+	// Dismissed counts the engine's findings a person dismissed (not in Findings).
+	Dismissed int `json:"dismissed,omitempty"`
 	// Unread counts the folders and files the secrets engine could not read (permissions); they were not scanned, and
 	// Reason says so.
 	Unread int `json:"unread,omitempty"`
@@ -93,6 +95,20 @@ type Finding struct {
 	Package string   `json:"package,omitempty"`
 	Version string   `json:"version,omitempty"`
 	IDs     []string `json:"ids,omitempty"`
+	// Fixed is the version of a vulnerable package that fixes every advisory osv.dev names a fix for; Unfixed are the
+	// advisories it names none for.
+	Fixed   string   `json:"fixed,omitempty"`
+	Unfixed []string `json:"unfixed,omitempty"`
+	// Fingerprint is the finding's stable id (fingerprint.go): the same finding has the same one in every later scan while
+	// its line reads the same, wherever the line moves. It is made from the engine, the rule, the file and a hash of the line
+	// with any secret masked, never from a secret's value.
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// Dismissed is set when a person dismissed the finding (security.finding.dismiss): it is then left out of the counts and
+	// the summary. DismissedBy is who ("human:<name>"), DismissedAt when (unix milliseconds), DismissReason why.
+	Dismissed     bool   `json:"dismissed,omitempty"`
+	DismissedBy   string `json:"dismissedBy,omitempty"`
+	DismissedAt   int64  `json:"dismissedAt,omitempty"`
+	DismissReason string `json:"dismissReason,omitempty"`
 }
 
 // Counts is how many findings of each severity a report has.
@@ -128,7 +144,9 @@ type Report struct {
 	FinishedAt int64          `json:"finishedAt,omitempty"`
 	Engines    []EngineResult `json:"engines"`
 	Findings   []Finding      `json:"findings"`
-	Counts     Counts         `json:"counts"`
+	// Counts leave out the dismissed findings; Dismissed counts those.
+	Counts    Counts `json:"counts"`
+	Dismissed int    `json:"dismissed,omitempty"`
 	// Summary is one plain sentence once the scan is done ("Scanned in 12 s: 1 secret, 2 vulnerable packages, 5 code findings").
 	Summary   string `json:"summary,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`

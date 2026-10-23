@@ -180,7 +180,7 @@ UI packages (the npm registry serves each at `https://registry.npmjs.org/<packag
 
 Offered under the MPL-2.0 or another license, and used under the other one:
 
-- `dompurify` 3.4.16: (MPL-2.0 OR Apache-2.0)
+- `dompurify` 3.4.17: (MPL-2.0 OR Apache-2.0)
 
 <!-- END GENERATED: MPL-2.0 modules -->
 
@@ -262,6 +262,7 @@ Listed in `ui/package.json` as what the UI needs to run:
 | Package | Version | License | Used for |
 |---|---|---|---|
 | @fontsource-variable/inter | 5.3.0 | OFL-1.1 | Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1). |
+| @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | Bundles the JetBrains Mono variable font for code, task keys and numbers in the graphite UI (decision P97), so the desktop app looks the same offline (OFL-1.1). |
 | @remix-run/ui | 0.12.1 | MIT | Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui. |
 | @xterm/addon-fit | 0.11.0 | MIT | Sizes a terminal to its panel. |
 | @xterm/xterm | 6.0.0 | MIT | Draws the human's terminals in the bottom dock (lazy-loaded). |
@@ -335,7 +336,7 @@ Pulled in by those:
 | chokidar | 5.0.0 | MIT | - |
 | convert-source-map | 2.0.0 | MIT | - |
 | detect-libc | 2.1.2 | Apache-2.0 | - |
-| dompurify | 3.4.16 | (MPL-2.0 OR Apache-2.0) | - |
+| dompurify | 3.4.17 | (MPL-2.0 OR Apache-2.0) | - |
 | es-module-lexer | 2.3.2 | MIT | - |
 | esbuild | 0.28.2 | MIT | - |
 | get-tsconfig | 4.14.3 | MIT | - |

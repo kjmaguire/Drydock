@@ -1,7 +1,7 @@
 // Pure helpers for the team page, the agent editor and the template form (no DOM, no services).
 
 import type { AppliedTemplate, SkillsInstalled } from '../../api/libraryClient.ts';
-import { isStopped, presenceWords } from '../../lib/format.ts';
+import { agentStatus, isStopped, presenceWords } from '../../lib/format.ts';
 import type { AdapterInfo, Agent, AgentRun, Capabilities, PresenceState, RouteModel, Task, UsageTotals } from '../../api/types.ts';
 
 export const CAP_LABEL: [keyof Capabilities, string][] = [
@@ -194,47 +194,25 @@ export function minutesText(m: number): string {
   return `${(m / (60 * 24)).toFixed(1)} d`;
 }
 
-/** The figures at the top of the Crew page: who is at work, what the crew is on, what waits for the person, and its skills. */
+/** The figures in the Crew page's header: how many agents, how many at work, how many wait on the person. */
 export interface CrewFigures {
   agents: number;
   working: number;
-  stopped: number;
-  inFlight: number;
+  /** Agents waiting on the person: their presence says so, or one of their requests is open (`waitingOn`). */
   waiting: number;
-  skillsGiven: number;
-  withoutSkills: number;
+  stopped: number;
 }
 
-const IN_FLIGHT = new Set(['CLAIMED', 'IN_PROGRESS', 'REVIEW', 'VERIFICATION']);
 const AT_WORK = new Set(['Working', 'Thinking']);
 
-/** Counts the Crew page's figures from the team, its presence, the project's tasks and its skills (each given to agents, P76). */
-export function crewFigures(
-  agents: readonly { id: string }[],
-  presence: readonly PresenceState[],
-  tasks: readonly { status: string }[],
-  skills: readonly { status: string; agents?: string[] | null }[],
-): CrewFigures {
+/** Counts the Crew page's figures from the team, its presence and the agents with a request open for the person. */
+export function crewFigures(agents: readonly { id: string }[], presence: readonly PresenceState[], waitingOn: ReadonlySet<string> = new Set()): CrewFigures {
   const at = (id: string) => presence.find((p) => p.agentId === id);
-  const ids = new Set(agents.map((a) => a.id));
-  const given = new Map<string, number>();
-  let skillsGiven = 0;
-  for (const k of skills) {
-    if (k.status !== 'accepted') continue;
-    for (const a of k.agents ?? []) {
-      if (!ids.has(a)) continue;
-      given.set(a, (given.get(a) ?? 0) + 1);
-      skillsGiven++;
-    }
-  }
   return {
     agents: agents.length,
-    working: agents.filter((a) => AT_WORK.has(at(a.id)?.presence ?? '')).length,
-    stopped: agents.filter((a) => isStopped(at(a.id))).length,
-    inFlight: tasks.filter((t) => IN_FLIGHT.has(t.status)).length,
-    waiting: tasks.filter((t) => t.status === 'WAITING_HUMAN').length,
-    skillsGiven,
-    withoutSkills: agents.filter((a) => !given.get(a.id)).length,
+    working: agents.filter((a) => !waitingOn.has(a.id) && AT_WORK.has(at(a.id)?.presence ?? '')).length,
+    waiting: agents.filter((a) => waitingOn.has(a.id) || agentStatus(at(a.id)) === 'waiting-for-you').length,
+    stopped: agents.filter((a) => !waitingOn.has(a.id) && isStopped(at(a.id))).length,
   };
 }
 

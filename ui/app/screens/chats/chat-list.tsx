@@ -1,10 +1,13 @@
-// The chat list column: New chat, a search box (chat.search, debounced, matches highlighted), "All chats" (off: the current
-// project's chats only), then the chats, pinned first. Each row shows the title, the preview, a relative time and whether a
-// turn is running; its actions menu pins, renames, forks, archives or deletes (with a confirmation).
+// The chat list column (graphite, decision P97): "Chats" and New (Ctrl+N), a search box (chat.search, debounced, matches
+// highlighted), "All chats" (off: the current project's chats only), then the chats, pinned first. Each row shows the title and
+// a faint line: the project (when the chat is in one), the CLI (named as the Connections page names it: "Claude Code WSL") and
+// when it was last active, or that a turn is running; its actions menu pins, renames, forks, archives or deletes (with a
+// confirmation).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { Archive, ArchiveRestore, Ellipsis, GitFork, MessagesSquare, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide';
+import { Archive, ArchiveRestore, Ellipsis, GitFork, Pencil, Pin, PinOff, Search, Trash2 } from 'lucide';
 import type { ChatHit, ChatListItem } from '../../api/chatClient.ts';
+import type { Connection } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -15,29 +18,28 @@ import { Field, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
-import { adapterLabel, chatTitle, relTime, snippetParts } from './chats.ts';
+import { ownsKeys } from '../../lib/keys.ts';
+import { chatCliText, chatRowLine, chatTitle, listWhen, snippetParts } from './chats.ts';
 
 const colCss = css({
   display: 'flex',
   flexDirection: 'column',
-  width: '300px',
+  width: '280px',
   flex: 'none',
   minHeight: '0',
   borderRight: `1px solid ${t.border}`,
-  background: t.bgApp,
+  background: t.bgSidebar,
 });
 const headCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s2,
-  height: 'var(--header-height)',
-  padding: `0 ${t.s2} 0 ${t.s4}`,
-  borderBottom: `1px solid ${t.border}`,
+  padding: '16px 16px 10px',
   flex: 'none',
-  '& h1': { flex: '1', display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textLg, fontWeight: '600', margin: '0' },
-  '& h1 svg': { color: t.textMuted },
+  '& h1': { flex: '1', fontSize: t.textLg, fontWeight: '600', margin: '0' },
+  '& kbd': { marginLeft: '2px' },
 });
-const toolsCss = css({ display: 'grid', gap: '6px', padding: `${t.s2} ${t.s2} ${t.s1}`, flex: 'none' });
+const toolsCss = css({ display: 'grid', gap: '6px', padding: `0 10px ${t.s2}`, flex: 'none' });
 const searchCss = css({
   display: 'flex',
   alignItems: 'center',
@@ -68,17 +70,18 @@ const pillCss = css({
   '&:hover': { background: t.bgHover, color: t.text },
   '&[aria-pressed="true"]': { background: t.bgActive, color: t.text, borderColor: t.border },
 });
-const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', padding: `${t.s1} ${t.s2} ${t.s4}` });
+const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', padding: `${t.s1} 10px ${t.s4}` });
 const groupCss = css({ padding: `${t.s2} ${t.s2} 4px`, color: t.textFaint, fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase' });
-const listCss = css({ display: 'grid', gap: '1px', margin: '0', padding: '0', listStyle: 'none' });
+const listCss = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '4px', margin: '0', padding: '0', listStyle: 'none' });
+// a row: the title, then a faint line (the project, the CLI, when); the open chat is highlighted
 const rowCss = css({
   position: 'relative',
   '& > a': {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: '2px 8px',
-    padding: `7px ${t.s2}`,
-    borderRadius: t.rMd,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+    padding: '10px 12px',
+    borderRadius: t.rLg,
     color: t.text,
     textDecoration: 'none',
   },
@@ -88,10 +91,12 @@ const rowCss = css({
   '& .title': { display: 'flex', alignItems: 'center', gap: '5px', minWidth: '0', fontSize: t.textMd, fontWeight: '500' },
   '& .title > span': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .title svg': { flex: 'none', color: t.textFaint },
-  '& .when': { color: t.textFaint, fontSize: t.textXs, fontVariantNumeric: 'tabular-nums', alignSelf: 'center' },
-  '& .preview': { gridColumn: '1 / -1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: t.textMuted, fontSize: t.textSm },
+  '& .line': { display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0', color: t.textFaint, fontSize: t.textXs, fontVariantNumeric: 'tabular-nums' },
+  '& .line > span': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  '& .when': { color: t.textFaint, fontSize: t.textXs, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto', flex: 'none' },
+  '& .preview': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: t.textMuted, fontSize: t.textSm },
   '& .preview mark': { background: t.mentionBg, color: t.text, borderRadius: '2px', padding: '0 1px' },
-  '& .run': { display: 'inline-flex', alignItems: 'center', gap: '4px', color: t.success, fontSize: t.textXs, fontWeight: '500' },
+  '& .run': { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: 'none', color: t.success, fontWeight: '500' },
   '& .run i': { width: '6px', height: '6px', borderRadius: '50%', background: t.success, animation: 'dd-chat-pulse 1.2s ease-in-out infinite' },
   '@keyframes dd-chat-pulse': { '50%': { opacity: '0.35' } },
   '& .err': { width: '6px', height: '6px', borderRadius: '50%', background: t.danger, flex: 'none' },
@@ -123,6 +128,13 @@ const DEBOUNCE_MS = 250;
 
 // in a narrow window (ui.ts NARROW_RAILS) the list is either the whole screen (no chat open) or a drawer over the open chat
 const fullCss = css({ width: '100%', borderRight: '0' });
+
+/** A key press that opens the new chat dialog: Ctrl+N, not while typing in a field, inside a widget with its own keys or a dialog. */
+export function isNewChatKey(e: KeyboardEvent): boolean {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.repeat || e.defaultPrevented || e.key.toLowerCase() !== 'n' || ownsKeys(e.target)) return false;
+  const el = e.target as HTMLElement | null;
+  return !(el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.closest?.('dialog, [role="menu"], [role="listbox"]')));
+}
 const drawerCss = css({ position: 'absolute', top: '0', left: '0', bottom: '0', zIndex: '30', width: 'min(320px, calc(100% - 48px))', boxShadow: t.shadowLg });
 
 export function ChatList(
@@ -164,6 +176,19 @@ export function ChatList(
     key: () => handle.props.selectedId,
     enabled: missingOpen,
     debounceMs: 150,
+  });
+  // a chat in WSL is named as the Connections page names its install ("Claude Code WSL", the distro only when the CLI is in
+  // another distro too): the Connections list, read only while such a chat is listed
+  const installs = query(handle, {
+    enabled: () => (chats.data ?? []).some((c) => !!c.wslDistro) || (open.data ?? []).some((c) => !!c.wslDistro),
+    when: (e) => e.type.startsWith('connection.') && e.type !== 'connection.sign_in_started',
+    load: async (): Promise<Connection[]> => {
+      try {
+        return await s.client.connectionList();
+      } catch {
+        return [];
+      }
+    },
   });
   const hits = query(handle, {
     load: () => s.client.chatSearch(q, scope()),
@@ -220,6 +245,7 @@ export function ChatList(
     { name: 'delete', label: 'Delete…', icon: Trash2, danger: true, separatorBefore: true, disabled: c.status === 'running' },
   ];
 
+  const projectName = (id: string) => s.workspace.projectList.find((p) => p.id === id)?.name ?? '';
   const row = (c: ChatListItem) => {
     const { selectedId } = handle.props;
     const title = chatTitle(c);
@@ -232,17 +258,17 @@ export function ChatList(
             {c.archived ? <Badge>archived</Badge> : null}
             {c.status === 'error' ? <span class="err" title={c.lastError || 'The last turn failed'} /> : null}
           </span>
-          {c.status === 'running' ? (
-            <span class="run" data-testid="chat-running">
-              <i aria-hidden="true" />
-              running
+          <span class="line">
+            <span title={new Date(c.updatedAt).toLocaleString()}>
+              {chatRowLine({ project: c.projectId ? projectName(c.projectId) : '', cli: chatCliText(c, installs.data ?? []), when: c.status === 'running' ? '' : listWhen(c.updatedAt) })}
             </span>
-          ) : (
-            <span class="when" title={new Date(c.updatedAt).toLocaleString()}>
-              {relTime(c.updatedAt)}
-            </span>
-          )}
-          <span class="preview">{c.preview || `${adapterLabel(c.adapter)}${c.projectId ? '' : ', no project'}`}</span>
+            {c.status === 'running' ? (
+              <span class="run" data-testid="chat-running">
+                <i aria-hidden="true" />
+                running
+              </span>
+            ) : null}
+          </span>
         </a>
         <Menu
           label={`Actions for ${title}`}
@@ -265,8 +291,8 @@ export function ChatList(
         <span class="title">
           <span>{chatTitle(h)}</span>
           {h.archived ? <Badge>archived</Badge> : null}
+          <span class="when">{h.seq === 0 ? 'title' : h.role ?? ''}</span>
         </span>
-        <span class="when">{h.seq === 0 ? 'title' : h.role ?? ''}</span>
         <span class="preview">
           {snippetParts(h.snippet).map((p, j) => (p.hit ? <mark key={j}>{p.text}</mark> : p.text))}
         </span>
@@ -281,16 +307,14 @@ export function ChatList(
     const pinned = list.filter((c) => c.pinned);
     const rest = list.filter((c) => !c.pinned);
     const searching = q.length > 0;
-    const projectName = s.workspace.projectList.find((p) => p.id === projectId)?.name;
+    const scopeName = projectId ? projectName(projectId) : '';
     return (
       <aside mix={[colCss, handle.props.layout === 'full' ? fullCss : handle.props.layout === 'drawer' ? drawerCss : undefined]} aria-label="Chats" data-layout={handle.props.layout ?? 'column'}>
         <div mix={headCss}>
-          <h1>
-            <Icon icon={MessagesSquare} size={16} />
-            Chats
-          </h1>
-          <Button size="sm" variant="primary" icon={Plus} mix={[on('click', () => onNew())]} data-testid="chat-new">
-            New chat
+          <h1>Chats</h1>
+          <Button size="sm" variant="secondary" mix={[on('click', () => onNew())]} data-testid="chat-new" aria-label="New chat" aria-keyshortcuts="Control+N" title="New chat (Ctrl+N)">
+            New
+            <kbd aria-hidden="true">Ctrl+N</kbd>
           </Button>
         </div>
         <div mix={toolsCss}>
@@ -301,8 +325,8 @@ export function ChatList(
           </label>
           <div mix={filterRow} role="group" aria-label="Filter chats">
             {projectId ? (
-              <button type="button" mix={[pillCss, on('click', () => ((all = false), void handle.update()))]} aria-pressed={!all ? 'true' : 'false'} title={`Only the chats of ${projectName ?? 'this project'}`}>
-                {projectName ?? 'This project'}
+              <button type="button" mix={[pillCss, on('click', () => ((all = false), void handle.update()))]} aria-pressed={!all ? 'true' : 'false'} title={`Only the chats of ${scopeName || 'this project'}`}>
+                {scopeName || 'This project'}
               </button>
             ) : null}
             <button type="button" mix={[pillCss, on('click', () => ((all = true), void handle.update()))]} aria-pressed={all || !projectId ? 'true' : 'false'}>

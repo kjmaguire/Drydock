@@ -103,6 +103,9 @@ type Managed struct {
 	stream  *redact.Stream // text not yet at the end of a word, when the runtime redacts
 	usage   []workflow.UsageChunk
 	stopped atomic.Bool
+	// cancelled is set when the turn was stopped before it finished (its context ended): the run row then says CANCELLED
+	// instead of STOPPED, so the crew timeline can tell a cancelled run from a finished one
+	cancelled atomic.Bool
 
 	releaseMCP func()
 	mcpOnce    sync.Once
@@ -304,6 +307,9 @@ func (m *Managed) watchExit() {
 	ei := <-m.Sess.Wait()
 	defer m.releaseMCPRun() // the process is gone (clean exit, crash or kill): its gateway run and token die with it
 	status := "STOPPED"
+	if m.cancelled.Load() {
+		status = "CANCELLED"
+	}
 	var errMsg string
 	if !m.stopped.Load() && (ei.Err != nil || ei.Code != 0) {
 		status = "FAILED"
@@ -541,6 +547,7 @@ func (m *Managed) RunTurnImages(ctx context.Context, prompt string, images []age
 	for {
 		select {
 		case <-ctx.Done():
+			m.cancelled.Store(true)
 			_ = m.Stop(context.Background())
 			if cause := context.Cause(ctx); cause != nil {
 				return res, cause

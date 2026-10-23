@@ -30,16 +30,17 @@ import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGa
 import { budgetPayload, criterionLine, editedCriteria, newestDiffStat, payloadOf, type PayloadDiff, specPayload } from './tasks.ts';
 import { plural } from '../../lib/format.ts';
 
-// The decide card (Crew HQ, decision P64): a soft yellow card with the requests as white cards inside; the primary answer is
-// the black pill.
+// The decide card (graphite, decision P97): on the task page it sits above the Activity while a request waits, a card in the
+// "waiting on you" tone with the requests inside; the primary answer is the accent button.
 const panelCss = css({
   display: 'grid',
   gap: t.s3,
-  padding: '18px',
-  borderRadius: t.rXl,
+  padding: t.s4,
+  borderRadius: t.rLg,
   border: `1px solid ${t.mentionBorder}`,
   background: t.mentionBg,
-  '& > h2': { display: 'flex', alignItems: 'center', gap: t.s2, fontSize: t.textLg, fontWeight: '600', letterSpacing: '-0.01em' },
+  minWidth: '0',
+  '& > h2': { display: 'flex', alignItems: 'center', gap: t.s2, margin: '0', fontSize: t.textMd, fontWeight: '600' },
   '& > h2 svg': { color: t.warning },
 });
 
@@ -47,7 +48,7 @@ const cardCss = css({
   display: 'grid',
   gap: t.s3,
   padding: t.s4,
-  borderRadius: t.rLg,
+  borderRadius: t.rMd,
   border: `1px solid ${t.border}`,
   background: t.bgSurface,
   minWidth: '0',

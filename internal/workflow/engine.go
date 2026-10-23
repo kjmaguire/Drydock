@@ -573,8 +573,8 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		if r.Status == "started" {
 			_ = e.st.execAbandon(ctx, info.ID, n.ID, step, r.Attempt)
 		}
-		if r.Status == "started" || r.Status == "abandoned" {
-			interrupted++
+		if (r.Status == "started" || r.Status == "abandoned") && !strings.HasPrefix(r.Error, PausedPrefix) {
+			interrupted++ // an attempt a person paused (Pause) was stopped on purpose: it is not one Drydock cut off
 		}
 		prev = &Previous{Attempt: r.Attempt, PartialRef: r.PartialRef, Error: r.Error}
 	}

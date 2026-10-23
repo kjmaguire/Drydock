@@ -18,6 +18,8 @@ export interface EngineResult {
   done?: number;
   total?: number;
   findings: number;
+  /** The engine's findings a person dismissed (not in `findings`). */
+  dismissed?: number;
   /** Folders and files the secrets engine could not read; `reason` says so. */
   unread?: number;
   version?: string;
@@ -36,6 +38,67 @@ export interface ScanFinding {
   version?: string;
   /** Advisory ids (osv.dev) of a dependency finding. */
   ids?: string[];
+  /** The version of a vulnerable package that fixes every advisory osv.dev names a fix for; `unfixed` are those it names none for. */
+  fixed?: string;
+  unfixed?: string[];
+  /** The finding's stable id (decision P97): the same in later scans while its line reads the same. Never made from a secret's value. */
+  fingerprint?: string;
+  /** A person dismissed it: it is not in the counts or the summary. */
+  dismissed?: boolean;
+  dismissedBy?: string;
+  dismissedAt?: number;
+  dismissReason?: DismissReason;
+}
+
+export type DismissReason = 'not_real' | 'accepted_risk' | 'false_positive';
+
+/** scan.Dismissal: a dismissed finding of a project or folder, with what named it. */
+export interface ScanDismissal {
+  fingerprint: string;
+  reason: DismissReason;
+  by: string;
+  at: number;
+  engine: EngineID;
+  rule: string;
+  title: string;
+  file?: string;
+  line?: number;
+  /** The scan whose report it was dismissed in. */
+  scanId?: string;
+}
+
+/** scan.Advice: what a finding means and what to do. */
+export interface ScanAdvice {
+  meaning: string;
+  steps: string[];
+  /** Advisory ids, a rule's CWE. */
+  refs?: string[];
+}
+
+/** One line of the code around a finding. A secret is never in `text`: it is masked ("[REDACTED:<rule>]"). */
+export interface ScanContextLine {
+  n: number;
+  text: string;
+  /** The finding's own lines. */
+  hit?: boolean;
+  /** A secret was masked on the line. */
+  masked?: boolean;
+  /** Longer than shown. */
+  cut?: boolean;
+}
+
+/** scan.FindingContext: the code around a finding, read from the scanned folder when asked, and what it means. */
+export interface ScanFindingContext {
+  scanId: string;
+  finding: ScanFinding;
+  lines: ScanContextLine[];
+  /** The line no longer reads as it did when the scan ran. */
+  changed?: boolean;
+  /** Why there are no lines (a dependency finding, a file that is gone, binary or too big). */
+  note?: string;
+  /** security.file.read: the file has more lines than it answered with. */
+  more?: boolean;
+  advice: ScanAdvice;
 }
 
 export interface ScanCounts {
@@ -59,11 +122,28 @@ export interface ScanReport {
   engines: EngineResult[];
   findings: ScanFinding[];
   counts: ScanCounts;
+  /** Findings a person dismissed: left out of `counts` and the summary. */
+  dismissed?: number;
   summary?: string;
   /** True when more findings were counted than kept. */
   truncated?: boolean;
   /** Set when the finished report could not be written to the database: it is shown until the next scan. */
   storeError?: string;
+}
+
+/** core.RunningScan (security.scan.running): a scan in progress anywhere in the workspace, newest first. */
+export interface RunningScan {
+  id: string;
+  /** Set for a project's scan. */
+  projectId?: string;
+  /** Set for a folder scan (decision P61). */
+  folder?: string;
+  /** What it reads as a person names it: the project's name, or the folder's last element. */
+  name: string;
+  by: string;
+  startedAt: number;
+  engines: EngineResult[];
+  counts: ScanCounts;
 }
 
 export interface ScanSummary {

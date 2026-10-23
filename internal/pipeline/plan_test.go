@@ -159,7 +159,7 @@ func TestPlanTeamNothingIsCreatedUntilAHumanAccepts(t *testing.T) {
 	}
 	p := pe.pending(id)
 	var rv pipeline.PlanReviewPayload
-	if err := json.Unmarshal(p.Spec.Payload, &rv); err != nil || p.Spec.Kind != "review" || rv.Phase != "plan" || len(rv.Tasks) != 3 || !rv.Tasks[0].Assignable || rv.Tasks[2].Assignable == rv.Tasks[0].Assignable && rv.Tasks[2].Role == "pm" && false {
+	if err := json.Unmarshal(p.Spec.Payload, &rv); err != nil || p.Spec.Kind != "review" || p.Spec.Phase != "plan" || rv.Phase != "plan" || len(rv.Tasks) != 3 || !rv.Tasks[0].Assignable || rv.Tasks[2].Assignable == rv.Tasks[0].Assignable && rv.Tasks[2].Role == "pm" && false {
 		t.Fatalf("payload %s (%v)", p.Spec.Payload, err)
 	}
 	stored, _ := pipeline.GetPlan(context.Background(), pe.db, pi.PlanID)

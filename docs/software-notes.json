@@ -94,6 +94,9 @@
     "npm:@fontsource-variable/inter": {
       "role": "Bundles the Inter variable font so the desktop app looks the same offline (OFL-1.1)."
     },
+    "npm:@fontsource-variable/jetbrains-mono": {
+      "role": "Bundles the JetBrains Mono variable font for code, task keys and numbers in the graphite UI (decision P97), so the desktop app looks the same offline (OFL-1.1)."
+    },
     "npm:@playwright/test": {
       "role": "Runs the browser tests against the real Go core."
     },
@@ -216,7 +219,7 @@
       "role": "Sizes a terminal to its panel."
     },
     "npm:dompurify": {
-      "role": "Pulled in by monaco-editor; pinned by an override to the release that fixes the IN_PLACE advisories."
+      "role": "Pulled in by monaco-editor; pinned by an override to 3.4.17, the release that fixes the SAFE_FOR_TEMPLATES, IN_PLACE and SMIL href advisories (GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr, GHSA-c6gr-qvv4-5v3f) that 3.4.16 has."
     },
     "npm:esbuild": {
       "role": "Pulled in by vite and remix test (TypeScript transforms in the test runner); not part of the shipped bundle.",

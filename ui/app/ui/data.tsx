@@ -120,6 +120,8 @@ const avatarCss = css({
   userSelect: 'none',
   letterSpacing: '0.01em',
   lineHeight: '1',
+  // the letters are drawn, not written: the avatar is decoration beside the name, so they stay out of the text a reader or a test gets
+  '&::before': { content: 'attr(data-letters)' },
 });
 
 const avatarStatus = css({
@@ -137,92 +139,40 @@ export function avatarRadius(size: number): number {
   return size <= 16 ? 3 : size <= 20 ? 4 : size <= 30 ? 6 : 8;
 }
 
-const eyesCss = css({
-  position: 'absolute',
-  inset: '0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  paddingBottom: '8%',
-  pointerEvents: 'none',
-  '& > i': { display: 'block', background: 'currentColor' },
-});
-
-/** The mood an agent's eyes show, from its presence color (the words sit beside the avatar). */
-export function moodFor(status: string | undefined): string {
-  if (!status) return 'idle';
-  for (const [k, v] of Object.entries(STATUS_TONE)) if (v === status) return STATUS_MOOD[k as AgentStatus];
-  return 'idle';
-}
-
-/** The eyes (app.css .dot-eyes): looking around at work, up while waiting on you, closed while stopped. */
-const STATUS_MOOD: Record<AgentStatus, string> = {
-  working: 'working',
-  'waiting-for-you': 'waiting',
-  waiting: 'thinking',
-  starting: 'thinking',
-  idle: 'idle',
-  error: 'failed',
-  stopped: 'paused',
-};
-
 /**
- * An avatar. Agents are "dots" (OpenAI Dots, Grok Bot): a disc in the agent's own bright colour with two rounded-square
- * eyes that blink, look around while the agent works, look up while it waits on you and close while it is paused.
- * People are round with initials; projects and tools are rounded squares with initials. `status` is a presence color.
+ * An avatar (graphite, decision P97). An agent is a disc in its own hue, deep in the dark theme and pale in the light one,
+ * with its first letter; `data-dot` marks it as an agent's (the tests and the e2e suite find agents by it). People are round
+ * with initials; projects and tools are rounded squares with initials. `status` is a presence colour, drawn as a corner dot;
+ * presence is always in words beside the avatar too.
  */
 export function Avatar(handle: Handle<{ id: string; name: string; size?: number; square?: boolean; status?: string; kind?: 'agent' | 'human' | 'system' }>) {
   return () => {
     const { id, name, size = 32, status, kind } = handle.props;
     const hue = hueFor(id);
     const neutral = kind === 'system';
-    if (kind === 'agent') {
-      const ew = Math.max(2, Math.round(size * 0.15));
-      const eh = Math.max(3, Math.round(size * 0.24));
-      return (
-        <span
-          mix={avatarCss}
-          aria-hidden="true"
-          data-kind={kind}
-          data-dot="true"
-          style={{
-            width: `${size}px`,
-            height: `${size}px`,
-            borderRadius: '50%',
-            background: `radial-gradient(circle at 32% 26%, hsl(${hue} 95% 78%), hsl(${hue} 78% 58%) 62%, hsl(${hue} 70% 48%))`,
-            color: '#0b0c0e',
-            boxShadow: `inset 0 -${Math.max(1, Math.round(size / 14))}px 0 rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.25)`,
-          }}
-        >
-          <span mix={eyesCss} class="dot-eyes" data-mood={moodFor(status)} style={{ gap: `${Math.max(2, Math.round(size * 0.13))}px`, ['--blink-delay' as string]: `${(hue % 7) * 0.6}s` }}>
-            <i style={{ width: `${ew}px`, height: `${eh}px`, borderRadius: `${Math.max(1, Math.round(ew * 0.38))}px` }} />
-            <i style={{ width: `${ew}px`, height: `${eh}px`, borderRadius: `${Math.max(1, Math.round(ew * 0.38))}px` }} />
-          </span>
-          {status && size >= 20 ? <span mix={avatarStatus} style={{ background: status }} /> : null}
-        </span>
-      );
-    }
-    const bg = neutral ? t.bgActive : `color-mix(in oklab, hsl(${hue} 42% 52%) 16%, ${t.bgRaised})`;
-    const fg = neutral ? t.textMuted : `color-mix(in oklab, hsl(${hue} 48% 50%) 55%, ${t.text})`;
-    const round = kind === 'human';
+    const agent = kind === 'agent';
+    const bg = neutral ? t.bgActive : `light-dark(hsl(${hue} 70% 93%), hsl(${hue} 34% ${agent ? 25 : 21}%))`;
+    const fg = neutral ? t.textMuted : `light-dark(hsl(${hue} 50% 30%), hsl(${hue} 90% 86%))`;
+    const round = kind === 'human' || agent;
+    const letters = agent || size < 22 ? (name.trim()[0] ?? '?').toUpperCase() : initials(name);
     return (
       <span
         mix={avatarCss}
         aria-hidden="true"
         data-kind={kind}
+        data-dot={agent ? 'true' : undefined}
+        data-letters={letters}
         style={{
           width: `${size}px`,
           height: `${size}px`,
           // never under 10 px: initials at 8-9 px (the 16-18 px avatars of lists) could not be read
-          fontSize: `${Math.max(10, Math.round(size * 0.4))}px`,
+          fontSize: `${Math.max(10, Math.round(size * (agent ? 0.44 : 0.4)))}px`,
           background: bg,
           color: fg,
           borderRadius: round ? '50%' : `${avatarRadius(size)}px`,
-          boxShadow: `inset 0 0 0 1px ${t.border}`,
         }}
       >
-        {size < 22 ? initials(name).slice(0, 1) : initials(name)}
-        {status ? <span mix={avatarStatus} style={{ background: status }} /> : null}
+        {status && size >= 20 ? <span mix={avatarStatus} style={{ background: status }} /> : null}
       </span>
     );
   };

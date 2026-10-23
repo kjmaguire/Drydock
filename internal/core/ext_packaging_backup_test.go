@@ -160,6 +160,31 @@ func TestBackupSchedulerRunsDailyAndPrunes(t *testing.T) {
 	a.call("backup.settings.set", map[string]any{"enabled": true}, nil)
 }
 
+// A backup run prunes on the clock it stamps backups with: a pre-update backup made an hour before the run stays exempt
+// whatever day the code runs on, and lapses once that clock passes MaxKeepAge.
+func TestBackupPrunesOnTheBackupClock(t *testing.T) {
+	a := open(t, "")
+	gitProject(t, a, "gocalc")
+	clk := &bkClock{t: time.Date(2026, 3, 1, 3, 0, 0, 0, time.UTC)}
+	a.c.TestSetBackupClock(clk.now)
+	dir := filepath.Join(t.TempDir(), "bk")
+	a.call("backup.settings.set", map[string]any{"dir": dir, "daily": 1, "weekly": 0}, nil)
+	pre, err := backup.Create(context.Background(), a.c.DB, dir, "pre-update-1.0.0-to-1.1.0", clk.t.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res core.BackupResult
+	a.call("backup.now", nil, &res)
+	if _, err := os.Stat(pre.Path); err != nil || len(res.Pruned) != 0 {
+		t.Fatalf("the pre-update backup was pruned inside its exemption (pruned %v): %v", res.Pruned, err)
+	}
+	clk.t = clk.t.Add(backup.MaxKeepAge)
+	a.call("backup.now", nil, &res)
+	if _, err := os.Stat(pre.Path); err == nil {
+		t.Fatalf("the pre-update backup outlived MaxKeepAge on the backup clock (pruned %v)", res.Pruned)
+	}
+}
+
 func names(l []backup.Info) []string {
 	var out []string
 	for _, b := range l {

@@ -478,12 +478,12 @@ function ConnectionCard(handle: Handle<{ c: Connection; name: string; onChanged:
         ) : null}
         {c.wsl ? <DistroFacts f={c.wsl} /> : null}
         {(c.problems ?? []).map((p, i) => (
-          <p key={i} mix={problemCss}>
+          <p key={`problem:${i}`} mix={problemCss}>
             {p}
           </p>
         ))}
         {(c.warnings ?? []).map((w, i) => (
-          <Notice key={i} tone="warn">
+          <Notice key={`warning:${i}`} tone="warn">
             {w}
           </Notice>
         ))}

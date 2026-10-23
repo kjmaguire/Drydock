@@ -1,0 +1,25 @@
+{
+  "about": "The step a task is at (tasks.StepIndex in Go, stepIndex in ui/app/screens/tasks/steps.ts). Both tests pass every case: change the rule in both and add the case here.",
+  "cases": [
+    { "name": "a task in the backlog is at Spec", "task": { "status": "BACKLOG" }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "spec", "index": 0 } },
+    { "name": "a ready task is at Spec", "task": { "status": "READY" }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "spec", "index": 0 } },
+    { "name": "a claimed task is at Spec", "task": { "status": "CLAIMED" }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "spec", "index": 0 } },
+    { "name": "a running task is at Code", "task": { "status": "IN_PROGRESS", "started": 5 }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "code", "index": 1 } },
+    { "name": "a running task with failed checks is still at Code", "task": { "status": "IN_PROGRESS", "started": 5 }, "evidence": [{ "kind": "diff", "passed": null }, { "kind": "test", "passed": false }], "reviews": 0, "specGate": false, "want": { "step": "code", "index": 1 } },
+    { "name": "a blocked task is at Code", "task": { "status": "BLOCKED", "started": 5 }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "code", "index": 1 } },
+    { "name": "a task in review is at Review", "task": { "status": "REVIEW", "started": 5 }, "evidence": [{ "kind": "diff", "passed": null }, { "kind": "test", "passed": true }], "reviews": 0, "specGate": false, "want": { "step": "review", "index": 3 } },
+    { "name": "a task in verification waits on You", "task": { "status": "VERIFICATION", "started": 5 }, "evidence": [{ "kind": "test", "passed": true }], "reviews": 1, "specGate": false, "want": { "step": "you", "index": 4 } },
+    { "name": "a task waiting for a person waits on You", "task": { "status": "WAITING_HUMAN", "started": 5 }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "you", "index": 4 } },
+    { "name": "a pending spec gate keeps the task at Spec", "task": { "status": "WAITING_HUMAN", "started": 5 }, "evidence": [{ "kind": "spec", "passed": null }], "reviews": 0, "specGate": true, "want": { "step": "spec", "index": 0 } },
+    { "name": "a completed task is done", "task": { "status": "COMPLETED", "started": 5 }, "evidence": [{ "kind": "test", "passed": true }], "reviews": 1, "specGate": false, "want": { "step": "done", "index": 5 } },
+    { "name": "a task cancelled before it started failed at Spec", "task": { "status": "CANCELLED" }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "spec", "index": 0 } },
+    { "name": "a task that failed after it started failed at Code", "task": { "status": "FAILED", "started": 5 }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "code", "index": 1 } },
+    { "name": "an accepted spec puts a cancelled task at Code", "task": { "status": "CANCELLED" }, "evidence": [{ "kind": "spec_accept", "passed": true }], "reviews": 0, "specGate": false, "want": { "step": "code", "index": 1 } },
+    { "name": "a refused spec does not count as accepted", "task": { "status": "CANCELLED" }, "evidence": [{ "kind": "spec_accept", "passed": false }], "reviews": 0, "specGate": false, "want": { "step": "spec", "index": 0 } },
+    { "name": "a diff without checks failed at Checks", "task": { "status": "FAILED", "started": 5 }, "evidence": [{ "kind": "diff", "passed": null }, { "kind": "build", "passed": false }], "reviews": 0, "specGate": false, "want": { "step": "checks", "index": 2 } },
+    { "name": "code with tests but no review failed at Review", "task": { "status": "FAILED", "started": 5 }, "evidence": [{ "kind": "commit", "passed": null }, { "kind": "test", "passed": true }], "reviews": 0, "specGate": false, "want": { "step": "review", "index": 3 } },
+    { "name": "a green test is code and a check", "task": { "status": "FAILED", "started": 5 }, "evidence": [{ "kind": "green_test", "passed": true }], "reviews": 0, "specGate": false, "want": { "step": "review", "index": 3 } },
+    { "name": "reviewed work that failed failed at You", "task": { "status": "FAILED", "started": 5 }, "evidence": [{ "kind": "diff", "passed": null }, { "kind": "e2e", "passed": true }], "reviews": 2, "specGate": false, "want": { "step": "you", "index": 4 } },
+    { "name": "a status the rule does not know is at Code", "task": { "status": "SOMETHING_NEW" }, "evidence": [], "reviews": 0, "specGate": false, "want": { "step": "code", "index": 1 } }
+  ]
+}

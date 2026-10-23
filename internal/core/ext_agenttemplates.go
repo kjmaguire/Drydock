@@ -181,7 +181,7 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 	practices := b2i(in.Practices == nil || *in.Practices)
 	now := storage.Now()
 	if in.ID == "" {
-		if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
+		if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", "", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
 			return AgentTemplate{}, err
 		}
 		in.ID = ids.New("tpl")
@@ -199,7 +199,7 @@ func (t *agentTemplates) save(ctx context.Context, in AgentTemplate) (AgentTempl
 			return AgentTemplate{}, err
 		}
 		if in.PermissionMode != old.PermissionMode { // a template that has such a mode keeps it while its other fields are edited
-			if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
+			if err := t.c.confirmSkip(ctx, "", "", "agents made from this template", old.PermissionMode, in.PermissionMode, in.ConfirmSkipsApprovals); err != nil {
 				return AgentTemplate{}, err
 			}
 		}

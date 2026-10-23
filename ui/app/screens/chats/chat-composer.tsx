@@ -1,51 +1,103 @@
-// The chat composer: a textarea (Ctrl+Enter sends, like the room), "Attach chats" (a picker of other chats; their history
-// is given to the agent for this one message) with the attached chats as removable chips, and Send, or Stop while a turn
-// runs. A send while a turn runs is not possible (the core refuses it too: one turn at a time).
+// The chat composer (graphite, decision P97): one box with the message field (Enter sends, Shift+Enter is a new line, Ctrl+Enter
+// sends too) and a row of small buttons under it: the chat's own controls (the model, the approval mode and "Move to a
+// project", given by the conversation), attach files, attach chats (a picker of other chats; their history is given to the
+// agent for this one message, shown as removable chips), then Stop while a turn runs and "↵ send". A send while a turn runs is
+// not possible (the core refuses it too: one turn at a time).
 
-import { css, on, ref, type Handle } from 'remix/component';
-import { ArrowUp, FileText, MessagesSquare, Paperclip, Square, X } from 'lucide';
+import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
+import { FileText, MessagesSquare, Paperclip, Square, X } from 'lucide';
 import type { Chat, ChatListItem } from '../../api/chatClient.ts';
 import { query, services } from '../../state/services.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Popover } from '../../ui/popover.tsx';
 import { t } from '../../ui/tokens.ts';
-import { composerBar, composerBox, composerWrap, sendCss } from '../room/composer.tsx';
 import { checkFiles, formatSize, MAX_FILES } from '../room/messages.ts';
-import { IconButton } from '../../ui/button.tsx';
 import { adapterLabel, agentWord, chatTitle, MAX_ATTACH, relTime } from './chats.ts';
 
-const hintCss = css({ flex: '1', minWidth: '0', color: t.textFaint, fontSize: t.textXs, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', '& kbd': { margin: '0 2px' } });
-const attachBtn = css({
+const wrapCss = css({ flex: 'none', width: 'calc(100% - 48px)', maxWidth: '812px', margin: `0 auto 20px`, boxSizing: 'border-box' });
+const boxCss = css({
+  display: 'grid',
+  gap: '8px',
+  padding: '12px',
+  border: `1px solid ${t.border}`,
+  borderRadius: '12px',
+  background: t.bgSurface,
+  transition: `border-color ${t.fast} ${t.ease}, box-shadow ${t.fast} ${t.ease}`,
+  '&:focus-within': { borderColor: t.borderStrong },
+  '&[data-disabled="true"]': { opacity: '0.7' },
+  '& textarea': {
+    display: 'block',
+    width: '100%',
+    minHeight: '28px',
+    maxHeight: '40vh',
+    padding: '4px 2px',
+    border: '0',
+    borderRadius: '0',
+    background: 'transparent',
+    resize: 'none',
+    fontSize: t.textMd,
+    lineHeight: '1.5',
+    boxShadow: 'none',
+  },
+  '& textarea:focus-visible': { boxShadow: 'none', outline: 'none' },
+});
+const barCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', minWidth: '0' });
+/** A small button of the composer's row (the model, the approval mode, the attach buttons). */
+export const smallBtn = css({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '5px',
   height: '28px',
   minHeight: '0',
-  padding: '0 8px',
-  border: '0',
+  maxWidth: '100%',
+  padding: '0 10px',
+  border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
-  background: 'transparent',
+  background: t.bgRaised,
   color: t.textMuted,
-  fontSize: t.textSm,
+  fontSize: t.textXs,
   fontWeight: '500',
+  whiteSpace: 'nowrap',
+  '& > span': { overflow: 'hidden', textOverflow: 'ellipsis' },
   '&:hover': { background: t.bgHover, color: t.text },
   '&[aria-expanded="true"]': { background: t.bgActive, color: t.text },
   '&:disabled': { opacity: '0.5', pointerEvents: 'none' },
+  '&[data-warn="true"]': { borderColor: `color-mix(in srgb, ${t.warning} 50%, ${t.border})`, color: t.warning, background: t.warningSoft },
 });
+/** The same, without a border (Move to a project, the attach buttons). */
+export const quietBtn = css({ borderColor: 'transparent', background: 'transparent' });
+const iconBtn = css({ width: '28px', padding: '0', justifyContent: 'center' });
 const stopCss = css({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '6px',
-  height: '30px',
+  height: '28px',
   minHeight: '0',
-  padding: '0 12px',
+  padding: '0 10px',
   border: `1px solid ${t.borderStrong}`,
-  borderRadius: t.rLg,
+  borderRadius: t.rMd,
   background: t.bgRaised,
   color: t.text,
+  fontSize: t.textXs,
   fontWeight: '600',
   '&:hover': { background: t.dangerSoft, color: t.danger, borderColor: 'transparent' },
+});
+// "↵ send" is the send button itself: its name stays "Send" for readers
+const sendCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  height: '28px',
+  minHeight: '0',
+  padding: '0 6px',
+  border: '0',
+  borderRadius: t.rMd,
+  background: 'transparent',
+  color: t.textMuted,
+  fontSize: t.textXs,
+  '&:hover': { background: t.bgHover, color: t.text },
+  '&:disabled': { color: t.textFaint, opacity: '1', background: 'transparent' },
 });
 /** A file read in the composer, waiting to be sent. */
 export interface ComposerFile {
@@ -54,20 +106,20 @@ export interface ComposerFile {
   data: Uint8Array;
 }
 
-const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', margin: '0', padding: '10px 12px 0', listStyle: 'none' });
+const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', margin: '0', padding: '0', listStyle: 'none' });
 const chipCss = css({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '5px',
   maxWidth: '260px',
-  height: '24px',
+  height: '28px',
   padding: '0 2px 0 8px',
   border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
-  background: t.bgSurface,
+  background: t.bgRaised,
   fontSize: t.textSm,
   '& .name': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: '500' },
-  '& button': { display: 'grid', placeItems: 'center', width: '20px', height: '20px', minHeight: '0', padding: '0', border: '0', borderRadius: t.rSm, background: 'transparent', color: t.textMuted },
+  '& button': { display: 'grid', placeItems: 'center', width: '24px', height: '24px', minHeight: '0', padding: '0', border: '0', borderRadius: t.rSm, background: 'transparent', color: t.textMuted },
   '& button:hover': { background: t.bgHover, color: t.text },
 });
 const explainCss = css({ color: t.textFaint, fontSize: t.textXs });
@@ -85,7 +137,7 @@ const pickList = css({
     alignItems: 'center',
     gap: t.s2,
     width: '100%',
-    minHeight: '0',
+    minHeight: '28px',
     padding: '6px 8px',
     border: '0',
     borderRadius: t.rMd,
@@ -107,6 +159,11 @@ const noteCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 const ATTACH_PICKER_CHATS = 100;
 const FILTER_DEBOUNCE_MS = 250;
 
+/** Whether a key press in the message field sends: Enter (not while an input method composes, not with Shift), or Ctrl+Enter. */
+export function sendsOnKey(k: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'altKey' | 'isComposing'>): boolean {
+  return k.key === 'Enter' && !k.shiftKey && !k.altKey && !k.isComposing;
+}
+
 export function ChatComposer(
   handle: Handle<{
     chat: Chat;
@@ -115,6 +172,10 @@ export function ChatComposer(
     disabledReason: string;
     sending: boolean;
     stopping: boolean;
+    /** No message yet: the field asks for the first one rather than a reply. */
+    empty?: boolean;
+    /** The chat's own controls at the start of the row (the model, the approval mode, Move to a project). */
+    controls?: RemixNode;
     onSend: (text: string, attach: string[], files: ComposerFile[]) => Promise<boolean>;
     onStop: () => void;
   }>,
@@ -204,7 +265,7 @@ export function ChatComposer(
   };
 
   return () => {
-    const { chat, running, disabled, disabledReason, sending, stopping, onStop } = handle.props;
+    const { chat, running, disabled, disabledReason, sending, stopping, empty, controls, onStop } = handle.props;
     const list: ChatListItem[] = (others.data ?? []).filter((c) => c.id !== chat.id);
     const titleOf = (id: string) => {
       const c = list.find((x) => x.id === id);
@@ -214,7 +275,7 @@ export function ChatComposer(
     return (
       <form
         mix={[
-          composerWrap,
+          wrapCss,
           on('submit', (e) => {
             e.preventDefault();
             void submit();
@@ -225,7 +286,7 @@ export function ChatComposer(
       >
         <div
           mix={[
-            composerBox,
+            boxCss,
             on('dragover', (e) => {
               if (!disabled) e.preventDefault();
             }),
@@ -281,7 +342,7 @@ export function ChatComposer(
           <textarea
             aria-label="Message"
             rows={1}
-            placeholder={disabled ? disabledReason || 'This chat cannot take messages.' : running ? `${who} is answering... (Stop to interrupt)` : `Message ${who}`}
+            placeholder={disabled ? disabledReason || 'This chat cannot take messages.' : running ? `${who} is answering... (Stop to interrupt)` : empty ? `Message ${who}` : `Reply to ${who}`}
             disabled={disabled}
             mix={[
               ref((n) => (area = n as HTMLTextAreaElement)),
@@ -292,7 +353,7 @@ export function ChatComposer(
               }),
               on('keydown', (e) => {
                 const k = e as KeyboardEvent;
-                if (k.key === 'Enter' && (k.ctrlKey || k.metaKey)) {
+                if (sendsOnKey(k)) {
                   k.preventDefault();
                   void submit();
                 }
@@ -306,7 +367,8 @@ export function ChatComposer(
               }),
             ]}
           />
-          <div mix={composerBar}>
+          <div mix={barCss}>
+            {controls}
             <input
               type="file"
               multiple
@@ -320,13 +382,15 @@ export function ChatComposer(
                 }),
               ]}
             />
-            <IconButton
-              icon={Paperclip}
-              label="Attach files"
+            <button
+              type="button"
+              mix={[smallBtn, quietBtn, iconBtn, on('click', () => fileInput?.click())]}
+              aria-label="Attach files"
               title="Attach files (or drop or paste them here)"
               disabled={disabled || files.length >= MAX_FILES}
-              mix={[on('click', () => fileInput?.click())]}
-            />
+            >
+              <Icon icon={Paperclip} size={14} />
+            </button>
             <Popover
               open={picking}
               onOpen={() => ((picking = true), (filter = ''), (search = ''), clearTimeout(timer), void handle.update())}
@@ -336,9 +400,16 @@ export function ChatComposer(
               testId="attach-picker"
               stopOutsideClick={false}
               trigger={(mix) => (
-                <button type="button" mix={[attachBtn, mix]} disabled={disabled} aria-expanded={picking ? 'true' : 'false'} title="Give the history of other chats to this message">
+                <button
+                  type="button"
+                  mix={[smallBtn, quietBtn, mix, attach.length ? undefined : iconBtn]}
+                  disabled={disabled}
+                  aria-label={`Attach chats${attach.length ? ` (${attach.length})` : ''}`}
+                  aria-expanded={picking ? 'true' : 'false'}
+                  title="Give the history of other chats to this message"
+                >
                   <Icon icon={MessagesSquare} size={14} />
-                  Attach chats{attach.length ? ` (${attach.length})` : ''}
+                  {attach.length ? <span aria-hidden="true">{attach.length}</span> : null}
                 </button>
               )}
             >
@@ -369,22 +440,23 @@ export function ChatComposer(
               )}
               <ErrorNote error={others.error} />
             </Popover>
-            <span mix={hintCss} aria-hidden="true">
-              {disabled ? '' : (
-                <>
-                  <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send
-                </>
-              )}
-            </span>
+            <span style={{ marginLeft: 'auto' }} />
             {running ? (
               <button type="button" mix={[stopCss, on('click', () => onStop())]} disabled={stopping} data-testid="chat-stop">
                 <Icon icon={Square} size={12} />
                 {stopping ? 'Stopping...' : 'Stop'}
               </button>
             ) : null}
-            <button type="submit" mix={sendCss} disabled={disabled || running || sending || !text.trim()} title={running ? 'Wait for the answer, or stop it' : sending ? 'Sending...' : 'Send (Ctrl+Enter)'}>
-              <Icon icon={ArrowUp} size={18} />
-              <span class="sr-only">{sending ? 'Sending...' : 'Send'}</span>
+            <button
+              type="submit"
+              mix={sendCss}
+              disabled={disabled || running || sending || !text.trim()}
+              aria-label={sending ? 'Sending...' : 'Send'}
+              aria-keyshortcuts="Enter"
+              title={running ? 'Wait for the answer, or stop it' : 'Send (Enter); Shift+Enter starts a new line'}
+            >
+              <kbd aria-hidden="true">↵</kbd>
+              <span aria-hidden="true">send</span>
             </button>
           </div>
         </div>
@@ -392,4 +464,3 @@ export function ChatComposer(
     );
   };
 }
-

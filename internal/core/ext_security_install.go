@@ -25,9 +25,22 @@ type toolJob struct {
 	cancel context.CancelFunc
 }
 
+// installJobs is a copy of each tool's install job. tools() takes it before it looks at what is installed: an install that
+// ends between the two would otherwise be answered as done with its tool not found (a job is done only after its
+// installed.json is written, so a job copied as done always has its tool in the answer).
+func (s *securityExt) installJobs() map[string]scan.ToolJob {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	jobs := make(map[string]scan.ToolJob, len(s.jobs))
+	for tool, j := range s.jobs {
+		jobs[tool] = j.job
+	}
+	return jobs
+}
+
 // withInstalls completes a tools answer with what the installer knows: whether installs work here, each installed release,
-// and each tool's install job.
-func (s *securityExt) withInstalls(t scan.Tools) scan.Tools {
+// and each tool's install job as it was before the tools were looked at (installJobs).
+func (s *securityExt) withInstalls(t scan.Tools, jobs map[string]scan.ToolJob) scan.Tools {
 	t.CanInstall = s.inst.Supported()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -41,8 +54,7 @@ func (s *securityExt) withInstalls(t scan.Tools) scan.Tools {
 				}
 			}
 		}
-		if j, ok := s.jobs[info.Tool]; ok {
-			job := j.job
+		if job, ok := jobs[info.Tool]; ok {
 			info.Job = &job
 		}
 	}

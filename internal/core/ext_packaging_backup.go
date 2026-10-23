@@ -148,10 +148,11 @@ func (p *packaging) runBackup(ctx context.Context, label string) (BackupResult, 
 	defer p.backupMu.Unlock()
 	s := p.backupSettings(ctx)
 	res := BackupResult{Warning: s.Warning}
-	info, err := backup.Create(ctx, p.c.DB, s.Dir, label, p.bnow())
+	now := p.bnow()
+	info, err := backup.Create(ctx, p.c.DB, s.Dir, label, now)
 	if err == nil {
 		res.Backup = info
-		res.Pruned, err = backup.Prune(s.Dir, s.Daily, s.Weekly)
+		res.Pruned, err = backup.Prune(s.Dir, s.Daily, s.Weekly, now)
 		if err != nil { // the backup itself succeeded; pruning trouble is reported but the backup stands
 			p.c.logf("backup prune: %v", err)
 			err = nil

@@ -128,6 +128,15 @@ type NeedsYouItem struct {
 	AgentID    string    `json:"agentId,omitempty"`
 	ChatID     string    `json:"chatId,omitempty"`
 	CreatedAt  time.Time `json:"createdAt"`
+	// TaskSeq is the task's number in its project (with the project, the task's key); 0 for an item of no task.
+	TaskSeq int `json:"taskSeq,omitempty"`
+	// Phase says which gate a review item is, from the request that made it (workflow.RequestSpec.Phase): "spec" (accept the
+	// spec), "merge" (review and merge) or "plan" (review a plan); empty for every other item.
+	Phase string `json:"phase,omitempty"`
+	// AgentName is the name of the agent the item is about (AgentID): the one asking, or the task's assignee for a review.
+	AgentName string `json:"agentName,omitempty"`
+	// ExpiresAt is when an approval lapses unanswered (a tool permission request); nil when it does not.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	// Context is what a task's item is about, so the person can see what they are deciding before they open it (UI review
 	// P1-1). The core adds it to items of a task; nil for the rest.
 	Context *NeedsContext `json:"context,omitempty"`
@@ -155,8 +164,10 @@ func (s *Service) NeedsYou(ctx context.Context, projectID string) ([]NeedsYouIte
 	q := s.db.Reader()
 
 	rows, err := q.QueryContext(ctx, `
-SELECT a.id, a.kind, a.title, a.task_id, a.project_id, a.created_at,
-  COALESCE((SELECT r.id FROM rooms r WHERE a.task_id <> '' AND r.kind = 'task' AND r.task_id = a.task_id), '')
+SELECT a.id, a.kind, a.title, a.task_id, a.project_id, a.created_at, a.phase, a.expires_at,
+  COALESCE((SELECT r.id FROM rooms r WHERE a.task_id <> '' AND r.kind = 'task' AND r.task_id = a.task_id), ''),
+  COALESCE(NULLIF(CASE WHEN a.run_id = '' AND json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.action.agentId') END, ''),
+           (SELECT t.assignee FROM tasks t WHERE a.task_id <> '' AND t.id = a.task_id), '')
 FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`, projectID, projectID)
 	if err != nil {
 		return nil, err
@@ -164,12 +175,16 @@ FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`,
 	for rows.Next() {
 		var it NeedsYouItem
 		var kind string
-		var at int64
-		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.RoomID); err != nil {
+		var at, expires int64
+		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		it.Key, it.CreatedAt = "approval:"+it.ApprovalID, fromMs(at)
+		if expires > 0 {
+			e := fromMs(expires)
+			it.ExpiresAt = &e
+		}
 		switch kind {
 		case "review":
 			it.Kind, it.Severity = NeedsReview, 2
@@ -273,8 +288,43 @@ WHERE t.stage = 2
 		return nil, err
 	}
 
+	if err := s.addNames(ctx, out); err != nil {
+		return nil, err
+	}
 	SortNeedsYou(out)
 	return out, nil
+}
+
+// addNames gives each item its task's number and its agent's name, one read of each task and agent named.
+func (s *Service) addNames(ctx context.Context, out []NeedsYouItem) error {
+	seqs, names := map[string]int{}, map[string]string{}
+	for _, it := range out {
+		if it.TaskID != "" {
+			seqs[it.TaskID] = 0
+		}
+		if it.AgentID != "" {
+			names[it.AgentID] = ""
+		}
+	}
+	q := s.db.Reader()
+	for id := range seqs {
+		var seq int
+		if err := q.QueryRowContext(ctx, `SELECT seq FROM tasks WHERE id=?`, id).Scan(&seq); err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		seqs[id] = seq
+	}
+	for id := range names {
+		var name string
+		if err := q.QueryRowContext(ctx, `SELECT name FROM agents WHERE id=?`, id).Scan(&name); err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		names[id] = name
+	}
+	for i := range out {
+		out[i].TaskSeq, out[i].AgentName = seqs[out[i].TaskID], names[out[i].AgentID]
+	}
+	return nil
 }
 
 // SortNeedsYou puts items in the inbox's order: by severity, then oldest first.

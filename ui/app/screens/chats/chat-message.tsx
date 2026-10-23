@@ -1,13 +1,13 @@
-// One stored chat message, drawn like the room's compact comment thread: a 28px avatar and an author line at the head of a
-// group (you, or the agent), the text through ui/markdown.tsx (never innerHTML), tool calls as cards with how they went
-// (chat-tool.tsx), refusals as a callout with the suggested allow rule, system notes and errors as quiet lines.
+// One stored chat message (graphite, decision P97): the person's own message is a bubble on the right, the agent's answer is
+// text on the left (through ui/markdown.tsx, never innerHTML), tool calls are compact cards with how they went (chat-tool.tsx),
+// a request the agent waits on is an amber card in its place (chat-asks.tsx), refusals a callout with the suggested allow rule,
+// system notes and errors quiet lines. The time, Edit, Regenerate and Fork show on hover or focus.
 
-import { css, on, type Handle } from 'remix/component';
+import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { Check, CircleAlert, GitFork, Info, Pencil, RotateCcw, ShieldOff } from 'lucide';
 import type { ChatMessage } from '../../api/chatClient.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { Button } from '../../ui/button.tsx';
-import { Avatar } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
@@ -19,63 +19,53 @@ import { ThinkingFold } from './chat-thinking.tsx';
 const rowCss = css({
   position: 'relative',
   display: 'grid',
-  gridTemplateColumns: '32px minmax(0, 1fr)',
-  columnGap: '12px',
-  padding: `1px ${t.s6} 1px ${t.s5}`,
-  transition: `background-color ${t.fast} ${t.ease}`,
-  '&:hover': { background: `color-mix(in srgb, ${t.bgHover} 60%, transparent)` },
+  minWidth: '0',
+  padding: '5px 0',
 });
-const headCss = css({ marginTop: '12px', paddingTop: '3px' });
-const metaCss = css({ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '0', lineHeight: '20px' });
-const contentCss = css({ minWidth: '0' });
-const nameCss = css({ fontWeight: '600', fontSize: t.textMd, color: t.text });
-const timeCss = css({ fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' });
-// a reading column (P89): lines of prose past about 90 characters are hard to follow, so an answer stops at 760 px however
+// a new side of the conversation (you, or the agent) starts a little further down
+const headCss = css({ marginTop: '8px' });
+const contentCss = css({ minWidth: '0', display: 'grid', gap: '8px' });
+// a reading column (P89): lines of prose past about 90 characters are hard to follow, so an answer stops at 720 px however
 // wide the window is (code blocks and tables inside scroll on their own)
-export const READING_COLUMN = '760px';
+export const READING_COLUMN = '720px';
 const bodyCss = css({
   minWidth: '0',
   maxWidth: READING_COLUMN,
   overflowWrap: 'anywhere',
   color: t.text,
-  lineHeight: '1.5',
+  lineHeight: '1.65',
   '& p': { margin: '0' },
-  '& p + p, & ul, & ol, & pre, & blockquote, & table': { marginTop: '6px' },
+  '& p + p, & ul, & ol, & pre, & blockquote, & table': { marginTop: '10px' },
 });
-const quietIcon = css({ display: 'grid', placeItems: 'center', width: '32px', height: '20px', color: t.textFaint });
+const quietCss = css({ display: 'grid', gridTemplateColumns: '20px minmax(0, 1fr)', alignItems: 'start', gap: '6px' });
+const quietIcon = css({ display: 'grid', placeItems: 'center', height: '20px', color: t.textFaint });
 const quietBody = css({ color: t.textMuted, fontSize: t.textSm, lineHeight: '20px', overflowWrap: 'anywhere' });
 const errorBody = css({ color: t.danger, fontSize: t.textSm, lineHeight: '20px', overflowWrap: 'anywhere' });
-// the person's own message (Crew HQ, decision P64, as in a room): a dark bubble on the right, the author line above it,
-// no avatar. The bubble's colours sit on the body element, mixed in after bodyCss, so their later layer wins.
-const mineCss = css({ '& .chat-head': { justifyContent: 'flex-end' }, '& .chat-tools': { right: 'auto', left: t.s5 } });
-const mineContent = css({ display: 'grid', justifyItems: 'end' });
+// the person's own message: a bubble on the right (the accent's soft tint over the surface), corner cut where it points
+const mineContent = css({ justifyItems: 'end' });
 const bubbleCss = css({
   justifySelf: 'end',
-  maxWidth: 'min(72%, 720px)',
-  marginTop: '3px',
-  padding: '9px 14px',
-  borderRadius: '18px 4px 18px 18px',
-  background: t.accent,
-  color: t.onAccent,
-  '& a': { color: 'inherit', textDecoration: 'underline' },
-  '& code': { background: 'color-mix(in srgb, currentColor 14%, transparent)', color: 'inherit' },
-  '& pre': { background: 'color-mix(in srgb, currentColor 10%, transparent)', color: 'inherit' },
+  maxWidth: '70%',
+  padding: '10px 14px',
+  borderRadius: '12px 12px 4px 12px',
+  background: `linear-gradient(${t.accentSoft}, ${t.accentSoft}), ${t.bgSurface}`,
+  color: t.text,
+  lineHeight: '1.55',
 });
 
 const deniedCss = css({
   display: 'grid',
   gap: t.s2,
-  maxWidth: '760px',
-  margin: '4px 0',
-  padding: `10px ${t.s3}`,
-  border: `1px solid color-mix(in srgb, ${t.warning} 35%, ${t.border})`,
-  borderRadius: t.rLg,
-  background: `color-mix(in srgb, ${t.warningSoft} 70%, ${t.bgSurface})`,
-  boxShadow: `inset 3px 0 0 ${t.warning}`,
+  maxWidth: READING_COLUMN,
+  margin: '2px 0',
+  padding: '10px 12px',
+  border: `1px solid color-mix(in srgb, ${t.warning} 30%, ${t.border})`,
+  borderRadius: t.rMd,
+  background: `color-mix(in srgb, ${t.warningSoft} 60%, ${t.bgSurface})`,
   fontSize: t.textMd,
-  '& .head': { display: 'flex', alignItems: 'center', gap: t.s2, fontWeight: '600' },
+  '& .head': { display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '500' },
   '& .head svg': { color: t.warning },
-  '& .what': { color: t.textMuted, fontSize: t.textSm, fontFamily: t.mono, overflowWrap: 'anywhere' },
+  '& .what': { color: t.textMuted, fontSize: t.textXs, fontFamily: t.mono, overflowWrap: 'anywhere' },
   '& .rule': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, fontSize: t.textSm, color: t.textMuted },
   '& .actions': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2 },
   '& .ok': { display: 'inline-flex', alignItems: 'center', gap: '4px', color: t.success, fontSize: t.textSm, fontWeight: '500' },
@@ -83,10 +73,11 @@ const deniedCss = css({
 
 const toolsCss = css({
   position: 'absolute',
-  top: '-10px',
-  right: t.s5,
+  top: '-12px',
+  right: '0',
   zIndex: '2',
   display: 'flex',
+  alignItems: 'center',
   gap: '2px',
   padding: '2px',
   border: `1px solid ${t.border}`,
@@ -96,12 +87,13 @@ const toolsCss = css({
   opacity: '0',
   transition: `opacity ${t.fast} ${t.ease}`,
   ':is(.chat-msg:hover, .chat-msg:focus-within) > &': { opacity: '1' },
+  '& time': { padding: '0 6px', fontSize: t.textXs, color: t.textFaint, fontVariantNumeric: 'tabular-nums' },
 });
 const toolBtn = css({
   display: 'grid',
   placeItems: 'center',
-  width: '26px',
-  height: '22px',
+  width: '28px',
+  height: '28px',
   minHeight: '0',
   padding: '0',
   border: '0',
@@ -113,7 +105,7 @@ const toolBtn = css({
 
 export interface ChatMessageProps {
   m: ChatMessage;
-  /** First message of a group: avatar and author line. */
+  /** First message of a group (a new side of the conversation): a little more space above. */
   head: boolean;
   adapter: string;
   /** The chat's allow rules (a refusal whose rule is in here reads "Allowed"). */
@@ -122,6 +114,8 @@ export interface ChatMessageProps {
   latest: boolean;
   running: boolean;
   busy: string;
+  /** The request the agent waits on that this note records (chat-asks.tsx AskCard): shown in the note's place while it waits. */
+  ask?: RemixNode;
   onAllow?: (rule: string) => void;
   onRetry?: () => void;
   /** Allow the rule for the chat, then run the turn again (UI review P1-3): one step instead of two. */
@@ -164,12 +158,11 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
     void handle.update();
   };
   return () => {
-    const { m, head, adapter, allowedTools, latest, running, busy, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate } = handle.props;
+    const { m, head, adapter, allowedTools, latest, running, busy, ask, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate } = handle.props;
     // the canned "continue" Drydock sends after an allow is a note of what happened, not words the person typed (P1-2)
     const retry = isRetryMessage(m);
     const role = retry ? 'system' : m.role;
     const quiet = role === 'system' || role === 'error';
-    const showHead = head && (role === 'user' || role === 'assistant' || role === 'tool' || role === 'denied');
     const who = role === 'user' ? 'You' : adapterLabel(adapter);
     const forkable = !!onFork && (role === 'user' || role === 'assistant') && !retry;
     const mine = role === 'user';
@@ -180,84 +173,80 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
         data-role={role}
         data-seq={String(m.seq)}
         data-mine={mine ? 'true' : undefined}
+        data-ask={ask ? 'true' : undefined}
         aria-label={quiet ? `${role === 'error' ? 'Error' : 'Note'}: ${m.body.slice(0, 80)}` : `${who}${role === 'tool' ? ' used a tool' : role === 'denied' ? ' was refused a tool' : ''}`}
-        mix={[rowCss, showHead ? headCss : undefined, mine ? mineCss : undefined]}
+        mix={[rowCss, head && !quiet ? headCss : undefined]}
       >
-        <div>
-          {quiet ? (
+        {quiet && ask ? (
+          ask
+        ) : quiet ? (
+          <div mix={quietCss}>
             <span mix={quietIcon} aria-hidden="true">
               <Icon icon={role === 'error' ? CircleAlert : Info} size={14} />
             </span>
-          ) : showHead && !mine ? (
-            <Avatar id={adapter} name={who} size={32} kind="agent" />
-          ) : null}
-        </div>
-        <div mix={[contentCss, mine ? mineContent : undefined]}>
-          {showHead ? (
-            <header class="chat-head" mix={metaCss}>
-              <strong mix={nameCss}>{who}</strong>
-              <time mix={timeCss} dateTime={new Date(m.createdAt).toISOString()} title={formatDateTime(m.createdAt)}>
-                {time(m.createdAt)}
-              </time>
-            </header>
-          ) : null}
-          {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} /> : null}
-          {role === 'tool' ? (
-            <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
-          ) : role === 'denied' ? (
-            <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} onAllowAndRetry={onAllowAndRetry} />
-          ) : quiet ? (
             <div mix={role === 'error' ? errorBody : quietBody} data-retry={retry ? 'true' : undefined}>
               {retry ? 'You allowed the tool and asked to continue.' : m.body}
             </div>
-          ) : mine && editing ? (
-            <div mix={editCss} data-testid="chat-edit">
-              <textarea
-                aria-label="Edit your message"
-                value={draft}
-                mix={[
-                  on('input', (e) => {
-                    draft = (e.currentTarget as HTMLTextAreaElement).value;
-                  }),
-                  on('keydown', (e) => {
-                    const k = e as KeyboardEvent;
-                    if (k.key === 'Enter' && (k.ctrlKey || k.metaKey)) {
-                      k.preventDefault();
-                      void sendEdit();
-                    } else if (k.key === 'Escape') {
+          </div>
+        ) : (
+          <div mix={[contentCss, mine ? mineContent : undefined]}>
+            {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} /> : null}
+            {role === 'tool' ? (
+              <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
+            ) : role === 'denied' ? (
+              <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} onAllowAndRetry={onAllowAndRetry} />
+            ) : mine && editing ? (
+              <div mix={editCss} data-testid="chat-edit">
+                <textarea
+                  aria-label="Edit your message"
+                  value={draft}
+                  mix={[
+                    on('input', (e) => {
+                      draft = (e.currentTarget as HTMLTextAreaElement).value;
+                    }),
+                    on('keydown', (e) => {
+                      const k = e as KeyboardEvent;
+                      if (k.key === 'Enter' && (k.ctrlKey || k.metaKey)) {
+                        k.preventDefault();
+                        void sendEdit();
+                      } else if (k.key === 'Escape') {
+                        editing = false;
+                        void handle.update();
+                      }
+                    }),
+                  ]}
+                />
+                <div class="row">
+                  <span class="note">Sending replaces this message and everything after it.</span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={sending}
+                    mix={on('click', () => {
                       editing = false;
                       void handle.update();
-                    }
-                  }),
-                ]}
-              />
-              <div class="row">
-                <span class="note">Sending replaces this message and everything after it.</span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={sending}
-                  mix={on('click', () => {
-                    editing = false;
-                    void handle.update();
-                  })}
-                >
-                  Cancel
-                </Button>
-                <Button size="sm" variant="primary" disabled={sending || running || !draft.trim()} mix={on('click', () => void sendEdit())}>
-                  Send again
-                </Button>
+                    })}
+                  >
+                    Cancel
+                  </Button>
+                  <Button size="sm" variant="primary" disabled={sending || running || !draft.trim()} mix={on('click', () => void sendEdit())}>
+                    Send again
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div mix={[bodyCss, mine ? bubbleCss : undefined]}>
-              <Markdown source={m.body} />
-            </div>
-          )}
-          {m.attachments?.length && !editing ? <ChatFiles list={m.attachments} /> : null}
-        </div>
+            ) : (
+              <div mix={[bodyCss, mine ? bubbleCss : undefined]}>
+                <Markdown source={m.body} />
+              </div>
+            )}
+            {m.attachments?.length && !editing ? <ChatFiles list={m.attachments} /> : null}
+          </div>
+        )}
         {forkable && !editing ? (
           <div class="chat-tools" mix={toolsCss}>
+            <time dateTime={new Date(m.createdAt).toISOString()} title={formatDateTime(m.createdAt)}>
+              {time(m.createdAt)}
+            </time>
             {mine && onEdit && !running ? (
               <button type="button" mix={[toolBtn, on('click', startEdit)]} aria-label="Edit and send again" title="Edit this message and send it again">
                 <Icon icon={Pencil} size={14} />

@@ -15,6 +15,20 @@ type Fit struct {
 	Fits   bool   `json:"fits"`
 	// Available is the larger of the free VRAM and the RAM budget, so the page can say how much there is.
 	Available uint64 `json:"availableBytes"`
+	// KVBytes is the estimated KV cache at the context size and cache type the server starts with, and NeedBytes the model and
+	// that cache together, which Target and Fits then compare: set only when the cache could be estimated (FitWithKV).
+	KVBytes   uint64 `json:"kvBytes,omitempty"`
+	NeedBytes uint64 `json:"needBytes,omitempty"`
+}
+
+// FitWithKV is FitOf for the model and its KV cache together, when the cache could be estimated; else the model alone.
+func FitWithKV(size uint64, kv *KVCache, d Devices, m Memory) Fit {
+	if kv == nil || !kv.Known {
+		return FitOf(size, d, m)
+	}
+	f := FitOf(size+kv.Bytes, d, m)
+	f.KVBytes, f.NeedBytes = kv.Bytes, size+kv.Bytes
+	return f
 }
 
 // RAMBudgetFraction of the available RAM a model may take: the rest is for Windows, Drydock and the server itself.

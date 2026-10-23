@@ -3,6 +3,7 @@
 // fails, the person sees why (lib/failure.ts) instead of a blank window; so do errors the running app does not handle.
 
 import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
 import './styles/app.css';
 import { run } from 'remix/spa';
 import { createClient } from './api/client.ts';

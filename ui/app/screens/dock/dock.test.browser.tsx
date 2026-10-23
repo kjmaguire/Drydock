@@ -465,6 +465,34 @@ describe('the terminal panel', () => {
     expect(terminals[1]!.disposed).toBe(true);
   });
 
+  it("opens the terminal another page asks for (the task page's Open the worktree), once, also when the panel is already open", async () => {
+    let open: TerminalInfo[] = [];
+    const opens: { taskId?: string; projectId?: string }[] = [];
+    const s = testServices({
+      terminalList: async () => open,
+      terminalOpen: async (where) => {
+        opens.push(where);
+        const t = info(`term_${open.length + 1}`, `worktree ${open.length + 1}`);
+        open = [...open, t];
+        return t;
+      },
+      terminalRead: () => new Promise<TerminalChunk>(() => {}),
+      terminalResize: async () => {},
+    });
+    // asked before the dock is drawn: the panel opens it when it mounts
+    s.ui.openTerminal({ taskId: 't1' });
+    expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
+    const r = mount(<TerminalPanel projectId="p1" taskId="t1" />, s);
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('worktree 1'), r);
+    expect(opens).toEqual([{ taskId: 't1' }]);
+    // asked while it is open: a second terminal, chosen
+    await r.act(() => s.ui.openTerminal({ taskId: 't1' }));
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('worktree 2'), r);
+    expect(opens).toEqual([{ taskId: 't1' }, { taskId: 't1' }]);
+    // the ask is taken once
+    expect(s.ui.takeTerminalAsk()).toBe(undefined);
+  });
+
   it('streams output into the terminal, sends keystrokes and the size, and marks an exited shell', async () => {
     const enc = new TextEncoder();
     const reads: number[] = [];

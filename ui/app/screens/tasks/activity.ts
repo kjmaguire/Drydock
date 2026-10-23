@@ -14,6 +14,9 @@ export interface ToolItem {
   args: string;
   result?: string;
   isError: boolean;
+  /** When the call started and when its result came (ms since the epoch, from the events). */
+  at: number;
+  endAt?: number;
 }
 
 /** A wait for a person (a permission request) and, once answered, how (P88). */
@@ -24,9 +27,19 @@ export interface WaitItem {
   expiresAt?: number;
   /** The gate's outcome: approved, approved_with_edits, rejected, timed_out, cancelled, denied. Absent while it waits. */
   outcome?: string;
+  at: number;
 }
 
-export type ActivityItem = { kind: 'text'; id: string; text: string } | { kind: 'reasoning'; id: string; text: string } | ToolItem | WaitItem;
+/** A message or the reasoning, with when it started and when its last part came (ms since the epoch). */
+export interface TextItem {
+  kind: 'text' | 'reasoning';
+  id: string;
+  text: string;
+  at: number;
+  endAt?: number;
+}
+
+export type ActivityItem = TextItem | ToolItem | WaitItem;
 
 export type TurnStatus = 'running' | 'done' | 'cancelled' | 'error';
 
@@ -45,7 +58,7 @@ export interface Turn {
 export function turnsOf(events: readonly AguiEvent[]): Turn[] {
   const turns: Turn[] = [];
   let cur: Turn | undefined;
-  const texts = new Map<string, { text: string }>();
+  const texts = new Map<string, TextItem>();
   const tools = new Map<string, ToolItem>();
   const waits = new Map<string, WaitItem>();
   const open = (runId: string, at: number): Turn => {
@@ -77,7 +90,7 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
       }
       case 'TEXT_MESSAGE_START':
       case 'REASONING_MESSAGE_START': {
-        const item = { kind: e.type === 'TEXT_MESSAGE_START' ? ('text' as const) : ('reasoning' as const), id: e.messageId, text: '' };
+        const item: TextItem = { kind: e.type === 'TEXT_MESSAGE_START' ? 'text' : 'reasoning', id: e.messageId, text: '', at: e.timestamp };
         turn(e.timestamp).items.push(item);
         texts.set(e.messageId, item);
         break;
@@ -87,16 +100,23 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
         let item = texts.get(e.messageId);
         if (!item) {
           // content whose start was before the events read: it still shows
-          const made = { kind: e.type === 'TEXT_MESSAGE_CONTENT' ? ('text' as const) : ('reasoning' as const), id: e.messageId, text: '' };
+          const made: TextItem = { kind: e.type === 'TEXT_MESSAGE_CONTENT' ? 'text' : 'reasoning', id: e.messageId, text: '', at: e.timestamp };
           turn(e.timestamp).items.push(made);
           texts.set(e.messageId, made);
           item = made;
         }
         item.text += e.delta;
+        item.endAt = e.timestamp;
+        break;
+      }
+      case 'TEXT_MESSAGE_END':
+      case 'REASONING_MESSAGE_END': {
+        const item = texts.get(e.messageId);
+        if (item) item.endAt = e.timestamp;
         break;
       }
       case 'TOOL_CALL_START': {
-        const item: ToolItem = { kind: 'tool', id: e.toolCallId, name: e.toolCallName, args: '', isError: false };
+        const item: ToolItem = { kind: 'tool', id: e.toolCallId, name: e.toolCallName, args: '', isError: false, at: e.timestamp };
         turn(e.timestamp).items.push(item);
         tools.set(e.toolCallId, item);
         break;
@@ -109,17 +129,18 @@ export function turnsOf(events: readonly AguiEvent[]): Turn[] {
       case 'TOOL_CALL_RESULT': {
         let item = tools.get(e.toolCallId);
         if (!item) {
-          item = { kind: 'tool', id: e.toolCallId, name: '', args: '', isError: false };
+          item = { kind: 'tool', id: e.toolCallId, name: '', args: '', isError: false, at: e.timestamp };
           turn(e.timestamp).items.push(item);
           tools.set(e.toolCallId, item);
         }
         item.result = e.content;
         item.isError = !!e.isError;
+        item.endAt = e.timestamp;
         break;
       }
       case 'CUSTOM':
         if (e.name === 'drydock.interrupt') {
-          const item: WaitItem = { kind: 'wait', id: e.value.id, title: e.value.title, expiresAt: e.value.expiresAt };
+          const item: WaitItem = { kind: 'wait', id: e.value.id, title: e.value.title, expiresAt: e.value.expiresAt, at: e.timestamp };
           turn(e.timestamp).items.push(item);
           waits.set(item.id, item);
         } else if (e.name === 'drydock.resume') {

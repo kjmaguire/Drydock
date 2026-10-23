@@ -1,105 +1,355 @@
-// Pure helpers for the task screens: status groups and filters for the list, evidence results and labels, the shape of a
+// Pure helpers for the task screens: the board's columns, cards, checks bar, filters and timeline, evidence results and labels, the shape of a
 // pending request's payload, diff line classes, and the text of acceptance criteria. No DOM and no client here.
 
 import type { BudgetPausePayload, Criterion, SpecReviewPayload } from '../../api/extTypes.ts';
-import type { Evidence, PendingRequest, Task } from '../../api/types.ts';
+import { TASK_LABEL_LEN, TASK_LABELS_MAX, type Evidence, type PendingRequest, type SummaryCheck, type Task, type TaskSummary } from '../../api/types.ts';
 
-// --- the list: status groups (Linear-style) and filters ---
+// --- the board (graphite, decision P97): five columns of task.summaries ---
 
-/** The order status groups appear in: what waits on the human first, then work in flight, then the backlog, then closed. */
-export const STATUS_ORDER = ['WAITING_HUMAN', 'VERIFICATION', 'BLOCKED', 'IN_PROGRESS', 'REVIEW', 'CLAIMED', 'READY', 'BACKLOG', 'COMPLETED', 'FAILED', 'CANCELLED'] as const;
+/** The board's columns, in order. A failed or cancelled task is in none of them: it is listed under Stopped, below Merged. */
+export type BoardColumn = 'spec' | 'building' | 'checks' | 'review' | 'merged';
 
-export type TaskFilter = 'all' | 'waiting' | 'active' | 'backlog' | 'done';
-
-export const FILTERS: { name: TaskFilter; label: string; statuses?: readonly string[] }[] = [
-  { name: 'all', label: 'All' },
-  { name: 'waiting', label: 'Waiting on you', statuses: ['WAITING_HUMAN', 'VERIFICATION', 'BLOCKED'] },
-  { name: 'active', label: 'Active', statuses: ['IN_PROGRESS', 'REVIEW', 'CLAIMED', 'READY'] },
-  { name: 'backlog', label: 'Backlog', statuses: ['BACKLOG'] },
-  { name: 'done', label: 'Done', statuses: ['COMPLETED', 'FAILED', 'CANCELLED'] },
+export const BOARD_COLUMNS: readonly { name: BoardColumn; label: string }[] = [
+  { name: 'spec', label: 'Spec' },
+  { name: 'building', label: 'Building' },
+  { name: 'checks', label: 'Checks' },
+  { name: 'review', label: 'Review' },
+  { name: 'merged', label: 'Merged' },
 ];
 
+const STOPPED = new Set(['FAILED', 'CANCELLED']);
+
+/** The task ended without its change: failed or cancelled. */
+export const isStoppedTask = (status: string): boolean => STOPPED.has(status);
+
 /**
- * True when the task belongs under the filter. A status the UI does not know shows under All only. A task whose run waits for
- * the human (a watchdog or Team Lead question, a budget pause, a GitHub problem) is "Waiting on you" whatever its status, and
- * not "Active": `waiting` holds the ids of the tasks with an item in Needs you.
+ * The column of a task, from the step the core read for it (tasks.StepIndex): spec is Spec (also a task not started yet, and
+ * one whose spec waits for the person), code is Building, checks is Checks, review and you are Review, a completed task is
+ * Merged. The core puts a task whose checks are running at code (its status is still In progress): a pass under way moves it to
+ * Checks. A failed or cancelled task is 'stopped'.
  */
-export function inFilter(t: Pick<Task, 'status'> & { id?: string }, f: TaskFilter, waiting?: ReadonlySet<string>): boolean {
-  const asked = !!t.id && !!waiting?.has(t.id);
-  if (f === 'waiting' && asked) return true;
-  if (f === 'active' && asked) return false;
-  const def = FILTERS.find((x) => x.name === f);
-  return !def?.statuses || def.statuses.includes(t.status);
+export function columnOf(s: Pick<TaskSummary, 'status' | 'step' | 'checks'>): BoardColumn | 'stopped' {
+  if (isStoppedTask(s.status)) return 'stopped';
+  if (s.status === 'COMPLETED' || s.step === 'done') return 'merged';
+  switch (s.step) {
+    case 'spec':
+      return 'spec';
+    case 'checks':
+      return 'checks';
+    case 'review':
+    case 'you':
+      return 'review';
+    default:
+      return s.checks.some((c) => c.status === 'running') ? 'checks' : 'building';
+  }
 }
 
-/** Free-text match on the title, the #number and the branch (case-insensitive). Empty text matches everything. */
-export function matchesText(t: Pick<Task, 'title' | 'seq' | 'branch'>, text: string): boolean {
-  const q = text.trim().toLowerCase();
-  if (!q) return true;
-  if (q.replace(/^#/, '') === String(t.seq)) return true;
-  return t.title.toLowerCase().includes(q) || (t.branch ?? '').toLowerCase().includes(q);
+/** The board: each column with its tasks, and the tasks that stopped (failed or cancelled), so none is dropped silently. */
+export interface BoardLayout<T> {
+  columns: { column: BoardColumn; tasks: T[] }[];
+  stopped: T[];
 }
 
-export function filterCounts(tasks: readonly (Pick<Task, 'status'> & { id?: string })[], waiting?: ReadonlySet<string>): Record<TaskFilter, number> {
-  const out = { all: 0, waiting: 0, active: 0, backlog: 0, done: 0 } as Record<TaskFilter, number>;
-  for (const t of tasks) for (const f of FILTERS) if (inFilter(t, f.name, waiting)) out[f.name]++;
+type Sortable = Pick<TaskSummary, 'status' | 'step' | 'checks' | 'seq' | 'updatedAt' | 'completedAt' | 'startedAt' | 'pendingCount'>;
+
+/**
+ * The five columns, always all five. In every column what waits on the person comes first. Spec then has the tasks under way
+ * (started) newest first, then the ones not started in the order the crew takes them (lowest number first); Merged and Stopped
+ * are newest finish first; the others newest update first.
+ */
+export function boardOf<T extends Sortable>(list: readonly T[], waiting: (t: T) => boolean = (t) => t.pendingCount > 0): BoardLayout<T> {
+  const by = new Map<BoardColumn | 'stopped', T[]>([...BOARD_COLUMNS.map((c) => [c.name, []] as [BoardColumn, T[]]), ['stopped', []]]);
+  for (const t of list) by.get(columnOf(t))!.push(t);
+  const finished = (a: T, b: T) => toMs(b.completedAt) - toMs(a.completedAt) || b.updatedAt - a.updatedAt || b.seq - a.seq;
+  const asked = (a: T, b: T) => Number(waiting(b)) - Number(waiting(a));
+  const order = (c: BoardColumn | 'stopped') => (a: T, b: T) => {
+    if (c === 'merged' || c === 'stopped') return finished(a, b);
+    const w = asked(a, b);
+    if (w) return w;
+    if (c === 'spec') {
+      const started = Number(!!b.startedAt) - Number(!!a.startedAt);
+      if (started) return started;
+      if (!a.startedAt) return a.seq - b.seq;
+    }
+    return b.updatedAt - a.updatedAt || b.seq - a.seq;
+  };
+  for (const [c, l] of by) l.sort(order(c));
+  return { columns: BOARD_COLUMNS.map((c) => ({ column: c.name, tasks: by.get(c.name)! })), stopped: by.get('stopped')! };
+}
+
+/** A task's key: the project's key and the task's number ("GOC-41"); "#41" when the project has no key. */
+export const taskKey = (s: Pick<TaskSummary, 'projectKey' | 'seq'>): string => (s.projectKey ? `${s.projectKey}-${s.seq}` : `#${s.seq}`);
+
+/** "1st", "2nd", "3rd", "4th", "11th", "21st". */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
+/** A running time as a clock: "0:42", "9:47", "1:02:05". */
+export function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+/** When a task finished, as the Merged column says it: "Today", "Yesterday", a weekday within the week ("Mon"), else the date. */
+export function finishedWhen(at: number | undefined, now = Date.now()): string {
+  const ms = toMs(at);
+  if (!ms) return '';
+  const day = (x: number) => {
+    const d = new Date(x);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+  const days = Math.round((day(now) - day(ms)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return new Date(ms).toLocaleDateString('en-US', { weekday: 'short' });
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** The tag at the right of a card's top line. */
+export interface CardTag {
+  kind: 'waiting' | 'merge' | 'elapsed' | 'next' | 'backlog';
+  text: string;
+}
+
+/**
+ * What the card's top line says at its right: "Ready to merge" when a merge waits for the person, "Waiting on you" for any
+ * other request (or an item in Needs you, `asked`), the time it has run while it runs, "Up next" or "Backlog" before it
+ * starts. Nothing on a finished task (Merged says when it finished instead).
+ */
+export function cardTag(s: Pick<TaskSummary, 'status' | 'pending' | 'startedAt'>, asked = false, now = Date.now()): CardTag | undefined {
+  if (s.pending?.phase === 'merge') return { kind: 'merge', text: 'Ready to merge' };
+  if (s.pending || asked) return { kind: 'waiting', text: 'Waiting on you' };
+  if (isTerminal(s.status)) return undefined;
+  const start = toMs(s.startedAt);
+  if (start) return { kind: 'elapsed', text: clock(now - start) };
+  if (s.status === 'BACKLOG') return { kind: 'backlog', text: 'Backlog' };
+  return { kind: 'next', text: 'Up next' };
+}
+
+/** The spec gate's line on a card: how many criteria the planner wrote and what the person can do. */
+export function specGateText(criteria: number): string {
+  return `Spec gate: ${criteria} acceptance ${criteria === 1 ? 'criterion' : 'criteria'} written. Accept, edit or send back with feedback.`;
+}
+
+/** What the agent is doing, with the try it is on after the first: "Running go test ./... · 3rd try". Empty when unknown. */
+export function doingLine(s: Pick<TaskSummary, 'doing' | 'attempt'>): string {
+  const tryText = s.attempt > 1 ? `${ordinal(s.attempt)} try` : '';
+  return [s.doing?.trim() ?? '', tryText].filter(Boolean).join(' · ');
+}
+
+/** How far along the task is, 0 to 100: stepIndex of stepCount. */
+export const progressOf = (s: Pick<TaskSummary, 'stepIndex' | 'stepCount'>): number => (s.stepCount > 0 ? Math.round((Math.min(Math.max(s.stepIndex, 0), s.stepCount) / s.stepCount) * 100) : 0);
+
+/** "+48 −6", never broken between the two numbers (a no-break space). */
+export const diffText = (d: { insertions: number; deletions: number }): string => `+${d.insertions}\u00a0−${d.deletions}`;
+
+/** The reviewer's line on a card: "Rex approved · 2 files · +31 −2". Empty without a verdict or a diff. */
+export function verdictLine(s: Pick<TaskSummary, 'verdict' | 'diff'>, reviewer: string): string {
+  const who = reviewer || 'The reviewer';
+  const verdict = s.verdict === 'SHIP' ? `${who} approved` : s.verdict === 'REVISE' ? `${who} asked for changes` : '';
+  const files = s.diff ? `${s.diff.files} ${s.diff.files === 1 ? 'file' : 'files'}` : '';
+  return [verdict, files, s.diff ? diffText(s.diff) : ''].filter(Boolean).join(' · ');
+}
+
+// the checks bar: seven segments, each one or more of the core's check kinds
+
+export type CheckSegmentName = 'tests' | 'lint' | 'types' | 'secrets' | 'deps' | 'ci' | 'preview';
+export type SegmentState = 'passed' | 'failed' | 'running' | 'inconclusive' | 'not_run';
+
+/** The segments in order, and the check kinds (pipeline.CheckKinds) each one shows. */
+export const CHECK_SEGMENTS: readonly { name: CheckSegmentName; kinds: readonly string[] }[] = [
+  { name: 'tests', kinds: ['build', 'test', 'e2e'] },
+  { name: 'lint', kinds: ['lint'] },
+  { name: 'types', kinds: ['typecheck'] },
+  { name: 'secrets', kinds: ['secrets'] },
+  { name: 'deps', kinds: ['deps'] },
+  { name: 'ci', kinds: ['ci', 'merge-conflicts'] },
+  { name: 'preview', kinds: ['preview'] },
+];
+
+const RANK: Record<SegmentState, number> = { failed: 4, running: 3, inconclusive: 2, not_run: 1, passed: 0 };
+
+const stateOf = (status: string): SegmentState => (status === 'passed' || status === 'failed' || status === 'running' || status === 'inconclusive' ? status : 'not_run');
+
+export interface CheckSegment {
+  name: CheckSegmentName;
+  state: SegmentState;
+  /** The kinds the segment stands for, with their state: "test: passed, e2e: not run". */
+  title: string;
+}
+
+/**
+ * The segments of the checks the task's project runs (a segment none of whose kinds ran is left out), in CHECK_SEGMENTS
+ * order. A segment of several kinds shows the worst of them: failed, then running, then inconclusive, then not run.
+ */
+export function checkSegments(checks: readonly SummaryCheck[]): CheckSegment[] {
+  const out: CheckSegment[] = [];
+  for (const seg of CHECK_SEGMENTS) {
+    const mine = checks.filter((c) => seg.kinds.includes(c.kind));
+    if (!mine.length) continue;
+    const state = mine.map((c) => stateOf(c.status)).reduce((a, b) => (RANK[b] > RANK[a] ? b : a));
+    out.push({ name: seg.name, state, title: mine.map((c) => `${c.kind}: ${STATE_WORDS[stateOf(c.status)]}`).join(', ') });
+  }
   return out;
 }
 
-export interface TaskGroup<T> {
-  status: string;
-  tasks: T[];
+const STATE_WORDS: Record<SegmentState, string> = { passed: 'passed', failed: 'failed', running: 'running', inconclusive: 'inconclusive', not_run: 'not run' };
+
+/** The bar's accessible name: "Checks: 5 passed, 1 running, 1 failed". */
+export function checksLabel(segs: readonly CheckSegment[]): string {
+  const order: SegmentState[] = ['passed', 'running', 'failed', 'inconclusive', 'not_run'];
+  const parts = order.map((st) => [st, segs.filter((x) => x.state === st).length] as const).filter(([, n]) => n > 0).map(([st, n]) => `${n} ${STATE_WORDS[st]}`);
+  return `Checks: ${parts.join(', ') || 'none'}`;
 }
 
-// --- the board (Crew HQ, decision P64): four columns ---
+/** The first failing check's line: "preview: the page did not start on port 5173" (what failed when it gave no reason). */
+export function failingLine(checks: readonly SummaryCheck[]): string {
+  const f = checks.find((c) => c.status === 'failed');
+  if (!f) return '';
+  const why = f.reason?.trim() || (f.failing?.length ? `${f.failing.slice(0, 3).join(', ')} failed` : 'failed');
+  const text = `${f.kind}: ${why}`;
+  return text.length > 160 ? `${text.slice(0, 159)}…` : text;
+}
 
-export type BoardColumn = 'next' | 'working' | 'needs' | 'done';
+// filters
 
-export const BOARD_COLUMNS: { name: BoardColumn; label: string; statuses: readonly string[]; tone: 'muted' | 'info' | 'warn' | 'ok' }[] = [
-  { name: 'next', label: 'Up next', statuses: ['BACKLOG', 'READY', 'CLAIMED'], tone: 'muted' },
-  { name: 'working', label: 'Crew working', statuses: ['IN_PROGRESS', 'REVIEW', 'VERIFICATION', 'BLOCKED'], tone: 'info' },
-  { name: 'needs', label: 'Needs you', statuses: ['WAITING_HUMAN'], tone: 'warn' },
-  { name: 'done', label: 'Merged / Done', statuses: ['COMPLETED', 'FAILED', 'CANCELLED'], tone: 'ok' },
-];
+export interface BoardFilter {
+  /** An agent's id: the tasks it works on or reviews. */
+  agent?: string;
+  label?: string;
+  /** Only the tasks with a request waiting for the person. */
+  needsMe?: boolean;
+}
+
+/** The task waits for the person: a request of its run, or an item in Needs you (`asked`: the ids of those tasks). */
+export const needsMe = (s: Pick<TaskSummary, 'taskId' | 'pendingCount'>, asked?: ReadonlySet<string>): boolean => s.pendingCount > 0 || !!asked?.has(s.taskId);
+
+export function matchesFilter(s: Pick<TaskSummary, 'taskId' | 'pendingCount' | 'assignee' | 'reviewer' | 'labels'>, f: BoardFilter, asked?: ReadonlySet<string>): boolean {
+  if (f.agent && s.assignee !== f.agent && s.reviewer !== f.agent) return false;
+  if (f.label && !s.labels.includes(f.label)) return false;
+  if (f.needsMe && !needsMe(s, asked)) return false;
+  return true;
+}
+
+/** Every label the tasks carry, sorted. */
+export const labelsOf = (list: readonly Pick<TaskSummary, 'labels'>[]): string[] => [...new Set(list.flatMap((s) => s.labels))].sort((a, b) => a.localeCompare(b));
 
 /**
- * The column a task sits in. A task whose run waits for the person (an item in Needs you, `waiting`) is in Needs you
- * whatever its status says; a status the UI does not know is shown with the crew's work, its status visible on the card.
+ * The labels a person typed, comma-separated, as the core keeps them (trimmed, lower-cased, deduplicated), or what is wrong
+ * with them: more than TASK_LABELS_MAX, or one longer than TASK_LABEL_LEN.
  */
-export function columnOf(t: Pick<Task, 'status'> & { id?: string }, waiting?: ReadonlySet<string>): BoardColumn {
-  if (!!t.id && !!waiting?.has(t.id)) return 'needs';
-  return BOARD_COLUMNS.find((c) => c.statuses.includes(t.status))?.name ?? 'working';
+export function parseLabels(text: string): { labels: string[]; error?: string } {
+  const labels = [...new Set(text.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const long = labels.find((l) => [...l].length > TASK_LABEL_LEN);
+  if (long) return { labels, error: `"${long.slice(0, 30)}" is longer than ${TASK_LABEL_LEN} characters.` };
+  if (labels.length > TASK_LABELS_MAX) return { labels, error: `A task takes up to ${TASK_LABELS_MAX} labels; this is ${labels.length}.` };
+  return { labels };
+}
+
+/** The merge request a ready-to-merge card answers: run.respond(runId, requestId, 'approved'), as the review panel's Approve. */
+export function mergeRequestOf(s: Pick<TaskSummary, 'pending'>): { runId: string; requestId: string } | undefined {
+  const p = s.pending;
+  return p && p.phase === 'merge' && p.runId && p.requestId ? { runId: p.runId, requestId: p.requestId } : undefined;
+}
+
+/** The review panel's answer to a review request that approves it (and merges, for a merge request). */
+export const APPROVE = 'approved';
+
+// the timeline
+
+export type TimelineRange = 'today' | 'week';
+
+export interface TimelineBlock<T> {
+  task: T;
+  /** Where the block starts and how wide it is, in percent of the range. */
+  left: number;
+  width: number;
+  state: 'running' | 'waiting' | 'done' | 'stopped';
+  /** The row of the lane it is drawn on: blocks that overlap in time go on separate rows. */
+  row: number;
+}
+
+export interface TimelineLane<T> {
+  /** The agent's id, '' for the tasks nobody works on. */
+  agent: string;
+  blocks: TimelineBlock<T>[];
+  rows: number;
+}
+
+/** The start and the end of a range: today from midnight, or the last seven days, up to now. */
+export function rangeOf(range: TimelineRange, now = Date.now()): { from: number; to: number } {
+  if (range === 'week') return { from: now - 7 * 86_400_000, to: now };
+  const d = new Date(now);
+  const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return { from, to: Math.max(now, from + 3_600_000) };
 }
 
 /**
- * The four columns, always all four, each with its tasks: Up next in the order the crew takes them (lowest number first),
- * the others newest update first.
+ * One lane per agent (the worker), each task a block from its start to its finish (or now while it runs), clipped to the
+ * range; a task that has not started, or ended before the range, is left out. Lanes in the order of their first block.
  */
-export function boardColumns<T extends Pick<Task, 'status' | 'updated' | 'seq'> & { id?: string }>(tasks: readonly T[], waiting?: ReadonlySet<string>): { column: BoardColumn; tasks: T[] }[] {
-  const by = new Map<BoardColumn, T[]>(BOARD_COLUMNS.map((c) => [c.name, []]));
-  for (const t of tasks) by.get(columnOf(t, waiting))!.push(t);
-  return BOARD_COLUMNS.map((c) => {
-    const list = by.get(c.name)!;
-    list.sort(c.name === 'next' ? (a, b) => a.seq - b.seq : (a, b) => b.updated - a.updated || b.seq - a.seq);
-    return { column: c.name, tasks: list };
-  });
-}
-
-/** Group tasks by status in STATUS_ORDER (unknown statuses last), newest update first within a group. */
-export function groupByStatus<T extends Pick<Task, 'status' | 'updated' | 'seq'>>(tasks: readonly T[]): TaskGroup<T>[] {
-  const by = new Map<string, T[]>();
-  for (const t of tasks) {
-    const g = by.get(t.status);
-    if (g) g.push(t);
-    else by.set(t.status, [t]);
+export function timelineOf<T extends Pick<TaskSummary, 'assignee' | 'startedAt' | 'completedAt' | 'status' | 'pendingCount' | 'updatedAt'>>(
+  list: readonly T[],
+  range: { from: number; to: number },
+  now = Date.now(),
+): TimelineLane<T>[] {
+  const span = Math.max(1, range.to - range.from);
+  const lanes = new Map<string, TimelineBlock<T>[]>();
+  const firsts = new Map<string, number>();
+  for (const s of list) {
+    const start = toMs(s.startedAt);
+    if (!start) continue;
+    const end = isTerminal(s.status) ? toMs(s.completedAt) || s.updatedAt : now;
+    if (end < range.from || start > range.to) continue;
+    const a = Math.max(start, range.from);
+    const b = Math.min(Math.max(end, a), range.to);
+    const left = ((a - range.from) / span) * 100;
+    const width = Math.max(((b - a) / span) * 100, 0.6);
+    const state = s.status === 'COMPLETED' ? 'done' : isStoppedTask(s.status) ? 'stopped' : s.pendingCount > 0 ? 'waiting' : 'running';
+    const key = s.assignee ?? '';
+    if (!lanes.has(key)) lanes.set(key, []);
+    lanes.get(key)!.push({ task: s, left, width: Math.min(width, 100 - left), state, row: 0 });
+    firsts.set(key, Math.min(firsts.get(key) ?? Infinity, a));
   }
-  const rank = (s: string) => {
-    const i = (STATUS_ORDER as readonly string[]).indexOf(s);
-    return i < 0 ? STATUS_ORDER.length : i;
-  };
-  return [...by.entries()]
-    .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]))
-    .map(([status, list]) => ({ status, tasks: list.sort((a, b) => b.updated - a.updated || b.seq - a.seq) }));
+  return [...lanes.entries()]
+    .sort((x, y) => (firsts.get(x[0]) ?? 0) - (firsts.get(y[0]) ?? 0))
+    .map(([agent, blocks]) => {
+      blocks.sort((p, q) => p.left - q.left);
+      const ends: number[] = [];
+      for (const b of blocks) {
+        let row = ends.findIndex((e) => e <= b.left);
+        if (row < 0) row = ends.push(0) - 1;
+        ends[row] = b.left + b.width;
+        b.row = row;
+      }
+      return { agent, blocks, rows: Math.max(1, ends.length) };
+    });
+}
+
+/** The marks under the timeline: every two hours today ("10:00"), every day of the week ("Mon"), in percent of the range. */
+export function timelineTicks(range: TimelineRange, r: { from: number; to: number }): { at: number; label: string }[] {
+  const span = Math.max(1, r.to - r.from);
+  const out: { at: number; label: string }[] = [];
+  if (range === 'today') {
+    for (let h = 0; h <= 24; h += 2) {
+      const at = r.from + h * 3_600_000;
+      if (at > r.to) break;
+      out.push({ at: ((at - r.from) / span) * 100, label: `${String(h).padStart(2, '0')}:00` });
+    }
+    return out;
+  }
+  const d = new Date(r.from);
+  let day = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+  for (; day <= r.to; day = new Date(new Date(day).getFullYear(), new Date(day).getMonth(), new Date(day).getDate() + 1).getTime()) {
+    out.push({ at: ((day - r.from) / span) * 100, label: new Date(day).toLocaleDateString('en-US', { weekday: 'short' }) });
+  }
+  return out;
 }
 
 /** "now", "5m", "3h", "2d", then a date. For the dense list only: the task page shows full times. */

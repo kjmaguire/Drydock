@@ -11,7 +11,7 @@ import type { Workspace } from './workspace.ts';
 
 /** The events after which Needs you may have changed: every list or count of it reloads on these, so all of them agree. */
 export const needsChanged = (e: DrydockEvent): boolean =>
-  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived', 'chat.permission');
+  starts(e, 'approval.', 'workflow.request', 'task.', 'watchdog.', 'room.message_posted', 'room.archived', 'chat.permission', 'needsyou.');
 
 /** The project's tasks as one read: the newest ones the core lists, and how many the project has in all (when the count answered). */
 export interface TaskPage {

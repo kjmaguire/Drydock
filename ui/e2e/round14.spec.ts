@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { choose, createProject, freshGreenRepo, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, freshGreenRepo, openAgentPage, openNewAgent, workspaceNav, projectNav } from './helpers';
 
 /** Open a project skill's panel from its row on the Skills page (one-line rows; the panel opens inside the row). */
 async function openSkill(page: Page, name: string) {
@@ -24,7 +24,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody yet: give it to the agents that need it');
 
   // a frontend agent is given it in the new-agent form; a backend agent is only offered it as a suggestion, never given it by role
-  await projectNav(page, 'nav-team');
+  await openNewAgent(page);
   const form = page.getByTestId('agent-form');
   await form.getByLabel('Agent name').fill('Ada');
   await form.getByLabel('Role', { exact: true }).fill('frontend');
@@ -34,6 +34,8 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await box.check();
   await form.getByRole('button', { name: 'Create agent' }).click();
   await expect(page.getByTestId('agent').filter({ hasText: 'Ada' })).toBeVisible();
+  // the dialog closed with the agent made; New agent opens a fresh form
+  await openNewAgent(page, false);
   await form.getByLabel('Agent name').fill('Bob');
   await form.getByLabel('Role', { exact: true }).fill('backend');
   await expect(form.getByTestId('agent-skills')).toContainText('Suggested for backend. Also given to Ada.');
@@ -56,8 +58,8 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Bob');
 
   // the editor shows what Bob has and takes it away
-  await projectNav(page, 'nav-team');
-  await page.getByTestId('agent').filter({ hasText: 'Bob' }).getByRole('button', { name: 'Edit Bob' }).click();
+  await openAgentPage(page, 'Bob');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
   const mine = editor.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
   await expect(mine).toBeChecked();

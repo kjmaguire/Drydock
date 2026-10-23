@@ -28,6 +28,12 @@ import (
 // PermissionGate is the gate kind of a permission request on the task page (TaskDetail.Pending payload "gate").
 const PermissionGate = "permission_prompt"
 
+// The scopes of an approval of a permission request (run.respond "scope"): this request only, or the rest of its task.
+const (
+	ScopeOnce = "once"
+	ScopeTask = "task"
+)
+
 // permissionToolTimeoutMS is how long the CLI waits for one gateway tool call in a worker that asks Drydock: longer than the
 // approval's lifetime, so a person's late answer or the expiry, not the CLI, ends the wait.
 var permissionToolTimeoutMS = fmt.Sprintf("%d", (security.DefaultApprovalTTL.Milliseconds() + 5*60*1000))
@@ -51,7 +57,9 @@ func (p *permissionService) init() (*security.PermissionGate, error) {
 		p.gate = &security.PermissionGate{
 			Approvals: security.NewApprovals(p.c.DB, p.c.Bus, audit, security.WithApprovalRedactor(p.c.Scanner)),
 			Analyzer:  an, Audit: audit, Bus: p.c.Bus,
-			// no project stores allow rules or CEL restrictions in this build: the decision table alone decides
+			// no project stores allow rules or CEL restrictions in this build: the decision table decides, and what it asks is
+			// approved without asking only by a person's "approve for this task" of the same call (ext_inbox.go, P97)
+			TaskRules: p.c.taskRules,
 		}
 	})
 	return p.gate, p.err
@@ -101,7 +109,10 @@ func (c *Core) permissionRequestTask(ctx context.Context, id string) (taskID str
 //
 // An approval may carry the input changed by the person (data {"input": {...}}, P88): the CLI then runs that input, after the
 // rules checked it again. Only Claude workers can run a changed call.
-func (c *Core) respondPermission(ctx context.Context, runID, requestID, taskID, decision string, data []byte) error {
+//
+// scope "task" approves the request for the rest of its task (P97): the same call of the same agent in the task is approved
+// without asking until the task ends. "" (or "once") approves this request only.
+func (c *Core) respondPermission(ctx context.Context, runID, requestID, taskID, decision, scope string, data []byte) error {
 	info, err := c.Engine.Status(ctx, workflow.RunID(runID))
 	if err != nil {
 		return err
@@ -128,7 +139,21 @@ func (c *Core) respondPermission(ctx context.Context, runID, requestID, taskID, 
 	if len(data) > 0 {
 		_ = json.Unmarshal(data, &edit)
 	}
-	if len(edit.Input) > 0 && string(edit.Input) != "null" {
+	edited := len(edit.Input) > 0 && string(edit.Input) != "null"
+	switch scope {
+	case "", ScopeOnce:
+	case ScopeTask:
+		if d != security.DecisionApprove {
+			return errors.New("only an approval is given for the rest of the task")
+		}
+		if edited {
+			return errors.New("a call you changed can only be approved once")
+		}
+		return c.approveForTask(ctx, gate, requestID)
+	default:
+		return fmt.Errorf("an approval is for this request (scope %q) or for the rest of the task (scope %q), not %q", ScopeOnce, ScopeTask, scope)
+	}
+	if edited {
 		if d != security.DecisionApprove {
 			return errors.New("only an approval carries a changed input")
 		}
@@ -193,7 +218,7 @@ func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.
 		}
 		// a person can change the input before approving only where the CLI can run a changed call (Claude's prompt tool)
 		// and the input shown is the whole input: a shortened or redacted copy would run without what was left out (P88)
-		editable := strings.HasPrefix(info.Action.Tool, "claude:") && !info.Action.Shortened && !strings.Contains(info.Action.Command, "[REDACTED")
+		editable := permissionEditable(info.Action)
 		payload, _ := json.Marshal(map[string]any{
 			"gate": PermissionGate, "tool": toolOfAction(info.Action.Tool), "input": info.Action.Command, "editable": editable, "shell": info.Action.Shell != "",
 			"targets": targets, "shortened": info.Action.Shortened,

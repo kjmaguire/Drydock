@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LocalBackend, LocalModel, LocalSettingsEdit, LocalView, Variant } from '../../api/localClient.ts';
 import { cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { LocalModels } from './local-models.tsx';
+import { ModelsScreen } from './models-screen.tsx';
 
 afterEach(cleanup);
 
@@ -66,9 +66,11 @@ const model = (over: Partial<LocalModel> = {}): LocalModel => ({
   ...over,
 });
 
+const NOW = Date.parse('2026-10-22T12:00:00Z');
+
 function show(client: Partial<Client>) {
   const s = testServices(client);
-  const r = mount(<LocalModels />, s);
+  const r = mount(<ModelsScreen now={NOW} />, s);
   return { r, s };
 }
 const q = (r: ReturnType<typeof show>['r'], sel: string) => r.$(sel) as HTMLElement | null;
@@ -78,6 +80,17 @@ const need = (r: ReturnType<typeof show>['r'], sel: string) => {
   return el;
 };
 const sel = (r: ReturnType<typeof show>['r'], s: string) => need(r, s) as HTMLElement;
+const menuOpen = (r: ReturnType<typeof show>['r']) => Array.from(r.$$('[role="menu"]')).some((m) => m.closest('[popover]')?.matches(':popover-open'));
+/** Open a menu by its trigger (a menu still finishing its last selection ignores a click, so it is repeated until it shows). */
+async function openMenu(r: ReturnType<typeof show>['r'], trigger: HTMLElement) {
+  await r.act(() => trigger.click());
+  await waitFor(() => {
+    if (!menuOpen(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+    expect(menuOpen(r)).toBe(true);
+  }, r);
+}
+/** Enter in the Hub search: the form is submitted (the mockup has no Search button). */
+const submitSearch = (r: ReturnType<typeof show>['r']) => r.act(() => (need(r, '[data-testid="local-search"]') as HTMLFormElement).requestSubmit());
 /** The control once the action before it has ended (a busy section disables its controls). */
 const enabled = <T extends HTMLButtonElement | HTMLInputElement>(r: ReturnType<typeof show>['r'], s: string) =>
   waitFor(() => {
@@ -86,13 +99,14 @@ const enabled = <T extends HTMLButtonElement | HTMLInputElement>(r: ReturnType<t
     return el;
   }, r);
 
-describe('Models on this PC', () => {
+describe('Models on this PC (the page)', () => {
   it('on a PC where local models are not supported shows the reason only', async () => {
     const { r } = show({ localGet: async () => view({ supported: false, reason: 'Local models run on Windows only.' }) });
     await waitFor(() => expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Local models run on Windows only.'), r);
     expect(need(r, '[data-testid="local-models"]').textContent).toContain('Models on this PC');
     expect(q(r, '[data-testid="local-install"]')).toBe(null);
     expect(q(r, '[data-testid="local-server"]')).toBe(null);
+    expect(q(r, '[data-testid="local-search"]')).toBe(null);
   });
 
   // decision P95, on the owner's words: "I don't want to hit a button that says install llama.cpp, I don't even want it to say
@@ -117,9 +131,9 @@ describe('Models on this PC', () => {
     await waitFor(() => need(r, '[data-testid="local-install"]'), r);
     const rt = need(r, '[data-testid="local-runtime"]');
     expect(rt.getAttribute('data-installed')).toBe('false');
-    expect(rt.querySelector('h3')!.textContent).toBe('Local models are not set up');
+    expect(need(r, '[data-testid="local-build"]').textContent).toBe('Local models are not set up');
     expect(need(r, '[data-testid="local-install"]').textContent).toBe('Set up');
-    expect(need(r, '[data-testid="local-models"]').textContent).toContain("built into Drydock, with Google's TurboQuant");
+    expect(rt.textContent).toContain('Drydock puts its model engine in place by itself when it starts.');
     expect(q(r, '[data-testid="local-backend"]')).toBe(null);
     expect(q(r, '[data-testid="local-source"]')).toBe(null);
     expect(need(r, '[data-testid="local-models"]').textContent!.toLowerCase()).not.toContain('llama');
@@ -131,7 +145,8 @@ describe('Models on this PC', () => {
     expect(job.getAttribute('data-state')).toBe('running');
     expect(job.querySelector('[role="progressbar"]')!.getAttribute('aria-valuenow')).toBe('25');
     expect(job.textContent).toContain('25 MB of 100 MB (25%), downloading b10298-2.0.0');
-    expect(need(r, '[data-testid="local-runtime"]').querySelector('h3')!.textContent).toBe('Setting up local models');
+    expect(need(r, '[data-testid="local-build"]').textContent).toBe('Setting up local models');
+    expect(need(r, '[data-testid="local-runtime"]').textContent).toContain("with Google's TurboQuant");
     expect(q(r, '[data-testid="local-install"]')).toBe(null);
   });
 
@@ -152,15 +167,22 @@ describe('Models on this PC', () => {
   it('installed: the build, the backend and the devices; no Update or Remove of the engine, only Check for updates', async () => {
     const { r } = show({ localGet: async () => installed() });
     const rt = await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
-    expect(rt.querySelector('h3')!.textContent).toBe('Official weekly build b11669 · Vulkan');
-    expect(rt.textContent).toContain('installed');
-    expect(rt.textContent).toContain('Built into Drydock and run from its own folder');
-    expect(need(r, '[data-testid="local-device"][data-id="CUDA0"]').textContent).toBe('CUDA0: NVIDIA GeForce RTX 4060 Ti, 14.0 GB free of 16.0 GB');
+    expect(rt.querySelector('[data-testid="local-build"]')!.textContent).toBe('Official weekly build b11669 · Vulkan');
+    expect(need(r, '[data-testid="local-build"]').getAttribute('title')).toContain('installed');
+    expect(need(r, '[data-testid="local-runtime-note"]').textContent).toBe('Drydock set it up and keeps it current. An update restarts the server on the same model.');
+    // the GPU is a bar in the Memory card: what is used of it, the device named in its tooltip
+    const gpu = need(r, '[data-testid="local-device"][data-id="CUDA0"]');
+    expect(gpu.querySelector('span[title]')!.getAttribute('title')).toBe('CUDA0: NVIDIA GeForce RTX 4060 Ti, 14.0 GB free of 16.0 GB');
+    expect(gpu.textContent).toContain('GPU · CUDA');
+    expect(gpu.querySelector('[data-testid="local-bar-used"]')!.textContent).toBe('2 of 16 GB');
+    expect(gpu.querySelector('[role="img"]')!.getAttribute('aria-label')).toBe('GPU · CUDA: 2 of 16 GB used: other programs 2.0 GB');
+    expect(gpu.querySelector('.legend')).toBe(null); // nothing served: no model in it
+    expect(need(r, '[data-testid="local-ram"] [data-testid="local-bar-used"]').textContent).toBe('12 of 32 GB');
     expect(q(r, '[data-testid="local-install"]')).toBe(null);
     expect(q(r, '[data-testid="local-update"]')).toBe(null);
     expect(q(r, '[data-testid="local-runtime-remove"]')).toBe(null);
     expect(need(r, '[data-testid="local-check-updates"]').textContent).toBe('Check for updates');
-    expect(need(r, '[data-testid="local-memory"]').textContent).toBe('RAM: 20.0 GB free of 32.0 GB · Models on disk: 0 MB · Free disk: 120.0 GB');
+    expect(need(r, '[data-testid="local-memory"]').textContent).toBe('Models on disk: 0 MB · Free disk: 120.0 GB');
   });
 
   it('devices: "No GPU found" when probed with none; the probe error when it did not answer', async () => {
@@ -170,7 +192,7 @@ describe('Models on this PC', () => {
     await waitFor(() => expect(need(err.r, '[data-testid="local-devices"]').textContent).toContain('the program printed no device list'), err.r);
   });
 
-  it('models carry their size and fit; Serve starts the server with the model and the answer is shown; Stop stops it', async () => {
+  it('models carry their name, quantization, repository, size and fit; Serve starts the server with the model and the answer is shown; Stop stops it', async () => {
     const started: string[] = [];
     let stops = 0;
     const models = [
@@ -200,35 +222,45 @@ describe('Models on this PC', () => {
     });
     await waitFor(() => expect(r.$$('[data-testid="local-model"]').length).toBe(4), r);
     const row = (id: string) => need(r, `[data-testid="local-model"][data-id="${id}"]`);
-    expect(row(models[0]!.id).textContent).toContain('12.0 GB');
-    expect(row(models[0]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Fits the GPU');
-    expect(row(models[0]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('title')).toBe('Fits the GPU (needs about 12.0 GB, 14.0 GB free).');
-    expect(row(models[0]!.id).querySelector('[data-testid="local-fit-why"]')).toBe(null);
-    // a model that will not run well says so in the row, with the numbers; the badge stays short and carries the sentence as its tooltip
-    expect(row(models[1]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Runs on the CPU (slow)');
-    expect(row(models[1]!.id).querySelector('[data-testid="local-fit-why"]')!.textContent).toBe(
-      'Runs on the CPU (slow): no GPU has room for it, so it is kept in RAM (needs about 32.0 GB, 15.0 GB free).',
-    );
-    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.textContent).toBe('Not recommended');
-    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('data-tone')).toBe('err');
-    expect(row(models[2]!.id).querySelector('[data-testid="local-fit-why"]')!.textContent).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
-    expect(row(models[2]!.id).querySelector('[data-testid="local-fit"]')!.getAttribute('title')).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
-    expect(row(models[3]!.id).querySelector('[data-testid="local-fit"]')).toBe(null);
-    expect(row(models[3]!.id).querySelector('[data-testid="local-fit-why"]')).toBe(null);
+    const fit = (id: string) => row(id).querySelector('[data-testid="local-fit"]');
+    // the mockup's row: the model's name and quantization over its repository, the size, where it fits
+    expect(row(models[0]!.id).querySelector('.name')!.textContent).toBe('gpt-oss-20b · MXFP4');
+    expect(row(models[0]!.id).querySelector('.repo')!.textContent).toBe('ggml-org/gpt-oss-20b-GGUF');
+    expect(row(models[0]!.id).querySelector('.size')!.textContent).toBe('12.0 GB');
+    expect(fit(models[0]!.id)!.textContent).toBe('Fits · GPU');
+    expect(fit(models[0]!.id)!.getAttribute('title')).toBe('Runs on the GPU (needs about 12.0 GB, 14.0 GB free).');
+    // a model that does not fit the GPU alone runs on the GPU and in RAM; the badge stays short and carries the sentence as its tooltip
+    expect(fit(models[1]!.id)!.textContent).toBe('Fits · GPU + RAM');
+    expect(fit(models[1]!.id)!.getAttribute('data-tone')).toBe('warn');
+    expect(fit(models[1]!.id)!.getAttribute('title')).toBe('Runs on the GPU and in RAM (slower): no GPU has room for all of it (needs about 32.0 GB, 15.0 GB free).');
+    expect(fit(models[2]!.id)!.textContent).toBe('Too big for 15 GB');
+    expect(fit(models[2]!.id)!.getAttribute('data-tone')).toBe('err');
+    expect(fit(models[3]!.id)).toBe(null);
     expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped');
+    expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Nothing served');
+    expect(need(r, '[data-testid="local-server-state"]').getAttribute('aria-label')).toBe('stopped');
+    // the KV cache the next start uses
+    expect(need(r, '[data-testid="local-kv"]').textContent).toBe("q8_0 · the model's own context");
     expect(q(r, '[data-testid="local-server-stop"]')).toBe(null);
+    expect(q(r, '[data-testid="local-server-url"]')).toBe(null);
 
     await r.act(() => (row(models[0]!.id).querySelector('[data-testid="local-serve"]') as HTMLButtonElement).click());
     await waitFor(() => expect(started).toEqual([models[0]!.id]), r);
     await waitFor(() => expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('running'), r);
     const server = need(r, '[data-testid="local-server"]');
-    expect(server.querySelector('[data-testid="local-server-state"]')!.textContent).toBe('running');
-    expect(server.querySelector('[data-testid="local-server-url"]')!.textContent).toBe('http://127.0.0.1:9933/v1');
-    expect(server.textContent).toContain(models[0]!.id);
-    expect(need(r, '[data-testid="local-provider-note"]').textContent).toContain("Registered as the provider 'Models on this PC' below.");
-    expect(row(models[0]!.id).textContent).toContain('serving');
-    // the model served cannot be served again; the others wait while nothing starts
-    expect((row(models[0]!.id).querySelector('[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(server.querySelector('[data-testid="local-server-state"]')!.getAttribute('aria-label')).toBe('running');
+    // the mockup's address: host and port; the full base URL is its tooltip
+    expect(server.querySelector('[data-testid="local-server-url"]')!.textContent).toBe('127.0.0.1:9933');
+    expect(server.querySelector('[data-testid="local-server-url"]')!.getAttribute('title')).toBe('http://127.0.0.1:9933/v1');
+    expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Serving gpt-oss-20b');
+    expect(need(r, '[data-testid="local-server-title"]').getAttribute('title')).toBe(models[0]!.id);
+    expect(need(r, '[data-testid="local-provider-note"]').textContent).toBe('Agents reach it as a provider: see Providers.');
+    expect(need(r, '[data-testid="local-provider-note"] a').getAttribute('href')).toBe('/providers');
+    // the served row says so, like the mockup's: Serving · GPU, downloaded; it cannot be served again, the others can
+    expect(fit(models[0]!.id)!.textContent).toBe('Serving · GPU');
+    expect(row(models[0]!.id).getAttribute('data-served')).toBe('true');
+    expect(row(models[0]!.id).querySelector('.act')!.textContent).toBe('downloaded');
+    expect(row(models[0]!.id).querySelector('[data-testid="local-serve"]')).toBe(null);
     expect((row(models[1]!.id).querySelector('[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(false);
     // the log opens on demand
     expect(q(r, '[data-testid="local-log-lines"]')).toBe(null);
@@ -253,7 +285,8 @@ describe('Models on this PC', () => {
     });
     const row = await waitFor(() => need(r, '[data-testid="local-model"]'), r);
     expect((row.querySelector('[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
-    expect(need(r, '[data-testid="local-server-state"]').textContent).toBe('starting');
+    expect(need(r, '[data-testid="local-server-state"]').getAttribute('aria-label')).toBe('starting');
+    expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Starting other');
     await r.act(() => (row.querySelector('[data-testid="local-model-remove"]') as HTMLButtonElement).click());
     await r.act(() => (row.querySelector('[data-testid="local-model-remove-confirm"]') as HTMLButtonElement).click());
     await waitFor(() => expect(need(r, '[role="alert"]').textContent).toContain('stop the server first'), r);
@@ -355,7 +388,10 @@ describe('Models on this PC', () => {
       });
       await waitFor(() => expect(stopBtn(r).textContent).toBe('Cancel start'), r);
       expect(stopBtn(r).disabled).toBe(false);
-      expect((sel(r, '[data-testid="local-serve"]') as HTMLButtonElement).disabled).toBe(true);
+      // the model starting is the served row: it says so and offers no Serve; the menu waits for the start
+      expect(q(r, '[data-testid="local-serve"]')).toBe(null);
+      expect(need(r, '[data-testid="local-model"] [data-testid="local-fit"]').textContent).toBe('Starting · GPU');
+      expect((need(r, '[data-testid="local-switch"]') as HTMLButtonElement).disabled).toBe(true);
       await r.act(() => stopBtn(r).click());
       await waitFor(() => expect(stops).toEqual(['stop']), r);
       await waitFor(() => expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('stopped'), r);
@@ -505,34 +541,38 @@ describe('Models on this PC', () => {
     expect(first.textContent).toContain('reasoning');
     await r.act(() => first.click());
     const variant = await waitFor(() => need(r, '[data-testid="local-variant"][data-name="MXFP4"]'), r);
+    expect(variant.querySelector('.name')!.textContent).toBe('gpt-oss-20b · MXFP4');
     expect(variant.textContent).toContain('12.0 GB');
-    expect(variant.textContent).toContain('Fits the GPU');
+    expect(variant.querySelector('[data-testid="local-fit"]')!.textContent).toBe('Fits · GPU');
     expect(variant.textContent).toContain('the only quantization');
+    expect(need(r, '[data-testid="local-repos-title"]').textContent).toBe('Suggested on Hugging Face');
     expect(first.getAttribute('aria-pressed')).toBe('true');
 
     // a search replaces the list; opening its repository closes the other
     type(need(r, '[data-testid="local-search-input"]') as HTMLInputElement, 'tiny');
-    const go = await enabled<HTMLButtonElement>(r, '[data-testid="local-search"] button[type="submit"]');
-    await r.act(() => go.click());
+    await submitSearch(r);
     await waitFor(() => expect(asked).toEqual(['tiny']), r);
     const tiny = await waitFor(() => need(r, '[data-testid="local-repo"][data-id="acme/tiny-GGUF"]'), r);
     expect(r.$$('[data-testid="local-repo"]').length).toBe(1);
     expect(need(r, '[data-testid="local-repos"]').getAttribute('aria-label')).toBe('Search results');
+    expect(need(r, '[data-testid="local-repos-title"]').textContent).toBe('Hugging Face, "tiny": 1 repository');
     await r.act(() => tiny.click());
     const q4 = await waitFor(() => need(r, '[data-testid="local-variant"][data-name="Q4_0"]'), r);
     expect(r.$$('[data-testid="local-variant"]').length).toBe(2);
-    // a variant too big for this PC is "Not recommended", with the numbers, and cannot be downloaded (decided by the fit the
-    // core sent, not by the badge's words); the disabled button says why
+    // a variant too big for this PC is "Too big for 15 GB" and not offered, as in the mockup (decided by the fit the core sent,
+    // not by the badge's words); its words say why
     const f16 = need(r, '[data-testid="local-variant"][data-name="F16"]');
-    expect(f16.querySelector('[data-testid="local-fit"]')!.textContent).toBe('Not recommended');
-    expect(f16.querySelector('[data-testid="local-fit-why"]')!.textContent).toBe('Not recommended: too big for this PC (needs about 80.0 GB, 15.0 GB free).');
-    expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(true);
-    expect((f16.querySelector('[data-testid="local-download"]') as HTMLButtonElement).title).toContain('Drydock does not download a model it could not load');
-    expect(q4.querySelector('[data-testid="local-fit-why"]')).toBe(null);
+    expect(f16.querySelector('[data-testid="local-fit"]')!.textContent).toBe('Too big for 15 GB');
+    expect(f16.querySelector('[data-testid="local-fit"]')!.getAttribute('title')).toBe('Too big for this PC (needs about 80.0 GB, 15.0 GB free): Drydock does not download a model it could not load.');
+    expect(f16.querySelector('[data-testid="local-download"]')).toBe(null);
+    expect(f16.querySelector('[data-testid="local-not-offered"]')!.textContent).toBe('not offered');
+    expect(f16.querySelector('[data-testid="local-not-offered"]')!.getAttribute('title')).toContain('Drydock does not download a model it could not load');
     expect((q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).disabled).toBe(false);
     await r.act(() => (q4.querySelector('[data-testid="local-download"]') as HTMLButtonElement).click());
     await waitFor(() => expect(downloads).toEqual([['acme/tiny-GGUF', 'Q4_0']]), r);
     await waitFor(() => need(r, '[data-testid="local-download-row"][data-id="acme/tiny-GGUF:Q4_0"]'), r);
+    // the variant being downloaded is not offered twice
+    expect(need(r, '[data-testid="local-variant"][data-name="Q4_0"] .act').textContent).toBe('downloading');
 
     // the suggestions come back in place of the search results
     const again = await enabled<HTMLButtonElement>(r, '[data-testid="local-suggested"]');
@@ -573,8 +613,7 @@ describe('Models on this PC', () => {
 
     // search results: both Show suggestions and Close results are offered; Close results clears the list, the words typed stay
     type(need(r, '[data-testid="local-search-input"]') as HTMLInputElement, 'tiny');
-    const go = await enabled<HTMLButtonElement>(r, '[data-testid="local-search"] button[type="submit"]');
-    await r.act(() => go.click());
+    await submitSearch(r);
     await waitFor(() => need(r, '[data-testid="local-repo"][data-id="acme/tiny-GGUF"]'), r);
     expect(need(r, '[data-testid="local-suggested"]').textContent).toBe('Show suggestions');
     expect(need(r, '[data-testid="local-repos-close"]').textContent).toBe('Close results');
@@ -600,6 +639,7 @@ describe('Models on this PC', () => {
     expect(optionsOf(cache).map((o) => o.value)).toEqual(['q8_0', 'q4_0', 'f16']);
     expect(valueOf(cache)).toBe('q8_0');
     expect(need(r, '[data-testid="local-settings"]').textContent).toContain('q8_0: near-lossless, half the KV memory of f16');
+    expect(need(r, '[data-testid="local-settings"] h2').textContent).toBe('Server settings');
     expect(q(r, '[data-testid="local-restart"]')).toBe(null);
 
     type(cache, 'q4_0');
@@ -647,8 +687,9 @@ describe('Models on this PC', () => {
     });
     await waitFor(() => need(r, '[data-testid="local-runtime"][data-installed="true"]'), r);
     expect(need(r, '[data-testid="local-bundled"]').textContent).toBe('came with Drydock');
-    expect(need(r, '[data-testid="local-runtime"]').querySelector('h3')!.textContent).toBe('TurboQuant build b10298-2.0.0 · Vulkan');
-    expect(need(r, '[data-testid="local-turboquant"]').textContent).toContain("Google's TurboQuant is built in: the turbo4 and turbo3 KV cache types");
+    expect(need(r, '[data-testid="local-build"]').textContent).toBe('TurboQuant build b10298-2.0.0 · Vulkan');
+    expect(need(r, '[data-testid="local-build"] span').textContent).toBe('b10298-2.0.0'); // the tag in the mono face
+    expect(need(r, '[data-testid="local-turboquant"]').textContent).toBe("Google's TurboQuant is built in: turbo4 and turbo3 keep more context in less memory.");
     expect(q(r, '[data-testid="local-up-to-date"]')).toBe(null);
     // nothing newer: said once the check is back
     await r.act(() => (need(r, '[data-testid="local-check-updates"]') as HTMLButtonElement).click());
@@ -663,7 +704,6 @@ describe('Models on this PC', () => {
     next = bundled({ latest: 'b10400-2.2.0', job: { kind: 'install', target: 'TurboQuant build for Vulkan', state: 'running', phase: 'downloading b10400-2.2.0', done: 0, total: 100 * MiB, started: '' } });
     s.emit({ type: 'local.changed', data: { what: 'runtime' } });
     await waitFor(() => expect(need(r, '[data-testid="local-check-updates"]').textContent).toBe('Update to b10400-2.2.0'), r);
-    expect(need(r, '[data-testid="local-latest"]').textContent).toBe('b10400-2.2.0 is out (this is b10298-2.0.0). Update installs it.');
     await r.act(async () => (await enabled(r, '[data-testid="local-check-updates"]')).click());
     await waitFor(() => expect(calls).toEqual(['check', 'check', 'check']), r);
   });
@@ -695,5 +735,141 @@ describe('Models on this PC', () => {
     s.emit({ type: 'provider.changed' });
     await new Promise((res) => setTimeout(res, 250));
     expect(reads).toBe(2);
+  });
+
+  it("the page's head: the title, the privacy line, the Hub search; \"/\" goes to the search from anywhere but a field", async () => {
+    const { r } = show({ localGet: async () => installed() });
+    await waitFor(() => need(r, '[data-testid="local-search-input"]'), r);
+    expect(need(r, 'h1').textContent).toBe('Models on this PC');
+    expect(need(r, '[data-testid="local-models"]').textContent).toContain('Private: prompts and code never leave this computer');
+    const input = need(r, '[data-testid="local-search-input"]') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Find a model');
+    expect(input.placeholder).toBe('Find a model on Hugging Face');
+    expect(need(r, '[data-testid="local-search"] kbd').textContent).toBe('/');
+    expect(document.activeElement).not.toBe(input);
+    const slash = (target: EventTarget, init: KeyboardEventInit = {}) => target.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true, ...init }));
+    // with Ctrl it is not the shortcut
+    await r.act(() => void slash(document.body, { ctrlKey: true }));
+    expect(document.activeElement).not.toBe(input);
+    // in another field it is a character typed
+    const other = need(r, '[data-testid="local-context"]') as HTMLInputElement;
+    other.focus();
+    let delivered = true;
+    await r.act(() => void (delivered = slash(other)));
+    expect(delivered).toBe(true);
+    expect(document.activeElement).toBe(other);
+    other.blur();
+    await r.act(() => void (delivered = slash(document.body)));
+    expect(delivered).toBe(false); // taken by the page
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('the Serving card: the model, its address, the agents that use it, the KV cache and context, when it started; Memory splits the GPU into the model and its KV cache', async () => {
+    const m = model();
+    const kv = { known: true, bytes: 2 * GiB, contextSize: 32768, cacheType: 'turbo4' };
+    const { r } = show({
+      localGet: async () =>
+        installed({
+          models: [m],
+          server: { state: 'running', modelId: m.id, port: 9933, baseUrl: 'http://127.0.0.1:9933/v1', startedAt: '2026-10-22T09:00:00Z', autostarted: true, cacheType: 'turbo4', contextSize: 32768 },
+          settings: { ...installed().settings, modelId: m.id, providerId: 'prov_local' },
+          usedBy: [
+            { agentId: 'a1', name: 'Local helper', projectId: 'p1', projectName: 'gocalc' },
+            { agentId: 'a2', name: 'Reviewer', projectId: 'p1', projectName: 'gocalc' },
+          ],
+          served: { modelId: m.id, modelBytes: 10 * GiB, kvBytes: 2 * GiB, kv, device: 'gpu', deviceName: 'NVIDIA GeForce RTX 4060 Ti', deviceTotal: 16 * GiB, deviceFree: 14 * GiB, fit: { target: 'gpu', fits: true, availableBytes: 14 * GiB } },
+        }),
+    });
+    await waitFor(() => expect(need(r, '[data-testid="local-server"]').getAttribute('data-state')).toBe('running'), r);
+    const card = need(r, '[data-testid="local-server"]');
+    expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Serving gpt-oss-20b');
+    expect(need(r, '[data-testid="local-server-url"]').textContent).toBe('127.0.0.1:9933');
+    expect(Array.from(card.querySelectorAll('dt')).map((d) => d.textContent)).toEqual(['Used by', 'KV cache', 'Started']);
+    expect(need(r, '[data-testid="local-used-by"]').textContent).toBe('Local helper, Reviewer');
+    expect(need(r, '[data-testid="local-kv"]').textContent).toBe('turbo4 · 32k context');
+    expect(need(r, '[data-testid="local-started"]').textContent).toBe('at login, 3 h ago');
+    expect(need(r, '[data-testid="local-server-stop"]').textContent).toBe('Stop');
+    expect(need(r, '[data-testid="local-switch"]').textContent).toBe('Switch model');
+    // Memory: 2 GB in use before the model, then the model (10 GB) and its KV cache (2 GB): 14 of 16 GB
+    const gpu = need(r, '[data-testid="local-device"][data-id="CUDA0"]');
+    expect(gpu.querySelector('[data-testid="local-bar-used"]')!.textContent).toBe('14 of 16 GB');
+    expect(Array.from(gpu.querySelectorAll('[data-part]')).map((p) => [p.getAttribute('data-part'), (p as HTMLElement).style.width])).toEqual([
+      ['model', '62.5%'],
+      ['kv', '12.5%'],
+      ['other', '12.5%'],
+    ]);
+    expect(gpu.querySelector('.legend')!.textContent).toBe('modelKV cache');
+    expect(gpu.querySelector('[role="img"]')!.getAttribute('aria-label')).toBe('GPU · CUDA: 14 of 16 GB used: model 10.0 GB, KV cache 2.0 GB, other programs 2.0 GB');
+    expect(q(r, '[data-testid="local-ram"] .legend')).toBe(null);
+  });
+
+  it('a KV cache the core could not estimate is said in the legend, its reason as the tooltip; a model served in RAM is split in the RAM bar', async () => {
+    const m = model({ fit: { target: 'cpu', fits: true, availableBytes: 15 * GiB } });
+    const kv = { known: false, contextSize: 0, cacheType: 'turbo4', note: 'the TurboQuant types are not estimated' };
+    const { r } = show({
+      localGet: async () =>
+        installed({
+          runtime: { ...installed().runtime, devices: { probed: true, devices: [] } },
+          models: [m],
+          server: { state: 'running', modelId: m.id, port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' },
+          served: { modelId: m.id, modelBytes: 8 * GiB, kvBytes: 0, kv, device: 'ram', deviceTotal: 32 * GiB, deviceFree: 20 * GiB, fit: { target: 'cpu', fits: true, availableBytes: 15 * GiB } },
+        }),
+    });
+    const ram = await waitFor(() => need(r, '[data-testid="local-ram"]'), r);
+    expect(need(r, '[data-testid="local-devices"]').textContent).toBe('No GPU found: runs on the CPU');
+    expect(Array.from(ram.querySelectorAll('[data-part]')).map((p) => p.getAttribute('data-part'))).toEqual(['model', 'other']);
+    const note = Array.from(ram.querySelectorAll('.legend > span'))[1] as HTMLElement;
+    expect(note.textContent).toBe('KV cache not estimated');
+    expect(note.getAttribute('title')).toBe('the TurboQuant types are not estimated');
+    // the served row: no GPU, so RAM
+    expect(need(r, '[data-testid="local-model"] [data-testid="local-fit"]').textContent).toBe('Serving · RAM');
+    // no start time known: no Started line
+    expect(q(r, '[data-testid="local-started"]')).toBe(null);
+  });
+
+  it('Switch model serves another downloaded model; stopped, the same menu is Serve a model; one model alone has nothing to switch to', async () => {
+    const a = model();
+    const b = model({ id: 'acme/tiny-GGUF:Q4_0', repo: 'acme/tiny-GGUF', variant: 'Q4_0', sizeBytes: 2 * MiB });
+    const started: string[] = [];
+    const running = (id: string, models = [a, b]) => installed({ models, server: { state: 'running', modelId: id, port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' } });
+    let state = running(a.id);
+    const { r } = show({
+      localGet: async () => state,
+      localServerStart: async (id) => (started.push(id), (state = running(id))),
+    });
+    const trigger = await waitFor(() => need(r, '[data-testid="local-switch"]') as HTMLButtonElement, r);
+    expect(trigger.disabled).toBe(false);
+    await openMenu(r, trigger);
+    const items = Array.from(r.$$('[role="menu"][aria-label="Switch model"] [role="menuitemradio"]'));
+    expect(items.map((i) => [i.textContent!.trim(), i.getAttribute('aria-checked')])).toEqual([
+      ['gpt-oss-20b · MXFP4', 'true'],
+      ['tiny · Q4_0', 'false'],
+    ]);
+    await r.act(() => (r.$(`[role="menuitemradio"][data-value="${b.id}"]`) as HTMLElement).click());
+    await waitFor(() => expect(started).toEqual([b.id]), r);
+    await waitFor(() => expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Serving tiny'), r);
+
+    // stopped: Serve a model, the same list
+    state = installed({ models: [a, b] });
+    cleanup();
+    const stopped = show({ localGet: async () => state, localServerStart: async (id) => (started.push(id), (state = running(id))) });
+    const serveMenu = await waitFor(() => need(stopped.r, '[data-testid="local-switch"]') as HTMLButtonElement, stopped.r);
+    expect(serveMenu.textContent).toBe('Serve a model');
+    await openMenu(stopped.r, serveMenu);
+    await stopped.r.act(() => (stopped.r.$(`[role="menu"][aria-label="Serve a model"] [role="menuitemradio"][data-value="${a.id}"]`) as HTMLElement).click());
+    await waitFor(() => expect(started).toEqual([b.id, a.id]), stopped.r);
+
+    // one model, served: nothing to switch to; no model at all: nothing to serve
+    cleanup();
+    const one = show({ localGet: async () => running(a.id, [a]) });
+    const lone = await waitFor(() => need(one.r, '[data-testid="local-switch"]') as HTMLButtonElement, one.r);
+    expect(lone.disabled).toBe(true);
+    expect(lone.title).toBe('Download another model to switch to');
+    cleanup();
+    const none = show({ localGet: async () => installed() });
+    const empty = await waitFor(() => need(none.r, '[data-testid="local-switch"]') as HTMLButtonElement, none.r);
+    expect(empty.disabled).toBe(true);
+    expect(empty.title).toBe('Download a model first');
+    expect(need(none.r, '[data-testid="local-models-card"] .empty').textContent).toBe('No model yet: find one on Hugging Face.');
   });
 });
