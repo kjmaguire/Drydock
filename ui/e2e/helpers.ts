@@ -141,7 +141,14 @@ export async function showNewProjectForm(page: Page): Promise<void> {
   await field.or(projectSwitcher(page)).first().waitFor();
   if (!(await field.isVisible())) {
     await projectSwitcher(page).click();
-    await page.getByRole('menuitem', { name: 'New project…', exact: true }).click();
+    // by the keyboard, as a person can: with many projects "New project…" is far down the menu's scroll, and on the
+    // Windows runner a click did not scroll it into view (End is App settings, the last item; New project… is above it)
+    const item = page.getByRole('menuitem', { name: 'New project…', exact: true });
+    await expect(page.getByRole('menu', { name: 'Projects' })).toBeVisible();
+    await page.keyboard.press('End');
+    await page.keyboard.press('ArrowUp');
+    await expect(item).toHaveAttribute('data-highlighted', 'true');
+    await page.keyboard.press('Enter');
   }
   await expect(field).toBeVisible();
 }
@@ -218,6 +225,8 @@ export async function createProjectWithoutRepo(page: Page, name: string): Promis
  * `data-value` (`toHaveAttribute('data-value', ...)` stands in for `toHaveValue`).
  */
 export async function choose(control: Locator, option: string | { label: string }): Promise<void> {
+  // a model field is a text box until its CLI's models load, then a list (shared/model-field.tsx): wait for the list
+  await expect.poll(() => control.evaluate((el) => el.tagName === 'SELECT' || el.hasAttribute('aria-controls')), { message: 'the control is a list to choose from' }).toBe(true);
   const tag = await control.evaluate((el) => el.tagName);
   if (tag === 'SELECT') {
     await control.selectOption(option);
