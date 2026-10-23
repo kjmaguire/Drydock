@@ -126,7 +126,8 @@ func TestPrunePolicyKeepsDailyWeeklyAndPreUpdate(t *testing.T) {
 	if err != nil || !pre.Keep {
 		t.Fatalf("%+v %v", pre, err)
 	}
-	removed, err := backup.Prune(bdir, 7, 4)
+	// measured at t0, the time the backups were made: with the clock, the pre-update backup's exemption ran out on 2026-10-23
+	removed, err := backup.PruneAt(bdir, 7, 4, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestPrunePolicyKeepsDailyWeeklyAndPreUpdate(t *testing.T) {
 	if err := backup.Release(pre.Path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := backup.Prune(bdir, 7, 4); err != nil {
+	if _, err := backup.PruneAt(bdir, 7, 4, t0); err != nil {
 		t.Fatal(err)
 	}
 	left, _ = backup.List(bdir)
