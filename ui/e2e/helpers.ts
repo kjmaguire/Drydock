@@ -235,10 +235,18 @@ export async function choose(control: Locator, option: string | { label: string 
   await control.click();
   const listId = await control.getAttribute('aria-controls');
   const list = control.page().locator(`#${listId}`);
-  const item = typeof option === 'string' ? list.locator(`[role="option"][data-value="${option.replace(/"/g, '\\"')}"]`) : list.getByRole('option', { name: option.label, exact: true });
+  const item = typeof option === 'string' ? list.locator(`[role="option"][data-value=${cssString(option)}]`) : list.getByRole('option', { name: option.label, exact: true });
   await item.click();
   // the list has closed (or the control turned into something else, as the model field does for "Another model...")
   await expect(control).not.toHaveAttribute('aria-expanded', 'true');
+}
+
+/**
+ * `v` as a quoted CSS string, for an attribute selector: a backslash and a double quote are escaped, and a line break, which a
+ * CSS string cannot hold as itself, is written as its hex escape.
+ */
+export function cssString(v: string): string {
+  return `"${v.replace(/[\\"]/g, '\\$&').replace(/[\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}"`;
 }
 
 /**
@@ -257,7 +265,7 @@ export async function openTile(tile: Locator): Promise<void> {
  */
 export async function optionsOf(control: Locator, value?: string): Promise<Locator> {
   const tag = await control.evaluate((el) => el.tagName);
-  const one = value === undefined ? '' : `[${tag === 'SELECT' ? 'value' : 'data-value'}="${value.replace(/"/g, '\\"')}"]`;
+  const one = value === undefined ? '' : `[${tag === 'SELECT' ? 'value' : 'data-value'}=${cssString(value)}]`;
   if (tag === 'SELECT') return control.locator(`option${one}`);
   const listId = await control.getAttribute('aria-controls');
   return control.page().locator(`#${listId} [role="option"]${one}`);
