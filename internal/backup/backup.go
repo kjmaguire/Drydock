@@ -252,14 +252,13 @@ func Verify(ctx context.Context, in Info) error {
 }
 
 // Prune keeps the newest `daily` backups of different days and the newest `weekly` of different ISO weeks, plus anything
-// marked Keep, and deletes the rest. It returns the deleted names. Deleting is limited to files this package created.
-func Prune(dir string, daily, weekly int) ([]string, error) {
-	return PruneAt(dir, daily, weekly, time.Now())
-}
-
-// PruneAt is Prune with the time a pre-update backup's exemption is measured against (MaxKeepAge): a test's backups made at a
-// fixed time stay inside it whatever day the test runs.
-func PruneAt(dir string, daily, weekly int, now time.Time) ([]string, error) {
+// marked Keep that is younger than MaxKeepAge at `now`, and deletes the rest. It returns the deleted names. Deleting is limited
+// to files this package created. `now` is the caller's clock, the same one its backups are stamped with, so the exemption
+// is measured on the time line the backups were made on.
+func Prune(dir string, daily, weekly int, now time.Time) ([]string, error) {
+	if now.IsZero() { // a zero time would keep every marked backup for ever
+		return nil, errors.New("prune needs the current time")
+	}
 	all, err := List(dir)
 	if err != nil {
 		return nil, err

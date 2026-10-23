@@ -126,8 +126,8 @@ func TestPrunePolicyKeepsDailyWeeklyAndPreUpdate(t *testing.T) {
 	if err != nil || !pre.Keep {
 		t.Fatalf("%+v %v", pre, err)
 	}
-	// measured at t0, the time the backups were made: with the clock, the pre-update backup's exemption ran out on 2026-10-23
-	removed, err := backup.PruneAt(bdir, 7, 4, t0)
+	// measured at t0, the time the backups were made: with the wall clock, the exemption ran out on 2026-10-23
+	removed, err := backup.Prune(bdir, 7, 4, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestPrunePolicyKeepsDailyWeeklyAndPreUpdate(t *testing.T) {
 	if err := backup.Release(pre.Path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := backup.PruneAt(bdir, 7, 4, t0); err != nil {
+	if _, err := backup.Prune(bdir, 7, 4, t0); err != nil {
 		t.Fatal(err)
 	}
 	left, _ = backup.List(bdir)
@@ -293,15 +293,15 @@ func TestAPreUpdateMarkerExpires(t *testing.T) {
 	}
 	defer db.Close()
 	bdir := filepath.Join(dir, "backups")
-	old, err := backup.Create(ctx, db, bdir, "pre-update-1.0.0-to-1.1.0", time.Now().Add(-backup.MaxKeepAge-48*time.Hour))
+	old, err := backup.Create(ctx, db, bdir, "pre-update-1.0.0-to-1.1.0", t0.Add(-backup.MaxKeepAge-48*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := backup.Create(ctx, db, bdir, "pre-update-1.1.0-to-1.2.0", time.Now().Add(-time.Hour))
+	fresh, err := backup.Create(ctx, db, bdir, "pre-update-1.1.0-to-1.2.0", t0.Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	removed, err := backup.Prune(bdir, 0, 0)
+	removed, err := backup.Prune(bdir, 0, 0, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,5 +315,30 @@ func TestAPreUpdateMarkerExpires(t *testing.T) {
 		if _, err := os.Stat(old.Path + sfx); err == nil {
 			t.Errorf("%s survived", old.Path+sfx)
 		}
+	}
+}
+
+// The exemption is measured against the time Prune is given, not the wall clock: an unreleased marker made at t0 holds just
+// before t0+MaxKeepAge and lapses at it; and a zero time is refused rather than exempting every marker for ever.
+func TestPruneMeasuresTheExemptionAtTheGivenTime(t *testing.T) {
+	ctx := context.Background()
+	db, dir := openDB(t)
+	bdir := filepath.Join(dir, "b")
+	pre, err := backup.Create(ctx, db, bdir, "pre-update-1.0.0-to-1.1.0", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backup.Prune(bdir, 0, 0, time.Time{}); err == nil {
+		t.Fatal("a zero time was accepted")
+	}
+	if removed, err := backup.Prune(bdir, 0, 0, t0.Add(backup.MaxKeepAge-time.Second)); err != nil || len(removed) != 0 {
+		t.Fatalf("inside the exemption: removed %v, %v", removed, err)
+	}
+	removed, err := backup.Prune(bdir, 0, 0, t0.Add(backup.MaxKeepAge))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || removed[0] != pre.Name {
+		t.Fatalf("at MaxKeepAge: removed %v, want %s", removed, pre.Name)
 	}
 }
