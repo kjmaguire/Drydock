@@ -1,0 +1,168 @@
+import { expect } from 'remix/assert';
+import { afterEach, describe, it } from 'remix/test';
+import { Server } from 'lucide';
+import type { Handle } from 'remix/component';
+import { cleanup, renderPlain } from '../test/render.tsx';
+import { AddRow, DetailHeader, FactGrid, MasterDetail, SettingRow, SettingsGroup, StatusWord, visibleGroups, type ListGroup } from './master-detail.tsx';
+
+afterEach(cleanup);
+
+const groups = (): ListGroup[] => [
+  {
+    key: 'services',
+    title: 'Services',
+    note: 'app sync',
+    items: [
+      { key: 'linear', title: 'Linear', logo: 'linear', sub: 'Issues and projects', status: { text: 'On', tone: 'ok' }, testId: 'row' },
+      { key: 'github', title: 'GitHub', logo: 'github', sub: 'Issues and runners', href: '/github', testId: 'row' },
+      { key: 'notion', title: 'Notion', logo: 'notion', sub: 'Pages as requirements', status: { text: 'Set up', tone: 'none' }, testId: 'row' },
+    ],
+  },
+  { key: 'mine', title: 'Your servers', items: [{ key: 'pg', title: 'postgres-local', icon: Server, sub: 'Program on this PC', testId: 'row' }] },
+];
+
+// a page keeps the choice and draws the layout again with it, as the screens do
+function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean }>) {
+  let selected = handle.props.start;
+  return () => (
+    <MasterDetail
+      label="All integrations"
+      groups={groups()}
+      selected={selected}
+      onSelect={(k) => (handle.props.picks.push(k), (selected = k), void handle.update())}
+      search="Filter"
+      filters={handle.props.filters ? [{ key: 'all', label: 'All', count: 4 }, { key: 'on', label: 'On', count: 1 }] : undefined}
+      filter="all"
+      onFilter={(k) => handle.props.filterPicks.push(k)}
+      detail={<p data-testid="the-detail">detail of {selected}</p>}
+      testId="md"
+    />
+  );
+}
+
+function render(selected: { key: string }, extra: { filters?: boolean } = {}) {
+  const picks: string[] = [];
+  const filterPicks: string[] = [];
+  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} />);
+  return { ...r, picks, filterPicks };
+}
+
+describe('MasterDetail', () => {
+  it('lists the rows under their groups, with the state in words at the end, and marks the chosen one', () => {
+    const { container } = render({ key: 'linear' });
+    const heads = [...container.querySelectorAll('nav h2')].map((h) => h.textContent);
+    expect(heads).toEqual(['Servicesapp sync', 'Your servers']);
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-testid="row"]')];
+    expect(rows.map((r) => r.getAttribute('data-key'))).toEqual(['linear', 'github', 'notion', 'pg']);
+    expect(rows[0]!.getAttribute('aria-current')).toBe('true');
+    expect(rows[2]!.getAttribute('aria-current')).toBeNull();
+    expect(rows[0]!.textContent).toBe('LinearIssues and projectsOn');
+    // a state never rests on colour alone: the dot comes with words; "none" is the words only
+    expect(rows[0]!.querySelector('[data-tone="ok"] span[aria-hidden="true"]')).not.toBeNull();
+    expect(rows[2]!.querySelector('[data-tone="none"] span[aria-hidden="true"]')).toBeNull();
+    expect(rows[0]!.querySelector('[data-brand="linear"]')).not.toBeNull();
+    expect(rows[3]!.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('[data-testid="the-detail"]')!.textContent).toBe('detail of linear');
+  });
+
+  it('chooses a row on click; a row with a page of its own is a link', () => {
+    const { container, picks, root } = render({ key: 'linear' });
+    const notion = container.querySelector<HTMLButtonElement>('[data-key="notion"]')!;
+    notion.click();
+    root.flush();
+    expect(picks).toEqual(['notion']);
+    const gh = container.querySelector<HTMLAnchorElement>('[data-key="github"]')!;
+    expect(gh.tagName).toBe('A');
+    expect(gh.getAttribute('href')).toBe('/github');
+  });
+
+  it('filters by name and by the line under it, hides a group with nothing left, and says when nothing matches', () => {
+    const { container, root } = render({ key: 'linear' });
+    const box = container.querySelector<HTMLInputElement>('[data-testid="list-filter"]')!;
+    box.value = 'requirements';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    root.flush();
+    expect([...container.querySelectorAll('[data-testid="row"]')].map((r) => r.getAttribute('data-key'))).toEqual(['notion']);
+    expect(container.querySelector('[data-testid="list-group-mine"]')).toBeNull();
+    box.value = 'zzz';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    root.flush();
+    expect(container.querySelectorAll('[data-testid="row"]').length).toBe(0);
+    expect(container.querySelector('nav')!.textContent).toContain('Nothing matches "zzz".');
+    expect(visibleGroups(groups(), 'POSTGRES').map((g) => g.key)).toEqual(['mine']);
+  });
+
+  it('moves through the rows with the arrow keys, skipping the rows that are links, and / focuses the filter', () => {
+    const selected = { key: 'linear' };
+    const { container, picks, root } = render(selected);
+    const nav = container.querySelector('nav')!;
+    const down = () => (nav.querySelector<HTMLElement>('[aria-current="true"]') ?? nav).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    down();
+    root.flush();
+    down();
+    root.flush();
+    expect(picks).toEqual(['notion', 'pg']);
+    nav.querySelector<HTMLElement>('[data-key="pg"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    root.flush();
+    expect(picks.at(-1)).toBe('notion');
+    const md = container.querySelector('[data-testid="md"]')!;
+    md.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement).toBe(container.querySelector('[data-testid="list-filter"]'));
+  });
+
+  it('shows the filter choices the page owns and reports a choice', () => {
+    const { container, filterPicks } = render({ key: 'linear' }, { filters: true });
+    const all = container.querySelector<HTMLButtonElement>('[data-testid="list-filter-all"]')!;
+    const onlyOn = container.querySelector<HTMLButtonElement>('[data-testid="list-filter-on"]')!;
+    expect(all.getAttribute('aria-pressed')).toBe('true');
+    expect(onlyOn.textContent).toBe('On 1');
+    onlyOn.click();
+    expect(filterPicks).toEqual(['on']);
+  });
+
+  it('opens the detail in place of the list after a choice, and Back returns to the list (narrow windows)', () => {
+    const { container, root } = render({ key: 'linear' });
+    const md = container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md.getAttribute('data-open')).toBe('false');
+    container.querySelector<HTMLButtonElement>('[data-key="notion"]')!.click();
+    root.flush();
+    expect(md.getAttribute('data-open')).toBe('true');
+    container.querySelector<HTMLButtonElement>('[data-testid="detail-back"]')!.click();
+    root.flush();
+    expect(md.getAttribute('data-open')).toBe('false');
+  });
+});
+
+describe('detail parts', () => {
+  it('draws the header with its state pill and actions, settings rows, facts and an add row', () => {
+    let added = 0;
+    const { container } = renderPlain(
+      <div>
+        <DetailHeader title="Linear" logo="linear" status={{ text: 'Connected', tone: 'ok' }} sub="Synced 4 min ago" actions={<button type="button">Sync now</button>} testId="head" />
+        <SettingsGroup title="Connection" actions={<a href="#x">Replace key</a>} testId="grp">
+          <SettingRow label="Workspace" control={<button type="button">Change</button>} testId="set">
+            Acme
+          </SettingRow>
+        </SettingsGroup>
+        <FactGrid label="Facts" facts={[{ label: 'Version', value: '2.1.309', mono: true }, { label: 'Signed in', value: 'yes' }]} testId="facts" />
+        <AddRow label="Add a server" onClick={() => added++} testId="add" />
+        <StatusWord text="Key expired" tone="warn" testId="sw" />
+      </div>,
+    );
+    const head = container.querySelector('[data-testid="head"]')!;
+    expect(head.querySelector('h2')!.textContent).toBe('Linear');
+    expect(head.querySelector('[data-testid="detail-status"]')!.getAttribute('data-tone')).toBe('ok');
+    expect(head.textContent).toBe('LinearConnectedSynced 4 min agoSync now');
+    const grp = container.querySelector('[data-testid="grp"]')!;
+    expect(grp.getAttribute('aria-label')).toBe('Connection');
+    expect(grp.querySelector('h3')!.textContent).toBe('Connection');
+    const set = container.querySelector('[data-testid="set"]')!;
+    expect([...set.children].map((c) => c.textContent)).toEqual(['Workspace', 'Acme', 'Change']);
+    const facts = container.querySelector('[data-testid="facts"]')!;
+    expect([...facts.querySelectorAll('dt')].map((d) => d.textContent)).toEqual(['Version', 'Signed in']);
+    expect(facts.querySelector('dd')!.getAttribute('data-mono')).toBe('true');
+    container.querySelector<HTMLButtonElement>('[data-testid="add"]')!.click();
+    expect(added).toBe(1);
+    expect(container.querySelector('[data-testid="sw"]')!.textContent).toBe('Key expired');
+  });
+});
