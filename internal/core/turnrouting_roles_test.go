@@ -181,8 +181,13 @@ func TestARoomReplyFallsBackToTheNextModelOfTheChain(t *testing.T) {
 	if len(evs) != 1 || evs[0]["cause"] != "overloaded" || evs[0]["model"] != "sonnet" || evs[0]["hop"] != float64(1) {
 		t.Fatalf("routing.fallback events %v", evs)
 	}
+	// the turn ends just after its reply is posted (it records the reply's id): wait for it, as the reply was waited for
 	var turns []responder.Turn
-	a.call("room.turns", map[string]any{"roomId": general}, &turns)
+	a.waitFor("the turn to end", func() bool {
+		turns = nil
+		a.call("room.turns", map[string]any{"roomId": general}, &turns)
+		return len(turns) == 1 && turns[0].Status != responder.StatusRunning
+	})
 	if len(turns) != 1 || turns[0].Model != "sonnet" || turns[0].DecisionID != ds[1].ID || turns[0].Status != responder.StatusDone {
 		t.Fatalf("room turns %+v", turns)
 	}
