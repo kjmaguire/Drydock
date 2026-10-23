@@ -24,7 +24,8 @@ test("one button scans the working tree with three engines; a finding's pane sho
   await expect(page.locator('[data-testid=scan-engine][data-engine=sast][data-status=ready]')).toBeVisible();
   await expect(page.getByTestId('security-tools')).toHaveCount(0); // the tools are Drydock's own (decision P95)
   await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'idle');
-  await expect(page.getByTestId('scan-target-path')).toHaveText(repo);
+  // the long path the core shows, not the 8.3 short one the temp folder can be named by on Windows (C:\Users\RUNNER~1\...)
+  await expect(page.getByTestId('scan-target-path')).toHaveText(realpathSync.native(repo));
 
   await page.getByTestId('scan-button').click();
   await expect(page.getByTestId('scan-status')).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
