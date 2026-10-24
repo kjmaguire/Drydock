@@ -63,13 +63,13 @@ describe('the workspace Home', () => {
     expect(navigated).toEqual(['/']);
   });
 
-  it('links every workspace area: the skill library, agent templates, chats, connections and the app', async () => {
+  it('links every workspace area: the skill library, agent templates, chats, agents and the app', async () => {
     const { r } = show();
     await waitFor(() => expect(r.$('[data-testid="home-skills"]')).not.toBeNull(), r);
     const hrefs = Array.from(r.$$('[data-testid^="home-"]'))
       .map((e) => e.getAttribute('href'))
       .filter(Boolean);
-    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/security-scan', '/models', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
+    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/agents', '/security-scan', '/models', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
       expect([h, hrefs.includes(h)]).toEqual([h, true]);
     }
     expect(r.$('[data-testid="home-skills"]')!.textContent).toContain('Skills');
@@ -87,8 +87,10 @@ describe('the workspace Home', () => {
     const hrefs = Array.from(r.$$('a')).map((a) => a.getAttribute('href'));
     for (const h of ['/project/integrations', '/team', '/tasks', '/skills', '/project', '/needs-you']) expect([h, hrefs.includes(h)]).toEqual([h, false]);
     expect(r.container.textContent).not.toContain('Backend #1');
-    // the agent CLIs and the MCP gateway are on Connections
-    expect(r.$('[data-testid="home-connections"]')!.textContent).toContain('MCP gateway');
+    // the agent CLIs and the MCP gateway are on Agents, by the address the sidebar uses (never the old /connections redirect)
+    expect(r.$('[data-testid="home-agents"]')!.textContent).toContain('MCP gateway');
+    expect(r.$('[data-testid="home-agents"] a, a[data-testid="home-agents"]')!.getAttribute('href')).toBe('/agents');
+    expect(r.$('a[href="/connections"]')).toBeNull();
   });
 
   it('offers the first project when there is none', async () => {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
@@ -52,18 +53,22 @@ func (c *Core) GitHubAccountStatus(ctx context.Context) GitHubStatus {
 	if !ok {
 		return GitHubStatus{Error: "the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`"}
 	}
-	version := ""
+	// the version is read beside the sign-in check, not before it (and only once per gh binary: ghVersion keeps it)
+	versionCh := make(chan string, 1)
 	if c.cfg.GitHubAPI == nil { // the user's own gh (not an API a test gave the core)
-		version = ghVersion(ctx)
+		go func() { versionCh <- ghVersion(ctx) }()
+	} else {
+		versionCh <- ""
 	}
-	ctx, cancel := context.WithTimeout(ctx, githubStatusTimeout)
+	vctx, cancel := context.WithTimeout(ctx, githubStatusTimeout)
 	defer cancel()
-	who, err := host.Viewer(ctx, api)
+	who, err := host.Viewer(vctx, api)
+	version := <-versionCh
 	if err != nil {
 		if errors.Is(err, host.ErrAuth) {
 			return GitHubStatus{Installed: true, Version: version, Error: "gh is not signed in: run `gh auth login`"}
 		}
-		if ctx.Err() != nil {
+		if vctx.Err() != nil {
 			return GitHubStatus{Installed: true, Version: version, Unreachable: true, Error: "GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later"}
 		}
 		return GitHubStatus{Installed: true, Version: version, Error: err.Error()}
@@ -71,20 +76,50 @@ func (c *Core) GitHubAccountStatus(ctx context.Context) GitHubStatus {
 	return GitHubStatus{Installed: true, LoggedIn: true, Login: who.Login, Version: version}
 }
 
-// ghVersion asks the GitHub CLI on PATH for its version (`gh --version` only prints it, without the network), or "" when it
-// does not say.
+// ghVersion is the version of the GitHub CLI on PATH (`gh --version` only prints it, without the network), or "" when it does
+// not say. It is read once per binary: the answer is kept until gh at that path changes (another path, size or time).
 func ghVersion(ctx context.Context) string {
+	path, err := exec.LookPath("gh")
+	if err != nil {
+		return ""
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	key := ghBinary{path: path, size: fi.Size(), mod: fi.ModTime().UnixNano()}
+	ghVersions.Lock()
+	defer ghVersions.Unlock()
+	if ghVersions.key == key && ghVersions.v != "" {
+		return ghVersions.v
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", "--version")
+	cmd := exec.CommandContext(ctx, path, "--version")
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1")
 	proc.Harden(cmd)
 	out := &proc.CapWriter{Max: 4096}
 	cmd.Stdout = out
 	if err := cmd.Run(); err != nil {
-		return ""
+		return "" // not kept: the next check asks again
 	}
-	return parseGhVersion(out.String())
+	v := parseGhVersion(out.String())
+	ghVersions.key, ghVersions.v = key, v
+	return v
+}
+
+// ghBinary is which gh a kept version belongs to.
+type ghBinary struct {
+	path string
+	size int64
+	mod  int64 // modification time, Unix nanoseconds
+}
+
+// ghVersions is the last version read, and the binary it was read from (the lock also keeps two checks from running gh twice).
+var ghVersions struct {
+	sync.Mutex
+	key ghBinary
+	v   string
 }
 
 // ghVersionRe is the first line of `gh --version`: "gh version 2.83.1 (2025-11-13)".

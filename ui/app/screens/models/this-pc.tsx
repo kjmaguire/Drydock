@@ -14,7 +14,7 @@ import { css, on, ref, type Handle } from 'remix/component';
 import { ChevronDown, ChevronRight, Cpu, Search } from 'lucide';
 import type { LocalBackend, LocalJob, LocalModel, LocalSettingsEdit, LocalView, Repo, Variant } from '../../api/localClient.ts';
 import { formatDate } from '../../lib/format.ts';
-import { ownsKeys } from '../../lib/keys.ts';
+import { typing } from '../../lib/keys.ts';
 import { routes } from '../../routes.ts';
 import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -173,12 +173,6 @@ const fitCss = css({
 });
 const numberCss = css({ width: '120px' });
 
-/** Whether a key press is typing (a field, a box, an editor, a menu), so "/" must leave it alone. */
-function typing(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return true;
-  const el = e.target instanceof HTMLElement ? e.target : null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('dialog[open], [role="combobox"], [role="listbox"], [role="menu"]'));
-}
 
 /** The fit badge: its short words, the sentence as its tooltip. */
 function FitBadge(handle: Handle<{ fit: FitWords | undefined }>) {

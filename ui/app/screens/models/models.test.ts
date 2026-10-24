@@ -2,7 +2,6 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { LocalJob, LocalModel, LocalView } from '../../api/localClient.ts';
 import {
-  agoWords,
   barLabel,
   compactCount,
   contextWords,
@@ -97,7 +96,6 @@ describe('Models on this PC helpers', () => {
     expect(usedByWords([{ agentId: 'a', name: 'Ada', projectId: 'p', projectName: 'gocalc' }, { agentId: 'b', name: 'Bob', projectId: 'p', projectName: 'gocalc' }])).toBe('Ada, Bob');
     expect(usedByWords([{ agentId: 'a', name: 'Ada', projectId: 'p', projectName: 'gocalc' }, { agentId: 'b', name: 'Bob', projectId: 'q', projectName: 'web' }])).toBe('Ada (gocalc), Bob (web)');
     const now = Date.parse('2026-10-22T12:00:00Z');
-    expect(agoWords(now - 3 * 3600_000, now)).toBe('3 h ago');
     expect(startedWords('2026-10-22T09:00:00Z', true, now)).toBe('at login, 3 h ago');
     expect(startedWords('2026-10-22T11:46:00Z', false, now)).toBe('14 min ago');
     expect(startedWords(undefined, true, now)).toBe('at login');

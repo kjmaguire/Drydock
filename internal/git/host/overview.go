@@ -52,32 +52,18 @@ func Overview(ctx context.Context, api API, owner, name string) (RepoOverview, e
 				} `json:"pullRequests"`
 			} `json:"repository"`
 		} `json:"data"`
-		Errors []struct {
-			Type    string `json:"type"`
-			Message string `json:"message"`
-		} `json:"errors"`
+		Errors []graphQLError `json:"errors"`
 	}
 	body := map[string]any{"query": overviewQuery, "variables": map[string]string{"owner": owner, "name": name}}
 	if _, err := api.Do(ctx, "POST", "/graphql", body, &out, ""); err != nil {
 		return RepoOverview{}, err
 	}
-	if len(out.Errors) > 0 {
-		msgs := make([]string, 0, len(out.Errors))
-		notFound := false
-		for _, e := range out.Errors {
-			msgs = append(msgs, e.Message)
-			notFound = notFound || e.Type == "NOT_FOUND"
-		}
-		err := errors.New(strings.Join(msgs, "; "))
-		if notFound {
-			err = fmt.Errorf("%w: %s/%s: %v", ErrNotFound, owner, name, err)
-		}
-		return RepoOverview{}, err
-	}
 	r := out.Data.Repository
 	if r == nil {
-		return RepoOverview{}, fmt.Errorf("%w: %s/%s", ErrNotFound, owner, name)
+		return RepoOverview{}, overviewError(owner, name, out.Errors)
 	}
+	// GitHub can answer with the repository and an error for one field it refused (a fine-grained token without the
+	// checks permission, SAML on one part): what it did send is kept; a refused CI rollup reads as none.
 	o := RepoOverview{FullName: r.NameWithOwner, URL: r.URL, Private: r.IsPrivate, CI: CINone, OpenPRs: r.PullRequests.TotalCount}
 	if b := r.DefaultBranchRef; b != nil {
 		o.DefaultBranch = b.Name
@@ -86,6 +72,34 @@ func Overview(ctx context.Context, api API, owner, name string) (RepoOverview, e
 		}
 	}
 	return o, nil
+}
+
+type graphQLError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+// overviewError is why a repository was not answered: GitHub's own words, with ErrNotFound when it says there is no such
+// repository (or none the sign-in can see) and ErrRateLimited when it refused for its rate limit (GraphQL says so with a 200).
+func overviewError(owner, name string, errs []graphQLError) error {
+	if len(errs) == 0 {
+		return fmt.Errorf("%w: %s/%s", ErrNotFound, owner, name)
+	}
+	msgs := make([]string, 0, len(errs))
+	notFound, limited := false, false
+	for _, e := range errs {
+		msgs = append(msgs, e.Message)
+		notFound = notFound || e.Type == "NOT_FOUND"
+		limited = limited || e.Type == "RATE_LIMITED"
+	}
+	err := errors.New(strings.Join(msgs, "; "))
+	switch {
+	case limited:
+		return fmt.Errorf("%w: %s/%s: %v", ErrRateLimited, owner, name, err)
+	case notFound:
+		return fmt.Errorf("%w: %s/%s: %v", ErrNotFound, owner, name, err)
+	}
+	return err
 }
 
 // rollupState maps GraphQL's StatusState (EXPECTED, ERROR, FAILURE, PENDING, SUCCESS) to the table's words.

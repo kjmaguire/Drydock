@@ -3,6 +3,10 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,5 +62,44 @@ func TestParseGhVersion(t *testing.T) {
 		if got := parseGhVersion(in); got != want {
 			t.Errorf("parseGhVersion(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// `gh --version` runs once per gh binary: a second check reuses the answer, and a gh that changed (an update) is asked again.
+func TestGhVersionIsReadOncePerBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in gh here is a shell script")
+	}
+	bin := t.TempDir()
+	count := filepath.Join(t.TempDir(), "runs")
+	gh := filepath.Join(bin, "gh")
+	write := func(v string) {
+		t.Helper()
+		script := fmt.Sprintf("#!/bin/sh\necho run >> %q\necho 'gh version %s (2026-10-01)'\n", count, v)
+		if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runs := func() int {
+		b, _ := os.ReadFile(count)
+		return strings.Count(string(b), "run")
+	}
+	write("2.83.1")
+	t.Setenv("PATH", bin)
+	ghVersions.Lock()
+	ghVersions.key, ghVersions.v = ghBinary{}, ""
+	ghVersions.Unlock()
+	if v := ghVersion(context.Background()); v != "2.83.1" || runs() != 1 {
+		t.Fatalf("first read %q, %d runs", v, runs())
+	}
+	if v := ghVersion(context.Background()); v != "2.83.1" || runs() != 1 {
+		t.Fatalf("the second read must reuse the answer: %q, %d runs", v, runs())
+	}
+	write("2.90.0")
+	if err := os.Chtimes(gh, time.Now().Add(time.Minute), time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if v := ghVersion(context.Background()); v != "2.90.0" || runs() != 2 {
+		t.Fatalf("an updated gh is asked again: %q, %d runs", v, runs())
 	}
 }

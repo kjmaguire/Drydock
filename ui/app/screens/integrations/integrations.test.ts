@@ -4,7 +4,6 @@ import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts';
 import {
-  ago,
   cardsState,
   connectReply,
   filterCounts,
@@ -191,10 +190,6 @@ describe('integrations helpers', () => {
     expect(toolsFact([galleryCard({ tools: [] })])).toBe('');
 
     const now = Date.UTC(2026, 9, 24, 12);
-    expect(ago(now - 20_000, now)).toBe('just now');
-    expect(ago(now - 4 * 60_000, now)).toBe('4 min ago');
-    expect(ago(now - 3 * 3_600_000, now)).toBe('3 h ago');
-    expect(ago(now - 2 * 86_400_000, now)).toBe('2 d ago');
     expect(syncLine(view({ identity: { method: 'Personal API key' }, assignments: [asg('a', now - 4 * 60_000), asg('b', now - 3_600_000)] }), now)).toBe('Synced 4 min ago · personal API key');
     expect(syncLine(view({ identity: {}, assignments: [] }), now)).toBe('Not assigned to a project yet · API key');
     expect(syncLine(view({ identity: {}, assignments: [asg('a', 0)] }), now)).toBe('Not synced yet · API key');

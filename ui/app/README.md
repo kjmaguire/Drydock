@@ -146,10 +146,11 @@ conversation:
   `data-letters` so the name is not read twice; presence is always in words beside it. People are round with initials;
   projects and tools are rounded squares with initials.
 - **Lists, not boxes** (decision P98, `ui/master-detail.tsx`): Agents, Integrations and Models are a `MasterDetail`, a filterable
-  list of 44 px rows under quiet group headings beside the chosen row's detail ("/" focuses the filter, the arrow keys move;
-  below 1024 px the detail opens in place of the list with Back); a detail is a `DetailHeader` over `SettingsGroup`s of
-  `SettingRow`s and `FactGrid`s, never a grid of big tiles or boxes inside boxes. Each item has an address
-  (`/integrations/linear`); choosing a row replaces it.
+  list of 44 px rows under quiet group headings beside the chosen row's detail ("/" focuses the filter unless the person is
+  typing, as `typing()` in `lib/keys.ts` says; the arrow keys move, ArrowDown in the filter picks the first row; below 1024 px
+  the detail opens in place of the list with Back); a detail is a `DetailHeader` over `SettingsGroup`s of `SettingRow`s and
+  `FactGrid`s, never a grid of big tiles or boxes inside boxes. Each item has an address (`/integrations/linear`); choosing a
+  row replaces it, and a page opened at an item's address passes `addressed` so a narrow window shows that item's detail.
 - **Pages** (`Page` in `ui/layout.tsx`) have a top bar: the title (18 px), the subtitle, the page's own tabs and filters
   (`bar`) and the actions on the right; the body scrolls, at most 1320 px wide. A conversation screen (`flush`) keeps its bar.
 - **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: an avatar, one author line (name, a

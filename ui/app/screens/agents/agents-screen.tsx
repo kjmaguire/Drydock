@@ -10,12 +10,13 @@
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
+import type { AdapterInfo, Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
 import { adapterLabel, cliName } from '../shared/cli-name.ts';
+import { supportsWSL } from '../team/run-mode.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, muted } from '../../ui/data.tsx';
@@ -758,11 +759,19 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // every project's agents, and where each project runs them, for "Used by"
   const crew = query(handle, { load: () => orElse(() => s.client.agentListAll(), [] as Agent[]), when: (e) => e.type.startsWith('agent.') });
   const projectIds = () => s.workspace.projectList.map((p) => p.id);
+  // whether an adapter can run in WSL, as the core decides where an agent runs (its declared run modes); while the adapters
+  // are not known, whether a WSL install of it was found
+  const adapters = query(handle, { load: () => orElse(() => s.client.adapterList(), [] as AdapterInfo[]), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  const canWSL = (adapter: string): boolean => {
+    const info = adapters.data?.find((x) => x.id === adapter);
+    return info ? supportsWSL(info.capabilities) : (q.data ?? []).some((x) => x.adapter === adapter && isWSL(x));
+  };
   const runModes = query(handle, {
     load: async () => {
-      const out = new Map<string, ProjectRunMode>();
-      for (const id of projectIds()) out.set(id, await orElse(() => s.client.projectRunMode(id), { runMode: 'native' } as ProjectRunMode));
-      return out;
+      // every project asked at once: one round trip, not one per project
+      const ids = projectIds();
+      const modes = await Promise.all(ids.map((id) => orElse(() => s.client.projectRunMode(id), { runMode: 'native' } as ProjectRunMode)));
+      return new Map(ids.map((id, i) => [id, modes[i]!] as const));
     },
     when: (e) => e.type.startsWith('project.'),
     key: projectIds,
@@ -889,7 +898,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           testing={testing.has(key)}
           testError={testErrors.get(key)}
           onTest={(prompt) => void runTest(open, prompt)}
-          crew={usedBy(open, crew.data ?? [], runModes.data ?? new Map(), list).map((a) => ({ agent: a, project: projectName(a.projectId) }))}
+          crew={usedBy(open, crew.data ?? [], runModes.data ?? new Map(), list, canWSL).map((a) => ({ agent: a, project: projectName(a.projectId) }))}
           onOpenAgent={openAgent}
           onChanged={() => void q.reload()}
         />
@@ -941,6 +950,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
               </>
             }
             testId="agents"
+            addressed={!!handle.props.initial}
           />
         ) : null}
       </Page>

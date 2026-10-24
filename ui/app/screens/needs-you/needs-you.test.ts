@@ -5,7 +5,6 @@ import { needsChanged } from '../../state/project.ts';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import { summariesChanged } from '../../state/workspace.ts';
 import {
-  agoWords,
   answerOf,
   canAck,
   clock,
@@ -109,11 +108,6 @@ describe('the Inbox helpers', () => {
   });
 
   it('says times in plain words and as a clock', () => {
-    expect(agoWords(now - 20_000, now)).toBe('just now');
-    expect(agoWords(now - 2 * 60_000, now)).toBe('2 min ago');
-    expect(agoWords(now - 3 * 3_600_000, now)).toBe('3 h ago');
-    expect(agoWords(now - 2 * 86_400_000, now)).toBe('2 d ago');
-    expect(agoWords(0, now)).toBe('');
     expect(untilWords(now + 58 * 60_000 + 5000, now)).toBe('in 58 min');
     expect(untilWords(now + 10_000, now)).toBe('in 1 min');
     expect(untilWords(now + 2 * 3_600_000, now)).toBe('in 2 h');

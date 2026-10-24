@@ -1029,6 +1029,11 @@ describe('Models (the page: Models on this PC and the providers)', () => {
     const add = page({ providerList: async () => list }, 'new');
     await waitFor(() => need(add.r, 'form[aria-label="Add a provider"]'), add.r);
     await shown(add.r, 'new');
+    cleanup();
+    // the list could not be read: the provider the address names says so instead of loading for ever
+    const failed = page({ providerList: async () => Promise.reject(new Error('the core is not answering')) }, 'prov_1');
+    await waitFor(() => expect(need(failed.r, '[data-testid="models"] [data-part="detail"]').textContent).toContain('the core is not answering'), failed.r);
+    expect(need(failed.r, '[data-testid="models"] [data-part="detail"]').textContent).not.toContain('Loading...');
   });
 
   it('Add a provider opens the form; create sends exported Go field names, the key leaves its field at once and is shown nowhere; the new one opens', async () => {
