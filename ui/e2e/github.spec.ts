@@ -11,7 +11,8 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   await workspaceNav(page, 'nav-github');
   await expect(page).toHaveURL(/\/github$/);
   await expect(page.getByRole('heading', { level: 1, name: 'GitHub' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByTestId('nav-github')).toHaveAttribute('aria-current', 'page');
+  // GitHub is a row of Integrations (decision P98): the sidebar's Integrations is the current page
+  await expect(page.getByTestId('nav-side-integrations')).toHaveAttribute('aria-current', 'page');
 
   // the sign-in: the harness has no gh, and the page says so in the core's words, with no sign-in button of its own
   const sign = page.getByTestId('gh-signin-state');
@@ -27,7 +28,7 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   await expect(connection.locator('[data-testid="integration"][data-kind="github"]')).toBeVisible();
   await expect(connection.getByRole('button', { name: 'Use the GitHub CLI sign-in' })).toBeVisible();
   await expect(connection.locator('[data-testid="connector"][data-id="gh"]')).toBeVisible();
-  await expect(connection.locator('[data-testid="integration-tile"]')).toHaveCount(0);
+  await expect(connection.locator('[data-testid="integration-row"]')).toHaveCount(0);
   // the CI runners are managed on this page, and no longer on Connections
   const runners = page.getByTestId('ci-runners-section');
   await expect(runners).toBeVisible();
@@ -39,10 +40,12 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   await expect(page.getByTestId('cli-gateway-section')).toBeVisible();
   await expect(page.getByTestId('ci-runners-section')).toHaveCount(0);
 
-  // the Integrations page keeps its GitHub tile, whose panel points to the page
+  // the Integrations page keeps GitHub as a row of its list, a link to this page (decision P98); its detail there points here too
   await workspaceNav(page, 'nav-integrations');
-  await page.locator('[data-testid="integration-tile"][data-kind="github"]').click();
-  await page.getByTestId('github-page-link').click();
+  await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-kind="github"]').click();
   await expect(page).toHaveURL(/\/github$/);
   await expect(page.getByRole('heading', { level: 1, name: 'GitHub' })).toBeVisible();
+  await page.goto(new URL('/integrations/github', page.url()).toString());
+  await page.getByTestId('github-page-link').click();
+  await expect(page).toHaveURL(/\/github$/);
 });
