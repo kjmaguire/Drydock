@@ -28,15 +28,15 @@ test('GitHub: one settings page gathers the gh sign-in, the connection, the MCP 
   await expect(connection.getByRole('button', { name: 'Use the GitHub CLI sign-in' })).toBeVisible();
   await expect(connection.locator('[data-testid="connector"][data-id="gh"]')).toBeVisible();
   await expect(connection.locator('[data-testid="integration-tile"]')).toHaveCount(0);
-  // the CI runners are managed on this page, and no longer on Connections
+  // the CI runners are managed on this page, and not on Agents (once Connections)
   const runners = page.getByTestId('ci-runners-section');
   await expect(runners).toBeVisible();
   await expect(runners.getByTestId('runner-private-only')).toContainText('Private repositories only');
   await expect(runners.getByTestId('runner-slots')).toContainText('No runners yet.');
   await expect(runners.locator('[data-testid=learn-more][data-topic=runners]')).toHaveAttribute('href', '/guide/runners');
   await workspaceNav(page, 'nav-connections');
-  await expect(page.getByRole('heading', { level: 1, name: 'Connections' })).toBeVisible();
-  await expect(page.getByTestId('cli-gateway-section')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+  await expect(page.getByTestId('agent-detail').getByTestId('cli-gateway')).toBeVisible();
   await expect(page.getByTestId('ci-runners-section')).toHaveCount(0);
 
   // the Integrations page keeps its GitHub tile, whose panel points to the page

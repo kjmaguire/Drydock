@@ -1,17 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { choose, appUrl, createAgent, createAndStartTask, createProject, roomLink, workspaceNav, projectNav, openRoom, openChecks, openAgentPage } from './helpers';
 
-test('Connections: gates need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
+test('Agents: notices need a checkbox and a click by the human; Test is gated behind a cost warning', async ({ page }) => {
   await createProject(page, 'gocalc-conn');
   await workspaceNav(page, 'nav-connections');
-  // the overview is a grid of tiles; a tile opens its connection's card below the grid
-  const customTile = page.locator('[data-testid=connection-tile][data-adapter=custom]');
-  await expect(customTile).toHaveAttribute('data-usable', 'false');
-  await customTile.click();
-  await expect(customTile).toHaveAttribute('aria-pressed', 'true');
-  const custom = page.locator('[data-testid=connection][data-adapter=custom]');
+  // the list of rows beside the chosen one's detail; a row opens its detail and goes in the address
+  const customRow = page.locator('[data-testid=agent-row][data-adapter=custom]');
+  await expect(customRow).toHaveAttribute('data-usable', 'false');
+  await customRow.click();
+  await expect(customRow).toHaveAttribute('aria-current', 'true');
+  await expect(page).toHaveURL(/\/agents\/custom$/);
+  const custom = page.locator('[data-testid=agent-detail][data-adapter=custom]');
   await expect(custom).toBeVisible();
   await expect(custom).toHaveAttribute('data-usable', 'false');
+  // the harness's custom manifest names a program it does not have: the one notice says so, and its notice to accept is on the Overview
+  await expect(custom.getByTestId('agent-notice')).toContainText('custom was not found on this PC');
   const gate = custom.getByTestId('gate');
   await expect(gate).toHaveAttribute('data-acked', 'false');
   const accept = gate.getByRole('button', { name: 'Accept' });
@@ -19,23 +22,32 @@ test('Connections: gates need a checkbox and a click by the human; Test is gated
   await gate.getByLabel('I have read this and accept it').check();
   await accept.click();
   await expect(gate).toHaveAttribute('data-acked', 'true');
-  // persisted by the core: still accepted after a reload
+  // persisted by the core: still accepted after a reload, and the address opens the same agent
   await page.reload();
-  await page.locator('[data-testid=connection-tile][data-adapter=custom]').click();
-  await expect(page.locator('[data-testid=connection][data-adapter=custom] [data-testid=gate]')).toHaveAttribute('data-acked', 'true');
+  await expect(page.locator('[data-testid=agent-detail][data-adapter=custom] [data-testid=gate]')).toHaveAttribute('data-acked', 'true');
 
   // Test connection never starts the CLI without the warning and a second click. (It is not run here: the connection
   // service in the harness looks at the real machine, so a test could start a real CLI.)
-  // the Windows install (a Claude Code inside a WSL distro has a card of its own, data-key claude@wsl:<distro>)
-  await page.locator('[data-testid=connection-tile][data-key=claude]').click();
-  const claude = page.locator('[data-testid=connection][data-key=claude]');
+  // the Windows install (a Claude Code inside a WSL distro has a row of its own, data-key claude@wsl:<distro>)
+  await page.locator('[data-testid=agent-row][data-key=claude]').click();
+  const claude = page.locator('[data-testid=agent-detail][data-key=claude]');
   await expect(claude).toBeVisible();
-  await expect(page.getByTestId('connection')).toHaveCount(1);
-  await claude.getByRole('button', { name: 'Test connection...' }).click();
-  await expect(claude).toContainText('It uses your account');
-  await expect(claude.getByLabel('Also send one tiny prompt')).not.toBeChecked();
-  await expect(claude.getByRole('button', { name: 'Run the test' })).toBeVisible();
-  await claude.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByTestId('agent-detail')).toHaveCount(1);
+  // on a machine without Claude Code there is nothing to test: its notice points to the install guidance instead
+  if ((await claude.getAttribute('data-state')) === 'install') {
+    await expect(claude.getByTestId('test-connection')).toHaveCount(0);
+    await claude.getByTestId('agent-notice-fix').click();
+    await expect(claude.getByTestId('install-tab')).toContainText('Drydock never runs this for you');
+    return;
+  }
+  await claude.getByTestId('test-connection').click();
+  const confirm = page.getByRole('dialog', { name: 'Test connection' });
+  await expect(confirm).toContainText('It uses your account');
+  await expect(confirm.getByLabel('Also send one tiny prompt')).not.toBeChecked();
+  await expect(confirm.getByRole('button', { name: 'Run the test' })).toBeVisible();
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+  await claude.getByTestId('agent-tab-tests').click();
   await expect(claude.getByTestId('connection-report')).toHaveCount(0);
 });
 

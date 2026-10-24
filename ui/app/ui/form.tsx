@@ -131,7 +131,16 @@ const switchCss = css({
   '&:disabled': { opacity: '0.5', cursor: 'not-allowed' },
 });
 
-const switchRow = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s3, fontSize: t.textMd });
+// the label is the switch's target too, 28px high like a checkbox's (the switch itself is 24): with a label only a screen reader
+// reads (a settings row says what the switch is), the target is still 28px
+const switchRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: t.s3,
+  fontSize: t.textMd,
+  '& > label': { display: 'inline-flex', alignItems: 'center', minHeight: '28px' },
+});
 
 /** An on/off switch (role="switch") with its label. */
 export function Switch(handle: Handle<{ label: RemixNode; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }>) {
