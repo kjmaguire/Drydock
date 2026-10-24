@@ -65,7 +65,7 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   expect(existsSync(join(repo, '.git'))).toBe(true);
 });
 
-test("workspace pages name no project; a project's own settings are pills of its Overview, not behind the gear; the agent CLIs and the MCP gateway are on Connections", async ({ page }) => {
+test("workspace pages name no project; a project's own settings are pills of its Overview, not behind the gear; the agent CLIs and their MCP gateway switch are on Agents", async ({ page }) => {
   await createProject(page, 'ws-split');
   await createAgent(page, 'Split agent', 'backend');
 
@@ -105,13 +105,16 @@ test("workspace pages name no project; a project's own settings are pills of its
   await expect(rail.getByTestId('nav-github')).toHaveText('GitHub');
   await expect(rail).not.toContainText('ws-split');
 
-  // Connections: the agent CLIs' tiles, then the MCP gateway that says which of them receive MCP servers
+  // Agents: the agent CLIs as a list, the chosen one's detail with the MCP gateway's setting for it (which CLIs receive MCP servers)
   await workspaceNav(page, 'nav-connections');
-  const gateway = page.getByRole('region', { name: 'Agent CLIs and the MCP gateway' });
-  await expect(gateway.getByRole('heading', { name: 'MCP gateway' })).toBeVisible();
-  await expect(gateway.getByTestId('cli-gateway')).toBeVisible();
-  const tiles = page.getByRole('list', { name: 'Agent CLIs' }).or(page.getByText('No agent CLIs found.'));
-  await expect(tiles.first()).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+  const list = page.getByRole('navigation', { name: 'Agent CLIs' }).or(page.getByText('No agent CLIs found'));
+  await expect(list.first()).toBeVisible();
+  if (await page.getByRole('navigation', { name: 'Agent CLIs' }).isVisible()) {
+    const gateway = page.getByTestId('agent-detail').getByRole('region', { name: 'MCP gateway' });
+    await expect(gateway.getByRole('heading', { name: 'MCP gateway' })).toBeVisible();
+    await expect(gateway.getByTestId('gateway-state')).toBeVisible();
+  }
 });
 
 // Decision P58: a project from scratch. "Choose folder..." opens the window's folder dialog (the harness's labelled stand-in
