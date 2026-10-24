@@ -8,7 +8,7 @@ export const CONCEPTS: readonly Topic[] = [
     summary: 'An agent is a real coding CLI with a role; a task needs a worker and a different reviewer.',
     keywords: ['team', 'agent', 'role', 'worker', 'reviewer', 'lead', 'template', 'prebuilt'],
     body: [
-      { p: 'An **agent** is one of the coding CLIs found on this computer (see [Connections](/connections)) with a name, a role, a model and an effort level. The agents of a project are its **crew**.' },
+      { p: 'An **agent** is one of the coding CLIs found on this computer (see [Agents](/agents)) with a name, a role, a model and an effort level. The agents of a project are its **crew**.' },
       {
         ul: [
           'The **role** (backend, reviewer, pm, architect, lead and so on) decides which work an agent is picked for. Roles are plain words you choose.',
