@@ -149,6 +149,9 @@ export function ModelsScreen(
           }}
         />
       );
+    } else if (selected !== THIS_PC && !providers.data && providers.error) {
+      // the address named a provider and the list could not be read: say so, never wait for it
+      detail = <ErrorNote error={providers.error} what="Could not read this provider" />;
     } else if (selected !== THIS_PC) {
       detail = <Loading />;
     } else {
@@ -182,6 +185,7 @@ export function ModelsScreen(
             onSelect={choose}
             detail={detail}
             testId="models"
+            addressed={!!handle.props.initial}
             listFooter={
               <>
                 <ErrorNote error={providers.error} what="Could not list providers" />

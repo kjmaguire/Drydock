@@ -26,7 +26,7 @@ import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
 import { ConnectForm, ReportView, ServiceView } from '../integrations/service-detail.tsx';
-import { KINDS, statusTone, tileState, vendors } from '../integrations/integrations.ts';
+import { KINDS, serviceState, statusTone, tileState, vendors } from '../integrations/integrations.ts';
 import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 
@@ -79,7 +79,14 @@ const projectCell = css({ display: 'inline-flex', alignItems: 'center', gap: t.s
 const projectHue = (id: string): string => `hsl(${hueFor(id)} 62% 62%)`;
 
 /** A chip: a state in words with its dot. */
-function Chip(handle: Handle<{ tone: Tone | 'muted'; text: string; testId: string }>) {
+/** The issue sync's chip: on only when the connection works (the Integrations row's own state), else what needs the person. */
+export function syncChip(conn: IntegrationView | undefined): { tone: Tone | 'muted' | 'none'; text: string } {
+  if (!conn) return { tone: 'muted', text: 'Issue sync off' };
+  const st = serviceState(conn);
+  return st.bucket === 'on' ? { tone: 'ok', text: 'Issue sync on' } : { tone: st.tone, text: `Issue sync: ${st.text.toLowerCase()}` };
+}
+
+function Chip(handle: Handle<{ tone: Tone | 'muted' | 'none'; text: string; testId: string }>) {
   return () => (
     <li mix={chipCss} data-testid={handle.props.testId}>
       <StatusWord tone={handle.props.tone} text={handle.props.text} />
@@ -141,7 +148,7 @@ function Hero(
             </span>
           </div>
           <ul mix={chipsCss} aria-label="GitHub at a glance">
-            <Chip testId="gh-chip-sync" tone={conn ? 'ok' : 'muted'} text={conn ? 'Issue sync on' : 'Issue sync off'} />
+            <Chip testId="gh-chip-sync" {...syncChip(conn)} />
             <Chip testId="gh-chip-mcp" tone={card?.status === 'connected' ? 'ok' : 'muted'} text={card?.status === 'connected' ? 'MCP for agents on' : 'MCP for agents off'} />
             {runners !== undefined ? <Chip testId="gh-chip-runners" tone={runners > 0 ? 'accent' : 'muted'} text={runners > 0 ? plural(runners, 'runner') : 'No runners'} /> : null}
           </ul>
@@ -463,7 +470,8 @@ function Repositories(handle: Handle) {
               <tbody>
                 {rows.map((r) => {
                   const href = r.url ? safeHref(r.url) : undefined;
-                  const onGitHub = r.state === 'github' || r.state === 'error' || r.state === 'needs_gh';
+                  // a GitHub repository (read, failed to read, or waiting for gh); a folder git could not read has none
+                  const onGitHub = !!r.repo;
                   return (
                     <tr key={r.projectId} data-testid="repo-row" data-project={r.projectId} data-state={r.state} data-ci={r.ci}>
                       <td>
@@ -481,7 +489,7 @@ function Repositories(handle: Handle) {
                         ) : r.repo ? (
                           <span mix={mono}>{r.repo}</span>
                         ) : (
-                          <span mix={muted}>{r.state === 'no_repo' ? 'No repository' : 'Local folder'}</span>
+                          <span mix={muted}>{r.state === 'no_repo' ? 'No repository' : r.state === 'error' ? 'Folder not readable' : 'Local folder'}</span>
                         )}
                       </td>
                       <td data-testid="repo-ci">{ciCell(r)}</td>

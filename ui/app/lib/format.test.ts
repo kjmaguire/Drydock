@@ -2,8 +2,20 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { money } from '../screens/shared/explain.tsx';
 import { priceText } from '../screens/providers/providers.ts';
-import { agentStatus, formatBytes, formatCost, formatUsd, presenceWords } from './format.ts';
+import { agentStatus, agoWords, formatBytes, formatCost, formatUsd, presenceWords } from './format.ts';
 import type { PresenceState } from '../api/types.ts';
+
+describe('agoWords', () => {
+  it('says how long ago a time was in plain words, the one wording every page uses', () => {
+    const now = Date.UTC(2026, 9, 24, 12);
+    expect(agoWords(now - 20_000, now)).toBe('just now');
+    expect(agoWords(now - 2 * 60_000, now)).toBe('2 min ago');
+    expect(agoWords(now - 3 * 3_600_000, now)).toBe('3 h ago');
+    expect(agoWords(now - 49 * 3_600_000, now)).toBe('2 d ago');
+    expect(agoWords(now + 60_000, now)).toBe('just now');
+    expect(agoWords(0, now)).toBe('');
+  });
+});
 
 describe('formatBytes', () => {
   it('rounds before choosing the unit, so a unit boundary never prints 1024', () => {

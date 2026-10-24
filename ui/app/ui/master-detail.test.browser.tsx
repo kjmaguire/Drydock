@@ -22,7 +22,7 @@ const groups = (): ListGroup[] => [
 ];
 
 // a page keeps the choice and draws the layout again with it, as the screens do
-function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean }>) {
+function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean; addressed?: boolean }>) {
   let selected = handle.props.start;
   return () => (
     <MasterDetail
@@ -34,16 +34,24 @@ function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: stri
       filters={handle.props.filters ? [{ key: 'all', label: 'All', count: 4 }, { key: 'on', label: 'On', count: 1 }] : undefined}
       filter="all"
       onFilter={(k) => handle.props.filterPicks.push(k)}
-      detail={<p data-testid="the-detail">detail of {selected}</p>}
+      detail={
+        <p data-testid="the-detail">
+          detail of {selected}
+          <span role="menu" tabIndex={-1} data-testid="a-menu">
+            menu
+          </span>
+        </p>
+      }
       testId="md"
+      addressed={handle.props.addressed}
     />
   );
 }
 
-function render(selected: { key: string }, extra: { filters?: boolean } = {}) {
+function render(selected: { key: string }, extra: { filters?: boolean; addressed?: boolean } = {}) {
   const picks: string[] = [];
   const filterPicks: string[] = [];
-  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} />);
+  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} addressed={extra.addressed} />);
   return { ...r, picks, filterPicks };
 }
 
@@ -62,7 +70,7 @@ describe('MasterDetail', () => {
     expect(rows[2]!.querySelector('[data-tone="none"] span[aria-hidden="true"]')).toBeNull();
     expect(rows[0]!.querySelector('[data-brand="linear"]')).not.toBeNull();
     expect(rows[3]!.querySelector('svg')).not.toBeNull();
-    expect(container.querySelector('[data-testid="the-detail"]')!.textContent).toBe('detail of linear');
+    expect(container.querySelector('[data-testid="the-detail"]')!.textContent).toBe('detail of linearmenu');
   });
 
   it('chooses a row on click; a row with a page of its own is a link', () => {
@@ -108,6 +116,41 @@ describe('MasterDetail', () => {
     const md = container.querySelector('[data-testid="md"]')!;
     md.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
     expect(document.activeElement).toBe(container.querySelector('[data-testid="list-filter"]'));
+  });
+
+  it('ArrowDown in the filter box chooses the first row and stops there', () => {
+    const { container, picks, root } = render({ key: 'notion' });
+    const box = container.querySelector<HTMLInputElement>('[data-testid="list-filter"]')!;
+    box.focus();
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    root.flush();
+    expect(picks).toEqual(['linear']);
+  });
+
+  it('leaves / alone with Ctrl, Alt or Meta held and inside a menu, a listbox or a dialog', () => {
+    const { container } = render({ key: 'linear' }, { addressed: true }); // the detail showing, on a narrow window too
+    const md = container.querySelector('[data-testid="md"]')!;
+    const box = container.querySelector('[data-testid="list-filter"]');
+    for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      const e = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true, ...mod });
+      md.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(false);
+      expect(document.activeElement).not.toBe(box);
+    }
+    const menu = container.querySelector<HTMLElement>('[data-testid="a-menu"]')!;
+    menu.focus();
+    const e = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+    menu.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(menu);
+  });
+
+  it('shows the detail of a row the address named at once on narrow windows', () => {
+    const { container } = render({ key: 'notion' }, { addressed: true });
+    expect(container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('true');
+    cleanup();
+    const plain = render({ key: 'notion' });
+    expect(plain.container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('false');
   });
 
   it('shows the filter choices the page owns and reports a choice', () => {

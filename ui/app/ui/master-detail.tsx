@@ -6,6 +6,7 @@
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import { ArrowLeft, Search } from 'lucide';
 import { BrandLogo, brandKey } from './brand-logo.tsx';
+import { typing } from '../lib/keys.ts';
 import { Icon, type IconNode } from './icon.tsx';
 import { t, tone as tones, type Tone } from './tokens.ts';
 
@@ -250,12 +251,16 @@ export function MasterDetail(
     onFilter?: (key: string) => void;
     /** Under the list: anything the page adds (a link to the Library). */
     listFooter?: RemixNode;
+    /** The address named the chosen row when the page opened (/integrations/linear): narrow windows show its detail at once. */
+    addressed?: boolean;
     testId?: string;
   }>,
 ) {
   let query = '';
   // narrow windows: whether the detail is showing in place of the list (a choice opens it, Back closes it)
   let open = false;
+  // the address named a row when the page opened: its detail shows once the page has chosen it (a page may choose after loading)
+  let addressPending = !!handle.props.addressed;
   // the choice the layout last drew: a page that changes it itself (an "Add" row, the address) opens the detail too
   let seen = handle.props.selected;
   let searchEl: HTMLInputElement | null = null;
@@ -271,7 +276,7 @@ export function MasterDetail(
   const keys = (): string[] => visibleGroups(handle.props.groups, query).flatMap((g) => g.items.filter((it) => !it.href).map((it) => it.key));
 
   const onListKey = (e: KeyboardEvent) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (e.defaultPrevented || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
     const ks = keys();
     if (ks.length === 0) return;
     e.preventDefault();
@@ -281,15 +286,18 @@ export function MasterDetail(
   };
 
   const onRootKey = (e: KeyboardEvent) => {
-    if (e.key !== '/' || !searchEl) return;
-    const target = e.target as HTMLElement | null;
-    if (target && (target.closest('input, textarea, select, [contenteditable="true"]') || target.isContentEditable)) return;
+    if (e.key !== '/' || !searchEl || typing(e)) return;
     e.preventDefault();
     searchEl.focus();
   };
 
   return () => {
     const { label, groups, selected, detail, search, filters, filter, onFilter, listFooter, testId } = handle.props;
+    if (addressPending && selected) {
+      addressPending = false;
+      open = true;
+      seen = selected;
+    }
     if (selected !== seen) {
       if (seen) open = true;
       seen = selected;
@@ -313,7 +321,8 @@ export function MasterDetail(
                   on('keydown', (e) => {
                     if (e.key === 'ArrowDown') {
                       const first = keys()[0];
-                      if (first !== undefined) (e.preventDefault(), choose(first, true));
+                      // the first row, and only it: the list's own arrow handling must not move on from there
+                      if (first !== undefined) (e.preventDefault(), e.stopPropagation(), choose(first, true));
                     } else if (e.key === 'Escape' && query) {
                       e.stopPropagation();
                       query = '';

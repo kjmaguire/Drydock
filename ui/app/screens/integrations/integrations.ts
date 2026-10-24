@@ -7,7 +7,7 @@ import { isRecord } from '../../api/guards.ts';
 import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { Agent } from '../../api/types.ts';
-import { formatDate, plural } from '../../lib/format.ts';
+import { agoWords, formatDate, plural } from '../../lib/format.ts';
 import type { TileBadge, TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -222,14 +222,6 @@ export function ownServerSub(s: Pick<McpLibraryServer, 'transport' | 'tools'>): 
   return s.tools.length > 0 ? `${how} · ${plural(s.tools.length, 'tool')}` : how;
 }
 
-/** How long ago a time was: "just now", "4 min ago", "3 h ago", "2 d ago". */
-export function ago(ms: number, now = Date.now()): string {
-  const s = Math.max(0, Math.floor((now - ms) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
-}
 
 /** How a connection signs in, in words: the method the API reported, else its kind. */
 export function methodText(c: Pick<IntegrationView, 'kind' | 'authKind' | 'identity'>): string {
@@ -242,7 +234,7 @@ export function methodText(c: Pick<IntegrationView, 'kind' | 'authKind' | 'ident
 /** The line under a connected service's name: "Synced 4 min ago · personal API key", from the newest sync of its projects. */
 export function syncLine(c: IntegrationView, now = Date.now()): string {
   const last = Math.max(c.sync?.lastSuccessAt ?? 0, ...(c.assignments ?? []).map((a) => a.sync?.lastSuccessAt ?? 0));
-  const when = last > 0 ? `Synced ${ago(last, now)}` : (c.assignments ?? []).length > 0 ? 'Not synced yet' : 'Not assigned to a project yet';
+  const when = last > 0 ? `Synced ${agoWords(last, now)}` : (c.assignments ?? []).length > 0 ? 'Not synced yet' : 'Not assigned to a project yet';
   return `${when} · ${methodText(c)}`;
 }
 

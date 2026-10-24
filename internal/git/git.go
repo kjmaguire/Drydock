@@ -36,6 +36,8 @@ var (
 	ErrUnknownRevision = errors.New("git: unknown revision")
 	// ErrOutputTooLarge means a git call printed more than Drydock keeps in memory; the call was ended.
 	ErrOutputTooLarge = errors.New("git: the output is larger than the limit")
+	// ErrNoRemote is RemoteURL's answer when the repository has no remote of that name.
+	ErrNoRemote = errors.New("git: no such remote")
 )
 
 // ConflictError reports a merge/rebase that stopped on conflicts. The merge is aborted before this is returned, so
@@ -122,6 +124,9 @@ func OpenIn(ctx context.Context, path string, runner Runner) (*Repo, error) {
 // the distro's git). Reading a remote runs no configured program.
 func (r *Repo) RemoteURL(ctx context.Context, name string) (string, error) {
 	out, err := r.gitUnguarded(ctx, r.Root, nil, "remote", "get-url", name)
+	if ge := (*gitError)(nil); errors.As(err, &ge) && strings.Contains(ge.stderr, "No such remote") {
+		return "", fmt.Errorf("%w: %q", ErrNoRemote, name) // git speaks English here: Drydock sets LC_ALL=C for every call
+	}
 	return strings.TrimSpace(out), err
 }
 

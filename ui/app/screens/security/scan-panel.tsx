@@ -12,7 +12,7 @@ import { Folder } from 'lucide';
 import type { DismissReason, EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
 import type { DrydockEvent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
-import { ownsKeys } from '../../lib/keys.ts';
+import { typing } from '../../lib/keys.ts';
 import { pollWhile } from '../../lib/poll.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -245,13 +245,6 @@ export function TargetBox(handle: Handle<{ note?: string; end?: RemixNode; child
 /** The header's middle: the page's target controls, taking the room between the title and Scan again. */
 const targetSlot = css({ flex: '1 1 280px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, minWidth: '0' });
 
-/** True while the person types or a widget handles its own keys: the page's letters and arrows are not theirs then. */
-function typing(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return true;
-  const el = e.target as HTMLElement | null;
-  if (!el || typeof el.closest !== 'function') return false;
-  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.closest('dialog, [role="menu"], [role="listbox"], [role="combobox"]') !== null;
-}
 
 /** An engine's own bar while it runs: files while the secrets engine runs, moving stripes for an engine that cannot count. */
 function EngineBar(handle: Handle<{ e: EngineResult }>) {

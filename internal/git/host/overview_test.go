@@ -46,6 +46,17 @@ func TestOverviewReadsCIAndPullRequestsInOneRequest(t *testing.T) {
 			}
 		}
 		full := req.Variables["owner"] + "/" + req.Variables["name"]
+		switch full {
+		case "acme/partial": // the repository, with the CI rollup refused (a token without the checks permission)
+			fmt.Fprint(w, `{"data":{"repository":{"nameWithOwner":"acme/partial","url":"https://github.com/acme/partial","defaultBranchRef":{"name":"main","target":{"statusCheckRollup":null}},"pullRequests":{"totalCount":3}}},"errors":[{"type":"FORBIDDEN","path":["repository","defaultBranchRef","target","statusCheckRollup"],"message":"Resource not accessible by personal access token"}]}`)
+			return
+		case "acme/limited": // GraphQL's primary limit is a 200 with an error of its own type
+			fmt.Fprint(w, `{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded for user ID 1."}]}`)
+			return
+		case "acme/refused":
+			fmt.Fprint(w, `{"data":{"repository":null},"errors":[{"type":"FORBIDDEN","message":"SAML enforcement"}]}`)
+			return
+		}
 		repo, ok := repos[full]
 		if !ok {
 			fmt.Fprintf(w, `{"data":{"repository":null},"errors":[{"type":"NOT_FOUND","path":["repository"],"message":"Could not resolve to a Repository with the name '%s'."}]}`, full)
@@ -73,6 +84,16 @@ func TestOverviewReadsCIAndPullRequestsInOneRequest(t *testing.T) {
 	}
 	if calls != len(want) {
 		t.Fatalf("%d requests for %d repositories: one each", calls, len(want))
+	}
+	// an error for one field keeps the rest of the answer
+	if got, err := Overview(context.Background(), api, "acme", "partial"); err != nil || got != (RepoOverview{FullName: "acme/partial", URL: "https://github.com/acme/partial", DefaultBranch: "main", CI: CINone, OpenPRs: 3}) {
+		t.Fatalf("a partial answer: %+v %v", got, err)
+	}
+	if _, err := Overview(context.Background(), api, "acme", "limited"); !errors.Is(err, ErrRateLimited) || !strings.Contains(err.Error(), "rate limit exceeded") {
+		t.Fatalf("GraphQL's rate limit: %v", err)
+	}
+	if _, err := Overview(context.Background(), api, "acme", "refused"); err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrRateLimited) || !strings.Contains(err.Error(), "SAML") {
+		t.Fatalf("no repository and GitHub's reason: %v", err)
 	}
 	if _, err := Overview(context.Background(), api, "acme", "gone"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "Could not resolve") {
 		t.Fatalf("a missing repository: %v", err)

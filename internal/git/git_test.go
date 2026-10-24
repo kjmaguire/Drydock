@@ -434,3 +434,24 @@ func TestListFilesHonoursGitignoreAndListsUntrackedFiles(t *testing.T) {
 		t.Fatalf("ListFiles = %v, want %v", files, want)
 	}
 }
+
+// RemoteURL tells a repository without that remote (ErrNoRemote) from git failing to read the repository at all.
+func TestRemoteURLSaysWhenThereIsNoSuchRemote(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRepo(t)
+	if _, err := r.RemoteURL(ctx, "origin"); !errors.Is(err, ErrNoRemote) {
+		t.Fatalf("no origin: %v", err)
+	}
+	if out, err := exec.Command("git", "-C", r.Root, "remote", "add", "origin", "https://github.com/acme/demo.git").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if url, err := r.RemoteURL(ctx, "origin"); err != nil || url != "https://github.com/acme/demo.git" {
+		t.Fatalf("origin: %q %v", url, err)
+	}
+	if err := os.RemoveAll(filepath.Join(r.Root, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RemoteURL(ctx, "origin"); err == nil || errors.Is(err, ErrNoRemote) {
+		t.Fatalf("a folder that is no longer a repository is a failure, not a missing remote: %v", err)
+	}
+}

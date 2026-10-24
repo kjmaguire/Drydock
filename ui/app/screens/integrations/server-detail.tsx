@@ -65,12 +65,18 @@ export function ServerDetail(handle: Handle<{ s: McpLibraryServer; onChanged: ()
     void handle.update();
   };
 
+  // the read-only tools as last saved here, until the server's reload arrives: a second tick before it does builds on the
+  // first, never on the list the page held before it
+  let savedRO: { from: McpLibraryServer; tools: string[] } | undefined;
+  const readOnlyTools = (): string[] => (savedRO && savedRO.from === handle.props.s ? savedRO.tools : handle.props.s.readOnlyTools);
   const setReadOnly = async (tool: string, ticked: boolean) => {
     const { s, onChanged } = handle.props;
-    const next = new Set(s.readOnlyTools);
+    const next = new Set(readOnlyTools());
     if (ticked) next.add(tool);
     else next.delete(tool);
-    await act.run('readonly', () => svc.client.mcpLibSave(inputOf(s, { readOnlyTools: [...next] })));
+    const tools = [...next];
+    const ok = await act.run('readonly', () => svc.client.mcpLibSave(inputOf(s, { readOnlyTools: tools })));
+    if (ok !== undefined) savedRO = { from: s, tools };
     onChanged();
   };
 
@@ -230,7 +236,7 @@ export function ServerDetail(handle: Handle<{ s: McpLibraryServer; onChanged: ()
                         <input
                           type="checkbox"
                           aria-label={`${tool.name} only reads`}
-                          checked={s.readOnlyTools.includes(tool.name)}
+                          checked={readOnlyTools().includes(tool.name)}
                           disabled={act.busy !== '' || ro.readOnly}
                           mix={on('change', (e) => void setReadOnly(tool.name, e.currentTarget.checked))}
                         />

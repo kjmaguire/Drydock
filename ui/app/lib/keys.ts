@@ -9,3 +9,14 @@ export function ownsKeys(target: EventTarget | null | undefined): boolean {
   const el = target as { closest?: (sel: string) => unknown } | null | undefined;
   return !!el && typeof el.closest === 'function' && el.closest(OWNERS) != null;
 }
+
+/**
+ * True while the person types or a widget handles its own keys, so a page's single-letter shortcuts ("/", "j") leave the key
+ * alone: Ctrl, Alt or Meta held, a field, box or editor, an open dialog, a menu, a listbox or a combobox.
+ */
+export function typing(e: KeyboardEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return true;
+  const el = e.target as HTMLElement | null;
+  if (!el || typeof el.closest !== 'function') return false;
+  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.closest('dialog[open], [role="menu"], [role="listbox"], [role="combobox"]') !== null;
+}

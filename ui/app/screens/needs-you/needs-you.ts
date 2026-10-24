@@ -1,7 +1,7 @@
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, TaskSummary } from '../../api/types.ts';
-import { plural } from '../../lib/format.ts';
+import { agoWords, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 
 export const KIND_LABEL: Record<string, string> = {
@@ -102,15 +102,6 @@ export const LOOK_WORDS: Record<NeedsLook, string> = {
 /** A task's key, "GOC-41": the project's key and the task's number; empty when either is unknown. */
 export const taskKey = (projectKey: string | undefined, seq: number | undefined): string => (projectKey && seq ? `${projectKey}-${seq}` : '');
 
-/** "just now", "1 min ago", "14 min ago", "3 h ago", "2 d ago": how long ago a time was. */
-export function agoWords(ms: number, now = Date.now()): string {
-  if (!ms) return '';
-  const s = Math.max(0, Math.floor((now - ms) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
-}
 
 /** "in 58 min", "in 2 h", "in 1 d"; "now" once it has passed. */
 export function untilWords(ms: number, now = Date.now()): string {

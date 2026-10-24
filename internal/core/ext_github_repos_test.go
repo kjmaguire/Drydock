@@ -223,13 +223,14 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 		"acme/broken": {Fail: "gh: HTTP 502: Bad Gateway (https://api.github.com/graphql)"},
 	}})
 	a := open(t, "")
-	create := func(name, origin string) {
+	create := func(name, origin string) string {
 		var p core.Project
 		repo := ""
 		if origin != "-" {
 			repo = repoWithOrigin(t, origin)
 		}
 		a.call("project.create", map[string]any{"name": name, "repoPath": repo}, &p)
+		return repo
 	}
 	create("green", "https://github.com/acme/green.git")
 	create("green-too", "git@github.com:acme/green.git")
@@ -238,9 +239,13 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	create("quiet", "https://github.com/acme/quiet.git")
 	create("broken", "https://github.com/acme/broken.git")
 	create("gone", "https://github.com/acme/gone.git")
-	create("local", "")
+	localDir := create("local", "")
 	create("elsewhere", "https://gitlab.com/acme/elsewhere.git")
 	create("no-repo", "-")
+	// a repository folder that went away is an error of its own, not a local repository and not a GitHub one
+	if err := os.RemoveAll(create("moved", "https://github.com/acme/moved.git")); err != nil {
+		t.Fatal(err)
+	}
 
 	var st core.GitHubStatus
 	a.call("github.status", nil, &st)
@@ -251,7 +256,7 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 
 	var rs core.ProjectRepos
 	a.call("github.projectRepos", nil, &rs)
-	if !rs.GhInstalled || len(rs.Rows) != 10 {
+	if !rs.GhInstalled || len(rs.Rows) != 11 {
 		t.Fatalf("table %+v", rs)
 	}
 	rows := rowsByProject(rs)
@@ -285,6 +290,9 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	check("local", core.RepoStateLocal, "", "", 0)
 	check("elsewhere", core.RepoStateLocal, "", "", 0)
 	check("no-repo", core.RepoStateNoRepo, "", "", 0)
+	if moved := check("moved", core.RepoStateError, "", "", 0); moved.Error == "" || moved.URL != "" {
+		t.Fatalf("a folder that cannot be read: %+v", moved)
+	}
 
 	repos, all := ghCalls(t, log)
 	counts := map[string]int{}
@@ -308,6 +316,17 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	a.call("github.projectRepos", map[string]any{"refresh": true}, &rs)
 	if repos3, _ := ghCalls(t, log); len(repos3)-len(repos)-2 != 6 {
 		t.Fatalf("refresh reads every repository again: %v", repos3)
+	}
+
+	// the origin remotes are kept like GitHub's answers: a remote added since shows on a refresh
+	gitIn(t, localDir, "remote", "add", "origin", "https://github.com/acme/green.git")
+	a.call("github.projectRepos", nil, &rs)
+	if l := rowsByProject(rs)["local"]; l.State != core.RepoStateLocal {
+		t.Fatalf("a fresh remote is reused: %+v", l)
+	}
+	a.call("github.projectRepos", map[string]any{"refresh": true}, &rs)
+	if l := rowsByProject(rs)["local"]; l.State != core.RepoStateGitHub || l.Repo != "acme/green" {
+		t.Fatalf("refresh reads the remotes again: %+v", l)
 	}
 }
 

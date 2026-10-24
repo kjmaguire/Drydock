@@ -6,7 +6,7 @@ import type { ProjectRepoRow, ProjectRepos } from '../../api/types.ts';
 import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { conn, kinds } from '../integrations/fixtures.ts';
 import { galleryCard, projServer } from '../mcp/fixtures.ts';
-import { GitHubScreen, signInState } from './github-screen.tsx';
+import { GitHubScreen, signInState, syncChip } from './github-screen.tsx';
 
 afterEach(cleanup);
 
@@ -119,6 +119,16 @@ describe('the GitHub settings page', () => {
     expect(r.$('[data-testid="gh-chip-sync"] [data-tone]')!.getAttribute('data-tone')).toBe('ok');
     // signed in: no Check again in the hero (the sign-in row has it)
     expect(Array.from(hero.querySelectorAll('button'))).toHaveLength(0);
+  });
+
+  it('calls issue sync on only when the connection works: a refused key, a failed check or a failing sync says so', () => {
+    const gh = { id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', assignments: [] };
+    expect(syncChip(undefined)).toEqual({ tone: 'muted', text: 'Issue sync off' });
+    expect(syncChip(conn({ ...gh }))).toEqual({ tone: 'ok', text: 'Issue sync on' });
+    expect(syncChip(conn({ ...gh, status: 'unauthenticated' }))).toEqual({ tone: 'warn', text: 'Issue sync: key refused' });
+    expect(syncChip(conn({ ...gh, status: 'unreachable' }))).toEqual({ tone: 'warn', text: 'Issue sync: unreachable' });
+    expect(syncChip(conn({ ...gh, verified: { ok: false, at: 1, summary: 'no access', calls: 1, failedCalls: 1, items: 0, mismatches: 0 } }))).toEqual({ tone: 'err', text: 'Issue sync: check failed' });
+    expect(syncChip(conn({ ...gh, sync: { ...conn().sync, state: 'error' } }))).toEqual({ tone: 'err', text: 'Issue sync: sync failing' });
   });
 
   it('lists the access as rows: the gh sign-in, issue sync with Manage, and the MCP server with its tools and grants', async () => {
@@ -283,11 +293,12 @@ describe('the Repositories table', () => {
     row({ projectId: 'prj_5', project: 'notes', state: 'local' }),
     row({ projectId: 'prj_6', project: 'draft', state: 'no_repo' }),
     row({ projectId: 'prj_7', project: 'broken', state: 'error', repo: 'kyle/broken', url: 'https://github.com/kyle/broken', error: 'gh: HTTP 502: Bad Gateway' }),
+    row({ projectId: 'prj_8', project: 'moved', state: 'error', error: 'The repository folder could not be opened' }),
   ];
 
   it('lists each project with its repository, the CI of its default branch in words and its open pull requests; a failure is its row\'s', async () => {
     const r = show({ githubProjectRepos: async () => repos(all()) });
-    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(7), r);
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(8), r);
     const table = r.$('section[aria-label="Repositories"] table[aria-label="Repositories"]')!;
     expect(Array.from(table.querySelectorAll('th')).map((th) => th.textContent)).toEqual(['Project', 'Repository', 'CI', 'Pull requests', 'Open']);
     const cells = (id: string) => {
@@ -301,6 +312,10 @@ describe('the Repositories table', () => {
     expect(cells('prj_5')).toEqual(['notes', 'Local folder', 'Not on GitHub', '—', 'Open']);
     expect(cells('prj_6')).toEqual(['draft', 'No repository', 'Not on GitHub', '—', 'Open']);
     expect(cells('prj_7')).toEqual(['broken', 'kyle/broken', 'Could not read gh: HTTP 502: Bad Gateway', '—', 'Open']);
+    // a folder git could not read is no GitHub repository: Open goes to the project, not to its pull requests
+    expect(cells('prj_8')).toEqual(['moved', 'Folder not readable', 'Could not read The repository folder could not be opened', '—', 'Open']);
+    expect(r.$('[data-testid="repo-row"][data-project="prj_8"] [data-testid="repo-open"]')!.getAttribute('href')).toBe('/');
+    expect(r.$('[data-testid="repo-row"][data-project="prj_7"] [data-testid="repo-open"]')!.getAttribute('href')).toBe('/pulls');
     // the state is a dot and words, the tone set from it
     const tone = (id: string) => r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-ci"] [data-tone]`)!.getAttribute('data-tone');
     expect(['prj_1', 'prj_2', 'prj_3', 'prj_4', 'prj_7'].map(tone)).toEqual(['ok', 'err', 'info', 'muted', 'err']);
