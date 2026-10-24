@@ -56,7 +56,7 @@
       "role": "Runs the database migrations. (The agent called Goose is a different thing.)"
     },
     "go:github.com/tc-hib/winres": {
-      "role": "Reads a built drydock.exe's resources back (icon group, version information, manifest) for the check CI runs on it (cmd/drydock-winident, internal/winident; docs/windows-identity.md), and makes the resources of the small executables its tests build. MIT. Not in the product: the exe's resources are made at build time by go-winres, which is built on this library.",
+      "role": "Reads a built drydock.exe's resources back (icon group, version information, manifest) for the check CI runs on it (cmd/drydock-winident, internal/winident; docs/windows-identity.md), and makes the resources of the small executables its tests build. ISC licence. Not in the product: the exe's resources are made at build time by go-winres, which is built on this library.",
       "note": "v0.3.1, the newest, the version Wails v3 itself requires (for wails3 generate syso). Using it brought it and its two dependencies into go.mod: github.com/nfnt/resize (unmaintained since 2018, the newest there is; winres resizes icons with it, which the check never does) and golang.org/x/image, taken at its newest, v0.47.0."
     },
     "go:github.com/wailsapp/wails/v3": {
@@ -179,7 +179,7 @@
       "note": "Major tag v2 (v2.0.0 of 2026-05-14, the newest). Prepared and off: the step runs only on a push to main once the owner has set the Artifact Signing secrets and variables, and is skipped otherwise, so it has not signed anything yet."
     },
     "ci:ci.yml:github.com/tc-hib/go-winres": {
-      "role": "Turns build/windows/winres.json (Drydock's icon, version information and application manifest) into the rsrc_windows_amd64.syso that go build links into drydock.exe; CI's app job and the Taskfile's build:winres run the same go run ...@v0.3.3 command (a test keeps them equal). MIT. A build tool: nothing of it ships except the resources it writes.",
+      "role": "Turns build/windows/winres.json (Drydock's icon, version information and application manifest) into the rsrc_windows_amd64.syso that go build links into drydock.exe; CI's app job and the Taskfile's build:winres run the same go run ...@v0.3.3 command (a test keeps them equal). ISC licence. A build tool: nothing of it ships except the resources it writes.",
       "note": "v0.3.3, the newest (2023); its go.mod builds it with winres v0.2.1 under go run, while the checker uses winres v0.3.1, which reads what either writes."
     },
     "action:github/codeql-action/init": {

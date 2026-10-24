@@ -8,7 +8,7 @@ Explorer.
 ## 1. What is embedded
 
 Every build of `drydock.exe` (CI's `app` job and `task build:windows`) links three resources, defined in
-`build/windows/winres.json` and turned into `rsrc_windows_amd64.syso` by go-winres (v0.3.3, MIT) just before `go build`:
+`build/windows/winres.json` and turned into `rsrc_windows_amd64.syso` by go-winres (v0.3.3, ISC licence) just before `go build`:
 
 | Resource | What it holds | Who reads it |
 |---|---|---|
@@ -84,7 +84,7 @@ the sizes the check wants and that the committed `.ico` has them.
 ## 5. The checks
 
 - `go run ./cmd/drydock-winident -exe drydock.exe [-version 1.2.3]` reads the built exe's resources (`internal/winident`, with
-  the `github.com/tc-hib/winres` library, MIT) and fails unless the first icon group is 3 with every size, the version
+  the `github.com/tc-hib/winres` library, ISC licence) and fails unless the first icon group is 3 with every size, the version
   resource names Drydock and carries the version (the definition's default without `-version`), and the manifest has every
   setting above. CI's `app` job and `task build:windows` run it on the exe they built, and again after signing.
 - The Linux tests (`go test ./internal/winident/... ./app ./cmd/drydock-winident`) check the committed definition (the
