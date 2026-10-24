@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,6 +23,8 @@ type GitHubStatus struct {
 	Unreachable bool   `json:"unreachable,omitempty"`
 	Login       string `json:"login"`
 	Error       string `json:"error,omitempty"`
+	// Version is the GitHub CLI's version as `gh --version` prints it ("2.83.1"); empty when it could not be read.
+	Version string `json:"version,omitempty"`
 }
 
 // CloneResult is a repository cloned for a new project.
@@ -43,25 +46,55 @@ func (c *Core) githubAPI() (host.API, bool) {
 // githubStatusTimeout is how long the account check waits for GitHub before saying it did not answer.
 var githubStatusTimeout = 20 * time.Second
 
-// GitHubAccountStatus reports whether `gh` is installed and signed in. It never reads or stores a token.
+// GitHubAccountStatus reports whether `gh` is installed and signed in, and its version. It never reads or stores a token.
 func (c *Core) GitHubAccountStatus(ctx context.Context) GitHubStatus {
 	api, ok := c.githubAPI()
 	if !ok {
 		return GitHubStatus{Error: "the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`"}
+	}
+	version := ""
+	if c.cfg.GitHubAPI == nil { // the user's own gh (not an API a test gave the core)
+		version = ghVersion(ctx)
 	}
 	ctx, cancel := context.WithTimeout(ctx, githubStatusTimeout)
 	defer cancel()
 	who, err := host.Viewer(ctx, api)
 	if err != nil {
 		if errors.Is(err, host.ErrAuth) {
-			return GitHubStatus{Installed: true, Error: "gh is not signed in: run `gh auth login`"}
+			return GitHubStatus{Installed: true, Version: version, Error: "gh is not signed in: run `gh auth login`"}
 		}
 		if ctx.Err() != nil {
-			return GitHubStatus{Installed: true, Unreachable: true, Error: "GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later"}
+			return GitHubStatus{Installed: true, Version: version, Unreachable: true, Error: "GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later"}
 		}
-		return GitHubStatus{Installed: true, Error: err.Error()}
+		return GitHubStatus{Installed: true, Version: version, Error: err.Error()}
 	}
-	return GitHubStatus{Installed: true, LoggedIn: true, Login: who.Login}
+	return GitHubStatus{Installed: true, LoggedIn: true, Login: who.Login, Version: version}
+}
+
+// ghVersion asks the GitHub CLI on PATH for its version (`gh --version` only prints it, without the network), or "" when it
+// does not say.
+func ghVersion(ctx context.Context) string {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "--version")
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1")
+	proc.Harden(cmd)
+	out := &proc.CapWriter{Max: 4096}
+	cmd.Stdout = out
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return parseGhVersion(out.String())
+}
+
+// ghVersionRe is the first line of `gh --version`: "gh version 2.83.1 (2025-11-13)".
+var ghVersionRe = regexp.MustCompile(`^gh version (\d+\.\d+\.\d+[0-9A-Za-z.+-]*)`)
+
+func parseGhVersion(s string) string {
+	if m := ghVersionRe.FindStringSubmatch(strings.TrimSpace(s)); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // GitHubOwners lists the signed-in account followed by its organizations.

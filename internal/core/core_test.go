@@ -32,6 +32,9 @@ func TestMain(m *testing.M) {
 	if llamatest.IsStandIn(os.Args) { // the LABELLED stand-in llama-server of the local models tests (ext_localllm_test.go)
 		os.Exit(llamatest.Main(os.Args))
 	}
+	if isGhStandIn() { // the LABELLED stand-in gh of the GitHub page's tests (ext_github_repos_test.go)
+		os.Exit(ghStandIn())
+	}
 	if wsltest.IsStandIn() { // the LABELLED stand-in wsl.exe of the WSL run mode tests (wsl_test.go)
 		os.Exit(wsltest.StandIn(os.Args[1:]))
 	}
