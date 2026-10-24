@@ -18,7 +18,7 @@ function rec<R>(calls: Calls, result: (...args: unknown[]) => R) {
   };
 }
 
-// The project's servers (a tile per connected server, the selected one's panel under the grid), approvals and adding a server
+// The project's servers (a row per connected server, the chosen one's panel under the rows), approvals and adding a server
 // from the library are on the project's own Integrations page (/project/integrations).
 function show(client: Partial<Client>, opts: { projects?: { id: string; name: string }[] } = {}) {
   const s = testServices({
@@ -62,17 +62,17 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     // a project's page: no server is connected or described here, that is done once for the workspace
     expect(r.$('[data-testid="own-servers"]')).toBeNull();
     expect(r.$('[data-testid="connector-gallery"]')).toBeNull();
-    // laid out like the workspace's page: Services, then Agent tools, each with its tiles and the open one's panel under them
+    // laid out like the workspace's page: Services, then Agent tools, each with its rows and the open one's panel under them
     const order = ['project-app-sync', 'project-mcp'].map((id) => r.$(`[data-testid="${id}"]`)!);
     expect(order[0]!.compareDocumentPosition(order[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(order[1]!.querySelector('h2')!.textContent).toBe('Agent tools');
     expect(r.$('[data-testid="add-from-library"]')).toBeNull();
-    // the server's tile: what it is, who may use it and on or off here; it is open, and the server is not offered again
+    // the server's row: what it is, who may use it and on or off here; it is open, and the server is not offered again
     const tiles = Array.from(r.$$('[data-testid="project-server-tile"]')) as HTMLElement[];
     expect(tiles.map((x) => [x.getAttribute('data-server'), x.getAttribute('data-added'), x.getAttribute('aria-pressed')])).toEqual([['tst', 'true', 'true']]);
     expect(tiles[0]!.textContent).toContain('your own · 2 tools');
     expect(tiles[0]!.textContent).toContain('No agent may use it yet');
-    expect(tiles[0]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('on');
+    expect(tiles[0]!.querySelector('[data-testid="row-status"]')!.textContent).toBe('on');
     const grid = order[1]!.querySelector('ul[aria-label="MCP servers"]')!;
     expect(grid.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // a click on the open tile closes its panel, another click opens it again
@@ -90,7 +90,7 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     await waitFor(() => expect(tile('two')).not.toBeNull(), r);
     expect(tile('tst')!.textContent).toContain('Pay may use it');
     expect(tile('two')!.textContent).toContain('No agent may use it yet');
-    expect(tile('two')!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('off');
+    expect(tile('two')!.querySelector('[data-testid="row-status"]')!.textContent).toBe('off');
     // one panel at a time: choosing the second opens its card instead
     await r.act(() => tile('two')!.click());
     await waitFor(() => expect(r.$('[data-testid="mcp-server"]')!.getAttribute('data-server')).toBe('two'), r);
@@ -129,7 +129,7 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     expect(tiles[1]!.querySelector('[data-brand="context7"]')).not.toBeNull();
     expect(tiles[1]!.textContent).toContain('built into Drydock');
     expect(tiles[1]!.textContent).toContain('Not in this project');
-    expect(tiles[1]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('not added');
+    expect(tiles[1]!.querySelector('[data-testid="row-status"]')!.textContent).toBe('not added');
     expect(tiles[2]!.textContent).toContain('your own');
     // choosing one opens its panel under the grid, with Add to this project
     await r.act(() => tiles[2]!.click());
@@ -187,6 +187,14 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     expect(note.textContent).toContain('Ticking an agent below, while the tools are not known, starts this program on this computer, with your rights:');
     expect(note.querySelector('[data-testid="command-line"]')!.textContent).toBe('node C:\\srv\\main.js --port 0');
     for (const who of ['Pay', 'Rev']) expect(byLabel<HTMLInputElement>(card, `${who} may use Test server`).getAttribute('aria-describedby')).toBe(note.id);
+    // Find tools is on the server's own page in Integrations (where it is connected), and so is which of its tools only read
+    const links = Array.from(card.querySelectorAll('a')).filter((a) => a.textContent === 'its page in Integrations');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/integrations/server-tst', '/integrations/server-tst']);
+    // the server's row: a compact row with its state in a word
+    const row = r.$('[data-testid="project-server-tile"][data-server="tst"]')!;
+    expect(row.tagName).toBe('BUTTON');
+    expect(row.closest('ul')!.getAttribute('aria-label')).toBe('MCP servers');
+    expect(row.querySelector('[data-testid="row-status"]')!.textContent).toBe('on');
     // once the tools are known (or the server is a web address that was reached) there is nothing to say
     const known = show({ mcpServerList: async () => [projServer()] });
     const card2 = await server(known);
@@ -209,24 +217,24 @@ describe("the MCP servers of one project, on the project's Integrations page", (
     await waitFor(() => expect(byLabel<HTMLInputElement>(card, 'Pay may use Test server').checked).toBe(false), r);
   });
 
-  it('points to the Library when nothing is connected', async () => {
+  it('points to the Integrations page when nothing is connected', async () => {
     const r = show({ mcpServerList: async () => [], mcpLibList: async () => [] });
     const p = await waitFor(() => {
       const el = Array.from(r.$$('p')).find((x) => x.textContent?.includes('No servers are connected yet.'));
       if (!el) throw new Error('not yet');
       return el;
     }, r);
-    expect(p.textContent).toContain('Library');
-    expect(p.querySelector('a')!.getAttribute('href')).toBe('/library');
+    expect(p.textContent).toContain('Integrations');
+    expect(p.querySelector('a')!.getAttribute('href')).toBe('/integrations');
   });
 
-  it('takes a server out of the project only after a confirmation, and keeps it in the library', async () => {
+  it('takes a server out of the project only after a confirmation, and keeps it connected for the workspace', async () => {
     const removes: Calls = [];
     const r = show({ mcpServerList: async () => [projServer()], mcpServerRemove: rec(removes, () => undefined) as never });
     const card = await server(r);
     await r.act(() => byText(card, 'button', 'Take out of this project').click());
     expect(removes).toEqual([]);
-    expect(card.textContent).toContain('it stays in the Library');
+    expect(card.textContent).toContain('it stays connected for the workspace');
     await r.act(() => byText(card, 'button', 'Yes, take it out').click());
     await waitFor(() => expect(removes).toEqual([['prj_1', 'tst']]), r);
   });
