@@ -1107,3 +1107,22 @@ Open, owner action:
   is because the core has no such data (a diff hunk without context lines) or the app's rules (12 px is the smallest size,
   Ctrl rather than Cmd on Windows, no "/ commands" a chat does not have). Every browser test now fails when a page draws two
   siblings with one key, and a source rule holds every corner to the 14 px radius.
+- **P98. drydock.exe carries its own icon, version information and manifest; signing is prepared and off (2026-10-24, on the
+  owner's words: the built exe showed "just a little default window" icon, and "how to make the app more trusted by
+  Windows").** The exe embedded no resources at all. (1) Every build (CI's `app` job, `task build:windows`) runs go-winres
+  v0.3.3 on `build/windows/winres.json`, which makes `rsrc_windows_amd64.syso` (not committed: a binary that changes with each
+  version) for `go build` to link: icon group 3, the only one (the ID Wails loads for every window and the first group
+  Explorer shows) with Drydock's mark from `ui/public/favicon.svg` at 16 to 256 pixels, 16 and 20 drawn from their own
+  thicker, pixel-aligned sources (`build/windows/make-icon.mjs` regenerates the `.ico` and a 1024 px master with Chromium);
+  a version resource (Drydock, drydock.exe, the build's version); and a manifest (`asInvoker`, per-monitor v2 DPI, Windows
+  10/11, Common Controls 6, `longPathAware`, UTF-8 active code page, the last not yet run on Windows and the first to remove if
+  text turns up mangled). (2) One version: `app.Version` (now `app/version.go`, on every platform) and the definition's
+  default are kept equal by a test, and `VERSION=` on the Taskfile feeds both go-winres and the linker. (3) Wails sets its
+  icon as the window's big icon only, at the system size; `app/icon_windows.go` sets the small and big icons from resource 3
+  at the window's DPI when it is shown and when its DPI changes, so the title bar shows the drawn 16/20 px image. (4)
+  `cmd/drydock-winident` (with `github.com/tc-hib/winres` v0.3.1) reads the built exe back and fails CI without the icon,
+  the version or the manifest; Linux tests check the definition and the checker on cross-compiled executables. (5) CI signs
+  `drydock.exe` with `azure/artifact-signing-action@v2` (SHA-256, RFC 3161 timestamp) on a push to `main` once the owner sets
+  the Artifact Signing secrets and variables, and skips it otherwise; D8's choice between Artifact Signing and an OV
+  certificate stays open (an OV path is not wired). The version resource's CompanyName is "Kyle Maguire", the LICENSE's
+  holder, until a company and certificate exist. docs/windows-identity.md.
