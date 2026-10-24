@@ -96,7 +96,7 @@ const whoCss = css({
   alignItems: 'center',
   gap: t.s2,
   minWidth: '0',
-  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', color: t.text, fontWeight: '500', textDecoration: 'none' },
+  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', minWidth: '28px', color: t.text, fontWeight: '500', textDecoration: 'none' },
   '& a:hover': { textDecoration: 'underline' },
 });
 const noteListCss = css({ margin: '0', padding: `${t.s2} ${t.s4}`, listStyle: 'none', display: 'grid', gap: t.s2, fontSize: t.textMd });

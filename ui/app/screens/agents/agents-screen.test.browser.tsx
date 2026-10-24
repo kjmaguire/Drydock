@@ -707,6 +707,9 @@ describe('Agents page', () => {
     expect(used.textContent).toContain('2 agents in 1 project');
     const link = items[0]!.querySelector('a')!;
     expect(link.getAttribute('href')).toBe('/team/a1');
+    // a short name ("Ada", "Rex") is still a 28 px target both ways (the density budget)
+    expect(getComputedStyle(link).minWidth).toBe('28px');
+    expect(getComputedStyle(link).minHeight).toBe('28px');
     expect(items[0]!.querySelector('[data-letters]')).not.toBeNull();
     // the project in WSL runs Mira inside the distro
     await r.act(() => row(r, 'claude@wsl:Ubuntu').click());
