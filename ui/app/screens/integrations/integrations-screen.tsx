@@ -305,7 +305,7 @@ function OAuthAppSetup(handle: Handle<{ kind: string; label: string; app: Integr
 }
 
 /** Connect (or reconnect) one service. The secret fields are uncontrolled: read once, cleared before the request leaves. */
-function ConnectForm(
+export function ConnectForm(
   handle: Handle<{ kind: string; info?: IntegrationKindInfo; reconnectId?: string; onDone: (r: { test?: IntegrationTestReport }) => void; onKindsChanged?: () => void }>,
 ) {
   const s = services(handle);
@@ -532,7 +532,7 @@ function ConnectForm(
  * One service, opened from its tile: its fixed name and logo and what the connection is, with Test, Reconnect and Disconnect.
  * How many projects it is assigned to is a count: assigning is done on a project's own Integrations page.
  */
-function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKindInfo; conn?: IntegrationView; onChanged: () => void; onKindsChanged?: () => void }>) {
+export function ServicePanel(handle: Handle<{ kind: ServiceKind; info?: IntegrationKindInfo; conn?: IntegrationView; onChanged: () => void; onKindsChanged?: () => void }>) {
   const s = services(handle);
   const act = action(handle);
   let report: IntegrationTestReport | undefined;

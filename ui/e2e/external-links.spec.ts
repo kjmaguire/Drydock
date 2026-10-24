@@ -5,6 +5,18 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createProjectWithoutRepo, workspaceNav } from './helpers';
 
+/**
+ * Opens the GitHub page the way a person does: Integrations, then its GitHub row. Until the rebuilt Integrations page lists
+ * GitHub in its "All integrations" navigation, the page is opened by its address.
+ */
+async function openGitHub(page: Page): Promise<void> {
+  await workspaceNav(page, 'nav-integrations');
+  const row = page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]');
+  if (await row.count()) await row.click();
+  else await page.goto(new URL('/github', page.url()).toString());
+  await expect(page.getByTestId('github-page')).toBeVisible();
+}
+
 /** Records what the page asks the shell to open; the shell here says it did. */
 async function shellStandIn(page: Page): Promise<unknown[]> {
   const asked: unknown[] = [];
@@ -25,7 +37,7 @@ test('in the desktop window a link to another site, window.open and a navigation
   await createProjectWithoutRepo(page, 'gocalc-links');
 
   // a link to another site (the gh install link on the GitHub page, which opens in a new window in a browser)
-  await workspaceNav(page, 'nav-github');
+  await openGitHub(page);
   const link = page.getByTestId('gh-signin-state').locator('a[href="https://cli.github.com"]');
   await expect(link).toBeVisible();
   await link.click();
@@ -83,7 +95,7 @@ test('in a browser (not the desktop window) a link to another site opens as it a
   const asked = await shellStandIn(page);
   await page.context().route('https://cli.github.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>gh</title>' }));
   await createProjectWithoutRepo(page, 'gocalc-links-browser');
-  await workspaceNav(page, 'nav-github');
+  await openGitHub(page);
   const link = page.getByTestId('gh-signin-state').locator('a[href="https://cli.github.com"]');
   const [popup] = await Promise.all([page.waitForEvent('popup'), link.click()]);
   await popup.close();
