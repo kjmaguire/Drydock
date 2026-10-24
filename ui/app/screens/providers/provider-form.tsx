@@ -17,9 +17,9 @@ import { t } from '../../ui/tokens.ts';
 import { ATTESTATIONS, emptyProviderForm, FLAVORS, newProviderRequest, type ProviderFormValues } from './providers.ts';
 
 const wide = css({ gridColumn: '1 / -1' });
-// three fields to a row on a laptop (name, kind, address; key, data class, tier): the four of formGrid left the kind and the
-// data class too narrow for their choices
-const gridCss = css({ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' });
+// two fields to a row in the Models page's detail (name and kind, address and key, data class and tier), one on a narrow window:
+// the four of formGrid left the kind and the data class too narrow for their choices
+const gridCss = css({ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', '@media (max-width: 719px)': { gridTemplateColumns: 'minmax(0, 1fr)' } });
 const fieldsetCss = css({
   display: 'grid',
   gap: t.s2,

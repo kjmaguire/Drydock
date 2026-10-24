@@ -39,12 +39,13 @@ test('Connections: gates need a checkbox and a click by the human; Test is gated
   await expect(claude.getByTestId('connection-report')).toHaveCount(0);
 });
 
-test('Providers: a fake key is stored by the core but never displayed; validation errors are shown verbatim; test and delete work', async ({ page }) => {
+test('Providers (on the Models page): a fake key is stored by the core but never displayed; validation errors are shown verbatim; check and remove work', async ({ page }) => {
   await createProject(page, 'gocalc-prov');
   await workspaceNav(page, 'nav-providers');
   const secret = 'sk-e2e-not-a-real-key-12345';
-  // the overview is a grid of tiles; the "Add a provider" tile opens the form below it
-  await page.getByTestId('provider-add-tile').click();
+  // the list's "Add a provider" row opens the form beside it, and the address says so
+  await page.getByTestId('provider-add').click();
+  await expect(page).toHaveURL(/\/models\/new(\?|$)/);
 
   // plain http to a public host is refused by the core, and the page shows its words
   await page.getByLabel('Provider name').fill('Public over http');
@@ -65,26 +66,33 @@ test('Providers: a fake key is stored by the core but never displayed; validatio
   await page.getByRole('button', { name: 'Add provider' }).click();
   const card = page.locator('[data-testid=provider][data-name="Local vLLM"]');
   await expect(card).toBeVisible();
-  await expect(card).toContainText('stored in the credential store (never shown)');
+  await expect(card).toContainText('Stored in the credential store (never shown)');
   await expect(card).toContainText('never'); // last seen
+  // the new provider is chosen in the list and named in the address
+  const id = (await card.getAttribute('data-id')) ?? '';
+  expect(id).not.toBe('');
+  await expect(page).toHaveURL(new RegExp(`/models/${id}(\\?|$)`));
+  const row = page.locator('[data-testid=models-row][data-name="Local vLLM"]');
+  await expect(row).toHaveAttribute('aria-current', 'true');
+  await expect(row).toContainText('Your server · free');
   expect(await page.content()).not.toContain(secret);
 
-  // Test: nothing listens on port 9, so the core reports a failure (shown, not hidden)
-  await card.getByRole('button', { name: 'Test' }).click();
+  // Check now: nothing listens on port 9, so the core reports a failure (shown, not hidden); no models are listed
+  await card.getByRole('button', { name: 'Check now' }).click();
   await expect(card.getByTestId('probe')).toHaveAttribute('data-ok', 'false');
-  await card.getByRole('button', { name: 'Models' }).click();
-  await expect(card).toContainText('No models in the catalog');
+  await expect(card.getByTestId('provider-models')).toContainText('None listed yet');
 
-  // disable then delete (confirmed)
+  // disable then remove (confirmed)
   await card.getByRole('button', { name: 'Disable' }).click();
-  await expect(card).toContainText('disabled');
-  await card.getByRole('button', { name: 'Delete' }).click();
-  await card.getByRole('button', { name: /Yes, delete/ }).click();
+  await expect(card.getByTestId('detail-status')).toHaveText('Disabled');
+  await expect(row).toContainText('Disabled');
+  await card.getByRole('button', { name: 'Remove', exact: true }).click();
+  await card.getByRole('button', { name: /Yes, remove/ }).click();
   await expect(card).toHaveCount(0);
-  await expect(page.locator('[data-testid=provider-tile][data-name="Local vLLM"]')).toHaveCount(0);
+  await expect(row).toHaveCount(0);
 
   // a trainable provider carries its persistent warning
-  await page.getByTestId('provider-add-tile').click();
+  await page.getByTestId('provider-add').click();
   await page.getByLabel('Provider name').fill('Public docs only');
   await page.getByLabel('Base URL').fill('http://127.0.0.1:9/v1');
   await choose(page.getByLabel('Data class'), 'trainable');

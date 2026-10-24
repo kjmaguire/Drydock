@@ -218,7 +218,7 @@ export function CheapModelPanel(handle: Handle) {
         <ErrorNote error={providers.error ?? act.error} what="Selection failed" />
         {providers.data && cheap.length === 0 ? (
           <p mix={[card, muted]}>
-            No enabled cheap private provider. Add one under <a href={routes.providers.href()}>Providers</a>.
+            No enabled cheap private provider. Add one under <a href={routes.models.href({ key: 'new' })}>Models</a>.
           </p>
         ) : null}
         {cheap.length > 0 ? (

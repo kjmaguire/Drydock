@@ -256,6 +256,8 @@ export function MasterDetail(
   let query = '';
   // narrow windows: whether the detail is showing in place of the list (a choice opens it, Back closes it)
   let open = false;
+  // the choice the layout last drew: a page that changes it itself (an "Add" row, the address) opens the detail too
+  let seen = handle.props.selected;
   let searchEl: HTMLInputElement | null = null;
   let listEl: HTMLElement | null = null;
 
@@ -288,6 +290,10 @@ export function MasterDetail(
 
   return () => {
     const { label, groups, selected, detail, search, filters, filter, onFilter, listFooter, testId } = handle.props;
+    if (selected !== seen) {
+      if (seen) open = true;
+      seen = selected;
+    }
     const shown = visibleGroups(groups, query);
     return (
       <div mix={[rootCss, on<HTMLDivElement, 'keydown'>('keydown', onRootKey)]} data-open={String(open)} data-testid={testId}>
@@ -522,10 +528,10 @@ export function FactGrid(handle: Handle<{ facts: { label: string; value: RemixNo
   };
 }
 
-/** The "+ Add …" row at the end of a group, drawn like a row. */
-export function AddRow(handle: Handle<{ label: string; onClick?: () => void; href?: string; testId?: string }>) {
+/** The "+ Add …" row at the end of a group, drawn like a row; `current` marks it chosen (its form is the detail). */
+export function AddRow(handle: Handle<{ label: string; onClick?: () => void; href?: string; current?: boolean; testId?: string }>) {
   return () => {
-    const { label, onClick, href, testId } = handle.props;
+    const { label, onClick, href, current, testId } = handle.props;
     const mark = <span mix={glyphCss} style={{ width: '24px', height: '24px', boxShadow: `inset 0 0 0 1px ${t.borderStrong}`, borderStyle: 'dashed' }} aria-hidden="true">+</span>;
     return href ? (
       <a href={href} mix={rowCss} data-quiet="true" data-testid={testId}>
@@ -533,7 +539,7 @@ export function AddRow(handle: Handle<{ label: string; onClick?: () => void; hre
         {label}
       </a>
     ) : (
-      <button type="button" mix={[rowCss, on('click', () => onClick?.())]} data-quiet="true" data-testid={testId}>
+      <button type="button" mix={[rowCss, on('click', () => onClick?.())]} aria-current={current ? 'true' : undefined} data-quiet="true" data-testid={testId}>
         {mark}
         {label}
       </button>
