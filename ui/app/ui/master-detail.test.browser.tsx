@@ -131,6 +131,33 @@ describe('MasterDetail', () => {
     root.flush();
     expect(md.getAttribute('data-open')).toBe('false');
   });
+
+  it('opens the detail when the page changes the choice itself (an Add row, the address)', () => {
+    function AddHost(handle: Handle<{ start: string }>) {
+      let selected = handle.props.start;
+      const pick = (k: string) => ((selected = k), void handle.update());
+      return () => (
+        <MasterDetail
+          label="Providers"
+          groups={[{ key: 'p', title: 'Providers', items: [{ key: 'a', title: 'A', testId: 'row' }], footer: <AddRow label="Add one" current={selected === 'new'} onClick={() => pick('new')} testId="add" /> }]}
+          selected={selected}
+          onSelect={pick}
+          detail={<p data-testid="the-detail">detail of {selected}</p>}
+          testId="md"
+        />
+      );
+    }
+    const { container, root } = renderPlain(<AddHost start="a" />);
+    const md = container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    const add = container.querySelector<HTMLButtonElement>('[data-testid="add"]')!;
+    expect(md.getAttribute('data-open')).toBe('false');
+    expect(add.getAttribute('aria-current')).toBeNull();
+    add.click();
+    root.flush();
+    expect(md.getAttribute('data-open')).toBe('true');
+    expect(add.getAttribute('aria-current')).toBe('true');
+    expect(container.querySelector('[data-testid="the-detail"]')!.textContent).toBe('detail of new');
+  });
 });
 
 describe('detail parts', () => {
