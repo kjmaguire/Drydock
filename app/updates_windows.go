@@ -20,10 +20,10 @@ import (
 	"github.com/kjmaguire/drydock/internal/updatepolicy"
 )
 
-// Build-time settings (set with -ldflags "-X github.com/kjmaguire/drydock/app.Version=1.0.0 ..."). With no feed or no public
-// key the updater stays unconfigured and the UI says so; Drydock never guesses an update source.
+// Build-time settings (set with -ldflags "-X github.com/kjmaguire/drydock/app.UpdateFeedURL=... ..."; the version is app.Version,
+// version.go). With no feed or no public key the updater stays unconfigured and the UI says so; Drydock never guesses an update
+// source.
 var (
-	Version         = "0.0.0-dev"
 	UpdateFeedURL   = "" // e.g. https://updates.example.com/{{channel}}/manifest.json
 	UpdatePublicKey = "" // base64 Ed25519 public key pinned at build time
 )

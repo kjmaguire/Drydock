@@ -46,16 +46,24 @@ tasks:
       - GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-amd64 ./cmd/drydock-egress
       - GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o bin/drydock-egress-linux-arm64 ./cmd/drydock-egress
 
+  build:winres:
+    desc: Make the Windows resources drydock.exe is linked with (icon, version information, manifest; build/windows/winres.json, docs/windows-identity.md) as rsrc_windows_amd64.syso, which is not committed. VERSION=1.2.3 sets the version
+    cmds:
+      # the same command as CI's app job runs, with the build's version when one is given
+      - go run github.com/tc-hib/go-winres@v0.3.3 make --in build/windows/winres.json --arch amd64 --out rsrc{{if .VERSION}} --product-version {{.VERSION}} --file-version {{.VERSION}}{{end}}
+
   build:windows:
-    desc: Build drydock.exe with the UI and the egress proxies into bin/ (CGO on for the repo map's tree-sitter parser; needs MinGW gcc, on Linux x86_64-w64-mingw32-gcc)
-    deps: [ui:build, build:egress]
+    desc: Build drydock.exe with the UI, its Windows resources and the egress proxies into bin/ and check the resources (CGO on for the repo map's tree-sitter parser; needs MinGW gcc, on Linux x86_64-w64-mingw32-gcc). VERSION=1.2.3 sets the version everywhere
+    deps: [ui:build, build:egress, build:winres]
     env:
       CGO_ENABLED: "1"
       CC: '{{if eq OS "windows"}}gcc{{else}}x86_64-w64-mingw32-gcc{{end}}'
       GOOS: windows
       GOARCH: amd64
     cmds:
-      - go build -tags production -ldflags "-w -s -H windowsgui" -o bin/drydock.exe .
+      - go build -tags production -ldflags "-w -s -H windowsgui{{if .VERSION}} -X github.com/kjmaguire/drydock/app.Version={{.VERSION}}{{end}}" -o bin/drydock.exe .
+      # the checker runs on the host, whatever the build's target
+      - GOOS= GOARCH= CGO_ENABLED=0 go run ./cmd/drydock-winident -exe bin/drydock.exe{{if .VERSION}} -version {{.VERSION}}{{end}}
 
   verify:bundle:
     desc: Build the Windows verification bundle (dist-windows/drydock-windows-verify.zip; see docs/windows-runner.md)

@@ -1,14 +1,11 @@
 {
-  "generated": "2026-10-22T22:40:37Z",
-  "commit": "f971da9",
-  "lookupsFailed": [
-    "govulncheck: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden\nexit status 1"
-  ],
+  "generated": "2026-10-24T00:47:15Z",
+  "commit": "383ae63",
   "summary": {
-    "current": 195,
+    "current": 191,
     "major": 1,
-    "minor": 3,
-    "patch": 7,
+    "minor": 11,
+    "patch": 8,
     "unknown": 4
   },
   "items": [
@@ -18,11 +15,11 @@
       "name": "claude (@anthropic-ai/claude-code)",
       "kind": "cli",
       "used": "2.1.306",
-      "latest": "2.1.309",
+      "latest": "2.1.310",
       "status": "patch",
       "where": "internal/agents/manifests/cli/claude.yaml (recommended; minimum 2.1.205)",
       "role": "Claude Code: the agent that runs Claude workers and reviewers.",
-      "note": "Recommended 2.1.306, moved to the newest release on 2026-10-21 at the owner's instruction (decision P82). Checked here on 2026-10-21 without a sign-in: the contract suite's free contracts (8 passed, 0 failed, the Claude ACP bridge 0.94.0's handshake among them); the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Under npm 12 the npm install needs --allow-scripts=@anthropic-ai/claude-code, which the install line shown in Drydock carries. Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself. Installed in this sandbox: 2.1.308."
+      "note": "Recommended 2.1.306, moved to the newest release on 2026-10-21 at the owner's instruction (decision P82). Checked here on 2026-10-21 without a sign-in: the contract suite's free contracts (8 passed, 0 failed, the Claude ACP bridge 0.94.0's handshake among them); the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). Under npm 12 the npm install needs --allow-scripts=@anthropic-ai/claude-code, which the install line shown in Drydock carries. Last verified with a real turn: 2.1.296 (16 passed, 0 failed). You install the CLI yourself. Installed in this sandbox: 2.1.309."
     },
     {
       "id": "bridge:@agentclientprotocol/claude-agent-acp",
@@ -30,8 +27,8 @@
       "name": "@agentclientprotocol/claude-agent-acp (ACP bridge)",
       "kind": "bridge",
       "used": "0.94.0",
-      "latest": "0.94.0",
-      "status": "current",
+      "latest": "0.95.0",
+      "status": "minor",
       "where": "internal/agents/manifests/cli/claude.yaml",
       "role": "An alternative way to reach Claude through ACP. Switched off in the manifest until a written confirmation is recorded (decision D1); Claude runs through its own CLI today.",
       "note": "Pinned at 0.94.0 on 2026-10-20 at the owner's instruction, after its ACP handshake contract (ACP-INIT-01) passed on it; no prompt turn is sent (the bridge stays disabled, D1)."
@@ -54,8 +51,8 @@
       "name": "codex (@openai/codex)",
       "kind": "cli",
       "used": "0.163.0",
-      "latest": "0.163.0",
-      "status": "current",
+      "latest": "0.164.0",
+      "status": "minor",
       "where": "internal/agents/manifests/cli/codex.yaml (recommended; minimum 0.159.1)",
       "role": "Codex: runs OpenAI's models as an agent.",
       "hold": "Moved to the newest release on 2026-10-16 at the owner's instruction (every update at once). Decision P33 wants the contract suite to pass on a version before it is recommended: the contract workflow runs on this change (it runs on every push that touches internal/agents) and is the check; a failure there moves the pin back.",
@@ -91,8 +88,8 @@
       "name": "goose (@aaif/goose-acp)",
       "kind": "cli",
       "used": "1.55.0",
-      "latest": "1.55.0",
-      "status": "current",
+      "latest": "1.56.0",
+      "status": "minor",
       "where": "internal/agents/manifests/cli/goose.yaml (recommended; minimum 1.53.0)",
       "role": "Goose: the open-source agent (reached through its ACP bridge).",
       "note": "Recommended 1.55.0, moved on 2026-10-20 at the owner's instruction. Checked here on 2026-10-20 without a sign-in: the contract suite's free contracts (11 passed, 0 failed) and the live ACP handshake; the paid contracts and a prompt turn wait for the sign-in secret of the environment `contract` (decision P33). You install the CLI yourself."
@@ -291,6 +288,18 @@
       "note": "Major tag v7; keeps the end-to-end evidence of a failed run, the verification results and the contract report."
     },
     {
+      "id": "action:azure/artifact-signing-action",
+      "group": "GitHub Actions (CI)",
+      "name": "azure/artifact-signing-action",
+      "kind": "action",
+      "used": "v2",
+      "latest": "v2.0.0",
+      "status": "current",
+      "where": ".github/workflows/ci.yml",
+      "role": "Signs drydock.exe in CI's app job with Azure Artifact Signing (formerly Trusted Signing; the old Azure/trusted-signing-action now redirects to it): SHA-256 digest, RFC 3161 timestamp (decision D8, docs/windows-identity.md).",
+      "note": "Major tag v2 (v2.0.0 of 2026-05-14, the newest). Prepared and off: the step runs only on a push to main once the owner has set the Artifact Signing secrets and variables, and is skipped otherwise, so it has not signed anything yet."
+    },
+    {
       "id": "action:github/codeql-action/analyze",
       "group": "GitHub Actions (CI)",
       "name": "github/codeql-action/analyze",
@@ -420,10 +429,10 @@
       "name": "github.com/openai/openai-go/v3",
       "kind": "direct",
       "used": "3.85.0",
-      "latest": "3.85.1",
-      "status": "patch",
+      "latest": "3.86.0",
+      "status": "minor",
       "usedDate": "2026-10-21",
-      "latestDate": "2026-10-22",
+      "latestDate": "2026-10-23",
       "where": "go.mod",
       "role": "Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests.",
       "usedBy": 1,
@@ -441,6 +450,21 @@
       "where": "go.mod",
       "role": "Runs the database migrations. (The agent called Goose is a different thing.)",
       "usedBy": 1,
+      "inBuild": true
+    },
+    {
+      "id": "go:github.com/tc-hib/winres",
+      "group": "Go libraries Drydock imports",
+      "name": "github.com/tc-hib/winres",
+      "kind": "direct",
+      "used": "0.3.1",
+      "latest": "0.3.1",
+      "status": "current",
+      "usedDate": "2024-03-18",
+      "where": "go.mod",
+      "role": "Reads a built drydock.exe's resources back (icon group, version information, manifest) for the check CI runs on it (cmd/drydock-winident, internal/winident; docs/windows-identity.md), and makes the resources of the small executables its tests build. ISC licence. Not in the product: the exe's resources are made at build time by go-winres, which is built on this library.",
+      "note": "v0.3.1, the newest, the version Wails v3 itself requires (for wails3 generate syso). Using it brought it and its two dependencies into go.mod: github.com/nfnt/resize (unmaintained since 2018, the newest there is; winres resizes icons with it, which the check never does) and golang.org/x/image, taken at its newest, v0.47.0.",
+      "usedBy": 2,
       "inBuild": true
     },
     {
@@ -1180,9 +1204,10 @@
       "name": "github.com/andybalholm/brotli",
       "kind": "indirect",
       "used": "1.2.6",
-      "latest": "1.2.6",
-      "status": "current",
+      "latest": "1.2.7",
+      "status": "patch",
       "usedDate": "2026-09-30",
+      "latestDate": "2026-10-23",
       "where": "go.mod",
       "inBuild": true
     },
@@ -3996,9 +4021,9 @@
       "latest": "0.0.0-20180221191011-83c6a9932646",
       "status": "current",
       "usedDate": "2018-02-21",
-      "where": "module graph (not in go.mod)",
-      "note": "Pinned to a commit, not a release. Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
-      "inBuild": false
+      "where": "go.mod",
+      "note": "Pinned to a commit, not a release.",
+      "inBuild": true
     },
     {
       "id": "go:github.com/nwaples/rardecode/v2",
@@ -4186,10 +4211,10 @@
       "name": "github.com/pkg/sftp",
       "kind": "indirect",
       "used": "1.13.9",
-      "latest": "1.13.11",
+      "latest": "1.13.12",
       "status": "patch",
       "usedDate": "2025-03-25",
-      "latestDate": "2026-07-12",
+      "latestDate": "2026-10-23",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -4226,9 +4251,10 @@
       "name": "github.com/prometheus/procfs",
       "kind": "indirect",
       "used": "0.22.0",
-      "latest": "0.22.0",
-      "status": "current",
+      "latest": "0.23.0",
+      "status": "minor",
       "usedDate": "2026-08-28",
+      "latestDate": "2026-10-22",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -4709,19 +4735,6 @@
       "usedDate": "2023-08-15",
       "where": "go.mod",
       "inBuild": true
-    },
-    {
-      "id": "go:github.com/tc-hib/winres",
-      "group": "Go libraries pulled in by other libraries",
-      "name": "github.com/tc-hib/winres",
-      "kind": "indirect",
-      "used": "0.3.1",
-      "latest": "0.3.1",
-      "status": "current",
-      "usedDate": "2024-03-18",
-      "where": "module graph (not in go.mod)",
-      "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
-      "inBuild": false
     },
     {
       "id": "go:github.com/tetratelabs/wazero",
@@ -5221,10 +5234,10 @@
       "name": "github.com/yandex-cloud/go-genproto",
       "kind": "indirect",
       "used": "0.126.0",
-      "latest": "0.130.0",
+      "latest": "0.131.0",
       "status": "minor",
       "usedDate": "2026-10-05",
-      "latestDate": "2026-10-22",
+      "latestDate": "2026-10-23",
       "where": "module graph (not in go.mod)",
       "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
       "inBuild": false
@@ -5650,14 +5663,12 @@
       "group": "Go libraries pulled in by other libraries",
       "name": "golang.org/x/image",
       "kind": "indirect",
-      "used": "0.41.0",
+      "used": "0.47.0",
       "latest": "0.47.0",
-      "status": "minor",
-      "usedDate": "2026-05-21",
-      "latestDate": "2026-10-09",
-      "where": "module graph (not in go.mod)",
-      "note": "Only in the module graph: no package of it is compiled into Drydock or its tests, so its version is the one the libraries that list it ask for, and it is not chased (decision P23).",
-      "inBuild": false
+      "status": "current",
+      "usedDate": "2026-10-09",
+      "where": "go.mod",
+      "inBuild": true
     },
     {
       "id": "go:golang.org/x/mod",
@@ -6139,6 +6150,19 @@
       "where": ".github/workflows/ci.yml"
     },
     {
+      "id": "ci:ci.yml:github.com/tc-hib/go-winres",
+      "group": "Installed by CI workflows",
+      "name": "github.com/tc-hib/go-winres (ci.yml)",
+      "kind": "ci",
+      "used": "0.3.3",
+      "latest": "0.3.3",
+      "status": "current",
+      "latestDate": "2023-10-13",
+      "where": ".github/workflows/ci.yml",
+      "role": "Turns build/windows/winres.json (Drydock's icon, version information and application manifest) into the rsrc_windows_amd64.syso that go build links into drydock.exe; CI's app job and the Taskfile's build:winres run the same go run ...@v0.3.3 command (a test keeps them equal). ISC licence. A build tool: nothing of it ships except the resources it writes.",
+      "note": "v0.3.3, the newest (2023); its go.mod builds it with winres v0.2.1 under go run, while the checker uses winres v0.3.1, which reads what either writes."
+    },
+    {
       "id": "ci:security.yml:golang.org/x/vuln/cmd/govulncheck",
       "group": "Installed by CI workflows",
       "name": "golang.org/x/vuln/cmd/govulncheck (security.yml)",
@@ -6155,7 +6179,7 @@
       "name": "@anthropic-ai/claude-code (windows-probes.yml)",
       "kind": "ci",
       "used": "2.1.306",
-      "latest": "2.1.309",
+      "latest": "2.1.310",
       "status": "patch",
       "where": ".github/workflows/windows-probes.yml"
     },
@@ -6165,8 +6189,8 @@
       "name": "@openai/codex (windows-probes.yml)",
       "kind": "ci",
       "used": "0.163.0",
-      "latest": "0.163.0",
-      "status": "current",
+      "latest": "0.164.0",
+      "status": "minor",
       "where": ".github/workflows/windows-probes.yml"
     },
     {
@@ -6195,8 +6219,8 @@
       "name": "@aaif/goose-acp (windows-probes.yml)",
       "kind": "ci",
       "used": "1.55.0",
-      "latest": "1.55.0",
-      "status": "current",
+      "latest": "1.56.0",
+      "status": "minor",
       "where": ".github/workflows/windows-probes.yml"
     },
     {
@@ -6215,8 +6239,8 @@
       "name": "@agentclientprotocol/claude-agent-acp (windows-probes.yml)",
       "kind": "ci",
       "used": "0.94.0",
-      "latest": "0.94.0",
-      "status": "current",
+      "latest": "0.95.0",
+      "status": "minor",
       "where": ".github/workflows/windows-probes.yml"
     },
     {
@@ -6326,9 +6350,9 @@
       "name": "GitHub CLI (gh)",
       "kind": "tool",
       "used": "2.103.0",
-      "latest": "2.103.0",
-      "status": "current",
-      "latestDate": "2026-10-21",
+      "latest": "2.103.2",
+      "status": "patch",
+      "latestDate": "2026-10-23",
       "where": "docs/decisions.md section 2",
       "role": "The GitHub CLI Drydock uses for pull requests and for the GitHub integration (repository issues, the signed-in account); you install it and Drydock never stores a GitHub token.",
       "note": "Version shown is what the documentation says the project was written against. The sandbox has gh 2.103.0 (2026-10-21, installed from the release tarball with its SHA-256 checked against gh_2.103.0_checksums.txt)."
@@ -6474,8 +6498,8 @@
       "group": "Tools Drydock runs or you install",
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
-      "used": "b11827",
-      "latest": "b11827",
+      "used": "b11847",
+      "latest": "b11847",
       "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
@@ -6600,8 +6624,8 @@
       "name": "@remix-run/ui",
       "kind": "direct",
       "used": "0.12.1",
-      "latest": "0.12.1",
-      "status": "current",
+      "latest": "0.13.0",
+      "status": "minor",
       "where": "ui/package.json",
       "role": "Headless, accessible widgets for the UI (tabs, menus, switches), wrapped in ui/app/ui.",
       "hold": "Pinned exactly: Remix calls it unstable (0.x, breaking changes in minor releases). Re-read its changelog before every bump."
@@ -6729,21 +6753,21 @@
   ],
   "vulnerabilities": [],
   "vulnerabilityScans": {
-    "govulncheck": "did not run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -format json ./...: exit status 1: govulncheck: fetching vulnerabilities: Get \"https://vuln.go.dev/index/modules.json.gz\": Forbidden",
+    "govulncheck": "0 known vulnerabilities in what is built, 0 of them in code that is called",
     "npm audit": "0 advisories against installed UI packages"
   },
   "counts": {
-    "action": 8,
+    "action": 9,
     "api": 5,
     "bridge": 2,
-    "ci": 10,
+    "ci": 11,
     "cli": 7,
     "copied": 4,
     "dev": 6,
-    "direct": 34,
-    "graphOnly": 310,
+    "direct": 35,
+    "graphOnly": 307,
     "image": 5,
-    "indirect": 417,
+    "indirect": 416,
     "runtime": 4,
     "skill": 4,
     "tool": 14

@@ -1,0 +1,34 @@
+{
+  "RT_GROUP_ICON": {
+    "#3": {
+      "0000": "icon.ico"
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": "drydock.exe.manifest"
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "0.0.0.0",
+          "product_version": "0.0.0.0"
+        },
+        "info": {
+          "0409": {
+            "CompanyName": "Kyle Maguire",
+            "FileDescription": "Drydock",
+            "FileVersion": "0.0.0-dev",
+            "InternalName": "drydock",
+            "LegalCopyright": "Copyright (c) 2026, Kyle Maguire",
+            "OriginalFilename": "drydock.exe",
+            "ProductName": "Drydock",
+            "ProductVersion": "0.0.0-dev"
+          }
+        }
+      }
+    }
+  }
+}
