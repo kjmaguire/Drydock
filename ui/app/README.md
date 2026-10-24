@@ -48,6 +48,10 @@ app/
                       window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
                       hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
                       page), Skills & tools, Memory and History); the inspector stays in the details panel
+  screens/agents/     Agents (/agents, /agents/<key>; decision P98, once Connections): the agent CLIs as a MasterDetail list (Installed,
+                      Not installed), the chosen one's header (Test connection, Sign in, Check again), one notice and the tabs
+                      Overview (notices to accept, facts, the distro, the MCP gateway switch, Used by), Test results, Install and
+                      update (helpers in agents.ts)
   screens/models/     Models on this PC (/models, a workspace page): the Serving card, Memory (each GPU split into the model and its
                       KV cache, the RAM), Engine, the model table with the Hub search ("/"), the server settings (helpers in models.ts)
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog (Ctrl+N), a chat's

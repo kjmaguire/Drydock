@@ -154,8 +154,8 @@ export const controller = createController(routes, {
     integrations,
     // the agent CLIs (decision P98); one key for the page and each agent, so the list stays mounted while the choice changes
     async agents({ render, params }) {
-      const { ConnectionsScreen } = await import('../screens/connections/connections-screen.tsx');
-      return render(<ConnectionsScreen key="agents" initial={params.key} />);
+      const { AgentsScreen } = await import('../screens/agents/agents-screen.tsx');
+      return render(<AgentsScreen key="agents" initial={params.key} />);
     },
     // an old address: Connections became Agents (decision P98)
     async connections({ render }) {
