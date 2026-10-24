@@ -4,13 +4,19 @@ import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts';
 import {
-  agentsStateText,
+  ago,
+  cardsState,
   connectReply,
+  filterCounts,
   identityLine,
   isTestReport,
   KINDS,
   kindLabel,
+  methodText,
   outboxTone,
+  ownServers,
+  ownServerState,
+  ownServerSub,
   parseParams,
   projectConnState,
   projectServerState,
@@ -18,16 +24,20 @@ import {
   riskTone,
   scopeSummary,
   serverBlurb,
+  serverIdOf,
+  serverKey,
+  serviceState,
+  showsUnder,
   statusTone,
-  syncStateText,
+  syncLine,
   syncText,
   syncTone,
   tileState,
-  vendorBadge,
+  toolsFact,
   verifiedText,
   vendors,
-  vendorStateText,
-  vendorTone,
+  vendorState,
+  vendorSub,
 } from './integrations.ts';
 
 const view = (over: Partial<IntegrationView> = {}): IntegrationView =>
@@ -123,44 +133,84 @@ describe('integrations helpers', () => {
     expect(vs[7]!.blurb).toBe('Tools for agents');
   });
 
-  it('the state line names both channels where the vendor has them', () => {
-    const conn = view({ identity: { account: 'kyle' } });
-    const lin = { kind: KINDS[0], cards: [galleryCard({ id: 'linear', status: 'connected' })] };
-    expect(vendorStateText(lin, conn)).toBe('Sync: connected as kyle · Agents: connected');
-    expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'needs_token' })] }, undefined)).toBe('Sync: not connected · Agents: needs a token');
-    // nothing connected anywhere: the badge says it, so the line is empty (it used to repeat "not connected" under the badge)
-    expect(vendorStateText({ kind: KINDS[3], cards: [] }, undefined)).toBe('');
-    expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'not_connected' })] }, undefined)).toBe('');
-    expect(vendorStateText({ kind: KINDS[0], cards: [galleryCard({ status: 'not_connected' })] }, view({ identity: { account: 'kyle' } }))).toBe('Sync: connected as kyle · Agents: not connected');
-    expect(vendorStateText({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toBe('Agents: connected');
-    expect(vendorStateText({ cards: [galleryCard({ status: 'connected' }), galleryCard({ id: 'b', status: 'needs_sign_in' })] }, undefined)).toBe('Agents: 1 of 2 connected, 1 needs sign-in');
-    expect(agentsStateText([galleryCard({ status: 'error' }), galleryCard({ id: 'b' })])).toBe('error');
-    expect(agentsStateText([])).toBe('');
-    expect(syncStateText(view({ identity: {} }))).toBe('connected');
-    expect(syncStateText(view({ status: 'untested', identity: {} }))).toBe('connected, not checked yet');
-    expect(syncStateText(view({ status: 'unauthorized', identity: {} }))).toBe('connected (unauthorized)');
-    // tone: warn when something needs the human, ok when something is connected
-    expect(vendorTone(lin, conn)).toBe('ok');
-    expect(vendorTone({ kind: KINDS[0], cards: [galleryCard({ status: 'needs_token' })] }, conn)).toBe('warn');
-    expect(vendorTone({ kind: KINDS[0], cards: [] }, undefined)).toBe('');
-    expect(vendorTone({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toBe('ok');
+  it("a row's state is one word: On, Set up, or what needs the person, the most pressing first", () => {
+    const rec = { at: Date.UTC(2026, 9, 15, 12), ok: true, summary: 'ok', calls: 3, failedCalls: 0, items: 3, mismatches: 0 };
+    expect(serviceState(undefined)).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    expect(serviceState(view())).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
+    expect(serviceState(view({ status: 'untested' }))).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
+    expect(serviceState(view({ verified: rec }))).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
+    expect(serviceState(view({ verified: { ...rec, ok: false } }))).toEqual({ text: 'Check failed', tone: 'err', bucket: 'needs' });
+    // a connection that is not working needs the person, whatever an older check said
+    expect(serviceState(view({ status: 'unauthenticated', verified: rec }))).toEqual({ text: 'Key refused', tone: 'warn', bucket: 'needs' });
+    expect(serviceState(view({ status: 'unreachable' })).text).toBe('Unreachable');
+    expect(serviceState(view({ status: 'something new' })).text).toBe('Needs you');
+    // one project's import failing is enough
+    const failing = { id: 'a', integrationId: 'int_1', projectId: 'p', config: {}, enabled: true, createdBy: '', created: 0, updated: 0, version: 1, sync: { ...view().sync, state: 'forbidden' } };
+    expect(serviceState(view({ assignments: [failing] }))).toEqual({ text: 'Sync failing', tone: 'err', bucket: 'needs' });
+
+    expect(cardsState([])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    expect(cardsState([galleryCard({ status: 'connected' })]).text).toBe('On');
+    expect(cardsState([galleryCard({ status: 'connected' }), galleryCard({ id: 'b', status: 'needs_sign_in' })])).toEqual({ text: 'Needs sign-in', tone: 'warn', bucket: 'needs' });
+    expect(cardsState([galleryCard({ status: 'needs_sign_in' }), galleryCard({ id: 'b', status: 'error' })]).text).toBe('Error');
+    expect(cardsState([galleryCard({ status: 'needs_token' })]).text).toBe('Needs a token');
+
+    // a vendor: what needs the person on either channel (app sync first), else On when either works
+    const lin = { kind: KINDS[0], cards: [galleryCard({ id: 'linear', status: 'not_connected' })] };
+    expect(vendorState(lin, undefined).text).toBe('Set up');
+    expect(vendorState(lin, view()).text).toBe('On');
+    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'connected' })] }, undefined).text).toBe('On');
+    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'needs_token' })] }, view()).text).toBe('Needs a token');
+    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'needs_token' })] }, view({ status: 'unauthenticated' })).text).toBe('Key refused');
+    expect(vendorState({ cards: [galleryCard({ status: 'connected' })] }, undefined).text).toBe('On');
+
+    // a server of your own
+    const own = libServer();
+    expect(ownServerState(own)).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
+    expect(ownServerState({ ...own, tools: [] })).toEqual({ text: 'No tools yet', tone: 'warn', bucket: 'needs' });
+    expect(ownServerState({ ...own, oauth: true, oauthAt: 0 }).text).toBe('Not signed in');
+    expect(ownServerState({ ...own, oauth: true, oauthAt: 0, lastError: 'refused' }).text).toBe('Could not connect');
+
+    // the filters count them
+    const states = [serviceState(undefined), serviceState(view()), cardsState([galleryCard({ status: 'error' })]), ownServerState(own)];
+    expect(filterCounts(states)).toEqual({ all: 4, on: 2, needs: 1 });
+    expect(states.filter((x) => showsUnder('on', x)).length).toBe(2);
+    expect(states.filter((x) => showsUnder('needs', x)).length).toBe(1);
+    expect(states.filter((x) => showsUnder('all', x)).length).toBe(4);
   });
 
-  it('the tile badge says verified, connected or what needs the person; the card line says when it was verified (P59)', () => {
-    const rec = { at: Date.UTC(2026, 9, 15, 12), ok: true, summary: 'ok', calls: 3, failedCalls: 0, items: 3, mismatches: 0 };
-    const lin = { kind: KINDS[0], cards: [] };
-    expect(vendorBadge(lin, undefined)).toEqual({ text: 'not connected', tone: 'muted' });
-    expect(vendorBadge(lin, view())).toEqual({ text: 'connected', tone: 'ok' });
-    expect(vendorBadge(lin, view({ status: 'untested' }))).toEqual({ text: 'not checked', tone: 'muted' });
-    expect(vendorBadge(lin, view({ verified: rec }))).toEqual({ text: 'verified', tone: 'ok' });
-    expect(vendorBadge(lin, view({ verified: { ...rec, ok: false } }))).toEqual({ text: 'check failed', tone: 'err' });
-    // a connection that is not working needs the person, whatever an older check said
-    expect(vendorBadge(lin, view({ status: 'unauthenticated', verified: rec }))).toEqual({ text: 'needs attention', tone: 'warn' });
-    expect(vendorBadge({ cards: [galleryCard({ status: 'needs_sign_in' })] }, undefined)).toEqual({ text: 'needs attention', tone: 'warn' });
-    expect(vendorBadge({ cards: [galleryCard({ status: 'connected' })] }, undefined)).toEqual({ text: 'connected', tone: 'ok' });
+  it('the line under a row: what it does and one fact; the line under a connected service: when it synced and how it signs in', () => {
+    const lin = { kind: KINDS[0], blurb: 'Issues and projects', cards: [] };
+    const asg = (id: string, lastSuccessAt: number) => ({ id, integrationId: 'int_1', projectId: id, config: {}, enabled: true, createdBy: '', created: 0, updated: 0, version: 1, sync: { ...view().sync, lastSuccessAt } });
+    expect(vendorSub(lin, undefined)).toBe('Issues and projects');
+    expect(vendorSub(lin, view({ assignments: [asg('a', 0), asg('b', 0)] }))).toBe('Issues and projects · 2 projects');
+    expect(vendorSub({ blurb: 'Tools for agents', cards: [galleryCard(), galleryCard({ id: 'b', tools: [{ name: 'x', readOnlyHint: false }, { name: 'y', readOnlyHint: false }] })] }, undefined)).toBe('Tools for agents · 3 tools');
+    expect(ownServerSub(libServer())).toBe('Program on this PC · 2 tools');
+    expect(ownServerSub(libServer({ transport: 'http', tools: [] }))).toBe('Web address');
+    expect(toolsFact([galleryCard()])).toBe('1 tool, 1 read-only');
+    expect(toolsFact([galleryCard({ readOnlyTools: [] })])).toBe('1 tool');
+    expect(toolsFact([galleryCard({ tools: [] })])).toBe('');
+
+    const now = Date.UTC(2026, 9, 24, 12);
+    expect(ago(now - 20_000, now)).toBe('just now');
+    expect(ago(now - 4 * 60_000, now)).toBe('4 min ago');
+    expect(ago(now - 3 * 3_600_000, now)).toBe('3 h ago');
+    expect(ago(now - 2 * 86_400_000, now)).toBe('2 d ago');
+    expect(syncLine(view({ identity: { method: 'Personal API key' }, assignments: [asg('a', now - 4 * 60_000), asg('b', now - 3_600_000)] }), now)).toBe('Synced 4 min ago · personal API key');
+    expect(syncLine(view({ identity: {}, assignments: [] }), now)).toBe('Not assigned to a project yet · API key');
+    expect(syncLine(view({ identity: {}, assignments: [asg('a', 0)] }), now)).toBe('Not synced yet · API key');
+    expect(methodText({ kind: 'github', authKind: 'gh', identity: { method: 'GitHub CLI' } })).toBe('your gh sign-in');
+    expect(methodText({ kind: 'sentry', authKind: 'oauth', identity: {} })).toBe('sign-in');
+  });
+
+  it('keys in the address: a vendor by its own key, one of your servers after "server-"; your servers are the ones no card stands for', () => {
+    expect(serverKey('pg')).toBe('server-pg');
+    expect(serverIdOf('server-pg')).toBe('pg');
+    expect(serverIdOf('linear')).toBe('');
+    const servers = [libServer({ id: 'mine' }), libServer({ id: 'mslearn', catalogId: 'mslearn' }), libServer({ id: 'ctx7-2', catalogId: 'ctx7' }), libServer({ id: 'gone', catalogId: 'retired' })];
+    const cards = [galleryCard({ id: 'mslearn', libraryId: 'mslearn' }), galleryCard({ id: 'ctx7' })];
+    // a server connected from a card is the card's vendor; one whose catalog entry left this build is listed as yours
+    expect(ownServers(servers, cards).map((x) => x.id)).toEqual(['mine', 'gone']);
     expect(verifiedText(view())).toContain('Not checked against your account yet');
-    expect(verifiedText(view({ verified: rec }))).toMatch(/^Verified against your account on .*2026\.$/);
-    expect(verifiedText(view({ verified: { ...rec, ok: false, summary: 'Linear rejected the credential (HTTP 401).' } }))).toMatch(/did not pass: Linear rejected the credential \(HTTP 401\)\.$/);
   });
 
   it('a service as one project has it: its scope and a badge, or not assigned', () => {
