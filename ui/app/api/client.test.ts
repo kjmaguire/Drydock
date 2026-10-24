@@ -475,6 +475,20 @@ describe('project setup client methods', () => {
     expect(all('agentcatalog.apply')).toEqual([{ id: 'team-lead', projectId: 'p1', installSkills: true, connectMcp: true }]);
     expect(all('mcplib.addFromCatalog')).toEqual([{ catalogId: 'cf' }]);
   });
+
+  it('reads the GitHub page\'s repositories, asking again only on refresh, and normalizes nulls', async () => {
+    const f = mock.fn(async (url: string) => {
+      if (url.endsWith('github.projectRepos')) return json({ result: { ghInstalled: true, rows: [{ projectId: 'p1', project: 'pay', state: 'local' }] } });
+      return json({ result: null });
+    });
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.githubProjectRepos()).toEqual({ ghInstalled: true, rows: [{ projectId: 'p1', project: 'pay', state: 'local', openPullRequests: 0 }] });
+    await c.githubProjectRepos(true);
+    const sent = f.mock.calls.map((x) => JSON.parse((x.arguments as unknown as [string, RequestInit])[1].body as string));
+    expect(sent).toEqual([{ refresh: false }, { refresh: true }]);
+    const none = createClient(transport((async () => json({ result: { ghInstalled: false, rows: null } })) as unknown as typeof fetch));
+    expect(await none.githubProjectRepos()).toEqual({ ghInstalled: false, rows: [] });
+  });
 });
 
 describe('team lead client methods', () => {
