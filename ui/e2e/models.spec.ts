@@ -1,5 +1,5 @@
-// Models on this PC end to end against the real Go core (decisions P65, P95, P97): its own workspace page (/models), reached from
-// the sidebar and the command menu; Providers keeps a link to it. The harness (cmd/drydock-e2e) gives the core PROTOCOL FIXTURES:
+// Models on this PC end to end against the real Go core (decisions P65, P95, P97, P98): the this-pc row of the Models page (/models),
+// reached from the sidebar and the command menu; its server is a provider the core registers, which is that row, not a second one. The harness (cmd/drydock-e2e) gives the core PROTOCOL FIXTURES:
 // GitHub's releases API for the TurboQuant build's repository (b10269-1.7.1 and b10298-2.0.0, the newer with a Vulkan and a CPU
 // archive holding a placeholder llama-server) and the Hugging Face Hub with small GGUF repositories; the "server" started is the
 // harness's own stand-in (internal/localllm/llamatest, a TEST DOUBLE), which loads its model for a second. Nothing reaches GitHub
@@ -35,7 +35,7 @@ async function download(page: Page, repo: string, variant: string): Promise<Loca
   return model;
 }
 
-test('Models on this PC: its own page; set up the engine, find and download models, serve one, switch, stop; Providers links to it', async ({ page }) => {
+test('Models on this PC: the Models page opens it; set up the engine, find and download models, serve one, switch, stop; its server is that one row', async ({ page }) => {
   test.setTimeout(300_000);
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(appUrl());
@@ -46,8 +46,11 @@ test('Models on this PC: its own page; set up the engine, find and download mode
   await expect(page).toHaveURL(/\/models(\?|$)/);
   await expect(link).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
+  await expect(page.getByTestId('models-page').getByRole('heading', { level: 1 })).toHaveText('Models');
+  const thisPc = page.locator('[data-testid=models-row][data-key=this-pc]');
+  await expect(thisPc).toHaveAttribute('aria-current', 'true');
   const pageEl = page.getByTestId('local-models');
-  await expect(pageEl.getByRole('heading', { level: 1 })).toHaveText('Models on this PC');
+  await expect(pageEl.getByRole('heading', { level: 2 })).toHaveText('Models on this PC');
   await expect(pageEl).toContainText('Private: prompts and code never leave this computer');
 
   // "/" goes to the Hub search
@@ -66,6 +69,7 @@ test('Models on this PC: its own page; set up the engine, find and download mode
   await expect(page.getByTestId('local-source')).toHaveCount(0);
   await expect(page.getByTestId('local-backend')).toHaveCount(0);
   await expect(pageEl).not.toContainText('llama');
+  await expect(thisPc).toContainText('Set up');
   await engine.getByTestId('local-install').click();
   // the setup runs in the background; the page follows it through local.changed until the newest TurboQuant build is in
   await expect(engine).toHaveAttribute('data-installed', 'true', { timeout: 60_000 });
@@ -89,7 +93,7 @@ test('Models on this PC: its own page; set up the engine, find and download mode
   await expect(server.getByTestId('local-switch')).toBeDisabled();
 
   // suggestions come from the Hub fixture; Close suggestions shrinks the table back and Show suggestions returns
-  const table = page.getByRole('region', { name: 'Models', exact: true });
+  const table = page.getByRole('region', { name: 'Local models', exact: true });
   await table.getByTestId('local-suggested').click();
   await expect(table.locator('[data-testid=local-repo][data-id="ggml-org/gpt-oss-20b-GGUF"]')).toBeVisible();
   await expect(table.locator('[data-testid=local-repo][data-id="ggml-org/Qwen3-Coder-30B-A3B-Instruct-GGUF"]')).toBeVisible();
@@ -128,6 +132,8 @@ test('Models on this PC: its own page; set up the engine, find and download mode
   await expect(server.getByTestId('local-kv')).toContainText(' · ');
   await expect(server.getByTestId('local-started')).toHaveText(/just now|min ago/);
   await expect(server.getByTestId('local-provider-note')).toContainText('Agents reach it as a provider');
+  await expect(thisPc).toContainText('Serving');
+  await expect(thisPc).toContainText('tiny · Q4_0');
   await expect(tiny.getByTestId('local-fit')).toHaveText('Serving · GPU');
   await expect(tiny.locator('.act')).toHaveText('downloaded');
   // the served model is in the GPU bar, beside its KV cache (which the fixture's random file does not let the core estimate)
@@ -161,16 +167,17 @@ test('Models on this PC: its own page; set up the engine, find and download mode
   await expect(server.getByTestId('local-server-stop')).toHaveCount(0);
   await expect(server.getByTestId('local-server-title')).toHaveText('Nothing served');
 
-  // Providers: a settings page again; its line leads here, and the server is a provider tile there
+  await expect(thisPc).toContainText('Stopped');
+
+  // the server is registered as a provider; it is the this-pc row, never a row of its own under Providers
+  const list = page.getByRole('navigation', { name: 'Models and providers' });
+  await expect(list.getByText('Models on this PC', { exact: true })).toHaveCount(1);
+  await expect(list.locator('[data-testid=models-row][data-name="Models on this PC"]')).toHaveCount(0);
+  // the old address of Providers leads here
   await page.goto(at('/providers'));
-  await expect(sidebar(page).getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');
-  await expect(sidebar(page).getByTestId('nav-side-models')).not.toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('local-runtime')).toHaveCount(0);
-  const tile = page.locator('[data-testid=provider-tile][data-name="Models on this PC"]');
-  await expect(tile).toBeVisible();
-  await expect(tile).toContainText('127.0.0.1:9933');
-  await page.getByTestId('local-models-link').getByRole('link', { name: 'Models on this PC' }).click();
   await expect(page).toHaveURL(/\/models(\?|$)/);
+  await expect(sidebar(page).getByTestId('nav-side-models')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('local-runtime')).toBeVisible();
 
   // the choices survive a reload
   await page.reload();
@@ -186,5 +193,6 @@ test('Models on this PC: its own page; set up the engine, find and download mode
   await menu.getByRole('combobox', { name: 'Command' }).fill('models on this pc');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/models(\?|$)/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Models on this PC' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Models' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Models on this PC' })).toBeVisible();
 });
