@@ -1107,7 +1107,7 @@ Open, owner action:
   is because the core has no such data (a diff hunk without context lines) or the app's rules (12 px is the smallest size,
   Ctrl rather than Cmd on Windows, no "/ commands" a chat does not have). Every browser test now fails when a page draws two
   siblings with one key, and a source rule holds every corner to the 14 px radius.
-- **P98. drydock.exe carries its own icon, version information and manifest; signing is prepared and off (2026-10-24, on the
+- **P99. drydock.exe carries its own icon, version information and manifest; signing is prepared and off (2026-10-24, on the
   owner's words: the built exe showed "just a little default window" icon, and "how to make the app more trusted by
   Windows").** The exe embedded no resources at all. (1) Every build (CI's `app` job, `task build:windows`) runs go-winres
   v0.3.3 on `build/windows/winres.json`, which makes `rsrc_windows_amd64.syso` (not committed: a binary that changes with each
