@@ -1,6 +1,10 @@
 package app
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/winident"
@@ -10,6 +14,12 @@ import (
 // the committed resource definition carries the same one (a build given one passes it to both; Taskfile.yml, ci.yml).
 func TestTheResourceDefinitionCarriesTheAppsDefaultVersion(t *testing.T) {
 	d, err := winident.LoadDefinition("..")
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, gerr := os.Stat(filepath.Join("..", "go.mod")); gerr != nil {
+			// the Windows verification bundle runs this binary without the repository around it
+			t.Skip("not in the repository: build/windows/winres.json is not here")
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

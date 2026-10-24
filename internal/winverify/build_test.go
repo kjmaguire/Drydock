@@ -140,8 +140,9 @@ func TestSelectPackagesOnThisRepositoryForWindows(t *testing.T) {
 	if contains(got["internal/core"].RealClaude, "TestRealMCPClientAgainstTheSharedGatewayOverRealData") {
 		t.Error("the real MCP client test uses no Claude: it belongs to the unit tests")
 	}
-	if !contains(untested, "app") || !contains(untested, ".") {
-		t.Errorf("untested %v", untested)
+	// the shell (app) has tests of its window icons on Windows since 2026-10-24 (docs/windows-identity.md); the main package has none
+	if _, ok := got["app"]; !ok || contains(untested, "app") || !contains(untested, ".") {
+		t.Errorf("app selected %v, untested %v", ok, untested)
 	}
 	if sel[0].Path != "internal/proc" || sel[len(sel)-1].Path != "internal/core" {
 		t.Errorf("order: first %s, last %s", sel[0].Path, sel[len(sel)-1].Path)
