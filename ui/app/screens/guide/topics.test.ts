@@ -115,4 +115,15 @@ describe('the Guide content (the UI audit of 2026-10-19)', () => {
     expect(table.table.rows.length).toBe(5);
     expect(JSON.stringify(table.table.rows)).toContain('Commons Clause');
   });
+
+  it('sends people to Integrations to add an MCP server, not to the Library (decision P98)', () => {
+    for (const id of ['integrations', 'github'] as const) {
+      const text = allTexts(guideTopic(id)!).join('\n');
+      expect([id, /MCP server[^.]*Library|Library[^.]*MCP server/.test(text)]).toEqual([id, false]);
+    }
+    const text = allTexts(guideTopic('integrations')!).join('\n');
+    expect(text).toContain('**Add MCP server**');
+    expect(text).toContain('**Your servers**');
+    expect(searchTopics(GUIDE_TOPICS, 'add mcp server')[0]!.topic.id).toBe('integrations');
+  });
 });
