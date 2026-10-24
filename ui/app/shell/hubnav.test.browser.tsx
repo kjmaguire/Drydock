@@ -77,24 +77,18 @@ describe('the hubs', () => {
     expect(i.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it("the Settings rail lists the workspace's pages (with GitHub) and the app's, marking the current one, and nothing of one project", async () => {
-    const r = mount(<SettingsRail route={{ name: 'github' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-github"]')).not.toBeNull(), r);
+  it("the Settings rail lists Routing and the app's pages, marking the current one, and nothing of one project; Agents, Integrations and Models are the sidebar's own (decision P98)", async () => {
+    const r = mount(<SettingsRail route={{ name: 'routing' }} />, svc());
+    await waitFor(() => expect(r.$('[data-testid="nav-routing"]')).not.toBeNull(), r);
     const links = Array.from(r.$$('nav[aria-label="Settings"] a')).map((a) => a.getAttribute('data-testid'));
-    expect(links).toEqual(['nav-integrations', 'nav-connections', 'nav-github', 'nav-providers', 'nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support', 'nav-guide']);
-    expect(r.$('[data-testid="nav-github"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-github"]')!.getAttribute('href')).toBe('/github');
-    expect(r.$('[data-testid="nav-github"]')!.textContent).toBe('GitHub');
+    expect(links).toEqual(['nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support', 'nav-guide']);
+    expect(r.$('[data-testid="nav-routing"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-routing"]')!.getAttribute('href')).toBe('/routing');
     // the project's pages moved to the project's Overview: no "This project" group, even with a project open
     expect(r.$('[data-testid="nav-project"]')).toBeNull();
     expect(r.$('[data-testid="nav-project-integrations"]')).toBeNull();
     expect(Array.from(r.$$('h2')).map((h) => h.textContent)).toEqual(['Workspace', 'App']);
-    // the MCP servers page was merged into Integrations (decision P47): /mcp marks Integrations current, and has no link of its own
-    cleanup();
-    const m = mount(<SettingsRail route={{ name: 'mcp' }} />, svc({ projectList: async () => [] }));
-    await waitFor(() => expect(m.$('[data-testid="nav-integrations"]')!.getAttribute('aria-current')).toBe('page'), m);
-    expect(m.$('[data-testid="nav-project"]')).toBeNull();
-    expect(m.container.querySelector('a[href="/mcp"]')).toBeNull();
+    for (const gone of ['/integrations', '/connections', '/agents', '/github', '/providers', '/models', '/mcp']) expect(r.container.querySelector(`a[href="${gone}"]`)).toBeNull();
   });
 
   it('the Rooms rail names rooms without a "#": an icon, the name, then a quiet unread count read once', async () => {

@@ -195,10 +195,7 @@ export function SettingsRail(handle: Handle<{ route: Route }>) {
     return (
       <nav aria-label="Settings" mix={[railCss, settingsRailCss]}>
         <Group title="Workspace">
-          <RailLink href={routes.integrations.href()} current={at('integrations', 'mcp')} testId="nav-integrations" label="Integrations" />
-          <RailLink href={routes.connections.href()} current={at('connections')} testId="nav-connections" label="Connections" />
-          <RailLink href={routes.github.href()} current={at('github')} testId="nav-github" label="GitHub" />
-          <RailLink href={routes.providers.href()} current={at('providers')} testId="nav-providers" label="Providers" />
+          {/* Agents, Integrations (GitHub among them) and Models are the sidebar's own pages (decision P98) */}
           <RailLink href={routes.routing.href()} current={at('routing')} testId="nav-routing" label="Routing" />
         </Group>
         <Group title="App">

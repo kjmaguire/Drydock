@@ -34,6 +34,8 @@ export type Route =
         | 'security'
         | 'repo-map'
         | WorkspaceRouteName;
+      /** The item a list-and-detail page opens (/integrations/linear, /agents/claude, /models/this-pc). */
+      key?: string;
     }
   | { name: 'not-found' };
 
@@ -45,6 +47,7 @@ export type WorkspaceRouteName =
   | 'library'
   | 'library-skills'
   | 'integrations'
+  | 'agents'
   | 'connections'
   | 'github'
   | 'security-scan'
@@ -67,6 +70,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'library',
   'library-skills',
   'integrations',
+  'agents',
   'connections',
   'github',
   'security-scan',
@@ -130,6 +134,12 @@ export function parseRoute(pathname: string): Route {
       return b && parts.length === 2 ? { name: 'guide', topic: b } : { name: 'not-found' };
     case 'home':
       return parts.length === 1 ? { name: 'workspace' } : { name: 'not-found' };
+    // the list-and-detail pages (decision P98): the page, or one of its items
+    case 'agents':
+    case 'integrations':
+    case 'models':
+      if (parts.length === 1) return { name: a };
+      return b && parts.length === 2 ? { name: a, key: b } : { name: 'not-found' };
     case 'library':
       if (parts.length === 1) return { name: 'library' };
       return b === 'skills' && parts.length === 2 ? { name: 'library-skills' } : { name: 'not-found' };
@@ -185,7 +195,24 @@ export function redirectLegacyHash(loc: Pick<Location, 'hash' | 'search'>, histo
  * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills. The gear
  * holds the workspace's and the app's pages only; Project settings and the project's Integrations are pills of its Overview.
  */
-export type Hub = 'overview' | 'tasks' | 'rooms' | 'crew' | 'knowledge' | 'settings' | 'home' | 'inbox' | 'workspace-crew' | 'chats' | 'library' | 'scan' | 'models' | 'project-new' | 'none';
+export type Hub =
+  | 'overview'
+  | 'tasks'
+  | 'rooms'
+  | 'crew'
+  | 'knowledge'
+  | 'settings'
+  | 'home'
+  | 'inbox'
+  | 'workspace-crew'
+  | 'chats'
+  | 'library'
+  | 'scan'
+  | 'models'
+  | 'agents'
+  | 'integrations'
+  | 'project-new'
+  | 'none';
 
 const HUB_OF: Record<Route['name'], Hub> = {
   home: 'overview',
@@ -216,11 +243,14 @@ const HUB_OF: Record<Route['name'], Hub> = {
   // a project's settings and integrations are the project's own (its Overview hub), not the app's
   project: 'overview',
   'project-integrations': 'overview',
-  integrations: 'settings',
-  mcp: 'settings',
-  connections: 'settings',
-  github: 'settings',
-  providers: 'settings',
+  // the sidebar's own pages (decision P98): each lays out its own list, so none shows the Settings rail; GitHub is one of the
+  // integrations (its row opens its page) and the old addresses belong where they now lead
+  integrations: 'integrations',
+  mcp: 'integrations',
+  github: 'integrations',
+  agents: 'agents',
+  connections: 'agents',
+  providers: 'models',
   routing: 'settings',
   license: 'settings',
   backups: 'settings',
@@ -247,5 +277,16 @@ export function hubOf(r: Route): Hub {
 
 /** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
 export function isWorkspaceHub(h: Hub): boolean {
-  return h === 'home' || h === 'inbox' || h === 'workspace-crew' || h === 'chats' || h === 'library' || h === 'scan' || h === 'models' || h === 'project-new';
+  return (
+    h === 'home' ||
+    h === 'inbox' ||
+    h === 'workspace-crew' ||
+    h === 'chats' ||
+    h === 'library' ||
+    h === 'scan' ||
+    h === 'models' ||
+    h === 'agents' ||
+    h === 'integrations' ||
+    h === 'project-new'
+  );
 }

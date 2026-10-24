@@ -76,27 +76,34 @@ describe('routes', () => {
     expect(isWorkspacePage(parseRoute('/integrations'))).toBe(true);
   });
 
-  it("puts a project's settings and Integrations in its Overview hub, and the GitHub page behind the gear", () => {
+  it("puts a project's settings and Integrations in its Overview hub, and the GitHub page among the Integrations (decision P98)", () => {
     expect(hubOf({ name: 'project' })).toBe('overview');
     expect(hubOf({ name: 'project-integrations' })).toBe('overview');
     expect(routes.github.href()).toBe('/github');
     expect(parseRoute('/github')).toEqual({ name: 'github' });
     expect(parseRoute('/github/x')).toEqual({ name: 'not-found' });
-    expect(hubOf({ name: 'github' })).toBe('settings');
-    // the page is the workspace's: it opens without a project, like Connections
+    expect(hubOf({ name: 'github' })).toBe('integrations');
+    // the page is the workspace's: it opens without a project, like Agents
     expect(isWorkspaceRoute({ name: 'github' })).toBe(true);
     expect(isWorkspacePage(parseRoute('/github'))).toBe(true);
   });
 
-  it('has Models on this PC as a workspace page of its own, in its own hub (no Settings rail, no project in the sidebar; decision P97)', () => {
-    expect(routes.models.href()).toBe('/models');
-    expect(parseRoute('/models')).toEqual({ name: 'models' });
-    expect(parseRoute('/models/x')).toEqual({ name: 'not-found' });
-    expect(isWorkspaceRoute({ name: 'models' })).toBe(true);
-    expect(isWorkspacePage(parseRoute('/models'))).toBe(true);
-    expect(hubOf({ name: 'models' })).toBe('models');
-    expect(isWorkspaceHub(hubOf({ name: 'models' }))).toBe(true);
-    expect(hubOf({ name: 'providers' })).toBe('settings');
+  it('has Agents, Integrations and Models as the sidebar\'s own list-and-detail pages, each opening one item by its key (decision P98)', () => {
+    for (const [name, href] of [['agents', routes.agents], ['integrations', routes.integrations], ['models', routes.models]] as const) {
+      expect(href.href()).toBe(`/${name}`);
+      expect(href.href({ key: 'x y' })).toBe(`/${name}/x%20y`);
+      expect(parseRoute(`/${name}`)).toEqual({ name });
+      expect(parseRoute(`/${name}/x%20y`)).toEqual({ name, key: 'x y' });
+      expect(parseRoute(`/${name}/x/y`)).toEqual({ name: 'not-found' });
+      expect(isWorkspaceRoute({ name })).toBe(true);
+      expect(isWorkspacePage(parseRoute(`/${name}`))).toBe(true);
+      expect(hubOf({ name })).toBe(name);
+      expect(isWorkspaceHub(hubOf({ name }))).toBe(true);
+    }
+    // the old addresses belong where they now lead: Connections to Agents, Providers to Models, /mcp to Integrations
+    expect(hubOf({ name: 'connections' })).toBe('agents');
+    expect(hubOf({ name: 'providers' })).toBe('models');
+    expect(hubOf({ name: 'mcp' })).toBe('integrations');
   });
 
   it('has a workspace Security scan of any folder, beside the project\'s own Security page (decision P61)', () => {

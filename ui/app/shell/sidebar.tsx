@@ -7,7 +7,9 @@
 
 import { css, on, type Handle } from 'remix/component';
 import {
+  Blocks,
   BookOpen,
+  Bot,
   CircleHelp,
   ClipboardList,
   Clock,
@@ -19,7 +21,6 @@ import {
   MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  PlugZap,
   Search,
   Settings,
   ShieldCheck,
@@ -398,14 +399,15 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
           <ul mix={listCss} role="list" aria-label="Workspace">
             {link({ id: 'nav-crew', label: 'Crew', icon: Users, href: routes.crew.href(), current: route.name === 'crew' })}
             {link({ id: 'nav-security-scan', label: 'Security', icon: ShieldCheck, href: routes.securityScan.href(), current: is('scan') })}
-            {link({ id: 'nav-side-connections', label: 'Connections', icon: PlugZap, href: routes.connections.href(), current: route.name === 'connections' })}
-            {link({ id: 'nav-side-models', label: 'Models on this PC', icon: Cpu, href: routes.models.href(), current: is('models') })}
+            {link({ id: 'nav-side-agents', label: 'Agents', icon: Bot, href: routes.agents.href(), current: is('agents') })}
+            {link({ id: 'nav-side-integrations', label: 'Integrations', icon: Blocks, href: routes.integrations.href(), current: is('integrations') })}
+            {link({ id: 'nav-side-models', label: 'Models', icon: Cpu, href: routes.models.href(), current: is('models') })}
             {link({ id: 'nav-library', label: 'Library', icon: Library, href: routes.library.href(), current: is('library') })}
           </ul>
           </div>
         <div mix={footCss}>
           <ul mix={listCss} role="list" aria-label="App">
-            {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: hub === 'settings' && route.name !== 'guide' && route.name !== 'connections' })}
+            {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: hub === 'settings' })}
             {link({ id: 'nav-guide-top', label: 'Guide', icon: CircleHelp, href: routes.guide.href(), current: route.name === 'guide' })}
           </ul>
           {eng ? (

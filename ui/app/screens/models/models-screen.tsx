@@ -243,7 +243,7 @@ function MemoryBar(handle: Handle<{ name: string; title?: string; bar: Bar; lege
   };
 }
 
-export function ModelsScreen(handle: Handle<{ /** "now" for the Started line (tests). */ now?: number }>) {
+export function ModelsScreen(handle: Handle<{ /** "now" for the Started line (tests). */ now?: number; /** The item to open (/models/<key>). */ initial?: string }>) {
   const s = services(handle);
   const q = query(handle, {
     load: () => s.client.localGet(),
