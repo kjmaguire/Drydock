@@ -191,6 +191,8 @@ describe('agents helpers', () => {
     // a distro without Windows interop: Drydock's tools cannot reach an agent there
     const off = { distro: 'Ubuntu', wsl2: true, interop: false, setsid: true };
     expect(agentNotice({ ...inWSL, status: 'degraded', reason: 'wsl_setup', usable: false, wsl: off })).toMatchObject({ text: "Windows interop is off in Ubuntu: Drydock's tools cannot reach an agent there.", fix: 'check' });
+    const how = "Windows interop is off in this distro, so Drydock's tools cannot reach an agent here: set [interop] enabled=true in /etc/wsl.conf, then wsl --terminate Ubuntu";
+    expect(agentNotice({ ...inWSL, status: 'degraded', reason: 'wsl_setup', usable: false, wsl: off, problems: [how] })).toMatchObject({ text: `${how}.`, from: how });
   });
 
   it('the MCP gateway: verified and always on, allowed, off until allowed, not available with the reason', () => {

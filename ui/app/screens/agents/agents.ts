@@ -200,7 +200,9 @@ export function agentNotice(c: Connection): AgentNotice | undefined {
         return { tone: 'err', text: sentence(from ?? `${name} ${c.version ?? ''} is not a version Drydock supports.`), fix: 'install', label: 'How to update', from };
       }
       if (c.reason === 'wsl_setup' && c.wsl && !c.wsl.interop) {
-        return { tone: 'err', text: `Windows interop is off in ${c.distro ?? 'the distro'}: Drydock's tools cannot reach an agent there.`, fix: 'check', label: 'Check again' };
+        // the core's line says how to turn it on
+        const from = firstProblem(c, 'interop');
+        return { tone: 'err', text: sentence(from ?? `Windows interop is off in ${c.distro ?? 'the distro'}: Drydock's tools cannot reach an agent there.`), fix: 'check', label: 'Check again', from };
       }
       const from = firstProblem(c);
       return { tone: 'err', text: sentence(from ?? `${name} cannot be used yet.`), fix: 'check', label: 'Check again', from };

@@ -91,7 +91,14 @@ const panelCss = css({ display: 'grid', gap: t.s5, paddingTop: t.s4, minWidth: '
 const quietP = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
 const signedInCss = css({ display: 'inline-flex', gap: '6px', alignItems: 'center', color: tone.ok.fg });
 const runsCss = css({ display: 'inline-flex', alignItems: 'center', gap: t.s2 });
-const whoCss = css({ display: 'inline-flex', alignItems: 'center', gap: t.s2, minWidth: '0', '& a': { color: t.text, fontWeight: '500', textDecoration: 'none' }, '& a:hover': { textDecoration: 'underline' } });
+const whoCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: t.s2,
+  minWidth: '0',
+  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', color: t.text, fontWeight: '500', textDecoration: 'none' },
+  '& a:hover': { textDecoration: 'underline' },
+});
 const noteListCss = css({ margin: '0', padding: `${t.s2} ${t.s4}`, listStyle: 'none', display: 'grid', gap: t.s2, fontSize: t.textMd });
 const flushList = css({ padding: '0' });
 const detailCss = css({ display: 'grid', gap: t.s4, minWidth: '0' });
