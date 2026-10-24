@@ -1,27 +1,10 @@
-// Display parts of the Providers screen: health, the price source, the model catalog and a probe result.
+// Display parts of a provider's detail: the price source and a probe result.
 
 import { css, type Handle } from 'remix/component';
 import type { ProbeResult, ProviderModel } from '../../api/types.ts';
 import { Badge, muted } from '../../ui/data.tsx';
-import { tableCard } from '../../ui/layout.tsx';
-import { t, tone } from '../../ui/tokens.ts';
-import { healthTone, PRICE_HINT, priceKnown, priceText, priceTone, probeDetail, probeLabel } from './providers.ts';
-
-const dotCss = css({ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', flex: 'none' });
-
-/** Health from the last probe: a dot plus the word (never color alone). */
-export function HealthBadge(handle: Handle<{ status: string }>) {
-  return () => {
-    const word = handle.props.status || 'unknown';
-    const tn = healthTone(word);
-    return (
-      <Badge tone={tn} title="Health from the last probe">
-        <span mix={dotCss} aria-hidden="true" style={{ background: tone[tn].fg }} />
-        {word}
-      </Badge>
-    );
-  };
-}
+import { t } from '../../ui/tokens.ts';
+import { PRICE_HINT, priceKnown, priceTone, probeDetail, probeLabel } from './providers.ts';
 
 export function PriceSourceBadge(handle: Handle<{ m: ProviderModel }>) {
   return () => {
@@ -31,49 +14,6 @@ export function PriceSourceBadge(handle: Handle<{ m: ProviderModel }>) {
       <Badge tone={priceTone(m.priceSource)} title={PRICE_HINT[m.priceSource] ?? 'Source of the price'}>
         {m.priceSource || 'unknown'}
       </Badge>
-    );
-  };
-}
-
-const numCell = css({ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' });
-
-export function ModelTable(handle: Handle<{ models: ProviderModel[] }>) {
-  return () => {
-    const models = handle.props.models;
-    if (models.length === 0) return <p mix={muted}>No models in the catalog. Run Test to fetch the model list.</p>;
-    return (
-      <div mix={tableCard}>
-        <table aria-label="Model catalog">
-          <thead>
-            <tr>
-              <th scope="col">Model</th>
-              <th scope="col">Context</th>
-              <th scope="col">Tools</th>
-              <th scope="col">In / M</th>
-              <th scope="col">Out / M</th>
-              <th scope="col">Price source</th>
-              <th scope="col">Probe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((m) => (
-              <tr key={m.id} data-testid="model">
-                <td>
-                  <code>{m.id}</code>
-                </td>
-                <td mix={numCell}>{m.contextLength > 0 ? m.contextLength.toLocaleString() : 'not reported'}</td>
-                <td>{m.supportsTools ? 'yes' : 'not verified'}</td>
-                <td mix={numCell}>{priceText(m, 'in')}</td>
-                <td mix={numCell}>{priceText(m, 'out')}</td>
-                <td>
-                  <PriceSourceBadge m={m} />
-                </td>
-                <td>{m.probeStatus || 'not probed'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     );
   };
 }

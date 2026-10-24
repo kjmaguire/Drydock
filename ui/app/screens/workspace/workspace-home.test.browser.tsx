@@ -69,7 +69,7 @@ describe('the workspace Home', () => {
     const hrefs = Array.from(r.$$('[data-testid^="home-"]'))
       .map((e) => e.getAttribute('href'))
       .filter(Boolean);
-    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/security-scan', '/providers', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
+    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/security-scan', '/models', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
       expect([h, hrefs.includes(h)]).toEqual([h, true]);
     }
     expect(r.$('[data-testid="home-skills"]')!.textContent).toContain('Skills');

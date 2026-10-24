@@ -2,9 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { ProbeResult, ProviderModel } from '../../api/types.ts';
 import {
-  ADD_PROVIDER,
   avoidedEndpointText,
-  defaultProvider,
   emptyProviderForm,
   healthTone,
   isZeroTime,
@@ -13,10 +11,13 @@ import {
   priceText,
   probeDetail,
   probeLabel,
-  providerBlurb,
+  listedProviders,
+  nextAfterRemoval,
   providerBrand,
+  providerHeadSub,
   providerHost,
-  providerState,
+  providerRowSub,
+  providerStatus,
   quotaFraction,
   rawPrice,
   uptimeThreshold,
@@ -92,7 +93,7 @@ describe('provider helpers', () => {
   });
 });
 
-describe('provider tiles', () => {
+describe('provider rows', () => {
   it('the logo is looked up by the API host, else the detected flavor', () => {
     expect(providerBrand({ baseUrl: 'https://openrouter.ai/api/v1', flavor: 'openai' })).toBe('openrouter');
     expect(providerBrand({ baseUrl: 'https://api.anthropic.com/v1', flavor: '' })).toBe('anthropic');
@@ -109,20 +110,26 @@ describe('provider tiles', () => {
   it('what it is and its state, with a tone', () => {
     expect(providerHost('http://127.0.0.1:9/v1')).toBe('127.0.0.1:9');
     expect(providerHost('nonsense')).toBe('nonsense');
-    expect(providerBlurb({ kind: 'aggregator', baseUrl: 'https://openrouter.ai/api/v1' })).toBe('Aggregator, openrouter.ai');
-    expect(providerBlurb({ kind: 'direct', baseUrl: 'https://api.anthropic.com' })).toBe('Vendor API, api.anthropic.com');
-    expect(providerBlurb({ kind: 'host', baseUrl: 'http://127.0.0.1:9/v1' })).toBe('Your server, 127.0.0.1:9');
-    expect(providerState({ enabled: true, status: 'up' })).toEqual({ text: 'Up', tone: 'ok' });
-    expect(providerState({ enabled: true, status: 'down' })).toEqual({ text: 'Down', tone: 'bad' });
-    expect(providerState({ enabled: true, status: 'unknown' })).toEqual({ text: 'Not checked yet', tone: 'warn' });
-    expect(providerState({ enabled: false, status: 'down' })).toEqual({ text: 'Disabled', tone: '' });
+    expect(providerHeadSub({ kind: 'aggregator', baseUrl: 'https://openrouter.ai/api/v1' })).toBe('Aggregator · openrouter.ai');
+    expect(providerHeadSub({ kind: 'direct', baseUrl: 'https://api.anthropic.com' })).toBe('Vendor API · api.anthropic.com');
+    expect(providerHeadSub({ kind: 'host', baseUrl: 'http://127.0.0.1:9/v1' })).toBe('Your server · 127.0.0.1:9');
+    expect(providerRowSub({ kind: 'aggregator', tier: 'cheap' })).toBe('Aggregator · cheap');
+    expect(providerRowSub({ kind: 'other', tier: 'free' })).toBe('other · free');
+    expect(providerStatus({ enabled: true, status: 'up' })).toEqual({ text: 'Up', tone: 'ok' });
+    expect(providerStatus({ enabled: true, status: 'down' })).toEqual({ text: 'Down', tone: 'err' });
+    expect(providerStatus({ enabled: true, status: 'unknown' })).toEqual({ text: 'Not checked', tone: 'muted' });
+    expect(providerStatus({ enabled: false, status: 'down' })).toEqual({ text: 'Disabled', tone: 'muted' });
   });
 
-  it('opens the first enabled provider that is down, else the first, else the add form', () => {
-    const p = (id: string, status: string, enabled = true) => ({ id, status, enabled });
-    expect(defaultProvider([p('a', 'up'), p('b', 'down', false), p('c', 'down')])).toBe('c');
-    expect(defaultProvider([p('a', 'unknown'), p('b', 'up')])).toBe('a');
-    expect(defaultProvider([])).toBe(ADD_PROVIDER);
+  it('leaves out the server of Models on this PC, and a removed provider gives way to the next, else the one before', () => {
+    const list = [{ id: 'a' }, { id: 'local' }, { id: 'b' }];
+    expect(listedProviders(list, 'local').map((p) => p.id)).toEqual(['a', 'b']);
+    expect(listedProviders(list, '').map((p) => p.id)).toEqual(['a', 'local', 'b']);
+    expect(listedProviders(list, undefined).length).toBe(3);
+    expect(nextAfterRemoval([{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'b', 'this-pc')).toBe('c');
+    expect(nextAfterRemoval([{ id: 'a' }, { id: 'b' }], 'b', 'this-pc')).toBe('a');
+    expect(nextAfterRemoval([{ id: 'a' }], 'a', 'this-pc')).toBe('this-pc');
+    expect(nextAfterRemoval([{ id: 'a' }], 'gone', 'this-pc')).toBe('this-pc');
   });
 });
 

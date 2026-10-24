@@ -48,8 +48,10 @@ app/
                       window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
                       hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
                       page), Skills & tools, Memory and History); the inspector stays in the details panel
-  screens/models/     Models on this PC (/models, a workspace page): the Serving card, Memory (each GPU split into the model and its
-                      KV cache, the RAM), Engine, the model table with the Hub search ("/"), the server settings (helpers in models.ts)
+  screens/models/     Models (/models(/:key), a workspace page, P98): the list (On this PC, then the providers and Add a provider) and
+                      the chosen row's detail; this-pc.tsx is Models on this PC: Server, Memory (each GPU split into the model and its
+                      KV cache, the RAM), Engine, the model table with the Hub search ("/"), the server settings (helpers in models.ts);
+                      a provider's detail, the add form and their helpers are in screens/providers/
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog (Ctrl+N), a chat's
                       properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals), a waiting
                       request as an inline card (chat-asks.tsx), Move to a project (chat-move.tsx)
