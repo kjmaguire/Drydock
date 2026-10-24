@@ -59,6 +59,10 @@ describe('command palette items', () => {
     expect(items.find((i) => i.label === 'Integrations')!.href).toBe('/integrations');
     expect(filterItems(items, 'project integrations')[0]!.label).toBe('Project integrations');
     expect(filterItems(items, 'approvals').map((i) => i.label)).toContain('Project integrations');
+    // the Library keeps the agent templates; the MCP servers you add are on Integrations (decision P98)
+    expect(items.find((i) => i.label === 'Library: agent templates')!.href).toBe('/library');
+    expect(items.map((i) => i.label)).not.toContain('Library: agents and MCP servers');
+    expect(filterItems(items, 'templates')[0]!.label).toBe('Library: agent templates');
   });
 
   it('offers the GitHub settings page, found by "gh" and by what it holds', () => {

@@ -78,7 +78,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.securityScan.href(), 'Security scan of any repository', ['scan', 'audit', 'repository', 'download', 'import', 'secrets', 'vulnerabilities']],
   [routes.project.href(), 'Project settings'],
   [routes.projectIntegrations.href(), 'Project integrations', ['mcp servers', 'grants', 'approvals', 'app sync', 'assignments']],
-  [routes.library.href(), 'Library: agents and MCP servers', ['templates', 'prebuilt']],
+  [routes.library.href(), 'Library: agent templates', ['templates', 'prebuilt', 'agents']],
   [routes.integrations.href(), 'Integrations', ['mcp', 'connectors', 'agent tools', 'servers', 'linear', 'notion', 'sentry', 'aikido']],
   [routes.agents.href(), 'Agents', ['connections', 'agent cli', 'claude code', 'codex', 'gemini', 'sign in', 'wsl', 'mcp gateway']],
   [routes.github.href(), 'GitHub', ['gh', 'sign-in', 'pull requests', 'runners', 'repository', 'repositories', 'ci']],

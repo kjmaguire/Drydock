@@ -63,7 +63,7 @@ describe('the workspace Home', () => {
     expect(navigated).toEqual(['/']);
   });
 
-  it('links every workspace area: the skill library, agents and MCP servers, chats, connections and the app', async () => {
+  it('links every workspace area: the skill library, agent templates, chats, connections and the app', async () => {
     const { r } = show();
     await waitFor(() => expect(r.$('[data-testid="home-skills"]')).not.toBeNull(), r);
     const hrefs = Array.from(r.$$('[data-testid^="home-"]'))

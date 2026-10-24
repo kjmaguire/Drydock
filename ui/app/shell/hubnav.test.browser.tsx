@@ -46,6 +46,8 @@ describe('the hubs', () => {
     const l = mount(<SubNav route={{ name: 'library-skills' }} />);
     expect(Array.from(l.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-library-home', 'nav-library-skills']);
     expect(l.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
+    // the Library keeps the agent templates; its MCP servers moved to Integrations (decision P98)
+    expect(l.$('[data-testid="nav-library-home"]')!.textContent).toBe('Agent templates');
     cleanup();
     expect(mount(<SubNav route={{ name: 'team' }} />).$('nav')).toBeNull();
     cleanup();

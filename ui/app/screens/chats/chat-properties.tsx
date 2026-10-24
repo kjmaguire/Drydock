@@ -139,12 +139,12 @@ export function ServerPicker(
     return (
       <fieldset mix={groupCss} data-testid="chat-mcp-picker">
         <legend>MCP servers</legend>
-        <p mix={hintCss}>Connected once in the Library. The agent reaches a server through Drydock's gateway; a tool you did not mark read-only asks you first.</p>
+        <p mix={hintCss}>Connected once on the Integrations page. The agent reaches a server through Drydock's gateway; a tool you did not mark read-only asks you first.</p>
         <ErrorNote error={error} what="Could not read the MCP servers" />
         {loading && !servers ? <Loading label="Reading the MCP servers..." /> : null}
         {servers && servers.length === 0 ? (
           <p mix={hintCss}>
-            No MCP server is connected yet: <a href={routes.library.href()}>connect one in the Library</a>.
+            No MCP server is connected yet: <a href={routes.integrations.href()}>connect one on the Integrations page</a>.
           </p>
         ) : null}
         {servers?.length || missing.length ? (

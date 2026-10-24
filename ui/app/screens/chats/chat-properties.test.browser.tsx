@@ -233,6 +233,17 @@ describe('Chat properties (decision P60)', () => {
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', cwd: 'C:\\missing' }, { id: 'chat_a', cwd: '' }]), r);
   });
 
+  it('with no MCP server connected, points to the Integrations page, where servers are connected (decision P98)', async () => {
+    const c = chat();
+    const { r } = setup({ mcpLibList: async () => [], chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: [], hasMore: false }) }, { id: 'chat_a' });
+    const dlg = await openProperties(r);
+    const picker = await waitFor(() => must(dlg.querySelector<HTMLElement>('[data-testid="chat-mcp-picker"]'), 'picker'), r);
+    await waitFor(() => expect(picker.textContent).toContain('No MCP server is connected yet'), r);
+    expect(picker.querySelector('a')!.getAttribute('href')).toBe('/integrations');
+    expect(picker.textContent).toContain('Connected once on the Integrations page.');
+    expect(picker.textContent).not.toContain('Library');
+  });
+
   it("a project chat's folder is the project's, shown read-only, and nothing changed sends nothing", async () => {
     const updates: ChatUpdate[] = [];
     const c = chat();
