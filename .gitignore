@@ -47,6 +47,9 @@ go.work.sum
 # Build outputs of the Taskfile (drydock-dev, drydock.exe, the egress proxies)
 /bin/
 
+# drydock.exe's Windows resources, made by go-winres from build/windows/winres.json at every build (docs/windows-identity.md)
+/rsrc_windows_*.syso
+
 # Windows test builds (zip handed out, never committed)
 dist-windows/
 
