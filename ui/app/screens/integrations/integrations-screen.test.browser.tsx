@@ -177,14 +177,17 @@ describe('Integrations: the list', () => {
   it('choosing a row opens its detail and puts it in the address; the address opens a row, and the page follows when it changes', async () => {
     const r = show({ integrationList: async () => [conn()], mcpGallery: async () => [galleryCard({ id: 'cfdocs', display: 'Cloudflare Documentation', publisher: 'Cloudflare', brand: 'cloudflare', group: 'Cloudflare' })] });
     await open(r, 'linear');
-    expect(r.went).toEqual([]); // already the chosen one
+    // shown first while nothing was chosen; clicked, it is the chosen one, in the address
+    expect(r.went).toEqual(['/integrations/linear']);
+    await open(r, 'linear');
+    expect(r.went).toEqual(['/integrations/linear']); // once
     const cf = await row(r, 'cloudflare');
     await r.act(() => cf.click());
     const panel = await find(r, '[data-testid="integration-panel"][data-kind="cloudflare"]');
     expect(panel.querySelector('h2')!.textContent).toBe('Cloudflare');
     expect(r.$$('[data-testid="integration-panel"]').length).toBe(1);
     expect(cf.getAttribute('aria-current')).toBe('true');
-    expect(r.went).toEqual(['/integrations/cloudflare']);
+    expect(r.went).toEqual(['/integrations/linear', '/integrations/cloudflare']);
     // the arrow keys move through the rows (the GitHub link is skipped) and the address follows
     await r.act(() => cf.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })));
     await waitFor(() => expect(r.went.at(-1)).toBe('/integrations/aikido'), r);

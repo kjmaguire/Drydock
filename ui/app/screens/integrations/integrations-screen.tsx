@@ -71,8 +71,6 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
   // the registries are read once, and only when a vendor on the page publishes some
   const regs = query(handle, { load: () => s.client.skillRegistries(), enabled: () => (gallery.data ?? []).some((c) => (c.skillRegistries ?? []).length > 0) });
   let selected = handle.props.initial ?? '';
-  // the row whose detail shows: the chosen one, else the first (drawn, not put in the address)
-  let showing = selected;
   let seenInitial = handle.props.initial;
   let filter = 'all';
   let adding = false;
@@ -84,7 +82,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
   const go = (href: string) => (handle.props.go ? handle.props.go(href) : void navigate(href, { history: 'replace' }));
   const open: Open = (href) => (handle.props.open ? handle.props.open(href) : void navigate(href));
   const choose = (key: string) => {
-    if (key === showing) return;
+    // the row already in the address; the first row, shown while nothing is chosen, goes into the address when it is clicked
+    if (key === selected) return;
     set(() => ((selected = key), (note = '')));
     go(routes.integrations.href({ key }));
   };
@@ -163,8 +162,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     ];
     // nothing chosen yet: the first row that has a detail here (not GitHub, whose row opens its page)
     const firstKey = rows.find((r) => !r.item.href)?.item.key ?? '';
+    // the row whose detail shows: the chosen one, else the first (drawn, not put in the address)
     const key = selected || firstKey;
-    showing = key;
     const serverId = serverIdOf(key);
     const vendor = serverId ? undefined : all.find((v) => v.key === key);
     const server = serverId ? servers.find((x) => x.id === serverId) : undefined;

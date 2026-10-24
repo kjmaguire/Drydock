@@ -623,7 +623,6 @@ function ConnectedService(
     onChanged: () => void;
     onKindsChanged?: () => void;
     open: Open;
-    children?: RemixNode;
   }>,
 ) {
   const s = services(handle);
@@ -643,7 +642,7 @@ function ConnectedService(
   };
 
   return () => {
-    const { kind, info, conn, report, onReport, onChanged, onKindsChanged, children } = handle.props;
+    const { kind, info, conn, report, onReport, onChanged, onKindsChanged } = handle.props;
     const label = info?.label ?? kind.label;
     const id = conn.identity ?? {};
     const assignments = conn.assignments ?? [];
@@ -729,7 +728,7 @@ function ConnectedService(
         ) : null}
         <SettingsGroup title="Connection" testId="connection-identity">
           {conn.statusDetail ? <SettingRow label="State">{conn.statusDetail}</SettingRow> : null}
-          <SettingRow label="Account">{id.account || notReported}</SettingRow>
+          {/* what the API reported, never typed: the workspace and who the credential is, one line */}
           <SettingRow label="Workspace">
             {workspaceHref ? (
               <a href={workspaceHref} target="_blank" rel="noopener noreferrer" data-rmx-document>
@@ -738,12 +737,16 @@ function ConnectedService(
             ) : (
               id.workspace || notReported
             )}
+            <span mix={muted}> · {id.account ? `read as ${id.account}` : `account ${notReported}`}</span>
           </SettingRow>
-          <SettingRow label="Connected with">{id.method || conn.authKind}</SettingRow>
-          <SettingRow label="Scopes">{(id.scopes ?? []).length > 0 ? (id.scopes ?? []).join(', ') : 'not reported by the API'}</SettingRow>
-          <SettingRow label="Credential">
-            {conn.kind === 'github' && conn.authKind === 'gh' ? 'your gh sign-in (this connection stores no GitHub token)' : conn.hasCredential ? 'stored in the credential store (never shown)' : 'none'}
+          <SettingRow label="Signed in with">
+            {id.method || conn.authKind}
+            <span mix={muted}>
+              {' · '}
+              {conn.kind === 'github' && conn.authKind === 'gh' ? 'your gh sign-in (this connection stores no GitHub token)' : conn.hasCredential ? 'stored in the credential store (never shown)' : 'no credential'}
+            </span>
           </SettingRow>
+          {(id.scopes ?? []).length > 0 ? <SettingRow label="Scopes">{(id.scopes ?? []).join(', ')}</SettingRow> : null}
           <SettingRow label="Imports">{cap(info?.items ?? 'items')}, as untrusted text you review</SettingRow>
           {ops.length > 0 ? <SettingRow label="Writes back">{ops.map((o) => o.label).join(', ')}: each after you approve it</SettingRow> : null}
         </SettingsGroup>
@@ -861,7 +864,6 @@ function ConnectedService(
           {assignments.length === 0 ? 'Not assigned to a project yet.' : `Assigned to ${plural(assignments.length, 'project')}.`} What each project imports is chosen on its own Integrations
           page.
         </p>
-        {children}
         <ApiFacts label={label} info={info} conn={conn} />
       </>
     );
@@ -869,8 +871,8 @@ function ConnectedService(
 }
 
 /**
- * One service, as the list's detail: the setup while it is not connected, the connection's rows once it is. `children` go under
- * the projects (the vendor's agent tools and skills).
+ * One service, as the list's detail: the setup while it is not connected, the connection's rows once it is. `children` follow
+ * the service's own part (the vendor's agent tools and skills), outside it: its controls are the connection's only.
  */
 export function ServiceView(
   handle: Handle<{
@@ -894,20 +896,20 @@ export function ServiceView(
     const { kind, info, conn, hasAgentTools, onChanged, onKindsChanged, open, children } = handle.props;
     const label = info?.label ?? kind.label;
     return (
-      <article mix={detailCss} data-testid="integration" data-kind={kind.kind} data-name={label} data-connected={String(!!conn)}>
-        {conn ? (
-          <ConnectedService key={conn.id} kind={kind} info={info} conn={conn} report={report} onReport={setReport} onChanged={onChanged} onKindsChanged={onKindsChanged} open={open}>
-            {children}
-          </ConnectedService>
-        ) : (
-          <>
-            <SetupFlow kind={kind} info={info} hasAgentTools={hasAgentTools} onConnected={(r) => (setReport(r), onChanged())} onKindsChanged={onKindsChanged} />
-            {report ? <ReportView r={report} /> : null}
-            {children}
-            <ApiFacts label={label} info={info} />
-          </>
-        )}
-      </article>
+      <>
+        <article mix={detailCss} data-testid="integration" data-kind={kind.kind} data-name={label} data-connected={String(!!conn)}>
+          {conn ? (
+            <ConnectedService key={conn.id} kind={kind} info={info} conn={conn} report={report} onReport={setReport} onChanged={onChanged} onKindsChanged={onKindsChanged} open={open} />
+          ) : (
+            <>
+              <SetupFlow kind={kind} info={info} hasAgentTools={hasAgentTools} onConnected={(r) => (setReport(r), onChanged())} onKindsChanged={onKindsChanged} />
+              {report ? <ReportView r={report} /> : null}
+              <ApiFacts label={label} info={info} />
+            </>
+          )}
+        </article>
+        {children}
+      </>
     );
   };
 }
