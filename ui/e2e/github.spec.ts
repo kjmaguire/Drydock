@@ -70,4 +70,13 @@ test('GitHub: one settings page with the gh sign-in, access, the repositories an
   await openGitHub(page);
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Integrations' }).click();
   await expect(page).toHaveURL(/\/integrations$/);
+
+  // the Integrations page keeps GitHub as a row of its list, a link to this page (decision P98); its detail there points here too
+  await workspaceNav(page, 'nav-integrations');
+  await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-kind="github"]').click();
+  await expect(page).toHaveURL(/\/github$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'GitHub' })).toBeVisible();
+  await page.goto(new URL('/integrations/github', page.url()).toString());
+  await page.getByTestId('github-page-link').click();
+  await expect(page).toHaveURL(/\/github$/);
 });

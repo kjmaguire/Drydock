@@ -84,7 +84,7 @@ const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
     { label: 'Repo map', href: routes.repoMap.href(), testId: 'nav-repo-map', on: ['repo-map'] },
   ],
   library: [
-    { label: 'Agents and MCP servers', href: routes.library.href(), testId: 'nav-library-home', on: ['library'] },
+    { label: 'Agent templates', href: routes.library.href(), testId: 'nav-library-home', on: ['library'] },
     { label: 'Skills', href: routes.librarySkills.href(), testId: 'nav-library-skills', on: ['library-skills'] },
   ],
 };

@@ -1,6 +1,7 @@
-// Pure helpers of the Integrations screen: the services (before the core's catalog arrives), the vendor tiles the page shows
-// (an integration kind, the MCP connector cards of the same brand, or both), the tones of the status badges, the parameter text
-// of an outbound write, the sentence a sync result becomes, and how a connection and an assignment are described in a line.
+// Pure helpers of the Integrations screen: the services (before the core's catalog arrives), the vendors the page lists (an
+// integration kind, the MCP connector cards of the same brand, or both), the state of each row in a word (On, Set up, or what
+// needs the person) and the filters that count them, the tones of the status badges, the parameter text of an outbound write,
+// the sentence a sync result becomes, and how a connection and an assignment are described in a line.
 
 import { isRecord } from '../../api/guards.ts';
 import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
@@ -136,61 +137,132 @@ export function vendors(kinds: readonly ServiceKind[], cards: readonly McpGaller
   return out;
 }
 
-/** The app-sync half of a tile's state line. */
-export function syncStateText(c: IntegrationView | undefined): string {
-  if (!c) return 'not connected';
-  const account = c.identity?.account?.trim();
-  if (account) return `connected as ${account}`;
-  return c.status === 'ok' ? 'connected' : c.status === 'untested' ? 'connected, not checked yet' : `connected (${c.status})`;
-}
-
-const CARD_STATE: Record<string, string> = { connected: 'connected', needs_sign_in: 'needs sign-in', needs_token: 'needs a token', error: 'error', not_connected: 'not connected' };
-const CARD_RANK = ['error', 'needs_token', 'needs_sign_in', 'not_connected'];
-
-/** The agent-tools half of a tile's state line: one card's state, or how many of several are connected and what the rest need. */
-export function agentsStateText(cards: readonly McpGalleryCard[]): string {
-  if (cards.length === 0) return '';
-  const connected = cards.filter((c) => c.status === 'connected').length;
-  if (connected === cards.length) return 'connected';
-  const rest: string[] = cards.filter((c) => c.status !== 'connected').map((c) => c.status);
-  const worst = CARD_RANK.find((st) => rest.includes(st)) ?? rest[0] ?? 'not_connected';
-  const word = CARD_STATE[worst] ?? worst;
-  return connected === 0 ? word : `${connected} of ${cards.length} connected, ${cards.length - connected} ${word}`;
-}
-
-/** The tile's state line: both channels where the vendor has them ("Sync: connected as kyle · Agents: needs a token"); empty when nothing is connected. */
-export function vendorStateText(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): string {
-  // nothing is connected on any channel: the badge says "not connected" already, a line repeating it adds nothing
-  if (!conn && v.cards.every((c) => c.status === 'not_connected')) return '';
-  const parts: string[] = [];
-  if (v.kind) parts.push(`Sync: ${syncStateText(conn)}`);
-  if (v.cards.length > 0) parts.push(`Agents: ${agentsStateText(v.cards)}`);
-  return parts.join(' · ');
-}
-
-/**
- * The tile's state badge, one word or two (P59): whether app sync was verified against the person's account, works, or needs
- * them; for a vendor with only agent tools, whether its servers are connected.
- */
-export function vendorBadge(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): TileBadge {
-  const needsHuman = v.cards.some((c) => c.status === 'error' || c.status === 'needs_token' || c.status === 'needs_sign_in');
-  if (conn) {
-    if (conn.status !== 'ok' && conn.status !== 'untested') return { text: 'needs attention', tone: 'warn' };
-    if (conn.verified && !conn.verified.ok) return { text: 'check failed', tone: 'err' };
-    if (conn.verified?.ok) return { text: 'verified', tone: 'ok' };
-    return conn.status === 'ok' ? { text: 'connected', tone: 'ok' } : { text: 'not checked', tone: 'muted' };
-  }
-  if (needsHuman) return { text: 'needs attention', tone: 'warn' };
-  if (v.cards.some((c) => c.status === 'connected')) return { text: 'connected', tone: 'ok' };
-  return { text: 'not connected', tone: 'muted' };
-}
-
 /** The line under a connection that says when it was last checked against the person's account (P59). */
 export function verifiedText(conn: Pick<IntegrationView, 'verified'>): string {
   const v = conn.verified;
   if (!v) return 'Not checked against your account yet: Check against your account reads it with the credential Drydock holds, and writes nothing.';
   return v.ok ? `Verified against your account on ${formatDate(v.at)}.` : `The check against your account on ${formatDate(v.at)} did not pass: ${v.summary}`;
 }
+
+/** Where a row stands: working, never set up, or waiting on the person (an expired key, a failed check, a sign-in). */
+export type Bucket = 'on' | 'setup' | 'needs';
+
+/** A row's state in a word or two, with the tone of its dot ('none': the words only) and the filter it counts under. */
+export interface RowState {
+  text: string;
+  tone: Tone | 'none';
+  bucket: Bucket;
+}
+
+const SETUP: RowState = { text: 'Set up', tone: 'none', bucket: 'setup' };
+const ON: RowState = { text: 'On', tone: 'ok', bucket: 'on' };
+
+/** The words of a connection status that needs the person (internal/integrations: unauthenticated, unreachable, ...). */
+const CONN_WORD: Record<string, string> = { unauthenticated: 'Key refused', unreachable: 'Unreachable', degraded: 'Degraded', disconnected: 'Disconnected' };
+
+/** A sync state that means the import does not work: the connection's own, or one of its projects'. */
+const failingSync = (state: string | undefined): boolean => state === 'error' || state === 'forbidden' || state === 'unauthenticated';
+
+/** App sync as one word: Set up, On, or what needs the person (the key, a failed check, a failing sync), the most pressing first. */
+export function serviceState(conn: IntegrationView | undefined): RowState {
+  if (!conn) return SETUP;
+  if (conn.status !== 'ok' && conn.status !== 'untested') return { text: CONN_WORD[conn.status] ?? 'Needs you', tone: 'warn', bucket: 'needs' };
+  if (conn.verified && !conn.verified.ok) return { text: 'Check failed', tone: 'err', bucket: 'needs' };
+  if (failingSync(conn.sync?.state) || (conn.assignments ?? []).some((a) => failingSync(a.sync?.state))) return { text: 'Sync failing', tone: 'err', bucket: 'needs' };
+  return ON;
+}
+
+const CARD_WORD: Record<string, RowState> = {
+  error: { text: 'Error', tone: 'err', bucket: 'needs' },
+  needs_token: { text: 'Needs a token', tone: 'warn', bucket: 'needs' },
+  needs_sign_in: { text: 'Needs sign-in', tone: 'warn', bucket: 'needs' },
+};
+
+/** A vendor's MCP servers as one word: the worst of what needs the person, else On when one is connected, else Set up. */
+export function cardsState(cards: readonly Pick<McpGalleryCard, 'status'>[]): RowState {
+  for (const st of ['error', 'needs_token', 'needs_sign_in']) if (cards.some((c) => c.status === st)) return CARD_WORD[st]!;
+  return cards.some((c) => c.status === 'connected') ? ON : SETUP;
+}
+
+/** A vendor's row: what needs the person on either channel (app sync first), else On when either works, else Set up. */
+export function vendorState(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): RowState {
+  const parts = [v.kind ? serviceState(conn) : undefined, v.cards.length > 0 ? cardsState(v.cards) : undefined].filter((x): x is RowState => !!x);
+  return parts.find((p) => p.bucket === 'needs') ?? parts.find((p) => p.bucket === 'on') ?? SETUP;
+}
+
+/** A server you added yourself: a failed connection first, then a missing sign-in, then tools never found. */
+export function ownServerState(s: Pick<McpLibraryServer, 'lastError' | 'oauth' | 'oauthAt' | 'tools'>): RowState {
+  if (s.lastError) return { text: 'Could not connect', tone: 'err', bucket: 'needs' };
+  if (s.oauth && !s.oauthAt) return { text: 'Not signed in', tone: 'warn', bucket: 'needs' };
+  if (s.tools.length === 0) return { text: 'No tools yet', tone: 'warn', bucket: 'needs' };
+  return ON;
+}
+
+/** The tools of a vendor's servers in a few words: "3 tools, 2 read-only". */
+export function toolsFact(cards: readonly Pick<McpGalleryCard, 'tools' | 'readOnlyTools'>[]): string {
+  const n = cards.reduce((k, c) => k + c.tools.length, 0);
+  if (n === 0) return '';
+  const ro = cards.reduce((k, c) => k + c.tools.filter((x) => c.readOnlyTools.includes(x.name)).length, 0);
+  return ro > 0 ? `${plural(n, 'tool')}, ${ro} read-only` : plural(n, 'tool');
+}
+
+/** The line under a vendor's name in the list: what it does, and one fact (its projects, or its tools). */
+export function vendorSub(v: Pick<Vendor, 'kind' | 'cards' | 'blurb'>, conn: IntegrationView | undefined): string {
+  if (v.kind) {
+    const n = (conn?.assignments ?? []).length;
+    return n > 0 ? `${v.blurb} · ${plural(n, 'project')}` : v.blurb;
+  }
+  const n = v.cards.reduce((k, c) => k + c.tools.length, 0);
+  return n > 0 ? `${v.blurb} · ${plural(n, 'tool')}` : v.blurb;
+}
+
+/** The line under one of your servers: how Drydock reaches it, and its tools once they are known. */
+export function ownServerSub(s: Pick<McpLibraryServer, 'transport' | 'tools'>): string {
+  const how = s.transport === 'http' ? 'Web address' : 'Program on this PC';
+  return s.tools.length > 0 ? `${how} · ${plural(s.tools.length, 'tool')}` : how;
+}
+
+/** How long ago a time was: "just now", "4 min ago", "3 h ago", "2 d ago". */
+export function ago(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.floor((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
+
+/** How a connection signs in, in words: the method the API reported, else its kind. */
+export function methodText(c: Pick<IntegrationView, 'kind' | 'authKind' | 'identity'>): string {
+  if (c.kind === 'github' && c.authKind === 'gh') return 'your gh sign-in';
+  const m = c.identity?.method?.trim();
+  if (m) return m.charAt(0).toLowerCase() + m.slice(1);
+  return c.authKind === 'api_key' ? 'API key' : c.authKind === 'oauth' ? 'sign-in' : c.authKind;
+}
+
+/** The line under a connected service's name: "Synced 4 min ago · personal API key", from the newest sync of its projects. */
+export function syncLine(c: IntegrationView, now = Date.now()): string {
+  const last = Math.max(c.sync?.lastSuccessAt ?? 0, ...(c.assignments ?? []).map((a) => a.sync?.lastSuccessAt ?? 0));
+  const when = last > 0 ? `Synced ${ago(last, now)}` : (c.assignments ?? []).length > 0 ? 'Not synced yet' : 'Not assigned to a project yet';
+  return `${when} · ${methodText(c)}`;
+}
+
+/** The key a row has in the address: a vendor by its own key, one of your servers by its id after "server-". */
+export const serverKey = (id: string): string => `server-${id}`;
+/** The server id in a row key, or '' for a vendor's key. */
+export const serverIdOf = (key: string): string => (key.startsWith('server-') ? key.slice('server-'.length) : '');
+
+/** The servers listed under "Your servers": every connected server that is not one of the catalog's cards (those are a vendor's). */
+export function ownServers<S extends Pick<McpLibraryServer, 'id' | 'catalogId'>>(servers: readonly S[], cards: readonly Pick<McpGalleryCard, 'id' | 'libraryId'>[]): S[] {
+  return servers.filter((s) => !cards.some((c) => c.libraryId === s.id || (!!s.catalogId && c.id === s.catalogId)));
+}
+
+/** How many rows each filter above the list shows: All, On, Needs you. */
+export function filterCounts(states: readonly RowState[]): { all: number; on: number; needs: number } {
+  return { all: states.length, on: states.filter((x) => x.bucket === 'on').length, needs: states.filter((x) => x.bucket === 'needs').length };
+}
+
+/** Whether a row in this state is shown under a filter: all, on or needs. */
+export const showsUnder = (filter: string, st: RowState): boolean => (filter === 'on' ? st.bucket === 'on' : filter === 'needs' ? st.bucket === 'needs' : true);
 
 /** A connection as one project has it, for its tile on the project's Integrations page: the scope it imports, or that it is not assigned. */
 export function projectConnState(info: IntegrationKindInfo | undefined, conn: IntegrationView, projectId: string): { text: string; tone: TileTone; badge: TileBadge } {
@@ -219,15 +291,6 @@ export function projectServerState(srv: McpServer | undefined, agents: readonly 
     names.length === 0 ? 'No agent may use it yet' : names.length <= 2 ? `${names.join(' and ')} may use it` : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more may use it`;
   if (!srv.enabled) return { text: who, tone: '', badge: { text: 'off', tone: 'muted' } };
   return { text: who, tone: names.length > 0 ? 'ok' : '', badge: { text: 'on', tone: 'ok' } };
-}
-
-/** The tone of the state line: warn when something needs the human, ok when something is connected and nothing is wrong. */
-export function vendorTone(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): TileTone {
-  const cardStates = v.cards.map((c) => c.status);
-  if (cardStates.some((st) => st === 'error' || st === 'needs_token' || st === 'needs_sign_in')) return 'warn';
-  if (conn && conn.status !== 'ok' && conn.status !== 'untested') return 'warn';
-  if (conn || cardStates.some((st) => st === 'connected')) return 'ok';
-  return '';
 }
 
 const isTestStep = (v: unknown): boolean => isRecord(v) && typeof v.id === 'string' && typeof v.name === 'string' && typeof v.ok === 'boolean' && (v.detail === undefined || typeof v.detail === 'string');

@@ -81,7 +81,7 @@ test("workspace pages name no project; a project's own settings are pills of its
   await expect(sidebar(page).getByTestId('nav-settings')).not.toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0);
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
-  // laid out like the workspace's Integrations page: Services, then Agent tools, each a group of tiles
+  // laid out like the workspace's Integrations page: Services, then Agent tools, each a list of compact rows
   await expect(page.getByTestId('project-app-sync').getByRole('heading', { name: 'Services', level: 2 })).toBeVisible();
   await expect(page.getByTestId('project-mcp').getByRole('heading', { name: 'Agent tools', level: 2 })).toBeVisible();
   await expect(page.getByTestId('add-from-library')).toHaveCount(0);
@@ -96,13 +96,16 @@ test("workspace pages name no project; a project's own settings are pills of its
   }
   await expect(page.getByTestId('cli-gateway')).toHaveCount(0);
 
-  // behind the gear: the workspace's pages (with GitHub) and the app's, nothing of this project
+  // behind the gear: the workspace's pages and the app's, nothing of this project; GitHub is a row of Integrations (decision P98)
   await workspaceNav(page, 'nav-settings');
   const rail = page.getByRole('navigation', { name: 'Settings' });
   await expect(rail.getByRole('heading')).toHaveText(['Workspace', 'App']);
   await expect(rail.getByTestId('nav-project')).toHaveCount(0);
   await expect(rail.getByTestId('nav-project-integrations')).toHaveCount(0);
-  await expect(rail.getByTestId('nav-github')).toHaveText('GitHub');
+  await expect(rail.getByTestId('nav-github')).toHaveCount(0);
+  await workspaceNav(page, 'nav-integrations');
+  await expect(page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]')).toContainText('GitHub');
+  await workspaceNav(page, 'nav-settings');
   await expect(rail).not.toContainText('ws-split');
 
   // Agents: the agent CLIs as a list, the chosen one's detail with the MCP gateway's setting for it (which CLIs receive MCP servers)

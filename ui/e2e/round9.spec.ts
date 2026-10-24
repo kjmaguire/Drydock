@@ -3,19 +3,19 @@ import { choose, createProject, workspaceNav } from './helpers';
 
 // Round 9: OAuth sign-in of a web MCP server, against the real Go core. The provider is a test double (internal/mcp/oauthfake: an
 // MCP server that wants a token, with discovery, dynamic client registration, PKCE, token and refresh); Drydock's side is the real
-// flow. The test plays the human: it presses Sign in, opens the sign-in page the card links in a second browser tab (the double
-// approves at once and redirects back to the loopback address the core listens on), and comes back to a signed-in card.
+// flow. The test plays the human: it adds the server on the Integrations page (Your servers, decision P98), presses Sign in in
+// its detail, opens the sign-in page it links in a second browser tab (the double approves at once and redirects back to the
+// loopback address the core listens on), and comes back to a signed-in server.
 
-test('OAuth: sign in from the Library, the tools appear, sign out forgets it', async ({ page, context }) => {
+test('OAuth: sign in to a server of your own, the tools appear, sign out forgets it', async ({ page, context }) => {
   const provider = process.env.DRYDOCK_E2E_OAUTH_MCP!;
   expect(provider).toContain('/mcp');
   await createProject(page, 'oauth-a');
-  await workspaceNav(page, 'nav-library');
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
+  await workspaceNav(page, 'nav-integrations');
+  await expect(page.getByRole('heading', { level: 1, name: 'Integrations' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Connect an MCP server' }).click();
-  // the servers built into Drydock come first; this one is a custom server
-  await page.getByTestId('mcp-add-custom').getByRole('button', { name: 'Add a custom server' }).click();
+  // a server of your own: the dialog opens on its form
+  await page.getByRole('button', { name: 'Add MCP server' }).click();
   const form = page.getByTestId('mcp-form');
   await form.getByLabel('Short id', { exact: false }).fill('lin');
   await form.getByLabel('Name', { exact: true }).fill('Hosted tracker');
@@ -24,8 +24,14 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   await choose(form.getByLabel('Sign-in'), 'oauth');
   await form.getByRole('button', { name: 'Connect server' }).click();
 
-  const card = page.getByTestId('lib-mcp').filter({ hasText: 'Hosted tracker' });
+  const card = page.getByTestId('server-detail').filter({ hasText: 'Hosted tracker' });
   await expect(card).toBeVisible();
+  // the address is the built-in Hosted tracker's, so the core counts it as that card's server: its row (under Agent tools, not
+  // Your servers) says what it needs
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  const row = list.locator('[data-testid="integration-row"][data-kind="faketrk"]');
+  await expect(row).toContainText('Needs sign-in');
+  await expect(list.locator('[data-testid="integration-row"][data-server="lin"]')).toHaveCount(0);
   const panel = card.getByTestId('oauth-panel');
   // not signed in, the sign-in is one control: the Sign in button, nothing else
   await expect(panel).toHaveAttribute('data-signed-in', 'false');
@@ -57,4 +63,11 @@ test('OAuth: sign in from the Library, the tools appear, sign out forgets it', a
   await expect(panel).toHaveAttribute('data-signed-in', 'false');
   await expect(panel.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
   await expect(panel.getByRole('button')).toHaveText('Sign in');
+
+  // leave the servers as they were found
+  await card.getByRole('button', { name: 'Remove' }).click();
+  await card.getByRole('button', { name: 'Yes, remove' }).click();
+  await expect(page.getByTestId('integrations-note')).toContainText('Hosted tracker was removed.');
+  await expect(page.getByTestId('server-detail')).toHaveCount(0);
+  await expect(row).toContainText('Set up');
 });

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createAgent, createProject, openTile, projectNav, workspaceNav } from './helpers';
 
-// Round 16: the MCP connector cards (decision P43) on the Integrations page (decision P47), against the real Go core. The
+// Round 16: the MCP connector cards (decision P43) on the Integrations page (decisions P47, P98), against the real Go core. The
 // harness adds one card to the built-in catalog, "Hosted tracker (test double)", whose server is internal/mcp/oauthfake: a
 // TEST DOUBLE of a hosted MCP server that wants an OAuth sign-in. Everything on Drydock's side is real: Connect adds it to the
 // MCP library, starts the sign-in, the browser comes back to the core's loopback address, the core reaches the server and
@@ -15,34 +15,37 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   // the old MCP servers address is an alias of Integrations
   await page.goto(new URL('/mcp', page.url()).toString());
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
-  await expect(page.getByTestId('nav-integrations')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('nav-side-integrations')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('nav-mcp')).toHaveCount(0);
   await workspaceNav(page, 'nav-integrations');
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
 
   const gallery = page.getByTestId('connector-gallery');
-  // the real catalog's cards sit on their vendor's tile: logo, name and publisher, nothing connected
-  await gallery.locator('[data-testid="integration-tile"][data-kind="github"]').click();
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  // the real catalog's cards are rows in their vendor's detail: logo, name and publisher, nothing connected. GitHub's row opens
+  // the GitHub page, so its detail here is opened by its address
+  await page.goto(new URL('/integrations/github', page.url()).toString());
   const github = gallery.locator('[data-testid="connector"][data-id="gh"]');
   await expect(github.locator('h4')).toHaveText('GitHub');
   await expect(github.locator('[data-brand="github"]')).toHaveCount(1);
   await expect(github.getByTestId('connector-status')).toHaveText('Not connected');
-  // the two Cloudflare servers share one tile
-  const cfTile = gallery.locator('[data-testid="integration-tile"][data-kind="cloudflare"][data-mcp="true"]');
-  await expect(cfTile).toContainText('not connected');
-  await cfTile.click();
+  // the two Cloudflare servers share one row
+  const cfRow = list.locator('[data-testid="integration-row"][data-kind="cloudflare"][data-mcp="true"]');
+  await expect(cfRow).toContainText('Set up');
+  await cfRow.click();
   await expect(gallery.getByTestId('integration-agents').locator('[data-testid="connector"]')).toHaveCount(2);
   await expect(gallery.locator('[data-testid="connector"][data-id="cfapi"]')).toContainText('Cloudflare');
   await expect(gallery.getByTestId('integration-sync')).toHaveCount(0); // no app sync for Cloudflare
 
-  // the test double has no app sync either: an MCP-only tile of its own
-  const trkTile = gallery.locator('[data-testid="integration-tile"][data-kind="faketrk"]');
-  await expect(trkTile).toContainText('Hosted tracker (test double)');
-  await trkTile.click();
+  // the test double has no app sync either: an MCP-only row of its own, under Agent tools
+  const trkRow = list.getByTestId('list-group-tools').locator('[data-testid="integration-row"][data-kind="faketrk"]');
+  await expect(trkRow).toContainText('Hosted tracker (test double)');
+  await trkRow.click();
   const card = gallery.locator('[data-testid="connector"][data-id="faketrk"]');
   await expect(card.locator('h4')).toHaveText('Hosted tracker (test double)');
   await card.getByRole('button', { name: 'Connect Hosted tracker (test double)' }).click();
   await expect(card.getByTestId('connector-status')).toHaveText('Needs sign-in');
+  await expect(trkRow).toContainText('Needs sign-in');
   const link = card.getByTestId('oauth-link');
   await expect(link).toBeVisible({ timeout: 30_000 });
   const href = await link.getAttribute('href');
@@ -55,10 +58,10 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   await tab.close();
 
   await expect(card.getByTestId('connector-status')).toHaveText('Connected', { timeout: 30_000 });
-  await expect(trkTile).toContainText('Agents: connected');
+  await expect(trkRow).toContainText('On');
   await expect(card.getByTestId('connector-account')).toContainText('Connected as alice');
   await expect(card.getByTestId('connector-account')).toContainText('OAuth test double (oauthy 1)');
-  await card.getByText('1 tool', { exact: false }).click();
+  await card.locator('summary').filter({ hasText: '1 tool' }).click();
   await expect(card.getByTestId('connector-tool')).toHaveText(/whoami/);
 
   // the workspace's card names no project and offers no project controls: those are on the project's own Integrations page
@@ -66,8 +69,10 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   await expect(card.getByRole('button', { name: 'Add to project' })).toHaveCount(0);
   await expect(card.getByRole('button', { name: 'Grant to agents' })).toHaveCount(0);
   await expect(page.getByTestId('mcp-server')).toHaveCount(0);
+  // its tools and settings are the server's own page
+  await expect(card.getByTestId('connector-settings')).toHaveAttribute('href', /^\/integrations\/server-/);
 
-  // add it to the project from the project's Integrations page, where the connected built-in server is in the library
+  // add it to the project from the project's Integrations page, where the connected built-in server is listed
   await projectNav(page, 'nav-project-integrations', 'gallery-a');
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible();
   const trkServer = page.getByTestId('project-server-tile').filter({ hasText: 'Hosted tracker (test double)' });
@@ -85,7 +90,7 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
 
   // the workspace's card counts it
   await workspaceNav(page, 'nav-integrations');
-  await gallery.locator('[data-testid="integration-tile"][data-kind="faketrk"]').click();
+  await list.locator('[data-testid="integration-row"][data-kind="faketrk"]').click();
   await expect(card.getByTestId('connector-projects')).toContainText('In 1 project.');
 
   // Disconnect puts the card back to Not connected and takes it out of the project
@@ -97,27 +102,32 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   await expect(inProject).toHaveCount(0);
 });
 
-test('the Library lists the MCP servers built into Drydock before the custom server, and an OAuth card there shows one Sign in', async ({ page }) => {
+test('Add MCP server opens the server form, with Import from a file beside it; the servers built into Drydock are rows under Agent tools', async ({ page }) => {
   await createProject(page, 'gallery-lib');
-  await workspaceNav(page, 'nav-library');
-  await page.getByRole('button', { name: 'Connect an MCP server' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect an MCP server' });
-  const prebuilt = dialog.getByTestId('mcp-add-prebuilt');
-  const custom = dialog.getByTestId('mcp-add-custom');
-  await expect(prebuilt.getByRole('heading', { name: 'Built into Drydock' })).toBeVisible();
-  await expect(custom.getByRole('heading', { name: 'Add a custom MCP server' })).toBeVisible();
-  // the built-in servers come first, as the Integrations page's cards: logo, publisher, license, Connect
-  const order = await dialog.locator('[data-testid="mcp-add-prebuilt"], [data-testid="mcp-add-custom"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
-  expect(order).toEqual(['mcp-add-prebuilt', 'mcp-add-custom']);
-  const github = prebuilt.locator('[data-testid="connector"][data-id="gh"]');
-  await expect(github.locator('[data-brand="github"]')).toHaveCount(1);
-  await expect(github).toContainText('License');
-  await expect(github.getByRole('button', { name: 'Connect GitHub' })).toBeVisible();
-  // the custom form waits behind its button
-  await expect(dialog.getByTestId('mcp-form')).toHaveCount(0);
-  await custom.getByRole('button', { name: 'Add a custom server' }).click();
+  await workspaceNav(page, 'nav-integrations');
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  // the built-in servers are the Agent tools rows (GitHub's is in its service's detail); the Library lists none any more
+  await expect(list.getByTestId('list-group-tools').getByTestId('integration-row').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Add MCP server' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add an MCP server' });
   await expect(dialog.getByTestId('mcp-form')).toBeVisible();
-  await expect(custom.getByRole('button', { name: 'Import from a file' })).toHaveCount(0); // the form replaced the two buttons
+  await expect(dialog.getByTestId('connector')).toHaveCount(0);
+  await expect(dialog).toContainText('The servers built into Drydock are under Agent tools.');
+  // the other choice is the import, which takes the form's place
+  await dialog.getByTestId('mcp-add-custom').getByRole('button', { name: 'Import from a file' }).click();
+  await expect(dialog.getByTestId('mcp-import')).toBeVisible();
+  await expect(dialog.getByTestId('mcp-form')).toHaveCount(0);
+  await dialog.getByTestId('mcp-add-custom').getByRole('button', { name: 'Describe it' }).click();
+  await dialog.getByTestId('mcp-form').getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  // the Add a server row under Your servers opens the same dialog
+  await list.getByTestId('add-server-row').click();
+  await expect(page.getByRole('dialog', { name: 'Add an MCP server' }).getByTestId('mcp-form')).toBeVisible();
+  await page.keyboard.press('Escape');
+  // the Library keeps the agent templates and points here for servers
+  await workspaceNav(page, 'nav-library');
+  await expect(page.getByRole('button', { name: 'Connect an MCP server' })).toHaveCount(0);
+  await expect(page.getByTestId('library-servers-link')).toHaveAttribute('href', '/integrations');
 });
 
 test('prebuilt agents: opening one shows its skills with what they do, where they come from and their license, and its MCP servers by name', async ({ page }) => {

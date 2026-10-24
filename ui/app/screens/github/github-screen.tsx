@@ -2,12 +2,12 @@
 // everything Drydock does with GitHub as rows and tables, reached from Integrations (the breadcrumb). On top, who gh is signed
 // in as (github.status: the GitHub CLI's own login, which Drydock uses and never stores) with chips for issue sync, the MCP
 // server and the runners, or what is missing and how to fix it. Then Access: the gh sign-in, issue sync (app sync, decision
-// P42: connected here once for the workspace with the integrations screen's own ConnectForm and ServicePanel, one
+// P42: connected here once for the workspace with the integrations screen's own ConnectForm and ServiceView, one
 // implementation) and GitHub's MCP server for agents (its connector card, decision P43, in a dialog). Then Repositories: each
 // project with its repository, the CI state of its default branch and its open pull requests (github.projectRepos). Last the
 // CI runners on this PC (ci-runners.tsx, decision P56). A workspace page: it works with no project.
 
-import { css, on, type Handle, type RemixNode } from 'remix/component';
+import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
 import { ExternalLink, FolderGit2, RefreshCw } from 'lucide';
 import type { IntegrationKindInfo, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
@@ -25,9 +25,9 @@ import { LearnMore } from '../../ui/learn-more.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
-import { ConnectForm, ReportView, ServicePanel } from '../integrations/integrations-screen.tsx';
-import { KINDS, statusTone, syncStateText, tileState, vendors } from '../integrations/integrations.ts';
-import { ConnectorCard, connectorGrid } from '../mcp/gallery.tsx';
+import { ConnectForm, ReportView, ServiceView } from '../integrations/service-detail.tsx';
+import { KINDS, statusTone, tileState, vendors } from '../integrations/integrations.ts';
+import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 
 const crumbCss = css({
@@ -345,16 +345,16 @@ function Access(
         </SettingRow>
 
         <Dialog open={manage && !!conn} title="Issue sync" wide onClose={() => set(() => (manage = false))}>
-          {manage && conn ? <ServicePanel kind={kind} info={info} conn={conn} onChanged={onConnsChanged} onKindsChanged={onKindsChanged} /> : null}
+          {manage && conn ? <ServiceView kind={kind} info={info} conn={conn} hasAgentTools={false} onChanged={onConnsChanged} onKindsChanged={onKindsChanged} open={(href) => void navigate(href)} /> : null}
         </Dialog>
         <Dialog open={mcpOpen && !!card} title="MCP server for agents" onClose={() => set(() => (mcpOpen = false))}>
           {mcpOpen ? (
             <>
-              <ul mix={connectorGrid}>
+              <SettingsGroup label="GitHub's MCP server">
                 {cards.map((c) => (
                   <ConnectorCard key={c.id} card={c} onChanged={onGalleryChanged} />
                 ))}
-              </ul>
+              </SettingsGroup>
               <p mix={noteCss}>Grant it to agents on a project&apos;s Integrations page. Tools not marked read-only wait for your approval.</p>
             </>
           ) : null}
@@ -506,6 +506,14 @@ function Repositories(handle: Handle) {
       </SettingsGroup>
     );
   };
+}
+
+/** The issue sync's state in words: who it reads as once connected, else what is wrong. */
+function syncStateText(c: IntegrationView | undefined): string {
+  if (!c) return 'not connected';
+  const account = c.identity?.account?.trim();
+  if (account) return `connected as ${account}`;
+  return c.status === 'ok' ? 'connected' : c.status === 'untested' ? 'connected, not checked yet' : `connected (${c.status})`;
 }
 
 /** The GitHub settings page. */
