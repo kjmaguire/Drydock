@@ -111,6 +111,9 @@ var extraRealClaude = map[string][]string{
 const defaultTimeout = 10 * time.Minute
 
 var known = map[string]pkgInfo{
+	"app": {
+		Proves: "The window's icons are sized for this machine's display scale (the system's small and big icon sizes at a DPI), and a build without Drydock's icon resource keeps Wails' own.",
+	},
 	"internal/proc": {
 		Proves: "Agent processes start, stop and are killed as a whole tree: on Windows each one runs in a Job Object, so killing an agent also kills everything it started.",
 	},

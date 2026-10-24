@@ -295,6 +295,10 @@ jobs:
           check-latest: true # the runner's cached 24.x can be older than a security release
       - run: npm ci && npm run build
         working-directory: ui
+      # the icon, the version information and the manifest (docs/windows-identity.md): go-winres turns build/windows/winres.json
+      # into rsrc_windows_amd64.syso, which go build links into drydock.exe; the Taskfile's build:winres runs the same command
+      - name: The Windows resources (icon, version information, manifest)
+        run: go run github.com/tc-hib/go-winres@v0.3.3 make --in build/windows/winres.json --arch amd64 --out rsrc
       - name: Build the Wails app (CGO on, for the repo map's tree-sitter parser; MinGW gcc from the runner image)
         # Wails v3 needs no CGO on Windows, but the repo map does (decision P62): a build without it has no repo map
         env:
@@ -309,10 +313,54 @@ jobs:
           $info = go version -m drydock.exe | Out-String
           if ($info -notmatch 'CGO_ENABLED=1') { throw "drydock.exe was built without CGO: it has no repo map" }
           if ($info -notmatch 'github.com/tree-sitter/go-tree-sitter') { throw "drydock.exe has no tree-sitter parser" }
+      - name: The app carries its icon, version information and manifest (read back from the built exe)
+        run: go run ./cmd/drydock-winident -exe drydock.exe
       - uses: actions/upload-artifact@v7
         with:
           name: drydock-windows-unsigned
           path: drydock.exe
+      # Code signing (decision D8; docs/windows-identity.md), prepared and off: it runs on a push to main once the owner has set
+      # the Azure Artifact Signing credentials (secrets AZURE_ARTIFACT_SIGNING_TENANT_ID, _CLIENT_ID, _CLIENT_SECRET) and the
+      # account (variables AZURE_ARTIFACT_SIGNING_ENDPOINT, _ACCOUNT, _PROFILE); without them, and on every pull request, it is
+      # skipped and the download is unsigned. The secrets go to the action as inputs only and GitHub masks them in the log.
+      - name: Is code signing configured?
+        id: signing
+        shell: pwsh
+        env:
+          CONFIGURED: ${{ github.event_name == 'push' && secrets.AZURE_ARTIFACT_SIGNING_CLIENT_SECRET != '' && vars.AZURE_ARTIFACT_SIGNING_ENDPOINT != '' }}
+        run: |
+          if ($env:CONFIGURED -eq 'true') {
+            "configured=true" >> $env:GITHUB_OUTPUT
+            "drydock.exe is signed with Azure Artifact Signing"
+          } else {
+            "configured=false" >> $env:GITHUB_OUTPUT
+            "::notice::Code signing is not configured for this run (docs/windows-identity.md): drydock.exe stays unsigned"
+          }
+      - name: Sign drydock.exe (Azure Artifact Signing, SHA-256, RFC 3161 timestamp)
+        if: steps.signing.outputs.configured == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\drydock.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Drydock
+      - name: The signature is valid and timestamped, and the resources are still there
+        if: steps.signing.outputs.configured == 'true'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $sig = Get-AuthenticodeSignature drydock.exe
+          if ($sig.Status -ne 'Valid') { throw "drydock.exe: the signature is $($sig.Status): $($sig.StatusMessage)" }
+          if (-not $sig.TimeStamperCertificate) { throw "drydock.exe: the signature has no timestamp" }
+          "signed by $($sig.SignerCertificate.Subject), timestamped by $($sig.TimeStamperCertificate.Subject)"
+          go run ./cmd/drydock-winident -exe drydock.exe
       # decision P77: the download carries osv-scanner, Opengrep and llama.cpp with the TurboQuant KV cache types, pinned in
       # packaging/bundle.json; each file is checked against the SHA-256 GitHub recorded, and the app installs them at its first
       # start (the token only raises the API's rate limit)

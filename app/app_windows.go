@@ -162,5 +162,7 @@ func Run(assets fs.FS) error {
 		MinHeight: 600,
 		URL:       "/",
 	})
+	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
+	attachWindowIcons(window)
 	return wa.Run()
 }

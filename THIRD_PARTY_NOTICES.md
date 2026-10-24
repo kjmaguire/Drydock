@@ -31,6 +31,7 @@ Imported by Drydock itself:
 | github.com/modelcontextprotocol/go-sdk | v1.8.0 | MIT and Apache-2.0 (the project is moving its code from MIT to Apache-2.0; its LICENSE holds both) | - | The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. |
 | github.com/openai/openai-go/v3 | v3.85.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
 | github.com/pressly/goose/v3 | v3.29.0 | MIT | - | Runs the database migrations. |
+| github.com/tc-hib/winres | v0.3.1 | ISC | Copyright (c) 2021 Thomas Combeléran | Reads a built drydock.exe's resources back (icon group, version information, manifest) for the check CI runs on it (cmd/drydock-winident, internal/winident; doc... |
 | github.com/tree-sitter/go-tree-sitter | v0.25.0 | MIT | - | The repo map's parser (decision P62): tree-sitter's official Go binding, which compiles tree-sitter's C library into Drydock through CGO, so the Windows build n... |
 | github.com/tree-sitter/tree-sitter-c-sharp | v0.23.5 | MIT | Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors. | C# grammar of the repo map, with its queries/tags.scm. |
 | github.com/tree-sitter/tree-sitter-go | v0.25.0 | MIT | Copyright (c) 2014 Max Brunsfeld | Go grammar of the repo map, with its own queries/tags.scm (copied into internal/repomap/queries). |
@@ -108,6 +109,7 @@ Pulled in by those, and compiled in:
 | github.com/mitchellh/reflectwalk | v1.0.2 | MIT | Copyright (c) 2013 Mitchell Hashimoto | - |
 | github.com/muesli/termenv | v0.16.0 | MIT | Copyright (c) 2019 Christian Muehlhaeuser | - |
 | github.com/ncruces/go-strftime | v1.1.0 | MIT | Copyright (c) 2022 Nuno Cruces | - |
+| github.com/nfnt/resize | v0.0.0-20180221191011-83c6a9932646 | ISC | - | - |
 | github.com/nwaples/rardecode/v2 | v2.4.5 | BSD-2-Clause | Copyright (c) 2015, Nicholas Waples | - |
 | github.com/pb33f/go-yaml | v0.1.1 | Apache-2.0 | Copyright 2025 - The go-yaml Project Contributors | - |
 | github.com/pb33f/ordered-map/v2 | v2.3.2 | Apache-2.0 | - | - |
@@ -147,6 +149,7 @@ Pulled in by those, and compiled in:
 | go4.org | v0.0.0-20261019143151-5b882263cdaf | Apache-2.0 | - | - |
 | golang.org/x/crypto | v0.58.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/exp | v0.0.0-20261014143641-f0251eb4aa3e | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
+| golang.org/x/image | v0.47.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/mod | v0.42.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/sync | v0.24.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |
 | golang.org/x/text | v0.43.0 | BSD-3-Clause | Copyright 2009 The Go Authors. | - |

@@ -17,6 +17,9 @@ variable, lacks a time limit or a `permissions:` block, or keeps the token. Regi
 for a private repository only, and Drydock's own CI runners feature (docs/ci-runners.md) does it for those, refusing a
 repository that is public.
 
+The `app` job also checks the built `drydock.exe` carries its icon, version information and manifest, and signs it once code
+signing is configured: [windows-identity.md](windows-identity.md).
+
 The bundle writes the same report wherever it runs: `drydock-verify-report.md` (for people) and `drydock-verify-report.json`, zipped with every
 step's log into `drydock-verify-<date>.zip`.
 
