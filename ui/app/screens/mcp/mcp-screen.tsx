@@ -1,9 +1,9 @@
 // MCP servers of one project: the tool calls waiting for the human's approval (Approvals) and the project's agent tools
-// (ProjectServers): a tile per connected server, laid out like the workspace's Integrations tiles (P59), the ones the project
-// has first. The selected tile opens its panel under the grid: which of the project's agents may use the server (ServerCard), or
-// Add to this project for one it does not have yet (LibraryServerPanel). They sit on the project's own Integrations page
-// (/project/integrations, screens/integrations/project-integrations-screen.tsx); servers are connected once for the workspace,
-// in the Library or on the workspace's Integrations page. A server nobody was granted is never reached.
+// (ProjectServers): a compact row per connected server (decision P98), the ones the project has first. The chosen row opens its
+// panel under the rows: which of the project's agents may use the server (ServerCard), or Add to this project for one it does
+// not have yet (LibraryServerPanel). They sit on the project's own Integrations page (/project/integrations,
+// screens/integrations/project-integrations-screen.tsx); servers are connected once for the workspace, on the workspace's
+// Integrations page (a vendor's card, or Your servers). A server nobody was granted is never reached.
 
 import { css, on, type Handle } from 'remix/component';
 import { BadgeCheck, CirclePlus, FolderPlus, Globe, Plug, Power, ShieldAlert } from 'lucide';
@@ -19,9 +19,10 @@ import { Avatar, Badge, faint, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Section } from '../../ui/layout.tsx';
-import { emptyLine, Tile, tileGrid } from '../../ui/tiles.tsx';
+import { emptyLine } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
-import { projectServerState, serverBlurb } from '../integrations/integrations.ts';
+import { projectServerState, serverBlurb, serverKey } from '../integrations/integrations.ts';
+import { PickRows } from '../integrations/pick-rows.tsx';
 import { ShownNotes, Targets } from '../shared/approval-text.tsx';
 import { ReachNote } from './command-line.tsx';
 import { whereOf } from './server-input.ts';
@@ -216,7 +217,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
         {srv.tools.length === 0 ? (
           <>
             <p mix={muted} style={{ margin: '0' }}>
-              Tools are not known yet. Open the <a href={routes.library.href()}>Library</a>, choose the server and press Find tools.
+              Tools are not known yet. Press Find tools on <a href={routes.integrations.href({ key: serverKey(srv.id) })}>its page in Integrations</a>.
             </p>
             {startsOnGrant ? <ReachNote server={srv} lead="Ticking an agent below, while the tools are not known," id={reachId} /> : null}
           </>
@@ -230,7 +231,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
           </ul>
         )}
         <p mix={faint} style={{ margin: '0' }}>
-          Which tools only read is decided where the server is connected, in the Library. Every other tool waits for your approval, call by call.
+          Which tools only read is decided where the server is connected, on <a href={routes.integrations.href({ key: serverKey(srv.id) })}>its page in Integrations</a>. Every other tool waits for your approval, call by call.
         </p>
 
         <h4 mix={subhead}>Which agents of this project may use it</h4>
@@ -291,7 +292,7 @@ export function ServerCard(handle: Handle<{ s: McpServer; agents: readonly Agent
         </div>
         {confirmRemove ? (
           <div mix={confirmCss}>
-            <span>Take {srv.display} out of this project? Its grants here go too; it stays in the Library.</span>
+            <span>Take {srv.display} out of this project? Its grants here go too; it stays connected for the workspace.</span>
             <Button
               size="sm"
               variant="danger"
@@ -401,35 +402,31 @@ export function ProjectServers(handle: Handle<{ projectId: string; agents: reado
               'Choose a connected server to add it.'
             ) : (
               <span>
-                No servers are connected yet. Connect servers once in the <a href={routes.library.href()}>Library</a> or on the{' '}
-                <a href={routes.integrations.href()}>Integrations</a> page, then add them here.
+                No servers are connected yet. Connect servers once on the <a href={routes.integrations.href()}>Integrations</a> page, then add them here.
               </span>
             )}
           </p>
         ) : null}
         {all.length > 0 ? (
-          <ul mix={tileGrid} aria-label="MCP servers">
-            {all.map((x) => {
+          <PickRows
+            label="MCP servers"
+            selected={current?.id}
+            onPick={(id) => ((selected = current?.id === id ? '' : id), void handle.update())}
+            rows={all.map((x) => {
               const p = inProject.find((y) => y.id === x.id);
               const st = projectServerState(p, agents);
-              return (
-                <Tile
-                  key={x.id}
-                  title={x.display}
-                  logo={serverLogo(x) || undefined}
-                  icon={x.transport === 'http' ? Globe : Plug}
-                  blurb={serverBlurb(x)}
-                  state={st.text}
-                  tone={st.tone}
-                  badge={st.badge}
-                  selected={current?.id === x.id}
-                  onSelect={() => ((selected = current?.id === x.id ? '' : x.id), void handle.update())}
-                  testId="project-server-tile"
-                  data={{ server: x.id, added: String(!!p) }}
-                />
-              );
+              return {
+                key: x.id,
+                title: x.display,
+                logo: serverLogo(x) || undefined,
+                icon: x.transport === 'http' ? Globe : Plug,
+                sub: `${serverBlurb(x)} · ${st.text}`,
+                status: st.badge,
+                testId: 'project-server-tile',
+                data: { server: x.id, added: String(!!p) },
+              };
             })}
-          </ul>
+          />
         ) : null}
         {mine ? (
           <ServerCard key={mine.id} s={mine} agents={agents} onChanged={servers.reload} />

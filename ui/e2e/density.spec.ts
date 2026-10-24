@@ -13,8 +13,8 @@ import { appUrl, choose, createAgent, createProject, openNewAgent, projectNav } 
 
 const ROUTES = [
   '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
-  '/milestones', '/memory', '/skills', '/packs', '/integrations', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
-  '/library', '/library/skills', '/connections', '/github', '/security-scan', '/providers', '/models', '/routing', '/backups', '/data', '/support', '/license',
+  '/milestones', '/memory', '/skills', '/packs', '/integrations', '/integrations/linear', '/integrations/mslearn', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
+  '/library', '/library/skills', '/connections', '/agents', '/agents/claude', '/github', '/security-scan', '/models', '/models/new', '/routing', '/backups', '/data', '/support', '/license',
   '/settings', '/guide', '/guide/scan',
 ];
 
@@ -238,11 +238,8 @@ test('every page keeps to the density budget: short text, the type scale, room b
     await page.goto(u.toString());
     await expect(page.locator('#main h1, #main [role=heading]').first()).toBeVisible();
     await page.waitForTimeout(800);
-    // the provider form opens from its tile; measure it open (its dropdowns once overlapped the fields beside them)
-    if (path === '/providers') {
-      await page.getByTestId('provider-add-tile').click();
-      await expect(page.getByRole('form', { name: 'Add a provider' })).toBeVisible();
-    }
+    // the provider form is the detail of /models/new; measure it open (its dropdowns once overlapped the fields beside them)
+    if (path === '/models/new') await expect(page.getByRole('form', { name: 'Add a provider' })).toBeVisible();
     await page.setViewportSize({ width: 1366, height: 768 });
     const wide = await measure(page);
     for (const f of wide.findings) problems.push(`${path} [${f.rule}] ${f.where}`);

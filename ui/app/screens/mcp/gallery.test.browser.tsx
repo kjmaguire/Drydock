@@ -17,8 +17,9 @@ const must = <T,>(x: T | null | undefined): T => {
 };
 
 // TEST DOUBLES (labelled): the client below answers like the core's mcplib.gallery, mcplib.connect, integration.list and
-// skill.registries. The cards sit on the Integrations page (decision P47), in the Agent tools section of their vendor's tile.
-function show(client: Partial<Client>, opts: { projects?: { id: string; name: string }[] } = {}) {
+// skill.registries. The cards sit on the Integrations page (decision P47), as rows in the Agent tools group of their vendor's
+// detail (decision P98). GitHub's row opens its own page, so its detail is opened by its address (/integrations/github).
+function show(client: Partial<Client>, opts: { projects?: { id: string; name: string }[]; initial?: string } = {}) {
   const s = testServices({
     licenseStatus: async () => devLicense,
     appInfo: async () => ({}) as never,
@@ -40,16 +41,20 @@ function show(client: Partial<Client>, opts: { projects?: { id: string; name: st
   });
   s.workspace.start();
   s.project.start();
-  return mount(<IntegrationsScreen />, s);
+  return mount(<IntegrationsScreen initial={opts.initial} go={() => {}} open={() => {}} />, s);
 }
 type R = ReturnType<typeof show>;
-const tileOf = (r: R, kind: string) => waitFor(() => must(r.$(`[data-testid="integration-tile"][data-kind="${kind}"]`)) as HTMLElement, r);
-/** Opens the vendor's tile, so its cards are on the page. */
+const rowOf = (r: R, kind: string) => waitFor(() => must(r.$(`[data-testid="integration-row"][data-kind="${kind}"]`)) as HTMLElement, r);
+/** The state word at the end of a row. */
+const stateOf = (el: Element) => el.querySelector('[data-tone]')?.textContent ?? '';
+/** Chooses the vendor's row, so its detail (and its cards) is on the page. */
 const openVendor = async (r: R, kind: string) => {
-  const tile = await tileOf(r, kind);
-  if (tile.getAttribute('aria-pressed') !== 'true') await r.act(() => tile.click());
+  const row = await rowOf(r, kind);
+  if (row.getAttribute('aria-current') !== 'true') await r.act(() => row.click());
   return waitFor(() => must(r.$(`[data-testid="integration-panel"][data-kind="${kind}"]`)) as HTMLElement, r);
 };
+/** GitHub's detail, by its address (its row is a link to the GitHub page). */
+const openGitHub = (r: R) => waitFor(() => must(r.$('[data-testid="integration-panel"][data-kind="github"]')) as HTMLElement, r);
 const cardOf = (r: R, id: string) => waitFor(() => must(r.$(`[data-testid="connector"][data-id="${id}"]`)) as HTMLElement, r);
 
 const GH = galleryCard({
@@ -96,8 +101,8 @@ const REGISTRIES = [
   { id: 'msdocs-mcp-skills', repo: 'MicrosoftDocs/mcp', license: 'content CC BY 4.0, code MIT', trust: 'vendor_official', enabled: true, curated: true },
 ];
 
-describe('the Integrations page: one tile per vendor, with the MCP connector cards in its panel', () => {
-  it('shows a tile for every integration kind and every MCP-only vendor (Cloudflare on one tile), with the state of both channels', async () => {
+describe('the Integrations page: one row per vendor, with the MCP connector cards as rows in its detail', () => {
+  it('lists a row for every integration kind and every MCP-only vendor (Cloudflare on one row), with the state in a word', async () => {
     const r = show(
       {
         mcpGallery: async () => [MSLEARN, GH, LINEAR, CFDOCS, { ...CFAPI, status: 'needs_sign_in' }, { ...CTX7, status: 'connected', libraryId: 'ctx7' }],
@@ -105,29 +110,23 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
       },
       { projects: [] },
     );
-    await tileOf(r, 'ctx7');
-    const tiles = Array.from(r.$$('[data-testid="integration-tile"]')) as HTMLElement[];
-    expect(tiles.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'mslearn', 'cloudflare', 'ctx7']);
-    // the integration kinds keep data-connected; the MCP-only vendors say so
-    expect(tiles.slice(0, 5).map((t) => t.getAttribute('data-mcp'))).toEqual([null, null, null, null, null]);
-    expect(tiles.slice(5).map((t) => t.getAttribute('data-mcp'))).toEqual(['true', 'true', 'true']);
-    expect(tiles[0]!.getAttribute('data-connected')).toBe('true');
-    // both channels where the vendor has them
-    expect(tiles[0]!.textContent).toContain('Sync: connected as kyle · Agents: not connected');
-    // a tile with nothing connected says so once, in its badge: no line repeats it
-    for (const i of [3, 4, 5]) {
-      expect(tiles[i]!.textContent).not.toContain('Sync:');
-      expect(tiles[i]!.textContent).not.toContain('Agents:');
-      expect(tiles[i]!.textContent!.match(/not connected/g)).toHaveLength(1);
-    }
-    expect(tiles[5]!.textContent).toContain('Microsoft Learn');
-    expect(tiles[5]!.querySelector('[data-brand="microsoft"]')).not.toBeNull();
-    expect(tiles[6]!.textContent).toContain('Cloudflare');
-    expect(tiles[6]!.textContent).toContain('Documentation, API');
-    expect(tiles[6]!.textContent).toContain('Agents: needs sign-in');
-    expect(tiles[7]!.textContent).toContain('Agents: connected');
-    // one tile is selected at a time; the page has no MCP page to link to any more
-    expect(r.$('[data-testid="integration-panel"]')).toBeNull();
+    await rowOf(r, 'ctx7');
+    const rows = Array.from(r.$$('[data-testid="integration-row"]')) as HTMLElement[];
+    expect(rows.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'mslearn', 'cloudflare', 'ctx7']);
+    // the integration kinds keep data-connected; the MCP-only vendors say so, under Agent tools
+    expect(rows.slice(0, 5).map((t) => t.getAttribute('data-mcp'))).toEqual([null, null, null, null, null]);
+    expect(rows.slice(5).map((t) => t.getAttribute('data-mcp'))).toEqual(['true', 'true', 'true']);
+    expect(rows.slice(5).every((t) => t.closest('[data-testid="list-group-tools"]'))).toBe(true);
+    expect(rows[0]!.getAttribute('data-connected')).toBe('true');
+    // one word each: what works, what was never set up, what needs the person
+    expect(rows.map(stateOf)).toEqual(['On', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Needs sign-in', 'On']);
+    expect(rows[5]!.textContent).toContain('Microsoft Learn');
+    expect(rows[5]!.textContent).toContain('Tools for agents · 1 tool');
+    expect(rows[5]!.querySelector('[data-brand="microsoft"]')).not.toBeNull();
+    expect(rows[6]!.textContent).toContain('Cloudflare');
+    expect(rows[6]!.textContent).toContain('Documentation, API');
+    // the first row's detail shows; the page has no MCP page to link to any more
+    expect(r.$$('[data-testid="integration-panel"]').length).toBe(1);
     expect(r.container.querySelector('a[href="/mcp"]')).toBeNull();
   });
 
@@ -149,7 +148,9 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(cf.querySelector('[data-testid="integration-sync"]')).toBeNull(); // no app sync for an MCP-only vendor
     const cards = Array.from(cf.querySelectorAll('[data-testid="connector"]')).map((c) => c.getAttribute('data-id'));
     expect(cards).toEqual(['cfdocs', 'cfapi']);
-    expect(cf.textContent).toContain('Agent tools (MCP)');
+    expect(cf.querySelector('[data-testid="integration-agents"] h3')!.textContent).toBe('Agent tools');
+    // an agent-tools vendor's servers are drawn whole: their facts are rows, not closed
+    expect(cf.querySelector('[data-testid="connector"] details > summary')?.textContent).not.toBe('Details');
   });
 
   it('a Microsoft Learn card has logo, name, publisher, what it gives agents, sign-in kind, license, docs and state', async () => {
@@ -190,22 +191,25 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
       return c;
     }, r);
     expect(after.querySelector('[data-testid="connector-account"]')!.textContent).toContain('the server says it is Microsoft Learn (learn-mcp 1.2)');
-    // the tile follows
-    await waitFor(() => expect((r.$('[data-testid="integration-tile"][data-kind="mslearn"]') as HTMLElement).textContent).toContain('Agents: connected'), r);
+    // the row follows
+    await waitFor(() => expect(stateOf(r.$('[data-testid="integration-row"][data-kind="mslearn"]')!)).toBe('On'), r);
   });
 
   it('asks for a token, sends it once, and never shows it again', async () => {
     const calls: unknown[][] = [];
     let cards: McpGalleryCard[] = [GH];
-    const r = show({
-      mcpGallery: async () => cards,
-      mcpConnect: async (...a: unknown[]) => {
-        calls.push(a);
-        cards = [{ ...GH, status: 'connected', libraryId: 'gh', account: 'octocat' }];
-        return { card: cards[0]! };
+    const r = show(
+      {
+        mcpGallery: async () => cards,
+        mcpConnect: async (...a: unknown[]) => {
+          calls.push(a);
+          cards = [{ ...GH, status: 'connected', libraryId: 'gh', account: 'octocat' }];
+          return { card: cards[0]! };
+        },
       },
-    });
-    await openVendor(r, 'github');
+      { initial: 'github' },
+    );
+    await openGitHub(r);
     const gh = await cardOf(r, 'gh');
     await r.act(() => byText(gh, 'button', 'Connect GitHub').click());
     expect(calls.length).toBe(0); // the token comes first
@@ -227,15 +231,18 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
   it('keeps every key typed into the token field, and sends the whole token (H12)', async () => {
     const calls: unknown[][] = [];
     let cards: McpGalleryCard[] = [GH];
-    const r = show({
-      mcpGallery: async () => cards,
-      mcpConnect: async (...a: unknown[]) => {
-        calls.push(a);
-        cards = [{ ...GH, status: 'connected', libraryId: 'gh', account: 'octocat' }];
-        return { card: cards[0]! };
+    const r = show(
+      {
+        mcpGallery: async () => cards,
+        mcpConnect: async (...a: unknown[]) => {
+          calls.push(a);
+          cards = [{ ...GH, status: 'connected', libraryId: 'gh', account: 'octocat' }];
+          return { card: cards[0]! };
+        },
       },
-    });
-    await openVendor(r, 'github');
+      { initial: 'github' },
+    );
+    await openGitHub(r);
     const gh = await cardOf(r, 'gh');
     await r.act(() => byText(gh, 'button', 'Connect GitHub').click());
     const field = byLabel<HTMLInputElement>(gh, 'Token for GitHub');
@@ -262,7 +269,7 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(link.getAttribute('href')).toBe('https://linear.app/oauth/authorize?x=1');
     expect(link.getAttribute('target')).toBe('_blank');
     expect((r.$('[data-id="linear"] [data-testid="connector-status"]') as HTMLElement).textContent).toBe('Needs sign-in');
-    await waitFor(() => expect((r.$('[data-testid="integration-tile"][data-kind="linear"]') as HTMLElement).textContent).toContain('Agents: needs sign-in'), r);
+    await waitFor(() => expect(stateOf(r.$('[data-testid="integration-row"][data-kind="linear"]')!)).toBe('Needs sign-in'), r);
   });
 
   it('a card that needs a sign-in shows one Sign in button, not a Sign-in heading with a badge and a second button', async () => {
@@ -288,7 +295,7 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
       mcpGallery: async () => [galleryCard({ status: 'error', libraryId: 'mslearn', detail: 'could not reach Microsoft Learn: connection refused' })],
       mcpLibDiscover: (async (...a: unknown[]) => (tries.push(a), libServer())) as never,
     });
-    expect((await tileOf(r, 'mslearn')).textContent).toContain('Agents: error');
+    expect(stateOf(await rowOf(r, 'mslearn'))).toBe('Error');
     await openVendor(r, 'mslearn');
     const ml = await cardOf(r, 'mslearn');
     expect(ml.querySelector('[role="alert"]')!.textContent).toContain('connection refused');
@@ -349,11 +356,14 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
 
   it('clips the descriptions a server gives its tools (L48)', async () => {
     const long = `${'Reads and writes everything. '.repeat(3000)}LAST WORDS`;
-    const r = show({
-      mcpGallery: async () => [galleryCard({ id: 'gh', display: 'GitHub', publisher: 'GitHub', brand: 'github', auth: 'bearer', integration: 'github', tools: [{ name: 'huge', description: long, readOnlyHint: true }] })],
-      mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker', serverInfo: { name: 'acme', version: '1', description: long } })],
-    });
-    await openVendor(r, 'github');
+    const r = show(
+      {
+        mcpGallery: async () => [galleryCard({ id: 'gh', display: 'GitHub', publisher: 'GitHub', brand: 'github', auth: 'bearer', integration: 'github', tools: [{ name: 'huge', description: long, readOnlyHint: true }] })],
+        mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker', serverInfo: { name: 'acme', version: '1', description: long } })],
+      },
+      { initial: 'github' },
+    );
+    await openGitHub(r);
     const gh = await cardOf(r, 'gh');
     await r.act(() => (gh.querySelector('details summary') as HTMLElement).click());
     const tool = await waitFor(() => must(gh.querySelector('[data-testid="connector-tool-description"]')) as HTMLElement, r);
@@ -361,12 +371,18 @@ describe('the Integrations page: one tile per vendor, with the MCP connector car
     expect(gh.textContent).not.toContain('LAST WORDS');
   });
 
-  it('sends the servers you add yourself to the Library, their one home (UI review P1-8)', async () => {
-    const r = show({ mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker' })] });
-    const link = await waitFor(() => must(r.$('[data-testid="own-servers-link"] a')) as HTMLAnchorElement, r);
-    expect(link.getAttribute('href')).toBe('/library');
-    expect(r.$('[data-testid="own-servers"]')).toBeNull();
-    expect(r.container.textContent).not.toContain('My tracker');
+  it("a connected card links its server's own settings (which tools only read, Edit); the servers you add yourself are rows of their own", async () => {
+    const r = show({
+      mcpGallery: async () => [galleryCard({ status: 'connected', libraryId: 'mslearn' })],
+      mcpLibList: async () => [libServer({ id: 'mslearn', display: 'Microsoft Learn', catalogId: 'mslearn' }), libServer({ id: 'mine', display: 'My tracker' })],
+    });
+    await openVendor(r, 'mslearn');
+    const ml = await cardOf(r, 'mslearn');
+    expect(ml.querySelector('[data-testid="connector-settings"]')!.getAttribute('href')).toBe('/integrations/server-mslearn');
+    const mine = await waitFor(() => must(r.$('[data-testid="list-group-servers"] [data-key="server-mine"]')) as HTMLElement, r);
+    expect(mine.textContent).toContain('My tracker');
+    expect(r.$('[data-testid="list-group-servers"] [data-key="server-mslearn"]')).toBeNull();
+    expect(r.$('a[href="/library"]')).toBeNull();
   });
 
   it('names identities as plain text', () => {

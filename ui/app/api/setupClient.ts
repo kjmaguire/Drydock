@@ -13,6 +13,7 @@ import type {
   PrebuiltApplied,
   PrebuiltApplyReq,
   Project,
+  ProjectRepos,
   SetupRequest,
   SetupResult,
 } from './types.ts';
@@ -32,6 +33,11 @@ export interface SetupClient {
   /** Where repositories are cloned unless the human picks another folder. */
   githubCloneDir(): Promise<string>;
   githubClone(repo: string, dir: string): Promise<CloneResult>;
+  /**
+   * Every project with its repository, the CI state of its default branch and its open pull requests (the GitHub page's
+   * Repositories table). Answers are kept a minute; `refresh` asks GitHub again. A failure is the row's, not the call's.
+   */
+  githubProjectRepos(refresh?: boolean): Promise<ProjectRepos>;
   mcpCatalog(): Promise<McpCatalogEntry[]>;
   mcpAddFromCatalog(catalogId: string): Promise<McpCatalogAdded>;
   agentCatalogList(projectId?: string): Promise<PrebuiltAgent[]>;
@@ -65,6 +71,10 @@ export function createSetupClient(t: Transport): SetupClient {
     githubRepos: async (owner = '', query = '') => arr(await t.call<GitHubRepo[] | null>('github.repos', { owner, query })),
     githubCloneDir: async () => (await t.call<string | null>('github.cloneDir', {})) ?? '',
     githubClone: (repo, dir) => t.call('github.clone', { repo, dir }),
+    githubProjectRepos: async (refresh = false) => {
+      const r = await t.call<ProjectRepos>('github.projectRepos', { refresh });
+      return { ghInstalled: !!r?.ghInstalled, rows: arr(r?.rows).map((x) => ({ ...x, openPullRequests: Number(x.openPullRequests) || 0 })) };
+    },
     mcpCatalog: async () => arr(await t.call<McpCatalogEntry[] | null>('mcplib.catalog', {})).map((e) => ({ ...e, readOnlyTools: arr(e.readOnlyTools), recommendedRoles: arr(e.recommendedRoles) })),
     mcpAddFromCatalog: (catalogId) => t.call('mcplib.addFromCatalog', { catalogId }),
     agentCatalogList: async (projectId) => arr(await t.call<PrebuiltAgent[] | null>('agentcatalog.list', projectId ? { projectId } : {})).map(prebuilt),

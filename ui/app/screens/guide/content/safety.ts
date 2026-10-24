@@ -62,7 +62,7 @@ export const SAFETY: readonly Topic[] = [
           head: ['You see', 'Look at'],
           rows: [
             ['The GitHub CLI is not installed', 'Install `gh` from [cli.github.com](https://cli.github.com), run `gh auth login`, then **Check again** on [GitHub](/github).'],
-            ['An agent CLI is not listed, or is not usable', '[Connections](/connections): install and sign in to the CLI, accept every notice on it, then **Test connection…**. See [Connect an agent CLI](guide:connect-cli).'],
+            ['An agent CLI is not listed, or is not usable', '[Agents](/agents): install and sign in to the CLI, accept every notice on it, then **Test connection**. See [Connect an agent CLI](guide:connect-cli).'],
             ['A task waits and nothing seems wrong', 'Open **Needs you** (the bell). A limit, an approval or a question may be waiting for you.'],
             ['Agents stopped answering', 'A budget reached 100%. Raise it in [Budgets](/budgets). See [Budgets and cost](guide:budgets).'],
             ['No CI reported on a pull request', 'Your decision in Needs you: check again, merge without CI this time, or stop. A repository without CI can be declared so in [Project settings](/project).'],

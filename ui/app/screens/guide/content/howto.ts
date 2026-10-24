@@ -6,21 +6,21 @@ export const HOWTO: readonly Topic[] = [
     section: 'howto',
     title: 'Connect an agent CLI',
     summary: 'Drydock uses the coding CLIs you installed, with their own sign-in.',
-    keywords: ['connections', 'cli', 'claude code', 'codex', 'gemini', 'wsl', 'sign in', 'mcp gateway', 'test'],
+    keywords: ['agents', 'connections', 'cli', 'claude code', 'codex', 'gemini', 'wsl', 'sign in', 'mcp gateway', 'test'],
     body: [
-      { p: '[Connections](/connections) lists the agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials.' },
+      { p: '[Agents](/agents) lists the agent CLIs found on this machine. Drydock uses your own installed CLI and its own sign-in; it never reads or transmits your credentials.' },
       {
         ol: [
           'Install the CLI the way its vendor documents and sign in once in a terminal.',
-          'Open [Connections](/connections). A tile appears for each CLI found. Choose a tile to see it in full.',
+          'Open [Agents](/agents). A row appears for each CLI found, installed ones first. Choose a row to see it in full.',
           'Read and accept every notice on the CLI. A CLI is **usable** only when it is ready and you have accepted each notice on it.',
-          'Press **Test connection…** on the tile. Drydock starts the real CLI (on this machine, or inside the WSL distro for a WSL tile) and checks that it starts, answers and stops.',
+          'Press **Test connection** on it. Drydock starts the real CLI (on this machine, or inside the WSL distro for a WSL install) and checks that it starts, answers and stops. The result is under **Test results**.',
         ],
       },
       { h: 'A CLI inside WSL' },
-      { p: 'A CLI installed inside a WSL distro has a tile of its own with its own sign-in, separate from Windows. Open a terminal in the distro (`wsl -d <distro>`) and sign in the way the CLI documents. Drydock never reads or copies that sign-in.' },
+      { p: 'A CLI installed inside a WSL distro has a row of its own with its own sign-in, separate from Windows. Open a terminal in the distro (`wsl -d <distro>`) and sign in the way the CLI documents. Drydock never reads or copies that sign-in.' },
       { h: 'MCP gateway' },
-      { p: 'The MCP servers you give an agent reach it through one local gateway. **Claude Code** is verified with real runs. For the other CLIs Drydock hands the gateway over when the session starts, but no real run has shown yet that each CLI uses it, so it stays off until you allow it under **MCP gateway** on the Connections page.' },
+      { p: 'The MCP servers you give an agent reach it through one local gateway. **Claude Code** is verified with real runs. For the other CLIs Drydock hands the gateway over when the session starts, but no real run has shown yet that each CLI uses it, so it stays off until you allow it with the **MCP gateway** switch on the CLI\'s page in Agents.' },
     ],
     related: ['crew', 'capabilities', 'integrations', 'troubleshooting'],
   },
@@ -51,7 +51,7 @@ export const HOWTO: readonly Topic[] = [
           'Gives agents GitHub’s tools through the GitHub MCP server, once you connect it and grant it to a project’s agents; every tool that writes waits for your approval, call by call.',
         ],
       },
-      { p: 'Two things you connect yourself keep a sign-in or token in the Windows credential store, never shown: **Sign in with GitHub** on the connection, and the **GitHub MCP server** in the Library. Disconnect either one to delete what it keeps. Everything read from GitHub (issues, comments, logs) is treated as untrusted text.' },
+      { p: 'Two things you connect yourself keep a sign-in or token in the Windows credential store, never shown: **Sign in with GitHub** on the connection, and the **GitHub MCP server** on [Integrations](/integrations). Disconnect either one to delete what it keeps. Everything read from GitHub (issues, comments, logs) is treated as untrusted text.' },
     ],
     related: ['delivery', 'integrations', 'runners', 'untrusted-text'],
   },
@@ -60,7 +60,7 @@ export const HOWTO: readonly Topic[] = [
     section: 'howto',
     title: 'Connect services and MCP servers',
     summary: 'Connect a service or an agent tool once for the workspace, then give it to projects and agents.',
-    keywords: ['integrations', 'mcp', 'linear', 'notion', 'sentry', 'aikido', 'app sync', 'grant', 'rule', 'library'],
+    keywords: ['integrations', 'mcp', 'linear', 'notion', 'sentry', 'aikido', 'app sync', 'grant', 'rule', 'library', 'your servers', 'add mcp server'],
     body: [
       { h: 'Services (app sync)' },
       { p: '[Integrations](/integrations) lists services such as Linear, Notion, Sentry, Aikido and GitHub. Drydock reads their items through each service’s own API, as untrusted text: redacted, scored for injection risk and quoted as data. Secrets stay in the Windows credential store.' },
@@ -73,8 +73,8 @@ export const HOWTO: readonly Topic[] = [
       },
       { p: 'A **rule** creates backlog tasks from matching items. Only you can create, change or enable a rule. A new rule starts disabled and in dry-run: it lists what it would create and creates nothing until you turn both on. Items with an injection risk of 3 or more are never created by a rule, and item text cannot set a rule parameter.' },
       { h: 'Agent tools (MCP servers)' },
-      { p: 'MCP servers give agents a vendor’s tools. Connect one once (here or in the [Library](/library)). Then, on a project’s Integrations page, choose its tile under **Agent tools**, add it to the project and tick which agents may use it. Every tool not marked read-only waits for your approval, call by call. A project only ever reaches the servers it was given, and an agent only the servers you gave it.' },
-      { p: 'Claude Code agents receive MCP servers; another agent CLI only after you allow it under MCP gateway on [Connections](/connections). A server with a sign-in: after you save it, press **Sign in** on its card. Your browser opens the server’s own sign-in page and Drydock keeps the tokens in the Windows credential store.' },
+      { p: 'MCP servers give agents a vendor’s tools. Connect one once on [Integrations](/integrations): a vendor’s server is under **Agent tools**; your own (a web address or a program on this PC) is added with **Add MCP server** and listed under **Your servers**, where **Find tools** lists its tools. Then, on a project’s Integrations page, choose its row under **Agent tools**, add it to the project and tick which agents may use it. Every tool not marked read-only waits for your approval, call by call. A project only ever reaches the servers it was given, and an agent only the servers you gave it.' },
+      { p: 'Claude Code agents receive MCP servers; another agent CLI only after you allow it with the MCP gateway switch on its page in [Agents](/agents). A server with a sign-in: after you save it, press **Sign in** on its page. Your browser opens the server’s own sign-in page and Drydock keeps the tokens in the Windows credential store.' },
     ],
     related: ['github', 'connect-cli', 'untrusted-text'],
   },
@@ -107,7 +107,7 @@ export const HOWTO: readonly Topic[] = [
     summary: 'Providers are the model services Drydock may call directly, and how OpenRouter is used.',
     keywords: ['provider', 'api key', 'openrouter', 'credential manager', 'http', 'uptime', 'quota'],
     body: [
-      { p: '[Providers](/providers) lists the model providers Drydock may call directly. Choose a tile to see a provider in full, or press **Add a provider**.' },
+      { p: 'The **Providers** of the [Models](/models) page are the model providers Drydock may call directly. Choose one to see it in full, or choose [Add a provider](/models/new).' },
       {
         ul: [
           'API keys are stored in the **Windows Credential Manager** and are never shown again after you save them.',
@@ -126,7 +126,7 @@ export const HOWTO: readonly Topic[] = [
     summary: 'Drydock comes with its own model engine, with Google’s TurboQuant; models come from the Hugging Face Hub.',
     keywords: ['local model', 'hugging face', 'gguf', 'kv cache', 'turboquant', 'cuda', 'vulkan', 'llama.cpp'],
     body: [
-      { p: '[Models on this PC](/models) shows the model served, the memory it takes and the models you can download from Hugging Face.' },
+      { p: '[Models on this PC](/models/this-pc), on the Models page, shows the model served, the memory it takes and the models you can download from Hugging Face.' },
       { p: 'Drydock comes with its own model engine, built with Google’s TurboQuant. It is put in place at the first start (from the download, or fetched from GitHub and checked against the digest GitHub recorded), in Drydock’s own folder: nothing has to be installed by hand, and nothing is added to the PC’s `PATH`. Models come from the Hugging Face Hub, checked the same way.' },
       {
         ul: [

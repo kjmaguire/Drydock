@@ -44,3 +44,19 @@ func TestGitHubStatusTellsATimeoutFromASignedOutGh(t *testing.T) {
 		t.Fatalf("signed out: %+v", st)
 	}
 }
+
+// The version is the first line of `gh --version`; anything else is no version rather than a guess.
+func TestParseGhVersion(t *testing.T) {
+	for in, want := range map[string]string{
+		"gh version 2.83.1 (2025-11-13)\nhttps://example.invalid/releases/tag/v2.83.1\n": "2.83.1",
+		"gh version 2.90.0-rc.1 (2026-09-01)":                                            "2.90.0-rc.1",
+		"  gh version 2.4.0\n":                                                           "2.4.0",
+		"":                                                                               "",
+		"GitHub CLI, unknown":                                                            "",
+		"gh version DEV":                                                                 "",
+	} {
+		if got := parseGhVersion(in); got != want {
+			t.Errorf("parseGhVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

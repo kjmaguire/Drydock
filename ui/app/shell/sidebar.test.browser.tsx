@@ -55,7 +55,8 @@ describe('the sidebar', () => {
       'nav-project-item',
       'nav-crew',
       'nav-security-scan',
-      'nav-side-connections',
+      'nav-side-agents',
+      'nav-side-integrations',
       'nav-side-models',
       'nav-library',
       'nav-settings',
@@ -109,7 +110,7 @@ describe('the sidebar', () => {
     expect(mine.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('marks the page current: a tab of the project, Chats, the workspace Crew, Security, Connections, Models on this PC, Settings, the Guide', async () => {
+  it('marks the page current: a tab of the project, Chats, the workspace Crew, Security, Agents, Integrations, Models, Settings, the Guide', async () => {
     for (const [route, id] of [
       [{ name: 'task', id: 't1' }, 'nav-tasks'],
       [{ name: 'pulls' }, 'nav-tasks'],
@@ -120,11 +121,16 @@ describe('the sidebar', () => {
       [{ name: 'chat', id: 'c1' }, 'nav-chats'],
       [{ name: 'crew' }, 'nav-crew'],
       [{ name: 'security-scan' }, 'nav-security-scan'],
-      [{ name: 'connections' }, 'nav-side-connections'],
-      // Models on this PC is a page of its own; Providers is a settings page again (it keeps a link to Models on this PC)
+      // the sidebar's own pages (decision P98); the old addresses mark where they now lead, GitHub is one of the integrations
+      [{ name: 'agents' }, 'nav-side-agents'],
+      [{ name: 'agents', key: 'claude' }, 'nav-side-agents'],
+      [{ name: 'connections' }, 'nav-side-agents'],
+      [{ name: 'integrations', key: 'linear' }, 'nav-side-integrations'],
+      [{ name: 'github' }, 'nav-side-integrations'],
+      [{ name: 'mcp' }, 'nav-side-integrations'],
       [{ name: 'models' }, 'nav-side-models'],
-      [{ name: 'providers' }, 'nav-settings'],
-      [{ name: 'github' }, 'nav-settings'],
+      [{ name: 'providers' }, 'nav-side-models'],
+      [{ name: 'routing' }, 'nav-settings'],
       [{ name: 'guide', topic: 'scan' }, 'nav-guide-top'],
       [{ name: 'workspace' }, 'nav-workspace'],
     ] as const) {
@@ -143,7 +149,7 @@ describe('the sidebar', () => {
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('Home');
   });
 
-  it('Models on this PC is a workspace page of its own: its link and the engine card lead to /models, and no project is open there', async () => {
+  it('Models is a workspace page of its own: its link and the engine card lead to /models, and no project is open there', async () => {
     const v = {
       supported: true,
       runtime: { installed: true, sourceName: 'TurboQuant build', tag: 'b10298-2.0.0', backend: 'vulkan' },

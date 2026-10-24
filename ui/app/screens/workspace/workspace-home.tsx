@@ -1,7 +1,7 @@
 // Home (/home): the workspace outside any project. First a chat with Claude Code that needs no project (decision P60): type
 // and start, or open Options for the folder, the agent CLI, skills and MCP servers; the latest chats without a project are
 // one click away. Then the projects, each with what needs you there, and everything shared by all of them: the skill library,
-// agents and MCP servers, chats, integrations, connections and the app itself. Opening a project card selects that project
+// agent templates, chats, integrations, connections and the app itself. Opening a project card selects that project
 // and opens it.
 
 import { css, navigate, on, type Handle } from 'remix/component';
@@ -398,7 +398,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
           <Section title="Library" description="Defined once for the whole workspace, then given to projects and agents." testId="home-library">
             <ul mix={tileGrid} aria-label="Library">
               <AreaTile href={routes.librarySkills.href()} icon={Cpu} title="Skills" blurb="Instructions agents read, from your skill registries" testId="home-skills" />
-              <AreaTile href={routes.library.href()} icon={Library} title="Agents and MCP servers" blurb="Agent templates, prebuilt agents and the MCP servers you connected" testId="home-library-link" />
+              <AreaTile href={routes.library.href()} icon={Library} title="Agent templates" blurb="Team members defined once, and the prebuilt agents" testId="home-library-link" />
               <AreaTile href={routes.chats.href()} icon={MessagesSquare} title="Chats" blurb="Your own conversations with an agent, with or without a project" testId="home-chats" />
             </ul>
           </Section>
@@ -407,7 +407,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
             <ul mix={tileGrid} aria-label="Connect">
               <AreaTile href={routes.integrations.href()} icon={Plug} title="Integrations" blurb="GitHub, Linear, Notion, Sentry and agent tools" testId="home-integrations" />
               <AreaTile href={routes.connections.href()} icon={Link2} title="Connections" blurb="The agent CLIs on this computer and in WSL, and the MCP gateway" testId="home-connections" />
-              <AreaTile href={routes.providers.href()} icon={Network} title="Providers" blurb="Model providers, keys and prices" testId="home-providers" />
+              <AreaTile href={routes.models.href()} icon={Network} title="Models" blurb="Models on this PC and the model providers, keys and prices" testId="home-providers" />
               <AreaTile href={routes.routing.href()} icon={RouteIcon} title="Routing" blurb="Which model each kind of turn uses" testId="home-routing" />
             </ul>
           </Section>

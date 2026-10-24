@@ -59,6 +59,10 @@ describe('command palette items', () => {
     expect(items.find((i) => i.label === 'Integrations')!.href).toBe('/integrations');
     expect(filterItems(items, 'project integrations')[0]!.label).toBe('Project integrations');
     expect(filterItems(items, 'approvals').map((i) => i.label)).toContain('Project integrations');
+    // the Library keeps the agent templates; the MCP servers you add are on Integrations (decision P98)
+    expect(items.find((i) => i.label === 'Library: agent templates')!.href).toBe('/library');
+    expect(items.map((i) => i.label)).not.toContain('Library: agents and MCP servers');
+    expect(filterItems(items, 'templates')[0]!.label).toBe('Library: agent templates');
   });
 
   it('offers the GitHub settings page, found by "gh" and by what it holds', () => {
@@ -68,17 +72,25 @@ describe('command palette items', () => {
     expect(filterItems(items, 'runners').map((i) => i.label)).toContain('GitHub');
   });
 
-  it('offers Models on this PC, a workspace page of its own, found by what it holds; Providers no longer stands for it', () => {
+  it('offers Models, Agents and Integrations, the sidebar\'s own pages, found by what they hold (decision P98)', () => {
     const items = buildItems(rooms, tasks, agents);
-    const models = items.find((i) => i.label === 'Models on this PC')!;
-    expect(models).toMatchObject({ group: 'Navigate', href: '/models', what: 'Goes to Models on this PC.' });
+    const models = items.find((i) => i.label === 'Models')!;
+    expect(models).toMatchObject({ group: 'Navigate', href: '/models', what: 'Goes to Models.' });
     // a workspace page, not a settings page: not listed by ">"
     expect(models.scope).toBe(undefined);
     expect(filterItems(items, 'models on this pc')[0]!.href).toBe('/models');
     expect(filterItems(items, 'local models')[0]!.href).toBe('/models');
     expect(filterItems(items, 'gguf')[0]!.href).toBe('/models');
     expect(filterItems(items, 'hugging face').map((i) => i.href)).toContain('/models');
-    expect(filterItems(items, 'providers')[0]!.href).toBe('/providers');
+    // the model providers are on the same page now
+    expect(filterItems(items, 'providers')[0]!.href).toBe('/models');
+    expect(filterItems(items, 'openrouter')[0]!.href).toBe('/models');
+    // the agent CLIs, found by their old page's name too
+    expect(filterItems(items, 'connections')[0]!.href).toBe('/agents');
+    expect(filterItems(items, 'claude code')[0]!.href).toBe('/agents');
+    expect(items.find((i) => i.label === 'Agents')!.scope).toBe(undefined);
+    expect(items.find((i) => i.label === 'Integrations')!.scope).toBe(undefined);
+    expect(items.some((i) => i.label === 'Connections' || i.label === 'Providers')).toBe(false);
   });
 
   it('matches letters in order as a last resort and drops non-matches', () => {
@@ -118,7 +130,7 @@ describe('the prefixes', () => {
   it('">" lists the settings pages and the actions only', () => {
     const all = filterItems(items, '>');
     const labels = all.map((i) => i.label);
-    expect(labels).toContain('Connections');
+    expect(labels).toContain('Model routing');
     expect(labels).toContain('Project settings');
     expect(labels).toContain('Theme: dark');
     expect(labels).toContain('Open a terminal');

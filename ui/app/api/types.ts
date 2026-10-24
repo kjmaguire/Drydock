@@ -97,6 +97,38 @@ export interface GitHubStatus {
   unreachable?: boolean;
   login: string;
   error?: string;
+  /** The GitHub CLI's version as `gh --version` prints it ("2.83.1"); absent when it could not be read. */
+  version?: string;
+}
+
+/** The CI state of a repository's default branch (its latest commit): GraphQL's statusCheckRollup in words. */
+export type RepoCI = 'passing' | 'failing' | 'running' | 'none';
+
+/**
+ * A project's row in the GitHub page's Repositories table (internal/core/ext_github_repos.go). `github`: read from GitHub (ci and
+ * openPullRequests are set); `local`: a repository whose origin is not on github.com; `no_repo`: no repository attached;
+ * `needs_gh`: a GitHub remote but no GitHub CLI; `error`: the read failed, `error` says why (this row only).
+ */
+export interface ProjectRepoRow {
+  projectId: string;
+  project: string;
+  state: 'github' | 'local' | 'no_repo' | 'needs_gh' | 'error';
+  /** owner/name of the origin remote. */
+  repo?: string;
+  /** The repository on github.com. */
+  url?: string;
+  private?: boolean;
+  defaultBranch?: string;
+  ci?: RepoCI;
+  openPullRequests: number;
+  error?: string;
+  /** When GitHub answered (Unix milliseconds). */
+  checkedAt?: number;
+}
+
+export interface ProjectRepos {
+  ghInstalled: boolean;
+  rows: ProjectRepoRow[];
 }
 
 /** A repository the signed-in user can reach. Name and description are outside text: shown, never acted on. */

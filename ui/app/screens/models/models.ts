@@ -254,3 +254,28 @@ export function wholeNumber(s: string): number | undefined {
   const n = Number(s.trim());
   return s.trim() !== '' && Number.isInteger(n) && n >= 0 ? n : undefined;
 }
+
+/** The key of the local engine's row on the Models page (/models/this-pc), which opens when no other row is asked for. */
+export const THIS_PC = 'this-pc';
+/** The key of the "Add a provider" row (/models/new). */
+export const NEW_PROVIDER = 'new';
+
+/** A served model's name as a row says it: "gpt-oss-20b · MXFP4". */
+export function servedName(modelId: string): string {
+  const { repo, variant } = splitModelId(modelId);
+  return variant ? `${modelName(repo)} · ${variant}` : modelName(repo);
+}
+
+/**
+ * The "Models on this PC" row of the Models page and its detail's pill: the state in a word or two and the line under the name
+ * (the model served, else whether the engine is set up). `none` is the words only: a call to set up, not a state.
+ */
+export function localRow(v: Pick<LocalView, 'supported' | 'runtime' | 'server'>): { text: string; tone: Tone | 'none'; sub: string } {
+  if (!v.supported) return { text: 'Not available', tone: 'muted', sub: 'Not set up' };
+  const s = v.server;
+  if (s?.state === 'running') return { text: 'Serving', tone: 'ok', sub: s.modelId ? servedName(s.modelId) : 'Serving' };
+  if (s?.state === 'starting') return { text: 'Starting', tone: 'info', sub: s.modelId ? servedName(s.modelId) : 'Starting' };
+  if (!v.runtime?.installed) return v.runtime?.job?.state === 'running' ? { text: 'Setting up', tone: 'info', sub: 'Not set up' } : { text: 'Set up', tone: 'none', sub: 'Not set up' };
+  if (s?.state === 'failed') return { text: 'Failed', tone: 'err', sub: 'Nothing served' };
+  return { text: 'Stopped', tone: 'muted', sub: 'Nothing served' };
+}

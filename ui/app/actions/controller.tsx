@@ -5,10 +5,10 @@ import { createController } from 'remix/router';
 import type { AppContext } from '../router.tsx';
 import { routes } from '../routes.ts';
 
-/** The Integrations page. */
-async function integrations({ render }: Pick<AppContext, 'render'>) {
+/** The Integrations page, or one integration on it (/integrations/<key>). */
+async function integrations({ render, params }: Pick<AppContext, 'render'> & { params: { key?: string } }) {
   const { IntegrationsScreen } = await import('../screens/integrations/integrations-screen.tsx');
-  return render(<IntegrationsScreen />);
+  return render(<IntegrationsScreen key="integrations" initial={params.key} />);
 }
 
 export const controller = createController(routes, {
@@ -152,9 +152,15 @@ export const controller = createController(routes, {
       return render(<SkillLibraryScreen />);
     },
     integrations,
+    // the agent CLIs (decision P98); one key for the page and each agent, so the list stays mounted while the choice changes
+    async agents({ render, params }) {
+      const { AgentsScreen } = await import('../screens/agents/agents-screen.tsx');
+      return render(<AgentsScreen key="agents" initial={params.key} />);
+    },
+    // an old address: Connections became Agents (decision P98)
     async connections({ render }) {
-      const { ConnectionsScreen } = await import('../screens/connections/connections-screen.tsx');
-      return render(<ConnectionsScreen />);
+      const { Redirect } = await import('../shell/redirect.tsx');
+      return render(<Redirect to={routes.agents.href()} />);
     },
     async github({ render }) {
       const { GitHubScreen } = await import('../screens/github/github-screen.tsx');
@@ -164,13 +170,14 @@ export const controller = createController(routes, {
       const { WorkspaceSecurityScreen } = await import('../screens/security/workspace-security-screen.tsx');
       return render(<WorkspaceSecurityScreen />);
     },
+    // an old address: Providers merged into Models (decision P98)
     async providers({ render }) {
-      const { ProvidersScreen } = await import('../screens/providers/providers-screen.tsx');
-      return render(<ProvidersScreen />);
+      const { Redirect } = await import('../shell/redirect.tsx');
+      return render(<Redirect to={routes.models.href()} />);
     },
-    async models({ render }) {
+    async models({ render, params }) {
       const { ModelsScreen } = await import('../screens/models/models-screen.tsx');
-      return render(<ModelsScreen />);
+      return render(<ModelsScreen key="models" initial={params.key} />);
     },
     async routing({ render }) {
       const { RoutingScreen } = await import('../screens/routing/routing-screen.tsx');

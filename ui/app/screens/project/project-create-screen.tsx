@@ -281,7 +281,7 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
         <ErrorNote error={library.error ?? mcpCatalog.error} what="Could not list connectors" />
         {lib.length === 0 && cat.length === 0 ? (
           <Empty title="No connectors" icon={FolderGit2}>
-            <p>Add MCP servers in the Library later.</p>
+            <p>Add MCP servers on the Integrations page later.</p>
           </Empty>
         ) : null}
         {lib.length > 0 ? <h3>In your library</h3> : null}

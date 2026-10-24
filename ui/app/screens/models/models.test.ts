@@ -14,11 +14,13 @@ import {
   gpus,
   hostPort,
   jobFraction,
+  localRow,
   memoryBar,
   memoryBars,
   modelName,
   progressText,
   runtimeLine,
+  servedName,
   serverTone,
   splitModelId,
   startedWords,
@@ -205,5 +207,21 @@ describe('Models on this PC helpers', () => {
     expect(wholeNumber('12.5')).toBe(undefined);
     expect(wholeNumber('-1')).toBe(undefined);
     expect(wholeNumber('abc')).toBe(undefined);
+  });
+
+  it('the Models page row: the state in words and the model served, else whether the engine is set up', () => {
+    const rt = (over: Partial<LocalView['runtime']> = {}): LocalView['runtime'] => ({ installed: true, devices: { probed: false, devices: [] }, ...over });
+    expect(servedName('ggml-org/gpt-oss-20b-GGUF:MXFP4')).toBe('gpt-oss-20b · MXFP4');
+    expect(servedName('plain')).toBe('plain');
+    expect(localRow({ supported: false, runtime: rt(), server: { state: 'stopped' } })).toEqual({ text: 'Not available', tone: 'muted', sub: 'Not set up' });
+    expect(localRow({ supported: true, runtime: rt({ installed: false }), server: { state: 'stopped' } })).toEqual({ text: 'Set up', tone: 'none', sub: 'Not set up' });
+    const job: LocalJob = { kind: 'install', target: 'x', state: 'running', done: 0, total: 0, started: '' };
+    expect(localRow({ supported: true, runtime: rt({ installed: false, job }), server: { state: 'stopped' } })).toEqual({ text: 'Setting up', tone: 'info', sub: 'Not set up' });
+    expect(localRow({ supported: true, runtime: rt(), server: { state: 'stopped' } })).toEqual({ text: 'Stopped', tone: 'muted', sub: 'Nothing served' });
+    expect(localRow({ supported: true, runtime: rt(), server: { state: 'running', modelId: 'acme/tiny-GGUF:Q4_0' } })).toEqual({ text: 'Serving', tone: 'ok', sub: 'tiny · Q4_0' });
+    expect(localRow({ supported: true, runtime: rt(), server: { state: 'starting', modelId: 'acme/tiny-GGUF:Q4_0' } })).toEqual({ text: 'Starting', tone: 'info', sub: 'tiny · Q4_0' });
+    expect(localRow({ supported: true, runtime: rt(), server: { state: 'failed' } })).toEqual({ text: 'Failed', tone: 'err', sub: 'Nothing served' });
+    // a view of a PC that cannot run local models may carry nothing else
+    expect(localRow({ supported: false } as LocalView).text).toBe('Not available');
   });
 });

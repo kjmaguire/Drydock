@@ -75,9 +75,9 @@ describe("a project's Integrations page: app sync", () => {
       ['sentry', 'false', 'false'],
     ]);
     expect(tiles[0]!.querySelector('[data-brand="linear"]')).not.toBeNull();
-    expect(tiles[0]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('assigned');
+    expect(tiles[0]!.querySelector('[data-testid="row-status"]')!.textContent).toBe('assigned');
     expect(tiles[0]!.textContent).toContain('Team: ENG');
-    expect(tiles[1]!.querySelector('[data-testid="tile-badge"]')!.textContent).toBe('not assigned');
+    expect(tiles[1]!.querySelector('[data-testid="row-status"]')!.textContent).toBe('not assigned');
     expect(tiles[1]!.textContent).toContain('Not assigned to this project');
     expect(r.$$('[data-testid="project-integration"]').length).toBe(1);
     // the group is named as on the workspace's page

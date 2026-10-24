@@ -1,10 +1,9 @@
 // Pure helpers for the Providers screens: price text (an unknown price is never shown as 0), probe summaries, the create
-// request (exported Go field names), the key-limit summary and the overview tiles (logo, what it is, state, which opens first).
+// request (exported Go field names), the key-limit summary and the list rows of the Models page (logo, what it is, state).
 
 import type { AvoidedEndpoint, ProviderDetail } from '../../api/providerClient.ts';
 import type { DataClass, NewProvider, PriceTier, ProbeResult, Provider, ProviderKind, ProviderModel } from '../../api/types.ts';
 import { formatUsd, plural } from '../../lib/format.ts';
-import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
 export const isZeroTime = (s: string | undefined) => !s || s.startsWith('0001-');
@@ -47,9 +46,6 @@ export function healthTone(status: string): Tone {
   return status === 'up' ? 'ok' : status === 'down' ? 'err' : 'muted';
 }
 
-/** The selection that opens the add form instead of a provider. */
-export const ADD_PROVIDER = 'add';
-
 // Well-known API hosts and the brand their logo is; a host not listed falls back to the detected flavor.
 const BRAND_HOSTS: [suffix: string, brand: string][] = [
   ['openrouter.ai', 'openrouter'],
@@ -84,21 +80,36 @@ export function providerBrand(p: Pick<Provider, 'baseUrl' | 'flavor'>): string {
 
 const KIND_WORDS: Record<string, string> = { aggregator: 'Aggregator', direct: 'Vendor API', host: 'Your server' };
 
-/** The tile's "what it is" line: the kind in words and the host it calls. */
-export const providerBlurb = (p: Pick<Provider, 'kind' | 'baseUrl'>): string => `${KIND_WORDS[p.kind] ?? p.kind}, ${providerHost(p.baseUrl)}`;
+/** A provider's kind in words ("Aggregator", "Vendor API", "Your server"). */
+export const kindWords = (kind: string): string => KIND_WORDS[kind] ?? kind;
 
-/** The tile's state line and its tone: disabled, or the health from the last probe. */
-export function providerState(p: Pick<Provider, 'enabled' | 'status'>): { text: string; tone: TileTone } {
-  if (!p.enabled) return { text: 'Disabled', tone: '' };
+/** The list row's line under the name: the kind in words and the tier ("Aggregator · cheap"). */
+export const providerRowSub = (p: Pick<Provider, 'kind' | 'tier'>): string => `${kindWords(p.kind)} · ${p.tier}`;
+
+/** The detail's line under the name: the kind in words and the host it calls ("Aggregator · openrouter.ai"). */
+export const providerHeadSub = (p: Pick<Provider, 'kind' | 'baseUrl'>): string => `${kindWords(p.kind)} · ${providerHost(p.baseUrl)}`;
+
+/** The state at the end of a provider's row and on its detail: disabled, or the health from the last check. */
+export function providerStatus(p: Pick<Provider, 'enabled' | 'status'>): { text: string; tone: Tone } {
+  if (!p.enabled) return { text: 'Disabled', tone: 'muted' };
   if (p.status === 'up') return { text: 'Up', tone: 'ok' };
-  if (p.status === 'down') return { text: 'Down', tone: 'bad' };
-  return { text: 'Not checked yet', tone: 'warn' };
+  if (p.status === 'down') return { text: 'Down', tone: 'err' };
+  return { text: 'Not checked', tone: 'muted' };
 }
 
-/** What opens when the screen opens: the first enabled provider that is down, else the first, else the add form. */
-export function defaultProvider(list: readonly Pick<Provider, 'id' | 'enabled' | 'status'>[]): string {
-  const p = list.find((x) => x.enabled && x.status === 'down') ?? list[0];
-  return p ? p.id : ADD_PROVIDER;
+/**
+ * The providers the Providers group lists: every one but the server of Models on this PC, which the core registers as a provider
+ * (local.get's settings.providerId) and which is the page's own "On this PC" row.
+ */
+export function listedProviders<P extends Pick<Provider, 'id'>>(list: readonly P[], localProviderId: string | undefined): P[] {
+  return localProviderId ? list.filter((p) => p.id !== localProviderId) : [...list];
+}
+
+/** Where the selection goes when a provider is removed: the one after it, else the one before, else `fallback`. */
+export function nextAfterRemoval(list: readonly Pick<Provider, 'id'>[], removed: string, fallback: string): string {
+  const i = list.findIndex((p) => p.id === removed);
+  const next = list[i + 1] ?? list[i - 1];
+  return i >= 0 && next ? next.id : fallback;
 }
 
 export const ATTESTATIONS: [string, string][] = [

@@ -1107,6 +1107,42 @@ Open, owner action:
   is because the core has no such data (a diff hunk without context lines) or the app's rules (12 px is the smallest size,
   Ctrl rather than Cmd on Windows, no "/ commands" a chat does not have). Every browser test now fails when a page draws two
   siblings with one key, and a source rule holds every corner to the 14 px radius.
+- **P98. Lists, not boxes: Agents, one Integrations page, one Models page, and a GitHub page of rows (2026-10-24, on the
+  owner's words).** The owner asked to merge Integrations and Connections, to give Agents its own page, and to make the pages
+  "really easy to navigate and not have such massive boxes to look at ... Draw inspiration from other apps", the GitHub page
+  too; then, on the plan and its mockups (the canvas "Drydock Integrations, Agents & GitHub"): "choose what you think is
+  appropriate" for the merged page's name, yes to moving the MCP servers people add themselves out of the Library, "model
+  providers and models on this PC is kind of the same thing ... just merge both", and yes to a repositories table. (1) **The
+  pattern** (`ui/app/ui/master-detail.tsx`, after Linear's settings rows, Raycast and VS Code's extension lists, Cursor's MCP
+  settings and Apple's grouped settings): a filterable list of 44 px rows under quiet group headings (a logo, the name over
+  one line, the state in words with a dot) beside the chosen row's detail; "/" focuses the filter, the arrow keys move through
+  the rows; the detail is a `DetailHeader` (logo, name, state pill, one line, actions) over `SettingsGroup`s of `SettingRow`s
+  (label, value, control) and `FactGrid`s, with long explanations cut to one line and a Guide link. Below 1024 px the list
+  fills the page and a chosen row opens its detail in its place with Back. Each item has an address (`/agents/<key>`,
+  `/integrations/<key>`, `/models/<key>`); a choice replaces the address and the screen stays mounted. (2) **The sidebar**
+  reads Crew, Security, Agents, Integrations, Models, Library; the Settings rail keeps Routing and the app's pages. Old
+  addresses lead on: `/connections` to Agents, `/providers` to Models, `/mcp` to Integrations; the command menu finds Agents by
+  "connections" and Models by "providers". (3) **Agents** (`screens/agents/`, once Connections): the agent CLIs, Installed then
+  Not installed, each Ready, Sign in, Accept notice, Untested, Test failed, Unavailable or Install; the detail's header holds
+  Test connection (its confirmation a dialog), Sign in and Check again, at most one notice with its fix, and the tabs Overview
+  (notices to accept, the facts, the distro, the MCP gateway as one switch per CLI in place of the separate gateway list, Used
+  by: the crew agents in any project that run on this CLI), Test results and Install and update. (4) **Integrations**
+  (`screens/integrations/`): Services (app sync), Agent tools (vendors' MCP servers) and Your servers (the MCP servers people
+  add themselves, moved from the Library, with Add MCP server as a dialog); filters All, On, Needs you; a service not yet
+  connected shows three steps, the way to connect, only the field it needs and what it reads; a connected one its connection,
+  checks, projects and its vendor's MCP server as rows. GitHub's row opens the GitHub page. The Library keeps agent templates
+  and skills. A project's own Integrations page uses the same rows. (5) **Models** (`screens/models/`, Providers merged in):
+  On this PC (the engine, the server, memory, the models and the Hugging Face search, as before) then the providers and Add a
+  provider; the local server's own provider entry is the This PC row, never a second one. The models an agent CLI uses
+  through its own sign-in stay with that CLI on Agents. (6) **GitHub** (`screens/github/`): a breadcrumb back to
+  Integrations, the sign-in as one line with chips, Access as rows (the gh sign-in, issue sync, GitHub's MCP server), a new
+  **Repositories** table and the CI runners as a table with Add runner in a dialog. The table is the core's new
+  `github.projectRepos` (`internal/core/ext_github_repos.go`, `internal/git/host/overview.go`): one GraphQL call through the
+  hardened gh per repository per refresh (default branch, its latest commit's check rollup, open pull requests; at most four
+  at once, 20 s each, answers kept 60 s, projects sharing a repository share the call), errors per row, rows marked
+  `needs_gh` without gh; tested through `a.call` with a labelled stand-in gh. Every page has browser tests and its e2e specs
+  against the real core; the density and layout audits measure the new addresses. **Not proven** until it runs on a PC: the
+  repositories table against real GitHub.
 - **P99. drydock.exe carries its own icon, version information and manifest; signing is prepared and off (2026-10-24, on the
   owner's words: the built exe showed "just a little default window" icon, and "how to make the app more trusted by
   Windows").** The exe embedded no resources at all. (1) Every build (CI's `app` job, `task build:windows`) runs go-winres

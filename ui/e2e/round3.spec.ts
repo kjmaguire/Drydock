@@ -409,8 +409,9 @@ test('room modes, the scheduler and previews report what the core says', async (
 test('integrations: connecting stores the key without ever showing it; with no vendor server the test does not pass; disconnect removes it', async ({ page }) => {
   await createProject(page, 'gocalc-int');
   await workspaceNav(page, 'nav-integrations');
-  await expect(page.getByText('Nothing is connected.')).toBeVisible();
-  await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
+  const linear = page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid=integration-row][data-kind=linear]');
+  await expect(linear).toContainText('Set up');
+  await linear.click();
   const card = page.locator('[data-testid=integration][data-kind=linear]');
   const secret = 'lin_api_e2e_secret_value';
   await card.getByLabel('API key', { exact: true }).fill(secret);
@@ -441,8 +442,13 @@ test('integrations: connecting stores the key without ever showing it; with no v
   await expect(rule).toContainText('disabled');
   await expect(rule).toContainText('dry-run');
   await workspaceNav(page, 'nav-integrations');
-  await page.locator('[data-testid=integration-tile][data-kind=linear]').click();
-  await card.getByRole('button', { name: 'Disconnect' }).click();
+  await linear.click();
+  // the connection names the project it is assigned to
+  await expect(card.getByTestId('integration-project').filter({ hasText: 'gocalc-int' })).toBeVisible();
+  // Disconnect is in the detail's … menu and asks first
+  await card.getByRole('button', { name: 'More for Linear' }).click();
+  await page.getByRole('menuitem', { name: 'Disconnect', exact: true }).click();
   await card.getByRole('button', { name: /Yes, disconnect/ }).click();
-  await expect(page.getByText('Nothing is connected.')).toBeVisible();
+  await expect(card.getByTestId('detail-status')).toHaveText('Not connected');
+  await expect(linear).toContainText('Set up');
 });

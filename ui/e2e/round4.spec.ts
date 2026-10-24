@@ -359,7 +359,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.keyboard.press('Escape');
 
   await workspaceNav(page, 'nav-providers');
-  await page.getByTestId('provider-add-tile').click();
+  await page.getByTestId('provider-add').click();
   await page.getByLabel('Provider name').fill('blocked');
   await expect(page.getByRole('button', { name: 'Add provider' })).toBeDisabled();
 

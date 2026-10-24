@@ -47,15 +47,21 @@ export const routes = route({
   chat: get('/chats/:id'),
   library: get('/library'),
   librarySkills: get('/library/skills'),
-  integrations: get('/integrations'),
+  // everything Drydock connects to, once for the whole workspace (decision P98): services, agent tools, your own MCP servers;
+  // /integrations/<key> opens one of them
+  integrations: get('/integrations(/:key)'),
+  // the agent CLIs the crew runs on (decision P98); /agents/<connection key> opens one
+  agents: get('/agents(/:key)'),
+  // an old address: Connections became Agents (decision P98)
   connections: get('/connections'),
   // everything Drydock does with GitHub, on one settings page: your gh sign-in, the connection, the MCP server, the CI runners
   github: get('/github'),
   // scan any folder on this computer, or one of the projects (decision P61)
   securityScan: get('/security-scan'),
+  // an old address: Providers merged into Models (decision P98)
   providers: get('/providers'),
-  // Models on this PC (decisions P65, P97): the engine, the model served, the memory it takes, the models from Hugging Face
-  models: get('/models'),
+  // Models (decisions P65, P97, P98): this PC's engine and models, and the model providers; /models/<key> opens one
+  models: get('/models(/:key)'),
   routing: get('/routing'),
   backups: get('/backups'),
   data: get('/data'),

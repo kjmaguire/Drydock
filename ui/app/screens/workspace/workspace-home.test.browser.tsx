@@ -63,13 +63,13 @@ describe('the workspace Home', () => {
     expect(navigated).toEqual(['/']);
   });
 
-  it('links every workspace area: the skill library, agents and MCP servers, chats, connections and the app', async () => {
+  it('links every workspace area: the skill library, agent templates, chats, connections and the app', async () => {
     const { r } = show();
     await waitFor(() => expect(r.$('[data-testid="home-skills"]')).not.toBeNull(), r);
     const hrefs = Array.from(r.$$('[data-testid^="home-"]'))
       .map((e) => e.getAttribute('href'))
       .filter(Boolean);
-    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/security-scan', '/providers', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
+    for (const h of ['/library/skills', '/library', '/chats', '/integrations', '/connections', '/security-scan', '/models', '/routing', '/settings', '/backups', '/data', '/license', '/support', '/project/new']) {
       expect([h, hrefs.includes(h)]).toEqual([h, true]);
     }
     expect(r.$('[data-testid="home-skills"]')!.textContent).toContain('Skills');

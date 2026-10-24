@@ -58,11 +58,6 @@ const HUB_OF: Record<string, string> = {
   'nav-memory': 'nav-knowledge',
   'nav-repo-map': 'nav-knowledge',
   'nav-library-skills': 'nav-library',
-  'nav-integrations': 'nav-settings',
-  'nav-mcp': 'nav-settings',
-  'nav-connections': 'nav-settings',
-  'nav-github': 'nav-settings',
-  'nav-providers': 'nav-settings',
   'nav-routing': 'nav-settings',
   'nav-license': 'nav-settings',
   'nav-backups': 'nav-settings',
@@ -105,11 +100,28 @@ export async function openRoom(page: Page, name: string): Promise<void> {
  * the others are tabs (or pills) of the workspace bar, which a project's page reaches through the Drydock mark (Home).
  */
 export async function workspaceNav(page: Page, testId: string): Promise<void> {
-  if (HUB_OF[testId] !== 'nav-settings' && testId !== 'nav-settings' && !(await sidebar(page).getByTestId('nav-chats').isVisible())) {
+  // the pages that left the Settings rail (decision P98): Agents (once Connections), Integrations (with /mcp), Models (with
+  // Providers) are the sidebar's own; GitHub is the GitHub row of Integrations
+  const id = OLD_NAV[testId] ?? testId;
+  if (HUB_OF[id] !== 'nav-settings' && id !== 'nav-settings' && !(await sidebar(page).getByTestId('nav-chats').isVisible())) {
     await sidebar(page).getByTestId('nav-workspace').click();
   }
-  await navTo(page, testId);
+  if (testId === 'nav-github') {
+    await navTo(page, 'nav-side-integrations');
+    await page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]').click();
+    await expect(page.getByTestId('github-page')).toBeVisible();
+    return;
+  }
+  await navTo(page, id);
 }
+
+const OLD_NAV: Record<string, string> = {
+  'nav-connections': 'nav-side-agents',
+  'nav-integrations': 'nav-side-integrations',
+  'nav-mcp': 'nav-side-integrations',
+  'nav-providers': 'nav-side-models',
+  'nav-github': 'nav-side-integrations',
+};
 
 /**
  * Open a page of a project (Crew, Tasks, Project settings...). On a workspace page the bar shows the workspace, so the

@@ -1,8 +1,11 @@
 import { expect } from 'remix/assert';
+import type { Handle } from 'remix/component';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { LocalBackend, LocalModel, LocalSettingsEdit, LocalView, Variant } from '../../api/localClient.ts';
-import { cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import type { NewProvider, Provider } from '../../api/types.ts';
+import { expiredLicense } from '../../test/fixtures.ts';
+import { byLabel, byText, cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ModelsScreen } from './models-screen.tsx';
 
 afterEach(cleanup);
@@ -69,7 +72,8 @@ const model = (over: Partial<LocalModel> = {}): LocalModel => ({
 const NOW = Date.parse('2026-10-22T12:00:00Z');
 
 function show(client: Partial<Client>) {
-  const s = testServices(client);
+  // a labelled test double of the core's provider.list: no provider configured
+  const s = testServices({ providerList: async () => [], ...client });
   const r = mount(<ModelsScreen now={NOW} />, s);
   return { r, s };
 }
@@ -99,7 +103,7 @@ const enabled = <T extends HTMLButtonElement | HTMLInputElement>(r: ReturnType<t
     return el;
   }, r);
 
-describe('Models on this PC (the page)', () => {
+describe('Models on this PC (the this-pc detail of the Models page)', () => {
   it('on a PC where local models are not supported shows the reason only', async () => {
     const { r } = show({ localGet: async () => view({ supported: false, reason: 'Local models run on Windows only.' }) });
     await waitFor(() => expect(need(r, '[data-testid="local-runtime"]').textContent).toContain('Local models run on Windows only.'), r);
@@ -254,8 +258,8 @@ describe('Models on this PC (the page)', () => {
     expect(server.querySelector('[data-testid="local-server-url"]')!.getAttribute('title')).toBe('http://127.0.0.1:9933/v1');
     expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Serving gpt-oss-20b');
     expect(need(r, '[data-testid="local-server-title"]').getAttribute('title')).toBe(models[0]!.id);
-    expect(need(r, '[data-testid="local-provider-note"]').textContent).toBe('Agents reach it as a provider: see Providers.');
-    expect(need(r, '[data-testid="local-provider-note"] a').getAttribute('href')).toBe('/providers');
+    expect(need(r, '[data-testid="local-provider-note"]').textContent).toBe('Agents reach it as a provider: see Routing.');
+    expect(need(r, '[data-testid="local-provider-note"] a').getAttribute('href')).toBe('/routing');
     // the served row says so, like the mockup's: Serving · GPU, downloaded; it cannot be served again, the others can
     expect(fit(models[0]!.id)!.textContent).toBe('Serving · GPU');
     expect(row(models[0]!.id).getAttribute('data-served')).toBe('true');
@@ -639,7 +643,7 @@ describe('Models on this PC (the page)', () => {
     expect(optionsOf(cache).map((o) => o.value)).toEqual(['q8_0', 'q4_0', 'f16']);
     expect(valueOf(cache)).toBe('q8_0');
     expect(need(r, '[data-testid="local-settings"]').textContent).toContain('q8_0: near-lossless, half the KV memory of f16');
-    expect(need(r, '[data-testid="local-settings"] h2').textContent).toBe('Server settings');
+    expect(need(r, '[data-testid="local-settings"] h3').textContent).toBe('Server settings');
     expect(q(r, '[data-testid="local-restart"]')).toBe(null);
 
     type(cache, 'q4_0');
@@ -737,10 +741,14 @@ describe('Models on this PC (the page)', () => {
     expect(reads).toBe(2);
   });
 
-  it("the page's head: the title, the privacy line, the Hub search; \"/\" goes to the search from anywhere but a field", async () => {
+  it("the detail's head: the title, the privacy line, the Hub search; \"/\" goes to the search from anywhere but a field", async () => {
     const { r } = show({ localGet: async () => installed() });
     await waitFor(() => need(r, '[data-testid="local-search-input"]'), r);
-    expect(need(r, 'h1').textContent).toBe('Models on this PC');
+    expect(need(r, 'h1').textContent).toBe('Models');
+    expect(need(r, '[data-testid="local-head"] h2').textContent).toBe('Models on this PC');
+    expect(need(r, '[data-testid="local-head"] [data-testid="learn-more"]').getAttribute('data-topic')).toBe('local-models');
+    // the runner's window may be narrow, where the list comes first: choosing the row shows the detail, which focus needs
+    await r.act(() => need(r, '[data-testid="models-row"][data-key="this-pc"]').click());
     expect(need(r, '[data-testid="local-models"]').textContent).toContain('Private: prompts and code never leave this computer');
     const input = need(r, '[data-testid="local-search-input"]') as HTMLInputElement;
     expect(input.getAttribute('aria-label')).toBe('Find a model');
@@ -784,7 +792,7 @@ describe('Models on this PC (the page)', () => {
     const card = need(r, '[data-testid="local-server"]');
     expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Serving gpt-oss-20b');
     expect(need(r, '[data-testid="local-server-url"]').textContent).toBe('127.0.0.1:9933');
-    expect(Array.from(card.querySelectorAll('dt')).map((d) => d.textContent)).toEqual(['Used by', 'KV cache', 'Started']);
+    expect(Array.from(card.querySelectorAll('[data-part="label"]')).map((d) => d.textContent)).toEqual(['Model', 'Used by', 'KV cache', 'Started', 'Provider']);
     expect(need(r, '[data-testid="local-used-by"]').textContent).toBe('Local helper, Reviewer');
     expect(need(r, '[data-testid="local-kv"]').textContent).toBe('turbo4 · 32k context');
     expect(need(r, '[data-testid="local-started"]').textContent).toBe('at login, 3 h ago');
@@ -871,5 +879,314 @@ describe('Models on this PC (the page)', () => {
     expect(empty.disabled).toBe(true);
     expect(empty.title).toBe('Download a model first');
     expect(need(none.r, '[data-testid="local-models-card"] .empty').textContent).toBe('No model yet: find one on Hugging Face.');
+  });
+});
+
+/** A labelled test double of a provider as provider.list answers it. */
+const provider = (over: Partial<Provider> = {}): Provider => ({
+  id: 'prov_1',
+  name: 'OpenRouter',
+  kind: 'aggregator',
+  baseUrl: 'https://openrouter.ai/api/v1',
+  keyRef: 'ref',
+  dataClass: 'private',
+  tier: 'cheap',
+  flavor: 'openrouter',
+  enabled: true,
+  maxConcurrent: 0,
+  hourlyCost: 0,
+  tlsMode: 'system',
+  lanUnencrypted: false,
+  wireApis: null,
+  status: 'up',
+  lastSeen: '0001-01-01T00:00:00Z',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+});
+// the server of Models on this PC, as the core registers it (kind host, flavor llamacpp) and names it in local.get's settings
+const localProvider = provider({ id: 'prov_local', name: 'Models on this PC', kind: 'host', baseUrl: 'http://127.0.0.1:9933/v1', flavor: 'llamacpp', keyRef: '', status: 'up' });
+const servingView = () =>
+  installed({
+    models: [model()],
+    server: { state: 'running', modelId: model().id, port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' },
+    settings: { ...installed().settings, modelId: model().id, providerId: 'prov_local' },
+  });
+// a labelled test double of provider.detail: the provider as listed, no models, no quota
+const detailOf = (list: () => Provider[]) => async (id: string) => ({ provider: list().find((p) => p.id === id) ?? provider({ id }), models: [], quota: [] });
+
+/** The page in a host that can change its address prop the way the router does, keeping the screen mounted. */
+function Host(handle: Handle<{ nav: string[]; ctl: { open?: (key?: string) => void }; start?: string }>) {
+  let initial = handle.props.start;
+  handle.props.ctl.open = (key) => {
+    initial = key;
+    void handle.update();
+  };
+  return () => <ModelsScreen key="models" initial={initial} now={NOW} onNavigate={(h) => handle.props.nav.push(h)} />;
+}
+function page(client: Partial<Client>, start?: string) {
+  const nav: string[] = [];
+  const ctl: { open?: (key?: string) => void } = {};
+  const s = testServices({ localGet: async () => servingView(), providerList: async () => [], ...client });
+  const r = mount(<Host nav={nav} ctl={ctl} start={start} />, s);
+  return { r, s, nav, ctl };
+}
+type PageR = ReturnType<typeof page>['r'];
+const rows = (r: PageR) => Array.from(r.$$('[data-testid="models-row"]')) as HTMLButtonElement[];
+const rowOf = (r: PageR, key: string) => need(r, `[data-testid="models-row"][data-key="${key}"]`) as HTMLButtonElement;
+const addRow = (r: PageR) => need(r, '[data-testid="provider-add"]') as HTMLButtonElement;
+const shown = (r: PageR, key: string) => waitFor(() => expect(r.$('[aria-current="true"]')?.getAttribute('data-key') ?? (addRow(r).getAttribute('aria-current') ? 'new' : '')).toBe(key), r);
+
+describe('Models (the page: Models on this PC and the providers)', () => {
+  it('lists this PC, then each provider with its logo, kind and tier and its state; the local server is the this-pc row, not a second one', async () => {
+    const list = [
+      provider(),
+      localProvider,
+      provider({ id: 'p2', name: 'Anthropic', kind: 'direct', baseUrl: 'https://api.anthropic.com/v1', flavor: 'anthropic', tier: 'premium', status: 'down' }),
+      provider({ id: 'p3', name: 'My vLLM', kind: 'host', baseUrl: 'http://192.168.1.5:8000/v1', flavor: 'vllm', tier: 'free', status: 'unknown' }),
+      provider({ id: 'p4', name: 'Old', enabled: false, status: 'up' }),
+    ];
+    const { r } = page({ providerList: async () => list, providerDetail: detailOf(() => list) });
+    await waitFor(() => expect(rows(r).length).toBe(5), r);
+    expect(need(r, 'h1').textContent).toBe('Models');
+    expect(Array.from(r.$$('nav[aria-label="Models and providers"] h2')).map((h) => h.textContent)).toEqual(['On this PC', 'Providers']);
+    // this PC: the model served and its state
+    expect(rows(r).map((b) => b.getAttribute('data-key'))).toEqual(['this-pc', 'prov_1', 'p2', 'p3', 'p4']);
+    expect(rowOf(r, 'this-pc').textContent).toBe('Models on this PCgpt-oss-20b · MXFP4Serving');
+    expect(rowOf(r, 'this-pc').querySelector('[data-tone="ok"]')).not.toBeNull();
+    // the providers: never the local server's own entry
+    expect(r.$('[data-testid="models-row"][data-key="prov_local"]')).toBeNull();
+    expect(rows(r).filter((b) => b.textContent!.startsWith('Models on this PC')).length).toBe(1);
+    expect(rowOf(r, 'prov_1').textContent).toBe('OpenRouterAggregator · cheapUp');
+    expect(rowOf(r, 'prov_1').querySelector('[data-brand="openrouter"]')).not.toBeNull();
+    expect(rowOf(r, 'p2').textContent).toBe('AnthropicVendor API · premiumDown');
+    expect(rowOf(r, 'p2').querySelector('[data-tone="err"]')).not.toBeNull();
+    expect(rowOf(r, 'p3').textContent).toBe('My vLLMYour server · freeNot checked');
+    expect(rowOf(r, 'p4').textContent).toBe('OldAggregator · cheapDisabled');
+    expect(rowOf(r, 'p4').getAttribute('data-quiet')).toBe('true');
+    expect(addRow(r).textContent).toContain('Add a provider');
+    // the head: real counts, a link to Routing and the Guide
+    expect(need(r, '[data-testid="models-page"]').textContent).toContain('This PC: serving · 4 providers, 1 up');
+    expect(need(r, '[data-testid="models-routing"]').getAttribute('href')).toBe('/routing');
+    expect(r.$('header [data-testid="learn-more"][data-topic="providers"]')).not.toBeNull();
+    // /models opens this PC
+    await shown(r, 'this-pc');
+    need(r, '[data-testid="local-server"]');
+  });
+
+  it('the this-pc row says how the engine is: Set up, Setting up, Stopped', async () => {
+    const notSet = page({ localGet: async () => view() });
+    await waitFor(() => expect(rowOf(notSet.r, 'this-pc').textContent).toBe('Models on this PCNot set upSet up'), notSet.r);
+    cleanup();
+    const job = { kind: 'install', target: 'TurboQuant build for Vulkan', state: 'running', done: 1, total: 4, started: '' } as const;
+    const setting = page({ localGet: async () => view({ runtime: { installed: false, devices: { probed: false, devices: [] }, job } }) });
+    await waitFor(() => expect(rowOf(setting.r, 'this-pc').textContent).toBe('Models on this PCNot set upSetting up'), setting.r);
+    expect(need(setting.r, '[data-testid="local-head"] [data-testid="detail-status"]').textContent).toBe('Setting up');
+    cleanup();
+    const stopped = page({ localGet: async () => installed() });
+    await waitFor(() => expect(rowOf(stopped.r, 'this-pc').textContent).toBe('Models on this PCNothing servedStopped'), stopped.r);
+    expect(need(stopped.r, '[data-testid="models-page"]').textContent).toContain('This PC: stopped · 0 providers, 0 up');
+  });
+
+  it('choosing a row puts its key in the address and opens it; a new address opens its row while the page stays mounted', async () => {
+    let localReads = 0;
+    const list = [provider(), provider({ id: 'p2', name: 'Second', baseUrl: 'https://api.mistral.ai/v1', kind: 'direct', flavor: '' })];
+    const { r, nav, ctl } = page({ localGet: async () => (localReads++, servingView()), providerList: async () => list, providerDetail: detailOf(() => list) });
+    await shown(r, 'this-pc');
+    await r.act(() => rowOf(r, 'p2').click());
+    expect(nav).toEqual(['/models/p2']);
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('Second'), r);
+    expect(r.$('[data-testid="local-models"]')).toBeNull();
+    expect(need(r, '[data-testid="provider-head"] [data-brand="mistral"]')).toBeTruthy();
+    await r.act(() => rowOf(r, 'this-pc').click());
+    expect(nav).toEqual(['/models/p2', '/models/this-pc']);
+    await waitFor(() => need(r, '[data-testid="local-server"]'), r);
+    // the router hands the page a new key (a link, Back): that row opens; the page was not mounted again
+    await r.act(() => ctl.open!('prov_1'));
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('OpenRouter'), r);
+    await shown(r, 'prov_1');
+    await r.act(() => ctl.open!(undefined));
+    await waitFor(() => need(r, '[data-testid="local-server"]'), r);
+    expect(localReads).toBe(1);
+    // nothing more was written to the address: a key that came from it is not sent back
+    expect(nav).toEqual(['/models/p2', '/models/this-pc']);
+  });
+
+  it('opens the row the address names; the local server\'s own provider id and a key that is not there open this PC', async () => {
+    const list = [provider(), localProvider];
+    const opened = page({ providerList: async () => list, providerDetail: detailOf(() => list) }, 'prov_1');
+    await waitFor(() => expect(need(opened.r, '[data-testid="provider"]').getAttribute('data-name')).toBe('OpenRouter'), opened.r);
+    await shown(opened.r, 'prov_1');
+    cleanup();
+    const local = page({ providerList: async () => list }, 'prov_local');
+    await waitFor(() => need(local.r, '[data-testid="local-server"]'), local.r);
+    await shown(local.r, 'this-pc');
+    cleanup();
+    const gone = page({ providerList: async () => list }, 'prov_gone');
+    await waitFor(() => need(gone.r, '[data-testid="local-server"]'), gone.r);
+    await shown(gone.r, 'this-pc');
+    cleanup();
+    const add = page({ providerList: async () => list }, 'new');
+    await waitFor(() => need(add.r, 'form[aria-label="Add a provider"]'), add.r);
+    await shown(add.r, 'new');
+  });
+
+  it('Add a provider opens the form; create sends exported Go field names, the key leaves its field at once and is shown nowhere; the new one opens', async () => {
+    const calls: NewProvider[] = [];
+    let list: Provider[] = [];
+    const { r, nav } = page({
+      providerList: async () => list,
+      providerDetail: detailOf(() => list),
+      providerCreate: async (p) => {
+        calls.push(p);
+        list = [provider({ id: 'prov_new', name: 'My Host', kind: 'host', baseUrl: 'http://192.168.1.5:8000/v1', flavor: '', status: 'unknown' })];
+        return list[0]!;
+      },
+    });
+    await waitFor(() => need(r, '[data-testid="provider-add"]'), r);
+    expect(need(r, 'nav[aria-label="Models and providers"]').textContent).toContain('No providers yet');
+    await r.act(() => addRow(r).click());
+    expect(nav).toEqual(['/models/new']);
+    const form = await waitFor(() => need(r, 'form[aria-label="Add a provider"]'), r);
+    expect(addRow(r).getAttribute('aria-current')).toBe('true');
+    expect(need(r, '[data-testid="provider-new"] h2').textContent).toBe('Add a provider');
+    // Advanced starts closed
+    expect((form.querySelector('details') as HTMLDetailsElement).open).toBe(false);
+    const add = () => byText<HTMLButtonElement>(r.container, 'button', 'Add provider');
+    expect(add().disabled).toBe(true);
+    type(byLabel(r.container, 'Provider name'), 'My Host');
+    type(byLabel<HTMLElement>(r.container, 'Kind'), 'host');
+    type(byLabel(r.container, 'Base URL'), 'http://192.168.1.5:8000/v1');
+    const key = byLabel(r.container, /API key/);
+    expect(key.type).toBe('password');
+    type(key, 'sk-secret-123');
+    type(byLabel<HTMLElement>(r.container, 'Data class'), 'private');
+    type(byLabel<HTMLElement>(r.container, 'Tier'), 'free');
+    await r.act(() => byLabel(r.container, /accept plain http/).click());
+    await waitFor(() => expect(add().disabled).toBe(false), r);
+    await r.act(() => add().click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toEqual({ Name: 'My Host', Kind: 'host', BaseURL: 'http://192.168.1.5:8000/v1', APIKey: 'sk-secret-123', DataClass: 'private', Tier: 'free', Attestations: { lan_attested: true } });
+    expect(key.value).toBe('');
+    // the new provider opens in place of the form, and the address says so
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('My Host'), r);
+    expect(nav).toEqual(['/models/new', '/models/prov_new']);
+    expect(r.$('form[aria-label="Add a provider"]')).toBeNull();
+    await shown(r, 'prov_new');
+    expect(r.container.innerHTML).not.toContain('sk-secret-123');
+    // the form is empty for the next one
+    await r.act(() => addRow(r).click());
+    await waitFor(() => need(r, 'form[aria-label="Add a provider"]'), r);
+    expect(byLabel(r.container, 'Provider name').value).toBe('');
+    expect(byLabel(r.container, /API key/).value).toBe('');
+    expect(byLabel<HTMLInputElement>(r.container, /accept plain http/).checked).toBe(false);
+  });
+
+  it('shows the core\'s validation error verbatim and still does not keep the key', async () => {
+    const msg = 'providers: plain http is only allowed on loopback, link-local or private addresses; use https';
+    const { r } = page(
+      {
+        providerCreate: async () => {
+          throw new Error(msg);
+        },
+      },
+      'new',
+    );
+    await waitFor(() => need(r, 'form[aria-label="Add a provider"]'), r);
+    type(byLabel(r.container, 'Provider name'), 'x');
+    type(byLabel(r.container, 'Base URL'), 'http://example.com/v1');
+    const key = byLabel(r.container, /API key/);
+    type(key, 'sk-secret-456');
+    const add = byText<HTMLButtonElement>(r.container, 'button', 'Add provider');
+    await waitFor(() => expect(add.disabled).toBe(false), r);
+    await r.act(() => add.click());
+    await waitFor(() => expect(r.$$('[role="alert"]').length).toBe(1), r);
+    expect(need(r, '[role="alert"]').textContent).toContain(msg);
+    expect(key.value).toBe('');
+    expect(r.container.innerHTML).not.toContain('sk-secret-456');
+    // what was typed apart from the key stays, so it can be corrected
+    expect(byLabel(r.container, 'Provider name').value).toBe('x');
+  });
+
+  it('edits a provider and removes it (confirmed); a removed one gives way to the next, the last to this PC', async () => {
+    const deleted: string[] = [];
+    let list = [provider(), provider({ id: 'p2', name: 'Second' })];
+    const { r, nav } = page(
+      {
+        providerList: async () => list,
+        providerDetail: detailOf(() => list),
+        providerUpdate: async (e) => ((list = list.map((p) => (p.id === e.id ? { ...p, name: e.name ?? p.name } : p))), list[0]!),
+        providerDelete: async (id) => void (deleted.push(id), (list = list.filter((p) => p.id !== id))),
+      },
+      'p2',
+    );
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('Second'), r);
+    // Edit: the settings form, saved through the core; the list reads the new name
+    const editBtn = await waitFor(() => {
+      const b = byText<HTMLButtonElement>(r.container, 'button', 'Edit');
+      if (b.disabled) throw new Error('not yet');
+      return b;
+    }, r);
+    await r.act(() => editBtn.click());
+    const form = await waitFor(() => need(r, 'form[aria-label="Provider settings"]'), r);
+    expect(byLabel(form, 'Name').value).toBe('Second');
+    type(byLabel(form, 'Name'), 'Renamed');
+    await r.act(() => byText(form, 'button', 'Save settings').click());
+    await waitFor(() => expect(rowOf(r, 'p2').textContent).toContain('Renamed'), r);
+    // Remove asks first
+    await r.act(() => need(r, '[data-testid="provider-remove"]').click());
+    expect(deleted).toEqual([]);
+    await r.act(() => need(r, '[data-testid="provider-remove-confirm"]').click());
+    await waitFor(() => expect(deleted).toEqual(['p2']), r);
+    await waitFor(() => expect(need(r, '[data-testid="provider"]').getAttribute('data-name')).toBe('OpenRouter'), r);
+    expect(nav.at(-1)).toBe('/models/prov_1');
+    await waitFor(() => expect(r.$('[data-testid="models-row"][data-key="p2"]')).toBeNull(), r);
+    await r.act(() => need(r, '[data-testid="provider-remove"]').click());
+    await r.act(() => need(r, '[data-testid="provider-remove-confirm"]').click());
+    await waitFor(() => need(r, '[data-testid="local-server"]'), r);
+    expect(nav.at(-1)).toBe('/models/this-pc');
+  });
+
+  it('read-only turns off adding, with the reason, but the fields stay usable', async () => {
+    const s = testServices({ localGet: async () => servingView(), providerList: async () => [], licenseStatus: async () => expiredLicense, projectList: async () => [], appInfo: async () => ({}) as never });
+    s.workspace.start();
+    const r = mount(<ModelsScreen initial="new" onNavigate={() => undefined} />, s);
+    await waitFor(() => need(r, '[data-testid="readonly-note"]'), r);
+    type(byLabel(r.container, 'Provider name'), 'blocked');
+    type(byLabel(r.container, 'Base URL'), 'https://x');
+    const add = byText<HTMLButtonElement>(r.container, 'button', 'Add provider');
+    await waitFor(() => expect(add.disabled).toBe(true), r);
+    expect(add.title).toContain('read-only');
+    expect(byLabel<HTMLInputElement>(r.container, 'Provider name').disabled).toBe(false);
+  });
+
+  it('waits for both reads; a provider list that fails says so in the list and this PC still works; a local view that fails says so on its row', async () => {
+    let finish: (v: LocalView) => void = () => undefined;
+    const waiting = page({ localGet: () => new Promise<LocalView>((res) => (finish = res)) });
+    await waitFor(() => need(waiting.r, '[role="status"]'), waiting.r);
+    expect(waiting.r.$('[data-testid="models"]')).toBeNull();
+    finish(servingView());
+    await waitFor(() => need(waiting.r, '[data-testid="models"]'), waiting.r);
+    cleanup();
+
+    const failed = page({
+      providerList: async () => {
+        throw new Error('the core is not answering');
+      },
+    });
+    await waitFor(() => expect(need(failed.r, 'nav [role="alert"]').textContent).toContain('the core is not answering'), failed.r);
+    expect(failed.r.$('[data-testid="provider-add"]')).toBeNull();
+    need(failed.r, '[data-testid="local-server"]');
+    cleanup();
+
+    const localFailed = page({
+      localGet: async () => {
+        throw new Error('local.get failed');
+      },
+      providerList: async () => [provider()],
+    });
+    await waitFor(() => expect(rowOf(localFailed.r, 'this-pc').textContent).toBe('Models on this PCCould not be read'), localFailed.r);
+    expect(need(localFailed.r, '[data-testid="local-models"] [role="alert"]').textContent).toContain('local.get failed');
+    need(localFailed.r, '[data-testid="models-row"][data-key="prov_1"]');
   });
 });
