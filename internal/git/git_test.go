@@ -252,6 +252,19 @@ func TestOpenNotARepo(t *testing.T) {
 	}
 }
 
+// git's words follow the command line and the reason when it said any; a git that said nothing (it could not start, or could
+// not enter the folder) leaves nothing dangling after the reason.
+func TestGitErrorWordsEndWithWhatGitSaid(t *testing.T) {
+	said := &gitError{args: []string{"remote", "get-url", "origin"}, err: errors.New("exit status 128"), stderr: "fatal: bad config line 1 in file .git/config"}
+	if got := said.Error(); got != "git remote get-url origin: exit status 128: fatal: bad config line 1 in file .git/config" {
+		t.Fatalf("with git's words: %q", got)
+	}
+	silent := &gitError{args: []string{"remote", "get-url", "origin"}, err: errors.New("chdir /src/moved: no such file or directory")}
+	if got := silent.Error(); got != "git remote get-url origin: chdir /src/moved: no such file or directory" {
+		t.Fatalf("without: %q", got)
+	}
+}
+
 func TestSlug(t *testing.T) {
 	for in, want := range map[string]string{"Add Subtract!": "add-subtract", "  ": "task", "Fix: the BIG bug (#12)": "fix-the-big-bug-12"} {
 		if got := Slug(in); got != want {

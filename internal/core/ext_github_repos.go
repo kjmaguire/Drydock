@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"sync"
@@ -277,12 +278,8 @@ func (r *repoOverviews) remote(ctx context.Context, p Project) projectRemote {
 		return projectRemote{at: at, state: RepoStateLocal}
 	case err != nil:
 		// a folder gone since the repository was opened (moved, deleted): git cannot even start there, and its words then blame
-		// git itself (chdir, fork/exec) rather than the folder, so say what happened in the words git.Open uses, and forget the
-		// open repository so the next read looks afresh
-		if _, statErr := os.Stat(p.RepoPath); statErr != nil {
-			r.c.mu.Lock()
-			delete(r.c.repos, p.ID)
-			r.c.mu.Unlock()
+		// git itself (chdir, fork/exec) rather than the folder, so say what happened in the words git.Open uses for it
+		if _, statErr := os.Stat(p.RepoPath); errors.Is(statErr, fs.ErrNotExist) {
 			return projectRemote{at: at, state: RepoStateUnreadable, msg: r.clip(fmt.Errorf("%w: %s", git.ErrNotARepo, p.RepoPath).Error())}
 		}
 		return projectRemote{at: at, state: RepoStateUnreadable, msg: r.clip(err.Error())}

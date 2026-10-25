@@ -314,9 +314,8 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	check("elsewhere", core.RepoStateLocal, "", "", 0)
 	check("no-repo", core.RepoStateNoRepo, "", "", 0)
 	check("garbage", core.RepoStateLocal, "", "", 0)
-	// the folder that went away is said to be gone, in the words git.Open uses, whether or not the repository was open already
-	// (it is forgotten then, so the next read looks afresh); nothing of Drydock's stands in front (the page puts the state word
-	// there)
+	// the folder that went away is said to be gone, in the words git.Open uses, whether or not the repository was open already;
+	// nothing of Drydock's stands in front (the page puts the state word there)
 	if moved := check("moved", core.RepoStateUnreadable, "", "", 0); moved.Error != "git: not a git repository: "+movedDir || moved.URL != "" {
 		t.Fatalf("a folder that cannot be read: %+v", moved)
 	}

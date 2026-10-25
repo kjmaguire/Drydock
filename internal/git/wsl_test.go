@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,5 +204,29 @@ func TestARepositoryOpenedThroughTheDistroRunsEveryGitCallThereAndLinksWorktrees
 	}
 	if n < 5 {
 		t.Fatalf("only %d of %d calls ran the distro's git with the hardening", n, len(calls))
+	}
+}
+
+// A repository the distro's git cannot read (a broken .git/config) is ErrNotARepo with git's own words after the path, as on
+// this machine; a runner whose git cannot run at all says why in brackets, so the person is never told only "not a repository".
+func TestOpenInTellsABrokenRepositoryFromAGitThatCannotRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in wsl.exe runs on a Linux development host")
+	}
+	r0, _ := newRepo(t)
+	f := wsltest.NewFake(t, false, "Ubuntu")
+	run := hostRunner{wsl.GitRunner{Exe: f.Exe, Paths: wsl.Paths{Distro: "Ubuntu", MountRoot: "/mnt/"}}}
+	ctx := context.Background()
+	if err := os.WriteFile(filepath.Join(r0.Root, ".git", "config"), []byte("this is not a git configuration\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OpenIn(ctx, r0.Root, run)
+	if !errors.Is(err, ErrNotARepo) || !strings.Contains(err.Error(), r0.Root+": ") || !strings.Contains(err.Error(), "bad config") {
+		t.Fatalf("a broken .git/config through the distro's git: %v", err)
+	}
+	noGit := hostRunner{wsl.GitRunner{Exe: filepath.Join(t.TempDir(), "no-wsl.exe"), Paths: wsl.Paths{Distro: "Ubuntu", MountRoot: "/mnt/"}}}
+	_, err = OpenIn(ctx, r0.Root, noGit)
+	if !errors.Is(err, ErrNotARepo) || !strings.Contains(err.Error(), r0.Root+" (") {
+		t.Fatalf("a git that cannot run says why, in brackets after the path: %v", err)
 	}
 }

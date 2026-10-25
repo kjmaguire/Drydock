@@ -235,7 +235,7 @@ func Open(ctx context.Context, path string) (*Repo, error) {
 	r := &Repo{Root: abs, AuthorName: "Drydock", AuthorEmail: "drydock@localhost"}
 	out, err := r.git(ctx, abs, nil, "rev-parse", "--show-toplevel")
 	if err != nil {
-		if _, statErr := os.Stat(abs); statErr != nil {
+		if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) {
 			return nil, fmt.Errorf("%w: %s", ErrNotARepo, abs) // the folder is gone: git's words would only say it could not enter it
 		}
 		return nil, notARepo(abs, err)
