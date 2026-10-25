@@ -150,7 +150,10 @@ conversation:
   typing, as `typing()` in `lib/keys.ts` says; the arrow keys move, ArrowDown in the filter picks the first row; below 1024 px
   the detail opens in place of the list with Back); a detail is a `DetailHeader` over `SettingsGroup`s of `SettingRow`s and
   `FactGrid`s, never a grid of big tiles or boxes inside boxes. Each item has an address (`/integrations/linear`); choosing a
-  row replaces it, and a page opened at an item's address passes `addressed` so a narrow window shows that item's detail.
+  row replaces it, and a page passes the key its address names as `address` so a narrow window shows that item's detail once
+  the page has chosen it, also when a link changes the address while the page stays mounted, and the plain address shows the
+  list again (a key the page replaced with its default row, because the item is gone, opens nothing: the person sees the list).
+  A page opens a row of its own accord, an Add row or the row left after a removal, by putting it in the address.
 - **Pages** (`Page` in `ui/layout.tsx`) have a top bar: the title (18 px), the subtitle, the page's own tabs and filters
   (`bar`) and the actions on the right; the body scrolls, at most 1320 px wide. A conversation screen (`flush`) keeps its bar.
 - **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: an avatar, one author line (name, a

@@ -50,6 +50,12 @@ func TestOverviewReadsCIAndPullRequestsInOneRequest(t *testing.T) {
 		case "acme/partial": // the repository, with the CI rollup refused (a token without the checks permission)
 			fmt.Fprint(w, `{"data":{"repository":{"nameWithOwner":"acme/partial","url":"https://github.com/acme/partial","defaultBranchRef":{"name":"main","target":{"statusCheckRollup":null}},"pullRequests":{"totalCount":3}}},"errors":[{"type":"FORBIDDEN","path":["repository","defaultBranchRef","target","statusCheckRollup"],"message":"Resource not accessible by personal access token"}]}`)
 			return
+		case "acme/noprs": // the repository, with its pull requests refused (a token without the pull requests permission)
+			fmt.Fprint(w, `{"data":{"repository":{"nameWithOwner":"acme/noprs","url":"https://github.com/acme/noprs","defaultBranchRef":{"name":"main","target":{"statusCheckRollup":{"state":"SUCCESS"}}},"pullRequests":null}},"errors":[{"type":"FORBIDDEN","path":["repository","pullRequests"],"message":"Resource not accessible by personal access token","locations":[{"line":1,"column":180}]}]}`)
+			return
+		case "acme/twice": // two fields refused, one error without a path: every refusal is named
+			fmt.Fprint(w, `{"data":{"repository":{"nameWithOwner":"acme/twice","url":"https://github.com/acme/twice","defaultBranchRef":{"name":"main","target":{"statusCheckRollup":null}},"pullRequests":null}},"errors":[{"type":"FORBIDDEN","path":["repository","defaultBranchRef","target","statusCheckRollup"],"message":"Resource not accessible by personal access token"},{"type":"FORBIDDEN","path":["repository","pullRequests",0],"message":"Resource not accessible by personal access token"},{"message":"Something went wrong while executing your query."}]}`)
+			return
 		case "acme/limited": // GraphQL's primary limit is a 200 with an error of its own type
 			fmt.Fprint(w, `{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded for user ID 1."}]}`)
 			return
@@ -85,9 +91,21 @@ func TestOverviewReadsCIAndPullRequestsInOneRequest(t *testing.T) {
 	if calls != len(want) {
 		t.Fatalf("%d requests for %d repositories: one each", calls, len(want))
 	}
-	// an error for one field keeps the rest of the answer
-	if got, err := Overview(context.Background(), api, "acme", "partial"); err != nil || got != (RepoOverview{FullName: "acme/partial", URL: "https://github.com/acme/partial", DefaultBranch: "main", CI: CINone, OpenPRs: 3}) {
+	// a repository answered in full names nothing as refused
+	if got, _ := Overview(context.Background(), api, "acme", "green"); got.Incomplete != "" {
+		t.Fatalf("a whole answer: %+v", got)
+	}
+	// an error for one field keeps the rest of the answer, and the refused field is named, so "no CI" is not taken for an answer
+	if got, err := Overview(context.Background(), api, "acme", "partial"); err != nil || got != (RepoOverview{FullName: "acme/partial", URL: "https://github.com/acme/partial", DefaultBranch: "main", CI: CINone, OpenPRs: 3, Incomplete: "statusCheckRollup: Resource not accessible by personal access token"}) {
 		t.Fatalf("a partial answer: %+v %v", got, err)
+	}
+	// refused pull requests read as none open, with the refusal named beside them
+	if got, err := Overview(context.Background(), api, "acme", "noprs"); err != nil || got != (RepoOverview{FullName: "acme/noprs", URL: "https://github.com/acme/noprs", DefaultBranch: "main", CI: CIPassing, OpenPRs: 0, Incomplete: "pullRequests: Resource not accessible by personal access token"}) {
+		t.Fatalf("refused pull requests: %+v %v", got, err)
+	}
+	// several refusals are all named: the last name in each path, and the message alone for an error with no path
+	if got, err := Overview(context.Background(), api, "acme", "twice"); err != nil || got.Incomplete != "statusCheckRollup: Resource not accessible by personal access token; pullRequests: Resource not accessible by personal access token; Something went wrong while executing your query." {
+		t.Fatalf("two refusals: %+v %v", got, err)
 	}
 	if _, err := Overview(context.Background(), api, "acme", "limited"); !errors.Is(err, ErrRateLimited) || !strings.Contains(err.Error(), "rate limit exceeded") {
 		t.Fatalf("GraphQL's rate limit: %v", err)

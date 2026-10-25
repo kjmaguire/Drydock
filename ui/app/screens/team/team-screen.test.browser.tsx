@@ -975,3 +975,17 @@ describe("Crew (graphite): the workspace's page", () => {
     await waitFor(() => expect(created.map((c) => c.projectId)).toEqual(['prj_1']), r);
   });
 });
+
+describe("Crew (graphite): where the projects' agents run", () => {
+  it('is read for every project in one request (project.runModes), never one request per project', async () => {
+    let all = 0;
+    const perProject: string[] = [];
+    const { r } = showCrew({
+      projectRunModes: async () => (all++, { prj_1: { runMode: 'native' } }),
+      projectRunMode: async (id: string) => (perProject.push(id), { runMode: 'native' }),
+    });
+    await waitAgent(r, 'Ada');
+    await waitFor(() => expect(all).toBe(1), r);
+    expect(perProject).toEqual([]);
+  });
+});

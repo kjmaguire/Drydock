@@ -1017,6 +1017,8 @@ describe('Models (the page: Models on this PC and the providers)', () => {
     const opened = page({ providerList: async () => list, providerDetail: detailOf(() => list) }, 'prov_1');
     await waitFor(() => expect(need(opened.r, '[data-testid="provider"]').getAttribute('data-name')).toBe('OpenRouter'), opened.r);
     await shown(opened.r, 'prov_1');
+    // the page hands the layout the key its address names, so a narrow window shows the provider in place of the list
+    expect(need(opened.r, '[data-testid="models"]').getAttribute('data-open')).toBe('true');
     cleanup();
     const local = page({ providerList: async () => list }, 'prov_local');
     await waitFor(() => need(local.r, '[data-testid="local-server"]'), local.r);
@@ -1025,15 +1027,27 @@ describe('Models (the page: Models on this PC and the providers)', () => {
     const gone = page({ providerList: async () => list }, 'prov_gone');
     await waitFor(() => need(gone.r, '[data-testid="local-server"]'), gone.r);
     await shown(gone.r, 'this-pc');
+    // the key is gone and this PC was drawn in its place: a narrow window keeps the list rather than open it
+    expect(need(gone.r, '[data-testid="models"]').getAttribute('data-open')).toBe('false');
     cleanup();
     const add = page({ providerList: async () => list }, 'new');
     await waitFor(() => need(add.r, 'form[aria-label="Add a provider"]'), add.r);
     await shown(add.r, 'new');
+    expect(need(add.r, '[data-testid="models"]').getAttribute('data-open')).toBe('true');
     cleanup();
     // the list could not be read: the provider the address names says so instead of loading for ever
     const failed = page({ providerList: async () => Promise.reject(new Error('the core is not answering')) }, 'prov_1');
     await waitFor(() => expect(need(failed.r, '[data-testid="models"] [data-part="detail"]').textContent).toContain('the core is not answering'), failed.r);
     expect(need(failed.r, '[data-testid="models"] [data-part="detail"]').textContent).not.toContain('Loading...');
+    // said once: the detail carries the message, the list footer does not repeat it
+    expect(Array.from(failed.r.$$('[role="alert"]')).filter((a) => a.textContent!.includes('the core is not answering')).length).toBe(1);
+    expect(failed.r.$('nav [role="alert"]')).toBeNull();
+    cleanup();
+    // the add form at /models/new with the list unreadable: the form is the detail, so the list footer is the one place that says so
+    const adding = page({ providerList: async () => Promise.reject(new Error('the core is not answering')) }, 'new');
+    await waitFor(() => need(adding.r, 'form[aria-label="Add a provider"]'), adding.r);
+    await waitFor(() => expect(need(adding.r, 'nav [role="alert"]').textContent).toContain('the core is not answering'), adding.r);
+    expect(Array.from(adding.r.$$('[role="alert"]')).filter((a) => a.textContent!.includes('the core is not answering')).length).toBe(1);
   });
 
   it('Add a provider opens the form; create sends exported Go field names, the key leaves its field at once and is shown nowhere; the new one opens', async () => {
@@ -1180,6 +1194,8 @@ describe('Models (the page: Models on this PC and the providers)', () => {
       },
     });
     await waitFor(() => expect(need(failed.r, 'nav [role="alert"]').textContent).toContain('the core is not answering'), failed.r);
+    // said once, in the list footer: this PC is open, so no detail pane carries it
+    expect(Array.from(failed.r.$$('[role="alert"]')).filter((a) => a.textContent!.includes('the core is not answering')).length).toBe(1);
     expect(failed.r.$('[data-testid="provider-add"]')).toBeNull();
     need(failed.r, '[data-testid="local-server"]');
     cleanup();

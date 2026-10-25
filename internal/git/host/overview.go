@@ -24,6 +24,12 @@ type RepoOverview struct {
 	DefaultBranch string `json:"defaultBranch"`
 	CI            string `json:"ci"`
 	OpenPRs       int    `json:"openPullRequests"`
+	// Incomplete is what GitHub refused in an otherwise answered repository (a fine-grained token without a permission, SAML
+	// on one part): each refusal as "<field>: <message>", the field being the last name in the error's path
+	// ("statusCheckRollup: Resource not accessible by personal access token"), several joined by "; ". Empty when the whole
+	// repository was answered. A refused field reads as its empty value (CINone, 0 open pull requests): Incomplete is how a
+	// caller tells that from an answer.
+	Incomplete string `json:"incomplete,omitempty"`
 }
 
 // overviewQuery reads everything in one request: GraphQL's statusCheckRollup summarizes the commit's check runs and commit
@@ -63,8 +69,12 @@ func Overview(ctx context.Context, api API, owner, name string) (RepoOverview, e
 		return RepoOverview{}, overviewError(owner, name, out.Errors)
 	}
 	// GitHub can answer with the repository and an error for one field it refused (a fine-grained token without the
-	// checks permission, SAML on one part): what it did send is kept; a refused CI rollup reads as none.
+	// checks permission, SAML on one part): what it did send is kept, a refused CI rollup reads as none and refused pull
+	// requests as 0, and Incomplete names what was refused, so neither is taken for an answer.
 	o := RepoOverview{FullName: r.NameWithOwner, URL: r.URL, Private: r.IsPrivate, CI: CINone, OpenPRs: r.PullRequests.TotalCount}
+	if len(out.Errors) > 0 {
+		o.Incomplete = incomplete(out.Errors)
+	}
 	if b := r.DefaultBranchRef; b != nil {
 		o.DefaultBranch = b.Name
 		if b.Target != nil && b.Target.StatusCheckRollup != nil {
@@ -74,9 +84,33 @@ func Overview(ctx context.Context, api API, owner, name string) (RepoOverview, e
 	return o, nil
 }
 
+// graphQLError is one entry of a GraphQL answer's errors: GitHub's type (NOT_FOUND, FORBIDDEN, RATE_LIMITED), its message, and
+// the path of the field it is about (field names and list indexes, so []any), empty for an error about the whole request.
 type graphQLError struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
+	Path    []any  `json:"path"`
+}
+
+// incomplete words the errors GitHub sent beside an answered repository, for RepoOverview.Incomplete: "<field>: <message>" for
+// each, the field being the last name in the error's path (a list index is not a name), the message alone when the path has
+// none; several are joined by "; ".
+func incomplete(errs []graphQLError) string {
+	parts := make([]string, 0, len(errs))
+	for _, e := range errs {
+		field := ""
+		for _, p := range e.Path {
+			if s, ok := p.(string); ok {
+				field = s
+			}
+		}
+		if field == "" {
+			parts = append(parts, e.Message)
+			continue
+		}
+		parts = append(parts, field+": "+e.Message)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // overviewError is why a repository was not answered: GitHub's own words, with ErrNotFound when it says there is no such

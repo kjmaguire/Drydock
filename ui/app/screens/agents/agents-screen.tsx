@@ -10,8 +10,7 @@
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { AdapterInfo, Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
-import type { ProjectRunMode } from '../../api/wslClient.ts';
+import type { Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
@@ -758,23 +757,23 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   const gwAct = action(handle);
   // every project's agents, and where each project runs them, for "Used by"
   const crew = query(handle, { load: () => orElse(() => s.client.agentListAll(), [] as Agent[]), when: (e) => e.type.startsWith('agent.') });
-  const projectIds = () => s.workspace.projectList.map((p) => p.id);
-  // whether an adapter can run in WSL, as the core decides where an agent runs (its declared run modes); while the adapters
-  // are not known, whether a WSL install of it was found
-  const adapters = query(handle, { load: () => orElse(() => s.client.adapterList(), [] as AdapterInfo[]), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // the adapters with the run modes each declares. No fallback here: a first read that fails leaves no answer, so the detail
+  // says so while "Used by" goes by the installs found; a re-read that fails keeps the last answer (the query does), and the
+  // note says the re-read failed
+  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // whether an adapter can run in WSL, as the core decides where an agent runs (effectiveRunMode): once the adapters are known,
+  // the adapter's declared run modes decide, and an adapter the core does not list cannot. Only while no answer has arrived yet
+  // (the first read is on its way, or failed) does a WSL install of the CLI stand in for the answer.
   const canWSL = (adapter: string): boolean => {
-    const info = adapters.data?.find((x) => x.id === adapter);
-    return info ? supportsWSL(info.capabilities) : (q.data ?? []).some((x) => x.adapter === adapter && isWSL(x));
+    if (adapters.data) return supportsWSL(adapters.data.find((x) => x.id === adapter)?.capabilities);
+    return (q.data ?? []).some((x) => x.adapter === adapter && isWSL(x));
   };
+  // every project's run mode in one request (project.runModes), however many projects there are. A failed read leaves no
+  // answer: an agent that follows its project is then listed under the Windows install, one with its own run mode where that
+  // says, and the detail says the read failed.
   const runModes = query(handle, {
-    load: async () => {
-      // every project asked at once: one round trip, not one per project
-      const ids = projectIds();
-      const modes = await Promise.all(ids.map((id) => orElse(() => s.client.projectRunMode(id), { runMode: 'native' } as ProjectRunMode)));
-      return new Map(ids.map((id, i) => [id, modes[i]!] as const));
-    },
+    load: async () => new Map(Object.entries(await s.client.projectRunModes())),
     when: (e) => e.type.startsWith('project.'),
-    key: projectIds,
   });
 
   // "Check all again": connection.list read again (the query keeps the old list on the page until it answers)
@@ -946,11 +945,13 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
             detail={
               <>
                 {q.error ? <ErrorNote error={q.error} what="Could not check the agent CLIs again" /> : null}
+                {adapters.error ? <ErrorNote error={adapters.error} what="Could not read the adapters' run modes" /> : null}
+                {runModes.error ? <ErrorNote error={runModes.error} what="Could not read where the projects' agents run" /> : null}
                 {detail}
               </>
             }
             testId="agents"
-            addressed={!!handle.props.initial}
+            address={handle.props.initial}
           />
         ) : null}
       </Page>

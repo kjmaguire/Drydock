@@ -30,6 +30,7 @@ func init() {
 			}) (any, error) {
 				return c.projectRunMode(ctx, p.ProjectID), nil
 			}),
+			"project.runModes": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.ProjectRunModes(ctx) }),
 			"project.setRunMode": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
 				RunMode   string `json:"runMode"`
@@ -65,6 +66,21 @@ func (c *Core) projectRunMode(ctx context.Context, projectID string) ProjectRunM
 		return def
 	}
 	return p
+}
+
+// ProjectRunModes is every project's default run mode, by project id. The Agents page's "Used by" column asks for all of
+// them in one call instead of one call per project on every load. A workspace without a project answers an empty map, never
+// a null.
+func (c *Core) ProjectRunModes(ctx context.Context) (map[string]ProjectRunMode, error) {
+	ps, err := c.Projects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	modes := make(map[string]ProjectRunMode, len(ps))
+	for _, p := range ps {
+		modes[p.ID] = c.projectRunMode(ctx, p.ID)
+	}
+	return modes, nil
 }
 
 // SetProjectRunMode sets the run mode of the project's agents that do not choose their own. Only a human identity may.

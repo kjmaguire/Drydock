@@ -105,14 +105,18 @@ export interface GitHubStatus {
 export type RepoCI = 'passing' | 'failing' | 'running' | 'none';
 
 /**
- * A project's row in the GitHub page's Repositories table (internal/core/ext_github_repos.go). `github`: read from GitHub (ci and
- * openPullRequests are set); `local`: a repository whose origin is not on github.com; `no_repo`: no repository attached;
- * `needs_gh`: a GitHub remote but no GitHub CLI; `error`: the read failed, `error` says why (this row only).
+ * A project's row in the GitHub page's Repositories table (internal/core/ext_github_repos.go). The state says what the row is;
+ * the page draws every cell from it and never infers it from which fields are set. `github`: read from GitHub (ci and
+ * openPullRequests are set; `incomplete` names what GitHub refused, when it refused part of the answer); `local`: a repository
+ * whose origin is not on github.com; `no_repo`: no repository attached; `needs_gh`: a GitHub remote but no GitHub CLI; `error`:
+ * GitHub could not be read for this repository (`repo` is set, `error` has gh's or GitHub's words: "gh: HTTP 502: Bad Gateway");
+ * `unreadable`: the repository folder, or git in it, could not be read (`repo` and `url` are empty, `error` has git's or the
+ * OS's words: "git: not a git repository: C:\src\moved").
  */
 export interface ProjectRepoRow {
   projectId: string;
   project: string;
-  state: 'github' | 'local' | 'no_repo' | 'needs_gh' | 'error';
+  state: 'github' | 'local' | 'no_repo' | 'needs_gh' | 'error' | 'unreadable';
   /** owner/name of the origin remote. */
   repo?: string;
   /** The repository on github.com. */
@@ -121,7 +125,14 @@ export interface ProjectRepoRow {
   defaultBranch?: string;
   ci?: RepoCI;
   openPullRequests: number;
+  /** Why the row could not be read (`error` and `unreadable` rows only): the other program's own words, a fragment. */
   error?: string;
+  /**
+   * What GitHub refused in an otherwise answered repository ("statusCheckRollup: Resource not accessible by personal access
+   * token", several joined by "; "): `github` rows only, and only when something was refused. The CI or pull-request count it
+   * names is then not an answer, and the page says so beside it.
+   */
+  incomplete?: string;
   /** When GitHub answered (Unix milliseconds). */
   checkedAt?: number;
 }

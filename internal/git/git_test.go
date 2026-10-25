@@ -228,9 +228,27 @@ func TestSafePointAndRestoreAreNonDestructive(t *testing.T) {
 	}
 }
 
+// A plain folder, a folder that is gone and a repository git cannot read (a broken .git/config) are all ErrNotARepo, told
+// apart by the words: the path alone for the first two, git's own reason after the path for the last.
 func TestOpenNotARepo(t *testing.T) {
-	if _, err := Open(context.Background(), t.TempDir()); !errors.Is(err, ErrNotARepo) {
-		t.Fatalf("want ErrNotARepo, got %v", err)
+	ctx := context.Background()
+	plain := t.TempDir()
+	if _, err := Open(ctx, plain); !errors.Is(err, ErrNotARepo) || err.Error() != "git: not a git repository: "+plain {
+		t.Fatalf("a plain folder: %v", err)
+	}
+	gone := filepath.Join(t.TempDir(), "gone")
+	if _, err := Open(ctx, gone); !errors.Is(err, ErrNotARepo) || err.Error() != "git: not a git repository: "+gone {
+		t.Fatalf("a folder that is gone says so, not what git could not do: %v", err)
+	}
+	broken := t.TempDir()
+	if _, err := Init(ctx, broken, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(broken, ".git", "config"), []byte("this is not a git configuration\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(ctx, broken); !errors.Is(err, ErrNotARepo) || !strings.Contains(err.Error(), broken+": ") || !strings.Contains(err.Error(), "bad config") {
+		t.Fatalf("a broken .git/config carries git's words after the path: %v", err)
 	}
 }
 

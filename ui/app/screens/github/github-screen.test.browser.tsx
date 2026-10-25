@@ -293,12 +293,24 @@ describe('the Repositories table', () => {
     row({ projectId: 'prj_5', project: 'notes', state: 'local' }),
     row({ projectId: 'prj_6', project: 'draft', state: 'no_repo' }),
     row({ projectId: 'prj_7', project: 'broken', state: 'error', repo: 'kyle/broken', url: 'https://github.com/kyle/broken', error: 'gh: HTTP 502: Bad Gateway' }),
-    row({ projectId: 'prj_8', project: 'moved', state: 'error', error: 'The repository folder could not be opened' }),
+    row({ projectId: 'prj_8', project: 'moved', state: 'unreadable', error: 'git: not a git repository: C:\\src\\moved' }),
+    row({
+      projectId: 'prj_9',
+      project: 'limited',
+      state: 'github',
+      repo: 'kyle/limited',
+      url: 'https://github.com/kyle/limited',
+      defaultBranch: 'main',
+      ci: 'none',
+      openPullRequests: 0,
+      // two refused fields and an error that named none: the note says each in the table's words, the last as GitHub put it
+      incomplete: 'statusCheckRollup: Resource not accessible by personal access token; pullRequests: Resource not accessible by personal access token; Something went wrong while executing your query.',
+    }),
   ];
 
   it('lists each project with its repository, the CI of its default branch in words and its open pull requests; a failure is its row\'s', async () => {
     const r = show({ githubProjectRepos: async () => repos(all()) });
-    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(8), r);
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(9), r);
     const table = r.$('section[aria-label="Repositories"] table[aria-label="Repositories"]')!;
     expect(Array.from(table.querySelectorAll('th')).map((th) => th.textContent)).toEqual(['Project', 'Repository', 'CI', 'Pull requests', 'Open']);
     const cells = (id: string) => {
@@ -311,14 +323,25 @@ describe('the Repositories table', () => {
     expect(cells('prj_4')).toEqual(['quiet', 'kyle/quiet', 'No checks on main', 'None open', 'Open']);
     expect(cells('prj_5')).toEqual(['notes', 'Local folder', 'Not on GitHub', '—', 'Open']);
     expect(cells('prj_6')).toEqual(['draft', 'No repository', 'Not on GitHub', '—', 'Open']);
+    // GitHub could not be read for a repository: the state, then gh's own words, with nothing of the page's put in front
     expect(cells('prj_7')).toEqual(['broken', 'kyle/broken', 'Could not read gh: HTTP 502: Bad Gateway', '—', 'Open']);
-    // a folder git could not read is no GitHub repository: Open goes to the project, not to its pull requests
-    expect(cells('prj_8')).toEqual(['moved', 'Folder not readable', 'Could not read The repository folder could not be opened', '—', 'Open']);
+    expect(text(r, '[data-testid="repo-row"][data-project="prj_7"] [data-testid="repo-error"]')).toBe('gh: HTTP 502: Bad Gateway');
+    // a folder git could not read: the state says so, then git's own words as they are (no "Could not read" before a sentence
+    // of the core's); it is no GitHub repository, so Open goes to the project, not to its pull requests
+    expect(cells('prj_8')).toEqual(['moved', 'Folder not readable', 'Not readable git: not a git repository: C:\\src\\moved', '—', 'Open']);
+    expect(text(r, '[data-testid="repo-row"][data-project="prj_8"] [data-testid="repo-error"]')).toBe('git: not a git repository: C:\\src\\moved');
     expect(r.$('[data-testid="repo-row"][data-project="prj_8"] [data-testid="repo-open"]')!.getAttribute('href')).toBe('/');
     expect(r.$('[data-testid="repo-row"][data-project="prj_7"] [data-testid="repo-open"]')!.getAttribute('href')).toBe('/pulls');
+    // what GitHub refused is said under the state, so "No checks on main" is not left standing as an answer GitHub never gave
+    const refused = 'GitHub refused part of the answer: the CI state: Resource not accessible by personal access token; the open pull requests: Resource not accessible by personal access token; Something went wrong while executing your query.';
+    expect(cells('prj_9')).toEqual(['limited', 'kyle/limited', `No checks on main ${refused}`, 'None open', 'Open']);
+    expect(text(r, '[data-testid="repo-row"][data-project="prj_9"] [data-testid="repo-incomplete"]')).toBe(refused);
+    // the rows GitHub answered in full carry no such note, nor do the rows that are not GitHub's to answer
+    expect(r.$$('[data-testid="repo-incomplete"]').length).toBe(1);
+    for (const id of ['prj_1', 'prj_2', 'prj_3', 'prj_4']) expect(r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-incomplete"]`)).toBeNull();
     // the state is a dot and words, the tone set from it
     const tone = (id: string) => r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-ci"] [data-tone]`)!.getAttribute('data-tone');
-    expect(['prj_1', 'prj_2', 'prj_3', 'prj_4', 'prj_7'].map(tone)).toEqual(['ok', 'err', 'info', 'muted', 'err']);
+    expect(['prj_1', 'prj_2', 'prj_3', 'prj_4', 'prj_7', 'prj_8', 'prj_9'].map(tone)).toEqual(['ok', 'err', 'info', 'muted', 'err', 'err', 'muted']);
     // the repository opens on github.com, the way the app opens another site
     const link = r.$('[data-testid="repo-row"][data-project="prj_1"] a[data-testid="repo-link"]')!;
     expect(link.getAttribute('href')).toBe('https://github.com/kyle/gocalc');
@@ -329,15 +352,28 @@ describe('the Repositories table', () => {
     expect((r.$('[data-testid="repo-row"][data-project="prj_1"] i[aria-hidden="true"]') as HTMLElement).style.background).not.toBe('');
   });
 
-  it('Open goes to the project\'s Pull requests (its Overview without a GitHub repository) and selects the project', async () => {
-    const r = show({ githubProjectRepos: async () => repos([row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', ci: 'passing' }), row({ projectId: 'prj_1', project: 'gocalc', state: 'local' })]) });
-    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(2), r);
+  it('Open goes to the project\'s Pull requests when its state says it has a GitHub repository (else its Overview) and selects the project', async () => {
+    const r = show({
+      githubProjectRepos: async () =>
+        repos([
+          row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', ci: 'passing' }),
+          row({ projectId: 'prj_1', project: 'gocalc', state: 'local' }),
+          row({ projectId: 'prj_3', project: 'waiting', state: 'needs_gh', repo: 'kyle/waiting', url: 'https://github.com/kyle/waiting' }),
+          row({ projectId: 'prj_4', project: 'moved', state: 'unreadable', error: 'git: not a git repository: C:\\src\\moved' }),
+        ]),
+    });
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(4), r);
     await waitFor(() => expect(r.s.workspace.projectId).toBe('prj_1'), r);
     const open = (id: string) => r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-open"]`) as HTMLAnchorElement;
     expect(open('prj_2').getAttribute('href')).toBe('/pulls');
     expect(open('prj_2').getAttribute('aria-label')).toBe('Open the pull requests of website');
     expect(open('prj_1').getAttribute('href')).toBe('/');
     expect(open('prj_1').getAttribute('aria-label')).toBe('Open gocalc');
+    // the state decides, not the fields that came along: a repository waiting for gh is on GitHub, an unreadable folder is not
+    expect(open('prj_3').getAttribute('href')).toBe('/pulls');
+    expect(open('prj_3').getAttribute('aria-label')).toBe('Open the pull requests of waiting');
+    expect(open('prj_4').getAttribute('href')).toBe('/');
+    expect(open('prj_4').getAttribute('aria-label')).toBe('Open moved');
     // the test page stays where it is; the link's own handler still runs
     r.container.addEventListener('click', (e) => e.preventDefault(), { capture: true });
     await r.act(() => open('prj_2').click());

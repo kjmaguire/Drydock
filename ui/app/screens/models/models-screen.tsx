@@ -112,6 +112,10 @@ export function ModelsScreen(
       ? [row ? `This PC: ${row.text.toLowerCase()}` : '', providers.data ? `${plural(listed.length, 'provider')}, ${up} up` : ''].filter(Boolean).join(' · ')
       : undefined;
 
+    // the address named a provider and the list could not be read: the detail pane says so, in place of the row that could not be
+    // found, so the list footer keeps quiet rather than repeat the same words twice on one screen
+    const detailSaysListFailed = selected !== THIS_PC && selected !== NEW_PROVIDER && !providers.data && Boolean(providers.error);
+
     let detail;
     if (selected === NEW_PROVIDER) {
       detail = (
@@ -149,8 +153,8 @@ export function ModelsScreen(
           }}
         />
       );
-    } else if (selected !== THIS_PC && !providers.data && providers.error) {
-      // the address named a provider and the list could not be read: say so, never wait for it
+    } else if (detailSaysListFailed) {
+      // say so, never wait for a list that is not coming
       detail = <ErrorNote error={providers.error} what="Could not read this provider" />;
     } else if (selected !== THIS_PC) {
       detail = <Loading />;
@@ -185,10 +189,10 @@ export function ModelsScreen(
             onSelect={choose}
             detail={detail}
             testId="models"
-            addressed={!!handle.props.initial}
+            address={handle.props.initial}
             listFooter={
               <>
-                <ErrorNote error={providers.error} what="Could not list providers" />
+                {detailSaysListFailed ? null : <ErrorNote error={providers.error} what="Could not list providers" />}
                 {providers.data && listed.length === 0 ? (
                   <Empty title="No providers yet">
                     <p>Add an aggregator, a vendor&apos;s API or a server you run.</p>

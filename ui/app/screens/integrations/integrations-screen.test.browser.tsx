@@ -210,6 +210,8 @@ describe('Integrations: the list', () => {
     await h.act(() => ctl.set!('sentry'));
     await waitFor(() => expect(h.$('[data-testid="integration"][data-kind="sentry"]')).not.toBeNull(), h);
     expect(h.$('[data-testid="integrations"]')).toBe(page); // the same page, not a new one
+    // the page hands the layout the key its address names, so a narrow window shows the row's detail in place of the list
+    expect(h.$('[data-testid="connector-gallery"]')!.getAttribute('data-open')).toBe('true');
     // an address that names nothing says so
     await h.act(() => ctl.set!('nope'));
     await waitFor(() => expect(h.container.textContent).toContain('Nothing here by that name'), h);

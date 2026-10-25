@@ -306,14 +306,11 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   });
   const adapters = query(handle, { load: () => orElse(() => s.client.adapterList(), [] as AdapterInfo[]), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
   const conns = query(handle, { load: () => orElse(() => s.client.connectionList(), [] as Connection[]), when: (e) => e.type.startsWith('connection.') });
+  // every project's run mode in one request (project.runModes), however many projects there are; a failed read leaves an empty
+  // answer, and an agent that follows its project is then drawn as on Windows
   const runModes = query(handle, {
-    load: async () => {
-      const out = new Map<string, ProjectRunMode>();
-      for (const id of projectIds()) out.set(id, await orElse(() => s.client.projectRunMode(id), { runMode: 'native' } as ProjectRunMode));
-      return out;
-    },
+    load: async () => new Map(Object.entries(await orElse(() => s.client.projectRunModes(), {} as Record<string, ProjectRunMode>))),
     when: (e) => e.type.startsWith('project.'),
-    key: projectIds,
   });
 
   // "now" moves every minute (and the timeline is read again after midnight: its key is the day)

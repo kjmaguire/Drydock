@@ -229,7 +229,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
         <MasterDetail
           label="All integrations"
           testId="connector-gallery"
-          addressed={!!handle.props.initial}
+          address={handle.props.initial}
           groups={loaded ? groups : []}
           selected={key}
           onSelect={choose}

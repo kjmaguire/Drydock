@@ -182,6 +182,25 @@ func TestTheProjectsRunModeIsTheDefaultOfAgentsThatDoNotChoose(t *testing.T) {
 	}
 }
 
+// The Agents page's "Used by" column asks for every project's default in one call (project.runModes), not one call per
+// project. A workspace without a project answers an empty object, not null, so the page can index it as it is.
+func TestEveryProjectsRunModeIsAnsweredInOneCall(t *testing.T) {
+	a, _ := openWSL(t)
+	raw, err := a.c.Call(context.Background(), "project.runModes", mustJSON(nil))
+	if err != nil || string(raw) != "{}" {
+		t.Fatalf("a workspace without a project answered %s: %v", raw, err)
+	}
+	inWSL, _ := a.setup("in-wsl")
+	onWindows, _ := a.setup("on-windows")
+	a.call("project.setRunMode", map[string]any{"projectId": inWSL.ID, "runMode": "wsl", "wslDistro": "Ubuntu"}, nil)
+	var modes map[string]core.ProjectRunMode
+	a.call("project.runModes", nil, &modes)
+	if len(modes) != 2 || modes[inWSL.ID].RunMode != "wsl" || modes[inWSL.ID].WSLDistro != "Ubuntu" || modes[inWSL.ID].By != "human:kyle" ||
+		modes[onWindows.ID].RunMode != "native" {
+		t.Fatalf("%+v", modes)
+	}
+}
+
 // A template role resolves its agent's run mode the way the worker does (decision P41): a sandboxed project's test writer that
 // would run in WSL (it follows the project's default, set before the sandbox was switched on and before the agent existed) is
 // refused with the sandbox+WSL reason, never handed to the sandbox or started inside the distro.

@@ -378,23 +378,56 @@ const CI: Record<RepoCI, { text: string; tone: Tone }> = {
   none: { text: 'No checks', tone: 'muted' },
 };
 
-/** The CI cell of a row: the state of the default branch's latest commit, or why there is none. */
+/** The table's own words for the GraphQL fields GitHub may refuse, so the note names the column, not the query. */
+const REFUSED_WORDS: Record<string, string> = { statusCheckRollup: 'the CI state', pullRequests: 'the open pull requests', defaultBranchRef: 'the default branch' };
+
+/**
+ * What GitHub refused, in the table's words: "statusCheckRollup: Resource not accessible by personal access token" (the core
+ * passes GitHub's field names on, several joined by "; ") reads "the CI state: Resource not accessible by personal access
+ * token"; a field the table has no words for keeps its name, and an error that named no field is passed on as it is.
+ */
+export function refusedWords(incomplete: string): string {
+  return incomplete
+    .split('; ')
+    .map((part) => {
+      const i = part.indexOf(': ');
+      if (i < 0) return part;
+      const field = part.slice(0, i);
+      return `${REFUSED_WORDS[field] ?? field}${part.slice(i)}`;
+    })
+    .join('; ');
+}
+
+/**
+ * The CI cell of a row: the state of the default branch's latest commit, or why there is none. When GitHub refused part of the
+ * answer (incomplete), what it refused is said under the state, so "No checks" or "None open" never stands alone as an answer
+ * GitHub did not give. A row that could not be read says so with the other program's own words after the state: gh's or
+ * GitHub's for `error`, git's or the OS's for `unreadable`; the words are a fragment, so nothing is put in front of them.
+ */
 function ciCell(r: ProjectRepoRow): RemixNode {
   switch (r.state) {
     case 'github': {
       const c = CI[r.ci ?? 'none'] ?? CI.none;
       return (
-        <StateLine text={c.text} tone={c.tone}>
-          {r.defaultBranch ? `on ${r.defaultBranch}` : null}
-        </StateLine>
+        <>
+          <StateLine text={c.text} tone={c.tone}>
+            {r.defaultBranch ? `on ${r.defaultBranch}` : null}
+          </StateLine>
+          {r.incomplete ? (
+            <span class="err" data-testid="repo-incomplete">
+              GitHub refused part of the answer: {refusedWords(r.incomplete)}
+            </span>
+          ) : null}
+        </>
       );
     }
     case 'needs_gh':
       return <StatusWord tone="none" text="Needs gh" />;
     case 'error':
+    case 'unreadable':
       return (
         <>
-          <StatusWord tone="err" text="Could not read" />
+          <StatusWord tone="err" text={r.state === 'error' ? 'Could not read' : 'Not readable'} />
           <span class="err" data-testid="repo-error">
             {r.error}
           </span>
@@ -405,9 +438,40 @@ function ciCell(r: ProjectRepoRow): RemixNode {
 }
 
 /**
- * Repositories: one row per project with its repository, the CI state of the default branch and the open pull requests. A
- * repository opens on github.com (the system browser); Open goes to the project's Pull requests, or its Overview when it has
- * no GitHub repository. Refresh asks GitHub again.
+ * The Repository cell of a row: owner/name, a link to the repository on github.com when its address is safe; or, in words, why
+ * there is none. The state decides, not whether a name came along.
+ */
+function repoCell(r: ProjectRepoRow): RemixNode {
+  switch (r.state) {
+    case 'no_repo':
+      return <span mix={muted}>No repository</span>;
+    case 'unreadable':
+      return <span mix={muted}>Folder not readable</span>;
+    case 'local':
+      return <span mix={muted}>Local folder</span>;
+  }
+  const href = r.url ? safeHref(r.url) : undefined;
+  return r.repo && href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="repo-link" title={`${r.repo} on github.com`}>
+      {r.repo}
+      <Icon icon={ExternalLink} size={11} />
+    </a>
+  ) : (
+    <span mix={mono}>{r.repo}</span>
+  );
+}
+
+/**
+ * Whether the row's project has a GitHub repository: read (github), refused by GitHub (error) or waiting for the GitHub CLI
+ * (needs_gh). The state says so, never whether `repo` happens to be set, so a core that one day names the folder of an
+ * unreadable row cannot send Open to pull requests that are not there.
+ */
+const onGitHub = (r: ProjectRepoRow): boolean => r.state === 'github' || r.state === 'error' || r.state === 'needs_gh';
+
+/**
+ * Repositories: one row per project with its repository, the CI state of the default branch and the open pull requests, every
+ * cell drawn from the row's state (the core says what each row is). A repository opens on github.com (the system browser); Open
+ * goes to the project's Pull requests when it has a GitHub repository, else to its Overview. Refresh asks GitHub again.
  */
 function Repositories(handle: Handle) {
   const s = services(handle);
@@ -469,9 +533,7 @@ function Repositories(handle: Handle) {
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const href = r.url ? safeHref(r.url) : undefined;
-                  // a GitHub repository (read, failed to read, or waiting for gh); a folder git could not read has none
-                  const onGitHub = !!r.repo;
+                  const gh = onGitHub(r);
                   return (
                     <tr key={r.projectId} data-testid="repo-row" data-project={r.projectId} data-state={r.state} data-ci={r.ci}>
                       <td>
@@ -480,25 +542,14 @@ function Repositories(handle: Handle) {
                           {r.project}
                         </span>
                       </td>
-                      <td data-part="repo">
-                        {r.repo && href ? (
-                          <a href={href} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="repo-link" title={`${r.repo} on github.com`}>
-                            {r.repo}
-                            <Icon icon={ExternalLink} size={11} />
-                          </a>
-                        ) : r.repo ? (
-                          <span mix={mono}>{r.repo}</span>
-                        ) : (
-                          <span mix={muted}>{r.state === 'no_repo' ? 'No repository' : r.state === 'error' ? 'Folder not readable' : 'Local folder'}</span>
-                        )}
-                      </td>
+                      <td data-part="repo">{repoCell(r)}</td>
                       <td data-testid="repo-ci">{ciCell(r)}</td>
                       <td data-testid="repo-prs">{r.state === 'github' ? (r.openPullRequests > 0 ? `${r.openPullRequests} open` : 'None open') : <span mix={faint}>—</span>}</td>
                       <td data-part="open">
                         <a
-                          href={onGitHub ? routes.pulls.href() : routes.home.href()}
+                          href={gh ? routes.pulls.href() : routes.home.href()}
                           mix={[buttonStyle('ghost', 'sm'), on('click', () => s.workspace.selectProject(r.projectId))]}
-                          aria-label={onGitHub ? `Open the pull requests of ${r.project}` : `Open ${r.project}`}
+                          aria-label={gh ? `Open the pull requests of ${r.project}` : `Open ${r.project}`}
                           data-testid="repo-open"
                         >
                           Open

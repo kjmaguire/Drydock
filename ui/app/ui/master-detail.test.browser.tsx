@@ -22,7 +22,7 @@ const groups = (): ListGroup[] => [
 ];
 
 // a page keeps the choice and draws the layout again with it, as the screens do
-function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean; addressed?: boolean }>) {
+function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean; address?: string }>) {
   let selected = handle.props.start;
   return () => (
     <MasterDetail
@@ -43,15 +43,15 @@ function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: stri
         </p>
       }
       testId="md"
-      addressed={handle.props.addressed}
+      address={handle.props.address}
     />
   );
 }
 
-function render(selected: { key: string }, extra: { filters?: boolean; addressed?: boolean } = {}) {
+function render(selected: { key: string }, extra: { filters?: boolean; address?: string } = {}) {
   const picks: string[] = [];
   const filterPicks: string[] = [];
-  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} addressed={extra.addressed} />);
+  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} address={extra.address} />);
   return { ...r, picks, filterPicks };
 }
 
@@ -128,7 +128,7 @@ describe('MasterDetail', () => {
   });
 
   it('leaves / alone with Ctrl, Alt or Meta held and inside a menu, a listbox or a dialog', () => {
-    const { container } = render({ key: 'linear' }, { addressed: true }); // the detail showing, on a narrow window too
+    const { container } = render({ key: 'linear' }, { address: 'linear' }); // the detail showing, on a narrow window too
     const md = container.querySelector('[data-testid="md"]')!;
     const box = container.querySelector('[data-testid="list-filter"]');
     for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
@@ -145,12 +145,65 @@ describe('MasterDetail', () => {
     expect(document.activeElement).toBe(menu);
   });
 
-  it('shows the detail of a row the address named at once on narrow windows', () => {
-    const { container } = render({ key: 'notion' }, { addressed: true });
+  it('shows the detail of the row the address named at once on narrow windows', () => {
+    const { container } = render({ key: 'notion' }, { address: 'notion' });
     expect(container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('true');
     cleanup();
     const plain = render({ key: 'notion' });
     expect(plain.container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('keeps the list when the address names a row that is gone and the page chose its default instead', () => {
+    // a bookmark of an uninstalled agent: the page replaced the key with its default row, which is not the one asked for
+    const { container } = render({ key: 'linear' }, { address: 'codex' });
+    expect(container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('follows a new address while the page stays mounted, once the page has chosen its row', () => {
+    const ctl: { set?: (address: string | undefined, selected: string) => void } = {};
+    // the controller draws a page with one key for every address, so a new address arrives as a new prop, not a new page
+    function LiveHost(handle: Handle<{ address?: string; selected: string }>) {
+      let address = handle.props.address;
+      let selected = handle.props.selected;
+      ctl.set = (a, k) => ((address = a), (selected = k), void handle.update());
+      return () => (
+        <MasterDetail label="All integrations" groups={groups()} selected={selected} onSelect={(k) => ((selected = k), void handle.update())} detail={<p>detail of {selected}</p>} testId="md" address={address} />
+      );
+    }
+    // the list was still loading when the page opened (nothing drawn as chosen); then a link names Linear and the page chooses it
+    const r = renderPlain(<LiveHost selected="" />);
+    const md = r.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md.getAttribute('data-open')).toBe('false');
+    ctl.set!('linear', 'linear');
+    r.root.flush();
+    expect(md.getAttribute('data-open')).toBe('true');
+    cleanup();
+    // a stale address the page replaced opens nothing; a real one after it does
+    const r2 = renderPlain(<LiveHost address="codex" selected="linear" />);
+    const md2 = r2.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md2.getAttribute('data-open')).toBe('false');
+    ctl.set!('notion', 'notion');
+    r2.root.flush();
+    expect(md2.getAttribute('data-open')).toBe('true');
+    cleanup();
+    // Back, then a re-read drops the chosen row and the page draws its default in its place: nothing was chosen, the list stays
+    const r3 = renderPlain(<LiveHost address="notion" selected="notion" />);
+    const md3 = r3.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md3.getAttribute('data-open')).toBe('true');
+    r3.container.querySelector<HTMLButtonElement>('[data-testid="detail-back"]')!.click();
+    r3.root.flush();
+    expect(md3.getAttribute('data-open')).toBe('false');
+    ctl.set!('notion', 'linear');
+    r3.root.flush();
+    expect(md3.getAttribute('data-open')).toBe('false');
+    cleanup();
+    // the plain address (the page's own link in the sidebar, no key) shows the list again
+    const r4 = renderPlain(<LiveHost address="linear" selected="linear" />);
+    const md4 = r4.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md4.getAttribute('data-open')).toBe('true');
+    ctl.set!(undefined, 'linear');
+    r4.root.flush();
+    expect(md4.getAttribute('data-open')).toBe('false');
   });
 
   it('shows the filter choices the page owns and reports a choice', () => {
@@ -175,10 +228,12 @@ describe('MasterDetail', () => {
     expect(md.getAttribute('data-open')).toBe('false');
   });
 
-  it('opens the detail when the page changes the choice itself (an Add row, the address)', () => {
+  it('opens a row the page chose itself (an Add row) once the page has put it in the address, as the pages do', () => {
     function AddHost(handle: Handle<{ start: string }>) {
       let selected = handle.props.start;
-      const pick = (k: string) => ((selected = k), void handle.update());
+      let address: string | undefined;
+      // as the pages do: the choice replaces the address (navigate), and the address comes back to the page as a prop
+      const pick = (k: string) => ((selected = k), (address = k), void handle.update());
       return () => (
         <MasterDetail
           label="Providers"
@@ -187,6 +242,7 @@ describe('MasterDetail', () => {
           onSelect={pick}
           detail={<p data-testid="the-detail">detail of {selected}</p>}
           testId="md"
+          address={address}
         />
       );
     }

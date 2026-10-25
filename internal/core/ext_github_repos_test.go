@@ -37,6 +37,9 @@ type ghFixture struct {
 type ghFixtureRepo struct {
 	// Repository is the GraphQL repository object GitHub would answer with.
 	Repository json.RawMessage `json:"repository,omitempty"`
+	// Errors is the GraphQL errors array sent beside the repository, when GitHub refused part of it (a token without a
+	// permission): the repository is answered with the refused field null, and each error names the field in its path.
+	Errors json.RawMessage `json:"errors,omitempty"`
 	// Fail is what gh prints on stderr before it exits 1 (GitHub answered with an error, the network failed).
 	Fail string `json:"fail,omitempty"`
 }
@@ -91,6 +94,8 @@ func ghStandIn() int {
 		case r.Fail != "":
 			fmt.Fprintln(os.Stderr, r.Fail)
 			return 1
+		case r.Errors != nil:
+			return reply(fmt.Sprintf(`{"data":{"repository":%s},"errors":%s}`, r.Repository, r.Errors))
 		}
 		return reply(fmt.Sprintf(`{"data":{"repository":%s}}`, r.Repository))
 	}
@@ -212,8 +217,10 @@ func repoJSON(full, branch, rollup string, prs int, private bool) json.RawMessag
 
 // The GitHub page's Repositories table through the app's call path, with the stand-in gh on PATH: each project with its
 // repository, the CI state of the default branch (passing, failing, running, none) and the open pull requests, one gh call per
-// repository (two projects of one repository share it), a project without a GitHub remote or without a repository, and a
-// repository whose read fails, which is that row's error alone. The answers are kept briefly; refresh asks again.
+// repository (two projects of one repository share it), a project without a GitHub remote or without a repository, a
+// repository whose read fails, which is that row's error alone, a repository GitHub answered only in part, which names what was
+// refused, and a repository folder git cannot read, which is unreadable in git's words. The answers are kept briefly; refresh
+// asks again.
 func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	log := ghOnPath(t, ghFixture{Login: "kyle", Repos: map[string]ghFixtureRepo{
 		"acme/green":  {Repository: repoJSON("acme/green", "main", "SUCCESS", 2, true)},
@@ -221,6 +228,9 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 		"acme/busy":   {Repository: repoJSON("acme/busy", "main", "PENDING", 0, true)},
 		"acme/quiet":  {Repository: repoJSON("acme/quiet", "main", "", 0, true)},
 		"acme/broken": {Fail: "gh: HTTP 502: Bad Gateway (https://api.github.com/graphql)"},
+		// the repository, with its CI rollup refused (a fine-grained token without the checks permission)
+		"acme/partial": {Repository: repoJSON("acme/partial", "main", "", 3, false),
+			Errors: json.RawMessage(`[{"type":"FORBIDDEN","path":["repository","defaultBranchRef","target","statusCheckRollup"],"message":"Resource not accessible by personal access token"}]`)},
 	}})
 	a := open(t, "")
 	create := func(name, origin string) string {
@@ -239,11 +249,20 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	create("quiet", "https://github.com/acme/quiet.git")
 	create("broken", "https://github.com/acme/broken.git")
 	create("gone", "https://github.com/acme/gone.git")
+	create("partial", "https://github.com/acme/partial.git")
 	localDir := create("local", "")
 	create("elsewhere", "https://gitlab.com/acme/elsewhere.git")
 	create("no-repo", "-")
-	// a repository folder that went away is an error of its own, not a local repository and not a GitHub one
-	if err := os.RemoveAll(create("moved", "https://github.com/acme/moved.git")); err != nil {
+	// a repository folder that went away is unreadable, not a local repository and not a GitHub one
+	movedDir := create("moved", "https://github.com/acme/moved.git")
+	if err := os.RemoveAll(movedDir); err != nil {
+		t.Fatal(err)
+	}
+	// a repository whose .git/config breaks later (garbage written over it) turns unreadable, in git's words, on the next read
+	garbageDir := create("garbage", "")
+	garbageConfig := filepath.Join(garbageDir, ".git", "config")
+	goodConfig, err := os.ReadFile(garbageConfig)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +275,7 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 
 	var rs core.ProjectRepos
 	a.call("github.projectRepos", nil, &rs)
-	if !rs.GhInstalled || len(rs.Rows) != 11 {
+	if !rs.GhInstalled || len(rs.Rows) != 13 {
 		t.Fatalf("table %+v", rs)
 	}
 	rows := rowsByProject(rs)
@@ -272,7 +291,7 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 		return r
 	}
 	green := check("green", core.RepoStateGitHub, "acme/green", "passing", 2)
-	if green.URL != "https://github.com/acme/green" || !green.Private || green.DefaultBranch != "main" || green.CheckedAt == 0 || green.Error != "" {
+	if green.URL != "https://github.com/acme/green" || !green.Private || green.DefaultBranch != "main" || green.CheckedAt == 0 || green.Error != "" || green.Incomplete != "" {
 		t.Fatalf("green %+v", green)
 	}
 	check("green-too", core.RepoStateGitHub, "acme/green", "passing", 2)
@@ -287,10 +306,18 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	if gone := check("gone", core.RepoStateError, "acme/gone", "", 0); !strings.Contains(gone.Error, "no repository acme/gone") {
 		t.Fatalf("a repository GitHub does not show: %+v", gone)
 	}
+	// a repository answered in part is a GitHub row whose refused field reads as none, with the refusal named beside it
+	if partial := check("partial", core.RepoStateGitHub, "acme/partial", "none", 3); partial.Incomplete != "statusCheckRollup: Resource not accessible by personal access token" || partial.Error != "" {
+		t.Fatalf("a partial answer names what GitHub refused: %+v", partial)
+	}
 	check("local", core.RepoStateLocal, "", "", 0)
 	check("elsewhere", core.RepoStateLocal, "", "", 0)
 	check("no-repo", core.RepoStateNoRepo, "", "", 0)
-	if moved := check("moved", core.RepoStateError, "", "", 0); moved.Error == "" || moved.URL != "" {
+	check("garbage", core.RepoStateLocal, "", "", 0)
+	// the folder that went away is said to be gone, in the words git.Open uses, whether or not the repository was open already
+	// (it is forgotten then, so the next read looks afresh); nothing of Drydock's stands in front (the page puts the state word
+	// there)
+	if moved := check("moved", core.RepoStateUnreadable, "", "", 0); moved.Error != "git: not a git repository: "+movedDir || moved.URL != "" {
 		t.Fatalf("a folder that cannot be read: %+v", moved)
 	}
 
@@ -299,14 +326,14 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	for _, r := range repos {
 		counts[r]++
 	}
-	want := map[string]int{"acme/green": 1, "acme/red": 1, "acme/busy": 1, "acme/quiet": 1, "acme/broken": 1, "acme/gone": 1}
-	if fmt.Sprint(counts) != fmt.Sprint(want) || all-before != 6 {
+	want := map[string]int{"acme/green": 1, "acme/red": 1, "acme/busy": 1, "acme/quiet": 1, "acme/broken": 1, "acme/gone": 1, "acme/partial": 1}
+	if fmt.Sprint(counts) != fmt.Sprint(want) || all-before != 7 {
 		t.Fatalf("one gh call per repository: %v (%d calls)", counts, all-before)
 	}
 
-	// read again at once: the answers are reused; only the failed reads are asked again
+	// read again at once: the answers are reused, the partial one with what was refused; only the failed reads are asked again
 	a.call("github.projectRepos", nil, &rs)
-	if rowsByProject(rs)["green"].CI != "passing" {
+	if rows := rowsByProject(rs); rows["green"].CI != "passing" || rows["partial"].Incomplete != "statusCheckRollup: Resource not accessible by personal access token" {
 		t.Fatalf("cached table %+v", rs)
 	}
 	if repos2, _ := ghCalls(t, log); len(repos2)-len(repos) != 2 {
@@ -314,19 +341,36 @@ func TestGitHubProjectReposReadEachRepositoryOnceThroughGh(t *testing.T) {
 	}
 	// refresh asks GitHub again for every repository
 	a.call("github.projectRepos", map[string]any{"refresh": true}, &rs)
-	if repos3, _ := ghCalls(t, log); len(repos3)-len(repos)-2 != 6 {
+	if repos3, _ := ghCalls(t, log); len(repos3)-len(repos)-2 != 7 {
 		t.Fatalf("refresh reads every repository again: %v", repos3)
 	}
 
-	// the origin remotes are kept like GitHub's answers: a remote added since shows on a refresh
+	// the origin remotes are kept like GitHub's answers: a remote added since, or a configuration broken since, shows on a
+	// refresh
 	gitIn(t, localDir, "remote", "add", "origin", "https://github.com/acme/green.git")
+	if err := os.WriteFile(garbageConfig, []byte("this is not a git configuration\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	a.call("github.projectRepos", nil, &rs)
-	if l := rowsByProject(rs)["local"]; l.State != core.RepoStateLocal {
-		t.Fatalf("a fresh remote is reused: %+v", l)
+	if rows := rowsByProject(rs); rows["local"].State != core.RepoStateLocal || rows["garbage"].State != core.RepoStateLocal {
+		t.Fatalf("a fresh remote is reused: %+v %+v", rows["local"], rows["garbage"])
 	}
 	a.call("github.projectRepos", map[string]any{"refresh": true}, &rs)
 	if l := rowsByProject(rs)["local"]; l.State != core.RepoStateGitHub || l.Repo != "acme/green" {
 		t.Fatalf("refresh reads the remotes again: %+v", l)
+	}
+	if g := rowsByProject(rs)["garbage"]; g.State != core.RepoStateUnreadable || !strings.Contains(g.Error, "config") || g.Repo != "" || g.URL != "" {
+		t.Fatalf("a repository git cannot read is unreadable, in git's words: %+v", g)
+	}
+	// an unreadable folder is not kept: once it reads again, the next table shows it without a refresh (decoded afresh: a
+	// field left out of the JSON would keep its old value in rs)
+	if err := os.WriteFile(garbageConfig, goodConfig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var repaired core.ProjectRepos
+	a.call("github.projectRepos", nil, &repaired)
+	if g := rowsByProject(repaired)["garbage"]; g.State != core.RepoStateLocal || g.Error != "" {
+		t.Fatalf("a repaired folder reads again at once: %+v", g)
 	}
 }
 

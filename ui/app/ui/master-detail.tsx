@@ -236,7 +236,12 @@ export function visibleGroups(groups: ListGroup[], q: string): ListGroup[] {
 /**
  * The layout. `selected` is the chosen row's key and `onSelect` chooses one (the page keeps the choice, so a link can open a
  * row); `detail` is the chosen row's detail. `search` turns on the filter box (`/` focuses it, the arrow keys then move
- * through the rows); `filters` are the segmented choices above the list (All, On, Needs you), owned by the page.
+ * through the rows); `filters` are the segmented choices above the list (All, On, Needs you), owned by the page. `address`
+ * is the key the page's address names, when it names one: a narrow window shows that row's detail as soon as the page has
+ * chosen it, whether the page opened at the address or a link changed it while the page stayed mounted, and the plain address
+ * (no key) shows the list again. Only the addressed row opens that way: a page opens a row of its own accord (an "Add" row,
+ * the row left after a removal) by putting it in the address, so a row the page drew in place of a key that is gone does not
+ * open, and the person sees the list.
  */
 export function MasterDetail(
   handle: Handle<{
@@ -251,18 +256,24 @@ export function MasterDetail(
     onFilter?: (key: string) => void;
     /** Under the list: anything the page adds (a link to the Library). */
     listFooter?: RemixNode;
-    /** The address named the chosen row when the page opened (/integrations/linear): narrow windows show its detail at once. */
-    addressed?: boolean;
+    /**
+     * The key the address names (/integrations/linear) when it names one: a narrow window shows that row's detail once the page
+     * has chosen it, also when the address changes while the page stays mounted; the plain address shows the list again. A key
+     * the page replaced with its default row (the addressed item is gone) opens nothing.
+     */
+    address?: string;
     testId?: string;
   }>,
 ) {
   let query = '';
   // narrow windows: whether the detail is showing in place of the list (a choice opens it, Back closes it)
   let open = false;
-  // the address named a row when the page opened: its detail shows once the page has chosen it (a page may choose after loading)
-  let addressPending = !!handle.props.addressed;
-  // the choice the layout last drew: a page that changes it itself (an "Add" row, the address) opens the detail too
-  let seen = handle.props.selected;
+  // the address the layout last saw, and whether its row's detail is still to be shown: a new address waits for the page to
+  // choose its row (a page may choose after loading), and only that row opens. A page opens a row of its own accord (an "Add"
+  // row, the row left after a removal) by putting it in the address, so a default it draws in place of a row that is gone (the
+  // key of a bookmark, an install that went away on a re-read) opens nothing: the person sees the list.
+  let lastAddress: string | undefined;
+  let addressPending = false;
   let searchEl: HTMLInputElement | null = null;
   let listEl: HTMLElement | null = null;
 
@@ -292,15 +303,16 @@ export function MasterDetail(
   };
 
   return () => {
-    const { label, groups, selected, detail, search, filters, filter, onFilter, listFooter, testId } = handle.props;
+    const { label, groups, selected, detail, search, filters, filter, onFilter, listFooter, address, testId } = handle.props;
+    if (address !== lastAddress) {
+      lastAddress = address;
+      addressPending = !!address;
+      // the plain address (the page's own link, no key) shows the list again
+      if (!address) open = false;
+    }
     if (addressPending && selected) {
       addressPending = false;
-      open = true;
-      seen = selected;
-    }
-    if (selected !== seen) {
-      if (seen) open = true;
-      seen = selected;
+      if (selected === address) open = true;
     }
     const shown = visibleGroups(groups, query);
     return (
