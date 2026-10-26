@@ -401,9 +401,9 @@ export function ProjectServers(handle: Handle<{ projectId: string; agents: reado
             {rest.length > 0 ? (
               'Choose a connected server to add it.'
             ) : (
-              <span>
+              <>
                 No servers are connected yet. Connect servers once on the <a href={routes.integrations.href()}>Integrations</a> page, then add them here.
-              </span>
+              </>
             )}
           </p>
         ) : null}
