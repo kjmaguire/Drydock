@@ -34,6 +34,12 @@ func scanOnce(a *app, target map[string]any) scan.Report {
 		a.call("security.scan.get", target, &cur)
 		return cur != nil && cur.ID == started.ID && cur.Status == scan.StatusDone
 	})
+	// a scan reads done a moment before it is stored (changed()); the history and a dismissal read the stored ones
+	a.waitFor("the scan to be stored", func() bool {
+		var hist []scan.Summary
+		a.call("security.scan.list", target, &hist)
+		return len(hist) > 0 && hist[0].ID == started.ID
+	})
 	return *cur
 }
 
