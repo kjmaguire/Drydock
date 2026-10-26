@@ -201,6 +201,8 @@ test('integrations: OpenRouter is listed under Model providers and sets up as a 
   await expect(panel.getByRole('heading', { name: 'OpenRouter', level: 2 })).toBeVisible();
   // a harness without an OpenRouter provider: the form, filled in for it; the key is the person's to type (nothing is created here:
   // the harness has no route to openrouter.ai)
+  // the attribute is there once the provider list is read
+  await expect(panel).toHaveAttribute('data-set-up', /^(true|false)$/);
   if ((await panel.getAttribute('data-set-up')) === 'false') {
     const form = panel.getByRole('form', { name: 'Connect OpenRouter' });
     await expect(form.getByLabel('Provider name')).toHaveValue('OpenRouter');

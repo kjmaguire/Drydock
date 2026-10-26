@@ -53,7 +53,7 @@ function show(client: Partial<Client>, initial?: string) {
   const went: string[] = [];
   const opened: string[] = [];
   const r = mount(<IntegrationsScreen initial={initial} go={(h) => void went.push(h)} open={(h) => void opened.push(h)} />, s);
-  return Object.assign(r, { went, opened });
+  return Object.assign(r, { went, opened, s });
 }
 type R = ReturnType<typeof show>;
 const find = (r: R, sel: string) =>
@@ -787,6 +787,7 @@ describe('Integrations: OpenRouter, a model provider (decision P103)', () => {
       providerCreate: async (p) => {
         calls.push(p);
         list = [orProvider()];
+        r.s.emit({ type: 'provider.registered', data: { providerId: 'prov_or' } }); // the list follows the core's event
         return list[0]!;
       },
     });
@@ -822,5 +823,51 @@ describe('Integrations: OpenRouter, a model provider (decision P103)', () => {
     expect(panel.querySelector('form')).toBeNull();
     await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Down'), r);
     expect(r.$('[data-testid="list-filter-needs"]')!.textContent).toBe('Needs you 1');
+  });
+
+  it('a provider pointed elsewhere from the form is not called OpenRouter, and the form is filled in for OpenRouter again', async () => {
+    let list: Provider[] = [];
+    const r = show(
+      {
+        integrationList: async () => [],
+        providerList: async () => list,
+        providerCreate: async (p) => {
+          list = [orProvider({ id: 'prov_g', name: p.Name, baseUrl: p.BaseURL, flavor: '' })];
+          r.s.emit({ type: 'provider.registered', data: { providerId: 'prov_g' } });
+          return list[0]!;
+        },
+      },
+      'openrouter',
+    );
+    const panel = await find(r, '[data-testid="openrouter-panel"][data-set-up="false"]');
+    const form = panel.querySelector('form[aria-label="Connect OpenRouter"]')!;
+    type(byLabel(form, 'Provider name'), 'Groq');
+    type(byLabel(form, 'Base URL'), 'https://api.groq.com/openai/v1');
+    await r.act(() => byText(form, 'button', 'Connect OpenRouter').click());
+    await waitFor(() => expect(document.body.textContent).toContain('Groq was added in Models'), r);
+    expect(document.body.textContent).not.toContain('OpenRouter is connected');
+    const again = await find(r, '[data-testid="openrouter-panel"][data-set-up="false"]');
+    const f = again.querySelector('form[aria-label="Connect OpenRouter"]')!;
+    expect(byLabel<HTMLInputElement>(f, 'Provider name').value).toBe('OpenRouter');
+    expect(byLabel<HTMLInputElement>(f, 'Base URL').value).toBe('https://openrouter.ai/api/v1');
+    expect(byText<HTMLButtonElement>(f, 'button', 'Connect OpenRouter').disabled).toBe(false);
+    expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Set up');
+  });
+
+  it('when the providers cannot be read the row does not say Set up, the list says why, and the panel does not guess', async () => {
+    const r = show({ integrationList: async () => [], providerList: async () => Promise.reject(new Error('core busy')) }, 'openrouter');
+    const it = await row(r, 'openrouter');
+    expect(statusOf(it)).toBe('Not known');
+    await waitFor(() => expect(document.body.textContent).toContain('core busy'), r);
+    const panel = await find(r, '[data-testid="openrouter-panel"]');
+    expect(panel.hasAttribute('data-set-up')).toBe(false);
+    expect(panel.querySelector('form')).toBeNull();
+  });
+
+  it('a provider never checked is Not checked, not counted as connected', async () => {
+    const r = show({ integrationList: async () => [], providerList: async () => [orProvider({ status: 'unknown' })] }, 'openrouter');
+    await find(r, '[data-testid="openrouter-panel"][data-set-up="true"]');
+    await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Not checked'), r);
+    expect(r.$('header')!.textContent).toContain('· 0 connected');
   });
 });

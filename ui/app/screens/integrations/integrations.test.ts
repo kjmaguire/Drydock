@@ -269,7 +269,9 @@ describe('providerRowState (OpenRouter on the Integrations page, decision P103)'
   it('is Set up without a provider, On while one is enabled and answers, Down when every enabled one is down, Disabled when all are off', () => {
     expect(providerRowState([])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
     expect(providerRowState([{ enabled: true, status: 'up' }]).bucket).toBe('on');
-    expect(providerRowState([{ enabled: true, status: 'unknown' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'unknown' }])).toEqual({ text: 'Not checked', tone: 'muted', bucket: 'needs' });
+    expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'unknown' }]).text).toBe('Not checked');
+    expect(providerRowState([{ enabled: true, status: 'unknown' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
     expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
     expect(providerRowState([{ enabled: true, status: 'down' }])).toEqual({ text: 'Down', tone: 'err', bucket: 'needs' });
     expect(providerRowState([{ enabled: false, status: 'up' }])).toEqual({ text: 'Disabled', tone: 'muted', bucket: 'setup' });

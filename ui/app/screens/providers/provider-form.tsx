@@ -40,7 +40,8 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
-  const v: ProviderFormValues = handle.props.initial ? { ...handle.props.initial, att: { ...handle.props.initial.att } } : emptyProviderForm();
+  const fresh = (): ProviderFormValues => (handle.props.initial ? { ...handle.props.initial, att: { ...handle.props.initial.att } } : emptyProviderForm());
+  const v = fresh();
   let keyInput: HTMLInputElement | undefined;
   const redraw = () => void handle.update();
 
@@ -55,9 +56,11 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
       ok = true;
     });
     if (ok) {
-      v.name = '';
-      v.baseUrl = '';
-      v.att = {};
+      // back to where it started (OpenRouter's preset, else blank); the kind, data class and tier stay as chosen
+      const f = fresh();
+      v.name = f.name;
+      v.baseUrl = f.baseUrl;
+      v.att = f.att;
       redraw();
       handle.props.onCreated(made);
     }

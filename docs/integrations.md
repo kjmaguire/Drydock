@@ -506,11 +506,14 @@ On the owner's words: "Were missing OpenRouter as an integration in here as well
 (Models, Add a provider: an aggregator; key limits, endpoint uptime, `private` routes asking for no data collection and ZDR,
 decisions D4, D13, P53) but the Integrations page, where people look for what Drydock connects to, did not show it. The list
 now has a **Model providers** group (`list-group-models`) with an OpenRouter row (`data-kind="openrouter"`, its logo, Set up / On /
-Down / Disabled from `providerRowState`), and `/integrations/openrouter` opens `openrouter-panel.tsx`:
+Not checked / Down / Disabled from `providerRowState`; On only once an enabled one answered, so a provider never checked is not
+counted as connected; "Not known" when the provider list could not be read, with the error under the list), and `/integrations/openrouter` opens `openrouter-panel.tsx`:
 
 - **Not set up:** a line on what it is and what Drydock asks of it, then the provider form (`ProviderForm`, the one Models uses)
   filled in for OpenRouter by `openRouterForm()`: name OpenRouter, kind aggregator, `https://openrouter.ai/api/v1`, the defaults
-  private and cheap. The key is all a person types; it goes to the Windows Credential Manager as for any provider.
+  private and cheap. The key is all a person types; it goes to the Windows Credential Manager as for any provider. Every field
+  stays editable: a provider pointed elsewhere is added in Models and the note says it is not OpenRouter; after a create the form
+  is filled in for OpenRouter again.
 - **Set up:** the OpenRouter providers (found by their address, `openRouterProviders`, whatever they are named) with their state,
   and **Open in Models** for the models, prices, key limits and skipped endpoints.
 

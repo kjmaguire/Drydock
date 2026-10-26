@@ -191,15 +191,20 @@ export function vendorState(v: Pick<Vendor, 'kind' | 'cards'>, conn: Integration
 }
 
 /**
- * A model provider's row (OpenRouter's, decision P103): set up when there is none; on while one is enabled and not down; Down needs
- * the person; a disabled one is set up again from its page.
+ * A model provider's row (OpenRouter's, decision P103): set up when there is none; on while an enabled one is up; Down needs the
+ * person; enabled but never checked is not counted as connected (its page in Models tests it); a disabled one is set up again
+ * from its page.
  */
 export function providerRowState(list: readonly Pick<Provider, 'enabled' | 'status'>[]): RowState {
   const on = list.filter((p) => p.enabled);
   if (on.length === 0) return list.length > 0 ? { text: 'Disabled', tone: 'muted', bucket: 'setup' } : SETUP;
+  if (on.some((p) => p.status === 'up')) return ON;
   if (on.every((p) => p.status === 'down')) return { text: 'Down', tone: 'err', bucket: 'needs' };
-  return ON;
+  return { text: 'Not checked', tone: 'muted', bucket: 'needs' };
 }
+
+/** The provider list could not be read: the row says so rather than Set up (it may well be set up). */
+export const PROVIDERS_UNREAD: RowState = { text: 'Not known', tone: 'warn', bucket: 'needs' };
 
 /** A server you added yourself: a failed connection first, then a missing sign-in, then tools never found. */
 export function ownServerState(s: Pick<McpLibraryServer, 'lastError' | 'oauth' | 'oauthAt' | 'tools'>): RowState {

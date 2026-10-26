@@ -31,6 +31,7 @@ import {
   ownServers,
   ownServerState,
   ownServerSub,
+  PROVIDERS_UNREAD,
   providerRowState,
   serverIdOf,
   serverKey,
@@ -45,7 +46,7 @@ import {
 import { ServerDetail } from './server-detail.tsx';
 import type { Open } from './service-detail.tsx';
 import { VendorPanel } from './vendor-detail.tsx';
-import { openRouterProviders } from '../providers/providers.ts';
+import { openRouterProviders, providerBrand } from '../providers/providers.ts';
 import { OpenRouterPanel } from './openrouter-panel.tsx';
 
 // the GitHub settings page shows GitHub's detail with the component this page opens (screens/github/github-screen.tsx)
@@ -54,10 +55,10 @@ export { VendorDetail, VendorPanel } from './vendor-detail.tsx';
 const noteCss = css({ '&:empty': { display: 'none' } });
 const listNote = css({ margin: `${t.s3} ${t.s2} 0`, fontSize: t.textSm, '& a': { whiteSpace: 'nowrap' } });
 
-/** One row with what the page needs to filter it and draw its detail. */
 /** OpenRouter's row and address (/integrations/openrouter): a model provider, set up here, owned by Models (decision P103). */
 const OPENROUTER = 'openrouter';
 
+/** One row with what the page needs to filter it and draw its detail. */
 interface Row {
   item: ListItem;
   state: RowState;
@@ -111,7 +112,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     const servers: McpLibraryServer[] = lib.data ?? [];
     const all = vendors(KINDS, cards);
     const mine = ownServers(servers, cards);
-    const loaded = !!q.data && !!gallery.data;
+    // the providers too (OpenRouter's row): its row and the count would say Set up until they arrive
+    const loaded = !!q.data && !!gallery.data && (!!providers.data || !!providers.error);
 
     const vendorRow = (v: Vendor): Row => {
       const conn = v.kind ? tileState(list, v.key) : undefined;
@@ -154,7 +156,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     const services_ = all.filter((v) => v.kind).map(vendorRow);
     const tools = all.filter((v) => !v.kind).map(vendorRow);
     const own = mine.map(serverRow);
-    const orState = providerRowState(openRouterProviders(providers.data ?? []));
+    const orMine = providers.data ? openRouterProviders(providers.data) : undefined;
+    const orState = orMine ? providerRowState(orMine) : PROVIDERS_UNREAD;
     const modelRows: Row[] = [
       {
         state: orState,
@@ -219,12 +222,19 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
         />
       ) : key === OPENROUTER ? (
         <OpenRouterPanel
-          providers={providers.data}
+          mine={orMine}
+          state={orState}
           loading={providers.loading}
           error={providers.error}
-          onCreated={() => {
-            providers.reload();
-            set(() => (note = 'OpenRouter is connected. Its page in Models has its models and key limits.'));
+          onCreated={(made) => {
+            // the list follows on provider.registered; a provider pointed elsewhere is in Models, not here
+            set(
+              () =>
+                (note =
+                  !made || providerBrand(made) === 'openrouter'
+                    ? 'OpenRouter is connected. Its page in Models has its models and key limits.'
+                    : `${made.name} was added in Models. Its address is not openrouter.ai, so it is not OpenRouter's row here.`),
+            );
           }}
         />
       ) : server ? (
@@ -278,7 +288,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           onFilter={(f) => set(() => (filter = f))}
           listFooter={
             <>
-              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error} what="Integrations" />
+              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error ?? providers.error} what="Integrations" />
               {!loaded && !q.error && !gallery.error ? <Loading /> : null}
               {loaded && filter !== 'all' && groups.every((g) => g.items.length === 0) ? (
                 <p mix={[faint, listNote]} data-testid="list-empty">

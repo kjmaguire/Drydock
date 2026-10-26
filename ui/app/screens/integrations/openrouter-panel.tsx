@@ -13,23 +13,27 @@ import { LearnMore } from '../../ui/learn-more.tsx';
 import { DetailHeader, SettingRow, SettingsGroup } from '../../ui/master-detail.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ProviderForm } from '../providers/provider-form.tsx';
-import { kindWords, openRouterForm, openRouterProviders, providerHost, providerStatus } from '../providers/providers.ts';
-import { providerRowState } from './integrations.ts';
+import { kindWords, openRouterForm, providerHost, providerStatus } from '../providers/providers.ts';
+import type { RowState } from './integrations.ts';
 
 const panelCss = css({ display: 'grid', gap: t.s5, minWidth: '0', '& p': { margin: '0' } });
 
-export function OpenRouterPanel(handle: Handle<{ providers?: Provider[]; loading: boolean; error?: Error; onCreated: (p?: Provider) => void }>) {
+/**
+ * `mine` is the OpenRouter providers and `state` their row's state, both as the page's row has them (one source); `mine` is
+ * undefined until the provider list is read, and `data-set-up` is left off until then.
+ */
+export function OpenRouterPanel(
+  handle: Handle<{ mine?: Provider[]; state: RowState; loading: boolean; error?: Error; onCreated: (p?: Provider) => void }>,
+) {
   return () => {
-    const { providers, loading, error, onCreated } = handle.props;
-    const mine = openRouterProviders(providers ?? []);
-    const state = providerRowState(mine);
-    const first = mine[0];
+    const { mine, state, loading, error, onCreated } = handle.props;
+    const first = mine?.[0];
     return (
-      <section mix={panelCss} aria-label="OpenRouter" data-testid="openrouter-panel" data-set-up={String(mine.length > 0)}>
+      <section mix={panelCss} aria-label="OpenRouter" data-testid="openrouter-panel" data-set-up={mine ? String(mine.length > 0) : undefined}>
         <DetailHeader
           title="OpenRouter"
           logo="openrouter"
-          status={providers ? { text: state.text, tone: state.tone === 'none' ? 'muted' : state.tone } : undefined}
+          status={mine ? { text: state.text, tone: state.tone === 'none' ? 'muted' : state.tone } : undefined}
           sub="Model provider · many vendors' models with one key"
           actions={
             first ? (
@@ -41,8 +45,8 @@ export function OpenRouterPanel(handle: Handle<{ providers?: Provider[]; loading
           testId="openrouter-head"
         />
         <ErrorNote error={error} what="Could not read the model providers" />
-        {loading && !providers ? <Loading /> : null}
-        {providers && mine.length === 0 ? (
+        {loading && !mine ? <Loading /> : null}
+        {mine && mine.length === 0 ? (
           <>
             {/* one sentence (the density budget): where the key is kept, the form's own hint says */}
             <p mix={muted}>
@@ -52,7 +56,7 @@ export function OpenRouterPanel(handle: Handle<{ providers?: Provider[]; loading
             <ProviderForm initial={openRouterForm()} label="Connect OpenRouter" submitLabel="Connect OpenRouter" onCreated={onCreated} />
           </>
         ) : null}
-        {mine.length > 0 ? (
+        {mine && mine.length > 0 ? (
           <>
             <SettingsGroup title={mine.length === 1 ? 'Connected' : `Connected (${mine.length})`} testId="openrouter-connected">
               {mine.map((p) => {
