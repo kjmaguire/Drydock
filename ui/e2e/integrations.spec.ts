@@ -83,7 +83,7 @@ test("integrations: connect Linear without a project, see its fixed name and log
   expect(await page.content()).not.toContain(key);
   // the row says it in a word, and the header counts it
   await expect(row).toContainText('On');
-  await expect(page.locator('header')).toContainText(/· [1-9]\d* on/);
+  await expect(page.locator('header')).toContainText(/· [1-9]\d* connected/);
 
   // Check against your account (P59): the same read-only checks as the live tests, with the key Drydock already holds
   // (nothing is typed or shown), here against the fixture standing in for the account
