@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { createProject, projectNav, workspaceNav } from './helpers';
+import { appUrl, createProject, projectNav, workspaceNav } from './helpers';
 
 // Decision P42 against the real Go core: a service is connected once, without a project, on the workspace's Integrations page
 // (a list and the chosen row's detail, decision P98), then assigned to a project and unassigned again on that project's own
@@ -187,6 +187,7 @@ test('integrations: the list filters by a word and by state, and the address kee
 });
 
 test('integrations: OpenRouter is listed under Model providers and sets up as a provider, the form filled in for it (decision P103)', async ({ page }) => {
+  await page.goto(appUrl());
   await workspaceNav(page, 'nav-integrations');
   const list = page.getByRole('navigation', { name: 'All integrations' });
   const models = list.getByTestId('list-group-models');

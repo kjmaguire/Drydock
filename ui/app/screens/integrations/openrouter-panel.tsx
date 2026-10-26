@@ -44,9 +44,9 @@ export function OpenRouterPanel(handle: Handle<{ providers?: Provider[]; loading
         {loading && !providers ? <Loading /> : null}
         {providers && mine.length === 0 ? (
           <>
+            {/* one sentence (the density budget): where the key is kept, the form's own hint says */}
             <p mix={muted}>
-              Drydock may call OpenRouter&apos;s models directly. On a private route it asks OpenRouter to collect no data and keep none.
-              Paste a key from openrouter.ai; it is kept in the Windows Credential Manager and never shown again.{' '}
+              Drydock may call its models directly; on a private route it asks OpenRouter to collect no data and keep none.{' '}
               <LearnMore topic="providers" />
             </p>
             <ProviderForm initial={openRouterForm()} label="Connect OpenRouter" submitLabel="Connect OpenRouter" onCreated={onCreated} />
