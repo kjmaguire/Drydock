@@ -31,6 +31,7 @@ import {
   ownServers,
   ownServerState,
   ownServerSub,
+  providerRowState,
   serverIdOf,
   serverKey,
   showsUnder,
@@ -44,6 +45,8 @@ import {
 import { ServerDetail } from './server-detail.tsx';
 import type { Open } from './service-detail.tsx';
 import { VendorPanel } from './vendor-detail.tsx';
+import { openRouterProviders } from '../providers/providers.ts';
+import { OpenRouterPanel } from './openrouter-panel.tsx';
 
 // the GitHub settings page shows GitHub's detail with the component this page opens (screens/github/github-screen.tsx)
 export { VendorDetail, VendorPanel } from './vendor-detail.tsx';
@@ -52,6 +55,9 @@ const noteCss = css({ '&:empty': { display: 'none' } });
 const listNote = css({ margin: `${t.s3} ${t.s2} 0`, fontSize: t.textSm, '& a': { whiteSpace: 'nowrap' } });
 
 /** One row with what the page needs to filter it and draw its detail. */
+/** OpenRouter's row and address (/integrations/openrouter): a model provider, set up here, owned by Models (decision P103). */
+const OPENROUTER = 'openrouter';
+
 interface Row {
   item: ListItem;
   state: RowState;
@@ -68,6 +74,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
   const kinds = query(handle, { load: () => s.client.integrationKinds(), when: (e) => e.type === 'integration.oauth_app_changed' });
   const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
+  // the model providers, for OpenRouter's row (decision P103): Models owns them, this page shows OpenRouter among the integrations
+  const providers = query(handle, { load: () => s.client.providerList(), when: (e) => e.type.startsWith('provider.') });
   // the registries are read once, and only when a vendor on the page publishes some
   const regs = query(handle, { load: () => s.client.skillRegistries(), enabled: () => (gallery.data ?? []).some((c) => (c.skillRegistries ?? []).length > 0) });
   let selected = handle.props.initial ?? '';
@@ -146,12 +154,29 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     const services_ = all.filter((v) => v.kind).map(vendorRow);
     const tools = all.filter((v) => !v.kind).map(vendorRow);
     const own = mine.map(serverRow);
-    const rows = [...services_, ...tools, ...own];
+    const orState = providerRowState(openRouterProviders(providers.data ?? []));
+    const modelRows: Row[] = [
+      {
+        state: orState,
+        item: {
+          key: OPENROUTER,
+          title: 'OpenRouter',
+          logo: 'openrouter',
+          icon: Plug,
+          sub: 'Models from many vendors, one key',
+          status: { text: orState.text, tone: orState.tone },
+          testId: 'integration-row',
+          data: { kind: OPENROUTER, provider: 'true', connected: String(orState.bucket !== 'setup') },
+        },
+      },
+    ];
+    const rows = [...services_, ...tools, ...modelRows, ...own];
     const counts = filterCounts(rows.map((r) => r.state));
     const shown = (rs: Row[]) => rs.filter((r) => showsUnder(filter, r.state)).map((r) => r.item);
     const groups: ListGroup[] = [
       { key: 'services', title: 'Services', note: 'app sync', items: shown(services_) },
       ...(tools.length > 0 ? [{ key: 'tools', title: 'Agent tools', note: 'MCP', items: shown(tools) }] : []),
+      { key: 'models', title: 'Model providers', note: 'Models', items: shown(modelRows) },
       {
         key: 'servers',
         title: 'Your servers',
@@ -165,7 +190,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     // the row whose detail shows: the chosen one, else the first (drawn, not put in the address)
     const key = selected || firstKey;
     const serverId = serverIdOf(key);
-    const vendor = serverId ? undefined : all.find((v) => v.key === key);
+    const vendor = serverId || key === OPENROUTER ? undefined : all.find((v) => v.key === key);
     const server = serverId ? servers.find((x) => x.id === serverId) : undefined;
 
     const detail =
@@ -191,6 +216,16 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
               </>
             ) : undefined
           }
+        />
+      ) : key === OPENROUTER ? (
+        <OpenRouterPanel
+          providers={providers.data}
+          loading={providers.loading}
+          error={providers.error}
+          onCreated={() => {
+            providers.reload();
+            set(() => (note = 'OpenRouter is connected. Its page in Models has its models and key limits.'));
+          }}
         />
       ) : server ? (
         <ServerDetail

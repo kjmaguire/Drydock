@@ -112,14 +112,17 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
     );
     await rowOf(r, 'ctx7');
     const rows = Array.from(r.$$('[data-testid="integration-row"]')) as HTMLElement[];
-    expect(rows.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'mslearn', 'cloudflare', 'ctx7']);
+    // then OpenRouter under Model providers (decision P103)
+    expect(rows.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'mslearn', 'cloudflare', 'ctx7', 'openrouter']);
     // the integration kinds keep data-connected; the MCP-only vendors say so, under Agent tools
     expect(rows.slice(0, 5).map((t) => t.getAttribute('data-mcp'))).toEqual([null, null, null, null, null]);
-    expect(rows.slice(5).map((t) => t.getAttribute('data-mcp'))).toEqual(['true', 'true', 'true']);
-    expect(rows.slice(5).every((t) => t.closest('[data-testid="list-group-tools"]'))).toBe(true);
+    expect(rows.slice(5, 8).map((t) => t.getAttribute('data-mcp'))).toEqual(['true', 'true', 'true']);
+    expect(rows[8]!.getAttribute('data-provider')).toBe('true');
+    expect(rows.slice(5, 8).every((t) => t.closest('[data-testid="list-group-tools"]'))).toBe(true);
+    expect(rows[8]!.closest('[data-testid="list-group-models"]')).not.toBeNull();
     expect(rows[0]!.getAttribute('data-connected')).toBe('true');
     // one word each: what works, what was never set up, what needs the person
-    expect(rows.map(stateOf)).toEqual(['On', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Needs sign-in', 'On']);
+    expect(rows.map(stateOf)).toEqual(['On', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Needs sign-in', 'On', 'Set up']);
     expect(rows[5]!.textContent).toContain('Microsoft Learn');
     expect(rows[5]!.textContent).toContain('Tools for agents · 1 tool');
     expect(rows[5]!.querySelector('[data-brand="microsoft"]')).not.toBeNull();

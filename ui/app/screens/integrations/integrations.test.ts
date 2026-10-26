@@ -4,6 +4,7 @@ import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts';
 import {
+  providerRowState,
   cardsState,
   connectReply,
   filterCounts,
@@ -261,5 +262,16 @@ describe('the answer of integration.connect is checked (L43)', () => {
     for (const test of ['passed', 1, [], { ok: true }, { ok: 'yes', summary: 's' }, { ok: true, summary: 's', steps: 'x' }]) {
       expect(() => connectReply({ connection: view(), test })).toThrow(/test report in a shape this page can not show/);
     }
+  });
+});
+
+describe('providerRowState (OpenRouter on the Integrations page, decision P103)', () => {
+  it('is Set up without a provider, On while one is enabled and answers, Down when every enabled one is down, Disabled when all are off', () => {
+    expect(providerRowState([])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    expect(providerRowState([{ enabled: true, status: 'up' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'unknown' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'down' }])).toEqual({ text: 'Down', tone: 'err', bucket: 'needs' });
+    expect(providerRowState([{ enabled: false, status: 'up' }])).toEqual({ text: 'Disabled', tone: 'muted', bucket: 'setup' });
   });
 });

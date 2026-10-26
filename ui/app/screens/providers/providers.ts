@@ -157,6 +157,18 @@ export const emptyProviderForm = (): ProviderFormValues => ({
   att: {},
 });
 
+/** OpenRouter's API address: the host the core's flavor detection, key limits and endpoint uptime read (internal/providers). */
+export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+
+/**
+ * The provider form filled in for OpenRouter (the Integrations page sets it up in place, decision P103): its name, an aggregator,
+ * its address; the key is typed, and the data class and tier keep the form's defaults (private, cheap).
+ */
+export const openRouterForm = (): ProviderFormValues => ({ ...emptyProviderForm(), name: 'OpenRouter', kind: 'aggregator', baseUrl: OPENROUTER_BASE });
+
+/** The configured providers that are OpenRouter: their address is on openrouter.ai, whatever they were named. */
+export const openRouterProviders = <P extends Pick<Provider, 'baseUrl' | 'flavor'>>(list: readonly P[]): P[] => list.filter((p) => providerBrand(p) === 'openrouter');
+
 /**
  * provider.create takes the exported Go field names. Only attestations that are true are sent; the key is sent only when
  * one was typed. The key is passed in (read from the input at submit time), never kept in the form values.

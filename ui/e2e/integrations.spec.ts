@@ -185,3 +185,28 @@ test('integrations: the list filters by a word and by state, and the address kee
   await list.locator('a[href="/github"]').click();
   await expect(page).toHaveURL(/\/github$/);
 });
+
+test('integrations: OpenRouter is listed under Model providers and sets up as a provider, the form filled in for it (decision P103)', async ({ page }) => {
+  await workspaceNav(page, 'nav-integrations');
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  const models = list.getByTestId('list-group-models');
+  await expect(models.getByRole('heading', { name: /^Model providers/, level: 2 })).toBeVisible();
+  const row = models.locator('[data-testid=integration-row][data-kind=openrouter]');
+  await expect(row).toContainText('OpenRouter');
+  await expect(row.locator('[data-brand=openrouter]')).toBeVisible();
+  await row.click();
+  await expect(page).toHaveURL(/\/integrations\/openrouter$/);
+  const panel = page.getByTestId('openrouter-panel');
+  await expect(panel.getByRole('heading', { name: 'OpenRouter', level: 2 })).toBeVisible();
+  // a harness without an OpenRouter provider: the form, filled in for it; the key is the person's to type (nothing is created here:
+  // the harness has no route to openrouter.ai)
+  if ((await panel.getAttribute('data-set-up')) === 'false') {
+    const form = panel.getByRole('form', { name: 'Connect OpenRouter' });
+    await expect(form.getByLabel('Provider name')).toHaveValue('OpenRouter');
+    await expect(form.getByLabel('Base URL')).toHaveValue('https://openrouter.ai/api/v1');
+    await expect(form.getByLabel('Kind', { exact: true })).toHaveAttribute('data-value', 'aggregator');
+    await expect(form.getByRole('button', { name: 'Connect OpenRouter' })).toBeEnabled();
+  } else {
+    await expect(panel.getByTestId('openrouter-open')).toHaveAttribute('href', /^\/models\/.+/);
+  }
+});

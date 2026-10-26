@@ -1231,3 +1231,10 @@ Open, owner action:
   ask first, Remove in the danger colour); the run graph draws the condition pills of the selected node's edges only, over the nodes,
   and keeps every condition as its edge's tooltip. (6) Words: "N connected", "spent so far", the reviewer's verdict as "approved" or
   "asked for changes" (`verdictWords`), "Search" in the sidebar's box. The other suggestions of the audit stay open.
+- **P103. OpenRouter on the Integrations page (2026-10-26, on the owner's words: "Were missing OpenRouter as an integration in
+  here as well").** OpenRouter stays a model provider that Models owns (its models, prices, key limits and endpoint uptime are on
+  its page there), and the Integrations page lists it in a **Model providers** group, beside the services, agent tools and servers.
+  Without an OpenRouter provider its panel is Models' own provider form filled in for OpenRouter (name, aggregator,
+  `https://openrouter.ai/api/v1`, private, cheap), so the key is all a person types; with one, its state and **Open in Models**. One
+  store and one form; an OpenRouter provider is recognised by its address, whatever it is called. `docs/integrations.md`, "As built:
+  OpenRouter on the Integrations page".

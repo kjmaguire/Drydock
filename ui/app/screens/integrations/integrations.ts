@@ -6,7 +6,7 @@
 import { isRecord } from '../../api/guards.ts';
 import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
-import type { Agent } from '../../api/types.ts';
+import type { Agent, Provider } from '../../api/types.ts';
 import { agoWords, formatDate, plural } from '../../lib/format.ts';
 import type { TileBadge, TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
@@ -188,6 +188,17 @@ export function cardsState(cards: readonly Pick<McpGalleryCard, 'status'>[]): Ro
 export function vendorState(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): RowState {
   const parts = [v.kind ? serviceState(conn) : undefined, v.cards.length > 0 ? cardsState(v.cards) : undefined].filter((x): x is RowState => !!x);
   return parts.find((p) => p.bucket === 'needs') ?? parts.find((p) => p.bucket === 'on') ?? SETUP;
+}
+
+/**
+ * A model provider's row (OpenRouter's, decision P103): set up when there is none; on while one is enabled and not down; Down needs
+ * the person; a disabled one is set up again from its page.
+ */
+export function providerRowState(list: readonly Pick<Provider, 'enabled' | 'status'>[]): RowState {
+  const on = list.filter((p) => p.enabled);
+  if (on.length === 0) return list.length > 0 ? { text: 'Disabled', tone: 'muted', bucket: 'setup' } : SETUP;
+  if (on.every((p) => p.status === 'down')) return { text: 'Down', tone: 'err', bucket: 'needs' };
+  return ON;
 }
 
 /** A server you added yourself: a failed connection first, then a missing sign-in, then tools never found. */

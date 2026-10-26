@@ -107,7 +107,7 @@ export const HOWTO: readonly Topic[] = [
     summary: 'Providers are the model services Drydock may call directly, and how OpenRouter is used.',
     keywords: ['provider', 'api key', 'openrouter', 'credential manager', 'http', 'uptime', 'quota'],
     body: [
-      { p: 'The **Providers** of the [Models](/models) page are the model providers Drydock may call directly. Choose one to see it in full, or choose [Add a provider](/models/new).' },
+      { p: 'The **Providers** of the [Models](/models) page are the model providers Drydock may call directly. Choose one to see it in full, or choose [Add a provider](/models/new). **OpenRouter** is also on the [Integrations](/integrations/openrouter) page, its form filled in: paste the key and connect.' },
       {
         ul: [
           'API keys are stored in the **Windows Credential Manager** and are never shown again after you save them.',
