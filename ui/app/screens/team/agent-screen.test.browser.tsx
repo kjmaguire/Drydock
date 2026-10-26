@@ -321,7 +321,7 @@ describe("an agent's page", () => {
     await hero(r);
     const spend = await waitFor(() => r.$('[data-testid="stat-spend"]') ?? (() => { throw new Error('no spend yet'); })(), r);
     expect(spend.querySelector('b')!.textContent).toBe('$60.00');
-    expect(spend.querySelector('small')!.textContent).toBe('spent in all 120 usage rows, 30 estimated');
+    expect(spend.querySelector('small')!.textContent).toBe('spent so far, 30 of 120 costs estimated');
     await r.act(() => r.$('[data-testid="agent-tab-history"]')!.click());
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(50), r);
     expect(r.$('section[aria-label="Usage"] h2')!.textContent).toContain('$60.00 in all 120 rows');
@@ -333,7 +333,7 @@ describe("an agent's page", () => {
     const { r } = show('agt_1');
     await hero(r);
     await waitFor(() => expect(r.$('[data-testid="stat-spend"] b')!.textContent).toBe('$0.12'), r);
-    expect(r.$('[data-testid="stat-spend"] small')!.textContent).toBe('spent in all 2 usage rows');
+    expect(r.$('[data-testid="stat-spend"] small')!.textContent).toBe('spent so far');
     await r.act(() => r.$('[data-testid="agent-tab-history"]')!.click());
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(2), r);
     expect(r.$('[data-testid="usage-cut"]')).toBeNull();
