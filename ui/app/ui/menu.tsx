@@ -1,6 +1,6 @@
 import { css, type Handle, type RemixNode } from 'remix/component';
 import * as menu from '@remix-run/ui/menu';
-import { Check } from 'lucide';
+import { Check, Ellipsis } from 'lucide';
 import { Icon, type IconNode } from './icon.tsx';
 import { t } from './tokens.ts';
 
@@ -97,6 +97,45 @@ export function Menu(
           </div>
         </menu.Context>
       </div>
+    );
+  };
+}
+
+const moreCss = css({
+  display: 'inline-grid',
+  placeItems: 'center',
+  flex: 'none',
+  width: '30px',
+  height: '30px',
+  minHeight: '0',
+  padding: '0',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: 'transparent',
+  color: t.textMuted,
+  '&:hover': { background: t.bgHover, color: t.text },
+  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+});
+
+/**
+ * The "..." of a row or a header: the actions a person needs now and then, kept out of the way of the ones they need every time
+ * (the UI audit of 2026-10-26: Routing showed Edit, Disable and Delete on every rule). `label` names the button and the menu.
+ */
+export function MoreMenu(handle: Handle<{ label: string; items: MenuItem[]; onSelect: (name: string) => void; testId?: string }>) {
+  return () => {
+    const { label, items, onSelect, testId } = handle.props;
+    return (
+      <Menu
+        label={label}
+        placement="bottom-end"
+        items={items}
+        onSelect={onSelect}
+        trigger={(mix) => (
+          <button type="button" mix={[moreCss, mix]} aria-label={label} title={label} data-testid={testId}>
+            <Icon icon={Ellipsis} size={15} />
+          </button>
+        )}
+      />
     );
   };
 }

@@ -203,7 +203,8 @@ export function runStatusWords(status: string): string {
 
 export function spentLabel(t: Pick<UsageTotals, 'rows' | 'estimated'>): string {
   const n = (x: number) => x.toLocaleString('en-US');
-  return `spent in all ${n(t.rows)} usage ${t.rows === 1 ? 'row' : 'rows'}${t.estimated > 0 ? `, ${n(t.estimated)} estimated` : ''}`;
+  // the rows are the core's bookkeeping, not a person's word (the UI audit of 2026-10-26: "spent in all 1 usage row")
+  return t.estimated > 0 ? `spent so far, ${n(t.estimated)} of ${n(t.rows)} costs estimated` : 'spent so far';
 }
 
 /** "14 m", "1 h 05 m", "2.1 d" for an average duration in minutes. */

@@ -317,7 +317,15 @@ function OAuthAppSetup(handle: Handle<{ kind: string; label: string; app: Integr
 
 /** Connect (or reconnect) one service: the way to connect, the fields that way needs, Advanced closed. */
 export function ConnectForm(
-  handle: Handle<{ kind: string; info?: IntegrationKindInfo; reconnectId?: string; onDone: (r: { test?: IntegrationTestReport }) => void; onKindsChanged?: () => void }>,
+  handle: Handle<{
+    kind: string;
+    info?: IntegrationKindInfo;
+    reconnectId?: string;
+    onDone: (r: { test?: IntegrationTestReport }) => void;
+    onKindsChanged?: () => void;
+    /** The page above already says whether gh is installed and signed in (the GitHub page's hero): the form does not say it again. */
+    ghStateAbove?: boolean;
+  }>,
 ) {
   const s = services(handle);
   watch(handle, s.workspace);
@@ -377,6 +385,7 @@ export function ConnectForm(
     const label = info?.label ?? kindLabel(kind);
     const methods: IntegrationAuthMethod[] = info?.auth ?? [];
     const cur = methods.find((m) => m.id === method) ?? methods.find((m) => m.available) ?? methods[0];
+    const ghNotReady = kind === 'github' && cur?.id === 'gh' && !reconnectId && !!gh.data && !gh.data.loggedIn;
     // an OAuth method that is off can still be chosen when an app can be registered for it: it then shows the registration
     const pickable = (m: IntegrationAuthMethod) => m.available || (m.id === 'oauth' && !!m.oauthApp);
     const fields = cur?.fields ?? [];
@@ -438,7 +447,7 @@ export function ConnectForm(
             {info.noSignIn}
           </p>
         ) : null}
-        {kind === 'github' && cur?.id === 'gh' ? (
+        {kind === 'github' && cur?.id === 'gh' && !handle.props.ghStateAbove ? (
           <div data-testid="gh-status">
             {gh.loading && !gh.data ? <Loading label="Checking gh" /> : null}
             {gh.data?.loggedIn ? (
@@ -510,7 +519,14 @@ export function ConnectForm(
         <ReadOnlyNote />
         {cur?.id !== 'oauth' ? (
           <div mix={formActions}>
-            <Button variant="primary" type="submit" icon={kind === 'github' ? Blocks : KeyRound} disabled={act.busy !== '' || ro.readOnly || !cur} title={ro.readOnly ? ro.reason : undefined}>
+            {/* the gh sign-in cannot connect while gh is missing or signed out: the button waits for it (UI audit 2026-10-26) */}
+            <Button
+              variant="primary"
+              type="submit"
+              icon={kind === 'github' ? Blocks : KeyRound}
+              disabled={act.busy !== '' || ro.readOnly || !cur || ghNotReady}
+              title={ro.readOnly ? ro.reason : ghNotReady ? 'Install gh and sign in with gh auth login first' : undefined}
+            >
               {reconnectId ? `Reconnect ${label}` : kind === 'github' ? 'Use the GitHub CLI sign-in' : `Connect ${label}`}
             </Button>
           </div>

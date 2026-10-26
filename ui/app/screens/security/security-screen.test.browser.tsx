@@ -181,7 +181,9 @@ describe('Security scan of a project (graphite, P97)', () => {
       securityScanList: async () => [summary(done())],
     });
     await waitStatus(r, 'done');
-    expect(r.$('h1')!.textContent).toBe('Security scan');
+    // titled as its pill, with the shield every page title has
+    expect(r.$('h1')!.textContent).toBe('Security');
+    expect(r.$('h1 svg')).not.toBeNull();
     expect(r.$('[data-testid="scan-target-path"]')!.textContent).toBe('C:\\code\\gocalc');
     expect(r.$('[data-testid="scan-target-note"]')!.textContent).toBe('gocalc');
     expect(scanButton(r).disabled).toBe(false);

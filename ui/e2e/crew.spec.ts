@@ -68,8 +68,12 @@ test("the Crew page: the figures, a lane and a card per agent, New agent on N, a
   await expect(chips.filter({ hasText: /guarded|not held in/ })).toBeVisible();
   await expect(page.getByTestId('agent-now')).toContainText('Not on a task right now');
   await expect(page.getByTestId('stat-merged')).toContainText('0');
-  await expect(page.getByRole('button', { name: 'Inspect', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Remove Ada' })).toBeVisible();
+  // Message and Edit are buttons; Inspect, All agents and Remove are in the "..." menu
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+  await page.getByTestId('agent-more').click();
+  await expect(page.getByRole('menuitem', { name: 'Inspect' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Remove Ada...' })).toBeVisible();
+  await page.keyboard.press('Escape');
   // the crew list beside it: every agent, this one marked, and the way to add one
   const crew = page.getByRole('navigation', { name: 'Crew' });
   await expect(crew.getByTestId('crew-link')).toHaveCount(2);
@@ -128,7 +132,7 @@ test("the workspace's Crew page: every project's agents grouped by project, thei
   await expect(page).toHaveURL(/\/crew$/);
   await expect(sidebar(page).getByTestId('nav-crew')).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
-  await expect(page.getByRole('heading', { level: 1, name: 'Crew' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'All crews' })).toBeVisible();
   await expect(page.getByTestId('crew-figures')).toHaveText(/^\d+ agents · \d+ working · \d+ waiting on you$/);
 
   // the cards are grouped by project, each group under its project's colour and name
@@ -162,6 +166,6 @@ test("the workspace's Crew page: every project's agents grouped by project, thei
   const u = new URL(page.url());
   u.pathname = '/crew';
   await page.goto(u.toString());
-  await expect(page.getByRole('heading', { level: 1, name: 'Crew' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'All crews' })).toBeVisible();
   await expect(page.getByTestId('agent').filter({ hasText: 'Alma' })).toBeVisible();
 });

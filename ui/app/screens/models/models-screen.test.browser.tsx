@@ -968,7 +968,8 @@ describe('Models (the page: Models on this PC and the providers)', () => {
     // the head: real counts, a link to Routing and the Guide
     expect(need(r, '[data-testid="models-page"]').textContent).toContain('This PC: serving · 4 providers, 1 up');
     expect(need(r, '[data-testid="models-routing"]').getAttribute('href')).toBe('/routing');
-    expect(r.$('header [data-testid="learn-more"][data-topic="providers"]')).not.toBeNull();
+    // Learn more beside the subtitle, called what every page calls it (the UI audit of 2026-10-26: it said "Guide" among the actions)
+    expect(r.$('header [data-testid="learn-more"][data-topic="providers"]')!.textContent).toBe('Learn more');
     // /models opens this PC
     await shown(r, 'this-pc');
     need(r, '[data-testid="local-server"]');

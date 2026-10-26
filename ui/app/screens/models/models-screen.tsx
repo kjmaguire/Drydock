@@ -167,16 +167,14 @@ export function ModelsScreen(
         title="Models"
         icon={Cpu}
         subtitle={subtitle}
+        guide="providers"
         flush
         testId="models-page"
         actions={
-          <>
-            <a href={routes.routing.href()} mix={buttonStyle('ghost', 'sm')} data-testid="models-routing">
-              <Icon icon={RouteIcon} size={14} />
-              Routing
-            </a>
-            <LearnMore topic="providers" label="Guide" />
-          </>
+          <a href={routes.routing.href()} mix={buttonStyle('ghost', 'sm')} data-testid="models-routing">
+            <Icon icon={RouteIcon} size={14} />
+            Routing
+          </a>
         }
       >
         {!settled ? (

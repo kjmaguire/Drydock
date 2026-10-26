@@ -437,6 +437,11 @@ function AgentDetail(handle: Handle<DetailProps>) {
     const projects = new Set(crew.map((u) => u.agent.projectId)).size;
     // the core's other problem lines and warnings (the notice already says one of them)
     const notes = [...(c.problems ?? []).filter((x) => x !== notice?.from), ...(c.warnings ?? [])];
+    // say it once (the UI audit of 2026-10-26: "Untested" in the list, "Version not tested yet" in the header and the notice, and
+    // Test connection twice): with a notice the header keeps no state pill, and the notice offers its fix only when the header's
+    // own buttons do not already (Test connection, Sign in, Check again are there)
+    const fixInHeader =
+      !!notice && ((notice.fix === 'test' && installed) || (notice.fix === 'sign-in' && installed && !!c.signIn) || notice.fix === 'check');
 
     const actions = (
       <>
@@ -656,7 +661,7 @@ function AgentDetail(handle: Handle<DetailProps>) {
           title={p.name}
           logo={c.adapter}
           icon={Terminal}
-          status={{ text: st.pill, tone: st.tone }}
+          status={notice ? undefined : { text: st.pill, tone: st.tone }}
           sub={headerLine(c, checked ? checkedAt : p.checkedAt, p.now)}
           actions={actions}
           testId="agent-header"
@@ -667,7 +672,7 @@ function AgentDetail(handle: Handle<DetailProps>) {
               <Icon icon={TriangleAlert} size={14} />
             </span>
             <span data-part="text">{notice.text}</span>
-            {notice.fix && notice.label && !(notice.fix === 'sign-in' && signInBusy) ? (
+            {notice.fix && notice.label && !fixInHeader && !(notice.fix === 'sign-in' && signInBusy) ? (
               <Button size="sm" variant="ghost" data-testid="agent-notice-fix" disabled={(notice.fix === 'test' && p.testing) || (notice.fix === 'check' && checking)} mix={on('click', () => fix(notice))}>
                 {notice.label}
               </Button>

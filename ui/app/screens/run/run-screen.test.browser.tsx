@@ -267,8 +267,14 @@ describe('RunScreen', () => {
     expect(panel.textContent).toContain('fake-1');
     expect(panel.textContent).toContain('team setup');
     expect(panel.textContent).toContain('$0.02');
-    // edges touching the selection are highlighted
+    // edges touching the selection are highlighted, and only theirs show their conditions as pills, over the nodes
     expect(all(r, '[data-testid="wf-edge"][data-active="true"]').length).toBe(4);
+    const pills = all(r, '[data-testid="wf-label"]').map((l) => l.textContent);
+    const labelled = all(r, '[data-testid="wf-edge"][data-active="true"]').map((e) => e.querySelector('title')?.textContent).filter(Boolean);
+    expect(pills.sort()).toEqual([...labelled].sort() as string[]);
+    expect(all(r, '[data-testid="wf-edge"]').filter((e) => e.getAttribute('data-active') !== 'true' && e.querySelector('title')).length > 0).toBe(true);
+    const lastNode = all(r, '[data-testid="wf-node"]').pop()!;
+    for (const l of all(r, '[data-testid="wf-label"]')) expect(lastNode.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await r.act(() => byText(panel, 'button', 'Explain why this model').click());
     await waitFor(() => expect(panel.querySelector('[data-testid="explain"]')!.textContent).toContain('assignment'), r);

@@ -219,7 +219,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
         flush
         guide="integrations"
         testId="integrations"
-        subtitle={loaded ? `Connected once for the whole workspace · ${counts.on} on` : 'Connected once for the whole workspace'}
+        subtitle={loaded ? `Connected once for the whole workspace · ${counts.on} connected` : 'Connected once for the whole workspace'}
         actions={
           <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (adding = true)))]}>
             Add MCP server

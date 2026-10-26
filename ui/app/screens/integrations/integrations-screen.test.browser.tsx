@@ -4,7 +4,7 @@ import type { Handle } from 'remix/component';
 import type { Client } from '../../api/client.ts';
 import type { IntegrationVerifyRecord, IntegrationVerifyReport } from '../../api/extTypes.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, fromMenu, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { galleryCard, libServer, pay, rev } from '../mcp/fixtures.ts';
 import { asg, conn, kinds, project, project2 } from './fixtures.ts';
 import { IntegrationsScreen } from './integrations-screen.tsx';
@@ -69,21 +69,6 @@ const open = async (r: R, kind: string) => {
   return find(r, `[data-testid="integration"][data-kind="${kind}"]`);
 };
 const statusOf = (el: Element) => el.querySelector('[data-tone]')?.textContent ?? '';
-const menuOpen = (r: R) => Array.from(r.$$('[role="menu"]')).some((m) => m.closest('[popover]')?.matches(':popover-open'));
-/** Open a kit Menu by its trigger (one still finishing its last selection ignores a click, so it is repeated) and choose an item. */
-async function fromMenu(r: R, trigger: HTMLElement, item: string) {
-  await r.act(() => trigger.click());
-  await waitFor(() => {
-    if (!menuOpen(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
-    expect(menuOpen(r)).toBe(true);
-  }, r);
-  const hit = await waitFor(() => {
-    const el = Array.from(r.$$('[popover]:popover-open [role="menuitem"]')).find((m) => m.textContent?.trim() === item) as HTMLElement | undefined;
-    if (!el) throw new Error(`no menu item ${item}`);
-    return el;
-  }, r);
-  await r.act(() => hit.click());
-}
 
 describe('Integrations: the list', () => {
   it('lists the five services with their fixed logos and names under Services, GitHub as a link to its own page; the first opens', async () => {
@@ -151,7 +136,7 @@ describe('Integrations: the list', () => {
     // the filters and their counts; the header counts what is on
     const f = (k: string) => nav.querySelector<HTMLButtonElement>(`[data-testid="list-filter-${k}"]`)!;
     expect([f('all').textContent, f('on').textContent, f('needs').textContent]).toEqual(['All 9', 'On 3', 'Needs you 2']);
-    expect(r.$('header')!.textContent).toContain('Connected once for the whole workspace · 3 on');
+    expect(r.$('header')!.textContent).toContain('Connected once for the whole workspace · 3 connected');
     await r.act(() => f('needs').click());
     await waitFor(() => expect(Array.from(nav.querySelectorAll('[data-testid="integration-row"]')).map((x) => x.getAttribute('data-key'))).toEqual(['sentry', 'server-new']), r);
     expect(f('needs').getAttribute('aria-pressed')).toBe('true');

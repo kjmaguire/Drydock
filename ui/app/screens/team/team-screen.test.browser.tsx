@@ -939,6 +939,8 @@ describe("Crew (graphite): the workspace's page", () => {
   it("lists every project's agents, grouped under each project with its colour, and the day of all of them", async () => {
     const { r, asked, skillsFor } = showAll();
     await waitFor(() => expect(r.$$('[data-testid="crew-project"]').length).toBe(2), r);
+    // named as the sidebar names it, apart from one project's Crew
+    expect(r.$('h1')!.textContent).toBe('All crews');
     const groups = Array.from(r.$$('[data-testid="crew-project"]'));
     expect(groups.map((g) => g.querySelector('h2')!.textContent)).toEqual(['gocalc2 agents', 'shop-api1 agent']);
     expect(groups.map((g) => Array.from(g.querySelectorAll('[data-testid="agent"]')).map((x) => x.getAttribute('data-name')))).toEqual([['Ada', 'Bo'], ['Shopper']]);

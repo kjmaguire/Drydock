@@ -8,7 +8,7 @@
 // read at a time, the next planned when the last has answered and later when the core is slow (lib/poll.ts).
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
-import { Folder } from 'lucide';
+import { Folder, ShieldCheck } from 'lucide';
 import type { DismissReason, EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
 import type { DrydockEvent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
@@ -73,6 +73,7 @@ const scanCol = css({
   [SPLIT_QUERY]: { height: '100%', overflowY: 'auto' },
 });
 const barCss = css({ '& h1': { flex: 'none' } });
+const titleIcon = css({ display: 'inline-flex', color: t.textMuted });
 const kbdOn = css({ background: 'transparent', borderColor: 'currentColor', color: 'inherit', opacity: '0.7' });
 const padCss = css({ padding: `0 ${t.s6}`, display: 'grid', gap: t.s2 });
 const overallCss = css({ padding: `${t.s3} ${t.s6} 0` });
@@ -561,7 +562,13 @@ export function ScanPanel(
         <div mix={splitCss}>
           <section mix={scanCol} aria-label="Scan">
             <header mix={[headerCss, barCss]}>
-              <h1 id={titleId}>{title}</h1>
+              {/* the shield every page title has, as Page draws it (the UI audit of 2026-10-26: this header had none) */}
+              <h1 id={titleId}>
+                <span mix={titleIcon}>
+                  <Icon icon={ShieldCheck} size={16} />
+                </span>
+                {title}
+              </h1>
               <div mix={targetSlot}>{target}</div>
               {running ? (
                 <Button data-testid="cancel-button" disabled={busy} mix={on('click', () => void cancel())}>

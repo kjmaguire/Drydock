@@ -116,6 +116,7 @@ describe('the workspace Security scan (graphite, P97)', () => {
     });
     await waitFor(() => expect(scanButton(r)).not.toBeNull(), r);
     expect(r.$('h1')!.textContent).toBe('Security scan');
+    expect(r.$('h1 svg')).not.toBeNull();
     expect(r.$('[data-testid="scan-target-note"]')!.textContent).toBe('a folder, not a project');
     expect(folderField(r).getAttribute('aria-label')).toBe('Folder to scan');
     expect(r.$('[data-testid="scan-reads-only"]')!.textContent).toBe('Only files are read. Nothing in the folder runs.');

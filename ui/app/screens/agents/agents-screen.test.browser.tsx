@@ -248,8 +248,8 @@ describe('Agents page', () => {
     const head = d.querySelector('[data-testid="agent-header"]')!;
     expect(head.querySelector('h2')!.textContent).toBe('Claude Code');
     expect(head.querySelector('[data-brand="claude"]')).not.toBeNull();
-    expect(head.querySelector('[data-testid="detail-status"]')!.textContent).toBe('Version not tested yet');
-    expect(head.querySelector('[data-testid="detail-status"]')!.getAttribute('data-tone')).toBe('warn');
+    // the notice below says what is in the way, so the header carries no pill saying it again
+    expect(head.querySelector('[data-testid="detail-status"]')).toBeNull();
     expect(head.textContent).toContain('On Windows · signed in · checked just now');
     expect(byText(head, 'button', 'Test connection')).not.toBeNull();
     expect(byText(head, 'button', 'Sign in again')).not.toBeNull();
@@ -258,7 +258,10 @@ describe('Agents page', () => {
     const notices = d.querySelectorAll('[data-testid="agent-notice"]');
     expect(notices.length).toBe(1);
     expect(notices[0]!.textContent).toContain('Drydock has not tested version 2.1.309 yet.');
-    expect(notices[0]!.querySelector('button')!.textContent).toBe('Test connection');
+    expect(notices[0]!.getAttribute('data-tone')).toBe('warn');
+    // its fix is the header's Test connection: one button, not two
+    expect(notices[0]!.querySelector('button')).toBeNull();
+    expect(d.querySelectorAll('[data-testid="test-connection"]').length).toBe(1);
     // Overview: the facts; the other problems and warnings once, not the one the notice says
     expect(fact(d, 'Version')).toBe('2.1.309');
     expect(fact(d, 'Program')).toBe('C:\\Users\\you\\.local\\bin\\claude.exe');
@@ -534,8 +537,10 @@ describe('Agents page', () => {
     expect(wsl.textContent).toContain("Its own sign-in (claude auth login) runs inside the distro, in a terminal here");
     expect(wsl.textContent).toContain('never reads or copies');
     expect(wsl.querySelector('[data-testid="sign-in-terminal"]')).toBeNull();
-    // the notice's Sign in starts the same sign-in as the header's
-    await r.act(() => (wsl.querySelector('[data-testid="agent-notice-fix"]') as HTMLButtonElement).click());
+    // the notice says why and leaves the fix to the header's Sign in (one button, not two)
+    expect(wsl.querySelector('[data-testid="agent-notice"]')!.textContent).toContain('Not signed in');
+    expect(wsl.querySelector('[data-testid="agent-notice-fix"]')).toBeNull();
+    await r.act(() => btn.click());
     await waitFor(() => expect(calls).toEqual([['claude', 'Ubuntu-26.04']]), r);
     // the terminal opens in the detail itself: the dock is only there with a project, the Agents page is not
     const box = await waitFor(() => {
@@ -859,7 +864,8 @@ describe('Agents page', () => {
   it('a CLI that is not installed: its notice sends to Install and update, and there is nothing to test or sign in to', async () => {
     const r = show({ connectionList: async () => [ready({ adapter: 'goose', key: 'goose', installed: false, status: 'not_installed', version: undefined, installHint: 'winget install Block.Goose' })] });
     const c = await detail(r);
-    expect(c.querySelector('[data-testid="detail-status"]')!.textContent).toBe('Not installed');
+    // the notice says it is not installed; the header does not say it again
+    expect(c.querySelector('[data-testid="detail-status"]')).toBeNull();
     expect(c.querySelector('[data-testid="test-connection"]')).toBeNull();
     expect(c.querySelector('[data-testid="sign-in"]')).toBeNull();
     expect(c.querySelector('[data-testid="sign-in-check"]')).not.toBeNull();

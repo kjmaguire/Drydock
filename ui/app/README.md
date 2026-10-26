@@ -135,7 +135,7 @@ conversation:
   Knowledge** under it; another is one line), the workspace's **Security**, **Agents**, **Integrations**, **Models** and
   **Library** (decision P98), then **Settings**, the **Guide**, the local engine's state and the event stream. "[" (never while typing) or its
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
-  (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1024 px starts folded, a phone-sized one with a 44 px rail.
+  (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.
 - **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
   "Rooms", `data-rooms`); the Settings rail lists Routing and the app's pages (landmark "Settings"). The old test ids live on:
   `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is

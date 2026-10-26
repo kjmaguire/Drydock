@@ -131,9 +131,9 @@ describe('team helpers', () => {
   });
 
   it('captions the spend figure with how many usage rows it covers and how many are estimated (M21)', () => {
-    expect(spentLabel({ rows: 120, estimated: 30 })).toBe('spent in all 120 usage rows, 30 estimated');
-    expect(spentLabel({ rows: 1, estimated: 0 })).toBe('spent in all 1 usage row');
-    expect(spentLabel({ rows: 1234, estimated: 0 })).toBe('spent in all 1,234 usage rows');
+    expect(spentLabel({ rows: 120, estimated: 30 })).toBe('spent so far, 30 of 120 costs estimated');
+    expect(spentLabel({ rows: 1, estimated: 0 })).toBe('spent so far');
+    expect(spentLabel({ rows: 1234, estimated: 2 })).toBe('spent so far, 2 of 1,234 costs estimated');
   });
 
   it("counts the Crew page's figures: agents, at work, waiting on you (by presence or an open request), stopped", () => {

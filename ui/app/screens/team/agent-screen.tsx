@@ -5,14 +5,14 @@
 // Everything is a projection of what the core reports; nothing is estimated and nothing is invented.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, UserX } from 'lucide';
+import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, UserX } from 'lucide';
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
-import { formatDateTime, formatUsd, presenceFor, presenceWords } from '../../lib/format.ts';
+import { formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button, buttonStyle } from '../../ui/button.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, StatusChip, hueFor, muted, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -32,6 +32,7 @@ import { AgentEditor, RemoveAgent } from './agent-forms.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { Run } from './inspector.tsx';
 import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runStatusWords, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
+import { MoreMenu } from '../../ui/menu.tsx';
 
 const layoutCss = css({
   display: 'grid',
@@ -401,9 +402,8 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
     const overview = a && stats ? (
       <div mix={grid2}>
         <section mix={[panelCss, nowCss]} aria-label="Right now" data-testid="agent-now">
-          <h2>
-            Right now <span>{presenceWords(p)}</span>
-          </h2>
+          {/* the hero's chip already says the agent's state: the panel does not say it again (UI audit 2026-10-26) */}
+          <h2>Right now</h2>
           {task ? (
             <>
               <a href={routes.task.href({ id: task.id })} class="task" data-testid="agent-now-task">
@@ -428,7 +428,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             <p class="quiet">Not on a task right now.</p>
           )}
           <pre class="out" data-testid="agent-activity">
-            {p?.activity ? `● ${p.activity}\n` : ''}
+            {p?.activity && !isStopped(p) ? `● ${p.activity}\n` : ''}
             {runs[0] ? `${runStatusWords(runs[0].status)} · started ${formatDateTime(runs[0].startedAt)}${runs[0].error ? `\n${runs[0].error}` : ''}` : 'No run yet.'}
           </pre>
           <div mix={statsCss} data-testid="agent-stats">
@@ -676,15 +676,25 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       <Button variant="secondary" icon={Pencil} aria-haspopup="dialog" aria-expanded={editing} mix={on('click', () => ((editing = true), void handle.update()))}>
                         Edit
                       </Button>
-                      <Button variant="ghost" icon={ScanSearch} title={`Inspect ${a.name}`} mix={on('click', () => s.ui.openInspector(a.id))}>
-                        Inspect
-                      </Button>
-                      <Button variant="ghost" icon={Trash2} aria-label={`Remove ${a.name}`} aria-haspopup="dialog" mix={on('click', () => ((removing = true), void handle.update()))}>
-                        Remove
-                      </Button>
-                      <a href={routes.team.href()} mix={buttonStyle('ghost')}>
-                        All agents
-                      </a>
+                      {/* the two a person uses every time stay buttons; the rest is in "..." (UI audit 2026-10-26: five stacked
+                          actions, Remove a plain word). Remove is in the danger colour and still asks first, in its dialog */}
+                      <MoreMenu
+                        label={`More for ${a.name}`}
+                        testId="agent-more"
+                        items={[
+                          { name: 'inspect', label: 'Inspect', icon: ScanSearch },
+                          { name: 'all', label: 'All agents', icon: Users },
+                          { name: 'remove', label: `Remove ${a.name}...`, icon: Trash2, danger: true, separatorBefore: true },
+                        ]}
+                        onSelect={(name) => {
+                          if (name === 'inspect') s.ui.openInspector(a.id);
+                          else if (name === 'all') go(routes.team.href());
+                          else if (name === 'remove') {
+                            removing = true;
+                            void handle.update();
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                   <ErrorNote error={dm.error} what="Could not open a direct message" />

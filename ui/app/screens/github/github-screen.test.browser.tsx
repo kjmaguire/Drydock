@@ -86,17 +86,20 @@ const words = (el: Element | null): string => {
 const line = (r: R, sel: string) => words(r.$(sel));
 
 describe('the GitHub settings page', () => {
-  it('is reached from Integrations: the breadcrumb, the title, the Guide', async () => {
+  it('has the header of every page: an icon, the title, a subtitle, Learn more, and a link back to Integrations', async () => {
     const r = show();
     const h1 = await find(r, '[data-testid="github-page"] h1');
     expect(h1.textContent).toBe('GitHub');
-    const crumb = r.$('nav[aria-label="Breadcrumb"] a')!;
-    expect(crumb.textContent).toBe('Integrations');
-    expect(crumb.getAttribute('href')).toBe('/integrations');
-    // what the page leaves out is in the Guide, one link away
+    expect(h1.querySelector('svg')).not.toBeNull();
+    // no breadcrumb of its own: the way back is the header's link (the UI audit of 2026-10-26)
+    expect(r.$('nav[aria-label="Breadcrumb"]')).toBeNull();
+    const back = r.$('[data-testid="github-page"] header a[data-testid="gh-crumb"]')!;
+    expect(back.textContent).toBe('All integrations');
+    expect(back.getAttribute('href')).toBe('/integrations');
+    // what the page leaves out is in the Guide, one link away, called what every page calls it
     const guide = r.$('[data-testid="github-page"] header a[data-testid="learn-more"]')!;
     expect(guide.getAttribute('href')).toBe('/guide/github');
-    expect(guide.textContent).toBe('Guide');
+    expect(guide.textContent).toBe('Learn more');
     // the old stacked boxes are gone
     for (const old of ['gh-connection', 'gh-integrations-link', 'gh-runners', 'integration-tile', 'gh-about']) expect(r.$(`[data-testid="${old}"]`)).toBeNull();
     expect(r.$('a[href="/connections"]')).toBeNull();
@@ -186,8 +189,9 @@ describe('the GitHub settings page', () => {
     await waitFor(() => expect(line(r, '[data-testid="sync-state"]')).toBe('Off a repository\'s issues into the projects you assign'), r);
     const form = await find(r, '[data-testid="access-sync"] + [data-testid="sync-connect"] form[aria-label="Connect GitHub"]');
     expect(Array.from(form.querySelectorAll('fieldset label')).map((l) => l.textContent)).toEqual(['Use the GitHub CLI sign-in', 'Sign in with GitHub (device code)']);
-    // the gh sign-in it would use is said where the choice is
-    await waitFor(() => expect(form.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
+    // the gh sign-in it would use is said once, in the hero above, not again in the form
+    await waitFor(() => expect(r.$('[data-testid="gh-login"]')!.textContent).toBe('kyle'), r);
+    expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
     await r.act(() => byText(form, 'button', 'Use the GitHub CLI sign-in').click());
     await waitFor(() => expect(JSON.parse(JSON.stringify(connected))).toEqual([{ kind: 'github' }]), r);
     await waitFor(() => expect(text(r, '[data-testid="sync-state"]')).toContain('Connected as kyle'), r);
@@ -235,14 +239,16 @@ describe('the GitHub settings page', () => {
       githubProjectRepos: async () => repos([row({ state: 'needs_gh', repo: 'kyle/gocalc', url: 'https://github.com/kyle/gocalc' })], false),
     });
     const hero = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
-    // the core's words are said once on the page (in the connect form, which shows them wherever it is opened): the hero gives
-    // the way to install without repeating them
+    // said once on the page (the UI audit of 2026-10-26): the hero gives the way to install; the connect form below does not
+    // repeat the core's sentence, and its gh button waits until gh is there
     expect(hero.textContent).toContain('GitHub CLI not found');
     expect(hero.textContent).toContain('Install it from cli.github.com');
-    expect(hero.textContent).not.toContain('is not installed');
-    await waitFor(() => expect(r.$('[data-testid="github-page"]')!.textContent).toContain('The GitHub CLI (gh) is not installed: install it from https://cli.github.com'), r);
-    const page = r.$('[data-testid="github-page"]')!.textContent!;
-    expect(page.match(/the GitHub CLI \(gh\) is not installed/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    const form = await find(r, '[data-testid="sync-connect"] form');
+    expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
+    expect(r.$('[data-testid="github-page"]')!.textContent!.includes('is not installed')).toBe(false);
+    const useGh = byText<HTMLButtonElement>(form, 'button', 'Use the GitHub CLI sign-in');
+    await waitFor(() => expect(useGh.disabled).toBe(true), r);
+    expect(useGh.getAttribute('title')).toBe('Install gh and sign in with gh auth login first');
     const link = hero.querySelector('a[href="https://cli.github.com"]')!;
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.hasAttribute('data-rmx-document')).toBe(true);
@@ -251,11 +257,12 @@ describe('the GitHub settings page', () => {
     // the repositories still show, needing gh; the runners say none
     await waitFor(() => expect(text(r, '[data-testid="repo-row"] [data-testid="repo-ci"]')).toBe('Needs gh'), r);
     await waitFor(() => expect(r.$('[data-testid="runner-slots"]')!.textContent).toContain('No runners yet.'), r);
+    // one Check again on the page: the hero's (the Access row has none while the hero has one)
+    expect(r.$('[data-testid="access-gh"] [data-part="control"] button')).toBeNull();
+    expect(Array.from(r.$$('[data-testid="github-page"] button')).filter((b) => b.textContent?.includes('Check again')).length).toBe(1);
     const before = calls;
     await r.act(() => byText(hero, 'button', 'Check again').click());
     await waitFor(() => expect(calls).toBe(before + 1), r);
-    await r.act(() => (r.$('[data-testid="access-gh"] [data-part="control"] button') as HTMLButtonElement).click());
-    await waitFor(() => expect(calls).toBe(before + 2), r);
   });
 
   it('tells "not signed in" from "GitHub did not answer"', async () => {

@@ -60,8 +60,13 @@ export function needsContextParts(it: NeedsYouItem): string[] {
   const out: string[] = [];
   if (c.hasDiff) out.push(`${plural(c.files, 'file')} +${c.insertions} \u2212${c.deletions}`);
   if (c.checksTotal > 0) out.push(`${c.checksPassed}/${c.checksTotal} checks passed`);
-  if (c.verdict) out.push(`reviewer: ${c.verdict}`);
+  if (c.verdict) out.push(`reviewer ${verdictWords(c.verdict)}`);
   return out;
+}
+
+/** The reviewer's verdict in words, never the core's SHIP or REVISE (the UI audit of 2026-10-26); the card says it the same way. */
+export function verdictWords(v: string): string {
+  return v === 'SHIP' ? 'approved' : v === 'REVISE' ? 'asked for changes' : v.toLowerCase().replaceAll('_', ' ');
 }
 
 // --- the Inbox (graphite, decision P97): every project's items, what runs and what was done today ---

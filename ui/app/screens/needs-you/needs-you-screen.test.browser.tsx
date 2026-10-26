@@ -212,6 +212,17 @@ describe('the Inbox', () => {
     expect(selectedKey(r)).toBe('needs:check:m1');
   });
 
+  it("says the reviewer's verdict in words in the detail, never SHIP (UI audit 2026-10-26)", async () => {
+    const reviewed: NeedsYouItem = {
+      ...specGate,
+      context: { agent: '', hasDiff: true, files: 1, insertions: 1, deletions: 4, checksPassed: 4, checksTotal: 4, verdict: 'SHIP' },
+    };
+    const { r } = await open({}, [reviewed]);
+    const verdict = await waitFor(() => r.$('[data-testid="detail-verdict"]') ?? (() => { throw new Error('no verdict'); })(), r);
+    expect(verdict.textContent).toBe('approved');
+    expect(r.$('[data-testid="inbox-detail"]')!.textContent!.includes('SHIP')).toBe(false);
+  });
+
   it('E marks a failed check done; a request cannot be (it is answered instead); Enter opens the selected item in its project', async () => {
     const { r, calls, s, navigated } = await open();
     await r.act(() => press('e'));

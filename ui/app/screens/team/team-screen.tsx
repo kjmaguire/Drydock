@@ -450,7 +450,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
 
     return (
       <Page
-        title="Crew"
+        title={isAll ? 'All crews' : 'Crew'}
         icon={Users}
         testId="crew"
         flush

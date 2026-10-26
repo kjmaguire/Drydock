@@ -1219,3 +1219,15 @@ Open, owner action:
   of backticks, "Crew" where five sentences said "Team page". The 27 suggestions of the audit (two items called Crew in the
   sidebar, a folding sidebar at 1024 px, one page header, facts said two or three times, Routing's row actions, words) are left
   for the owner to choose from.
+- **P102. Six of the UI audit's suggestions, on the owner's go-ahead (2026-10-26: "1. Sure 2. Okay 3. Yup 4. Yes 5. Works for me
+  6. Okay. Lets work on all of them").** (1) The sidebar's workspace pages are named apart from one project's: **All crews**
+  (`/crew`, titled so) and **Security scan**; a project's Security page is titled **Security**, as its pill. (2) The sidebar folds to
+  its rail under 1200 px (`NARROW_SIDEBAR`, was 1024), unless the person chose. (3) One page header: GitHub is a `Page` with its
+  icon, subtitle, Learn more and an **All integrations** link (no breadcrumb); Models' Learn more sits beside its subtitle; the scan
+  header has the shield. (4) Said once: an agent CLI's detail shows no state pill while a notice says what is in the way, and the
+  notice offers no button the header has; GitHub without gh says it in the hero alone (the connect form's `ghStateAbove`, its gh
+  button turned off until gh is signed in, one Check again); an agent's page says "Stopped" in the hero's chip only. (5) Lighter:
+  Routing's rules and an agent's hero put their occasional actions in a "..." (`MoreMenu` in `ui/menu.tsx`; Delete and Remove still
+  ask first, Remove in the danger colour); the run graph draws the condition pills of the selected node's edges only, over the nodes,
+  and keeps every condition as its edge's tooltip. (6) Words: "N connected", "spent so far", the reviewer's verdict as "approved" or
+  "asked for changes" (`verdictWords`), "Search" in the sidebar's box. The other suggestions of the audit stay open.

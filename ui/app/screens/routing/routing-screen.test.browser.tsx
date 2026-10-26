@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { RouteRule } from '../../api/extTypes.ts';
 import type { Provider } from '../../api/types.ts';
-import { byLabel, byText, cleanup, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { PRIORITY_ERROR } from './rules-panel.tsx';
 import { RoutingScreen } from './routing-screen.tsx';
 
@@ -24,6 +24,9 @@ const has = (r: { container: Element }, s: string | RegExp) => () => {
 function mountWith(client: Partial<Client>) {
   return mount(<RoutingScreen />, testServices({ routeRulesList: async () => [], providerList: async () => [], ...client }));
 }
+
+/** Choose an action from a rule's "..." menu (Edit, Disable or Enable, Delete). */
+const pick = (r: ReturnType<typeof mountWith>, row: Element, item: string) => fromMenu(r, row.querySelector('[data-testid="route-rule-more"]') as HTMLElement, item);
 
 describe('RoutingScreen', () => {
   it('lists rules in priority order with readable actions', async () => {
@@ -54,7 +57,7 @@ describe('RoutingScreen', () => {
       },
     });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
-    await r.act(() => byText(row, 'button', 'Edit').click());
+    await pick(r, row, 'Edit');
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     type(byLabel(ed, /^Priority/), '9');
     await r.act(() => byText(ed, 'button', 'Save rule').click());
@@ -66,7 +69,7 @@ describe('RoutingScreen', () => {
     const calls: RouteRule[] = [];
     const r = mountWith({ routeRulesList: async () => [rule], routeRulesSet: async (x) => (calls.push(x), x) });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
-    await r.act(() => byText(row, 'button', 'Edit').click());
+    await pick(r, row, 'Edit');
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     const priority = () => byLabel<HTMLInputElement>(ed, /^Priority/);
     for (const bad of ['high', '1e3', '2.5', '--3', '10 first']) {
@@ -87,7 +90,7 @@ describe('RoutingScreen', () => {
     const calls: RouteRule[] = [];
     const r = mountWith({ routeRulesList: async () => [rule], routeRulesSet: async (x) => (calls.push(x), x) });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
-    await r.act(() => byText(row, 'button', 'Edit').click());
+    await pick(r, row, 'Edit');
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     type(byLabel<HTMLTextAreaElement>(ed, /^Then/), '{nope');
     await r.act(() => byText(ed, 'button', 'Save rule').click());
@@ -112,9 +115,9 @@ describe('RoutingScreen', () => {
     await waitFor(() => expect(sets[0]).toEqual({ id: '', scope: 'workspace', priority: 0, when: 'task.kind == "docs"', then: { require_tier: 'free' }, enabled: true, version: 0 }), r);
     await waitFor(() => expect(r.$('[data-testid="rule-editor"]')).toBeNull(), r);
     const row = need(r, '[data-testid="route-rule"]');
-    await r.act(() => byText(row, 'button', 'Disable').click());
+    await pick(r, row, 'Disable');
     await waitFor(() => expect(sets[1]).toEqual({ ...rule, enabled: false }), r);
-    await r.act(() => byText(need(r, '[data-testid="route-rule"]'), 'button', 'Delete').click());
+    await pick(r, need(r, '[data-testid="route-rule"]'), 'Delete');
     await r.act(() => byText(need(r, '[data-testid="route-rule"]'), 'button', 'Yes, delete the rule "r1"').click());
     await waitFor(() => expect(deleted).toEqual(['r1']), r);
   });
@@ -132,19 +135,22 @@ describe('RoutingScreen', () => {
     });
     const row = (id: string) => need(r, `[data-testid="route-rule"][data-rule="${id}"]`);
     await waitFor(() => row('r1'), r);
-    await r.act(() => byText(row('r1'), 'button', 'Delete').click());
+    // one "..." per rule, not three buttons (the UI audit of 2026-10-26)
+    expect(Array.from(row('r1').querySelectorAll('button')).filter((b) => /^(Edit|Disable|Delete)$/.test(b.textContent!.trim())).length).toBe(0);
+    expect(await menuItems(r, row('r1').querySelector('[data-testid="route-rule-more"]') as HTMLElement)).toEqual(['Edit', 'Disable', 'Delete']);
+    await pick(r, row('r1'), 'Delete');
     // the question is asked on that rule only, with names that say which rule and what happens
     expect(deleted).toEqual([]);
-    expect(row('r1').textContent).not.toContain('Delete');
-    expect(row('r2').textContent).toContain('Delete');
+    expect(row('r1').querySelector('[data-testid="route-rule-more"]')).toBeNull();
+    expect(row('r2').querySelector('[data-testid="route-rule-more"]')).not.toBeNull();
     expect(row('r1').querySelector('[role="group"]')!.getAttribute('aria-label')).toBe('Delete the rule "r1"? It stops applying at once and cannot be brought back.');
     expect(byText(row('r1'), 'button', 'Keep the rule "r1"')).toBeTruthy();
     // Keep: nothing was sent and the rule is as before
     await r.act(() => byText(row('r1'), 'button', 'Keep the rule "r1"').click());
-    await waitFor(() => byText(row('r1'), 'button', 'Delete'), r);
+    await waitFor(() => expect(row('r1').querySelector('[data-testid="route-rule-more"]')).not.toBeNull(), r);
     expect(deleted).toEqual([]);
     // Yes: sent once, even when pressed twice, and only for that rule
-    await r.act(() => byText(row('r1'), 'button', 'Delete').click());
+    await pick(r, row('r1'), 'Delete');
     const yes = byText<HTMLButtonElement>(row('r1'), 'button', 'Yes, delete the rule "r1"');
     await r.act(() => {
       yes.click();
@@ -161,7 +167,7 @@ describe('RoutingScreen', () => {
     const r = mountWith({ routeRulesList: async () => [chained], routeRulesSet: async (x) => (sets.push(x), x) });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
     expect(row.textContent).toContain('fallback: sonnet → haiku-b');
-    await r.act(() => byText(row, 'button', 'Edit').click());
+    await pick(r, row, 'Edit');
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     const field = byLabel<HTMLInputElement>(ed, /^Fallback chain/);
     expect(field.value).toBe('sonnet, haiku-b');
@@ -171,7 +177,7 @@ describe('RoutingScreen', () => {
     await waitFor(() => expect(sets[0]).toEqual({ ...chained, then: { prefer_tier: 'cheap', fallback: ['haiku-c', 'sonnet'] } }), r);
     // emptied, the rule names no chain: its turns do not fall back
     await waitFor(() => expect(r.$('[data-testid="rule-editor"]')).toBeNull(), r);
-    await r.act(() => byText(need(r, '[data-testid="route-rule"]'), 'button', 'Edit').click());
+    await pick(r, need(r, '[data-testid="route-rule"]'), 'Edit');
     const ed2 = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     type(byLabel<HTMLInputElement>(ed2, /^Fallback chain/), '');
     await r.act(() => byText(ed2, 'button', 'Save rule').click());

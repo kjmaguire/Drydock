@@ -74,14 +74,15 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
 ```
 
 - **Sidebar (`ui/app/shell/sidebar.tsx`, the "Main" navigation landmark; 248 px, folded a 56 px rail):** the workspace
-  switcher (a menu: Home, the projects as radio items, New project, App settings), search (Ctrl+K), **Inbox** (`/needs-you`,
+  switcher (a menu: Home, the projects as radio items, New project, App settings), search (Ctrl+K, its box says Search), **Inbox** (`/needs-you`,
   with the count of what needs you across every project), **Running** (the Inbox's Running tab), **My tasks**, **Chats**,
   then **Projects**: the open project shows its tabs **Overview** (`/`), **Tasks**, **Rooms**, **Crew** (`/team`),
-  **Knowledge** nested under it, the others are one line that opens them; then **Workspace**: Security (the security scan),
+  **Knowledge** nested under it, the others are one line that opens them; then **Workspace**: **All crews** (`/crew`, every
+  project's agents) and **Security scan**, named apart from the project's Crew and its Security pill (UI audit 2026-10-26),
   Agents, Integrations, Models and the Library (decision P98); at the foot Settings, the Guide, the local engine's state and build, and
   the event stream's state. On a workspace page no project's tabs show and the switcher says Home. The arrow keys, Home and
   End move through the links; "[" (never while typing) or the fold button folds it to the rail, whose icons keep the labels
-  as their names; the choice is kept, and a window under 1024 px starts folded (a phone-sized one with a 44 px rail).
+  as their names; the choice is kept, and a window under 1200 px starts folded (a phone-sized one with a 44 px rail).
 - **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a tab with sub-pages shows them as pills under the
   bar: Tasks (Board, Plan, Pull requests, Milestones), Knowledge (Overview, Requirements, Expert packs, Skills, Memory, Repo
   map), Overview (Overview, Activity, Budgets, Evals report, Security, then set apart at the end of the row after a gap and a
@@ -97,7 +98,7 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
 - **Repository configuration banner (built 2026-10-11, `ui/app/shell/repo-config-banner.tsx`):** above every screen of a project whose repository's own git configuration, hooks or `info/attributes` changed since a person last trusted them (`project.gitConfig` answers `trusted: false`; docs/security.md s3), a warning region named "Repository git configuration changed" says so in plain words, lists the changed items (config keys, `hooks/<file>`, `info/attributes`; names only, never values) and offers **Trust this configuration**. Only that click trusts, and it sends the fingerprint of the state on screen (`project.trustGitConfig`); a configuration that changed again since is refused by the core, and the banner then shows the newer items to review again. The status is re-read on `security.repo_config_trusted` (also published when a run's approval trusted it), approval and request events, a reopened stream and window focus (a change made in a terminal publishes no event). Not shown for a project without a repository; read-only turns the button off.
 - **Right column (resizable, collapsible):** tabs Thread, Task details, Agent Inspector. Selecting an agent presence dot, a card author or a task opens the matching tab. It never shows a feature that is not built.
 - **Bottom dock (resizable, collapsible):** Terminal (xterm.js, one tab per terminal), Diff (Monaco diff for the selected task), Logs (agent raw output and process stderr), Activity (model and token activity: per-run usage rows, source badges). The dock keeps its tab state per project.
-- Window chrome: Wails window (WebView2). Minimum supported layout width: 1100 px with the right column collapsed; under 1024 px the sidebar starts folded to its rail (measured in the e2e layout audit at 1366 px; narrower windows are a **proposal**, not measured on Windows).
+- Window chrome: Wails window (WebView2). Minimum supported layout width: 1100 px with the right column collapsed; under 1200 px the sidebar starts folded to its rail (measured in the e2e layout audit at 1366 px; narrower windows are a **proposal**, not measured on Windows).
 
 ## 3. Screens that exist in Slices 1A-1E
 

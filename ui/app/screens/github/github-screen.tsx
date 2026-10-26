@@ -1,5 +1,5 @@
 // GitHub, one settings page (decision P98, after Apple's System Settings, Linear's account settings and Vercel's Git settings):
-// everything Drydock does with GitHub as rows and tables, reached from Integrations (the breadcrumb). On top, who gh is signed
+// everything Drydock does with GitHub as rows and tables, reached from Integrations (All integrations leads back). On top, who gh is signed
 // in as (github.status: the GitHub CLI's own login, which Drydock uses and never stores) with chips for issue sync, the MCP
 // server and the runners, or what is missing and how to fix it. Then Access: the gh sign-in, issue sync (app sync, decision
 // P42: connected here once for the workspace with the integrations screen's own ConnectForm and ServiceView, one
@@ -8,7 +8,7 @@
 // CI runners on this PC (ci-runners.tsx, decision P56). A workspace page: it works with no project.
 
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
-import { ExternalLink, FolderGit2, RefreshCw } from 'lucide';
+import { Blocks, ExternalLink, FolderGit2, GitPullRequest, RefreshCw } from 'lucide';
 import type { IntegrationKindInfo, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import type { GitHubStatus, ProjectRepoRow, RepoCI } from '../../api/types.ts';
@@ -20,8 +20,7 @@ import { Avatar, faint, hueFor, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { actionsEnd, headerCss, Page, tableCard } from '../../ui/layout.tsx';
-import { LearnMore } from '../../ui/learn-more.tsx';
+import { actionsEnd, Page, tableCard } from '../../ui/layout.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
@@ -30,16 +29,6 @@ import { KINDS, serviceState, statusTone, tileState, vendors } from '../integrat
 import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 
-const crumbCss = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: t.s2,
-  fontSize: t.textLg,
-  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', color: t.textMuted, textDecoration: 'none' },
-  '& a:hover': { color: t.text, textDecoration: 'underline' },
-  '& span': { color: t.textFaint },
-});
-const bodyCss = css({ flex: '1', minHeight: '0', overflow: 'auto' });
 const innerCss = css({ display: 'grid', gap: t.s6, padding: `${t.s5} ${t.s6} 48px`, maxWidth: '1040px', width: '100%', minWidth: '0' });
 const heroCss = css({
   display: 'flex',
@@ -163,7 +152,7 @@ function Hero(
           <div mix={heroText}>
             <strong>GitHub CLI not found</strong>
             <p mix={subCss}>
-              {/* the core's own words say the same install steps in the connect form below; here only a reason that adds something */}
+              {/* the install steps are said here once (the connect form below leaves them to this hero); the core's reason only when it adds something */}
               {st.error && !/not installed/i.test(st.error) ? `${st.error} ` : ''}
               Install it from{' '}
               <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document>
@@ -273,9 +262,12 @@ function Access(
           label="GitHub CLI sign-in"
           testId="access-gh"
           control={
-            <Button size="sm" variant="ghost" icon={RefreshCw} disabled={ghLoading} mix={on('click', onCheck)} title="Ask gh again whether it is signed in">
-              {ghLoading ? 'Checking...' : 'Check again'}
-            </Button>
+            // the hero above has its own Check again while gh is missing or signed out: one button on the page, not two
+            !st || st.loggedIn ? (
+              <Button size="sm" variant="ghost" icon={RefreshCw} disabled={ghLoading} mix={on('click', onCheck)} title="Ask gh again whether it is signed in">
+                {ghLoading ? 'Checking...' : 'Check again'}
+              </Button>
+            ) : null
           }
         >
           {sign ? (
@@ -312,7 +304,7 @@ function Access(
         </SettingRow>
         {conns && !conn ? (
           <div mix={connectCss} data-testid="sync-connect">
-            <ConnectForm kind="github" info={info} onDone={(r) => ((report = r.test), onConnsChanged())} onKindsChanged={onKindsChanged} />
+            <ConnectForm kind="github" info={info} ghStateAbove onDone={(r) => ((report = r.test), onConnsChanged())} onKindsChanged={onKindsChanged} />
           </div>
         ) : null}
         {report ? (
@@ -590,51 +582,45 @@ export function GitHubScreen(handle: Handle) {
     return (
       <Page
         title="GitHub"
+        icon={GitPullRequest}
         testId="github-page"
+        // the same header as every page (the UI audit of 2026-10-26: a breadcrumb and a "Guide" link made it look like another app);
+        // the way back to Integrations is a link at the header's end
+        subtitle="Your sign-in, issue sync, the MCP server, repositories and CI runners"
+        guide="github"
+        actions={
+          <a href={routes.integrations.href()} mix={buttonStyle('ghost', 'sm')} data-testid="gh-crumb">
+            <Icon icon={Blocks} size={14} />
+            All integrations
+          </a>
+        }
         flush
-        head={(titleId) => (
-          <>
-            <header mix={headerCss}>
-              <nav aria-label="Breadcrumb" mix={crumbCss}>
-                <a href={routes.integrations.href()} data-testid="gh-crumb">
-                  Integrations
-                </a>
-                <span aria-hidden="true">/</span>
-              </nav>
-              <h1 id={titleId}>GitHub</h1>
-              <div mix={actionsEnd}>
-                <LearnMore topic="github" label="Guide" />
-              </div>
-            </header>
-            <div mix={bodyCss}>
-              <div mix={innerCss}>
-                <Hero st={gh.data} loading={gh.loading} error={gh.error} onCheck={check} conn={conn} card={cards[0]} runners={runners.data?.slots.length} />
-                <div>
-                  <Access
-                    st={gh.data}
-                    ghLoading={gh.loading}
-                    onCheck={check}
-                    conns={conns.data}
-                    connsError={conns.error ?? kinds.error}
-                    onConnsChanged={() => void conns.reload()}
-                    info={(kinds.data ?? []).find((k) => k.kind === 'github')}
-                    onKindsChanged={() => void kinds.reload()}
-                    cards={cards}
-                    galleryLoading={gallery.loading}
-                    galleryError={gallery.error}
-                    onGalleryChanged={() => void gallery.reload()}
-                  />
-                  <p mix={[noteCss, tokensCss]} data-testid="gh-tokens">
-                    Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
-                  </p>
-                </div>
-                <Repositories />
-                <CiRunners />
-              </div>
-            </div>
-          </>
-        )}
-      />
+      >
+        <div mix={innerCss}>
+          <Hero st={gh.data} loading={gh.loading} error={gh.error} onCheck={check} conn={conn} card={cards[0]} runners={runners.data?.slots.length} />
+          <div>
+            <Access
+              st={gh.data}
+              ghLoading={gh.loading}
+              onCheck={check}
+              conns={conns.data}
+              connsError={conns.error ?? kinds.error}
+              onConnsChanged={() => void conns.reload()}
+              info={(kinds.data ?? []).find((k) => k.kind === 'github')}
+              onKindsChanged={() => void kinds.reload()}
+              cards={cards}
+              galleryLoading={gallery.loading}
+              galleryError={gallery.error}
+              onGalleryChanged={() => void gallery.reload()}
+            />
+            <p mix={[noteCss, tokensCss]} data-testid="gh-tokens">
+              Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
+            </p>
+          </div>
+          <Repositories />
+          <CiRunners />
+        </div>
+      </Page>
     );
   };
 }

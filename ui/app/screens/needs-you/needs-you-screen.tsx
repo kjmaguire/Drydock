@@ -47,6 +47,7 @@ import {
   untilWords,
   type Answer,
   type NeedsLook,
+  verdictWords,
 } from './needs-you.ts';
 
 const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
@@ -732,7 +733,7 @@ function NeedsDetail(
           {review && ctx?.verdict ? (
             <>
               <dt>Reviewer</dt>
-              <dd>{ctx.verdict}</dd>
+              <dd data-testid="detail-verdict">{verdictWords(ctx.verdict)}</dd>
             </>
           ) : null}
           {d?.worktree ? (
