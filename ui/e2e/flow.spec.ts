@@ -70,8 +70,9 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
 
     // reload: everything is a projection of the core, so the page shows the same state. The task turns Completed a moment
-    // before the run commits its own completion (both arrive as events), so the comparison starts once the run says so too.
-    await expect(page.locator('.task-meta')).toContainText('Completed', { timeout: 30_000 });
+    // before the run commits its own completion (both arrive as events), so the comparison starts once the run says so too: the
+    // Workflow row's "· completed", not the Status row's Completed (which the task already says).
+    await expect(page.locator('.task-meta')).toContainText(/· completed/, { timeout: 30_000 });
     const before = await snapshot(page);
     await page.reload();
     await expect(page.getByTestId('task-status').first()).toHaveText(/Completed/);
