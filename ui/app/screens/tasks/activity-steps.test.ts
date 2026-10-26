@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import type { AguiEvent, AguiThread } from '../../api/agui.gen.ts';
+import { CUT_MARKER, CUT_MIDDLE_MARKER, type AguiEvent, type AguiThread, type DrydockMeta } from '../../api/agui.gen.ts';
 import type { ToolItem, Turn } from './activity.ts';
 import {
   activityRows,
@@ -17,6 +17,7 @@ import {
   testFailures,
   thoughtText,
   toolKind,
+  withoutCutMarkers,
   type EditStep,
   type ReadStep,
   type RunStep,
@@ -98,6 +99,22 @@ describe('a test run output: how many failed and why', () => {
   it('a failed command without test lines leaves its last line as the reason', () => {
     expect(lastLine('building...\n\n./calc.go:4:2: undefined: x\n\n')).toBe('./calc.go:4:2: undefined: x');
   });
+
+  it("reads a cut output as the command's own lines: the lines the core put in where it cut are never the reason", () => {
+    // the core keeps the head and the tail of a long result around a marker line; a test runner's summary is in the tail
+    const cut = `${'=== RUN TestA\n'.repeat(3)}${CUT_MIDDLE_MARKER}\n--- FAIL: TestX\nFAIL\tpkg 1.2s`;
+    expect(testFailures(cut)).toEqual({ failed: 1, line: 'TestX' });
+    expect(lastLine(cut)).toBe('FAIL\tpkg 1.2s');
+    // a text cut at its end carries the end marker as its last line: the reason is the command's last line
+    const tail = `building...\n./a.go:1: oops\n${CUT_MARKER}`;
+    expect(lastLine(tail)).toBe('./a.go:1: oops');
+    expect(testFailures(tail)).toEqual({ failed: 0, line: '' });
+    expect(withoutCutMarkers(`a\n${CUT_MARKER}\nb`)).toBe('a\nb');
+    // a line that only mentions the marker is the command's own
+    expect(withoutCutMarkers(`x ${CUT_MARKER}`)).toBe(`x ${CUT_MARKER}`);
+    const steps = stepsOf(turn([tool('c1', 'Bash', { command: 'go test ./...' }, { result: cut, isError: true })]));
+    expect([(steps[0] as RunStep).failed, (steps[0] as RunStep).failing]).toEqual([1, 'TestX']);
+  });
 });
 
 describe('durations and clocks', () => {
@@ -165,6 +182,16 @@ describe('a turn as compact steps', () => {
     expect(over.map((s) => s.state)).toEqual(['unknown', 'unknown']);
   });
 
+  it('a running read grouped with earlier reads counts its seconds from the read that runs, not from the first', () => {
+    const live = stepsOf(turn([tool('c1', 'Read', { file_path: 'a.go' }, { at: 1000, result: 'x', endAt: 1100 }), tool('c2', 'Read', { file_path: 'b.go' }, { at: 2000, result: 'y', endAt: 2100 }), tool('c3', 'Read', { file_path: 'c.go' }, { at: 9000 })], 'running'));
+    expect(live.map((s) => [s.kind, s.state, s.at, s.runningSince])).toEqual([['read', 'running', 1000, 9000]]);
+    // a step that ended, or whose call has a result, counts nothing
+    const done = stepsOf(turn([tool('c1', 'Read', { file_path: 'a.go' }, { at: 1000, result: 'x' }), tool('c2', 'Read', { file_path: 'b.go' }, { at: 2000, result: 'y' })], 'running'));
+    expect(done.map((s) => [s.state, s.runningSince])).toEqual([['ok', undefined]]);
+    const over = stepsOf(turn([tool('c1', 'Read', { file_path: 'a.go' }, { at: 1000 })], 'done'));
+    expect(over.map((s) => [s.state, s.runningSince])).toEqual([['unknown', undefined]]);
+  });
+
   it("a failed command that is not a test run gives its output's last line as the reason; a write says Wrote", () => {
     const steps = stepsOf(turn([tool('c1', 'Bash', { command: 'go build' }, { result: 'x\n./a.go:1: oops', isError: true }), tool('c2', 'Write', { file_path: 'n.go', content: 'a\nb' }, { result: 'ok' })]));
     expect((steps[0] as RunStep).failing).toBe('./a.go:1: oops');
@@ -183,12 +210,15 @@ describe('a turn as compact steps', () => {
         { kind: 'reasoning', id: 'r1', text: 'the leading minus is consumed twice', at: 2000, endAt: 8000 },
         { kind: 'text', id: 'm0', text: '', at: 8000 },
         { kind: 'text', id: 'm1', text: 'Fixed it.', at: 9000, endAt: 9000 },
-        { kind: 'wait', id: 'apr_1', title: 'Bash: git push', at: 9500, outcome: 'approved' },
+        { kind: 'wait', id: 'apr_1', title: 'Bash: git push', asked: true, at: 9500, outcome: 'approved' },
+        // a decision nobody was asked for is over from the start
+        { kind: 'wait', id: 'p1', title: 'Write: config.json', asked: false, at: 9600, outcome: 'refused', reason: 'nobody could be asked in this session, so Drydock refused the request' },
       ]),
     );
     expect(steps.map((s) => [s.kind, s.state])).toEqual([
       ['thought', 'ok'],
       ['text', 'ok'],
+      ['wait', 'ok'],
       ['wait', 'ok'],
     ]);
     expect(stepVerb(steps[0]!)).toBe('Thought for 6 s');
@@ -197,16 +227,19 @@ describe('a turn as compact steps', () => {
 
 describe('the rows of the feed', () => {
   let seq = 0;
-  const at = () => ({ seq: ++seq, timestamp: seq * 1000 });
+  const at = (drydock: Partial<DrydockMeta> = {}) => {
+    seq++;
+    return { timestamp: seq * 1000, metadata: { drydock: { seq, ...drydock } } };
+  };
   const thread = (id: string, events: AguiEvent[]): AguiThread => ({ threadId: id, agentId: `agent-${id}`, adapter: 'claude', model: 'sonnet', events });
   const twoTurns = (id: string): AguiThread =>
     thread(id, [
-      { type: 'RUN_STARTED', ...at(), threadId: id, runId: `${id}:1` },
+      { type: 'RUN_STARTED', ...at(), threadId: id, runId: `${id}:1`, protocolVersion: '1.0' },
       { type: 'TOOL_CALL_START', ...at(), toolCallId: `${id}-c1`, toolCallName: 'Read' },
       { type: 'TOOL_CALL_ARGS', ...at(), toolCallId: `${id}-c1`, delta: '{"file_path":"calc.go"}' },
       { type: 'TOOL_CALL_RESULT', ...at(), messageId: 'x', toolCallId: `${id}-c1`, role: 'tool', content: 'package calc' },
-      { type: 'RUN_ERROR', ...at(), threadId: id, runId: `${id}:1`, message: 'rate limited' },
-      { type: 'RUN_STARTED', ...at(), threadId: id, runId: `${id}:2` },
+      { type: 'RUN_ERROR', ...at({ threadId: id, runId: `${id}:1` }), message: 'rate limited' },
+      { type: 'RUN_STARTED', ...at(), threadId: id, runId: `${id}:2`, protocolVersion: '1.0' },
       { type: 'ACTIVITY_SNAPSHOT', ...at(), messageId: 'p', activityType: 'PLAN', replace: true, content: { entries: [{ content: 'Fix it', status: 'in_progress' }] } },
       { type: 'TOOL_CALL_START', ...at(), toolCallId: `${id}-c2`, toolCallName: 'Bash' },
       { type: 'TOOL_CALL_ARGS', ...at(), toolCallId: `${id}-c2`, delta: '{"command":"go test ./..."}' },
@@ -229,9 +262,22 @@ describe('the rows of the feed', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  it('a process with no turns yet is starting when it is the newest, and left out when an earlier one never turned', () => {
+    const empty = (id: string): AguiThread => thread(id, []);
+    const rows = activityRows([empty('a'), twoTurns('b'), empty('c')]);
+    expect(rows.filter((r) => r.type === 'thread').map((r) => (r.type === 'thread' ? [r.thread.threadId, r.turns, r.working] : null))).toEqual([
+      ['b', 2, true],
+      ['c', 0, false],
+    ]);
+    expect(rows[rows.length - 1]!.type).toBe('thread');
+    // every key names one place
+    const keys = rows.map((r) => r.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it('a process with one turn has no turn line; processes follow in the order they started', () => {
     const one = thread('a', [
-      { type: 'RUN_STARTED', ...at(), threadId: 'a', runId: 'a:1' },
+      { type: 'RUN_STARTED', ...at(), threadId: 'a', runId: 'a:1', protocolVersion: '1.0' },
       { type: 'TEXT_MESSAGE_START', ...at(), messageId: 'm', role: 'assistant' },
       { type: 'TEXT_MESSAGE_CONTENT', ...at(), messageId: 'm', delta: 'SHIP' },
       { type: 'RUN_FINISHED', ...at(), threadId: 'a', runId: 'a:1', outcome: { type: 'success' } },

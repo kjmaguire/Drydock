@@ -29,9 +29,10 @@ type Script struct {
 	// MissingSessions are session ids this agent does not have: --resume of one of them prints the error result claude 2.1.295
 	// prints for an unknown session (no init event, the reason in "errors") and exits 1 without reading a prompt.
 	MissingSessions []string `json:"missingSessions,omitempty"`
-	// ModelErrors makes a session started with --model <m> named here end every turn with that message as an error result
-	// (is_error, no tool call, no file written), the shape Claude Code reports a failed API call in: an overloaded or
-	// rate-limited provider, a model that does not exist. The message is the test's; the real wording varies by version.
+	// ModelErrors makes a session started with --model <m> named here end every turn with that message the way Claude Code
+	// reports an API call that failed before the model said anything (no tool call, no file written): the CLI's API-error
+	// assistant message, then an error result (see failTurn). An overloaded or rate-limited provider, a model that does not
+	// exist. The message is the test's; the real wording varies by version.
 	ModelErrors map[string]string `json:"modelErrors,omitempty"`
 }
 
@@ -41,7 +42,7 @@ type Rule struct {
 	Steps []Step `json:"steps"`
 }
 
-// Step is one scripted action. Exactly one of Say, Tool, SleepMS, Block, Exit is used.
+// Step is one scripted action. Exactly one of Say, Tool, SleepMS, Block, Exit, Fail (and the others below) is used.
 type Step struct {
 	Say     string          `json:"say,omitempty"`
 	Tool    string          `json:"tool,omitempty"`
@@ -52,6 +53,10 @@ type Step struct {
 	Vary    bool            `json:"vary,omitempty"`   // add "n": <repeat index> to the tool input so every call differs
 	SleepMS int             `json:"sleepMs,omitempty"`
 	Block   bool            `json:"block,omitempty"` // wait for an interrupt (or stdin close)
+	// Fail ends the turn here the way Claude Code reports an API call that failed after the earlier steps (an answer, a tool
+	// call) were made: the CLI's API-error assistant message with this text, then the error result (see failTurn). The steps
+	// after it do not run. ModelErrors is the same failure before any step.
+	Fail string `json:"fail,omitempty"`
 	// WaitFile waits (up to two minutes) until a file exists at this absolute path, so a test can order two scripted agents by what
 	// one of them has done instead of by sleeping.
 	WaitFile string `json:"waitFile,omitempty"`
@@ -433,6 +438,10 @@ func (a *agent) runTurn(prompt string) {
 	}
 	interrupted := false
 	var lastText string
+	// lastStop is what the last assistant message of the turn stopped with, which Claude Code 2.1.x puts on the result as its
+	// stop_reason whether or not the turn failed: "end_turn" after text, "tool_use" after a tool call. It starts as "tool_use"
+	// so that a failure before any message also carries a stop reason that is not the turn's (the shape the AG-UI review found).
+	lastStop := "tool_use"
 	denials := []any{}
 loop:
 	for _, st := range steps {
@@ -485,8 +494,11 @@ loop:
 				break loop
 			case len(st.Raw) > 0:
 				a.emit(st.Raw)
+			case st.Fail != "":
+				apiErr, failed = st.Fail, true
+				break loop
 			case st.Say != "":
-				lastText = st.Say
+				lastText, lastStop = st.Say, "end_turn"
 				for _, w := range strings.SplitAfter(st.Say, " ") {
 					a.emit(map[string]any{"type": "stream_event", "session_id": a.session, "event": map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": w}}})
 				}
@@ -512,6 +524,7 @@ loop:
 				if werr != nil {
 					res = werr.Error()
 				}
+				lastStop = "tool_use"
 				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
 					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": "Write", "input": json.RawMessage(in)}}, "usage": a.usage()}})
 				a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user",
@@ -546,7 +559,7 @@ loop:
 				if len(say) > 4000 {
 					say = say[:4000]
 				}
-				lastText = say
+				lastText, lastStop = say, "end_turn"
 				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
 					"content": []any{map[string]any{"type": "text", "text": say}}, "usage": a.usage()}})
 			case st.Tool != "":
@@ -565,6 +578,7 @@ loop:
 						in, _ = json.Marshal(m)
 					}
 				}
+				lastStop = "tool_use"
 				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
 					"content": []any{map[string]any{"type": "tool_use", "id": id, "name": st.Tool, "input": in}}, "usage": a.usage()}})
 				result, isErr := st.Result, st.IsError
@@ -585,8 +599,7 @@ loop:
 		}
 	}
 	if failed {
-		a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "result": apiErr, "session_id": a.session, "total_cost_usd": a.cost,
-			"usage": map[string]any{"input_tokens": 0, "output_tokens": 0}})
+		a.failTurn(apiErr, lastStop)
 	} else if interrupted {
 		a.emit(map[string]any{"type": "user", "session_id": a.session, "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "[Request interrupted by user]"}}}})
 		a.mu.Lock()
@@ -594,7 +607,10 @@ loop:
 		total := a.cost
 		a.saveState()
 		a.mu.Unlock()
-		a.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": a.session, "total_cost_usd": total, "usage": map[string]any{"input_tokens": 5, "output_tokens": 2}})
+		// as Claude Code 2.1.310 ends an interrupted turn: error_during_execution, the last message's stop reason, and the
+		// terminal reason of an abort while a tool ran
+		a.emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "stop_reason": lastStop, "terminal_reason": "aborted_tools",
+			"session_id": a.session, "total_cost_usd": total, "usage": map[string]any{"input_tokens": 5, "output_tokens": 2}})
 	} else {
 		a.mu.Lock()
 		a.turns++
@@ -619,6 +635,16 @@ loop:
 	if has {
 		a.runTurn(next)
 	}
+}
+
+// failTurn ends the turn as Claude Code 2.1.310 reports an API call that failed: an assistant message whose text is the error,
+// marked is_api_error_message on the event beside "message" (as the CLI writes it), then a result that says is_error with the
+// same text, the stop reason of the last assistant message (not of the turn) and the terminal reason api_error.
+func (a *agent) failTurn(apiErr, lastStop string) {
+	a.emit(map[string]any{"type": "assistant", "session_id": a.session, "is_api_error_message": true, "message": map[string]any{"model": "fake-1", "role": "assistant",
+		"content": []any{map[string]any{"type": "text", "text": apiErr}}, "usage": map[string]any{"input_tokens": 0, "output_tokens": 0}}})
+	a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "result": apiErr, "stop_reason": lastStop, "terminal_reason": "api_error",
+		"session_id": a.session, "total_cost_usd": a.cost, "usage": map[string]any{"input_tokens": 0, "output_tokens": 0}})
 }
 
 func (a *agent) usage() map[string]any {

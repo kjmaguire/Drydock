@@ -5,9 +5,9 @@ import (
 	"sort"
 )
 
-// CheckOrder applies the ordering rules of AG-UI's own event verifier (the TypeScript client's verify/verify.ts, at
-// @ag-ui/core 1.0.3) to one thread's events and returns the first event that breaks them. A projected thread keeps them, so
-// a consumer that verifies AG-UI streams would accept it:
+// CheckOrder applies the ordering rules of AG-UI's own event verifier (verify/verify.ts of the TypeScript client, @ag-ui/client
+// 1.0.3) to one thread's events and returns the first event that breaks them. A projected thread keeps them, so a consumer
+// that verifies AG-UI streams would accept it:
 //
 //   - a run's first event is RUN_STARTED, and RUN_STARTED does not come while a run is open;
 //   - nothing but RUN_STARTED comes after RUN_FINISHED or RUN_ERROR (a run that ended is over; the next one starts anew), so

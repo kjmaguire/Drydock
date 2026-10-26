@@ -1162,3 +1162,47 @@ Open, owner action:
   the Artifact Signing secrets and variables, and skips it otherwise; D8's choice between Artifact Signing and an OV
   certificate stays open (an OV path is not wired). The version resource's CompanyName is "Kyle Maguire", the LICENSE's
   holder, until a company and certificate exist. docs/windows-identity.md.
+- **P100. The AG-UI review and its fixes (2026-10-26, on the owner's words: "Do a review of the AG-UI protocol and make sure it
+  is going to work between our agents and the rest of the platform").** `docs/agui-review-2026-10-25.md` is the review: the
+  vocabulary of P87 passes the published `@ag-ui/client` 1.0.3 pipeline on every projected thread, and the defects were in what
+  the adapters and the projector put into it, and in the other readers of the same events, not in the protocol. What changed:
+  (1) **One rule for a failed turn.** `workflow.TurnFailed` (a stop reason `error` or `error_*` fails the turn whether or not the
+  agent answered; an uncoded error with no answer and no `end_turn` fails it; a warning with a Code never does) is read by the
+  Activity (`agui.complete`), the chat (`turnRun.finish`) and presence (`room.Derive`), so one turn is never told two ways. The
+  ACP settings warnings (a model, an effort, a permission mode or an MCP transport the agent does not offer) carry
+  `workflow.CodeSettings`, so the default `acceptEdits` no longer makes an ACP session's first tool-only turn a failed one. (2)
+  **A failed Claude Code result fails the run.** The parser's done chunk carries the subtype when it names the failure
+  (`error_during_execution`, `error_max_turns`, ...), else `error_` plus the CLI's `terminal_reason`, else `error`, never the last
+  message's `stop_reason`; the CLI's API-error assistant message (`is_api_error_message`) is an error chunk, not an answer; the
+  fake agent's failing shapes are the CLI's. (3) **No sentence twice.** The projector keeps the text streamed in the open run that
+  no `message_end` has taken yet, and a `message_end` that repeats the front of it takes that text and adds no second message (an
+  ACP thought or tool result between the deltas and the message end; Claude's per-block messages); the Claude parser emits a
+  thinking block once when its deltas were streamed and the text blocks of one assistant event as one `message_end`. (4)
+  **Conformance for an outside reader.** Drydock's own fields (`seq`, `stopReason`, `isError`, RUN_ERROR's thread and run) ride in
+  `metadata.drydock`, the object the protocol keeps for them, so the published client strips nothing; RUN_STARTED declares
+  `protocolVersion` "1.0"; tool-call ids are deduplicated per run; a nameless result's call is "tool"; a Go test holds every
+  event's top-level keys to exactly the fields the 1.0.3 schema declares. (5) **Cuts that keep what matters.** A result over 8 KiB
+  keeps its first 6 KiB and last 2 KiB around a marker line (test runners put the verdict at the end); arguments over 8 KiB stay
+  one valid JSON document (the longest string values are cut inside it, deterministically, numbers kept as written), so a large
+  Write keeps its path and line counts; the runtime bounds a stored tool result against the bus cap, so no result becomes a
+  stand-in the Activity cannot read; the UI strips the marker lines before it reads a command's last line or its test failures.
+  (6) **Refusals and decisions are visible.** A third CUSTOM event, `drydock.decided` {tool, outcome, reason, toolCallId, rule},
+  carries a gate deny or a task rule's allow that asked nobody (the ordinary `allowed_by_rule` of every call is left out) and
+  the refusal an ACP session with nobody to ask now reports (`PermissionDenial.Reason`); the Activity draws it as a decided row
+  with who decided and why. The CLI's own `permission_denials` stay out: the failed result shows the step as failed, and when
+  the gate was asked the resume row already says who refused. "Approve for this task" is recorded on the answered request as
+  `approved_for_task` with its rule (`PermissionGate.MarkApprovedForTask`), so the Activity says "Allowed by you for this task"
+  and the audit log names the rule. (7) **The Activity is live for the gate.** It re-reads on `approval.requested` and
+  `permission.decided` as well as `agent.*`, so an allowed command no longer reads "Waiting for you" for its whole run. (8)
+  **Presence agrees.** `room.Derive` reads the gate's two events (Waiting "awaiting permission" while a Claude worker waits,
+  Working again when answered) and a turn that ended with an error stop reason is Failed "turn failed: <stop>", not Completed. (9)
+  Smaller: an ACP `session/prompt` failure is worded from the JSON-RPC error's message, not its JSON; a thread with no turn yet
+  reads "starting" or "stopped before its first turn" (`AguiThread.ended`), never "0 turns"; a running read shows its own time;
+  an unknown wait outcome reads "Decided (<token>)" rather than the bare token; `docs/interfaces.md` gains the Activity section
+  and the full chunk list; `docs/ui.md` names the three surfaces called Activity; the Guide's event table says what `agent.*` and
+  `permission.decided` are. Left for later, with the reasons in the review's section 6: the dead permission request after a crash
+  (M7), the incremental `task.activity` read (M10), the truncated thread's label (M9), the publishes a cancelled turn drops (L6),
+  `toolCallId` on the interrupt and AG-UI-shaped interrupt values (L9, N7), the `acp:` marker and ACP's tool kind (L12, L13),
+  the run page's two readings of an abandoned turn and its Events tab (L18, L19), usage on RUN_FINISHED (N2). Not done: an AG-UI
+  HTTP endpoint, sub-agents, steps and snapshots, which wait for an outside reader. No new software: the AG-UI packages were used
+  only as test oracles in a scratch folder and are not dependencies.

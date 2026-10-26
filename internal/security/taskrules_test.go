@@ -170,3 +170,53 @@ func TestDangerousCallsAreNeverApprovedForTheTask(t *testing.T) {
 		}
 	}
 }
+
+// The request a person answers with "approve for this task" is itself recorded as approved for the task, with the rule that
+// was stored for it and the approval id, not as a plain approval: the Activity would otherwise say the grant was for one
+// call. A mark the decision never consumes (the person refuses after all) is dropped with the request.
+func TestTheRequestApprovedForTheTaskIsRecordedWithItsRule(t *testing.T) {
+	r := newPermRig(t)
+	ctx := context.Background()
+	req := ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": "curl https://example.com"}), Root: r.root}
+	ch := r.decideAsync(t, req)
+	id := r.waitRequested(t)
+	r.gate.MarkApprovedForTask(id, "par_first")
+	if err := r.apr.Decide(ctx, id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	o := await(t, ch)
+	if !o.Allow || o.Outcome != PermissionApprovedForTask || o.Rule != "par_first" || o.ApprovalID != id {
+		t.Fatalf("approved for the task: %+v", o)
+	}
+	got := r.decided(t)
+	if len(got) != 1 || got[0]["outcome"] != PermissionApprovedForTask || got[0]["rule"] != "par_first" || got[0]["approval"] != id {
+		t.Fatalf("permission.decided: %v", got)
+	}
+	if _, held := r.gate.forTask.Load(id); held {
+		t.Fatal("the mark outlived the answer")
+	}
+
+	// a mark cleared before the decision, or left when the person refuses, changes nothing
+	ch = r.decideAsync(t, req)
+	id = r.waitRequested(t)
+	r.gate.MarkApprovedForTask(id, "par_second")
+	r.gate.ClearApprovedForTask(id)
+	if err := r.apr.Decide(ctx, id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); o.Outcome != PermissionApproved || o.Rule != "" {
+		t.Fatalf("a cleared mark: %+v", o)
+	}
+	ch = r.decideAsync(t, req)
+	id = r.waitRequested(t)
+	r.gate.MarkApprovedForTask(id, "par_third")
+	if err := r.apr.Decide(ctx, id, DecisionReject, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); o.Outcome != PermissionRejected || o.Rule != "" {
+		t.Fatalf("refused after all: %+v", o)
+	}
+	if _, held := r.gate.forTask.Load(id); held {
+		t.Fatal("the mark of a refused request was kept")
+	}
+}

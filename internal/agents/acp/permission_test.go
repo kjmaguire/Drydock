@@ -48,6 +48,36 @@ func TestPermissionRequestIsSurfacedAndDefaultRejects(t *testing.T) {
 	if stopReason(t, cs) != "end_turn" {
 		t.Fatal(stopReason(t, cs))
 	}
+	// nobody could be asked, so Drydock refused: the refusal is on the record, after the request and before the call's failure
+	// (AG-UI review 2026-10-25, "a refused ACP request leaves no trace")
+	denied := ofKind(cs, workflow.ChunkPermissionDenied)
+	if len(denied) != 1 {
+		t.Fatalf("one permission_denied expected: %v", kinds(cs))
+	}
+	d := decode[workflow.PermissionDenial](t, denied[0])
+	if d.ToolName != "Write config.json" || d.ToolUseID != "p1" || d.Reason != "nobody could be asked in this session, so Drydock refused the request" || !strings.Contains(string(d.Input), "config.json") {
+		t.Fatalf("denial %+v", d)
+	}
+	deniedIdx, resultIdx := -1, -1
+	for i, c := range cs {
+		switch c.Kind {
+		case workflow.ChunkPermissionDenied:
+			deniedIdx = i
+		case workflow.ChunkToolResult:
+			resultIdx = i
+		}
+	}
+	if !(permIdx < deniedIdx && deniedIdx < resultIdx) {
+		t.Fatalf("permission_denied belongs between the request and the tool_result: %v", kinds(cs))
+	}
+}
+
+// noDenial fails when the turn carries a permission_denied chunk: with an asker or an adapter handler, somebody was asked.
+func noDenial(t *testing.T, cs []workflow.Chunk) {
+	t.Helper()
+	if len(ofKind(cs, workflow.ChunkPermissionDenied)) != 0 {
+		t.Fatalf("somebody was asked, so Drydock refused nothing on its own: %v", kinds(cs))
+	}
 }
 
 func TestDefaultNeverApproves(t *testing.T) {
@@ -82,6 +112,7 @@ func TestPluggableHandlerDecides(t *testing.T) {
 	if r, _ := got.Load().(acp.PermissionRequest); r.Tool != "Write config.json" {
 		t.Fatalf("handler saw %+v", r)
 	}
+	noDenial(t, cs)
 }
 
 func TestUnknownOptionIdIsNotAnApproval(t *testing.T) {
@@ -180,12 +211,14 @@ func TestTheSessionsAskerDecidesAndAllowsOnlyOnce(t *testing.T) {
 	if adapterSaw.Load() {
 		t.Fatal("the adapter's handler must not decide when the session has its own asker")
 	}
+	noDenial(t, cs)
 
 	allow.Store(false)
 	cs = turn(t, startSession(t, ad, spec), "go")
 	if !strings.Contains(text(cs), "permission: selected no") {
 		t.Fatalf("a refusal selects reject_once: %q", text(cs))
 	}
+	noDenial(t, cs) // the person refused; that is the asker's record (the chat stores it), not Drydock's own refusal
 
 	// an agent that offers only allow_always gets a cancelled request, not a standing approval
 	ad = fakeAdapter(t, permScript(fakeacp.PermOption{ID: "always", Name: "Always", Kind: acp.KindAllowAlways}))

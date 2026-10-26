@@ -22,7 +22,7 @@ import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { toolInputText } from '../chats/chats.ts';
 import { cliName } from '../shared/cli-name.ts';
-import { argsValue, planOf, planProgress, turnSummary, waitOutcomeText, type ToolItem, type Turn } from './activity.ts';
+import { argsValue, planOf, planProgress, turnSummary, waitOutcomeText, waitWhy, type ToolItem, type Turn } from './activity.ts';
 import { activityRows, baseName, changeLines, secondsText, stepVerb, timeOfDay, type ActivityRow, type ActivityStep } from './activity-steps.ts';
 
 const sectionCss = css({
@@ -184,7 +184,8 @@ function At(handle: Handle<{ step: ActivityStep; now: number }>) {
   return () => {
     const { step, now } = handle.props;
     if (step.state === 'running') {
-      const ran = step.at ? secondsText(Math.max(0, now - step.at)) : '';
+      const since = step.runningSince ?? step.at;
+      const ran = since ? secondsText(Math.max(0, now - since)) : '';
       return (
         <>
           {ran ? <span class="quiet">{ran}</span> : null}
@@ -335,10 +336,13 @@ function StepView(handle: Handle<{ step: ActivityStep; running: boolean; now: nu
       );
     } else if (s.kind === 'wait') {
       const open = !s.wait.outcome && running;
+      // a decision nobody was asked for reads like an answered wait: "Refused by Drydock's rules: Bash", and why when the core said
+      // (its reason, or the rule that decided)
       main = (
-        <div class="wait" data-open={open ? 'true' : undefined} data-outcome={s.wait.outcome} data-testid="activity-wait">
+        <div class="wait" data-open={open ? 'true' : undefined} data-outcome={s.wait.outcome} data-asked={s.wait.asked ? undefined : 'false'} data-testid="activity-wait">
           <strong>{waitOutcomeText(s.wait.outcome, running)}:</strong>
           <span>{s.wait.title}</span>
+          {waitWhy(s.wait) ? <span class="quiet">({waitWhy(s.wait)})</span> : null}
           {open ? <span>· answer it under Needs your decision</span> : null}
         </div>
       );
@@ -437,7 +441,9 @@ export function TaskActivity(handle: Handle<{ taskId: string; agents: readonly A
   const act = query(handle, {
     key: () => handle.props.taskId,
     load: () => s.client.taskActivity(handle.props.taskId),
-    when: (e) => e.taskId === handle.props.taskId && e.type.startsWith('agent.'),
+    // a permission request and its answer are the task's events, not the agent's: without them the feed would say "Waiting for
+    // you" for as long as the allowed command runs, and could miss the request itself
+    when: (e) => e.taskId === handle.props.taskId && (e.type.startsWith('agent.') || e.type === 'approval.requested' || e.type === 'permission.decided'),
     noisy: true,
     debounceMs: 750,
   });
@@ -467,7 +473,7 @@ export function TaskActivity(handle: Handle<{ taskId: string; agents: readonly A
             {th.agentId ? <Avatar id={th.agentId} name={name} size={22} kind="agent" /> : null}
             <strong>{th.threadId === newest ? name : line}</strong>
             <span class="meta">
-              {row.turns === 1 ? '1 turn' : `${row.turns} turns`}
+              {row.turns === 0 ? (th.ended ? 'stopped before its first turn' : 'starting') : row.turns === 1 ? '1 turn' : `${row.turns} turns`}
               {row.working ? ' · working now' : ''}
             </span>
           </div>

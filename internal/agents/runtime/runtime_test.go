@@ -458,3 +458,93 @@ func TestATurnCarriesPicturesToASessionThatTakesThem(t *testing.T) {
 
 // textOnly hides a session's ImageSender (a labelled test double of a CLI that takes text only).
 type textOnly struct{ agents.Session }
+
+// A tool result larger than an event may hold (events.MaxEventData) used to vanish from the Activity: the bus stored a stand-in
+// without a kind, which the projection drops, so the call showed no result (AG-UI review 2026-10-25). The runtime cuts the
+// middle of the output before publishing, so the stored event is a real tool_result with the start and the end of the output,
+// and the Activity shows a TOOL_CALL_RESULT for the call.
+func TestABigToolResultStaysInTheActivity(t *testing.T) {
+	const line = "line of a log\n"
+	big := strings.Repeat(line, 300<<10/len(line)+1) // over 300 KiB, more than the event cap
+	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Tool: "Bash", Input: json.RawMessage(`{"command":"cat big.log"}`), Result: big}, {Say: "read it"}}}})
+	ctx := context.Background()
+	m, err := h.rt.Spawn(ctx, h.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var whole string
+	if _, err := m.RunTurn(ctx, "read the log", nil, func(c workflow.Chunk) {
+		if c.Kind == workflow.ChunkToolResult {
+			var tr workflow.ToolResult
+			_ = c.Decode(&tr)
+			whole = tr.Output
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(whole) < events.MaxEventData-8<<10 {
+		t.Fatalf("the chunk itself must stay as the adapter gave it (%d bytes)", len(whole))
+	}
+	if err := m.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.settle(t)
+
+	evs, err := h.bus.Replay(ctx, 0, events.Filter{AgentID: "a1"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var callID string
+	var result *events.Event
+	for i, e := range evs {
+		if e.Type != "agent.output" {
+			continue
+		}
+		var d struct {
+			Kind      string          `json:"kind"`
+			Data      json.RawMessage `json:"data"`
+			Truncated bool            `json:"truncated"`
+		}
+		if json.Unmarshal(e.Data, &d) != nil || d.Truncated {
+			t.Fatalf("a stand-in was stored instead of the result: %.200s", e.Data)
+		}
+		switch d.Kind {
+		case workflow.ChunkToolCall:
+			var tc workflow.ToolCall
+			_ = json.Unmarshal(d.Data, &tc)
+			callID = tc.ID
+		case workflow.ChunkToolResult:
+			result = &evs[i]
+			if len(e.Data) >= events.MaxEventData {
+				t.Fatalf("the stored result is %d bytes, over the cap", len(e.Data))
+			}
+			var tr workflow.ToolResult
+			if json.Unmarshal(d.Data, &tr) != nil || tr.ID != callID || tr.Name != "Bash" || string(tr.Args) != `{"command":"cat big.log"}` {
+				t.Fatalf("the stored result: %.300s", d.Data)
+			}
+			if !strings.HasPrefix(tr.Output, line) || !strings.HasSuffix(tr.Output, line) || !strings.Contains(tr.Output, "bytes left out of the middle of this result by Drydock") {
+				t.Fatalf("the output must keep its start and its end around the marker: %.100s ... %.100s", tr.Output, tr.Output[len(tr.Output)-100:])
+			}
+		}
+	}
+	if callID == "" || result == nil {
+		t.Fatalf("no tool_call and tool_result among the events")
+	}
+	act := agui.Project(evs)
+	if len(act.Threads) != 1 {
+		t.Fatalf("threads %+v", act.Threads)
+	}
+	var shown *agui.ToolCallResult
+	for _, e := range act.Threads[0].Events {
+		if r, ok := e.(*agui.ToolCallResult); ok && r.ToolCallID == callID {
+			shown = r
+		}
+	}
+	// the projection keeps a result's head and tail for the UI: the call has a result, with the output's start and end
+	if shown == nil || !strings.HasPrefix(shown.Content, line) || !strings.HasSuffix(shown.Content, line) {
+		t.Fatalf("the Activity shows no result for the call: %+v", shown)
+	}
+	if err := agui.CheckOrder(act.Threads[0].Events); err != nil {
+		t.Fatal(err)
+	}
+}

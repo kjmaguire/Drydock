@@ -69,7 +69,7 @@ type Session interface {
 func Project(events []events.Event) Activity          // one thread per agent process, one run per turn; pure, computed on read
 func CheckOrder(events []Event) error                 // the ordering rules of AG-UI's reference verifier (@ag-ui/client 1.0.3 verify.ts) on one thread
 func TypeScript() (string, error);  const TSPath      // the UI's types (ui/app/api/agui.gen.ts): "go run ./cmd/drydock-tsgen"; a test fails while stale
-// core method task.activity {taskId} -> Activity{threads: [{id, agent, adapter, model, runMode, wslDistro, events: [AguiEvent]}], truncated}
+// core method task.activity {taskId} -> Activity{threads: [{id, agent, adapter, model, runMode, wslDistro, ended?, events: [AguiEvent]}], truncated}
 ```
 
 The vocabulary is modelled on AG-UI 1.0 (decisions P87, P88, P100; `docs/agui-review-2026-10-25.md`): RUN_STARTED (with

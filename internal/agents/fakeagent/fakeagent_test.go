@@ -40,3 +40,67 @@ func TestWritesFollowTheSessionsFlags(t *testing.T) {
 		}
 	}
 }
+
+// A turn the stand-in fails ends the way Claude Code 2.1.310 reports a failed API call, so the real parser sees what it would
+// see from the CLI: the API-error assistant message (is_api_error_message on the event), then a result that says is_error with
+// the last message's stop reason and the terminal reason api_error. ModelErrors fails the turn before any step (nothing said:
+// "tool_use", as the CLI's result reads); a Fail step fails it after an answer ("end_turn").
+func TestAFailedTurnHasTheShapeOfAFailedAPICall(t *testing.T) {
+	const apiErr = "API Error: 529 overloaded"
+	type line struct {
+		Type           string `json:"type"`
+		Subtype        string `json:"subtype"`
+		IsError        bool   `json:"is_error"`
+		Result         string `json:"result"`
+		StopReason     string `json:"stop_reason"`
+		TerminalReason string `json:"terminal_reason"`
+		APIErrorFlag   bool   `json:"is_api_error_message"`
+		Message        struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	run := func(script Script, flags ...string) []line {
+		t.Helper()
+		sc, _ := json.Marshal(script)
+		sp := filepath.Join(t.TempDir(), "script.json")
+		if err := os.WriteFile(sp, sc, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("DRYDOCK_FAKE_SCRIPT", sp)
+		var out bytes.Buffer
+		Run(append([]string{"-p", "go"}, flags...), strings.NewReader(""), &out)
+		var lines []line
+		for _, raw := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+			var l line
+			if err := json.Unmarshal([]byte(raw), &l); err != nil {
+				t.Fatalf("%v: %s", err, raw)
+			}
+			lines = append(lines, l)
+		}
+		return lines
+	}
+	check := func(name string, lines []line, stop string, saidBefore int) {
+		t.Helper()
+		if len(lines) != 3+saidBefore {
+			t.Fatalf("%s: %d lines, want init, %d said, the API-error message and the result", name, len(lines), saidBefore)
+		}
+		msg, res := lines[len(lines)-2], lines[len(lines)-1]
+		if msg.Type != "assistant" || !msg.APIErrorFlag || len(msg.Message.Content) != 1 || msg.Message.Content[0].Text != apiErr {
+			t.Fatalf("%s: the API-error message %+v", name, msg)
+		}
+		if res.Type != "result" || res.Subtype != "success" || !res.IsError || res.Result != apiErr || res.StopReason != stop || res.TerminalReason != "api_error" {
+			t.Fatalf("%s: the result %+v", name, res)
+		}
+		for _, l := range lines[:len(lines)-2] {
+			if l.APIErrorFlag {
+				t.Fatalf("%s: an ordinary message carries the flag: %+v", name, l)
+			}
+		}
+	}
+	check("a model that fails its first call", run(Script{Default: []Step{{Say: "never said"}}, ModelErrors: map[string]string{"m1": apiErr}}, "--model", "m1"), "tool_use", 0)
+	// a Say streams its words as deltas and then the whole message: "an answer" is two deltas and one assistant line
+	check("a call that fails after an answer", run(Script{Default: []Step{{Say: "an answer"}, {Fail: apiErr}, {Say: "never said"}}}), "end_turn", 3)
+}

@@ -470,7 +470,9 @@ its prompt call on interrupt, so the path is untested with the double.
   CUSTOM `drydock.nudge` would make the intervention visible.
 - **N6. `terminal_reason` and `permission_denials` are unused.** The CLI's `terminal_reason` is its own word for how the turn
   ended (`completed`, `max_turns`, `api_error`, `aborted_streaming`, ...) and would replace the stop-reason heuristics (H2);
-  `permission_denials` become chunks the Activity drops (M4).
+  `permission_denials` become chunks the Activity drops (M4). Since the fixes: the parser reads `terminal_reason` for every
+  failed result (the stop reason is `error_<terminal_reason>` when the subtype does not name the failure); `permission_denials`
+  stay out of the Activity on purpose (see M4 in section 8).
 - **N7. The interrupt shape.** Two conformant upgrades exist: cheap, shape the CUSTOM values as AG-UI's `Interrupt` (`id`,
   `reason`, `message`, `toolCallId`, `expiresAt` as RFC 3339, `metadata`) and `ResumeEntry` (`interruptId`, `status`, `payload`);
   structural, end the run at the wait with the `interrupt` outcome and resume as a new run, exactly the spec's tool-bound flow,
@@ -521,4 +523,56 @@ outside reader exists, and nothing in the vocabulary has to change first.
 
 ## 8. Status after the fixes
 
-Filled in when the fixes landed; see the end of this document.
+The fixes landed in this branch on 2026-10-26 (decision P100), written by five implementers, one per file cluster, then read
+by three independent reviewers (Go correctness and tests; conformance against the published packages, with a probe that ran
+the projected threads through `@ag-ui/core/schemas` and the `@ag-ui/client` pipeline again; the UI), whose confirmed findings
+(nine low, one medium: a process stopped before its first turn would have read "starting") were fixed in turn. Every change
+ships with tests against the labelled doubles `fakeagent` and `fakeacp`; no AG-UI package became a dependency.
+
+| # | Status | What changed |
+|---|---|---|
+| H1 | fixed | The projector keeps the text streamed in the open run that no `message_end` has taken yet; a `message_end` that repeats the front of it takes that text and adds no second message, so a thought or a tool result between the deltas and the message end shows the sentence once (ACP's Say, Think, Tool; every permission step; Claude's per-block messages, three blocks tested). A message with other words is its own, however short. `TestAnAcpSentenceIsShownOnce...` |
+| H2 | fixed | A failed Claude Code result never ends with the last message's stop reason: the done chunk carries the subtype when it names the failure (`error_during_execution`, `error_max_turns`, ...), else `error_` plus the CLI's `terminal_reason` (`error_api_error`, ...), else `error`. The CLI's API-error assistant message (`is_api_error_message` on the event, verified in the 2.1.310 binary) is an error chunk, not an answer. The fake agent's failing shapes are the CLI's (`Step.Fail`, `ModelErrors`). Proven end to end from the fake agent through the real parser to RUN_ERROR. |
+| M1 | fixed | The Activity re-reads on `approval.requested` and `permission.decided` for its task as well as on `agent.*`; the browser test fails with the old predicate. |
+| M2 | fixed | The runtime bounds a stored `tool_result` event against `events.MaxEventData` (head and tail around a marker that says how many bytes are missing), so no result becomes a stand-in; a 300 KiB fake result reaches the Activity as TOOL_CALL_RESULT. |
+| M3 | fixed | The ACP settings warnings (effort, permission mode, model, MCP transport) carry `workflow.CodeSettings`; `workflow.TurnFailed` never counts a coded warning. A tool-only first turn ending `max_turn_requests` is RUN_FINISHED and, in a chat, done. |
+| M4 | fixed | CUSTOM `drydock.decided` {tool, outcome, reason, toolCallId, rule}: a gate deny or a task rule's allow that asked nobody (`allowed_by_rule` is left out on purpose), and the refusal an ACP session with nobody to ask now reports as a `permission_denied` chunk with its reason (outcome `refused`). The Activity draws it as a decided row ("Refused by Drydock's rules: Bash (rule: ...)", "Refused without asking: Write: config.json (nobody could be asked in this session, so Drydock refused the request)"). The CLI's own `permission_denials` stay out: a core test showed they would repeat, with the wrong words, a refusal the resume row already tells, and the failed result shows the step as failed. |
+| M5 | fixed | `PermissionGate.MarkApprovedForTask` lets the answered request itself be recorded `approved_for_task` with its rule (event, audit entry, resume outcome); the Activity says "Allowed by you for this task". `docs/security.md` lists the outcome. |
+| M6 | fixed | `room.Derive` reads `approval.requested` (a permission title) as Waiting "awaiting permission" and `permission.decided` as Working again, keeping what the agent was doing; both types are in the presence and lifecycle filters. `docs/room-protocol.md` says so. |
+| M7 | open | Recommended for a change of its own (cancel the approvals of the runs `CloseStale` closed; sweep expired rows). |
+| M8 | fixed | A result over 8 KiB keeps its first 6 KiB and last 2 KiB around a marker line; the UI strips the marker lines before it reads a command's last line or its test failures and keeps them where the raw result is shown. |
+| M9 | open | Recommended (record model and run mode on the `agent_runs` row, or say "start not shown"). |
+| M10 | open | Recommended; needs a design of its own (an incremental read, a throttle that waits for the load in flight). |
+| M11 | fixed | Arguments over 8 KiB stay one valid JSON document: the longest string values are cut inside it (sorted keys so a tie cuts the same string on every read; numbers kept as written), so a large Write keeps its path and line counts. |
+| M12 | fixed | `metadata.drydock` {seq, stopReason, isError, threadId, runId} replaces the top-level extras; a test holds every event's top-level keys to exactly the fields the 1.0.3 schema declares for its type; the conformance reviewer's probe saw zero stripped keys and the verifier pass. |
+| L1 | fixed | A thinking block whose deltas were streamed is not emitted again; the text blocks of one assistant event are one `message_end`. |
+| L2 | fixed | RUN_STARTED carries `protocolVersion: "1.0"` (`PROTOCOL_VERSION` in the generated types). |
+| L3 | fixed | Tool-call ids are deduplicated per run. |
+| L4 | fixed | A result whose call was never seen is named `tool`. |
+| L5 | fixed | Covered by H1's rule (one `message_end` per block takes its own part of the streamed text). |
+| L6 | open | Recommended (detach the chunk and completion publishes from the turn's cancellation). |
+| L7 | open | Cosmetic; the generator would need a union-of-literals form. |
+| L8 | fixed | `CheckOrder` credits `@ag-ui/client` 1.0.3; the order test's fixtures were left as they are (they test ordering, not the schema). |
+| L9 | open | Recommended with N7. |
+| L10 | fixed | A failed `session/prompt` reads "prompt failed: Internal error: rate limited" (the JSON-RPC message, then `data.error` or a short rendering of `data`). |
+| L11 | open | Cosmetic; the hold is deliberate. |
+| L12 | open | Recommended. |
+| L13 | open | Recommended. |
+| L14 | fixed | A running read grouped with earlier reads counts from the read that runs (`runningSince`). |
+| L15 | fixed | A thread with no turn yet reads "starting" when it is the newest and is left out otherwise; one whose process was stopped before its first turn reads "stopped before its first turn" (`AguiThread.ended`, from the reviewers' medium finding). |
+| L16 | fixed | `agent.completed` with an error stop reason is presence Failed "turn failed: <stop>" (the same `workflow.TurnFailed`), not Completed. |
+| L17 | fixed | The chat's `turnRun.finish` reads `workflow.TurnFailed`: an `error_*` stop after an answer is a failed turn in the chat too; a coded warning never fails one. |
+| L18 | open | Reported, not verified; recommended. |
+| L19 | open | Recommended. |
+| L20 | fixed | `docs/interfaces.md` has the Activity section and the full chunk list. |
+| L21 | fixed | `docs/ui.md` names the three surfaces; the Guide's table describes `agent.*` and `permission.decided`. |
+| L22 | fixed | The package comment says usage is not projected yet; `compact`'s comment is right; the comment also says the schema is the same from 1.0.0 to 1.0.3 and that the `metadata.drydock` fields are Drydock's own. |
+| N2, N6 | partly | `terminal_reason` is read for failed results. Usage on RUN_FINISHED, `pendingToolCallIds` and `parentMessageId` stay recommended. |
+
+Verification of the branch after the fixes, on this Linux host: `go test ./...` passes in every package (`internal/core` was run
+again on its own after three local-model tests failed for want of disk space, a failure the pushed HEAD shows too when the drive
+is nearly full, and after one test showed that projecting the CLI's own `permission_denials` would repeat a refusal the resume row
+already tells, which narrowed M4's rule); `gofmt`, `go vet` on Linux and Windows and golangci-lint (0 issues) are clean; the UI
+suite passes 1762 of 1762 tests with the typecheck and the build; the Playwright end-to-end suite against the real core passes 78
+of 78. Not verified here: Windows and WebView2, the real Claude Code and ACP agents (the labelled doubles stood in, with the fake
+agent's failing shapes taken from the 2.1.310 binary's own strings).

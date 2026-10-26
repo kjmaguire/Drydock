@@ -27,8 +27,12 @@ func TestATasksActivityIsItsAgentsTurnsInTheTypedVocabulary(t *testing.T) {
 	a.call("task.assign", map[string]string{"id": task.ID, "assignee": worker.ID, "reviewer": reviewer.ID}, &task)
 
 	type ev struct {
-		Type         string `json:"type"`
-		Seq          uint64 `json:"seq"`
+		Type     string `json:"type"`
+		Metadata struct {
+			Drydock struct {
+				Seq uint64 `json:"seq"`
+			} `json:"drydock"`
+		} `json:"metadata"`
 		ToolCallName string `json:"toolCallName"`
 		ToolCallID   string `json:"toolCallId"`
 		Content      string `json:"content"`
@@ -71,10 +75,11 @@ func TestATasksActivityIsItsAgentsTurnsInTheTypedVocabulary(t *testing.T) {
 	text := ""
 	var last uint64
 	for _, e := range w.Events {
-		if e.Seq < last {
-			t.Fatalf("events out of order: %+v", w.Events)
+		if seq := e.Metadata.Drydock.Seq; seq < last || seq == 0 {
+			t.Fatalf("events out of order or without their stored seq: %+v", w.Events)
+		} else {
+			last = seq
 		}
-		last = e.Seq
 		switch e.Type {
 		case agui.TypeToolCallStart:
 			shape = append(shape, e.Type+" "+e.ToolCallName)

@@ -3,7 +3,7 @@
 // change, "Ran go test ./... · 1 failed" with the failing line, "Thought for 6 s". Pure: no DOM and no client. Everything here
 // is text the core stored (redacted, bounded); nothing is interpreted as markup.
 
-import type { AguiThread } from '../../api/agui.gen.ts';
+import { CUT_MARKER, CUT_MIDDLE_MARKER, type AguiThread } from '../../api/agui.gen.ts';
 import { editLines, toolLabel, type DiffLine } from '../chats/chat-tool.tsx';
 import { argsSummary, argsValue, planOf, turnsOf, type TextItem, type ToolItem, type Turn, type WaitItem } from './activity.ts';
 
@@ -20,6 +20,8 @@ interface StepBase {
   at: number;
   endAt?: number;
   state: StepState;
+  /** For a running step of several calls (reads in a row), when the call still running started; the step's own at otherwise. */
+  runningSince?: number;
 }
 
 /** One or more reads in a row: the files, in the order read. */
@@ -165,11 +167,25 @@ export function editStat(args: string): { added: number; removed: number; hunk: 
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /**
+ * A cut output without the lines the core put in where it cut (CUT_MARKER at the end, CUT_MIDDLE_MARKER where the middle was),
+ * so what is read as the command's output is only what the command wrote. Where the output is shown whole the markers stay:
+ * they tell the reader that something is missing.
+ */
+export function withoutCutMarkers(output: string): string {
+  if (!output.includes(CUT_MARKER) && !output.includes(CUT_MIDDLE_MARKER)) return output;
+  return output
+    .split(/\r?\n/)
+    .filter((l) => l !== CUT_MARKER && l !== CUT_MIDDLE_MARKER)
+    .join('\n');
+}
+
+/**
  * What a test run's output says failed: how many tests and the line that says why. Go's "--- FAIL: TestX/case" lines (a parent
  * whose subtest failed is not counted twice; the message under the failing test is joined to its name), pytest's "FAILED x"
  * lines, Jest and Vitest's "✕ name" lines or their "Tests: 2 failed" total. Nothing found: 0 and ''.
  */
 export function testFailures(output: string): { failed: number; line: string } {
+  output = withoutCutMarkers(output);
   const lines = output.split(/\r?\n/);
   // Go
   const goNames: { name: string; at: number }[] = [];
@@ -201,7 +217,7 @@ export function testFailures(output: string): { failed: number; line: string } {
 
 /** The last line of a command's output that says something: what a failed command left as its reason. */
 export function lastLine(output: string): string {
-  const l = output.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).pop() ?? '';
+  const l = withoutCutMarkers(output).split(/\r?\n/).map((x) => x.trim()).filter(Boolean).pop() ?? '';
   return clip(l, 160);
 }
 
@@ -243,7 +259,7 @@ const worst = (states: StepState[]): StepState =>
 
 function toolStep(i: ToolItem, running: boolean): ActivityStep {
   const state = toolState(i, running);
-  const base = { id: i.id, at: i.at, endAt: i.endAt, state, tools: [i] };
+  const base = { id: i.id, at: i.at, endAt: i.endAt, state, runningSince: state === 'running' ? i.at : undefined, tools: [i] };
   switch (toolKind(i.name)) {
     case 'read':
       return { ...base, kind: 'read', files: [pathOf(i.args) || argsSummary(i.args)].filter(Boolean) };
@@ -279,6 +295,8 @@ export function stepsOf(turn: Pick<Turn, 'items' | 'status'>): ActivityStep[] {
         prev.tools.push(...st.tools);
         prev.state = worst(prev.tools.map((x) => toolState(x, running)));
         prev.endAt = st.endAt ?? prev.endAt;
+        // the group's seconds count from the read that still runs, not from the first read
+        if (st.runningSince !== undefined) prev.runningSince = st.runningSince;
         continue;
       }
       out.push(st);
@@ -334,12 +352,15 @@ export type ActivityRow =
 /**
  * The feed: every agent process in the order it started, each with its plan (when it made one) and its turns. The newest turn of
  * each process is open; an earlier one is one line until it is opened. `toggled` holds the keys of the turn lines the reader
- * opened or closed (a turn's default is flipped). A process with one turn has no turn line: its steps follow the process.
+ * opened or closed (a turn's default is flipped). A process with one turn has no turn line: its steps follow the process. A
+ * process with no turns yet is only shown when it is the newest (it is starting, or was stopped before its first turn); an
+ * earlier one that never turned is left out.
  */
 export function activityRows(threads: readonly AguiThread[], toggled: ReadonlySet<string> = new Set()): ActivityRow[] {
   const rows: ActivityRow[] = [];
   for (const th of threads) {
     const turns = turnsOf(th.events);
+    if (!turns.length && th !== threads[threads.length - 1]) continue;
     const last = turns[turns.length - 1];
     rows.push({ type: 'thread', key: `th:${th.threadId}`, thread: th, turns: turns.length, working: last?.status === 'running' });
     const plan = planOf(th.events);

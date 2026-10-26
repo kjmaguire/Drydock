@@ -3,6 +3,7 @@ package claude
 import (
 	"bufio"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -398,5 +399,172 @@ func TestAHugeToolResultKeepsItsStartAndItsEnd(t *testing.T) {
 	}
 	if !utf8.ValidString(out) {
 		t.Fatal("cut inside a character")
+	}
+}
+
+// decoded parses one line with a fresh parser (or p) and returns its chunks, the done chunk's stop reason and the messages of
+// its error chunks.
+func decoded(t *testing.T, p *Parser, lines ...string) (cs []workflow.Chunk, stop string, errs []string) {
+	t.Helper()
+	if p == nil {
+		p = NewParser()
+	}
+	for _, l := range lines {
+		out, _ := p.Parse([]byte(l))
+		cs = append(cs, out...)
+	}
+	for _, c := range cs {
+		switch c.Kind {
+		case workflow.ChunkDone:
+			var d workflow.DoneChunk
+			if err := c.Decode(&d); err != nil {
+				t.Fatal(err)
+			}
+			stop = d.StopReason
+		case workflow.ChunkError:
+			var e workflow.ErrorChunk
+			if err := c.Decode(&e); err != nil {
+				t.Fatal(err)
+			}
+			if e.Fatal || e.Code != "" {
+				t.Fatalf("a turn's own failure is a plain non-fatal error: %+v", e)
+			}
+			errs = append(errs, e.Message)
+		}
+	}
+	return cs, stop, errs
+}
+
+// Claude Code 2.1.x puts the LAST ASSISTANT MESSAGE's stop reason on every result, so a turn that failed after the model said
+// anything says "tool_use" or "end_turn" there; read as the turn's stop reason, that marked a failed turn done with its error
+// beside it (AG-UI review 2026-10-25). A failed result's stop reason is the failure: the subtype when it names one, else
+// "error_" and the terminal reason, else "error"; and the error text is the turn's non-fatal error.
+func TestAFailedResultNeverEndsWithTheLastMessagesStopReason(t *testing.T) {
+	for _, tc := range []struct {
+		name, line, stop, err string
+	}{
+		{"a tool loop that ran out of turns", `{"type":"result","subtype":"error_max_turns","is_error":true,"stop_reason":"tool_use","terminal_reason":"max_turns","errors":["Reached maximum number of turns (3)"],"total_cost_usd":0.01}`,
+			"error_max_turns", "Reached maximum number of turns (3)"},
+		{"an execution error mid tool loop", `{"type":"result","subtype":"error_during_execution","is_error":true,"stop_reason":"tool_use","errors":["the tool crashed"]}`,
+			"error_during_execution", "the tool crashed"},
+		{"an API error with its terminal reason", `{"type":"result","subtype":"success","is_error":true,"result":"API Error: 529 overloaded","stop_reason":"tool_use","terminal_reason":"api_error"}`,
+			"error_api_error", "API Error: 529 overloaded"},
+		{"an API error from a CLI without terminal reasons", `{"type":"result","subtype":"success","is_error":true,"result":"API Error: 529 overloaded","stop_reason":"tool_use"}`,
+			"error", "API Error: 529 overloaded"},
+		{"an API error after an answer", `{"type":"result","subtype":"success","is_error":true,"result":"API Error: 500","stop_reason":"end_turn","terminal_reason":"api_error"}`,
+			"error_api_error", "API Error: 500"},
+	} {
+		cs, stop, errs := decoded(t, nil, tc.line)
+		if stop != tc.stop {
+			t.Fatalf("%s: stop %q, want %q (%v)", tc.name, stop, tc.stop, kinds(cs))
+		}
+		if len(errs) != 1 || errs[0] != tc.err {
+			t.Fatalf("%s: errors %q, want %q", tc.name, errs, tc.err)
+		}
+		if k := kinds(cs); len(k) != 3 || k[0] != workflow.ChunkUsage || k[1] != workflow.ChunkError || k[2] != workflow.ChunkDone {
+			t.Fatalf("%s: %v", tc.name, k)
+		}
+	}
+	// a turn that completed is unchanged: its message's stop reason is the turn's, and nothing is an error
+	cs, stop, errs := decoded(t, nil, `{"type":"result","subtype":"success","is_error":false,"result":"pong","stop_reason":"end_turn","terminal_reason":"completed","total_cost_usd":0.002}`)
+	if stop != "end_turn" || len(errs) != 0 || len(cs) != 2 {
+		t.Fatalf("a completed turn: stop %q errors %q kinds %v", stop, errs, kinds(cs))
+	}
+	// an interrupt is still an interrupt, with the stop reason and terminal reason the CLI puts on it
+	p := NewParser()
+	p.MarkInterrupted()
+	cs, stop, errs = decoded(t, p, `{"type":"result","subtype":"error_during_execution","is_error":true,"stop_reason":"tool_use","terminal_reason":"aborted_tools","total_cost_usd":0.001}`)
+	if stop != "interrupted" || len(errs) != 0 || len(cs) != 2 {
+		t.Fatalf("an interrupted turn: stop %q errors %q kinds %v", stop, errs, kinds(cs))
+	}
+}
+
+// When an API call fails, Claude Code writes an assistant message whose text is the error and marks it is_api_error_message
+// (on the event beside "message", as 2.1.310 writes it). It is the turn's error, not the agent's words: reported as a message it
+// was shown as the answer, counted as one, and the turn was marked done. The result that follows repeats the text as its
+// error and is not reported twice.
+func TestTheCLIsAPIErrorMessageIsTheTurnsErrorAndNotAnAnswer(t *testing.T) {
+	apiErr := `API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
+	message := `{"type":"assistant","is_api_error_message":true,"api_error_status":529,"session_id":"S","message":{"model":"m","role":"assistant","content":[{"type":"text","text":` + strconv.Quote(apiErr) + `}],"usage":{"input_tokens":0,"output_tokens":0}}}`
+	for _, tc := range []struct{ result, stop string }{
+		{`{"type":"result","subtype":"success","is_error":true,"result":` + strconv.Quote(apiErr) + `,"stop_reason":"tool_use","terminal_reason":"api_error","total_cost_usd":0}`, "error_api_error"},
+		{`{"type":"result","subtype":"success","is_error":true,"result":` + strconv.Quote(apiErr) + `,"stop_reason":"tool_use","total_cost_usd":0}`, "error"},
+	} {
+		cs, stop, errs := decoded(t, nil, message, tc.result)
+		if k := kinds(cs); len(k) != 3 || k[0] != workflow.ChunkError || k[1] != workflow.ChunkUsage || k[2] != workflow.ChunkDone {
+			t.Fatalf("want error, usage, done; got %v", k)
+		}
+		if stop != tc.stop || len(errs) != 1 || errs[0] != apiErr {
+			t.Fatalf("stop %q errors %q", stop, errs)
+		}
+	}
+	// a result whose error says something else is reported as well, and the next turn's result starts afresh
+	p := NewParser()
+	_, _, errs := decoded(t, p, message, `{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["and then the CLI gave up"]}`)
+	if len(errs) != 2 || errs[0] != apiErr || errs[1] != "and then the CLI gave up" {
+		t.Fatalf("errors %q", errs)
+	}
+	if _, _, errs = decoded(t, p, `{"type":"result","subtype":"success","is_error":true,"result":`+strconv.Quote(apiErr)+`}`); len(errs) != 1 {
+		t.Fatalf("the next turn's error was taken for the earlier message: %q", errs)
+	}
+	// an ordinary assistant message with the same words is the agent's own
+	cs, _ := NewParser().Parse([]byte(`{"type":"assistant","session_id":"S","message":{"role":"assistant","content":[{"type":"text","text":` + strconv.Quote(apiErr) + `}]}}`))
+	if k := kinds(cs); len(k) != 1 || k[0] != workflow.ChunkMessageEnd {
+		t.Fatalf("an unmarked message: %v", k)
+	}
+}
+
+// Thinking that arrived as stream deltas is not reported again when the assistant event repeats the whole block (it was, so a
+// thought read twice once the CLI streams thinking text); a block that came whole is reported once; an empty delta is nothing.
+func TestThinkingStreamedAsDeltasIsNotRepeatedWithTheWholeBlock(t *testing.T) {
+	delta := func(s string) string {
+		return `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":` + strconv.Quote(s) + `}}}`
+	}
+	whole := `{"type":"assistant","session_id":"S","message":{"role":"assistant","content":[{"type":"thinking","thinking":"let me look","signature":"x"}]}}`
+	thoughts := func(cs []workflow.Chunk) []string {
+		var out []string
+		for _, c := range cs {
+			if c.Kind != workflow.ChunkThinking {
+				t.Fatalf("not a thought: %v", kinds(cs))
+			}
+			var d workflow.TextDelta
+			_ = c.Decode(&d)
+			out = append(out, d.Text)
+		}
+		return out
+	}
+	p := NewParser()
+	cs, _, _ := decoded(t, p, delta("let me "), delta(""), delta("look"), whole)
+	if got := thoughts(cs); len(got) != 2 || got[0] != "let me " || got[1] != "look" {
+		t.Fatalf("streamed thinking %q, want each delta once and the whole block not at all", got)
+	}
+	// the next message's whole block, with no deltas before it, is reported
+	cs, _, _ = decoded(t, p, whole)
+	if got := thoughts(cs); len(got) != 1 || got[0] != "let me look" {
+		t.Fatalf("a whole block after a streamed message %q", got)
+	}
+	cs, _, _ = decoded(t, nil, whole)
+	if got := thoughts(cs); len(got) != 1 || got[0] != "let me look" {
+		t.Fatalf("a whole block alone %q", got)
+	}
+}
+
+// The text blocks of one assistant event are one message: one message_end with the blocks joined, not one per block.
+func TestTheTextBlocksOfOneAssistantEventAreOneMessage(t *testing.T) {
+	delta := func(s string) string {
+		return `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":` + strconv.Quote(s) + `}}}`
+	}
+	cs, _, _ := decoded(t, nil, delta("First."), delta(" Second."),
+		`{"type":"assistant","session_id":"S","message":{"role":"assistant","content":[{"type":"text","text":"First."},{"type":"text","text":" Second."}]}}`)
+	if k := kinds(cs); len(k) != 3 || k[0] != workflow.ChunkText || k[1] != workflow.ChunkText || k[2] != workflow.ChunkMessageEnd {
+		t.Fatalf("want two deltas and one message_end, got %v", k)
+	}
+	var d workflow.TextDelta
+	_ = cs[2].Decode(&d)
+	if d.Text != "First. Second." {
+		t.Fatalf("message %q", d.Text)
+	}
+	if cs, _ := NewParser().Parse([]byte(delta(""))); len(cs) != 0 {
+		t.Fatalf("an empty delta: %v", kinds(cs))
 	}
 }

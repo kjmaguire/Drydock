@@ -2,6 +2,9 @@ package acp
 
 import "io"
 
+// PromptFailedForTest exposes the wording of a failed session/prompt to the external test package.
+func PromptFailedForTest(err error) string { return promptFailed(err) }
+
 // NewExtRenamerForTest exposes the child-update method renamer to the external test package.
 func NewExtRenamerForTest(r io.Reader) io.Reader { return newExtRenamer(r) }
 

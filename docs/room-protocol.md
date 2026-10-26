@@ -112,10 +112,10 @@ Brief §11 presence states: Working, Thinking, Idle, Waiting, Completed, Needs A
 | Working | agent `WORKING` with a tool call in flight or output streaming |
 | Thinking | agent `WORKING`, last event is an agent thought chunk (ACP `agent_thought_chunk`) or a model request with no output yet |
 | Idle | agent `IDLE`; also `STARTING` (sub-label "starting") |
-| Waiting | agent `WAITING`: awaiting a turn grant, a human response, an approval, or a lease |
+| Waiting | agent `WAITING`: awaiting a turn grant, a human response, an approval, or a lease; also a tool call waiting on a permission request (an ACP agent's `permission_request` output, or the gate's `approval.requested` for a Claude worker, until its `permission.decided`) |
 | Completed | agent `COMPLETED` (task finished, awaiting nothing) |
 | Needs Attention | agent `NEEDS_ATTENTION` (watchdog stage 2, repeated errors, adapter drift on its provider) |
-| Failed | agent `FAILED` |
+| Failed | agent `FAILED`; also a turn whose stop reason says it failed (`error`, `error_*`: `workflow.TurnFailed`, the rule the Activity reads) |
 | Paused | agent `PAUSED`; also budget-paused scope |
 
 Gap: the brief's agent states include `STOPPED` and `STARTING`, which have no presence state of their own. **Design**: `STARTING` shows as Idle with a label; `STOPPED` shows as Paused with the label "stopped". Humans have presence `online/away` only (design). Tool members have no presence, only a last-result badge. Presence changes are coalesced (at most one `room.presence_changed` per member per second, design) so a busy agent does not flood the bus.
@@ -235,7 +235,7 @@ Cross-family mappings: `approval.requested` writes `APPROVAL_REQUEST`; `approval
 
 Rooms carry `version` for compare-and-swap updates (mode, name, membership batches); messages are append-only. Duplicate delivery is harmless: message inserts accept an optional client-supplied `idempotency_key` (receipts idempotent by `(scope, receipt_id)`, brief §18), which also protects agent posts that are retried after a crash. On restart the UI catches up from the event log (brief §24, Slice 1A).
 
-**As built.** Mode changes and group conversion are compare-and-swap on `version` (the `room.setMode` call reads the current version itself). The `IdempotencyKey` on a post is used by the core's own posts (the debate bound and its question); a human post from the UI (`room.post`) carries none. Presence is not recomputed from agent state: the presence tracker rebuilds it at start by replaying the `agent.*` and `watchdog.*` events from the log, then follows live events (`internal/room/presence.go`).
+**As built.** Mode changes and group conversion are compare-and-swap on `version` (the `room.setMode` call reads the current version itself). The `IdempotencyKey` on a post is used by the core's own posts (the debate bound and its question); a human post from the UI (`room.post`) carries none. Presence is not recomputed from agent state: the presence tracker rebuilds it at start by replaying the `agent.*` and `watchdog.*` events and the permission gate's `approval.requested` and `permission.decided` from the log, then follows live events (`internal/room/presence.go`).
 
 ## 14. Tests
 
