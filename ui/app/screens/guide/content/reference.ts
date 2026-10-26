@@ -107,9 +107,9 @@ export const REFERENCE: readonly Topic[] = [
           rows: [
             ['`task.*`', '`task.evidence`', 'A task changed or collected evidence (a check result, a review request).'],
             ['`workflow.*`', '`workflow.node_completed`, `workflow.step_completed`, `workflow.checkpoint_written`, `workflow.paused`, `workflow.request_raised`', 'A run moved through its graph; each completed step writes a checkpoint.'],
-            ['`approval.*`', '`approval.requested`', 'Something is waiting for a decision (see Needs you).'],
+            ['`approval.*`, `permission.*`', '`approval.requested`, `permission.decided`', 'Something is waiting for a decision (see Needs you), or a permission request was answered: by a person, by a rule, or by nobody in time.'],
             ['`room.*`', '`room.presence_changed`, `room.message_posted`', 'A conversation changed.'],
-            ['`agent.*`', '`agent.created`, `agent.updated`', 'An agent was added or changed.'],
+            ['`agent.*`', '`agent.created`, `agent.started`, `agent.output`, `agent.completed`', 'An agent was added or changed, a process started, streamed what it did (text, reasoning, tool calls and results), or ended a turn. The task page\'s Activity is read from these.'],
           ],
         },
       },
