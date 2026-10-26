@@ -162,7 +162,7 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
             ) : undefined
           }
         >
-          <span title={card.licenseNotes}>License {card.license}</span>
+          <span title={card.licenseNotes}>{card.license}</span>
         </SettingRow>
         {card.template && !card.libraryId && card.command ? (
           <SettingRow label="Starts on your PC">

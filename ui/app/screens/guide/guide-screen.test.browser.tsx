@@ -75,6 +75,30 @@ describe('the Learn more link of a page', () => {
     expect(r.$('h1')!.parentElement!.textContent).toContain('Model routing');
   });
 
+  it('keeps the line of the text it sits in: no taller line, the same baseline, and still a 28 px target', () => {
+    const r = mount(
+      <div>
+        <p data-testid="plain">The words of a subtitle</p>
+        <p data-testid="with">
+          The words of a subtitle <LearnMore topic="budgets" />
+        </p>
+      </div>,
+    );
+    const plain = r.$('[data-testid="plain"]')!.getBoundingClientRect();
+    const withLink = r.$('[data-testid="with"]')!.getBoundingClientRect();
+    expect(withLink.height).toBe(plain.height);
+    const a = r.$('a[data-testid="learn-more"]')!;
+    expect(a.getBoundingClientRect().height >= 28).toBe(true);
+    // the link's words sit on the same line as the subtitle's: a range over each ends at the same bottom
+    const bottom = (n: Node) => {
+      const rg = document.createRange();
+      rg.selectNodeContents(n);
+      return rg.getBoundingClientRect().bottom;
+    };
+    const words = r.$('[data-testid="with"]')!.firstChild!;
+    expect(Math.abs(bottom(words) - bottom(a.lastChild!)) <= 1).toBe(true);
+  });
+
   it('can stand alone in a section', () => {
     const r = mount(<LearnMore topic="budgets" label="How budgets work" />);
     expect(r.$('a')!.textContent).toContain('How budgets work');

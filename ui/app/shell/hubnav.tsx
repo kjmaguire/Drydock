@@ -152,7 +152,9 @@ const itemCss = css({
   textDecoration: 'none',
   whiteSpace: 'nowrap',
   minWidth: '0',
-  '& > .label': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
+  // width 0 and grown to fit: a long name adds nothing to the row's smallest width, so the row stays as wide as its column (a card's
+  // or the rail's) and the ellipsis shows, instead of the row running past the card (the UI audit of 2026-10-26)
+  '& > .label': { flex: '1 1 0', width: '0', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& > .room-icon': { display: 'inline-grid', placeItems: 'center', width: '26px', height: '26px', flex: 'none', borderRadius: '8px', background: t.bgActive, color: t.textMuted },
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
   '&[aria-current="page"]': { background: t.bgSurface, color: t.text, fontWeight: '600', boxShadow: t.shadowSm },

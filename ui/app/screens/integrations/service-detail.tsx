@@ -36,6 +36,7 @@ import { Menu } from '../../ui/menu.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { connectReply, kindLabel, scopeSummary, serviceState, syncLine, syncText, verifiedText, type ServiceKind } from './integrations.ts';
+import { codeSpans, sentence } from '../../ui/code-spans.tsx';
 
 const reportCss = css({ display: 'grid', gap: t.s2, padding: t.s3, borderRadius: t.rMd, border: `1px solid ${t.border}`, background: t.bgApp, '& p': { margin: '0' } });
 const steps = css({ display: 'grid', gap: '4px', margin: '0', padding: '0', listStyle: 'none', fontSize: t.textMd, '& li': { display: 'flex', gap: t.s2, alignItems: 'baseline' } });
@@ -431,7 +432,7 @@ export function ConnectForm(
             ))}
           </fieldset>
         ) : null}
-        {cur?.note ? <p mix={faint}>{cur.note}</p> : null}
+        {cur?.note ? <p mix={faint}>{codeSpans(cur.note)}</p> : null}
         {info?.noSignIn ? (
           <p mix={faint} data-testid="integration-no-signin">
             {info.noSignIn}
@@ -443,7 +444,7 @@ export function ConnectForm(
             {gh.data?.loggedIn ? (
               <Notice tone="ok">gh is signed in as {gh.data.login}. A connection made this way uses that sign-in and stores no GitHub token.</Notice>
             ) : gh.data ? (
-              <Notice tone="warn">{gh.data.error || 'gh is not signed in'}. The Agents page shows the GitHub CLI.</Notice>
+              <Notice tone="warn">{codeSpans(sentence(gh.data.error || 'gh is not signed in'))}. The Agents page shows the GitHub CLI.</Notice>
             ) : null}
           </div>
         ) : null}

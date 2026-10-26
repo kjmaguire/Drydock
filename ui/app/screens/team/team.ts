@@ -181,6 +181,26 @@ export function agentStats(agentId: string, tasks: readonly Task[]): AgentStats 
  * The caption under an agent's spend figure: it is the sum over every usage row, so it says how many (the page lists only the
  * newest 50) and how many of those costs were estimated, not reported (audit 2026-10-16, M21).
  */
+/**
+ * An agent run's status in words, for the agent page's activity block: the core stores the run's end as a constant (STOPPED,
+ * CANCELLED, FAILED; WORKING while it runs), which read as a machine word next to the presence above it (the UI audit of 2026-10-26).
+ */
+export function runStatusWords(status: string): string {
+  switch (status.toUpperCase()) {
+    case 'WORKING':
+    case 'RUNNING':
+      return 'Running';
+    case 'STOPPED':
+      return 'Last run ended';
+    case 'CANCELLED':
+      return 'Last run cancelled';
+    case 'FAILED':
+      return 'Last run failed';
+    default:
+      return status ? status.charAt(0) + status.slice(1).toLowerCase().replaceAll('_', ' ') : 'Run';
+  }
+}
+
 export function spentLabel(t: Pick<UsageTotals, 'rows' | 'estimated'>): string {
   const n = (x: number) => x.toLocaleString('en-US');
   return `spent in all ${n(t.rows)} usage ${t.rows === 1 ? 'row' : 'rows'}${t.estimated > 0 ? `, ${n(t.estimated)} estimated` : ''}`;

@@ -1206,3 +1206,16 @@ Open, owner action:
   the run page's two readings of an abandoned turn and its Events tab (L18, L19), usage on RUN_FINISHED (N2). Not done: an AG-UI
   HTTP endpoint, sub-agents, steps and snapshots, which wait for an outside reader. No new software: the AG-UI packages were used
   only as test oracles in a scratch folder and are not dependencies.
+- **P101. The UI audit of 2026-10-26 and its fixes (on the owner's words: "Do a full UI Audit, make sure the UI is in good shape,
+  things are formatted nicely and designed well. Any suggestions please send them over").** [`ui-audit-2026-10-26.md`](ui-audit-2026-10-26.md)
+  read every page of the graphite UI on the real core, light and dark. What changed: (1) the body no longer turns on Inter's
+  tabular figures, which also widen the hyphen, so hyphenated names read without gaps; a number that must line up sets
+  `tabular-nums` itself, and a source rule keeps it off the body. (2) A `Disclosure` draws a chevron, so a closed group no longer
+  reads as a stray line. (3) Learn more is an inline link with padding for its 28 px target, so it no longer lifts the line it sits
+  in. (4) `emptyLine` is running text, not flex items, so a link in its sentence has a word space, not an 8 px gap. (5) The Library
+  rows on Skills start at the left. (6) A room's name adds nothing to its row's smallest width, so a long one ends in an ellipsis
+  inside its card or rail. (7) A settings group is a query container: under 520 px its values go under their labels, as in a narrow
+  window. (8) Smaller: an agent run's status in words, the licence alone after "License", commands from the core as code instead
+  of backticks, "Crew" where five sentences said "Team page". The 27 suggestions of the audit (two items called Crew in the
+  sidebar, a folding sidebar at 1024 px, one page header, facts said two or three times, Routing's row actions, words) are left
+  for the owner to choose from.

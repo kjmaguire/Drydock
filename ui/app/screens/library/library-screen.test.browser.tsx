@@ -122,7 +122,10 @@ describe('Library page', () => {
 
   it('says so in one line when there are no templates', async () => {
     const r = show({ mcpLibList: async () => [], agentTemplateList: async () => [] });
-    expect((await one(r, '[data-testid="lib-template-empty"]')).textContent).toContain('No templates yet.');
+    const empty = await one(r, '[data-testid="lib-template-empty"]');
+    expect(empty.textContent).toContain('No templates yet.');
+    // the page the link opens is called Crew in the sidebar, not Team
+    expect(empty.querySelector('a')!.textContent).toBe('Crew');
     expect(r.$('ul[aria-label="Agent templates"]')).toBeNull();
     expect(r.$('[data-testid="lib-mcp-empty"]')).toBeNull();
   });
@@ -132,6 +135,7 @@ describe('Library page', () => {
     const tp = await pick(r, 'lib-template');
     expect(tp.textContent).toContain('Payments dev');
     expect(tp.querySelector('[data-testid="lib-template-where"] a')!.getAttribute('href')).toBe('/team');
+    expect(tp.querySelector('[data-testid="lib-template-where"] a')!.textContent).toBe('Crew');
     // the server it gives, by its name
     expect(tp.querySelector('ul[aria-label="MCP servers it gets"]')!.textContent).toContain('Test server');
     expect(r.$('h1')!.textContent).toContain('Library');

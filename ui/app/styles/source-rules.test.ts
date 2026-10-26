@@ -73,6 +73,12 @@ describe('the type rules the UI audit set (B1-B3)', () => {
     expect(bad).toEqual([]);
   });
 
+  it('leaves tabular figures off the body text: in Inter they widen the hyphen of every hyphenated name (UI audit 2026-10-26)', () => {
+    const body = appCss().match(/\n  body \{[^}]*font-feature-settings[^}]*\}/);
+    expect(body).not.toBeNull();
+    expect(body![0]).not.toMatch(/tnum/);
+  });
+
   it('defines the title size as a token and the scale has no other sizes', () => {
     const css = appCss();
     const sizes = [...css.matchAll(/--text-([a-z0-9]+):\s*([\d.]+)px/g)].map((m) => `${m[1]}=${m[2]}`);

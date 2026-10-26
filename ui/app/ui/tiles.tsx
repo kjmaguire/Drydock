@@ -58,7 +58,16 @@ export const tileCss = css({
 });
 
 /** The line above an empty grid: an icon, a bold sentence and what to do next. */
-export const emptyLine = css({ display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', margin: '0', color: t.textMuted, fontSize: t.textMd, '& strong': { color: t.text } });
+// one sentence in running text, not a row of flex items: a flex gap put 8 px on each side of a link inside the sentence ("on the
+// Integrations page") and broke it into blocks when it wrapped (the UI audit of 2026-10-26); the icon and a button keep their room
+export const emptyLine = css({
+  margin: '0',
+  color: t.textMuted,
+  fontSize: t.textMd,
+  '& strong': { color: t.text },
+  '& > svg': { verticalAlign: '-2px', marginRight: t.s2 },
+  '& > button': { marginLeft: t.s2, verticalAlign: 'middle' },
+});
 
 const glyph = css({
   display: 'inline-flex',

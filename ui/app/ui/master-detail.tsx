@@ -469,7 +469,8 @@ const groupBar = css({
   '& h3': { margin: '0', fontSize: t.textSm, fontWeight: '600', color: t.textMuted },
   '& > :last-child:not(h3)': { marginLeft: 'auto' },
 });
-const groupCard = css({ border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'hidden', minWidth: '0' });
+// a query container: a group in half a page (the Engine beside Memory on Models) is narrow even in a wide window
+const groupCard = css({ border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'hidden', minWidth: '0', containerType: 'inline-size' });
 
 /** A titled group of settings rows on one surface (the rows draw the lines between them). */
 export function SettingsGroup(handle: Handle<{ title?: RemixNode; actions?: RemixNode; children?: RemixNode; testId?: string; label?: string; bare?: boolean }>) {
@@ -502,6 +503,9 @@ const settingCss = css({
   '& > [data-part="value"]': { minWidth: '0', overflowWrap: 'anywhere' },
   '& > [data-part="control"]': { display: 'flex', alignItems: 'center', gap: t.s2, justifySelf: 'end' },
   '@media (max-width: 719px)': { gridTemplateColumns: 'minmax(0, 1fr) auto', '& > [data-part="value"]': { gridColumn: '1 / -1', gridRow: '2' } },
+  // the same in a narrow group: the value went under its label only when the window was narrow, so a group in half a page squeezed
+  // its sentence into a column of two words a line beside a wide label (the UI audit of 2026-10-26)
+  '@container (max-width: 520px)': { gridTemplateColumns: 'minmax(0, 1fr) auto', '& > [data-part="value"]': { gridColumn: '1 / -1', gridRow: '2' } },
 });
 
 /** One setting: what it is, its value, and the control that changes it. */

@@ -179,7 +179,7 @@ export function stepProblem(s: WizardState, step: Step): string | undefined {
     case 'Connectors':
       return undefined;
     case 'Team': {
-      if (s.team.length > SETUP_MAX_AGENTS) return `At most ${SETUP_MAX_AGENTS} agents in one go: add more from the Team page afterwards.`;
+      if (s.team.length > SETUP_MAX_AGENTS) return `At most ${SETUP_MAX_AGENTS} agents in one go: add more from the Crew page afterwards.`;
       const bad = s.team.find((m) => !m.name.trim() || (m.source === 'custom' && (!m.role.trim() || !m.adapter)));
       if (bad) return bad.name.trim() ? `${bad.name} needs a role and an agent CLI.` : 'Every agent needs a name.';
       const names = s.team.map((m) => m.name.trim().toLowerCase());

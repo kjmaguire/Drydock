@@ -62,9 +62,11 @@ const rowCss = css({
   // the box is hit through a 28 px label around it, like every box of the app (the density test's target rule)
   '& .pick': { display: 'grid', placeItems: 'center', width: '28px', height: '28px', margin: '-6px', cursor: 'pointer' },
   '& input[type="checkbox"]': { width: '18px', height: '18px', margin: '0' },
+  // the base button rule centres a button's content: the name started mid-row, at a different place on every row (UI audit 2026-10-26)
   '& .what': {
     display: 'flex',
     alignItems: 'baseline',
+    justifyContent: 'flex-start',
     gap: t.s2,
     minWidth: '0',
     background: 'none',

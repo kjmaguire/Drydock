@@ -292,3 +292,33 @@ describe('detail parts', () => {
     expect(container.querySelector('[data-testid="sw"]')!.textContent).toBe('Key expired');
   });
 });
+
+describe('a settings row in a narrow group', () => {
+  it('puts its value under its label when the group is narrow, whatever the window (UI audit 2026-10-26)', () => {
+    const row = (id: string) => (
+      <SettingsGroup title="Engine">
+        <SettingRow label="Build" control={<button type="button">Set up</button>} testId={id}>
+          Drydock puts its model engine in place by itself when it starts. Set up does it now.
+        </SettingRow>
+      </SettingsGroup>
+    );
+    const { container } = renderPlain(
+      <div>
+        <div style={{ width: '420px' }}>{row('narrow')}</div>
+        <div style={{ width: '900px' }}>{row('wide')}</div>
+      </div>,
+    );
+    const parts = (id: string) => {
+      const r = container.querySelector(`[data-testid="${id}"]`)!;
+      return { label: r.querySelector('[data-part="label"]')!.getBoundingClientRect(), value: r.querySelector('[data-part="value"]')!.getBoundingClientRect() };
+    };
+    const narrow = parts('narrow');
+    expect(narrow.value.top >= narrow.label.bottom).toBe(true);
+    // the value takes the row's whole width, not what is left beside the label
+    expect(narrow.value.width > 300).toBe(true);
+    if (innerWidth >= 720) {
+      const wide = parts('wide');
+      expect(wide.value.left >= wide.label.right && wide.value.top < wide.label.bottom).toBe(true);
+    }
+  });
+});

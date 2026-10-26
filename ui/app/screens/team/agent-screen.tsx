@@ -31,7 +31,7 @@ import { UsageTable } from '../shared/usage.tsx';
 import { AgentEditor, RemoveAgent } from './agent-forms.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { Run } from './inspector.tsx';
-import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
+import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runStatusWords, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
 
 const layoutCss = css({
   display: 'grid',
@@ -429,7 +429,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
           )}
           <pre class="out" data-testid="agent-activity">
             {p?.activity ? `● ${p.activity}\n` : ''}
-            {runs[0] ? `${runs[0].status} · started ${formatDateTime(runs[0].startedAt)}${runs[0].error ? `\n${runs[0].error}` : ''}` : 'No run yet.'}
+            {runs[0] ? `${runStatusWords(runs[0].status)} · started ${formatDateTime(runs[0].startedAt)}${runs[0].error ? `\n${runs[0].error}` : ''}` : 'No run yet.'}
           </pre>
           <div mix={statsCss} data-testid="agent-stats">
             {stat(String(stats.merged), stats.merged === 1 ? 'task merged' : 'tasks merged', 'stat-merged')}

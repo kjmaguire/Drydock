@@ -397,7 +397,7 @@ export function ProjectServers(handle: Handle<{ projectId: string; agents: reado
         {servers.data && lib.data && inProject.length === 0 ? (
           <p mix={emptyLine} data-testid="no-project-servers">
             <Icon icon={CirclePlus} size={14} />
-            <strong>No MCP servers in this project yet.</strong>
+            <strong>No MCP servers in this project yet.</strong>{' '}
             {rest.length > 0 ? (
               'Choose a connected server to add it.'
             ) : (

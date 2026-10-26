@@ -240,7 +240,7 @@ describe('the GitHub settings page', () => {
     expect(hero.textContent).toContain('GitHub CLI not found');
     expect(hero.textContent).toContain('Install it from cli.github.com');
     expect(hero.textContent).not.toContain('is not installed');
-    await waitFor(() => expect(r.$('[data-testid="github-page"]')!.textContent).toContain('the GitHub CLI (gh) is not installed: install it from https://cli.github.com'), r);
+    await waitFor(() => expect(r.$('[data-testid="github-page"]')!.textContent).toContain('The GitHub CLI (gh) is not installed: install it from https://cli.github.com'), r);
     const page = r.$('[data-testid="github-page"]')!.textContent!;
     expect(page.match(/the GitHub CLI \(gh\) is not installed/g)?.length ?? 0).toBeLessThanOrEqual(1);
     const link = hero.querySelector('a[href="https://cli.github.com"]')!;

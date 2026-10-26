@@ -485,6 +485,22 @@ describe('Integrations: setting a service up', () => {
     expect(linear.querySelector('[data-testid="integration-no-signin"]')).toBeNull();
   });
 
+  it("GitHub without gh says so as a sentence, with the command as code and no backticks (UI audit 2026-10-26)", async () => {
+    const r = show(
+      {
+        integrationList: async () => [],
+        githubStatus: async () => ({ installed: false, loggedIn: false, login: '', error: 'the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`' }),
+      },
+      'github',
+    );
+    const card = await find(r, '[data-testid="integration"][data-kind="github"]');
+    const status = await waitFor(() => card.querySelector('[data-testid="gh-status"]') ?? (() => { throw new Error('no gh status'); })(), r);
+    await waitFor(() => expect(status.textContent).toContain('The GitHub CLI (gh) is not installed'), r);
+    expect(status.textContent!.includes('`')).toBe(false);
+    expect(status.querySelector('code')!.textContent).toBe('gh auth login');
+    expect(card.textContent!.includes('`gh auth login`')).toBe(false);
+  });
+
   it('GitHub (/integrations/github) offers the gh sign-in first and a Sign in with GitHub beside it; the gh state shows only for the gh way', async () => {
     const r = show({ integrationList: async () => [], githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }) }, 'github');
     const card = await find(r, '[data-testid="integration"][data-kind="github"]');

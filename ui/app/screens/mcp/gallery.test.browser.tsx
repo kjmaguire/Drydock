@@ -162,7 +162,9 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
     expect(ml.textContent).toContain('Microsoft · official');
     expect(ml.textContent).toContain('Search and read official Microsoft');
     expect(ml.textContent).toContain('No account needed');
-    expect(ml.textContent).toContain('License MIT');
+    // the row's label says License; its value is the licence alone, not "License MIT" beside it again
+    const licence = [...ml.querySelectorAll('[data-part="label"]')].find((l) => l.textContent === 'License')!;
+    expect(licence.nextElementSibling!.textContent).toBe('MIT');
     expect(ml.querySelector('[data-testid="connector-status"]')!.textContent).toBe('Not connected');
     expect(ml.querySelector('a[target="_blank"]')!.getAttribute('href')).toBe('https://github.com/MicrosoftDocs/mcp');
     // no project yet: connecting still works; there is nothing about projects on the card

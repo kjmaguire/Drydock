@@ -189,7 +189,8 @@ describe("an agent's page", () => {
     expect(Array.from(now.querySelectorAll('.steps span')).map((x) => x.getAttribute('data-state'))).toEqual(['done', 'current', null, null]);
     expect(now.querySelector('[data-testid="task-status"]')!.textContent).toContain('In review');
     await waitFor(() => expect(now.querySelector('[data-testid="agent-activity"]')!.textContent).toContain('tool: Write'), r);
-    expect(now.querySelector('[data-testid="agent-activity"]')!.textContent).toContain('running');
+    // the run's status in words, never the core's constant
+    expect(now.querySelector('[data-testid="agent-activity"]')!.textContent).toContain('Running · started');
     // stats: two completed tasks as worker, one as reviewer, one of two passed first time, costs and times only where reported
     expect(now.querySelector('[data-testid="stat-merged"] b')!.textContent).toBe('2');
     expect(now.querySelector('[data-testid="stat-reviewed"] b')!.textContent).toBe('1');
