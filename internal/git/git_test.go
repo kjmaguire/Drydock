@@ -512,17 +512,16 @@ func TestDeletingAMissingWorktreeForgetsOnlyThatOne(t *testing.T) {
 	if err := r.DeleteWorktree(ctx, w, false); err != nil {
 		t.Fatal(err)
 	}
-	list, err := exec.Command("git", "-C", r.Root, "worktree", "list", "--porcelain").Output()
-	if err != nil {
-		t.Fatal(err)
+	// the task's entry is gone and the person's is still there (as this package reads them: paths as git recorded them)
+	var task, mine bool
+	for _, e := range r.registeredWorktrees() {
+		task = task || lexical(e.path) == lexical(w.Path)
+		mine = mine || filepath.Base(e.path) == "mine"
 	}
-	if strings.Contains(string(list), w.Path) {
-		t.Fatalf("the task's worktree is still registered:\n%s", list)
+	if task || !mine {
+		t.Fatalf("after the delete: task entry %v (want false), the person's entry %v (want true)", task, mine)
 	}
-	if !strings.Contains(string(list), own) {
-		t.Fatalf("the person's own worktree was forgotten:\n%s", list)
-	}
-	// plugged in again, it works as before
+	// plugged in again, it works as before: git status there needs the entry under .git/worktrees that a prune removes
 	if err := os.Rename(away, own); err != nil {
 		t.Fatal(err)
 	}

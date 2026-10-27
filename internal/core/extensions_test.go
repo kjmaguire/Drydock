@@ -25,8 +25,7 @@ func init() {
 	}})
 	core.RegisterExtension(core.Extension{Name: "panic-ext", Start: func(ctx context.Context, c *core.Core) (map[string]core.Method, func(), error) {
 		if extPanics.Load() {
-			var m map[string]int
-			m["boom"]++ // a nil map: the kind of mistake a bad row exposes
+			panic("a stored row this extension cannot read")
 		}
 		return map[string]core.Method{"panicext.ping": func(ctx context.Context, p json.RawMessage) (any, error) { return "ok", nil }}, nil, nil
 	}})

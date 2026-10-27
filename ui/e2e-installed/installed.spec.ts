@@ -142,7 +142,11 @@ test('nothing in the window threw, and every file of the app was there', async (
   // installed-app.json with its address.
   const own = consoleErrors.filter((e) => !e.startsWith('Failed to load resource'));
   expect(own).toEqual([]);
-  const missing = failedRequests.filter((r) => r.status === 404 && /\.(js|css|html|woff2?)(\?|$)|\/$/.test(new URL(r.url).pathname) && !r.url.endsWith('.map'));
+  // the Wails runtime asks (HEAD) whether the app ships an optional /wails/custom.js; Drydock does not, and that 404 is the answer
+  const wailsProbe = (r: { method: string; url: string }) => r.method === 'HEAD' && new URL(r.url).pathname === '/wails/custom.js';
+  const missing = failedRequests.filter(
+    (r) => r.status === 404 && !wailsProbe(r) && /\.(js|css|html|woff2?)(\?|$)|\/$/.test(new URL(r.url).pathname) && !r.url.endsWith('.map'),
+  );
   expect(missing).toEqual([]);
   expect(failedRequests.filter((r) => r.status >= 500)).toEqual([]);
 });

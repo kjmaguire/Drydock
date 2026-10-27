@@ -1128,6 +1128,20 @@ func TestContextCancellationWhileWaitingIsReturned(t *testing.T) {
 	}
 }
 
+// A caller whose context has already ended is told so, not that the provider is unavailable: the provider lookup fails on the
+// ended context, and that used to be reported as UnavailableError (release CI, Windows, 2026-10-27).
+func TestAnEndedContextIsNotReportedAsAnUnavailableProvider(t *testing.T) {
+	e := newEnv(t, nil)
+	srv := llmtest.New(t, okHandler("never", nil))
+	p := e.provider(providers.NewProvider{Name: "p", BaseURL: srv.URL + "/v1"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := e.w.Complete(ctx, req(p, publicManifest))
+	if !errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrProviderUnavailable) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestRequestValidation(t *testing.T) {
 	e := newEnv(t, nil)
 	if _, err := e.w.Complete(e.ctx, llm.Request{Model: "m"}); err == nil {

@@ -213,6 +213,11 @@ func (w *Wrapper) scan(ctx context.Context, req Request) error {
 func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(Delta) error) (Response, error) {
 	p, err := w.reg.Get(ctx, t.Provider)
 	if err != nil {
+		// the caller's own deadline or cancellation is said as such: reading the provider failed because the caller stopped
+		// waiting, not because the provider cannot be used (a slow Windows runner hit this between two attempts)
+		if cerr := ctx.Err(); cerr != nil {
+			return Response{}, cerr
+		}
 		return Response{}, &UnavailableError{Provider: t.Provider, Reason: err.Error()}
 	}
 	if !p.Enabled {
