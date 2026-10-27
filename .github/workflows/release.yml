@@ -122,13 +122,20 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
           description: Drydock
-      - name: NSIS
+      - name: NSIS, the pinned release (docs/software-notes.json tool:nsis)
+        env:
+          NSIS_VERSION: "3.13"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
-            choco install nsis -y --no-progress
+          $have = if (Get-Command makensis -ErrorAction SilentlyContinue) { (makensis -VERSION).Trim() } else { '' }
+          if ($have -ne "v$env:NSIS_VERSION") {
+            choco install nsis --version=$env:NSIS_VERSION -y --no-progress --allow-downgrade
+            $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
             "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
           }
+          $got = (makensis -VERSION).Trim()
+          if ($got -ne "v$env:NSIS_VERSION") { throw "makensis is $got, not v$env:NSIS_VERSION" }
+          "makensis $got"
       - name: The installer (per user, no administrator rights)
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
