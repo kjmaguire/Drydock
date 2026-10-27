@@ -61,6 +61,20 @@ func TestSuggestRule(t *testing.T) {
 	}
 }
 
+// A secret the shortening of a summary would cut in two is redacted first, so no part of it is kept (audit 2026-10-27).
+func TestAToolSummaryIsRedactedBeforeItIsShortened(t *testing.T) {
+	token := "ghp_" + strings.Repeat("A", 36)
+	redact := func(s string) string { return strings.ReplaceAll(s, token, "[REDACTED]") }
+	cmd := strings.Repeat("x", 150) + " " + token
+	got := RedactedToolSummary("Bash", json.RawMessage(`{"command":"`+cmd+`"}`), redact)
+	if strings.Contains(got, "ghp_") {
+		t.Fatalf("part of the token was kept: %q", got)
+	}
+	if bad := redact(ToolSummary("Bash", json.RawMessage(`{"command":"`+cmd+`"}`))); !strings.Contains(bad, "ghp_") {
+		t.Fatalf("the case does not cut the token: %q", bad)
+	}
+}
+
 func TestToolSummary(t *testing.T) {
 	for _, c := range []struct{ name, args, want string }{
 		{"Bash", `{"command":"go test ./...\n"}`, "Bash: go test ./..."},
@@ -82,9 +96,9 @@ func TestToolSummary(t *testing.T) {
 
 func TestAutoTitle(t *testing.T) {
 	for in, want := range map[string]string{
-		"\n\n  Fix the   login bug  \nmore":  "Fix the login bug",
-		strings.Repeat("word ", 30):          strings.TrimSpace(clipRunes(strings.TrimSpace(strings.Repeat("word ", 30)), 59)) + "…",
-		"   ":                                "",
+		"\n\n  Fix the   login bug  \nmore": "Fix the login bug",
+		strings.Repeat("word ", 30):         strings.TrimSpace(clipRunes(strings.TrimSpace(strings.Repeat("word ", 30)), 59)) + "…",
+		"   ":                               "",
 		"ünïcödé " + strings.Repeat("é", 80): "ünïcödé " + strings.Repeat("é", 51) + "…",
 	} {
 		got := AutoTitle(in)

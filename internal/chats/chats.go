@@ -289,6 +289,10 @@ type Service struct {
 	mu      sync.Mutex
 	running map[string]*turnState
 	asks    map[string]*pendingAsk // permission requests waiting for the person, by id
+
+	// beforeClaim, in tests only, runs after Send has read the chat and before it claims it: where a change committed meanwhile
+	// lands.
+	beforeClaim func(chatID string)
 }
 
 type turnState struct {
@@ -1181,7 +1185,16 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 	n.SkipsApprovals = SkipsApprovals(n.PermissionMode)
 	now := storage.Now()
 	n.Created, n.Updated, n.Version = now, now, 1
+	// the fork's files are copied inside the transaction, into the new chat's own folder: an attempt the transaction runs again
+	// or rolls back leaves files no row names, so each attempt starts that folder afresh and a failed fork removes it (audit
+	// 2026-10-27)
+	dropCopies := func() {
+		if s.d.AttachDir != nil {
+			_ = os.RemoveAll(s.d.AttachDir(n.ID))
+		}
+	}
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		dropCopies()
 		if err := insertChatTx(ctx, tx, n); err != nil {
 			return err
 		}
@@ -1220,6 +1233,7 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 		return nil
 	})
 	if err != nil {
+		dropCopies()
 		return Chat{}, err
 	}
 	s.publish(ctx, "chat.created", n.ProjectID, map[string]any{"chatId": n.ID, "chat": n, "forkedFrom": src.ID})

@@ -1,5 +1,7 @@
 package localllm
 
+import "math"
+
 // Memory is the PC's RAM.
 type Memory struct {
 	Total     uint64 `json:"totalBytes"`
@@ -26,8 +28,12 @@ func FitWithKV(size uint64, kv *KVCache, d Devices, m Memory) Fit {
 	if kv == nil || !kv.Known {
 		return FitOf(size, d, m)
 	}
-	f := FitOf(size+kv.Bytes, d, m)
-	f.KVBytes, f.NeedBytes = kv.Bytes, size+kv.Bytes
+	need := size + kv.Bytes
+	if need < size { // the sum would wrap around and say a model fits that cannot
+		need = math.MaxUint64
+	}
+	f := FitOf(need, d, m)
+	f.KVBytes, f.NeedBytes = kv.Bytes, need
 	return f
 }
 

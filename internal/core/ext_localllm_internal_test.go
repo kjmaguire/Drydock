@@ -31,3 +31,26 @@ func TestADownloadWhoseRowIsGoneEndsQuietly(t *testing.T) {
 		t.Fatalf("%+v", l.downloads)
 	}
 }
+
+// The update offered is the newest release of the installed build's own source and backend: a release read for another build
+// (the official one, before the TurboQuant build was installed) is not offered as its update (audit 2026-10-27).
+func TestAnUpdateIsOfferedOnlyForTheBuildItWasReadFor(t *testing.T) {
+	official, _ := localllm.SourceByID(localllm.SourceOfficial)
+	tq, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	off := localllm.Installed{Source: official.ID, Backend: localllm.Vulkan, Tag: "b6000"}
+	quant := localllm.Installed{Source: tq.ID, Backend: localllm.Vulkan, Tag: "b10298-2.0.0"}
+	if got := offeredLatest("b6100", buildKey(off), off, official); got != "b6100" {
+		t.Fatalf("the official build's own update: %q", got)
+	}
+	if got := offeredLatest("b6100", buildKey(off), quant, tq); got != "" {
+		t.Fatalf("the TurboQuant build was offered the official tag %q", got)
+	}
+	cpu := off
+	cpu.Backend = localllm.CPU
+	if got := offeredLatest("b6100", buildKey(off), cpu, official); got != "" {
+		t.Fatalf("another backend was offered %q", got)
+	}
+	if got := offeredLatest("b10350-2.1.0", buildKey(quant), quant, tq); got != "b10350-2.1.0" {
+		t.Fatalf("the TurboQuant build's own update: %q", got)
+	}
+}

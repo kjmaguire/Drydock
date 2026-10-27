@@ -159,6 +159,11 @@ describe('the Inbox', () => {
     await waitFor(() => expect(calls.forTask).toEqual([['run1', 'apr1']]), r);
     expect(calls.respond).toEqual([]);
     await waitFor(() => expect(r.$('[role="status"]')!.textContent).toContain('Answer sent'), r);
+    // the item stays until the core confirms: another key does not answer it again (audit 2026-10-27)
+    await r.act(() => press('d'));
+    await r.act(() => press('a'));
+    await new Promise((res) => setTimeout(res, 50));
+    expect([calls.forTask, calls.respond]).toEqual([[['run1', 'apr1']], []]);
     cleanup();
 
     const two = await open();

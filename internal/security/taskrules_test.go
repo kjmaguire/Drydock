@@ -130,6 +130,42 @@ func TestATaskRuleApprovesTheSameCallOfTheTaskWithoutAsking(t *testing.T) {
 	}
 }
 
+// A task rule holds the words the person approved: a quoted "*" or "**" among them is that word, not a wildcard, so the rule
+// covers that call only (audit 2026-10-27).
+func TestATaskRuleTakesAQuotedStarAsAWordNotAWildcard(t *testing.T) {
+	r := newPermRig(t)
+	store := &rulesOf{}
+	r.gate.TaskRules = store.get
+	ctx := context.Background()
+	curl := func(cmd string) ToolRequest {
+		return ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": cmd}), Root: r.root}
+	}
+	ch := r.decideAsync(t, curl("curl '**'"))
+	id := r.waitRequested(t)
+	rule, err := r.gate.TaskRuleFor(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rule.Commands) != 1 || len(rule.Commands[0].Args) != 1 || rule.Commands[0].Args[0] != "**" {
+		t.Fatalf("rule %+v", rule)
+	}
+	store.add(rule)
+	_ = r.apr.Decide(ctx, id, DecisionApprove, "human:kyle")
+	await(t, ch)
+	if o := r.gate.Decide(ctx, permScope, curl("curl '**'")); o.Outcome != PermissionApprovedForTask {
+		t.Fatalf("the same call: %+v", o)
+	}
+	for _, cmd := range []string{"curl https://example.org", "curl https://example.org https://example.com"} {
+		ch := make(chan PermissionOutcome, 1)
+		go func() { ch <- r.gate.Decide(ctx, permScope, curl(cmd)) }()
+		id := r.waitRequested(t)
+		_ = r.apr.Decide(ctx, id, DecisionReject, "human:kyle")
+		if o := await(t, ch); o.Outcome != PermissionRejected {
+			t.Fatalf("%s was covered by the rule for curl '**': %+v", cmd, o)
+		}
+	}
+}
+
 // What the rules mark as dangerous is asked every time: it cannot be approved for the task, and a rule naming it (one written
 // by hand) does not cover it either.
 func TestDangerousCallsAreNeverApprovedForTheTask(t *testing.T) {

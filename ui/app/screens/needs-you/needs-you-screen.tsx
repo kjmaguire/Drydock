@@ -585,14 +585,15 @@ function NeedsDetail(
   const approve = (once = false) => {
     const a = answer();
     const d = detail.data;
-    if (!d || a.kind === 'open' || readOnly() || act.busy) return;
+    // an answer already sent is not sent again by a second key while the item waits to leave the list (audit 2026-10-27)
+    if (!d || a.kind === 'open' || readOnly() || act.busy || sent) return;
     if (a.kind === 'permission' && a.forTask && !once) respond('approve', () => s.client.runApproveForTask(a.runId, d.id));
     else respond(once ? 'once' : 'approve', () => s.client.runRespond(a.runId, d.id, 'approved'));
   };
   const deny = () => {
     const a = answer();
     const d = detail.data;
-    if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy) return;
+    if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy || sent) return;
     respond('deny', () => s.client.runRespond(a.runId, d.id, 'rejected'));
   };
 

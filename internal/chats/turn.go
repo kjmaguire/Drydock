@@ -40,6 +40,7 @@ type SendReq struct {
 	// Files are files and pictures sent with the message (P90): at most MaxFiles, each at most MaxFileBytes.
 	Files []FileIn `json:"files"`
 
+	retries     int          // claims refused because the chat changed after it was read (at most maxClaimRetries)
 	replaceFrom int64        // Resend: the person's message this turn replaces, with everything after it
 	replaceID   string       // and that message's id, checked again once the turn holds the chat
 	keep        []Attachment // and its files, which the new message keeps
@@ -157,6 +158,9 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		}
 	}
 
+	if s.beforeClaim != nil {
+		s.beforeClaim(c.ID)
+	}
 	// one turn at a time: the in-memory reservation, then the row (which also covers a second process on the same data)
 	turnID := ids.New("cturn")
 	tctx, cancel := context.WithCancelCause(s.bg)
@@ -177,16 +181,23 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		attachedIDs = append(attachedIDs, a.chat.ID)
 	}
 	aj, _ := json.Marshal(attachedIDs)
-	var claimed bool
+	var claimed, changed bool
 	var dropped []string // files of the messages a resend removes
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		dropped = nil
-		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=?, version=version+1 WHERE id=? AND status<>?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning)
+		dropped, changed = nil, false
+		// claimed only as it was read: a change committed since (its adapter, folder, project or session, chat.update) would
+		// otherwise be overwritten by this turn's folder and run with the settings it replaced (audit 2026-10-27)
+		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=?, version=version+1 WHERE id=? AND status<>? AND version=?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning, c.Version)
 		if err != nil {
 			return err
 		}
 		n, _ := res.RowsAffected()
 		if claimed = n == 1; !claimed {
+			var status string
+			if err := tx.QueryRowContext(ctx, `SELECT status FROM chats WHERE id=?`, c.ID).Scan(&status); err != nil {
+				return err
+			}
+			changed = status != StatusRunning
 			return nil
 		}
 		if r.replaceFrom > 0 {
@@ -227,6 +238,14 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	})
 	if err != nil || !claimed {
 		release()
+		if err == nil && changed {
+			// the chat changed after it was read: send again with it as it is now
+			if r.retries < maxClaimRetries {
+				r.retries++
+				return s.Send(ctx, r)
+			}
+			err = errors.New("this chat kept changing while the message was being sent: send it again")
+		}
 		if err == nil {
 			err = ErrBusy
 		}
@@ -265,6 +284,9 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	})
 	return res, nil
 }
+
+// maxClaimRetries is how many times Send reads the chat again when it changed between being read and being claimed.
+const maxClaimRetries = 3
 
 // unreserve ends turnID's hold on its chat, and only its own: by the time a turn's deferred release runs, the next turn may
 // already hold the chat.
@@ -597,7 +619,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 				}
 				t.seen[tc.ID] = true
 			}
-			summary := s.d.Redact(ToolSummary(tc.Name, tc.Args))
+			summary := s.d.Redact(RedactedToolSummary(tc.Name, tc.Args, s.d.Redact))
 			msg, err := s.insertMessage(context.Background(), c, t.turnID, RoleTool, summary, tc.Name, tc.Args, msgExtra{callID: tc.ID, thinking: t.takeThinking()})
 			if err != nil {
 				s.logf("chats: store tool message: %v", err)
@@ -627,7 +649,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 			var d workflow.PermissionDenial
 			if ch.Decode(&d) == nil && d.ToolName != "" {
 				o.sawOutput = true
-				t.store(RoleDenied, "Not allowed in this chat: "+ToolSummary(d.ToolName, d.Input), d.ToolName, d.Input)
+				t.store(RoleDenied, "Not allowed in this chat: "+RedactedToolSummary(d.ToolName, d.Input, s.d.Redact), d.ToolName, d.Input)
 			}
 		case workflow.ChunkPermission:
 			// an ACP agent asked; the turn's asker (permission.go) stores the request and waits for the person's answer

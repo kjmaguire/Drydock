@@ -341,7 +341,11 @@ func TestAnACPCallIsReadForTheAnalyzerOnlyWhereThatIsExact(t *testing.T) {
 		{agents.ToolAsk{Kind: "execute", Tool: "Run", Args: json.RawMessage(`{"command":"ls","cwd":"C:\\"}`)}, "acp:Run", `{"command":"ls","cwd":"C:\\"}`},
 		{agents.ToolAsk{Kind: "execute", Tool: "Run", Args: json.RawMessage(`{"command":["bash","-lc","ls"]}`)}, "acp:Run", `{"command":["bash","-lc","ls"]}`},
 		{agents.ToolAsk{Kind: "read", Tool: "Read", Locations: []string{"src/a.go"}}, "Read", `{"file_path":"src/a.go"}`},
-		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Locations: []string{"src/a.go"}, Args: json.RawMessage(`{"new":"x"}`)}, "Write", `{"file_path":"src/a.go"}`},
+		// an edit is a Write with what it writes, so a person asked sees it and the approval is bound to it
+		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Locations: []string{"src/a.go"}, Args: json.RawMessage(`{"new":"x"}`)}, "Write", `{"content":"{\"new\":\"x\"}","file_path":"src/a.go"}`},
+		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Locations: []string{"src/a.go"}}, "Write", `{"file_path":"src/a.go"}`},
+		// a delete is asked: as rm -r it would be destructive, and a Write of its path would let it through inside the worktree
+		{agents.ToolAsk{Kind: "delete", Tool: "Delete", Locations: []string{"build"}, Args: json.RawMessage(`{"path":"build"}`)}, "acp:Delete", `{"path":"build"}`},
 		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Args: json.RawMessage(`{"new":"x"}`)}, "acp:Edit", `{"new":"x"}`},
 		{agents.ToolAsk{Kind: "move", Tool: "Move", Locations: []string{"a", "b"}}, "acp:Move", `null`},
 		{agents.ToolAsk{Kind: "fetch", Tool: "Fetch", Args: json.RawMessage(`{"url":"https://x"}`)}, "acp:Fetch", `{"url":"https://x"}`},

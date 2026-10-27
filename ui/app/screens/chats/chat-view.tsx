@@ -194,16 +194,19 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   });
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
 
+  // the requests answered here: their cards go at once, so a second click cannot answer one again while the list is read
+  // again (audit 2026-10-27: Deny after Allow once was sent, refused, and left an error note)
+  const answered = new Set<string>();
   const answer = async (a: ChatAsk, allow: boolean) => {
     askErrFor = a.id;
-    await askAct.run(`${allow ? 'allow' : 'deny'}:${a.id}`, () => s.client.chatAnswer(handle.props.id, a.id, allow));
+    if (await askAct.run(`${allow ? 'allow' : 'deny'}:${a.id}`, () => s.client.chatAnswer(handle.props.id, a.id, allow).then(() => true))) answered.add(a.id);
     void asks.reload();
   };
   // "Allow <tool> in this chat": the call runs and its rule is recorded for the chat; refused (with the core's reason) the
   // request keeps waiting, to be allowed once or denied
   const remember = async (a: ChatAsk) => {
     askErrFor = a.id;
-    await askAct.run(`remember:${a.id}`, () => s.client.chatAllowAndRemember(handle.props.id, a.id));
+    if (await askAct.run(`remember:${a.id}`, () => s.client.chatAllowAndRemember(handle.props.id, a.id))) answered.add(a.id);
     void asks.reload();
   };
 
@@ -284,7 +287,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const cli = chatCliText(chat, installs.data ?? []);
     const projectName = s.workspace.projectList.find((p) => p.id === chat.projectId)?.name;
     const state = chatState(chat, running);
-    const waiting = asks.data ?? [];
+    const waiting = (asks.data ?? []).filter((a) => !answered.has(a.id));
     const askOf = new Map(waiting.map((a) => [a.messageId, a] as const));
     const askCard = (a: ChatAsk) => (
       <AskCard

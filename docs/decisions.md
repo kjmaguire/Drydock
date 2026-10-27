@@ -1238,3 +1238,13 @@ Open, owner action:
   `https://openrouter.ai/api/v1`, private, cheap), so the key is all a person types; with one, its state and **Open in Models**. One
   store and one form; an OpenRouter provider is recognised by its address, whatever it is called. `docs/integrations.md`, "As built:
   OpenRouter on the Integrations page".
+- **P104. The audit and chat performance review of 2026-10-27.** On the owner's words: "Do an audit on the app, and do a full
+  review on performance specifically chat performance." Report: `docs/review-2026-10-27-chat.md`. Behaviour that changed: (1) a
+  streamed chat answer redraws itself only (the feed's `stream` event), not the conversation; (2) `chat.delta` and
+  `chat.thinking` events are deleted after 30 days with `agent.output`; (3) a "rest of the task" approval matches the approved
+  command word for word: a quoted `*` or `**` among its words is that word, never a wildcard; (4) an ACP edit is asked about with
+  what it writes (the agent's own fields as the Write's `content`), and an ACP delete is always asked (it is not read as a Write
+  of its path); (5) a chat turn claims the chat only at the version it read, and reads it again when a change landed meanwhile;
+  (6) a chat tool summary is redacted before it is shortened; (7) the local server starts by itself only once the download's
+  llama.cpp build is in place, and an update read for one build's source and backend is never offered to another; (8) a GGUF
+  header is read for its own architecture's keys only, and a KV estimate refuses sizes no model has.

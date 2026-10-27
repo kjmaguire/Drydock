@@ -807,10 +807,13 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   const merge = async (x: TaskSummary) => {
     const req = mergeRequestOf(x);
     if (!req) return;
+    if (merging) return;
     merging = x.taskId;
-    await mergeAct.run('merge', () => s.client.runRespond(req.runId, req.requestId, APPROVE));
+    void handle.update();
+    // the card says Merging until the board is read again: a merged card offering Merge once more would answer the merge a
+    // second time, refused as "Could not merge" (audit 2026-10-27)
+    if ((await mergeAct.run('merge', () => s.client.runRespond(req.runId, req.requestId, APPROVE).then(() => true))) !== undefined) await summaries.reload();
     merging = '';
-    void summaries.reload();
     void handle.update();
   };
 

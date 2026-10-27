@@ -268,8 +268,10 @@ var acpBenignShellKeys = map[string]bool{"command": true, "description": true, "
 
 // acpToolRequest reads an ACP tool call as the analyzer's tool vocabulary where that reading is exact, so the same rules decide
 // it as decide a Claude call: a shell call that is only a command string is Bash; a read or search of one path is Read; an
-// edit or a delete of one path is Write. Anything else (a move between two paths, a fetch, a call whose fields would change
-// what runs) keeps the agent's own name and input, which no Drydock rule allows, so a person decides it.
+// edit of one path is Write, with the agent's own fields as its content, so a person asked about it sees what it writes and
+// the approval is bound to that (audit 2026-10-27: it was the path alone). Anything else (a delete, which as rm -r would be
+// destructive; a move between two paths, a fetch, a call whose fields would change what runs) keeps the agent's own name and
+// input, which no Drydock rule allows, so a person decides it.
 func acpToolRequest(q agents.ToolAsk) security.ToolRequest {
 	var fields map[string]any
 	_ = json.Unmarshal(q.Args, &fields)
@@ -291,9 +293,13 @@ func acpToolRequest(q agents.ToolAsk) security.ToolRequest {
 			in, _ := json.Marshal(map[string]string{"file_path": q.Locations[0]})
 			return security.ToolRequest{Tool: "Read", Input: in}
 		}
-	case "edit", "delete":
+	case "edit":
 		if len(q.Locations) == 1 {
-			in, _ := json.Marshal(map[string]string{"file_path": q.Locations[0]})
+			w := map[string]string{"file_path": q.Locations[0]}
+			if len(q.Args) > 0 && string(q.Args) != "null" {
+				w["content"] = string(q.Args)
+			}
+			in, _ := json.Marshal(w)
 			return security.ToolRequest{Tool: "Write", Input: in}
 		}
 	}
