@@ -59,7 +59,7 @@ function tid(root: ParentNode, id: string, optional = false): HTMLElement | null
 }
 const btn = (root: ParentNode, name: string) => byText<HTMLButtonElement>(root, 'button', name);
 const noButton = (root: ParentNode, name: string) => !Array.from(root.querySelectorAll('button')).some((b) => (b.textContent ?? '').trim() === name);
-const show = (client: Partial<Client>) => mount(<SupportScreen />, testServices(client));
+const show = (client: Partial<Client>) => mount(<SupportScreen />, testServices({ crashList: async () => ({ reports: [] }), ...client }));
 
 describe('SupportScreen', () => {
   it('says it is never uploaded and previews files and the scrub report without writing anything', async () => {
@@ -335,5 +335,30 @@ describe('SupportScreen', () => {
       { eventLimit: 200, includeRun: undefined },
       { eventLimit: undefined, includeRun: undefined },
     ]);
+  });
+
+  it('lists the crash reports kept on this computer, says they go into the bundle, and deletes one (review 2026-10-27)', async () => {
+    let reports = [{ name: 'crash-20261027T090000Z-100.txt', time: '2026-10-27T09:00:00Z', size: 2048, summary: 'panic: runtime error: index out of range [3] with length 3' }];
+    const deleted: string[] = [];
+    const r = show({
+      crashList: async () => ({ reports }),
+      crashDelete: async (name) => (deleted.push(name), (reports = []), { deleted: true }),
+    });
+    const group = await waitFor(() => tid(r.container, 'crash-reports'), r);
+    expect(group.textContent).toContain('index out of range');
+    expect(group.textContent).toContain('support bundle');
+    expect(r.container.querySelectorAll('[data-testid="crash-report"]').length).toBe(1);
+    await r.act(() => group.querySelector<HTMLButtonElement>('button[aria-label^="Delete the crash report"]')!.click());
+    await waitFor(() => {
+      if (tid(r.container, 'crash-reports', true)) throw new Error('still listed');
+    }, r);
+    expect(deleted).toEqual(['crash-20261027T090000Z-100.txt']);
+  });
+
+  it('draws no crash group when there is no report', async () => {
+    const r = show({});
+    await waitFor(() => btn(r.container, 'Preview the bundle'), r);
+    await r.act(() => undefined);
+    expect(tid(r.container, 'crash-reports', true)).toBe(null);
   });
 });

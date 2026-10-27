@@ -213,3 +213,31 @@ func TestWriteProducesAZip(t *testing.T) {
 		}
 	}
 }
+
+// Crash reports go in as crashes/<name>, scrubbed like the logs; anything else offered as one is left out (review 2026-10-27).
+func TestCrashReportsAreBundledScrubbed(t *testing.T) {
+	in := inputs()
+	in.Crashes = []LogFile{
+		{Name: "crash-20261027T101500Z-42.txt", Text: "panic: boom in C:\\Users\\Kyle Maguire\\repo\nkey " + fakeToken + "\ngoroutine 1 [running]:\n"},
+		{Name: "drydock.db", Text: "not a report"},
+	}
+	b, err := Build(context.Background(), in, opts(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm := fileMap(b)
+	got, ok := fm["crashes/crash-20261027T101500Z-42.txt"]
+	if !ok {
+		t.Fatalf("no crash report in the bundle: %v", fm)
+	}
+	if strings.Contains(got, fakeToken) || strings.Contains(got, "Kyle Maguire") || !strings.Contains(got, "panic: boom") {
+		t.Fatalf("the crash report was not scrubbed: %q", got)
+	}
+	refused := false
+	for _, r := range b.Report.Refused {
+		refused = refused || r.Name == "crashes/drydock.db"
+	}
+	if _, in := fm["crashes/drydock.db"]; in || !refused {
+		t.Fatal("a file that is not a crash report was bundled")
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/crashreport"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/uiassets"
 	"github.com/kjmaguire/drydock/internal/updatepolicy"
@@ -111,8 +112,15 @@ func Run(assets fs.FS) error {
 		},
 	})
 	bridge.app = wa
+	// past the single-instance check (a second launch has exited by now): what Go prints if this process dies is kept in a file
+	// of its own, and the next start makes a crash report of it (internal/crashreport); a normal exit removes the empty file
+	crash, err := crashreport.Arm(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: crash reports: %v\n", err)
+	}
+	defer crash.Disarm()
 	// the tools folder the download carries beside drydock.exe (decision P77): installed from there at the first start
-	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, PickFile: func(_ context.Context, p core.FilePick) (string, error) {
+	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, CrashOutput: crash.Path(), PickFile: func(_ context.Context, p core.FilePick) (string, error) {
 		// the window's own Open dialog (the Security page's "Choose file..."); "" when the person cancels
 		if wa == nil {
 			return "", fmt.Errorf("the window is not open yet")

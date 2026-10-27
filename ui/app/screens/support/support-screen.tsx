@@ -20,6 +20,7 @@ import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { RuleCounts } from '../data/rule-counts.tsx';
 import { confirmRow, Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
+import { CrashReports } from './crash-reports.tsx';
 import { bundleKey, bundleOpts, identityText, scrubbedFiles, type BundleOpts } from './support.ts';
 import { plural } from '../../lib/format.ts';
 
@@ -213,6 +214,8 @@ export function SupportScreen(handle: Handle) {
               bundles work in every license state.
             </span>
           </p>
+
+          <CrashReports />
 
           <Group
             title="Build a bundle"

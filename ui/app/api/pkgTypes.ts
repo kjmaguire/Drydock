@@ -192,3 +192,12 @@ export interface BundleExists {
   size: number;
 }
 export type BundleResult = BundleCreated | BundleExists;
+
+/** A crash report kept on this machine (internal/crashreport): what Go printed when a run of Drydock died, secrets redacted. */
+export interface CrashReport {
+  name: string;
+  time: string;
+  size: number;
+  /** The line that says why: "panic: ..." or "fatal error: ...". */
+  summary: string;
+}

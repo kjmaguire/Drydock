@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/applog"
+	"github.com/kjmaguire/drydock/internal/crashreport"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/projectio"
@@ -274,6 +275,14 @@ func (p *packaging) bundleInputs(ctx context.Context, r bundleReq) (supportbundl
 			continue
 		}
 		in.Logs = append(in.Logs, supportbundle.LogFile{Name: filepath.Base(f), Text: string(b)})
+	}
+	// the crash reports on this machine (internal/crashreport), already redacted once and scrubbed again by the builder
+	if rs, err := crashreport.List(c.cfg.DataDir); err == nil {
+		for _, r := range rs {
+			if text, err := crashreport.Read(c.cfg.DataDir, r.Name); err == nil {
+				in.Crashes = append(in.Crashes, supportbundle.LogFile{Name: r.Name, Text: text})
+			}
+		}
 	}
 	limit := r.EventLimit
 	if limit <= 0 || limit > 5000 {

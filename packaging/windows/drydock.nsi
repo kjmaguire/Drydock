@@ -93,15 +93,17 @@ Function CloseRunningApp
   ${IfNot} ${FileExists} "$INSTDIR\${EXE}"
     Return
   ${EndIf}
+  ; Windows lets a running program's file be renamed, but not opened for writing: that is the test (a rename passed, and the
+  ; silent install then left the old program in place and said it had succeeded; release run 2, 2026-10-27)
   retry:
     ClearErrors
-    Rename "$INSTDIR\${EXE}" "$INSTDIR\${EXE}.installing"
+    FileOpen $0 "$INSTDIR\${EXE}" a
     ${If} ${Errors}
       MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${APP} is running. Close it, then choose Retry." /SD IDCANCEL IDRETRY retry
       SetErrorLevel 4
       Quit
     ${EndIf}
-    Rename "$INSTDIR\${EXE}.installing" "$INSTDIR\${EXE}"
+    FileClose $0
 FunctionEnd
 
 Function .onInit

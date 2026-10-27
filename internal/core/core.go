@@ -118,6 +118,10 @@ type Config struct {
 	// removed by a person is downloaded and installed, and the twice-daily update check installs a newer scan tool release
 	// instead of only offering it. The desktop app sets it; tests leave it off so nothing installs behind their back.
 	AutoSetup bool
+	// CrashOutput is the file this process's crash output goes to (internal/crashreport.Arm, set by the desktop app before the
+	// core opens). At start the core turns every other such file that has text, the ones earlier runs died writing, into a crash
+	// report; empty leaves it alone except for not collecting others' files as its own.
+	CrashOutput string
 }
 
 // FilePick is what a file dialog asks for.
