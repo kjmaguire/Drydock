@@ -42,6 +42,7 @@ const (
 	ggufMaxArray  = 1 << 28
 	ggufMaxRead   = 1 << 30 // the header with its tokenizer arrays comes well before this
 	ggufMaxKept   = 1 << 17 // values kept over all the wanted keys (a model has one per layer for a few keys)
+	ggufMaxKeys   = 64      // wanted keys kept (a model has nine; more come only from keys read before the architecture)
 )
 
 // GGUF value types.
@@ -155,18 +156,32 @@ func clampNeg(v int64) uint64 {
 	return uint64(v)
 }
 
-// wanted says whether a key is one the estimate reads (by its suffix after the architecture's name).
+// wantedSuffixes are the keys the estimate reads, after the architecture's name.
+var wantedSuffixes = map[string]bool{".block_count": true, ".context_length": true, ".embedding_length": true, ".attention.head_count": true,
+	".attention.head_count_kv": true, ".attention.key_length": true, ".attention.value_length": true, ".attention.sliding_window": true,
+	".attention.kv_lora_rank": true}
+
+// wanted says whether a key is one the estimate reads: an architecture's name (one word, no dot) and one of wantedSuffixes,
+// exactly. "a.<anything>.block_count" is not one (review 2026-10-27: such keys were kept without bound).
 func wanted(key string) bool {
 	if key == "general.architecture" {
 		return true
 	}
-	for _, s := range []string{".block_count", ".context_length", ".embedding_length", ".attention.head_count", ".attention.head_count_kv",
-		".attention.key_length", ".attention.value_length", ".attention.sliding_window", ".attention.kv_lora_rank"} {
-		if strings.HasSuffix(key, s) {
-			return true
-		}
+	i := strings.IndexByte(key, '.')
+	return i > 0 && wantedSuffixes[key[i:]]
+}
+
+// ggufKept bounds what the header reader keeps: the values over all keys, and the keys.
+type ggufKept struct{ keys, values uint64 }
+
+// take reports whether a wanted key's n values may be kept, and counts them when they may.
+func (k *ggufKept) take(n uint64) bool {
+	if k.keys >= ggufMaxKeys || k.values+n > ggufMaxKept {
+		return false
 	}
-	return false
+	k.keys++
+	k.values += n
+	return true
 }
 
 func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
@@ -191,9 +206,10 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 	}
 	ints := map[string][]uint64{}
 	arch := ""
-	// the values kept, over all keys: a header can name the wanted suffixes under any number of keys of other architectures,
-	// each with an array of 65,536 values, which kept as uint64 would take gigabytes (audit 2026-10-27)
-	kept := uint64(0)
+	// what is kept, over all keys: a header can name the wanted suffixes under any number of keys of other architectures,
+	// each with an array of 65,536 values, which kept as uint64 would take gigabytes (audit 2026-10-27), or as many scalar
+	// keys, each up to 64 KB long (review 2026-10-27)
+	var kept ggufKept
 	for i := uint64(0); i < nkv; i++ {
 		key, err := g.str(ggufMaxKey)
 		if err != nil {
@@ -228,8 +244,7 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 			}
 			size := scalarSize(et)
 			switch {
-			case want && size > 0 && n <= 1<<16 && kept+n <= ggufMaxKept:
-				kept += n
+			case want && size > 0 && n <= 1<<16 && kept.take(n):
 				vals := make([]uint64, 0, n)
 				for j := uint64(0); j < n; j++ {
 					v, err := g.integer(et)
@@ -254,7 +269,7 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 				return GGUFInfo{}, fmt.Errorf("%w: array of type %d", errNotGGUF, et)
 			}
 		default:
-			if want {
+			if want && kept.take(1) {
 				v, err := g.integer(t)
 				if err != nil {
 					return GGUFInfo{}, errNotGGUF

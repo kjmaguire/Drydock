@@ -754,7 +754,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   let view: View = readView();
   let filter: BoardFilter = {};
   let range: TimelineRange = 'today';
-  let merging = '';
+  const merging = new Set<string>(); // the cards whose merge is on its way: each card merges by itself
   let labelsFor: TaskSummary | undefined;
   const mergeAct = action(handle);
   const pid = () => s.workspace.projectId ?? '';
@@ -807,13 +807,14 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   const merge = async (x: TaskSummary) => {
     const req = mergeRequestOf(x);
     if (!req) return;
-    if (merging) return;
-    merging = x.taskId;
+    // a card already merging is not merged again; another card's Merge goes ahead (review 2026-10-27: it did nothing)
+    if (merging.has(x.taskId)) return;
+    merging.add(x.taskId);
     void handle.update();
     // the card says Merging until the board is read again: a merged card offering Merge once more would answer the merge a
     // second time, refused as "Could not merge" (audit 2026-10-27)
     if ((await mergeAct.run('merge', () => s.client.runRespond(req.runId, req.requestId, APPROVE).then(() => true))) !== undefined) await summaries.reload();
-    merging = '';
+    merging.delete(x.taskId);
     void handle.update();
   };
 
@@ -901,7 +902,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
         asked={asked.has(x.taskId)}
         origin={origins.get(x.taskId)}
         readOnly={readOnly}
-        merging={merging === x.taskId}
+        merging={merging.has(x.taskId)}
         onMerge={(t) => void merge(t)}
         onViewDiff={() => s.ui.openDock('diff')}
         onLabels={(t) => {

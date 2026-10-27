@@ -1247,4 +1247,8 @@ Open, owner action:
   of its path); (5) a chat turn claims the chat only at the version it read, and reads it again when a change landed meanwhile;
   (6) a chat tool summary is redacted before it is shortened; (7) the local server starts by itself only once the download's
   llama.cpp build is in place, and an update read for one build's source and backend is never offered to another; (8) a GGUF
-  header is read for its own architecture's keys only, and a KV estimate refuses sizes no model has.
+  header is read for its own architecture's keys only, and a KV estimate refuses sizes no model has. Amended after the code
+  review of the audit's own fixes (report section 4): (3) covers the command's redirections too, word for word; (4) shows an
+  edit's one written text as itself, and an edit whose fields name another file than its location is asked as the agent's own
+  call; the composer takes a message out of the box when it is sent and puts it back if the send fails; (7) also holds when the
+  build is fetched rather than taken from the download; (8) keeps at most 64 keys, each named exactly `<arch>.<key>`.

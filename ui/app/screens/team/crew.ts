@@ -289,3 +289,47 @@ export function localIds(agents: readonly Pick<Agent, 'id' | 'providerId'>[], lo
   if (local?.providerId) for (const a of agents) if (a.providerId === local.providerId) out.add(a.id);
   return out;
 }
+
+/** What the Crew page's cards look up by id. */
+export interface CrewLookups {
+  /** Each agent's presence: the first one listed. */
+  presenceById: Map<string, PresenceState>;
+  /** Each agent's tasks, in the order listed. */
+  byAssignee: Map<string, TaskSummary[]>;
+  /** Each task: the first one listed. */
+  byTask: Map<string, TaskSummary>;
+  /** Each project's agent ids, in the order listed. */
+  teamOf: Map<string, string[]>;
+  /** Each agent's skill names, in the order listed. */
+  skillsOf: Map<string, string[]>;
+}
+
+/**
+ * The Crew page's lookups, built once a render: the all-projects page holds every project's agents and tasks, and a filter
+ * per card made each render agents x tasks (audit 2026-10-27).
+ */
+export function crewLookups(
+  presence: readonly PresenceState[],
+  list: readonly TaskSummary[],
+  agents: readonly Pick<Agent, 'id' | 'projectId'>[],
+  skills: readonly { agentId: string; name: string }[],
+): CrewLookups {
+  const push = <V>(m: Map<string, V[]>, k: string, v: V) => {
+    const l = m.get(k);
+    if (l) l.push(v);
+    else m.set(k, [v]);
+  };
+  const presenceById = new Map<string, PresenceState>();
+  for (const x of presence) if (!presenceById.has(x.agentId)) presenceById.set(x.agentId, x);
+  const byAssignee = new Map<string, TaskSummary[]>();
+  const byTask = new Map<string, TaskSummary>();
+  for (const x of list) {
+    if (x.assignee) push(byAssignee, x.assignee, x);
+    if (!byTask.has(x.taskId)) byTask.set(x.taskId, x);
+  }
+  const teamOf = new Map<string, string[]>();
+  for (const x of agents) push(teamOf, x.projectId, x.id);
+  const skillsOf = new Map<string, string[]>();
+  for (const k of skills) push(skillsOf, k.agentId, k.name);
+  return { presenceById, byAssignee, byTask, teamOf, skillsOf };
+}

@@ -237,26 +237,36 @@ export function ChatComposer(
     void handle.update();
   };
 
-  const canSend = () => !handle.props.disabled && !handle.props.running && !handle.props.sending && text.trim().length > 0;
+  const canSend = () => !handle.props.disabled && !handle.props.running && !handle.props.sending && text.trim().length > 0 && files.length <= MAX_FILES;
 
   const submit = async () => {
     if (!canSend()) return;
+    // what is sent leaves the box at once, so what the person types, attaches or drops while it is on its way is theirs alone;
+    // a send that fails puts it back in front (review 2026-10-27: clearing on the answer left an edited message to send twice)
     const sent = { text, attach, files };
+    text = '';
+    attach = [];
+    files = [];
+    fileError = undefined;
+    show();
     const ok = await handle.props.onSend(sent.text, sent.attach, sent.files);
-    if (ok) {
-      // only what was sent goes: what the person typed, attached or dropped while the message was on its way stays (audit
-      // 2026-10-27: it was wiped)
-      text = text === sent.text ? '' : text.startsWith(sent.text) ? text.slice(sent.text.length).trimStart() : text;
-      attach = attach.filter((id) => !sent.attach.includes(id));
-      files = files.filter((f) => !sent.files.includes(f));
-      fileError = undefined;
-      if (area) {
-        area.value = text;
-        area.style.height = '';
-        if (text) fit();
-      }
-      void handle.update();
+    if (!ok) {
+      text = text.trim() ? `${sent.text}\n${text}` : sent.text;
+      attach = [...sent.attach, ...attach.filter((id) => !sent.attach.includes(id))].slice(0, MAX_ATTACH);
+      files = [...sent.files, ...files];
+      // files dropped meanwhile can take the two over the limit: all are kept and the person removes some before sending again
+      if (files.length > MAX_FILES) fileError = new Error(checkFiles(0, files));
+      show();
     }
+  };
+
+  const show = () => {
+    if (area) {
+      area.value = text;
+      area.style.height = '';
+      if (text) fit();
+    }
+    void handle.update();
   };
 
   const fit = () => {
@@ -323,6 +333,7 @@ export function ChatComposer(
                     aria-label={`Remove attached file ${f.name}`}
                     mix={on('click', () => {
                       files = files.filter((_, j) => j !== i);
+                      if (files.length <= MAX_FILES) fileError = undefined;
                       void handle.update();
                     })}
                   >

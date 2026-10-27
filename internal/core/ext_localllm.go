@@ -439,12 +439,12 @@ func (l *localExt) install(ctx context.Context, source string, backend localllm.
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may install the local models' runtime")
 	}
-	return l.startInstall(ctx, source, backend)
+	return l.startInstall(ctx, source, backend, nil)
 }
 
 // startInstall installs, in the background, the newest build of source for backend (the saved settings, then the suggested
 // backend, fill what is empty) and answers with the view; a person's install and Drydock's own setup both come here.
-func (l *localExt) startInstall(ctx context.Context, source string, backend localllm.Backend) (LocalView, error) {
+func (l *localExt) startInstall(ctx context.Context, source string, backend localllm.Backend, then func()) (LocalView, error) {
 	if !l.m.Supported() {
 		return LocalView{}, errors.New("local models run on Windows only")
 	}
@@ -496,11 +496,16 @@ func (l *localExt) startInstall(ctx context.Context, source string, backend loca
 		return LocalView{}, err
 	}
 	l.changed("install", map[string]any{"state": "running"})
-	safe.Go("core.localExt.install", func() { l.runInstall(jctx, src, s.Backend) })
+	safe.Go("core.localExt.install", func() { l.runInstall(jctx, src, s.Backend, then) })
 	return l.view(ctx), nil
 }
 
-func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend localllm.Backend) {
+// runInstall installs the newest build of src for backend; then, when set, runs once the install has ended (whatever its
+// outcome) and the server it stopped is started again.
+func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend localllm.Backend, then func()) {
+	if then != nil {
+		defer then() // deferred first, so it runs last
+	}
 	finish := func(err error) {
 		l.mu.Lock()
 		l.job.Ended = time.Now().UTC()
@@ -897,26 +902,23 @@ func (l *localExt) autostart(ctx context.Context) {
 // (localllm.Runtime.SeedFromBundle). The first time, the settings follow the build: its source, and its first KV cache type
 // (turbo4 for the TurboQuant build), unless the person already chose. A tools folder that cannot be read, or that names a
 // source Drydock does not know, is logged and set up like a download without one (setupMissing). then runs once the build is
-// in place, or at once when there is nothing to put in place.
+// in place, or once the build setupMissing fetches instead has been installed, or at once when there is nothing to put in place.
 func (l *localExt) seedBundled(ctx context.Context, then func()) {
 	m, err := bundle.Read(l.c.cfg.BundleDir)
 	if err != nil {
 		l.c.logf("local models: the download's tools: %v", err)
-		l.setupMissing(ctx)
-		then()
+		l.setupMissing(ctx, then)
 		return
 	}
 	if m == nil || m.Llama == nil {
-		l.setupMissing(ctx)
-		then()
+		l.setupMissing(ctx, then)
 		return
 	}
 	b, dir := *m.Llama, l.c.cfg.BundleDir
 	src, ok := localllm.SourceByID(b.Source)
 	if !ok {
 		l.c.logf("local models: the download names %q, not a build source", b.Source)
-		l.setupMissing(ctx)
-		then()
+		l.setupMissing(ctx, then)
 		return
 	}
 	l.mu.Lock()
@@ -945,7 +947,6 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 		l.mu.Unlock()
 		if err != nil {
 			l.c.logf("local models: llama.cpp from the download: %v", err)
-			l.setupMissing(context.Background()) // the download's copy failed its check: fetch the build instead
 		}
 		if did {
 			l.c.logf("local models: %s %s (%s) installed from the download", src.Name, in.Tag, in.Backend)
@@ -960,6 +961,10 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 		if err != nil || did {
 			l.changed("runtime", nil)
 		}
+		if err != nil {
+			l.setupMissing(context.Background(), then) // the download's copy failed its check: fetch the build instead
+			return
+		}
 		then()
 	})
 }
@@ -968,8 +973,15 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 // merged with the TurboQwant from Google ... I don't want to hit a button that says install llama.cpp") when AutoSetup is on,
 // local models can run here, and there is no build that a person has not removed: a download without its tools folder sets
 // local models up by itself. The backend is the saved one, else the one suggested for this PC when the fork builds it, else
-// Vulkan (the download's own choice, which runs on any GPU).
-func (l *localExt) setupMissing(ctx context.Context) {
+// Vulkan (the download's own choice, which runs on any GPU). then runs once the install it starts has ended, or at once when it
+// starts none (review 2026-10-27: Autostart ran before the build was fetched, found none, and never ran again).
+func (l *localExt) setupMissing(ctx context.Context, then func()) {
+	started := false
+	defer func() {
+		if !started {
+			then()
+		}
+	}()
 	if !l.c.cfg.AutoSetup || !l.m.Supported() || l.m.Runtime.Removed() {
 		return
 	}
@@ -991,10 +1003,11 @@ func (l *localExt) setupMissing(ctx context.Context) {
 			l.c.logf("local models: settings for the runtime: %v", err)
 		}
 	}
-	if _, err := l.startInstall(ctx, src.ID, backend); err != nil {
+	if _, err := l.startInstall(ctx, src.ID, backend, then); err != nil {
 		l.c.logf("local models: setting up the runtime: %v", err)
 		return
 	}
+	started = true
 	l.c.logf("local models: no runtime here: installing %s for %s", src.Name, localllm.Describe(backend).Label)
 }
 
@@ -1039,7 +1052,7 @@ func (l *localExt) checkAndInstall(ctx context.Context) (LocalView, error) {
 	if v.Runtime.Latest == "" {
 		return v, nil
 	}
-	return l.startInstall(ctx, v.Runtime.Source, v.Runtime.Backend)
+	return l.startInstall(ctx, v.Runtime.Source, v.Runtime.Backend, nil)
 }
 
 // checkUpdates reads the newest release of the installed build's source and backend; a change is announced.

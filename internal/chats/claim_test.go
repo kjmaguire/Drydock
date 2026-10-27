@@ -2,6 +2,7 @@ package chats
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -95,5 +96,35 @@ func TestAFailedForkLeavesNoCopiedFiles(t *testing.T) {
 			left, _ := os.ReadDir(filepath.Join(root, e.Name()))
 			t.Fatalf("the failed fork left %s with %d files", e.Name(), len(left))
 		}
+	}
+}
+
+// A chat deleted while a message to it is on its way answers the send with "chat not found", not the database's own words
+// (review 2026-10-27: "sql: no rows in result set").
+func TestASendToAChatDeletedMeanwhileSaysTheChatIsGone(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.OpenTemp(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s := New(Deps{DB: db, Runtime: &rt.Runtime{}, Capabilities: func(string) (agents.Capabilities, bool) { return agents.Capabilities{}, true }}, Options{})
+	defer s.Close()
+	c, err := s.Create(ctx, CreateReq{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.beforeClaim = func(id string) {
+		if _, err := db.Writer().ExecContext(ctx, `DELETE FROM chats WHERE id=?`, id); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := s.Send(ctx, SendReq{ID: c.ID, Text: "hello"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("send: %v", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.running) != 0 {
+		t.Fatalf("the chat is still held: %v", s.running)
 	}
 }

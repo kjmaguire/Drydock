@@ -344,6 +344,10 @@ func TestAnACPCallIsReadForTheAnalyzerOnlyWhereThatIsExact(t *testing.T) {
 		// an edit is a Write with what it writes, so a person asked sees it and the approval is bound to it
 		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Locations: []string{"src/a.go"}, Args: json.RawMessage(`{"new":"x"}`)}, "Write", `{"content":"{\"new\":\"x\"}","file_path":"src/a.go"}`},
 		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Locations: []string{"src/a.go"}}, "Write", `{"file_path":"src/a.go"}`},
+		// a path and one text: the text is what the person sees (Gemini's write_file), not the fields as JSON
+		{agents.ToolAsk{Kind: "edit", Tool: "write_file", Locations: []string{"src/a.go"}, Args: json.RawMessage(`{"file_path":"src/a.go","content":"package a\n"}`)}, "Write", `{"content":"package a\n","file_path":"src/a.go"}`},
+		// fields that write elsewhere than the location reported are not a Write of that location: a person decides
+		{agents.ToolAsk{Kind: "edit", Tool: "write_file", Locations: []string{"src/a.go"}, Args: json.RawMessage(`{"file_path":"src/b.go","content":"x"}`)}, "acp:write_file", `{"file_path":"src/b.go","content":"x"}`},
 		// a delete is asked: as rm -r it would be destructive, and a Write of its path would let it through inside the worktree
 		{agents.ToolAsk{Kind: "delete", Tool: "Delete", Locations: []string{"build"}, Args: json.RawMessage(`{"path":"build"}`)}, "acp:Delete", `{"path":"build"}`},
 		{agents.ToolAsk{Kind: "edit", Tool: "Edit", Args: json.RawMessage(`{"new":"x"}`)}, "acp:Edit", `{"new":"x"}`},

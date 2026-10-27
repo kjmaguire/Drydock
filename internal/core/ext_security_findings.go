@@ -259,7 +259,9 @@ func (s *securityExt) lastReport(ctx context.Context, t target) (*scan.Report, e
 	s.mu.Lock()
 	r, ok := s.running[t.Key]
 	kept, held := s.unstored[t.Key]
-	kept = kept.Clone() // the caller changes it (the dismissals), outside the lock
+	if held && !ok {
+		kept = kept.Clone() // the caller changes it (the dismissals), outside the lock; copied only when it is the answer
+	}
 	s.mu.Unlock()
 	if ok {
 		rep := r.Snapshot()

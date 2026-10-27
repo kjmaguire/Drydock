@@ -238,3 +238,18 @@ func TestVisibility(t *testing.T) {
 		t.Fatal("a project chat reads its project and unscoped chats; an unscoped chat reads all")
 	}
 }
+
+// A long input is scanned for secrets only as far as can reach the summary line (review 2026-10-27: a 2 MB input was scanned
+// in full, and the line scanned again by every caller).
+func TestAToolSummaryScansOnlyTheStartOfALongInput(t *testing.T) {
+	var scanned int
+	redact := func(s string) string { scanned += len(s); return s }
+	big := strings.Repeat("y", 2<<20)
+	got := RedactedToolSummary("mcp__files__put", json.RawMessage(`{"content":"`+big+`"}`), redact)
+	if !strings.HasPrefix(got, `mcp__files__put: {"content":"yyy`) || !strings.HasSuffix(got, "…") {
+		t.Fatalf("%q", got)
+	}
+	if scanned > 2*summaryScanBytes {
+		t.Fatalf("the scanner read %d bytes for a 160-character line", scanned)
+	}
+}
