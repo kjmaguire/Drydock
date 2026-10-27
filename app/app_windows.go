@@ -89,7 +89,13 @@ func Run(assets fs.FS) error {
 	bridge := &Bridge{}
 	// The application object comes before the core: its single-instance check hands a second launch over to the first and exits
 	// the process inside application.New, so a second launch never opens a core on the first one's data (audit 2026-10-16, H10).
+	var browserArgs []string
+	if DebugPort != "" {
+		// only a test build sets this (release.yml's install-test); a release build has none, so no other program can attach
+		browserArgs = []string{"--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + DebugPort}
+	}
 	wa = application.New(application.Options{
+		Windows:     application.WindowsOptions{AdditionalBrowserArgs: browserArgs},
 		Name:        "Drydock",
 		Description: "A team of AI coding agents you can watch and approve.",
 		Services:    []application.Service{application.NewService(bridge)},

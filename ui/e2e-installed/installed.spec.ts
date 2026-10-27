@@ -1,14 +1,15 @@
 // The installed app on a real Windows machine (docs/packaging.md section 14; .github/workflows/release.yml). Nothing here
-// starts a browser: the release workflow installs Drydock with its installer, starts the installed drydock.exe with WebView2's
-// own remote-debugging switch (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS), and these tests attach to that window over CDP. So what
-// they drive is the real exe, its real WebView2, the core on NTFS under Defender, and the UI as the person sees it.
+// starts a browser: the release workflow installs Drydock with its installer, puts the test variant of drydock.exe (the same
+// build with app.DebugPort set, which opens WebView2's remote debugging on 127.0.0.1) in the install folder, starts it, and these
+// tests attach to its window over CDP. So what they drive is the installed app, its real WebView2, the core on NTFS under
+// Defender, and the UI as the person sees it. (The shipped exe has no debugging port; Wails clears WebView2's own switches.
+// The workflow checks the shipped exe's window through UI Automation instead.)
 //
 // DRYDOCK_CDP      the debugging endpoint, e.g. http://127.0.0.1:9333
 // DRYDOCK_REPO     a git repository on the runner for the project test
 // DRYDOCK_OUT      where screenshots and installed-app.json (the measurements) go
 // DRYDOCK_STARTED  when the workflow started the exe (Unix ms), for the startup time
-//
-// @first runs on the first start after installing; @again after the app was closed and the installer run over it.
+
 import { chromium, expect, test, type Browser, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -53,7 +54,7 @@ test.afterAll(async () => {
   await browser?.close().catch(() => {});
 });
 
-test('the installed exe opens its window and draws the shell', { tag: '@first' }, async () => {
+test('the installed exe opens its window and draws the shell', async () => {
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({ timeout: 60_000 });
   const started = Number(process.env.DRYDOCK_STARTED ?? 0);
   if (started > 0) results.shellVisibleMs = Date.now() - started;
@@ -64,7 +65,7 @@ test('the installed exe opens its window and draws the shell', { tag: '@first' }
   await page.screenshot({ path: join(out, '01-first-start.png') });
 });
 
-test('a project on a real Windows repository: the wizard, the core and git on NTFS', { tag: '@first' }, async () => {
+test('a project on a real Windows repository: the wizard, the core and git on NTFS', async () => {
   const repo = process.env.DRYDOCK_REPO;
   test.skip(!repo, 'DRYDOCK_REPO is not set');
   const t0 = Date.now();
@@ -75,20 +76,10 @@ test('a project on a real Windows repository: the wizard, the core and git on NT
   await page.screenshot({ path: join(out, '02-project.png') });
 });
 
-test('after the app was closed and installed again, it opens on the same data', { tag: '@again' }, async () => {
-  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({ timeout: 60_000 });
-  const started = Number(process.env.DRYDOCK_STARTED ?? 0);
-  if (started > 0) results.shellVisibleMs = Date.now() - started;
-  // the project made before the reinstall is still there, with its room
-  await expect(roomLink(page, 'general').or(page.getByText('windows-proof').first()).first()).toBeVisible();
-  await expect(page.getByTestId('region-error')).toHaveCount(0);
-  await page.screenshot({ path: join(out, '06-after-reinstall.png') });
-});
-
 // The app's own pages that need no agent, a login or the network.
 const PAGES = ['/settings', '/connections', '/agents', '/models', '/security', '/backups', '/data', '/support', '/license', '/github', '/library'];
 
-test('every workspace page opens on Windows without an error', { tag: '@first' }, async () => {
+test('every workspace page opens on Windows without an error', async () => {
   const timings: Record<string, number> = {};
   for (const path of PAGES) {
     const u = new URL(page.url());
@@ -103,7 +94,7 @@ test('every workspace page opens on Windows without an error', { tag: '@first' }
   results.pageMs = timings;
 });
 
-test('a backup on NTFS: Back up now writes one and lists it', { tag: '@first' }, async () => {
+test('a backup on NTFS: Back up now writes one and lists it', async () => {
   const u = new URL(page.url());
   u.pathname = '/backups';
   await page.goto(u.toString());
@@ -113,7 +104,7 @@ test('a backup on NTFS: Back up now writes one and lists it', { tag: '@first' },
   await page.screenshot({ path: join(out, '04-backup.png') });
 });
 
-test('a support bundle on Windows: preview, then create, scrubbed', { tag: '@first' }, async () => {
+test('a support bundle on Windows: preview, then create, scrubbed', async () => {
   const u = new URL(page.url());
   u.pathname = '/support';
   await page.goto(u.toString());
@@ -125,7 +116,7 @@ test('a support bundle on Windows: preview, then create, scrubbed', { tag: '@fir
   await page.screenshot({ path: join(out, '05-support-bundle.png') });
 });
 
-test('nothing in the window logged an error', { tag: ['@first', '@again'] }, async () => {
+test('nothing in the window logged an error', async () => {
   // the app has no network of its own beyond what a person configures; an error here is a real one on Windows
   expect(consoleErrors).toEqual([]);
 });

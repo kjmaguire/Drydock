@@ -187,10 +187,8 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 		if dir := repo.WorktreeParent(filepath.Join(c.cfg.DataDir, "worktrees"), id); filepath.Base(dir) == id {
 			removeTree(dir, warn)
 		}
-		// git forgets worktrees whose folder is gone
-		if err := repo.PruneWorktrees(ctx); err != nil {
-			warn("pruning the repository's worktree list: %v", err)
-		}
+		// each task's worktree was forgotten by DeleteWorktree above, even one whose folder was already gone; a prune of the whole
+		// list here also forgot the person's own worktrees whose folder could not be seen just then (review 2026-10-27)
 	}
 	removeTree(dataWorktrees, warn)
 

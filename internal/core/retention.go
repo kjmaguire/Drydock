@@ -46,6 +46,10 @@ type RetentionReport struct {
 	BytesAfter         int64 `json:"bytesAfter"`
 	RunsDeleted        int   `json:"runsDeleted"`
 	BytesDeleted       int64 `json:"bytesDeleted"`
+	// Skipped names each run whose folder could not be compacted or deleted this pass (a file Windows will not let go of, a
+	// read-only file), with why. The pass carries on with the other runs and tries these again next time: one stuck folder
+	// used to end the pass at the same oldest run every day, so nothing was ever compacted or deleted again (review 2026-10-27).
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 func (r RetentionReport) acted() bool {
@@ -71,6 +75,9 @@ func init() {
 				}
 				if rep.AgentOutputDeleted > 0 {
 					c.logf("retention: deleted %d streamed output events older than %s", rep.AgentOutputDeleted, agentOutputRetention)
+				}
+				if len(rep.Skipped) > 0 {
+					c.logf("retention: %d runs left for the next pass: %s", len(rep.Skipped), strings.Join(rep.Skipped, "; "))
 				}
 				if rep.acted() {
 					c.logf("retention: compacted %d runs (%d checkpoints deleted, %d files %d -> %d bytes), deleted %d runs (%d bytes)",
@@ -197,7 +204,9 @@ func (c *Core) compactRuns(ctx context.Context, deleteCutoff, cutoff int64, rep 
 				}
 				before, after, err := runfiles.Compress(p)
 				if err != nil {
-					return err
+					// this file stays as it is until the next pass; the run's other files are still compacted
+					rep.Skipped = append(rep.Skipped, fmt.Sprintf("compact %s: %v", r.id, err))
+					return nil
 				}
 				rep.FilesCompressed++
 				rep.BytesBefore += before
@@ -206,7 +215,7 @@ func (c *Core) compactRuns(ctx context.Context, deleteCutoff, cutoff int64, rep 
 				return nil
 			})
 			if err != nil {
-				return fmt.Errorf("compact %s: %w", r.id, err)
+				rep.Skipped = append(rep.Skipped, fmt.Sprintf("compact %s: %v", r.id, err))
 			}
 		}
 		if did {
@@ -237,7 +246,10 @@ func (c *Core) deleteRuns(ctx context.Context, cutoff int64, rep *RetentionRepor
 			if _, err := os.Stat(dir); err == nil {
 				freed, removed, err := c.removeRunFiles(ctx, dir)
 				if err != nil {
-					return fmt.Errorf("delete %s: %w", r.id, err)
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					rep.Skipped = append(rep.Skipped, fmt.Sprintf("delete %s: %v", r.id, err))
 				}
 				rep.BytesDeleted += freed
 				did = did || removed

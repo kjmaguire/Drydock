@@ -342,3 +342,47 @@ func TestPruneMeasuresTheExemptionAtTheGivenTime(t *testing.T) {
 		t.Fatalf("at MaxKeepAge: removed %v, want %s", removed, pre.Name)
 	}
 }
+
+// A backup the person took (Back up now, before a risky change) used to share its day's one place with the scheduled backup, so
+// the next backup that day deleted it (review 2026-10-27). It now stays for the daily window, and then goes like any other.
+func TestPruneKeepsABackupThePersonTookThatDay(t *testing.T) {
+	ctx := context.Background()
+	db, dir := openDB(t)
+	bdir := filepath.Join(dir, "b")
+	mine, err := backup.Create(ctx, db, bdir, "manual", t0.Add(-3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sched, err := backup.Create(ctx, db, bdir, backup.ScheduledLabel, t0.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := backup.Prune(bdir, 7, 4, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 0 {
+		t.Fatalf("removed %v the same day", removed)
+	}
+	left, _ := backup.List(bdir)
+	if got := names(left); len(got) != 2 {
+		t.Fatalf("left %v, want %s and %s", got, mine.Name, sched.Name)
+	}
+	// eight days later, with a newer scheduled backup each day, it has had its time
+	for i := 1; i <= 8; i++ {
+		if _, err := backup.Create(ctx, db, bdir, backup.ScheduledLabel, t0.AddDate(0, 0, i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err = backup.Prune(bdir, 7, 0, t0.AddDate(0, 0, 8).Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := false
+	for _, n := range removed {
+		gone = gone || n == mine.Name
+	}
+	if !gone {
+		t.Fatalf("the person's backup outlived the daily window: removed %v", removed)
+	}
+}

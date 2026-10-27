@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"sync"
+
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // An Extension adds a feature area (budgets, packs, templates, integrations...) to the core without editing the files that
@@ -36,7 +38,14 @@ func (c *Core) startExtensions(ctx context.Context) error {
 	extMu.Unlock()
 	c.extMethods = map[string]Method{}
 	for _, e := range orderExtensions(list) {
-		m, closeFn, err := e.Start(ctx, c)
+		// a panic in one extension's start (a bad stored row read at startup) used to end Open, and with it every launch, since
+		// the same row is there next time; now that extension is unavailable and the rest of Drydock starts (review 2026-10-27)
+		var m map[string]Method
+		var closeFn func()
+		var err error
+		if perr := safe.Do("core.extension."+e.Name, func() { m, closeFn, err = e.Start(ctx, c) }); perr != nil {
+			err = perr
+		}
 		if err != nil {
 			c.logf("extension %s unavailable: %v", e.Name, err)
 			continue

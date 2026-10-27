@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -325,6 +326,17 @@ func TestProjectExportImportThroughTheMethods(t *testing.T) {
 		t.Fatalf("raw runs were exported without the warning step: %v", err)
 	}
 	a.call("project.export", map[string]any{"projectId": p.ID, "dest": dest}, nil)
+	// a path that already holds a file is never written over, nor is a folder (review 2026-10-27)
+	before, _ := os.ReadFile(dest)
+	if err := a.callErr("project.export", map[string]any{"projectId": p.ID, "dest": dest}); err == nil || !strings.Contains(err.Error(), "already at") {
+		t.Fatalf("an export over an existing file: %v", err)
+	}
+	if after, _ := os.ReadFile(dest); !bytes.Equal(before, after) {
+		t.Fatal("the existing file was changed")
+	}
+	if err := a.callErr("project.export", map[string]any{"projectId": p.ID, "dest": filepath.Dir(dest)}); err == nil || !strings.Contains(err.Error(), "is a folder") {
+		t.Fatalf("an export onto a folder: %v", err)
+	}
 	for name, body := range readZipFiles(t, dest) {
 		if name == "project.db" {
 			continue

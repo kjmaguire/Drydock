@@ -85,6 +85,16 @@ func (p *packaging) export(ctx context.Context, r exportReq) (any, error) {
 		if err := needFullPath("the file to save to", dest); err != nil {
 			return nil, err
 		}
+		// a path typed into Save to is never written over: a slip of the keyboard could otherwise replace any file the
+		// person can write, the database among them (review 2026-10-27)
+		if st, err := os.Lstat(dest); err == nil {
+			if st.IsDir() {
+				return nil, fmt.Errorf("%s is a folder: give the name of the file to save to", dest)
+			}
+			return nil, fmt.Errorf("a file is already at %s; nothing was written. Choose another name, or move that file first", dest)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
 	}
 	if dest == "" {
 		dest = filepath.Join(p.c.cfg.DataDir, "exports", fmt.Sprintf("%s-%s.drydock-project.zip", slug(proj.Name), p.bnow().UTC().Format("20060102-150405")))

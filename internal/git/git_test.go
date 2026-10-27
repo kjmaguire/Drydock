@@ -486,3 +486,47 @@ func TestRemoteURLSaysWhenThereIsNoSuchRemote(t *testing.T) {
 		t.Fatalf("a folder that is no longer a repository is a failure, not a missing remote: %v", err)
 	}
 }
+
+// Deleting a task worktree whose folder is already gone used to run `git worktree prune`, which also forgot the person's own
+// linked worktrees whose folder could not be seen then (on a drive that is not plugged in), losing their index and HEAD
+// (review 2026-10-27). Now only the task's own entry goes.
+func TestDeletingAMissingWorktreeForgetsOnlyThatOne(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	// the person's own worktree, made with git, whose drive is unplugged: its folder is out of sight for now
+	own := filepath.Join(t.TempDir(), "mine")
+	if out, err := exec.Command("git", "-C", r.Root, "worktree", "add", "-q", "-b", "mine", own).CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add: %v %s", err, out)
+	}
+	away := own + "-unplugged"
+	if err := os.Rename(own, away); err != nil {
+		t.Fatal(err)
+	}
+	w, err := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_9", Title: "gone", Parent: parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(w.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.DeleteWorktree(ctx, w, false); err != nil {
+		t.Fatal(err)
+	}
+	list, err := exec.Command("git", "-C", r.Root, "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(list), w.Path) {
+		t.Fatalf("the task's worktree is still registered:\n%s", list)
+	}
+	if !strings.Contains(string(list), own) {
+		t.Fatalf("the person's own worktree was forgotten:\n%s", list)
+	}
+	// plugged in again, it works as before
+	if err := os.Rename(away, own); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", own, "status", "--short").CombinedOutput(); err != nil {
+		t.Fatalf("the person's worktree no longer works: %v %s", err, out)
+	}
+}

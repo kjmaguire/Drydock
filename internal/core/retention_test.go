@@ -260,3 +260,67 @@ func TestRetentionKeepsTheFilesATasksEvidenceStillNames(t *testing.T) {
 	}
 	// deleting the task takes its evidence rows; the files are the project's to remove when the project goes (project_delete)
 }
+
+// One run folder that cannot be compacted (a file Windows keeps open; here a directory where the compressed file goes) used to
+// end the whole pass at that run, the oldest, every day: nothing was compacted or deleted again (review 2026-10-27). Now the
+// pass names it and carries on with the other runs.
+func TestRetentionCarriesOnPastARunItCannotCompact(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	c, err := Open(ctx, Config{DataDir: dir, User: "kyle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	now := time.Now()
+	day := 24 * time.Hour
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := c.DB.Writer().ExecContext(ctx, q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(p, text string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, id := range []string{"run_stuck", "run_next"} {
+		at := now.Add(-time.Duration(60-i) * day).UnixMilli() // run_stuck is the older, so it comes first
+		exec(`INSERT INTO workflow_runs(id,workflow,status,topology_hash,latest_checkpoint_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+			id, "loop", "COMPLETED", "h", id+"-c2", at, at)
+		for n := 1; n <= 2; n++ {
+			exec(`INSERT INTO workflow_checkpoints(id,run_id,workflow,step,kind,state,created_at) VALUES(?,?,?,?,?,?,?)`,
+				fmt.Sprintf("%s-c%d", id, n), id, "loop", n, "step", []byte(`{}`), at)
+		}
+		write(filepath.Join(dir, "runs", id, "node", "1-1", "stream.jsonl"), strings.Repeat(`{"kind":"text"}`+"\n", 200))
+		write(filepath.Join(dir, "runs", id, "checks", "test.log"), strings.Repeat("ok\n", 200))
+	}
+	// the compressed stream cannot be put in place: a folder is already there
+	write(filepath.Join(dir, "runs", "run_stuck", "node", "1-1", "stream.jsonl.gz", "x"), "in the way")
+
+	rep, err := c.RunRetention(ctx, now)
+	if err != nil {
+		t.Fatalf("the pass failed: %v", err)
+	}
+	if len(rep.Skipped) != 1 || !strings.Contains(rep.Skipped[0], "run_stuck") {
+		t.Fatalf("skipped %v, want run_stuck named once", rep.Skipped)
+	}
+	// the stuck run's other file and its checkpoints were still compacted, and so was the next run
+	if rep.RunsCompacted != 2 || rep.FilesCompressed != 3 {
+		t.Fatalf("report %+v", rep)
+	}
+	for _, p := range []string{"run_stuck/checks/test.log.gz", "run_next/node/1-1/stream.jsonl.gz", "run_next/checks/test.log.gz"} {
+		if _, err := os.Stat(filepath.Join(dir, "runs", filepath.FromSlash(p))); err != nil {
+			t.Fatalf("%s was not compacted: %v", p, err)
+		}
+	}
+	// the stuck file is left as it was, to be tried again next pass
+	if b, err := os.ReadFile(filepath.Join(dir, "runs", "run_stuck", "node", "1-1", "stream.jsonl")); err != nil || len(b) == 0 {
+		t.Fatalf("the stuck stream was lost: %v", err)
+	}
+}
