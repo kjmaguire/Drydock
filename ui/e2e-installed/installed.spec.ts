@@ -65,6 +65,19 @@ test('the installed exe opens its window and draws the shell', async () => {
   await page.screenshot({ path: join(out, '01-first-start.png') });
 });
 
+test('the first start says the agents run as the person, under their own terms, until they say they understand (D1)', async () => {
+  const notice = page.getByTestId('terms-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('never reads, copies or sends your Claude credentials');
+  await page.screenshot({ path: join(out, '01b-terms-notice.png') });
+  await notice.getByRole('button', { name: 'I understand' }).click();
+  await expect(notice).toHaveCount(0);
+  // acknowledged for good: a reload does not bring it back
+  await page.reload();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  await expect(page.getByTestId('terms-notice')).toHaveCount(0);
+});
+
 test('a project on a real Windows repository: the wizard, the core and git on NTFS', async () => {
   const repo = process.env.DRYDOCK_REPO;
   test.skip(!repo, 'DRYDOCK_REPO is not set');

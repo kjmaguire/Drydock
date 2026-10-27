@@ -201,3 +201,11 @@ export interface CrashReport {
   /** The line that says why: "panic: ..." or "fatal error: ...". */
   summary: string;
 }
+
+/** A notice a person acknowledges once (decision D1); Acknowledged answers the current version of its text. */
+export interface NoticeState {
+  id: string;
+  version: number;
+  acknowledged: boolean;
+  at?: number;
+}
