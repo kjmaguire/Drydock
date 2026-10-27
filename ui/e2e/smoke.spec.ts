@@ -22,6 +22,20 @@ const EXPECTED_REFUSALS: { method: RegExp; status: number; why: string }[] = [];
 const PAGE_BUDGET_MS = 3000;
 /** One call to the core answered slower than this is slow for a desktop app on the same machine. */
 const CALL_BUDGET_MS = 1000;
+/**
+ * Calls whose work is outside the core's own data, each with its own budget and the reason. A page shows a loading state for
+ * them; their answers are kept for a while.
+ */
+const SLOW_CALLS: Record<string, { ms: number; why: string }> = {
+  'connection.list': {
+    ms: 3000,
+    why: 'starts every agent CLI for its version and its sign-in (side by side since the review; 0.6 to 1.2 s with the stand-ins, depending on the load of the machine)',
+  },
+  'github.projectRepos': {
+    ms: 5000,
+    why: "reads every project's origin remote with git (eight at a time; on Windows a git start is slow, 1.4 s for 60 projects) and asks GitHub about each repository; the table shows a loading row and keeps the answers 60 s",
+  },
+};
 /** One method called more often than this while one page opens and settles is a page asking again and again. */
 const REPEAT_LIMIT = 6;
 
@@ -30,6 +44,8 @@ interface Call {
   status: number;
   ms: number;
   error?: string;
+  /** What a refused call asked for (its parameters), to find which page or panel asked. */
+  params?: string;
 }
 
 interface PageReport {
@@ -70,6 +86,7 @@ function watch(page: Page) {
       } catch {
         call.error = '(no JSON body)';
       }
+      call.params = (resp.request().postData() ?? '').slice(0, 200);
     }
     state.calls.push(call);
   });
@@ -119,7 +136,7 @@ test('smoke: every page opens on the real core without an error, a failed call o
     const r: PageReport = { path, headingMs, calls: [...state.calls], problems: [...state.problems] };
     for (const c of r.calls) {
       if (c.status >= 500) r.problems.push(`${c.method}: HTTP ${c.status} ${c.error ?? ''}`);
-      else if (c.status >= 400 && !EXPECTED_REFUSALS.some((x) => x.method.test(c.method) && x.status === c.status)) r.problems.push(`${c.method}: refused ${c.status} ${c.error ?? ''}`);
+      else if (c.status >= 400 && !EXPECTED_REFUSALS.some((x) => x.method.test(c.method) && x.status === c.status)) r.problems.push(`${c.method}: refused ${c.status} ${c.error ?? ''} (asked ${c.params ?? ''})`);
     }
     const counts = new Map<string, number>();
     for (const c of r.calls) counts.set(c.method, (counts.get(c.method) ?? 0) + 1);
@@ -131,7 +148,10 @@ test('smoke: every page opens on the real core without an error, a failed call o
   mkdirSync(dir, { recursive: true });
   let leak: unknown = undefined;
   const problems = reports.flatMap((r) => r.problems.map((p) => `${r.path}: ${p}`));
-  for (const c of reports.flatMap((r) => r.calls)) if (c.ms > CALL_BUDGET_MS) problems.push(`${c.method} answered in ${c.ms} ms (budget ${CALL_BUDGET_MS} ms)`);
+  for (const c of reports.flatMap((r) => r.calls)) {
+    const budget = SLOW_CALLS[c.method]?.ms ?? CALL_BUDGET_MS;
+    if (c.ms > budget) problems.push(`${c.method} answered in ${c.ms} ms (budget ${budget} ms)`);
+  }
 
   // moving around without reloading (how the app is used): the sidebar's pages twice over, then the heap, the DOM and the
   // listeners against what they were after the first round; a page that leaves a subscription or a timer behind grows them
