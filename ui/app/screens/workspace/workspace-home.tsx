@@ -37,8 +37,7 @@ import { Icon, type IconNode } from '../../ui/icon.tsx';
 import { card, Page, Section } from '../../ui/layout.tsx';
 import { tileCss, tileGrid } from '../../ui/tiles.tsx';
 import { t } from '../../ui/tokens.ts';
-import { needsChanged } from '../../state/project.ts';
-import { needsText, projectWhere } from './workspace.ts';
+import { crewsByProject, needsByProject, needsText, projectWhere } from './workspace.ts';
 
 const introCss = css({ margin: '0', color: t.textMuted, fontSize: t.textMd, maxWidth: '86ch' });
 const glyph = css({
@@ -313,33 +312,10 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
   watch(handle, s.workspace);
   // a note the previous page left (a project was deleted)
   const flash = s.ui.takeFlash();
-  // what needs the human in each project, read per project (a handful of projects; each list is small); a project whose list
-  // cannot be read says so on its own tile and the others still show their counts
-  const needs = query(handle, {
-    load: async () => {
-      const list = s.workspace.projectList;
-      const read = await Promise.allSettled(list.map((p) => s.client.needsYouList(p.id)));
-      return Object.fromEntries(list.map((p, i) => {
-        const r = read[i];
-        return [p.id, r?.status === 'fulfilled' ? r.value.length : null];
-      })) as Record<string, number | null>;
-    },
-    key: () => s.workspace.projectList.map((p) => p.id),
-    enabled: () => s.workspace.projectList.length > 0,
-    when: needsChanged,
-  });
-
-  // each project's crew, for the dots on its card (a list that cannot be read leaves the card without them)
+  // each project's crew, for the dots on its card, from one list of every agent (a list that cannot be read leaves the cards
+  // without them); what needs the person in each project comes from the workspace's own list (needsByProject)
   const crews = query(handle, {
-    load: async () => {
-      const list = s.workspace.projectList;
-      const read = await Promise.allSettled(list.map((p) => s.client.agentList(p.id)));
-      return Object.fromEntries(list.map((p, i) => {
-        const r = read[i];
-        return [p.id, r?.status === 'fulfilled' ? r.value : []];
-      })) as Record<string, { id: string; name: string }[]>;
-    },
-    key: () => s.workspace.projectList.map((p) => p.id),
+    load: async () => crewsByProject(await s.client.agentListAll()),
     enabled: () => s.workspace.projectList.length > 0,
     when: (e) => e.type.startsWith('agent.'),
   });
@@ -347,6 +323,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
   return () => {
     const ws = s.workspace;
     const projects = ws.projectList;
+    const needs = needsByProject(ws.needs.data, !!ws.needs.error, projects);
     const hour = new Date().getHours();
     return (
       <Page title={hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'} icon={House} wide testId="workspace-home" subtitle="A chat, your projects, and everything they share">
@@ -383,7 +360,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
             {projects.length > 0 ? (
               <ul mix={[tileGrid, projectGrid]} aria-label="Projects">
                 {projects.map((p) => (
-                  <ProjectTile key={p.id} project={p} needs={needs.data?.[p.id]} crew={crews.data?.[p.id]} onNavigate={handle.props.onNavigate} />
+                  <ProjectTile key={p.id} project={p} needs={needs[p.id]} crew={crews.data?.[p.id] ?? (crews.data ? [] : undefined)} onNavigate={handle.props.onNavigate} />
                 ))}
               </ul>
             ) : null}

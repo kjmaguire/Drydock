@@ -279,6 +279,7 @@ func TestTrackerWatchAndCoalescedEmission(t *testing.T) {
 	ch, stop := tr.Watch()
 	defer stop()
 
+	began := time.Now()
 	publish(t, e, "agent.started", "a1", nil)
 	for i := 0; i < 50; i++ { // a busy agent: many changes inside one interval
 		kind := "text"
@@ -309,8 +310,11 @@ loop:
 	}
 	time.Sleep(200 * time.Millisecond) // let the emitter run a few ticks
 	emitted := e.events("room.presence_changed")
-	if len(emitted) == 0 || len(emitted) > 4 {
-		t.Fatalf("expected a few coalesced room.presence_changed events for 51 changes, got %d", len(emitted))
+	// at most one a tick while the changes kept coming, and a last one after: 51 changes published inside an interval or two
+	// are a few events; on a loaded machine the publishing itself takes several intervals, and each may emit once
+	ticks := int(time.Since(began)/(60*time.Millisecond)) + 1
+	if len(emitted) == 0 || len(emitted) > ticks || len(emitted) > 25 {
+		t.Fatalf("expected a few coalesced room.presence_changed events for 51 changes in %d intervals, got %d", ticks, len(emitted))
 	}
 	last := emitted[len(emitted)-1]
 	var d struct{ Member, Presence string }

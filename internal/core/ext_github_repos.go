@@ -12,6 +12,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/git/host"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // The Repositories table of the GitHub page (decision P98): one row per project with its GitHub repository, the CI state of
@@ -157,7 +158,9 @@ func (r *repoOverviews) list(ctx context.Context, refresh bool) (ProjectRepos, e
 			continue
 		}
 		wg.Add(1)
-		go func(i int, full string) {
+		// what a reading that panicked leaves (safe.Go keeps the panic from ending the app)
+		answers[i] = answer{err: errors.New("Drydock could not read this repository's overview")}
+		safe.Go("core.repoOverviews", func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -175,7 +178,7 @@ func (r *repoOverviews) list(ctx context.Context, refresh bool) (ProjectRepos, e
 				r.cache[full] = repoOverviewEntry{at: at, ov: ov}
 				r.mu.Unlock()
 			}
-		}(i, full)
+		})
 	}
 	wg.Wait()
 	for i, full := range order {
@@ -246,7 +249,8 @@ func (r *repoOverviews) remotes(ctx context.Context, projects []Project, refresh
 			continue
 		}
 		wg.Add(1)
-		go func(i int, p Project, key string) {
+		out[i] = projectRemote{state: RepoStateUnreadable} // what a reading that panicked leaves
+		safe.Go("core.projectRemotes", func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -257,7 +261,7 @@ func (r *repoOverviews) remotes(ctx context.Context, projects []Project, refresh
 				r.remoteCache[key] = rem
 				r.mu.Unlock()
 			}
-		}(i, p, key)
+		})
 	}
 	wg.Wait()
 	return out

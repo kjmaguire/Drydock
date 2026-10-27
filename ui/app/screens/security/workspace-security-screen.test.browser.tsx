@@ -47,7 +47,7 @@ const PROJECTS = [
 ];
 
 function show(client: Partial<Client> = {}) {
-  const s = testServices({
+  const c: Partial<Client> = {
     projectList: async () => PROJECTS as never,
     licenseStatus: async () => ({}) as never,
     appInfo: async () => ({}) as never,
@@ -65,7 +65,11 @@ function show(client: Partial<Client> = {}) {
     }),
     agentList: async () => [],
     ...client,
-  });
+  };
+  // TEST DOUBLE of security.scan.recent, as the core answers it: the folders' scans and every project's, newest first
+  c.securityScanRecent ??= async (limit = 10) =>
+    [...(await c.securityScanFolders!(limit)), ...(await Promise.all(PROJECTS.map((p) => c.securityScanList!(p.id, limit)))).flat()].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
+  const s = testServices(c);
   s.workspace.start();
   const r = mount(<WorkspaceSecurityScreen />, s);
   return { r, s };
@@ -264,5 +268,18 @@ describe('the workspace Security scan (graphite, P97)', () => {
     expect(started).toEqual([]);
     await r.act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', cancelable: true })));
     await waitFor(() => expect(started).toEqual([DIR]), r);
+  });
+
+  it('reads the recent scans of every project and folder in one call, not one a project (review 2026-10-27)', async () => {
+    const asked: string[] = [];
+    const { r } = show({
+      securityScanRecent: async (limit = 10) => (asked.push(`recent:${limit}`), [summary(report({ id: 'pr1', projectId: 'p1' }))]),
+      securityScanList: async (projectId: string) => (asked.push(`list:${projectId}`), []),
+      securityScanFolders: async () => (asked.push('folders'), []),
+    });
+    await waitFor(() => expect(r.$('[data-testid="scan-history-item"][data-id="pr1"]')).not.toBeNull(), r);
+    // read again once the projects are known (the history's key), never once a project
+    expect(asked.filter((a) => a.startsWith('recent:')).length <= 2).toBe(true);
+    expect(asked.filter((a) => a.startsWith('list:'))).toEqual([]);
   });
 });

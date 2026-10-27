@@ -8,6 +8,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Config builds a Service.
@@ -76,16 +77,28 @@ func (s *Service) Detect(ctx context.Context, id string) (agents.Detection, erro
 	return c.Detection, err
 }
 
-// DetectAll checks every manifest, in id order, then the installs inside WSL distros (DetectWSL).
+// DetectAll checks every manifest, in id order, then the installs inside WSL distros (DetectWSL). The checks run side by
+// side: each starts its CLI for the version and the sign-in (a Node CLI takes most of a second on Windows), so one after
+// another the Agents page waited for the sum of them.
 func (s *Service) DetectAll(ctx context.Context) []Connection {
 	ids := s.Registry.Set.IDs()
 	sort.Strings(ids)
-	out := make([]Connection, 0, len(ids))
-	for _, id := range ids {
-		c, _ := s.Check(ctx, id)
-		out = append(out, c)
+	out := make([]Connection, len(ids))
+	var inWSL []Connection
+	var wg sync.WaitGroup
+	wg.Add(len(ids) + 1)
+	for i, id := range ids {
+		safe.Go("connections.Service.DetectAll", func() {
+			defer wg.Done()
+			out[i], _ = s.Check(ctx, id)
+		})
 	}
-	return append(out, s.DetectWSL(ctx)...)
+	safe.Go("connections.Service.DetectAll", func() {
+		defer wg.Done()
+		inWSL = s.DetectWSL(ctx)
+	})
+	wg.Wait()
+	return append(out, inWSL...)
 }
 
 // Acknowledge records that the user acknowledged a gate. The caller persists the acknowledgement; this only affects Usable.

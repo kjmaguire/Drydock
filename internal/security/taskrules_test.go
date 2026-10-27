@@ -2,10 +2,13 @@ package security
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/kjmaguire/drydock/internal/events"
 )
 
 // rulesOf is an in-memory TaskRules store, as the core's table would answer it.
@@ -218,5 +221,48 @@ func TestTheRequestApprovedForTheTaskIsRecordedWithItsRule(t *testing.T) {
 	}
 	if _, held := r.gate.forTask.Load(id); held {
 		t.Fatal("the mark of a refused request was kept")
+	}
+}
+
+// onPublish is the core's bus with a look at each event as it is published, before Publish returns.
+type onPublish struct {
+	events.Bus
+	seen func(events.Event)
+}
+
+func (b onPublish) Publish(ctx context.Context, e events.Event) (uint64, error) {
+	seq, err := b.Bus.Publish(ctx, e)
+	b.seen(e)
+	return seq, err
+}
+
+// The moment a request is announced a person can approve it for the rest of its task (the Inbox shows it on
+// approval.requested): the call that waits on it is known by then, not a moment later.
+func TestARequestCanBeApprovedForItsTaskTheMomentItIsAnnounced(t *testing.T) {
+	r := newPermRig(t)
+	var got error
+	var asked bool
+	r.apr = NewApprovals(r.db, onPublish{Bus: r.bus, seen: func(e events.Event) {
+		if e.Type != "approval.requested" {
+			return
+		}
+		var d struct {
+			Request string `json:"request"`
+		}
+		_ = json.Unmarshal(e.Data, &d)
+		_, got = r.gate.TaskRuleFor(d.Request)
+		asked = true
+	}}, r.audit, WithApprovalClock(r.clk.Now), WithApprovalRedactor(r.scan))
+	r.gate.Approvals = r.apr
+	ch := r.decideAsync(t, ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": "curl https://example.com"}), Root: r.root})
+	id := r.waitRequested(t)
+	if !asked || got != nil {
+		t.Fatalf("asked %v, then: %v", asked, got)
+	}
+	if err := r.apr.Decide(context.Background(), id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); !o.Allow {
+		t.Fatalf("%+v", o)
 	}
 }

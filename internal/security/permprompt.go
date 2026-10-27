@@ -437,13 +437,22 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 	if len(td.Reasons) > 0 {
 		reason += " Analyzer: " + strings.Join(td.Reasons, "; ") + "."
 	}
-	id, err := g.Approvals.Request(ctx, action, reason, WithTTL(ttl), WithTitle(PermissionTitlePrefix+req.Tool+": "+permissionSummary(td)))
+	// the waiting call is registered before the request can be seen: a person who approves it for the rest of the task at
+	// once (TaskRuleFor) must not be told that no call waits on it
+	var registered string
+	id, err := g.Approvals.Request(ctx, action, reason, WithTTL(ttl), WithTitle(PermissionTitlePrefix+req.Tool+": "+permissionSummary(td)),
+		BeforeVisible(func(id string) {
+			registered = id
+			g.asks.Store(id, waitingAsk{scope: scope, td: td})
+		}))
 	if err != nil {
+		if registered != "" {
+			g.asks.Delete(registered)
+		}
 		out.Outcome, out.Message = PermissionDenied, "Drydock could not ask a person about this call, so it refused it."
 		return out
 	}
 	out.ApprovalID = id
-	g.asks.Store(id, waitingAsk{scope: scope, td: td})
 	defer g.asks.Delete(id)
 	defer g.forTask.Delete(id) // a mark nobody consumed (the approval was refused, or did not match) is not kept
 	tick := time.NewTicker(poll)

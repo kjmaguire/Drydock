@@ -136,8 +136,9 @@ func NewApprovals(db *storage.DB, bus events.Bus, audit *Audit, opts ...Approval
 type RequestOption func(*requestCfg)
 
 type requestCfg struct {
-	ttl   time.Duration
-	title string
+	ttl    time.Duration
+	title  string
+	before func(id string)
 }
 
 // WithTTL overrides the lifetime of one request.
@@ -145,6 +146,11 @@ func WithTTL(d time.Duration) RequestOption { return func(c *requestCfg) { c.ttl
 
 // WithTitle replaces the default title ("<kind>: <command>"). It is redacted and capped like the default.
 func WithTitle(title string) RequestOption { return func(c *requestCfg) { c.title = title } }
+
+// BeforeVisible runs f with the request's id before anyone can see the request (before its row is written and
+// approval.requested is published), so what a person may do with it is in place when they first can: the permission gate
+// registers the call that waits on it (TaskRuleFor), which a person's "for the rest of the task" asks for at once.
+func BeforeVisible(f func(id string)) RequestOption { return func(c *requestCfg) { c.before = f } }
 
 func (a *Approvals) nowMS() int64 { return a.now().UTC().UnixMilli() }
 
@@ -203,6 +209,9 @@ func (a *Approvals) Request(ctx context.Context, action ActionDescriptor, reason
 	}
 	title = truncate(title, 200)
 
+	if cfg.before != nil {
+		cfg.before(id)
+	}
 	err = a.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,status,created_at,expires_at,action_kind)
 			VALUES(?,?,?,?,?,'approval',?,?,?,'REQUESTED',?,?,?)`, id, "", action.NodeID, action.TaskID, action.Project, title, payload, hash, created, expires, action.Kind); err != nil {

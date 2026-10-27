@@ -414,3 +414,77 @@ func TestCustomManifestMarksTheConnection(t *testing.T) {
 		}
 	}
 }
+
+// The Agents page lists every CLI (connection.list): each check starts its CLI, so they run side by side. Every CLI here hangs
+// until its probe times out; one after another the list would take the sum of those timeouts.
+func TestDetectAllChecksTheCLIsSideBySide(t *testing.T) {
+	const timeout = 700 * time.Millisecond
+	svc, err := connections.NewService(connections.Config{Detection: connections.Options{Timeout: timeout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	names := map[string]bool{"node": true, "npx": true}
+	for _, id := range svc.Registry.Set.IDs() {
+		m, _ := svc.Registry.Set.Get(id)
+		for _, b := range m.Binaries.Native {
+			names[b] = true
+		}
+	}
+	pathDirs := dir
+	for b := range names {
+		if runtime.GOOS == "windows" {
+			ping, err := exec.LookPath("ping")
+			if err != nil {
+				t.Skip("no ping here to write a hanging CLI")
+			}
+			if err := os.WriteFile(filepath.Join(dir, b+".cmd"), []byte("@\""+ping+"\" -n 31 127.0.0.1 >nul\r\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		sh, err := exec.LookPath("sh")
+		if err != nil {
+			t.Skip("no sh here to write a hanging CLI")
+		}
+		// exec: the kill reaches the sleep (the development host kills the direct child only, and a sleep left holding the
+		// pipes would add the probe's 2 s wait for them to every check)
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("#!"+sh+"\nexec sleep 30\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		pathDirs = dir + string(os.PathListSeparator) + filepath.Dir(sh)
+	}
+	t.Setenv("PATH", pathDirs)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
+
+	began := time.Now()
+	got := svc.DetectAll(context.Background())
+	took := time.Since(began)
+	ids := svc.Registry.Set.IDs()
+	if len(got) < len(ids) {
+		t.Fatalf("%d connections for %d manifests", len(got), len(ids))
+	}
+	hung := 0
+	for i := 1; i < len(ids); i++ {
+		if got[i-1].Adapter > got[i].Adapter {
+			t.Fatalf("not in id order: %s before %s", got[i-1].Adapter, got[i].Adapter)
+		}
+	}
+	for _, c := range got[:len(ids)] {
+		if c.Adapter == "" {
+			t.Fatalf("an empty connection: %+v", got)
+		}
+		if strings.Contains(strings.Join(c.Problems, " "), "did not answer") {
+			hung++
+		}
+	}
+	if hung < 3 {
+		t.Fatalf("only %d CLIs hung (%+v): the test needs several to tell side by side from one after another", hung, got)
+	}
+	if took > time.Duration(hung)*timeout/2 {
+		t.Fatalf("%d hanging CLIs took %s: checked one after another (each times out after %s)", hung, took, timeout)
+	}
+}

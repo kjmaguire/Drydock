@@ -8,8 +8,7 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { Users } from 'lucide';
-import type { Skill } from '../../api/extTypes.ts';
-import type { AgentLane, CrewTimeline } from '../../api/inboxClient.ts';
+import type { AgentLane, CrewExtras, CrewTimeline } from '../../api/inboxClient.ts';
 import type { AdapterInfo, Agent, Connection, PresenceState, Project, TaskSummary } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
 import { ownsKeys } from '../../lib/keys.ts';
@@ -46,7 +45,6 @@ import {
   runtimeName,
   timelineWindow,
   type CardState,
-  type CrewRoom,
   type LinePart,
 } from './crew.ts';
 import { crewFigures, runsWhereTitle, sortAdapters } from './team.ts';
@@ -253,7 +251,6 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   const clock = () => (handle.props.now ? handle.props.now() : Date.now());
   const all = () => handle.props.scope === 'all';
   const scopeId = () => (all() ? '' : (s.workspace.projectId ?? ''));
-  const projectIds = (): string[] => (all() ? s.workspace.projectList.map((p) => p.id) : scopeId() ? [scopeId()] : []);
   let now = clock();
   let newOpen = false;
   let templatesOpen = false;
@@ -278,24 +275,14 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     key: scopeId,
     enabled: () => all() || !!scopeId(),
   });
-  const skills = query(handle, {
-    load: async () => (await Promise.all(projectIds().map((id) => orElse(() => s.client.skillList(id), [] as Skill[])))).flat(),
-    when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.'),
-    key: projectIds,
-  });
-  // the project's channels and groups with their agents (task rooms and direct messages are not "its rooms")
-  const rooms = query(handle, {
-    load: async () => {
-      const out: CrewRoom[] = [];
-      for (const pid of projectIds()) {
-        const list = (await orElse(() => s.client.roomList(pid), [])).filter((r) => !r.archived && (r.kind === 'channel' || r.kind === 'group'));
-        const members = await Promise.all(list.map((r) => orElse(() => s.client.roomMembers(r.id), [])));
-        list.forEach((r, i) => out.push({ name: r.name, kind: r.kind, agents: (members[i] ?? []).filter((m) => m.member.kind === 'agent').map((m) => m.member.id) }));
-      }
-      return out;
-    },
-    when: (e) => e.type.startsWith('room.created') || e.type.startsWith('room.archived') || e.type.startsWith('room.member'),
-    key: projectIds,
+  // each agent's accepted skills and the project's channels and groups with their agents (task rooms and direct messages are not
+  // "its rooms"), in one read for the project or every project (crew.extras): asked project by project and room by room, a
+  // workspace of sixty projects made this page call the core hundreds of times (review 2026-10-27)
+  const extras = query(handle, {
+    load: () => orElse(() => s.client.crewExtras(scopeId()), { skills: [], rooms: [] } as CrewExtras),
+    when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.') || e.type.startsWith('room.created') || e.type.startsWith('room.archived') || e.type.startsWith('room.member'),
+    key: scopeId,
+    enabled: () => all() || !!scopeId(),
   });
   const local = query(handle, {
     load: () => orElse(async () => {
@@ -409,11 +396,11 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
           keyOf,
         }),
         progress: prog && current ? { ...prog, key: keyOf(current) } : undefined,
-        skills: (skills.data ?? []).filter((k) => k.status === 'accepted' && (k.agents ?? []).includes(a.id)).map((k) => k.name),
+        skills: (extras.data?.skills ?? []).filter((k) => k.agentId === a.id).map((k) => k.name),
         rooms: roomsOf(
           a.id,
           agents.filter((x) => x.projectId === a.projectId).map((x) => x.id),
-          rooms.data ?? [],
+          extras.data?.rooms ?? [],
         ),
       };
     };

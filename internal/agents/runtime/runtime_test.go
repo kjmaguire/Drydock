@@ -445,7 +445,12 @@ func TestATurnCarriesPicturesToASessionThatTakesThem(t *testing.T) {
 	if pr := prompts(t, h.dir); len(pr) != 1 || pr[0] != "what is this?\n[image image/png, 48 bytes]\n[image image/jpeg, 3 bytes]" {
 		t.Fatalf("what the CLI read: %q", pr)
 	}
-	// a session that is not an agents.ImageSender is refused the pictures, and nothing reaches it
+	// a session that is not an agents.ImageSender is refused the pictures, and nothing reaches it. The session is swapped once
+	// the runtime has recorded its end (Wait): its exit watcher reads it while the session runs.
+	_ = m.Stop(ctx)
+	if err := h.rt.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
 	m.Sess = textOnly{m.Sess}
 	if _, err := m.RunTurnImages(ctx, "again", []agents.Image{{MIME: "image/png", Data: png}}, nil, nil); err == nil || !strings.Contains(err.Error(), "does not take pictures") || !errors.Is(err, rt.ErrNotStarted) {
 		t.Fatalf("err %v", err)
@@ -453,7 +458,6 @@ func TestATurnCarriesPicturesToASessionThatTakesThem(t *testing.T) {
 	if pr := prompts(t, h.dir); len(pr) != 1 {
 		t.Fatalf("a refused turn sent something: %q", pr)
 	}
-	_ = m.Stop(ctx)
 }
 
 // textOnly hides a session's ImageSender (a labelled test double of a CLI that takes text only).

@@ -91,13 +91,9 @@ export function WorkspaceSecurityScreen(handle: Handle) {
     if (history?.key === key) return history;
     history = {
       key,
-      load: async (limit) => {
-        const lists = await Promise.all([
-          s.client.securityScanFolders(limit),
-          ...ids.map((id) => s.client.securityScanList(id, limit).catch((): ScanSummary[] => [])),
-        ]);
-        return lists.flat().sort(byRecent).slice(0, limit);
-      },
+      // one read of every project's and folder's scans (security.scan.recent): asked project by project, a workspace of fifty
+      // projects made fifty calls (review 2026-10-27); a deleted project's or one without a repository is left out
+      load: async (limit) => (await s.client.securityScanRecent(limit)).filter((h) => !!h.folder || ids.includes(h.projectId ?? '')).sort(byRecent).slice(0, limit),
       when: (e: DrydockEvent) => e.type.startsWith('security.scan.') || e.type.startsWith('security.finding.'),
     };
     return history;

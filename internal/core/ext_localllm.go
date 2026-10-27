@@ -629,8 +629,10 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 		return LocalView{}, fmt.Errorf("%s has no file named %s", repo, variant)
 	}
 	id := localllm.ModelID(repo, variant)
-	if free, err := runners.FreeBytes(l.m.Root); err == nil && v.Size+(2<<30) > free {
-		return LocalView{}, fmt.Errorf("%s needs %d GB and the drive has %d GB free", id, v.Size>>30, free>>30)
+	if free, err := runners.FreeBytes(l.m.Root); err == nil {
+		if err := roomFor(id, v.Size, free); err != nil {
+			return LocalView{}, err
+		}
 	}
 	l.mu.Lock()
 	if d, ok := l.downloads[id]; ok && d.job.State == "running" {
@@ -1059,3 +1061,17 @@ func (l *localExt) checkUpdates(ctx context.Context) {
 		l.changed("runtime", nil)
 	}
 }
+
+// downloadReserve is what a model download leaves free on the drive, so the download does not fill it.
+const downloadReserve = 2 << 30
+
+// roomFor says why a download of size bytes does not fit in free bytes, or nil when it does. Both sizes are in tenths of a GB
+// and the reserve is named: a 0.4 GB model on a drive with 1.9 GB free was refused as "needs 0 GB and the drive has 1 GB free".
+func roomFor(id string, size, free uint64) error {
+	if size+downloadReserve <= free {
+		return nil
+	}
+	return fmt.Errorf("%s needs %s, and Drydock leaves %s free on the drive; it has %s free", id, gbWords(size), gbWords(downloadReserve), gbWords(free))
+}
+
+func gbWords(n uint64) string { return fmt.Sprintf("%.1f GB", float64(n)/(1<<30)) }

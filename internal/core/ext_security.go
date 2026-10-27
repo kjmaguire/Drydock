@@ -133,6 +133,12 @@ func init() {
 			}) (any, error) {
 				return s.folders(ctx, p.Limit)
 			}),
+			// the newest scans of every project and folder (the workspace Security page's history), in one read
+			"security.scan.recent": bind(func(ctx context.Context, p struct {
+				Limit int `json:"limit"`
+			}) (any, error) {
+				return s.recent(ctx, p.Limit)
+			}),
 			// every scan in progress, of a project or a folder (the sidebar's Running count, the inbox's Running tab)
 			"security.scan.running": bind(func(ctx context.Context, _ struct{}) (any, error) {
 				return s.runningScans(ctx), nil
@@ -585,8 +591,32 @@ func (s *securityExt) list(ctx context.Context, t target, limit int) ([]scan.Sum
 // first.
 func (s *securityExt) folders(ctx context.Context, limit int) ([]scan.Summary, error) {
 	limit = historyLimit(limit)
+	out := s.runningFolderScans()
+	// read after the running scans: a scan that finishes meanwhile is stored before it leaves them, so it is in one or both
+	stored, err := s.summaries(ctx, `substr(project_id,1,?)=? ORDER BY started_at DESC, id DESC LIMIT ?`, len(folderPrefix), folderPrefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	return mergeFolderScans(out, stored, limit), nil
+}
+
+// recent lists the newest scans of every project and every folder, the running folder scans first (as folders), in one read
+// however many projects there are: the workspace Security page asked each project for its history (review 2026-10-27).
+func (s *securityExt) recent(ctx context.Context, limit int) ([]scan.Summary, error) {
+	limit = historyLimit(limit)
+	out := s.runningFolderScans()
+	stored, err := s.summaries(ctx, `1=1 ORDER BY started_at DESC, id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	return mergeFolderScans(out, stored, limit), nil
+}
+
+// runningFolderScans are the folder scans in progress, as history rows.
+func (s *securityExt) runningFolderScans() []scan.Summary {
 	out := []scan.Summary{}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	for key, r := range s.running {
 		if !strings.HasPrefix(key, folderPrefix) {
 			continue
@@ -594,13 +624,7 @@ func (s *securityExt) folders(ctx context.Context, limit int) ([]scan.Summary, e
 		rep := r.Snapshot()
 		out = append(out, scan.Summary{ID: rep.ID, Folder: rep.Dir, Status: rep.Status, By: rep.By, StartedAt: rep.StartedAt, Counts: rep.Counts})
 	}
-	s.mu.Unlock()
-	// read after the running scans: a scan that finishes meanwhile is stored before it leaves them, so it is in one or both
-	stored, err := s.summaries(ctx, `substr(project_id,1,?)=? ORDER BY started_at DESC, id DESC LIMIT ?`, len(folderPrefix), folderPrefix, limit)
-	if err != nil {
-		return nil, err
-	}
-	return mergeFolderScans(out, stored, limit), nil
+	return out
 }
 
 // mergeFolderScans lists the running folder scans, newest first, then the stored ones. A scan that has just finished is

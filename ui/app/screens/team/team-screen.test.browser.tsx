@@ -60,6 +60,7 @@ function svc(agents: Agent[], client: Partial<Client> = {}, adapters = [claude, 
     adapterList: async () => adapters,
     agentTemplateList: async () => [],
     skillList: async () => [],
+    crewExtras: async () => ({ skills: [], rooms: [] }),
     agentTimeline: async (since) => ({ since, until: NOW, agents: agents.map((a) => lane(a)) }),
     taskSummaries: async () => ({ summaries: [], total: 0, partial: false }),
     ...client,
@@ -715,15 +716,18 @@ function showCrew(client: Partial<Client> = {}, agents: Agent[] = crew) {
       total: 4,
       partial: false,
     }),
-    skillList: async () => [sk('code-review', { agents: ['agt_3'] }), sk('security-review', { agents: ['agt_3'] })],
-    roomList: async () => [
-      { id: 'room_g', projectId: 'prj_1', kind: 'channel', name: 'general', mode: 'auto', archived: false, createdAt: '', version: 1 },
-      { id: 'room_d', projectId: 'prj_1', kind: 'channel', name: 'decisions', mode: 'auto', archived: false, createdAt: '', version: 1 },
-      { id: 'room_t', projectId: 'prj_1', kind: 'task', name: 'task-43', mode: 'auto', archived: false, createdAt: '', version: 1 },
-    ],
-    // everyone is in general (a card does not name it), Cy alone in decisions; the task room is not one of "its rooms"
-    roomMembers: async (id) =>
-      (id === 'room_g' ? ['agt_1', 'agt_2', 'agt_3'] : id === 'room_d' ? ['agt_3'] : ['agt_1']).map((m) => ({ roomId: id, member: { kind: 'agent' as const, id: m }, state: 'active', addedAt: '', lastReadSeq: 0 })),
+    // Cy's accepted skills, and the project's channels with their agents (crew.extras leaves out task rooms and direct
+    // messages): everyone is in general (a card does not name it), Cy alone in decisions
+    crewExtras: async () => ({
+      skills: [
+        { agentId: 'agt_3', name: 'code-review' },
+        { agentId: 'agt_3', name: 'security-review' },
+      ],
+      rooms: [
+        { projectId: 'prj_1', name: 'decisions', kind: 'channel', agents: ['agt_3'] },
+        { projectId: 'prj_1', name: 'general', kind: 'channel', agents: ['agt_1', 'agt_2', 'agt_3'] },
+      ],
+    }),
     ...client,
   });
   return { ...t, asked };
@@ -929,7 +933,7 @@ describe("Crew (graphite): the workspace's page", () => {
         asked.push(projectId),
         { since, until: NOW, agents: [lane(ada), lane(bo), lane(shopAgent, { runs: [runSpan({ runId: 's1', start: day(12), end: null, endedAt: 0, startedAt: day(12), outcome: 'working', taskSeq: 7 })] })] }
       ),
-      skillList: async (pid) => (skillsFor.push(pid), []),
+      crewExtras: async (pid) => (skillsFor.push(pid), { skills: [], rooms: [] }),
       ...client,
     });
     const r = mount(<WorkspaceCrewScreen now={() => NOW} />, s);
@@ -950,7 +954,8 @@ describe("Crew (graphite): the workspace's page", () => {
     await waitFor(() => expect(blocks(r, 'agt_s').map((b) => b[3])).toEqual(['Shopper · SHOP-7 · 12:00–now · working now']), r);
     expect(r.$('[data-testid="crew-lane"][data-agent="agt_s"] .name')!.getAttribute('title')).toBe('Shopper (shop-api)');
     expect(r.$('[data-testid="crew-lane"][data-agent="agt_s"] .sq')).not.toBeNull();
-    await waitFor(() => expect([...skillsFor].sort()).toEqual(['prj_1', 'prj_2']), r);
+    // the skills and rooms of every project in one read ('' to the core), not one a project (review 2026-10-27)
+    await waitFor(() => expect(skillsFor).toEqual(['']), r);
   });
 
   it('opening an agent of another project opens that project; New agent asks which project', async () => {

@@ -172,8 +172,14 @@ func TestStopCancelsAPendingPermissionRequest(t *testing.T) {
 		}
 	})
 	s := startSession(t, ad, agents.RunSpec{AgentID: "a"})
-	_ = s.Send(context.Background(), "go")
-	<-entered
+	if err := s.Send(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	select { // a session that never asks fails here, not at the binary's timeout
+	case <-entered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("handler never called")
+	}
 	if err := s.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}

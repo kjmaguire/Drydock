@@ -302,3 +302,29 @@ func TestATaskIsMadeFromAFindingAndLinksBackToIt(t *testing.T) {
 		t.Fatalf("the folder's dismissal is not the project's: %+v", list)
 	}
 }
+
+// The workspace Security page's history is one read (security.scan.recent): every project's scans and every folder's, newest
+// first, as each project's own history and the folders' list give them (review 2026-10-27).
+func TestTheRecentScansOfEveryProjectAndFolderAreOneRead(t *testing.T) {
+	a, p, first := scanned(t)
+	folder := realDir(t, t.TempDir())
+	os.WriteFile(filepath.Join(folder, "readme.txt"), []byte("hello\n"), 0o644)
+	frep := scanOnce(a, map[string]any{"folder": folder})
+	again := scanOnce(a, map[string]any{"projectId": p.ID})
+	var recent []scan.Summary
+	a.call("security.scan.recent", map[string]any{"limit": 10}, &recent)
+	ids := []string{}
+	for _, r := range recent {
+		ids = append(ids, r.ID)
+	}
+	if strings.Join(ids, ",") != strings.Join([]string{again.ID, frep.ID, first.ID}, ",") {
+		t.Fatalf("%v, want the second project scan, the folder scan, the first project scan", ids)
+	}
+	if recent[0].ProjectID != p.ID || recent[1].Folder != folder || recent[1].ProjectID != "" {
+		t.Fatalf("%+v", recent)
+	}
+	a.call("security.scan.recent", map[string]any{"limit": 2}, &recent)
+	if len(recent) != 2 {
+		t.Fatalf("%+v", recent)
+	}
+}

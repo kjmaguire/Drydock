@@ -17,7 +17,9 @@ function show(client: Partial<Client> = {}) {
       { id: 'p1', name: 'gocalc', repoPath: 'C:\\code\\gocalc', hasRepo: true },
       { id: 'p2', name: 'idea', repoPath: '', hasRepo: false },
     ] as never,
-    needsYouList: async (pid: string) => (pid === 'p1' ? [{}, {}] : []) as never,
+    // the workspace's one list of what needs the person (every project: ''), each item with its project
+    needsYouList: async () => [{ projectId: 'p1' }, { projectId: 'p1' }, { projectId: '' }] as never,
+    agentListAll: async () => [],
     chatList: async () => [],
     ...client,
   });
@@ -42,17 +44,40 @@ describe('the workspace Home', () => {
     expect(idea!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('Nothing needs you');
   });
 
-  it("says on one tile that its list could not be read, and still counts the others", async () => {
+  it('says on the tiles that what needs you could not be read', async () => {
     const { r } = show({
-      needsYouList: async (pid: string) => {
-        if (pid === 'p2') throw new Error('core unreachable');
-        return [{}] as never;
+      needsYouList: async () => {
+        throw new Error('core unreachable');
       },
     });
     await waitFor(() => expect(tiles(r)).toHaveLength(2), r);
-    const [gocalc, idea] = tiles(r);
-    await waitFor(() => expect(gocalc!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('1 item needs you'), r);
-    expect(idea!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('Could not check what needs you');
+    for (const tile of tiles(r)) await waitFor(() => expect(tile.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('Could not check what needs you'), r);
+  });
+
+  it('asks once for what needs you and once for the crews, however many projects there are (review 2026-10-27)', async () => {
+    const asked: string[] = [];
+    const many = Array.from({ length: 60 }, (_, i) => ({ id: `p${i}`, name: `project ${i}`, repoPath: '', hasRepo: false }));
+    const { r } = show({
+      projectList: async () => many as never,
+      needsYouList: async (pid: string) => {
+        asked.push(`needs:${pid}`);
+        return [{ projectId: 'p7' }] as never;
+      },
+      agentList: async (pid: string) => {
+        asked.push(`agents:${pid}`);
+        return [];
+      },
+      agentListAll: async () => {
+        asked.push('agents:all');
+        return [{ id: 'a1', name: 'Backend #1', projectId: 'p7' }] as never;
+      },
+    });
+    await waitFor(() => expect(tiles(r)).toHaveLength(60), r);
+    await waitFor(() => expect(tiles(r)[7]!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('1 item needs you'), r);
+    expect(tiles(r)[8]!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('Nothing needs you');
+    // the open project's own lists (the sidebar's project, p0) are the only ones asked by project
+    expect([...new Set(asked)].sort()).toEqual(['agents:all', 'agents:p0', 'needs:', 'needs:p0']);
+    expect(asked.filter((a) => a === 'agents:all')).toHaveLength(1);
   });
 
   it('opens a project: selects it, then goes to its home', async () => {
@@ -81,7 +106,7 @@ describe('the workspace Home', () => {
   });
 
   it("holds a project only as a navigation tile: no project's page, agent or server is linked or shown", async () => {
-    const { r } = show({ agentList: async () => [{ id: 'a1', name: 'Backend #1' }] as never });
+    const { r } = show({ agentListAll: async () => [{ id: 'a1', name: 'Backend #1', projectId: 'p1' }] as never });
     await waitFor(() => expect(tiles(r)).toHaveLength(2), r);
     await waitFor(() => expect(tiles(r)[0]!.querySelector('[data-testid="home-project-needs"]')!.textContent).toBe('2 items need you'), r);
     const hrefs = Array.from(r.$$('a')).map((a) => a.getAttribute('href'));
