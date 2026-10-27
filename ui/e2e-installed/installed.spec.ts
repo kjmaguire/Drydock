@@ -20,6 +20,7 @@ const results: Record<string, unknown> = {};
 let browser: Browser;
 let page: Page;
 const consoleErrors: string[] = [];
+const failedRequests: { status: number; method: string; url: string }[] = [];
 
 test.describe.configure({ mode: 'serial' });
 
@@ -40,6 +41,10 @@ test.beforeAll(async () => {
     if (m.type() === 'error') consoleErrors.push(m.text());
   });
   page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+  // every answer of 400 or more, with its address: the console only says "Failed to load resource"
+  page.on('response', (r) => {
+    if (r.status() >= 400) failedRequests.push({ status: r.status(), method: r.request().method(), url: r.url() });
+  });
   // the helpers navigate by the app's own origin (wails://wails.localhost or http://wails.localhost)
   const home = new URL(page.url());
   home.pathname = '/';
@@ -49,6 +54,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   results.consoleErrors = consoleErrors;
+  results.failedRequests = failedRequests;
   writeFileSync(join(out, 'installed-app.json'), JSON.stringify(results, null, 2));
   // detach only: the workflow checks a second launch against the running app, then closes it itself
   await browser?.close().catch(() => {});
@@ -129,7 +135,14 @@ test('a support bundle on Windows: preview, then create, scrubbed', async () => 
   await page.screenshot({ path: join(out, '05-support-bundle.png') });
 });
 
-test('nothing in the window logged an error', async () => {
-  // the app has no network of its own beyond what a person configures; an error here is a real one on Windows
-  expect(consoleErrors).toEqual([]);
+test('nothing in the window threw, and every file of the app was there', async () => {
+  // A call into the core that the core refuses (the GitHub page without gh, a connection not set up) answers 422 through Wails'
+  // bridge: the page shows it, as it should. What must never happen: an uncaught error, an error logged by the page itself, or a
+  // file of the app that is not there (a 404 on a script, a style sheet or a page). Each failed request is kept in
+  // installed-app.json with its address.
+  const own = consoleErrors.filter((e) => !e.startsWith('Failed to load resource'));
+  expect(own).toEqual([]);
+  const missing = failedRequests.filter((r) => r.status === 404 && /\.(js|css|html|woff2?)(\?|$)|\/$/.test(new URL(r.url).pathname) && !r.url.endsWith('.map'));
+  expect(missing).toEqual([]);
+  expect(failedRequests.filter((r) => r.status >= 500)).toEqual([]);
 });

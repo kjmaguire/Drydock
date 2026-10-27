@@ -167,7 +167,13 @@ Plan:
 
 ## 14. Things that need a Windows machine to prove
 
-(Cross-reference `phase0.md` section 7; none has been run.)
+(Cross-reference `phase0.md` section 7.) **Proven since 2026-10-27 by the release workflow's install-test on a clean
+`windows-latest` runner (decision P105):** the NSIS user-scope installer builds with `makensis`, installs without elevation
+(asInvoker, HKCU only, nothing in the data folder), refuses to install over the running app, and its uninstaller keeps the data;
+the installed CGO exe starts, draws its window (UI Automation) and opens no debugging port; single-instance hand-over; the core on
+NTFS under Defender (a project on a real repository, a `VACUUM INTO` backup, a support bundle); Defender finds nothing in the
+installer or the exe (`MpCmdRun -Scan`; real-time protection is off on the runner). Still open below: signing and SmartScreen,
+the updater, Credential Manager under a locked store, OneDrive paths, Windows 10, onboarding time with real CLIs.
 - NSIS user-scope installer builds with `makensis`, runs without elevation, WebView2 bootstrapper behavior, uninstall keeps data.
 - Signed vs unsigned SmartScreen and Smart App Control behavior; Artifact Signing end-to-end with the signtool dlib (not supported by `wails3 tool sign`).
 - Wails updater: custom Provider, signature verification with the pinned key, in-place swap under a user-scope install, behavior when the old process is slow to exit, what happens to `DisplayVersion` in the Windows uninstall entry (reported stale), rollback swap.
@@ -191,6 +197,17 @@ Plan:
 - Diagnostics collector: none exists; defaults here are local-only.
 - Whether CGO (tree-sitter) changes Defender behavior; whether Garble or `-w -s` change it.
 - Wails v3 is beta; installer and updater behavior may change between betas; Wails open-issue list was not checked.
+
+## As built (2026-10-27: releases, the installer, crash reports)
+
+- **Releases:** `.github/workflows/release.yml` (decision P105). A tag `v<major>.<minor>.<patch>[-pre]` builds, tests on a clean
+  runner and makes a **draft** GitHub release with `drydock-<version>-windows-x64.exe` (the installer), `drydock-<version>-windows-x64-update.zip`
+  (the updater's payload) and `SHA256SUMS.txt`; its notes are the version's section of `CHANGELOG.md` (a tag without one is
+  refused). A person reads the draft and publishes it. Signing runs when the Azure Artifact Signing secrets and variables are set.
+- **Installer:** `packaging/windows/drydock.nsi`, hand-written NSIS (not `wails3 package`): user scope, `%LOCALAPPDATA%\Programs\Drydock`,
+  the tools folder replaced whole, a Start menu shortcut, the Apps & features entry under HKCU, a WebView2 check that refuses
+  instead of installing something that cannot open, and exit 4 when Drydock is running (silent installs never half-install).
+- **Crash reports:** section 9; `internal/crashreport`.
 
 ## As built (2026-10-08, Linux sandbox: license, backups, project export/import, support bundle)
 
@@ -240,7 +257,7 @@ Everything below is built and tested on Linux with real SQLite, real files and r
 ### Not built, or unverified
 
 - Windows: these packages' tests pass on `windows-latest`, so the support bundle's Windows version string (`RtlGetVersion`) and disk free space (`GetDiskFreeSpaceEx`) and a `VACUUM INTO` backup run there. Not covered on Windows: a real network drive or sync folder (detection is a path heuristic plus a `GetDriveType` check), and `VACUUM INTO` while other writes run. WebView2 version is not read (the bundle field stays empty); "last conformance results" are not included in the bundle (the Connections service does not expose them).
-- Diagnostics consent categories (crash reports, usage counters, OTel) are not part of this work.
+- Diagnostics consent categories (usage counters, OTel) are not part of this work. Crash reports are built (2026-10-27): local only, so there is no consent to ask for; a report leaves the machine only in a support bundle the person sends.
 - The UI is built (Linux only): the sidebar's Workspace section has License (`/license`), Backups (`/backups`: back up now, schedule and location, verify, staged restore, databases kept from earlier restores), Export and import (`/data`) and Support bundle (`/support`), all in `ui/app/screens`; they open without a project and work in every license state. No machine binding, no revocation, no `min_app`/`max_app` window.
 - A restore is applied at the next start; there is no in-app "restart now" (the shell must offer it).
 - Exporting a very large project scans every text value with the gitleaks rules one value at a time; the time for a project with hundreds of thousands of messages is unmeasured.

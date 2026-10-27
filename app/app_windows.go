@@ -2,7 +2,7 @@
 
 // Package app is the Wails v3 shell: a window around the UI, one bridge service, a single-instance lock and the app-level
 // kill-on-close Job Object. It is the only package that imports Wails; everything else lives in internal/ and compiles
-// without a UI. Nothing here has been run on Windows yet (decision P2).
+// without a UI. The release workflow installs and runs it on a clean Windows runner (decision P105).
 package app
 
 import (
