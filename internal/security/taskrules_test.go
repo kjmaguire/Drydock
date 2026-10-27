@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/events"
 )
@@ -240,8 +241,7 @@ func (b onPublish) Publish(ctx context.Context, e events.Event) (uint64, error) 
 // approval.requested): the call that waits on it is known by then, not a moment later.
 func TestARequestCanBeApprovedForItsTaskTheMomentItIsAnnounced(t *testing.T) {
 	r := newPermRig(t)
-	var got error
-	var asked bool
+	answered := make(chan error, 1)
 	r.apr = NewApprovals(r.db, onPublish{Bus: r.bus, seen: func(e events.Event) {
 		if e.Type != "approval.requested" {
 			return
@@ -250,14 +250,19 @@ func TestARequestCanBeApprovedForItsTaskTheMomentItIsAnnounced(t *testing.T) {
 			Request string `json:"request"`
 		}
 		_ = json.Unmarshal(e.Data, &d)
-		_, got = r.gate.TaskRuleFor(d.Request)
-		asked = true
+		_, err := r.gate.TaskRuleFor(d.Request)
+		answered <- err
 	}}, r.audit, WithApprovalClock(r.clk.Now), WithApprovalRedactor(r.scan))
 	r.gate.Approvals = r.apr
 	ch := r.decideAsync(t, ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": "curl https://example.com"}), Root: r.root})
 	id := r.waitRequested(t)
-	if !asked || got != nil {
-		t.Fatalf("asked %v, then: %v", asked, got)
+	select { // the row is written a moment before the announcement: wait for the announcement itself
+	case err := <-answered:
+		if err != nil {
+			t.Fatalf("asked for the task as the request was announced: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("approval.requested was never published")
 	}
 	if err := r.apr.Decide(context.Background(), id, DecisionApprove, "human:kyle"); err != nil {
 		t.Fatal(err)
