@@ -6,7 +6,7 @@ import type { ProjectRepoRow, ProjectRepos } from '../../api/types.ts';
 import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { conn, kinds } from '../integrations/fixtures.ts';
 import { galleryCard, projServer } from '../mcp/fixtures.ts';
-import { GitHubScreen, signInState } from './github-screen.tsx';
+import { GitHubScreen, signInState, syncChip } from './github-screen.tsx';
 
 afterEach(cleanup);
 
@@ -86,17 +86,20 @@ const words = (el: Element | null): string => {
 const line = (r: R, sel: string) => words(r.$(sel));
 
 describe('the GitHub settings page', () => {
-  it('is reached from Integrations: the breadcrumb, the title, the Guide', async () => {
+  it('has the header of every page: an icon, the title, a subtitle, Learn more, and a link back to Integrations', async () => {
     const r = show();
     const h1 = await find(r, '[data-testid="github-page"] h1');
     expect(h1.textContent).toBe('GitHub');
-    const crumb = r.$('nav[aria-label="Breadcrumb"] a')!;
-    expect(crumb.textContent).toBe('Integrations');
-    expect(crumb.getAttribute('href')).toBe('/integrations');
-    // what the page leaves out is in the Guide, one link away
+    expect(h1.querySelector('svg')).not.toBeNull();
+    // no breadcrumb of its own: the way back is the header's link (the UI audit of 2026-10-26)
+    expect(r.$('nav[aria-label="Breadcrumb"]')).toBeNull();
+    const back = r.$('[data-testid="github-page"] header a[data-testid="gh-crumb"]')!;
+    expect(back.textContent).toBe('All integrations');
+    expect(back.getAttribute('href')).toBe('/integrations');
+    // what the page leaves out is in the Guide, one link away, called what every page calls it
     const guide = r.$('[data-testid="github-page"] header a[data-testid="learn-more"]')!;
     expect(guide.getAttribute('href')).toBe('/guide/github');
-    expect(guide.textContent).toBe('Guide');
+    expect(guide.textContent).toBe('Learn more');
     // the old stacked boxes are gone
     for (const old of ['gh-connection', 'gh-integrations-link', 'gh-runners', 'integration-tile', 'gh-about']) expect(r.$(`[data-testid="${old}"]`)).toBeNull();
     expect(r.$('a[href="/connections"]')).toBeNull();
@@ -119,6 +122,16 @@ describe('the GitHub settings page', () => {
     expect(r.$('[data-testid="gh-chip-sync"] [data-tone]')!.getAttribute('data-tone')).toBe('ok');
     // signed in: no Check again in the hero (the sign-in row has it)
     expect(Array.from(hero.querySelectorAll('button'))).toHaveLength(0);
+  });
+
+  it('calls issue sync on only when the connection works: a refused key, a failed check or a failing sync says so', () => {
+    const gh = { id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', assignments: [] };
+    expect(syncChip(undefined)).toEqual({ tone: 'muted', text: 'Issue sync off' });
+    expect(syncChip(conn({ ...gh }))).toEqual({ tone: 'ok', text: 'Issue sync on' });
+    expect(syncChip(conn({ ...gh, status: 'unauthenticated' }))).toEqual({ tone: 'warn', text: 'Issue sync: key refused' });
+    expect(syncChip(conn({ ...gh, status: 'unreachable' }))).toEqual({ tone: 'warn', text: 'Issue sync: unreachable' });
+    expect(syncChip(conn({ ...gh, verified: { ok: false, at: 1, summary: 'no access', calls: 1, failedCalls: 1, items: 0, mismatches: 0 } }))).toEqual({ tone: 'err', text: 'Issue sync: check failed' });
+    expect(syncChip(conn({ ...gh, sync: { ...conn().sync, state: 'error' } }))).toEqual({ tone: 'err', text: 'Issue sync: sync failing' });
   });
 
   it('lists the access as rows: the gh sign-in, issue sync with Manage, and the MCP server with its tools and grants', async () => {
@@ -176,8 +189,9 @@ describe('the GitHub settings page', () => {
     await waitFor(() => expect(line(r, '[data-testid="sync-state"]')).toBe('Off a repository\'s issues into the projects you assign'), r);
     const form = await find(r, '[data-testid="access-sync"] + [data-testid="sync-connect"] form[aria-label="Connect GitHub"]');
     expect(Array.from(form.querySelectorAll('fieldset label')).map((l) => l.textContent)).toEqual(['Use the GitHub CLI sign-in', 'Sign in with GitHub (device code)']);
-    // the gh sign-in it would use is said where the choice is
-    await waitFor(() => expect(form.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
+    // the gh sign-in it would use is said once, in the hero above, not again in the form
+    await waitFor(() => expect(r.$('[data-testid="gh-login"]')!.textContent).toBe('kyle'), r);
+    expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
     await r.act(() => byText(form, 'button', 'Use the GitHub CLI sign-in').click());
     await waitFor(() => expect(JSON.parse(JSON.stringify(connected))).toEqual([{ kind: 'github' }]), r);
     await waitFor(() => expect(text(r, '[data-testid="sync-state"]')).toContain('Connected as kyle'), r);
@@ -225,14 +239,16 @@ describe('the GitHub settings page', () => {
       githubProjectRepos: async () => repos([row({ state: 'needs_gh', repo: 'kyle/gocalc', url: 'https://github.com/kyle/gocalc' })], false),
     });
     const hero = await find(r, '[data-testid="gh-signin-state"][data-signed-in="false"]');
-    // the core's words are said once on the page (in the connect form, which shows them wherever it is opened): the hero gives
-    // the way to install without repeating them
+    // said once on the page (the UI audit of 2026-10-26): the hero gives the way to install; the connect form below does not
+    // repeat the core's sentence, and its gh button waits until gh is there
     expect(hero.textContent).toContain('GitHub CLI not found');
     expect(hero.textContent).toContain('Install it from cli.github.com');
-    expect(hero.textContent).not.toContain('is not installed');
-    await waitFor(() => expect(r.$('[data-testid="github-page"]')!.textContent).toContain('the GitHub CLI (gh) is not installed: install it from https://cli.github.com'), r);
-    const page = r.$('[data-testid="github-page"]')!.textContent!;
-    expect(page.match(/the GitHub CLI \(gh\) is not installed/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    const form = await find(r, '[data-testid="sync-connect"] form');
+    expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
+    expect(r.$('[data-testid="github-page"]')!.textContent!.includes('is not installed')).toBe(false);
+    const useGh = byText<HTMLButtonElement>(form, 'button', 'Use the GitHub CLI sign-in');
+    await waitFor(() => expect(useGh.disabled).toBe(true), r);
+    expect(useGh.getAttribute('title')).toBe('Install gh and sign in with gh auth login first');
     const link = hero.querySelector('a[href="https://cli.github.com"]')!;
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.hasAttribute('data-rmx-document')).toBe(true);
@@ -241,11 +257,12 @@ describe('the GitHub settings page', () => {
     // the repositories still show, needing gh; the runners say none
     await waitFor(() => expect(text(r, '[data-testid="repo-row"] [data-testid="repo-ci"]')).toBe('Needs gh'), r);
     await waitFor(() => expect(r.$('[data-testid="runner-slots"]')!.textContent).toContain('No runners yet.'), r);
+    // one Check again on the page: the hero's (the Access row has none while the hero has one)
+    expect(r.$('[data-testid="access-gh"] [data-part="control"] button')).toBeNull();
+    expect(Array.from(r.$$('[data-testid="github-page"] button')).filter((b) => b.textContent?.includes('Check again')).length).toBe(1);
     const before = calls;
     await r.act(() => byText(hero, 'button', 'Check again').click());
     await waitFor(() => expect(calls).toBe(before + 1), r);
-    await r.act(() => (r.$('[data-testid="access-gh"] [data-part="control"] button') as HTMLButtonElement).click());
-    await waitFor(() => expect(calls).toBe(before + 2), r);
   });
 
   it('tells "not signed in" from "GitHub did not answer"', async () => {
@@ -283,11 +300,24 @@ describe('the Repositories table', () => {
     row({ projectId: 'prj_5', project: 'notes', state: 'local' }),
     row({ projectId: 'prj_6', project: 'draft', state: 'no_repo' }),
     row({ projectId: 'prj_7', project: 'broken', state: 'error', repo: 'kyle/broken', url: 'https://github.com/kyle/broken', error: 'gh: HTTP 502: Bad Gateway' }),
+    row({ projectId: 'prj_8', project: 'moved', state: 'unreadable', error: 'git: not a git repository: C:\\src\\moved' }),
+    row({
+      projectId: 'prj_9',
+      project: 'limited',
+      state: 'github',
+      repo: 'kyle/limited',
+      url: 'https://github.com/kyle/limited',
+      defaultBranch: 'main',
+      ci: 'none',
+      openPullRequests: 0,
+      // two refused fields and an error that named none: the note says each in the table's words, the last as GitHub put it
+      incomplete: 'statusCheckRollup: Resource not accessible by personal access token; pullRequests: Resource not accessible by personal access token; Something went wrong while executing your query.',
+    }),
   ];
 
   it('lists each project with its repository, the CI of its default branch in words and its open pull requests; a failure is its row\'s', async () => {
     const r = show({ githubProjectRepos: async () => repos(all()) });
-    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(7), r);
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(9), r);
     const table = r.$('section[aria-label="Repositories"] table[aria-label="Repositories"]')!;
     expect(Array.from(table.querySelectorAll('th')).map((th) => th.textContent)).toEqual(['Project', 'Repository', 'CI', 'Pull requests', 'Open']);
     const cells = (id: string) => {
@@ -300,10 +330,25 @@ describe('the Repositories table', () => {
     expect(cells('prj_4')).toEqual(['quiet', 'kyle/quiet', 'No checks on main', 'None open', 'Open']);
     expect(cells('prj_5')).toEqual(['notes', 'Local folder', 'Not on GitHub', '—', 'Open']);
     expect(cells('prj_6')).toEqual(['draft', 'No repository', 'Not on GitHub', '—', 'Open']);
+    // GitHub could not be read for a repository: the state, then gh's own words, with nothing of the page's put in front
     expect(cells('prj_7')).toEqual(['broken', 'kyle/broken', 'Could not read gh: HTTP 502: Bad Gateway', '—', 'Open']);
+    expect(text(r, '[data-testid="repo-row"][data-project="prj_7"] [data-testid="repo-error"]')).toBe('gh: HTTP 502: Bad Gateway');
+    // a folder git could not read: the state says so, then git's own words as they are (no "Could not read" before a sentence
+    // of the core's); it is no GitHub repository, so Open goes to the project, not to its pull requests
+    expect(cells('prj_8')).toEqual(['moved', 'Folder not readable', 'Not readable git: not a git repository: C:\\src\\moved', '—', 'Open']);
+    expect(text(r, '[data-testid="repo-row"][data-project="prj_8"] [data-testid="repo-error"]')).toBe('git: not a git repository: C:\\src\\moved');
+    expect(r.$('[data-testid="repo-row"][data-project="prj_8"] [data-testid="repo-open"]')!.getAttribute('href')).toBe('/');
+    expect(r.$('[data-testid="repo-row"][data-project="prj_7"] [data-testid="repo-open"]')!.getAttribute('href')).toBe('/pulls');
+    // what GitHub refused is said under the state, so "No checks on main" is not left standing as an answer GitHub never gave
+    const refused = 'GitHub refused part of the answer: the CI state: Resource not accessible by personal access token; the open pull requests: Resource not accessible by personal access token; Something went wrong while executing your query.';
+    expect(cells('prj_9')).toEqual(['limited', 'kyle/limited', `No checks on main ${refused}`, 'None open', 'Open']);
+    expect(text(r, '[data-testid="repo-row"][data-project="prj_9"] [data-testid="repo-incomplete"]')).toBe(refused);
+    // the rows GitHub answered in full carry no such note, nor do the rows that are not GitHub's to answer
+    expect(r.$$('[data-testid="repo-incomplete"]').length).toBe(1);
+    for (const id of ['prj_1', 'prj_2', 'prj_3', 'prj_4']) expect(r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-incomplete"]`)).toBeNull();
     // the state is a dot and words, the tone set from it
     const tone = (id: string) => r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-ci"] [data-tone]`)!.getAttribute('data-tone');
-    expect(['prj_1', 'prj_2', 'prj_3', 'prj_4', 'prj_7'].map(tone)).toEqual(['ok', 'err', 'info', 'muted', 'err']);
+    expect(['prj_1', 'prj_2', 'prj_3', 'prj_4', 'prj_7', 'prj_8', 'prj_9'].map(tone)).toEqual(['ok', 'err', 'info', 'muted', 'err', 'err', 'muted']);
     // the repository opens on github.com, the way the app opens another site
     const link = r.$('[data-testid="repo-row"][data-project="prj_1"] a[data-testid="repo-link"]')!;
     expect(link.getAttribute('href')).toBe('https://github.com/kyle/gocalc');
@@ -314,15 +359,28 @@ describe('the Repositories table', () => {
     expect((r.$('[data-testid="repo-row"][data-project="prj_1"] i[aria-hidden="true"]') as HTMLElement).style.background).not.toBe('');
   });
 
-  it('Open goes to the project\'s Pull requests (its Overview without a GitHub repository) and selects the project', async () => {
-    const r = show({ githubProjectRepos: async () => repos([row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', ci: 'passing' }), row({ projectId: 'prj_1', project: 'gocalc', state: 'local' })]) });
-    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(2), r);
+  it('Open goes to the project\'s Pull requests when its state says it has a GitHub repository (else its Overview) and selects the project', async () => {
+    const r = show({
+      githubProjectRepos: async () =>
+        repos([
+          row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', ci: 'passing' }),
+          row({ projectId: 'prj_1', project: 'gocalc', state: 'local' }),
+          row({ projectId: 'prj_3', project: 'waiting', state: 'needs_gh', repo: 'kyle/waiting', url: 'https://github.com/kyle/waiting' }),
+          row({ projectId: 'prj_4', project: 'moved', state: 'unreadable', error: 'git: not a git repository: C:\\src\\moved' }),
+        ]),
+    });
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(4), r);
     await waitFor(() => expect(r.s.workspace.projectId).toBe('prj_1'), r);
     const open = (id: string) => r.$(`[data-testid="repo-row"][data-project="${id}"] [data-testid="repo-open"]`) as HTMLAnchorElement;
     expect(open('prj_2').getAttribute('href')).toBe('/pulls');
     expect(open('prj_2').getAttribute('aria-label')).toBe('Open the pull requests of website');
     expect(open('prj_1').getAttribute('href')).toBe('/');
     expect(open('prj_1').getAttribute('aria-label')).toBe('Open gocalc');
+    // the state decides, not the fields that came along: a repository waiting for gh is on GitHub, an unreadable folder is not
+    expect(open('prj_3').getAttribute('href')).toBe('/pulls');
+    expect(open('prj_3').getAttribute('aria-label')).toBe('Open the pull requests of waiting');
+    expect(open('prj_4').getAttribute('href')).toBe('/');
+    expect(open('prj_4').getAttribute('aria-label')).toBe('Open moved');
     // the test page stays where it is; the link's own handler still runs
     r.container.addEventListener('click', (e) => e.preventDefault(), { capture: true });
     await r.act(() => open('prj_2').click());

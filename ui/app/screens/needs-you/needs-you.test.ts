@@ -5,7 +5,6 @@ import { needsChanged } from '../../state/project.ts';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import { summariesChanged } from '../../state/workspace.ts';
 import {
-  agoWords,
   answerOf,
   canAck,
   clock,
@@ -24,6 +23,7 @@ import {
   stepFraction,
   taskKey,
   untilWords,
+  verdictWords,
 } from './needs-you.ts';
 
 const base: NeedsYouItem = { key: 'k', kind: 'approval', title: 't', severity: 1, createdAt: '2026-01-01T00:00:00Z' } as NeedsYouItem;
@@ -32,13 +32,13 @@ describe('Needs you targets and hints', () => {
   it("gives a task's item a context line: the change's size, the checks and the verdict (UI review P1-1)", () => {
     const base = { key: 'k', kind: 'review', severity: 2, title: 'Review and merge: Fix rounding', taskId: 't1', createdAt: '' } as NeedsYouItem;
     const it1 = { ...base, context: { agent: 'agt_rita', hasDiff: true, files: 1, insertions: 4, deletions: 1, checksPassed: 4, checksTotal: 4, verdict: 'SHIP' } };
-    expect(needsContextParts(it1)).toEqual(['1 file +4 \u22121', '4/4 checks passed', 'reviewer: SHIP']);
+    expect(needsContextParts(it1)).toEqual(['1 file +4 \u22121', '4/4 checks passed', 'reviewer approved']);
     expect(needsAgent(it1)).toBe('agt_rita');
     // the agent that raised the item wins over the assignee; nothing recorded yet says nothing
     expect(needsAgent({ ...it1, agentId: 'agt_other' })).toBe('agt_other');
     expect(needsContextParts({ ...base, context: { hasDiff: false, files: 0, insertions: 0, deletions: 0, checksPassed: 0, checksTotal: 0 } })).toEqual([]);
     expect(needsContextParts(base)).toEqual([]);
-    expect(needsContextParts({ ...base, context: { hasDiff: true, files: 3, insertions: 10, deletions: 0, checksPassed: 1, checksTotal: 2, verdict: 'REVISE' } })).toEqual(['3 files +10 \u22120', '1/2 checks passed', 'reviewer: REVISE']);
+    expect(needsContextParts({ ...base, context: { hasDiff: true, files: 3, insertions: 10, deletions: 0, checksPassed: 1, checksTotal: 2, verdict: 'REVISE' } })).toEqual(['3 files +10 \u22120', '1/2 checks passed', 'reviewer asked for changes']);
   });
 
   it('goes to the task, else the room, else the page that holds the decision', () => {
@@ -109,11 +109,6 @@ describe('the Inbox helpers', () => {
   });
 
   it('says times in plain words and as a clock', () => {
-    expect(agoWords(now - 20_000, now)).toBe('just now');
-    expect(agoWords(now - 2 * 60_000, now)).toBe('2 min ago');
-    expect(agoWords(now - 3 * 3_600_000, now)).toBe('3 h ago');
-    expect(agoWords(now - 2 * 86_400_000, now)).toBe('2 d ago');
-    expect(agoWords(0, now)).toBe('');
     expect(untilWords(now + 58 * 60_000 + 5000, now)).toBe('in 58 min');
     expect(untilWords(now + 10_000, now)).toBe('in 1 min');
     expect(untilWords(now + 2 * 3_600_000, now)).toBe('in 2 h');
@@ -196,5 +191,13 @@ describe('the Inbox helpers', () => {
     const ev = (type: string): DrydockEvent => ({ type, seq: 1, time: '' });
     for (const t of ['task.updated', 'run.status', 'room.presence_changed']) expect(summariesChanged(ev(t))).toBe(true);
     for (const t of ['agent.output', 'chat.message']) expect(summariesChanged(ev(t))).toBe(false);
+  });
+});
+
+describe('verdictWords', () => {
+  it("says the reviewer's verdict in words, not the core's constant", () => {
+    expect(verdictWords('SHIP')).toBe('approved');
+    expect(verdictWords('REVISE')).toBe('asked for changes');
+    expect(verdictWords('NEEDS_ATTENTION')).toBe('needs attention');
   });
 });

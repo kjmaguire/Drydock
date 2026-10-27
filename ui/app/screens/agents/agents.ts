@@ -6,6 +6,7 @@ import type { McpAdapterRow } from '../../api/mcpClient.ts';
 import type { Agent, Connection, ConnectionReport, MatrixCell, Prereq } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
 import type { Tone } from '../../ui/tokens.ts';
+import { agoWords } from '../../lib/format.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
 
 /** observed: seen during the test. declared: the CLI says so. unknown: not verified. */
@@ -146,12 +147,9 @@ export function readyLine(list: readonly Connection[]): string {
   return installed.length === 0 ? 'The agent CLIs your crew runs on' : `The agent CLIs your crew runs on · ${ready} of ${installed.length} ready`;
 }
 
-/** "just now", "1 min ago", "14 min ago", "3 h ago": how long ago the install was checked. */
+/** "checked just now", "checked 14 min ago", "checked 2 d ago": how long ago the install was checked. */
 export function checkedWords(at: number, now: number): string {
-  const s = Math.max(0, Math.floor((now - at) / 1000));
-  if (s < 60) return 'checked just now';
-  if (s < 3600) return `checked ${Math.floor(s / 60)} min ago`;
-  return `checked ${Math.floor(s / 3600)} h ago`;
+  return `checked ${agoWords(at, now)}`;
 }
 
 /** The line under the detail's name: "On Windows · signed in · checked 2 min ago", "In WSL 2 · not signed in · …". */
@@ -284,16 +282,17 @@ export function gatewayState(row: McpAdapterRow | undefined): { kind: GatewayKin
 }
 
 /**
- * The crew agents that run on this install: the same CLI, and the same place (an agent's own run mode, else its project's;
- * a project in WSL runs a CLI that has no WSL install on Windows). A WSL agent without a distro runs in the default one.
+ * The crew agents that run on this install: the same CLI, and the same place (an agent's own run mode, else its project's).
+ * As the core decides it (effectiveRunMode): a project in WSL runs an agent in WSL when its CLI's adapter can run there
+ * (`canWSL`, the adapter's declared run modes), else on Windows. A WSL agent without a distro runs in the default one.
  */
 export function usedBy<A extends Pick<Agent, 'adapter' | 'runMode' | 'wslDistro' | 'projectId'>>(
   c: Pick<Connection, 'adapter' | 'runMode' | 'distro' | 'wsl'>,
   agents: readonly A[],
   projects: ReadonlyMap<string, Pick<ProjectRunMode, 'runMode' | 'wslDistro'>>,
   all: readonly Pick<Connection, 'adapter' | 'runMode' | 'distro' | 'wsl'>[],
+  canWSL: (adapter: string) => boolean,
 ): A[] {
-  const canWSL = all.some((x) => x.adapter === c.adapter && isWSL(x));
   const defaultDistro = all.find((x) => x.adapter === c.adapter && isWSL(x) && x.wsl?.default)?.distro;
   const same = (a: string | undefined, b: string | undefined) => (a ?? '').toLowerCase() === (b ?? '').toLowerCase();
   return agents.filter((a) => {
@@ -302,7 +301,7 @@ export function usedBy<A extends Pick<Agent, 'adapter' | 'runMode' | 'wslDistro'
     let distro = a.wslDistro;
     if (!mode) {
       const p = projects.get(a.projectId);
-      mode = p?.runMode === 'wsl' && canWSL ? 'wsl' : 'native';
+      mode = p?.runMode === 'wsl' && canWSL(a.adapter) ? 'wsl' : 'native';
       distro = p?.wslDistro;
     }
     if (mode !== 'wsl') return !isWSL(c);

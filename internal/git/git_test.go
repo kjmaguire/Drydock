@@ -228,9 +228,40 @@ func TestSafePointAndRestoreAreNonDestructive(t *testing.T) {
 	}
 }
 
+// A plain folder, a folder that is gone and a repository git cannot read (a broken .git/config) are all ErrNotARepo, told
+// apart by the words: the path alone for the first two, git's own reason after the path for the last.
 func TestOpenNotARepo(t *testing.T) {
-	if _, err := Open(context.Background(), t.TempDir()); !errors.Is(err, ErrNotARepo) {
-		t.Fatalf("want ErrNotARepo, got %v", err)
+	ctx := context.Background()
+	plain := t.TempDir()
+	if _, err := Open(ctx, plain); !errors.Is(err, ErrNotARepo) || err.Error() != "git: not a git repository: "+plain {
+		t.Fatalf("a plain folder: %v", err)
+	}
+	gone := filepath.Join(t.TempDir(), "gone")
+	if _, err := Open(ctx, gone); !errors.Is(err, ErrNotARepo) || err.Error() != "git: not a git repository: "+gone {
+		t.Fatalf("a folder that is gone says so, not what git could not do: %v", err)
+	}
+	broken := t.TempDir()
+	if _, err := Init(ctx, broken, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(broken, ".git", "config"), []byte("this is not a git configuration\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(ctx, broken); !errors.Is(err, ErrNotARepo) || !strings.Contains(err.Error(), broken+": ") || !strings.Contains(err.Error(), "bad config") {
+		t.Fatalf("a broken .git/config carries git's words after the path: %v", err)
+	}
+}
+
+// git's words follow the command line and the reason when it said any; a git that said nothing (it could not start, or could
+// not enter the folder) leaves nothing dangling after the reason.
+func TestGitErrorWordsEndWithWhatGitSaid(t *testing.T) {
+	said := &gitError{args: []string{"remote", "get-url", "origin"}, err: errors.New("exit status 128"), stderr: "fatal: bad config line 1 in file .git/config"}
+	if got := said.Error(); got != "git remote get-url origin: exit status 128: fatal: bad config line 1 in file .git/config" {
+		t.Fatalf("with git's words: %q", got)
+	}
+	silent := &gitError{args: []string{"remote", "get-url", "origin"}, err: errors.New("chdir /src/moved: no such file or directory")}
+	if got := silent.Error(); got != "git remote get-url origin: chdir /src/moved: no such file or directory" {
+		t.Fatalf("without: %q", got)
 	}
 }
 
@@ -432,5 +463,26 @@ func TestListFilesHonoursGitignoreAndListsUntrackedFiles(t *testing.T) {
 	want := []string{".gitignore", "README.md", "src/main.go", "src/new.go"}
 	if !slices.Equal(files, want) {
 		t.Fatalf("ListFiles = %v, want %v", files, want)
+	}
+}
+
+// RemoteURL tells a repository without that remote (ErrNoRemote) from git failing to read the repository at all.
+func TestRemoteURLSaysWhenThereIsNoSuchRemote(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRepo(t)
+	if _, err := r.RemoteURL(ctx, "origin"); !errors.Is(err, ErrNoRemote) {
+		t.Fatalf("no origin: %v", err)
+	}
+	if out, err := exec.Command("git", "-C", r.Root, "remote", "add", "origin", "https://github.com/acme/demo.git").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if url, err := r.RemoteURL(ctx, "origin"); err != nil || url != "https://github.com/acme/demo.git" {
+		t.Fatalf("origin: %q %v", url, err)
+	}
+	if err := os.RemoveAll(filepath.Join(r.Root, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.RemoteURL(ctx, "origin"); err == nil || errors.Is(err, ErrNoRemote) {
+		t.Fatalf("a folder that is no longer a repository is a failure, not a missing remote: %v", err)
 	}
 }

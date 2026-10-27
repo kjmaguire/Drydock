@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { createProject, projectNav, workspaceNav } from './helpers';
+import { appUrl, createProject, projectNav, workspaceNav } from './helpers';
 
 // Decision P42 against the real Go core: a service is connected once, without a project, on the workspace's Integrations page
 // (a list and the chosen row's detail, decision P98), then assigned to a project and unassigned again on that project's own
@@ -83,7 +83,7 @@ test("integrations: connect Linear without a project, see its fixed name and log
   expect(await page.content()).not.toContain(key);
   // the row says it in a word, and the header counts it
   await expect(row).toContainText('On');
-  await expect(page.locator('header')).toContainText(/· [1-9]\d* on/);
+  await expect(page.locator('header')).toContainText(/· [1-9]\d* connected/);
 
   // Check against your account (P59): the same read-only checks as the live tests, with the key Drydock already holds
   // (nothing is typed or shown), here against the fixture standing in for the account
@@ -184,4 +184,32 @@ test('integrations: the list filters by a word and by state, and the address kee
   // GitHub's row is its own page
   await list.locator('a[href="/github"]').click();
   await expect(page).toHaveURL(/\/github$/);
+});
+
+test('integrations: OpenRouter is listed under Model providers and sets up as a provider, the form filled in for it (decision P103)', async ({ page }) => {
+  await page.goto(appUrl());
+  await workspaceNav(page, 'nav-integrations');
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  const models = list.getByTestId('list-group-models');
+  await expect(models.getByRole('heading', { name: /^Model providers/, level: 2 })).toBeVisible();
+  const row = models.locator('[data-testid=integration-row][data-kind=openrouter]');
+  await expect(row).toContainText('OpenRouter');
+  await expect(row.locator('[data-brand=openrouter]')).toBeVisible();
+  await row.click();
+  await expect(page).toHaveURL(/\/integrations\/openrouter$/);
+  const panel = page.getByTestId('openrouter-panel');
+  await expect(panel.getByRole('heading', { name: 'OpenRouter', level: 2 })).toBeVisible();
+  // a harness without an OpenRouter provider: the form, filled in for it; the key is the person's to type (nothing is created here:
+  // the harness has no route to openrouter.ai)
+  // the attribute is there once the provider list is read
+  await expect(panel).toHaveAttribute('data-set-up', /^(true|false)$/);
+  if ((await panel.getAttribute('data-set-up')) === 'false') {
+    const form = panel.getByRole('form', { name: 'Connect OpenRouter' });
+    await expect(form.getByLabel('Provider name')).toHaveValue('OpenRouter');
+    await expect(form.getByLabel('Base URL')).toHaveValue('https://openrouter.ai/api/v1');
+    await expect(form.getByLabel('Kind', { exact: true })).toHaveAttribute('data-value', 'aggregator');
+    await expect(form.getByRole('button', { name: 'Connect OpenRouter' })).toBeEnabled();
+  } else {
+    await expect(panel.getByTestId('openrouter-open')).toHaveAttribute('href', /^\/models\/.+/);
+  }
 });

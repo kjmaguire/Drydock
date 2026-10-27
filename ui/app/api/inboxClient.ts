@@ -104,6 +104,12 @@ export interface AgentLane {
   waits: WaitSpan[];
 }
 
+/** core.CrewExtras (crew.extras): the accepted skills given to each agent, and each channel and group with its agents. */
+export interface CrewExtras {
+  skills: { agentId: string; name: string }[];
+  rooms: { projectId: string; name: string; kind: string; agents: string[] }[];
+}
+
 /** core.CrewTimeline (agent.timeline). */
 export interface CrewTimeline {
   since: number;
@@ -128,6 +134,8 @@ export interface InboxClient {
   agentListAll(): Promise<Agent[]>;
   /** Each agent's runs and waits overlapping [since, until] (until omitted: now); projectId '' or omitted: every project. */
   agentTimeline(since: number, until?: number, projectId?: string): Promise<CrewTimeline>;
+  /** Each agent's accepted skills and its channels and groups, in one read; projectId '': every project. */
+  crewExtras(projectId: string): Promise<CrewExtras>;
 }
 
 export function createInboxClient(t: Transport): InboxClient {
@@ -149,6 +157,10 @@ export function createInboxClient(t: Transport): InboxClient {
     agentTimeline: async (since, until = 0, projectId = '') => {
       const tl = await t.call<CrewTimeline>('agent.timeline', { projectId, since, until });
       return { ...tl, agents: arr(tl?.agents).map((l) => ({ ...l, runs: arr(l.runs), waits: arr(l.waits) })) };
+    },
+    crewExtras: async (projectId) => {
+      const x = await t.call<CrewExtras | null>('crew.extras', { projectId });
+      return { skills: arr(x?.skills), rooms: arr(x?.rooms).map((r) => ({ ...r, agents: arr(r.agents) })) };
     },
   };
 }

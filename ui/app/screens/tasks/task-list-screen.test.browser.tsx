@@ -256,6 +256,29 @@ describe('TaskListScreen: the board', () => {
     await waitFor(() => expect(taskSummaries.calls.length).toBeGreaterThan(before), r);
   });
 
+  it('a merged card keeps Merge off until the board is read again, so a second click cannot merge twice (audit 2026-10-27)', async () => {
+    let merged = false;
+    const runRespond = recorder(async () => void (merged = true));
+    let release: () => void = () => {};
+    const slow = async () => {
+      // the reads after the merge wait until the test lets them answer
+      if (merged) await new Promise<void>((res) => (release = res));
+      return { summaries: SUMMARIES, total: SUMMARIES.length, partial: false };
+    };
+    const { r } = board({ runRespond, taskSummaries: slow as never });
+    await shown(r, 8);
+    await r.act(() => byText(card(r, 'merge'), 'button', 'Merge GOC-38').click());
+    await waitFor(() => expect(runRespond.calls).toHaveLength(1), r);
+    // the merge was answered; the board's read has not landed yet
+    await r.act(() => new Promise((res) => setTimeout(res, 50)));
+    const btn = () => byText<HTMLButtonElement>(card(r, 'merge'), 'button', 'Merge GOC-38');
+    expect([btn().textContent, btn().disabled]).toEqual(['Merging...', true]);
+    await r.act(() => btn().click());
+    expect(runRespond.calls).toHaveLength(1);
+    await r.act(() => release());
+    await waitFor(() => expect(btn().textContent).toBe('Merge'), r);
+  });
+
   it('shows why a merge failed, and keeps Merge off while read-only', async () => {
     const { r } = board({ runRespond: async () => Promise.reject(new Error('the request was already answered')) });
     await shown(r, 8);

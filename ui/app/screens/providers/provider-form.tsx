@@ -32,12 +32,16 @@ const fieldsetCss = css({
 });
 type Option = [value: string, label: string];
 
-/** `onCreated` gets the provider the core created (when it answered with one), so the screen can open it. */
-export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void }>) {
+/**
+ * `onCreated` gets the provider the core created (when it answered with one), so the screen can open it. `initial` starts the form
+ * filled in (OpenRouter on the Integrations page); every field stays editable.
+ */
+export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void; initial?: ProviderFormValues; label?: string; submitLabel?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
-  const v: ProviderFormValues = emptyProviderForm();
+  const fresh = (): ProviderFormValues => (handle.props.initial ? { ...handle.props.initial, att: { ...handle.props.initial.att } } : emptyProviderForm());
+  const v = fresh();
   let keyInput: HTMLInputElement | undefined;
   const redraw = () => void handle.update();
 
@@ -52,9 +56,11 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void 
       ok = true;
     });
     if (ok) {
-      v.name = '';
-      v.baseUrl = '';
-      v.att = {};
+      // back to where it started (OpenRouter's preset, else blank); the kind, data class and tier stay as chosen
+      const f = fresh();
+      v.name = f.name;
+      v.baseUrl = f.baseUrl;
+      v.att = f.att;
       redraw();
       handle.props.onCreated(made);
     }
@@ -100,7 +106,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void 
     return (
       <form
         autocomplete="off"
-        aria-label="Add a provider"
+        aria-label={handle.props.label ?? 'Add a provider'}
         mix={[
           card,
           formGrid,
@@ -164,7 +170,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void 
             disabled={act.busy !== '' || ro.readOnly || !v.name.trim() || !v.baseUrl.trim()}
             title={ro.readOnly ? ro.reason : undefined}
           >
-            Add provider
+            {handle.props.submitLabel ?? 'Add provider'}
           </Button>
         </div>
       </form>

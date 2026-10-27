@@ -2,6 +2,9 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { ProbeResult, ProviderModel } from '../../api/types.ts';
 import {
+  OPENROUTER_BASE,
+  openRouterForm,
+  openRouterProviders,
   avoidedEndpointText,
   emptyProviderForm,
   healthTone,
@@ -149,5 +152,28 @@ describe('OpenRouter endpoint uptime', () => {
     expect(uptimeThreshold('101')).toBe(undefined);
     expect(uptimeThreshold('-1')).toBe(undefined);
     expect(uptimeThreshold('abc')).toBe(undefined);
+  });
+});
+
+describe('OpenRouter (decision P103)', () => {
+  it('fills the provider form in for OpenRouter, leaving the key to the person and the defaults as they are', () => {
+    const v = openRouterForm();
+    expect(v.name).toBe('OpenRouter');
+    expect(v.kind).toBe('aggregator');
+    expect(v.baseUrl).toBe(OPENROUTER_BASE);
+    expect(OPENROUTER_BASE).toBe('https://openrouter.ai/api/v1');
+    expect(v.dataClass).toBe('private');
+    expect(v.tier).toBe('cheap');
+    expect(newProviderRequest(v, '')).toEqual({ Name: 'OpenRouter', Kind: 'aggregator', BaseURL: OPENROUTER_BASE, DataClass: 'private', Tier: 'cheap', Attestations: {} });
+  });
+
+  it('finds the OpenRouter providers by their address, whatever they are called', () => {
+    const list = [
+      { id: 'a', baseUrl: 'https://openrouter.ai/api/v1', flavor: '' },
+      { id: 'b', baseUrl: 'https://eu.openrouter.ai/api/v1', flavor: '' },
+      { id: 'c', baseUrl: 'https://api.groq.com/openai/v1', flavor: 'openai' },
+      { id: 'd', baseUrl: 'https://notopenrouter.ai/v1', flavor: '' },
+    ];
+    expect(openRouterProviders(list).map((p) => p.id)).toEqual(['a', 'b']);
   });
 });

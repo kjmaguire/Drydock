@@ -323,6 +323,25 @@ describe('ChatFeed', () => {
     expect(f.lastTurn?.fallback).toBe(true);
   });
 
+  it('tells its view about text streaming into an answer already shown apart from changes, so only the answer redraws', async () => {
+    const { f, emit } = feed();
+    await settle();
+    const seen: string[] = [];
+    f.addEventListener('change', () => seen.push('change'));
+    f.addEventListener('stream', () => seen.push('stream'));
+    emit('chat.turn_started', { chatId: 'c1', turnId: 't2', attach: [] });
+    emit('chat.thinking', { chatId: 'c1', turnId: 't2', text: 'Read ' }); // the fold appears: a change
+    emit('chat.thinking', { chatId: 'c1', turnId: 't2', text: 'calc.go.' }); // it grows: a stream
+    emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'Hel' }); // the answer appears: a change
+    emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'lo ' }); // it grows: a stream
+    emit('chat.delta', { chatId: 'c1', turnId: 't2', text: 'there' });
+    emit('chat.delta', { chatId: 'c9', turnId: 'x', text: 'other chat' }); // not this chat: nothing
+    emit('chat.message', { chatId: 'c1', message: msg(3, 'assistant', { body: 'Hello there' }) });
+    emit('chat.turn', { chatId: 'c1', turnId: 't2', status: 'done' });
+    expect(seen).toEqual(['change', 'change', 'stream', 'change', 'stream', 'stream', 'change', 'change']);
+    expect(f.streaming).toBeUndefined();
+  });
+
   it('streams the reasoning and lets the stored row it came before take it (P89)', async () => {
     const { f, emit } = feed();
     await settle();

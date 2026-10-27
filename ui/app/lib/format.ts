@@ -171,3 +171,13 @@ export function presenceWords(p: PresenceState | undefined): string {
 
 /** "1 file", "2 files": a count with its noun, so a page never writes "file(s)". `many` is for nouns that do not take an s. */
 export const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+
+/** "just now", "14 min ago", "3 h ago", "2 d ago": how long ago a time was; "" for no time. A time ahead reads as just now. */
+export function agoWords(ms: number, now = Date.now()): string {
+  if (!ms) return '';
+  const s = Math.max(0, Math.floor((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}

@@ -23,7 +23,7 @@ export function SecurityScreen(handle: Handle) {
     const hasRepo = projectHasRepo(project);
     if (!pid) {
       return (
-        <Page title="Security scan" icon={ShieldCheck} testId="security-scan">
+        <Page title="Security" icon={ShieldCheck} testId="security-scan">
           <Notice tone="info">Choose a project to scan.</Notice>
         </Page>
       );
@@ -32,7 +32,8 @@ export function SecurityScreen(handle: Handle) {
       <ScanPanel
         scope={projectScope(s.client, pid)}
         canScan={!!project && hasRepo}
-        title="Security scan"
+        // named as its pill under Overview names it; the workspace's page that scans any folder is the Security scan
+        title="Security"
         testId="security-scan"
         nameOf={() => project?.name ?? 'project'}
         target={

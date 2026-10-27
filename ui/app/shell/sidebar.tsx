@@ -308,7 +308,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
           </div>
           <button type="button" mix={[searchCss, on('click', () => s.ui.setPalette(true))]} aria-label="Search and jump (Ctrl+K)" title="Search or run a command (Ctrl+K)">
             <Icon icon={Search} size={14} />
-            <span class="lbl">Search or run a command</span>
+            <span class="lbl">Search</span>
             <kbd>Ctrl K</kbd>
           </button>
 
@@ -397,8 +397,9 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             <span>Workspace</span>
           </div>
           <ul mix={listCss} role="list" aria-label="Workspace">
-            {link({ id: 'nav-crew', label: 'Crew', icon: Users, href: routes.crew.href(), current: route.name === 'crew' })}
-            {link({ id: 'nav-security-scan', label: 'Security', icon: ShieldCheck, href: routes.securityScan.href(), current: is('scan') })}
+            {/* named apart from the open project's Crew and its Security pill (the UI audit of 2026-10-26: two items read the same) */}
+            {link({ id: 'nav-crew', label: 'All crews', icon: Users, href: routes.crew.href(), current: route.name === 'crew' })}
+            {link({ id: 'nav-security-scan', label: 'Security scan', icon: ShieldCheck, href: routes.securityScan.href(), current: is('scan') })}
             {link({ id: 'nav-side-agents', label: 'Agents', icon: Bot, href: routes.agents.href(), current: is('agents') })}
             {link({ id: 'nav-side-integrations', label: 'Integrations', icon: Blocks, href: routes.integrations.href(), current: is('integrations') })}
             {link({ id: 'nav-side-models', label: 'Models', icon: Cpu, href: routes.models.href(), current: is('models') })}

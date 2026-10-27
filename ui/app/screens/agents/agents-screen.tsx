@@ -11,11 +11,11 @@ import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
 import type { Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
-import type { ProjectRunMode } from '../../api/wslClient.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
 import { adapterLabel, cliName } from '../shared/cli-name.ts';
+import { supportsWSL } from '../team/run-mode.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, Badge, faint, muted } from '../../ui/data.tsx';
@@ -437,6 +437,11 @@ function AgentDetail(handle: Handle<DetailProps>) {
     const projects = new Set(crew.map((u) => u.agent.projectId)).size;
     // the core's other problem lines and warnings (the notice already says one of them)
     const notes = [...(c.problems ?? []).filter((x) => x !== notice?.from), ...(c.warnings ?? [])];
+    // say it once (the UI audit of 2026-10-26: "Untested" in the list, "Version not tested yet" in the header and the notice, and
+    // Test connection twice): with a notice the header keeps no state pill, and the notice offers its fix only when the header's
+    // own buttons do not already (Test connection, Sign in, Check again are there)
+    const fixInHeader =
+      !!notice && ((notice.fix === 'test' && installed) || (notice.fix === 'sign-in' && installed && !!c.signIn) || notice.fix === 'check');
 
     const actions = (
       <>
@@ -656,7 +661,7 @@ function AgentDetail(handle: Handle<DetailProps>) {
           title={p.name}
           logo={c.adapter}
           icon={Terminal}
-          status={{ text: st.pill, tone: st.tone }}
+          status={notice ? undefined : { text: st.pill, tone: st.tone }}
           sub={headerLine(c, checked ? checkedAt : p.checkedAt, p.now)}
           actions={actions}
           testId="agent-header"
@@ -667,7 +672,7 @@ function AgentDetail(handle: Handle<DetailProps>) {
               <Icon icon={TriangleAlert} size={14} />
             </span>
             <span data-part="text">{notice.text}</span>
-            {notice.fix && notice.label && !(notice.fix === 'sign-in' && signInBusy) ? (
+            {notice.fix && notice.label && !fixInHeader && !(notice.fix === 'sign-in' && signInBusy) ? (
               <Button size="sm" variant="ghost" data-testid="agent-notice-fix" disabled={(notice.fix === 'test' && p.testing) || (notice.fix === 'check' && checking)} mix={on('click', () => fix(notice))}>
                 {notice.label}
               </Button>
@@ -757,15 +762,23 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   const gwAct = action(handle);
   // every project's agents, and where each project runs them, for "Used by"
   const crew = query(handle, { load: () => orElse(() => s.client.agentListAll(), [] as Agent[]), when: (e) => e.type.startsWith('agent.') });
-  const projectIds = () => s.workspace.projectList.map((p) => p.id);
+  // the adapters with the run modes each declares. No fallback here: a first read that fails leaves no answer, so the detail
+  // says so while "Used by" goes by the installs found; a re-read that fails keeps the last answer (the query does), and the
+  // note says the re-read failed
+  const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // whether an adapter can run in WSL, as the core decides where an agent runs (effectiveRunMode): once the adapters are known,
+  // the adapter's declared run modes decide, and an adapter the core does not list cannot. Only while no answer has arrived yet
+  // (the first read is on its way, or failed) does a WSL install of the CLI stand in for the answer.
+  const canWSL = (adapter: string): boolean => {
+    if (adapters.data) return supportsWSL(adapters.data.find((x) => x.id === adapter)?.capabilities);
+    return (q.data ?? []).some((x) => x.adapter === adapter && isWSL(x));
+  };
+  // every project's run mode in one request (project.runModes), however many projects there are. A failed read leaves no
+  // answer: an agent that follows its project is then listed under the Windows install, one with its own run mode where that
+  // says, and the detail says the read failed.
   const runModes = query(handle, {
-    load: async () => {
-      const out = new Map<string, ProjectRunMode>();
-      for (const id of projectIds()) out.set(id, await orElse(() => s.client.projectRunMode(id), { runMode: 'native' } as ProjectRunMode));
-      return out;
-    },
+    load: async () => new Map(Object.entries(await s.client.projectRunModes())),
     when: (e) => e.type.startsWith('project.'),
-    key: projectIds,
   });
 
   // "Check all again": connection.list read again (the query keeps the old list on the page until it answers)
@@ -889,7 +902,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           testing={testing.has(key)}
           testError={testErrors.get(key)}
           onTest={(prompt) => void runTest(open, prompt)}
-          crew={usedBy(open, crew.data ?? [], runModes.data ?? new Map(), list).map((a) => ({ agent: a, project: projectName(a.projectId) }))}
+          crew={usedBy(open, crew.data ?? [], runModes.data ?? new Map(), list, canWSL).map((a) => ({ agent: a, project: projectName(a.projectId) }))}
           onOpenAgent={openAgent}
           onChanged={() => void q.reload()}
         />
@@ -937,10 +950,13 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
             detail={
               <>
                 {q.error ? <ErrorNote error={q.error} what="Could not check the agent CLIs again" /> : null}
+                {adapters.error ? <ErrorNote error={adapters.error} what="Could not read the adapters' run modes" /> : null}
+                {runModes.error ? <ErrorNote error={runModes.error} what="Could not read where the projects' agents run" /> : null}
                 {detail}
               </>
             }
             testId="agents"
+            address={handle.props.initial}
           />
         ) : null}
       </Page>

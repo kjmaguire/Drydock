@@ -299,7 +299,13 @@ export async function openNewAgent(page: Page, nav = true): Promise<void> {
   }).toPass({ timeout: 60_000 });
 }
 
-/** Opens an agent's own page from its card on the Crew page (Edit, Inspect, Message and Remove are there). */
+/** On an agent's own page, opens the Inspector from the "..." menu beside Message and Edit. */
+export async function inspectAgent(page: Page): Promise<void> {
+  await page.getByTestId('agent-more').click();
+  await page.getByRole('menuitem', { name: 'Inspect' }).click();
+}
+
+/** Opens an agent's own page from its card on the Crew page (Message and Edit are there; Inspect and Remove in its "..." menu). */
 export async function openAgentPage(page: Page, name: string): Promise<void> {
   await projectNav(page, 'nav-team');
   await page.locator(`[data-testid="agent"][data-name="${name}"]`).getByTestId('agent-link').click();

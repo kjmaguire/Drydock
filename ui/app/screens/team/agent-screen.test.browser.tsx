@@ -5,7 +5,7 @@ import type { LibrarySkill, MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, AgentDetail, PresenceState, Project, Task } from '../../api/types.ts';
 import { lic, usage, usageTotals } from '../../test/fixtures.ts';
-import { byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byText, cleanup, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { AgentScreen, nowChip, serversOf, skillsOf } from './agent-screen.tsx';
 
 afterEach(cleanup);
@@ -150,10 +150,15 @@ describe("an agent's page", () => {
     const archived: string[] = [];
     const { r, s, navigated } = show('agt_1', { agentArchive: async (id) => (archived.push(id), agent()) });
     await hero(r);
-    await r.act(() => byText(r.container, 'button', 'Inspect').click());
+    // Message and Edit are buttons; the rest is in "..." with Remove last, in the danger colour (UI audit 2026-10-26)
+    const more = r.$('[data-testid="agent-more"]') as HTMLElement;
+    expect(await menuItems(r, more)).toEqual(['Inspect', 'All agents', 'Remove Ada...']);
+    expect(r.$('[role="menuitem"][data-tone="danger"]')!.textContent!.trim()).toBe('Remove Ada...');
+    expect(r.$('button[aria-label="Remove Ada"]')).toBeNull();
+    await fromMenu(r, more, 'Inspect');
     expect(s.ui.inspectId).toBe('agt_1');
     expect(s.ui.tab).toBe('inspector');
-    await r.act(() => (r.$('button[aria-label="Remove Ada"]') as HTMLButtonElement).click());
+    await fromMenu(r, more, 'Remove Ada...');
     const box = await waitFor(() => r.$('[data-testid="agent-remove"]') ?? (() => { throw new Error('no dialog'); })(), r);
     expect(archived).toEqual([]);
     expect(box.textContent).toContain('Remove Ada from the team? Its history stays.');
@@ -189,7 +194,8 @@ describe("an agent's page", () => {
     expect(Array.from(now.querySelectorAll('.steps span')).map((x) => x.getAttribute('data-state'))).toEqual(['done', 'current', null, null]);
     expect(now.querySelector('[data-testid="task-status"]')!.textContent).toContain('In review');
     await waitFor(() => expect(now.querySelector('[data-testid="agent-activity"]')!.textContent).toContain('tool: Write'), r);
-    expect(now.querySelector('[data-testid="agent-activity"]')!.textContent).toContain('running');
+    // the run's status in words, never the core's constant
+    expect(now.querySelector('[data-testid="agent-activity"]')!.textContent).toContain('Running · started');
     // stats: two completed tasks as worker, one as reviewer, one of two passed first time, costs and times only where reported
     expect(now.querySelector('[data-testid="stat-merged"] b')!.textContent).toBe('2');
     expect(now.querySelector('[data-testid="stat-reviewed"] b')!.textContent).toBe('1');
@@ -270,6 +276,17 @@ describe("an agent's page", () => {
     expect(r.$$('[data-testid="usage-row"]').length).toBe(2);
   });
 
+  it("a stopped agent's activity block does not repeat that it stopped: the hero's chip says it", async () => {
+    const stopped: PresenceState = { ...presence, taskId: '', presence: 'Paused', label: 'stopped', activity: 'stopped' };
+    const { r } = show('agt_1', { presenceList: async () => [stopped] });
+    await hero(r);
+    await waitFor(() => expect(chips(r)[0]).toContain('Stopped'), r);
+    const block = r.$('[data-testid="agent-activity"]')!.textContent!;
+    expect(block.includes('●')).toBe(false);
+    expect(block).toContain('· started');
+    expect(r.$('[data-testid="agent-now"] h2')!.textContent).toBe('Right now');
+  });
+
   it('an agent without presence, task, purpose or runs says so plainly, and an unknown id is not invented', async () => {
     const { r } = show('agt_2', { agentGet: async () => ({ agent: rex, runs: [], usage: [], usageTotals: usageTotals() }), presenceList: async () => [] });
     await hero(r);
@@ -278,6 +295,9 @@ describe("an agent's page", () => {
     expect(chips(r)).toEqual(['Stopped', 'Claude Code · sonnet', 'effort: high']);
     expect(r.$('[data-testid="agent-now"]')!.textContent).toContain('Not on a task right now');
     expect(r.$('[data-testid="agent-activity"]')!.textContent).toContain('No run yet');
+    // "Stopped" is said once, in the hero's chip: not again beside Right now (UI audit 2026-10-26)
+    expect(r.$('[data-testid="agent-now"] h2')!.textContent).toBe('Right now');
+    expect(/stopped/i.test(r.$('[data-testid="agent-now"]')!.textContent!)).toBe(false);
     // Rex finished #3 as worker with no rework round, but that task reports no cost or times, and nothing was spent
     expect(r.$('[data-testid="stat-merged"] b')!.textContent).toBe('1');
     expect(r.$('[data-testid="stat-first-time"] b')!.textContent).toBe('100%');
@@ -301,7 +321,7 @@ describe("an agent's page", () => {
     await hero(r);
     const spend = await waitFor(() => r.$('[data-testid="stat-spend"]') ?? (() => { throw new Error('no spend yet'); })(), r);
     expect(spend.querySelector('b')!.textContent).toBe('$60.00');
-    expect(spend.querySelector('small')!.textContent).toBe('spent in all 120 usage rows, 30 estimated');
+    expect(spend.querySelector('small')!.textContent).toBe('spent so far, 30 of 120 costs estimated');
     await r.act(() => r.$('[data-testid="agent-tab-history"]')!.click());
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(50), r);
     expect(r.$('section[aria-label="Usage"] h2')!.textContent).toContain('$60.00 in all 120 rows');
@@ -313,7 +333,7 @@ describe("an agent's page", () => {
     const { r } = show('agt_1');
     await hero(r);
     await waitFor(() => expect(r.$('[data-testid="stat-spend"] b')!.textContent).toBe('$0.12'), r);
-    expect(r.$('[data-testid="stat-spend"] small')!.textContent).toBe('spent in all 2 usage rows');
+    expect(r.$('[data-testid="stat-spend"] small')!.textContent).toBe('spent so far');
     await r.act(() => r.$('[data-testid="agent-tab-history"]')!.click());
     await waitFor(() => expect(r.$$('[data-testid="usage-row"]').length).toBe(2), r);
     expect(r.$('[data-testid="usage-cut"]')).toBeNull();

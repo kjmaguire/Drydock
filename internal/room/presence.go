@@ -11,7 +11,13 @@ import (
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/redact"
 	"github.com/kjmaguire/drydock/internal/safe"
+	"github.com/kjmaguire/drydock/internal/workflow"
 )
+
+// permissionTitlePrefix starts the title of an approval.requested that is a permission request of the gate
+// (security.PermissionTitlePrefix): the agent's tool call waits for a person while it is open. Spelled here so this package
+// does not depend on the security package.
+const permissionTitlePrefix = "Permission request: "
 
 // Presence is what the UI shows for an agent (brief section 11). It is derived from events, never stored as chat.
 type Presence string
@@ -86,6 +92,8 @@ type presenceData struct {
 	AgentID2   string          `json:"agent_id"`
 	Agent      string          `json:"agent"`
 	Run        string          `json:"agentRun"`
+	Title      string          `json:"title"` // approval.requested: what is asked
+	Tool       string          `json:"tool"`  // permission.decided: the tool the call named
 }
 
 func clip(s string, n int) string {
@@ -100,8 +108,8 @@ func clip(s string, n int) string {
 	return s
 }
 
-// Derive is the pure presence reducer: given an agent's previous state (zero for a new agent) and one agent.* or
-// watchdog.* event it returns the next state and whether the event applied. Unknown events do not apply. It is
+// Derive is the pure presence reducer: given an agent's previous state (zero for a new agent) and one agent.*, watchdog.*
+// or permission-gate event it returns the next state and whether the event applied. Unknown events do not apply. It is
 // deterministic, so replaying the persisted events rebuilds presence exactly.
 func Derive(prev PresenceState, e events.Event) (PresenceState, bool) {
 	var d presenceData
@@ -145,7 +153,13 @@ func Derive(prev PresenceState, e events.Event) (PresenceState, bool) {
 	case "agent.needs_attention":
 		set(PresenceNeedsAttention, "", firstNonEmpty(clip(d.Message, 160), "needs attention"))
 	case "agent.completed":
-		set(PresenceCompleted, "", firstNonEmpty(clip(d.StopReason, 80), "turn finished"))
+		// a turn the adapter ended with an error stop reason failed (workflow.TurnFailed, the rule the Activity reads too): the
+		// agent is shown Failed, as after agent.failed, so the Agents page and the Activity tell the same story
+		if failed, _ := workflow.TurnFailed(d.StopReason, true, nil); failed {
+			set(PresenceFailed, "", "turn failed: "+clip(d.StopReason, 80))
+		} else {
+			set(PresenceCompleted, "", firstNonEmpty(clip(d.StopReason, 80), "turn finished"))
+		}
 	case "agent.waiting":
 		if strings.EqualFold(d.State, "working") { // the runtime announces a turn start this way
 			set(PresenceThinking, "", "turn started")
@@ -195,6 +209,26 @@ func Derive(prev PresenceState, e events.Event) (PresenceState, bool) {
 		default:
 			return prev, false // usage, session, done, log, message_end: no presence meaning
 		}
+	case "approval.requested":
+		// the permission gate asks a person about a Claude worker's tool call (ACP agents say it as an agent.output
+		// permission_request): the call waits in the CLI until the answer. Any other approval (a push, a merge) is a
+		// workflow request port and says nothing about what the agent is doing.
+		if prev.sticky() || (prev.Presence == PresencePaused && prev.Label == "stopped") {
+			return prev, false
+		}
+		if d.Kind != "approval" || !strings.HasPrefix(d.Title, permissionTitlePrefix) {
+			return prev, false
+		}
+		set(PresenceWaiting, "", "awaiting permission")
+		keep()
+	case "permission.decided":
+		// the gate answered: the call runs now, or was refused and the agent goes on without it; the next agent.output says
+		// which
+		if prev.sticky() || (prev.Presence == PresencePaused && prev.Label == "stopped") {
+			return prev, false
+		}
+		set(PresenceWorking, "", "tool: "+firstNonEmpty(d.Tool, "call"))
+		keep()
 	case "watchdog.paused":
 		set(PresenceNeedsAttention, "watchdog", clip(firstNonEmpty(d.Message, d.Signal, "watchdog paused the task"), 160))
 	case "watchdog.tripped", "watchdog.warning":
@@ -230,14 +264,16 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
-// PresenceFilter selects the events Derive understands.
-var PresenceFilter = events.Filter{Types: []string{"agent.*", "watchdog.*"}}
+// PresenceFilter selects the events Derive understands: the agent and watchdog events, and the two the permission gate
+// publishes while a Claude worker's tool call waits for a person and when it is answered.
+var PresenceFilter = events.Filter{Types: []string{"agent.*", "watchdog.*", "approval.requested", "permission.decided"}}
 
 // LifecycleFilter selects the events Derive understands except agent.output, which is most of them by far (every tool call and
 // result) and says what an agent is doing at this moment, not what became of it. Exact types, so the log's index on the type serves it.
 var LifecycleFilter = events.Filter{Types: []string{
 	"agent.starting", "agent.started", "agent.idle", "agent.resumed", "agent.stopped", "agent.failed", "agent.paused",
 	"agent.needs_attention", "agent.completed", "agent.waiting", "agent.state_changed", "agent.state",
+	"approval.requested", "permission.decided",
 	"watchdog.paused", "watchdog.tripped", "watchdog.warning",
 }}
 

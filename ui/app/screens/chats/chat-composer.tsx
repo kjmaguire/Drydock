@@ -198,6 +198,13 @@ export function ChatComposer(
     }
     const read: ComposerFile[] = [];
     for (const f of incoming) read.push({ name: f.name, size: f.size, data: new Uint8Array(await f.arrayBuffer()) });
+    // checked again against the files added while these were read (two drops at once must not pass the limit together)
+    const late = checkFiles(files.length, incoming);
+    if (late) {
+      fileError = new Error(late);
+      void handle.update();
+      return;
+    }
     files = [...files, ...read];
     void handle.update();
   };
@@ -234,15 +241,19 @@ export function ChatComposer(
 
   const submit = async () => {
     if (!canSend()) return;
-    const ok = await handle.props.onSend(text, attach, files);
+    const sent = { text, attach, files };
+    const ok = await handle.props.onSend(sent.text, sent.attach, sent.files);
     if (ok) {
-      text = '';
-      attach = [];
-      files = [];
+      // only what was sent goes: what the person typed, attached or dropped while the message was on its way stays (audit
+      // 2026-10-27: it was wiped)
+      text = text === sent.text ? '' : text.startsWith(sent.text) ? text.slice(sent.text.length).trimStart() : text;
+      attach = attach.filter((id) => !sent.attach.includes(id));
+      files = files.filter((f) => !sent.files.includes(f));
       fileError = undefined;
       if (area) {
-        area.value = '';
+        area.value = text;
         area.style.height = '';
+        if (text) fit();
       }
       void handle.update();
     }

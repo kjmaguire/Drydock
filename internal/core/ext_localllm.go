@@ -135,11 +135,16 @@ func init() {
 			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "server", "state": st.State})
 		}
 		l.renameProvider(ctx)
-		l.seedBundled(ctx)
 		wctx, stopWatch := context.WithCancel(context.Background())
 		l.stopWatch = stopWatch
 		l.watchUpdates(wctx)
-		l.autostart(ctx)
+		// the server starts by itself once the download's build is in place: an app update that carries a newer one replaces
+		// (and deletes) the build the server would otherwise start on (audit 2026-10-27)
+		l.seedBundled(ctx, func() {
+			if wctx.Err() == nil { // not when the app is closing meanwhile
+				l.autostart(context.Background())
+			}
+		})
 		return map[string]Method{
 			"local.get": bind(func(ctx context.Context, _ struct{}) (any, error) {
 				return l.view(ctx), nil
@@ -225,6 +230,7 @@ type localExt struct {
 	devMu     sync.Mutex // one device probe at a time
 	starting  bool
 	latest    string // the installed build's newest release, as the last update check read it (under mu)
+	latestFor string // the source and backend that release is of (buildKey), so a build of another one is never offered it
 	stopWatch context.CancelFunc
 	// gguf holds each model file's header as read (under mu), kept while the file's size and time stay the same: a header
 	// with its vocabulary is megabytes, and the page reads the view often
@@ -364,13 +370,7 @@ func (l *localExt) view(ctx context.Context) LocalView {
 		v.Runtime = LocalRuntime{Installed: true, Source: in.Source, SourceName: src.Name, Tag: in.Tag, Backend: in.Backend, Server: in.Server, InstalledAt: in.InstalledAt,
 			Bundled: l.m.Runtime.BundledTag() == in.Tag}
 		l.mu.Lock()
-		if l.latest != "" && l.latest != in.Tag {
-			// offered only when it is newer by the source's numbering (a backport to an older line is not an update); two tags
-			// the source cannot order (an install from before release tags were checked) are offered as different
-			if newer, known := src.Newer(l.latest, in.Tag); newer || !known {
-				v.Runtime.Latest = l.latest
-			}
-		}
+		v.Runtime.Latest = offeredLatest(l.latest, l.latestFor, in, src)
 		l.mu.Unlock()
 		v.Runtime.Devices = l.devicesOf(ctx, in)
 	}
@@ -629,8 +629,10 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 		return LocalView{}, fmt.Errorf("%s has no file named %s", repo, variant)
 	}
 	id := localllm.ModelID(repo, variant)
-	if free, err := runners.FreeBytes(l.m.Root); err == nil && v.Size+(2<<30) > free {
-		return LocalView{}, fmt.Errorf("%s needs %d GB and the drive has %d GB free", id, v.Size>>30, free>>30)
+	if free, err := runners.FreeBytes(l.m.Root); err == nil {
+		if err := roomFor(id, v.Size, free); err != nil {
+			return LocalView{}, err
+		}
 	}
 	l.mu.Lock()
 	if d, ok := l.downloads[id]; ok && d.job.State == "running" {
@@ -894,16 +896,19 @@ func (l *localExt) autostart(ctx context.Context) {
 // there is no build here or an earlier bundled one; a build the person installed or removed is left as it is
 // (localllm.Runtime.SeedFromBundle). The first time, the settings follow the build: its source, and its first KV cache type
 // (turbo4 for the TurboQuant build), unless the person already chose. A tools folder that cannot be read, or that names a
-// source Drydock does not know, is logged and set up like a download without one (setupMissing).
-func (l *localExt) seedBundled(ctx context.Context) {
+// source Drydock does not know, is logged and set up like a download without one (setupMissing). then runs once the build is
+// in place, or at once when there is nothing to put in place.
+func (l *localExt) seedBundled(ctx context.Context, then func()) {
 	m, err := bundle.Read(l.c.cfg.BundleDir)
 	if err != nil {
 		l.c.logf("local models: the download's tools: %v", err)
 		l.setupMissing(ctx)
+		then()
 		return
 	}
 	if m == nil || m.Llama == nil {
 		l.setupMissing(ctx)
+		then()
 		return
 	}
 	b, dir := *m.Llama, l.c.cfg.BundleDir
@@ -911,11 +916,13 @@ func (l *localExt) seedBundled(ctx context.Context) {
 	if !ok {
 		l.c.logf("local models: the download names %q, not a build source", b.Source)
 		l.setupMissing(ctx)
+		then()
 		return
 	}
 	l.mu.Lock()
 	if l.job != nil && l.job.State == "running" {
 		l.mu.Unlock()
+		then()
 		return
 	}
 	job := &LocalJob{Kind: "install", Target: src.Name + " for " + localllm.Describe(localllm.Backend(b.Backend)).Label, State: "running",
@@ -953,6 +960,7 @@ func (l *localExt) seedBundled(ctx context.Context) {
 		if err != nil || did {
 			l.changed("runtime", nil)
 		}
+		then()
 	})
 }
 
@@ -1052,10 +1060,42 @@ func (l *localExt) checkUpdates(ctx context.Context) {
 		return
 	}
 	l.mu.Lock()
-	changed := l.latest != rel.Tag
-	l.latest = rel.Tag
+	changed := l.latest != rel.Tag || l.latestFor != buildKey(in)
+	l.latest, l.latestFor = rel.Tag, buildKey(in)
 	l.mu.Unlock()
 	if changed {
 		l.changed("runtime", nil)
 	}
 }
+
+// buildKey names a build's source and backend: an update check's newest release is of one of them.
+func buildKey(in localllm.Installed) string { return in.Source + "/" + string(in.Backend) }
+
+// offeredLatest is the update the page offers for the installed build: the newest release the last check read, when it was
+// read for this build's source and backend (audit 2026-10-27: after the official build was checked and the TurboQuant build
+// installed, the official tag was offered as its update) and is newer by the source's numbering (a backport to an older line
+// is not an update); two tags the source cannot order (an install from before release tags were checked) are offered as
+// different.
+func offeredLatest(latest, latestFor string, in localllm.Installed, src localllm.Source) string {
+	if latest == "" || latest == in.Tag || latestFor != buildKey(in) {
+		return ""
+	}
+	if newer, known := src.Newer(latest, in.Tag); newer || !known {
+		return latest
+	}
+	return ""
+}
+
+// downloadReserve is what a model download leaves free on the drive, so the download does not fill it.
+const downloadReserve = 2 << 30
+
+// roomFor says why a download of size bytes does not fit in free bytes, or nil when it does. Both sizes are in tenths of a GB
+// and the reserve is named: a 0.4 GB model on a drive with 1.9 GB free was refused as "needs 0 GB and the drive has 1 GB free".
+func roomFor(id string, size, free uint64) error {
+	if size+downloadReserve <= free {
+		return nil
+	}
+	return fmt.Errorf("%s needs %s, and Drydock leaves %s free on the drive; it has %s free", id, gbWords(size), gbWords(downloadReserve), gbWords(free))
+}
+
+func gbWords(n uint64) string { return fmt.Sprintf("%.1f GB", float64(n)/(1<<30)) }

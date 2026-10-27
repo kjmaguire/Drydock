@@ -5,17 +5,19 @@ import { topicPath } from '../screens/guide/model.ts';
 import { Icon } from './icon.tsx';
 import { t } from './tokens.ts';
 
+// Inline, not an inline flex box of 28 px: in a subtitle or a sentence the taller box lifted its line, so the text beside it sat
+// lower than the link and a paragraph's last line dropped (the UI audit of 2026-10-26). The padding makes the 28 px target
+// without touching the line box, and the icon sits on the text's baseline.
 const linkCss = css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '5px',
-  minHeight: '28px',
+  display: 'inline',
+  padding: '7px 0',
   color: t.accentText,
   fontSize: t.textSm,
   fontWeight: '500',
   textDecoration: 'none',
   whiteSpace: 'nowrap',
   '&:hover': { textDecoration: 'underline' },
+  '& svg': { verticalAlign: '-2px', marginRight: '5px' },
 });
 
 /**

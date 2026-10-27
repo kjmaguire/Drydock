@@ -159,6 +159,11 @@ describe('the Inbox', () => {
     await waitFor(() => expect(calls.forTask).toEqual([['run1', 'apr1']]), r);
     expect(calls.respond).toEqual([]);
     await waitFor(() => expect(r.$('[role="status"]')!.textContent).toContain('Answer sent'), r);
+    // the item stays until the core confirms: another key does not answer it again (audit 2026-10-27)
+    await r.act(() => press('d'));
+    await r.act(() => press('a'));
+    await new Promise((res) => setTimeout(res, 50));
+    expect([calls.forTask, calls.respond]).toEqual([[['run1', 'apr1']], []]);
     cleanup();
 
     const two = await open();
@@ -210,6 +215,17 @@ describe('the Inbox', () => {
     await r.act(() => press('k', input));
     input.remove();
     expect(selectedKey(r)).toBe('needs:check:m1');
+  });
+
+  it("says the reviewer's verdict in words in the detail, never SHIP (UI audit 2026-10-26)", async () => {
+    const reviewed: NeedsYouItem = {
+      ...specGate,
+      context: { agent: '', hasDiff: true, files: 1, insertions: 1, deletions: 4, checksPassed: 4, checksTotal: 4, verdict: 'SHIP' },
+    };
+    const { r } = await open({}, [reviewed]);
+    const verdict = await waitFor(() => r.$('[data-testid="detail-verdict"]') ?? (() => { throw new Error('no verdict'); })(), r);
+    expect(verdict.textContent).toBe('approved');
+    expect(r.$('[data-testid="inbox-detail"]')!.textContent!.includes('SHIP')).toBe(false);
   });
 
   it('E marks a failed check done; a request cannot be (it is answered instead); Enter opens the selected item in its project', async () => {

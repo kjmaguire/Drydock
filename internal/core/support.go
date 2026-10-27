@@ -85,8 +85,11 @@ func parseGitHubRemote(url string) (owner, name string, ok bool) {
 // remoteRepo reads the GitHub owner and repository from the project's origin remote.
 func remoteRepo(ctx context.Context, repo *git.Repo) (owner, name string, err error) {
 	url, err := repo.RemoteURL(ctx, "origin")
-	if err != nil {
+	if errors.Is(err, git.ErrNoRemote) {
 		return "", "", errors.New("pull requests need an 'origin' remote on github.com, and this repository has no 'origin' remote")
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("could not read the repository's 'origin' remote: %w", err)
 	}
 	owner, name, ok := parseGitHubRemote(url)
 	if !ok {

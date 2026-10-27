@@ -64,3 +64,31 @@ func TestAFolderScanThatJustFinishedIsListedOnceAsItsStoredRow(t *testing.T) {
 		t.Fatalf("limit: %+v", got)
 	}
 }
+
+// A report the database refused is kept, and every read gets its own copy: the dismissals a read applies never reach the kept
+// one, so a later read counts the finding exactly once (audit 2026-10-27).
+func TestAKeptUnstoredReportIsNotChangedByItsReaders(t *testing.T) {
+	kept := scan.Report{ID: "scn_1", ProjectID: "prj", Findings: []scan.Finding{{Engine: "secrets", Severity: scan.High, Fingerprint: strings.Repeat("a", 24)}},
+		Engines: []scan.EngineResult{{ID: "secrets", Findings: 1}}}
+	kept.Counts.High = 1
+	s := &securityExt{running: map[string]*scan.Run{}, unstored: map[string]scan.Report{"prj": kept}}
+	d := map[string]scan.Dismissal{strings.Repeat("a", 24): {By: "human:kyle", Reason: scan.ReasonNotReal}}
+	for i := 0; i < 2; i++ {
+		rep, err := s.lastReport(context.Background(), target{Key: "prj", ProjectID: "prj"})
+		if err != nil || rep == nil {
+			t.Fatalf("read %d: %v %v", i, rep, err)
+		}
+		scan.ApplyDismissals(rep, d)
+		if rep.Counts.High != 0 || !rep.Findings[0].Dismissed || rep.Engines[0].Findings != 0 {
+			t.Fatalf("read %d: counts %+v, engines %+v, dismissed %v", i, rep.Counts, rep.Engines, rep.Findings[0].Dismissed)
+		}
+		byID, _, err := s.scanByID(context.Background(), "scn_1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		scan.ApplyDismissals(byID, d)
+	}
+	if got := s.unstored["prj"]; got.Findings[0].Dismissed || got.Counts.High != 1 || got.Engines[0].Findings != 1 {
+		t.Fatalf("the kept report was changed: %+v", got)
+	}
+}

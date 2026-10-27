@@ -161,6 +161,7 @@ describe('agents helpers', () => {
     expect(checkedWords(now - 5_000, now)).toBe('checked just now');
     expect(checkedWords(now - 120_000, now)).toBe('checked 2 min ago');
     expect(checkedWords(now - 7_200_000, now)).toBe('checked 2 h ago');
+    expect(checkedWords(now - 49 * 3_600_000, now)).toBe('checked 2 d ago');
     expect(headerLine({ ...base, authenticated: true }, now - 120_000, now)).toBe('On Windows · signed in · checked 2 min ago');
     expect(headerLine({ ...inWSL, wsl: facts, authenticated: false }, now, now)).toBe('In WSL 2 · not signed in · checked just now');
     expect(headerLine(base, undefined, now)).toBe('On Windows · sign-in not reported');
@@ -221,11 +222,14 @@ describe('agents helpers', () => {
       ['p1', { runMode: 'native' }],
       ['p2', { runMode: 'wsl', wslDistro: 'Ubuntu' }],
     ]);
-    expect(usedBy(base, agents, projects, all).map((x) => x.id)).toEqual(['native', 'own-native']);
-    expect(usedBy(ubuntu, agents, projects, all).map((x) => x.id)).toEqual(['follows-wsl', 'wsl-default']);
-    expect(usedBy(debian, agents, projects, all).map((x) => x.id)).toEqual(['own-wsl']);
-    // a project in WSL runs a CLI that has no WSL install on Windows
+    const wsl = () => true;
+    expect(usedBy(base, agents, projects, all, wsl).map((x) => x.id)).toEqual(['native', 'own-native']);
+    expect(usedBy(ubuntu, agents, projects, all, wsl).map((x) => x.id)).toEqual(['follows-wsl', 'wsl-default']);
+    expect(usedBy(debian, agents, projects, all, wsl).map((x) => x.id)).toEqual(['own-wsl']);
+    // a project in WSL runs a CLI whose adapter cannot run there on Windows
     const codex = { ...base, adapter: 'codex', key: 'codex' } as Connection;
-    expect(usedBy(codex, [a('c', { adapter: 'codex', projectId: 'p2' })], projects, [codex]).map((x) => x.id)).toEqual(['c']);
+    expect(usedBy(codex, [a('c', { adapter: 'codex', projectId: 'p2' })], projects, [codex], (ad) => ad !== 'codex').map((x) => x.id)).toEqual(['c']);
+    // the adapter's run modes decide, as in the core, not whether a WSL install was found: no WSL row listed, still not Windows
+    expect(usedBy(base, [a('follows-wsl', { projectId: 'p2' })], projects, [base], wsl).map((x) => x.id)).toEqual([]);
   });
 });

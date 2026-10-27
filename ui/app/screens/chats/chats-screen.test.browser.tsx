@@ -9,6 +9,7 @@ import { CommandPalette } from '../../shell/palette.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
 import { RETRY_TEXT } from './chats.ts';
 import { OTHER_MODEL } from '../shared/model-field.tsx';
+import { VirtualList } from '../../ui/virtual-list.tsx';
 
 afterEach(cleanup);
 
@@ -776,6 +777,21 @@ describe('Conversation', () => {
     expect(remembered).toEqual([]);
   });
 
+  it('an answered request leaves at once, so it cannot be answered twice while the core is read again (audit 2026-10-27)', async () => {
+    const answered: unknown[] = [];
+    // the core still lists the request for a moment after the answer
+    const waiting = [{ id: 'cask_1', chatId: 'chat_a', turnId: 't1', messageId: 'm2', tool: 'Run go test', summary: 'Run go test: go test ./...', input: { command: 'go test ./...' }, created: Date.now(), expiresAt: Date.now() + 30 * 60_000 }];
+    const { r } = conv(chat({ adapter: 'gemini' }), [msg(1, 'user', 'run the tests'), msg(2, 'system', 'Asks to use Run go test: go test ./...')], {
+      chatAsks: async () => waiting,
+      chatAnswer: async (id, askId, allow) => void answered.push([id, askId, allow]),
+    });
+    const card = await waitFor(() => must$(r, '[data-testid="chat-ask"]'), r);
+    await r.act(() => byText(card, 'button', 'Allow once').click());
+    await waitFor(() => expect($$(r, '[data-testid="chat-ask"]')).toHaveLength(0), r);
+    expect(answered).toEqual([['chat_a', 'cask_1', true]]);
+    expect($(r, '[role="alert"]')).toBeNull();
+  });
+
   it('"Allow <tool> in this chat" remembers the call\'s rule (chat.answer remember), and shows the core\'s reason when it cannot (P97)', async () => {
     const remembered: unknown[] = [];
     let refuse = true;
@@ -1123,6 +1139,85 @@ describe('Conversation', () => {
     await waitFor(() => expect(messages(r).at(-1)!.getAttribute('data-seq')).toBe('2000'), r);
     await waitFor(() => expect(atBottom()).toBe(true), r);
     expect(rows().length).toBeLessThanOrEqual(bound);
+  });
+
+  it('keeps what the person types and attaches while a message is on its way, and sends no more files than the limit', async () => {
+    // audit 2026-10-27: the composer cleared everything once the send was answered, the text typed meanwhile included
+    let answer: (v: { turnId: string; version: number }) => void = () => {};
+    const sent: unknown[] = [];
+    const { r } = conv(chat(), [], {
+      chatSend: (_id, text) => (sent.push(text), new Promise((res) => (answer = res))),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
+    type(box, 'one');
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    await waitFor(() => expect(sent).toEqual(['one']), r);
+    // the person goes on writing, and attaches a file, while the send is answered
+    type(box, 'one two');
+    const input = must$(r, '[data-testid="chat-file"]') as HTMLInputElement;
+    const dt = new DataTransfer();
+    dt.items.add(new File(['x'], 'later.txt', { type: 'text/plain' }));
+    input.files = dt.files;
+    await r.act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await waitFor(() => expect(r.container.querySelectorAll('[data-testid="file-chip"]')).toHaveLength(1), r);
+    await r.act(() => answer({ turnId: 'turn_2', version: 2 }));
+    await waitFor(() => expect(box.value).toBe('two'), r);
+    expect(r.container.querySelectorAll('[data-testid="file-chip"]')).toHaveLength(1);
+
+    // two batches of three files dropped at once: the second is checked against the first, so no more than four are kept
+    const three = (p: string) => {
+      const d = new DataTransfer();
+      for (const n of ['1', '2', '3']) d.items.add(new File([n], `${p}${n}.txt`));
+      return d.files;
+    };
+    await r.act(() => {
+      input.files = three('a');
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.files = three('b');
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitFor(() => expect(must$(r, '[data-testid="chat-composer"]').textContent).toContain('At most 4 files'), r);
+    expect(r.container.querySelectorAll('[data-testid="file-chip"]').length).toBeLessThanOrEqual(4);
+  });
+
+  it('streams a long answer over a long chat without drawing the conversation again, and stays at the bottom while the reader is there', async () => {
+    // the review of 2026-10-27: every delta redrew and measured each row in the window, so a long chat made a streamed answer
+    // stutter and keys typed meanwhile wait; now only the streamed answer redraws
+    const all = Array.from({ length: 400 }, (_, i) => msg(1 + i, i % 2 ? 'assistant' : 'user', `line ${1 + i}`));
+    const { r, s } = conv(chat({ status: 'running' }), all);
+    r.container.style.height = '700px';
+    r.container.style.display = 'flex';
+    const scroller = await waitFor(() => must$(r, '[data-testid="chat-scroll"]'), r);
+    const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 1;
+    await waitFor(() => expect(messages(r).at(-1)!.getAttribute('data-seq')).toBe('400'), r);
+    await waitFor(() => expect(atBottom()).toBe(true), r);
+    s.emit({ type: 'chat.turn_started', data: { chatId: 'chat_a', turnId: 'turn_9', attach: [] } });
+    s.emit({ type: 'chat.delta', data: { chatId: 'chat_a', turnId: 'turn_9', text: 'Part 0 of the answer.\n\n' } });
+    await waitFor(() => expect(must$(r, '[data-testid="chat-streaming"]').textContent).toContain('Part 0'), r);
+    // from here on the conversation is not drawn again: count the list's renders while 30 deltas stream
+    const rows = VirtualList.prototype.rows;
+    let drawn = 0;
+    VirtualList.prototype.rows = function (this: VirtualList, ...a: Parameters<typeof rows>) {
+      drawn++;
+      return rows.apply(this, a);
+    } as typeof rows;
+    try {
+      for (let i = 1; i <= 30; i++) s.emit({ type: 'chat.delta', data: { chatId: 'chat_a', turnId: 'turn_9', text: `Part ${i} of the answer, a paragraph that wraps over a line or two in the column.\n\n` } });
+      await waitFor(() => expect(must$(r, '[data-testid="chat-streaming"]').textContent).toContain('Part 30 of the answer'), r);
+      await waitFor(() => expect(atBottom()).toBe(true), r);
+      expect(drawn).toBe(0);
+    } finally {
+      VirtualList.prototype.rows = rows;
+    }
+    // the reader scrolls up: more text below does not move what they read
+    const moved = new Promise((res) => scroller.addEventListener('scroll', res, { once: true }));
+    scroller.scrollTop = 100;
+    await moved;
+    await waitFor(() => must$(r, '[data-testid="chat-jump"]'), r);
+    const top = scroller.scrollTop;
+    s.emit({ type: 'chat.delta', data: { chatId: 'chat_a', turnId: 'turn_9', text: 'Part 31, read by nobody yet.\n\n' } });
+    await waitFor(() => expect(must$(r, '[data-testid="chat-streaming"]').textContent).toContain('Part 31'), r);
+    expect(Math.abs(scroller.scrollTop - top)).toBeLessThan(1);
   });
 
   it('shows that a chat deleted elsewhere is gone', async () => {

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choose, createAgent, createProject, openAgentPage, openNewAgent, projectNav } from './helpers';
+import { choose, createAgent, createProject, inspectAgent, openAgentPage, openNewAgent, projectNav } from './helpers';
 
 // Round 5: team management against the real Go core: purpose, model and effort at creation, editing, and removal.
 
@@ -53,7 +53,7 @@ test('team: create an agent with purpose, model and effort; refused values say w
   await expect(page.getByTestId('agent-page-purpose')).toHaveText('Billing only.');
 
   // the Inspector shows the purpose the agent will be given
-  await page.getByRole('button', { name: 'Inspect', exact: true }).click();
+  await inspectAgent(page);
   await expect(page.getByTestId('inspector-purpose')).toContainText('Billing only.');
 
   // removal needs a confirmation and the agent leaves the team

@@ -31,6 +31,8 @@ import {
   ownServers,
   ownServerState,
   ownServerSub,
+  PROVIDERS_UNREAD,
+  providerRowState,
   serverIdOf,
   serverKey,
   showsUnder,
@@ -44,12 +46,17 @@ import {
 import { ServerDetail } from './server-detail.tsx';
 import type { Open } from './service-detail.tsx';
 import { VendorPanel } from './vendor-detail.tsx';
+import { openRouterProviders, providerBrand } from '../providers/providers.ts';
+import { OpenRouterPanel } from './openrouter-panel.tsx';
 
 // the GitHub settings page shows GitHub's detail with the component this page opens (screens/github/github-screen.tsx)
 export { VendorDetail, VendorPanel } from './vendor-detail.tsx';
 
 const noteCss = css({ '&:empty': { display: 'none' } });
 const listNote = css({ margin: `${t.s3} ${t.s2} 0`, fontSize: t.textSm, '& a': { whiteSpace: 'nowrap' } });
+
+/** OpenRouter's row and address (/integrations/openrouter): a model provider, set up here, owned by Models (decision P103). */
+const OPENROUTER = 'openrouter';
 
 /** One row with what the page needs to filter it and draw its detail. */
 interface Row {
@@ -68,6 +75,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
   const kinds = query(handle, { load: () => s.client.integrationKinds(), when: (e) => e.type === 'integration.oauth_app_changed' });
   const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   const lib = query(handle, { load: () => s.client.mcpLibList(), when: (e) => e.type.startsWith('mcp.server') });
+  // the model providers, for OpenRouter's row (decision P103): Models owns them, this page shows OpenRouter among the integrations
+  const providers = query(handle, { load: () => s.client.providerList(), when: (e) => e.type.startsWith('provider.') });
   // the registries are read once, and only when a vendor on the page publishes some
   const regs = query(handle, { load: () => s.client.skillRegistries(), enabled: () => (gallery.data ?? []).some((c) => (c.skillRegistries ?? []).length > 0) });
   let selected = handle.props.initial ?? '';
@@ -103,7 +112,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     const servers: McpLibraryServer[] = lib.data ?? [];
     const all = vendors(KINDS, cards);
     const mine = ownServers(servers, cards);
-    const loaded = !!q.data && !!gallery.data;
+    // the providers too (OpenRouter's row): its row and the count would say Set up until they arrive
+    const loaded = !!q.data && !!gallery.data && (!!providers.data || !!providers.error);
 
     const vendorRow = (v: Vendor): Row => {
       const conn = v.kind ? tileState(list, v.key) : undefined;
@@ -146,12 +156,30 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     const services_ = all.filter((v) => v.kind).map(vendorRow);
     const tools = all.filter((v) => !v.kind).map(vendorRow);
     const own = mine.map(serverRow);
-    const rows = [...services_, ...tools, ...own];
+    const orMine = providers.data ? openRouterProviders(providers.data) : undefined;
+    const orState = orMine ? providerRowState(orMine) : PROVIDERS_UNREAD;
+    const modelRows: Row[] = [
+      {
+        state: orState,
+        item: {
+          key: OPENROUTER,
+          title: 'OpenRouter',
+          logo: 'openrouter',
+          icon: Plug,
+          sub: 'Models from many vendors, one key',
+          status: { text: orState.text, tone: orState.tone },
+          testId: 'integration-row',
+          data: { kind: OPENROUTER, provider: 'true', connected: String(orState.bucket !== 'setup') },
+        },
+      },
+    ];
+    const rows = [...services_, ...tools, ...modelRows, ...own];
     const counts = filterCounts(rows.map((r) => r.state));
     const shown = (rs: Row[]) => rs.filter((r) => showsUnder(filter, r.state)).map((r) => r.item);
     const groups: ListGroup[] = [
       { key: 'services', title: 'Services', note: 'app sync', items: shown(services_) },
       ...(tools.length > 0 ? [{ key: 'tools', title: 'Agent tools', note: 'MCP', items: shown(tools) }] : []),
+      { key: 'models', title: 'Model providers', note: 'Models', items: shown(modelRows) },
       {
         key: 'servers',
         title: 'Your servers',
@@ -165,7 +193,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     // the row whose detail shows: the chosen one, else the first (drawn, not put in the address)
     const key = selected || firstKey;
     const serverId = serverIdOf(key);
-    const vendor = serverId ? undefined : all.find((v) => v.key === key);
+    const vendor = serverId || key === OPENROUTER ? undefined : all.find((v) => v.key === key);
     const server = serverId ? servers.find((x) => x.id === serverId) : undefined;
 
     const detail =
@@ -191,6 +219,23 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
               </>
             ) : undefined
           }
+        />
+      ) : key === OPENROUTER ? (
+        <OpenRouterPanel
+          mine={orMine}
+          state={orState}
+          loading={providers.loading}
+          error={providers.error}
+          onCreated={(made) => {
+            // the list follows on provider.registered; a provider pointed elsewhere is in Models, not here
+            set(
+              () =>
+                (note =
+                  !made || providerBrand(made) === 'openrouter'
+                    ? 'OpenRouter is connected. Its page in Models has its models and key limits.'
+                    : `${made.name} was added in Models. Its address is not openrouter.ai, so it is not OpenRouter's row here.`),
+            );
+          }}
         />
       ) : server ? (
         <ServerDetail
@@ -219,7 +264,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
         flush
         guide="integrations"
         testId="integrations"
-        subtitle={loaded ? `Connected once for the whole workspace · ${counts.on} on` : 'Connected once for the whole workspace'}
+        subtitle={loaded ? `Connected once for the whole workspace · ${counts.on} connected` : 'Connected once for the whole workspace'}
         actions={
           <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (adding = true)))]}>
             Add MCP server
@@ -229,6 +274,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
         <MasterDetail
           label="All integrations"
           testId="connector-gallery"
+          address={handle.props.initial}
           groups={loaded ? groups : []}
           selected={key}
           onSelect={choose}
@@ -242,7 +288,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           onFilter={(f) => set(() => (filter = f))}
           listFooter={
             <>
-              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error} what="Integrations" />
+              <ErrorNote error={q.error ?? kinds.error ?? gallery.error ?? lib.error ?? providers.error} what="Integrations" />
               {!loaded && !q.error && !gallery.error ? <Loading /> : null}
               {loaded && filter !== 'all' && groups.every((g) => g.items.length === 0) ? (
                 <p mix={[faint, listNote]} data-testid="list-empty">

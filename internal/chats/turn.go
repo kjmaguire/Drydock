@@ -40,6 +40,7 @@ type SendReq struct {
 	// Files are files and pictures sent with the message (P90): at most MaxFiles, each at most MaxFileBytes.
 	Files []FileIn `json:"files"`
 
+	retries     int          // claims refused because the chat changed after it was read (at most maxClaimRetries)
 	replaceFrom int64        // Resend: the person's message this turn replaces, with everything after it
 	replaceID   string       // and that message's id, checked again once the turn holds the chat
 	keep        []Attachment // and its files, which the new message keeps
@@ -157,6 +158,9 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		}
 	}
 
+	if s.beforeClaim != nil {
+		s.beforeClaim(c.ID)
+	}
 	// one turn at a time: the in-memory reservation, then the row (which also covers a second process on the same data)
 	turnID := ids.New("cturn")
 	tctx, cancel := context.WithCancelCause(s.bg)
@@ -177,16 +181,23 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		attachedIDs = append(attachedIDs, a.chat.ID)
 	}
 	aj, _ := json.Marshal(attachedIDs)
-	var claimed bool
+	var claimed, changed bool
 	var dropped []string // files of the messages a resend removes
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		dropped = nil
-		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=?, version=version+1 WHERE id=? AND status<>?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning)
+		dropped, changed = nil, false
+		// claimed only as it was read: a change committed since (its adapter, folder, project or session, chat.update) would
+		// otherwise be overwritten by this turn's folder and run with the settings it replaced (audit 2026-10-27)
+		res, err := tx.ExecContext(ctx, `UPDATE chats SET status=?, last_error='', cwd=?, updated_at=?, version=version+1 WHERE id=? AND status<>? AND version=?`, StatusRunning, cwd, storage.Now(), c.ID, StatusRunning, c.Version)
 		if err != nil {
 			return err
 		}
 		n, _ := res.RowsAffected()
 		if claimed = n == 1; !claimed {
+			var status string
+			if err := tx.QueryRowContext(ctx, `SELECT status FROM chats WHERE id=?`, c.ID).Scan(&status); err != nil {
+				return err
+			}
+			changed = status != StatusRunning
 			return nil
 		}
 		if r.replaceFrom > 0 {
@@ -227,6 +238,14 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	})
 	if err != nil || !claimed {
 		release()
+		if err == nil && changed {
+			// the chat changed after it was read: send again with it as it is now
+			if r.retries < maxClaimRetries {
+				r.retries++
+				return s.Send(ctx, r)
+			}
+			err = errors.New("this chat kept changing while the message was being sent: send it again")
+		}
 		if err == nil {
 			err = ErrBusy
 		}
@@ -265,6 +284,9 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	})
 	return res, nil
 }
+
+// maxClaimRetries is how many times Send reads the chat again when it changed between being read and being claimed.
+const maxClaimRetries = 3
 
 // unreserve ends turnID's hold on its chat, and only its own: by the time a turn's deferred release runs, the next turn may
 // already hold the chat.
@@ -427,7 +449,7 @@ type attemptOut struct {
 	started        bool // the process started
 	stop           string
 	err            error
-	errMsgs        []string // non-fatal error chunks
+	errs           []workflow.ErrorChunk // the non-fatal error chunks, in order: coded warnings and the agent's own errors
 	in, out        int64
 	cost           float64
 	costKnown      bool
@@ -436,22 +458,60 @@ type attemptOut struct {
 	partial        string          // streamed text that no complete message has covered yet
 }
 
+// errors returns the messages of the agent's own error chunks: the uncoded ones. A coded warning (a setting the agent does not
+// offer, adapter drift) is not a failure of anything.
+func (o attemptOut) errors() []string {
+	var msgs []string
+	for _, e := range o.errs {
+		if e.Code == "" {
+			msgs = append(msgs, e.Message)
+		}
+	}
+	return msgs
+}
+
 // resumeFailed reports whether the attempt failed the way a CLI fails when it cannot resume: before any session or output.
 func (o attemptOut) resumeFailed() bool {
 	if o.sessionAtStart || o.sawSession || o.sawOutput {
 		return false
 	}
-	return o.err != nil || len(o.errMsgs) > 0 || (o.stop != "" && o.stop != "end_turn")
+	return o.err != nil || len(o.errors()) > 0 || (o.stop != "" && o.stop != "end_turn")
 }
 
 func (o attemptOut) reason() string {
 	switch {
 	case o.err != nil:
 		return o.err.Error()
-	case len(o.errMsgs) > 0:
-		return strings.Join(o.errMsgs, "; ")
+	case len(o.errors()) > 0:
+		return strings.Join(o.errors(), "; ")
 	}
 	return o.stop
+}
+
+// outcome decides how the turn ended: its status, its error and whether that error is one of the agent's own error chunks
+// (fromMsgs), which is then stored once, as the turn's error. cause is the turn context's cause; answered whether an assistant
+// message was stored. Whether the agent's turn failed is workflow.TurnFailed, the rule the Activity reads too, so the chat and
+// the Activity never tell one turn two ways (AG-UI review 2026-10-25); a cancelled or interrupted turn is read before it.
+func (o attemptOut) outcome(cause error, answered bool) (status, errMsg string, fromMsgs bool) {
+	status = TurnDone
+	switch {
+	case errors.Is(cause, errStopped):
+		status = TurnStopped
+	case errors.Is(cause, errShutdown):
+		status, errMsg = TurnError, errShutdown.Error()
+	case cause != nil:
+		status, errMsg = TurnError, cause.Error()
+	case o.err != nil:
+		status, errMsg = TurnError, o.err.Error()
+	case o.stop == "cancelled" || o.stop == "interrupted":
+		status = TurnStopped
+	default:
+		if failed, reason := workflow.TurnFailed(o.stop, answered, o.errs); failed {
+			// the reason is the agent's last error when it gave one, else what the stop reason says
+			status, errMsg, fromMsgs = TurnError, reason, len(o.errors()) > 0
+		}
+	}
+	return status, errMsg, fromMsgs
 }
 
 // attempt starts the CLI (resuming resumeID when set), sends the prompt and stores what comes back.
@@ -559,7 +619,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 				}
 				t.seen[tc.ID] = true
 			}
-			summary := s.d.Redact(ToolSummary(tc.Name, tc.Args))
+			summary := s.d.Redact(RedactedToolSummary(tc.Name, tc.Args, s.d.Redact))
 			msg, err := s.insertMessage(context.Background(), c, t.turnID, RoleTool, summary, tc.Name, tc.Args, msgExtra{callID: tc.ID, thinking: t.takeThinking()})
 			if err != nil {
 				s.logf("chats: store tool message: %v", err)
@@ -589,7 +649,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 			var d workflow.PermissionDenial
 			if ch.Decode(&d) == nil && d.ToolName != "" {
 				o.sawOutput = true
-				t.store(RoleDenied, "Not allowed in this chat: "+ToolSummary(d.ToolName, d.Input), d.ToolName, d.Input)
+				t.store(RoleDenied, "Not allowed in this chat: "+RedactedToolSummary(d.ToolName, d.Input, s.d.Redact), d.ToolName, d.Input)
 			}
 		case workflow.ChunkPermission:
 			// an ACP agent asked; the turn's asker (permission.go) stores the request and waits for the person's answer
@@ -616,7 +676,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 		case workflow.ChunkError:
 			var e workflow.ErrorChunk
 			if ch.Decode(&e) == nil && !e.Fatal && strings.TrimSpace(e.Message) != "" {
-				o.errMsgs = append(o.errMsgs, e.Message)
+				o.errs = append(o.errs, e)
 			}
 		}
 	})
@@ -703,31 +763,17 @@ func (s *Service) endTurnRow(c Chat, turnID, status, errMsg string) {
 func (t *turnRun) finish(ctx context.Context, o attemptOut, resumed, transcript bool) {
 	s, c := t.s, t.c
 	bg := context.Background()
-	status, errMsg := TurnDone, ""
-	fromMsgs := false // errMsg is the agent's own error chunks, which are then stored once, as the turn's error
-	cause := context.Cause(ctx)
-	switch {
-	case errors.Is(cause, errStopped):
-		status = TurnStopped
-	case errors.Is(cause, errShutdown):
-		status, errMsg = TurnError, errShutdown.Error()
-	case ctx.Err() != nil && cause != nil:
-		status, errMsg = TurnError, cause.Error()
-	case o.err != nil:
-		status, errMsg = TurnError, o.err.Error()
-	case !t.assistant && len(o.errMsgs) > 0 && o.stop != "end_turn":
-		status, errMsg, fromMsgs = TurnError, strings.Join(o.errMsgs, "; "), true
-	case o.stop == "cancelled" || o.stop == "interrupted":
-		status = TurnStopped
-	}
+	status, errMsg, fromMsgs := o.outcome(context.Cause(ctx), t.assistant) // the cause is nil while the context is live
 	if p := strings.TrimSpace(o.partial); p != "" && status != TurnDone {
 		t.store(RoleAssistant, p, "", nil)
 		t.assistant = true
 	}
-	if !fromMsgs {
-		for _, e := range o.errMsgs { // warnings of a turn that otherwise worked (a model the agent does not offer, ...)
-			t.store(RoleError, clip(e, 2000), "", nil)
+	for _, e := range o.errs {
+		if fromMsgs && e.Code == "" && strings.TrimSpace(e.Message) == errMsg {
+			continue // the turn's own error, stored once below
 		}
+		// a warning of a turn that otherwise worked (a setting the agent does not offer, ...), or an error before the last one
+		t.store(RoleError, clip(e.Message, 2000), "", nil)
 	}
 	switch status {
 	case TurnStopped:

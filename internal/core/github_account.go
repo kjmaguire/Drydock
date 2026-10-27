@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
@@ -23,7 +24,9 @@ type GitHubStatus struct {
 	Unreachable bool   `json:"unreachable,omitempty"`
 	Login       string `json:"login"`
 	Error       string `json:"error,omitempty"`
-	// Version is the GitHub CLI's version as `gh --version` prints it ("2.83.1"); empty when it could not be read.
+	// Version is the GitHub CLI's version as `gh --version` prints it ("2.83.1"); empty when it could not be read, or when
+	// an API stands in for gh (as tests give the core). The answer is kept for up to a minute (ghVersion), so an updated gh
+	// shows on the first check after that.
 	Version string `json:"version,omitempty"`
 }
 
@@ -33,14 +36,23 @@ type CloneResult struct {
 	DefaultBranch string `json:"defaultBranch"`
 }
 
-func (c *Core) githubAPI() (host.API, bool) {
+// githubCLI is the GitHub API the core talks through, the path of the user's gh it resolved on PATH, and whether GitHub can
+// be used at all. The path is "" when a configured API stands in for gh (as tests give the core): there is no gh to ask then.
+func (c *Core) githubCLI() (host.API, string, bool) {
 	if c.cfg.GitHubAPI != nil {
-		return c.cfg.GitHubAPI, true
+		return c.cfg.GitHubAPI, "", true
 	}
-	if _, err := exec.LookPath("gh"); err != nil {
-		return nil, false
+	path, err := exec.LookPath("gh")
+	if err != nil {
+		return nil, "", false
 	}
-	return host.GhCLI{}, true
+	return host.GhCLI{}, path, true
+}
+
+// githubAPI is githubCLI for the callers that only need the API.
+func (c *Core) githubAPI() (host.API, bool) {
+	api, _, ok := c.githubCLI()
+	return api, ok
 }
 
 // githubStatusTimeout is how long the account check waits for GitHub before saying it did not answer.
@@ -48,22 +60,24 @@ var githubStatusTimeout = 20 * time.Second
 
 // GitHubAccountStatus reports whether `gh` is installed and signed in, and its version. It never reads or stores a token.
 func (c *Core) GitHubAccountStatus(ctx context.Context) GitHubStatus {
-	api, ok := c.githubAPI()
+	api, ghPath, ok := c.githubCLI()
 	if !ok {
 		return GitHubStatus{Error: "the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`"}
 	}
-	version := ""
-	if c.cfg.GitHubAPI == nil { // the user's own gh (not an API a test gave the core)
-		version = ghVersion(ctx)
-	}
-	ctx, cancel := context.WithTimeout(ctx, githubStatusTimeout)
+	vctx, cancel := context.WithTimeout(ctx, githubStatusTimeout)
 	defer cancel()
-	who, err := host.Viewer(ctx, api)
+	who, err := host.Viewer(vctx, api)
+	// the version is read after the sign-in check, in turn, within the same budget: the answer is kept, so this costs one short
+	// process now and then, and a check whose budget GitHub used up still reports the kept version without waiting on gh
+	version := ""
+	if ghPath != "" {
+		version = ghVersion(vctx, ghPath)
+	}
 	if err != nil {
 		if errors.Is(err, host.ErrAuth) {
 			return GitHubStatus{Installed: true, Version: version, Error: "gh is not signed in: run `gh auth login`"}
 		}
-		if ctx.Err() != nil {
+		if vctx.Err() != nil {
 			return GitHubStatus{Installed: true, Version: version, Unreachable: true, Error: "GitHub did not answer within 20 seconds (the network or GitHub may be down); try again later"}
 		}
 		return GitHubStatus{Installed: true, Version: version, Error: err.Error()}
@@ -71,20 +85,58 @@ func (c *Core) GitHubAccountStatus(ctx context.Context) GitHubStatus {
 	return GitHubStatus{Installed: true, LoggedIn: true, Login: who.Login, Version: version}
 }
 
-// ghVersion asks the GitHub CLI on PATH for its version (`gh --version` only prints it, without the network), or "" when it
-// does not say.
-func ghVersion(ctx context.Context) string {
+// ghVersionTTL is how long a kept version is trusted while the file at the gh path looks the same. A launcher or shim (scoop's
+// shims\gh.exe, chocolatey's bin\gh.exe, a wrapper .cmd) does not change when the gh behind it does, so the version is asked
+// again after a minute even when the file looks the same.
+const ghVersionTTL = time.Minute
+
+// ghVersionNow is the clock a kept version's age is measured by (a test moves it).
+var ghVersionNow = time.Now
+
+// ghVersion is the version of the GitHub CLI at path (`gh --version` only prints it, without the network), or "" when it does
+// not say. The answer is kept and reused while both hold: the file at path is unchanged (same path, size and modification
+// time) and the answer is younger than ghVersionTTL. A changed file or an old answer asks gh again.
+func ghVersion(ctx context.Context, path string) string {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	key := ghBinary{path: path, size: fi.Size(), mod: fi.ModTime().UnixNano()}
+	ghVersions.Lock()
+	defer ghVersions.Unlock()
+	now := ghVersionNow()
+	if ghVersions.key == key && ghVersions.v != "" && now.Sub(ghVersions.at) < ghVersionTTL {
+		return ghVersions.v
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", "--version")
+	cmd := exec.CommandContext(ctx, path, "--version")
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "NO_COLOR=1")
 	proc.Harden(cmd)
 	out := &proc.CapWriter{Max: 4096}
 	cmd.Stdout = out
 	if err := cmd.Run(); err != nil {
-		return ""
+		return "" // not kept: the next check asks again
 	}
-	return parseGhVersion(out.String())
+	v := parseGhVersion(out.String())
+	ghVersions.key, ghVersions.v, ghVersions.at = key, v, now
+	return v
+}
+
+// ghBinary is which gh a kept version belongs to.
+type ghBinary struct {
+	path string
+	size int64
+	mod  int64 // modification time, Unix nanoseconds
+}
+
+// ghVersions is the last version read, the binary it was read from and when (the lock also keeps two checks from running gh
+// twice).
+var ghVersions struct {
+	sync.Mutex
+	key ghBinary
+	v   string
+	at  time.Time
 }
 
 // ghVersionRe is the first line of `gh --version`: "gh version 2.83.1 (2025-11-13)".

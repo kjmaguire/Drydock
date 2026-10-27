@@ -49,6 +49,8 @@ export interface SecurityClient {
   securityFolderScanGet(folder: string): Promise<ScanReport | null>;
   /** The recent folder scans of every folder, running ones first, then newest first. */
   securityScanFolders(limit?: number): Promise<ScanSummary[]>;
+  /** The newest scans of every project and every folder, the running folder scans first, in one read. */
+  securityScanRecent(limit?: number): Promise<ScanSummary[]>;
   /** Every scan in progress, of a project or a folder, newest first (the sidebar's Running count, the inbox's Running tab). */
   securityScanRunning(): Promise<RunningScan[]>;
   // One finding (decision P97). A target is { projectId } or { folder }; a finding is its scan and its fingerprint.
@@ -87,6 +89,7 @@ export function createSecurityClient(t: Transport): SecurityClient {
       return r ? report(r) : null;
     },
     securityScanFolders: async (limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.folders', { limit })).map(summary),
+    securityScanRecent: async (limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.recent', { limit })).map(summary),
     securityScanRunning: async () =>
       arr(await t.call<RunningScan[] | null>('security.scan.running', {})).map((r) => ({ ...r, engines: arr(r.engines), counts: counts(r.counts) })),
     securityFindingDismiss: async (target, fingerprint, reason) => report(await t.call<ScanReport>('security.finding.dismiss', { ...target, fingerprint, reason })),

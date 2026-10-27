@@ -4,7 +4,7 @@
 import { css, on, type Handle } from 'remix/component';
 import { ListTodo } from 'lucide';
 import type { Task } from '../../api/types.ts';
-import { statusLabel, statusTone } from '../../lib/format.ts';
+import { agoWords, statusLabel, statusTone } from '../../lib/format.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
@@ -13,7 +13,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { isTerminal } from '../tasks/tasks.ts';
-import { agoWords, msOf, taskKey } from './needs-you.ts';
+import { msOf, taskKey } from './needs-you.ts';
 
 const listCss = css({ display: 'grid', margin: '0', padding: '0', listStyle: 'none', border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'hidden' });
 const rowCss = css({

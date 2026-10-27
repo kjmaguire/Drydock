@@ -22,7 +22,7 @@ const groups = (): ListGroup[] => [
 ];
 
 // a page keeps the choice and draws the layout again with it, as the screens do
-function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean }>) {
+function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: string[]; filters?: boolean; address?: string }>) {
   let selected = handle.props.start;
   return () => (
     <MasterDetail
@@ -34,16 +34,24 @@ function Host(handle: Handle<{ start: string; picks: string[]; filterPicks: stri
       filters={handle.props.filters ? [{ key: 'all', label: 'All', count: 4 }, { key: 'on', label: 'On', count: 1 }] : undefined}
       filter="all"
       onFilter={(k) => handle.props.filterPicks.push(k)}
-      detail={<p data-testid="the-detail">detail of {selected}</p>}
+      detail={
+        <p data-testid="the-detail">
+          detail of {selected}
+          <span role="menu" tabIndex={-1} data-testid="a-menu">
+            menu
+          </span>
+        </p>
+      }
       testId="md"
+      address={handle.props.address}
     />
   );
 }
 
-function render(selected: { key: string }, extra: { filters?: boolean } = {}) {
+function render(selected: { key: string }, extra: { filters?: boolean; address?: string } = {}) {
   const picks: string[] = [];
   const filterPicks: string[] = [];
-  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} />);
+  const r = renderPlain(<Host start={selected.key} picks={picks} filterPicks={filterPicks} filters={extra.filters} address={extra.address} />);
   return { ...r, picks, filterPicks };
 }
 
@@ -62,7 +70,7 @@ describe('MasterDetail', () => {
     expect(rows[2]!.querySelector('[data-tone="none"] span[aria-hidden="true"]')).toBeNull();
     expect(rows[0]!.querySelector('[data-brand="linear"]')).not.toBeNull();
     expect(rows[3]!.querySelector('svg')).not.toBeNull();
-    expect(container.querySelector('[data-testid="the-detail"]')!.textContent).toBe('detail of linear');
+    expect(container.querySelector('[data-testid="the-detail"]')!.textContent).toBe('detail of linearmenu');
   });
 
   it('chooses a row on click; a row with a page of its own is a link', () => {
@@ -110,6 +118,94 @@ describe('MasterDetail', () => {
     expect(document.activeElement).toBe(container.querySelector('[data-testid="list-filter"]'));
   });
 
+  it('ArrowDown in the filter box chooses the first row and stops there', () => {
+    const { container, picks, root } = render({ key: 'notion' });
+    const box = container.querySelector<HTMLInputElement>('[data-testid="list-filter"]')!;
+    box.focus();
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    root.flush();
+    expect(picks).toEqual(['linear']);
+  });
+
+  it('leaves / alone with Ctrl, Alt or Meta held and inside a menu, a listbox or a dialog', () => {
+    const { container } = render({ key: 'linear' }, { address: 'linear' }); // the detail showing, on a narrow window too
+    const md = container.querySelector('[data-testid="md"]')!;
+    const box = container.querySelector('[data-testid="list-filter"]');
+    for (const mod of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      const e = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true, ...mod });
+      md.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(false);
+      expect(document.activeElement).not.toBe(box);
+    }
+    const menu = container.querySelector<HTMLElement>('[data-testid="a-menu"]')!;
+    menu.focus();
+    const e = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+    menu.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(menu);
+  });
+
+  it('shows the detail of the row the address named at once on narrow windows', () => {
+    const { container } = render({ key: 'notion' }, { address: 'notion' });
+    expect(container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('true');
+    cleanup();
+    const plain = render({ key: 'notion' });
+    expect(plain.container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('keeps the list when the address names a row that is gone and the page chose its default instead', () => {
+    // a bookmark of an uninstalled agent: the page replaced the key with its default row, which is not the one asked for
+    const { container } = render({ key: 'linear' }, { address: 'codex' });
+    expect(container.querySelector('[data-testid="md"]')!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('follows a new address while the page stays mounted, once the page has chosen its row', () => {
+    const ctl: { set?: (address: string | undefined, selected: string) => void } = {};
+    // the controller draws a page with one key for every address, so a new address arrives as a new prop, not a new page
+    function LiveHost(handle: Handle<{ address?: string; selected: string }>) {
+      let address = handle.props.address;
+      let selected = handle.props.selected;
+      ctl.set = (a, k) => ((address = a), (selected = k), void handle.update());
+      return () => (
+        <MasterDetail label="All integrations" groups={groups()} selected={selected} onSelect={(k) => ((selected = k), void handle.update())} detail={<p>detail of {selected}</p>} testId="md" address={address} />
+      );
+    }
+    // the list was still loading when the page opened (nothing drawn as chosen); then a link names Linear and the page chooses it
+    const r = renderPlain(<LiveHost selected="" />);
+    const md = r.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md.getAttribute('data-open')).toBe('false');
+    ctl.set!('linear', 'linear');
+    r.root.flush();
+    expect(md.getAttribute('data-open')).toBe('true');
+    cleanup();
+    // a stale address the page replaced opens nothing; a real one after it does
+    const r2 = renderPlain(<LiveHost address="codex" selected="linear" />);
+    const md2 = r2.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md2.getAttribute('data-open')).toBe('false');
+    ctl.set!('notion', 'notion');
+    r2.root.flush();
+    expect(md2.getAttribute('data-open')).toBe('true');
+    cleanup();
+    // Back, then a re-read drops the chosen row and the page draws its default in its place: nothing was chosen, the list stays
+    const r3 = renderPlain(<LiveHost address="notion" selected="notion" />);
+    const md3 = r3.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md3.getAttribute('data-open')).toBe('true');
+    r3.container.querySelector<HTMLButtonElement>('[data-testid="detail-back"]')!.click();
+    r3.root.flush();
+    expect(md3.getAttribute('data-open')).toBe('false');
+    ctl.set!('notion', 'linear');
+    r3.root.flush();
+    expect(md3.getAttribute('data-open')).toBe('false');
+    cleanup();
+    // the plain address (the page's own link in the sidebar, no key) shows the list again
+    const r4 = renderPlain(<LiveHost address="linear" selected="linear" />);
+    const md4 = r4.container.querySelector<HTMLElement>('[data-testid="md"]')!;
+    expect(md4.getAttribute('data-open')).toBe('true');
+    ctl.set!(undefined, 'linear');
+    r4.root.flush();
+    expect(md4.getAttribute('data-open')).toBe('false');
+  });
+
   it('shows the filter choices the page owns and reports a choice', () => {
     const { container, filterPicks } = render({ key: 'linear' }, { filters: true });
     const all = container.querySelector<HTMLButtonElement>('[data-testid="list-filter-all"]')!;
@@ -132,10 +228,12 @@ describe('MasterDetail', () => {
     expect(md.getAttribute('data-open')).toBe('false');
   });
 
-  it('opens the detail when the page changes the choice itself (an Add row, the address)', () => {
+  it('opens a row the page chose itself (an Add row) once the page has put it in the address, as the pages do', () => {
     function AddHost(handle: Handle<{ start: string }>) {
       let selected = handle.props.start;
-      const pick = (k: string) => ((selected = k), void handle.update());
+      let address: string | undefined;
+      // as the pages do: the choice replaces the address (navigate), and the address comes back to the page as a prop
+      const pick = (k: string) => ((selected = k), (address = k), void handle.update());
       return () => (
         <MasterDetail
           label="Providers"
@@ -144,6 +242,7 @@ describe('MasterDetail', () => {
           onSelect={pick}
           detail={<p data-testid="the-detail">detail of {selected}</p>}
           testId="md"
+          address={address}
         />
       );
     }
@@ -191,5 +290,35 @@ describe('detail parts', () => {
     container.querySelector<HTMLButtonElement>('[data-testid="add"]')!.click();
     expect(added).toBe(1);
     expect(container.querySelector('[data-testid="sw"]')!.textContent).toBe('Key expired');
+  });
+});
+
+describe('a settings row in a narrow group', () => {
+  it('puts its value under its label when the group is narrow, whatever the window (UI audit 2026-10-26)', () => {
+    const row = (id: string) => (
+      <SettingsGroup title="Engine">
+        <SettingRow label="Build" control={<button type="button">Set up</button>} testId={id}>
+          Drydock puts its model engine in place by itself when it starts. Set up does it now.
+        </SettingRow>
+      </SettingsGroup>
+    );
+    const { container } = renderPlain(
+      <div>
+        <div style={{ width: '420px' }}>{row('narrow')}</div>
+        <div style={{ width: '900px' }}>{row('wide')}</div>
+      </div>,
+    );
+    const parts = (id: string) => {
+      const r = container.querySelector(`[data-testid="${id}"]`)!;
+      return { label: r.querySelector('[data-part="label"]')!.getBoundingClientRect(), value: r.querySelector('[data-part="value"]')!.getBoundingClientRect() };
+    };
+    const narrow = parts('narrow');
+    expect(narrow.value.top >= narrow.label.bottom).toBe(true);
+    // the value takes the row's whole width, not what is left beside the label
+    expect(narrow.value.width > 300).toBe(true);
+    if (innerWidth >= 720) {
+      const wide = parts('wide');
+      expect(wide.value.left >= wide.label.right && wide.value.top < wide.label.bottom).toBe(true);
+    }
   });
 });

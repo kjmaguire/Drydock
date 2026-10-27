@@ -101,9 +101,9 @@ func TestTheInboxCarriesThePhaseTheTaskNumberAndTheAgent(t *testing.T) {
 	}
 }
 
-// Approve for this task (P97): a worker's first "curl https://example.com" is approved for the rest of the task; its second is
-// approved without a request and recorded as approved for the task; "curl https://example.org" still asks. A rule can be
-// removed, and the one left dies with the task.
+// Approve for this task (P97): a worker's first "curl https://example.com" is approved for the rest of the task, and recorded
+// as approved for the task with its rule and its approval; its second is approved without a request and recorded as approved
+// for the task; "curl https://example.org" still asks. A rule can be removed, and the one left dies with the task.
 func TestApprovingForTheTaskApprovesTheSameCallUntilTheTaskEnds(t *testing.T) {
 	ask := func(cmd, why string) fakeagent.Step {
 		in, _ := json.Marshal(map[string]string{"command": cmd, "description": why})
@@ -177,17 +177,21 @@ func TestApprovingForTheTaskApprovesTheSameCallUntilTheTaskEnds(t *testing.T) {
 	for _, e := range a.eventsOf("permission.decided") {
 		outcomes = append(outcomes, e["outcome"].(string))
 		if e["outcome"] == security.PermissionApprovedForTask && (e["rule"] != rule.ID || e["_task"] != task.ID || e["_agent"] != worker.ID) {
-			t.Fatalf("the auto-approval is recorded with its rule, task and agent: %v", e)
+			t.Fatalf("an approval for the task is recorded with its rule, task and agent: %v", e)
 		}
 	}
-	if strings.Join(outcomes, ",") != "approved,approved_for_task" {
+	// the answered request is approved for the task too (with its approval), not once: the grant covers the whole task
+	if strings.Join(outcomes, ",") != "approved_for_task,approved_for_task" {
 		t.Fatalf("outcomes %v", outcomes)
+	}
+	if evs := a.eventsOf("permission.decided"); evs[0]["approval"] != id || evs[1]["approval"] != nil {
+		t.Fatalf("the answered request carries its approval and the covered call none: %v", evs)
 	}
 	var audited int
 	_ = a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action='permission.decided' AND detail LIKE ? AND detail LIKE ?`,
 		"%"+security.PermissionApprovedForTask+"%", "%"+rule.ID+"%").Scan(&audited)
-	if audited != 1 {
-		t.Fatalf("%d audit entries of the auto-approval", audited)
+	if audited != 2 {
+		t.Fatalf("%d audit entries of approvals for the task, want the answered request and the covered call", audited)
 	}
 	if n := len(a.eventsOf(core.EventTaskRuleAdded)); n != 1 {
 		t.Fatalf("%d rule added events", n)

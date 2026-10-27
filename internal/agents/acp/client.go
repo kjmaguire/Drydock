@@ -395,7 +395,8 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	if ask := s.spec.AskPermission; ask != nil {
 		handler = askHandler(ask) // the session's own asker (a worker turn, a chat) decides over the adapter's default
 	}
-	if handler == nil {
+	nobody := handler == nil // no asker and no adapter handler: Drydock itself refuses, and says so below
+	if nobody {
 		handler = RejectOnce
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -421,6 +422,12 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	}
 	if ctx.Err() != nil {
 		return cancelled, nil
+	}
+	if nobody {
+		// the request was answered without anyone being asked: the refusal is on the record, right after the request and before
+		// the agent reports the call as failed, so the person sees why the call failed (AG-UI review 2026-10-25)
+		s.emitKind(workflow.ChunkPermissionDenied, workflow.PermissionDenial{ToolName: req.Tool, ToolUseID: req.ToolCallID, Input: req.Args,
+			Reason: "nobody could be asked in this session, so Drydock refused the request"})
 	}
 	for _, o := range req.Options {
 		if o.ID == chosen && chosen != "" {

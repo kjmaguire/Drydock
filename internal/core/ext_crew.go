@@ -18,6 +18,11 @@ func init() {
 			"agent.timeline": bind(func(ctx context.Context, p TimelineRequest) (any, error) {
 				return c.AgentTimeline(ctx, p)
 			}),
+			"crew.extras": bind(func(ctx context.Context, p struct {
+				ProjectID string `json:"projectId"`
+			}) (any, error) {
+				return c.CrewExtras(ctx, p.ProjectID)
+			}),
 		}, nil, nil
 	}})
 }
@@ -219,4 +224,87 @@ ORDER BY ap.created_at, ap.id`, p.Since, until, p.ProjectID, p.ProjectID, securi
 		out.Agents = append(out.Agents, *l)
 	}
 	return out, nil
+}
+
+// CrewExtras is what the Crew page shows beside each agent's runs, for one project or ("") every project, in one read: the
+// accepted skills given to each agent and the channels and groups each is in (task rooms and direct messages are not "its
+// rooms"). The page used to ask each project for its skills and rooms and each room for its members: hundreds of calls on a
+// workspace of sixty projects (review 2026-10-27).
+type CrewExtras struct {
+	Skills []CrewSkill `json:"skills"`
+	Rooms  []CrewRoom  `json:"rooms"`
+}
+
+// CrewSkill is one accepted skill given to one agent.
+type CrewSkill struct {
+	AgentID string `json:"agentId"`
+	Name    string `json:"name"`
+}
+
+// CrewRoom is a channel or group that is not archived, with its agent members in the order they joined.
+type CrewRoom struct {
+	ProjectID string   `json:"projectId"`
+	Name      string   `json:"name"`
+	Kind      string   `json:"kind"`
+	Agents    []string `json:"agents"`
+}
+
+func (c *Core) CrewExtras(ctx context.Context, projectID string) (CrewExtras, error) {
+	out := CrewExtras{Skills: []CrewSkill{}, Rooms: []CrewRoom{}}
+	r := c.DB.Reader()
+	rows, err := r.QueryContext(ctx, `SELECT g.agent_id, g.skill_name FROM agent_skills g
+		JOIN skills k ON k.project_id=g.project_id AND k.name=g.skill_name
+		WHERE k.status='accepted' AND (?='' OR g.project_id=?) ORDER BY g.agent_id, g.skill_name`, projectID, projectID)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var k CrewSkill
+		if err := rows.Scan(&k.AgentID, &k.Name); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Skills = append(out.Skills, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	const rooms = `r.archived=0 AND r.kind IN ('channel','group') AND (?='' OR r.project_id=?)`
+	rows, err = r.QueryContext(ctx, `SELECT r.id, r.project_id, r.name, r.kind FROM rooms r WHERE `+rooms+` ORDER BY r.project_id, r.kind, r.name`, projectID, projectID)
+	if err != nil {
+		return out, err
+	}
+	at := map[string]int{}
+	for rows.Next() {
+		var id string
+		var cr CrewRoom
+		if err := rows.Scan(&id, &cr.ProjectID, &cr.Name, &cr.Kind); err != nil {
+			rows.Close()
+			return out, err
+		}
+		cr.Agents = []string{}
+		at[id] = len(out.Rooms)
+		out.Rooms = append(out.Rooms, cr)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	rows, err = r.QueryContext(ctx, `SELECT m.room_id, m.member_id FROM room_members m JOIN rooms r ON r.id=m.room_id
+		WHERE m.kind='agent' AND `+rooms+` ORDER BY m.added_at, m.rowid`, projectID, projectID)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var room, member string
+		if err := rows.Scan(&room, &member); err != nil {
+			return out, err
+		}
+		if i, ok := at[room]; ok {
+			out.Rooms[i].Agents = append(out.Rooms[i].Agents, member)
+		}
+	}
+	return out, rows.Err()
 }

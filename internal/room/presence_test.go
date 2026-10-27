@@ -56,6 +56,25 @@ func TestDeriveTable(t *testing.T) {
 			{out("permission_request", map[string]any{}), PresenceWaiting, "", "permission", true},
 			{ev("agent.waiting", "a1", map[string]any{"state": "working"}), PresenceThinking, "", "", true},
 		}},
+		{"a Claude worker's permission request reaches presence through the gate's events", []step{
+			{ev("agent.waiting", "a1", map[string]any{"state": "working"}), PresenceThinking, "", "turn started", true},
+			{out("tool_call", map[string]any{"name": "Bash", "args": map[string]any{"command": "curl https://example.com"}}), PresenceWorking, "", "tool: Bash", true},
+			// a push approval is a workflow request, not the agent waiting on its call
+			{ev("approval.requested", "a1", map[string]any{"request": "apr_1", "kind": "approval", "actionKind": "git_push", "title": "git_push: origin main"}), PresenceWorking, "", "tool: Bash", false},
+			{ev("approval.requested", "a1", map[string]any{"request": "apr_2", "kind": "approval", "actionKind": "shell_command", "title": "Permission request: Bash: curl https://example.com", "expiresAt": 1}), PresenceWaiting, "", "awaiting permission", true},
+			{ev("permission.decided", "a1", map[string]any{"tool": "Bash", "outcome": "approved", "allowed": true, "approval": "apr_2"}), PresenceWorking, "", "tool: Bash", true},
+			{out("tool_result", map[string]any{"name": "Bash"}), PresenceThinking, "", "after tool: Bash", true},
+		}},
+		{"a turn that ended in error reads as failed, as the Activity says it", []step{
+			{ev("agent.waiting", "a1", map[string]any{"state": "working"}), PresenceThinking, "", "turn started", true},
+			{ev("agent.completed", "a1", map[string]any{"stopReason": "error_max_turns"}), PresenceFailed, "", "turn failed: error_max_turns", true},
+			{out("text", map[string]any{"text": "late"}), PresenceFailed, "", "turn failed", false},
+			{ev("agent.stopped", "a1", map[string]any{"exitCode": 1}), PresenceFailed, "", "turn failed", true},
+			{ev("agent.waiting", "a1", map[string]any{"state": "working"}), PresenceThinking, "", "turn started", true}, // the next turn
+			{ev("agent.completed", "a1", map[string]any{"stopReason": "error"}), PresenceFailed, "", "turn failed: error", true},
+			{ev("agent.waiting", "a1", map[string]any{"state": "working"}), PresenceThinking, "", "turn started", true},
+			{ev("agent.completed", "a1", map[string]any{"stopReason": "max_tokens"}), PresenceCompleted, "", "max_tokens", true},
+		}},
 		{"watchdog", []step{
 			{ev("agent.waiting", "a1", map[string]any{"state": "working"}), PresenceThinking, "", "", true},
 			{ev("watchdog.warning", "a1", map[string]any{"signal": "stagnation"}), PresenceThinking, "", "watchdog warning: stagnation", true},
@@ -101,6 +120,32 @@ func TestDeriveTable(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// While a Claude worker's call waits for a person and when it is answered, the agent is still on that call: the doing line
+// stays through both of the gate's events, as it does through an ACP agent's permission_request.
+func TestTheGatesEventsKeepWhatTheAgentIsDoing(t *testing.T) {
+	st, _ := Derive(PresenceState{}, ev("agent.output", "a1", map[string]any{"kind": "tool_call", "data": map[string]any{"name": "Bash", "args": map[string]any{"command": "curl https://example.com"}}}))
+	if st.Doing == "" {
+		t.Fatalf("no doing line: %+v", st)
+	}
+	doing := st.Doing
+	st, ok := Derive(st, ev("approval.requested", "a1", map[string]any{"request": "apr_1", "kind": "approval", "title": "Permission request: Bash: curl https://example.com"}))
+	if !ok || st.Presence != PresenceWaiting || st.Doing != doing {
+		t.Fatalf("asked: %+v", st)
+	}
+	st, ok = Derive(st, ev("permission.decided", "a1", map[string]any{"tool": "Bash", "outcome": "rejected", "allowed": false, "approval": "apr_1"}))
+	if !ok || st.Presence != PresenceWorking || st.Activity != "tool: Bash" || st.Doing != doing {
+		t.Fatalf("answered: %+v", st)
+	}
+	// an agent that is not running any more is not revived by a late answer
+	stopped, _ := Derive(PresenceState{}, ev("agent.stopped", "a1", nil))
+	if _, ok := Derive(stopped, ev("permission.decided", "a1", map[string]any{"tool": "Bash", "outcome": "cancelled"})); ok {
+		t.Fatal("a stopped agent was revived by permission.decided")
+	}
+	if _, ok := Derive(stopped, ev("approval.requested", "a1", map[string]any{"kind": "approval", "title": "Permission request: Bash: ls"})); ok {
+		t.Fatal("a stopped agent was revived by approval.requested")
 	}
 }
 
@@ -234,6 +279,7 @@ func TestTrackerWatchAndCoalescedEmission(t *testing.T) {
 	ch, stop := tr.Watch()
 	defer stop()
 
+	began := time.Now()
 	publish(t, e, "agent.started", "a1", nil)
 	for i := 0; i < 50; i++ { // a busy agent: many changes inside one interval
 		kind := "text"
@@ -264,14 +310,49 @@ loop:
 	}
 	time.Sleep(200 * time.Millisecond) // let the emitter run a few ticks
 	emitted := e.events("room.presence_changed")
-	if len(emitted) == 0 || len(emitted) > 4 {
-		t.Fatalf("expected a few coalesced room.presence_changed events for 51 changes, got %d", len(emitted))
+	// at most one a tick while the changes kept coming, and a last one after: 51 changes published inside an interval or two
+	// are a few events; on a loaded machine the publishing itself takes several intervals, and each may emit once
+	ticks := int(time.Since(began)/(60*time.Millisecond)) + 1
+	if len(emitted) == 0 || len(emitted) > ticks || len(emitted) > 25 {
+		t.Fatalf("expected a few coalesced room.presence_changed events for 51 changes in %d intervals, got %d", ticks, len(emitted))
 	}
 	last := emitted[len(emitted)-1]
 	var d struct{ Member, Presence string }
 	json.Unmarshal(last.Data, &d)
 	if d.Member != "a1" || d.Presence != string(PresenceWorking) && d.Presence != string(PresenceThinking) {
 		t.Fatalf("%s", last.Data)
+	}
+}
+
+// The gate's events are published with the agent's id but are not agent.* events: the tracker's subscription and its rebuild
+// take them, so a Claude worker whose call waits for a person is shown waiting, live and after a restart.
+func TestTheTrackerFollowsTheGatesEventsLiveAndOnRebuild(t *testing.T) {
+	e := newEnv(t)
+	ctx, cancel := context.WithCancel(e.ctx)
+	defer cancel()
+	tr := NewTracker(e.bus, TrackerOptions{})
+	if err := tr.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	publish(t, e, "agent.started", "a1", nil)
+	publish(t, e, "agent.output", "a1", map[string]any{"kind": "tool_call", "data": map[string]any{"name": "Bash"}})
+	publish(t, e, "approval.requested", "a1", map[string]any{"request": "apr_1", "kind": "approval", "title": "Permission request: Bash: curl https://example.com"})
+	eventually(t, 2*time.Second, func() bool {
+		s, _ := tr.Get("a1")
+		return s.Presence == PresenceWaiting && s.Activity == "awaiting permission"
+	})
+	publish(t, e, "permission.decided", "a1", map[string]any{"tool": "Bash", "outcome": "approved", "allowed": true, "approval": "apr_1"})
+	eventually(t, 2*time.Second, func() bool { s, _ := tr.Get("a1"); return s.Presence == PresenceWorking && s.Activity == "tool: Bash" })
+	publish(t, e, "approval.requested", "a1", map[string]any{"request": "apr_2", "kind": "approval", "title": "Permission request: Bash: curl https://example.org"})
+	eventually(t, 2*time.Second, func() bool { s, _ := tr.Get("a1"); return s.Presence == PresenceWaiting })
+
+	// a restart that reads the lifecycle events only lands on the same view
+	tr2 := NewTracker(e.bus, TrackerOptions{LifecycleOnly: true, Alive: func(string) bool { return true }})
+	if err := tr2.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := tr2.Get("a1"); s.Presence != PresenceWaiting || s.Activity != "awaiting permission" {
+		t.Fatalf("after a restart: %+v", s)
 	}
 }
 

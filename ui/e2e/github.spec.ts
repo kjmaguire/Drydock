@@ -23,9 +23,9 @@ test('GitHub: one settings page with the gh sign-in, access, the repositories an
   await openGitHub(page);
   await expect(page).toHaveURL(/\/github$/);
   await expect(page.getByRole('heading', { level: 1, name: 'GitHub', exact: true })).toBeVisible();
-  // its hub is Integrations: the sidebar marks it, and the breadcrumb leads back to it
+  // its hub is Integrations: the sidebar marks it, and the header's link leads back to it
   await expect(page.getByRole('navigation', { name: 'Main' }).getByTestId('nav-side-integrations')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Integrations' })).toHaveAttribute('href', '/integrations');
+  await expect(page.getByTestId('gh-crumb')).toHaveAttribute('href', '/integrations');
   await expect(page.getByTestId('github-page').locator('header [data-testid=learn-more][data-topic=github]')).toHaveAttribute('href', '/guide/github');
 
   // the sign-in: the harness has no gh, and the page says so with the fix; there is no sign-in button of Drydock's own
@@ -66,9 +66,9 @@ test('GitHub: one settings page with the gh sign-in, access, the repositories an
   await expect(page.getByTestId('agent-detail').getByTestId('cli-gateway')).toBeVisible();
   await expect(page.getByTestId('ci-runners-section')).toHaveCount(0);
 
-  // the breadcrumb goes back to Integrations
+  // All integrations goes back to Integrations
   await openGitHub(page);
-  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Integrations' }).click();
+  await page.getByTestId('gh-crumb').click();
   await expect(page).toHaveURL(/\/integrations$/);
 
   // the Integrations page keeps GitHub as a row of its list, a link to this page (decision P98); its detail there points here too

@@ -1,5 +1,5 @@
 // GitHub, one settings page (decision P98, after Apple's System Settings, Linear's account settings and Vercel's Git settings):
-// everything Drydock does with GitHub as rows and tables, reached from Integrations (the breadcrumb). On top, who gh is signed
+// everything Drydock does with GitHub as rows and tables, reached from Integrations (All integrations leads back). On top, who gh is signed
 // in as (github.status: the GitHub CLI's own login, which Drydock uses and never stores) with chips for issue sync, the MCP
 // server and the runners, or what is missing and how to fix it. Then Access: the gh sign-in, issue sync (app sync, decision
 // P42: connected here once for the workspace with the integrations screen's own ConnectForm and ServiceView, one
@@ -8,7 +8,7 @@
 // CI runners on this PC (ci-runners.tsx, decision P56). A workspace page: it works with no project.
 
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
-import { ExternalLink, FolderGit2, RefreshCw } from 'lucide';
+import { Blocks, ExternalLink, FolderGit2, GitPullRequest, RefreshCw } from 'lucide';
 import type { IntegrationKindInfo, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import type { GitHubStatus, ProjectRepoRow, RepoCI } from '../../api/types.ts';
@@ -20,26 +20,15 @@ import { Avatar, faint, hueFor, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { actionsEnd, headerCss, Page, tableCard } from '../../ui/layout.tsx';
-import { LearnMore } from '../../ui/learn-more.tsx';
+import { actionsEnd, Page, tableCard } from '../../ui/layout.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
 import { ConnectForm, ReportView, ServiceView } from '../integrations/service-detail.tsx';
-import { KINDS, statusTone, tileState, vendors } from '../integrations/integrations.ts';
+import { KINDS, serviceState, statusTone, tileState, vendors } from '../integrations/integrations.ts';
 import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 
-const crumbCss = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: t.s2,
-  fontSize: t.textLg,
-  '& a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', color: t.textMuted, textDecoration: 'none' },
-  '& a:hover': { color: t.text, textDecoration: 'underline' },
-  '& span': { color: t.textFaint },
-});
-const bodyCss = css({ flex: '1', minHeight: '0', overflow: 'auto' });
 const innerCss = css({ display: 'grid', gap: t.s6, padding: `${t.s5} ${t.s6} 48px`, maxWidth: '1040px', width: '100%', minWidth: '0' });
 const heroCss = css({
   display: 'flex',
@@ -79,7 +68,14 @@ const projectCell = css({ display: 'inline-flex', alignItems: 'center', gap: t.s
 const projectHue = (id: string): string => `hsl(${hueFor(id)} 62% 62%)`;
 
 /** A chip: a state in words with its dot. */
-function Chip(handle: Handle<{ tone: Tone | 'muted'; text: string; testId: string }>) {
+/** The issue sync's chip: on only when the connection works (the Integrations row's own state), else what needs the person. */
+export function syncChip(conn: IntegrationView | undefined): { tone: Tone | 'muted' | 'none'; text: string } {
+  if (!conn) return { tone: 'muted', text: 'Issue sync off' };
+  const st = serviceState(conn);
+  return st.bucket === 'on' ? { tone: 'ok', text: 'Issue sync on' } : { tone: st.tone, text: `Issue sync: ${st.text.toLowerCase()}` };
+}
+
+function Chip(handle: Handle<{ tone: Tone | 'muted' | 'none'; text: string; testId: string }>) {
   return () => (
     <li mix={chipCss} data-testid={handle.props.testId}>
       <StatusWord tone={handle.props.tone} text={handle.props.text} />
@@ -141,7 +137,7 @@ function Hero(
             </span>
           </div>
           <ul mix={chipsCss} aria-label="GitHub at a glance">
-            <Chip testId="gh-chip-sync" tone={conn ? 'ok' : 'muted'} text={conn ? 'Issue sync on' : 'Issue sync off'} />
+            <Chip testId="gh-chip-sync" {...syncChip(conn)} />
             <Chip testId="gh-chip-mcp" tone={card?.status === 'connected' ? 'ok' : 'muted'} text={card?.status === 'connected' ? 'MCP for agents on' : 'MCP for agents off'} />
             {runners !== undefined ? <Chip testId="gh-chip-runners" tone={runners > 0 ? 'accent' : 'muted'} text={runners > 0 ? plural(runners, 'runner') : 'No runners'} /> : null}
           </ul>
@@ -156,7 +152,7 @@ function Hero(
           <div mix={heroText}>
             <strong>GitHub CLI not found</strong>
             <p mix={subCss}>
-              {/* the core's own words say the same install steps in the connect form below; here only a reason that adds something */}
+              {/* the install steps are said here once (the connect form below leaves them to this hero); the core's reason only when it adds something */}
               {st.error && !/not installed/i.test(st.error) ? `${st.error} ` : ''}
               Install it from{' '}
               <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" data-rmx-document>
@@ -266,9 +262,12 @@ function Access(
           label="GitHub CLI sign-in"
           testId="access-gh"
           control={
-            <Button size="sm" variant="ghost" icon={RefreshCw} disabled={ghLoading} mix={on('click', onCheck)} title="Ask gh again whether it is signed in">
-              {ghLoading ? 'Checking...' : 'Check again'}
-            </Button>
+            // the hero above has its own Check again while gh is missing or signed out: one button on the page, not two
+            !st || st.loggedIn ? (
+              <Button size="sm" variant="ghost" icon={RefreshCw} disabled={ghLoading} mix={on('click', onCheck)} title="Ask gh again whether it is signed in">
+                {ghLoading ? 'Checking...' : 'Check again'}
+              </Button>
+            ) : null
           }
         >
           {sign ? (
@@ -305,7 +304,7 @@ function Access(
         </SettingRow>
         {conns && !conn ? (
           <div mix={connectCss} data-testid="sync-connect">
-            <ConnectForm kind="github" info={info} onDone={(r) => ((report = r.test), onConnsChanged())} onKindsChanged={onKindsChanged} />
+            <ConnectForm kind="github" info={info} ghStateAbove onDone={(r) => ((report = r.test), onConnsChanged())} onKindsChanged={onKindsChanged} />
           </div>
         ) : null}
         {report ? (
@@ -371,23 +370,56 @@ const CI: Record<RepoCI, { text: string; tone: Tone }> = {
   none: { text: 'No checks', tone: 'muted' },
 };
 
-/** The CI cell of a row: the state of the default branch's latest commit, or why there is none. */
+/** The table's own words for the GraphQL fields GitHub may refuse, so the note names the column, not the query. */
+const REFUSED_WORDS: Record<string, string> = { statusCheckRollup: 'the CI state', pullRequests: 'the open pull requests', defaultBranchRef: 'the default branch' };
+
+/**
+ * What GitHub refused, in the table's words: "statusCheckRollup: Resource not accessible by personal access token" (the core
+ * passes GitHub's field names on, several joined by "; ") reads "the CI state: Resource not accessible by personal access
+ * token"; a field the table has no words for keeps its name, and an error that named no field is passed on as it is.
+ */
+export function refusedWords(incomplete: string): string {
+  return incomplete
+    .split('; ')
+    .map((part) => {
+      const i = part.indexOf(': ');
+      if (i < 0) return part;
+      const field = part.slice(0, i);
+      return `${REFUSED_WORDS[field] ?? field}${part.slice(i)}`;
+    })
+    .join('; ');
+}
+
+/**
+ * The CI cell of a row: the state of the default branch's latest commit, or why there is none. When GitHub refused part of the
+ * answer (incomplete), what it refused is said under the state, so "No checks" or "None open" never stands alone as an answer
+ * GitHub did not give. A row that could not be read says so with the other program's own words after the state: gh's or
+ * GitHub's for `error`, git's or the OS's for `unreadable`; the words are a fragment, so nothing is put in front of them.
+ */
 function ciCell(r: ProjectRepoRow): RemixNode {
   switch (r.state) {
     case 'github': {
       const c = CI[r.ci ?? 'none'] ?? CI.none;
       return (
-        <StateLine text={c.text} tone={c.tone}>
-          {r.defaultBranch ? `on ${r.defaultBranch}` : null}
-        </StateLine>
+        <>
+          <StateLine text={c.text} tone={c.tone}>
+            {r.defaultBranch ? `on ${r.defaultBranch}` : null}
+          </StateLine>
+          {r.incomplete ? (
+            <span class="err" data-testid="repo-incomplete">
+              GitHub refused part of the answer: {refusedWords(r.incomplete)}
+            </span>
+          ) : null}
+        </>
       );
     }
     case 'needs_gh':
       return <StatusWord tone="none" text="Needs gh" />;
     case 'error':
+    case 'unreadable':
       return (
         <>
-          <StatusWord tone="err" text="Could not read" />
+          <StatusWord tone="err" text={r.state === 'error' ? 'Could not read' : 'Not readable'} />
           <span class="err" data-testid="repo-error">
             {r.error}
           </span>
@@ -398,9 +430,40 @@ function ciCell(r: ProjectRepoRow): RemixNode {
 }
 
 /**
- * Repositories: one row per project with its repository, the CI state of the default branch and the open pull requests. A
- * repository opens on github.com (the system browser); Open goes to the project's Pull requests, or its Overview when it has
- * no GitHub repository. Refresh asks GitHub again.
+ * The Repository cell of a row: owner/name, a link to the repository on github.com when its address is safe; or, in words, why
+ * there is none. The state decides, not whether a name came along.
+ */
+function repoCell(r: ProjectRepoRow): RemixNode {
+  switch (r.state) {
+    case 'no_repo':
+      return <span mix={muted}>No repository</span>;
+    case 'unreadable':
+      return <span mix={muted}>Folder not readable</span>;
+    case 'local':
+      return <span mix={muted}>Local folder</span>;
+  }
+  const href = r.url ? safeHref(r.url) : undefined;
+  return r.repo && href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="repo-link" title={`${r.repo} on github.com`}>
+      {r.repo}
+      <Icon icon={ExternalLink} size={11} />
+    </a>
+  ) : (
+    <span mix={mono}>{r.repo}</span>
+  );
+}
+
+/**
+ * Whether the row's project has a GitHub repository: read (github), refused by GitHub (error) or waiting for the GitHub CLI
+ * (needs_gh). The state says so, never whether `repo` happens to be set, so a core that one day names the folder of an
+ * unreadable row cannot send Open to pull requests that are not there.
+ */
+const onGitHub = (r: ProjectRepoRow): boolean => r.state === 'github' || r.state === 'error' || r.state === 'needs_gh';
+
+/**
+ * Repositories: one row per project with its repository, the CI state of the default branch and the open pull requests, every
+ * cell drawn from the row's state (the core says what each row is). A repository opens on github.com (the system browser); Open
+ * goes to the project's Pull requests when it has a GitHub repository, else to its Overview. Refresh asks GitHub again.
  */
 function Repositories(handle: Handle) {
   const s = services(handle);
@@ -462,8 +525,7 @@ function Repositories(handle: Handle) {
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const href = r.url ? safeHref(r.url) : undefined;
-                  const onGitHub = r.state === 'github' || r.state === 'error' || r.state === 'needs_gh';
+                  const gh = onGitHub(r);
                   return (
                     <tr key={r.projectId} data-testid="repo-row" data-project={r.projectId} data-state={r.state} data-ci={r.ci}>
                       <td>
@@ -472,25 +534,14 @@ function Repositories(handle: Handle) {
                           {r.project}
                         </span>
                       </td>
-                      <td data-part="repo">
-                        {r.repo && href ? (
-                          <a href={href} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="repo-link" title={`${r.repo} on github.com`}>
-                            {r.repo}
-                            <Icon icon={ExternalLink} size={11} />
-                          </a>
-                        ) : r.repo ? (
-                          <span mix={mono}>{r.repo}</span>
-                        ) : (
-                          <span mix={muted}>{r.state === 'no_repo' ? 'No repository' : 'Local folder'}</span>
-                        )}
-                      </td>
+                      <td data-part="repo">{repoCell(r)}</td>
                       <td data-testid="repo-ci">{ciCell(r)}</td>
                       <td data-testid="repo-prs">{r.state === 'github' ? (r.openPullRequests > 0 ? `${r.openPullRequests} open` : 'None open') : <span mix={faint}>—</span>}</td>
                       <td data-part="open">
                         <a
-                          href={onGitHub ? routes.pulls.href() : routes.home.href()}
+                          href={gh ? routes.pulls.href() : routes.home.href()}
                           mix={[buttonStyle('ghost', 'sm'), on('click', () => s.workspace.selectProject(r.projectId))]}
-                          aria-label={onGitHub ? `Open the pull requests of ${r.project}` : `Open ${r.project}`}
+                          aria-label={gh ? `Open the pull requests of ${r.project}` : `Open ${r.project}`}
                           data-testid="repo-open"
                         >
                           Open
@@ -531,51 +582,45 @@ export function GitHubScreen(handle: Handle) {
     return (
       <Page
         title="GitHub"
+        icon={GitPullRequest}
         testId="github-page"
+        // the same header as every page (the UI audit of 2026-10-26: a breadcrumb and a "Guide" link made it look like another app);
+        // the way back to Integrations is a link at the header's end
+        subtitle="Your sign-in, issue sync, the MCP server, repositories and CI runners"
+        guide="github"
+        actions={
+          <a href={routes.integrations.href()} mix={buttonStyle('ghost', 'sm')} data-testid="gh-crumb">
+            <Icon icon={Blocks} size={14} />
+            All integrations
+          </a>
+        }
         flush
-        head={(titleId) => (
-          <>
-            <header mix={headerCss}>
-              <nav aria-label="Breadcrumb" mix={crumbCss}>
-                <a href={routes.integrations.href()} data-testid="gh-crumb">
-                  Integrations
-                </a>
-                <span aria-hidden="true">/</span>
-              </nav>
-              <h1 id={titleId}>GitHub</h1>
-              <div mix={actionsEnd}>
-                <LearnMore topic="github" label="Guide" />
-              </div>
-            </header>
-            <div mix={bodyCss}>
-              <div mix={innerCss}>
-                <Hero st={gh.data} loading={gh.loading} error={gh.error} onCheck={check} conn={conn} card={cards[0]} runners={runners.data?.slots.length} />
-                <div>
-                  <Access
-                    st={gh.data}
-                    ghLoading={gh.loading}
-                    onCheck={check}
-                    conns={conns.data}
-                    connsError={conns.error ?? kinds.error}
-                    onConnsChanged={() => void conns.reload()}
-                    info={(kinds.data ?? []).find((k) => k.kind === 'github')}
-                    onKindsChanged={() => void kinds.reload()}
-                    cards={cards}
-                    galleryLoading={gallery.loading}
-                    galleryError={gallery.error}
-                    onGalleryChanged={() => void gallery.reload()}
-                  />
-                  <p mix={[noteCss, tokensCss]} data-testid="gh-tokens">
-                    Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
-                  </p>
-                </div>
-                <Repositories />
-                <CiRunners />
-              </div>
-            </div>
-          </>
-        )}
-      />
+      >
+        <div mix={innerCss}>
+          <Hero st={gh.data} loading={gh.loading} error={gh.error} onCheck={check} conn={conn} card={cards[0]} runners={runners.data?.slots.length} />
+          <div>
+            <Access
+              st={gh.data}
+              ghLoading={gh.loading}
+              onCheck={check}
+              conns={conns.data}
+              connsError={conns.error ?? kinds.error}
+              onConnsChanged={() => void conns.reload()}
+              info={(kinds.data ?? []).find((k) => k.kind === 'github')}
+              onKindsChanged={() => void kinds.reload()}
+              cards={cards}
+              galleryLoading={gallery.loading}
+              galleryError={gallery.error}
+              onGalleryChanged={() => void gallery.reload()}
+            />
+            <p mix={[noteCss, tokensCss]} data-testid="gh-tokens">
+              Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
+            </p>
+          </div>
+          <Repositories />
+          <CiRunners />
+        </div>
+      </Page>
     );
   };
 }

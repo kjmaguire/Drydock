@@ -120,7 +120,7 @@ function TemplatePanel(handle: Handle<{ t: AgentTemplate; servers: readonly McpL
             </ul>
           ) : null}
           <p mix={faint} data-testid="lib-template-where">
-            A project gets a team member from this template on its <a href={routes.team.href()}>Team</a> page.
+            A project gets a team member from this template on its <a href={routes.team.href()}>Crew</a> page.
           </p>
           <div mix={actionsRow}>
             <Button size="sm" variant="ghost" icon={Pencil} aria-expanded={editing} mix={[on('click', () => set(() => (editing = !editing)))]}>
@@ -223,7 +223,7 @@ export function LibraryScreen(handle: Handle) {
           <ErrorNote error={servers.error ?? templates.error} what="Library" />
           <Section
             title="Agent templates"
-            description="A team member defined once. Applying it on a project's Team page makes an ordinary agent in that project."
+            description="A team member defined once. Applying it on a project's Crew page makes an ordinary agent in that project."
             actions={
               <Button variant="primary" size="sm" icon={Plus} mix={[on('click', () => set(() => (newTemplate = true)))]}>
                 New agent template
@@ -234,7 +234,7 @@ export function LibraryScreen(handle: Handle) {
             {templates.data && tpls.length === 0 ? (
               <p mix={emptyLine} data-testid="lib-template-empty">
                 <Icon icon={Users} size={14} />
-                <strong>No templates yet.</strong> Make one here, or save an agent as a template on a project's <a href={routes.team.href()}>Team</a> page.
+                <strong>No templates yet.</strong> Make one here, or save an agent as a template on a project's <a href={routes.team.href()}>Crew</a> page.
               </p>
             ) : null}
             {tpls.length > 0 ? (
@@ -251,7 +251,7 @@ export function LibraryScreen(handle: Handle) {
             title="Prebuilt agents"
             description={
               <>
-                Built into Drydock, with their skills and connectors pinned. Add them to a project on its <a href={routes.team.href()}>Team</a> page or when you create a project.
+                Built into Drydock, with their skills and connectors pinned. Add them to a project on its <a href={routes.team.href()}>Crew</a> page or when you create a project.
               </>
             }
             testId="library-prebuilt"

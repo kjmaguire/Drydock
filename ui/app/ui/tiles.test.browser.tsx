@@ -2,7 +2,8 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import { Server } from 'lucide';
 import { cleanup, renderPlain } from '../test/render.tsx';
-import { Tile, tileGrid } from './tiles.tsx';
+import { Icon } from './icon.tsx';
+import { emptyLine, Tile, tileGrid } from './tiles.tsx';
 
 afterEach(cleanup);
 
@@ -123,5 +124,25 @@ describe('Tile', () => {
     } finally {
       style.remove(); // a failed expectation must not leave the one-line rule on the page for the next tests
     }
+  });
+});
+
+describe('emptyLine', () => {
+  it('keeps its sentence running text: a link inside it has a word space on each side, not a flex gap', () => {
+    const { container } = renderPlain(
+      <p mix={emptyLine} style={{ width: '900px' }}>
+        <Icon icon={Server} size={14} />
+        <strong>No service is connected yet.</strong> Connect one once on the <a href="/integrations">Integrations</a> page, then assign it here.
+      </p>,
+    );
+    const a = container.querySelector('a')!;
+    const range = document.createRange();
+    const before = a.previousSibling!;
+    range.setStart(before, before.textContent!.trimEnd().length - 1);
+    range.setEnd(before, before.textContent!.trimEnd().length);
+    const gap = a.getBoundingClientRect().left - range.getBoundingClientRect().right;
+    // a space of the 16 px default font is about 4 px; the flex gap made it 8
+    expect(gap > 0 && gap < 6).toBe(true);
+    expect(getComputedStyle(container.querySelector('p')!).display).toBe('block');
   });
 });

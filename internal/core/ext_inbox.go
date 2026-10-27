@@ -172,7 +172,9 @@ func (c *Core) approveForTask(ctx context.Context, gate *security.PermissionGate
 	if err != nil {
 		return err
 	}
+	gate.MarkApprovedForTask(requestID, saved.ID) // the answered call is recorded as approved for the task, with its rule
 	if err := gate.Approvals.Decide(ctx, requestID, security.DecisionApprove, c.Human()); err != nil {
+		gate.ClearApprovedForTask(requestID)
 		_, _ = c.deleteTaskRules(context.WithoutCancel(ctx), `r.id=?`, saved.ID)
 		return err
 	}

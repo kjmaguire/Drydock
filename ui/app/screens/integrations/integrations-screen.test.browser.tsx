@@ -3,8 +3,9 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Handle } from 'remix/component';
 import type { Client } from '../../api/client.ts';
 import type { IntegrationVerifyRecord, IntegrationVerifyReport } from '../../api/extTypes.ts';
+import type { NewProvider, Provider } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, fromMenu, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { galleryCard, libServer, pay, rev } from '../mcp/fixtures.ts';
 import { asg, conn, kinds, project, project2 } from './fixtures.ts';
 import { IntegrationsScreen } from './integrations-screen.tsx';
@@ -41,6 +42,7 @@ const baseClient = (): Partial<Client> => ({
   mcpServerList: async () => [],
   mcpApprovalList: async () => [],
   skillRegistries: async () => [],
+  providerList: async () => [],
 });
 
 /** Where the page sent the window: `went` the addresses it replaced (the choice), `opened` the pages it opened. */
@@ -51,7 +53,7 @@ function show(client: Partial<Client>, initial?: string) {
   const went: string[] = [];
   const opened: string[] = [];
   const r = mount(<IntegrationsScreen initial={initial} go={(h) => void went.push(h)} open={(h) => void opened.push(h)} />, s);
-  return Object.assign(r, { went, opened });
+  return Object.assign(r, { went, opened, s });
 }
 type R = ReturnType<typeof show>;
 const find = (r: R, sel: string) =>
@@ -69,21 +71,6 @@ const open = async (r: R, kind: string) => {
   return find(r, `[data-testid="integration"][data-kind="${kind}"]`);
 };
 const statusOf = (el: Element) => el.querySelector('[data-tone]')?.textContent ?? '';
-const menuOpen = (r: R) => Array.from(r.$$('[role="menu"]')).some((m) => m.closest('[popover]')?.matches(':popover-open'));
-/** Open a kit Menu by its trigger (one still finishing its last selection ignores a click, so it is repeated) and choose an item. */
-async function fromMenu(r: R, trigger: HTMLElement, item: string) {
-  await r.act(() => trigger.click());
-  await waitFor(() => {
-    if (!menuOpen(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
-    expect(menuOpen(r)).toBe(true);
-  }, r);
-  const hit = await waitFor(() => {
-    const el = Array.from(r.$$('[popover]:popover-open [role="menuitem"]')).find((m) => m.textContent?.trim() === item) as HTMLElement | undefined;
-    if (!el) throw new Error(`no menu item ${item}`);
-    return el;
-  }, r);
-  await r.act(() => hit.click());
-}
 
 describe('Integrations: the list', () => {
   it('lists the five services with their fixed logos and names under Services, GitHub as a link to its own page; the first opens', async () => {
@@ -130,8 +117,8 @@ describe('Integrations: the list', () => {
       mcpLibList: async () => [libServer({ id: 'pg', display: 'postgres-local' }), libServer({ id: 'mslearn', display: 'Microsoft Learn', catalogId: 'mslearn' }), libServer({ id: 'new', display: 'Fresh', tools: [] })],
     });
     const nav = await find(r, 'nav[aria-label="All integrations"]');
-    await waitFor(() => expect(nav.querySelectorAll('[data-testid="integration-row"]').length).toBe(9), r);
-    expect(Array.from(nav.querySelectorAll('section > h2')).map((h) => h.textContent)).toEqual(['Servicesapp sync', 'Agent toolsMCP', 'Your serversMCP']);
+    await waitFor(() => expect(nav.querySelectorAll('[data-testid="integration-row"]').length).toBe(10), r);
+    expect(Array.from(nav.querySelectorAll('section > h2')).map((h) => h.textContent)).toEqual(['Servicesapp sync', 'Agent toolsMCP', 'Model providersModels', 'Your serversMCP']);
     const state = (key: string) => statusOf(nav.querySelector(`[data-key="${key}"]`)!);
     expect(state('linear')).toBe('On');
     expect(state('sentry')).toBe('Key refused');
@@ -140,6 +127,7 @@ describe('Integrations: the list', () => {
     expect(state('cloudflare')).toBe('Set up');
     expect(state('server-pg')).toBe('On');
     expect(state('server-new')).toBe('No tools yet');
+    expect(state('openrouter')).toBe('Set up');
     // a fact under the name: the projects of a service, the tools of a vendor or a server
     expect(nav.querySelector('[data-key="linear"]')!.textContent).toContain('Issues and projects · 2 projects');
     expect(nav.querySelector('[data-key="mslearn"]')!.textContent).toContain('· 1 tool');
@@ -150,8 +138,8 @@ describe('Integrations: the list', () => {
     expect(nav.querySelector('[data-testid="list-group-servers"] [data-testid="add-server-row"]')!.textContent).toContain('Add a server');
     // the filters and their counts; the header counts what is on
     const f = (k: string) => nav.querySelector<HTMLButtonElement>(`[data-testid="list-filter-${k}"]`)!;
-    expect([f('all').textContent, f('on').textContent, f('needs').textContent]).toEqual(['All 9', 'On 3', 'Needs you 2']);
-    expect(r.$('header')!.textContent).toContain('Connected once for the whole workspace · 3 on');
+    expect([f('all').textContent, f('on').textContent, f('needs').textContent]).toEqual(['All 10', 'On 3', 'Needs you 2']);
+    expect(r.$('header')!.textContent).toContain('Connected once for the whole workspace · 3 connected');
     await r.act(() => f('needs').click());
     await waitFor(() => expect(Array.from(nav.querySelectorAll('[data-testid="integration-row"]')).map((x) => x.getAttribute('data-key'))).toEqual(['sentry', 'server-new']), r);
     expect(f('needs').getAttribute('aria-pressed')).toBe('true');
@@ -210,6 +198,8 @@ describe('Integrations: the list', () => {
     await h.act(() => ctl.set!('sentry'));
     await waitFor(() => expect(h.$('[data-testid="integration"][data-kind="sentry"]')).not.toBeNull(), h);
     expect(h.$('[data-testid="integrations"]')).toBe(page); // the same page, not a new one
+    // the page hands the layout the key its address names, so a narrow window shows the row's detail in place of the list
+    expect(h.$('[data-testid="connector-gallery"]')!.getAttribute('data-open')).toBe('true');
     // an address that names nothing says so
     await h.act(() => ctl.set!('nope'));
     await waitFor(() => expect(h.container.textContent).toContain('Nothing here by that name'), h);
@@ -483,6 +473,22 @@ describe('Integrations: setting a service up', () => {
     expect(linear.querySelector('[data-testid="integration-no-signin"]')).toBeNull();
   });
 
+  it("GitHub without gh says so as a sentence, with the command as code and no backticks (UI audit 2026-10-26)", async () => {
+    const r = show(
+      {
+        integrationList: async () => [],
+        githubStatus: async () => ({ installed: false, loggedIn: false, login: '', error: 'the GitHub CLI (gh) is not installed: install it from https://cli.github.com and run `gh auth login`' }),
+      },
+      'github',
+    );
+    const card = await find(r, '[data-testid="integration"][data-kind="github"]');
+    const status = await waitFor(() => card.querySelector('[data-testid="gh-status"]') ?? (() => { throw new Error('no gh status'); })(), r);
+    await waitFor(() => expect(status.textContent).toContain('The GitHub CLI (gh) is not installed'), r);
+    expect(status.textContent!.includes('`')).toBe(false);
+    expect(status.querySelector('code')!.textContent).toBe('gh auth login');
+    expect(card.textContent!.includes('`gh auth login`')).toBe(false);
+  });
+
   it('GitHub (/integrations/github) offers the gh sign-in first and a Sign in with GitHub beside it; the gh state shows only for the gh way', async () => {
     const r = show({ integrationList: async () => [], githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }) }, 'github');
     const card = await find(r, '[data-testid="integration"][data-kind="github"]');
@@ -747,5 +753,121 @@ describe('Integrations: a connected service', () => {
     await r.act(() => byText(card, 'button', 'Check against your account').click());
     await waitFor(() => expect(rep.querySelector('[data-testid="verify-mismatch"]')!.textContent).toContain('"issues.nodes" is a JSON string where Drydock expects a list'), r);
     expect(rep.querySelector('[data-testid="verify-read"]')).not.toBeNull();
+  });
+});
+
+const orProvider = (over: Partial<Provider> = {}): Provider => ({
+  id: 'prov_or',
+  name: 'OpenRouter',
+  kind: 'aggregator',
+  baseUrl: 'https://openrouter.ai/api/v1',
+  keyRef: 'ref',
+  dataClass: 'private',
+  tier: 'cheap',
+  flavor: 'openrouter',
+  enabled: true,
+  maxConcurrent: 0,
+  hourlyCost: 0,
+  tlsMode: 'system',
+  lanUnencrypted: false,
+  wireApis: null,
+  status: 'up',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+});
+
+describe('Integrations: OpenRouter, a model provider (decision P103)', () => {
+  it('lists OpenRouter under Model providers; set up, it is the provider form filled in for OpenRouter and the key is all you type', async () => {
+    const calls: NewProvider[] = [];
+    let list: Provider[] = [];
+    const r = show({
+      integrationList: async () => [],
+      providerList: async () => list,
+      providerCreate: async (p) => {
+        calls.push(p);
+        list = [orProvider()];
+        r.s.emit({ type: 'provider.registered', data: { providerId: 'prov_or' } }); // the list follows the core's event
+        return list[0]!;
+      },
+    });
+    const it = await find(r, '[data-testid="list-group-models"] [data-testid="integration-row"][data-kind="openrouter"]');
+    expect(it.textContent).toContain('OpenRouter');
+    expect(it.querySelector('[data-brand="openrouter"]')).not.toBeNull();
+    expect(statusOf(it)).toBe('Set up');
+    await r.act(() => it.click());
+    expect(r.went).toEqual(['/integrations/openrouter']);
+    const panel = await find(r, '[data-testid="openrouter-panel"][data-set-up="false"]');
+    expect(panel.querySelector('h2')!.textContent).toBe('OpenRouter');
+    expect(panel.textContent).toContain('collect no data and keep none');
+    const form = panel.querySelector('form[aria-label="Connect OpenRouter"]')!;
+    expect(byLabel<HTMLInputElement>(form, 'Provider name').value).toBe('OpenRouter');
+    expect(byLabel<HTMLInputElement>(form, 'Base URL').value).toBe('https://openrouter.ai/api/v1');
+    expect(byLabel<HTMLElement>(form, 'Kind').getAttribute('data-value')).toBe('aggregator');
+    type(byLabel(form, /API key/), 'sk-or-v1-test');
+    await r.act(() => byText(form, 'button', 'Connect OpenRouter').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toEqual({ Name: 'OpenRouter', Kind: 'aggregator', BaseURL: 'https://openrouter.ai/api/v1', DataClass: 'private', Tier: 'cheap', Attestations: {}, APIKey: 'sk-or-v1-test' });
+    // connected: its state, and its page in Models for the models, prices and key limits
+    const done = await find(r, '[data-testid="openrouter-panel"][data-set-up="true"]');
+    expect(done.querySelector('[data-testid="openrouter-open"]')!.getAttribute('href')).toBe('/models/prov_or');
+    expect(done.querySelector('[data-testid="openrouter-provider-state"]')!.textContent).toBe('Up · Aggregator · openrouter.ai · private · cheap');
+    await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('On'), r);
+    expect(r.$('header')!.textContent).toContain('· 1 connected');
+  });
+
+  it('finds an OpenRouter provider by its address whatever it is called, and says Down when it does not answer', async () => {
+    const r = show({ integrationList: async () => [], providerList: async () => [orProvider({ name: 'My router', status: 'down' }), orProvider({ id: 'prov_x', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' })] }, 'openrouter');
+    const panel = await find(r, '[data-testid="openrouter-panel"][data-set-up="true"]');
+    expect(Array.from(panel.querySelectorAll('[data-testid="openrouter-provider"] [data-part="label"]')).map((x) => x.textContent)).toEqual(['My router']);
+    expect(panel.querySelector('form')).toBeNull();
+    await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Down'), r);
+    expect(r.$('[data-testid="list-filter-needs"]')!.textContent).toBe('Needs you 1');
+  });
+
+  it('a provider pointed elsewhere from the form is not called OpenRouter, and the form is filled in for OpenRouter again', async () => {
+    let list: Provider[] = [];
+    const r = show(
+      {
+        integrationList: async () => [],
+        providerList: async () => list,
+        providerCreate: async (p) => {
+          list = [orProvider({ id: 'prov_g', name: p.Name, baseUrl: p.BaseURL, flavor: '' })];
+          r.s.emit({ type: 'provider.registered', data: { providerId: 'prov_g' } });
+          return list[0]!;
+        },
+      },
+      'openrouter',
+    );
+    const panel = await find(r, '[data-testid="openrouter-panel"][data-set-up="false"]');
+    const form = panel.querySelector('form[aria-label="Connect OpenRouter"]')!;
+    type(byLabel(form, 'Provider name'), 'Groq');
+    type(byLabel(form, 'Base URL'), 'https://api.groq.com/openai/v1');
+    await r.act(() => byText(form, 'button', 'Connect OpenRouter').click());
+    await waitFor(() => expect(document.body.textContent).toContain('Groq was added in Models'), r);
+    expect(document.body.textContent).not.toContain('OpenRouter is connected');
+    const again = await find(r, '[data-testid="openrouter-panel"][data-set-up="false"]');
+    const f = again.querySelector('form[aria-label="Connect OpenRouter"]')!;
+    expect(byLabel<HTMLInputElement>(f, 'Provider name').value).toBe('OpenRouter');
+    expect(byLabel<HTMLInputElement>(f, 'Base URL').value).toBe('https://openrouter.ai/api/v1');
+    expect(byText<HTMLButtonElement>(f, 'button', 'Connect OpenRouter').disabled).toBe(false);
+    expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Set up');
+  });
+
+  it('when the providers cannot be read the row does not say Set up, the list says why, and the panel does not guess', async () => {
+    const r = show({ integrationList: async () => [], providerList: async () => Promise.reject(new Error('core busy')) }, 'openrouter');
+    const it = await row(r, 'openrouter');
+    expect(statusOf(it)).toBe('Not known');
+    await waitFor(() => expect(document.body.textContent).toContain('core busy'), r);
+    const panel = await find(r, '[data-testid="openrouter-panel"]');
+    expect(panel.hasAttribute('data-set-up')).toBe(false);
+    expect(panel.querySelector('form')).toBeNull();
+  });
+
+  it('a provider never checked is Not checked, not counted as connected', async () => {
+    const r = show({ integrationList: async () => [], providerList: async () => [orProvider({ status: 'unknown' })] }, 'openrouter');
+    await find(r, '[data-testid="openrouter-panel"][data-set-up="true"]');
+    await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Not checked'), r);
+    expect(r.$('header')!.textContent).toContain('· 0 connected');
   });
 });

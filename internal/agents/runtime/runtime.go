@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/events"
@@ -391,7 +393,72 @@ func (m *Managed) observe(ctx context.Context, c workflow.Chunk) {
 			})
 		}
 	}
-	m.rt.publish(ctx, "agent.output", m.cfg, m.RunID, map[string]any{"kind": c.Kind, "data": json.RawMessage(c.Data)})
+	m.rt.publish(ctx, "agent.output", m.cfg, m.RunID, outputEvent(c))
+}
+
+// outputEvent is the agent.output payload of a chunk. A tool result is cut to what an event may hold (events.MaxEventData):
+// the bus replaces a larger payload by a stand-in without a kind, which the Activity drops, so the call showed no result at
+// all (AG-UI review 2026-10-25). The chunk itself is not touched: the chat reads it whole and keeps what it keeps.
+func outputEvent(c workflow.Chunk) map[string]any {
+	ev := map[string]any{"kind": c.Kind, "data": json.RawMessage(c.Data)}
+	if c.Kind != workflow.ChunkToolResult {
+		return ev
+	}
+	const limit = events.MaxEventData - 4<<10 // room for the run id and the event's own fields
+	b, err := json.Marshal(ev)
+	if err != nil || len(b) <= limit {
+		return ev
+	}
+	var tr workflow.ToolResult
+	if c.Decode(&tr) != nil {
+		return ev
+	}
+	// JSON escaping makes the text longer than the bytes cut from it, so a second pass takes what the first left over
+	for pass := 0; pass < 2 && len(b) > limit; pass++ {
+		over := len(b) - limit + 2*len(cutMarker(0, "result"))
+		if len(tr.Output) > over {
+			tr.Output = cutMiddle(tr.Output, len(tr.Output)-over, "result")
+		} else {
+			// the output is not what made it big: the arguments are, so they are cut the same way (and become a string)
+			args := string(tr.Args)
+			cut, _ := json.Marshal(cutMiddle(args, max(0, len(args)-over), "result's arguments"))
+			tr.Args = cut
+		}
+		data, merr := json.Marshal(tr)
+		if merr != nil {
+			return ev
+		}
+		ev["data"] = json.RawMessage(data)
+		b, _ = json.Marshal(ev)
+	}
+	return ev
+}
+
+// cutMiddle keeps the first three quarters and the last quarter of fit bytes of s, at character boundaries, around a marker
+// that says how much was left out of the middle.
+func cutMiddle(s string, fit int, what string) string {
+	if fit >= len(s) {
+		return s
+	}
+	if fit < 0 {
+		fit = 0
+	}
+	head, tail := fit*3/4, fit/4
+	for head > 0 && head < len(s) && !utf8.RuneStart(s[head]) {
+		head--
+	}
+	cut := len(s) - tail
+	for cut < len(s) && !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	if cut < head {
+		cut = head
+	}
+	return s[:head] + cutMarker(cut-head, what) + s[cut:]
+}
+
+func cutMarker(n int, what string) string {
+	return "\n[... " + strconv.Itoa(n) + " bytes left out of the middle of this " + what + " by Drydock ...]\n"
 }
 
 // flushDelta ends the text in progress: whatever is held, including an unfinished word, goes out.

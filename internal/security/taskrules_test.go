@@ -2,10 +2,14 @@ package security
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/kjmaguire/drydock/internal/events"
 )
 
 // rulesOf is an in-memory TaskRules store, as the core's table would answer it.
@@ -126,6 +130,42 @@ func TestATaskRuleApprovesTheSameCallOfTheTaskWithoutAsking(t *testing.T) {
 	}
 }
 
+// A task rule holds the words the person approved: a quoted "*" or "**" among them is that word, not a wildcard, so the rule
+// covers that call only (audit 2026-10-27).
+func TestATaskRuleTakesAQuotedStarAsAWordNotAWildcard(t *testing.T) {
+	r := newPermRig(t)
+	store := &rulesOf{}
+	r.gate.TaskRules = store.get
+	ctx := context.Background()
+	curl := func(cmd string) ToolRequest {
+		return ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": cmd}), Root: r.root}
+	}
+	ch := r.decideAsync(t, curl("curl '**'"))
+	id := r.waitRequested(t)
+	rule, err := r.gate.TaskRuleFor(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rule.Commands) != 1 || len(rule.Commands[0].Args) != 1 || rule.Commands[0].Args[0] != "**" {
+		t.Fatalf("rule %+v", rule)
+	}
+	store.add(rule)
+	_ = r.apr.Decide(ctx, id, DecisionApprove, "human:kyle")
+	await(t, ch)
+	if o := r.gate.Decide(ctx, permScope, curl("curl '**'")); o.Outcome != PermissionApprovedForTask {
+		t.Fatalf("the same call: %+v", o)
+	}
+	for _, cmd := range []string{"curl https://example.org", "curl https://example.org https://example.com"} {
+		ch := make(chan PermissionOutcome, 1)
+		go func() { ch <- r.gate.Decide(ctx, permScope, curl(cmd)) }()
+		id := r.waitRequested(t)
+		_ = r.apr.Decide(ctx, id, DecisionReject, "human:kyle")
+		if o := await(t, ch); o.Outcome != PermissionRejected {
+			t.Fatalf("%s was covered by the rule for curl '**': %+v", cmd, o)
+		}
+	}
+}
+
 // What the rules mark as dangerous is asked every time: it cannot be approved for the task, and a rule naming it (one written
 // by hand) does not cover it either.
 func TestDangerousCallsAreNeverApprovedForTheTask(t *testing.T) {
@@ -168,5 +208,102 @@ func TestDangerousCallsAreNeverApprovedForTheTask(t *testing.T) {
 		if o := await(t, ch); o.Outcome != PermissionRejected {
 			t.Errorf("%s: %+v", tc.name, o)
 		}
+	}
+}
+
+// The request a person answers with "approve for this task" is itself recorded as approved for the task, with the rule that
+// was stored for it and the approval id, not as a plain approval: the Activity would otherwise say the grant was for one
+// call. A mark the decision never consumes (the person refuses after all) is dropped with the request.
+func TestTheRequestApprovedForTheTaskIsRecordedWithItsRule(t *testing.T) {
+	r := newPermRig(t)
+	ctx := context.Background()
+	req := ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": "curl https://example.com"}), Root: r.root}
+	ch := r.decideAsync(t, req)
+	id := r.waitRequested(t)
+	r.gate.MarkApprovedForTask(id, "par_first")
+	if err := r.apr.Decide(ctx, id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	o := await(t, ch)
+	if !o.Allow || o.Outcome != PermissionApprovedForTask || o.Rule != "par_first" || o.ApprovalID != id {
+		t.Fatalf("approved for the task: %+v", o)
+	}
+	got := r.decided(t)
+	if len(got) != 1 || got[0]["outcome"] != PermissionApprovedForTask || got[0]["rule"] != "par_first" || got[0]["approval"] != id {
+		t.Fatalf("permission.decided: %v", got)
+	}
+	if _, held := r.gate.forTask.Load(id); held {
+		t.Fatal("the mark outlived the answer")
+	}
+
+	// a mark cleared before the decision, or left when the person refuses, changes nothing
+	ch = r.decideAsync(t, req)
+	id = r.waitRequested(t)
+	r.gate.MarkApprovedForTask(id, "par_second")
+	r.gate.ClearApprovedForTask(id)
+	if err := r.apr.Decide(ctx, id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); o.Outcome != PermissionApproved || o.Rule != "" {
+		t.Fatalf("a cleared mark: %+v", o)
+	}
+	ch = r.decideAsync(t, req)
+	id = r.waitRequested(t)
+	r.gate.MarkApprovedForTask(id, "par_third")
+	if err := r.apr.Decide(ctx, id, DecisionReject, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); o.Outcome != PermissionRejected || o.Rule != "" {
+		t.Fatalf("refused after all: %+v", o)
+	}
+	if _, held := r.gate.forTask.Load(id); held {
+		t.Fatal("the mark of a refused request was kept")
+	}
+}
+
+// onPublish is the core's bus with a look at each event as it is published, before Publish returns.
+type onPublish struct {
+	events.Bus
+	seen func(events.Event)
+}
+
+func (b onPublish) Publish(ctx context.Context, e events.Event) (uint64, error) {
+	seq, err := b.Bus.Publish(ctx, e)
+	b.seen(e)
+	return seq, err
+}
+
+// The moment a request is announced a person can approve it for the rest of its task (the Inbox shows it on
+// approval.requested): the call that waits on it is known by then, not a moment later.
+func TestARequestCanBeApprovedForItsTaskTheMomentItIsAnnounced(t *testing.T) {
+	r := newPermRig(t)
+	answered := make(chan error, 1)
+	r.apr = NewApprovals(r.db, onPublish{Bus: r.bus, seen: func(e events.Event) {
+		if e.Type != "approval.requested" {
+			return
+		}
+		var d struct {
+			Request string `json:"request"`
+		}
+		_ = json.Unmarshal(e.Data, &d)
+		_, err := r.gate.TaskRuleFor(d.Request)
+		answered <- err
+	}}, r.audit, WithApprovalClock(r.clk.Now), WithApprovalRedactor(r.scan))
+	r.gate.Approvals = r.apr
+	ch := r.decideAsync(t, ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": "curl https://example.com"}), Root: r.root})
+	id := r.waitRequested(t)
+	select { // the row is written a moment before the announcement: wait for the announcement itself
+	case err := <-answered:
+		if err != nil {
+			t.Fatalf("asked for the task as the request was announced: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("approval.requested was never published")
+	}
+	if err := r.apr.Decide(context.Background(), id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); !o.Allow {
+		t.Fatalf("%+v", o)
 	}
 }

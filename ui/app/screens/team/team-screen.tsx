@@ -8,13 +8,11 @@
 
 import { css, on, type Handle } from 'remix/component';
 import { Users } from 'lucide';
-import type { Skill } from '../../api/extTypes.ts';
-import type { AgentLane, CrewTimeline } from '../../api/inboxClient.ts';
+import type { AgentLane, CrewExtras, CrewTimeline } from '../../api/inboxClient.ts';
 import type { AdapterInfo, Agent, Connection, PresenceState, Project, TaskSummary } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
 import { ownsKeys } from '../../lib/keys.ts';
 import { skipsApprovals } from '../../lib/permission.ts';
-import { presenceFor } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -46,7 +44,6 @@ import {
   runtimeName,
   timelineWindow,
   type CardState,
-  type CrewRoom,
   type LinePart,
 } from './crew.ts';
 import { crewFigures, runsWhereTitle, sortAdapters } from './team.ts';
@@ -253,7 +250,6 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   const clock = () => (handle.props.now ? handle.props.now() : Date.now());
   const all = () => handle.props.scope === 'all';
   const scopeId = () => (all() ? '' : (s.workspace.projectId ?? ''));
-  const projectIds = (): string[] => (all() ? s.workspace.projectList.map((p) => p.id) : scopeId() ? [scopeId()] : []);
   let now = clock();
   let newOpen = false;
   let templatesOpen = false;
@@ -278,24 +274,14 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     key: scopeId,
     enabled: () => all() || !!scopeId(),
   });
-  const skills = query(handle, {
-    load: async () => (await Promise.all(projectIds().map((id) => orElse(() => s.client.skillList(id), [] as Skill[])))).flat(),
-    when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.'),
-    key: projectIds,
-  });
-  // the project's channels and groups with their agents (task rooms and direct messages are not "its rooms")
-  const rooms = query(handle, {
-    load: async () => {
-      const out: CrewRoom[] = [];
-      for (const pid of projectIds()) {
-        const list = (await orElse(() => s.client.roomList(pid), [])).filter((r) => !r.archived && (r.kind === 'channel' || r.kind === 'group'));
-        const members = await Promise.all(list.map((r) => orElse(() => s.client.roomMembers(r.id), [])));
-        list.forEach((r, i) => out.push({ name: r.name, kind: r.kind, agents: (members[i] ?? []).filter((m) => m.member.kind === 'agent').map((m) => m.member.id) }));
-      }
-      return out;
-    },
-    when: (e) => e.type.startsWith('room.created') || e.type.startsWith('room.archived') || e.type.startsWith('room.member'),
-    key: projectIds,
+  // each agent's accepted skills and the project's channels and groups with their agents (task rooms and direct messages are not
+  // "its rooms"), in one read for the project or every project (crew.extras): asked project by project and room by room, a
+  // workspace of sixty projects made this page call the core hundreds of times (review 2026-10-27)
+  const extras = query(handle, {
+    load: () => orElse(() => s.client.crewExtras(scopeId()), { skills: [], rooms: [] } as CrewExtras),
+    when: (e) => e.type.startsWith('skill.') || e.type.startsWith('agent.') || e.type.startsWith('room.created') || e.type.startsWith('room.archived') || e.type.startsWith('room.member'),
+    key: scopeId,
+    enabled: () => all() || !!scopeId(),
   });
   const local = query(handle, {
     load: () => orElse(async () => {
@@ -306,14 +292,11 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   });
   const adapters = query(handle, { load: () => orElse(() => s.client.adapterList(), [] as AdapterInfo[]), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
   const conns = query(handle, { load: () => orElse(() => s.client.connectionList(), [] as Connection[]), when: (e) => e.type.startsWith('connection.') });
+  // every project's run mode in one request (project.runModes), however many projects there are; a failed read leaves an empty
+  // answer, and an agent that follows its project is then drawn as on Windows
   const runModes = query(handle, {
-    load: async () => {
-      const out = new Map<string, ProjectRunMode>();
-      for (const id of projectIds()) out.set(id, await orElse(() => s.client.projectRunMode(id), { runMode: 'native' } as ProjectRunMode));
-      return out;
-    },
+    load: async () => new Map(Object.entries(await orElse(() => s.client.projectRunModes(), {} as Record<string, ProjectRunMode>))),
     when: (e) => e.type.startsWith('project.'),
-    key: projectIds,
   });
 
   // "now" moves every minute (and the timeline is read again after midnight: its key is the day)
@@ -379,16 +362,43 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     const fig = crewFigures(agents, presence, waitingOn);
     const target = targetProject(projects);
 
+    // looked up by id, built once a render: the all-projects page holds every project's agents and tasks, and a filter per
+    // card made each render agents x tasks (audit 2026-10-27)
+    const presenceById = new Map<string, PresenceState>();
+    for (const x of presence) if (!presenceById.has(x.agentId)) presenceById.set(x.agentId, x);
+    const byAssignee = new Map<string, typeof list>();
+    const byTask = new Map<string, (typeof list)[number]>();
+    for (const x of list) {
+      if (x.assignee) {
+        const l = byAssignee.get(x.assignee);
+        if (l) l.push(x);
+        else byAssignee.set(x.assignee, [x]);
+      }
+      if (!byTask.has(x.taskId)) byTask.set(x.taskId, x);
+    }
+    const teamOf = new Map<string, string[]>();
+    for (const x of agents) {
+      const l = teamOf.get(x.projectId);
+      if (l) l.push(x.id);
+      else teamOf.set(x.projectId, [x.id]);
+    }
+    const skillsOf = new Map<string, string[]>();
+    for (const k of extras.data?.skills ?? []) {
+      const l = skillsOf.get(k.agentId);
+      if (l) l.push(k.name);
+      else skillsOf.set(k.agentId, [k.name]);
+    }
+
     const cardOf = (a: Agent): CardData => {
-      const p = presenceFor(a.id, presence);
+      const p = presenceById.get(a.id);
       const lane = lanesById.get(a.id);
       const wait = openWait(lane);
       const state = cardState(p, !!wait);
-      const mine = list.filter((x) => x.assignee === a.id);
+      const mine = byAssignee.get(a.id) ?? [];
       const current = currentSummary(a.id, p, mine);
       const next = nextQueued(a.id, mine, current?.taskId);
       const last = lastFinished(a.id, mine);
-      const waitTask = wait?.taskId ? list.find((x) => x.taskId === wait.taskId) : undefined;
+      const waitTask = wait?.taskId ? byTask.get(wait.taskId) : undefined;
       const prog = progressOf(current);
       return {
         agent: a,
@@ -412,12 +422,8 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
           keyOf,
         }),
         progress: prog && current ? { ...prog, key: keyOf(current) } : undefined,
-        skills: (skills.data ?? []).filter((k) => k.status === 'accepted' && (k.agents ?? []).includes(a.id)).map((k) => k.name),
-        rooms: roomsOf(
-          a.id,
-          agents.filter((x) => x.projectId === a.projectId).map((x) => x.id),
-          rooms.data ?? [],
-        ),
+        skills: skillsOf.get(a.id) ?? [],
+        rooms: roomsOf(a.id, teamOf.get(a.projectId) ?? [], extras.data?.rooms ?? []),
       };
     };
 
@@ -453,7 +459,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
 
     return (
       <Page
-        title="Crew"
+        title={isAll ? 'All crews' : 'Crew'}
         icon={Users}
         testId="crew"
         flush

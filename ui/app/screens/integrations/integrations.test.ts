@@ -4,7 +4,7 @@ import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts';
 import {
-  ago,
+  providerRowState,
   cardsState,
   connectReply,
   filterCounts,
@@ -191,10 +191,6 @@ describe('integrations helpers', () => {
     expect(toolsFact([galleryCard({ tools: [] })])).toBe('');
 
     const now = Date.UTC(2026, 9, 24, 12);
-    expect(ago(now - 20_000, now)).toBe('just now');
-    expect(ago(now - 4 * 60_000, now)).toBe('4 min ago');
-    expect(ago(now - 3 * 3_600_000, now)).toBe('3 h ago');
-    expect(ago(now - 2 * 86_400_000, now)).toBe('2 d ago');
     expect(syncLine(view({ identity: { method: 'Personal API key' }, assignments: [asg('a', now - 4 * 60_000), asg('b', now - 3_600_000)] }), now)).toBe('Synced 4 min ago · personal API key');
     expect(syncLine(view({ identity: {}, assignments: [] }), now)).toBe('Not assigned to a project yet · API key');
     expect(syncLine(view({ identity: {}, assignments: [asg('a', 0)] }), now)).toBe('Not synced yet · API key');
@@ -266,5 +262,18 @@ describe('the answer of integration.connect is checked (L43)', () => {
     for (const test of ['passed', 1, [], { ok: true }, { ok: 'yes', summary: 's' }, { ok: true, summary: 's', steps: 'x' }]) {
       expect(() => connectReply({ connection: view(), test })).toThrow(/test report in a shape this page can not show/);
     }
+  });
+});
+
+describe('providerRowState (OpenRouter on the Integrations page, decision P103)', () => {
+  it('is Set up without a provider, On while one is enabled and answers, Down when every enabled one is down, Disabled when all are off', () => {
+    expect(providerRowState([])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    expect(providerRowState([{ enabled: true, status: 'up' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'unknown' }])).toEqual({ text: 'Not checked', tone: 'muted', bucket: 'needs' });
+    expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'unknown' }]).text).toBe('Not checked');
+    expect(providerRowState([{ enabled: true, status: 'unknown' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
+    expect(providerRowState([{ enabled: true, status: 'down' }])).toEqual({ text: 'Down', tone: 'err', bucket: 'needs' });
+    expect(providerRowState([{ enabled: false, status: 'up' }])).toEqual({ text: 'Disabled', tone: 'muted', bucket: 'setup' });
   });
 });

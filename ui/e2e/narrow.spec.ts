@@ -42,6 +42,14 @@ test('a half-screen window keeps the conversation readable and the panels out of
   await expect(tasks).toBeVisible();
   expect(await tasks.getAttribute('title')).toBe('Tasks');
   expect(await widthOf(page, '[data-testid="nav-tasks"]')).toBeLessThan(60);
+
+  // a laptop window under 1200 px keeps the sidebar folded too, so a list-and-detail page keeps its detail (UI audit 2026-10-26);
+  // from 1200 px the sidebar opens again by itself
+  const sidebar = page.getByTestId('sidebar');
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await expect(sidebar).toHaveAttribute('data-rail', 'true');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(sidebar).not.toHaveAttribute('data-rail', 'true');
 });
 
 test('a phone-sized window shows the rooms and the chat list as drawers and never scrolls sideways', async ({ page }) => {

@@ -53,7 +53,8 @@ type Adapter interface {
 type Session interface {
     ID() string; PID() int
     Send(ctx, msg string) error
-    Output() <-chan workflow.Chunk               // normalized: text, thinking, message_end, tool_call, tool_result, usage, done, error, session, rate_limit
+    Output() <-chan workflow.Chunk               // normalized: text, thinking, message_end, tool_call, tool_result, permission_request, permission_denied,
+                                                 // plan, usage, session, rate_limit, log, error, done (internal/workflow/chunks.go names each payload)
     Interrupt(ctx) error                         // protocol-level cancel; the session stays alive
     Stop(ctx) error                              // kills the process tree
     Wait() <-chan proc.ExitInfo;  Stderr() string
@@ -61,6 +62,25 @@ type Session interface {
 ```
 
 `internal/agents/runtime`: `Runtime{PM, Bus, DB, Adapters}`; `Spawn(ctx, Config) (*Managed, error)`; `(*Managed).RunTurn(ctx, prompt, *Controller, emit) (TurnResult, error)`; `Runtime.AgentTask(TaskSpec) workflow.NodeHandler`.
+
+## Activity (`internal/agui`)
+
+```go
+func Project(events []events.Event) Activity          // one thread per agent process, one run per turn; pure, computed on read
+func CheckOrder(events []Event) error                 // the ordering rules of AG-UI's reference verifier (@ag-ui/client 1.0.3 verify.ts) on one thread
+func TypeScript() (string, error);  const TSPath      // the UI's types (ui/app/api/agui.gen.ts): "go run ./cmd/drydock-tsgen"; a test fails while stale
+// core method task.activity {taskId} -> Activity{threads: [{id, agent, adapter, model, runMode, wslDistro, ended?, events: [AguiEvent]}], truncated}
+```
+
+The vocabulary is modelled on AG-UI 1.0 (decisions P87, P88, P100; `docs/agui-review-2026-10-25.md`): RUN_STARTED (with
+`protocolVersion` "1.0"), RUN_FINISHED (`outcome` success or cancelled) and RUN_ERROR; TEXT_MESSAGE_* and REASONING_MESSAGE_*
+(role `reasoning`); TOOL_CALL_START, ARGS, END and RESULT; ACTIVITY_SNAPSHOT for an ACP plan; CUSTOM `drydock.interrupt`,
+`drydock.resume` and `drydock.decided` for a permission request, its answer, and a refusal or a rule's decision that asked nobody.
+Drydock's own fields (`seq`, `stopReason`, `isError`, the ids on RUN_ERROR) ride in `metadata.drydock`, the field the protocol keeps
+for them, so the published client strips nothing. It reads the stored `agent.started`, `agent.waiting`, `agent.output`,
+`agent.completed`, `agent.failed`, `agent.stopped`, `approval.requested` and `permission.decided` events of the task (the gate's
+events carry the agent run as their run id) and the newest 20000 of them; arguments and results are cut to 8 KiB (results keep
+their head and tail, arguments stay valid JSON). Whether a turn failed is `workflow.TurnFailed`, the one rule the chat reads too.
 
 ## Process manager (`internal/proc`)
 

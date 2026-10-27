@@ -34,6 +34,10 @@ export interface ConfirmActionProps {
   onConfirm: () => unknown;
   /** data-testid of the first button (the confirm button gets `<testId>-confirm`). */
   testId?: string;
+  /** Asks at once, without the first button: the action was chosen elsewhere (a row's "..." menu). */
+  asking?: boolean;
+  /** Called when the question is over, answered either way: the caller that opened it with `asking` closes it. */
+  onSettled?: () => void;
 }
 
 export function ConfirmAction(handle: Handle<ConfirmActionProps>) {
@@ -44,6 +48,7 @@ export function ConfirmAction(handle: Handle<ConfirmActionProps>) {
   const settled = async () => {
     asking = false;
     pending = false;
+    handle.props.onSettled?.();
     if (handle.signal.aborted) return;
     await handle.update();
     first?.focus(); // the row is still there (the action failed or changed nothing): focus stays where the person was
@@ -51,7 +56,7 @@ export function ConfirmAction(handle: Handle<ConfirmActionProps>) {
 
   return () => {
     const { label, icon, variant = 'ghost', size = 'sm', yes, yesName, keep = 'Keep', keepName, question, disabled = false, onConfirm, testId } = handle.props;
-    if (!asking) {
+    if (!asking && !handle.props.asking) {
       return (
         <Button
           size={size}

@@ -6,8 +6,8 @@
 import { isRecord } from '../../api/guards.ts';
 import type { IntegrationAssignment, IntegrationKindInfo, IntegrationSyncResult, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard, McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
-import type { Agent } from '../../api/types.ts';
-import { formatDate, plural } from '../../lib/format.ts';
+import type { Agent, Provider } from '../../api/types.ts';
+import { agoWords, formatDate, plural } from '../../lib/format.ts';
 import type { TileBadge, TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -190,6 +190,22 @@ export function vendorState(v: Pick<Vendor, 'kind' | 'cards'>, conn: Integration
   return parts.find((p) => p.bucket === 'needs') ?? parts.find((p) => p.bucket === 'on') ?? SETUP;
 }
 
+/**
+ * A model provider's row (OpenRouter's, decision P103): set up when there is none; on while an enabled one is up; Down needs the
+ * person; enabled but never checked is not counted as connected (its page in Models tests it); a disabled one is set up again
+ * from its page.
+ */
+export function providerRowState(list: readonly Pick<Provider, 'enabled' | 'status'>[]): RowState {
+  const on = list.filter((p) => p.enabled);
+  if (on.length === 0) return list.length > 0 ? { text: 'Disabled', tone: 'muted', bucket: 'setup' } : SETUP;
+  if (on.some((p) => p.status === 'up')) return ON;
+  if (on.every((p) => p.status === 'down')) return { text: 'Down', tone: 'err', bucket: 'needs' };
+  return { text: 'Not checked', tone: 'muted', bucket: 'needs' };
+}
+
+/** The provider list could not be read: the row says so rather than Set up (it may well be set up). */
+export const PROVIDERS_UNREAD: RowState = { text: 'Not known', tone: 'warn', bucket: 'needs' };
+
 /** A server you added yourself: a failed connection first, then a missing sign-in, then tools never found. */
 export function ownServerState(s: Pick<McpLibraryServer, 'lastError' | 'oauth' | 'oauthAt' | 'tools'>): RowState {
   if (s.lastError) return { text: 'Could not connect', tone: 'err', bucket: 'needs' };
@@ -222,14 +238,6 @@ export function ownServerSub(s: Pick<McpLibraryServer, 'transport' | 'tools'>): 
   return s.tools.length > 0 ? `${how} · ${plural(s.tools.length, 'tool')}` : how;
 }
 
-/** How long ago a time was: "just now", "4 min ago", "3 h ago", "2 d ago". */
-export function ago(ms: number, now = Date.now()): string {
-  const s = Math.max(0, Math.floor((now - ms) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
-}
 
 /** How a connection signs in, in words: the method the API reported, else its kind. */
 export function methodText(c: Pick<IntegrationView, 'kind' | 'authKind' | 'identity'>): string {
@@ -242,7 +250,7 @@ export function methodText(c: Pick<IntegrationView, 'kind' | 'authKind' | 'ident
 /** The line under a connected service's name: "Synced 4 min ago · personal API key", from the newest sync of its projects. */
 export function syncLine(c: IntegrationView, now = Date.now()): string {
   const last = Math.max(c.sync?.lastSuccessAt ?? 0, ...(c.assignments ?? []).map((a) => a.sync?.lastSuccessAt ?? 0));
-  const when = last > 0 ? `Synced ${ago(last, now)}` : (c.assignments ?? []).length > 0 ? 'Not synced yet' : 'Not assigned to a project yet';
+  const when = last > 0 ? `Synced ${agoWords(last, now)}` : (c.assignments ?? []).length > 0 ? 'Not synced yet' : 'Not assigned to a project yet';
   return `${when} · ${methodText(c)}`;
 }
 

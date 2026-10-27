@@ -11,8 +11,8 @@ import { CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, ListTree, Mes
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
-import { plural } from '../../lib/format.ts';
-import { ownsKeys } from '../../lib/keys.ts';
+import { agoWords, plural } from '../../lib/format.ts';
+import { typing } from '../../lib/keys.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
@@ -28,7 +28,6 @@ import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
 import {
-  agoWords,
   answerOf,
   canAck,
   clock,
@@ -48,6 +47,7 @@ import {
   untilWords,
   type Answer,
   type NeedsLook,
+  verdictWords,
 } from './needs-you.ts';
 
 const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
@@ -188,12 +188,6 @@ type Row =
   | { key: string; type: 'scan'; scan: RunningScan }
   | { key: string; type: 'done'; task: Task };
 
-/** Whether a key press is typing (a field, a box, an editor), so a single-letter shortcut must leave it alone. */
-function typing(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return true;
-  const el = e.target instanceof HTMLElement ? e.target : null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('dialog[open], [role="combobox"], [role="listbox"], [role="menu"]'));
-}
 
 export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening goes (tests); default the router's navigate. */ onNavigate?: (href: string) => void }>) {
   const s = services(handle);
@@ -591,14 +585,15 @@ function NeedsDetail(
   const approve = (once = false) => {
     const a = answer();
     const d = detail.data;
-    if (!d || a.kind === 'open' || readOnly() || act.busy) return;
+    // an answer already sent is not sent again by a second key while the item waits to leave the list (audit 2026-10-27)
+    if (!d || a.kind === 'open' || readOnly() || act.busy || sent) return;
     if (a.kind === 'permission' && a.forTask && !once) respond('approve', () => s.client.runApproveForTask(a.runId, d.id));
     else respond(once ? 'once' : 'approve', () => s.client.runRespond(a.runId, d.id, 'approved'));
   };
   const deny = () => {
     const a = answer();
     const d = detail.data;
-    if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy) return;
+    if (!d || (a.kind !== 'permission' && a.kind !== 'approval') || act.busy || sent) return;
     respond('deny', () => s.client.runRespond(a.runId, d.id, 'rejected'));
   };
 
@@ -739,7 +734,7 @@ function NeedsDetail(
           {review && ctx?.verdict ? (
             <>
               <dt>Reviewer</dt>
-              <dd>{ctx.verdict}</dd>
+              <dd data-testid="detail-verdict">{verdictWords(ctx.verdict)}</dd>
             </>
           ) : null}
           {d?.worktree ? (

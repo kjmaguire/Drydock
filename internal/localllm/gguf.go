@@ -41,6 +41,7 @@ const (
 	ggufMaxString = 64 << 20
 	ggufMaxArray  = 1 << 28
 	ggufMaxRead   = 1 << 30 // the header with its tokenizer arrays comes well before this
+	ggufMaxKept   = 1 << 17 // values kept over all the wanted keys (a model has one per layer for a few keys)
 )
 
 // GGUF value types.
@@ -190,6 +191,9 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 	}
 	ints := map[string][]uint64{}
 	arch := ""
+	// the values kept, over all keys: a header can name the wanted suffixes under any number of keys of other architectures,
+	// each with an array of 65,536 values, which kept as uint64 would take gigabytes (audit 2026-10-27)
+	kept := uint64(0)
 	for i := uint64(0); i < nkv; i++ {
 		key, err := g.str(ggufMaxKey)
 		if err != nil {
@@ -199,7 +203,8 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 		if err != nil {
 			return GGUFInfo{}, errNotGGUF
 		}
-		want := wanted(key)
+		// once the architecture is known (it comes first in every file llama.cpp writes) only its own keys are read
+		want := wanted(key) && (arch == "" || strings.HasPrefix(key, arch+"."))
 		switch t {
 		case ggufString:
 			if key == "general.architecture" {
@@ -223,7 +228,8 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 			}
 			size := scalarSize(et)
 			switch {
-			case want && size > 0 && n <= 1<<16:
+			case want && size > 0 && n <= 1<<16 && kept+n <= ggufMaxKept:
+				kept += n
 				vals := make([]uint64, 0, n)
 				for j := uint64(0); j < n; j++ {
 					v, err := g.integer(et)
@@ -293,6 +299,15 @@ var cacheBytes = map[string]float64{
 	"q8_0": 34.0 / 32, "q4_0": 18.0 / 32, "q4_1": 20.0 / 32, "q5_0": 22.0 / 32, "q5_1": 24.0 / 32, "iq4_nl": 18.0 / 32,
 }
 
+// The largest sizes the KV estimate takes from a header: well beyond any model (the largest have a few hundred layers, a few
+// hundred heads, keys of a few thousand values and contexts of a few million tokens).
+const (
+	kvMaxLayers  = 4096
+	kvMaxHeads   = 1 << 14
+	kvMaxLength  = 1 << 16
+	kvMaxContext = 1 << 26
+)
+
 // EstimateKV is the KV cache of a model at contextSize tokens (0: the model's own context length) and cacheType: for every
 // layer, the heads that keep keys and values times the key and value lengths, times the tokens, times the bytes a value takes.
 // A key length the header does not give is the embedding length over the head count, as llama.cpp takes it.
@@ -314,6 +329,10 @@ func EstimateKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
 		return kv
 	case info.BlockCount <= 0 || len(info.HeadCount) == 0:
 		kv.Note = "The model's header does not describe attention layers (it may keep a recurrent state instead), so its cache is not estimated."
+		return kv
+	case info.BlockCount > kvMaxLayers || kv.ContextSize > kvMaxContext || info.KeyLength > kvMaxLength || info.ValueLength > kvMaxLength:
+		// a header no model has (a crafted file): estimating it would loop for seconds and overflow (audit 2026-10-27)
+		kv.Note = "The model's header gives sizes no model has, so its cache is not estimated."
 		return kv
 	}
 	at := func(v []uint64, l int) uint64 {
@@ -337,6 +356,10 @@ func EstimateKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
 		if heads == 0 || kvHeads == 0 {
 			continue // a layer without attention keeps no cache
 		}
+		if heads > kvMaxHeads || kvHeads > kvMaxHeads {
+			kv.Note = "The model's header gives sizes no model has, so its cache is not estimated."
+			return kv
+		}
 		k, v := uint64(info.KeyLength), uint64(info.ValueLength)
 		if k == 0 {
 			if info.EmbeddingLength <= 0 {
@@ -350,7 +373,12 @@ func EstimateKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
 		}
 		perToken += float64(kvHeads * (k + v))
 	}
-	kv.Bytes = uint64(perToken * float64(kv.ContextSize) * bpe)
+	total := perToken * float64(kv.ContextSize) * bpe
+	if total >= 1<<60 {
+		kv.Note = "The model's header gives sizes no model has, so its cache is not estimated."
+		return kv
+	}
+	kv.Bytes = uint64(total)
 	kv.Known = true
 	switch {
 	case info.MLA:

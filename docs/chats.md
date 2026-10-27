@@ -153,7 +153,7 @@ Every event carries `chatId` and the chat's project as `projectId` (empty for a 
 | `chat.updated` | `{chatId, chat}` (settings, rules, title, the start and the end of a turn) |
 | `chat.deleted` | `{chatId}` |
 | `chat.turn_started` | `{chatId, turnId, attach: [chatId]}` |
-| `chat.delta` | `{chatId, turnId, text}`: streamed assistant text, coalesced (about 60 ms, cut at whitespace) |
+| `chat.delta` | `{chatId, turnId, text}`: streamed assistant text, coalesced (about 60 ms, cut at whitespace); deleted after 30 days with `agent.output` (the stored messages keep the text; `chat.thinking` likewise) |
 | `chat.thinking` | `{chatId, turnId, text}`: the agent's streamed reasoning, coalesced and cut like `chat.delta`; it is kept, redacted and bounded, as `thinking` on the next tool call or answer stored (P89) |
 | `chat.tool` | `{chatId, turnId, name, summary, messageId}` |
 | `chat.tool_result` | `{chatId, turnId, messageId, status: "ok" \| "failed", result, ms}`: how a tool call ended (P84) |

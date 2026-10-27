@@ -225,3 +225,32 @@ export function byLabel<T extends HTMLElement = HTMLInputElement>(root: ParentNo
   if (aria) return aria;
   throw new Error(`no control labelled ${String(text)}`);
 }
+
+const menuOpen = (r: RenderResult) => Array.from(r.$$('[role="menu"]')).some((m) => m.closest('[popover]')?.matches(':popover-open'));
+
+/** Open a kit Menu by its trigger (one still finishing its last selection ignores a click, so it is repeated) and choose an item. */
+export async function fromMenu(r: RenderResult, trigger: HTMLElement, item: string): Promise<void> {
+  await r.act(() => trigger.click());
+  await waitFor(() => {
+    if (!menuOpen(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+    if (!menuOpen(r)) throw new Error('the menu did not open');
+  }, r);
+  const hit = await waitFor(() => {
+    const el = Array.from(r.$$('[popover]:popover-open [role="menuitem"]')).find((m) => m.textContent?.trim() === item) as HTMLElement | undefined;
+    if (!el) throw new Error(`no menu item ${item}`);
+    return el;
+  }, r);
+  await r.act(() => hit.click());
+}
+
+/** The labels of a kit Menu's items, opened by its trigger (and closed again with Escape). */
+export async function menuItems(r: RenderResult, trigger: HTMLElement): Promise<string[]> {
+  await r.act(() => trigger.click());
+  await waitFor(() => {
+    if (!menuOpen(r) && trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+    if (!menuOpen(r)) throw new Error('the menu did not open');
+  }, r);
+  const items = Array.from(r.$$('[popover]:popover-open [role="menuitem"]')).map((m) => m.textContent?.trim() ?? '');
+  await r.act(() => document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  return items;
+}

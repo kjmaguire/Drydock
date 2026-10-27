@@ -2,6 +2,7 @@
 // arithmetic, the Serving card's lines, progress.
 
 import type { Device, Fit, LocalJob, LocalModel, LocalRuntime, LocalServerStatus, LocalUser, LocalView } from '../../api/localClient.ts';
+import { agoWords } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
 const GiB = 2 ** 30;
@@ -116,15 +117,6 @@ export function usedByWords(users: readonly LocalUser[] | undefined): string {
   return list.map((u) => (projects.size > 1 && u.projectName ? `${u.name} (${u.projectName})` : u.name)).join(', ');
 }
 
-/** "just now", "14 min ago", "3 h ago", "2 d ago". */
-export function agoWords(ms: number, now = Date.now()): string {
-  if (!ms) return '';
-  const s = Math.max(0, Math.floor((now - ms) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
-}
 
 /** The Serving card's "Started": "at login, 3 h ago" when Drydock started it (the Autostart setting), else "3 h ago". */
 export function startedWords(startedAt: string | undefined, autostarted: boolean | undefined, now = Date.now()): string {

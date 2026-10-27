@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createAgent, createProject, openAgentPage, projectNav, workspaceNav } from './helpers';
+import { createAgent, createProject, inspectAgent, openAgentPage, projectNav, workspaceNav } from './helpers';
 
 // Round 7: what agents inherit, and how isolation is stated, against the real Go core.
 
@@ -34,7 +34,7 @@ test('Settings: extra environment variables are named, never valued; the Inspect
 
   // isolation, stated plainly, in the Inspector
   await openAgentPage(page, 'Pay');
-  await page.getByRole('button', { name: 'Inspect', exact: true }).click();
+  await inspectAgent(page);
   const iso = page.getByTestId('inspector-isolation');
   await expect(iso).toHaveAttribute('data-level', 'guarded');
   await expect(iso).toContainText('not an operating-system sandbox');

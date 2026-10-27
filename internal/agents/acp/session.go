@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/acp-go-sdk"
 
@@ -195,7 +196,7 @@ func (s *Session) observedNow() Observed {
 func (s *Session) openSession(ctx context.Context) error {
 	servers, warns := s.mcpServers()
 	for _, w := range warns {
-		s.emitKind(workflow.ChunkError, workflow.ErrorChunk{Message: w})
+		s.emitKind(workflow.ChunkError, w)
 	}
 	cwd := s.guard.root
 	var (
@@ -303,6 +304,17 @@ func (s *Session) warn(msg string) {
 	s.emitKind(workflow.ChunkError, workflow.ErrorChunk{Message: msg})
 }
 
+// warnSettings reports a requested setting the agent does not offer (an effort, a permission mode, a model, an MCP transport),
+// so the agent's own default is in use. These land inside the session's first turn, so they carry workflow.CodeSettings: the
+// chat and the Activity then show them beside the turn instead of as the reason it failed (AG-UI review 2026-10-25).
+func (s *Session) warnSettings(msg string) {
+	s.emitKind(workflow.ChunkError, settingsWarning(msg))
+}
+
+func settingsWarning(msg string) workflow.ErrorChunk {
+	return workflow.ErrorChunk{Message: msg, Code: workflow.CodeSettings}
+}
+
 // applyRequested sets model, effort and permission mode when the agent exposes them. Values are validated against the
 // agent's own lists; the request is never forwarded blindly. A requested model that an agent with a model choice does not
 // offer, or that it refuses, ends the start: running on the agent's default instead could put a cheap-tier turn on an
@@ -323,7 +335,7 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
 			return
 		}
 		if option == "" || (len(allowed) > 0 && !contains(allowed, value)) {
-			s.warn(fmt.Sprintf("%s %q was requested but this agent does not offer it (offered: %s); the agent's default is in use", what, value, strings.Join(allowed, ", ")))
+			s.warnSettings(fmt.Sprintf("%s %q was requested but this agent does not offer it (offered: %s); the agent's default is in use", what, value, strings.Join(allowed, ", ")))
 			return
 		}
 		_, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{ValueId: &acp.SetSessionConfigOptionValueId{
@@ -333,7 +345,7 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
 		}
 	}
 	if s.spec.Model != "" && si.ModelOption == "" {
-		s.warn(fmt.Sprintf("model %q was requested but this agent has no model choice; its own model is in use", s.spec.Model))
+		s.warnSettings(fmt.Sprintf("model %q was requested but this agent has no model choice; its own model is in use", s.spec.Model))
 	}
 	s.mu.Lock()
 	s.model = si.CurrentModel
@@ -351,7 +363,7 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
 				s.warn(fmt.Sprintf("setting permission mode %q failed: %v", m, err))
 			}
 		default:
-			s.warn(fmt.Sprintf("permission mode %q was requested but this agent offers: %s", m, strings.Join(si.Modes, ", ")))
+			s.warnSettings(fmt.Sprintf("permission mode %q was requested but this agent offers: %s", m, strings.Join(si.Modes, ", ")))
 		}
 	}
 	return nil
@@ -359,15 +371,15 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
 
 // mcpServers reads RunSpec.MCPConfigPath (the Claude-style `{"mcpServers":{name:{...}}}` file Drydock writes per run) and
 // converts each entry to an ACP server the agent said it can use. Entries needing an unadvertised transport are skipped
-// with a warning.
-func (s *Session) mcpServers() ([]acp.McpServer, []string) {
+// with a settings warning (warnSettings); a config that cannot be read is an uncoded warning.
+func (s *Session) mcpServers() ([]acp.McpServer, []workflow.ErrorChunk) {
 	servers := []acp.McpServer{}
 	if s.spec.MCPConfigPath == "" {
 		return servers, nil
 	}
 	b, err := os.ReadFile(s.spec.MCPConfigPath)
 	if err != nil {
-		return servers, []string{"MCP config unreadable, no MCP servers attached: " + err.Error()}
+		return servers, []workflow.ErrorChunk{{Message: "MCP config unreadable, no MCP servers attached: " + err.Error()}}
 	}
 	var cfg struct {
 		Servers map[string]struct {
@@ -380,9 +392,9 @@ func (s *Session) mcpServers() ([]acp.McpServer, []string) {
 		} `json:"mcpServers"`
 	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
-		return servers, []string{"MCP config is not valid JSON, no MCP servers attached: " + err.Error()}
+		return servers, []workflow.ErrorChunk{{Message: "MCP config is not valid JSON, no MCP servers attached: " + err.Error()}}
 	}
-	var warns []string
+	var warns []workflow.ErrorChunk
 	for _, name := range sortedKeys(cfg.Servers) {
 		e := cfg.Servers[name]
 		switch {
@@ -403,19 +415,19 @@ func (s *Session) mcpServers() ([]acp.McpServer, []string) {
 			}
 			if e.Type == "sse" {
 				if !s.info.MCPSSE {
-					warns = append(warns, fmt.Sprintf("MCP server %q needs sse, which this agent did not advertise; skipped", name))
+					warns = append(warns, settingsWarning(fmt.Sprintf("MCP server %q needs sse, which this agent did not advertise; skipped", name)))
 					continue
 				}
 				servers = append(servers, acp.McpServer{Sse: &acp.McpServerSseInline{Name: name, Url: e.URL, Headers: hdrs, Type: "sse"}})
 				continue
 			}
 			if !s.info.MCPHTTP {
-				warns = append(warns, fmt.Sprintf("MCP server %q needs http, which this agent did not advertise; skipped", name))
+				warns = append(warns, settingsWarning(fmt.Sprintf("MCP server %q needs http, which this agent did not advertise; skipped", name)))
 				continue
 			}
 			servers = append(servers, acp.McpServer{Http: &acp.McpServerHttpInline{Name: name, Url: e.URL, Headers: hdrs, Type: "http"}})
 		default:
-			warns = append(warns, fmt.Sprintf("MCP server %q has an unsupported definition; skipped", name))
+			warns = append(warns, workflow.ErrorChunk{Message: fmt.Sprintf("MCP server %q has an unsupported definition; skipped", name)})
 		}
 	}
 	return servers, warns
@@ -492,7 +504,7 @@ func (s *Session) endTurn(resp acp.PromptResponse, err error) {
 			case <-s.conn.Done():
 				s.emitKind(workflow.ChunkError, workflow.ErrorChunk{Message: "connection to the agent ended during the turn: " + err.Error(), Fatal: true})
 			default:
-				s.emitKind(workflow.ChunkError, workflow.ErrorChunk{Message: "prompt failed: " + err.Error()})
+				s.emitKind(workflow.ChunkError, workflow.ErrorChunk{Message: promptFailed(err)})
 			}
 		}
 	}
@@ -524,6 +536,38 @@ func (s *Session) endTurn(resp acp.PromptResponse, err error) {
 		}
 	}
 	s.emitKind(workflow.ChunkDone, workflow.DoneChunk{StopReason: stop})
+}
+
+// promptFailed is the turn's error when session/prompt failed. A JSON-RPC error is said in words, not as the SDK's compact
+// JSON object: its message, then the agent's own detail (data.error when the agent put one there, as the SDK's agents do, else
+// the data itself, clipped). Any other error is given as it is.
+func promptFailed(err error) string {
+	var re *acp.RequestError
+	if !errors.As(err, &re) {
+		return "prompt failed: " + err.Error()
+	}
+	msg := "prompt failed: " + re.Message
+	if re.Data == nil {
+		return msg
+	}
+	if m, ok := re.Data.(map[string]any); ok {
+		if detail, ok := m["error"].(string); ok && strings.TrimSpace(detail) != "" {
+			return msg + ": " + strings.TrimSpace(detail)
+		}
+	}
+	b, merr := json.Marshal(re.Data)
+	if merr != nil {
+		return msg
+	}
+	const keep = 200
+	if len(b) > keep {
+		cut := keep
+		for cut > 0 && !utf8.RuneStart(b[cut]) {
+			cut--
+		}
+		b = append(b[:cut], "..."...)
+	}
+	return msg + ": " + string(b)
 }
 
 func isCancel(err error) bool {

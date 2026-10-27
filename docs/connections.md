@@ -16,7 +16,7 @@ Detection and tests run only on explicit triggers: app start (cheap probes only)
 
 ## 2. Detection
 
-Pipeline per agent CLI (all steps through the Process Manager, argv arrays only, never a shell string, stdin closed, 10 s timeout, run inside a throwaway job):
+Pipeline per agent CLI (all steps through the Process Manager, argv arrays only, never a shell string, stdin closed, 10 s timeout, run inside a throwaway job). The list of every CLI (`connection.list`, `Service.DetectAll`) runs the CLIs' pipelines side by side, and the installs inside WSL distros beside them: one after another, a PC with several Node CLIs waited for the sum of their starts (review 2026-10-27):
 
 1. **Resolve the binary.** Manifest `binaries` lists names in priority order; resolve `.exe`, then `.cmd`/`.bat` shims (`npx.cmd`, `gemini.cmd`, `codex.cmd`) through `PATH` and `PATHEXT` [cli §12, go §9]. A `.cmd` shim is launched via `cmd.exe /d /s /c` with escaping done in one tested Go function (argument escaping for `.cmd` is an open item [go]). Known install locations (e.g. `claude.exe` under `%USERPROFILE%\.local\bin`) are **unverified** [cli §1] and only used as secondary search hints.
 2. **Version probe.** `<bin> --version` and the manifest regex. Recorded verbatim: `claude --version` prints `2.1.293 (Claude Code)`, `codex --version` prints `codex-cli 0.161.0`, `goose --version` prints ` 1.53.0` [cli §1, §2, §5]. The regex captures the first semver.

@@ -247,6 +247,16 @@ function CodeBlock(handle: Handle<{ code: string; lang?: string }>) {
   let copied = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
+  // the coloured runs of the code as last drawn: a message is drawn again on every change of its page, its code is not
+  let ranFor: { code: string; lang: string | undefined } | undefined;
+  let runs: ReturnType<typeof highlight> = [];
+  const runsOf = (code: string, lang: string | undefined) => {
+    if (!ranFor || ranFor.code !== code || ranFor.lang !== lang) {
+      ranFor = { code, lang };
+      runs = highlight(code, lang);
+    }
+    return runs;
+  };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(handle.props.code);
@@ -264,7 +274,7 @@ function CodeBlock(handle: Handle<{ code: string; lang?: string }>) {
   return () => {
     const { code, lang } = handle.props;
     const name = (lang ?? '').trim().split(/\s+/)[0] ?? '';
-    const runs = highlight(code, lang);
+    const runs = runsOf(code, lang);
     return (
       <div class="md-codeblock" data-testid="code-block" data-lang={familyOf(lang) ?? (name || undefined)}>
         <div class="md-code-bar">

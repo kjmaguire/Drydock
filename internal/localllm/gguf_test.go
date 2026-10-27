@@ -3,8 +3,10 @@ package localllm_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/localllm"
 	"github.com/kjmaguire/drydock/internal/localllm/llamatest"
@@ -109,6 +111,44 @@ func TestTheFitCountsTheModelAndItsKVCache(t *testing.T) {
 		t.Fatalf("%+v", f)
 	}
 	if f := localllm.FitWithKV(12<<30, &localllm.KVCache{}, d, m); f.Target != "gpu" || f.KVBytes != 0 || f.NeedBytes != 0 {
+		t.Fatalf("%+v", f)
+	}
+}
+
+// A crafted header cannot make the reader hold more than the model's own few keys: the wanted suffixes under other
+// architectures' names, each with a long array, are skipped once the architecture is known (audit 2026-10-27: 200 such keys
+// in a 13 MB header took 210 MB).
+func TestAGGUFHeaderWithManyForeignKeysIsReadInLittleMemory(t *testing.T) {
+	meta := map[string]any{"qwen2.block_count": uint32(28), "qwen2.attention.head_count": uint32(12)}
+	for i := 0; i < 40; i++ {
+		meta["k"+strings.Repeat("x", i)+".block_count"] = make([]int32, 1<<16)
+	}
+	p := writeGGUF(t, llamatest.GGUF("qwen2", meta))
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	info, err := localllm.ReadGGUF(p)
+	runtime.ReadMemStats(&after)
+	if err != nil || info.BlockCount != 28 {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if got := after.TotalAlloc - before.TotalAlloc; got > 4<<20 {
+		t.Fatalf("reading the header allocated %d MB", got>>20)
+	}
+}
+
+// A header with sizes no model has is not estimated (and does not loop for seconds over two billion layers), and a model with
+// a cache too large to add to it does not wrap around and fit (audit 2026-10-27).
+func TestAnImplausibleHeaderIsNotEstimated(t *testing.T) {
+	start := time.Now()
+	kv := localllm.EstimateKV(localllm.GGUFInfo{BlockCount: 1<<31 - 1, HeadCount: []uint64{1}, KeyLength: 128, ContextLength: 4096}, 0, "f16")
+	if kv.Known || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("%+v after %v", kv, time.Since(start))
+	}
+	if kv := localllm.EstimateKV(localllm.GGUFInfo{BlockCount: 32, HeadCount: []uint64{1 << 40}, KeyLength: 128, ContextLength: 4096}, 0, "f16"); kv.Known {
+		t.Fatalf("%+v", kv)
+	}
+	f := localllm.FitWithKV(1<<63, &localllm.KVCache{Known: true, Bytes: 1 << 63}, localllm.Devices{}, localllm.Memory{Known: true, Total: 64 << 30, Available: 32 << 30})
+	if f.Fits || f.NeedBytes < 1<<63 {
 		t.Fatalf("%+v", f)
 	}
 }

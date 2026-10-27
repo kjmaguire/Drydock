@@ -144,8 +144,11 @@ func (s *securityExt) scanByID(ctx context.Context, id string) (*scan.Report, st
 			return &rep, key, nil
 		}
 	}
-	for key, rep := range s.unstored {
-		if rep.ID == id {
+	for key, kept := range s.unstored {
+		if kept.ID == id {
+			// a copy: the caller applies the dismissals to it, outside the lock (audit 2026-10-27: they were written into the
+			// kept report, so its counts went wrong and two reads raced)
+			rep := kept.Clone()
 			s.mu.Unlock()
 			return &rep, key, nil
 		}
@@ -256,6 +259,7 @@ func (s *securityExt) lastReport(ctx context.Context, t target) (*scan.Report, e
 	s.mu.Lock()
 	r, ok := s.running[t.Key]
 	kept, held := s.unstored[t.Key]
+	kept = kept.Clone() // the caller changes it (the dismissals), outside the lock
 	s.mu.Unlock()
 	if ok {
 		rep := r.Snapshot()

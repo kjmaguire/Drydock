@@ -135,7 +135,7 @@ conversation:
   Knowledge** under it; another is one line), the workspace's **Security**, **Agents**, **Integrations**, **Models** and
   **Library** (decision P98), then **Settings**, the **Guide**, the local engine's state and the event stream. "[" (never while typing) or its
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
-  (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1024 px starts folded, a phone-sized one with a 44 px rail.
+  (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.
 - **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
   "Rooms", `data-rooms`); the Settings rail lists Routing and the app's pages (landmark "Settings"). The old test ids live on:
   `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is
@@ -146,10 +146,14 @@ conversation:
   `data-letters` so the name is not read twice; presence is always in words beside it. People are round with initials;
   projects and tools are rounded squares with initials.
 - **Lists, not boxes** (decision P98, `ui/master-detail.tsx`): Agents, Integrations and Models are a `MasterDetail`, a filterable
-  list of 44 px rows under quiet group headings beside the chosen row's detail ("/" focuses the filter, the arrow keys move;
-  below 1024 px the detail opens in place of the list with Back); a detail is a `DetailHeader` over `SettingsGroup`s of
-  `SettingRow`s and `FactGrid`s, never a grid of big tiles or boxes inside boxes. Each item has an address
-  (`/integrations/linear`); choosing a row replaces it.
+  list of 44 px rows under quiet group headings beside the chosen row's detail ("/" focuses the filter unless the person is
+  typing, as `typing()` in `lib/keys.ts` says; the arrow keys move, ArrowDown in the filter picks the first row; below 1024 px
+  the detail opens in place of the list with Back); a detail is a `DetailHeader` over `SettingsGroup`s of `SettingRow`s and
+  `FactGrid`s, never a grid of big tiles or boxes inside boxes. Each item has an address (`/integrations/linear`); choosing a
+  row replaces it, and a page passes the key its address names as `address` so a narrow window shows that item's detail once
+  the page has chosen it, also when a link changes the address while the page stays mounted, and the plain address shows the
+  list again (a key the page replaced with its default row, because the item is gone, opens nothing: the person sees the list).
+  A page opens a row of its own accord, an Add row or the row left after a removal, by putting it in the address.
 - **Pages** (`Page` in `ui/layout.tsx`) have a top bar: the title (18 px), the subtitle, the page's own tabs and filters
   (`bar`) and the actions on the right; the body scrolls, at most 1320 px wide. A conversation screen (`flush`) keeps its bar.
 - **Messages** (`screens/room/message-item.tsx`) read like a compact comment thread: an avatar, one author line (name, a

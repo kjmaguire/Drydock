@@ -90,6 +90,8 @@ describe('Library > Skills', () => {
     expect(art.querySelector('[data-testid="lib-skill-tile-detail"]')).toBeNull();
     expect(r.$('[data-testid="lib-skill-tile"][data-name="docx"]')!.textContent).toContain('new');
     expect(r.$('[data-testid="lib-skill-tile"][data-name="pdf"]')!.textContent).toContain('In gocalc ✓');
+    // the name starts at the row's left, not where the app's button rule would centre it
+    expect(getComputedStyle(art.querySelector('button.what')!).justifyContent).toBe('flex-start');
     await r.act(() => (art.querySelector('button.what') as HTMLButtonElement).click());
     const detail = await one(r, '[data-testid="lib-skill-tile"][data-name="algorithmic-art"] [data-testid="lib-skill-tile-detail"]');
     expect(detail.textContent).toContain('Use this when users request creating art using code');

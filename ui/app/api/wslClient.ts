@@ -38,6 +38,8 @@ export interface ProjectRunMode {
 export interface WSLClient {
   wslDistros(): Promise<WSLStatus>;
   projectRunMode(projectId: string): Promise<ProjectRunMode>;
+  /** Every project's default by project id, in one call: what the Agents page's "Used by" column asks for. */
+  projectRunModes(): Promise<Record<string, ProjectRunMode>>;
   projectSetRunMode(projectId: string, runMode: string, wslDistro?: string): Promise<ProjectRunMode>;
 }
 
@@ -48,6 +50,11 @@ export function createWSLClient(t: Transport): WSLClient {
       return { available: s?.available === true, distros: Array.isArray(s?.distros) ? s.distros : [], message: s?.message };
     },
     projectRunMode: (projectId) => t.call('project.runMode', { projectId }),
+    // A workspace without a project answers an empty object; a null from an older core is read the same way.
+    projectRunModes: async () => {
+      const m = await t.call<Record<string, ProjectRunMode> | null>('project.runModes');
+      return m ?? {};
+    },
     projectSetRunMode: (projectId, runMode, wslDistro = '') => t.call('project.setRunMode', { projectId, runMode, wslDistro }),
   };
 }

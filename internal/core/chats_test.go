@@ -1493,3 +1493,55 @@ func TestAnACPAgentThatTakesPicturesIsGivenThem(t *testing.T) {
 		t.Fatalf("the agent was not given the picture: %+v", d.Messages)
 	}
 }
+
+// A Claude turn whose API failed after the agent had answered is an error, with the API's words as the turn's error and the
+// answer kept: the Activity shows the same turn as RUN_ERROR, so the chat must not call it done (the AG-UI review's finding
+// that the two judged one turn by different rules, 2026-10-25). The error is stored once.
+func TestAChatTurnThatFailedAfterAnAnswerIsAnError(t *testing.T) {
+	const apiErr = `API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "half way there"}, {Fail: apiErr}}}, nil)
+	p, _ := e.setup("claude")
+	c := e.create(map[string]any{"projectId": p.ID})
+	ev := e.send(c.ID, "go on")
+	if ev["status"] != chats.TurnError || !strings.Contains(ev["error"].(string), "Overloaded") {
+		t.Fatalf("turn %v", ev)
+	}
+	d := e.get(c.ID)
+	if roles(d.Messages) != "user,assistant,error" {
+		t.Fatalf("messages %s: %+v", roles(d.Messages), d.Messages)
+	}
+	if d.Messages[1].Body != "half way there" || !strings.Contains(d.Messages[2].Body, "Overloaded") || d.Chat.Status != chats.StatusError {
+		t.Fatalf("the answer and the error: %+v (chat %s)", d.Messages[1:], d.Chat.Status)
+	}
+}
+
+// An ACP agent's start-up warning (a permission mode it does not offer) lands in the chat's first turn. A turn of tool calls only
+// that ran out of turns is done, with the warning stored as an error row beside it, not an error with the warning as its reason
+// (AG-UI review 2026-10-25).
+func TestAnACPChatsSettingsWarningDoesNotFailItsTurn(t *testing.T) {
+	dir := t.TempDir()
+	sc, _ := json.Marshal(fakeacp.Script{LoadSession: true, Modes: []string{"plan", "act"}, StopReason: "max_turn_requests",
+		Default: []fakeacp.Step{{Tool: &fakeacp.Tool{ID: "t1", Title: "Read a.go", Kind: "read", Input: map[string]any{"path": "a.go"}, Output: "package a"}}}})
+	sp := filepath.Join(dir, "acp.json")
+	if err := os.WriteFile(sp, sc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ad := acp.New(acp.Config{ID: "acpwarn", Command: os.Args[0], Env: []string{"DRYDOCK_FAKE_ACP=1", "DRYDOCK_FAKE_ACP_SCRIPT=" + sp}})
+	e := openChats(t, fakeagent.Script{}, map[string]agents.Adapter{"acpwarn": ad})
+	p, _ := e.setup("acpwarn")
+	c := e.create(map[string]any{"projectId": p.ID, "adapter": "acpwarn", "permissionMode": "bypassPermissions"})
+	ev := e.send(c.ID, "read it")
+	if ev["status"] != chats.TurnDone || ev["error"] != nil {
+		t.Fatalf("turn %v", ev)
+	}
+	d := e.get(c.ID)
+	if roles(d.Messages) != "user,tool,error" || d.Chat.Status != chats.StatusIdle {
+		t.Fatalf("messages %s (chat %s): %+v", roles(d.Messages), d.Chat.Status, d.Messages)
+	}
+	if w := d.Messages[2]; !strings.Contains(w.Body, `permission mode "bypassPermissions"`) || !strings.Contains(w.Body, "plan, act") {
+		t.Fatalf("the warning row: %+v", w)
+	}
+	if d.Messages[1].ToolStatus != chats.ToolOK || d.Messages[1].ToolResult != "package a" {
+		t.Fatalf("the tool row: %+v", d.Messages[1])
+	}
+}

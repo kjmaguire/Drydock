@@ -171,10 +171,49 @@ func (r TaskAllowRule) matches(scope PermissionScope, td ToolDecision) bool {
 		if len(r.Commands) == 0 {
 			return false
 		}
-		_, ok := (&Policy{stored: r.Commands}).matchStored(*td.report)
-		return ok
+		return sameCommands(r.Commands, *td.report)
 	}
 	return r.InputDigest != "" && r.InputDigest == td.Action.ArgvDigest
+}
+
+// sameCommands reports whether every invocation of the report is one of the rule's commands exactly: the same program and the
+// same arguments, word for word. A task rule stores the words the person approved, so "*" or "**" among them is a word (an
+// argument that was quoted), never a wildcard as it is in a hand-written rule (audit 2026-10-27: "node '**'" approved for the
+// task let "node -e ..." through).
+func sameCommands(cmds []StoredRule, rep CommandReport) bool {
+	if len(rep.Invocations) == 0 || rep.Confidence == Opaque {
+		return false
+	}
+	for _, inv := range rep.Invocations {
+		ok := false
+		for _, c := range cmds {
+			if sameInvocation(c, inv) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func sameInvocation(c StoredRule, inv Invocation) bool {
+	if c.Program != inv.Program || len(c.Args) != len(inv.Args) || inv.StdinArgs {
+		return false
+	}
+	for i, a := range inv.Args {
+		if a.Dynamic || a.Glob || a.Text != c.Args[i] {
+			return false
+		}
+	}
+	for _, rd := range inv.Redirects {
+		if rd.Dynamic {
+			return false
+		}
+	}
+	return true
 }
 
 // taskRule returns the person's task allow rule that covers a request, if one does.

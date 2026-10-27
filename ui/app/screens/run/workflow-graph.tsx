@@ -412,22 +412,10 @@ export function WorkflowGraph(
                 <g aria-hidden="true">
                   {ordered.map((e) => (
                     <g key={e.id} class="wf-edge" data-testid="wf-edge" data-from={e.edge.from} data-to={e.edge.to} data-kind={e.edge.kind} data-taken={String(e.taken)} data-active={String(e.active)}>
+                      {e.label ? <title>{e.label}</title> : null}
                       <path d={e.d} marker-end={`url(#${e.marker})`} />
                     </g>
                   ))}
-                  {ordered
-                    .filter((e) => e.label)
-                    .map((e) => {
-                      const w = Math.round(e.label!.length * 5.9 + 14);
-                      return (
-                        <g key={`l-${e.id}`} class="wf-label" data-active={String(e.active)} transform={`translate(${e.lx} ${e.ly})`}>
-                          <rect x={-w / 2} y={-9} width={w} height={18} rx={9} />
-                          <text text-anchor="middle" dominant-baseline="central">
-                            {e.label}
-                          </text>
-                        </g>
-                      );
-                    })}
                 </g>
                 {gm.nodes.map((n) => {
                   const s = state(n.id);
@@ -510,6 +498,24 @@ export function WorkflowGraph(
                     </g>
                   );
                 })}
+                {/* the conditions of the selected node's edges only, drawn over the nodes: every label at once ran under the nodes
+                    and off the canvas's edge (the UI audit of 2026-10-26); the others say theirs as the edge's tooltip and in the
+                    node's panel under Connections */}
+                <g aria-hidden="true">
+                  {ordered
+                    .filter((e) => e.label && e.active)
+                    .map((e) => {
+                      const w = Math.round(e.label!.length * 5.9 + 14);
+                      return (
+                        <g key={`l-${e.id}`} class="wf-label" data-testid="wf-label" data-active="true" transform={`translate(${e.lx} ${e.ly})`}>
+                          <rect x={-w / 2} y={-9} width={w} height={18} rx={9} />
+                          <text text-anchor="middle" dominant-baseline="central">
+                            {e.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                </g>
               </g>
             </svg>
             <div mix={controlsCss} role="toolbar" aria-label="Graph view">

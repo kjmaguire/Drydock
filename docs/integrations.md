@@ -499,3 +499,26 @@ refused), `TestTheLiveCheckWorksAgainstTheFixture` (the live check through `Veri
 through the UI method), the UI's browser tests (the report, a refused call, a mismatch, the badges) and
 `ui/e2e/integrations.spec.ts` (the check against the Linear fixture the harness starts, then "Verified against your account").
 **Not verified:** against a real vendor account; that is what the button is for.
+
+## As built: OpenRouter on the Integrations page (2026-10-26, decision P103)
+
+On the owner's words: "Were missing OpenRouter as an integration in here as well". OpenRouter was supported as a model provider
+(Models, Add a provider: an aggregator; key limits, endpoint uptime, `private` routes asking for no data collection and ZDR,
+decisions D4, D13, P53) but the Integrations page, where people look for what Drydock connects to, did not show it. The list
+now has a **Model providers** group (`list-group-models`) with an OpenRouter row (`data-kind="openrouter"`, its logo, Set up / On /
+Not checked / Down / Disabled from `providerRowState`; On only once an enabled one answered, so a provider never checked is not
+counted as connected; "Not known" when the provider list could not be read, with the error under the list), and `/integrations/openrouter` opens `openrouter-panel.tsx`:
+
+- **Not set up:** a line on what it is and what Drydock asks of it, then the provider form (`ProviderForm`, the one Models uses)
+  filled in for OpenRouter by `openRouterForm()`: name OpenRouter, kind aggregator, `https://openrouter.ai/api/v1`, the defaults
+  private and cheap. The key is all a person types; it goes to the Windows Credential Manager as for any provider. Every field
+  stays editable: a provider pointed elsewhere is added in Models and the note says it is not OpenRouter; after a create the form
+  is filled in for OpenRouter again.
+- **Set up:** the OpenRouter providers (found by their address, `openRouterProviders`, whatever they are named) with their state,
+  and **Open in Models** for the models, prices, key limits and skipped endpoints.
+
+Models stays the owner of providers: no second store, no second form. Tests: `providers.test.ts` (the preset, finding OpenRouter by
+address), `integrations.test.ts` (`providerRowState`), `integrations-screen.test.browser.tsx` (the group and row, the filled form,
+the request it sends, the connected panel and the row's state, Down under Needs you) and `ui/e2e/integrations.spec.ts` against the
+real core (the row and the filled form; nothing is created there, the harness has no route to openrouter.ai), and the density test
+measures `/integrations/openrouter`.

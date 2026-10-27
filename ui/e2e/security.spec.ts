@@ -19,7 +19,7 @@ test("one button scans the working tree with three engines; a finding's pane sho
 
   await projectNav(page, 'nav-security');
   await expect(page.getByTestId('security-scan')).toBeVisible();
-  await expect(page.getByRole('heading', { level: 1, name: 'Security scan' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Security', exact: true })).toBeVisible();
   await expect(page.locator('[data-testid=scan-engine][data-engine=deps][data-status=ready]')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-testid=scan-engine][data-engine=sast][data-status=ready]')).toBeVisible();
   await expect(page.getByTestId('security-tools')).toHaveCount(0); // the tools are Drydock's own (decision P95)

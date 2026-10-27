@@ -137,12 +137,23 @@ const editCss = css({
   '& .note': { fontSize: t.textXs, color: t.textMuted, marginRight: 'auto' },
 });
 
-const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// one formatter for every row: toLocaleTimeString makes a new one on each call, and a row is drawn on every change of the chat
+const clock = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' });
 
 export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
   let editing = false;
   let draft = '';
   let sending = false;
+  /** The row's time as shown, worked out once for its createdAt (formatting dates is slow, and a row is drawn often). */
+  let stampOf = -1;
+  let stamp = { iso: '', short: '', full: '' };
+  const stampFor = (ms: number) => {
+    if (ms !== stampOf) {
+      stampOf = ms;
+      stamp = { iso: new Date(ms).toISOString(), short: clock.format(ms), full: formatDateTime(ms) };
+    }
+    return stamp;
+  };
   const startEdit = () => {
     editing = true;
     draft = handle.props.m.body;
@@ -244,8 +255,8 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
         )}
         {forkable && !editing ? (
           <div class="chat-tools" mix={toolsCss}>
-            <time dateTime={new Date(m.createdAt).toISOString()} title={formatDateTime(m.createdAt)}>
-              {time(m.createdAt)}
+            <time dateTime={stampFor(m.createdAt).iso} title={stampFor(m.createdAt).full}>
+              {stampFor(m.createdAt).short}
             </time>
             {mine && onEdit && !running ? (
               <button type="button" mix={[toolBtn, on('click', startEdit)]} aria-label="Edit and send again" title="Edit this message and send it again">

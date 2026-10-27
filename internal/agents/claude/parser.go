@@ -21,7 +21,14 @@ type Parser struct {
 	lastContext int64                        // input+cache tokens of the latest assistant message (context occupancy)
 	interrupted bool
 	sessionID   string
-	partialSeen bool // true once stream_event text deltas were seen for the current message
+	// thinkingStreamed is set while the current assistant message's thinking arrived as stream_event thinking deltas, so the
+	// whole thinking block the following assistant event repeats is not reported a second time (the deltas were). It is cleared
+	// when that assistant event is read. Text has no such flag: the whole of a text message is always reported as message_end,
+	// deltas or not, because the chat and the Activity take that as the message's end and its final text.
+	thinkingStreamed bool
+	// apiError is the text of the API-error message Claude Code wrote for the current turn (see apiErrorMessage), so the
+	// result that follows, which repeats the same text as its error, does not report it twice.
+	apiError string
 	// seenCost and seenModels are what the session's earlier results reported. Claude Code reports total_cost_usd and
 	// modelUsage as running totals of the whole session, while usage is the turn's own (contracts CLAUDE-USAGE-02 and -03,
 	// measured with 2.1.296), so a process that answers several turns (an interrupt and its follow-up, a watchdog nudge, a
@@ -114,18 +121,30 @@ type rawEvent struct {
 	Session string          `json:"session_id"`
 	Model   string          `json:"model"`
 	Tools   []any           `json:"tools"`
+	// IsAPIErrorMessage marks an assistant event that is not the model's words but the CLI's report of an API call that
+	// failed ("API Error: 529 ..."), written as an assistant message whose text is the error. Claude Code 2.1.310 sets it on
+	// the event beside "message", not inside it (read from the binary: the flag is among the wrapper-level fields, next to
+	// api_error_status and api_error).
+	IsAPIErrorMessage bool `json:"is_api_error_message"`
 	// MCPServers is system/init's list of the session's MCP servers and whether each connected.
 	MCPServers []struct {
 		Name   string `json:"name"`
 		Status string `json:"status"`
 	} `json:"mcp_servers"`
 	// result fields
-	IsError    bool            `json:"is_error"`
-	Result     json.RawMessage `json:"result"`
-	StopReason string          `json:"stop_reason"`
-	TotalCost  float64         `json:"total_cost_usd"`
-	Usage      *usage          `json:"usage"`
-	ModelUsage map[string]struct {
+	IsError bool            `json:"is_error"`
+	Result  json.RawMessage `json:"result"`
+	// StopReason is the stop reason of the turn's last assistant message, not of the turn: a turn that failed after the model
+	// said anything carries "tool_use" or "end_turn" here (Claude Code 2.1.x), so a failed result's stop reason is never read
+	// from it (see result).
+	StopReason string `json:"stop_reason"`
+	// TerminalReason is why the turn ended, on every result of Claude Code 2.1.310: "completed", or for a turn that did not
+	// complete "api_error", "max_turns", "aborted_streaming", "aborted_tools", "blocking_limit", "prompt_too_long",
+	// "model_error", "budget_exhausted", ... (the values read from the binary).
+	TerminalReason string  `json:"terminal_reason"`
+	TotalCost      float64 `json:"total_cost_usd"`
+	Usage          *usage  `json:"usage"`
+	ModelUsage     map[string]struct {
 		InputTokens              int64   `json:"inputTokens"`
 		OutputTokens             int64   `json:"outputTokens"`
 		CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
@@ -218,12 +237,16 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 			return p.driftShape("stream_event"), nil
 		}
 		if se.Type == "content_block_delta" {
-			switch se.Delta.Type {
+			switch se.Delta.Type { // an empty delta carries nothing to show
 			case "text_delta":
-				p.partialSeen = true
-				chunks = append(chunks, workflow.NewChunk(workflow.ChunkText, workflow.TextDelta{Text: se.Delta.Text}))
+				if se.Delta.Text != "" {
+					chunks = append(chunks, workflow.NewChunk(workflow.ChunkText, workflow.TextDelta{Text: se.Delta.Text}))
+				}
 			case "thinking_delta":
-				chunks = append(chunks, workflow.NewChunk(workflow.ChunkThinking, workflow.TextDelta{Text: se.Delta.Thinking}))
+				if se.Delta.Thinking != "" {
+					p.thinkingStreamed = true
+					chunks = append(chunks, workflow.NewChunk(workflow.ChunkThinking, workflow.TextDelta{Text: se.Delta.Thinking}))
+				}
 			}
 		}
 	case "assistant":
@@ -234,14 +257,21 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 		if m.Usage != nil {
 			p.lastContext = m.Usage.InputTokens + m.Usage.CacheReadInputTokens + m.Usage.CacheCreationInputTokens
 		}
+		if ev.IsAPIErrorMessage {
+			chunks = append(chunks, p.apiErrorMessage(m)...)
+			p.thinkingStreamed = false
+			break
+		}
+		// The text blocks of one assistant event are one message, reported as one message_end: joined as they are, since the
+		// deltas streamed for them concatenate to the same text, which is what the chat and the Activity match the whole
+		// against.
+		var text strings.Builder
 		for _, b := range blocks(m.Content) {
 			switch b.Type {
 			case "text":
-				if strings.TrimSpace(b.Text) != "" {
-					chunks = append(chunks, workflow.NewChunk(workflow.ChunkMessageEnd, workflow.TextDelta{Text: b.Text}))
-				}
+				text.WriteString(b.Text)
 			case "thinking":
-				if b.Thinking != "" {
+				if b.Thinking != "" && !p.thinkingStreamed {
 					chunks = append(chunks, workflow.NewChunk(workflow.ChunkThinking, workflow.TextDelta{Text: b.Thinking}))
 				}
 			case "tool_use":
@@ -250,7 +280,10 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 				chunks = append(chunks, workflow.NewChunk(workflow.ChunkToolCall, tc))
 			}
 		}
-		p.partialSeen = false
+		if strings.TrimSpace(text.String()) != "" {
+			chunks = append(chunks, workflow.NewChunk(workflow.ChunkMessageEnd, workflow.TextDelta{Text: text.String()}))
+		}
+		p.thinkingStreamed = false
 	case "user":
 		var m message
 		if json.Unmarshal(ev.Message, &m) != nil {
@@ -285,6 +318,25 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 		chunks = append(chunks, p.driftUnknown(ev.Type)...)
 	}
 	return chunks, ack
+}
+
+// apiErrorMessage reads the assistant event Claude Code writes when an API call fails (rawEvent.IsAPIErrorMessage): its text
+// is the error, not the agent's words, so it is the turn's non-fatal error and never a message. Reported as a message it was
+// shown as the agent's answer and counted as one, and the turn was marked done (AG-UI review 2026-10-25). The result that
+// follows says is_error, and workflow.TurnFailed then fails the turn with this text. Called with p.mu held.
+func (p *Parser) apiErrorMessage(m message) []workflow.Chunk {
+	var text strings.Builder
+	for _, b := range blocks(m.Content) {
+		if b.Type == "text" {
+			text.WriteString(b.Text)
+		}
+	}
+	msg := strings.TrimSpace(text.String())
+	if msg == "" {
+		msg = "Claude Code reported an API error"
+	}
+	p.apiError = msg
+	return []workflow.Chunk{workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: msg})}
 }
 
 // note counts an event of a kind the parser could not use and reports whether it is the first of its kind in the session. Called
@@ -414,8 +466,19 @@ func (p *Parser) result(ev rawEvent) []workflow.Chunk {
 			stop = "interrupted"
 			p.interrupted = false
 		} else {
-			if stop == "" {
+			// A failed turn's stop reason says that it failed, never what the last assistant message stopped with (which
+			// is "tool_use" when a tool loop ran out of turns, "end_turn" when the API failed after an answer): the chat and
+			// the Activity read "error" and "error_*" as the turn's failure (workflow.TurnFailed), and a turn that was
+			// marked done with the error beside it was the AG-UI review's finding (2026-10-25). The subtype names the
+			// failure when the CLI gave it one (error_max_turns, error_during_execution, ...), else terminal_reason does
+			// (error_api_error, error_prompt_too_long, ...), else it is plain "error".
+			switch {
+			case strings.HasPrefix(ev.Subtype, "error"):
 				stop = ev.Subtype
+			case ev.TerminalReason != "" && ev.TerminalReason != "completed":
+				stop = "error_" + ev.TerminalReason
+			default:
+				stop = "error"
 			}
 			var msg string
 			_ = json.Unmarshal(ev.Result, &msg)
@@ -425,9 +488,13 @@ func (p *Parser) result(ev rawEvent) []workflow.Chunk {
 			if msg == "" {
 				msg = ev.Subtype
 			}
-			out = append(out, workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: msg}))
+			// the API error the turn's assistant message already reported (apiErrorMessage) is not reported twice
+			if strings.TrimSpace(msg) != p.apiError {
+				out = append(out, workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Message: msg}))
+			}
 		}
 	}
+	p.apiError = ""
 	if stop == "" {
 		stop = "end_turn"
 	}

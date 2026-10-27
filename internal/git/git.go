@@ -36,6 +36,8 @@ var (
 	ErrUnknownRevision = errors.New("git: unknown revision")
 	// ErrOutputTooLarge means a git call printed more than Drydock keeps in memory; the call was ended.
 	ErrOutputTooLarge = errors.New("git: the output is larger than the limit")
+	// ErrNoRemote is RemoteURL's answer when the repository has no remote of that name.
+	ErrNoRemote = errors.New("git: no such remote")
 )
 
 // ConflictError reports a merge/rebase that stopped on conflicts. The merge is aborted before this is returned, so
@@ -109,7 +111,7 @@ func OpenIn(ctx context.Context, path string, runner Runner) (*Repo, error) {
 	r := &Repo{Root: abs, AuthorName: "Drydock", AuthorEmail: "drydock@localhost", runner: runner}
 	out, err := r.git(ctx, abs, nil, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s (%v)", ErrNotARepo, abs, err)
+		return nil, notARepo(abs, err)
 	}
 	r.Root = strings.TrimSpace(out)
 	if err := r.startGuard(ctx); err != nil {
@@ -122,6 +124,9 @@ func OpenIn(ctx context.Context, path string, runner Runner) (*Repo, error) {
 // the distro's git). Reading a remote runs no configured program.
 func (r *Repo) RemoteURL(ctx context.Context, name string) (string, error) {
 	out, err := r.gitUnguarded(ctx, r.Root, nil, "remote", "get-url", name)
+	if ge := (*gitError)(nil); errors.As(err, &ge) && strings.Contains(ge.stderr, "No such remote") {
+		return "", fmt.Errorf("%w: %q", ErrNoRemote, name) // git speaks English here: Drydock sets LC_ALL=C for every call
+	}
 	return strings.TrimSpace(out), err
 }
 
@@ -230,13 +235,31 @@ func Open(ctx context.Context, path string) (*Repo, error) {
 	r := &Repo{Root: abs, AuthorName: "Drydock", AuthorEmail: "drydock@localhost"}
 	out, err := r.git(ctx, abs, nil, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrNotARepo, abs)
+		if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%w: %s", ErrNotARepo, abs) // the folder is gone: git's words would only say it could not enter it
+		}
+		return nil, notARepo(abs, err)
 	}
 	r.Root = filepath.Clean(strings.TrimSpace(out))
 	if err := r.startGuard(ctx); err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+// notARepo is why git does not take path as a repository, for the person reading it: the path alone when git says no more than
+// that (a plain folder), git's own words when they say more (a broken .git/config: "fatal: bad config line 1 in file
+// .git/config"), and why git could not run at all otherwise (a distro's git). ErrNotARepo is wrapped in each, so callers tell
+// the case from other failures the same way. git speaks English here: LC_ALL=C is set for every call.
+func notARepo(path string, err error) error {
+	var ge *gitError
+	if errors.As(err, &ge) && ge.stderr != "" {
+		if strings.Contains(ge.stderr, "not a git repository") {
+			return fmt.Errorf("%w: %s", ErrNotARepo, path)
+		}
+		return fmt.Errorf("%w: %s: %s", ErrNotARepo, path, ge.stderr)
+	}
+	return fmt.Errorf("%w: %s (%v)", ErrNotARepo, path, err)
 }
 
 // Init creates a repository with an initial commit of whatever is in dir (used by tests and "new project").
@@ -453,8 +476,14 @@ type gitError struct {
 	err    error
 }
 
+// Error is git's command line, what went wrong and git's own words when it said any: a git that could not start, or a folder
+// it could not enter, leaves none, and nothing dangles after the reason then.
 func (e *gitError) Error() string {
-	return fmt.Sprintf("git %s: %v: %s", strings.Join(e.args, " "), e.err, e.stderr)
+	s := fmt.Sprintf("git %s: %v", strings.Join(e.args, " "), e.err)
+	if e.stderr != "" {
+		s += ": " + e.stderr
+	}
+	return s
 }
 func (e *gitError) Unwrap() error { return e.err }
 

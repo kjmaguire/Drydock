@@ -374,7 +374,7 @@ export function ProjectCreateScreen(handle: Handle<{ first?: boolean; onNavigate
           <dt>Team</dt>
           <dd>
             {st.team.length === 0 ? (
-              'no agents (add them on the Team page later)'
+              'no agents (add them on the Crew page later)'
             ) : (
               <ul>
                 {st.team.map((m) => (

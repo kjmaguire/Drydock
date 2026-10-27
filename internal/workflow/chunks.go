@@ -107,16 +107,19 @@ type SessionChunk struct {
 	Tools     int    `json:"tools,omitempty"`
 }
 
-// ChunkPermissionDenied is a tool use the CLI refused on its own because the permission mode and allow rules did not cover
-// it, without asking anyone (headless Claude Code reports these in its result as permission_denials): PermissionDenial. It
-// is reported after the turn's text, before its usage and done chunks.
+// ChunkPermissionDenied is a tool use refused without asking anyone: by the CLI, because its permission mode and allow rules
+// did not cover it (headless Claude Code reports these in its result as permission_denials, after the turn's text and before
+// its usage and done chunks), or by Drydock, because the session had nobody to ask (an ACP session without a permission
+// asker, right after its permission_request chunk): PermissionDenial.
 const ChunkPermissionDenied = "permission_denied"
 
-// PermissionDenial is one refused tool use.
+// PermissionDenial is one refused tool use. Reason says who refused it and why when the refusal was Drydock's own (an ACP
+// session with nobody to ask refuses every request); it is empty for the CLI's own permission_denials.
 type PermissionDenial struct {
 	ToolName  string          `json:"toolName"`
 	ToolUseID string          `json:"toolUseId,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
+	Reason    string          `json:"reason,omitempty"`
 }
 
 // ChunkPlan is an agent's own task plan (ACP `plan` updates): PlanChunk. Informational; nothing decides on it.

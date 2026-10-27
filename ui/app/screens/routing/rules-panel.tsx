@@ -2,7 +2,7 @@
 // does; the editor saves against the rule's version, so a stale edit is refused by the core and its words are shown.
 
 import { css, on, type Handle } from 'remix/component';
-import { ListOrdered, Pencil, Plus, Trash2 } from 'lucide';
+import { ListOrdered, Pencil, Plus, Power, Trash2 } from 'lucide';
 import type { RouteRule } from '../../api/extTypes.ts';
 import { parseInteger } from '../../lib/limits.ts';
 import { action, query, services } from '../../state/services.tsx';
@@ -11,6 +11,7 @@ import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { card, Section } from '../../ui/layout.tsx';
+import { MoreMenu } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { actionChips, MAX_CHAIN, newRule, parseChain, parseThen, RUN_KINDS, sortRules, splitChain, withChain } from './routing.ts';
@@ -163,6 +164,7 @@ export function RulesPanel(handle: Handle) {
   const act = action(handle);
   const q = query(handle, { load: () => s.client.routeRulesList(), when: (e) => e.type === 'routing.rule_changed' });
   let editing: string | undefined;
+  let deleting: string | undefined; // the rule whose Delete was chosen from its menu: the row asks first
   let adding = false;
   const redraw = () => void handle.update();
 
@@ -239,42 +241,50 @@ export function RulesPanel(handle: Handle) {
                     </div>
                   </div>
                   {editing === r.id ? null : (
+                    // one "..." per rule instead of three buttons on every row (the UI audit of 2026-10-26: 24 on one screen)
                     <div mix={actionsCss}>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon={Pencil}
-                        mix={on('click', () => {
-                          editing = r.id;
-                          redraw();
-                        })}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        mix={on('click', async () => {
-                          await act.run('toggle', () => s.client.routeRulesSet({ ...r, enabled: !r.enabled }));
-                          q.reload();
-                        })}
-                      >
-                        {r.enabled ? 'Disable' : 'Enable'}
-                      </Button>
-                      <ConfirmAction
-                        label="Delete"
-                        icon={Trash2}
-                        yes="Yes, delete"
-                        yesName={`Yes, delete the rule "${r.id}"`}
-                        keepName={`Keep the rule "${r.id}"`}
-                        question={`Delete the rule "${r.id}"? It stops applying at once and cannot be brought back.`}
-                        disabled={act.busy !== ''}
-                        testId="route-rule-delete"
-                        onConfirm={async () => {
-                          await act.run('delete', () => s.client.routeRulesDelete(r.id));
-                          q.reload();
-                        }}
-                      />
+                      {deleting === r.id ? (
+                        <ConfirmAction
+                          asking
+                          label="Delete"
+                          icon={Trash2}
+                          yes="Yes, delete"
+                          yesName={`Yes, delete the rule "${r.id}"`}
+                          keepName={`Keep the rule "${r.id}"`}
+                          question={`Delete the rule "${r.id}"? It stops applying at once and cannot be brought back.`}
+                          disabled={act.busy !== ''}
+                          testId="route-rule-delete"
+                          onSettled={() => {
+                            deleting = undefined;
+                            redraw();
+                          }}
+                          onConfirm={async () => {
+                            await act.run('delete', () => s.client.routeRulesDelete(r.id));
+                            q.reload();
+                          }}
+                        />
+                      ) : (
+                        <MoreMenu
+                          label={`Actions for the rule "${r.id}"`}
+                          testId="route-rule-more"
+                          items={[
+                            { name: 'edit', label: 'Edit', icon: Pencil },
+                            { name: 'toggle', label: r.enabled ? 'Disable' : 'Enable', icon: Power, disabled: act.busy !== '' },
+                            { name: 'delete', label: 'Delete', icon: Trash2, danger: true, separatorBefore: true, disabled: act.busy !== '' },
+                          ]}
+                          onSelect={(name) => {
+                            if (name === 'edit') {
+                              editing = r.id;
+                              redraw();
+                            } else if (name === 'toggle') {
+                              void act.run('toggle', () => s.client.routeRulesSet({ ...r, enabled: !r.enabled })).then(() => q.reload());
+                            } else if (name === 'delete') {
+                              deleting = r.id;
+                              redraw();
+                            }
+                          }}
+                        />
+                      )}
                     </div>
                   )}
                 </div>

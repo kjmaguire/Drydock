@@ -222,7 +222,7 @@ export function TeamBuilder(
           {team.length === 0 ? (
             <div data-testid="team-list" data-ready={ready ? 'true' : 'false'}>
               <Empty title="No agents yet" icon={Users}>
-                <p>Add prebuilt agents below, or describe your own. You can also add agents later on the Team page.</p>
+                <p>Add prebuilt agents below, or describe your own. You can also add agents later on the Crew page.</p>
               </Empty>
             </div>
           ) : (

@@ -28,7 +28,8 @@ func TestConsumeCarriesOnAfterTheBusDroppedItAsSlow(t *testing.T) {
 	var mu sync.Mutex
 	var got []int
 	first := true
-	go Consume(ctx, b, Filter{Types: []string{"t.tick"}}, func(e Event) {
+	// Watch returns once the subscription is taken (a goroutine and a sleep missed the first events on a loaded machine)
+	Watch(ctx, b, Filter{Types: []string{"t.tick"}}, func(e Event) {
 		var d struct{ N int }
 		_ = json.Unmarshal(e.Data, &d)
 		if first {
@@ -39,7 +40,6 @@ func TestConsumeCarriesOnAfterTheBusDroppedItAsSlow(t *testing.T) {
 		got = append(got, d.N)
 		mu.Unlock()
 	})
-	time.Sleep(100 * time.Millisecond) // the subscription is taken
 	const total = 60
 	for i := 1; i <= total; i++ {
 		if _, err := b.Publish(ctx, Event{Type: "t.tick", Data: json.RawMessage(fmt.Sprintf(`{"N":%d}`, i))}); err != nil {
@@ -87,7 +87,7 @@ func TestConsumeSurvivesAPanickingHandler(t *testing.T) {
 	defer cancel()
 	var mu sync.Mutex
 	var got []int
-	go Consume(ctx, b, Filter{Types: []string{"t.tick"}}, func(e Event) {
+	Watch(ctx, b, Filter{Types: []string{"t.tick"}}, func(e Event) {
 		var d struct{ N int }
 		_ = json.Unmarshal(e.Data, &d)
 		if d.N == 2 {
@@ -97,7 +97,6 @@ func TestConsumeSurvivesAPanickingHandler(t *testing.T) {
 		got = append(got, d.N)
 		mu.Unlock()
 	})
-	time.Sleep(100 * time.Millisecond)
 	for i := 1; i <= 4; i++ {
 		b.Publish(ctx, Event{Type: "t.tick", Data: json.RawMessage(fmt.Sprintf(`{"N":%d}`, i))})
 	}

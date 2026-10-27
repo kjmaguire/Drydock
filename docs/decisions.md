@@ -1162,3 +1162,89 @@ Open, owner action:
   the Artifact Signing secrets and variables, and skips it otherwise; D8's choice between Artifact Signing and an OV
   certificate stays open (an OV path is not wired). The version resource's CompanyName is "Kyle Maguire", the LICENSE's
   holder, until a company and certificate exist. docs/windows-identity.md.
+- **P100. The AG-UI review and its fixes (2026-10-26, on the owner's words: "Do a review of the AG-UI protocol and make sure it
+  is going to work between our agents and the rest of the platform").** `docs/agui-review-2026-10-25.md` is the review: the
+  vocabulary of P87 passes the published `@ag-ui/client` 1.0.3 pipeline on every projected thread, and the defects were in what
+  the adapters and the projector put into it, and in the other readers of the same events, not in the protocol. What changed:
+  (1) **One rule for a failed turn.** `workflow.TurnFailed` (a stop reason `error` or `error_*` fails the turn whether or not the
+  agent answered; an uncoded error with no answer and no `end_turn` fails it; a warning with a Code never does) is read by the
+  Activity (`agui.complete`), the chat (`turnRun.finish`) and presence (`room.Derive`), so one turn is never told two ways. The
+  ACP settings warnings (a model, an effort, a permission mode or an MCP transport the agent does not offer) carry
+  `workflow.CodeSettings`, so the default `acceptEdits` no longer makes an ACP session's first tool-only turn a failed one. (2)
+  **A failed Claude Code result fails the run.** The parser's done chunk carries the subtype when it names the failure
+  (`error_during_execution`, `error_max_turns`, ...), else `error_` plus the CLI's `terminal_reason`, else `error`, never the last
+  message's `stop_reason`; the CLI's API-error assistant message (`is_api_error_message`) is an error chunk, not an answer; the
+  fake agent's failing shapes are the CLI's. (3) **No sentence twice.** The projector keeps the text streamed in the open run that
+  no `message_end` has taken yet, and a `message_end` that repeats the front of it takes that text and adds no second message (an
+  ACP thought or tool result between the deltas and the message end; Claude's per-block messages); the Claude parser emits a
+  thinking block once when its deltas were streamed and the text blocks of one assistant event as one `message_end`. (4)
+  **Conformance for an outside reader.** Drydock's own fields (`seq`, `stopReason`, `isError`, RUN_ERROR's thread and run) ride in
+  `metadata.drydock`, the object the protocol keeps for them, so the published client strips nothing; RUN_STARTED declares
+  `protocolVersion` "1.0"; tool-call ids are deduplicated per run; a nameless result's call is "tool"; a Go test holds every
+  event's top-level keys to exactly the fields the 1.0.3 schema declares. (5) **Cuts that keep what matters.** A result over 8 KiB
+  keeps its first 6 KiB and last 2 KiB around a marker line (test runners put the verdict at the end); arguments over 8 KiB stay
+  one valid JSON document (the longest string values are cut inside it, deterministically, numbers kept as written), so a large
+  Write keeps its path and line counts; the runtime bounds a stored tool result against the bus cap, so no result becomes a
+  stand-in the Activity cannot read; the UI strips the marker lines before it reads a command's last line or its test failures.
+  (6) **Refusals and decisions are visible.** A third CUSTOM event, `drydock.decided` {tool, outcome, reason, toolCallId, rule},
+  carries a gate deny or a task rule's allow that asked nobody (the ordinary `allowed_by_rule` of every call is left out) and
+  the refusal an ACP session with nobody to ask now reports (`PermissionDenial.Reason`); the Activity draws it as a decided row
+  with who decided and why. The CLI's own `permission_denials` stay out: the failed result shows the step as failed, and when
+  the gate was asked the resume row already says who refused. "Approve for this task" is recorded on the answered request as
+  `approved_for_task` with its rule (`PermissionGate.MarkApprovedForTask`), so the Activity says "Allowed by you for this task"
+  and the audit log names the rule. (7) **The Activity is live for the gate.** It re-reads on `approval.requested` and
+  `permission.decided` as well as `agent.*`, so an allowed command no longer reads "Waiting for you" for its whole run. (8)
+  **Presence agrees.** `room.Derive` reads the gate's two events (Waiting "awaiting permission" while a Claude worker waits,
+  Working again when answered) and a turn that ended with an error stop reason is Failed "turn failed: <stop>", not Completed. (9)
+  Smaller: an ACP `session/prompt` failure is worded from the JSON-RPC error's message, not its JSON; a thread with no turn yet
+  reads "starting" or "stopped before its first turn" (`AguiThread.ended`), never "0 turns"; a running read shows its own time;
+  an unknown wait outcome reads "Decided (<token>)" rather than the bare token; `docs/interfaces.md` gains the Activity section
+  and the full chunk list; `docs/ui.md` names the three surfaces called Activity; the Guide's event table says what `agent.*` and
+  `permission.decided` are. Left for later, with the reasons in the review's section 6: the dead permission request after a crash
+  (M7), the incremental `task.activity` read (M10), the truncated thread's label (M9), the publishes a cancelled turn drops (L6),
+  `toolCallId` on the interrupt and AG-UI-shaped interrupt values (L9, N7), the `acp:` marker and ACP's tool kind (L12, L13),
+  the run page's two readings of an abandoned turn and its Events tab (L18, L19), usage on RUN_FINISHED (N2). Not done: an AG-UI
+  HTTP endpoint, sub-agents, steps and snapshots, which wait for an outside reader. No new software: the AG-UI packages were used
+  only as test oracles in a scratch folder and are not dependencies.
+- **P101. The UI audit of 2026-10-26 and its fixes (on the owner's words: "Do a full UI Audit, make sure the UI is in good shape,
+  things are formatted nicely and designed well. Any suggestions please send them over").** [`ui-audit-2026-10-26.md`](ui-audit-2026-10-26.md)
+  read every page of the graphite UI on the real core, light and dark. What changed: (1) the body no longer turns on Inter's
+  tabular figures, which also widen the hyphen, so hyphenated names read without gaps; a number that must line up sets
+  `tabular-nums` itself, and a source rule keeps it off the body. (2) A `Disclosure` draws a chevron, so a closed group no longer
+  reads as a stray line. (3) Learn more is an inline link with padding for its 28 px target, so it no longer lifts the line it sits
+  in. (4) `emptyLine` is running text, not flex items, so a link in its sentence has a word space, not an 8 px gap. (5) The Library
+  rows on Skills start at the left. (6) A room's name adds nothing to its row's smallest width, so a long one ends in an ellipsis
+  inside its card or rail. (7) A settings group is a query container: under 520 px its values go under their labels, as in a narrow
+  window. (8) Smaller: an agent run's status in words, the licence alone after "License", commands from the core as code instead
+  of backticks, "Crew" where five sentences said "Team page". The 27 suggestions of the audit (two items called Crew in the
+  sidebar, a folding sidebar at 1024 px, one page header, facts said two or three times, Routing's row actions, words) are left
+  for the owner to choose from.
+- **P102. Six of the UI audit's suggestions, on the owner's go-ahead (2026-10-26: "1. Sure 2. Okay 3. Yup 4. Yes 5. Works for me
+  6. Okay. Lets work on all of them").** (1) The sidebar's workspace pages are named apart from one project's: **All crews**
+  (`/crew`, titled so) and **Security scan**; a project's Security page is titled **Security**, as its pill. (2) The sidebar folds to
+  its rail under 1200 px (`NARROW_SIDEBAR`, was 1024), unless the person chose. (3) One page header: GitHub is a `Page` with its
+  icon, subtitle, Learn more and an **All integrations** link (no breadcrumb); Models' Learn more sits beside its subtitle; the scan
+  header has the shield. (4) Said once: an agent CLI's detail shows no state pill while a notice says what is in the way, and the
+  notice offers no button the header has; GitHub without gh says it in the hero alone (the connect form's `ghStateAbove`, its gh
+  button turned off until gh is signed in, one Check again); an agent's page says "Stopped" in the hero's chip only. (5) Lighter:
+  Routing's rules and an agent's hero put their occasional actions in a "..." (`MoreMenu` in `ui/menu.tsx`; Delete and Remove still
+  ask first, Remove in the danger colour); the run graph draws the condition pills of the selected node's edges only, over the nodes,
+  and keeps every condition as its edge's tooltip. (6) Words: "N connected", "spent so far", the reviewer's verdict as "approved" or
+  "asked for changes" (`verdictWords`), "Search" in the sidebar's box. The other suggestions of the audit stay open.
+- **P103. OpenRouter on the Integrations page (2026-10-26, on the owner's words: "Were missing OpenRouter as an integration in
+  here as well").** OpenRouter stays a model provider that Models owns (its models, prices, key limits and endpoint uptime are on
+  its page there), and the Integrations page lists it in a **Model providers** group, beside the services, agent tools and servers.
+  Without an OpenRouter provider its panel is Models' own provider form filled in for OpenRouter (name, aggregator,
+  `https://openrouter.ai/api/v1`, private, cheap), so the key is all a person types; with one, its state and **Open in Models**. One
+  store and one form; an OpenRouter provider is recognised by its address, whatever it is called. `docs/integrations.md`, "As built:
+  OpenRouter on the Integrations page".
+- **P104. The audit and chat performance review of 2026-10-27.** On the owner's words: "Do an audit on the app, and do a full
+  review on performance specifically chat performance." Report: `docs/review-2026-10-27-chat.md`. Behaviour that changed: (1) a
+  streamed chat answer redraws itself only (the feed's `stream` event), not the conversation; (2) `chat.delta` and
+  `chat.thinking` events are deleted after 30 days with `agent.output`; (3) a "rest of the task" approval matches the approved
+  command word for word: a quoted `*` or `**` among its words is that word, never a wildcard; (4) an ACP edit is asked about with
+  what it writes (the agent's own fields as the Write's `content`), and an ACP delete is always asked (it is not read as a Write
+  of its path); (5) a chat turn claims the chat only at the version it read, and reads it again when a change landed meanwhile;
+  (6) a chat tool summary is redacted before it is shortened; (7) the local server starts by itself only once the download's
+  llama.cpp build is in place, and an update read for one build's source and backend is never offered to another; (8) a GGUF
+  header is read for its own architecture's keys only, and a KV estimate refuses sizes no model has.

@@ -3,11 +3,15 @@ package acp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	sdk "github.com/coder/acp-go-sdk"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/acp"
@@ -99,19 +103,13 @@ func TestAModelTheAgentDoesNotOfferIsRefused(t *testing.T) {
 	}
 }
 
+// A requested setting the agent does not offer is a warning, never silent: each kind (an effort, a permission mode, a model
+// when the agent has no model choice) carries workflow.CodeSettings, so the turn it lands in is not judged failed by it.
 func TestUnavailableSettingsAreReportedNotSilentlyDropped(t *testing.T) {
 	ad := fakeAdapter(t, fakeacp.Script{Models: []string{"m-small"}, Turns: [][]fakeacp.Step{{{ReportConfig: true}}}})
 	s := startSession(t, ad, agents.RunSpec{AgentID: "a", Effort: "high", PermissionMode: "bypassPermissions"})
 	cs := turn(t, s, "go")
-	var warns []string
-	for _, c := range ofKind(cs, workflow.ChunkError) {
-		e := decode[workflow.ErrorChunk](t, c)
-		if e.Fatal {
-			t.Fatalf("a setting warning must not be fatal: %+v", e)
-		}
-		warns = append(warns, e.Message)
-	}
-	joined := strings.Join(warns, "\n")
+	joined := strings.Join(settingsWarnings(t, cs), "\n")
 	for _, want := range []string{`effort "high"`, `permission mode "bypassPermissions"`} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing warning for %s in %q", want, joined)
@@ -119,6 +117,58 @@ func TestUnavailableSettingsAreReportedNotSilentlyDropped(t *testing.T) {
 	}
 	if !strings.Contains(text(cs), "model=m-small") {
 		t.Fatalf("the agent default must stay in effect: %q", text(cs))
+	}
+
+	// an agent with no model choice at all runs its own model, with the same kind of warning
+	ad = fakeAdapter(t, fakeacp.Script{Turns: [][]fakeacp.Step{{{ReportConfig: true}}}})
+	cs = turn(t, startSession(t, ad, agents.RunSpec{AgentID: "a", Model: "m-any"}), "go")
+	if joined := strings.Join(settingsWarnings(t, cs), "\n"); !strings.Contains(joined, `model "m-any"`) || !strings.Contains(joined, "no model choice") {
+		t.Fatalf("missing warning for the model in %q", joined)
+	}
+}
+
+// settingsWarnings returns the messages of the turn's error chunks, failing when one is fatal or lacks workflow.CodeSettings.
+func settingsWarnings(t *testing.T, cs []workflow.Chunk) []string {
+	t.Helper()
+	var warns []string
+	for _, c := range ofKind(cs, workflow.ChunkError) {
+		e := decode[workflow.ErrorChunk](t, c)
+		if e.Fatal {
+			t.Fatalf("a setting warning must not be fatal: %+v", e)
+		}
+		if e.Code != workflow.CodeSettings {
+			t.Fatalf("a setting warning must carry the settings code, got %+v", e)
+		}
+		warns = append(warns, e.Message)
+	}
+	return warns
+}
+
+// The warnings of session start land inside the first turn (the chat and the Activity see them after the turn began). A first
+// turn of tool calls only that stopped at max_turn_requests, with an effort the agent does not offer, used to be shown as a run
+// that failed with the warning as its reason (AG-UI review 2026-10-25): the warning is coded, and the rule says not failed.
+func TestASettingsWarningIsNotWhyTheFirstTurnFailed(t *testing.T) {
+	ad := fakeAdapter(t, fakeacp.Script{StopReason: "max_turn_requests", Turns: [][]fakeacp.Step{{
+		{Tool: &fakeacp.Tool{ID: "t1", Title: "Read a.go", Kind: "read", Input: map[string]any{"path": "a.go"}, Output: "package a"}},
+	}}})
+	cs := turn(t, startSession(t, ad, agents.RunSpec{AgentID: "a", Effort: "high"}), "go")
+	errs := ofKind(cs, workflow.ChunkError)
+	if len(errs) != 1 {
+		t.Fatalf("one warning expected: %v", kinds(cs))
+	}
+	w := decode[workflow.ErrorChunk](t, errs[0])
+	if w.Code != workflow.CodeSettings || !strings.Contains(w.Message, `effort "high"`) {
+		t.Fatalf("warning %+v", w)
+	}
+	if stopReason(t, cs) != "max_turn_requests" || len(ofKind(cs, workflow.ChunkToolResult)) != 1 || len(ofKind(cs, workflow.ChunkMessageEnd)) != 0 {
+		t.Fatalf("the turn: %v stop=%s", kinds(cs), stopReason(t, cs))
+	}
+	var chunks []workflow.ErrorChunk
+	for _, c := range errs {
+		chunks = append(chunks, decode[workflow.ErrorChunk](t, c))
+	}
+	if failed, reason := workflow.TurnFailed(stopReason(t, cs), false, chunks); failed {
+		t.Fatalf("the turn must not be judged failed by a settings warning: %q", reason)
 	}
 }
 
@@ -392,12 +442,14 @@ func TestSendWhileTurnRunningQueuesAndInterruptDropsQueue(t *testing.T) {
 	}
 }
 
+// A failed prompt is the turn's error, said in words: the JSON-RPC error's message and the agent's detail, not the SDK's compact
+// JSON object (AG-UI review 2026-10-25); the session survives it.
 func TestPromptErrorBecomesErrorAndDone(t *testing.T) {
 	ad := fakeAdapter(t, fakeacp.Script{Turns: [][]fakeacp.Step{{{ErrorPrompt: "rate limited"}}, {{Say: "recovered"}}}})
 	s := startSession(t, ad, agents.RunSpec{AgentID: "a"})
 	cs := turn(t, s, "x")
 	errs := ofKind(cs, workflow.ChunkError)
-	if len(errs) != 1 || decode[workflow.ErrorChunk](t, errs[0]).Fatal || !strings.Contains(decode[workflow.ErrorChunk](t, errs[0]).Message, "rate limited") {
+	if len(errs) != 1 || decode[workflow.ErrorChunk](t, errs[0]).Fatal || decode[workflow.ErrorChunk](t, errs[0]).Message != "prompt failed: Internal error: rate limited" {
 		t.Fatalf("%v", errs)
 	}
 	if stopReason(t, cs) != "error" {
@@ -405,6 +457,31 @@ func TestPromptErrorBecomesErrorAndDone(t *testing.T) {
 	}
 	if !strings.Contains(text(turn(t, s, "y")), "recovered") {
 		t.Fatal("the session must survive a failed prompt")
+	}
+}
+
+// The wording of a failed prompt for each shape a JSON-RPC error takes: a data object with the agent's "error", other data
+// rendered compactly and clipped, no data, and an error that is not JSON-RPC at all.
+func TestAFailedPromptIsSaidInWordsNotAsAJSONObject(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{sdk.NewInternalError(map[string]any{"error": "rate limited"}), "prompt failed: Internal error: rate limited"},
+		{sdk.NewInternalError(map[string]any{"details": "quota"}), `prompt failed: Internal error: {"details":"quota"}`},
+		{sdk.NewInternalError(nil), "prompt failed: Internal error"},
+		{sdk.NewInvalidParams(long), `prompt failed: Invalid params: "` + strings.Repeat("x", 199) + "..."},
+		{fmt.Errorf("wrapped: %w", sdk.NewAuthRequired(map[string]any{"error": "sign in"})), "prompt failed: Authentication required: sign in"},
+		{errors.New("pipe closed"), "prompt failed: pipe closed"},
+	}
+	for _, tc := range cases {
+		if got := acp.PromptFailedForTest(tc.err); got != tc.want {
+			t.Errorf("%v:\n got %q\nwant %q", tc.err, got, tc.want)
+		}
+	}
+	if got := acp.PromptFailedForTest(sdk.NewInvalidParams(long)); len(got) > len("prompt failed: Invalid params: ")+205 {
+		t.Fatalf("not clipped: %d bytes", len(got))
 	}
 }
 
@@ -513,8 +590,11 @@ func TestMCPServersFollowAdvertisedTransports(t *testing.T) {
 	}
 	var warned bool
 	for _, c := range ofKind(cs, workflow.ChunkError) {
-		if strings.Contains(decode[workflow.ErrorChunk](t, c).Message, `"legacy"`) {
+		if e := decode[workflow.ErrorChunk](t, c); strings.Contains(e.Message, `"legacy"`) {
 			warned = true
+			if e.Code != workflow.CodeSettings {
+				t.Fatalf("a skipped server is a settings warning, got %+v", e)
+			}
 		}
 	}
 	if !warned {

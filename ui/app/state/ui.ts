@@ -35,8 +35,11 @@ export const NARROW_DETAILS = '(max-width: 1199px)';
 /** Below this width the Rooms and Settings rails and the chat list are drawers a button opens. */
 export const NARROW_RAILS = '(max-width: 899px)';
 
-/** Below this width the sidebar starts folded to its rail (graphite, P97); a choice the person made stays. */
-export const NARROW_SIDEBAR = '(max-width: 1023px)';
+/**
+ * Below this width the sidebar starts folded to its rail (graphite, P97); a choice the person made stays. 1200, not 1024 (the UI
+ * audit of 2026-10-26): at 1024 the open sidebar left a list-and-detail page (Models, Agents, Integrations) a detail of 390 px.
+ */
+export const NARROW_SIDEBAR = '(max-width: 1199px)';
 
 /** The sidebar's stored choice: 'rail' or 'full', or undefined when the person has not chosen (the window's width decides). */
 export function parseSidebar(raw: unknown): 'rail' | 'full' | undefined {

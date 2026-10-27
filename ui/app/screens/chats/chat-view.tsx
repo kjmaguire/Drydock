@@ -194,16 +194,19 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
   });
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
 
+  // the requests answered here: their cards go at once, so a second click cannot answer one again while the list is read
+  // again (audit 2026-10-27: Deny after Allow once was sent, refused, and left an error note)
+  const answered = new Set<string>();
   const answer = async (a: ChatAsk, allow: boolean) => {
     askErrFor = a.id;
-    await askAct.run(`${allow ? 'allow' : 'deny'}:${a.id}`, () => s.client.chatAnswer(handle.props.id, a.id, allow));
+    if (await askAct.run(`${allow ? 'allow' : 'deny'}:${a.id}`, () => s.client.chatAnswer(handle.props.id, a.id, allow).then(() => true))) answered.add(a.id);
     void asks.reload();
   };
   // "Allow <tool> in this chat": the call runs and its rule is recorded for the chat; refused (with the core's reason) the
   // request keeps waiting, to be allowed once or denied
   const remember = async (a: ChatAsk) => {
     askErrFor = a.id;
-    await askAct.run(`remember:${a.id}`, () => s.client.chatAllowAndRemember(handle.props.id, a.id));
+    if (await askAct.run(`remember:${a.id}`, () => s.client.chatAllowAndRemember(handle.props.id, a.id))) answered.add(a.id);
     void asks.reload();
   };
 
@@ -284,7 +287,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const cli = chatCliText(chat, installs.data ?? []);
     const projectName = s.workspace.projectList.find((p) => p.id === chat.projectId)?.name;
     const state = chatState(chat, running);
-    const waiting = asks.data ?? [];
+    const waiting = (asks.data ?? []).filter((a) => !answered.has(a.id));
     const askOf = new Map(waiting.map((a) => [a.messageId, a] as const));
     const askCard = (a: ChatAsk) => (
       <AskCard
@@ -588,20 +591,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                   </p>
                 </Empty>
               ) : null}
-              {streaming ? (
-                <div mix={streamCss} aria-live="off" data-testid="chat-streaming" aria-label={`${adapterLabel(chat.adapter)} is answering`}>
-                  {streaming.thinking ? <ThinkingFold text={streaming.thinking} live /> : null}
-                  {streaming.text ? (
-                    <Markdown source={streaming.text} />
-                  ) : (
-                    <span class="typing" role="status" aria-label="Working">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  )}
-                </div>
-              ) : null}
+              {streaming ? <ChatStream feed={feed} who={adapterLabel(chat.adapter)} onGrow={() => list.follow()} /> : null}
               {turnNote ? <Notice tone="info">{turnNote}</Notice> : null}
             </div>
           </div>
@@ -683,6 +673,48 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           }}
         />
       </section>
+    );
+  };
+}
+
+/**
+ * The answer streaming in. It redraws itself on the feed's `stream` events, at most once a frame, so text arriving costs this
+ * answer's render and nothing else: the conversation above it, the header and the composer are not drawn again (the review of
+ * 2026-10-27: with a long history open, every delta redrew and measured every row in the window).
+ */
+function ChatStream(handle: Handle<{ feed: ChatFeed; who: string; onGrow: () => void }>) {
+  let frame = 0;
+  const redraw = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      void handle.update();
+    });
+  };
+  const feed = handle.props.feed;
+  feed.addEventListener('stream', redraw);
+  handle.signal.addEventListener('abort', () => {
+    feed.removeEventListener('stream', redraw);
+    if (frame) cancelAnimationFrame(frame);
+  });
+  return () => {
+    const streaming = handle.props.feed.streaming;
+    // the answer grew: the list stays at the bottom while the reader is there
+    handle.queueTask(() => handle.props.onGrow());
+    if (!streaming) return null;
+    return (
+      <div mix={streamCss} aria-live="off" data-testid="chat-streaming" aria-label={`${handle.props.who} is answering`}>
+        {streaming.thinking ? <ThinkingFold text={streaming.thinking} live /> : null}
+        {streaming.text ? (
+          <Markdown source={streaming.text} />
+        ) : (
+          <span class="typing" role="status" aria-label="Working">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
+      </div>
     );
   };
 }

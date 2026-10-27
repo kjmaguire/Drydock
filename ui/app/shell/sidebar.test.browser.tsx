@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../api/client.ts';
 import type { LocalView } from '../api/localClient.ts';
 import { cleanup, mount, testServices, waitFor } from '../test/render.tsx';
-import { UiModel, wideWindow } from '../state/ui.ts';
+import { NARROW_SIDEBAR, UiModel, wideWindow } from '../state/ui.ts';
 import { engineWords, Sidebar } from './sidebar.tsx';
 
 afterEach(() => {
@@ -68,7 +68,11 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
     // every project's crew is a workspace page, under Workspace
     expect(r.$('ul[aria-label="Workspace"] [data-testid="nav-crew"]')!.getAttribute('href')).toBe('/crew');
-    expect(r.$('[data-testid="nav-crew"]')!.textContent).toBe('Crew');
+    // named apart from the project's own Crew and its Security pill
+    expect(r.$('[data-testid="nav-crew"]')!.textContent).toBe('All crews');
+    expect(r.$('[data-testid="nav-security-scan"]')!.textContent).toBe('Security scan');
+    // the search box says one word the narrow sidebar does not cut; its title says the rest
+    expect(r.$('button[aria-label="Search and jump (Ctrl+K)"] .lbl')!.textContent).toBe('Search');
     expect(r.$('[data-testid="nav-settings"]')).not.toBeNull();
     expect(r.$('[data-testid="nav-guide-top"]')).not.toBeNull();
     expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
@@ -195,6 +199,11 @@ describe('the sidebar', () => {
   it('a narrow window starts folded until the person chooses', () => {
     const narrow = () => ({ matches: true, addEventListener: () => {} });
     expect(new UiModel({ media: narrow }).sidebarRail).toBe(true);
+    // a laptop's 1024 to 1199 px counts as narrow for the sidebar (the detail of a list page keeps its room)
+    const asked: string[] = [];
+    void new UiModel({ media: (q) => (asked.push(q), { matches: false, addEventListener: () => {} }) }).sidebarRail;
+    expect(asked).toContain(NARROW_SIDEBAR);
+    expect(NARROW_SIDEBAR).toBe('(max-width: 1199px)');
     localStorage.setItem('drydock.sidebar', '"full"');
     expect(new UiModel({ media: narrow }).sidebarRail).toBe(false);
   });

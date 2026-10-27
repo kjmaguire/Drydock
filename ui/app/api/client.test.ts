@@ -126,6 +126,7 @@ describe('typed client', () => {
       if (url.includes('agent.timeline')) return json({ result: { since: 1, until: 2, agents: [{ agentId: 'a', runs: null, waits: null }] } });
       if (url.includes('security.scan.running')) return json({ result: [{ id: 's', engines: null, counts: null }] });
       if (url.includes('task.get')) return json({ result: { task: { id: 't' }, evidence: [], reviews: [], pending: [], allowRules: null } });
+      if (url.includes('crew.extras')) return json({ result: { skills: null, rooms: [{ projectId: 'p', name: 'general', kind: 'channel', agents: null }] } });
       return json({ result: null });
     });
     const c = createClient(transport(f as unknown as typeof fetch));
@@ -141,6 +142,8 @@ describe('typed client', () => {
     const running = await c.securityScanRunning();
     expect([running[0]?.engines, running[0]?.counts.total]).toEqual([[], 0]);
     expect((await c.taskGet('t')).allowRules).toEqual([]);
+    expect(await c.crewExtras('')).toEqual({ skills: [], rooms: [{ projectId: 'p', name: 'general', kind: 'channel', agents: [] }] });
+    expect(await c.securityScanRecent(5)).toEqual([]);
     const bodies = f.mock.calls.map((c) => c.arguments).map((c) => [(c as unknown as [string])[0], JSON.parse((c as unknown as [string, RequestInit])[1].body as string)]);
     expect(bodies).toEqual([
       ['/rpc/approval.get', { id: 'apr_1' }],
@@ -152,6 +155,8 @@ describe('typed client', () => {
       ['/rpc/agent.timeline', { projectId: 'p', since: 5, until: 0 }],
       ['/rpc/security.scan.running', {}],
       ['/rpc/task.get', { id: 't' }],
+      ['/rpc/crew.extras', { projectId: '' }],
+      ['/rpc/security.scan.recent', { limit: 5 }],
     ]);
   });
 

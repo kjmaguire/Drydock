@@ -109,4 +109,21 @@ describe('the hubs', () => {
     expect(task!.querySelector('[data-testid="unread-count"]')).toBeNull();
     expect(r.$('nav[aria-label="Rooms"][data-rooms]')).not.toBeNull();
   });
+
+  it('cuts a long room name with an ellipsis inside its column instead of running past it (UI audit 2026-10-26)', async () => {
+    const long = 'task-2-add-a-multiply-function-with-table-tests-and-a-name-longer-than-any-column';
+    const r = mount(
+      <div style={{ width: '220px' }} data-testid="column">
+        <RoomsRail route={{ name: 'room', id: 'r1' }} />
+      </div>,
+      svc({ roomList: async () => [room({}), room({ id: 'r2', kind: 'task', name: long, taskId: 't3' })] }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="room-link"]')).toHaveLength(2), r);
+    const column = r.$('[data-testid="column"]')!.getBoundingClientRect();
+    const link = r.$$('[data-testid="room-link"]')[1] as HTMLElement;
+    expect(link.getBoundingClientRect().right <= column.right + 1).toBe(true);
+    const label = link.querySelector('.label') as HTMLElement;
+    expect(label.textContent).toBe(long);
+    expect(label.scrollWidth > label.clientWidth).toBe(true);
+  });
 });

@@ -305,7 +305,8 @@ type PermissionOutcome struct {
 	// UpdatedInput, when set, is the input the person approved instead of the agent's (canonical JSON): the CLI runs the
 	// tool with it. Only an approval with edits sets it.
 	UpdatedInput json.RawMessage
-	// Rule is the person's task allow rule that approved the call without asking (outcome PermissionApprovedForTask).
+	// Rule is the person's task allow rule that approved the call (outcome PermissionApprovedForTask): the rule that was stored
+	// when they approved this very request for the task, or the one that covered it without asking.
 	Rule string
 }
 
@@ -325,6 +326,9 @@ type PermissionGate struct {
 
 	edits sync.Map // approval id -> json.RawMessage: input a person changed before approving (kept in memory only)
 	asks  sync.Map // approval id -> waitingAsk: the request a waiting approval is for, while its call waits
+	// forTask maps an approval id to the id of the task allow rule a person's "approve for this task" stored for it, so the
+	// answered request itself is recorded as approved for the task, with its rule, and not as a plain approval.
+	forTask sync.Map
 }
 
 // ErrEditNotPossible is returned for an edit the request cannot take: not a JSON object, or a CLI that cannot run an
@@ -348,6 +352,18 @@ func (g *PermissionGate) SetEdit(approvalID, tool string, input json.RawMessage)
 
 // ClearEdit drops a held edit.
 func (g *PermissionGate) ClearEdit(approvalID string) { g.edits.Delete(approvalID) }
+
+// MarkApprovedForTask tells the gate that the approval about to be decided is a person's "approve for this task" (P97), with
+// the id of the task allow rule stored for it: the waiting call is then recorded with outcome PermissionApprovedForTask and the
+// rule, like the later calls the rule covers, so the Activity does not say the grant was for one call. Call it right before
+// the approval is decided; ClearApprovedForTask drops the mark when the decision fails. An approval with edits is never
+// task-scoped: the mark is ignored when an edit is held.
+func (g *PermissionGate) MarkApprovedForTask(approvalID, ruleID string) {
+	g.forTask.Store(approvalID, ruleID)
+}
+
+// ClearApprovedForTask drops a mark set by MarkApprovedForTask.
+func (g *PermissionGate) ClearApprovedForTask(approvalID string) { g.forTask.Delete(approvalID) }
 
 func (g *PermissionGate) takeEdit(approvalID string) (json.RawMessage, bool) {
 	v, ok := g.edits.LoadAndDelete(approvalID)
@@ -421,14 +437,24 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 	if len(td.Reasons) > 0 {
 		reason += " Analyzer: " + strings.Join(td.Reasons, "; ") + "."
 	}
-	id, err := g.Approvals.Request(ctx, action, reason, WithTTL(ttl), WithTitle(PermissionTitlePrefix+req.Tool+": "+permissionSummary(td)))
+	// the waiting call is registered before the request can be seen: a person who approves it for the rest of the task at
+	// once (TaskRuleFor) must not be told that no call waits on it
+	var registered string
+	id, err := g.Approvals.Request(ctx, action, reason, WithTTL(ttl), WithTitle(PermissionTitlePrefix+req.Tool+": "+permissionSummary(td)),
+		BeforeVisible(func(id string) {
+			registered = id
+			g.asks.Store(id, waitingAsk{scope: scope, td: td})
+		}))
 	if err != nil {
+		if registered != "" {
+			g.asks.Delete(registered)
+		}
 		out.Outcome, out.Message = PermissionDenied, "Drydock could not ask a person about this call, so it refused it."
 		return out
 	}
 	out.ApprovalID = id
-	g.asks.Store(id, waitingAsk{scope: scope, td: td})
 	defer g.asks.Delete(id)
+	defer g.forTask.Delete(id) // a mark nobody consumed (the approval was refused, or did not match) is not kept
 	tick := time.NewTicker(poll)
 	defer tick.Stop()
 	for {
@@ -473,6 +499,9 @@ func (g *PermissionGate) ask(ctx context.Context, scope PermissionScope, req Too
 				return out
 			}
 			out.Allow, out.Outcome = true, PermissionApproved
+			if rule, forTask := g.forTask.LoadAndDelete(id); forTask && !hasEdit {
+				out.Outcome, out.Rule = PermissionApprovedForTask, rule.(string)
+			}
 			if hasEdit {
 				out.Outcome, out.UpdatedInput = PermissionApprovedEdited, edited
 			}

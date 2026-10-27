@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/localllm"
 	"github.com/kjmaguire/drydock/internal/localllm/llamatest"
+	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/runners"
 	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/scan/scantest"
@@ -281,5 +283,70 @@ func TestABrokenToolsFolderStillSetsUpTheTurboQuantBuild(t *testing.T) {
 	})
 	if v.Runtime.Source != localllm.SourceTurboQuant || v.Runtime.Tag != "b10298-2.0.0" {
 		t.Fatalf("%+v", v.Runtime)
+	}
+}
+
+// An update of the app that carries a newer bundled llama.cpp build installs it before the server starts by itself
+// (Autostart): the server never starts on the build being replaced and deleted (audit 2026-10-27).
+func TestAfterAnAppUpdateTheServerStartsOnTheNewBundledBuild(t *testing.T) {
+	tq, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	zip := llamatest.ZipOf(map[string][]byte{localllm.ServerName(): []byte("server"), "ggml-vulkan.dll": []byte("dll")})
+	bundleOf := func(tag string) string {
+		return writeBundle(t, map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": zip}, bundle.Manifest{Version: 1,
+			Llama: &bundle.LlamaBuild{Source: tq.ID, Tag: tag, Backend: string(localllm.Vulkan), Archive: assetOf(tq.DownloadPrefix(), tag, "llama-turboquant-windows-x64-vulkan.zip", zip)}})
+	}
+	rig := newLocalRig(t)
+	dataDir := filepath.Join(t.TempDir(), "data")
+	creds := providers.NewMemoryCredentialStoreForTests()
+	var mu sync.Mutex
+	var started []string // the build each server start ran
+	open := func(bundleDir string) *core.Core {
+		c, err := core.Open(context.Background(), core.Config{DataDir: dataDir, User: "kyle", LeaseTTL: 3 * time.Second,
+			Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: "claude-not-used"}}, Credentials: creds, BundleDir: bundleDir,
+			LocalModels: func(m *localllm.Manager) {
+				m.GitHub = host.HTTPAPI{BaseURL: rig.releases.Server.URL}
+				m.HTTP = &http.Client{Transport: rig.releases.Transport}
+				m.Hub = &localllm.Hub{BaseURL: rig.hub.URL}
+				m.Program = func(in localllm.Installed) (string, []string) {
+					mu.Lock()
+					started = append(started, in.Tag)
+					mu.Unlock()
+					return os.Args[0], llamatest.Args(rig.standin...)
+				}
+			}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	c := open(bundleOf("b10298-2.0.0"))
+	a := &app{t: t, c: c}
+	a.waitFor("the bundled build", func() bool { return localCall(a, "local.get", nil).Runtime.Tag == "b10298-2.0.0" })
+	localCall(a, "local.settings.set", map[string]any{"port": freePort(t)})
+	localCall(a, "local.model.download", map[string]any{"repo": "acme/tiny-GGUF", "variant": "Q8_0"})
+	a.waitFor("the download", func() bool {
+		v := localCall(a, "local.get", nil)
+		return len(v.Downloads) == 1 && v.Downloads[0].State != "running"
+	})
+	if v := localCall(a, "local.server.start", map[string]any{"modelId": "acme/tiny-GGUF:Q8_0"}); v.Server.State != "running" {
+		t.Fatalf("%+v", v.Server)
+	}
+	c.Close()
+
+	mu.Lock()
+	started = nil
+	mu.Unlock()
+	c2 := open(bundleOf("b10350-2.1.0")) // the app updated, with a newer bundled build
+	t.Cleanup(c2.Close)
+	a2 := &app{t: t, c: c2}
+	var v core.LocalView
+	a2.waitFor("the server to start by itself", func() bool {
+		v = localCall(a2, "local.get", nil)
+		return v.Server.State == "running"
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if v.Runtime.Tag != "b10350-2.1.0" || len(started) == 0 || started[0] != "b10350-2.1.0" {
+		t.Fatalf("installed %s; the server started on %v", v.Runtime.Tag, started)
 	}
 }

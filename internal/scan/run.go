@@ -136,6 +136,9 @@ func (r *Run) Snapshot() Report {
 	return r.rep.copy()
 }
 
+// Clone is a copy of the report that shares nothing it can change (its findings and engines) with it.
+func (rep Report) Clone() Report { return rep.copy() }
+
 func (rep Report) copy() Report {
 	out := rep
 	out.Engines = append([]EngineResult(nil), rep.Engines...)

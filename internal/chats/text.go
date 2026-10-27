@@ -94,6 +94,13 @@ func SuggestRule(tool string, input json.RawMessage) string {
 
 // ToolSummary is a one-line description of a tool call for the chat ("Bash: npm test", "Read: src/app.go").
 func ToolSummary(name string, args json.RawMessage) string {
+	return RedactedToolSummary(name, args, nil)
+}
+
+// RedactedToolSummary is ToolSummary with redact (when set) run over the detail before it is shortened: a secret cut in two by
+// the shortening is no longer whole, so the scanner, run after, would not find it and its first part would be kept (audit
+// 2026-10-27).
+func RedactedToolSummary(name string, args json.RawMessage, redact func(string) string) string {
 	var m map[string]any
 	_ = json.Unmarshal(args, &m)
 	str := func(k string) string { s, _ := m[k].(string); return s }
@@ -125,7 +132,11 @@ func ToolSummary(name string, args json.RawMessage) string {
 			detail = string(b)
 		}
 	}
-	detail = clip(oneLine(detail), 160)
+	detail = oneLine(detail)
+	if redact != nil {
+		detail = redact(detail)
+	}
+	detail = clip(detail, 160)
 	if detail == "" {
 		return name
 	}

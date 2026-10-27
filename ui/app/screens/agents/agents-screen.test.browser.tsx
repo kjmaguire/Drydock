@@ -3,9 +3,10 @@ import type { Handle } from 'remix/component';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport, Project } from '../../api/types.ts';
+import type { AdapterInfo, Agent, Connection, ConnectionReport, Project } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, renderPlain, testServices, waitFor } from '../../test/render.tsx';
 import { setTerminalLoader, type TerminalFactory } from '../dock/widgets.ts';
+import { adapterInfo } from '../project/wizard-fixtures.ts';
 import { AgentsScreen, ReportView } from './agents-screen.tsx';
 
 interface TestTerminal {
@@ -78,14 +79,28 @@ const report = (over: Partial<ConnectionReport> = {}): ConnectionReport => ({
 
 const agent = (id: string, over: Partial<Agent> = {}): Agent => ({ id, projectId: 'p1', name: id, adapter: 'claude', role: 'builder', model: 'sonnet', effort: '', providerId: '', permissionMode: '', status: 'idle', ...over });
 
+/** TEST DOUBLE for one adapter of adapter.list: the wizard's fixture with the run modes the CLI declares. */
+const adapterWith = (id: string, runModes: string[]): AdapterInfo => {
+  const info = adapterInfo(id);
+  return { ...info, capabilities: { ...info.capabilities, runModes } };
+};
+
+/** The names under Used by, in order. */
+const usedNames = (el: Element) => Array.from(el.querySelectorAll('[data-testid="used-by-agent"] a')).map((a) => a.textContent);
+
 function show(client: Partial<Client>, props: { initial?: string; navigations?: string[] } = {}) {
-  // the MCP gateway's state is a TEST DOUBLE too: Claude verified, nothing else reported
-  const gateway: Partial<Client> = {
+  // the MCP gateway's state, the adapters and the projects' run modes are TEST DOUBLEs too: Claude verified and nothing else
+  // reported; Claude Code declaring that it runs on Windows and in WSL, so "Used by" goes by the declared run modes the way it
+  // does on a real core; every project on Windows
+  const defaults: Partial<Client> = {
     mcpStatus: async () => ({ running: true, address: '127.0.0.1:1', adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }),
+    adapterList: async () => [adapterWith('claude', ['native', 'wsl'])],
+    projectRunModes: async () => ({}),
   };
   const nav = props.navigations ?? [];
-  const r = mount(<AgentsScreen initial={props.initial} onNavigate={(h) => void nav.push(h)} />, testServices({ ...gateway, ...client }));
-  return r;
+  const s = testServices({ ...defaults, ...client });
+  const r = mount(<AgentsScreen initial={props.initial} onNavigate={(h) => void nav.push(h)} />, s);
+  return Object.assign(r, { s });
 }
 type R = ReturnType<typeof show>;
 
@@ -195,15 +210,19 @@ describe('Agents page', () => {
       ctl.set = (k) => ((initial = k), void handle.update());
       return () => <AgentsScreen key="agents" initial={initial} onNavigate={() => {}} />;
     }
-    const s = testServices({ connectionList: async () => (reads++, list), mcpStatus: async () => ({ running: true, address: '', adapters: [] }) });
+    const s = testServices({ connectionList: async () => (reads++, list), mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] });
     const r = mount(<Host />, s);
     await waitFor(() => expect(r.$('[data-testid="agent-detail"]')?.getAttribute('data-key')).toBe('gemini'), r);
     await r.act(() => ctl.set!('claude'));
     await waitFor(() => expect(r.$('[data-testid="agent-detail"]')?.getAttribute('data-key')).toBe('claude'), r);
     expect(reads).toBe(1);
+    // the page hands the layout the key its address names, so a narrow window shows that detail in place of the list
+    expect(r.$('[data-testid="agents"]')!.getAttribute('data-open')).toBe('true');
     // an address for an install that is not listed falls back to the first that needs the person, else the first
-    const r2 = mount(<AgentsScreen initial="nope" onNavigate={() => {}} />, testServices({ connectionList: async () => list, mcpStatus: async () => ({ running: true, address: '', adapters: [] }) }));
+    const r2 = mount(<AgentsScreen initial="nope" onNavigate={() => {}} />, testServices({ connectionList: async () => list, mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] }));
     await waitFor(() => expect(r2.$('[data-testid="agent-detail"]')?.getAttribute('data-key')).toBe('claude'), r2);
+    // the row the address named is gone: the default is drawn, and a narrow window keeps the list rather than open it
+    expect(r2.$('[data-testid="agents"]')!.getAttribute('data-open')).toBe('false');
   });
 
   it('the detail: the header with its state and one line, the actions, one notice, and three tabs', async () => {
@@ -229,8 +248,8 @@ describe('Agents page', () => {
     const head = d.querySelector('[data-testid="agent-header"]')!;
     expect(head.querySelector('h2')!.textContent).toBe('Claude Code');
     expect(head.querySelector('[data-brand="claude"]')).not.toBeNull();
-    expect(head.querySelector('[data-testid="detail-status"]')!.textContent).toBe('Version not tested yet');
-    expect(head.querySelector('[data-testid="detail-status"]')!.getAttribute('data-tone')).toBe('warn');
+    // the notice below says what is in the way, so the header carries no pill saying it again
+    expect(head.querySelector('[data-testid="detail-status"]')).toBeNull();
     expect(head.textContent).toContain('On Windows · signed in · checked just now');
     expect(byText(head, 'button', 'Test connection')).not.toBeNull();
     expect(byText(head, 'button', 'Sign in again')).not.toBeNull();
@@ -239,7 +258,10 @@ describe('Agents page', () => {
     const notices = d.querySelectorAll('[data-testid="agent-notice"]');
     expect(notices.length).toBe(1);
     expect(notices[0]!.textContent).toContain('Drydock has not tested version 2.1.309 yet.');
-    expect(notices[0]!.querySelector('button')!.textContent).toBe('Test connection');
+    expect(notices[0]!.getAttribute('data-tone')).toBe('warn');
+    // its fix is the header's Test connection: one button, not two
+    expect(notices[0]!.querySelector('button')).toBeNull();
+    expect(d.querySelectorAll('[data-testid="test-connection"]').length).toBe(1);
     // Overview: the facts; the other problems and warnings once, not the one the notice says
     expect(fact(d, 'Version')).toBe('2.1.309');
     expect(fact(d, 'Program')).toBe('C:\\Users\\you\\.local\\bin\\claude.exe');
@@ -515,8 +537,10 @@ describe('Agents page', () => {
     expect(wsl.textContent).toContain("Its own sign-in (claude auth login) runs inside the distro, in a terminal here");
     expect(wsl.textContent).toContain('never reads or copies');
     expect(wsl.querySelector('[data-testid="sign-in-terminal"]')).toBeNull();
-    // the notice's Sign in starts the same sign-in as the header's
-    await r.act(() => (wsl.querySelector('[data-testid="agent-notice-fix"]') as HTMLButtonElement).click());
+    // the notice says why and leaves the fix to the header's Sign in (one button, not two)
+    expect(wsl.querySelector('[data-testid="agent-notice"]')!.textContent).toContain('Not signed in');
+    expect(wsl.querySelector('[data-testid="agent-notice-fix"]')).toBeNull();
+    await r.act(() => btn.click());
     await waitFor(() => expect(calls).toEqual([['claude', 'Ubuntu-26.04']]), r);
     // the terminal opens in the detail itself: the dock is only there with a project, the Agents page is not
     const box = await waitFor(() => {
@@ -693,7 +717,7 @@ describe('Agents page', () => {
       connectionList: async () => [ready({ key: 'claude' }), ready({ key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', wsl: { distro: 'Ubuntu', wsl2: true, interop: true, setsid: true, default: true } })],
       projectList: async () => projects,
       agentListAll: async () => [agent('a1', { name: 'Ada' }), agent('a2', { name: 'Linus', role: 'reviewer', model: 'opus' }), agent('a3', { name: 'Mira', projectId: 'p2' }), agent('a4', { name: 'Cody', adapter: 'codex' })],
-      projectRunMode: async (id: string) => (id === 'p2' ? { runMode: 'wsl', wslDistro: 'Ubuntu' } : { runMode: 'native' }),
+      projectRunModes: async () => ({ p1: { runMode: 'native' }, p2: { runMode: 'wsl', wslDistro: 'Ubuntu' } }),
     });
     r.services.workspace.start();
     const c = await detail(r, 'claude');
@@ -725,6 +749,112 @@ describe('Agents page', () => {
     expect(r.services.workspace.projectId).toBe('p2');
   });
 
+  it('Used by goes by the run modes the adapter declares: a CLI that runs only on Windows keeps a WSL project\'s agent on the Windows install, even when a WSL install of it was found', async () => {
+    const projects = [
+      { id: 'p1', name: 'gocalc' },
+      { id: 'p2', name: 'website' },
+    ] as Project[];
+    const r = show({
+      connectionList: async () => [ready({ key: 'claude' }), ready({ key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', wsl: { distro: 'Ubuntu', wsl2: true, interop: true, setsid: true, default: true } })],
+      adapterList: async () => [adapterWith('claude', ['native'])],
+      projectList: async () => projects,
+      agentListAll: async () => [agent('a3', { name: 'Mira', projectId: 'p2' })],
+      projectRunModes: async () => ({ p1: { runMode: 'native' }, p2: { runMode: 'wsl', wslDistro: 'Ubuntu' } }),
+    });
+    r.services.workspace.start();
+    const c = await detail(r, 'claude');
+    // the core runs Mira on Windows (effectiveRunMode: claude does not declare wsl), so the page lists her there
+    await waitFor(() => expect(usedNames(c)).toEqual(['Mira']), r);
+    expect(r.$('[role="alert"]')).toBeNull();
+    await r.act(() => row(r, 'claude@wsl:Ubuntu').click());
+    const w = await detail(r, 'claude@wsl:Ubuntu');
+    await waitFor(() => expect(w.querySelector('[data-testid="used-by"]')!.textContent).toContain('No crew agent runs on this install yet.'), r);
+    expect(usedNames(w)).toEqual([]);
+  });
+
+  it('when the adapters cannot be read, the detail says so and Used by goes by the installs found', async () => {
+    const projects = [
+      { id: 'p1', name: 'gocalc' },
+      { id: 'p2', name: 'website' },
+    ] as Project[];
+    const r = show({
+      connectionList: async () => [ready({ key: 'claude' }), ready({ key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', wsl: { distro: 'Ubuntu', wsl2: true, interop: true, setsid: true, default: true } })],
+      adapterList: async () => {
+        throw new Error('the core is restarting');
+      },
+      projectList: async () => projects,
+      agentListAll: async () => [agent('a3', { name: 'Mira', projectId: 'p2' })],
+      projectRunModes: async () => ({ p1: { runMode: 'native' }, p2: { runMode: 'wsl', wslDistro: 'Ubuntu' } }),
+    });
+    r.services.workspace.start();
+    await detail(r, 'claude');
+    // the note names what could not be read, in the core's words, so the person knows Used by is going by what was found
+    const note = await waitFor(() => {
+      const x = Array.from(r.$$('[role="alert"]')).find((el) => el.textContent?.includes("Could not read the adapters' run modes"));
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(note.textContent).toBe("Could not read the adapters' run modes: the core is restarting");
+    // a WSL install of claude was found, so a project in WSL runs Mira there
+    await r.act(() => row(r, 'claude@wsl:Ubuntu').click());
+    const w = await detail(r, 'claude@wsl:Ubuntu');
+    await waitFor(() => expect(usedNames(w)).toEqual(['Mira']), r);
+    await r.act(() => row(r, 'claude').click());
+    const native = await detail(r, 'claude');
+    await waitFor(() => expect(native.querySelector('[data-testid="used-by"]')!.textContent).toContain('No crew agent runs on this install yet.'), r);
+    expect(usedNames(native)).toEqual([]);
+  });
+
+  it("when the projects' run modes cannot be read, the detail says so and an agent that follows its project is listed under the Windows install", async () => {
+    const projects = [
+      { id: 'p1', name: 'gocalc' },
+      { id: 'p2', name: 'website' },
+    ] as Project[];
+    const r = show({
+      connectionList: async () => [ready({ key: 'claude' }), ready({ key: 'claude@wsl:Ubuntu', runMode: 'wsl', distro: 'Ubuntu', wsl: { distro: 'Ubuntu', wsl2: true, interop: true, setsid: true, default: true } })],
+      projectList: async () => projects,
+      agentListAll: async () => [agent('a3', { name: 'Mira', projectId: 'p2' })],
+      projectRunModes: async () => {
+        throw new Error('the database is being restored');
+      },
+    });
+    r.services.workspace.start();
+    const c = await detail(r, 'claude');
+    const note = await waitFor(() => {
+      const x = Array.from(r.$$('[role="alert"]')).find((el) => el.textContent?.includes("Could not read where the projects' agents run"));
+      if (!x) throw new Error('not yet');
+      return x as HTMLElement;
+    }, r);
+    expect(note.textContent).toBe("Could not read where the projects' agents run: the database is being restored");
+    // without the projects' defaults, Mira (who follows her project) is drawn where an agent runs unless told otherwise
+    await waitFor(() => expect(usedNames(c)).toEqual(['Mira']), r);
+  });
+
+  it("Used by asks the core for every project's run mode in one request, never one per project, and asks again when a project changes", async () => {
+    const projects = [
+      { id: 'p1', name: 'gocalc' },
+      { id: 'p2', name: 'website' },
+    ] as Project[];
+    const perProject: string[] = [];
+    let all = 0;
+    const r = show({
+      connectionList: async () => [ready({ key: 'claude' })],
+      projectList: async () => projects,
+      agentListAll: async () => [agent('a1', { name: 'Ada' }), agent('a3', { name: 'Mira', projectId: 'p2' })],
+      projectRunModes: async () => (all++, { p1: { runMode: 'native' }, p2: { runMode: 'native' } }),
+      projectRunMode: async (id: string) => (perProject.push(id), { runMode: 'native' }),
+    });
+    r.services.workspace.start();
+    const c = await detail(r, 'claude');
+    await waitFor(() => expect(usedNames(c)).toEqual(['Ada', 'Mira']), r);
+    expect(all).toBe(1);
+    expect(perProject).toEqual([]);
+    // a project event (its run mode may have changed) reads them all again, still in one request
+    r.s.emit({ type: 'project.updated', data: {} as never });
+    await waitFor(() => expect(all).toBe(2), r);
+    expect(perProject).toEqual([]);
+  });
+
   it('Used by says so when no crew agent runs on the install', async () => {
     const r = show({ connectionList: async () => [ready({ key: 'claude' })], agentListAll: async () => [] });
     const c = await detail(r);
@@ -734,7 +864,8 @@ describe('Agents page', () => {
   it('a CLI that is not installed: its notice sends to Install and update, and there is nothing to test or sign in to', async () => {
     const r = show({ connectionList: async () => [ready({ adapter: 'goose', key: 'goose', installed: false, status: 'not_installed', version: undefined, installHint: 'winget install Block.Goose' })] });
     const c = await detail(r);
-    expect(c.querySelector('[data-testid="detail-status"]')!.textContent).toBe('Not installed');
+    // the notice says it is not installed; the header does not say it again
+    expect(c.querySelector('[data-testid="detail-status"]')).toBeNull();
     expect(c.querySelector('[data-testid="test-connection"]')).toBeNull();
     expect(c.querySelector('[data-testid="sign-in"]')).toBeNull();
     expect(c.querySelector('[data-testid="sign-in-check"]')).not.toBeNull();

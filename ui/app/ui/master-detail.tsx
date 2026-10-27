@@ -6,6 +6,7 @@
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import { ArrowLeft, Search } from 'lucide';
 import { BrandLogo, brandKey } from './brand-logo.tsx';
+import { typing } from '../lib/keys.ts';
 import { Icon, type IconNode } from './icon.tsx';
 import { t, tone as tones, type Tone } from './tokens.ts';
 
@@ -235,7 +236,12 @@ export function visibleGroups(groups: ListGroup[], q: string): ListGroup[] {
 /**
  * The layout. `selected` is the chosen row's key and `onSelect` chooses one (the page keeps the choice, so a link can open a
  * row); `detail` is the chosen row's detail. `search` turns on the filter box (`/` focuses it, the arrow keys then move
- * through the rows); `filters` are the segmented choices above the list (All, On, Needs you), owned by the page.
+ * through the rows); `filters` are the segmented choices above the list (All, On, Needs you), owned by the page. `address`
+ * is the key the page's address names, when it names one: a narrow window shows that row's detail as soon as the page has
+ * chosen it, whether the page opened at the address or a link changed it while the page stayed mounted, and the plain address
+ * (no key) shows the list again. Only the addressed row opens that way: a page opens a row of its own accord (an "Add" row,
+ * the row left after a removal) by putting it in the address, so a row the page drew in place of a key that is gone does not
+ * open, and the person sees the list.
  */
 export function MasterDetail(
   handle: Handle<{
@@ -250,14 +256,24 @@ export function MasterDetail(
     onFilter?: (key: string) => void;
     /** Under the list: anything the page adds (a link to the Library). */
     listFooter?: RemixNode;
+    /**
+     * The key the address names (/integrations/linear) when it names one: a narrow window shows that row's detail once the page
+     * has chosen it, also when the address changes while the page stays mounted; the plain address shows the list again. A key
+     * the page replaced with its default row (the addressed item is gone) opens nothing.
+     */
+    address?: string;
     testId?: string;
   }>,
 ) {
   let query = '';
   // narrow windows: whether the detail is showing in place of the list (a choice opens it, Back closes it)
   let open = false;
-  // the choice the layout last drew: a page that changes it itself (an "Add" row, the address) opens the detail too
-  let seen = handle.props.selected;
+  // the address the layout last saw, and whether its row's detail is still to be shown: a new address waits for the page to
+  // choose its row (a page may choose after loading), and only that row opens. A page opens a row of its own accord (an "Add"
+  // row, the row left after a removal) by putting it in the address, so a default it draws in place of a row that is gone (the
+  // key of a bookmark, an install that went away on a re-read) opens nothing: the person sees the list.
+  let lastAddress: string | undefined;
+  let addressPending = false;
   let searchEl: HTMLInputElement | null = null;
   let listEl: HTMLElement | null = null;
 
@@ -271,7 +287,7 @@ export function MasterDetail(
   const keys = (): string[] => visibleGroups(handle.props.groups, query).flatMap((g) => g.items.filter((it) => !it.href).map((it) => it.key));
 
   const onListKey = (e: KeyboardEvent) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (e.defaultPrevented || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
     const ks = keys();
     if (ks.length === 0) return;
     e.preventDefault();
@@ -281,18 +297,22 @@ export function MasterDetail(
   };
 
   const onRootKey = (e: KeyboardEvent) => {
-    if (e.key !== '/' || !searchEl) return;
-    const target = e.target as HTMLElement | null;
-    if (target && (target.closest('input, textarea, select, [contenteditable="true"]') || target.isContentEditable)) return;
+    if (e.key !== '/' || !searchEl || typing(e)) return;
     e.preventDefault();
     searchEl.focus();
   };
 
   return () => {
-    const { label, groups, selected, detail, search, filters, filter, onFilter, listFooter, testId } = handle.props;
-    if (selected !== seen) {
-      if (seen) open = true;
-      seen = selected;
+    const { label, groups, selected, detail, search, filters, filter, onFilter, listFooter, address, testId } = handle.props;
+    if (address !== lastAddress) {
+      lastAddress = address;
+      addressPending = !!address;
+      // the plain address (the page's own link, no key) shows the list again
+      if (!address) open = false;
+    }
+    if (addressPending && selected) {
+      addressPending = false;
+      if (selected === address) open = true;
     }
     const shown = visibleGroups(groups, query);
     return (
@@ -313,7 +333,8 @@ export function MasterDetail(
                   on('keydown', (e) => {
                     if (e.key === 'ArrowDown') {
                       const first = keys()[0];
-                      if (first !== undefined) (e.preventDefault(), choose(first, true));
+                      // the first row, and only it: the list's own arrow handling must not move on from there
+                      if (first !== undefined) (e.preventDefault(), e.stopPropagation(), choose(first, true));
                     } else if (e.key === 'Escape' && query) {
                       e.stopPropagation();
                       query = '';
@@ -448,7 +469,8 @@ const groupBar = css({
   '& h3': { margin: '0', fontSize: t.textSm, fontWeight: '600', color: t.textMuted },
   '& > :last-child:not(h3)': { marginLeft: 'auto' },
 });
-const groupCard = css({ border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'hidden', minWidth: '0' });
+// a query container: a group in half a page (the Engine beside Memory on Models) is narrow even in a wide window
+const groupCard = css({ border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'hidden', minWidth: '0', containerType: 'inline-size' });
 
 /** A titled group of settings rows on one surface (the rows draw the lines between them). */
 export function SettingsGroup(handle: Handle<{ title?: RemixNode; actions?: RemixNode; children?: RemixNode; testId?: string; label?: string; bare?: boolean }>) {
@@ -481,6 +503,9 @@ const settingCss = css({
   '& > [data-part="value"]': { minWidth: '0', overflowWrap: 'anywhere' },
   '& > [data-part="control"]': { display: 'flex', alignItems: 'center', gap: t.s2, justifySelf: 'end' },
   '@media (max-width: 719px)': { gridTemplateColumns: 'minmax(0, 1fr) auto', '& > [data-part="value"]': { gridColumn: '1 / -1', gridRow: '2' } },
+  // the same in a narrow group: the value went under its label only when the window was narrow, so a group in half a page squeezed
+  // its sentence into a column of two words a line beside a wide label (the UI audit of 2026-10-26)
+  '@container (max-width: 520px)': { gridTemplateColumns: 'minmax(0, 1fr) auto', '& > [data-part="value"]': { gridColumn: '1 / -1', gridRow: '2' } },
 });
 
 /** One setting: what it is, its value, and the control that changes it. */

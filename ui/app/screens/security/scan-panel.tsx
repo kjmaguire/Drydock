@@ -8,11 +8,11 @@
 // read at a time, the next planned when the last has answered and later when the core is slow (lib/poll.ts).
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
-import { Folder } from 'lucide';
+import { Folder, ShieldCheck } from 'lucide';
 import type { DismissReason, EngineID, EngineResult, ScanFinding, ScanReport, ScanSummary, SecurityTools } from '../../api/securityTypes.ts';
 import type { DrydockEvent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
-import { ownsKeys } from '../../lib/keys.ts';
+import { typing } from '../../lib/keys.ts';
 import { pollWhile } from '../../lib/poll.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
@@ -73,6 +73,7 @@ const scanCol = css({
   [SPLIT_QUERY]: { height: '100%', overflowY: 'auto' },
 });
 const barCss = css({ '& h1': { flex: 'none' } });
+const titleIcon = css({ display: 'inline-flex', color: t.textMuted });
 const kbdOn = css({ background: 'transparent', borderColor: 'currentColor', color: 'inherit', opacity: '0.7' });
 const padCss = css({ padding: `0 ${t.s6}`, display: 'grid', gap: t.s2 });
 const overallCss = css({ padding: `${t.s3} ${t.s6} 0` });
@@ -245,13 +246,6 @@ export function TargetBox(handle: Handle<{ note?: string; end?: RemixNode; child
 /** The header's middle: the page's target controls, taking the room between the title and Scan again. */
 const targetSlot = css({ flex: '1 1 280px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2, minWidth: '0' });
 
-/** True while the person types or a widget handles its own keys: the page's letters and arrows are not theirs then. */
-function typing(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return true;
-  const el = e.target as HTMLElement | null;
-  if (!el || typeof el.closest !== 'function') return false;
-  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.closest('dialog, [role="menu"], [role="listbox"], [role="combobox"]') !== null;
-}
 
 /** An engine's own bar while it runs: files while the secrets engine runs, moving stripes for an engine that cannot count. */
 function EngineBar(handle: Handle<{ e: EngineResult }>) {
@@ -568,7 +562,13 @@ export function ScanPanel(
         <div mix={splitCss}>
           <section mix={scanCol} aria-label="Scan">
             <header mix={[headerCss, barCss]}>
-              <h1 id={titleId}>{title}</h1>
+              {/* the shield every page title has, as Page draws it (the UI audit of 2026-10-26: this header had none) */}
+              <h1 id={titleId}>
+                <span mix={titleIcon}>
+                  <Icon icon={ShieldCheck} size={16} />
+                </span>
+                {title}
+              </h1>
               <div mix={targetSlot}>{target}</div>
               {running ? (
                 <Button data-testid="cancel-button" disabled={busy} mix={on('click', () => void cancel())}>
