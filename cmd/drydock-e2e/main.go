@@ -94,6 +94,20 @@ const (
 	implDoc      = "package gocalc\n\nfunc Add(a, b int) int { return a + b }\n\n// Subtract returns a minus b.\nfunc Subtract(a, b int) int { return a - b }\n"
 )
 
+// perfAnswer is a Markdown answer of n sections, each a heading, a paragraph, a list, a Go code block and a table: about 75
+// words a section, the shapes a coding agent answers in.
+func perfAnswer(n int) string {
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "## Step %d: what changes\n\nThe function `Subtract%d` returns the wrong sign when **both** inputs are negative, so the "+
+			"caller in `calc.go` sees a value that is off by twice the second argument. The fix keeps the signature and changes one line.\n\n", i, i)
+		fmt.Fprintf(&b, "- read `calc.go` and `calc_test.go`\n- change the return to `a - b`\n- run `go test ./...` and check case %d\n\n", i)
+		fmt.Fprintf(&b, "```go\nfunc Subtract%d(a, b int) int {\n\t// keep the sign of each input\n\treturn a - b\n}\n```\n\n", i)
+		fmt.Fprintf(&b, "| case | a | b | want |\n| --- | --- | --- | --- |\n| %d | 5 | 3 | 2 |\n| %d | -5 | -3 | -2 |\n\n", i, i)
+	}
+	return b.String()
+}
+
 func main() {
 	// TEST DOUBLES of the security scan's external tools (internal/scan/scantest): the core starts this binary again as the
 	// stand-in osv-scanner and opengrep, which print canned, documented output shapes
@@ -153,6 +167,13 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	}
 	script, err := json.Marshal(fakeagent.Script{
 		Rules: []fakeagent.Rule{
+			// Chat performance (ui/e2e/chat-perf.spec.ts): a long Markdown answer streamed one word every 2 ms (about 500 words a
+			// second, a fast model), and a turn that makes 300 tool calls and answers with code, to build a long history quickly
+			{Match: "drydock-e2e perf stream", Steps: []fakeagent.Step{{Say: perfAnswer(40), EveryMS: 2}}},
+			{Match: "drydock-e2e perf history", Steps: []fakeagent.Step{
+				{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc.go"}`), Result: "package gocalc\n\nfunc Add(a, b int) int { return a + b }", Repeat: 300, Vary: true},
+				{Say: perfAnswer(3)},
+			}},
 			// Chats (ui/e2e/chats.spec.ts): the scripted agent answers a chat message that carries the marker text, refuses a
 			// Bash call in the default permission mode, and runs it after the human allowed the suggested rule and pressed Retry
 			// (the retry text comes from the UI). It is a TEST DOUBLE, never presented as Claude.

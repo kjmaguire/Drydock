@@ -13,8 +13,10 @@ import (
 	"github.com/kjmaguire/drydock/internal/tasks"
 )
 
-// Agent output older than the retention period is deleted; newer output and every other event stay.
-func TestRetentionDeletesOnlyOldAgentOutput(t *testing.T) {
+// Streamed output older than the retention period is deleted (an agent's agent.output, a chat's chat.delta and
+// chat.thinking: the chat keeps the answer and the reasoning on its stored messages); newer output and every other event,
+// a chat's stored messages and turn ends included, stay.
+func TestRetentionDeletesOnlyOldStreamedOutput(t *testing.T) {
 	ctx := context.Background()
 	c, err := Open(ctx, Config{DataDir: t.TempDir(), User: "kyle"})
 	if err != nil {
@@ -26,14 +28,15 @@ func TestRetentionDeletesOnlyOldAgentOutput(t *testing.T) {
 	for _, row := range []struct {
 		ts  int64
 		typ string
-	}{{old, "agent.output"}, {old, "agent.output"}, {old, "task.completed"}, {recent, "agent.output"}} {
+	}{{old, "agent.output"}, {old, "agent.output"}, {old, "task.completed"}, {recent, "agent.output"},
+		{old, "chat.delta"}, {old, "chat.thinking"}, {old, "chat.message"}, {old, "chat.turn"}, {recent, "chat.delta"}} {
 		if _, err := c.DB.Writer().ExecContext(ctx, `INSERT INTO events(ts,type,project_id,run_id,task_id,agent_id,data) VALUES(?,?,?,?,?,?,'{}')`, row.ts, row.typ, "p", "", "t", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	n, err := c.pruneAgentOutput(ctx, now)
-	if err != nil || n != 2 {
-		t.Fatalf("deleted %d (%v), want the 2 old agent outputs", n, err)
+	if err != nil || n != 4 {
+		t.Fatalf("deleted %d (%v), want the 2 old agent outputs and the old chat delta and thinking", n, err)
 	}
 	count := func(q string) int {
 		var k int
@@ -42,6 +45,9 @@ func TestRetentionDeletesOnlyOldAgentOutput(t *testing.T) {
 	}
 	if count(`SELECT COUNT(*) FROM events WHERE type='task.completed' AND task_id='t'`) != 1 || count(`SELECT COUNT(*) FROM events WHERE type='agent.output' AND task_id='t'`) != 1 {
 		t.Fatal("retention deleted more than old agent output")
+	}
+	if count(`SELECT COUNT(*) FROM events WHERE type IN ('chat.message','chat.turn')`) != 2 || count(`SELECT COUNT(*) FROM events WHERE type='chat.delta'`) != 1 || count(`SELECT COUNT(*) FROM events WHERE type='chat.thinking'`) != 0 {
+		t.Fatal("retention did not keep exactly the chat's stored messages, its turn end and its recent delta")
 	}
 }
 

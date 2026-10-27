@@ -1,6 +1,7 @@
 // One chat as a small live model: chat.get for the chat and its latest messages, then the chat.* events. chat.message adds
 // a stored message (merged by id, in seq order), chat.delta appends to the in-progress assistant text, chat.turn ends the
-// streaming state, chat.deleted stops the feed. Older messages are read in pages (chat.messages beforeSeq). After a reconnect
+// streaming state, chat.deleted stops the feed. Text streaming into an answer already shown is a `stream` event, not a
+// `change`: only the streamed answer redraws for it, not the whole conversation (the review of 2026-10-27). Older messages are read in pages (chat.messages beforeSeq). After a reconnect
 // everything is read again. Nothing here is authoritative: what is shown is what the core returned.
 //
 // The chat itself is only ever a snapshot from the core (chat.get, chat.updated, an action's reply), and of two snapshots the
@@ -28,7 +29,7 @@ export const OLDER_PAGE = 100;
 
 type FeedClient = Pick<ChatClient, 'chatGet' | 'chatMessages'>;
 
-export class ChatFeed extends TypedEventTarget<{ change: Event }> {
+export class ChatFeed extends TypedEventTarget<{ change: Event; stream: Event }> {
   chat: Chat | undefined;
   messages: ChatMessage[] = [];
   hasMore = false;
@@ -208,6 +209,8 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         const cur = this.streaming;
         const same = cur && (cur.turnId === turnId || !cur.turnId);
         this.streaming = { turnId, text: same ? cur.text : '', thinking: (same ? (cur.thinking ?? '') : '') + String(d.text ?? '') };
+        // more reasoning in a fold already shown: only the streamed answer redraws
+        if (same && cur.thinking) return this.#emitStream();
         break;
       }
       case 'chat.delta': {
@@ -217,6 +220,8 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
         const same = cur && (cur.turnId === turnId || !cur.turnId);
         const thinking = same ? cur.thinking : undefined;
         this.streaming = { turnId, text: (same ? cur.text : '') + String(d.text ?? ''), ...(thinking ? { thinking } : {}) };
+        // more text in an answer already shown: only the streamed answer redraws
+        if (same && cur.text) return this.#emitStream();
         break;
       }
       case 'chat.message': {
@@ -284,5 +289,9 @@ export class ChatFeed extends TypedEventTarget<{ change: Event }> {
 
   #emit(): void {
     this.dispatchEvent(new Event('change'));
+  }
+
+  #emitStream(): void {
+    this.dispatchEvent(new Event('stream'));
   }
 }

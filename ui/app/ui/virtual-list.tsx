@@ -162,6 +162,16 @@ export class VirtualList {
     if (this.stick !== was || this.#stale()) this.#onChange();
   }
 
+  /**
+   * What is below the list grew (an answer streaming in): stay at the bottom while the reader is there. Nothing is measured
+   * and nothing re-renders, so a streamed answer costs only its own render.
+   */
+  follow(): void {
+    const sc = this.#sc;
+    if (this.#dead || !sc || !this.stick) return;
+    if (Math.abs(sc.scrollTop - (sc.scrollHeight - sc.clientHeight)) >= 1) this.#scrollTo(sc.scrollHeight);
+  }
+
   /** Jump to the newest row and stay there. */
   toBottom(): void {
     this.stick = true;

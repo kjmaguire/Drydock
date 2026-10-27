@@ -588,20 +588,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                   </p>
                 </Empty>
               ) : null}
-              {streaming ? (
-                <div mix={streamCss} aria-live="off" data-testid="chat-streaming" aria-label={`${adapterLabel(chat.adapter)} is answering`}>
-                  {streaming.thinking ? <ThinkingFold text={streaming.thinking} live /> : null}
-                  {streaming.text ? (
-                    <Markdown source={streaming.text} />
-                  ) : (
-                    <span class="typing" role="status" aria-label="Working">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  )}
-                </div>
-              ) : null}
+              {streaming ? <ChatStream feed={feed} who={adapterLabel(chat.adapter)} onGrow={() => list.follow()} /> : null}
               {turnNote ? <Notice tone="info">{turnNote}</Notice> : null}
             </div>
           </div>
@@ -683,6 +670,48 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           }}
         />
       </section>
+    );
+  };
+}
+
+/**
+ * The answer streaming in. It redraws itself on the feed's `stream` events, at most once a frame, so text arriving costs this
+ * answer's render and nothing else: the conversation above it, the header and the composer are not drawn again (the review of
+ * 2026-10-27: with a long history open, every delta redrew and measured every row in the window).
+ */
+function ChatStream(handle: Handle<{ feed: ChatFeed; who: string; onGrow: () => void }>) {
+  let frame = 0;
+  const redraw = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      void handle.update();
+    });
+  };
+  const feed = handle.props.feed;
+  feed.addEventListener('stream', redraw);
+  handle.signal.addEventListener('abort', () => {
+    feed.removeEventListener('stream', redraw);
+    if (frame) cancelAnimationFrame(frame);
+  });
+  return () => {
+    const streaming = handle.props.feed.streaming;
+    // the answer grew: the list stays at the bottom while the reader is there
+    handle.queueTask(() => handle.props.onGrow());
+    if (!streaming) return null;
+    return (
+      <div mix={streamCss} aria-live="off" data-testid="chat-streaming" aria-label={`${handle.props.who} is answering`}>
+        {streaming.thinking ? <ThinkingFold text={streaming.thinking} live /> : null}
+        {streaming.text ? (
+          <Markdown source={streaming.text} />
+        ) : (
+          <span class="typing" role="status" aria-label="Working">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
+      </div>
     );
   };
 }

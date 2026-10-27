@@ -14,9 +14,11 @@ import (
 	"github.com/kjmaguire/drydock/internal/safe"
 )
 
-// Retention (brief s18, docs/packaging.md). Events and usage are kept indefinitely, except agent.output: an agent's streamed
-// output, kept so the team lead can read what a worker did on a task while it works, deleted after agentOutputRetention (its
-// durable copy is the run's stream file). The raw output and checkpoints of a run that ended (completed, failed or cancelled)
+// Retention (brief s18, docs/packaging.md). Events and usage are kept indefinitely, except the streamed ones (streamedEvents):
+// agent.output, an agent's streamed output, kept so the team lead can read what a worker did on a task while it works, and a
+// chat's streamed answer and reasoning (chat.delta, chat.thinking), deleted after agentOutputRetention. Their durable copies are
+// the run's stream file and the chat's stored messages; before the review of 2026-10-27 the chat's were kept for ever, a
+// second copy of every answer in the event log. The raw output and checkpoints of a run that ended (completed, failed or cancelled)
 // are compacted after rawCompactAfter (every checkpoint but the run's latest is deleted; streams, logs and saved prompts are
 // gzip-compressed in place, and runfiles reads either form) and deleted after rawDeleteAfter (all of the run's checkpoints and
 // its folder under <data>/runs, except the files a task's evidence still names). The run's row, its node executions, events, usage and evidence rows stay. Compaction and
@@ -28,8 +30,12 @@ const (
 	retentionFirstPass   = 5 * time.Minute
 )
 
+// streamedEvents are the event types deleted after agentOutputRetention, as an SQL list.
+const streamedEvents = `'agent.output','chat.delta','chat.thinking'`
+
 // RetentionReport is what one retention pass did.
 type RetentionReport struct {
+	// AgentOutputDeleted counts the streamed events deleted (streamedEvents).
 	AgentOutputDeleted int64 `json:"agentOutputDeleted"`
 	// Suspended is true when the license is read-only: nothing was compacted or deleted.
 	Suspended          bool  `json:"suspended,omitempty"`
@@ -64,7 +70,7 @@ func init() {
 					c.logf("retention: %v", err)
 				}
 				if rep.AgentOutputDeleted > 0 {
-					c.logf("retention: deleted %d agent output events older than %s", rep.AgentOutputDeleted, agentOutputRetention)
+					c.logf("retention: deleted %d streamed output events older than %s", rep.AgentOutputDeleted, agentOutputRetention)
 				}
 				if rep.acted() {
 					c.logf("retention: compacted %d runs (%d checkpoints deleted, %d files %d -> %d bytes), deleted %d runs (%d bytes)",
@@ -108,13 +114,13 @@ func (c *Core) RunRetention(ctx context.Context, now time.Time) (RetentionReport
 	return rep, nil
 }
 
-// pruneAgentOutput deletes agent.output events older than agentOutputRetention before now, in batches so the single writer
-// connection is never held for long.
+// pruneAgentOutput deletes the streamed events (streamedEvents) older than agentOutputRetention before now, in batches so the
+// single writer connection is never held for long.
 func (c *Core) pruneAgentOutput(ctx context.Context, now time.Time) (int64, error) {
 	cutoff := now.Add(-agentOutputRetention).UnixMilli()
 	var total int64
 	for {
-		res, err := c.DB.Writer().ExecContext(ctx, `DELETE FROM events WHERE seq IN (SELECT seq FROM events WHERE type='agent.output' AND ts < ? LIMIT 5000)`, cutoff)
+		res, err := c.DB.Writer().ExecContext(ctx, `DELETE FROM events WHERE seq IN (SELECT seq FROM events WHERE type IN (`+streamedEvents+`) AND ts < ? LIMIT 5000)`, cutoff)
 		if err != nil {
 			return total, err
 		}

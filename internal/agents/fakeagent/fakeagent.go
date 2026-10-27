@@ -52,7 +52,10 @@ type Step struct {
 	Repeat  int             `json:"repeat,omitempty"` // repeat this step n times (0 or 1 = once)
 	Vary    bool            `json:"vary,omitempty"`   // add "n": <repeat index> to the tool input so every call differs
 	SleepMS int             `json:"sleepMs,omitempty"`
-	Block   bool            `json:"block,omitempty"` // wait for an interrupt (or stdin close)
+	// EveryMS, with Say, streams the text one word every this many milliseconds (a model answering at its pace) instead of
+	// all at once.
+	EveryMS int  `json:"everyMs,omitempty"`
+	Block   bool `json:"block,omitempty"` // wait for an interrupt (or stdin close)
 	// Fail ends the turn here the way Claude Code reports an API call that failed after the earlier steps (an answer, a tool
 	// call) were made: the CLI's API-error assistant message with this text, then the error result (see failTurn). The steps
 	// after it do not run. ModelErrors is the same failure before any step.
@@ -500,6 +503,14 @@ loop:
 			case st.Say != "":
 				lastText, lastStop = st.Say, "end_turn"
 				for _, w := range strings.SplitAfter(st.Say, " ") {
+					if st.EveryMS > 0 {
+						select {
+						case <-time.After(time.Duration(st.EveryMS) * time.Millisecond):
+						case <-a.interrupt:
+							interrupted = true
+							break loop
+						}
+					}
 					a.emit(map[string]any{"type": "stream_event", "session_id": a.session, "event": map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": w}}})
 				}
 				a.emit(map[string]any{"type": "assistant", "session_id": a.session, "message": map[string]any{"model": "fake-1", "role": "assistant",
