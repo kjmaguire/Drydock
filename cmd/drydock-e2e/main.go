@@ -474,6 +474,11 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		return err
 	}
 	defer c.Close()
+	// TEST HARNESS: the first-run notice of decision D1 is acknowledged, so it does not sit over every page of every spec; its
+	// own tests are the UI's (shell/terms-notice) and the installed app's on Windows (ui/e2e-installed)
+	if _, err := c.AcknowledgeNotice(context.Background(), "claude-terms", 1, c.Human()); err != nil {
+		return err
+	}
 
 	// a PROTOCOL FIXTURE for the skill registries (decision P48): the scheduled sync and "Sync now" read it instead of GitHub
 	reg, err := startSkillRegistryFixture()

@@ -7,6 +7,8 @@ import type {
   BundleExists,
   BundlePreview,
   BundleResult,
+  CrashReport,
+  NoticeState,
   ExportPreview,
   ExportResult,
   ImportPreview,
@@ -43,6 +45,12 @@ export interface PkgClient {
   projectImportPreview(path: string): Promise<ImportPreview>;
   projectImport(req: { path: string; repoPath: string; name?: string }): Promise<ImportResult>;
   supportbundlePreview(opts: { eventLimit?: number; includeRun?: string }): Promise<BundlePreview>;
+  /** The crash reports on this machine, newest first. */
+  crashList(): Promise<{ reports: CrashReport[] }>;
+  crashDelete(name: string): Promise<{ deleted: boolean }>;
+  /** The notices a person acknowledges once (D1: Claude Code runs as you, under your own terms). */
+  noticeStatus(): Promise<{ notices: NoticeState[] }>;
+  noticeAcknowledge(id: string, version: number): Promise<NoticeState>;
   /**
    * Writes the bundle. When a file is already at the destination nothing is written and the answer is `{exists: true, path, size}`;
    * send the request again with `overwrite` once the person has said it may be replaced.
@@ -82,6 +90,16 @@ export function createPkgClient(t: Transport): PkgClient {
     projectImportPreview: (path) => call('project.importPreview', { path }),
     projectImport: (req) => call('project.import', { path: req.path, repoPath: req.repoPath, name: req.name ?? '' }),
     supportbundlePreview: (o) => call('supportbundle.preview', { eventLimit: o.eventLimit ?? 0, includeRun: o.includeRun ?? '' }),
+    crashList: async () => {
+      const r = await call<{ reports: CrashReport[] | null }>('crash.list', {});
+      return { reports: arr(r.reports) };
+    },
+    crashDelete: (name) => call('crash.delete', { name }),
+    noticeStatus: async () => {
+      const r = await call<{ notices: NoticeState[] | null }>('notice.status', {});
+      return { notices: arr(r.notices) };
+    },
+    noticeAcknowledge: (id, version) => call('notice.acknowledge', { id, version }),
     supportbundleCreate: async (o) => {
       const r = await call<BundleResult>('supportbundle.create', {
         dest: o.dest ?? '',

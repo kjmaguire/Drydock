@@ -55,6 +55,24 @@ func canonical(p string) string {
 	return lexical(p)
 }
 
+// canonicalMissing is canonical for a path that may no longer exist: the links are resolved in the deepest folder of it that
+// still does, and the rest is put back as written (EvalSymlinks fails on a missing leaf, so canonical leaves it as written).
+func canonicalMissing(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for dir := p; ; {
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			return lexical(filepath.Join(r, rest))
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return lexical(p)
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
+	}
+}
+
 // within reports whether child is parent or a folder inside it (both normalised the same way).
 func within(child, parent string) bool {
 	if child == parent {

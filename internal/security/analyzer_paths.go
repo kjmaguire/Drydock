@@ -22,8 +22,11 @@ func isHijackVar(name string) bool {
 
 // dangerousGitConfig are `git -c key=value` keys that make git execute a program.
 var dangerousGitConfig = []string{"alias.", "core.pager", "core.editor", "core.sshcommand", "core.fsmonitor", "core.hookspath", "core.askpass",
-	"diff.external", "credential.helper", "include.path", "includeif.", "filter.", "gpg.program", "gpg.", "sequence.editor", "protocol.ext.allow",
-	"url.", "http.proxy", "merge.", "difftool.", "mergetool.", "pager.", "web.browser", "browser.", "man.", "receive.", "uploadpack.", "remote."}
+	"diff.", "credential.", "include.path", "includeif.", "filter.", "gpg.program", "gpg.", "sequence.editor", "protocol.ext.allow",
+	"url.", "http.proxy", "merge.", "difftool.", "mergetool.", "pager.", "web.browser", "browser.", "man.", "receive.", "uploadpack.", "remote.",
+	// review 2026-10-27, S1: more keys that name a program git runs (or where the working tree is)
+	"submodule.", "core.gitproxy", "core.worktree", "core.alternaterefs", "interactive.", "sendemail.", "trailer.", "imap.", "guitool.",
+	"instaweb.", "hook."}
 
 func (r *run) envChecks(inv *Invocation, pa *parsedArgs) {
 	for _, n := range inv.Env {
@@ -34,9 +37,11 @@ func (r *run) envChecks(inv *Invocation, pa *parsedArgs) {
 	if inv.Program != "git" {
 		return
 	}
+	sub := len(inv.Args)
 	for i := 0; i < len(inv.Args); i++ {
 		t := inv.Args[i].Text
 		if !strings.HasPrefix(t, "-") {
+			sub = i
 			break // first positional is the subcommand: later -c belongs to the subcommand
 		}
 		switch {
@@ -57,6 +62,192 @@ func (r *run) envChecks(inv *Invocation, pa *parsedArgs) {
 			i++
 		}
 	}
+	if sub < len(inv.Args) && inv.Args[sub].Text == "config" {
+		r.gitConfig(inv.Args[sub+1:])
+	}
+}
+
+// gitConfig checks `git config`, which the rules count as a change inside the worktree (review 2026-10-27, S1). A key such as
+// core.fsmonitor, alias.*, core.hooksPath or diff.<driver>.textconv makes git run a program later, and in a linked worktree
+// the config written is the repository's own, which the person's own git also reads; --global and --system reach every
+// repository. So reading is allowed, and writing is allowed only into the worktree's repository and only for keys on
+// safeGitConfigKeys; anything else goes to the person.
+func (r *run) gitConfig(args []Arg) {
+	var pos []string
+	write, read, outside := false, false, false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a.Dynamic {
+			r.opaque("git config with a dynamic argument")
+			return
+		}
+		t := strings.ToLower(a.Text)
+		switch {
+		case t == "-e" || longOpt(t, "--edit", 3):
+			r.opaque("git config --edit opens an editor")
+			return
+		case t == "-f" || longOpt(t, "--file", 3) || longOpt(t, "--blob", 3):
+			outside = true
+			if !strings.Contains(t, "=") {
+				i++
+			}
+		case longOpt(t, "--global", 3) || longOpt(t, "--system", 3):
+			outside = true
+		case t == "-l" || longOpt(t, "--list", 3) || strings.HasPrefix(t, "--get") || longOpt(t, "--show-origin", 4) || longOpt(t, "--show-scope", 7):
+			read = true
+		case strings.HasPrefix(t, "--unset") || strings.HasPrefix(t, "--add") || strings.HasPrefix(t, "--replace") || strings.HasPrefix(t, "--rename") || strings.HasPrefix(t, "--remove"):
+			write = true
+		case t == "-t" || longOpt(t, "--type", 3) || longOpt(t, "--default", 4) || longOpt(t, "--comment", 4):
+			if !strings.Contains(t, "=") {
+				i++
+			}
+		case strings.HasPrefix(t, "-"):
+		default:
+			pos = append(pos, t)
+		}
+	}
+	keys := pos
+	if len(pos) > 0 {
+		switch pos[0] {
+		case "get", "list":
+			return
+		case "set", "unset", "rename-section", "remove-section", "edit":
+			if pos[0] == "edit" {
+				r.opaque("git config edit opens an editor")
+				return
+			}
+			write, keys = true, pos[1:]
+		}
+	}
+	if !write && (read || len(pos) <= 1) {
+		return
+	}
+	if outside {
+		r.opaque("git config writes outside the worktree's repository (--global, --system or --file)")
+		return
+	}
+	if len(keys) == 0 || !safeGitConfigKey(keys[0]) {
+		key := ""
+		if len(keys) > 0 {
+			key = " " + keys[0]
+		}
+		r.opaque("git config sets" + key + ", which is not a key known to be safe (some keys make git run a program)")
+	}
+}
+
+// safeGitConfigKeys can be written by an agent without asking: none of them names a program or a file git runs.
+var safeGitConfigKeys = set("user.name", "user.email", "core.autocrlf", "core.eol", "core.filemode", "core.ignorecase", "core.safecrlf",
+	"core.quotepath", "core.longpaths", "core.symlinks", "core.precomposeunicode", "pull.rebase", "pull.ff", "push.default",
+	"push.autosetupremote", "init.defaultbranch", "merge.ff", "merge.conflictstyle", "fetch.prune", "rerere.enabled", "rebase.autostash",
+	"rebase.autosquash", "diff.renames", "diff.algorithm", "status.showuntrackedfiles", "advice.detachedhead", "log.date", "color.ui")
+
+func safeGitConfigKey(k string) bool {
+	if safeGitConfigKeys[k] {
+		return true
+	}
+	// branch.<name>.remote, .merge, .rebase and .description name a remote, a ref or text, never a program
+	if strings.HasPrefix(k, "branch.") {
+		for _, s := range []string{".remote", ".merge", ".rebase", ".description", ".pushremote"} {
+			if strings.HasSuffix(k, s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// longOpt reports whether t names the long option name, spelled out or abbreviated to at least min letters after the dashes, as
+// GNU getopt and git's parse-options both accept (--use-comp=sh is --use-compress-program=sh).
+func longOpt(t, name string, min int) bool {
+	t, _, _ = strings.Cut(t, "=")
+	if !strings.HasPrefix(t, "--") || len(t)-2 < min {
+		return false
+	}
+	return strings.HasPrefix(name, t)
+}
+
+// programOptions are the options of programs the rules let through (archivers, sort, install, patch) that make them start
+// another program: tar -I sh, tar --to-command=sh, zip -TT 'sh -c x', sort --compress-program=sh (review 2026-10-27, S2). One
+// of them makes the command Opaque, so it goes to the person. Short options are matched alone or inside a cluster (-xIf); long
+// ones also when abbreviated.
+var programOptions = map[string]struct {
+	short string   // short option letters
+	long  []string // long option names
+}{
+	"tar":     {short: "IF", long: []string{"--use-compress-program", "--to-command", "--checkpoint-action", "--info-script", "--new-volume-script", "--rsh-command", "--rmt-command"}},
+	"bsdtar":  {short: "", long: []string{"--use-compress-program"}},
+	"zip":     {long: []string{"--unzip-command"}},
+	"sort":    {long: []string{"--compress-program"}},
+	"install": {long: []string{"--strip-program"}},
+	"patch":   {short: "e", long: []string{"--ed"}},
+}
+
+func (r *run) programOptionChecks(inv *Invocation) {
+	po, ok := programOptions[inv.Program]
+	if !ok {
+		return
+	}
+	for i, a := range inv.Args {
+		t := a.Text
+		if a.Dynamic {
+			continue // a dynamic word is never matched as a flag by the rules either; the path checks see it
+		}
+		if t == "--" {
+			return
+		}
+		switch {
+		case inv.Program == "zip" && (t == "-TT" || strings.HasPrefix(t, "-TT=")):
+			r.opaque("zip -TT runs a command to test the archive")
+			return
+		case strings.HasPrefix(t, "--"):
+			for _, l := range po.long {
+				if longOpt(t, l, min(4, len(l)-2)) {
+					r.opaque(inv.Program + " " + l + " runs another program")
+					return
+				}
+			}
+		case strings.HasPrefix(t, "-") && len(t) > 1:
+			if strings.ContainsAny(t[1:2], po.short) || (len(t) > 2 && optionCluster(t[1:], po.short)) {
+				r.opaque(inv.Program + " " + t + " runs another program")
+				return
+			}
+		case i == 0 && inv.Program == "tar" && po.short != "" && isLetters(t):
+			// tar's old style: the first word is the options without a dash (tar xIf sh a.tar)
+			if strings.ContainsAny(t, po.short) {
+				r.opaque("tar " + t + " runs another program")
+				return
+			}
+		}
+	}
+}
+
+// optionCluster reports whether a cluster of short options (the letters after one dash, up to an '=' or a value) holds one of
+// letters. A cluster is only read while it is letters: -p1 is patch's -p with the value 1, not -1.
+func optionCluster(cluster, letters string) bool {
+	if letters == "" {
+		return false
+	}
+	for _, c := range cluster {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return false
+		}
+		if strings.ContainsRune(letters, c) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLetters(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return false
+		}
+	}
+	return true
 }
 
 // strictParams enforces the PowerShell rule that destructive cmdlets must spell their parameters in full.

@@ -16,7 +16,8 @@ rules:
     paths: none
   - id: readonly.posix.date
     programs: [date]
-    flags_none: ["-s", "--set"]
+    # -f reads dates from a file, which this rule does not check as a path (review 2026-10-27)
+    flags_none: ["-s", "--set", "-f", "--file"]
     paths: none
   - id: readonly.posix.grep
     programs: [grep, egrep, fgrep, ag, ack]

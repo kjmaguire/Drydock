@@ -671,6 +671,7 @@ func (r *run) addInvocation(inv Invocation, depth int) {
 
 	pa := parseArgs(cur)
 	r.envChecks(cur, pa)
+	r.programOptionChecks(cur)
 	if inv.Shell == ShellPowerShell {
 		r.strictParams(cur)
 	}

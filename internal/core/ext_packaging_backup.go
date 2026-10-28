@@ -186,7 +186,7 @@ func (p *packaging) backupFailed(ctx context.Context, dir, label string, err err
 	p.c.publish(ctx, "backup.failed", "", map[string]any{"error": msg, "dir": p.identity.Apply(dir)})
 	day := p.bnow().UTC().Format("2006-01-02")
 	kind, which := "manual", "The backup you started"
-	if label == "scheduled" {
+	if label == backup.ScheduledLabel {
 		kind, which = "scheduled", "The scheduled backup"
 	}
 	p.notify(ctx, "backup-failed:"+kind+":"+day,
@@ -241,7 +241,7 @@ func (p *packaging) backupLoop(ctx context.Context) {
 
 func (p *packaging) backupTick(ctx context.Context) {
 	if p.backupDue(ctx) {
-		_, _ = p.runBackup(ctx, "scheduled")
+		_, _ = p.runBackup(ctx, backup.ScheduledLabel)
 	}
 }
 

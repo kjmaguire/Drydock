@@ -148,7 +148,7 @@ func (w *Wrapper) run(ctx context.Context, req Request, fn func(Delta) error) (R
 		}
 		errs = append(errs, err)
 		if ctx.Err() != nil {
-			return Response{}, err
+			return Response{}, stopped(ctx, err)
 		}
 		var dce *DataClassError
 		if i == 0 && errors.As(err, &dce) {
@@ -162,6 +162,23 @@ func (w *Wrapper) run(ctx context.Context, req Request, fn func(Delta) error) (R
 		return Response{}, errs[0]
 	}
 	return Response{}, errors.Join(errs...)
+}
+
+// stopped is what a call whose context ended while err was being made returns: the caller's own reason (ctx.Err(), with the
+// cause the caller gave to context.WithCancelCause), then what the attempt said, kept for errors.As (a stream that had already
+// delivered output, say). An attempt can turn the ended context into another error (a provider read reported as unavailable,
+// release CI 2026-10-27), so the caller is told here, once, for every attempt.
+func stopped(ctx context.Context, err error) error {
+	reason, cause := ctx.Err(), context.Cause(ctx)
+	switch {
+	case errors.Is(err, cause):
+		return err // says it already (cause is ctx.Err() when the caller gave none)
+	case errors.Is(err, reason):
+		return fmt.Errorf("%w: %w", err, cause)
+	case cause != reason:
+		return fmt.Errorf("%w: %w: %w", reason, cause, err)
+	}
+	return fmt.Errorf("%w: %w", reason, err)
 }
 
 func fallbackEligible(err error) bool {
@@ -212,8 +229,12 @@ func (w *Wrapper) scan(ctx context.Context, req Request) error {
 // recording.
 func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(Delta) error) (Response, error) {
 	p, err := w.reg.Get(ctx, t.Provider)
+	if errors.Is(err, providers.ErrNotFound) {
+		return Response{}, &UnavailableError{Provider: t.Provider, Reason: "not configured", Cause: err}
+	}
 	if err != nil {
-		return Response{}, &UnavailableError{Provider: t.Provider, Reason: err.Error()}
+		// a local failure (the database), not the provider: another provider would hide it (run says an ended context as such)
+		return Response{}, fmt.Errorf("llm: read provider %s: %w", t.Provider, err)
 	}
 	if !p.Enabled {
 		return Response{}, &UnavailableError{Provider: p.ID, Reason: "disabled"}
@@ -221,9 +242,13 @@ func (w *Wrapper) attempt(ctx context.Context, req Request, t Target, fn func(De
 
 	// data_class guard: private context never reaches a trainable provider or model. It runs before the cache, the
 	// slot and the quota reservation (docs/security.md s9 E3), so a refused call consumes nothing.
-	class := w.reg.EffectiveDataClass(ctx, p, t.Model)
+	class, classErr := w.reg.DataClassOf(ctx, p, t.Model)
 	if req.Manifest.Ceiling() == SensitivityPrivate {
 		switch {
+		case classErr != nil:
+			// the model's class cannot be read: it could be trainable, so private context does not go
+			return Response{}, w.refuse(ctx, req, p, t, &DataClassError{Provider: p.ID, Model: t.Model, Target: class, Sources: req.Manifest.PrivateSources(),
+				Reason: "its data class could not be read (" + classErr.Error() + ")"})
 		case class == providers.DataTrainable:
 			return Response{}, w.refuse(ctx, req, p, t, &DataClassError{Provider: p.ID, Model: t.Model, Target: providers.DataTrainable, Sources: req.Manifest.PrivateSources()})
 		case !p.PrivateEligible():

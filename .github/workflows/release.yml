@@ -1,0 +1,414 @@
+# Releases (docs/packaging.md sections 2, 13 and 14; decision P105). One workflow builds what a person downloads, installs it on a
+# clean GitHub-hosted Windows runner the way a person would, drives the installed app, and only then publishes:
+#
+#   build         drydock.exe with its version, the tools it carries, the egress proxies, the per-user NSIS installer, the
+#                 update zip and SHA256SUMS.txt; signed when the owner has configured code signing (docs/windows-identity.md)
+#   install-test  Defender scans both files; the installer runs without administrator rights into %LOCALAPPDATA%\Programs; the
+#                 shipped exe starts and draws its window (checked through UI Automation: no debugging switch, and it opens no
+#                 debugging port); a second start hands over to the first; an install over the running app refuses; the test
+#                 variant (the same build plus app.DebugPort) is put in the install folder and its window is driven over CDP
+#                 (ui/e2e-installed: a project on a real repository, every workspace page, a backup, a support bundle); the
+#                 shipped build installed again opens on that data; the uninstaller removes the program and keeps the data.
+#                 Screenshots and timings are kept as the installed-app-proof artifact.
+#   publish       on a tag v*: a DRAFT GitHub release with the files. A person reads it and publishes it; nothing here does.
+#
+# A pull request that touches the release path runs build and install-test (never publish), so a broken installer is seen
+# before it is merged. The run's version is the tag without its v, or 0.0.0-ci.<run number> when there is no tag.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "app/**"
+      - "main.go"
+      - "build/windows/**"
+      - "ui/e2e-installed/**"
+      - "ui/playwright.installed.config.ts"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GOFLAGS: -mod=mod
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          check-latest: true
+      - name: The version of this build
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN: ${{ github.run_number }}
+        run: |
+          if ($env:REF_TYPE -eq 'tag') { $v = $env:REF_NAME.TrimStart('v') } else { $v = "0.0.0-ci.$env:RUN" }
+          if ($v -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$') { throw "the tag $env:REF_NAME is not v<major>.<minor>.<patch>[-pre]" }
+          # the installer's own version resource takes four numbers
+          $vi = "{0}.{1}.{2}.0" -f $Matches[1], $Matches[2], $Matches[3]
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "viversion=$vi" >> $env:GITHUB_OUTPUT
+          "Drydock $v ($vi)"
+      - run: npm ci && npm run build
+        working-directory: ui
+      - name: The Windows resources with this version
+        run: go run github.com/tc-hib/go-winres@v0.3.3 make --in build/windows/winres.json --arch amd64 --out rsrc --product-version ${{ steps.version.outputs.version }} --file-version ${{ steps.version.outputs.version }}
+      - name: Build drydock.exe (CGO on for the repo map, decision P62)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          go build -tags production -trimpath -ldflags "-w -s -H windowsgui -X github.com/kjmaguire/drydock/app.Version=${{ steps.version.outputs.version }}" -o stage/drydock.exe .
+          go run ./cmd/drydock-winident -exe stage/drydock.exe -version ${{ steps.version.outputs.version }}
+      - name: The test variant (the same build plus a WebView2 debugging port, for install-test only; never shipped)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          go build -tags production -trimpath -ldflags "-w -s -H windowsgui -X github.com/kjmaguire/drydock/app.Version=${{ steps.version.outputs.version }} -X github.com/kjmaguire/drydock/app.DebugPort=9333" -o test-exe/drydock.exe .
+      - name: The sandbox's egress proxies (Linux, beside drydock.exe; docs/sandbox.md section 5)
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $env:GOARCH = 'amd64'; go build -trimpath -ldflags "-s -w" -o stage/drydock-egress-linux-amd64 ./cmd/drydock-egress
+          $env:GOARCH = 'arm64'; go build -trimpath -ldflags "-s -w" -o stage/drydock-egress-linux-arm64 ./cmd/drydock-egress
+      - name: The tools the download carries (pinned, checked against GitHub's digests; decision P77)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/drydock-bundle -pins packaging/bundle.json -out stage/tools
+      - name: License and notices
+        run: Copy-Item LICENSE, THIRD_PARTY_NOTICES.md stage/
+      - name: Is code signing configured?
+        id: signing
+        env:
+          CONFIGURED: ${{ github.event_name != 'pull_request' && secrets.AZURE_ARTIFACT_SIGNING_CLIENT_SECRET != '' && vars.AZURE_ARTIFACT_SIGNING_ENDPOINT != '' }}
+        run: |
+          if ($env:CONFIGURED -eq 'true') { "configured=true" >> $env:GITHUB_OUTPUT; "drydock.exe and the installer are signed" }
+          else { "configured=false" >> $env:GITHUB_OUTPUT; "::warning::Code signing is not configured (docs/windows-identity.md): this build is UNSIGNED and SmartScreen will warn" }
+      - name: Sign drydock.exe
+        if: steps.signing.outputs.configured == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\stage\drydock.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Drydock
+      - name: NSIS, the pinned release (docs/software-notes.json tool:nsis)
+        env:
+          NSIS_VERSION: "3.13"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $have = if (Get-Command makensis -ErrorAction SilentlyContinue) { (makensis -VERSION).Trim() } else { '' }
+          if ($have -ne "v$env:NSIS_VERSION") {
+            choco install nsis --version=$env:NSIS_VERSION -y --no-progress --allow-downgrade
+            $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
+            "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+          }
+          $got = (makensis -VERSION).Trim()
+          if ($got -ne "v$env:NSIS_VERSION") { throw "makensis is $got, not v$env:NSIS_VERSION" }
+          "makensis $got"
+      - name: The installer (per user, no administrator rights)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $v = '${{ steps.version.outputs.version }}'
+          makensis -V3 -WX "-DVERSION=$v" "-DVIVERSION=${{ steps.version.outputs.viversion }}" "-DSRC=$PWD\stage" "-DOUTFILE=$PWD\dist\drydock-$v-windows-x64.exe" packaging\windows\drydock.nsi
+      - name: Sign the installer
+        if: steps.signing.outputs.configured == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\drydock-${{ steps.version.outputs.version }}-windows-x64.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Drydock installer
+      - name: Signatures are valid and timestamped
+        if: steps.signing.outputs.configured == 'true'
+        run: |
+          foreach ($f in @('stage/drydock.exe', 'dist/drydock-${{ steps.version.outputs.version }}-windows-x64.exe')) {
+            $sig = Get-AuthenticodeSignature $f
+            if ($sig.Status -ne 'Valid') { throw "${f}: the signature is $($sig.Status): $($sig.StatusMessage)" }
+            if (-not $sig.TimeStamperCertificate) { throw "${f}: the signature has no timestamp" }
+          }
+      - name: The update zip (the updater unzips drydock.exe from it; docs/packaging.md section 4) and the checksums
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          Compress-Archive -Path stage/drydock.exe -DestinationPath "dist/drydock-$v-windows-x64-update.zip"
+          Push-Location dist
+          Get-ChildItem -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          Get-ChildItem -File | Select-Object Name, Length | Format-Table | Out-String
+          Pop-Location
+      - uses: actions/upload-artifact@v7
+        with:
+          name: drydock-release
+          path: dist
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: drydock-test-exe
+          path: test-exe
+          if-no-files-found: error
+
+  install-test:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      INSTALLER: ${{ github.workspace }}\dist\drydock-${{ needs.build.outputs.version }}-windows-x64.exe
+      OUT: ${{ github.workspace }}\installed-out
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          check-latest: true
+      - uses: actions/download-artifact@v7
+        with:
+          name: drydock-release
+          path: dist
+      - uses: actions/download-artifact@v7
+        with:
+          name: drydock-test-exe
+          path: test-exe
+      - name: The checksums match
+        run: |
+          Get-Content dist/SHA256SUMS.txt | ForEach-Object {
+            $h, $n = $_ -split '  ', 2
+            $got = (Get-FileHash "dist/$n" -Algorithm SHA256).Hash.ToLower()
+            if ($got -ne $h) { throw "${n}: SHA-256 $got, SHA256SUMS.txt says $h" }
+          }
+          "INSTDIR=$env:LOCALAPPDATA\Programs\Drydock" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force $env:OUT | Out-Null
+      - name: Defender scans the installer and the app (docs/packaging.md section 12)
+        run: |
+          $s = Get-MpComputerStatus
+          "Defender engine $($s.AMEngineVersion), signatures $($s.AntivirusSignatureVersion) of $($s.AntivirusSignatureLastUpdated), real-time protection: $($s.RealTimeProtectionEnabled)" | Tee-Object -Append "$env:OUT/defender.txt"
+          Update-MpSignature -ErrorAction SilentlyContinue
+          Expand-Archive "dist/drydock-$env:VERSION-windows-x64-update.zip" -DestinationPath "$env:RUNNER_TEMP/scan"
+          $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+          function Scan([string] $f) { $o = & $mp -Scan -ScanType 3 -File $f -DisableRemediation 2>&1 | Out-String; Write-Host $o; [pscustomobject]@{ Code = $LASTEXITCODE; Out = $o } }
+          # a scan that could not run ("CmdTool: Failed with hr = 0x...": the Defender service is stopped on some runner images,
+          # release run 2026-10-28) is not a detection: the service is started and the scan tried once more
+          $unscanned = @()
+          foreach ($f in @($env:INSTALLER, "$env:RUNNER_TEMP\scan\drydock.exe")) {
+            $r = Scan $f
+            if ($r.Code -ne 0 -and $r.Out -match 'Failed with hr') {
+              Start-Service WinDefend -ErrorAction SilentlyContinue
+              Start-Sleep -Seconds 15
+              $r = Scan $f
+            }
+            if ($r.Code -eq 0) { continue }
+            if ($r.Out -match 'Failed with hr = (0x[0-9a-fA-F]+)') { $unscanned += "$f ($($Matches[1]))"; continue }
+            throw "Defender reported $f (exit $($r.Code))"
+          }
+          if ($unscanned.Count -gt 0) {
+            $msg = "Defender could not scan on this runner: $($unscanned -join ', '). This run does not prove the files clean."
+            $msg | Tee-Object -Append "$env:OUT/defender.txt"
+            # a release is never published without the scan; a pull request's run goes on to the install proofs
+            if ($env:GITHUB_REF -like 'refs/tags/*') { throw $msg }
+            "::warning title=Defender::$msg"
+          } else {
+            "Defender: no detection in the installer or drydock.exe" | Tee-Object -Append "$env:OUT/defender.txt"
+          }
+      - name: Install for this user only, silently, the way IT would
+        run: |
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the installer exited $($p.ExitCode)" }
+          foreach ($f in 'drydock.exe', 'uninstall.exe', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'drydock-egress-linux-amd64', 'tools\bundle.json') {
+            if (-not (Test-Path "$env:INSTDIR\$f")) { throw "not installed: $env:INSTDIR\$f" }
+          }
+          $e = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Drydock'
+          if ($e.DisplayVersion -ne $env:VERSION) { throw "Apps & features says $($e.DisplayVersion), not $env:VERSION" }
+          foreach ($k in 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Drydock', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Drydock') {
+            if (Test-Path $k) { throw "the installer wrote under HKLM" }
+          }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk")) { throw "no Start menu shortcut for this user" }
+          $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($env:INSTALLER))
+          if ($text -notmatch 'requestedExecutionLevel level="asInvoker"') { throw "the installer's manifest does not run as invoker" }
+          if (Test-Path "$env:LOCALAPPDATA\Drydock") { throw "the installer wrote into the data folder" }
+          $mb = [math]::Round((Get-ChildItem $env:INSTDIR -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
+          "installed $env:VERSION into $env:INSTDIR ($mb MB): HKCU only, Start menu shortcut, the installer runs as invoker (no administrator rights)" | Tee-Object -Append "$env:OUT/install.txt"
+      - name: The shipped exe starts and draws its window (seen through UI Automation, no debugging switch)
+        run: |
+          $p = Start-Process -FilePath "$env:INSTDIR\drydock.exe" -WorkingDirectory $env:USERPROFILE -PassThru
+          "DRYDOCK_PID=$($p.Id)" >> $env:GITHUB_ENV
+          & packaging/windows/ci/window-check.ps1 -ProcessId $p.Id -Names 'Main' -Screenshot "$env:OUT\00-shipped-first-start.png" | Tee-Object -Append "$env:OUT/startup.txt"
+          if (Get-NetTCPConnection -State Listen -LocalPort 9333 -ErrorAction SilentlyContinue) { throw "something listens on the debugging port with the shipped exe running" }
+          "the shipped exe opens no WebView2 debugging port" | Tee-Object -Append "$env:OUT/startup.txt"
+      - name: A second start hands over to the running app and exits
+        run: |
+          $first = Get-Process -Id $env:DRYDOCK_PID
+          $t = [Diagnostics.Stopwatch]::StartNew()
+          $second = Start-Process -FilePath "$env:INSTDIR\drydock.exe" -PassThru
+          if (-not $second.WaitForExit(30000)) { $second.Kill(); throw "a second drydock.exe kept running" }
+          if ($first.HasExited) { throw "the first drydock.exe closed when the second started" }
+          $n = @(Get-Process drydock -ErrorAction SilentlyContinue).Count
+          if ($n -ne 1) { throw "$n drydock.exe processes, expected 1" }
+          "second start exited $($second.ExitCode) after $($t.ElapsedMilliseconds) ms; the first is still running" | Tee-Object -Append "$env:OUT/single-instance.txt"
+      - name: Installing over the running app refuses instead of half-installing
+        run: |
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 4) { throw "an install over the running app exited $($p.ExitCode), expected 4 (close Drydock first)" }
+          if ((Get-Process -Id $env:DRYDOCK_PID).HasExited) { throw "the installer closed the running app" }
+          "install over the running app: refused with exit 4, the app kept running" | Tee-Object -Append "$env:OUT/install.txt"
+      - name: Close the app as a person would (its window's close)
+        run: |
+          $p = Get-Process -Id $env:DRYDOCK_PID
+          $null = $p.CloseMainWindow()
+          if (-not $p.WaitForExit(30000)) { throw "drydock.exe did not exit within 30 s of its window closing" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Drydock")) { throw "no data folder at $env:LOCALAPPDATA\Drydock" }
+      - name: A repository for the project test (a real git repository on NTFS)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = "$env:RUNNER_TEMP\proof-repo"
+          git init -q -b main $r
+          Set-Content "$r\README.md" "# proof"
+          git -C $r -c user.name=ci -c user.email=ci@example.invalid add .
+          git -C $r -c user.name=ci -c user.email=ci@example.invalid commit -q -m init
+          "DRYDOCK_REPO=$r" >> $env:GITHUB_ENV
+      - run: npm ci
+        working-directory: ui
+      - name: Put the test variant in the install folder and start it (same folder, same data)
+        run: |
+          Copy-Item test-exe\drydock.exe "$env:INSTDIR\drydock.exe" -Force
+          $started = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          $p = Start-Process -FilePath "$env:INSTDIR\drydock.exe" -WorkingDirectory $env:USERPROFILE -PassThru
+          "DRYDOCK_STARTED=$started" >> $env:GITHUB_ENV
+          "DRYDOCK_PID=$($p.Id)" >> $env:GITHUB_ENV
+          $deadline = (Get-Date).AddSeconds(90)
+          $up = $false
+          while ((Get-Date) -lt $deadline -and -not $p.HasExited) {
+            try { Invoke-RestMethod http://127.0.0.1:9333/json/version -TimeoutSec 2 | Out-Null; $up = $true; break } catch { Start-Sleep -Milliseconds 250 }
+          }
+          if ($p.HasExited) { throw "the test variant exited with $($p.ExitCode)" }
+          if (-not $up) { throw "the test variant's WebView2 opened no debugging port in 90 s" }
+      - name: Drive the installed app's window (project, pages, backup, support bundle)
+        working-directory: ui
+        env:
+          DRYDOCK_CDP: http://127.0.0.1:9333
+          DRYDOCK_OUT: ${{ github.workspace }}\installed-out\driven
+        run: npx playwright test -c playwright.installed.config.ts
+      - name: Close it, install the shipped build again, and start that on the same data
+        run: |
+          $p = Get-Process -Id $env:DRYDOCK_PID
+          $null = $p.CloseMainWindow()
+          if (-not $p.WaitForExit(30000)) { throw "drydock.exe did not exit within 30 s of its window closing" }
+          $i = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -Wait -PassThru
+          if ($i.ExitCode -ne 0) { throw "installing again exited $($i.ExitCode)" }
+          $shipped = (Get-FileHash "$env:RUNNER_TEMP\scan\drydock.exe").Hash
+          if ((Get-FileHash "$env:INSTDIR\drydock.exe").Hash -ne $shipped) { throw "installing again did not put the shipped drydock.exe back" }
+          $a = Start-Process -FilePath "$env:INSTDIR\drydock.exe" -WorkingDirectory $env:USERPROFILE -PassThru
+          "DRYDOCK_PID=$($a.Id)" >> $env:GITHUB_ENV
+          # the project the driven run made is there: the same data folder, read by the shipped exe
+          & packaging/windows/ci/window-check.ps1 -ProcessId $a.Id -Names 'Main', 'windows-proof' -Screenshot "$env:OUT\07-shipped-after-reinstall.png" | Tee-Object -Append "$env:OUT/reinstall.txt"
+      - name: Uninstall silently; the program goes, the data stays
+        run: |
+          $p = Get-Process -Id $env:DRYDOCK_PID -ErrorAction SilentlyContinue
+          if ($p) { $null = $p.CloseMainWindow(); if (-not $p.WaitForExit(30000)) { throw "drydock.exe did not close" } }
+          # the uninstaller copies itself to TEMP and returns at once; _?= runs it in place so the exit code is its own
+          $u = Start-Process -FilePath "$env:INSTDIR\uninstall.exe" -ArgumentList '/S', "_?=$env:INSTDIR" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "the uninstaller exited $($u.ExitCode)" }
+          Remove-Item "$env:INSTDIR\uninstall.exe" -ErrorAction SilentlyContinue; Remove-Item $env:INSTDIR -ErrorAction SilentlyContinue
+          if (Test-Path "$env:INSTDIR\drydock.exe") { throw "drydock.exe is still installed" }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Drydock') { throw "the Apps & features entry is still there" }
+          if (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk") { throw "the Start menu shortcut is still there" }
+          $db = Get-ChildItem "$env:LOCALAPPDATA\Drydock" -Filter *.db -ErrorAction SilentlyContinue
+          if (-not $db) { throw "the uninstaller deleted the data (no database left in $env:LOCALAPPDATA\Drydock)" }
+          "uninstalled: program, shortcut and Apps & features entry gone; data kept ($($db.Name -join ', '))" | Tee-Object -Append "$env:OUT/install.txt"
+      - name: What the app logged
+        if: always()
+        run: |
+          foreach ($f in 'logs\startup.log', 'logs\drydock.log') {
+            $p = "$env:LOCALAPPDATA\Drydock\$f"
+            if (Test-Path $p) { Copy-Item $p "$env:OUT\$(Split-Path $p -Leaf)"; "--- $f"; Get-Content $p -Tail 80 }
+          }
+      - name: Summary
+        if: always()
+        run: |
+          $lines = @("## Drydock $env:VERSION on a clean Windows runner")
+          $lines += (Get-CimInstance Win32_OperatingSystem | ForEach-Object { "$($_.Caption) $($_.Version)" })
+          foreach ($f in Get-ChildItem $env:OUT -Recurse -Include *.txt, *.json) { $lines += "### $($f.Name)"; $lines += '```'; $lines += Get-Content $f; $lines += '```' }
+          $lines | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: installed-app-proof
+          path: installed-out
+
+  publish:
+    needs: [build, install-test]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: drydock-release
+          path: dist
+      - name: A draft release (a person publishes it)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes=$(mktemp)
+          # the CHANGELOG section for this version, then the facts every release states
+          awk -v v="## $VERSION" '$0==v{p=1;next} /^## /{p=0} p' CHANGELOG.md > "$notes"
+          if [ ! -s "$notes" ]; then echo "CHANGELOG.md has no section '## $VERSION'" >&2; exit 1; fi
+          cat >> "$notes" <<'EOF'
+
+          ---
+          Install: run `drydock-<version>-windows-x64.exe` (no administrator rights; it installs for you only, under
+          %LOCALAPPDATA%\Programs\Drydock). Check the download against `SHA256SUMS.txt`. Uninstalling keeps your data in
+          %LOCALAPPDATA%\Drydock unless you ask for it to be deleted.
+          EOF
+          pre=""; case "$VERSION" in *-*) pre="--prerelease";; esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft $pre --title "Drydock $VERSION" --notes-file "$notes" dist/*

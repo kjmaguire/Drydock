@@ -936,8 +936,7 @@ func (r *Repo) Rebase(ctx context.Context, w Worktree, onto string) error {
 // responsibility; this package only enforces the default).
 func (r *Repo) DeleteWorktree(ctx context.Context, w Worktree, force bool) error {
 	if _, err := os.Stat(w.Path); os.IsNotExist(err) {
-		_, _ = r.git(ctx, r.Root, nil, "worktree", "prune")
-		return nil
+		return r.forgetMissingWorktree(w.Path)
 	}
 	if !force {
 		st, err := r.Status(ctx, w)
@@ -964,6 +963,31 @@ func (r *Repo) DeleteWorktree(ctx context.Context, w Worktree, force bool) error
 	}
 	_, err := r.git(ctx, r.Root, nil, "worktree", "remove", "--force", w.Path)
 	return err
+}
+
+// forgetMissingWorktree makes git forget the one worktree registered at path, whose folder is gone, by removing its entry under
+// <common>/worktrees as `git worktree prune` would. A plain prune forgot every worktree whose folder could not be seen at that
+// moment, the person's own among them (one on a drive that is not plugged in loses its index and HEAD) (review 2026-10-27).
+// A locked entry is left alone, as git leaves it. The paths are compared as written first, then with their links resolved (git
+// records the real path; Drydock's may reach it through a junction), as worktreeFor does.
+func (r *Repo) forgetMissingWorktree(path string) error {
+	if r.guard == nil {
+		return nil
+	}
+	entries := r.registeredWorktrees()
+	for _, norm := range []func(string) string{lexical, canonicalMissing} {
+		want := norm(path)
+		for _, e := range entries {
+			if norm(e.path) != want {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(e.admin, "locked")); err == nil {
+				return nil
+			}
+			return os.RemoveAll(e.admin)
+		}
+	}
+	return nil
 }
 
 // PruneWorktrees makes git forget the worktrees whose folder is gone (git worktree prune). It changes nothing else.

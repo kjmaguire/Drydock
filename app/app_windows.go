@@ -2,7 +2,7 @@
 
 // Package app is the Wails v3 shell: a window around the UI, one bridge service, a single-instance lock and the app-level
 // kill-on-close Job Object. It is the only package that imports Wails; everything else lives in internal/ and compiles
-// without a UI. Nothing here has been run on Windows yet (decision P2).
+// without a UI. The release workflow installs and runs it on a clean Windows runner (decision P105).
 package app
 
 import (
@@ -20,6 +20,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/kjmaguire/drydock/internal/core"
+	"github.com/kjmaguire/drydock/internal/crashreport"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/uiassets"
 	"github.com/kjmaguire/drydock/internal/updatepolicy"
@@ -89,7 +90,13 @@ func Run(assets fs.FS) error {
 	bridge := &Bridge{}
 	// The application object comes before the core: its single-instance check hands a second launch over to the first and exits
 	// the process inside application.New, so a second launch never opens a core on the first one's data (audit 2026-10-16, H10).
+	var browserArgs []string
+	if DebugPort != "" {
+		// only a test build sets this (release.yml's install-test); a release build has none, so no other program can attach
+		browserArgs = []string{"--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + DebugPort}
+	}
 	wa = application.New(application.Options{
+		Windows:     application.WindowsOptions{AdditionalBrowserArgs: browserArgs},
 		Name:        "Drydock",
 		Description: "A team of AI coding agents you can watch and approve.",
 		Services:    []application.Service{application.NewService(bridge)},
@@ -105,8 +112,15 @@ func Run(assets fs.FS) error {
 		},
 	})
 	bridge.app = wa
+	// past the single-instance check (a second launch has exited by now): what Go prints if this process dies is kept in a file
+	// of its own, and the next start makes a crash report of it (internal/crashreport); a normal exit removes the empty file
+	crash, err := crashreport.Arm(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: crash reports: %v\n", err)
+	}
+	defer crash.Disarm()
 	// the tools folder the download carries beside drydock.exe (decision P77): installed from there at the first start
-	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, PickFile: func(_ context.Context, p core.FilePick) (string, error) {
+	c, err := core.Open(context.Background(), core.Config{DataDir: dir, BundleDir: bundle.Dir(), AutoSetup: true, CrashOutput: crash.Path(), PickFile: func(_ context.Context, p core.FilePick) (string, error) {
 		// the window's own Open dialog (the Security page's "Choose file..."); "" when the person cancels
 		if wa == nil {
 			return "", fmt.Errorf("the window is not open yet")

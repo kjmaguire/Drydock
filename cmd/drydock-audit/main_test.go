@@ -314,3 +314,18 @@ func TestAnErrorIsCutToItsFirstLine(t *testing.T) {
 		t.Fatalf("%d %q", len(got), got[len(got)-5:])
 	}
 }
+
+// NSIS tags its releases vMNN (v313 is 3.13) and its point releases vMNNP (v3061 is 3.06.1); the newest is the highest number,
+// not the longest tag.
+func TestNSISReleasesAreReadFromItsTags(t *testing.T) {
+	tags := []string{"v2046", "v300", "v3061", "v311", "v312", "v313", "v3021", "v3.0b1", "latest"}
+	if got := newestNSIS(tags); got != "3.13" {
+		t.Fatalf("newest NSIS %q, want 3.13", got)
+	}
+	if got := newestNSIS([]string{"v306", "v3061"}); got != "3.06.1" {
+		t.Fatalf("a point release %q, want 3.06.1", got)
+	}
+	if newestNSIS([]string{"latest"}) != "" {
+		t.Fatal("a tag that is no release was read as one")
+	}
+}

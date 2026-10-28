@@ -251,7 +251,11 @@ func Verify(ctx context.Context, in Info) error {
 	return integrity(ctx, in.Path)
 }
 
-// Prune keeps the newest `daily` backups of different days and the newest `weekly` of different ISO weeks, plus anything
+// ScheduledLabel is the label of a backup the scheduler took; any other label is a backup someone asked for.
+const ScheduledLabel = "scheduled"
+
+// Prune keeps the newest `daily` backups of different days and the newest `weekly` of different ISO weeks, every backup someone
+// asked for (any label but ScheduledLabel) for `daily` days, plus anything
 // marked Keep that is younger than MaxKeepAge at `now`, and deletes the rest. It returns the deleted names. Deleting is limited
 // to files this package created. `now` is the caller's clock, the same one its backups are stamped with, so the exemption
 // is measured on the time line the backups were made on.
@@ -270,6 +274,13 @@ func Prune(dir string, daily, weekly int, now time.Time) ([]string, error) {
 		// A pre-update backup is exempt until the update proves itself, but not for good: markers that nothing ever released
 		// (every update before this was wired) would otherwise hold a database-sized file each, for ever (audit 2026-10-16, M13).
 		if b.Keep && now.Sub(b.Created) < MaxKeepAge {
+			keep[b.Name] = true
+			continue
+		}
+		// A backup the person started (Back up now, before a risky change) is theirs: it stays for as many days as daily
+		// backups are kept, whatever else is taken that day. It used to share its day's one place with the scheduled backup, so
+		// the next backup the same day deleted it (review 2026-10-27).
+		if b.Label != ScheduledLabel && now.Sub(b.Created) < time.Duration(daily)*24*time.Hour {
 			keep[b.Name] = true
 			continue
 		}

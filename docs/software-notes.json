@@ -9,7 +9,8 @@
     "tool:golangci-lint": "2.15.0",
     "tool:actions-runner": "2.338.0",
     "tool:git": "2.56.0",
-    "tool:semgrep": "1.182.0"
+    "tool:semgrep": "1.182.0",
+    "tool:nsis": "3.13"
   },
   "notes": {
     "go": {
@@ -306,6 +307,14 @@
     },
     "ci-go:1.27.3": {
       "role": "The Go version the Windows probe workflow installs (windows-probes.yml pins it outright; the other jobs read go.mod, also 1.27.3)."
+    },
+    "action:actions/download-artifact": {
+      "role": "Hands the built release (installer, update zip, checksums) and the test variant of drydock.exe from the release workflow's build job to install-test and publish.",
+      "note": "Major tag v7, the same line as upload-artifact."
+    },
+    "tool:nsis": {
+      "role": "Builds Drydock's per-user Windows installer (packaging/windows/drydock.nsi) in the release workflow; installed on the runner from Chocolatey at the pinned version and checked with makensis -VERSION. Not shipped: the installer it makes is.",
+      "note": "Pinned in .github/workflows/release.yml (NSIS_VERSION); keep the two equal. Newest release read from the tags of NSIS's GitHub mirror (kichik/nsis: v313 is 3.13)."
     }
   }
 }

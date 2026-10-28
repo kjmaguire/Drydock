@@ -192,3 +192,20 @@ export interface BundleExists {
   size: number;
 }
 export type BundleResult = BundleCreated | BundleExists;
+
+/** A crash report kept on this machine (internal/crashreport): what Go printed when a run of Drydock died, secrets redacted. */
+export interface CrashReport {
+  name: string;
+  time: string;
+  size: number;
+  /** The line that says why: "panic: ..." or "fatal error: ...". */
+  summary: string;
+}
+
+/** A notice a person acknowledges once (decision D1); Acknowledged answers the current version of its text. */
+export interface NoticeState {
+  id: string;
+  version: number;
+  acknowledged: boolean;
+  at?: number;
+}

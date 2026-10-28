@@ -89,6 +89,7 @@ type Inputs struct {
 	Conformance   map[string]string // last conformance results per adapter
 	Settings      map[string]string // raw settings; secrets are removed by the builder
 	Logs          []LogFile
+	Crashes       []LogFile // crash reports (internal/crashreport), crash-*.txt
 	Events        []EventRef
 	Watchdog      []WatchdogSignature
 	DiskPath      string
@@ -194,6 +195,14 @@ func Build(ctx context.Context, in Inputs, opt Options) (Bundle, error) {
 			continue
 		}
 		b.text("logs/"+name, l.Text)
+	}
+	for _, l := range in.Crashes {
+		name := filepath.Base(l.Name)
+		if !strings.HasPrefix(name, "crash-") || !strings.HasSuffix(name, ".txt") {
+			b.rep.Refused = append(b.rep.Refused, Refusal{Name: "crashes/" + name, Reason: "not a crash report"})
+			continue
+		}
+		b.text("crashes/"+name, l.Text)
 	}
 	b.json("events.json", map[string]any{"note": "type, sequence, time and ids only; no payloads", "events": nonNilEvents(in.Events)})
 	b.json("watchdog.json", map[string]any{"signatures": nonNilWatchdog(in.Watchdog)})

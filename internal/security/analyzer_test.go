@@ -700,3 +700,60 @@ func TestReportMentionsInvocationEdges(t *testing.T) {
 		t.Fatalf("edges = %v", edges)
 	}
 }
+
+// Review 2026-10-27 (S1, S2): commands the rules let through as a change inside the worktree that make a program run. Each one
+// goes to the person; the harmless forms beside them stay allowed.
+func TestProgramsStartedByAllowedCommandsAreAsked(t *testing.T) {
+	runCases(t, []acase{
+		// git config: a key that names a program, or a write outside the worktree's repository
+		{shell: bash, cmd: "git config core.fsmonitor 'id'; git status", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable, has: "core.fsmonitor"},
+		{shell: bash, cmd: "git config alias.st '!sh -c id'", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config core.hooksPath .h", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config core.sshCommand 'sh -c id'", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config diff.external sh", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config --add diff.x.textconv sh", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config set core.fsmonitor id", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config submodule.x.update '!sh'", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git -C src config core.fsmonitor id", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config --global core.fsmonitor 'sh -c id'", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config --glob user.name bob", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config --system user.name bob", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config -f ../x user.name bob", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config -e", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config $K x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git -c diff.x.textconv=sh log -p", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "git config user.name bob", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "git config branch.main.remote origin", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "git config --get core.fsmonitor", conf: pe, classes: "readonly workspace_write", verdict: allow},
+		{shell: bash, cmd: "git config get core.hooksPath", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "git config -l", conf: pe, classes: "readonly workspace_write", verdict: allow},
+		{shell: bash, cmd: "git config user.email", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "git config --global --get user.name", conf: pe, classes: "readonly workspace_write", verdict: allow},
+		// archivers, sort, install and patch with an option that starts another program
+		{shell: bash, cmd: "tar -xf a.tar -I sh", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -xIf sh a.tar", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar xIf sh a.tar", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar --use-compress-program=sh -xf a.tar", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar --use-comp=sh -xf a.tar", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -xf a.tar --to-command=sh", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -cf a.tar --checkpoint-action=exec=id x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -cf a.tar -F sh x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -cf a.tar --info-script=sh x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -cf a.tar --new-volume-script=sh x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -cf a.tar --rsh-command=sh x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "zip a.zip x -TT 'sh -c id'", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "zip a.zip x -T --unzip-command sh", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "sort --compress-program=sh x", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "install -s --strip-program=sh a b", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "patch -e < x.ed", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "patch --ed < x.ed", conf: op, classes: "?", verdict: ask, kind: KindShellUnanalyzable},
+		{shell: bash, cmd: "tar -xzf a.tgz", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "tar -cvf a.tar src", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "tar xzf a.tgz", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "zip -r a.zip src", conf: pe, classes: "workspace_write", verdict: allow},
+		{shell: bash, cmd: "sort -u x", conf: pe, classes: "readonly", verdict: allow},
+		{shell: bash, cmd: "patch -p1 < x.diff", conf: pe, classes: "workspace_write", verdict: allow},
+		// date -f reads a file this rule does not check as a path
+		{shell: bash, cmd: "date -f /etc/shadow", conf: pe, classes: "?", verdict: ask},
+	})
+}

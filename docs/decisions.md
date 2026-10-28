@@ -1252,3 +1252,39 @@ Open, owner action:
   edit's one written text as itself, and an edit whose fields name another file than its location is asked as the agent's own
   call; the composer takes a message out of the box when it is sent and puts it back if the send fails; (7) also holds when the
   build is fetched rather than taken from the download; (8) keeps at most 64 keys, each named exactly `<arch>.<key>`.
+- **P105. Release readiness: a release pipeline proven on a clean Windows runner, two approval bypasses closed, crash reports,
+  the D1 notice (2026-10-27).** On the owner's words, answering the production-readiness review ("1. fix that 3. Sure build that
+  4. Can you prove any of that? 5. Sure 6. Maybe do a quick scan for anything catastrophic"). (1) **Releases**
+  (`.github/workflows/release.yml`, `packaging/windows/drydock.nsi`, `CHANGELOG.md`): a tag `v*` builds drydock.exe with its
+  version, the tools it carries and the egress proxies, a per-user NSIS installer (`RequestExecutionLevel user`,
+  `%LOCALAPPDATA%\Programs\Drydock`, HKCU only, a Start menu entry; it refuses to install or uninstall over a running app with exit
+  4, tested by opening the exe for writing because Windows lets a running exe be renamed; the uninstaller keeps the data unless the
+  person says otherwise), the update zip and SHA256SUMS; both files are signed when Azure Artifact Signing is configured; after
+  install-test passes, a **draft** release is made, which a person publishes. A pull request touching the release path runs build
+  and install-test. NSIS is pinned (3.13). (2) **Proof on Windows** (install-test, a clean `windows-latest` runner; the
+  `installed-app-proof` artifact keeps screenshots and timings): Defender scans the installer and the exe; the silent install
+  writes nothing under HKLM or the data folder and the installer runs as invoker; the shipped exe starts and draws its window,
+  checked through UI Automation (`packaging/windows/ci/window-check.ps1`), and opens no WebView2 debugging port; a second start
+  hands over to the first and exits; an install over the running app is refused. Wails clears WebView2's own debugging switches
+  (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`), so no other program can attach to the shipped window; the deeper flows run against a
+  test variant (`app.DebugPort`, set only by that build, never shipped) placed in the same install folder and driven over CDP
+  (`ui/e2e-installed`: the D1 notice, a project on a real repository, eleven workspace pages, a backup, a support bundle); the
+  shipped build installed again opens on the data it made; the uninstaller removes the program and keeps the data. (3) **D1
+  notice** (`ext_notices.go`, `shell/terms-notice.tsx`): built, it had never been. Until the person says "I understand", the top
+  of the window says the agents run as them, on their own sign-in and plan, under their own agreement with the provider (the
+  Anthropic terms linked), and that Drydock never reads, copies or sends Claude credentials; it is kept with the version of the
+  text and audited. The written confirmation D1 asks for is drafted as a request to Anthropic or counsel (a Claude Docs document
+  the owner keeps; not in the repository). (4) **Crash reports** (`internal/crashreport`, `ext_crashes.go`, the Support page):
+  Go's crash output (`debug.SetCrashOutput`) goes to a file of the process's own; the next start makes a redacted report of it,
+  keeps ten, and support bundles carry them. Local only. (5) **The scan** (three read-only reviews: data loss, security,
+  availability) found nothing that loses data or bricks the app, and two approval bypasses, both fixed with tests: an agent's
+  `git config core.fsmonitor ...` (and alias.*, core.hooksPath, diff.<driver>.textconv, --global and the rest) was allowed as a
+  change inside the worktree although it makes git run a program, and in a linked worktree writes the repository's own config;
+  now reading is allowed and writing only for a short list of keys that name no program; and `tar -I sh`, `tar --to-command`,
+  `--checkpoint-action`, `zip -TT`, `sort --compress-program`, `install --strip-program` and `patch -e` were allowed; now they
+  are asked (also abbreviated, clustered, and tar's dashless form). Smaller findings fixed: retention skips a run folder it cannot
+  touch instead of stopping at it every day; a panic in one extension's Start leaves the rest of the app working; a backup a
+  person took is kept for the daily window; project export never writes over a file; deleting a task worktree whose folder is
+  gone forgets only that worktree (`git worktree prune` also forgot the person's own worktrees on an unplugged drive). **Not
+  proven:** real signed-in agent CLIs on Windows (the owner's), the updater (no feed or key yet), SmartScreen with a signed build,
+  Windows 10 (the runner is Windows Server), a locked Credential Manager.

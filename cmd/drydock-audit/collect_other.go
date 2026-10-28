@@ -150,6 +150,36 @@ func buildRelease(ctx context.Context, repo string) (string, string, error) {
 	return newestBuildTag(tags), "", err
 }
 
+// nsisRelease is NSIS's newest release from its GitHub mirror's tags: vMNN is M.NN (v313 is 3.13), vMNNP is M.NN.P.
+func nsisRelease(ctx context.Context, repo string) (string, string, error) {
+	tags, err := lsRemoteTags(ctx, repo)
+	return newestNSIS(tags), "", err
+}
+
+var nsisTag = regexp.MustCompile(`^v(\d)(\d\d)(\d?)$`)
+
+func newestNSIS(tags []string) string {
+	best, bestKey := "", -1
+	for _, t := range tags {
+		m := nsisTag.FindStringSubmatch(t)
+		if m == nil {
+			continue
+		}
+		major, _ := strconv.Atoi(m[1])
+		minor, _ := strconv.Atoi(m[2])
+		patch := 0
+		v := fmt.Sprintf("%d.%02d", major, minor)
+		if m[3] != "" {
+			patch, _ = strconv.Atoi(m[3])
+			v += "." + m[3]
+		}
+		if key := major*10000 + minor*10 + patch; key > bestKey {
+			best, bestKey = v, key
+		}
+	}
+	return best
+}
+
 // forkRelease is the newest release of the TurboQuant fork Drydock would install: read from GitHub's release listing with the
 // app's own picker (localllm.LatestRelease: no drafts, no pre-releases, the Windows build of the bundled backend with its
 // digest, ordered by the fork's version), so the audit and the app agree. Where the listing cannot be read (no API access),
@@ -329,6 +359,7 @@ func tools(ctx context.Context) []Item {
 		{"tool:git", "Git (Drydock runs it for every repository; Git for Windows on a PC)", "tool", "", "", "git/git", nil},
 		{"tool:semgrep", "Semgrep OSS (checks the built-in rules against their fixtures; not shipped)", "tool", "", "", "semgrep/semgrep", nil},
 		{"tool:llama.cpp", "llama.cpp (the local models' engine, decision P65)", "tool", "", "", "ggml-org/llama.cpp", buildRelease},
+		{"tool:nsis", "NSIS (builds the Windows installer in the release workflow)", "tool", "", "", "kichik/nsis", nsisRelease},
 		{"tool:llama.cpp-turboquant", "llama.cpp TurboQuant fork (comes with the download, Vulkan build, decision P77)", "tool", "", "", "AtomicBot-ai/atomic-llama-cpp-turboquant", forkRelease},
 	}
 	used := toolUsed()

@@ -1119,12 +1119,99 @@ func TestContextCancellationWhileWaitingIsReturned(t *testing.T) {
 		llmtest.WriteError(w, 429, map[string]string{"retry-after-ms": "20000"}, map[string]any{"error": map[string]any{"message": "rate"}})
 	})
 	p := e.provider(providers.NewProvider{Name: "p", BaseURL: srv.URL + "/v1"})
-	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	// long enough for a slow runner to reach the server, far shorter than the 20 s the server asks to wait: the deadline has to
+	// end the retry wait, not the provider lookup before any request
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	start := time.Now()
 	_, err := e.w.Complete(ctx, req(p, publicManifest))
-	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 3*time.Second {
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 10*time.Second {
 		t.Fatalf("err=%v after %s", err, time.Since(start))
+	}
+	if n := len(srv.Calls()); n < 1 {
+		t.Fatalf("%d calls: the deadline ended the call before its first request, so the wait was never tested", n)
+	}
+}
+
+// A caller whose context has already ended is told so, not that the provider is unavailable: the provider lookup fails on the
+// ended context, and that used to be reported as UnavailableError (release CI, Windows, 2026-10-27).
+func TestAnEndedContextIsNotReportedAsAnUnavailableProvider(t *testing.T) {
+	e := newEnv(t, nil)
+	srv := llmtest.New(t, okHandler("never", nil))
+	p := e.provider(providers.NewProvider{Name: "p", BaseURL: srv.URL + "/v1"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := e.w.Complete(ctx, req(p, publicManifest))
+	if !errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrProviderUnavailable) || len(srv.Calls()) != 0 {
+		t.Fatalf("err=%v, %d calls", err, len(srv.Calls()))
+	}
+}
+
+// The context ends during the first target's call: the fallback is not tried (its lookup would fail on the ended context and
+// used to say "unavailable"), and the caller gets its own reason back, the cause it gave included (review 2026-10-28).
+func TestAContextEndedDuringAnAttemptStopsBeforeTheFallbackWithItsCause(t *testing.T) {
+	e := newEnv(t, nil)
+	errStopped := errors.New("task stopped")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	primary := llmtest.New(t, func(c llmtest.Call, w http.ResponseWriter, r *http.Request) {
+		cancel(errStopped)
+		llmtest.WriteError(w, 503, nil, map[string]any{"error": map[string]any{"message": "busy"}})
+	})
+	alt := llmtest.New(t, okHandler("never", nil))
+	p := e.provider(providers.NewProvider{Name: "p", BaseURL: primary.URL + "/v1"})
+	q := e.provider(providers.NewProvider{Name: "q", BaseURL: alt.URL + "/v1"})
+	r := req(p, publicManifest)
+	r.Fallbacks = []llm.Target{{Provider: q.ID, Model: "m1"}}
+	_, err := e.w.Complete(ctx, r)
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, errStopped) || errors.Is(err, llm.ErrProviderUnavailable) {
+		t.Fatalf("err=%v", err)
+	}
+	if len(primary.Calls()) < 1 || len(alt.Calls()) != 0 {
+		t.Fatalf("calls: primary %d (want 1 or more), fallback %d (want 0)", len(primary.Calls()), len(alt.Calls()))
+	}
+}
+
+// A provider that cannot be read for a local reason (here a malformed row) is that failure, said as such: it is not "the
+// provider is unavailable", which would send the call on to the next provider and hide it (review 2026-10-28).
+func TestAProviderThatCannotBeReadIsNotFallenBackFrom(t *testing.T) {
+	e := newEnv(t, nil)
+	srv := llmtest.New(t, okHandler("never", nil))
+	alt := llmtest.New(t, okHandler("hidden", nil))
+	p := e.provider(providers.NewProvider{Name: "p", BaseURL: srv.URL + "/v1"})
+	q := e.provider(providers.NewProvider{Name: "q", BaseURL: alt.URL + "/v1"})
+	if _, err := e.db.Writer().Exec(`UPDATE providers SET enabled='yes' WHERE id=?`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	r := req(p, publicManifest)
+	r.Fallbacks = []llm.Target{{Provider: q.ID, Model: "m1"}}
+	_, err := e.w.Complete(e.ctx, r)
+	if err == nil || errors.Is(err, llm.ErrProviderUnavailable) || len(alt.Calls()) != 0 {
+		t.Fatalf("err=%v, fallback calls %d", err, len(alt.Calls()))
+	}
+	// an unknown provider is still unavailable, and the cause is kept
+	r = req(p, publicManifest)
+	r.Provider = "prov_nope"
+	if _, err := e.w.Complete(e.ctx, r); !errors.Is(err, llm.ErrProviderUnavailable) || !errors.Is(err, providers.ErrNotFound) {
+		t.Fatalf("unknown provider: %v", err)
+	}
+}
+
+// Private context goes to a private provider only when the model's own class is known: a catalog row that cannot be read could
+// say trainable, so the call is refused rather than sent on the provider's class (review 2026-10-28).
+func TestPrivateContextIsRefusedWhenTheModelsClassCannotBeRead(t *testing.T) {
+	e := newEnv(t, nil)
+	srv := llmtest.New(t, okHandler("leaked", nil))
+	p := e.provider(providers.NewProvider{Name: "p", BaseURL: srv.URL + "/v1"})
+	if err := e.reg.UpsertModels(e.ctx, p.ID, []providers.Model{{ID: "m1", DataClass: providers.DataTrainable, Tier: providers.TierCheap}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Writer().Exec(`UPDATE model_catalog SET context_length='long' WHERE provider_id=? AND model='m1'`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.w.Complete(e.ctx, req(p, privateManifest))
+	if !errors.Is(err, llm.ErrDataClass) || len(srv.Calls()) != 0 {
+		t.Fatalf("err=%v, %d calls", err, len(srv.Calls()))
 	}
 }
 

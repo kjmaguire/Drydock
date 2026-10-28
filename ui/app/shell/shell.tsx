@@ -20,6 +20,7 @@ import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
 import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
 import { LicenseBanner } from './license-banner.tsx';
+import { TermsNotice } from './terms-notice.tsx';
 import { AgentConfigBanner } from './agent-config-banner.tsx';
 import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { CommandPalette } from './palette.tsx';
@@ -141,6 +142,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
         <Sidebar route={route} />
         <div mix={columnCss}>
         <LicenseBanner />
+        <TermsNotice />
         {project || isWorkspacePage(route) ? <SubNav route={route} /> : null}
         <div mix={appCss}>
           {rail && narrow ? <button type="button" mix={[scrimCss, on('click', () => s.ui.setDrawer(false))]} aria-label={`Close the ${railName}`} /> : null}
