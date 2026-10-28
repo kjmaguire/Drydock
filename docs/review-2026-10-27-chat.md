@@ -139,3 +139,21 @@ again. Each fix has a test that fails on the old code (the one exception is note
   `internal/security`, `internal/localllm`, `internal/scan`, `internal/safe` and `internal/core`.
 - `npm test`: 1794 of 1794 pass. `tsc` for the app and the e2e suite is clean.
 - `npx playwright test chat-perf` passes within its budgets.
+
+## 4. Review of the fixes
+
+A code review of the audit's commit (`2efe07c`) found ten more things. All are fixed, each with a test that fails on the code
+before.
+
+| # | What | Fix |
+| --- | --- | --- |
+| R1 | A1's word-for-word match did not compare redirections. A task rule for `curl ... > notes.txt` covered the same command written to `.gitignore`. | A task rule keeps each command's redirections, operator and target, and matches them word for word (`StoredRule.Redirects`). Rules stored before this have none, so a command with a redirection is asked again. |
+| R2 | A4 cleared the sent text on the answer only when the box still began with it. A message edited at its start while on its way stayed in the box, to be sent twice. | The message leaves the box when it is sent. A send that fails puts it back in front of what was typed meanwhile. |
+| R3 | A6's Autostart ran at once when the build had to be fetched (none in place, or the download's copy failed its check), found no build, and never ran again. | Autostart runs once the fetched build's install has ended. |
+| R4 | A7 scanned the whole input of a tool call (2 MB for a large write) to make a 160-character line, and every caller scanned the line again. | Only the first 8 KB is read, which holds any secret that starts in the line. The callers no longer scan it again. |
+| R5 | A message sent to a chat deleted at that moment answered "sql: no rows in result set". | It answers "chat not found". |
+| R6 | A2 bounded the values kept, but not the scalar keys: a header could name a million keys like `a.<60 KB>.block_count`, all kept. | Only `<arch>.<key>` exactly is read, and at most 64 keys are kept. |
+| R7 | A3's ACP edit showed the agent's fields as JSON, and its path field was not checked against the location it reported. | A path and one text show as that text. An edit whose fields name another file is asked as the agent's own call. |
+| R8 | A11's merge guard made Merge on a second card do nothing while the first merged. | Each card merges by itself. |
+| R9 | A8 copied the kept report on every read, also when a running scan's report was the answer. | It is copied only when it is the answer. |
+| R10 | A12's Crew page refactor had no test. | The lookups are a pure function (`crewLookups`) with a unit test. |

@@ -9,6 +9,7 @@ import {
   cardState,
   clock,
   crewLine,
+  crewLookups,
   currentSummary,
   lastFinished,
   laneBlocks,
@@ -258,5 +259,34 @@ describe('an agent card', () => {
   it('writes the header line', () => {
     expect(crewLine({ agents: 6, working: 3, waiting: 1 })).toBe('6 agents · 3 working · 1 waiting on you');
     expect(crewLine({ agents: 1, working: 0, waiting: 0 })).toBe('1 agent · 0 working · 0 waiting on you');
+  });
+});
+
+describe('crewLookups', () => {
+  it('finds each agent its presence, tasks, team and skills, the first listed where an id comes twice (audit 2026-10-27)', () => {
+    const l = crewLookups(
+      [presence({ agentId: 'a1', presence: 'Working' }), presence({ agentId: 'a1', presence: 'Idle' }), presence({ agentId: 'a2', presence: 'Idle' })],
+      [summary({ taskId: 't1', assignee: 'a1', seq: 1 }), summary({ taskId: 't2', assignee: 'a1', seq: 2 }), summary({ taskId: 't1', assignee: 'a2', seq: 9 }), summary({ taskId: 't3', assignee: '' })],
+      [
+        { id: 'a1', projectId: 'p' },
+        { id: 'a2', projectId: 'q' },
+        { id: 'a3', projectId: 'p' },
+      ],
+      [
+        { agentId: 'a1', name: 'go' },
+        { agentId: 'a1', name: 'remix' },
+      ],
+    );
+    expect(l.presenceById.get('a1')?.presence).toBe('Working');
+    expect(l.presenceById.get('a3')).toBe(undefined);
+    expect((l.byAssignee.get('a1') ?? []).map((x) => x.taskId)).toEqual(['t1', 't2']);
+    expect((l.byAssignee.get('a2') ?? []).map((x) => x.seq)).toEqual([9]);
+    expect(l.byAssignee.has('')).toBe(false);
+    expect(l.byTask.get('t1')?.seq).toBe(1);
+    expect(l.byTask.get('t3')?.taskId).toBe('t3');
+    expect(l.teamOf.get('p')).toEqual(['a1', 'a3']);
+    expect(l.teamOf.get('q')).toEqual(['a2']);
+    expect(l.skillsOf.get('a1')).toEqual(['go', 'remix']);
+    expect(l.skillsOf.get('a2')).toBe(undefined);
   });
 });

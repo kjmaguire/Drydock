@@ -68,9 +68,11 @@ func (t *turnRun) asker() agents.PermissionAsker {
 		s, c := t.s, t.c
 		name := firstNonEmpty(q.Tool, "tool")
 		// redacted before it is shortened: a secret the shortening cuts in two would not be found after (audit 2026-10-27)
-		summary := s.d.Redact(RedactedToolSummary(name, q.Args, s.d.Redact))
+		var summary string
 		if q.Title != "" && q.Title != name {
-			summary = s.d.Redact(name + ": " + clip(s.d.Redact(oneLine(q.Title)), 160))
+			summary = s.d.Redact(name + ": " + clip(s.d.Redact(oneLine(cutUTF8(q.Title, summaryScanBytes))), 160))
+		} else {
+			summary = RedactedToolSummary(name, q.Args, s.d.Redact)
 		}
 		msg, _ := t.store(RoleSystem, "Asks to use "+summary, name, q.Args)
 		ttl := s.o.AskTTL

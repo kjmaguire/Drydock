@@ -307,3 +307,39 @@ func TestARequestCanBeApprovedForItsTaskTheMomentItIsAnnounced(t *testing.T) {
 		t.Fatalf("%+v", o)
 	}
 }
+
+// A task rule keeps the command's redirections word for word: approving "curl ... > notes.txt" for the task does not cover the
+// same command written to another file of the worktree (review of 2026-10-27).
+func TestATaskRuleCoversOnlyTheRedirectionItWasApprovedFor(t *testing.T) {
+	r := newPermRig(t)
+	store := &rulesOf{}
+	r.gate.TaskRules = store.get
+	ctx := context.Background()
+	bash := func(cmd string) ToolRequest {
+		return ToolRequest{Tool: "Bash", Input: input(t, map[string]any{"command": cmd}), Root: r.root}
+	}
+	ch := r.decideAsync(t, bash("curl https://example.org > notes.txt"))
+	id := r.waitRequested(t)
+	rule, err := r.gate.TaskRuleFor(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rule.Commands) != 1 || len(rule.Commands[0].Redirects) != 1 || rule.Commands[0].Redirects[0] != "> notes.txt" {
+		t.Fatalf("rule %+v", rule)
+	}
+	store.add(rule)
+	_ = r.apr.Decide(ctx, id, DecisionApprove, "human:kyle")
+	await(t, ch)
+	if o := r.gate.Decide(ctx, permScope, bash("curl https://example.org > notes.txt")); o.Outcome != PermissionApprovedForTask {
+		t.Fatalf("the same call: %+v", o)
+	}
+	for _, cmd := range []string{"curl https://example.org > .gitignore", "curl https://example.org >> notes.txt", "curl https://example.org"} {
+		ch := make(chan PermissionOutcome, 1)
+		go func() { ch <- r.gate.Decide(ctx, permScope, bash(cmd)) }()
+		id := r.waitRequested(t)
+		_ = r.apr.Decide(ctx, id, DecisionReject, "human:kyle")
+		if o := await(t, ch); o.Outcome != PermissionRejected {
+			t.Fatalf("%s was covered by the rule for curl > notes.txt: %+v", cmd, o)
+		}
+	}
+}

@@ -279,6 +279,20 @@ describe('TaskListScreen: the board', () => {
     await waitFor(() => expect(btn().textContent).toBe('Merge'), r);
   });
 
+  it('Merge on a second card goes ahead while the first is merging (review 2026-10-27)', async () => {
+    const answers: (() => void)[] = [];
+    const runRespond = recorder(() => new Promise<undefined>((res) => answers.push(() => res(undefined))));
+    const two = [...SUMMARIES, { ...SUMMARIES.find((x) => x.taskId === 'merge')!, taskId: 'merge2', seq: 39, pending: pending('merge', 'req_merge2', 'run_39') }];
+    const { r } = board({ runRespond }, {}, two);
+    await shown(r, 9);
+    await r.act(() => byText(card(r, 'merge'), 'button', 'Merge GOC-38').click());
+    await r.act(() => byText(card(r, 'merge2'), 'button', 'Merge GOC-39').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run_38', 'req_merge', 'approved'], ['run_39', 'req_merge2', 'approved']]), r);
+    expect([byText(card(r, 'merge'), 'button', 'Merge GOC-38').textContent, byText(card(r, 'merge2'), 'button', 'Merge GOC-39').textContent]).toEqual(['Merging...', 'Merging...']);
+    await r.act(() => answers.forEach((a) => a()));
+    await waitFor(() => expect(byText(card(r, 'merge2'), 'button', 'Merge GOC-39').textContent).toBe('Merge'), r);
+  });
+
   it('shows why a merge failed, and keeps Merge off while read-only', async () => {
     const { r } = board({ runRespond: async () => Promise.reject(new Error('the request was already answered')) });
     await shown(r, 8);

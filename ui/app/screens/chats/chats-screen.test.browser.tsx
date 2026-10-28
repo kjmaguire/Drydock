@@ -1152,8 +1152,9 @@ describe('Conversation', () => {
     type(box, 'one');
     await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
     await waitFor(() => expect(sent).toEqual(['one']), r);
-    // the person goes on writing, and attaches a file, while the send is answered
-    type(box, 'one two');
+    // what is sent leaves the box at once; the person goes on writing, and attaches a file, while the send is answered
+    expect(box.value).toBe('');
+    type(box, 'two');
     const input = must$(r, '[data-testid="chat-file"]') as HTMLInputElement;
     const dt = new DataTransfer();
     dt.items.add(new File(['x'], 'later.txt', { type: 'text/plain' }));
@@ -1161,7 +1162,8 @@ describe('Conversation', () => {
     await r.act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
     await waitFor(() => expect(r.container.querySelectorAll('[data-testid="file-chip"]')).toHaveLength(1), r);
     await r.act(() => answer({ turnId: 'turn_2', version: 2 }));
-    await waitFor(() => expect(box.value).toBe('two'), r);
+    await r.act(() => new Promise((res) => setTimeout(res, 20)));
+    expect(box.value).toBe('two');
     expect(r.container.querySelectorAll('[data-testid="file-chip"]')).toHaveLength(1);
 
     // two batches of three files dropped at once: the second is checked against the first, so no more than four are kept
@@ -1178,6 +1180,39 @@ describe('Conversation', () => {
     });
     await waitFor(() => expect(must$(r, '[data-testid="chat-composer"]').textContent).toContain('At most 4 files'), r);
     expect(r.container.querySelectorAll('[data-testid="file-chip"]').length).toBeLessThanOrEqual(4);
+  });
+
+  it('a message edited while it is on its way is not left to send again, and a send that fails puts the message back', async () => {
+    // review 2026-10-27: the box was cleared on the answer only if it still began with what was sent, so an edit to its start
+    // left the message that had gone in the box, to be sent a second time
+    let answer: (v: { turnId: string; version: number } | Promise<never>) => void = () => {};
+    const sent: unknown[] = [];
+    const { r, s } = conv(chat(), [], {
+      chatSend: (_id, text) => (sent.push(text), new Promise((res) => (answer = res))),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
+    const enter = () => r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    type(box, 'fix the bug');
+    await enter();
+    await waitFor(() => expect(sent).toEqual(['fix the bug']), r);
+    expect(box.value).toBe('');
+    type(box, 'Fix');
+    await r.act(() => answer({ turnId: 'turn_2', version: 2 }));
+    await r.act(() => new Promise((res) => setTimeout(res, 20)));
+    expect(box.value).toBe('Fix');
+    s.emit({ type: 'chat.turn_started', data: { chatId: 'chat_a', turnId: 'turn_2', attach: [] } });
+    s.emit({ type: 'chat.updated', data: { chatId: 'chat_a', chat: chat({ status: 'idle', version: 3 }) } });
+    s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_2', status: 'done' } });
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Send').disabled).toBe(false), r);
+
+    // the next send fails: the message goes back, ahead of what was typed while it was on its way
+    type(box, 'second');
+    await enter();
+    await waitFor(() => expect(sent).toEqual(['fix the bug', 'second']), r);
+    type(box, 'third');
+    await r.act(() => answer(Promise.reject(new Error('the chat is busy'))));
+    await waitFor(() => expect(box.value).toBe('second\nthird'), r);
+    expect(sent).toHaveLength(2);
   });
 
   it('streams a long answer over a long chat without drawing the conversation again, and stays at the bottom while the reader is there', async () => {

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -294,9 +296,11 @@ func acpToolRequest(q agents.ToolAsk) security.ToolRequest {
 			return security.ToolRequest{Tool: "Read", Input: in}
 		}
 	case "edit":
-		if len(q.Locations) == 1 {
+		if len(q.Locations) == 1 && acpPathsAgree(fields, q.Locations[0]) {
 			w := map[string]string{"file_path": q.Locations[0]}
-			if len(q.Args) > 0 && string(q.Args) != "null" {
+			if c, ok := acpWrittenText(fields); ok {
+				w["content"] = c
+			} else if len(q.Args) > 0 && string(q.Args) != "null" {
 				w["content"] = string(q.Args)
 			}
 			in, _ := json.Marshal(w)
@@ -312,6 +316,49 @@ func acpToolRequest(q agents.ToolAsk) security.ToolRequest {
 		in = json.RawMessage("null")
 	}
 	return security.ToolRequest{Tool: "acp:" + name, Input: in}
+}
+
+// acpPathFields and acpTextFields are the fields ACP agents name an edit's file and what it writes with (Gemini's write_file
+// sends file_path and content; Zed's agents path and new_text).
+var (
+	acpPathFields = []string{"file_path", "path", "filePath", "absolute_path"}
+	acpTextFields = map[string]bool{"content": true, "new_text": true, "newText": true}
+)
+
+// acpPathsAgree reports whether every path an edit's fields name is its location: an edit whose fields write elsewhere than
+// the location it reports is not made a Write of that location, whose checks would then be of the wrong file (review
+// 2026-10-27).
+func acpPathsAgree(fields map[string]any, loc string) bool {
+	for _, k := range acpPathFields {
+		if v, ok := fields[k]; ok {
+			p, isStr := v.(string)
+			if !isStr || filepath.Clean(p) != filepath.Clean(loc) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// acpWrittenText is what an edit writes, when its fields are a path and one text and nothing else: the person is then shown
+// that text, not the fields as JSON (review 2026-10-27). Any other fields (a replace's old and new text) are shown as they
+// are sent.
+func acpWrittenText(fields map[string]any) (string, bool) {
+	text, found := "", false
+	for k, v := range fields {
+		switch {
+		case slices.Contains(acpPathFields, k):
+		case acpTextFields[k] && !found:
+			s, ok := v.(string)
+			if !ok {
+				return "", false
+			}
+			text, found = s, true
+		default:
+			return "", false
+		}
+	}
+	return text, found
 }
 
 // toolOfAction is the tool a permission approval names, without the asking CLI ("claude:Bash" and "gemini:Bash" are Bash).

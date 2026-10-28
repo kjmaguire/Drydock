@@ -97,9 +97,9 @@ func ToolSummary(name string, args json.RawMessage) string {
 	return RedactedToolSummary(name, args, nil)
 }
 
-// RedactedToolSummary is ToolSummary with redact (when set) run over the detail before it is shortened: a secret cut in two by
-// the shortening is no longer whole, so the scanner, run after, would not find it and its first part would be kept (audit
-// 2026-10-27).
+// RedactedToolSummary is ToolSummary with redact (when set) run over the name and the detail before it is shortened: a secret
+// cut in two by the shortening is no longer whole, so the scanner, run after, would not find it and its first part would be
+// kept (audit 2026-10-27). The line it returns needs no redacting again.
 func RedactedToolSummary(name string, args json.RawMessage, redact func(string) string) string {
 	var m map[string]any
 	_ = json.Unmarshal(args, &m)
@@ -132,9 +132,12 @@ func RedactedToolSummary(name string, args json.RawMessage, redact func(string) 
 			detail = string(b)
 		}
 	}
-	detail = oneLine(detail)
+	// only the start of a long input can reach the line: the scanner reads that much, which holds any secret that begins in
+	// the first 160 characters (a PEM key included), not the whole input (review 2026-10-27: a 2 MB input was scanned in full)
+	detail = oneLine(cutUTF8(detail, summaryScanBytes))
 	if redact != nil {
 		detail = redact(detail)
+		name = redact(name)
 	}
 	detail = clip(detail, 160)
 	if detail == "" {
@@ -142,6 +145,9 @@ func RedactedToolSummary(name string, args json.RawMessage, redact func(string) 
 	}
 	return name + ": " + detail
 }
+
+// summaryScanBytes is how much of a tool call's detail RedactedToolSummary reads.
+const summaryScanBytes = 8 << 10
 
 // AutoTitle is the title a chat gets after its first reply when the human gave none: the first line of the first message, at
 // most 60 characters. No model call.

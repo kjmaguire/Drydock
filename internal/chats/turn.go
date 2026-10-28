@@ -194,7 +194,9 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		n, _ := res.RowsAffected()
 		if claimed = n == 1; !claimed {
 			var status string
-			if err := tx.QueryRowContext(ctx, `SELECT status FROM chats WHERE id=?`, c.ID).Scan(&status); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT status FROM chats WHERE id=?`, c.ID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: %s", ErrNotFound, c.ID) // deleted while the message was on its way
+			} else if err != nil {
 				return err
 			}
 			changed = status != StatusRunning
@@ -619,7 +621,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 				}
 				t.seen[tc.ID] = true
 			}
-			summary := s.d.Redact(RedactedToolSummary(tc.Name, tc.Args, s.d.Redact))
+			summary := RedactedToolSummary(tc.Name, tc.Args, s.d.Redact)
 			msg, err := s.insertMessage(context.Background(), c, t.turnID, RoleTool, summary, tc.Name, tc.Args, msgExtra{callID: tc.ID, thinking: t.takeThinking()})
 			if err != nil {
 				s.logf("chats: store tool message: %v", err)

@@ -57,6 +57,9 @@ func classKind(c Class) string {
 type StoredRule struct {
 	Program string   `json:"program"` // normalized program name
 	Args    []string `json:"args"`    // one pattern per argument; "*" matches any one literal argument; a final "**" matches the rest
+	// Redirects are a task rule's redirections, each its operator, a space and its target, word for word. Only a task rule
+	// sets them; a hand-written rule has none and its matching does not read them.
+	Redirects []string `json:"redirects,omitempty"`
 }
 
 // Restriction is a stored CEL expression that can only restrict (docs/security.md s7, "Stored policy interplay").

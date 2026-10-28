@@ -145,6 +145,9 @@ func taskRuleOf(scope PermissionScope, td ToolDecision) TaskAllowRule {
 			for _, a := range inv.Args {
 				s.Args = append(s.Args, a.Text)
 			}
+			for _, rd := range inv.Redirects {
+				s.Redirects = append(s.Redirects, redirectWords(rd))
+			}
 			r.Commands = append(r.Commands, s)
 		}
 		if len(r.Commands) > 0 {
@@ -176,8 +179,8 @@ func (r TaskAllowRule) matches(scope PermissionScope, td ToolDecision) bool {
 	return r.InputDigest != "" && r.InputDigest == td.Action.ArgvDigest
 }
 
-// sameCommands reports whether every invocation of the report is one of the rule's commands exactly: the same program and the
-// same arguments, word for word. A task rule stores the words the person approved, so "*" or "**" among them is a word (an
+// sameCommands reports whether every invocation of the report is one of the rule's commands exactly: the same program, the
+// same arguments and the same redirections, word for word (a rule for "echo x > notes.txt" does not cover "echo x > .gitignore"). A task rule stores the words the person approved, so "*" or "**" among them is a word (an
 // argument that was quoted), never a wildcard as it is in a hand-written rule (audit 2026-10-27: "node '**'" approved for the
 // task let "node -e ..." through).
 func sameCommands(cmds []StoredRule, rep CommandReport) bool {
@@ -208,12 +211,20 @@ func sameInvocation(c StoredRule, inv Invocation) bool {
 			return false
 		}
 	}
-	for _, rd := range inv.Redirects {
-		if rd.Dynamic {
+	if len(c.Redirects) != len(inv.Redirects) {
+		return false
+	}
+	for i, rd := range inv.Redirects {
+		if rd.Dynamic || redirectWords(rd) != c.Redirects[i] {
 			return false
 		}
 	}
 	return true
+}
+
+// redirectWords is how a task rule keeps a redirection: its operator, a space, its target.
+func redirectWords(rd Redirect) string {
+	return rd.Op + " " + rd.Target
 }
 
 // taskRule returns the person's task allow rule that covers a request, if one does.

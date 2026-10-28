@@ -350,3 +350,61 @@ func TestAfterAnAppUpdateTheServerStartsOnTheNewBundledBuild(t *testing.T) {
 		t.Fatalf("installed %s; the server started on %v", v.Runtime.Tag, started)
 	}
 }
+
+// With Autostart on and no build here (its server deleted, as an antivirus may do), the start fetches the TurboQuant build and
+// the server starts by itself once that is in place (review 2026-10-27: Autostart ran before the fetch, found no build, and
+// never ran again).
+func TestWithAutostartTheServerStartsOnceAMissingBuildIsFetched(t *testing.T) {
+	tq, _ := localllm.SourceByID(localllm.SourceTurboQuant)
+	zip := llamatest.ZipOf(map[string][]byte{localllm.ServerName(): []byte("server"), "ggml-vulkan.dll": []byte("dll")})
+	rel := llamatest.NewReleases(t, tq.Repo)
+	rel.Add(llamatest.ReleaseSpec{Tag: "b10298-2.0.0", Assets: map[string][]byte{"llama-turboquant-windows-x64-vulkan.zip": zip}})
+	rig := newLocalRig(t)
+	dataDir := filepath.Join(t.TempDir(), "data")
+	empty := t.TempDir() // the download carries no tools folder
+	creds := providers.NewMemoryCredentialStoreForTests()
+	open := func() *app {
+		c, err := core.Open(context.Background(), core.Config{DataDir: dataDir, User: "kyle", LeaseTTL: 3 * time.Second, AutoSetup: true,
+			Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: "claude-not-used"}}, Credentials: creds, BundleDir: empty,
+			LocalModels: func(m *localllm.Manager) {
+				m.GitHub = host.HTTPAPI{BaseURL: rel.Server.URL}
+				m.HTTP = &http.Client{Transport: rel.Transport}
+				m.Hub = &localllm.Hub{BaseURL: rig.hub.URL}
+				m.Program = func(in localllm.Installed) (string, []string) { return os.Args[0], llamatest.Args(rig.standin...) }
+			}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &app{t: t, c: c}
+	}
+	a := open()
+	var v core.LocalView
+	a.waitFor("the TurboQuant build to be set up", func() bool {
+		v = localCall(a, "local.get", nil)
+		return v.Runtime.Installed && v.Runtime.Job != nil && v.Runtime.Job.State == "done"
+	})
+	localCall(a, "local.settings.set", map[string]any{"port": freePort(t)})
+	localCall(a, "local.model.download", map[string]any{"repo": "acme/tiny-GGUF", "variant": "Q8_0"})
+	a.waitFor("the download", func() bool {
+		v := localCall(a, "local.get", nil)
+		return len(v.Downloads) == 1 && v.Downloads[0].State != "running"
+	})
+	if v := localCall(a, "local.server.start", map[string]any{"modelId": "acme/tiny-GGUF:Q8_0"}); v.Server.State != "running" {
+		t.Fatalf("%+v", v.Server)
+	}
+	server := v.Runtime.Server
+	a.c.Close()
+	if err := os.Remove(server); err != nil {
+		t.Fatal(err)
+	}
+
+	a = open()
+	t.Cleanup(a.c.Close)
+	a.waitFor("the server to start by itself on the fetched build", func() bool {
+		v = localCall(a, "local.get", nil)
+		return v.Server.State == "running"
+	})
+	if !v.Runtime.Installed || v.Runtime.Job == nil || v.Runtime.Job.Kind != "install" || v.Runtime.Job.State != "done" {
+		t.Fatalf("the build was not set up again: %+v %+v", v.Runtime, v.Runtime.Job)
+	}
+}

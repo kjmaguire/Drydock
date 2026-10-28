@@ -33,6 +33,7 @@ import {
   MINUTE,
   agentLine,
   cardState,
+  crewLookups,
   currentSummary,
   lastFinished,
   localIds,
@@ -362,32 +363,8 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     const fig = crewFigures(agents, presence, waitingOn);
     const target = targetProject(projects);
 
-    // looked up by id, built once a render: the all-projects page holds every project's agents and tasks, and a filter per
-    // card made each render agents x tasks (audit 2026-10-27)
-    const presenceById = new Map<string, PresenceState>();
-    for (const x of presence) if (!presenceById.has(x.agentId)) presenceById.set(x.agentId, x);
-    const byAssignee = new Map<string, typeof list>();
-    const byTask = new Map<string, (typeof list)[number]>();
-    for (const x of list) {
-      if (x.assignee) {
-        const l = byAssignee.get(x.assignee);
-        if (l) l.push(x);
-        else byAssignee.set(x.assignee, [x]);
-      }
-      if (!byTask.has(x.taskId)) byTask.set(x.taskId, x);
-    }
-    const teamOf = new Map<string, string[]>();
-    for (const x of agents) {
-      const l = teamOf.get(x.projectId);
-      if (l) l.push(x.id);
-      else teamOf.set(x.projectId, [x.id]);
-    }
-    const skillsOf = new Map<string, string[]>();
-    for (const k of extras.data?.skills ?? []) {
-      const l = skillsOf.get(k.agentId);
-      if (l) l.push(k.name);
-      else skillsOf.set(k.agentId, [k.name]);
-    }
+    // looked up by id, built once a render (audit 2026-10-27: a filter per card made each render agents x tasks)
+    const { presenceById, byAssignee, byTask, teamOf, skillsOf } = crewLookups(presence, list, agents, extras.data?.skills ?? []);
 
     const cardOf = (a: Agent): CardData => {
       const p = presenceById.get(a.id);
