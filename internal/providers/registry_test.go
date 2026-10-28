@@ -241,6 +241,16 @@ func TestEffectiveDataClass(t *testing.T) {
 	if got := e.reg.EffectiveDataClass(e.ctx, tr, "anything"); got != DataTrainable {
 		t.Fatal("trainable provider")
 	}
+	// a row that cannot be read has no known class: trainable, with the error, not the provider's private class
+	if _, err := e.db.Writer().Exec(`UPDATE model_catalog SET context_length='long' WHERE provider_id=? AND model='z/z'`, or.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.reg.DataClassOf(e.ctx, or, "z/z"); got != DataTrainable || err == nil {
+		t.Fatalf("unreadable row: %s %v", got, err)
+	}
+	if got, err := e.reg.DataClassOf(e.ctx, or, "x/y"); got != DataPrivate || err != nil {
+		t.Fatalf("no row is the provider's class: %s %v", got, err)
+	}
 }
 
 // TestDialGuardRefusesRebinding: a name that resolved to a LAN address at registration and later resolves to a public

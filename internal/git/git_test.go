@@ -498,6 +498,7 @@ func TestDeletingAMissingWorktreeForgetsOnlyThatOne(t *testing.T) {
 	if out, err := exec.Command("git", "-C", r.Root, "worktree", "add", "-q", "-b", "mine", own).CombinedOutput(); err != nil {
 		t.Fatalf("git worktree add: %v %s", err, out)
 	}
+	ownAdmin := adminDirOf(t, own)
 	away := own + "-unplugged"
 	if err := os.Rename(own, away); err != nil {
 		t.Fatal(err)
@@ -506,20 +507,19 @@ func TestDeletingAMissingWorktreeForgetsOnlyThatOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// git's own answer for the task's entry, read before its folder goes: the test does not match paths the way the code does
+	taskAdmin := adminDirOf(t, w.Path)
 	if err := os.RemoveAll(w.Path); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.DeleteWorktree(ctx, w, false); err != nil {
 		t.Fatal(err)
 	}
-	// the task's entry is gone and the person's is still there (as this package reads them: paths as git recorded them)
-	var task, mine bool
-	for _, e := range r.registeredWorktrees() {
-		task = task || lexical(e.path) == lexical(w.Path)
-		mine = mine || filepath.Base(e.path) == "mine"
+	if _, err := os.Stat(taskAdmin); !os.IsNotExist(err) {
+		t.Fatalf("the task's entry %s is still there: %v", taskAdmin, err)
 	}
-	if task || !mine {
-		t.Fatalf("after the delete: task entry %v (want false), the person's entry %v (want true)", task, mine)
+	if _, err := os.Stat(ownAdmin); err != nil {
+		t.Fatalf("the person's entry %s went too: %v", ownAdmin, err)
 	}
 	// plugged in again, it works as before: git status there needs the entry under .git/worktrees that a prune removes
 	if err := os.Rename(away, own); err != nil {
@@ -528,4 +528,41 @@ func TestDeletingAMissingWorktreeForgetsOnlyThatOne(t *testing.T) {
 	if out, err := exec.Command("git", "-C", own, "status", "--short").CombinedOutput(); err != nil {
 		t.Fatalf("the person's worktree no longer works: %v %s", err, out)
 	}
+}
+
+// The task's worktree folder is gone and Drydock names it through a link (a junction to the data folder, say) while git
+// recorded the real path: its entry is still the one forgotten, and DeleteWorktree does not report success with it left behind.
+func TestDeletingAMissingWorktreeReachedThroughALink(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	w, err := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_10", Title: "linked", Parent: parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskAdmin := adminDirOf(t, w.Path)
+	link := filepath.Join(t.TempDir(), "via-link")
+	if err := os.Symlink(filepath.Dir(w.Path), link); err != nil {
+		t.Skipf("cannot make a link here: %v", err)
+	}
+	if err := os.RemoveAll(w.Path); err != nil {
+		t.Fatal(err)
+	}
+	linked := w
+	linked.Path = filepath.Join(link, filepath.Base(w.Path))
+	if err := r.DeleteWorktree(ctx, linked, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(taskAdmin); !os.IsNotExist(err) {
+		t.Fatalf("the task's entry %s is still there: %v", taskAdmin, err)
+	}
+}
+
+// adminDirOf is the folder under <common>/worktrees that git keeps for the worktree at dir, as git itself reports it.
+func adminDirOf(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--absolute-git-dir").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse in %s: %v %s", dir, err, out)
+	}
+	return filepath.FromSlash(strings.TrimSpace(string(out)))
 }

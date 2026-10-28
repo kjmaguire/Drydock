@@ -78,12 +78,14 @@ func (e *SecretError) Is(t error) bool { return t == ErrSecretBlocked }
 type UnavailableError struct {
 	Provider string
 	Reason   string
+	Cause    error // the error behind Reason, when there is one
 }
 
 func (e *UnavailableError) Error() string {
 	return fmt.Sprintf("llm: provider %s unavailable: %s", e.Provider, e.Reason)
 }
 func (e *UnavailableError) Is(t error) bool { return t == ErrProviderUnavailable }
+func (e *UnavailableError) Unwrap() error   { return e.Cause }
 
 // ErrorKind classifies a provider error.
 type ErrorKind string

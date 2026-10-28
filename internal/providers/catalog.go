@@ -143,16 +143,31 @@ func (r *Registry) SetProbeStatus(ctx context.Context, providerID, model, status
 }
 
 // EffectiveDataClass is the class a request to (provider, model) must be treated as: trainable when either the
-// provider or the catalog row says so (an OpenRouter ":free" model is trainable even on a private aggregator route).
+// provider or the catalog row says so (an OpenRouter ":free" model is trainable even on a private aggregator route). A
+// catalog row that cannot be read counts as trainable: its class is not known (DataClassOf says why).
 func (r *Registry) EffectiveDataClass(ctx context.Context, p Provider, model string) DataClass {
+	c, _ := r.DataClassOf(ctx, p, model)
+	return c
+}
+
+// DataClassOf is EffectiveDataClass with the error of the catalog read: a model with no row has the provider's class, and one
+// whose row cannot be read (a busy or failing database, a malformed row) is DataTrainable with the error, so that a guard can
+// refuse instead of taking the provider's class for it (review 2026-10-28).
+func (r *Registry) DataClassOf(ctx context.Context, p Provider, model string) (DataClass, error) {
 	if p.DataClass == DataTrainable {
-		return DataTrainable
+		return DataTrainable, nil
 	}
 	if p.Flavor == FlavorOpenRouter && (strings.HasSuffix(model, ":free") || model == "openrouter/free") {
-		return DataTrainable // free OpenRouter endpoints may train or publish (MP A.10); true even before the catalog is fetched
+		return DataTrainable, nil // free OpenRouter endpoints may train or publish (MP A.10); true even before the catalog is fetched
 	}
-	if m, err := r.Model(ctx, p.ID, model); err == nil && m.DataClass == DataTrainable {
-		return DataTrainable
+	m, err := r.Model(ctx, p.ID, model)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return p.DataClass, nil
+	case err != nil:
+		return DataTrainable, fmt.Errorf("providers: data class of %s on %s: %w", model, p.ID, err)
+	case m.DataClass == DataTrainable:
+		return DataTrainable, nil
 	}
-	return p.DataClass
+	return p.DataClass, nil
 }
