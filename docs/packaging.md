@@ -172,7 +172,9 @@ Plan:
 (asInvoker, HKCU only, nothing in the data folder), refuses to install over the running app, and its uninstaller keeps the data;
 the installed CGO exe starts, draws its window (UI Automation) and opens no debugging port; single-instance hand-over; the core on
 NTFS under Defender (a project on a real repository, a `VACUUM INTO` backup, a support bundle); Defender finds nothing in the
-installer or the exe (`MpCmdRun -Scan`; real-time protection is off on the runner). Still open below: signing and SmartScreen,
+installer or the exe (`MpCmdRun -Scan`; real-time protection is off on the runner). Some runner images have the Defender
+service stopped (`Failed with hr = 0x800106ba`, 2026-10-28): the step starts it and scans again, and a scan that still cannot
+run is a warning on a pull request (the run does not prove the files clean) and stops a tag's release. Still open below: signing and SmartScreen,
 the updater, Credential Manager under a locked store, OneDrive paths, Windows 10, onboarding time with real CLIs.
 - NSIS user-scope installer builds with `makensis`, runs without elevation, WebView2 bootstrapper behavior, uninstall keeps data.
 - Signed vs unsigned SmartScreen and Smart App Control behavior; Artifact Signing end-to-end with the signtool dlib (not supported by `wails3 tool sign`).

@@ -227,11 +227,30 @@ jobs:
           Update-MpSignature -ErrorAction SilentlyContinue
           Expand-Archive "dist/drydock-$env:VERSION-windows-x64-update.zip" -DestinationPath "$env:RUNNER_TEMP/scan"
           $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+          function Scan([string] $f) { $o = & $mp -Scan -ScanType 3 -File $f -DisableRemediation 2>&1 | Out-String; Write-Host $o; [pscustomobject]@{ Code = $LASTEXITCODE; Out = $o } }
+          # a scan that could not run ("CmdTool: Failed with hr = 0x...": the Defender service is stopped on some runner images,
+          # release run 2026-10-28) is not a detection: the service is started and the scan tried once more
+          $unscanned = @()
           foreach ($f in @($env:INSTALLER, "$env:RUNNER_TEMP\scan\drydock.exe")) {
-            & $mp -Scan -ScanType 3 -File $f -DisableRemediation | Out-String | Write-Output
-            if ($LASTEXITCODE -ne 0) { throw "Defender reported $f (exit $LASTEXITCODE)" }
+            $r = Scan $f
+            if ($r.Code -ne 0 -and $r.Out -match 'Failed with hr') {
+              Start-Service WinDefend -ErrorAction SilentlyContinue
+              Start-Sleep -Seconds 15
+              $r = Scan $f
+            }
+            if ($r.Code -eq 0) { continue }
+            if ($r.Out -match 'Failed with hr = (0x[0-9a-fA-F]+)') { $unscanned += "$f ($($Matches[1]))"; continue }
+            throw "Defender reported $f (exit $($r.Code))"
           }
-          "Defender: no detection in the installer or drydock.exe" | Tee-Object -Append "$env:OUT/defender.txt"
+          if ($unscanned.Count -gt 0) {
+            $msg = "Defender could not scan on this runner: $($unscanned -join ', '). This run does not prove the files clean."
+            $msg | Tee-Object -Append "$env:OUT/defender.txt"
+            # a release is never published without the scan; a pull request's run goes on to the install proofs
+            if ($env:GITHUB_REF -like 'refs/tags/*') { throw $msg }
+            "::warning title=Defender::$msg"
+          } else {
+            "Defender: no detection in the installer or drydock.exe" | Tee-Object -Append "$env:OUT/defender.txt"
+          }
       - name: Install for this user only, silently, the way IT would
         run: |
           $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -Wait -PassThru
