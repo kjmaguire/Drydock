@@ -278,30 +278,39 @@ func (pr *Prober) probeHost(ctx context.Context, p Provider, key string, res *Pr
 		// llama-server answers /props (its build and the context it runs the model with); its listing carries no
 		// supported_parameters, but every model it serves takes tool calls through its Jinja chat template
 		if st, b, _, err := pr.httpGet(ctx, p, key, o+"/props"); err == nil && st == 200 {
-			var props struct {
-				BuildInfo string `json:"build_info"`
-				Defaults  *struct {
-					NCtx int `json:"n_ctx"`
-				} `json:"default_generation_settings"`
-				Slots int `json:"total_slots"`
-			}
-			if json.Unmarshal(b, &props) == nil && (props.BuildInfo != "" || props.Defaults != nil) {
+			if props, ok := llamaProps(b); ok {
 				res.Flavor = FlavorLlamaCpp
 				info["build_info"] = props.BuildInfo
 				info["total_slots"] = props.Slots
-				nctx := 0
-				if props.Defaults != nil {
-					nctx = props.Defaults.NCtx
-					info["n_ctx"] = nctx
-				}
-				for i := range res.Models {
-					res.Models[i].SupportsTools = true
-					if nctx > 0 {
-						res.Models[i].ContextLength = nctx // the context the server runs with, not the model's training context
+				nctx := props.nctx()
+				if props.Role == "router" {
+					// the router (decision P111) runs no model itself: each loaded model answers /props?model= with the
+					// context its instance runs with
+					info["role"] = "router"
+					for i := range res.Models {
+						res.Models[i].SupportsTools = true
+						if st, b, _, err := pr.httpGet(ctx, p, key, o+"/props?model="+url.QueryEscape(res.Models[i].ID)); err == nil && st == 200 {
+							if mp, ok := llamaProps(b); ok && mp.nctx() > 0 {
+								res.Models[i].ContextLength = mp.nctx()
+								if mp.nctx() < 64000 {
+									res.Warnings = append(res.Warnings, fmt.Sprintf("llama-server runs %s with a %d-token context; coding agents need at least 64000 (set the context size on the Providers page)", res.Models[i].ID, mp.nctx()))
+								}
+							}
+						}
 					}
-				}
-				if nctx > 0 && nctx < 64000 {
-					res.Warnings = append(res.Warnings, fmt.Sprintf("llama-server runs with a %d-token context; coding agents need at least 64000 (set the context size on the Providers page)", nctx))
+				} else {
+					if props.Defaults != nil {
+						info["n_ctx"] = nctx
+					}
+					for i := range res.Models {
+						res.Models[i].SupportsTools = true
+						if nctx > 0 {
+							res.Models[i].ContextLength = nctx // the context the server runs with, not the model's training context
+						}
+					}
+					if nctx > 0 && nctx < 64000 {
+						res.Warnings = append(res.Warnings, fmt.Sprintf("llama-server runs with a %d-token context; coding agents need at least 64000 (set the context size on the Providers page)", nctx))
+					}
 				}
 			}
 		}
@@ -319,6 +328,32 @@ func (pr *Prober) probeHost(ctx context.Context, p Provider, key string, res *Pr
 	if p.DataClass == DataPrivate && p.LANUnencrypted {
 		res.Warnings = append(res.Warnings, "lan_unencrypted: plain http on a private network address")
 	}
+}
+
+// llamaServerProps is what the probe reads from llama-server's /props.
+type llamaServerProps struct {
+	BuildInfo string `json:"build_info"`
+	Role      string `json:"role"` // "router" in router mode
+	Defaults  *struct {
+		NCtx int `json:"n_ctx"`
+	} `json:"default_generation_settings"`
+	Slots int `json:"total_slots"`
+}
+
+func (p llamaServerProps) nctx() int {
+	if p.Defaults == nil {
+		return 0
+	}
+	return p.Defaults.NCtx
+}
+
+// llamaProps reads a /props answer, ok when it is llama-server's.
+func llamaProps(b []byte) (llamaServerProps, bool) {
+	var props llamaServerProps
+	if json.Unmarshal(b, &props) != nil {
+		return props, false
+	}
+	return props, props.BuildInfo != "" || props.Defaults != nil
 }
 
 func (pr *Prober) probeOpenRouter(ctx context.Context, p Provider, key string, res *ProbeResult) {
@@ -462,6 +497,13 @@ func parseListing(body []byte, p Provider, tweak func(*Model, map[string]any)) (
 		id, _ := raw["id"].(string)
 		if id == "" {
 			continue
+		}
+		// llama-server's router lists every model it knows with its state (decision P111): only a loaded one (or one asleep,
+		// which the next request wakes) is served; a model loading, unloaded or failed is not offered
+		if st, ok := raw["status"].(map[string]any); ok && p.Kind == KindHost {
+			if v, _ := st["value"].(string); v != "loaded" && v != "sleeping" {
+				continue
+			}
 		}
 		m := Model{ProviderID: p.ID, ID: id, PriceSource: "catalog", Source: "listing", DataClass: p.DataClass, Tier: p.Tier}
 		m.ContextLength = intOf(raw["context_length"])

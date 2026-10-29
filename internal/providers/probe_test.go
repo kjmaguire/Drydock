@@ -270,3 +270,52 @@ func TestProbeLlamaCppHostListsToolCapableModels(t *testing.T) {
 		t.Fatalf("second probe %+v", res)
 	}
 }
+
+// llama-server's router mode (decision P111) lists every model of its preset with its state: the provider offers each loaded
+// model (and one asleep), not one that is loading, unloaded or failed, each with the context its own instance runs with
+// (/props?model=), since the router's own /props names no model.
+func TestProbeLlamaCppRouterListsEachLoadedModel(t *testing.T) {
+	e := newEnv(t)
+	listed := func(id, state string, failed bool) map[string]any {
+		st := map[string]any{"value": state, "args": []string{"llama-server"}}
+		if failed {
+			st["failed"], st["exit_code"] = true, 1
+		}
+		return map[string]any{"id": id, "object": "model", "owned_by": "llamacpp", "status": st, "context_length": 262144}
+	}
+	ctxOf := map[string]int{"acme/coder-GGUF:Q4_K_M": 131072, "acme/vision-GGUF:Q4_K_M": 16384, "acme/asleep-GGUF:Q8_0": 65536}
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/health": status(200),
+		"/props": func(w http.ResponseWriter, r *http.Request) {
+			m := r.URL.Query().Get("model")
+			if m == "" {
+				jsonBody(map[string]any{"role": "router", "build_info": "b11936-router", "default_generation_settings": map[string]any{"n_ctx": 0}})(w, r)
+				return
+			}
+			jsonBody(map[string]any{"build_info": "b11936", "model_alias": m, "default_generation_settings": map[string]any{"n_ctx": ctxOf[m]}})(w, r)
+		},
+		"/v1/models": jsonBody(map[string]any{"object": "list", "data": []map[string]any{
+			listed("acme/coder-GGUF:Q4_K_M", "loaded", false), listed("acme/vision-GGUF:Q4_K_M", "loaded", false),
+			listed("acme/asleep-GGUF:Q8_0", "sleeping", false), listed("acme/loading-GGUF:Q4_0", "loading", false),
+			listed("acme/broken-GGUF:Q4_0", "unloaded", true), listed("acme/idle-GGUF:Q4_0", "unloaded", false),
+		}}),
+	})
+	p := e.create(t, NewProvider{Name: "local", Kind: KindHost, BaseURL: f.URL + "/v1", Tier: TierCheap})
+	res, err := e.pr.Probe(e.ctx, p.ID)
+	if err != nil || !res.OK || res.Flavor != FlavorLlamaCpp || res.ServerInfo["role"] != "router" {
+		t.Fatalf("probe: %v %+v", err, res)
+	}
+	var ids []string
+	for _, m := range res.Models {
+		ids = append(ids, m.ID)
+		if !m.SupportsTools || m.ContextLength != ctxOf[m.ID] {
+			t.Fatalf("%+v", m)
+		}
+	}
+	if strings.Join(ids, ",") != "acme/coder-GGUF:Q4_K_M,acme/vision-GGUF:Q4_K_M,acme/asleep-GGUF:Q8_0" {
+		t.Fatalf("models %v", ids)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "acme/vision-GGUF:Q4_K_M with a 16384-token context") {
+		t.Fatalf("warnings %v", res.Warnings)
+	}
+}
