@@ -210,6 +210,47 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
     await waitFor(() => expect(stateOf(r.$('[data-testid="integration-row"][data-kind="mslearn"]')!)).toBe('On'), r);
   });
 
+  // decision P122: GitHub's hosted server signs in only through an OAuth app the person registers (no dynamic registration)
+  it('signs in through the OAuth app the person registered, sending its id and secret once', async () => {
+    const calls: unknown[][] = [];
+    const app = { registerUrl: 'https://github.com/settings/applications/new', help: 'Use the callback http://127.0.0.1/callback.' };
+    let cards: McpGalleryCard[] = [{ ...GH, oauthApp: app }];
+    const r = show(
+      {
+        mcpGallery: async () => cards,
+        mcpConnectWithApp: async (...a: unknown[]) => {
+          calls.push(a);
+          cards = [{ ...GH, oauthApp: app, status: 'needs_sign_in', libraryId: 'gh', oauth: true, oauthClient: true }];
+          return { card: cards[0]!, oauth: { id: 'gh', state: 'waiting', url: 'https://github.com/login/oauth/authorize?client_id=Iv1.x', signedIn: false } };
+        },
+        mcpOAuthStatus: async () => ({ id: 'gh', state: 'waiting', url: 'https://github.com/login/oauth/authorize?client_id=Iv1.x', signedIn: false }),
+      },
+      { initial: 'tools-github' },
+    );
+    await openGitHub(r);
+    const gh = await cardOf(r, 'gh');
+    expect(gh.textContent).toContain('or sign in through an OAuth app you register');
+    await r.act(() => byText(gh, 'button', 'Sign in with your own app').click());
+    const form = await waitFor(() => must(gh.querySelector('[data-testid="connector-app"]')) as HTMLElement, r);
+    expect(form.textContent).toContain('Use the callback http://127.0.0.1/callback.');
+    expect(form.querySelector('a[target="_blank"]')!.getAttribute('href')).toBe('https://github.com/settings/applications/new');
+    const secret = byLabel<HTMLInputElement>(form, 'Client secret');
+    expect(secret.type).toBe('password');
+    type(byLabel<HTMLInputElement>(form, 'Client id'), 'Iv1.x');
+    type(secret, 'app-secret-123');
+    await r.act(() => (form.querySelector('button[type="submit"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([['gh', 'Iv1.x', 'app-secret-123']]), r);
+    // the card now offers the sign-in, and no token form
+    const after = await waitFor(() => {
+      const c = r.$('[data-id="gh"]') as HTMLElement;
+      if (c.dataset.status !== 'needs_sign_in') throw new Error('not yet');
+      return c;
+    }, r);
+    expect(after.querySelector('[data-testid="connector-token"]')).toBeNull();
+    expect(after.querySelector('[data-testid="connector-app"]')).toBeNull();
+    expect(after.textContent).not.toContain('app-secret-123');
+  });
+
   it('asks for a token, sends it once, and never shows it again', async () => {
     const calls: unknown[][] = [];
     let cards: McpGalleryCard[] = [GH];

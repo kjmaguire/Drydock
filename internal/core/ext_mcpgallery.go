@@ -54,6 +54,10 @@ type MCPGalleryCard struct {
 	// OAuthApp is set when the server can also sign in with OAuth through an app the person registers with the provider
 	// (decision P122: no dynamic client registration); Connect then takes the app's client id and secret.
 	OAuthApp *MCPOAuthApp `json:"oauthApp,omitempty"`
+	// OAuth is true when the connected library server signs in with OAuth (an oauth entry, or an oauth_app one connected through
+	// the person's app); OAuthClient when that sign-in uses a client the person registered.
+	OAuth       bool `json:"oauth,omitempty"`
+	OAuthClient bool `json:"oauthClient,omitempty"`
 	// Template is a program the human installs; Drydock never ships it (D14).
 	Template     bool   `json:"template"`
 	License      string `json:"license"`
@@ -187,6 +191,7 @@ func (c *Core) galleryCard(ctx context.Context, s mcp.ServerSpec) (MCPGalleryCar
 		return card, nil // removed meanwhile
 	}
 	card.LibraryID, card.Account, card.ServerInfo, card.Projects = r.ID, r.Account, r.ServerInfo, r.Projects
+	card.OAuth, card.OAuthClient = r.OAuth, r.OAuthClient
 	card.ReadOnlyTools = r.ReadOnlyTools
 	if r.DiscoveredAt > 0 {
 		card.Tools, card.ToolsListed = r.Tools, true

@@ -115,6 +115,56 @@ function TokenForm(handle: Handle<{ card: McpGalleryCard; busy: boolean; onSubmi
 }
 
 /**
+ * The OAuth app a person registered with a provider that has no dynamic client registration (decision P122): its client id and
+ * secret, sent once to the credential store, never shown again. The help says what to enter when registering it.
+ */
+function AppForm(handle: Handle<{ card: McpGalleryCard; busy: boolean; onSubmit: (clientId: string, clientSecret: string) => void; onCancel: () => void }>) {
+  let id = '';
+  let secret = '';
+  return () => {
+    const { card, busy, onSubmit, onCancel } = handle.props;
+    const app = card.oauthApp!;
+    const reg = safeHref(app.registerUrl);
+    const input = (set: (v: string) => void) => on<HTMLInputElement, 'input'>('input', (e) => (set(e.currentTarget.value), void handle.update()));
+    return (
+      <form
+        mix={[
+          tokenCss,
+          on<HTMLFormElement, 'submit'>('submit', (e) => {
+            e.preventDefault();
+            onSubmit(id.trim(), secret.trim());
+            secret = '';
+          }),
+        ]}
+        data-testid="connector-app"
+      >
+        <span class="hint">
+          {app.help ?? 'Register an OAuth app with the provider, then enter its client id and secret.'}{' '}
+          {reg ? (
+            <a href={reg} target="_blank" rel="noopener noreferrer" data-rmx-document>
+              Register an app <Icon icon={ExternalLink} size={12} />
+            </a>
+          ) : null}
+        </span>
+        <label for={`app-id-${card.id}`}>Client id</label>
+        <input id={`app-id-${card.id}`} autocomplete="off" spellcheck={false} required value={id} mix={input((v) => (id = v))} />
+        <label for={`app-secret-${card.id}`}>Client secret</label>
+        <input id={`app-secret-${card.id}`} type="password" autocomplete="off" spellcheck={false} value={secret} mix={input((v) => (secret = v))} />
+        <span class="hint">Kept in the Windows credential store, never shown again.</span>
+        <div class="row">
+          <Button type="submit" size="sm" variant="primary" disabled={busy}>
+            {busy ? 'Connecting...' : 'Sign in'}
+          </Button>
+          <Button size="sm" variant="ghost" mix={[on('click', onCancel)]}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+  };
+}
+
+/**
  * One catalog server: its state and one action on a line, what it needs right now under it (its sign-in, a token, an error, a
  * confirmation), then its facts as rows. `compact` puts the facts under a closed Details (a service's own detail, where the server
  * is one row among the connection's). `settingsHref` links the connected server's own settings (which tools only read, Edit).
@@ -125,6 +175,7 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
   watch(handle, s.workspace);
   const act = action(handle);
   let asking = false; // the token form is open
+  let withApp = false; // the OAuth app form is open (decision P122)
   let confirm = false;
   const set = (f: () => void) => {
     f();
@@ -133,6 +184,11 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
   const connect = async (token?: string) => {
     const r = await act.run('connect', () => s.client.mcpConnect(handle.props.card.id, token || undefined));
     if (r) set(() => (asking = false));
+    handle.props.onChanged();
+  };
+  const connectWithApp = async (clientId: string, clientSecret: string) => {
+    const r = await act.run('connect', () => s.client.mcpConnectWithApp(handle.props.card.id, clientId, clientSecret));
+    if (r) set(() => (withApp = false));
     handle.props.onChanged();
   };
 
@@ -151,7 +207,10 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
         <SettingRow label="What it does">
           <span mix={muted}>{card.summary}</span>
         </SettingRow>
-        <SettingRow label="Sign-in">{AUTH[card.auth] ?? card.auth}</SettingRow>
+        <SettingRow label="Sign-in">
+          {AUTH[card.auth] ?? card.auth}
+          {card.oauthApp ? ', or sign in through an OAuth app you register' : ''}
+        </SettingRow>
         <SettingRow
           label="License"
           control={
@@ -226,6 +285,11 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
                 {act.busy === 'connect' ? 'Connecting...' : 'Connect'}
               </Button>
             ) : null}
+            {card.oauthApp && !withApp && (!card.libraryId || (card.oauth && !card.oauthClient)) ? (
+              <Button size="sm" variant="ghost" disabled={act.busy !== '' || ro.readOnly} mix={[on('click', () => set(() => ((withApp = true), (asking = false))))]}>
+                Sign in with your own app
+              </Button>
+            ) : null}
             {!card.libraryId && card.authOptional && !asking ? (
               <Button size="sm" variant="ghost" mix={[on('click', () => set(() => (asking = true)))]}>
                 Add a key
@@ -272,8 +336,11 @@ export function ConnectorCard(handle: Handle<{ card: McpGalleryCard; onChanged: 
               {card.detail}
             </p>
           ) : null}
-          {card.auth === 'oauth' && card.libraryId ? <OAuthPanel server={{ id: card.libraryId, oauthAt: connected ? 1 : 0 } as McpLibraryServer} onChanged={onChanged} /> : null}
-          {showToken && needsSecret ? <TokenForm card={card} busy={act.busy === 'connect'} onSubmit={(v) => void connect(v)} onCancel={card.libraryId ? undefined : () => set(() => (asking = false))} /> : null}
+          {(card.auth === 'oauth' || card.oauth) && card.libraryId && !withApp ? (
+            <OAuthPanel server={{ id: card.libraryId, oauthAt: connected ? 1 : 0, oauthClient: card.oauthClient } as McpLibraryServer} onChanged={onChanged} />
+          ) : null}
+          {withApp ? <AppForm card={card} busy={act.busy === 'connect'} onSubmit={(id, secret) => void connectWithApp(id, secret)} onCancel={() => set(() => (withApp = false))} /> : null}
+          {showToken && needsSecret && !withApp && !card.oauth ? <TokenForm card={card} busy={act.busy === 'connect'} onSubmit={(v) => void connect(v)} onCancel={card.libraryId ? undefined : () => set(() => (asking = false))} /> : null}
           {asking && card.authOptional ? <TokenForm card={card} busy={act.busy === 'connect'} onSubmit={(v) => void connect(v)} onCancel={() => set(() => (asking = false))} /> : null}
           {confirm && card.libraryId ? (
             <div mix={[confirmCss, errCss]}>

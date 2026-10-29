@@ -159,6 +159,9 @@ servers:
 		a.call("mcplib.oauth.status", map[string]string{"id": c.LibraryID}, &st)
 		t.Fatalf("card %+v, sign-in %+v", c, st)
 	}
+	if !c.OAuth || !c.OAuthClient {
+		t.Fatalf("the card does not say it signs in through the app: %+v", c)
+	}
 	if f.Registrations() != 0 {
 		t.Fatal("the client registered itself with a provider that has no registration")
 	}

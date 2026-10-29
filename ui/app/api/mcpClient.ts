@@ -36,6 +36,8 @@ export interface McpLibraryServer {
   /** When the human last signed in (0 or absent: not signed in). */
   oauthAt?: number;
   oauthScope?: string;
+  /** An OAuth client the human registered with the provider is set (decision P122); its id and secret stay in the vault. */
+  oauthClient?: boolean;
   guard: boolean;
   readOnlyTools: string[];
   tools: McpToolInfo[];
@@ -89,6 +91,11 @@ export interface McpGalleryCard {
   authOptional: boolean;
   secretEnv?: string;
   tokenHelp?: string;
+  /** The server can also sign in through an OAuth app the person registers with the provider (no dynamic registration, decision P122). */
+  oauthApp?: { registerUrl: string; help?: string };
+  /** The connected server signs in with OAuth; oauthClient: through a client the person registered. */
+  oauth?: boolean;
+  oauthClient?: boolean;
   template: boolean;
   license: string;
   licenseNotes?: string;
@@ -282,6 +289,10 @@ export interface McpClient {
   mcpGallery(): Promise<McpGalleryCard[]>;
   /** Connects a catalog server: the token (or a template's secret) goes to the credential store and is never returned. */
   mcpConnect(catalogId: string, token?: string): Promise<McpConnectResult>;
+  /** Connects a catalog server to sign in through the OAuth app the person registered (decision P122). */
+  mcpConnectWithApp(catalogId: string, clientId: string, clientSecret: string): Promise<McpConnectResult>;
+  /** Sets (or, with an empty id, removes) the registered OAuth client of a library server; it signs the server out. */
+  mcpOAuthClient(id: string, clientId: string, clientSecret: string): Promise<McpLibraryServer>;
   /** The project's per-role tool table (decision P115). */
   mcpRolePolicyGet(projectId: string): Promise<RolePolicyView>;
   /** Sets one cell; null puts it back to the table's default. */
@@ -327,6 +338,7 @@ export function createMcpClient(t: Transport): McpClient {
     mcpOAuthStatus: (id) => t.call('mcplib.oauth.status', { id }),
     mcpOAuthCancel: (id) => t.call('mcplib.oauth.cancel', { id }),
     mcpOAuthSignOut: (id) => t.call('mcplib.oauth.signout', { id }),
+    mcpOAuthClient: async (id, clientId, clientSecret) => lib(await t.call<McpLibraryServer>('mcplib.oauth.client', { id, clientId, clientSecret })),
     mcpStatus: async () => {
       const s = await t.call<McpStatus>('mcp.status');
       return { ...s, adapters: arr(s.adapters) };
@@ -342,6 +354,10 @@ export function createMcpClient(t: Transport): McpClient {
     mcpGallery: async () => arr(await t.call<McpGalleryCard[] | null>('mcplib.gallery', {})).map(card),
     mcpConnect: async (catalogId, token) => {
       const r = await t.call<McpConnectResult>('mcplib.connect', token ? { catalogId, token } : { catalogId });
+      return { ...r, card: card(r.card) };
+    },
+    mcpConnectWithApp: async (catalogId, clientId, clientSecret) => {
+      const r = await t.call<McpConnectResult>('mcplib.connect', { catalogId, clientId, clientSecret });
       return { ...r, card: card(r.card) };
     },
     mcpRolePolicyGet: async (projectId) => policy(await t.call<RolePolicyView>('mcp.rolePolicy.get', { projectId })),
