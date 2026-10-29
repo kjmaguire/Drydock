@@ -1349,8 +1349,8 @@ Open, owner action:
   cheap model changes. When every card is blocked for the same reason (no provider yet), the page says it once, with a link to
   Models. The model names are `lib/model-name.ts`, shared with the chat chips (P107).
 
-- **P109. Import Claude Code's own chats into Chats (2026-10-29).** On the owner's words, "Proceed with those items", answering the
-  list of what was not built, with the shape agreed for this one. **Import from Claude Code** on the Chats screen (beside New,
+- **P109. Import Claude Code's own chats into Chats (2026-10-29).** On the owner's "Yes" to the one item that waited on their
+  decision (a one-time, read-only import that continues each session), with the shape proposed for it. **Import from Claude Code** on the Chats screen (beside New,
   and under an empty list) lists the sessions Claude Code kept on this PC, every one not imported yet chosen, and copies the
   chosen ones in (`chat.importList`, `chat.import`; `internal/chats/claudeimport.go`, `transcript.go`; docs/chats.md section 7).
   Sources: `%CLAUDE_CONFIG_DIR%` or `%USERPROFILE%\.claude`, and `~/.claude` in each WSL distro where Claude Code is installed,
