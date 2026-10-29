@@ -63,6 +63,9 @@ func (s RunStatus) Terminal() bool {
 type CheckpointKind string
 
 const (
+	// CheckpointEntry starts a driver's work: a new run's first checkpoint (its parent, for a fork or a replay, is the checkpoint
+	// it came from) and, when a person resumes a run that stopped without finishing (Continue), a copy of the run's latest
+	// checkpoint whose parent is that checkpoint of the same run.
 	CheckpointEntry         CheckpointKind = "entry"
 	CheckpointStep          CheckpointKind = "step"
 	CheckpointResponseEntry CheckpointKind = "response_entry"
@@ -219,6 +222,11 @@ var (
 	ErrNoRoute          = errors.New("workflow: the workflow does not go on from this step with that answer")
 	ErrRunTerminal      = errors.New("workflow: run is in a terminal state")
 	ErrEngineClosed     = errors.New("workflow: the engine is closed")
+	// ErrNotStopped: Continue was asked of a run that has not stopped (it waits for a person, a person paused it, or its driver
+	// is alive).
+	ErrNotStopped = errors.New("workflow: the run has not stopped")
+	// ErrNotFinished: Replay was asked of a run that has not ended.
+	ErrNotFinished = errors.New("workflow: the run has not finished")
 )
 
 // ErrWatchdogTrip is returned by a node cancelled by the watchdog.
@@ -280,6 +288,24 @@ type RunState struct {
 	LastNodes    []NodeID                     `json:"lastNodes,omitempty"` // nodes executed in the latest superstep
 	Result       json.RawMessage              `json:"result,omitempty"`
 	FailedReason string                       `json:"failedReason,omitempty"`
+	// Origin says where a run that did not start from its input came from: a fork (TimeTravel) or a replay (Replay). It is
+	// copied into every later checkpoint of the run, so a replay stays a replay across a resume or a recovery.
+	Origin *Origin `json:"origin,omitempty"`
+}
+
+// Origin kinds.
+const (
+	OriginFork   = "fork"
+	OriginReplay = "replay"
+)
+
+// Origin is where a forked or replayed run started.
+type Origin struct {
+	Kind       string       `json:"kind"`       // fork | replay
+	Run        RunID        `json:"run"`        // the run whose checkpoint it started from
+	Checkpoint CheckpointID `json:"checkpoint"` // that checkpoint
+	Step       int          `json:"step"`       // its step
+	By         string       `json:"by,omitempty"`
 }
 
 func newState(input json.RawMessage, topo string) RunState {

@@ -356,6 +356,8 @@ var gatedMethods = map[string]string{
 	"recommend.start": "start_work", // a paid turn of the team lead (audit 2026-10-16, L1); Core.Recommend checks it too, for the automatic path
 	"task.resume":     "start_task", // a paused run goes on; pausing only stops work, so it stays available
 	"lead.split":      "start_work", // a paid turn of the team lead
+	// a run of a task goes on, or a new one starts from a checkpoint (P123)
+	"run.resume": "start_task", "run.timeTravel": "start_task", "run.replay": "start_task",
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an

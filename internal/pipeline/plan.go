@@ -777,7 +777,7 @@ func (pd PlanDeps) PlanGraph() *workflow.Graph {
 		workflow.Route("plancheck", pd.planCheck()),
 		workflow.Route("planfailed", pd.planFailed()),
 		&workflow.Node{ID: "planreview", Kind: workflow.KindRequest, Handler: pd.planReview()},
-		workflow.Route("plancreate", pd.planCreate()),
+		workflow.Route("plancreate", pd.planCreate()).Effect(EffectCreateTasks),
 		workflow.Route("planreject", pd.planReject()),
 	)
 	g.Edge("plan", "plancheck").

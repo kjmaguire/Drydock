@@ -566,3 +566,31 @@ func adminDirOf(t *testing.T, dir string) string {
 	}
 	return filepath.FromSlash(strings.TrimSpace(string(out)))
 }
+
+// Two runs of one task at the same step and attempt (a fork, a replay or a restart; P123) keep their own safe points: the
+// second does not move the ref the first run's execution names.
+func TestRunSafePointsOfTwoRunsDoNotMoveEachOther(t *testing.T) {
+	ctx := context.Background()
+	r, parent := newRepo(t)
+	w, _ := r.CreateWorktree(ctx, WorktreeReq{TaskID: "task_7", Title: "sp", Parent: parent})
+	write(t, w.Path, "a.txt", "first run\n")
+	ref1, err := r.RunSafePoint(ctx, w, "run_aaa", 201)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref1 != "refs/drydock/safe/task_7/run_aaa/201" {
+		t.Fatalf("ref %s", ref1)
+	}
+	first, _ := r.git(ctx, w.Path, nil, "rev-parse", ref1)
+	write(t, w.Path, "a.txt", "the fork\n")
+	ref2, err := r.RunSafePoint(ctx, w, "run_bbb", 201)
+	if err != nil || ref2 == ref1 {
+		t.Fatalf("ref2 %s %v", ref2, err)
+	}
+	if again, _ := r.git(ctx, w.Path, nil, "rev-parse", ref1); again != first {
+		t.Fatalf("the first run's safe point moved: %s -> %s", first, again)
+	}
+	if b, _ := r.git(ctx, w.Path, nil, "show", ref1+":a.txt"); strings.TrimSpace(b) != "first run" {
+		t.Fatalf("the first run's safe point holds %q", b)
+	}
+}
