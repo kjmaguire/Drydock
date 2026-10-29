@@ -153,8 +153,12 @@ func TestAntigravityBuildsTheDocumentedHeadlessAdapter(t *testing.T) {
 		t.Fatalf("%+v %v", d, err)
 	}
 	caps := a.Capabilities()
-	if caps.ToolCallVisibility || caps.SessionResume || caps.Interrupt || !caps.Headless || !caps.EffortControl {
+	if caps.ToolCallVisibility || caps.SessionResume || !caps.Headless || !caps.EffortControl {
 		t.Fatalf("unknown capabilities must not read as true: %+v", caps)
+	}
+	// interrupt is Drydock's own (it ends agy's process, decision P117), not a CLI feature the manifest has to declare
+	if !caps.Interrupt {
+		t.Fatalf("interrupt: %+v", caps)
 	}
 	type argser interface{ Args(agents.RunSpec) []string }
 	got := strings.Join(a.(argser).Args(agents.RunSpec{Effort: "high"}), " ")
