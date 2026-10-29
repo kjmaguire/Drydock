@@ -211,7 +211,7 @@ func TestB0RecordsAreWrittenAndReported(t *testing.T) {
 		t.Fatalf("%+v %v", recs, err)
 	}
 	md := Report(recs)
-	for _, want := range []string{"| B0 | 1 | 0 |", "The broadcast team (B0), every run:", "| saasapi-invoice-rules | 1 | 2 | 3 | ceiling | 5 | 300.0 KiB | 90.0 KiB |"} {
+	for _, want := range []string{"| B0 | 1 | 0 |", "The broadcast team (B0), every run:", "| saasapi-invoice-rules | 1 | 2 | 3 | ceiling | 5 | 300.0 KiB | 90.0 KiB | claude, its own sign-in |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("the report lacks %q:\n%s", want, md)
 		}

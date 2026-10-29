@@ -93,6 +93,9 @@ type Step struct {
 	Block        bool         `json:"block,omitempty"` // wait for session/cancel
 	Exit         int          `json:"exit,omitempty"`  // exit the process mid-turn
 	ReportConfig bool         `json:"reportConfig,omitempty"`
+	// ReportEnv says, as an agent message, the value of each named variable of the agent's own environment ("env K=V K2="), so
+	// a test sees what the client started it with.
+	ReportEnv []string `json:"reportEnv,omitempty"`
 	// MCPCall connects to an MCP server the client attached in session/new (the way a real ACP agent would) and calls a tool,
 	// or lists the tools when Tool is empty. The outcome is reported as an agent message.
 	MCPCall     *MCPCall       `json:"mcpCall,omitempty"`
@@ -601,6 +604,12 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 			servers := s.servers
 			a.mu.Unlock()
 			say(callMCP(ctx, servers, st.MCPCall))
+		case len(st.ReportEnv) > 0:
+			var kv []string
+			for _, k := range st.ReportEnv {
+				kv = append(kv, k+"="+os.Getenv(k))
+			}
+			say("env " + strings.Join(kv, " "))
 		case st.ReportConfig:
 			a.mu.Lock()
 			say(fmt.Sprintf("config model=%s mode=%s effort=%s mcp=%s cwd=%s resumed=%s", s.model, s.mode, s.effort, strings.Join(s.mcp, ","), s.cwd, s.resumed))
