@@ -24,6 +24,18 @@ type Model struct {
 	Fit          *Fit      `json:"fit,omitempty"`
 	// KV is the estimated KV cache at the server's context size and cache type (read from the GGUF header; the core fills it).
 	KV *KVCache `json:"kv,omitempty"`
+	// Projector is the multimodal projector (mmproj) downloaded with the model: the server is started with it, and the model
+	// reads images (decision P111).
+	Projector string `json:"projector,omitempty"`
+	// Mark is the person's word on whether the model is an embedding model (nil: the header decides); the core fills Embedding
+	// from it, else from the header.
+	Mark      *bool `json:"-"`
+	Embedding bool  `json:"embedding"`
+	// Drafts are the downloaded models that can draft for this one (speculative decoding), Draft the one the person chose, and
+	// LoadBytes what the model takes when loaded (its weights and projector, its KV cache, and its draft's): the core fills them.
+	Drafts    []string `json:"drafts,omitempty"`
+	Draft     string   `json:"draft,omitempty"`
+	LoadBytes uint64   `json:"loadBytes,omitempty"`
 }
 
 // ModelID is "owner/repo:VARIANT".
@@ -46,6 +58,8 @@ type manifest struct {
 	Files        []string  `json:"files"` // base names
 	Size         uint64    `json:"sizeBytes"`
 	DownloadedAt time.Time `json:"downloadedAt"`
+	Projector    string    `json:"projector,omitempty"` // base name
+	Embedding    *bool     `json:"embedding,omitempty"` // the person's mark
 }
 
 // Dir is where a variant's files live.
@@ -60,19 +74,48 @@ func (s *Store) Put(repo string, v Variant) (Model, error) {
 	for _, f := range v.Files {
 		m.Files = append(m.Files, path.Base(f.Path))
 	}
-	b, _ := json.Marshal(m)
-	if err := os.WriteFile(filepath.Join(dir, "model.json"), b, 0o644); err != nil {
+	if v.Projector != nil {
+		m.Projector = path.Base(v.Projector.Path)
+	}
+	if err := m.write(dir); err != nil {
 		return Model{}, err
 	}
 	return m.model(dir), nil
 }
 
+func (m manifest) write(dir string) error {
+	b, _ := json.Marshal(m)
+	return os.WriteFile(filepath.Join(dir, "model.json"), b, 0o644)
+}
+
 func (m manifest) model(dir string) Model {
-	out := Model{ID: ModelID(m.Repo, m.Variant), Repo: m.Repo, Variant: m.Variant, Size: m.Size, DownloadedAt: m.DownloadedAt}
+	out := Model{ID: ModelID(m.Repo, m.Variant), Repo: m.Repo, Variant: m.Variant, Size: m.Size, DownloadedAt: m.DownloadedAt, Mark: m.Embedding}
 	for _, f := range m.Files {
 		out.Files = append(out.Files, filepath.Join(dir, f))
 	}
+	if m.Projector != "" {
+		out.Projector = filepath.Join(dir, m.Projector)
+	}
 	return out
+}
+
+// Mark records the person's word on whether a downloaded model is an embedding model (nil: the header decides again).
+func (s *Store) Mark(id string, embedding *bool) error {
+	m, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(m.Files[0])
+	b, err := os.ReadFile(filepath.Join(dir, "model.json"))
+	if err != nil {
+		return err
+	}
+	var man manifest
+	if err := json.Unmarshal(b, &man); err != nil {
+		return err
+	}
+	man.Embedding = embedding
+	return man.write(dir)
 }
 
 // List is every downloaded model whose files are all there, newest first.
@@ -91,7 +134,11 @@ func (s *Store) List() []Model {
 			return nil
 		}
 		model := m.model(filepath.Dir(p))
-		for _, f := range model.Files {
+		need := model.Files
+		if model.Projector != "" {
+			need = append(append([]string{}, need...), model.Projector)
+		}
+		for _, f := range need {
 			if st, err := os.Stat(f); err != nil || !st.Mode().IsRegular() {
 				return nil
 			}

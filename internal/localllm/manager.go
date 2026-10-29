@@ -25,6 +25,9 @@ type Manager struct {
 	Runtime *Runtime
 	Store   *Store
 	Server  *Server
+	// Embed serves the embedding model, on its own port (decision P111): llama-server's --embeddings makes a server answer
+	// embeddings and nothing else, so it is never the chat server.
+	Embed *Server
 	// Program, when set, replaces the installed build's server program (the stand-in of internal/localllm/llamatest); the
 	// leading arguments it returns go before the server's own.
 	Program func(installed Installed) (string, []string)
@@ -42,6 +45,7 @@ func NewManager(root string, pm proc.Manager) *Manager {
 	m.Runtime = &Runtime{Root: root, HTTP: hc}
 	m.Store = &Store{Dir: filepath.Join(root, "models")}
 	m.Server = &Server{PM: pm}
+	m.Embed = &Server{PM: pm}
 	return m
 }
 
@@ -50,6 +54,12 @@ func (m *Manager) Finish() {
 	m.Runtime.HTTP = m.HTTP
 	if m.Server.PM == nil {
 		m.Server.PM = m.PM
+	}
+	if m.Embed == nil {
+		m.Embed = &Server{}
+	}
+	if m.Embed.PM == nil {
+		m.Embed.PM = m.PM
 	}
 	if m.Memory == nil {
 		m.Memory = SystemMemory
@@ -67,8 +77,12 @@ func (m *Manager) ServerProgram(in Installed) (string, []string) {
 	return in.Server, nil
 }
 
-// LogDir is where the server's log goes.
+// LogDir is where the server's log goes (the embedding server's in its embeddings folder).
 func (m *Manager) LogDir() string { return filepath.Join(m.Root, "logs") }
+
+// PresetFile is where the router's model list is written, and RouterCache the empty folder the router takes as its cache.
+func (m *Manager) PresetFile() string  { return filepath.Join(m.Root, "router", "models.ini") }
+func (m *Manager) RouterCache() string { return filepath.Join(m.Root, "router", "cache") }
 
 // SuggestBackend picks the backend for this PC: CUDA when NVIDIA's driver tool is installed, else Vulkan (every recent GPU
 // has a Vulkan driver; a PC without one falls back to the CPU inside the build).

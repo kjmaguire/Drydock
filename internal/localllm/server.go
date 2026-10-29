@@ -23,11 +23,25 @@ import (
 )
 
 // Launch is how llama-server is started: the program (the installed build's, or a labelled stand-in with its leading
-// arguments), one model and the settings a person chose.
+// arguments), the models and the settings a person chose. One model is served by a server of its own (-m); several are served
+// by llama-server's router mode (decision P111): the router starts one instance per model, listed in a preset file, routes each
+// request by its "model" field, and lists every model with its state.
 type Launch struct {
-	Program     string
-	Args        []string
-	Model       Model
+	Program string
+	Args    []string
+	// Model is the one model served; Models, when it holds more than one, are the models the router keeps loaded (Model is
+	// then not used).
+	Model  Model
+	Models []Model
+	// Drafts are the draft models of speculative decoding, by the id of the model each drafts for (--model-draft with
+	// --spec-type draft-simple).
+	Drafts map[string]Model
+	// Embeddings serves an embedding model: --embeddings, which makes the server answer /v1/embeddings and nothing else.
+	Embeddings bool
+	// PresetFile is where the router's model list is written, and CacheDir the empty folder the router is given as its
+	// download cache (LLAMA_CACHE), so it lists no model a person downloaded with llama.cpp by hand: both for router mode only.
+	PresetFile  string
+	CacheDir    string
 	Port        int
 	CacheType   string // q8_0 | q4_0 | f16 | turbo4 | turbo3
 	ContextSize int    // 0: the model's own
@@ -86,7 +100,40 @@ type ServerState struct {
 	Autostarted bool   `json:"autostarted"`
 	CacheType   string `json:"cacheType,omitempty"`
 	ContextSize int    `json:"contextSize,omitempty"`
+	// Models are every model the server keeps loaded (ModelID is the first); Router says it runs llama-server's router mode
+	// for them; Embeddings that it serves an embedding model (decision P111).
+	Models     []string `json:"models,omitempty"`
+	Router     bool     `json:"router,omitempty"`
+	Embeddings bool     `json:"embeddings,omitempty"`
 }
+
+// Serves reports whether the server keeps the model loaded, or is loading it.
+func (st ServerState) Serves(id string) bool {
+	if st.State != "running" && st.State != "starting" {
+		return false
+	}
+	for _, m := range st.Models {
+		if m == id {
+			return true
+		}
+	}
+	return st.ModelID == id
+}
+
+// MaxLoaded is how many models the router keeps loaded at once: llama.cpp's own default (--models-max 4), the most a PC that
+// has room for them needs.
+const MaxLoaded = 4
+
+// models are the chat models of the launch, the one model first.
+func (l Launch) models() []Model {
+	if len(l.Models) > 0 {
+		return l.Models
+	}
+	return []Model{l.Model}
+}
+
+// Router reports whether the launch runs llama-server's router mode: two models or more.
+func (l Launch) Router() bool { return len(l.Models) > 1 }
 
 // Server runs one llama-server at a time.
 type Server struct {
@@ -146,10 +193,36 @@ func (s *Server) addLine(l string) {
 	s.mu.Unlock()
 }
 
-// Arguments is the command line Start uses, for tests and the page.
+// specType is the kind of speculative decoding a draft model runs: llama.cpp infers none from a plain draft model's header
+// (only from an MTP or DFlash head), so it is named.
+const specType = "draft-simple"
+
+// Arguments is the command line Start uses, for tests and the page. One model: -m with its alias, its projector and its draft.
+// Several: the router with the preset file (Preset), each model's own options in it; the options every model shares (the GPU
+// layers, the cache, the context) are on the router's command line, which its instances inherit.
 func Arguments(l Launch) []string {
 	args := append([]string{}, l.Args...)
-	args = append(args, "--host", "127.0.0.1", "--port", strconv.Itoa(l.Port), "-m", l.Model.Files[0], "--alias", l.Model.ID, "--jinja", "--no-webui")
+	args = append(args, "--host", "127.0.0.1", "--port", strconv.Itoa(l.Port))
+	if l.Router() {
+		args = append(args, "--models-preset", l.PresetFile, "--models-max", strconv.Itoa(len(l.Models)))
+	} else {
+		m := l.models()[0]
+		args = append(args, "-m", m.Files[0], "--alias", m.ID)
+		if l.Embeddings {
+			args = append(args, "--embeddings")
+		} else {
+			if m.Projector != "" {
+				args = append(args, "--mmproj", m.Projector)
+			}
+			if d, ok := l.Drafts[m.ID]; ok && len(d.Files) > 0 {
+				args = append(args, "--model-draft", d.Files[0], "--spec-type", specType)
+			}
+		}
+	}
+	if !l.Embeddings {
+		args = append(args, "--jinja")
+	}
+	args = append(args, "--no-webui")
 	ngl := l.GPULayers
 	if ngl == "" {
 		ngl = "auto"
@@ -164,14 +237,78 @@ func Arguments(l Launch) []string {
 	return args
 }
 
+// Preset is the router's model list (llama-server --models-preset): a section per model, named by its id (which becomes the
+// model's name in the router's listing and in requests), with its file, its projector and its draft, loaded at the start.
+// llama.cpp's preset reader ends a value at a ";" or "#" and a line at a line break, so a path with one cannot be written: it
+// is refused rather than cut short.
+func Preset(l Launch) (string, error) {
+	var b strings.Builder
+	b.WriteString("; written by Drydock for llama-server's router mode: each section is a model it keeps loaded\nversion = 1\n")
+	value := func(k, v string) error {
+		if strings.ContainsAny(v, ";#\r\n") {
+			return fmt.Errorf("the path %q holds a character (; # or a line break) llama-server's model list cannot carry: move Drydock's data folder", v)
+		}
+		fmt.Fprintf(&b, "%s = %s\n", k, v)
+		return nil
+	}
+	for _, m := range l.Models {
+		if strings.ContainsAny(m.ID, "[]\r\n;#") || len(m.Files) == 0 {
+			return "", fmt.Errorf("%q cannot be listed for llama-server's router", m.ID)
+		}
+		fmt.Fprintf(&b, "\n[%s]\n", m.ID)
+		if err := value("model", m.Files[0]); err != nil {
+			return "", err
+		}
+		if m.Projector != "" {
+			if err := value("mmproj", m.Projector); err != nil {
+				return "", err
+			}
+		}
+		if d, ok := l.Drafts[m.ID]; ok && len(d.Files) > 0 {
+			if err := value("model-draft", d.Files[0]); err != nil {
+				return "", err
+			}
+			_ = value("spec-type", specType)
+		}
+		_ = value("load-on-startup", "true")
+	}
+	return b.String(), nil
+}
+
 // Start stops a server that runs, starts llama-server with the model and waits until /health answers 200 (the model is
 // loaded). A program that ends first, or one that is not ready in time, is reported as failed with its last lines.
 func (s *Server) Start(ctx context.Context, l Launch) error {
-	if len(l.Model.Files) == 0 {
-		return errors.New("the model has no file")
+	models := l.models()
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		if len(m.Files) == 0 {
+			return errors.New("the model has no file")
+		}
+		ids = append(ids, m.ID)
 	}
 	if l.Port <= 0 || l.Port > 65535 {
 		return fmt.Errorf("%d is not a port", l.Port)
+	}
+	if l.Router() {
+		if len(l.Models) > MaxLoaded {
+			return fmt.Errorf("%d models at once is more than the %d the server keeps loaded", len(l.Models), MaxLoaded)
+		}
+		if l.Embeddings {
+			return errors.New("an embedding model is served on its own")
+		}
+		if l.PresetFile == "" {
+			return errors.New("router mode needs a preset file")
+		}
+		preset, err := Preset(l)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(l.PresetFile), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(l.PresetFile, []byte(preset), 0o644); err != nil {
+			return err
+		}
 	}
 	s.Stop()
 	if s.PM == nil {
@@ -188,8 +325,8 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 	s.mu.Unlock()
 	base := "http://127.0.0.1:" + strconv.Itoa(l.Port)
 	s.set(func(st *ServerState) {
-		*st = ServerState{State: "starting", ModelID: l.Model.ID, Port: l.Port, BaseURL: base + "/v1", StartedAt: time.Now().UTC(),
-			Autostarted: l.Autostarted, CacheType: l.CacheType, ContextSize: l.ContextSize}
+		*st = ServerState{State: "starting", ModelID: ids[0], Port: l.Port, BaseURL: base + "/v1", StartedAt: time.Now().UTC(),
+			Autostarted: l.Autostarted, CacheType: l.CacheType, ContextSize: l.ContextSize, Models: ids, Router: l.Router(), Embeddings: l.Embeddings}
 	})
 	if err := portFree(l.Port); err != nil {
 		s.set(func(st *ServerState) { st.State, st.Error = "failed", err.Error() })
@@ -198,6 +335,9 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 	env := childEnv()
 	if l.APIKey != "" {
 		env = append(env, "LLAMA_API_KEY="+l.APIKey)
+	}
+	if l.Router() && l.CacheDir != "" && os.MkdirAll(l.CacheDir, 0o755) == nil {
+		env = append(env, "LLAMA_CACHE="+l.CacheDir)
 	}
 	// the server outlives this call: the person stops it
 	p, err := s.PM.Start(context.Background(), proc.Spec{Path: l.Program, Args: Arguments(l), Dir: dirOf(l.Program), Env: env, Label: "llama-server"})
@@ -310,6 +450,23 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 				return errStopped
 			}
 			if s.healthy(wctx, hc, base) && s.ours(wctx, hc, base, l.APIKey) {
+				if l.Router() {
+					// the router answers at once; the models are ready when its listing says each is loaded
+					ready, ferr := routerReady(wctx, hc, base, l.APIKey, ids)
+					if ferr != nil {
+						_ = p.Kill(true)
+						<-done
+						if !current() {
+							return errStopped
+						}
+						ferr = fmt.Errorf("%w: %s", ferr, s.tail())
+						s.set(func(st *ServerState) { st.State, st.Error = "failed", ferr.Error() })
+						return ferr
+					}
+					if !ready {
+						continue
+					}
+				}
 				var stopped bool
 				s.set(func(st *ServerState) {
 					if stopped = s.gen != gen; !stopped {
@@ -359,6 +516,64 @@ func (s *Server) ours(ctx context.Context, hc *http.Client, base, key string) bo
 	}
 	var v map[string]json.RawMessage
 	return json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&v) == nil
+}
+
+// routerReady reads the router's model listing: ready when every model is loaded; an error when one failed to load (its
+// instance ended), since the router then waits for a request to try again, which Drydock would never send.
+func routerReady(ctx context.Context, hc *http.Client, base, key string, ids []string) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
+	if err != nil {
+		return false, nil
+	}
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return false, nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+	var listing struct {
+		Data []struct {
+			ID     string `json:"id"`
+			Status struct {
+				Value    string `json:"value"`
+				Failed   bool   `json:"failed"`
+				ExitCode int    `json:"exit_code"`
+			} `json:"status"`
+		} `json:"data"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&listing) != nil {
+		return false, nil
+	}
+	state := map[string]string{}
+	for _, d := range listing.Data {
+		if d.Status.Failed {
+			if contains(ids, d.ID) {
+				return false, fmt.Errorf("%s could not be loaded (its instance ended with code %d)", d.ID, d.Status.ExitCode)
+			}
+			continue
+		}
+		state[d.ID] = d.Status.Value
+	}
+	for _, id := range ids {
+		if v := state[id]; v != "loaded" && v != "sleeping" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) tail() string {

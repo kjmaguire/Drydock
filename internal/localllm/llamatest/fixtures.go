@@ -208,8 +208,11 @@ func (rw rewrite) RoundTrip(r *http.Request) (*http.Response, error) {
 	return nil, fmt.Errorf("fixture: refusing %s", u)
 }
 
-// HubFixture is a PROTOCOL FIXTURE of the Hugging Face Hub: /api/models (search and author listings), the repository tree
-// with lfs oid and size, and /resolve downloads with Range support. Nothing here is the Hub.
+// HubFixture is a PROTOCOL FIXTURE of the Hugging Face Hub: /api/models (search and author listings), /api/models/<repo>, the
+// repository tree with lfs oid and size, and /resolve downloads with Range support. A gated repository's files are served only
+// to the token that was given access (401 without a token, 403 with another), as the Hub answers. With a CDN (StartCDN) every
+// download is redirected to a second server at another address, as the Hub sends its bytes from a CDN, which records the
+// Authorization headers it was sent. Nothing here is the Hub.
 type HubFixture struct {
 	Server *httptest.Server
 	URL    string
@@ -219,6 +222,9 @@ type HubFixture struct {
 	Requests atomic.Int64
 	// Hits counts every request by path prefix, for tests.
 	hits map[string]int
+	// auth records the Authorization header of every request by path ("" when there was none), for tests.
+	auth map[string][]string
+	cdn  *httptest.Server
 }
 
 type hubRepo struct {
@@ -226,6 +232,7 @@ type hubRepo struct {
 	downloads int64
 	tags      []string
 	gated     bool
+	token     string // the token that has access to a gated repository
 	files     map[string][]byte
 }
 
@@ -237,11 +244,37 @@ func NewHub(t testing.TB) *HubFixture {
 }
 
 // Close stops the fixture.
-func (f *HubFixture) Close() { f.Server.Close() }
+func (f *HubFixture) Close() {
+	f.Server.Close()
+	if f.cdn != nil {
+		f.cdn.Close()
+	}
+}
+
+// StartCDN redirects every download to a second server, at another address, that sends the file: as the Hub answers a
+// resolve with a redirect to its CDN at a signed address.
+func (f *HubFixture) StartCDN() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cdn = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.auth["cdn:"+r.URL.Path] = append(f.auth["cdn:"+r.URL.Path], r.Header.Get("Authorization"))
+		f.mu.Unlock()
+		f.send(w, r, strings.TrimPrefix(r.URL.Path, "/cdn/"))
+	}))
+}
+
+// AuthSeen is the Authorization headers sent to a path of the Hub ("/acme/x/resolve/main/f.gguf"), or with "cdn:" before it
+// ("cdn:/cdn/acme/x/resolve/main/f.gguf") to the CDN; "" for a request that had none.
+func (f *HubFixture) AuthSeen(path string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string{}, f.auth[path]...)
+}
 
 // StartHub starts the fixture; the caller closes it.
 func StartHub() *HubFixture {
-	f := &HubFixture{repos: map[string]*hubRepo{}, hits: map[string]int{}}
+	f := &HubFixture{repos: map[string]*hubRepo{}, hits: map[string]int{}, auth: map[string][]string{}}
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
 	f.URL = f.Server.URL
 	return f
@@ -260,12 +293,15 @@ func (f *HubFixture) AddModel(repo string, downloads int64, tags []string, files
 	f.repos[repo] = &hubRepo{author: author, downloads: downloads, tags: tags, files: files}
 }
 
-// AddGated adds a gated repository (it must never be offered).
-func (f *HubFixture) AddGated(repo string) {
+// AddGated adds a gated repository whose files only token may download (the account that accepted the licence).
+func (f *HubFixture) AddGated(repo, token string, files map[string][]byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	author, _, _ := strings.Cut(repo, "/")
-	f.repos[repo] = &hubRepo{author: author, gated: true, files: map[string][]byte{}}
+	if files == nil {
+		files = map[string][]byte{}
+	}
+	f.repos[repo] = &hubRepo{author: author, downloads: 5, gated: true, token: token, files: files}
 }
 
 // Hits is how many requests started with a path prefix.
@@ -284,6 +320,7 @@ func (f *HubFixture) Hits(prefix string) int {
 func (f *HubFixture) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.hits[r.URL.Path]++
+	f.auth[r.URL.Path] = append(f.auth[r.URL.Path], r.Header.Get("Authorization"))
 	f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	switch {
@@ -292,6 +329,8 @@ func (f *HubFixture) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/models/") && strings.Contains(r.URL.Path, "/tree/main"):
 		repo := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/models/"), "/tree/main")
 		f.tree(w, r, repo)
+	case strings.HasPrefix(r.URL.Path, "/api/models/"):
+		f.info(w, r, strings.TrimPrefix(r.URL.Path, "/api/models/"))
 	case strings.Contains(r.URL.Path, "/resolve/main/"):
 		f.resolve(w, r)
 	default:
@@ -299,15 +338,28 @@ func (f *HubFixture) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// row is a repository as the Hub's listing gives it.
+func row(id string, rp *hubRepo) map[string]any {
+	tags := append([]string{"gguf", "text-generation"}, rp.tags...)
+	m := map[string]any{"id": id, "modelId": id, "downloads": rp.downloads, "likes": rp.downloads / 100,
+		"lastModified": time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), "tags": tags, "private": false}
+	if rp.gated {
+		m["gated"] = "auto"
+	} else {
+		m["gated"] = false
+	}
+	return m
+}
+
 func (f *HubFixture) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	type row struct {
+	type entry struct {
 		id   string
 		repo *hubRepo
 	}
-	var rows []row
+	var rows []entry
 	for id, rp := range f.repos {
 		if a := q.Get("author"); a != "" && rp.author != a {
 			continue
@@ -315,22 +367,25 @@ func (f *HubFixture) list(w http.ResponseWriter, r *http.Request) {
 		if s := q.Get("search"); s != "" && !strings.Contains(strings.ToLower(id), strings.ToLower(s)) {
 			continue
 		}
-		rows = append(rows, row{id, rp})
+		rows = append(rows, entry{id, rp})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].repo.downloads > rows[j].repo.downloads })
 	out := []map[string]any{}
 	for _, rw := range rows {
-		tags := append([]string{"gguf", "text-generation"}, rw.repo.tags...)
-		m := map[string]any{"id": rw.id, "modelId": rw.id, "downloads": rw.repo.downloads, "likes": rw.repo.downloads / 100,
-			"lastModified": time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), "tags": tags, "private": false}
-		if rw.repo.gated {
-			m["gated"] = "auto"
-		} else {
-			m["gated"] = false
-		}
-		out = append(out, m)
+		out = append(out, row(rw.id, rw.repo))
 	}
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (f *HubFixture) info(w http.ResponseWriter, r *http.Request, repo string) {
+	f.mu.Lock()
+	rp, ok := f.repos[repo]
+	f.mu.Unlock()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(row(repo, rp))
 }
 
 func (f *HubFixture) tree(w http.ResponseWriter, r *http.Request, repo string) {
@@ -360,7 +415,34 @@ func (f *HubFixture) tree(w http.ResponseWriter, r *http.Request, repo string) {
 }
 
 func (f *HubFixture) resolve(w http.ResponseWriter, r *http.Request) {
-	repo, file, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/resolve/main/")
+	repo, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/resolve/main/")
+	f.mu.Lock()
+	rp, ok := f.repos[repo]
+	cdn := f.cdn
+	f.mu.Unlock()
+	if ok && rp.gated {
+		// the Hub's answers for a gated file: 401 without a token, 403 for an account without access
+		switch auth := r.Header.Get("Authorization"); {
+		case auth == "":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"Access to model ` + repo + ` is restricted. You must have access to it and be authenticated to access it. Please log in."}`))
+			return
+		case auth != "Bearer "+rp.token:
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"Access to model ` + repo + ` is restricted and you are not in the authorized list. Visit https://huggingface.co/` + repo + ` to ask for access."}`))
+			return
+		}
+	}
+	if cdn != nil {
+		http.Redirect(w, r, cdn.URL+"/cdn"+r.URL.Path+"?signed=fixture", http.StatusFound)
+		return
+	}
+	f.send(w, r, strings.TrimPrefix(r.URL.Path, "/"))
+}
+
+// send writes a file ("owner/repo/resolve/main/<path>"), from a byte when the request asks for a range.
+func (f *HubFixture) send(w http.ResponseWriter, r *http.Request, p string) {
+	repo, file, _ := strings.Cut(p, "/resolve/main/")
 	f.mu.Lock()
 	rp, ok := f.repos[repo]
 	var b []byte
