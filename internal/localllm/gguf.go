@@ -40,6 +40,27 @@ type GGUFInfo struct {
 	VocabSize int    `json:"vocabSize,omitempty"`
 	BOS       int64  `json:"bos"`
 	EOS       int64  `json:"eos"`
+	// Draft heads that are not models (decision P120). NextNLayers is <arch>.nextn_predict_layers, the multi-token prediction
+	// (MTP, NextN) layers the model was trained with; MTP says the file carries them too (the tensor llama.cpp looks for,
+	// blk.<last>.nextn.eh_proj.weight, is in it: a converter may leave them out), so the model can draft for itself with
+	// --spec-type draft-mtp. TargetHiddenSize is an EAGLE-3 draft's eagle3.target_hidden_size (the TurboQuant build's key),
+	// the embedding length of the model it was trained for, when the file gives it.
+	NextNLayers      int  `json:"nextnLayers,omitempty"`
+	MTP              bool `json:"mtp,omitempty"`
+	TargetHiddenSize int  `json:"targetHiddenSize,omitempty"`
+}
+
+// Eagle3 says the file is an EAGLE-3 draft (general.architecture "eagle3" in llama.cpp and the TurboQuant build): a one-layer
+// model trained for one target that reads its hidden states. It drafts for that model and never chats (decision P120).
+func (i GGUFInfo) Eagle3() bool { return i.Architecture == "eagle3" }
+
+// MTPTensor is the tensor that says a model of info carries its MTP heads: the eh_proj of its last block, which is where
+// llama.cpp's common_speculative_types_from_gguf looks ("" when the header names no MTP layers).
+func MTPTensor(info GGUFInfo) string {
+	if info.NextNLayers <= 0 || info.BlockCount <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("blk.%d.nextn.eh_proj.weight", info.BlockCount-1)
 }
 
 // Limits of what the header reader accepts: a header beyond them is not a model's.
@@ -51,6 +72,8 @@ const (
 	ggufMaxRead   = 1 << 30 // the header with its tokenizer arrays comes well before this
 	ggufMaxKept   = 1 << 17 // values kept over all the wanted keys (a model has one per layer for a few keys)
 	ggufMaxKeys   = 64      // wanted keys kept (a model has nine; more come only from keys read before the architecture)
+	ggufMaxTensor = 1 << 20 // tensors listed (a model has a few thousand)
+	ggufMaxDims   = 8       // dimensions of a tensor (ggml has four)
 )
 
 // GGUF value types.
@@ -72,7 +95,8 @@ const (
 
 var errNotGGUF = errors.New("the file is not a GGUF model")
 
-// ReadGGUF reads the parts of a GGUF file's header the KV estimate needs (versions 2 and 3).
+// ReadGGUF reads the parts of a GGUF file's header the KV estimate needs (versions 2 and 3), and whether the file carries MTP
+// heads (its tensor list is read up to the tensor that says so).
 func ReadGGUF(path string) (GGUFInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -80,6 +104,42 @@ func ReadGGUF(path string) (GGUFInfo, error) {
 	}
 	defer f.Close()
 	return parseGGUF(bufio.NewReaderSize(io.LimitReader(f, ggufMaxRead), 1<<16))
+}
+
+// HasTensor says whether a GGUF file lists a tensor by that name: for a model split into several files, whose MTP heads are in
+// a later file than the header ReadGGUF reads (a split file other than the first carries no architecture).
+func HasTensor(path, name string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	_, found, err := parseHeader(bufio.NewReaderSize(io.LimitReader(f, ggufMaxRead), 1<<16), name)
+	return found, err
+}
+
+// findTensor reads a GGUF file's tensor list (each tensor's name, dimensions, type and offset) until it finds name.
+func (g ggufReader) findTensor(n uint64, name string) (bool, error) {
+	if n > ggufMaxTensor {
+		return false, fmt.Errorf("%w: %d tensors", errNotGGUF, n)
+	}
+	for i := uint64(0); i < n; i++ {
+		got, err := g.str(ggufMaxKey)
+		if err != nil {
+			return false, err
+		}
+		dims, err := g.u32()
+		if err != nil || dims > ggufMaxDims {
+			return false, fmt.Errorf("%w: a tensor of %d dimensions", errNotGGUF, dims)
+		}
+		if got == name {
+			return true, nil
+		}
+		if err := g.skip(uint64(dims)*8 + 4 + 8); err != nil { // the dimensions, the type, the offset
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 type ggufReader struct{ r *bufio.Reader }
@@ -167,7 +227,7 @@ func clampNeg(v int64) uint64 {
 // wantedSuffixes are the keys the estimate reads, after the architecture's name.
 var wantedSuffixes = map[string]bool{".block_count": true, ".context_length": true, ".embedding_length": true, ".attention.head_count": true,
 	".attention.head_count_kv": true, ".attention.key_length": true, ".attention.value_length": true, ".attention.sliding_window": true,
-	".attention.kv_lora_rank": true, ".pooling_type": true}
+	".attention.kv_lora_rank": true, ".pooling_type": true, ".nextn_predict_layers": true, ".target_hidden_size": true}
 
 // wanted says whether a key is one the estimate reads: an architecture's name (one word, no dot) and one of wantedSuffixes,
 // exactly. "a.<anything>.block_count" is not one (review 2026-10-27: such keys were kept without bound).
@@ -193,24 +253,33 @@ func (k *ggufKept) take(n uint64) bool {
 }
 
 func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
+	info, _, err := parseHeader(r, "")
+	return info, err
+}
+
+// parseHeader reads a GGUF header: its metadata, then its tensor list up to the tensor named find, or, when find is "", up to
+// the tensor that says the model carries MTP heads (when the metadata names MTP layers). Only a file read for its metadata
+// (find "") must name its architecture. A tensor list that cannot be read leaves MTP unknown (false), not the header unread.
+func parseHeader(r *bufio.Reader, find string) (GGUFInfo, bool, error) {
 	g := ggufReader{r}
 	var magic [4]byte
 	if _, err := io.ReadFull(r, magic[:]); err != nil || string(magic[:]) != "GGUF" {
-		return GGUFInfo{}, errNotGGUF
+		return GGUFInfo{}, false, errNotGGUF
 	}
 	version, err := g.u32()
 	if err != nil {
-		return GGUFInfo{}, errNotGGUF
+		return GGUFInfo{}, false, errNotGGUF
 	}
 	if version != 2 && version != 3 {
-		return GGUFInfo{}, fmt.Errorf("GGUF version %d is not one Drydock reads (2 or 3)", version)
+		return GGUFInfo{}, false, fmt.Errorf("GGUF version %d is not one Drydock reads (2 or 3)", version)
 	}
-	if _, err := g.u64(); err != nil { // tensor count
-		return GGUFInfo{}, errNotGGUF
+	ntensors, err := g.u64()
+	if err != nil {
+		return GGUFInfo{}, false, errNotGGUF
 	}
 	nkv, err := g.u64()
 	if err != nil || nkv > ggufMaxKV {
-		return GGUFInfo{}, errNotGGUF
+		return GGUFInfo{}, false, errNotGGUF
 	}
 	ints := map[string][]uint64{}
 	arch := ""
@@ -223,11 +292,11 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 	for i := uint64(0); i < nkv; i++ {
 		key, err := g.str(ggufMaxKey)
 		if err != nil {
-			return GGUFInfo{}, fmt.Errorf("%w: %v", errNotGGUF, err)
+			return GGUFInfo{}, false, fmt.Errorf("%w: %v", errNotGGUF, err)
 		}
 		t, err := g.u32()
 		if err != nil {
-			return GGUFInfo{}, errNotGGUF
+			return GGUFInfo{}, false, errNotGGUF
 		}
 		// once the architecture is known (it comes first in every file llama.cpp writes) only its own keys are read
 		want := wanted(key) && (arch == "" || strings.HasPrefix(key, arch+"."))
@@ -235,28 +304,28 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 		case ggufString:
 			if key == "general.architecture" {
 				if arch, err = g.str(256); err != nil {
-					return GGUFInfo{}, errNotGGUF
+					return GGUFInfo{}, false, errNotGGUF
 				}
 				continue
 			}
 			if key == "tokenizer.ggml.model" {
 				if tokModel, err = g.str(256); err != nil {
-					return GGUFInfo{}, errNotGGUF
+					return GGUFInfo{}, false, errNotGGUF
 				}
 				continue
 			}
 			n, err := g.u64()
 			if err != nil || n > ggufMaxString || g.skip(n) != nil {
-				return GGUFInfo{}, errNotGGUF
+				return GGUFInfo{}, false, errNotGGUF
 			}
 		case ggufArray:
 			et, err := g.u32()
 			if err != nil {
-				return GGUFInfo{}, errNotGGUF
+				return GGUFInfo{}, false, errNotGGUF
 			}
 			n, err := g.u64()
 			if err != nil || n > ggufMaxArray {
-				return GGUFInfo{}, errNotGGUF
+				return GGUFInfo{}, false, errNotGGUF
 			}
 			size := scalarSize(et)
 			if key == "tokenizer.ggml.tokens" {
@@ -268,30 +337,30 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 				for j := uint64(0); j < n; j++ {
 					v, err := g.integer(et)
 					if err != nil {
-						return GGUFInfo{}, errNotGGUF
+						return GGUFInfo{}, false, errNotGGUF
 					}
 					vals = append(vals, v)
 				}
 				ints[key] = vals
 			case size > 0:
 				if g.skip(n*size) != nil {
-					return GGUFInfo{}, errNotGGUF
+					return GGUFInfo{}, false, errNotGGUF
 				}
 			case et == ggufString:
 				for j := uint64(0); j < n; j++ {
 					l, err := g.u64()
 					if err != nil || l > ggufMaxString || g.skip(l) != nil {
-						return GGUFInfo{}, errNotGGUF
+						return GGUFInfo{}, false, errNotGGUF
 					}
 				}
 			default: // an array of arrays is not in the format
-				return GGUFInfo{}, fmt.Errorf("%w: array of type %d", errNotGGUF, et)
+				return GGUFInfo{}, false, fmt.Errorf("%w: array of type %d", errNotGGUF, et)
 			}
 		default:
 			if key == "tokenizer.ggml.bos_token_id" || key == "tokenizer.ggml.eos_token_id" {
 				v, err := g.integer(t)
 				if err != nil {
-					return GGUFInfo{}, errNotGGUF
+					return GGUFInfo{}, false, errNotGGUF
 				}
 				if v < 1<<31 && key == "tokenizer.ggml.bos_token_id" {
 					bos = int64(v)
@@ -303,16 +372,13 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 			if want && kept.take(1) {
 				v, err := g.integer(t)
 				if err != nil {
-					return GGUFInfo{}, errNotGGUF
+					return GGUFInfo{}, false, errNotGGUF
 				}
 				ints[key] = []uint64{v}
 			} else if n := scalarSize(t); n == 0 || g.skip(n) != nil {
-				return GGUFInfo{}, errNotGGUF
+				return GGUFInfo{}, false, errNotGGUF
 			}
 		}
-	}
-	if arch == "" {
-		return GGUFInfo{}, fmt.Errorf("%w: no general.architecture", errNotGGUF)
 	}
 	one := func(k string) int {
 		if v := ints[arch+"."+k]; len(v) > 0 && v[0] < 1<<31 {
@@ -323,11 +389,22 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 	info := GGUFInfo{Architecture: arch, BlockCount: one("block_count"), ContextLength: one("context_length"), EmbeddingLength: one("embedding_length"),
 		HeadCount: ints[arch+".attention.head_count"], HeadCountKV: ints[arch+".attention.head_count_kv"], KeyLength: one("attention.key_length"),
 		ValueLength: one("attention.value_length"), SlidingWindow: one("attention.sliding_window"), MLA: one("attention.kv_lora_rank") > 0,
-		Pooling: len(ints[arch+".pooling_type"]) > 0, Tokenizer: tokModel, BOS: bos, EOS: eos}
+		Pooling: len(ints[arch+".pooling_type"]) > 0, Tokenizer: tokModel, BOS: bos, EOS: eos,
+		NextNLayers: one("nextn_predict_layers"), TargetHiddenSize: one("target_hidden_size")}
 	if vocab < 1<<31 {
 		info.VocabSize = int(vocab)
 	}
-	return info, nil
+	if find != "" {
+		found, err := g.findTensor(ntensors, find)
+		return info, found, err
+	}
+	if arch == "" {
+		return GGUFInfo{}, false, fmt.Errorf("%w: no general.architecture", errNotGGUF)
+	}
+	if t := MTPTensor(info); t != "" {
+		info.MTP, _ = g.findTensor(ntensors, t)
+	}
+	return info, false, nil
 }
 
 // KVCache is the estimate of a model's KV cache at a context size and cache type.

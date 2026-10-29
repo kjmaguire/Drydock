@@ -36,6 +36,11 @@ type Model struct {
 	Drafts    []string `json:"drafts,omitempty"`
 	Draft     string   `json:"draft,omitempty"`
 	LoadBytes uint64   `json:"loadBytes,omitempty"`
+	// Draft heads that are not models (decision P120), read from the header by the core: MTP says the model carries its own
+	// multi-token prediction heads (DraftMTP is then among Drafts), Eagle3 that it is an EAGLE-3 draft, which drafts for the
+	// model it was trained for and is never served for chat.
+	MTP    bool `json:"mtp,omitempty"`
+	Eagle3 bool `json:"eagle3,omitempty"`
 }
 
 // ModelID is "owner/repo:VARIANT".

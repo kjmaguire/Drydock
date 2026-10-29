@@ -23,10 +23,22 @@ const (
 	hfTokenName = "huggingface-token"
 )
 
-// servePlan is what serve starts: the models in the order asked, and the draft of each that has one.
+// servePlan is what serve starts: the models in the order asked, the draft of each that has one, and the kind of speculative
+// decoding of each that is not a plain draft model's (an EAGLE-3 draft, or the model's own MTP heads; decision P120).
 type servePlan struct {
 	models []localllm.Model
 	drafts map[string]localllm.Model
+	specs  map[string]string
+}
+
+// heads says what a model's header says of draft heads that are not models (decision P120): whether it carries MTP heads, and
+// whether it is an EAGLE-3 draft.
+func (l *localExt) heads(m localllm.Model) (mtp, eagle3 bool) {
+	info, err := l.ggufOf(m)
+	if err != nil {
+		return false, false
+	}
+	return info.MTP, info.Eagle3()
 }
 
 // isEmbedding is a model's kind: the person's mark, else what its header says.
@@ -73,7 +85,7 @@ func loadBudget(d localllm.Devices, mem localllm.Memory) uint64 {
 // there are several, all of them (with their drafts and KV caches) within the memory budget. A draft that is gone or no longer
 // fits its model is left out, not refused: the model still runs, only slower.
 func (l *localExt) plan(ctx context.Context, in localllm.Installed, s LocalSettings, ids []string, cache string) (servePlan, error) {
-	p := servePlan{drafts: map[string]localllm.Model{}}
+	p := servePlan{drafts: map[string]localllm.Model{}, specs: map[string]string{}}
 	if len(ids) > localllm.MaxLoaded {
 		return p, fmt.Errorf("at most %d models stay loaded at once", localllm.MaxLoaded)
 	}
@@ -91,11 +103,25 @@ func (l *localExt) plan(ctx context.Context, in localllm.Installed, s LocalSetti
 		if l.isEmbedding(m) {
 			return p, fmt.Errorf("%s is an embedding model: it is served on its own, as the embedding model", id)
 		}
+		mtp, eagle3 := l.heads(m)
+		if eagle3 {
+			return p, fmt.Errorf("%s is an EAGLE-3 draft: it does not chat, it drafts for the model it was made for (choose it as that model's draft)", id)
+		}
 		p.models = append(p.models, m)
 		total += needBytes(m, l.kvOf(m, s.ContextSize, cache))
-		if did := s.Drafts[id]; did != "" {
+		if did := s.Drafts[id]; did == localllm.DraftMTP {
+			// the model's own heads draft: no file, and the memory of their context is not estimated
+			if mtp {
+				p.specs[id] = localllm.SpecMTP
+			} else {
+				l.c.logf("local models: %s is served without MTP drafting (its file carries no MTP heads)", id)
+			}
+		} else if did != "" {
 			if d, err := l.m.Store.Get(did); err == nil && l.draftOK(m, d) {
 				p.drafts[id] = d
+				if _, e3 := l.heads(d); e3 {
+					p.specs[id] = localllm.SpecEagle3
+				}
 				total += needBytes(d, l.kvOf(d, s.ContextSize, cache))
 			} else {
 				l.c.logf("local models: %s is served without its draft %s (gone, or no longer one it can use)", id, did)
@@ -133,13 +159,17 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		f := localllm.FitWithKV(m.Size, &kv, v.Runtime.Devices, v.Memory)
 		m.Fit = &f
 		m.Embedding = l.isEmbedding(*m)
+		m.MTP, m.Eagle3 = l.heads(*m)
 		v.ModelsBytes += m.Size
 	}
 	for i := range v.Models {
 		m := &v.Models[i]
 		m.LoadBytes = needBytes(*m, kvs[i])
-		if m.Embedding {
+		if m.Embedding || m.Eagle3 {
 			continue
+		}
+		if m.MTP {
+			m.Drafts = append(m.Drafts, localllm.DraftMTP)
 		}
 		for j := range v.Models {
 			if i != j && l.draftOK(*m, v.Models[j]) {
@@ -148,9 +178,12 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		}
 		if d := s.Drafts[m.ID]; d != "" {
 			for _, c := range m.Drafts {
-				if c == d {
-					m.Draft = d
-					m.LoadBytes += needBytes(v.Models[byID[d]], kvs[byID[d]])
+				if c != d {
+					continue
+				}
+				m.Draft = d
+				if j, ok := byID[d]; ok {
+					m.LoadBytes += needBytes(v.Models[j], kvs[j])
 				}
 			}
 		}
@@ -251,7 +284,16 @@ func (l *localExt) setModel(ctx context.Context, id string, embedding *bool, dra
 	}
 	s := l.settings(ctx)
 	if draft != nil {
-		if *draft == "" {
+		if *draft == localllm.DraftMTP {
+			// its own MTP heads (decision P120): only a model whose file carries them
+			if mtp, _ := l.heads(m); !mtp {
+				return LocalView{}, fmt.Errorf("%s carries no MTP heads: its file has no multi-token prediction layers", id)
+			}
+			if s.Drafts == nil {
+				s.Drafts = map[string]string{}
+			}
+			s.Drafts[id] = localllm.DraftMTP
+		} else if *draft == "" {
 			delete(s.Drafts, id)
 		} else {
 			d, err := l.m.Store.Get(*draft)

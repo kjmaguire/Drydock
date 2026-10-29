@@ -39,6 +39,15 @@ func (l *localExt) ggufOf(m localllm.Model) (localllm.GGUFInfo, error) {
 		return e.info, e.err
 	}
 	info, err := localllm.ReadGGUF(p)
+	// a split model's MTP heads are in a later file than its header (decision P120)
+	if t := localllm.MTPTensor(info); err == nil && !info.MTP && t != "" {
+		for _, f := range m.Files[1:] {
+			if ok, _ := localllm.HasTensor(f, t); ok {
+				info.MTP = true
+				break
+			}
+		}
+	}
 	l.mu.Lock()
 	if l.gguf == nil {
 		l.gguf = map[string]ggufEntry{}

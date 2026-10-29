@@ -4,7 +4,9 @@
 // it answers the server's own endpoints (/health, /v1/models, /props, /v1/chat/completions, /v1/embeddings) with canned,
 // documented shapes and never presents itself as llama.cpp (its --version says so). It runs either of llama-server's two modes
 // as llama.cpp's tools/server/README.md (build b11936) describes them: one model (-m), or the router (--models-preset, no -m),
-// which lists every model of the preset with its state and routes each request by its "model" field (decision P111).
+// which lists every model of the preset with its state and routes each request by its "model" field (decision P111), and
+// loads and unloads one model while the others keep running (POST /models/load and /models/unload, GET /models?reload=1 to
+// read the preset again; decision P120), as the README and tools/server/server-models.cpp at that build answer them.
 package llamatest
 
 import (
@@ -12,13 +14,16 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
 )
 
 // Marker is the first argument that tells a binary to run the stand-in instead of itself.
@@ -36,22 +41,40 @@ func IsStandIn(args []string) bool { return len(args) > 1 && args[1] == Marker }
 //	--fail-model=ID           the router's instance of the model ID ends while it loads (its listing says failed, code 1)
 //	--record=FILE             write the server arguments to FILE (a test checks what it was started with)
 //	--record-env=FILE         write the router's cache folder (LLAMA_CACHE) and whether a key was given (never the key) to FILE
+//	--no-router-calls         the router answers neither /models/load nor /models/unload (404, as a build without them would),
+//	                          and reads its preset only once
+//	--calls=FILE              append each router call (load, unload, reload, with its model) to FILE, one per line
 //
 // Like the real server it refuses a projector (--mmproj) or a draft (--model-draft) whose file is not there. Unlike it, it also
-// refuses a draft model without --spec-type draft-simple: llama.cpp would load the draft and never use it, which a test would
-// not otherwise see.
+// refuses a draft model without the --spec-type that uses it (draft-simple, or draft-eagle3 for an EAGLE-3 draft), and a
+// --spec-type draft-eagle3 without a draft model: llama.cpp would load the draft and never use it, or fail later, which a test
+// would not otherwise see. --spec-type draft-mtp without a draft uses the model's own MTP heads, as llama.cpp's does.
 func Args(opts ...string) []string { return append([]string{Marker}, opts...) }
 
-// model is one model the stand-in serves.
+// model is one model the stand-in serves, with the kind of speculative decoding it runs ("" for none).
 type model struct {
-	id, path, projector, draft string
+	id, path, projector, draft, spec string
+}
+
+// draftSpecOK is the stand-in's check of a model's speculative decoding: a draft model needs draft-simple or draft-eagle3, an
+// EAGLE-3 type needs a draft model, and draft-mtp needs none (the model's own heads draft).
+func draftSpecOK(m model) error {
+	switch {
+	case m.draft != "" && m.spec != "draft-simple" && m.spec != "draft-eagle3":
+		return fmt.Errorf("a draft model without --spec-type draft-simple or draft-eagle3 drafts nothing (a test double's check)")
+	case m.draft == "" && (m.spec == "draft-simple" || m.spec == "draft-eagle3"):
+		return fmt.Errorf("--spec-type %s needs a draft model (a test double's check)", m.spec)
+	case m.spec != "" && m.spec != "draft-simple" && m.spec != "draft-eagle3" && m.spec != "draft-mtp":
+		return fmt.Errorf("the stand-in knows no --spec-type %s", m.spec)
+	}
+	return nil
 }
 
 // Main runs the stand-in named by os.Args and returns its exit code.
 func Main(args []string) int {
 	rest := args[2:]
-	devices, loadMS, record, recordEnv, failModel := "cuda", 0, "", "", ""
-	fail := false
+	devices, loadMS, record, recordEnv, failModel, calls := "cuda", 0, "", "", "", ""
+	fail, noRouterCalls := false, false
 	for len(rest) > 0 {
 		opt := rest[0]
 		switch {
@@ -67,6 +90,10 @@ func Main(args []string) int {
 			record = strings.TrimPrefix(opt, "--record=")
 		case strings.HasPrefix(opt, "--record-env="):
 			recordEnv = strings.TrimPrefix(opt, "--record-env=")
+		case opt == "--no-router-calls":
+			noRouterCalls = true
+		case strings.HasPrefix(opt, "--calls="):
+			calls = strings.TrimPrefix(opt, "--calls=")
 		default:
 			opt = ""
 		}
@@ -106,7 +133,7 @@ func Main(args []string) int {
 		return 1
 	}
 	port, alias, ctx, maxModels := 0, "", 4096, 4
-	cacheK, preset, spec := "f16", "", ""
+	cacheK, preset := "f16", ""
 	embeddings := false
 	one := model{}
 	for i := 0; i < len(rest); i++ {
@@ -133,7 +160,7 @@ func Main(args []string) int {
 		case "-md", "--model-draft", "--spec-draft-model":
 			one.draft = next()
 		case "--spec-type":
-			spec = next()
+			one.spec = next()
 		case "--embedding", "--embeddings":
 			embeddings = true
 		case "--models-preset":
@@ -161,8 +188,8 @@ func Main(args []string) int {
 			fmt.Fprintln(os.Stderr, "stand-in llama-server: no model (-m)")
 			return 1
 		}
-		if one.draft != "" && spec != "draft-simple" {
-			fmt.Fprintln(os.Stderr, "stand-in llama-server: a draft model without --spec-type draft-simple drafts nothing (a test double's check)")
+		if err := draftSpecOK(one); err != nil {
+			fmt.Fprintf(os.Stderr, "stand-in llama-server: %v\n", err)
 			return 1
 		}
 		one.id = alias
@@ -172,26 +199,44 @@ func Main(args []string) int {
 		models = []model{one}
 	}
 	for _, m := range models {
-		for what, p := range map[string]string{"model": m.path, "projector": m.projector, "draft model": m.draft} {
-			if p == "" {
-				continue
-			}
-			if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
-				fmt.Fprintf(os.Stderr, "stand-in llama-server: cannot load the %s %s: %v\n", what, p, err)
-				return 1
-			}
+		if err := filesOf(m); err != nil {
+			fmt.Fprintf(os.Stderr, "stand-in llama-server: %v\n", err)
+			return 1
 		}
 	}
-	byID := map[string]model{}
-	for _, m := range models {
-		byID[m.id] = m
+	// the router's models with their state: what the preset lists, each loaded at the start; /models/load, /models/unload and a
+	// reload of the preset change them while the others keep running (decision P120)
+	var mu sync.Mutex
+	type inst struct {
+		model
+		loaded  bool      // running: loading until readyAt, then loaded
+		readyAt time.Time //
+		failed  bool      // its instance ends while it loads
+		order   int       // when it was loaded last, for the least recently loaded one the router unloads past --models-max
 	}
+	insts := map[string]*inst{}
+	var names []string // the listing's order
+	seq := 0
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stand-in llama-server: %v\n", err)
 		return 1
 	}
 	ready := time.Now().Add(time.Duration(loadMS) * time.Millisecond)
+	for _, m := range models {
+		insts[m.id] = &inst{model: m, loaded: true, readyAt: ready, failed: m.id == failModel, order: seq}
+		names = append(names, m.id)
+		seq++
+	}
+	logCall := func(what, id string) {
+		if calls == "" {
+			return
+		}
+		if f, err := os.OpenFile(calls, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			fmt.Fprintf(f, "%s %s\n", what, id)
+			f.Close()
+		}
+	}
 	if router {
 		fmt.Printf("stand-in llama-server (a Drydock test double): router for %d models, cache %s, ctx %d\n", len(models), cacheK, ctx)
 	} else {
@@ -214,13 +259,17 @@ func Main(args []string) int {
 		}
 		return false
 	}
-	// a model's state in the router: loading until the load time has passed, then loaded (or failed, when told)
-	status := func(m model) map[string]any {
+	// a model's state in the router (under mu): unloaded, loading until its load time has passed, then loaded (or failed, when
+	// told), in the shapes of the README's GET /models
+	status := func(in *inst) map[string]any {
 		switch {
-		case time.Now().Before(ready):
+		case in.loaded && time.Now().Before(in.readyAt):
 			return map[string]any{"value": "loading", "args": []string{"llama-server"}}
-		case m.id == failModel:
+		case in.failed:
+			in.loaded = false
 			return map[string]any{"value": "unloaded", "args": []string{"llama-server"}, "failed": true, "exit_code": 1}
+		case !in.loaded:
+			return map[string]any{"value": "unloaded"}
 		}
 		return map[string]any{"value": "loaded", "args": []string{"llama-server"}}
 	}
@@ -246,16 +295,18 @@ func Main(args []string) int {
 			errorJSON(w, http.StatusBadRequest, "invalid_request_error", "model name is missing from the request")
 			return model{}, false
 		}
-		m, ok := byID[name]
+		mu.Lock()
+		defer mu.Unlock()
+		in, ok := insts[name]
 		if !ok {
 			errorJSON(w, http.StatusBadRequest, "invalid_request_error", "model not found: "+name)
 			return model{}, false
 		}
-		if st := status(m); st["value"] != "loaded" {
+		if st := status(in); st["value"] != "loaded" {
 			errorJSON(w, http.StatusServiceUnavailable, "unavailable_error", "model is not loaded: "+name)
 			return model{}, false
 		}
-		return m, true
+		return in.model, true
 	}
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		if loading(w) {
@@ -263,16 +314,53 @@ func Main(args []string) int {
 		}
 		writeJSON(w, 200, map[string]any{"status": "ok"})
 	})
-	listModels := func(w http.ResponseWriter, _ *http.Request) {
+	// reload reads the preset again, as GET /models?reload=1 does (under mu): a model no longer in it is dropped, one whose
+	// options changed is unloaded and takes them, a new one is listed unloaded (load-on-startup is not honored then)
+	reload := func() error {
+		fresh, err := readPreset(preset)
+		if err != nil {
+			return err
+		}
+		keep := map[string]bool{}
+		names = names[:0]
+		for _, m := range fresh {
+			keep[m.id] = true
+			names = append(names, m.id)
+			if in, ok := insts[m.id]; ok {
+				if in.model != m {
+					in.model, in.loaded, in.failed = m, false, false
+				}
+				continue
+			}
+			insts[m.id] = &inst{model: m}
+		}
+		for id := range insts {
+			if !keep[id] {
+				delete(insts, id)
+			}
+		}
+		return nil
+	}
+	listModels := func(w http.ResponseWriter, r *http.Request) {
 		if loading(w) {
 			return
 		}
+		mu.Lock()
+		defer mu.Unlock()
+		if router && !noRouterCalls && r.URL.Query().Get("reload") != "" {
+			logCall("reload", "*")
+			if err := reload(); err != nil {
+				errorJSON(w, http.StatusInternalServerError, "server_error", err.Error())
+				return
+			}
+		}
 		data := []any{}
-		for _, m := range models {
-			row := map[string]any{"id": m.id, "object": "model", "created": time.Now().Unix(), "owned_by": "llamacpp",
-				"architecture": map[string]any{"input_modalities": inputs(m), "output_modalities": []string{"text"}}}
+		for _, id := range names {
+			in := insts[id]
+			row := map[string]any{"id": in.id, "object": "model", "created": time.Now().Unix(), "owned_by": "llamacpp",
+				"architecture": map[string]any{"input_modalities": inputs(in.model), "output_modalities": []string{"text"}}}
 			if router {
-				row["status"] = status(m)
+				row["status"] = status(in)
 				row["context_length"] = 32768
 			} else {
 				row["meta"] = map[string]any{"vocab_type": 2, "n_vocab": 151936, "n_ctx_train": 32768, "n_embd": 2048, "n_params": 4022468096, "size": 2497281024}
@@ -280,6 +368,65 @@ func Main(args []string) int {
 			data = append(data, row)
 		}
 		writeJSON(w, 200, map[string]any{"object": "list", "data": data})
+	}
+	// the router's load and unload of one model (server-models.cpp's post_router_models_load and _unload): the others keep
+	// running; past --models-max the least recently loaded one is unloaded, as the router does
+	if router && !noRouterCalls {
+		named := func(r *http.Request) string {
+			var req struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			return req.Model
+		}
+		mux.HandleFunc("POST /models/load", func(w http.ResponseWriter, r *http.Request) {
+			id := named(r)
+			mu.Lock()
+			defer mu.Unlock()
+			logCall("load", id)
+			in, ok := insts[id]
+			if !ok {
+				errorJSON(w, http.StatusNotFound, "not_found_error", "model is not found")
+				return
+			}
+			if in.loaded {
+				errorJSON(w, http.StatusBadRequest, "invalid_request_error", "model is already running")
+				return
+			}
+			running, oldest := 0, ""
+			for _, x := range insts {
+				if x.loaded {
+					running++
+					if oldest == "" || x.order < insts[oldest].order {
+						oldest = x.id
+					}
+				}
+			}
+			if maxModels > 0 && running >= maxModels {
+				insts[oldest].loaded = false
+			}
+			in.loaded, in.failed, in.order = true, in.id == failModel || filesOf(in.model) != nil, seq
+			in.readyAt = time.Now().Add(time.Duration(loadMS) * time.Millisecond)
+			seq++
+			writeJSON(w, 200, map[string]any{"success": true})
+		})
+		mux.HandleFunc("POST /models/unload", func(w http.ResponseWriter, r *http.Request) {
+			id := named(r)
+			mu.Lock()
+			defer mu.Unlock()
+			logCall("unload", id)
+			in, ok := insts[id]
+			if !ok {
+				errorJSON(w, http.StatusBadRequest, "invalid_request_error", "model is not found")
+				return
+			}
+			if !in.loaded {
+				errorJSON(w, http.StatusBadRequest, "invalid_request_error", "model is not running")
+				return
+			}
+			in.loaded = false
+			writeJSON(w, 200, map[string]any{"success": true})
+		})
 	}
 	mux.HandleFunc("/v1/models", listModels)
 	mux.HandleFunc("/models", listModels)
@@ -347,7 +494,8 @@ func Main(args []string) int {
 			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text}, "finish_reason": "stop"}},
 			"usage":   usage})
 	})
-	// embeddings only with --embeddings, as the real server: a vector of four numbers per input (OpenAI's shape)
+	// embeddings only with --embeddings, as the real server, in OpenAI's shape: a vector per input (WordVector: texts that share
+	// words are near, so a test can tell a ranking by meaning from another; it is no model)
 	mux.HandleFunc("/v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
 		if loading(w) {
 			return
@@ -372,7 +520,7 @@ func Main(args []string) int {
 		}
 		data := []any{}
 		for i, s := range inputs {
-			data = append(data, map[string]any{"object": "embedding", "index": i, "embedding": []float64{float64(len(s)), 0.5, 0.25, 0.125}})
+			data = append(data, map[string]any{"object": "embedding", "index": i, "embedding": WordVector(s)})
 		}
 		writeJSON(w, 200, map[string]any{"object": "list", "model": one.id, "data": data, "usage": map[string]any{"prompt_tokens": len(inputs), "total_tokens": len(inputs)}})
 	})
@@ -402,9 +550,36 @@ func Main(args []string) int {
 	return 0
 }
 
+// WordVector is the stand-in's embedding of a text: 64 counts of its lower-case words, each word counted at a place its FNV
+// hash picks, plus 1 in the last place so no vector is all zeros. Texts that share words are near by cosine similarity; it
+// knows nothing of meaning (a test double).
+func WordVector(s string) []float64 {
+	v := make([]float64, 65)
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(w))
+		v[h.Sum32()%64]++
+	}
+	v[64] = 1
+	return v
+}
+
+// filesOf checks that a model's files are there, as llama-server does when it loads one.
+func filesOf(m model) error {
+	for what, p := range map[string]string{"model": m.path, "projector": m.projector, "draft model": m.draft} {
+		if p == "" {
+			continue
+		}
+		if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
+			return fmt.Errorf("cannot load the %s %s: %v", what, p, err)
+		}
+	}
+	return nil
+}
+
 // readPreset reads the router's preset file the way llama.cpp's common/preset.cpp does for the keys Drydock writes: sections,
 // "key = value" lines, and comments that start with ";" or "#" (a value ends at either). Every section must name its model
-// file, and a draft model needs spec-type draft-simple (the stand-in's own check, as for one model).
+// file, and its draft and spec type must go together (the stand-in's own check, as for one model).
 func readPreset(path string) ([]model, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -413,7 +588,6 @@ func readPreset(path string) ([]model, error) {
 	defer f.Close()
 	var out []model
 	var cur *model
-	spec := map[string]string{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -444,7 +618,7 @@ func readPreset(path string) ([]model, error) {
 		case "model-draft", "md", "spec-draft-model":
 			cur.draft = v
 		case "spec-type":
-			spec[cur.id] = v
+			cur.spec = v
 		}
 	}
 	if len(out) == 0 {
@@ -454,8 +628,8 @@ func readPreset(path string) ([]model, error) {
 		if m.path == "" {
 			return nil, fmt.Errorf("preset %s names no model file", m.id)
 		}
-		if m.draft != "" && spec[m.id] != "draft-simple" {
-			return nil, fmt.Errorf("preset %s: a draft model without spec-type draft-simple drafts nothing (a test double's check)", m.id)
+		if err := draftSpecOK(m); err != nil {
+			return nil, fmt.Errorf("preset %s: %v", m.id, err)
 		}
 	}
 	return out, nil

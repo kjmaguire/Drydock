@@ -308,6 +308,7 @@ export function loadToo(v: Pick<LocalView, 'server' | 'load'>, m: LocalModel): {
   const loaded = loadedIds(v.server);
   const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
   if (m.embedding) return { ok: false, why: 'An embedding model is served on its own, under Embeddings.' };
+  if (m.eagle3) return { ok: false, why: "An EAGLE-3 draft does not chat: choose it as its model's draft." };
   if (loaded.includes(m.id)) return { ok: false, why: 'Loaded already.' };
   if (loaded.length >= load.max) return { ok: false, why: `At most ${load.max} models stay loaded at once: unload one first.` };
   const need = loadBytesOf(m);
@@ -326,13 +327,42 @@ export function loadLine(v: Pick<LocalView, 'server' | 'load'>): string {
   return load.budgetBytes > 0 ? `${count} · ${usedOf(load.loadedBytes, load.budgetBytes)}` : count;
 }
 
-/** The draft choices of a model: none, then each downloaded model that can draft for it. */
+/** The draft a model chooses when its own MTP heads draft for it (decision P120): no model is called so. */
+export const DRAFT_MTP = 'mtp';
+
+/**
+ * The draft choices of a model: none, its own MTP heads when its file carries them, then each downloaded model that can draft
+ * for it, an EAGLE-3 draft named so (decision P120).
+ */
 export function draftChoices(m: LocalModel, models: readonly LocalModel[]): { value: string; label: string }[] {
-  const name = (id: string) => {
+  const label = (id: string) => {
+    if (id === DRAFT_MTP) return 'Its own MTP heads';
     const found = models.find((x) => x.id === id);
-    return found ? `${modelName(found.repo)} · ${found.variant}` : id;
+    const name = found ? `${modelName(found.repo)} · ${found.variant}` : id;
+    return found?.eagle3 ? `EAGLE-3: ${name}` : `Draft: ${name}`;
   };
-  return [{ value: '', label: 'No draft' }, ...(m.drafts ?? []).map((id) => ({ value: id, label: `Draft: ${name(id)}` }))];
+  return [{ value: '', label: 'No draft' }, ...(m.drafts ?? []).map((id) => ({ value: id, label: label(id) }))];
+}
+
+/** The row's word for the draft chosen: its own MTP heads, an EAGLE-3 draft, or a draft model (undefined for none). */
+export function draftWords(m: LocalModel, models: readonly LocalModel[]): string | undefined {
+  if (!m.draft) return undefined;
+  if (m.draft === DRAFT_MTP) return 'with MTP';
+  return models.find((x) => x.id === m.draft)?.eagle3 ? 'with EAGLE-3' : 'with a draft';
+}
+
+/**
+ * What Load too and Unload do, as their tooltips (decision P120): on the router the model is loaded or unloaded while the others
+ * keep running; a server of one model has no router, so Load too starts it again with both.
+ */
+export function loadTooTitle(server: Pick<ServerState, 'router'>): string {
+  return server.router
+    ? 'Load it beside the models served: they keep running while it loads'
+    : 'Keep it loaded beside the model served: the server starts again with both, since one model alone runs without the router';
+}
+
+export function unloadTitle(server: Pick<ServerState, 'router'>): string {
+  return server.router ? 'Unload it: the other models keep running' : 'Start the server again without this model';
 }
 
 /** The token as the page shows it: "hf_…1234" as the core masked it, "none" without one. */

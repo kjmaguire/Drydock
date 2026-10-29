@@ -205,6 +205,8 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 		DB: c.DB, Bus: c.Bus, Dir: filepath.Join(c.cfg.DataDir, "packs"), Scanner: c.Scanner,
 		Live: &packs.GatewayLive{GW: k.live}, Logf: c.logf,
 		Answerer: packmodel.Answerer{Models: models}, Summarizer: packmodel.Summarizer{Models: models},
+		// ranked by meaning with the embedding model on this PC, when the person turned it on (decision P120)
+		Embedder: localEmbedder{c: c},
 	})
 	if err != nil {
 		return nil, nil, err

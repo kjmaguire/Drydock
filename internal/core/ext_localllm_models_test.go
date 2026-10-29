@@ -216,7 +216,14 @@ func TestSeveralModelsStayLoadedWithTheirProjectorAndDraftAndTheEmbeddingModelIs
 		t.Fatalf("%+v", v.Embed)
 	}
 
-	// one model again: the single-model command line, the provider's one model
+	// one model again: while the router runs, the coder is unloaded on it and the vision model stays (decision P120); started
+	// afresh, one model has the single-model command line
+	pid := v.Server.PID
+	v = localCall(a, "local.server.start", map[string]any{"modelId": vision})
+	if !v.Server.Router || v.Server.PID != pid || strings.Join(v.Server.Models, ",") != vision || strings.Join(v.Settings.Loaded, ",") != vision {
+		t.Fatalf("%+v %+v", v.Server, v.Settings)
+	}
+	localCall(a, "local.server.stop", nil)
 	v = localCall(a, "local.server.start", map[string]any{"modelId": vision})
 	if v.Server.Router || strings.Join(v.Settings.Loaded, ",") != vision {
 		t.Fatalf("%+v %+v", v.Server, v.Settings)

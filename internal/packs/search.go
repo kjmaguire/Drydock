@@ -34,6 +34,9 @@ type Hit struct {
 	// AllTerms is true when the chunk matched every query term (the AND pass), false for partial (OR pass) matches.
 	AllTerms bool   `json:"allTerms"`
 	Origin   string `json:"origin"`
+	// Similarity is the cosine similarity of the passage to the query by the local embedding model, when the search was ranked
+	// by meaning (SearchResult.Reranked; decision P120).
+	Similarity float64 `json:"similarity,omitempty"`
 }
 
 // SearchRequest is one retrieval. PackIDs empty means every installed pack (cross-pack search).
@@ -65,6 +68,9 @@ type SearchResult struct {
 	Confidence        string `json:"confidence"`
 	// SourceAgeDays is the age of the best indexed hit (-1 when there is none: live results have no known age).
 	SourceAgeDays int `json:"sourceAgeDays"`
+	// Reranked says the indexed passages were ranked by meaning with the embedding model on this PC (decision P120), not by
+	// BM25 alone.
+	Reranked bool `json:"reranked,omitempty"`
 }
 
 // Confidence levels. They come from code, not from a model, and are not calibrated (docs/expert-packs.md section 6).
@@ -127,9 +133,26 @@ func (s *Store) Search(ctx context.Context, req SearchRequest) (SearchResult, er
 			}
 		}
 	}
-	localHits, err := s.searchLocal(ctx, local, andQ, orQ, k)
+	// ranked by meaning (decision P120): BM25 finds a few more passages, the embedding model orders them, the first k stay;
+	// without it (off, no embedding model served, or a failure) the BM25 order is the one
+	embed := s.o.Embedder != nil && len(local) > 0 && s.o.Embedder.Available(ctx)
+	pool := k
+	if embed {
+		pool = rerankPool(k)
+	}
+	localHits, err := s.searchLocal(ctx, local, andQ, orQ, pool)
 	if err != nil {
 		return res, err
+	}
+	if embed {
+		ok, err := rerank(ctx, s.o.Embedder, req.Query, localHits)
+		if err != nil {
+			s.o.Logf("packs: ranking by meaning failed, the BM25 order stands: %v", s.o.Scanner.Redact(err.Error()))
+		}
+		res.Reranked = ok
+	}
+	if len(localHits) > k {
+		localHits = localHits[:k]
 	}
 	perPack := map[string]int{}
 	for _, h := range localHits {

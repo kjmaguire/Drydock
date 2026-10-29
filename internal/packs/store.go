@@ -58,6 +58,9 @@ type Options struct {
 	Summarizer Summarizer
 	// Answerer (optional) synthesizes CONSULT answers from retrieved chunks. Without it CONSULT is retrieval-only.
 	Answerer Answerer
+	// Embedder (optional) ranks the indexed passages a search found by meaning, with the embedding model on this PC, when it
+	// is available (decision P120). Without it, or while it is not, the BM25 order stands.
+	Embedder Embedder
 	Now      func() time.Time
 	// AllowLoopbackFetch lets manifests name http://127.0.0.1 sources and the fetcher dial loopback. Tests and local mirrors
 	// only.

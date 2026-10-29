@@ -38,6 +38,7 @@ import {
   deviceLine,
   diskLine,
   draftChoices,
+  draftWords,
   type FitWords,
   fitWords,
   gb,
@@ -48,6 +49,7 @@ import {
   loadedIds,
   loadLine,
   loadToo,
+  loadTooTitle,
   localRow,
   memoryBars,
   modelName,
@@ -58,6 +60,7 @@ import {
   serverTone,
   splitModelId,
   startedWords,
+  unloadTitle,
   switchChoices,
   tokenWords,
   usedByWords,
@@ -293,7 +296,8 @@ export function ThisPcDetail(
     return v;
   };
   // Serve: the core answers when the model is loaded. A Stop pressed meanwhile ends that start, and its answer is dropped. Several
-  // models (Load too, Unload: decision P111) start the server again on the set, which the router keeps loaded together.
+  // models (Load too, Unload: decision P111) are kept loaded together by the router, which loads or unloads the one model while
+  // the others keep running (decision P120); a server of one model starts again in router mode.
   const serve = (modelId: string) => serveSet([modelId], `serve:${modelId}`);
   const serveSet = (modelIds: string[], label: string) => {
     cancelledStart = false;
@@ -541,8 +545,11 @@ export function ThisPcDetail(
       const words = fitWords(m.fit, m.sizeBytes, { gpu: hasGpu, serving: isServed || forEmbeddings });
       // the model the server is loading: "Starting · GPU" until it is ready
       const fit = words && isServed && server.state === 'starting' ? { ...words, text: words.text.replace(/^Serving/, 'Starting') } : words;
-      const too = serverOn && !isServed && !m.embedding ? loadToo(v, m) : undefined;
+      const too = serverOn && !isServed && !m.embedding && !m.eagle3 ? loadToo(v, m) : undefined;
       const drafts = draftChoices(m, v.models);
+      const drafted = draftWords(m, v.models);
+      // loading beside the models the router keeps (decision P120)
+      const loadingHere = (server.loading ?? []).includes(m.id);
       return (
         <li key={m.id} class="m" data-testid="local-model" data-id={m.id} data-served={isServed || forEmbeddings ? 'true' : undefined}>
           <div class="who">
@@ -562,15 +569,26 @@ export function ThisPcDetail(
                   embeddings
                 </Badge>
               ) : null}
-              {m.draft ? <Badge testId="local-drafted">with a draft</Badge> : null}
+              {m.mtp ? (
+                <Badge testId="local-mtp" title="Carries its own multi-token prediction (MTP) heads: choose them as its draft to make it faster.">
+                  MTP
+                </Badge>
+              ) : null}
+              {m.eagle3 ? (
+                <Badge testId="local-eagle3" title="An EAGLE-3 draft: it reads its model's hidden states to guess ahead. It drafts for that model and does not chat.">
+                  EAGLE-3 draft
+                </Badge>
+              ) : null}
+              {drafted ? <Badge testId="local-drafted">{drafted}</Badge> : null}
+              {loadingHere ? <Badge testId="local-loading">loading</Badge> : null}
             </span>
-            {!m.embedding && drafts.length > 1 ? (
+            {!m.embedding && !m.eagle3 && drafts.length > 1 ? (
               <span class="what">
                 <Select
                   size="sm"
                   testId="local-draft"
                   label={`Draft model for ${m.id}`}
-                  title="Speculative decoding: a smaller model of the same family guesses ahead and this one checks, which is faster. Takes effect at the next start."
+                  title="Speculative decoding: a smaller model of the same family, an EAGLE-3 draft or the model's own MTP heads guess ahead and the model checks, which is faster. Takes effect at the next start."
                   value={m.draft ?? ''}
                   disabled={busy}
                   options={drafts}
@@ -578,14 +596,16 @@ export function ThisPcDetail(
                 />
               </span>
             ) : null}
-            <span class="what">
-              <Checkbox
-                label="Embedding model"
-                checked={!!m.embedding}
-                disabled={busy || isServed || forEmbeddings}
-                onChange={(c) => void change(`kind:${m.id}`, () => s.client.localModelSet(m.id, { embedding: c }))}
-              />
-            </span>
+            {!m.eagle3 ? (
+              <span class="what">
+                <Checkbox
+                  label="Embedding model"
+                  checked={!!m.embedding}
+                  disabled={busy || isServed || forEmbeddings}
+                  onChange={(c) => void change(`kind:${m.id}`, () => s.client.localModelSet(m.id, { embedding: c }))}
+                />
+              </span>
+            ) : null}
           </div>
           <span class="size">{gb(m.sizeBytes)}</span>
           <FitBadge fit={fit} />
@@ -611,7 +631,7 @@ export function ThisPcDetail(
                   variant="ghost"
                   data-testid="local-unload"
                   disabled={busy || starting}
-                  title="Start the server again without this model"
+                  title={unloadTitle(server)}
                   mix={on('click', () => void serveSet(loaded.filter((id) => id !== m.id), `serve-unload:${m.id}`))}
                 >
                   {act.busy === `serve-unload:${m.id}` ? 'Unloading…' : 'Unload'}
@@ -622,7 +642,8 @@ export function ThisPcDetail(
             ) : null}
             {!isServed && !forEmbeddings ? (
               <>
-                {!m.embedding ? (
+                {m.eagle3 ? <span class="word">drafts for its model</span> : null}
+                {!m.embedding && !m.eagle3 ? (
                   <Button
                     size="sm"
                     data-testid="local-serve"
@@ -639,7 +660,7 @@ export function ThisPcDetail(
                     variant="ghost"
                     data-testid="local-load-too"
                     disabled={busy || starting || !too.ok}
-                    title={too.ok ? 'Keep it loaded beside the models served: the server starts again with all of them' : too.why}
+                    title={too.ok ? loadTooTitle(server) : too.why}
                     mix={on('click', () => void serveSet([...loaded, m.id], `serve-too:${m.id}`))}
                   >
                     {act.busy === `serve-too:${m.id}` ? 'Loading…' : 'Load too'}
@@ -828,6 +849,13 @@ export function ThisPcDetail(
             {server.error ? (
               <div mix={blockCss}>
                 <ErrorNote error={server.error} what="Server" />
+              </div>
+            ) : null}
+            {serverOn && server.note ? (
+              <div mix={blockCss}>
+                <p class="note" data-testid="local-server-note">
+                  {server.note}
+                </p>
               </div>
             ) : null}
             {serverOn && several ? (
@@ -1079,6 +1107,20 @@ export function ThisPcDetail(
                   of its own. It is not one of the provider&apos;s models.
                 </p>
               </div>
+              {/* its one use (decision P120): ranking pack searches by meaning, the person's choice */}
+              <SettingRow label="Pack search" testId="local-rank-packs">
+                <Checkbox
+                  label="Rank pack searches by meaning"
+                  description={
+                    embedOn
+                      ? 'The passages a pack search finds are put in order by how close they are to the question, with this model. The text stays on this PC.'
+                      : 'While an embedding model is served, the passages a pack search finds are put in order by how close they are to the question. Until then, by the words they share.'
+                  }
+                  checked={!!v.settings.rankPacks}
+                  disabled={busy}
+                  onChange={(c) => void setSetting({ rankPacks: c })}
+                />
+              </SettingRow>
             </SettingsGroup>
           </div>
         ) : null}

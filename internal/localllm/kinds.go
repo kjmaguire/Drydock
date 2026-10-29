@@ -25,14 +25,24 @@ const vocabSlack = 128
 // family is an architecture without its mixture-of-experts suffix: a dense Qwen3 drafts for a Qwen3 MoE.
 func family(arch string) string { return strings.TrimSuffix(arch, "moe") }
 
+// DraftMTP is the draft a person chooses for a model that drafts with its own MTP heads (decision P120): it stands in the
+// settings where a draft model's id would (a model's id always holds a ":", so no model is called so).
+const DraftMTP = "mtp"
+
 // DraftFits says whether draft can draft for target in speculative decoding (llama-server --model-draft): a model of the same
 // family with the same tokenizer (kind, size within llama.cpp's slack, the same first and last tokens), at most half the
-// target's size, neither of them an embedding model. When it cannot, the reason says why in a sentence.
+// target's size, neither of them an embedding model. An EAGLE-3 draft (decision P120) is of no family: it was converted for one
+// target, whose tokenizer it inherits (llama.cpp's convert_hf_to_gguf.py --target-model-dir) and whose embedding length it
+// names when the file gives it. When it cannot, the reason says why in a sentence.
 func DraftFits(target, draft GGUFInfo, targetBytes, draftBytes uint64) (bool, string) {
 	switch {
 	case LooksLikeEmbedding(target) || LooksLikeEmbedding(draft):
 		return false, "an embedding model neither drafts nor is drafted for"
-	case target.Architecture == "" || family(target.Architecture) != family(draft.Architecture):
+	case target.Eagle3():
+		return false, "an EAGLE-3 draft is drafted for by nothing"
+	case draft.Eagle3() && draft.TargetHiddenSize > 0 && draft.TargetHiddenSize != target.EmbeddingLength:
+		return false, fmt.Sprintf("it is an EAGLE-3 draft for a model of %d dimensions, and the model has %d", draft.TargetHiddenSize, target.EmbeddingLength)
+	case target.Architecture == "" || (!draft.Eagle3() && family(target.Architecture) != family(draft.Architecture)):
 		return false, fmt.Sprintf("it is a %s model and the model is %s: a draft must be of the same family", draft.Architecture, target.Architecture)
 	case target.Tokenizer == "" || target.Tokenizer != draft.Tokenizer || target.VocabSize <= 0 || draft.VocabSize <= 0:
 		return false, "its tokenizer is not the model's"
