@@ -412,6 +412,13 @@ func (w *Wrapper) reserve(ctx context.Context, p providers.Provider, model strin
 func (w *Wrapper) handleAPIError(ctx context.Context, p providers.Provider, t Target, ae *APIError, attempt int) error {
 	now := w.now()
 	switch {
+	case ae.Kind == KindRetention:
+		// the organization cannot use this model until it enables data retention: the router leaves it out from now on (until a
+		// person clears it), and this call goes on to the next approved target, if any (decision P112)
+		if _, err := w.reg.MarkRetentionRequired(ctx, p.ID, t.Model, "api", providers.RetentionRefusal); err != nil {
+			return fmt.Errorf("%w (and the model could not be marked: %v)", ae, err)
+		}
+		return fmt.Errorf("%w; %s", ae, providers.RetentionAdvice)
 	case ae.Kind == KindQuota:
 		qe := &QuotaError{Provider: p.ID, Model: t.Model, Scope: "credits", Cause: ae}
 		model := "" // credits and spend caps are account-wide

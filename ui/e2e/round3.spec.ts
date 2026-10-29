@@ -62,6 +62,15 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await choose(page.getByLabel('Run kind'), 'room_reply');
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
+  // the tiebreak is off and no turn has a wall-time limit until the person sets one (P112); a limit set is read back
+  const limits = page.getByTestId('route-limits');
+  await expect(limits.getByLabel(/Ask the cheap model when the rules leave a tie/)).not.toBeChecked();
+  await expect(limits.getByTestId('limits-now')).toHaveText('No limit is set.');
+  await limits.getByLabel('Balanced (minutes)').fill('45');
+  await limits.getByRole('button', { name: 'Save limits' }).click();
+  await expect(limits.getByTestId('limits-now')).toHaveText('Set: Balanced 45 min.');
+  await page.reload();
+  await expect(page.getByTestId('route-limits').getByLabel('Balanced (minutes)')).toHaveValue('45');
 
   // telemetry: off by default, local only, a preview of what an export holds
   await workspaceNav(page, 'nav-settings');

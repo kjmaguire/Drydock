@@ -37,6 +37,9 @@ type Candidate struct {
 	BlendedPerM    float64 // USD per million tokens at the 3:1 input:output weight; meaningful when PriceKnown
 	PriceUpdatedAt time.Time
 	EstCostUSD     *float64 // for this request; nil when the price is unknown
+	// RetentionRequired is true when the provider refused the model because the organization has no data retention enabled
+	// (providers.Registry.MarkRetentionRequired): no turn can run on it until a person clears the mark.
+	RetentionRequired bool
 }
 
 // Key identifies the candidate.
@@ -57,6 +60,7 @@ const (
 	FilterConcurrency   = "host_concurrency"
 	FilterContext       = "context_window"
 	FilterTools         = "capability_tools"
+	FilterRetention     = "retention_required"
 )
 
 // HardFilter applies the invariants. An empty or unknown context ceiling counts as private (fail closed).
@@ -73,6 +77,8 @@ func HardFilter(req RouteRequest, cands []Candidate) (kept []Candidate, rejected
 			rejected = append(rejected, c.rejected(FilterDataClass, "plain http on a private network address without the LAN attestation"))
 		case c.Tier == providers.TierFree && req.RunKind != RunConsult:
 			rejected = append(rejected, c.rejected(FilterFreeAgentWork, "free tier is for CONSULT only"))
+		case c.RetentionRequired:
+			rejected = append(rejected, c.rejected(FilterRetention, providers.RetentionAdvice))
 		case !c.Healthy:
 			rejected = append(rejected, c.rejected(FilterUnhealthy, "provider down or quota blocked"))
 		case !c.QuotaOK:
@@ -417,7 +423,7 @@ func FallbackFor(prev Candidate, cands []Candidate, pinnedTier providers.Tier) [
 // a de-escalation.
 func causeKind(c Cause) string {
 	switch c {
-	case CauseQuotaExhausted, CauseRateLimited, CauseProviderDown, CauseOverloaded, CauseModelUnavailable:
+	case CauseQuotaExhausted, CauseRateLimited, CauseProviderDown, CauseOverloaded, CauseModelUnavailable, CauseRetentionRequired, CauseWallTime:
 		return "fallback"
 	case CauseCheapStuck, CausePremiumRevise, CauseWatchdogStage2:
 		return "escalate"

@@ -17,6 +17,8 @@ describe('the routing wiring (decision P108)', () => {
     // each level has a colour of its own; the purposes are grey
     expect(new Set(levels!.rows.map((r) => r.tone)).size).toBe(5);
     expect(purposes!.rows.map((r) => r.label).slice(0, 3)).toEqual(['Review', 'Room reply', 'Spec (pm)']);
+    // the team lead's turns and the recommendations are turns of their own (P112)
+    expect(purposes!.rows.filter((r) => r.request.RunKind === 'lead' || r.request.RunKind === 'recommend').map((r) => r.label)).toEqual(['Team lead', 'Recommendation']);
     expect(purposes!.rows.some((r) => r.request.RunKind === 'agent_task')).toBe(false);
     expect(purposes!.rows.every((r) => r.request.Level === 'balanced' && r.tone === 'muted')).toBe(true);
   });
@@ -32,6 +34,14 @@ describe('the routing wiring (decision P108)', () => {
     });
     expect(wireAnswer(new Error('core not answering'))).toEqual({ model: 'Not known', detail: '', blocked: true, title: 'core not answering' });
     expect(wireAnswer(undefined).model).toBe('…');
+  });
+
+  it('says the wall-time limit a turn runs under and that a real decision would break a tie (P112)', () => {
+    const p = decided('claude-haiku-5-5', 'agent:claude');
+    p.ceilingSeconds = 1800;
+    p.decision!.Facts = { Tiebreak: { between: ['agent:claude/a', 'agent:claude/b'], ranked: 'agent:claude/a', chose: 'agent:claude/a', dryRun: true } };
+    expect(wireAnswer(p).detail).toBe('agent:claude · stops after 30 min · tiebreak');
+    expect(wireAnswer(decided('claude-haiku-5-5', 'agent:claude')).detail).toBe('agent:claude');
   });
 
   it('says once why every card is blocked when they all give the same reason, and nothing when one went through', () => {

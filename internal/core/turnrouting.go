@@ -35,17 +35,42 @@ func (e *economics) routeTurn(next workflow.NodeHandler) workflow.NodeHandler {
 		if in.TaskID == "" {
 			return next(ctx, in)
 		}
-		rctx, rt, halt := e.decideTurn(ctx, in)
+		s, ok := e.subjectOf(ctx, in)
+		if !ok {
+			return next(ctx, in)
+		}
+		rctx, rt, staticID, halt := e.decide(ctx, s)
 		if halt != nil {
 			// the router refused the turn because a budget is at its hard limit: the turn waits for a human, it is not run on the
 			// agent's configured model instead (audit 2026-10-16, M4)
 			return e.enforcer.PauseBlocked(ctx, in, halt.Reason)
 		}
-		if rt == nil {
-			return next(rctx, in)
+		out, err := e.runTurn(ctx, rctx, s, in, next, rt, staticID)
+		var re *budget.RefusedError
+		if errors.As(err, &re) {
+			// the turn's estimate does not fit what the budgets have left beside the turns in flight: it waits for a human, as a
+			// turn over a budget does (P112)
+			return e.enforcer.PauseRefused(ctx, in, re), nil
 		}
-		return e.runWithFallback(ctx, rctx, in, next, rt)
+		return out, err
 	}
+}
+
+// runTurn runs one agent turn with what decision P112 puts around it: its estimate reserved against the budgets (and held
+// on its provider's quota windows) before it starts, its wall-time ceiling, and, for a routed turn, the fallback chain. A
+// turn the agent runs on its configured model (staticID) gets the reservation and the ceiling, without a chain.
+func (e *economics) runTurn(ctx, rctx context.Context, s turnSubject, in workflow.NodeInput, next workflow.NodeHandler, rt *routedTurn, staticID string) (workflow.NodeOutput, error) {
+	if rt != nil {
+		return e.runWithFallback(ctx, rctx, s, in, next, rt)
+	}
+	at := e.attempt(ctx, rctx, s, in, next, turnOn{decisionID: staticID, model: s.agent.Model, force: budget.ApprovedOverLimit(ctx)})
+	switch {
+	case at.refused != nil:
+		return workflow.NodeOutput{}, at.refused
+	case at.stop != nil:
+		return at.out, at.stop
+	}
+	return at.out, at.err
 }
 
 // routeReply routes one room reply turn (the responder's Route hook): the same decision, records and fallback chain as a
@@ -61,15 +86,56 @@ func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attem
 	if halt != nil {
 		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", halt.Reason)
 	}
-	if rt == nil {
-		return attempt(ctx, responder.Routed{DecisionID: staticID}, nil)
-	}
 	next := func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
-		r, _ := pipeline.RoutedFrom(ctx)
+		r, ok := pipeline.RoutedFrom(ctx)
+		if !ok {
+			return workflow.NodeOutput{}, attempt(ctx, responder.Routed{DecisionID: staticID}, in.Emit)
+		}
 		return workflow.NodeOutput{}, attempt(ctx, responder.Routed{Model: r.Model, Tier: r.Tier, DecisionID: r.DecisionID}, in.Emit)
 	}
-	_, err = e.runWithFallback(ctx, rctx, workflow.NodeInput{}, next, rt)
+	_, err = e.runTurn(ctx, rctx, s, workflow.NodeInput{}, next, rt, staticID)
+	var re *budget.RefusedError
+	if errors.As(err, &re) {
+		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", re.Message)
+	}
 	return err
+}
+
+// DirectTurn is an agent turn that is not a workflow node or a room reply: the team lead's (pipeline.Lead) and a
+// recommendation (P52). It is routed like every other turn (P112).
+type DirectTurn struct {
+	Kind      router.RunKind // router.RunLead or router.RunRecommend
+	AgentID   string
+	ProjectID string
+	TaskID    string
+	RunID     string // the run the turn belongs to, or the recommendation's id; "" for a project-wide lead turn
+	NodeID    string
+}
+
+// EconomicsRouteTurn routes a direct turn: run is the turn, which applies the routed model it finds in its context
+// (pipeline.RoutedFrom). Without the economics extension, or for an agent that cannot be read, the turn runs once as it is.
+func EconomicsRouteTurn(ctx context.Context, c *Core, t DirectTurn, in workflow.NodeInput, run workflow.NodeHandler) (workflow.NodeOutput, error) {
+	econMu.Lock()
+	e := econByCore[c]
+	econMu.Unlock()
+	if e == nil {
+		return run(ctx, in)
+	}
+	a, err := c.agent(ctx, t.AgentID)
+	if err != nil {
+		return run(ctx, in)
+	}
+	s := turnSubject{kind: t.Kind, agent: a, projectID: t.ProjectID, taskID: t.TaskID, runID: t.RunID, nodeID: t.NodeID, attempt: 1}
+	rctx, rt, staticID, halt := e.decide(ctx, s)
+	if halt != nil {
+		return workflow.NodeOutput{}, fmt.Errorf("%s, so the turn did not start; raise the limit on the Budgets page", halt.Reason)
+	}
+	out, err := e.runTurn(ctx, rctx, s, in, run, rt, staticID)
+	var re *budget.RefusedError
+	if errors.As(err, &re) {
+		return out, fmt.Errorf("budget: %s", re.Message)
+	}
+	return out, err
 }
 
 // EconomicsRouteReply routes a room reply turn through the model router (decision P63). Without the economics extension
@@ -98,19 +164,36 @@ type routedTurn struct {
 // boundary: a turn that made a tool call has started the work (files may have changed, the session holds context), so it
 // is never re-run on another model; its result goes on as it is, as any failed turn does. A hop is a new turn on another
 // model, so the session policy starts it as a fresh session with a handoff artifact when a work turn came before (P39).
-func (e *economics) runWithFallback(ctx, rctx context.Context, in workflow.NodeInput, next workflow.NodeHandler, rt *routedTurn) (workflow.NodeOutput, error) {
+func (e *economics) runWithFallback(ctx, rctx context.Context, s turnSubject, in workflow.NodeInput, next workflow.NodeHandler, rt *routedTurn) (workflow.NodeOutput, error) {
 	tried := []string{rt.d.Model}
 	for {
-		w := &turnWatch{}
-		hin := in
-		hin.Emit = w.wrap(in.Emit)
-		out, err := next(rctx, hin)
+		at := e.attempt(ctx, rctx, s, in, next, turnOn{decisionID: rt.d.ID, model: rt.d.Model, estUSD: rt.d.EstCostUSD,
+			estTokens: rt.d.EstTokens.Input + rt.d.EstTokens.Output, force: rt.approve})
+		if at.refused != nil {
+			return workflow.NodeOutput{}, at.refused
+		}
+		out, err, w := at.out, at.err, at.w
 		if ctx.Err() != nil {
 			return out, err
 		}
-		cause := w.unavailable(err)
+		var cause router.Cause
+		switch {
+		case at.quota:
+			cause = router.CauseQuotaExhausted // the provider's windows could not take the turn: it never started
+		case at.stop != nil:
+			if w.toolCalls > 0 {
+				return out, at.stop // stopped after it started work: no other model takes it over mid-turn
+			}
+			cause = router.CauseWallTime // it hung without doing anything: the chain may take it
+			err = at.stop
+		default:
+			cause = w.unavailable(err)
+		}
 		if cause == "" {
 			return out, err
+		}
+		if cause == router.CauseRetentionRequired {
+			e.markRetention(ctx, s, rt.d)
 		}
 		if w.limit != nil {
 			e.c.limits.observe(rt.agent.Adapter, w.limit) // the next decision must see the rejected limit now, not when the bus delivers it
@@ -145,14 +228,44 @@ type turnWatch struct {
 	toolCalls int
 	lastErr   string
 	limit     json.RawMessage
+	// what the turn reported spending (its usage chunks), for the reservation's settlement
+	usage    providers.Usage
+	costUSD  float64
+	answered bool // the agent said something or reported usage: the turn reached the model
+	// progress, when set, hears that the turn started (its first chunk) and what it has reported spending so far, so its
+	// reservation holds only the rest (P112)
+	progress func(started bool, usd float64, tokens int64)
+	started  bool
+}
+
+// ran reports whether the turn reached the model (it spent something), so its reservation is settled rather than released.
+func (w *turnWatch) ran() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.answered || w.toolCalls > 0
 }
 
 func (w *turnWatch) wrap(emit func(workflow.Chunk)) func(workflow.Chunk) {
 	return func(c workflow.Chunk) {
 		w.mu.Lock()
+		first := !w.started
+		w.started = true
+		spent := false
 		switch c.Kind {
 		case workflow.ChunkToolCall:
 			w.toolCalls++
+		case workflow.ChunkText, workflow.ChunkMessageEnd:
+			w.answered = true
+		case workflow.ChunkUsage:
+			var u workflow.UsageChunk
+			if c.Decode(&u) == nil {
+				w.answered = true
+				w.usage.Input += int(u.InputTokens)
+				w.usage.Output += int(u.OutputTokens)
+				w.usage.Cached += int(u.CachedTokens)
+				w.costUSD += u.CostUSD
+				spent = true
+			}
 		case workflow.ChunkError:
 			var e workflow.ErrorChunk
 			if c.Decode(&e) == nil && e.Code == "" { // a coded chunk is a warning the turn goes on after (adapter drift)
@@ -168,7 +281,11 @@ func (w *turnWatch) wrap(emit func(workflow.Chunk)) func(workflow.Chunk) {
 				w.limit = append(json.RawMessage(nil), c.Data...)
 			}
 		}
+		progress, usd, tokens := w.progress, w.costUSD, int64(w.usage.Total())
 		w.mu.Unlock()
+		if progress != nil && (first || spent) {
+			progress(true, usd, tokens)
+		}
 		if emit != nil {
 			emit(c)
 		}
@@ -234,15 +351,6 @@ func (e *economics) subjectOf(ctx context.Context, in workflow.NodeInput) (turnS
 		attempt: in.Attempt}, true
 }
 
-func (e *economics) decideTurn(ctx context.Context, in workflow.NodeInput) (context.Context, *routedTurn, *router.BlockedError) {
-	s, ok := e.subjectOf(ctx, in)
-	if !ok {
-		return ctx, nil, nil
-	}
-	rctx, rt, _, halt := e.decide(ctx, s)
-	return rctx, rt, halt
-}
-
 // decide asks the router for the turn's model among the agent's own models. Without a list (or when the router cannot
 // choose) the configured model runs, recorded as a static decision whose id is returned. The one exception is a budget at its
 // hard limit that no human has allowed this turn to exceed: then the turn must not run at all, and the fourth result says so.
@@ -294,17 +402,17 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 // routed to a cheap model before this one (each came back: a check failed or the reviewer revised), and REVISE verdicts
 // given since the run first routed work to premium. A tests, spec or design turn counts the earlier cheap turns of its own
 // kind in the run (each came back: tests that did not fail first, a spec that could not be used or was sent back). A room
-// reply stands alone: no counters.
+// reply, a team lead's decision and a recommendation stand alone: no counters.
 func (e *economics) turnFailures(ctx context.Context, s turnSubject) router.FailureCounts {
 	var f router.FailureCounts
 	kind := s.kind
 	switch kind {
-	case router.RunRoomReply:
+	case router.RunRoomReply, router.RunLead, router.RunRecommend:
 		return f
 	case router.RunReview, router.RunSecurityReview:
 		kind = router.RunAgentTask
 	}
-	rows, err := e.c.DB.Reader().QueryContext(ctx, `SELECT ts, decision FROM routing_decisions WHERE run_id=? AND run_kind=? AND decided_by IN ('rules','explicit') ORDER BY ts`,
+	rows, err := e.c.DB.Reader().QueryContext(ctx, `SELECT ts, decision FROM routing_decisions WHERE run_id=? AND run_kind=? AND decided_by IN ('rules','explicit','llm') ORDER BY ts`,
 		s.runID, string(kind))
 	if err != nil {
 		return f
@@ -391,7 +499,7 @@ func (s agentSource) Candidates(ctx context.Context, req router.RouteRequest) ([
 		limited, _ := s.e.c.limits.blocked(a.Adapter, r.Model, time.Now())
 		out = append(out, router.Candidate{Provider: router.ProviderID("agent:" + a.Adapter), Model: r.Model, Tier: tier, DataClass: providers.DataPrivate,
 			Enabled: true, PrivateEligible: true, SupportsTools: true, ResponsesValidated: true, Healthy: true, QuotaOK: !limited, QuotaRemainingPct: -1,
-			AgentNative: true}) // no tool-call probe ran: the agent CLI brings its own tools (the explanation says so)
+			AgentNative: true, RetentionRequired: s.e.c.Providers.RetentionBlocked(ctx, "agent:"+a.Adapter, r.Model)}) // no tool-call probe ran: the agent CLI brings its own tools (the explanation says so)
 	}
 	return out, nil
 }

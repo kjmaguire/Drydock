@@ -179,6 +179,10 @@ export interface DecisionRow {
   /** null = price unknown, never zero */
   estCostUsd: number | null;
   escalatedFrom?: string;
+  /** why Drydock stopped the turn (a wall-time ceiling, P112) */
+  stopReason?: string;
+  /** what an LLM tiebreak did between tied candidates (P112) */
+  tiebreak?: string;
   outcome?: RoutingOutcome;
 }
 export interface RouteAlternative {
@@ -203,7 +207,27 @@ export interface RoutingDecision {
   PoliciesApplied?: string[] | null;
   Alternatives?: RouteAlternative[] | null;
   DecidedBy: string;
-  Facts?: { Tier?: string; DataClass?: string; QuotaRemainingPct?: number; BudgetPctUsed?: number; BudgetDownshift?: boolean; NextEscalation?: string };
+  Facts?: {
+    Tier?: string;
+    DataClass?: string;
+    QuotaRemainingPct?: number;
+    BudgetPctUsed?: number;
+    BudgetDownshift?: boolean;
+    NextEscalation?: string;
+    Tiebreak?: RouteTiebreak | null;
+    Stopped?: string;
+  };
+}
+/** The LLM tiebreak of a decision (router.TiebreakRecord, P112). */
+export interface RouteTiebreak {
+  between: string[];
+  ranked: string;
+  chose: string;
+  by?: string;
+  why?: string;
+  failed?: string;
+  /** a dry run: a real decision would ask */
+  dryRun?: boolean;
 }
 export interface RouteExplain {
   text: string;
@@ -217,6 +241,39 @@ export interface RoutePreview {
   explain?: string;
   budget?: unknown;
   recorded?: boolean;
+  /** the wall-time ceiling a turn of this level runs under, when one is set (P112) */
+  ceilingSeconds?: number;
+}
+/** route.settings.get (P112): the LLM tiebreak and the wall-time ceilings of a turn. */
+export interface RouteSettings {
+  tiebreak: {
+    enabled: boolean;
+    budgetUsd: number;
+    timeoutMs: number;
+    margin?: number;
+    /** provider/model a tiebreak calls now; absent when no cheap model is selected (modelNote says why) */
+    model?: string;
+    modelNote?: string;
+    spentTodayUsd: number;
+    callsToday: number;
+  };
+  /** seconds; a level or agent left out has no ceiling */
+  ceilings: { levels: Record<string, number>; agents: Record<string, number> };
+  /** the level agent turns run at today */
+  level: string;
+  agents: { id: string; name: string; project: string }[];
+}
+export interface RouteSettingsPatch {
+  tiebreak?: { enabled?: boolean; budgetUsd?: number; timeoutMs?: number };
+  ceilings?: { levels?: Record<string, number>; agents?: Record<string, number> };
+}
+/** A model a provider refused for want of data retention (P112). */
+export interface RetentionBlock {
+  providerId: string;
+  model: string;
+  source: string;
+  message: string;
+  seenAt: number;
 }
 export interface CheapSelection {
   providerId: string;

@@ -1423,3 +1423,26 @@ Open, owner action:
   is unverified. **Not verified:** `git_docs` against a real host and on Windows, a real model answering a consult, large files
   through the Wails bridge, PDFs from real producers beyond the tests' hand-written ones. docs/expert-packs.md "As built: PDF
   and DOCX, packs of files, git_docs and routed answers"; docs/model-routing.md "As built: expert-pack consults".
+
+- **P112. The LLM tiebreak, pre-call budget reservations, wall-time ceilings, the lead's turns routed and the retention
+  refusal acted on (2026-10-29).** On the owner's words, answering the list of what is not built: "Proceed with those items"
+  (the routing items of `architecture.md` section 5 and `model-routing.md`, except the OTLP exporter and the B0 arm, which are
+  another decision's). (1) **Tiebreak**: when the ranking leaves candidates within 10% of each other (or without a price, as
+  an agent CLI's own models), one call to the configured cheap model (`route.cheap.*`) chooses from a description that holds
+  no content of the work (the turn's kind, class, level and weights, the candidates' facts); off by default, its own daily
+  budget ($0.25) and timeout (8 s), the ranking's choice on any failure, recorded on the decision (`DecidedBy "llm"`, "Why
+  this model?"); never in a dry run, at Cheapest, on a pin or a fallback hop. (2) **Reservations** (migration
+  `00140_budget_reservations.sql`): before every agent turn its estimate is reserved against its project, task, run and agent
+  budgets with what the turns in flight hold, in one write transaction, and held on its provider's quota windows; a turn
+  that does not fit waits on the budget pause; settled, released, or expired at start. (3) **Wall-time ceilings** per level
+  and per agent (none by default; migration `00141_turn_stops.sql`): a turn past it is stopped with the reason on its decision
+  and outcome (`routing.stopped`); a workflow turn then waits for a person, one that did no work may move along its fallback
+  chain. (4) **The team lead's and the recommendation turns** (P52) are routed like the role turns of P63: run kinds `lead`
+  and `recommend`, the same budgets, fallback and records; no list keeps the configured model (`static`). (5) **Retention**:
+  a model a provider refuses because the organization has no data retention enabled (Anthropic's Covered Models) is set aside
+  (migration `00142_model_retention.sql`): the router leaves it out with what to do, the call or turn moves to the next model,
+  which keeps no data, or ends saying why; a person clears it on the Routing page. The Routing page has a "Tiebreak and turn
+  limits" section; the wiring names the new kinds and shows a turn's ceiling and a tie. Details and differences from the
+  design: `docs/model-routing.md` "As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal".
+  **Not verified:** a real cheap model's tiebreak, a real CLI stopped at a ceiling on Windows, every CLI version's retention
+  wording, holds during a real provider's CLI turn.

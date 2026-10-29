@@ -4,7 +4,7 @@
 
 import type { RoutePreview } from '../../api/extTypes.ts';
 import { modelName } from '../../lib/model-name.ts';
-import { LEVELS, RUN_KINDS, runKindLabel } from './routing.ts';
+import { ceilingWords, LEVELS, RUN_KINDS, runKindLabel } from './routing.ts';
 
 /** A colour for a level's card and wire; a purpose's wire is grey. */
 export type WireTone = 'ok' | 'info' | 'accent' | 'warn' | 'err' | 'muted';
@@ -60,7 +60,11 @@ export function wireGroups(): WireGroup[] {
   ];
 }
 
-/** What a card says the router would do: the model by name and its effort, "Blocked" with why, or why it could not be asked. */
+/**
+ * What a card says the router would do: the model by name, its provider and effort, the wall-time ceiling a turn of it runs
+ * under and "tiebreak" when a real decision would ask the cheap model to choose (P112); "Blocked" with why, or why it could not
+ * be asked. The router's reason (the tooltip) says the rest.
+ */
 export interface WireAnswer {
   model: string;
   detail: string;
@@ -74,7 +78,9 @@ export function wireAnswer(r: RoutePreview | Error | undefined): WireAnswer {
   if (r.blocked) return { model: 'Blocked', detail: '', blocked: true, title: r.reason ?? '' };
   const d = r.decision;
   const model = d?.Model ? modelName(d.Model) : 'default model';
-  const detail = [d?.Provider ?? '', d?.Effort ? `${d.Effort} effort` : ''].filter(Boolean).join(' · ');
+  const detail = [d?.Provider ?? '', d?.Effort ? `${d.Effort} effort` : '', r.ceilingSeconds ? `stops after ${ceilingWords(r.ceilingSeconds)}` : '', d?.Facts?.Tiebreak ? 'tiebreak' : '']
+    .filter(Boolean)
+    .join(' · ');
   return { model, detail, blocked: false, title: d?.Reason ?? '' };
 }
 

@@ -128,7 +128,7 @@ describe('routing decisions', () => {
 
   it('names the kind of turn of each decision: work, review, room reply and the template steps', async () => {
     const row = (id: string, runKind: string) => ({ id, ts: 1, attempt: 1, runKind, level: 'balanced', agent: 'a', provider: 'agent:claude', model: 'haiku', effort: '', decidedBy: 'rules', estCostUsd: null });
-    const kinds = ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review'];
+    const kinds = ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review', 'lead', 'recommend'];
     const s = testServices({ routeDecisions: async () => kinds.map((k, i) => row('dec_' + i, k)) as never });
     const r = mount(<TaskDecisions taskId="t1" />, s);
     const rows = await waitFor(() => {
@@ -144,8 +144,31 @@ describe('routing decisions', () => {
       'tests first',
       'design (architect)',
       'security review',
+      'team lead',
+      'recommendation',
     ]);
     expect([...rows].map((x) => x.getAttribute('data-run-kind'))).toEqual(kinds);
+  });
+
+  it('says when a tiebreak chose the model and when Drydock stopped the turn (P112)', async () => {
+    const row = { ts: 1, attempt: 1, runKind: 'agent_task', level: 'balanced', agent: 'a', provider: 'agent:claude', model: 'sonnet', effort: '', estCostUsd: null };
+    const s = testServices({
+      routeDecisions: async () =>
+        [
+          { ...row, id: 'd1', decidedBy: 'llm', tiebreak: 'tiebreak by or/tiny chose agent:claude/sonnet over agent:claude/haiku' },
+          { ...row, id: 'd2', decidedBy: 'rules', stopReason: 'the turn ran past the 30m wall-time ceiling of the balanced level' },
+        ] as never,
+    });
+    const r = mount(<TaskDecisions taskId="t1" />, s);
+    const rows = await waitFor(() => {
+      const x = r.$$('[data-testid="decision-row"]');
+      if (x.length !== 2) throw new Error('not yet');
+      return x;
+    }, r);
+    expect(rows[0]!.textContent).toContain('llm tiebreak');
+    expect(rows[0]!.querySelector('[data-testid="decision-tiebreak"]')!.textContent).toContain('chose agent:claude/sonnet over agent:claude/haiku');
+    expect(rows[0]!.querySelector('[data-testid="decision-stopped"]')).toBeNull();
+    expect(rows[1]!.querySelector('[data-testid="decision-stopped"]')!.textContent).toContain('stopped the turn ran past the 30m wall-time ceiling');
   });
 
   it('a static explanation says the router did not choose', async () => {

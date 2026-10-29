@@ -29,6 +29,11 @@ type QuotaView interface {
 	RemainingPct(ctx context.Context, provider, model string) float64
 }
 
+// RetentionView is the part of *providers.Registry that says which models a provider refused for want of data retention.
+type RetentionView interface {
+	RetentionBlocked(ctx context.Context, providerID, model string) bool
+}
+
 // CandidateSource lists the candidates for a request.
 type CandidateSource interface {
 	Candidates(ctx context.Context, req RouteRequest) ([]Candidate, error)
@@ -41,7 +46,9 @@ type RegistrySource struct {
 	Catalog Catalog
 	Avail   Availability // nil: every provider counts as healthy
 	Quota   QuotaView    // nil: quota unknown and not blocking
-	Extra   CandidateSource
+	// Retention, when set, marks the models the provider refused for want of data retention (they are filtered out).
+	Retention RetentionView
+	Extra     CandidateSource
 }
 
 // blendedPerM is the price per million tokens at the default 3:1 input:output weight (docs/model-routing.md s5,
@@ -103,6 +110,9 @@ func (s *RegistrySource) candidate(ctx context.Context, req RouteRequest, p prov
 		if st, err := s.Avail.Status(ctx, p.ID); err == nil {
 			c.Healthy, c.Concurrent = st.Available, st.InUse
 		}
+	}
+	if s.Retention != nil {
+		c.RetentionRequired = s.Retention.RetentionBlocked(ctx, p.ID, m.ID)
 	}
 	if s.Quota != nil {
 		c.QuotaOK, _ = s.Quota.Check(ctx, p.ID, m.ID)

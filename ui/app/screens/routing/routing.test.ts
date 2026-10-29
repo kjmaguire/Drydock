@@ -1,13 +1,30 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Provider } from '../../api/types.ts';
-import { actionChips, cheapProviders, newRule, parseChain, parseThen, RUN_KINDS, runKindLabel, runKindOptions, sortRules, splitChain, withChain } from './routing.ts';
+import {
+  actionChips,
+  ceilingWords,
+  cheapProviders,
+  minutesOf,
+  newRule,
+  parseChain,
+  parseMinutes,
+  parseThen,
+  RUN_KINDS,
+  runKindLabel,
+  runKindOptions,
+  sortRules,
+  splitChain,
+  withChain,
+} from './routing.ts';
 
 const rule = (id: string, priority: number) => ({ ...newRule(), id, priority });
 
 describe('routing helpers', () => {
   it('offers every agent turn kind a rule can match (P63) with its words, and leaves other kinds as they are', () => {
-    for (const k of ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review']) expect(RUN_KINDS).toContain(k);
+    for (const k of ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review', 'lead', 'recommend']) expect(RUN_KINDS).toContain(k);
+    expect(runKindLabel('lead')).toBe('team lead');
+    expect(runKindLabel('recommend')).toBe('recommendation');
     expect(runKindLabel('room_reply')).toBe('room reply');
     expect(runKindLabel('security_review')).toBe('security review');
     expect(runKindLabel('consult')).toBe('consult');
@@ -45,6 +62,16 @@ describe('routing helpers', () => {
     expect(withChain({ prefer_tier: 'cheap', fallback: ['old'] }, ['a', 'b'])).toEqual({ prefer_tier: 'cheap', fallback: ['a', 'b'] });
     expect(withChain({ fallback: ['old'] }, [])).toEqual({});
     expect(actionChips({ fallback: ['a', 'b'] })).toEqual([{ key: 'fallback', text: 'fallback: a → b', tone: 'muted' }]);
+  });
+
+  it('reads a wall-time limit in whole minutes, empty for none, and says it in words (P112)', () => {
+    expect(parseMinutes('')).toEqual({ ok: true, seconds: 0 });
+    expect(parseMinutes(' 30 ')).toEqual({ ok: true, seconds: 1800 });
+    for (const bad of ['0', '1441', '2.5', 'ten', '-3']) expect(parseMinutes(bad).ok).toBe(false);
+    expect(minutesOf(1800)).toBe('30');
+    expect(minutesOf(undefined)).toBe('');
+    expect(minutesOf(0)).toBe('');
+    expect([ceilingWords(30), ceilingWords(2700), ceilingWords(7200), ceilingWords(5400)]).toEqual(['30 s', '45 min', '2 h', '1 h 30 min']);
   });
 
   it('cheap selection covers cheap, private providers only', () => {

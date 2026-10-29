@@ -1,6 +1,7 @@
 // The routing wiring diagram (decision P108): one card per level of agent work and per kind of turn, each saying the model the
 // router would choose now, wired to the router. The answers are dry runs, all in one call (route.previews): nothing is recorded
-// and no quota is taken. They are read again when a rule, a provider or the cheap model changes. Layout and words: wiring.ts.
+// and no quota is taken (a tie the cheap model would break is said, not asked: P112). They are read again when a rule, a
+// provider, the cheap model or the routing settings change. Layout and words: wiring.ts.
 
 import { css, type Handle } from 'remix/component';
 import { Route as RouteIcon } from 'lucide';
@@ -93,7 +94,7 @@ export function WiringDiagram(handle: Handle) {
   // every card's dry run in one call; one that fails says so on its card and the others still answer
   const answers = query(handle, {
     load: async () => (await s.client.routePreviews(rows.map((r) => r.request))).map((x): RoutePreview | Error => ('error' in x ? new Error(x.error) : x)),
-    when: (e) => e.type === 'routing.rule_changed' || e.type.startsWith('provider.') || e.type.startsWith('route.cheap'),
+    when: (e) => e.type === 'routing.rule_changed' || e.type === 'routing.settings_changed' || e.type.startsWith('provider.') || e.type.startsWith('route.cheap'),
     debounceMs: 300,
   });
   const layout = wireLayout(groups);

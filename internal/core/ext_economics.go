@@ -152,6 +152,12 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	e.budgets = &budget.Store{DB: c.DB}
 	e.enforcer = &budget.Enforcer{Store: e.budgets, Bus: c.Bus, Consume: c.Engine.MarkConsumed, Notify: e.budgetNotice}
 	c.budgets.Store(e.budgets)
+	// a reservation still held belongs to a turn of the process before this one (a crash, a forced quit): it holds nothing now
+	if n, err := e.budgets.ExpireStale(ctx); err != nil {
+		c.logf("budget reservations: %v", err)
+	} else if n > 0 {
+		c.logf("budget reservations: %d held by turns of the last run expired", n)
+	}
 
 	// --- telemetry (off until a human turns it on) ---
 	sink, terr := telemetry.New(ctx, c.DB, telemetry.Options{Redact: c.Scanner.Redact})
@@ -194,16 +200,16 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	} else if len(up) > 0 {
 		c.logf("routing rules: brought the shipped rules %v up to date (their conditions were not edited)", up)
 	}
-	src := &router.RegistrySource{Catalog: c.Providers, Avail: c.Health, Quota: e.ledger}
+	src := &router.RegistrySource{Catalog: c.Providers, Avail: c.Health, Quota: e.ledger, Retention: c.Providers}
 	e.src = src
 	e.rec = &router.Recorder{DB: c.DB, Bus: c.Bus}
-	if e.live, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Recorder: e.rec}); err != nil {
+	if e.live, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Recorder: e.rec, Tiebreaker: tiebreaker{e}}); err != nil {
 		return nil, nil, err
 	}
-	if e.agentRouter, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: agentSource{e}, Store: e.rules, Recorder: e.rec}); err != nil {
+	if e.agentRouter, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: agentSource{e}, Store: e.rules, Recorder: e.rec, Tiebreaker: tiebreaker{e}}); err != nil {
 		return nil, nil, err
 	}
-	if e.dry, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules}); err != nil {
+	if e.dry, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Tiebreaker: dryTiebreaker{e}}); err != nil {
 		return nil, nil, err
 	}
 	e.prober = &probe.Prober{Client: e.wrapper, Registry: c.Providers, DB: c.DB, Bus: c.Bus}
@@ -459,6 +465,27 @@ func (e *economics) methods() map[string]Method {
 				c.publish(ctx, "routing.rule_changed", "", map[string]any{"ruleId": p.ID, "deleted": true, "by": human()})
 			}
 			return nil, err
+		}),
+		// the tiebreak and the wall-time ceilings (P112): what the Routing page shows and a person changes
+		"route.settings.get": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return e.routeSettings(ctx), nil
+		}),
+		"route.settings.set": bind(func(ctx context.Context, p routeSettingsPatch) (any, error) {
+			return e.setRouteSettings(ctx, p)
+		}),
+		// models a provider refused for want of data retention (P112): listed on the Routing page, cleared by a person
+		"route.retention.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return c.Providers.RetentionBlocks(ctx)
+		}),
+		"route.retention.clear": bind(func(ctx context.Context, p struct {
+			ProviderID string `json:"providerId"`
+			Model      string `json:"model"`
+		}) (any, error) {
+			ok, err := c.Providers.ClearRetentionBlock(ctx, p.ProviderID, p.Model)
+			if err == nil && !ok {
+				return nil, fmt.Errorf("%s/%s is not set aside", p.ProviderID, p.Model)
+			}
+			return map[string]bool{"cleared": ok}, err
 		}),
 		"route.preview": bind(func(ctx context.Context, p struct {
 			Request router.RouteRequest `json:"request"`
@@ -719,7 +746,10 @@ type decisionRow struct {
 	DecidedBy     string   `json:"decidedBy"`
 	EstCostUSD    *float64 `json:"estCostUsd"` // nil = price unknown, never zero
 	EscalatedFrom string   `json:"escalatedFrom,omitempty"`
-	Outcome       *struct {
+	// StopReason says why Drydock stopped the turn (a wall-time ceiling); Tiebreak what an LLM tiebreak did (P112).
+	StopReason string `json:"stopReason,omitempty"`
+	Tiebreak   string `json:"tiebreak,omitempty"`
+	Outcome    *struct {
 		Outcome    string  `json:"outcome"`
 		Accepted   bool    `json:"accepted"`
 		Escalated  bool    `json:"escalated"`
@@ -731,6 +761,8 @@ type decisionRow struct {
 
 func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisionRow, error) {
 	rows, err := e.c.DB.Reader().QueryContext(ctx, `SELECT d.id,d.ts,d.run_id,d.node_id,d.attempt,d.run_kind,d.level,d.agent,d.provider_id,d.model,d.effort,d.decided_by,d.est_cost_usd,d.escalated_from,
+		d.stop_reason, COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.chose'),''), COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.ranked'),''),
+		COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.failed'),''), COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.by'),''),
 		o.outcome,o.accepted,o.escalated,o.iterations,o.cost_usd,o.cost_source
 		FROM routing_decisions d LEFT JOIN routing_outcomes o ON o.decision_id=d.id WHERE d.task_id=? ORDER BY d.ts, d.id`, taskID)
 	if err != nil {
@@ -745,9 +777,18 @@ func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisi
 		var acc, esc, it sql.NullInt64
 		var cost sql.NullFloat64
 		var cs sql.NullString
+		var chose, ranked, failed, by string
 		if err := rows.Scan(&r.ID, &r.TS, &r.RunID, &r.NodeID, &r.Attempt, &r.RunKind, &r.Level, &r.Agent, &r.Provider, &r.Model, &r.Effort, &r.DecidedBy, &est, &r.EscalatedFrom,
-			&oc, &acc, &esc, &it, &cost, &cs); err != nil {
+			&r.StopReason, &chose, &ranked, &failed, &by, &oc, &acc, &esc, &it, &cost, &cs); err != nil {
 			return nil, err
+		}
+		switch {
+		case failed != "":
+			r.Tiebreak = "tiebreak failed (" + failed + "): the ranking's choice stands"
+		case chose != "" && chose != ranked:
+			r.Tiebreak = "tiebreak by " + by + " chose " + chose + " over " + ranked
+		case chose != "":
+			r.Tiebreak = "tiebreak by " + by + " kept " + chose
 		}
 		if est.Valid {
 			v := est.Float64
@@ -789,5 +830,17 @@ func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"blocked": false, "decision": d, "explain": e.dry.Explain(d), "budget": req.Budget, "recorded": false}, nil
+	out := map[string]any{"blocked": false, "decision": d, "explain": e.dry.Explain(d), "budget": req.Budget, "recorded": false}
+	// the wall-time ceiling a turn of this level would run under (an agent's own is not known to a preview)
+	if sec := e.ceilingSettings(ctx).Levels[string(orLevel(req.Level))]; sec > 0 && router.IsAgentTurn(req.RunKind) {
+		out["ceilingSeconds"] = sec
+	}
+	return out, nil
+}
+
+func orLevel(l router.Level) router.Level {
+	if l == "" {
+		return router.LevelBalanced
+	}
+	return l
 }

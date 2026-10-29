@@ -35,6 +35,11 @@ const (
 	RunTests          RunKind = "tests"           // the test writer writes the tests first (or the reproducing test of a bug)
 	RunDesign         RunKind = "design"          // the architect writes the design notes
 	RunSecurityReview RunKind = "security_review" // the security reviewer reviews the change
+
+	// The team lead's turns and the recommendation turns (decision P112, the turns of P52): read-only turns of an agent of
+	// the team, routed on that agent's list like every other turn.
+	RunLead      RunKind = "lead"      // the team lead decides about a task (stuck, unassigned, a split asked for) or the standup
+	RunRecommend RunKind = "recommend" // an agent recommends which agent gets which skill, MCP server or integration
 )
 
 // WritesFiles reports whether a turn of this kind changes the worktree, so its model must call tools.
@@ -64,6 +69,16 @@ var turnSignals = map[RunKind]TurnSignal{
 		Why: "architecture is premium-only in the shipped rules"},
 	RunSecurityReview: {TaskType: "security_review", Complexity: 0.6, Label: "security review",
 		Why: "a security review is premium-only in the shipped rules and, like a review, prefers a model other than the worker's"},
+	RunLead: {TaskType: "lead", Complexity: 0.5, Ambiguity: 0.4, Label: "team lead",
+		Why: "the lead reads the task and the team and answers with one decision (reassign, split, steer or ask a person); it changes no files: the ladder tries the cheap tier first, and no escalation counters apply (each decision stands alone)"},
+	RunRecommend: {TaskType: "recommendation", Complexity: 0.3, Label: "recommendation",
+		Why: "a recommendation reads the project and lists who gets which skill, server or integration; a person applies each item: the ladder tries the cheap tier first, and no escalation counters apply"},
+}
+
+// IsAgentTurn reports whether a run kind is a turn of an agent (the kinds TurnSignals knows), not one of Drydock's own calls.
+func IsAgentTurn(k RunKind) bool {
+	_, ok := turnSignals[k]
+	return ok
 }
 
 // TurnSignals returns the signals of a turn kind; false for a kind that is not an agent turn (consult, summarize, ...).
@@ -117,11 +132,17 @@ const (
 	CauseProviderDown     Cause = "provider_down"
 	CauseOverloaded       Cause = "overloaded"
 	CauseModelUnavailable Cause = "model_unavailable"
-	CauseCheapStuck       Cause = "cheap_stuck"      // cheap iterations without passing checks
-	CausePremiumRevise    Cause = "premium_revise"   // premium reviewer returned REVISE repeatedly
-	CauseWatchdogStage2   Cause = "watchdog_stage2"  // second watchdog trip
-	CausePremiumResolved  Cause = "premium_resolved" // the premium resolution finished; the next unit starts cheap again
-	CauseBudgetDownshift  Cause = "budget_downshift"
+	// CauseRetentionRequired: the provider refused the model because the organization has no data retention enabled
+	// (Anthropic's Covered Models); the model is left out until a person clears it (decision P112).
+	CauseRetentionRequired Cause = "retention_required"
+	// CauseWallTime: Drydock stopped the turn at its wall-time ceiling (decision P112). It moves along the fallback chain only
+	// when the turn did no work (a model that hung without a tool call).
+	CauseWallTime        Cause = "wall_time"
+	CauseCheapStuck      Cause = "cheap_stuck"      // cheap iterations without passing checks
+	CausePremiumRevise   Cause = "premium_revise"   // premium reviewer returned REVISE repeatedly
+	CauseWatchdogStage2  Cause = "watchdog_stage2"  // second watchdog trip
+	CausePremiumResolved Cause = "premium_resolved" // the premium resolution finished; the next unit starts cheap again
+	CauseBudgetDownshift Cause = "budget_downshift"
 )
 
 // FailureCounts are the per-task counters that drive escalation.
@@ -254,6 +275,10 @@ type DecisionFacts struct {
 	PriceUpdatedAt    time.Time
 	NextEscalation    string // "escalates to premium after 1 more failed iteration (3 cheap iterations) with a handoff artifact"
 	FallbackFrom      *Alternative
+	// Tiebreak is the LLM tiebreak of this decision, when the ranking left a tie and the tiebreak is on (tiebreak.go).
+	Tiebreak *TiebreakRecord `json:",omitempty"`
+	// Stopped says why the turn this decision ran was stopped by Drydock (a wall-time ceiling), written when it happens.
+	Stopped string `json:",omitempty"`
 }
 
 // RoutingDecision is the record of one routing choice (docs/model-routing.md s1).
@@ -286,7 +311,7 @@ type RoutingDecision struct {
 	// Reservation is empty: the llm.Wrapper reserves quota at call time against the ledger. The router only checks
 	// (QuotaLedger.Check) so a decision never holds a slot that a crash could leak.
 	Reservation      ReservationID
-	DecidedBy        string // static | rules | explicit | llm
+	DecidedBy        string // static | rules | explicit | llm (the rules ranked, an LLM tiebreak chose between tied candidates)
 	SwitchCostTokens int
 	Created          time.Time
 	Facts            DecisionFacts

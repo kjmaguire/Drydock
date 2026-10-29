@@ -331,9 +331,10 @@ func Facts(ctx context.Context, db *storage.DB, taskID string) (TaskFacts, error
 	// the task's own work and review turns: the other turns of the task (the template roles' spec, tests, design and
 	// security review, P63) carry the class of that turn, not of the task, and do not classify it. They share the task's
 	// outcome, as turns of its work. A room reply is not: what the task came to says nothing about a chat answer, so its
-	// decision gets no outcome (and the routing report leaves replies out, report.go).
+	// decision gets no outcome (and the routing report leaves replies out, report.go). Nor are the team lead's decisions and
+	// the recommendation turns (P112): they judge the team, not the task's work.
 	dr, err := r.QueryContext(ctx, `SELECT id, COALESCE(json_extract(request,'$.TaskType'),''), COALESCE(json_extract(request,'$.Risk'),0), run_kind IN ('agent_task','review','')
-		FROM routing_decisions WHERE task_id=? AND run_kind<>'room_reply' ORDER BY ts, id`, taskID)
+		FROM routing_decisions WHERE task_id=? AND run_kind NOT IN ('room_reply','lead','recommend') ORDER BY ts, id`, taskID)
 	if err != nil {
 		return f, err
 	}
