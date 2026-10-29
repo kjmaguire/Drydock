@@ -434,7 +434,15 @@ func (a *agent) runTurn(prompt string) {
 		}
 	}
 	steps := a.steps(prompt)
-	a.emit(map[string]any{"type": "system", "subtype": "init", "session_id": a.session, "model": "fake-1", "tools": []string{"Read", "Bash", "Edit"}, "cwd": mustGetwd()})
+	// as Claude Code does: the model the session runs (--model's, else its own default) and its permission mode
+	model, mode := "fake-1", a.mode
+	if a.model != "" {
+		model = a.model
+	}
+	if mode == "" {
+		mode = "default"
+	}
+	a.emit(map[string]any{"type": "system", "subtype": "init", "session_id": a.session, "model": model, "permissionMode": mode, "tools": []string{"Read", "Bash", "Edit"}, "cwd": mustGetwd()})
 	apiErr, failed := a.script.ModelErrors[a.model]
 	if failed {
 		steps = nil

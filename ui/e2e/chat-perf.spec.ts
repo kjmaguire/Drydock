@@ -91,7 +91,6 @@ test('chat performance: a long answer streams over a long history without blocki
   await createProject(page, 'chat-perf');
   await workspaceNav(page, 'nav-chats');
   await page.getByTestId('chat-new').click();
-  await page.getByRole('dialog', { name: 'New chat' }).getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
   const chatId = /\/chats\/(chat_[^/?]+)/.exec(page.url())![1]!;
   const message = page.getByLabel('Message', { exact: true });

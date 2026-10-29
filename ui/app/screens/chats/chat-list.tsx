@@ -146,7 +146,8 @@ export function ChatList(
   // each dialog has its own action: its error shows (and is cleared) with the dialog, never in the list
   const renameAct = action(handle);
   const deleteAct = action(handle);
-  let all = false;
+  // every chat by default: a chat need not belong to a project (decision P107); the project's pill narrows the list to it
+  let all = true;
   let archived = false;
   let typed = '';
   let q = '';

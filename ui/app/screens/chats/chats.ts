@@ -308,6 +308,45 @@ export function modeWords(mode: string): string {
   }
 }
 
+/**
+ * A model id as a person reads it: "claude-opus-5-5" and "opus-5-5-20261001" are "Opus 5.5", the alias "sonnet" is "Sonnet";
+ * an id of another vendor stays as it is.
+ */
+export function modelName(id: string): string {
+  const m = id.trim().replace(/\[[^\]]*\]$/, '');
+  const x = /^(?:claude-)?(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d{1,2}))?)?(?:-\d{8})?$/i.exec(m);
+  if (!x) return m;
+  const family = x[1]!.charAt(0).toUpperCase() + x[1]!.slice(1).toLowerCase();
+  const version = x[2] ? (x[3] ? `${x[2]}.${x[3]}` : x[2]) : '';
+  return version ? `${family} ${version}` : family;
+}
+
+/**
+ * The effort Claude Code uses when none is chosen, by model (its documentation, 2026-10: medium for Opus, Sonnet and Haiku 5.5,
+ * xhigh for Opus 4.7, high for the others); "" for another CLI or a model not known yet. The person's own Claude Code settings
+ * (effortLevel) can change it, which Drydock does not read.
+ */
+export function defaultEffort(adapter: string, model: string): string {
+  if (adapter !== 'claude' || !model.trim()) return '';
+  const name = modelName(model);
+  if (!/\d/.test(name)) return ''; // an alias ("opus"): which model it means is the CLI's to say
+  if (/^(Opus|Sonnet|Haiku) 5\.5$/.test(name)) return 'medium';
+  if (name === 'Opus 4.7') return 'xhigh';
+  return 'high';
+}
+
+/** The chat's model in words: the one chosen, else the one its CLI reported as its default, else "default model". */
+export function chatModelText(c: Pick<Chat, 'model' | 'cliModel'>): string {
+  const m = c.model.trim() || (c.cliModel ?? '').trim();
+  return m ? modelName(m) : 'default model';
+}
+
+/** The chat's effort: the one chosen, else its CLI's default for the model ("" when not known); `chosen` says which. */
+export function chatEffort(c: Pick<Chat, 'adapter' | 'model' | 'effort' | 'cliModel'>): { text: string; chosen: boolean } {
+  if (c.effort.trim()) return { text: c.effort.trim(), chosen: true };
+  return { text: defaultEffort(c.adapter, c.model.trim() || (c.cliModel ?? '')), chosen: false };
+}
+
 /** The chat runs in its own private folder (the core's chats/<id> folder, on Windows or in a distro's home). */
 export function inOwnFolder(c: Pick<Chat, 'id' | 'cwd'>): boolean {
   const p = c.cwd.replace(/\\/g, '/').replace(/\/+$/, '');

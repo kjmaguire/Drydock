@@ -22,6 +22,12 @@ export interface Chat {
   permissionMode: string;
   /** True for a mode that skips approvals (bypassPermissions, auto, dontAsk): the UI must show it. */
   skipsApprovals: boolean;
+  /**
+   * The model and permission mode the CLI reported its session runs with (decision P107): the model by its full name, also
+   * when the chat chose none; a new chat that chose none starts with the default its CLI last reported. Empty: not reported.
+   */
+  cliModel?: string;
+  cliPermissionMode?: string;
   cwd: string;
   /** The CLI's own session id; empty before the first turn. */
   sessionId: string;

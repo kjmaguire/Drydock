@@ -1288,3 +1288,51 @@ Open, owner action:
   gone forgets only that worktree (`git worktree prune` also forgot the person's own worktrees on an unplugged drive). **Not
   proven:** real signed-in agent CLIs on Windows (the owner's), the updater (no feed or key yet), SmartScreen with a signed build,
   Windows 10 (the runner is Windows Server), a locked Credential Manager.
+
+- **P106. Integrations without "Needs sign-in", GitHub beside its list, vendors' agent tools, Home at start, the GPU named, one
+  scanner update, Agent templates and Skills apart (2026-10-29).** On the owner's words: "when things are not signed in, it
+  doesn't necessarily mean we actually have Linear or Notion etc. So lets go ahead and get rid of the Needs Sign In (as it also
+  pushes it to the right and you have to scroll) ... If there is an error, lets just put like a Triangle with ! on it, so when you
+  click on it, the app screen tells you what the problem is. For Github when we open it, it supresses the left pane, lets keep the
+  left pane there ... When I added Linears Agent Tools, it does not show up under the Agent Tools section ... When I open DryDock
+  it always opens to the project. I would rather it just open the Home Screen. I also get this message on Models on this PC: No GPU
+  found ... That isn't true I have a GPU. Under Security Scan ... Just one button that updates the entire thing. Under Workspace,
+  should we separate Agent Templates and Skills into there own Category instead of Library". (1) **A row's state**
+  (`integrations.ts`, `ui/master-detail.tsx`): a server waiting for its sign-in or token, one of your own without tools yet, and a
+  provider not checked yet are **Set up**, not "Needs you"; only a failure needs the person (a refused key, a failed check, a
+  failing sync, a server that could not connect, OpenRouter down), and its row shows a warning triangle (`row-alert`, named by
+  the state for screen readers) instead of words; the detail opens with what is wrong (`RowState.problem`, `row-problem`). The
+  list's rows no longer widen it (a grid row now shrinks, `& > li { min-width: 0 }`): a long line under a name pushed the state
+  past the list's edge and the list scrolled sideways (measured: 331 px of content in 319). (2) **GitHub is a row of
+  Integrations** (`/integrations/github`; `/github` redirects there): its detail is the GitHub settings that were a page of their
+  own (`GitHubDetail`: the gh sign-in, issue sync, the MCP server, repositories, CI runners), so the list stays beside it.
+  (3) **Agent tools lists every vendor's MCP servers** (`agentToolVendors`): Linear, Notion, Sentry and GitHub have a row there
+  too (`tools-<vendor>`), apart from their app sync under Services; a connected vendor server used to show only inside the app
+  sync detail and was left out of Your servers, so it was nowhere under Agent tools. Aikido publishes no MCP server Drydock knows
+  of (its entry was removed earlier, P45/D14); one can be added under Your servers by its address. (4) **The window opens on
+  Home** (`app.StartURL = "/home"`, kept equal to the UI's Home route by a test); `/` stays the chosen project's page. (5) **The
+  GPU** (`internal/localllm`): the engine's environment keeps what a GPU driver and its loader read (`SYSTEMDRIVE`,
+  `DRIVERDATA`, the processor facts, `CUDA_PATH*`, `VK_*`, `GGML_*`; none carries a credential), which the agents' allowlist had
+  stripped; a device line without its memory is read; when the engine lists no GPU, Drydock reads Windows' display adapters
+  from the registry (`DisplayAdapters`, no program started) and keeps the engine's own backend lines (`Devices.Note`), and This
+  PC says "Windows has <card>, but the engine could not use it" with "What the engine said", instead of "No GPU found". Not
+  proven on the owner's PC: whether the stripped variables were the cause there. (6) **Update scanners** (Security scan and a
+  project's Security page): one button calls `security.tools.checkUpdates`, which installs the newest OSV-Scanner and Opengrep,
+  and says per tool what it did; Gitleaks is compiled into Drydock and updates with the app, and the note says so. (7) **Agent
+  templates and Skills** are two sidebar entries (`nav-library`, `nav-library-skills`) instead of Library with two pills; the
+  page `/library` is titled Agent templates.
+
+- **P107. Chats start in the chat, without a project, and name their model, effort and mode (2026-10-29).** On the owner's
+  words: "when we create a new chat, can we just go right to the chat window, and then from there we can choose the Model, Effort,
+  and Permission. And instead of it just saying Adapter Default, can you just show the Model Name, Effort and Permission Mode" and
+  "under chats, I don't want it to be assigned to a project, sometimes I Just want to have a chat that is not assigned to any
+  project". (1) New chat on the Chats page (button, Ctrl+N, palette) calls `chat.create {}` and opens the chat: no project (the
+  core always allowed one; the dialog had preselected the current project), Claude Code, the chat's private folder. The new chat
+  dialog stays for Home's Options. The chat list shows every chat by default. (2) The core keeps what the CLI said its session
+  runs with (`chats.cli_model`, `cli_permission_mode`, migration 00133, from Claude Code's `system/init`); a new chat that
+  chooses no model starts with the default its CLI last reported; a change of model, CLI or mode clears them until the next
+  turn. (3) The composer's chips say "Opus 5.5 · medium effort" instead of "default model": the effort shown when none is chosen
+  is Claude Code's documented per-model default (headless `system/init` carries no effort), so a person's own `effortLevel`
+  setting can make it differ; "CLI default (Opus 5.5)" and "default (medium)" replace "adapter default" in the settings. Not
+  proven against a real Claude Code: the `permissionMode` field of its init message (the stand-in sends it; the SDK's type
+  names it).

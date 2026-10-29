@@ -16,6 +16,17 @@ Home (`/home`) starts with a chat (decision P60): type a message and Start chat 
 folder with Claude Code, sends the message and opens the chat; Options opens the new chat dialog without a project (folder,
 agent CLI and where it runs, model, skills, MCP servers). The five latest chats without a project are listed under it.
 
+**New chat goes straight to the chat (decision P107).** On the Chats page, New chat (the button, Ctrl+N, the palette's New
+chat) makes a chat at once with no project, Claude Code and its own private folder, and opens it; nothing is asked first. The
+agent CLI, folder, skills and servers are the chat's Properties, the model, effort and permission mode its composer chips, and
+Move to a project puts it in one. The list shows every chat by default; the project's pill narrows it. The chips name what the
+chat runs with: the model chosen, else the model the CLI reported at the start of its last turn (`cliModel`, Claude Code's
+`system/init` `model`; a new chat that chooses none starts with the default the same CLI last reported), as "Opus 5.5"; the
+effort chosen, else Claude Code's documented default for that model (medium for the 5.5 models, xhigh for Opus 4.7, high for
+the others; the person's own `effortLevel` setting can differ, which Drydock does not read); the permission mode in words. The
+CLI's reported permission mode is kept too (`cliPermissionMode`). Choosing a model, a CLI or a mode drops what was reported
+until the next turn reports again.
+
 ## 1. Objects
 
 `Chat`:
