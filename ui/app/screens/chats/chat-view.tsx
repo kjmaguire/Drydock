@@ -32,7 +32,7 @@ import { MoveChatDialog } from './chat-move.tsx';
 import type { ComposerFile } from './chat-composer.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
-import { adapterLabel, chatCliText, chatPlaceWords, chatTitle, chatWhere, folderText, modeWords, propsChips, RETRY_TEXT, shortPath, startsGroup } from './chats.ts';
+import { adapterLabel, chatCliText, chatEffort, chatModelText, chatPlaceWords, chatTitle, chatWhere, folderText, modeWords, modelName, propsChips, RETRY_TEXT, shortPath, startsGroup } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
 const barCss = css({ flexWrap: 'nowrap', gap: '10px', padding: `${t.s2} ${t.s6}`, '& h1': { flex: '0 1 auto', maxWidth: '40%' } });
@@ -346,7 +346,10 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
     const locked = chat.archived || readOnly;
     const n = chat.allowedTools.length;
 
-    // the composer's row: the model (the chat settings), the approval mode, Move to a project
+    // the composer's row: the model and effort by name (the chat settings), the approval mode, Move to a project. A chat that
+    // chose none shows what its CLI reported, and the effort Claude Code uses for that model (decision P107)
+    const modelText = chatModelText(chat);
+    const effort = chatEffort(chat);
     const controls = (
       <>
         <Popover
@@ -357,11 +360,21 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           placement="top-start"
           testId="chat-settings"
           trigger={(mix) => (
-            <button type="button" mix={[smallBtn, mix]} disabled={locked} aria-label={`Model ${chat.model || 'default'}: chat settings`} aria-expanded={settingsOpen ? 'true' : 'false'} title="Change the model, effort, permission mode or history access" data-testid="chat-settings-open">
-              <span data-testid="chip-model">{chat.model || 'default model'}</span>
-              {chat.effort ? (
-                <span data-testid="chip-effort" style={{ color: 'var(--text-faint)', marginLeft: '3px' }}>
-                  {chat.effort} effort
+            <button
+              type="button"
+              mix={[smallBtn, mix]}
+              disabled={locked}
+              aria-label={`Model ${modelText}${effort.text ? `, ${effort.text} effort` : ''}: chat settings`}
+              aria-expanded={settingsOpen ? 'true' : 'false'}
+              title={chat.model ? 'Change the model, effort, permission mode or history access' : `${modelText === 'default model' ? 'The CLI chooses the model' : `${modelText} is the CLI's default`}. Change the model, effort, permission mode or history access`}
+              data-testid="chat-settings-open"
+            >
+              <span data-testid="chip-model" data-default={chat.model ? undefined : 'true'}>
+                {modelText}
+              </span>
+              {effort.text ? (
+                <span data-testid="chip-effort" data-default={effort.chosen ? undefined : 'true'} style={{ color: 'var(--text-faint)', marginLeft: '3px' }}>
+                  {effort.text} effort
                 </span>
               ) : null}
             </button>
@@ -745,6 +758,13 @@ function ChatSettings(
     const caps = adapter?.capabilities;
     const models = caps?.models ?? [];
     const efforts = caps?.efforts ?? [];
+    // the "none chosen" choices say what that means: the CLI's default model by name (as it last reported it) and its effort
+    const reported = (c.cliModel ?? '').trim();
+    const defaultModelLabel = reported && !c.model ? `CLI default (${modelName(reported)})` : 'CLI default';
+    const defaultEffortLabel = (m: string) => {
+      const e = chatEffort({ adapter: c.adapter, model: m, effort: '', cliModel: c.model ? '' : reported }).text;
+      return e ? `default (${e})` : 'CLI default';
+    };
     return (
       <form
         style={{ display: 'grid', gap: '12px' }}
@@ -756,7 +776,7 @@ function ChatSettings(
       >
         <h2>Chat settings</h2>
         <Field label="Model" hint="Applies from the next message.">
-          {(id) => <ModelField id={id} value={model} models={models} emptyLabel="adapter default" placeholder="adapter default" onChange={(v) => set(() => (model = v))} />}
+          {(id) => <ModelField id={id} value={model} models={models} emptyLabel={defaultModelLabel} placeholder={defaultModelLabel} onChange={(v) => set(() => (model = v))} />}
         </Field>
         <Field label="Effort">
           {(id) => (
@@ -764,7 +784,7 @@ function ChatSettings(
               id={id}
               value={effort}
               disabled={efforts.length === 0 && !effort}
-              options={[{ value: '', label: 'adapter default' }, ...selectValues([...new Set([...efforts, ...(effort ? [effort] : [])])])]}
+              options={[{ value: '', label: defaultEffortLabel(model) }, ...selectValues([...new Set([...efforts, ...(effort ? [effort] : [])])])]}
               onChange={(v) => set(() => (effort = v))}
             />
           )}

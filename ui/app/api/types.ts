@@ -19,6 +19,8 @@ export interface AppInfo {
   user: string;
   human: string;
   dataDir: string;
+  /** Whether this window can restart Drydock ("Restart now" after a staged restore, decision P116); false in a browser. */
+  canRestart?: boolean;
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';
@@ -975,6 +977,12 @@ export interface Connection extends Detection {
   account?: string;
   /** The adapter of a custom manifest (a CLI you described, not a vendor's): listed after the vendors' CLIs. */
   custom?: boolean;
+}
+
+/** connection.custom.list (decision P115): where a person's own CLIs are kept, and every manifest file there. */
+export interface CustomCLIs {
+  dir: string;
+  files: { id: string; path: string; error?: string }[];
 }
 
 /** connections.WSLFacts: the distro behind a WSL Connection. */

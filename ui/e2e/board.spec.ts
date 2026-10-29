@@ -2,10 +2,13 @@ import { expect, test, type Locator } from '@playwright/test';
 import { createAgent, createAndStartTask, createProject, projectNav } from './helpers';
 
 /** Pick an item of a menu. A menu still closing after its last choice ignores a click on its opener, as it does for a person. */
-async function fromMenu(trigger: Locator, item: Locator): Promise<void> {
+// Chooses an item from a menu. `chosen` says the choice took effect (the filter chip's words): a click on a slow runner can land
+// while the menu is still placing itself, so the choice is made again until it shows, not only until a click went through.
+async function fromMenu(trigger: Locator, item: Locator, chosen?: () => Promise<void>): Promise<void> {
   await expect(async () => {
     if (!(await item.isVisible())) await trigger.click();
     await item.click({ timeout: 2_000 });
+    if (chosen) await chosen();
   }).toPass({ timeout: 20_000 });
 }
 
@@ -65,11 +68,11 @@ test('the board: columns from the steps, a ready-to-merge card, C for a new task
   await expect(page.getByTestId('task-row')).toHaveCount(2);
 
   // Agent: the tasks of one agent
-  await fromMenu(page.getByTestId('filter-agent'), page.getByRole('menuitemradio', { name: 'Worker B' }));
-  await expect(page.getByTestId('filter-agent')).toContainText('Agent: Worker B');
+  const agentChip = page.getByTestId('filter-agent');
+  await fromMenu(agentChip, page.getByRole('menuitemradio', { name: 'Worker B' }), () => expect(agentChip).toContainText('Agent: Worker B', { timeout: 2_000 }));
   await expect(page.getByTestId('task-row')).toHaveCount(1);
   await expect(cardOf('Implement Subtract')).toHaveCount(1);
-  await fromMenu(page.getByTestId('filter-agent'), page.getByRole('menuitemradio', { name: 'Any agent' }));
+  await fromMenu(agentChip, page.getByRole('menuitemradio', { name: 'Any agent' }), () => expect(agentChip).toHaveText('Agent', { timeout: 2_000 }));
   await expect(page.getByTestId('task-row')).toHaveCount(2);
 
   // a card's labels, from its menu; then the Label filter has it
@@ -80,10 +83,11 @@ test('the board: columns from the steps, a ready-to-merge card, C for a new task
   await dialog.getByRole('button', { name: 'Save labels' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(readme.getByTestId('card-label')).toHaveText(['docs', 'first-run']);
-  await fromMenu(page.getByTestId('filter-label'), page.getByRole('menuitemradio', { name: 'docs', exact: true }));
+  const labelChip = page.getByTestId('filter-label');
+  await fromMenu(labelChip, page.getByRole('menuitemradio', { name: 'docs', exact: true }), () => expect(labelChip).toContainText('Label: docs', { timeout: 2_000 }));
   await expect(page.getByTestId('task-row')).toHaveCount(1);
   await expect(cardOf('Write the README')).toHaveCount(1);
-  await fromMenu(page.getByTestId('filter-label'), page.getByRole('menuitemradio', { name: 'Any label' }));
+  await fromMenu(labelChip, page.getByRole('menuitemradio', { name: 'Any label' }), () => expect(labelChip).toHaveText('Label', { timeout: 2_000 }));
   await expect(page.getByTestId('task-row')).toHaveCount(2);
 
   // the list: the same tasks as rows

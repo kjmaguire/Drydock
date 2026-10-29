@@ -104,10 +104,12 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-chat');
   await workspaceNav(page, 'nav-chats');
+  // New chat opens a chat with no project at once (decision P107); its agent CLI is chosen in the chat's Properties
   await page.getByTestId('chat-new').click();
-  const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await choose(dialog.getByLabel('Project', { exact: true }), '');
-  // the distro's install is its own choice, named as on the Agents page (its Connection is probed when the dialog opens)
+  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await page.getByRole('button', { name: 'Properties' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Chat properties' });
+  // the distro's install is its own choice, named as on the Agents page
   const agent = dialog.getByLabel('Agent CLI', { exact: true });
   const choice = await optionsOf(agent, `claude@wsl:${distro()}`);
   await expect(choice).toHaveText(/^Claude Code WSL 2\.1\.306$/, { timeout: 60_000 }); // one distro: not named
@@ -115,8 +117,8 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   await expect(await optionsOf(agent, 'claude')).toContainText('Claude Code on Windows');
   await choose(agent, `claude@wsl:${distro()}`);
   await expect(dialog).toContainText(`Runs inside the WSL distro ${distro()}`);
-  await dialog.getByRole('button', { name: 'Start chat' }).click();
-  await expect(page).toHaveURL(/\/chats\/chat_/);
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toHaveCount(0);
   const chatId = page.url().split('/').pop() ?? '';
   await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code WSL');
   await expect(page.getByTestId('chip-adapter')).toHaveAttribute('title', `Runs inside the WSL distro ${distro()}`);

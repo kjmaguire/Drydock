@@ -4,7 +4,7 @@
 // parts: DetailHeader, SettingsGroup with SettingRows, FactGrid.
 
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
-import { ArrowLeft, Search } from 'lucide';
+import { ArrowLeft, Search, TriangleAlert } from 'lucide';
 import { BrandLogo, brandKey } from './brand-logo.tsx';
 import { typing } from '../lib/keys.ts';
 import { Icon, type IconNode } from './icon.tsx';
@@ -21,8 +21,11 @@ export interface ListItem {
   icon?: IconNode;
   /** One line saying what it is or how it is set up. */
   sub?: string;
-  /** Its state in a word or two, at the end of the row ("On", "Set up", "Key expired"). */
-  status?: { text: string; tone?: Tone | 'none' };
+  /**
+   * Its state in a word or two, at the end of the row ("On", "Set up"). `alert`: something is wrong, and the row shows a warning
+   * sign instead of the words (they are its label); its detail says what is wrong.
+   */
+  status?: { text: string; tone?: Tone | 'none'; alert?: boolean };
   /** A row that opens a page of its own (GitHub) instead of a detail beside the list. */
   href?: string;
   /** Dimmed (not installed). */
@@ -122,7 +125,8 @@ const filtersCss = css({
   '& button[aria-pressed="true"]': { background: t.bgActive, color: t.text, boxShadow: t.shadowSm },
 });
 
-const groupCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none' });
+// a row never widens the list: its text shortens instead (a grid item is as wide as its content unless told otherwise)
+const groupCss = css({ display: 'grid', gap: '2px', margin: '0', padding: '0', listStyle: 'none', '& > li': { minWidth: '0' } });
 
 const groupHeadCss = css({
   display: 'flex',
@@ -203,6 +207,17 @@ export function ItemMark(handle: Handle<{ logo?: string; icon?: IconNode; size?:
       </span>
     );
   };
+}
+
+const alertCss = css({ display: 'inline-flex', flex: 'none', marginLeft: 'auto', color: tones.warn.fg });
+
+/** A row's warning sign: something is wrong with it, and its detail says what. The state's words are its label. */
+function RowAlert(handle: Handle<{ text: string }>) {
+  return () => (
+    <span mix={alertCss} role="img" aria-label={handle.props.text} title={handle.props.text} data-testid="row-alert">
+      <Icon icon={TriangleAlert} size={15} />
+    </span>
+  );
 }
 
 const dotCss = css({ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', flex: 'none' });
@@ -374,7 +389,7 @@ export function MasterDetail(
                         <span data-part="title">{it.title}</span>
                         {it.sub ? <span data-part="sub">{it.sub}</span> : null}
                       </span>
-                      {it.status ? <StatusWord text={it.status.text} tone={it.status.tone} /> : null}
+                      {it.status?.alert ? <RowAlert text={it.status.text} /> : it.status ? <StatusWord text={it.status.text} tone={it.status.tone} /> : null}
                     </>
                   );
                   return (

@@ -106,6 +106,7 @@ type QuotaLedger struct {
 	wins   map[string]*win // provider|model|kind
 	loaded map[string]bool
 	blocks map[string][]block // provider -> temporary blocks from 429s (memory only)
+	holds  map[string]hold    // id -> what an agent turn in flight holds (Hold; memory only)
 	cancel context.CancelFunc
 	done   chan struct{}
 }
@@ -125,7 +126,7 @@ func NewQuotaLedger(reg *Registry, pr *Prober, bus events.Bus, o QuotaOptions) *
 		o.PollInterval = 5 * time.Minute
 	}
 	return &QuotaLedger{reg: reg, pr: pr, bus: bus, now: o.Now, poll: o.PollInterval,
-		wins: map[string]*win{}, loaded: map[string]bool{}, blocks: map[string][]block{}}
+		wins: map[string]*win{}, loaded: map[string]bool{}, blocks: map[string][]block{}, holds: map[string]hold{}}
 }
 
 func wkey(provider, model string, k WindowKind) string {
@@ -243,7 +244,7 @@ func (l *QuotaLedger) blockedLocked(w *win, now time.Time) (bool, time.Time) {
 	if w.Limit <= 0 {
 		return false, time.Time{}
 	}
-	exhausted := w.Used >= w.Limit // token and credit windows block once exhausted; the next call's size is unknown
+	exhausted := w.Used+l.heldLocked(w) >= w.Limit // token and credit windows block once exhausted; the next call's size is unknown
 	if w.Kind.requests() {
 		exhausted = w.Used+1 > w.Limit
 	}
@@ -728,4 +729,135 @@ func (l *QuotaLedger) RemainingPct(ctx context.Context, provider, model string) 
 		}
 	}
 	return best
+}
+
+// hold is what one agent turn in flight holds against a provider's windows (decision P112): an agent CLI calls the provider
+// itself, so Drydock sees neither the call nor its response headers; the turn's estimated tokens and cost are held from its
+// start to its end, so two turns that start together cannot both take a window only one of them fits in.
+type hold struct {
+	provider, model string
+	tokens, credits float64
+}
+
+// heldLocked is what the holds in flight add to a token or credits window (requests are counted when the slot is taken).
+func (l *QuotaLedger) heldLocked(w *win) float64 {
+	var sum float64
+	for _, h := range l.holds {
+		if h.provider != w.ProviderID || !scopeMatches(w.Model, h.model) {
+			continue
+		}
+		switch w.Kind {
+		case WindowTPM, WindowTPD, WindowITPM, WindowOTPM:
+			sum += h.tokens
+		case WindowCredits:
+			sum += h.credits
+		}
+	}
+	return sum
+}
+
+// Hold takes one request slot and holds tokens and credits (dollars, 0 when the price is unknown) on every window that applies
+// to (provider, model), under id, for an agent turn about to start. ok is false, and nothing is taken, when a window cannot
+// take it; retryAt is when to try again. Settle or Drop it when the turn ends. Holds live in memory: after a crash they are
+// gone, and the request slot ages out with its window.
+func (l *QuotaLedger) Hold(ctx context.Context, id, provider, model string, tokens, credits float64) (bool, time.Time, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err := l.loadLocked(ctx, provider); err != nil {
+		return false, time.Time{}, err
+	}
+	now := l.now()
+	var retry time.Time
+	refused := false
+	ws := l.applicableLocked(provider, model)
+	for _, w := range ws {
+		l.rollLocked(w, now)
+		if b, at := l.blockedLocked(w, now); b {
+			refused = true
+			if at.After(retry) {
+				retry = at
+			}
+			continue
+		}
+		if w.Limit <= 0 {
+			continue
+		}
+		var mine float64
+		switch w.Kind {
+		case WindowTPM, WindowTPD, WindowITPM, WindowOTPM:
+			mine = tokens
+		case WindowCredits:
+			mine = credits
+		}
+		if mine > 0 && w.Used+l.heldLocked(w)+mine > w.Limit {
+			refused = true
+			at := w.ResetAt
+			if at.IsZero() || !at.After(now) {
+				at = now.Add(l.poll)
+			}
+			if at.After(retry) {
+				retry = at
+			}
+		}
+	}
+	if b := l.activeBlockLocked(provider, model, now); b != nil {
+		refused = true
+		if b.until.After(retry) {
+			retry = b.until
+		}
+	}
+	if refused {
+		return false, retry, nil
+	}
+	var dirty []*win
+	for _, w := range ws {
+		if w.Kind.requests() {
+			l.addLocked(w, 1, now)
+			dirty = append(dirty, w)
+		}
+	}
+	if err := l.persistLocked(ctx, dirty...); err != nil {
+		return false, time.Time{}, err
+	}
+	l.holds[id] = hold{provider: provider, model: model, tokens: tokens, credits: credits}
+	return true, time.Time{}, nil
+}
+
+// Settle ends a hold whose turn ran: the hold goes, and the turn's real tokens (and its cost, on a credits window) are added
+// to the windows, as Record does for Drydock's own calls.
+func (l *QuotaLedger) Settle(ctx context.Context, id string, u Usage, costUSD float64) error {
+	l.mu.Lock()
+	h, ok := l.holds[id]
+	delete(l.holds, id)
+	l.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	if err := l.Record(ctx, h.provider, h.model, u, nil); err != nil {
+		return err
+	}
+	if costUSD <= 0 {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var dirty []*win
+	for _, w := range l.applicableLocked(h.provider, h.model) {
+		if w.Kind == WindowCredits {
+			w.Used += costUSD // a polled window is corrected by the next poll
+			dirty = append(dirty, w)
+		}
+	}
+	return l.persistLocked(ctx, dirty...)
+}
+
+// Drop ends a hold whose turn never reached the provider: the hold goes and the request slot is given back.
+func (l *QuotaLedger) Drop(ctx context.Context, id string) {
+	l.mu.Lock()
+	h, ok := l.holds[id]
+	delete(l.holds, id)
+	l.mu.Unlock()
+	if ok {
+		l.Release(ctx, h.provider, h.model)
+	}
 }

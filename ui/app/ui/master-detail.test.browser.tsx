@@ -322,3 +322,43 @@ describe('a settings row in a narrow group', () => {
     }
   });
 });
+
+describe('a row that needs the person', () => {
+  it('shows a warning sign named by its state instead of the words, and a long row shortens instead of widening the list', () => {
+    // a name with no room to break, longer than the list (the test window is narrow, so the list is the window's width)
+    const long = 'A-server-with-a-very-long-name-that-would-push-the-list-wider-than-its-column-if-it-could'.repeat(3);
+    const { container } = renderPlain(
+      <div style={{ width: '600px' }}>
+        <MasterDetail
+          label="All integrations"
+          groups={[
+            {
+              key: 'g',
+              title: 'Agent tools',
+              items: [
+                { key: 'a', title: long, sub: `${long}, again`, icon: Server, status: { text: 'Could not connect', tone: 'err', alert: true }, testId: 'row' },
+                { key: 'b', title: 'Context7', icon: Server, status: { text: 'Set up', tone: 'none' }, testId: 'row' },
+              ],
+            },
+          ]}
+          selected="b"
+          onSelect={() => {}}
+          detail={<p>detail</p>}
+        />
+      </div>,
+    );
+    const [bad, ok] = [...container.querySelectorAll<HTMLElement>('[data-testid="row"]')];
+    const sign = bad!.querySelector('[data-testid="row-alert"]')!;
+    expect(sign.getAttribute('role')).toBe('img');
+    expect(sign.getAttribute('aria-label')).toBe('Could not connect');
+    expect(sign.querySelector('svg')).not.toBeNull();
+    expect(bad!.querySelector('[data-tone]')).toBeNull();
+    expect(bad!.textContent!.includes('Could not connect')).toBe(false);
+    expect(ok!.querySelector('[data-testid="row-alert"]')).toBeNull();
+    expect(ok!.querySelector('[data-tone="none"]')!.textContent).toBe('Set up');
+    // the list never scrolls sideways: the rows keep to its width and the sign stays in view
+    const nav = container.querySelector<HTMLElement>('nav[aria-label="All integrations"]')!;
+    for (const el of [nav, ...nav.querySelectorAll<HTMLElement>('ul, li')]) expect(el.scrollWidth <= el.clientWidth + 1).toBe(true);
+    expect(sign.getBoundingClientRect().right <= nav.getBoundingClientRect().right + 0.5).toBe(true);
+  });
+});

@@ -228,6 +228,7 @@ type Linear struct {
 	WrongShape bool
 	// Viewer and Org are what DrydockIdentity returns.
 	Viewer, Org, OrgKey string
+	ex                  linearExtra
 }
 
 // NewLinear creates the fixture expecting a personal API key (sent without "Bearer").
@@ -271,6 +272,10 @@ func (l *Linear) Server() http.Handler { return http.HandlerFunc(l.serve) }
 var linearStates = []string{"Todo", "In Progress", "Done"}
 
 func (l *Linear) serve(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/files/") {
+		l.serveFile(w, r)
+		return
+	}
 	if r.Method != "POST" || r.URL.Path != "/graphql" {
 		http.NotFound(w, r)
 		return
@@ -357,10 +362,19 @@ func (l *Linear) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(req.Query, "DrydockComment"):
 		in, _ := v["input"].(map[string]any)
 		l.count("commentCreate", nil, false)
+		mode := l.takeCommentFailure()
+		if mode == "before" {
+			writeJSON(w, 500, map[string]any{"errors": []any{map[string]any{"message": "internal error", "extensions": map[string]any{"type": "internal error"}}}})
+			return
+		}
 		l.mu2.Lock()
 		l.Comments = append(l.Comments, in)
 		n := len(l.Comments)
 		l.mu2.Unlock()
+		if mode == "after" { // the comment is stored, but the answer is lost: what a time-out after the vendor accepted looks like
+			writeJSON(w, 500, map[string]any{"errors": []any{map[string]any{"message": "internal error", "extensions": map[string]any{"type": "internal error"}}}})
+			return
+		}
 		data(map[string]any{"commentCreate": map[string]any{"success": true, "comment": map[string]any{"id": "cmt-" + strconv.Itoa(n)}}})
 	case strings.Contains(req.Query, "DrydockStates"):
 		l.count("states", nil, false)
@@ -384,6 +398,7 @@ func (l *Linear) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		l.mu2.Unlock()
 		data(map[string]any{"issueUpdate": map[string]any{"success": true}})
+	case l.serveExtra(w, req.Query, v):
 	default:
 		writeJSON(w, 400, map[string]any{"errors": []any{map[string]any{"message": "unknown operation", "extensions": map[string]any{"type": "graphql error"}}}})
 	}
@@ -430,6 +445,8 @@ type NotionPage struct {
 	ID, Title, URL, Text string
 	Edited               time.Time
 	DataSource           string // the data source the page belongs to ("" = a standalone page)
+	// Props are a row's other properties, in the API's shape ({"Status": {"type": "status", "status": {"name": "Done"}}}).
+	Props map[string]any
 }
 
 // Notion is the Notion REST fixture: GET /v1/users/me (a bot of an internal integration), POST /v1/search (filter object
@@ -444,6 +461,7 @@ type Notion struct {
 	// Unsorted makes search return pages in a scrambled order.
 	Unsorted       bool
 	Bot, Workspace string
+	ex             notionExtra
 }
 
 // NewNotion creates the fixture.
@@ -475,9 +493,12 @@ func notionPageJSON(p NotionPage) map[string]any {
 	if p.DataSource != "" {
 		parent = map[string]any{"type": "data_source_id", "data_source_id": p.DataSource}
 	}
+	props := map[string]any{"Name": map[string]any{"id": "title", "type": "title", "title": []any{map[string]any{"type": "text", "plain_text": p.Title}}}}
+	for k, v := range p.Props {
+		props[k] = v
+	}
 	return map[string]any{"object": "page", "id": p.ID, "url": p.URL, "in_trash": false, "created_time": p.Edited.Add(-time.Hour).UTC().Format(time.RFC3339),
-		"last_edited_time": p.Edited.UTC().Format(time.RFC3339), "parent": parent,
-		"properties": map[string]any{"Name": map[string]any{"id": "title", "type": "title", "title": []any{map[string]any{"type": "text", "plain_text": p.Title}}}}}
+		"last_edited_time": p.Edited.UTC().Format(time.RFC3339), "parent": parent, "properties": props}
 }
 
 func (n *Notion) serve(w http.ResponseWriter, r *http.Request) {
@@ -533,6 +554,7 @@ func (n *Notion) serve(w http.ResponseWriter, r *http.Request) {
 		n.Comments = append(n.Comments, body)
 		n.mu2.Unlock()
 		writeJSON(w, 200, map[string]any{"object": "comment", "id": "comment-1"})
+	case n.serveExtra(w, r, p, body):
 	default:
 		writeJSON(w, 404, map[string]any{"object": "error", "code": "invalid_request_url"})
 	}
@@ -616,6 +638,7 @@ type Sentry struct {
 	// Remaining is what X-Sentry-Rate-Limit-Remaining says (default 39 of 40).
 	Remaining int
 	ResetAt   time.Time
+	ex        sentryExtra
 }
 
 // NewSentry creates the fixture (Authorization: Bearer <token>) for organization "acme".
@@ -820,7 +843,13 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 				excType, excValue = l[:k], l[k+2:]
 			}
 		}
-		writeJSON(w, 200, map[string]any{"id": "ev-1", "groupID": id, "entries": []any{map[string]any{"type": "exception", "data": map[string]any{"values": []any{
+		s.mu2.Lock()
+		pid := ""
+		if pr := s.projectBySlug(i.Project); pr != nil {
+			pid = pr.ID
+		}
+		s.mu2.Unlock()
+		writeJSON(w, 200, map[string]any{"id": "ev-1", "eventID": "ev-" + id, "projectID": pid, "groupID": id, "entries": []any{map[string]any{"type": "exception", "data": map[string]any{"values": []any{
 			map[string]any{"type": excType, "value": excValue, "stacktrace": map[string]any{"frames": frames}}}}}}})
 	case r.Method == "PUT" && strings.HasPrefix(p, orgPrefix+"issues/"):
 		id := strings.TrimSuffix(strings.TrimPrefix(p, orgPrefix+"issues/"), "/")
@@ -837,6 +866,7 @@ func (s *Sentry) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu2.Unlock()
 		writeJSON(w, 200, map[string]any{"status": body["status"]})
+	case s.serveExtra(w, r, p, orgPrefix):
 	default:
 		writeJSON(w, 404, map[string]any{"detail": "The requested resource does not exist"})
 	}

@@ -87,6 +87,29 @@ const radio = async (r: R, id: string) =>
   });
 
 describe('the workspace Security scan (graphite, P97)', () => {
+  it('Update scanners installs the newest OSV-Scanner and Opengrep in one press and says what each is at; Gitleaks comes with the app', async () => {
+    let presses = 0;
+    let after = tools();
+    const { r } = show({
+      securityWorkspaceTools: async () => after,
+      securityToolsUpdate: async () => {
+        presses++;
+        after = tools({
+          osv: { tool: 'osv-scanner', found: true, source: 'installed', tag: 'v2.3.0', version: '2.3.0' },
+          opengrep: { tool: 'opengrep', found: true, source: 'installed', tag: 'v1.10.0', latest: 'v1.11.0', job: { state: 'running', tag: 'v1.11.0', done: 0, total: 0, started: '' } },
+        });
+        return after;
+      },
+    });
+    const btn = await waitFor(() => r.$('[data-testid="update-scanners"]') as HTMLButtonElement, r);
+    expect(btn.textContent).toBe('Update scanners');
+    await r.act(() => btn.click());
+    const note = await waitFor(() => r.$('[data-testid="scanners-updated"]') as HTMLElement, r);
+    expect(presses).toBe(1);
+    expect(note.textContent).toBe('OSV-Scanner v2.3.0 is the newest. Opengrep: installing v1.11.0. Gitleaks 8.21.0 is built into Drydock and updates with the app.');
+    expect(note.getAttribute('role')).toBe('status');
+  });
+
   it('keeps the folder field wide enough to type in and its Choose button whole at every width: the note gives way first', async () => {
     const { r } = show({ fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }) });
     await waitFor(() => expect(r.$('[data-testid="scan-choose-folder"]')).not.toBeNull(), r);

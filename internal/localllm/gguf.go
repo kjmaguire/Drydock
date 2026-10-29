@@ -32,6 +32,14 @@ type GGUFInfo struct {
 	// the model keeps a compressed cache (multi-head latent attention). The estimate then is an upper bound.
 	SlidingWindow int  `json:"slidingWindow,omitempty"`
 	MLA           bool `json:"mla,omitempty"`
+	// Pooling says the header names a pooling type (<arch>.pooling_type): the model makes embeddings, not text (decision P111).
+	Pooling bool `json:"pooling,omitempty"`
+	// The tokenizer, which a draft model must share with the model it drafts for (decision P111): its kind
+	// (tokenizer.ggml.model: gpt2, llama...), how many tokens it has, and its first and last tokens (-1 when not given).
+	Tokenizer string `json:"tokenizer,omitempty"`
+	VocabSize int    `json:"vocabSize,omitempty"`
+	BOS       int64  `json:"bos"`
+	EOS       int64  `json:"eos"`
 }
 
 // Limits of what the header reader accepts: a header beyond them is not a model's.
@@ -159,7 +167,7 @@ func clampNeg(v int64) uint64 {
 // wantedSuffixes are the keys the estimate reads, after the architecture's name.
 var wantedSuffixes = map[string]bool{".block_count": true, ".context_length": true, ".embedding_length": true, ".attention.head_count": true,
 	".attention.head_count_kv": true, ".attention.key_length": true, ".attention.value_length": true, ".attention.sliding_window": true,
-	".attention.kv_lora_rank": true}
+	".attention.kv_lora_rank": true, ".pooling_type": true}
 
 // wanted says whether a key is one the estimate reads: an architecture's name (one word, no dot) and one of wantedSuffixes,
 // exactly. "a.<anything>.block_count" is not one (review 2026-10-27: such keys were kept without bound).
@@ -206,6 +214,8 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 	}
 	ints := map[string][]uint64{}
 	arch := ""
+	// the tokenizer's kind, size and end tokens, read by their full names (they are not the architecture's keys)
+	tokModel, vocab, bos, eos := "", uint64(0), int64(-1), int64(-1)
 	// what is kept, over all keys: a header can name the wanted suffixes under any number of keys of other architectures,
 	// each with an array of 65,536 values, which kept as uint64 would take gigabytes (audit 2026-10-27), or as many scalar
 	// keys, each up to 64 KB long (review 2026-10-27)
@@ -229,6 +239,12 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 				}
 				continue
 			}
+			if key == "tokenizer.ggml.model" {
+				if tokModel, err = g.str(256); err != nil {
+					return GGUFInfo{}, errNotGGUF
+				}
+				continue
+			}
 			n, err := g.u64()
 			if err != nil || n > ggufMaxString || g.skip(n) != nil {
 				return GGUFInfo{}, errNotGGUF
@@ -243,6 +259,9 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 				return GGUFInfo{}, errNotGGUF
 			}
 			size := scalarSize(et)
+			if key == "tokenizer.ggml.tokens" {
+				vocab = n // the count is all a draft's check needs; the tokens themselves are skipped below
+			}
 			switch {
 			case want && size > 0 && n <= 1<<16 && kept.take(n):
 				vals := make([]uint64, 0, n)
@@ -269,6 +288,18 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 				return GGUFInfo{}, fmt.Errorf("%w: array of type %d", errNotGGUF, et)
 			}
 		default:
+			if key == "tokenizer.ggml.bos_token_id" || key == "tokenizer.ggml.eos_token_id" {
+				v, err := g.integer(t)
+				if err != nil {
+					return GGUFInfo{}, errNotGGUF
+				}
+				if v < 1<<31 && key == "tokenizer.ggml.bos_token_id" {
+					bos = int64(v)
+				} else if v < 1<<31 {
+					eos = int64(v)
+				}
+				continue
+			}
 			if want && kept.take(1) {
 				v, err := g.integer(t)
 				if err != nil {
@@ -291,7 +322,11 @@ func parseGGUF(r *bufio.Reader) (GGUFInfo, error) {
 	}
 	info := GGUFInfo{Architecture: arch, BlockCount: one("block_count"), ContextLength: one("context_length"), EmbeddingLength: one("embedding_length"),
 		HeadCount: ints[arch+".attention.head_count"], HeadCountKV: ints[arch+".attention.head_count_kv"], KeyLength: one("attention.key_length"),
-		ValueLength: one("attention.value_length"), SlidingWindow: one("attention.sliding_window"), MLA: one("attention.kv_lora_rank") > 0}
+		ValueLength: one("attention.value_length"), SlidingWindow: one("attention.sliding_window"), MLA: one("attention.kv_lora_rank") > 0,
+		Pooling: len(ints[arch+".pooling_type"]) > 0, Tokenizer: tokModel, BOS: bos, EOS: eos}
+	if vocab < 1<<31 {
+		info.VocabSize = int(vocab)
+	}
 	return info, nil
 }
 

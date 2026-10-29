@@ -3,6 +3,7 @@ import { describe, it } from 'remix/test';
 import type { EngineResult, ScanCounts, ScanFinding, ScanReport } from '../../api/securityTypes.ts';
 import { formatDate } from '../../lib/format.ts';
 import {
+  toolsUpdateText,
   agoText,
   byName,
   countsText,
@@ -267,5 +268,21 @@ describe('emptyFindingsText', () => {
     );
     expect(emptyFindingsText({ status: 'done', engines: [eng('secrets', 'Secrets', 'errored'), eng('deps', 'Dependencies', 'skipped')] })).toBe('No findings to show: no engine ran (see the reasons above).');
     expect(emptyFindingsText({ status: 'cancelled', engines: [eng('secrets', 'Secrets', 'cancelled')] })).toBe('No findings to show: the scan was cancelled before it finished.');
+  });
+});
+
+describe('toolsUpdateText', () => {
+  it('says, per tool, the newest it has, an install under way, a failure, a copy Drydock does not manage; Gitleaks comes with the app', () => {
+    const gl = { tool: 'gitleaks', builtIn: true, found: true, version: '8.21.0' };
+    expect(
+      toolsUpdateText({
+        gitleaks: gl,
+        osv: { tool: 'osv-scanner', found: true, source: 'installed', tag: 'v2.3.0' },
+        opengrep: { tool: 'opengrep', found: true, source: 'installed', tag: 'v1.10.0', job: { state: 'failed', error: 'GitHub answered 503', done: 0, total: 0, started: '' } },
+      }),
+    ).toBe('OSV-Scanner v2.3.0 is the newest. Opengrep could not be updated: GitHub answered 503. Gitleaks 8.21.0 is built into Drydock and updates with the app.');
+    expect(
+      toolsUpdateText({ gitleaks: { ...gl, version: '' }, osv: { tool: 'osv-scanner', found: false }, opengrep: { tool: 'opengrep', found: true, source: 'chosen', version: '1.9.0' } }),
+    ).toBe('OSV-Scanner is not installed. Opengrep 1.9.0 is your own copy, which Drydock leaves alone. Gitleaks is built into Drydock and updates with the app.');
   });
 });

@@ -73,6 +73,18 @@ func (c *Core) OpenExternal(ctx context.Context, raw, by string) error {
 	return c.cfg.OpenURL(ctx, u)
 }
 
+// Restart starts Drydock again, so that a staged restore is applied now (decision P116). Only a person may; a build with no
+// window says to quit and reopen instead.
+func (c *Core) Restart(ctx context.Context, by string) error {
+	if c.cfg.Restart == nil {
+		return errors.New("this window cannot restart Drydock: quit and reopen it")
+	}
+	if !isHuman(by) {
+		return errors.New("only a person may restart Drydock")
+	}
+	return c.cfg.Restart(ctx)
+}
+
 func init() {
 	RegisterExtension(Extension{Name: "shell", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		return map[string]Method{
@@ -83,6 +95,12 @@ func init() {
 					return nil, err
 				}
 				return map[string]bool{"opened": true}, nil
+			}),
+			"shell.restart": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				if err := c.Restart(ctx, c.Human()); err != nil {
+					return nil, err
+				}
+				return map[string]bool{"restarting": true}, nil
 			}),
 		}, nil, nil
 	}})

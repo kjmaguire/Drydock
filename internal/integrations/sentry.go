@@ -35,6 +35,7 @@ func (sentryAdapter) Ops() []OpInfo {
 	return []OpInfo{
 		{Op: "resolve", Label: "Resolve the issue", Params: nil, Description: "Marks the Sentry issue resolved (PUT .../issues/{id}/ status=resolved)."},
 		{Op: "ignore", Label: "Ignore the issue", Params: nil, NeverAuto: true, Description: "Marks the Sentry issue ignored: it stops alerting (status=ignored)."},
+		{Op: "unresolve", Label: "Reopen the issue", Params: nil, Description: "Marks the Sentry issue unresolved again (status=unresolved)."},
 	}
 }
 
@@ -224,41 +225,46 @@ func (sentryAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 	pg := Page{Next: nextLinkCursor(r.Header)}
 	for _, e := range list {
 		m := asMap(e)
-		id := str(m["id"])
-		if id == "" {
+		if str(m["id"]) == "" {
 			continue
 		}
-		events, _ := num(m["count"]) // a string in the API ("count": {"type": "string"})
-		users, _ := num(m["userCount"])
-		level := strings.ToLower(str(m["level"]))
-		last := str(m["lastSeen"])
-		proj := ""
-		if pm := asMap(m["project"]); pm != nil {
-			proj = str(pm["slug"])
-		}
-		short := str(m["shortId"])
-		if short == "" {
-			short = "SEN-" + shortID(id)
-		}
-		body := str(m["culprit"])
-		if md := asMap(m["metadata"]); md != nil {
-			body = strings.TrimSpace(str(md["type"]) + ": " + str(md["value"]) + "\n" + body)
-		}
-		assignee := ""
-		if as := asMap(m["assignedTo"]); as != nil {
-			assignee = str(as["name"])
-		}
-		status := str(m["status"])
-		pg.Items = append(pg.Items, RawItem{
-			ExternalID: id, Kind: ItemErrorEvent, IssueRef: short, URL: str(m["permalink"]), Title: str(m["title"]), Body: body,
-			// a query that also lists resolved or ignored issues: they are not open work
-			State: status, Assignee: assignee, Priority: level, Closed: status == "resolved" || status == "ignored",
-			Created: millis(m["firstSeen"]), Updated: millis(last), Etag: last,
-			Meta: map[string]any{"level": level, "events": events, "users": users, "project": proj, "culprit": str(m["culprit"]),
-				"firstSeen": str(m["firstSeen"]), "lastSeen": last, "priority": str(m["priority"])},
-		})
+		pg.Items = append(pg.Items, sentryRaw(m))
 	}
 	return pg, nil
+}
+
+// sentryRaw reads one issue of the API's answer (a listing's entry or a single issue).
+func sentryRaw(m map[string]any) RawItem {
+	id := str(m["id"])
+	events, _ := num(m["count"]) // a string in the API ("count": {"type": "string"})
+	users, _ := num(m["userCount"])
+	level := strings.ToLower(str(m["level"]))
+	last := str(m["lastSeen"])
+	proj, projID := "", ""
+	if pm := asMap(m["project"]); pm != nil {
+		proj, projID = str(pm["slug"]), str(pm["id"])
+	}
+	short := str(m["shortId"])
+	if short == "" {
+		short = "SEN-" + shortID(id)
+	}
+	body := str(m["culprit"])
+	if md := asMap(m["metadata"]); md != nil {
+		body = strings.TrimSpace(str(md["type"]) + ": " + str(md["value"]) + "\n" + body)
+	}
+	assignee := ""
+	if as := asMap(m["assignedTo"]); as != nil {
+		assignee = str(as["name"])
+	}
+	status := str(m["status"])
+	return RawItem{
+		ExternalID: id, Kind: ItemErrorEvent, IssueRef: short, URL: str(m["permalink"]), Title: str(m["title"]), Body: body,
+		// a query that also lists resolved or ignored issues: they are not open work
+		State: status, Assignee: assignee, Priority: level, Closed: status == "resolved" || status == "ignored",
+		Created: millis(m["firstSeen"]), Updated: millis(last), Etag: last,
+		Meta: map[string]any{"level": level, "events": events, "users": users, "project": proj, "projectId": projID, "culprit": str(m["culprit"]),
+			"firstSeen": str(m["firstSeen"]), "lastSeen": last, "priority": str(m["priority"])},
+	}
 }
 
 // Detail reads the latest event of an issue and renders its stack trace. It is called only for an issue that is becoming a task.
@@ -313,7 +319,7 @@ func (sentryAdapter) Build(op, target string, _ map[string]string, cfg map[strin
 	if target == "" {
 		return OutCall{}, errf(ErrBadRequest, "a Sentry write needs the issue id as its target")
 	}
-	status := map[string]string{"resolve": "resolved", "ignore": "ignored"}[op]
+	status := map[string]string{"resolve": "resolved", "ignore": "ignored", "unresolve": "unresolved"}[op]
 	if status == "" {
 		return OutCall{}, errf(ErrOpUnsupported, "Sentry has no operation %q", op)
 	}

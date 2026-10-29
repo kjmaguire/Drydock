@@ -214,10 +214,21 @@ type RunPolicy struct {
 	// Approve lists exposed tool names (globs; "gh__create_pull_request", "room") that must be approved before they run.
 	// Catalog side_effects_tools are always approval-gated in addition.
 	Approve []string
+	// Refuse, when set, is asked about every tool the lists above allow, on tools/list and again on tools/call: true keeps the
+	// tool from the run. It can only take tools away (a project's CEL rules and a task's narrowing, docs/mcp.md section 3), so a
+	// failure inside it refuses.
+	Refuse func(server, tool string) bool `json:"-"`
 }
 
-// Allows reports whether the policy lists the tool of the server.
+// Allows reports whether the policy lists the tool of the server (and Refuse does not take it away).
 func (p RunPolicy) Allows(server, tool string) bool {
+	if !p.listed(server, tool) {
+		return false
+	}
+	return p.Refuse == nil || !p.Refuse(server, tool)
+}
+
+func (p RunPolicy) listed(server, tool string) bool {
 	for _, g := range p.Allow[server] {
 		if globMatch(g, tool) {
 			return true

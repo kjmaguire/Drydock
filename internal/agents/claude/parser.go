@@ -121,6 +121,8 @@ type rawEvent struct {
 	Session string          `json:"session_id"`
 	Model   string          `json:"model"`
 	Tools   []any           `json:"tools"`
+	// PermissionMode is system/init's permission mode of the session ("default", "acceptEdits", ...).
+	PermissionMode string `json:"permissionMode"`
 	// IsAPIErrorMessage marks an assistant event that is not the model's words but the CLI's report of an API call that
 	// failed ("API Error: 529 ..."), written as an assistant message whose text is the error. Claude Code 2.1.310 sets it on
 	// the event beside "message", not inside it (read from the binary: the flag is among the wrapper-level fields, next to
@@ -216,7 +218,7 @@ func (p *Parser) Parse(line []byte) (chunks []workflow.Chunk, ack *ControlAck) {
 	case "system":
 		if ev.Subtype == "init" {
 			p.sessionID = ev.Session
-			chunks = append(chunks, workflow.NewChunk(workflow.ChunkSession, workflow.SessionChunk{SessionID: ev.Session, Model: ev.Model, Tools: len(ev.Tools)}))
+			chunks = append(chunks, workflow.NewChunk(workflow.ChunkSession, workflow.SessionChunk{SessionID: ev.Session, Model: ev.Model, Tools: len(ev.Tools), PermissionMode: ev.PermissionMode}))
 			for _, srv := range ev.MCPServers {
 				if p.gateway != "" && srv.Name == p.gateway && srv.Status == "failed" {
 					chunks = append(chunks, workflow.NewChunk(workflow.ChunkError, workflow.ErrorChunk{Fatal: true,

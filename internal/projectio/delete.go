@@ -32,6 +32,7 @@ const projectSettings = `length(key) > length(@p) AND substr(key, length(key) - 
 const (
 	assignIDs = `(SELECT id FROM integration_assignments WHERE project_id=@p)`
 	ruleIDs   = `(SELECT id FROM integration_rules WHERE project_id=@p)`
+	itemIDs   = `(SELECT id FROM external_items WHERE project_id=@p OR assignment_id IN ` + assignIDs + ` OR task_id IN ` + taskIDs + `)`
 )
 
 // DeleteSteps run in this order inside one transaction. A table may appear more than once; children come before the rows
@@ -44,6 +45,9 @@ var DeleteSteps = []DeleteStep{
 	{Table: "integration_rules", Where: `project_id=@p`},
 	{Table: "integration_cursors", Where: `scope IN ` + assignIDs},
 	{Table: "integration_outbox", Where: `project_id=@p OR task_id IN ` + taskIDs},
+	{Table: "integration_mappings", Where: `assignment_id IN ` + assignIDs},
+	{Table: "integration_auto_approve", Where: `project_id=@p`},
+	{Table: "integration_attachments", Where: `item_id IN ` + itemIDs},
 	{Table: "external_items", Where: `project_id=@p OR assignment_id IN ` + assignIDs + ` OR task_id IN ` + taskIDs},
 	{Table: "integration_assignments", Where: `project_id=@p`},
 	{Table: "skill_uses", Where: `project_id=@p`},
@@ -60,6 +64,9 @@ var DeleteSteps = []DeleteStep{
 	{Table: "mcp_usage", Where: `run_id IN ` + runIDs + ` OR run_id IN ` + agentRunIDs},
 	{Table: "agent_mcp_access", Where: `project_id=@p`},
 	{Table: "project_mcp_servers", Where: `project_id=@p`},
+	{Table: "mcp_role_policy", Where: `project_id=@p`},
+	{Table: "mcp_policy_rules", Where: `project_id=@p`},
+	{Table: "task_mcp_tools", Where: `task_id IN ` + taskIDs},
 	{Table: "pack_attachments", Where: `project_id=@p`},
 	{Table: "milestone_tasks", Where: `milestone_id IN ` + msIDs + ` OR task_id IN ` + taskIDs},
 	{Table: "milestones", Where: `project_id=@p`},
@@ -71,11 +78,12 @@ var DeleteSteps = []DeleteStep{
 	{Table: "project_check_settings", Where: `project_id=@p`},
 	{Table: "context_manifests", Where: `run_id IN ` + runIDs + ` OR task_id IN ` + taskIDs},
 	{Table: "memory", Where: `project_id=@p`},
+	{Table: "budget_reservations", Where: `project_id=@p OR task_id IN ` + taskIDs + ` OR agent_id IN ` + agentIDs},
 	{Table: "budget_alerts", Where: `budget_id IN (SELECT id FROM budgets WHERE ` + budgetWh + `)`},
 	{Table: "budgets", Where: budgetWh},
 	{Table: "routing_rules", Where: `scope='project:'||@p`},
 	{Table: "routing_outcomes", Where: `project_id=@p OR task_id IN ` + taskIDs},
-	{Table: "routing_decisions", Where: `task_id IN ` + taskIDs + ` OR run_id IN ` + runIDs + ` OR run_id IN (SELECT id FROM room_turns WHERE project_id=@p)`},
+	{Table: "routing_decisions", Where: `task_id IN ` + taskIDs + ` OR run_id IN ` + runIDs + ` OR run_id IN (SELECT id FROM room_turns WHERE project_id=@p) OR (task_id='' AND json_extract(request,'$.ProjectID')=@p)`},
 	{Table: "room_inbox_acks", Where: `item_key IN (SELECT 'question:'||id FROM messages WHERE room_id IN ` + roomIDs + `) OR item_key IN (SELECT 'check:'||id FROM messages WHERE room_id IN ` + roomIDs + `) OR item_key IN (SELECT 'watchdog:'||id FROM tasks WHERE project_id=@p)`},
 	{Table: "dead_letters", Where: `task_id IN ` + taskIDs},
 	{Table: "handoffs", Where: `task_id IN ` + taskIDs},
@@ -105,31 +113,34 @@ var DeleteSteps = []DeleteStep{
 // KeptOnDelete lists every table whose rows stay when a project is deleted, with the reason. Full-text index tables follow
 // the table they index (their triggers delete with it) and need no entry.
 var KeptOnDelete = map[string]string{
-	"events":               "the event log is append-only and kept indefinitely (brief: retention); it is the record of what happened",
-	"audit_log":            "hash-chained and append-only: a trigger refuses deletes; deleting a project is itself audited",
-	"model_usage":          "what was spent, kept indefinitely: workspace budgets, provider quotas and the evals report still count money that was spent",
-	"receipts":             "idempotency receipts of this installation, not project content",
-	"workspaces":           "not project data",
-	"providers":            "workspace connections to model providers, shared by every project",
-	"provider_quotas":      "provider runtime state",
-	"model_catalog":        "a cache of what a provider lists",
-	"probe_results":        "provider probe results of this installation",
-	"secret_blobs":         "credentials belong to workspace connections (providers, integrations, MCP servers), not to a project",
-	"telemetry_spans":      "local diagnostics sink, aged out by retention",
-	"telemetry_metrics":    "local diagnostics sink, aged out by retention",
-	"packs":                "Expert Packs are installed for the workspace; the project's attachments to them are deleted",
-	"pack_versions":        "Expert Packs are installed for the workspace",
-	"pack_pages":           "Expert Packs are installed for the workspace",
-	"pack_chunks":          "Expert Packs are installed for the workspace",
-	"pack_pins":            "Expert Packs are installed for the workspace",
-	"skill_registries":     "the workspace's registry allow-list",
-	"skill_registry_watch": "what each registry held at its last check: workspace state",
-	"skill_library":        "the workspace skill library; the project's own skills are deleted",
-	"agent_templates":      "the workspace's reusable team members",
-	"mcp_library":          "the workspace's MCP servers; the project's grants to them are deleted",
-	"chat_messages":        "messages of the human's own chats, which are kept (unlinked from the project)",
-	"chat_turns":           "turn bookkeeping of the chats above",
-	"chat_attachments":     "files attached to those chats, kept with them (decision P90)",
+	"events":                 "the event log is append-only and kept indefinitely (brief: retention); it is the record of what happened",
+	"audit_log":              "hash-chained and append-only: a trigger refuses deletes; deleting a project is itself audited",
+	"model_usage":            "what was spent, kept indefinitely: workspace budgets, provider quotas and the evals report still count money that was spent",
+	"receipts":               "idempotency receipts of this installation, not project content",
+	"workspaces":             "not project data",
+	"providers":              "workspace connections to model providers, shared by every project",
+	"provider_quotas":        "provider runtime state",
+	"model_retention_blocks": "which models a provider refused for want of data retention: provider state, shared by every project",
+	"model_catalog":          "a cache of what a provider lists",
+	"probe_results":          "provider probe results of this installation",
+	"secret_blobs":           "credentials belong to workspace connections (providers, integrations, MCP servers), not to a project",
+	"telemetry_spans":        "local diagnostics sink, aged out by retention",
+	"telemetry_metrics":      "local diagnostics sink, aged out by retention",
+	"packs":                  "Expert Packs are installed for the workspace; the project's attachments to them are deleted",
+	"pack_versions":          "Expert Packs are installed for the workspace",
+	"pack_pages":             "Expert Packs are installed for the workspace",
+	"pack_chunks":            "Expert Packs are installed for the workspace",
+	"pack_pins":              "Expert Packs are installed for the workspace",
+	"skill_registries":       "the workspace's registry allow-list",
+	"skill_registry_watch":   "what each registry held at its last check: workspace state",
+	"skill_library":          "the workspace skill library; the project's own skills are deleted",
+	"agent_templates":        "the workspace's reusable team members",
+	"mcp_library":            "the workspace's MCP servers; the project's grants to them are deleted",
+	"chat_messages":          "messages of the human's own chats, which are kept (unlinked from the project)",
+	"chat_turns":             "turn bookkeeping of the chats above",
+	"chat_attachments":       "files attached to those chats, kept with them (decision P90)",
+
+	"integration_webhook_deliveries": "the workspace receiver's log of deliveries (no bodies), by Connection: it names no project",
 }
 
 // DeleteResult says what deleting a project removed from the database, and the files that belonged to those rows (the
@@ -140,6 +151,9 @@ type DeleteResult struct {
 	// cache folder) and integration item bodies (<integration>/<item>.txt under the integrations folder).
 	MCPCache   []string
 	ItemBodies []string
+	// Attachments are the folders of the deleted items' downloaded attachments (<integration>/attachments/<item> under the
+	// integrations folder).
+	Attachments []string
 }
 
 // Delete removes one project's rows in the order of DeleteSteps, inside the caller's transaction. It refuses an unknown
@@ -159,6 +173,9 @@ func Delete(ctx context.Context, tx *sql.Tx, projectID string) (DeleteResult, er
 		return res, err
 	}
 	if res.ItemBodies, err = queryStrings(ctx, tx, `SELECT integration_id||'/'||id||'.txt' FROM external_items WHERE (project_id=@p OR assignment_id IN `+assignIDs+` OR task_id IN `+taskIDs+`)`, p); err != nil {
+		return res, err
+	}
+	if res.Attachments, err = queryStrings(ctx, tx, `SELECT DISTINCT integration_id||'/attachments/'||item_id FROM integration_attachments WHERE local_path<>'' AND item_id IN `+itemIDs, p); err != nil {
 		return res, err
 	}
 	for _, st := range DeleteSteps {

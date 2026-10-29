@@ -1288,3 +1288,253 @@ Open, owner action:
   gone forgets only that worktree (`git worktree prune` also forgot the person's own worktrees on an unplugged drive). **Not
   proven:** real signed-in agent CLIs on Windows (the owner's), the updater (no feed or key yet), SmartScreen with a signed build,
   Windows 10 (the runner is Windows Server), a locked Credential Manager.
+
+- **P106. Integrations without "Needs sign-in", GitHub beside its list, vendors' agent tools, Home at start, the GPU named, one
+  scanner update, Agent templates and Skills apart (2026-10-29).** On the owner's words: "when things are not signed in, it
+  doesn't necessarily mean we actually have Linear or Notion etc. So lets go ahead and get rid of the Needs Sign In (as it also
+  pushes it to the right and you have to scroll) ... If there is an error, lets just put like a Triangle with ! on it, so when you
+  click on it, the app screen tells you what the problem is. For Github when we open it, it supresses the left pane, lets keep the
+  left pane there ... When I added Linears Agent Tools, it does not show up under the Agent Tools section ... When I open DryDock
+  it always opens to the project. I would rather it just open the Home Screen. I also get this message on Models on this PC: No GPU
+  found ... That isn't true I have a GPU. Under Security Scan ... Just one button that updates the entire thing. Under Workspace,
+  should we separate Agent Templates and Skills into there own Category instead of Library". (1) **A row's state**
+  (`integrations.ts`, `ui/master-detail.tsx`): a server waiting for its sign-in or token, one of your own without tools yet, and a
+  provider not checked yet are **Set up**, not "Needs you"; only a failure needs the person (a refused key, a failed check, a
+  failing sync, a server that could not connect, OpenRouter down), and its row shows a warning triangle (`row-alert`, named by
+  the state for screen readers) instead of words; the detail opens with what is wrong (`RowState.problem`, `row-problem`). The
+  list's rows no longer widen it (a grid row now shrinks, `& > li { min-width: 0 }`): a long line under a name pushed the state
+  past the list's edge and the list scrolled sideways (measured: 331 px of content in 319). (2) **GitHub is a row of
+  Integrations** (`/integrations/github`; `/github` redirects there): its detail is the GitHub settings that were a page of their
+  own (`GitHubDetail`: the gh sign-in, issue sync, the MCP server, repositories, CI runners), so the list stays beside it.
+  (3) **Agent tools lists every vendor's MCP servers** (`agentToolVendors`): Linear, Notion, Sentry and GitHub have a row there
+  too (`tools-<vendor>`), apart from their app sync under Services; a connected vendor server used to show only inside the app
+  sync detail and was left out of Your servers, so it was nowhere under Agent tools. Aikido publishes no MCP server Drydock knows
+  of (its entry was removed earlier, P45/D14); one can be added under Your servers by its address. (4) **The window opens on
+  Home** (`app.StartURL = "/home"`, kept equal to the UI's Home route by a test); `/` stays the chosen project's page. (5) **The
+  GPU** (`internal/localllm`): the engine's environment keeps what a GPU driver and its loader read (`SYSTEMDRIVE`,
+  `DRIVERDATA`, the processor facts, `CUDA_PATH*`, `VK_*`, `GGML_*`; none carries a credential), which the agents' allowlist had
+  stripped; a device line without its memory is read; when the engine lists no GPU, Drydock reads Windows' display adapters
+  from the registry (`DisplayAdapters`, no program started) and keeps the engine's own backend lines (`Devices.Note`), and This
+  PC says "Windows has <card>, but the engine could not use it" with "What the engine said", instead of "No GPU found". Not
+  proven on the owner's PC: whether the stripped variables were the cause there. (6) **Update scanners** (Security scan and a
+  project's Security page): one button calls `security.tools.checkUpdates`, which installs the newest OSV-Scanner and Opengrep,
+  and says per tool what it did; Gitleaks is compiled into Drydock and updates with the app, and the note says so. (7) **Agent
+  templates and Skills** are two sidebar entries (`nav-library`, `nav-library-skills`) instead of Library with two pills; the
+  page `/library` is titled Agent templates.
+
+- **P107. Chats start in the chat, without a project, and name their model, effort and mode (2026-10-29).** On the owner's
+  words: "when we create a new chat, can we just go right to the chat window, and then from there we can choose the Model, Effort,
+  and Permission. And instead of it just saying Adapter Default, can you just show the Model Name, Effort and Permission Mode" and
+  "under chats, I don't want it to be assigned to a project, sometimes I Just want to have a chat that is not assigned to any
+  project". (1) New chat on the Chats page (button, Ctrl+N, palette) calls `chat.create {}` and opens the chat: no project (the
+  core always allowed one; the dialog had preselected the current project), Claude Code, the chat's private folder. The new chat
+  dialog stays for Home's Options. The chat list shows every chat by default. (2) The core keeps what the CLI said its session
+  runs with (`chats.cli_model`, `cli_permission_mode`, migration 00133, from Claude Code's `system/init`); a new chat that
+  chooses no model starts with the default its CLI last reported; a change of model, CLI or mode clears them until the next
+  turn. (3) The composer's chips say "Opus 5.5 · medium effort" instead of "default model": the effort shown when none is chosen
+  is Claude Code's documented per-model default (headless `system/init` carries no effort), so a person's own `effortLevel`
+  setting can make it differ; "CLI default (Opus 5.5)" and "default (medium)" replace "adapter default" in the settings. Not
+  proven against a real Claude Code: the `permissionMode` field of its init message (the stand-in sends it; the SDK's type
+  names it).
+
+- **P108. Routing as a wiring diagram (2026-10-29).** On the owner's words, with a picture of mode and feature cards wired to one
+  node: "when it comes to routing, is it possible to have this design at all?" and "go ahead and build the routing diagram". The
+  Routing page opens with **Wiring** (`screens/routing/wiring-diagram.tsx`, layout and words in `wiring.ts`): a card per level of
+  agent work (cheapest, fast, balanced, quality, maximum quality, each its own colour) and per other kind of turn at the
+  balanced level (review, room reply, spec, tests, design, security review, consult, summarize, classify, grey), each naming the
+  model the router would choose now ("Haiku 5.5", its provider and effort) or "Blocked" with the router's reason as its
+  tooltip, wired by a curve into one Router node. The answers are dry runs with the Preview panel's defaults (role backend,
+  private context), all in one call (`route.previews`, new: up to 32 `route.preview`s, each answer or its error in order; the
+  smoke test flags a page that asks one method fourteen times): nothing is recorded and no quota is taken; they are read again when a rule, a provider or the
+  cheap model changes. When every card is blocked for the same reason (no provider yet), the page says it once, with a link to
+  Models. The model names are `lib/model-name.ts`, shared with the chat chips (P107).
+
+- **P109. Import Claude Code's own chats into Chats (2026-10-29).** On the owner's "Yes" to the one item that waited on their
+  decision (a one-time, read-only import that continues each session), with the shape proposed for it. **Import from Claude Code** on the Chats screen (beside New,
+  and under an empty list) lists the sessions Claude Code kept on this PC, every one not imported yet chosen, and copies the
+  chosen ones in (`chat.importList`, `chat.import`; `internal/chats/claudeimport.go`, `transcript.go`; docs/chats.md section 7).
+  Sources: `%CLAUDE_CONFIG_DIR%` or `%USERPROFILE%\.claude`, and `~/.claude` in each WSL distro where Claude Code is installed,
+  read through `\\wsl.localhost\<distro>`. Only `projects/<folder>/<session id>.jsonl` is opened (never the sign-in, settings,
+  `.claude.json` or plugins: D1); links are not followed; a file over 64 MB, a line over 8 MB and a line that is not readable
+  JSON are skipped. A chat gets the person's messages and the text answers at their original times, a tool call as "Used tool
+  <name>", no reasoning, tool output or sub-agent lines, everything redacted before it is stored; its title is the session's
+  name, summary or first line. It is a Claude Code chat (in the distro for a distro's session) whose session id is the imported
+  one, so its next turn resumes that session in the session's folder; a session in a project's repository folder joins that
+  project, any other is a chat without one (P107). The session id is unique among imported chats (migration
+  `00134_chat_import.sql`): importing again does nothing, deleting the chat frees it. Sessions Drydock started (its chats' and
+  agents' sessions, its own folders) are not listed. **Not verified:** the transcript format against a real Claude Code (it is
+  undocumented), anything on Windows, a real resume of an interactive session, and the first turn's cost (Claude Code may count
+  the session's earlier cost again; its baseline is in `.claude.json`, closed by D1).
+- **P116. Restart now after a staged restore, and the WebView2 version in the support bundle (2026-10-29).** On the owner's
+  words, answering the list of what is not built: "Proceed with those items". (1) The Backups page shows **Restart now** beside
+  a staged restore when the window can restart (`app.info` `canRestart`); `shell.restart` (a person only) asks the shell
+  (`core.Config.Restart`, `app/restart_windows.go`) to start `drydock.exe` again with `CREATE_BREAKAWAY_FROM_JOB` (the app job
+  allows it, as for the updater's helper) and quit; the new process carries the old one's process id in
+  `DRYDOCK_RESTART_AFTER`, removes it from its environment, and waits up to a minute for that process to end before the
+  single-instance check, which would otherwise hand the launch back to the closing app. Running agents stop as on any quit. A
+  browser build says to quit and reopen. (2) The support bundle's `os.webview2` is the version the window reports
+  (`core.Config.WebView2Version`, from Wails' environment info). Neither has been run by hand on Windows.
+- **P111. Local models: several loaded at once, vision, drafts, embeddings and gated models (2026-10-29).** On the owner's
+  words, answering the list of what is not built: "Proceed with those items" (the items of docs/local-models.md section 10 but
+  Linux and macOS, which a Windows-only app does not need). (1) **Several models at once**: the person keeps up to four
+  downloaded models loaded (llama.cpp's `--models-max` default), Load too and Unload on the model rows, within the memory the
+  page already estimates (each model's files, KV cache and draft against the fit rule's room); what does not fit beside the
+  loaded ones is refused on the page and by the core (`local.server.start {modelIds}`). Two or more run llama-server's router
+  mode with a preset file Drydock writes (a section per model id: `model`, `mmproj`, `model-draft`, `spec-type`,
+  `load-on-startup`), `--models-max`, its own empty `LLAMA_CACHE`, and the shared options on its command line, as llama.cpp's
+  `tools/server/README.md` at build b11936 (and the TurboQuant fork's at b10298-2.0.0) describes them; a change to the set starts
+  the server again. The provider stays one row: the probe offers each model the router lists as loaded, with the context its
+  instance runs with (`/props?model=`). (2) **Vision**: a repository's projector goes with each variant, is checked and kept with
+  it, and is passed with `--mmproj`. (3) **Drafts**: a model can be drafted for by a downloaded model of the same family and
+  tokenizer at most half its size (read from both GGUF headers), chosen on its row and run with `--model-draft` and
+  `--spec-type draft-simple`. (4) **Embeddings**: a model whose header names a pooling type or an encoder architecture, or that
+  the person marks so, is served only by a second llama-server of its own (`--embeddings`, port 9934, its own key) and is not a
+  provider (the router would offer it for chat). (5) **A Hugging Face token** for gated models: kept in the credential store
+  like a provider's key, taught to the redaction scanner, shown as `hf_…1234`, removable; sent as the Authorization header of a
+  file download from the Hub's own address only (dropped on the redirect to its CDN, never with a listing). A gated repository
+  is listed and marked; without a token its download is refused at once with the page to accept the licence on, and a download
+  the Hub refuses says why with that page. The stand-in llama-server runs both of its modes and refuses a projector or draft
+  that is missing and a draft without its spec type; the Hub fixture gates files by token and redirects downloads to a CDN.
+  No migration: the choices are in the `local:settings` JSON and each model's `model.json`. docs/local-models.md section 11.
+  **Not built:** loading or unloading one model while the others run (the router's load and unload calls), anything in Drydock
+  that reads embeddings, a projector's memory beyond its file, draft heads that are not models (MTP, EAGLE-3). **Not verified:**
+  any of it against a real llama.cpp build, the real Hub or a real token, or on Windows.
+- **P110. Expert packs read PDF, DOCX and git repositories, and a model answers their questions (2026-10-29).** On the owner's
+  words, answering the list of what is not built: "Proceed with those items". From the expert-pack list
+  (docs/expert-packs.md, "Not built"), everything but the embedding index, which v1 does not plan. (1) **PDF and DOCX**
+  (`internal/docparse`): a PDF through `github.com/ledongthuc/pdf` (pure Go, BSD-3-Clause, the newest commit's pseudo-version
+  0.0.0-20261020125853-5e46805f718e, since the module has no tags), page by page; a DOCX through `archive/zip` and
+  `encoding/xml` alone (headings, lists, tables). Every file is untrusted: 32 MB, 1000 pages, 16 MB of text, 128 MB unpacked
+  for a DOCX whatever the zip says, 60 seconds, at most two PDFs at once, a reader panic is the file's error, and a PDF without a
+  text layer is refused as a scan (no OCR). A pack's `local_dir` reads them; a PDF passage keeps its page (migration `00136`,
+  `Citation.page`) and a DOCX passage its headings. The Expert packs page makes a private pack of picked files
+  (`pack.createFromFiles`, `pack.files`, `pack.addFiles`, `pack.removeFile`; its own `packs/<id>/files` folder), and the
+  Requirements page reads a PDF or DOCX into the text box to be checked (`requirement.extract`). (2) **`git_docs`**
+  (`git.FetchDocs`): url, ref and path; a fresh bare repository, a shallow fetch with no blobs, then only the wanted Markdown,
+  MDX and text blobs by id, read with `cat-file`; nothing checked out, no hooks, submodules, symbolic links, lazy fetch,
+  credentials, proxy or personal git configuration; the address checked as the crawler checks it and pinned for git; a size
+  bound (`crawl.max_repo_bytes`, 256 MB); the commit each version read is recorded (migration `00137`); the pack's refresh
+  schedule applies. (3) **Answers and summaries by a model** (`internal/packs/packmodel`): CONSULT routes run kind `consult`
+  and a refresh digest `summarize` through the app's router and LLM client at level cheapest, with the pack's context ceiling
+  (a private pack never reaches a trainable provider); an answer must cite supplied sources only, the sources it used are
+  quoted, and with no model or a router that blocks, the answer is the cited passages with the reason. (4) **Decided against:**
+  OpenCode `instructions` globs, because OpenCode already finds the run-start skill copies in `.agents/skills` and
+  `instructions` would load each matched skill into every turn (the cost P37 measured), and Drydock's OpenCode configuration
+  is unverified. **Not verified:** `git_docs` against a real host and on Windows, a real model answering a consult, large files
+  through the Wails bridge, PDFs from real producers beyond the tests' hand-written ones. docs/expert-packs.md "As built: PDF
+  and DOCX, packs of files, git_docs and routed answers"; docs/model-routing.md "As built: expert-pack consults".
+
+- **P112. The LLM tiebreak, pre-call budget reservations, wall-time ceilings, the lead's turns routed and the retention
+  refusal acted on (2026-10-29).** On the owner's words, answering the list of what is not built: "Proceed with those items"
+  (the routing items of `architecture.md` section 5 and `model-routing.md`, except the OTLP exporter and the B0 arm, which are
+  another decision's). (1) **Tiebreak**: when the ranking leaves candidates within 10% of each other (or without a price, as
+  an agent CLI's own models), one call to the configured cheap model (`route.cheap.*`) chooses from a description that holds
+  no content of the work (the turn's kind, class, level and weights, the candidates' facts); off by default, its own daily
+  budget ($0.25) and timeout (8 s), the ranking's choice on any failure, recorded on the decision (`DecidedBy "llm"`, "Why
+  this model?"); never in a dry run, at Cheapest, on a pin or a fallback hop. (2) **Reservations** (migration
+  `00140_budget_reservations.sql`): before every agent turn its estimate is reserved against its project, task, run and agent
+  budgets with what the turns in flight hold, in one write transaction, and held on its provider's quota windows; a turn
+  that does not fit waits on the budget pause; settled, released, or expired at start. (3) **Wall-time ceilings** per level
+  and per agent (none by default; migration `00141_turn_stops.sql`): a turn past it is stopped with the reason on its decision
+  and outcome (`routing.stopped`); a workflow turn then waits for a person, one that did no work may move along its fallback
+  chain. (4) **The team lead's and the recommendation turns** (P52) are routed like the role turns of P63: run kinds `lead`
+  and `recommend`, the same budgets, fallback and records; no list keeps the configured model (`static`). (5) **Retention**:
+  a model a provider refuses because the organization has no data retention enabled (Anthropic's Covered Models) is set aside
+  (migration `00142_model_retention.sql`): the router leaves it out with what to do, the call or turn moves to the next model,
+  which keeps no data, or ends saying why; a person clears it on the Routing page. The Routing page has a "Tiebreak and turn
+  limits" section; the wiring names the new kinds and shows a turn's ceiling and a tie. Details and differences from the
+  design: `docs/model-routing.md` "As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal".
+  **Not verified:** a real cheap model's tiebreak, a real CLI stopped at a ceiling on Windows, every CLI version's retention
+  wording, holds during a real provider's CLI turn.
+- **P114. Integrations: webhooks, typed clients, mappings, status sync, auto-approve classes, attachments (2026-10-29).** On the
+  owner's words, answering the list docs/integrations.md gave as not built: "Proceed with those items". (1) **Webhooks**: a
+  receiver, off by default, listening on 127.0.0.1 only at a port the person chooses, for Linear (`Linear-Signature`, the signed
+  `webhookTimestamp` within 60 s, as `@linear/sdk` 100.0.0 checks), Sentry (`Sentry-Hook-Signature` with the client secret,
+  `Sentry-Hook-Timestamp` within 5 minutes, `Request-ID`, from Sentry's webhook documentation) and Notion (`X-Notion-Signature`
+  keyed with the verification token, the event's `timestamp` and `id`; **unverified**, from memory: Notion's documentation was
+  unreachable). A delivery is refused when it is unsigned, signed wrongly, larger than 1 MiB, stale or a replay (its id is kept a
+  day); a verified one only queues a read of the item it names through the normal adapter, so nothing in the payload becomes item
+  data. Drydock does not expose the port: the page says, always, that the person must (their own tunnel). The secrets are in the
+  credential store; Notion's verification token is used only when the person says so. (2) **Typed clients**: the REST and GraphQL
+  clients exist since P42; added are the typed calls the listing could not do (one item, attachments, comments, team states, a
+  data source's schema, a page's properties), through the same client, credential, rate limit and time-outs; a file a vendor keeps
+  on another host goes through `internal/netguard` without the credential. (3) **`integration_mappings`** per assignment, chosen by
+  a person: vendor states and task statuses with a direction; which Notion property fills state, priority, assignee, labels.
+  (4) **Notion data sources as typed rows**: a row's properties with their types, cleaned and scored like any outside text, the
+  first status property its state, a `unique_id` its reference, `item.props` in rules. (5) **Two-way status sync**: a linked task
+  entering a mapped status proposes the vendor write through the ordinary outbox (Linear `set_state`, Notion `set_status`, Sentry
+  `resolve`/`unresolve`); the vendor's state of a linked item is offered to the person as a change to the task, never applied by
+  itself (P37). (6) **`link_task` rules**: link a matching item to a named task, or to the project's task with the item's
+  reference; disabled and dry run first, daily limit, risky items never. (7) **Auto-approve classes**: a closed list,
+  `linkback_comment` and `status_sync`, each off until a person turns it on for one connection in one project; nothing destructive,
+  suppressing or in bulk; only Drydock's own templated writes name a class, never an agent's or a tool's proposal; the approval is
+  decided in the name of the person who turned it on and the send is recorded `auto: true`. (8) **The comment lookup before a
+  retry**: a failed comment is first looked for on the target by a hash of its text; found, it is recorded as sent; otherwise the
+  same call is proposed again for a new approval. (9) **The weekly automatic sweep**, in the backups' scheduler style: on unless
+  turned off; a due poll becomes a full sweep once a week. (10) **Attachments**: listed and downloaded only on a person's action,
+  capped at 10 MiB, kept under the app's data folder, a text file only as its secret-redacted copy, which is the only text of it an
+  agent is given. Migrations 00144 to 00147. UI: Webhooks and sweeps under Background on the workspace's Integrations page;
+  Mappings, Auto-approve, Full sync, attachments, typed properties, the offered status and Retry on a project's Integrations page.
+  docs/integrations.md "As built: webhooks, mappings, status sync". **Not built:** Aikido and GitHub webhooks, a relay of Drydock's
+  own (never), attachments of GitHub and Aikido items and Notion file blocks, importing a Notion row as a task, a vendor's status
+  applied without the person. **Not verified:** any of it against a live vendor (protocol fixtures only), Notion's signature
+  scheme least of all, or on Windows.
+- **P113. OTLP export of the local telemetry, spans for the LLM Wrapper's calls, and the B0 arm of the evaluation
+  (2026-10-29).** On the owner's words, answering the list of what was not built: "Proceed with those items". (1) **OTLP
+  export** (`internal/telemetry`): off by default; a person gives a collector's endpoint (https, or plain http only to this
+  computer, checked on the connection itself; no credentials, query or fragment in it) and turns sending on, and telemetry must be
+  on too. What is sent is what the local sink stores, under the same closed allowlist (applied again by the encoders), so the
+  local rows are the log of everything sent and the preview shows what leaves (`packaging.md`, diagnostics). OTLP/HTTP with
+  protobuf (default) or JSON, **written by hand** rather than through the OpenTelemetry SDK: the spans and metrics already exist,
+  only their wire form was needed, and the SDK with its protobuf and exporter modules would add dependencies (the "about 15 MB"
+  `packaging.md` names) for no gain; no module was added. Header values (an API key) in the credential store, never in settings,
+  the status, a log or an event. A bounded queue (2048), batches of 256 every 5 s, retries with exponential backoff and
+  `Retry-After` for a transport failure, 429, 502, 503 and 504, drop-and-count on a full queue, a refusal or exhausted retries;
+  turning it or telemetry off empties the queue and stops a send in flight. A status line (sent, waiting, dropped, last success,
+  last error in Drydock's own words with header values removed) and "Send a test span" (also kept locally). Methods
+  `telemetry.otlp.set` and `telemetry.otlp.test`; the Telemetry group of Settings. (2) **The Wrapper's calls**: `llm.Options.Tracer`
+  hears of every call, refused ones included, with no field for content; the sink records a `drydock.llm.chat` span and duration,
+  token and cost metrics; new allowlisted keys `drydock.llm.cache_hit`, `drydock.llm.fallback`, `error.type` (a closed class).
+  (3) **B0** (`internal/trial/b0.go`, `drydock-trial run -arms ...,B0`): the naive broadcast team of `evals.md` section 5 as a
+  harness arm: a worker and a reviewer on one model, each turn a new Claude Code session given the whole room in full (every
+  message, tool call and tool output), free-for-all until both say DONE in one round, five rounds, the wall-clock cap or the
+  run's dollar ceiling (a recorded `ceiling`); no router, cheap tier, handoff, cache or watchdog. It records the arm's rounds,
+  stop and broadcast bytes besides section 6.2's fields. No migration. Details: `token-control.md` "As built: OTLP export and the
+  Wrapper's spans", `evals.md` section 15. **Not built:** gzip bodies, exporting rows recorded before sending was on, content
+  export, crash reports and usage counters as their own categories; B0 with CLIs other than Claude Code or a cheap provider.
+  **Not verified:** a real collector or vendor backend (the protobuf encoding is checked only against a decoder written from the
+  same field numbers), Windows, a proxy; **B0 is not measured**: its mechanics and records are proven against the scripted
+  stand-in agent only, and every B0 row of `evals.md` 7.1 stays "not measured" until it is run with a signed-in Claude Code.
+- **P115. The per-role MCP tool table, Antigravity's headless start, the custom CLI dialect and live packs' docs servers in
+  agent runs (2026-10-29).** On the owner's words, answering the list of what is not built: "Proceed with those items" (the
+  agents items of `architecture.md` section 5). (1) **Role table** (`internal/mcp/rolepolicy.go`): section 3 of
+  [`mcp.md`](mcp.md) is the gateway's policy, a row per role (the template roles, then every other role, which keeps all a
+  grant gives) and a column per Workspace tool (`read_range`, `repo_map`, `skills`, `search_memory`, `search_requirements`,
+  `search_pack`, act) and kind of server (docs servers, GitHub, trackers, Sentry, other, by the catalog entry a library
+  server was connected from). PM reads requirements, memory and packs, the UX Designer requirements, packs and files, a
+  reviewer acts by `room` and `handoff`; `propose_memory` stays with every role (P92), `repo_map` is on by default for every
+  role (P62), the act column still needs `mcp.act_tools`. A project changes any cell on its Integrations page (migration
+  `00148`, `mcp_role_policy`; `mcp.rolePolicy.get/set`), which also shows the act switch for the first time. **CEL rules**:
+  `cel.dev/cel-go` was already a dependency (security, router), so a project keeps up to 32 boolean expressions over `role`,
+  `column`, `server`, `tool`, `adapter` and `task` that only take tools away (`mcp_policy_rules`, `mcp.policyRule.add/remove`;
+  checked when saved, a set that no longer compiles gives a run no MCP and says why). **A task narrows** its agents' tools to
+  exposed names or globs (migration `00149`, `task_mcp_tools`; `task.mcpTools.get/set`, the task page's "Agent tools"); it
+  never widens. Rules and narrowing are enforced by the gateway on every list and call (`RunPolicy.Refuse`); the permission
+  prompt and the sandbox's command tools are exempt (they carry how a turn works). Every change is audited. (2)
+  **Antigravity** starts (`internal/agents/headless`): `agy -p --input-format stream-json --output-format stream-json --mode
+  default` with `--effort`, a stream-json user message per stdin line, `init`, `step_update` and `result` read as the
+  documentation names them, `denied_actions` as permission_denied chunks (D11), `AGY_ERROR` and exit 3 as the turn's error;
+  interrupt, resume and model choice are not offered; still behind its acknowledgement gate. **The custom dialect**: a
+  person's manifest in `<app data>/adapters/custom/<id>.yaml`, added and removed on the Agents page
+  (`connection.custom.list/template/add/remove`), validated strictly (its own gate `custom-<id>`, the prompt on stdin or as
+  `{{prompt}}`, only `cwd`, `model`, `effort`, `session_id` and `prompt` placeholders, field paths per event, no provider,
+  MCP or keychain sections, native only, refused when it looks like it holds a secret) and run by a generic runner: one
+  process per turn, JSON lines by type and field path or plain text, the session id carried to the next turn's
+  `{{session_id}}`, interrupt by ending the turn's process. The conformance suite gained per-turn sessions and runs against
+  both stand-ins (`fakeagy`, written from agy's documentation; `fakecustom`, the template's CLI). (3) **Live packs' docs
+  servers** reach an agent run: the catalog server of a live or hybrid pack attached for the agent, with exactly the pack's
+  tool, under the role's docs column, through the gateway's catalog trust, cache, send guard and untrusted marking
+  (`addLivePackServers`); `search_pack` still queries live packs itself. **Not verified:** a real `agy` (every field name,
+  the `--mode` value, the input line, exit codes), a real custom CLI, any of it on Windows (a `.cmd` program, the prompt as
+  an argument through `cmd.exe`). **Not built:** MCP for custom CLIs (their manifest has no `mcp.inject` yet) and for
+  Antigravity, an acknowledgement asked again when a custom manifest's file changes on disk, interrupt for Antigravity.

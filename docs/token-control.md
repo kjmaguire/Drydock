@@ -177,8 +177,8 @@ OpenTelemetry export is optional and off by default; attribute names are our own
 
 Built in `internal/budget` (migration `00060_budget.sql`), `internal/telemetry` (`00063_telemetry.sql`), `internal/checks` (`secrets`, `deps`; `00062_checks_probe.sql`), wired by `internal/core/ext_economics.go`. Methods: `budget.list/set/delete/status/resume`, `checks.settings.get/set`, `telemetry.status/enable/preview/export`. Differences from the text above:
 
-- **Scopes (rule 14, s7).** Built: `project`, `task`, `run`, `agent`. A `workflow` scope is not built (a run ceiling on a `*` template covers "per run"). A budget limits USD, tokens (input + output as recorded) and/or agent turns (`agent_runs` rows). `scope_id = '*'` makes a ceiling that applies to every task, run or agent (each judged alone), optionally restricted to one project: this is the per-run ceiling of rule 12. **Wall-time ceilings are not built** (the watchdog's per-turn 20 minute cap exists; a per-run wall-clock ceiling that excludes time waiting for the human has no definition yet).
-- **Accounting is a sum, not a counter.** There is no reservation/settlement and no `spent_*` column: every evaluation sums `model_usage` (and `agent_runs`), so a budget can never disagree with the rows. The consequence the text above wanted to avoid exists: concurrent agents can jointly overrun a limit by the turns already running, because the check happens at turn boundaries only.
+- **Scopes (rule 14, s7).** Built: `project`, `task`, `run`, `agent`. A `workflow` scope is not built (a run ceiling on a `*` template covers "per run"). A budget limits USD, tokens (input + output as recorded) and/or agent turns (`agent_runs` rows). `scope_id = '*'` makes a ceiling that applies to every task, run or agent (each judged alone), optionally restricted to one project: this is the per-run ceiling of rule 12. **Wall-time ceilings** were not built here (the watchdog's per-turn 20 minute cap exists); a per-turn ceiling per level and per agent was built later (decision P112, `docs/model-routing.md` "As built: tiebreak, reservations, ceilings"). A per-run wall-clock ceiling that excludes time waiting for the human still has no definition.
+- **Accounting is a sum, not a counter.** There is no `spent_*` column: every evaluation sums `model_usage` (and `agent_runs`), so a budget can never disagree with the rows. Pre-call reservations were added later (decision P112, `budget_reservations`, `internal/budget/reserve.go`): a routed or static agent turn reserves its estimate before it starts, checked with what the turns in flight hold, so concurrent turns cannot jointly pass a limit only one fits in; the budget's own status still shows only what was spent.
 - **Cost never mixes silently.** A row's cost is `reported`, `estimated` or `unknown` (one classification, `budget.CostKindExpr`, shared with the evals). Unknown rows are counted and shown beside the dollar figure and are never priced at zero; a dollar limit only sees the known part, `costComplete=false` says so, and a token or turn limit is the exact guard for CLIs that report no cost.
 - **Events.** `budget.warning` (once, at `warnPct`, default 80%), `budget.exceeded` (once, when a finished turn takes a budget to 100%), `budget.paused` (each time a turn is held), `budget.resumed`, `budget.changed`. The text above says `budget.warn`/`budget.paused`; the brief-level names were chosen as `budget.warning`/`budget.exceeded`. Each warning, crossing and pause also posts a SYSTEM message in the task channel. The room has no budget item type, so the **Needs-you item is the engine's own approval request** (kind `approval`, title `Budget limit reached: ...`); warnings are messages and events only.
 - **Pause.** `Enforcer.Middleware` wraps every `agent_task` node: before the turn, any applicable budget at 100% returns an approval request with `Retry: true` instead of running the turn, so the run is `WAITING_HUMAN` and **the owed turn runs after the answer** (a new `RequestSpec.Retry` in `internal/workflow` restores the parked node's inbox; the engine acceptance tests still pass and one was added). The pause takes effect at the next turn boundary: a turn already running when the limit is crossed completes. Only a `human:` identity resumes: `budget.resume` optionally raises the limit of each exceeded budget (compare-and-swap, clears the fired alerts so thresholds re-arm) and answers the request; approving without raising the limit lets exactly one more turn through (the approval is consumed by that turn); rejecting fails the run with the reason. The gate reads the human's answer from the `approvals` row and refuses one whose `decided_by` is not a `human:` identity. A budget that cannot be evaluated fails closed (the turn does not start).
@@ -186,10 +186,10 @@ Built in `internal/budget` (migration `00060_budget.sql`), `internal/telemetry` 
 - **Router downshift at 80% (s7).** The router's `budget-downshift` rule and the hard-limit block read `RouteRequest.Budget`. `route.preview`, `core.EconomicsRouter` and the routing of agent turns (`internal/core/turnrouting.go`) fill it from the budget store. Agent work and review turns are routed only for an agent whose human listed the models the router may choose between (Team page), so the live downshift applies to those agents only; every other agent runs its configured model. A turn a human allowed with "one more turn" over a hard limit is routed as usual (`budget.ApprovedOverLimit`) instead of being blocked by the router.
 - **Other turns.** Room and DM replies check the budgets before a reply starts (project, the agent, and the task's in a task room; `EconomicsBudgetBlock`): an exceeded budget means no reply, and the refusal is posted in the room. The team lead's turn is checked the same way first. A budget that cannot be read refuses the turn (fail closed). The human's own chats (`chats.md`) are not budget-gated.
 - **Watchdog stage 2 (s5).** As built it does not set the task `WAITING_HUMAN` or the agent `NEEDS_ATTENTION`: the run waits on a question, the task keeps its state and the agent's presence shows Needs Attention (`state-machines.md` s5). Thresholds per node come from `watchdog.ForNode`, not from the per-template table above (`workflow-engine.md` s9).
-- **Telemetry (s10, D12).** A local SQLite sink, **off by default**, human-enabled, no OTLP exporter and no dependency. Attribute names are `internal/telemetry` constants (`drydock.*`, and `gen_ai.*` names for model, provider, token type and token counts, with input including cached tokens and cache read/write kept apart). An attribute is stored only if its key is on a closed allowlist and its value is identifier-shaped (no whitespace, at most 96 characters, nothing the secret scanner changes), so free text cannot be recorded by construction; dropped keys are counted by name, never their values. `telemetry.preview` shows what an export would contain, `telemetry.export` writes a generated-name JSON file under `<data dir>/telemetry/` and marks those rows exported. Spans are one per node execution (identity and outcome only); metrics are token usage, cost (only when a cost was reported or estimated) and node duration. LLM Wrapper calls are not instrumented. Middleware order is Watchdog, Telemetry, Budget (the core registers the watchdog first), not Telemetry first as in `workflow-engine.md` s7.
+- **Telemetry (s10, D12).** A local SQLite sink, **off by default**, human-enabled, and (since decision P113) an optional OTLP/HTTP exporter written by hand, with no new dependency (section "As built: OTLP export and the Wrapper's spans" below). Attribute names are `internal/telemetry` constants (`drydock.*`, and `gen_ai.*` names for model, provider, token type and token counts, with input including cached tokens and cache read/write kept apart). An attribute is stored only if its key is on a closed allowlist and its value is identifier-shaped (no whitespace, at most 96 characters, nothing the secret scanner changes), so free text cannot be recorded by construction; dropped keys are counted by name, never their values. `telemetry.preview` shows what an export would contain, `telemetry.export` writes a generated-name JSON file under `<data dir>/telemetry/` and marks those rows exported. Spans are one per node execution (identity and outcome only); metrics are token usage, cost (only when a cost was reported or estimated) and node duration. LLM Wrapper calls are instrumented since P113. Middleware order is Watchdog, Telemetry, Budget (the core registers the watchdog first), not Telemetry first as in `workflow-engine.md` s7.
 - **Checks (rule 10 and brief s13a).** `secrets` scans only the lines the task **added** (diff against the base, including uncommitted and untracked files) with the gitleaks-backed scanner; a finding fails the check and the output names rule, file and line only. `deps` runs `osv-scanner` as an external tool if it is on PATH (`--offline` per project); not installed gives `skipped: osv-scanner not installed`, recorded as evidence with no verdict plus a `task.check_inconclusive` event (posted in the room with status `skipped`), never a pass and never sent back to an agent. Per-project settings: secrets on, deps off by default. The JSON shape osv-scanner prints was taken from its documentation, not captured from a real run (it is not installed here).
 
-Not built: pre-call reservation and settlement, a `workflow` budget scope, wall-time ceilings, a budget item type in the room inbox, OTLP export, telemetry for Wrapper calls.
+Not built: a `workflow` budget scope, a budget item type in the room inbox. (Pre-call reservation and settlement and per-turn wall-time ceilings were built later, decision P112; OTLP export and telemetry for Wrapper calls, decision P113.)
 
 ## As built: Claude Code sessions and unattended spend (2026-10-10, decision P36)
 
@@ -366,3 +366,60 @@ uv.lock, the bounds, the curated list, and `TestAManifestCannotWriteIntoTheInstr
 `TestAWorkersInstructionsNameTheSDKVersionsTheRepositoryPins` and `TestTheRecommendationPromptNamesTheRepositorysSDKs` (both
 fail on the code before P54) and `TestARepositoryWithoutManifestsGetsNoLibrarySection`. Not verified: a real agent following
 the section (no paid turn was run), Bun's `bun.lock`, Gradle, Maven, Cargo and Ruby (not read yet).
+
+## As built: OTLP export and the Wrapper's spans (2026-10-29, decision P113)
+
+On the owner's words, answering the list of what was not built: "Proceed with those items".
+
+**OTLP export** (`internal/telemetry/otlp.go`, `otlpenc.go`; methods `telemetry.otlp.set`, `telemetry.otlp.test`, and `otlp` in
+`telemetry.status`; the Telemetry group of Settings). Off by default, as D12 and `packaging.md` (diagnostics) ask: a person gives
+a collector's endpoint and turns sending on, and telemetry itself must be on too, since only what the local sink records is sent.
+Each span and metric is offered to the exporter once it is stored, after the allowlist and the identifier rule, and the encoders
+apply the allowlist again; the local rows are therefore the log of everything sent and the preview shows what leaves. The resource
+carries `service.name` only.
+
+- **Wire.** OTLP/HTTP, protobuf (the default) or JSON, to `<endpoint>/v1/traces` and `<endpoint>/v1/metrics`. The bodies are
+  written by hand (ExportTraceServiceRequest and ExportMetricsServiceRequest with opentelemetry-proto's field numbers; JSON with hex
+  ids, 64-bit integers as strings and enums as numbers), so neither the OpenTelemetry SDK nor a protobuf module is a dependency.
+  Spans: node executions are `INTERNAL`, the Wrapper's calls `CLIENT`, an error span has status `ERROR` and every other status is
+  left unset. Each metric row is one delta point: counters are monotonic delta sums, a duration row is a histogram of one
+  observation (one bucket, with its sum, min and max).
+- **Endpoint.** `https://` anywhere; plain `http://` only to this computer (`localhost` or a loopback address), and the connection
+  itself is checked, so a name that resolves elsewhere is refused before a byte is sent. No user name, password, query or
+  fragment (the endpoint is a setting and shown). Redirects are not followed, so headers never go elsewhere.
+- **Headers** (an API key): up to eight, values in the credential store (`telemetry:otlp:header:<name>`), registered with the
+  secret scanner, never in settings, the status, a log or an event; the page shows the names only. The headers Drydock or HTTP
+  set (Content-Type, Host and the like) cannot be given.
+- **Queue and retries.** A bounded in-memory queue (2048 spans and metrics together); a full queue drops the newest and counts it.
+  Batches of 256, sent when a batch is full or every 5 seconds. A transport failure, 429, 502, 503 or 504 is retried with
+  exponential backoff (1 s doubling, 30 s at most, a longer `Retry-After` is cut to that) up to five tries; any other answer, or
+  the last failed try, drops the batch and counts it. A partial success's rejected count is kept too. The queue is not kept across
+  a restart (the rows stay in the local sink).
+- **Revoking.** Turning sending off, changing the endpoint or encoding, or turning telemetry off empties the queue and cancels a
+  send in flight; nothing more goes to the old endpoint.
+- **Status line.** Sent spans and metrics since start, waiting, dropped (queue full, not accepted, rejected), last success and the
+  last error in Drydock's own words (the collector's status code, or that it could not be reached), with header values and anything
+  the scanner recognizes taken out; last success and last error survive a restart.
+- **Send a test span.** Sends one span (`drydock.telemetry.test`, the outcome attribute only) now, without retries, whether or not
+  sending is on, after writing it to the local sink.
+
+**The Wrapper's calls** (`internal/llm/trace.go`, `internal/telemetry/llm.go`). `llm.Options.Tracer` is told about every call once
+it ends, refused ones included; the core passes the sink. The record has no field for content: purpose, provider, the models asked
+for and answering, the project, task and run, start and end, a closed error class (`error.type`: `secret_blocked`,
+`data_class_refused`, `quota`, `unavailable`, a provider error's kind, `canceled`, `timeout`), usage, cost, whether the cache
+answered and whether a fallback did. The sink makes one `drydock.llm.chat` span (in its run's trace when the call names a run) and
+`drydock.llm.duration`, token-usage and cost metrics; a refused or cached call records no tokens. New allowlisted keys:
+`drydock.llm.cache_hit`, `drydock.llm.fallback`, `error.type`.
+
+**Tests.** `internal/telemetry` (`otlp_test.go`): a local stand-in collector (a test double) decodes every request in both
+encodings and checks every attribute against the allowlist, that no prompt, code, tool output, secret or header value is in a
+body, the settings or the status, the counts against the sink's rows, backoff and `Retry-After`, drop-and-count on refusal, on
+exhausted retries, on a full queue and on a dead endpoint, revocation cutting a held request, the endpoint and header rules,
+https through a TLS stand-in, and the test span. `llm_test.go` runs the real Wrapper against a protocol fixture with the sink as
+tracer; `internal/llm/trace_test.go` checks the trace of a call, a cache hit, a refused and a streamed call; the core test
+`TestTelemetryOTLPThroughTheMethods` goes through the methods with the memory credential store.
+
+**Not verified:** a real OpenTelemetry Collector or vendor backend (the protobuf encoding is checked only against a decoder
+written from the same field numbers, so a mistake in both would not show), on Windows, and through a proxy. **Not built:**
+gzip compression of the body, exporting rows recorded before sending was turned on, content export (D12's separate opt-in),
+crash reports and usage counters as their own diagnostics categories.

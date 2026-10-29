@@ -73,7 +73,7 @@ func taskListLimit(n int) int {
 func (c *Core) Methods() map[string]Method {
 	base := map[string]Method{
 		"app.info": bind(func(ctx context.Context, _ struct{}) (any, error) {
-			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir}, nil
+			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir, "canRestart": c.cfg.Restart != nil}, nil
 		}),
 		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
 			return c.CreateProject(ctx, p.Name, p.RepoPath)

@@ -35,6 +35,7 @@ import { SteerBox } from './steer-box.tsx';
 import { TaskControls } from './task-controls.tsx';
 import { CRITERION_WORDS, criteriaWithState, statusDot, statusPill } from './task-page.ts';
 import { TaskProperties } from './task-properties.tsx';
+import { TaskTools } from './task-tools.tsx';
 import { isWaitingForTask, newestDiffId } from './tasks.ts';
 
 // the page: the work and the properties side by side, each column scrolling on its own (the bar stays on top of the work and the
@@ -327,6 +328,9 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
                 </Part>
                 <Part title="Why these models?">
                   <TaskDecisions taskId={task.id} />
+                </Part>
+                <Part title="Agent tools">
+                  <TaskTools key={task.id} taskId={task.id} />
                 </Part>
               </div>
 

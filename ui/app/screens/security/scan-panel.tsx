@@ -43,6 +43,7 @@ import {
   placeText,
   reportTarget,
   sortFindings,
+  toolsUpdateText,
   SPLIT_QUERY,
   summaryTone,
   toolLabel,
@@ -483,6 +484,16 @@ export function ScanPanel(
     if (r) await adopt(r);
   };
 
+  // Update scanners: the newest OSV-Scanner and Opengrep, installed now (the core also checks twice a day); the tiles follow
+  let updated = '';
+  const updateTools = async () => {
+    updated = '';
+    const r = await act.run('update-tools', () => s.client.securityToolsUpdate());
+    if (r) updated = toolsUpdateText(r);
+    tools.reload();
+    void handle.update();
+  };
+
   const select = (id: string) => {
     selected = id;
     void handle.update();
@@ -570,6 +581,15 @@ export function ScanPanel(
                 {title}
               </h1>
               <div mix={targetSlot}>{target}</div>
+              <Button
+                variant="ghost"
+                data-testid="update-scanners"
+                disabled={busy}
+                title="Install the newest OSV-Scanner and Opengrep now (Gitleaks is built into Drydock and updates with the app)"
+                mix={on('click', () => void updateTools())}
+              >
+                {act.busy === 'update-tools' ? 'Updating…' : 'Update scanners'}
+              </Button>
               {running ? (
                 <Button data-testid="cancel-button" disabled={busy} mix={on('click', () => void cancel())}>
                   Cancel
@@ -580,9 +600,14 @@ export function ScanPanel(
                 <kbd mix={kbdOn}>R</kbd>
               </Button>
             </header>
-            {notice || act.error || current.error || history.error || report?.storeError ? (
+            {notice || updated || act.error || current.error || history.error || report?.storeError ? (
               <div mix={padCss} style={{ paddingTop: t.s3 }}>
                 {notice}
+                {updated ? (
+                  <Notice tone="ok" role="status" testId="scanners-updated">
+                    {updated}
+                  </Notice>
+                ) : null}
                 <ErrorNote error={act.error ?? current.error ?? history.error} what="Security scan" />
                 {report?.storeError ? (
                   <Notice tone="warn" testId="scan-store-error">

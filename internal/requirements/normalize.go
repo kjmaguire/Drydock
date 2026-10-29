@@ -12,8 +12,8 @@ import (
 const (
 	FormatMarkdown = "markdown"
 	FormatText     = "text"
-	// FormatPDFText is text pasted from a PDF reader: hard-wrapped lines, page numbers and running headers. Binary PDF
-	// files are not parsed (the design does not specify conversion); paste the text instead.
+	// FormatPDFText is text pasted from a PDF reader: hard-wrapped lines, page numbers and running headers. A PDF file itself
+	// is read by Extract (decision P110), whose Markdown is added as FormatMarkdown.
 	FormatPDFText = "pdftext"
 )
 
@@ -21,7 +21,7 @@ const (
 const MaxTextBytes = 1 << 20
 
 // ErrBinary is returned for input that is not text.
-var ErrBinary = errors.New("requirements: this is not text. Binary PDF and DOCX files are not parsed; paste the text or upload Markdown")
+var ErrBinary = errors.New("requirements: this is not text. Choose a PDF or DOCX file with Choose a file, which reads its text first, or paste the text")
 
 var (
 	numberedHeading = regexp.MustCompile(`^(\d+(?:\.\d+){0,3})[.)]?\s+([A-Z][^\n]{1,100})$`)

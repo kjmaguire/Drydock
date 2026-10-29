@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/kjmaguire/drydock/internal/git"
 )
 
 // SchemaVersion is the only pack.yaml schema this build reads.
@@ -129,7 +131,8 @@ type Source struct {
 	Type       string   `yaml:"type" json:"type"`
 	URL        string   `yaml:"url,omitempty" json:"url,omitempty"`
 	URLs       []string `yaml:"urls,omitempty" json:"urls,omitempty"` // url_list
-	Path       string   `yaml:"path,omitempty" json:"path,omitempty"` // local_dir
+	Path       string   `yaml:"path,omitempty" json:"path,omitempty"` // local_dir; git_docs: the docs folder in the repository
+	Ref        string   `yaml:"ref,omitempty" json:"ref,omitempty"`   // git_docs: the branch, tag or commit
 	Follow     string   `yaml:"follow,omitempty" json:"follow,omitempty"`
 	PageFormat string   `yaml:"page_format,omitempty" json:"pageFormat,omitempty"`
 }
@@ -148,6 +151,8 @@ type Crawl struct {
 	MaxPages int `yaml:"max_pages,omitempty" json:"maxPages,omitempty"`
 	Timeout  Dur `yaml:"timeout,omitempty" json:"timeout,omitempty"`              // per request
 	Budget   Dur `yaml:"refresh_budget,omitempty" json:"refreshBudget,omitempty"` // whole refresh
+	// MaxRepoBytes bounds what one git_docs fetch may download (trees and the wanted files; default 256 MB, at most 2 GB).
+	MaxRepoBytes int64 `yaml:"max_repo_bytes,omitempty" json:"maxRepoBytes,omitempty"`
 }
 
 // Chunking mirrors ChunkOptions in manifest form.
@@ -290,6 +295,9 @@ func (m *Manifest) applyDefaults() {
 	if cr.Budget == 0 {
 		cr.Budget = Dur(30 * time.Minute)
 	}
+	if cr.MaxRepoBytes == 0 {
+		cr.MaxRepoBytes = 256 << 20
+	}
 	if m.Refresh.Mode == "" {
 		m.Refresh.Mode = "manual"
 	}
@@ -414,9 +422,25 @@ func (m *Manifest) Validate(vo ValidateOptions) error {
 				bad("%s: path contains NUL", p)
 			}
 		case SourceGitDocs:
-			bad("%s: source type git_docs is described in docs/expert-packs.md but is not built in this version", p)
+			hasURLSource = true
+			if len(s.URLs) > 0 {
+				bad("%s: git_docs takes url, ref and path", p)
+			}
+			checkURL(&errs, p+".url", s.URL, vo)
+			if !git.ValidDocsRef(s.Ref) {
+				bad("%s: ref %q must be a branch, tag or commit name", p, s.Ref)
+			}
+			if _, err := git.CleanDocsPath(s.Path); err != nil {
+				bad("%s: path %q must be a folder inside the repository", p, s.Path)
+			}
+			if s.PageFormat != "" {
+				bad("%s: git_docs takes no page_format (Markdown, MDX and text files are read by their extension)", p)
+			}
 		default:
-			bad("%s: unknown source type %q (llms_txt, sitemap, url_list, local_dir)", p, s.Type)
+			bad("%s: unknown source type %q (llms_txt, sitemap, url_list, local_dir, git_docs)", p, s.Type)
+		}
+		if s.Ref != "" && s.Type != SourceGitDocs {
+			bad("%s: ref applies to git_docs only", p)
 		}
 		switch s.Follow {
 		case "":
@@ -465,6 +489,9 @@ func (m *Manifest) Validate(vo ValidateOptions) error {
 	}
 	if cr.Budget.D() < time.Minute || cr.Budget.D() > 6*time.Hour {
 		bad("crawl.refresh_budget must be between 1m and 6h")
+	}
+	if cr.MaxRepoBytes < 1<<20 || cr.MaxRepoBytes > 2<<30 {
+		bad("crawl.max_repo_bytes must be between 1 MB and 2 GB")
 	}
 	if hasURLSource {
 		if len(cr.AllowedHosts) == 0 {

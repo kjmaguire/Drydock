@@ -13,6 +13,7 @@ import (
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/packs"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/repomap"
@@ -159,17 +160,6 @@ type mcpPlan struct {
 	Servers    []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
-// readTools are the Workspace tools every role gets: they only read, or propose what a person then decides. repo_map is among them in a build with the tree-sitter
-// parser (CGO); a build without it has no repo map and does not offer the tool (decisions D5, P62).
-var readTools = func() []string {
-	// propose_memory writes nothing an agent reads: a proposal waits for a person (P92)
-	t := []string{"propose_memory", "read_range", "search_memory", "search_requirements", "skills"}
-	if repomap.Available() {
-		t = append(t, "repo_map")
-	}
-	return t
-}()
-
 // adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the configuration can be generated but no real run has proven it, so the human may
 // choose to attach the gateway anyway (mcp.try.set). A CLI with no known mechanism (Antigravity) can never be tried.
 func adapterMCPKind(adapter string) (verified, canTry bool, why string) {
@@ -223,32 +213,56 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 		}
 	}
 	pl.Info = mcp.RunInfo{ProjectID: projectID, TaskID: taskID, AgentID: agentID, Role: role, Worktree: cwd}
-	allow := append([]string(nil), readTools...)
+	// the role's row of the project's table (docs/mcp.md section 3, decision P115); the act column only while the project lets
+	// agents act (mcp.act_tools)
+	row := policyRow(role)
+	tab := c.roleTable(ctx, projectID)
+	var packAllow packs.Allowance
 	if k := c.Knowledge(); k != nil {
-		// Packs.AllowFor lists the attached packs of this project/agent/role. Only its search_pack part is applied: the live-pack
-		// docs-server tools are called by search_pack itself through a service run, never by the agent directly.
-		if al, err := k.Packs.AllowFor(ctx, projectID, agentID, role); err == nil && al.SearchPack {
-			allow = append(allow, "search_pack")
-		}
+		packAllow, _ = k.Packs.AllowFor(ctx, projectID, agentID, role)
 	}
-	if c.actToolsEnabled(ctx, projectID) {
-		if strings.EqualFold(strings.TrimSpace(role), "reviewer") {
-			allow = append(allow, "room", "handoff")
-		} else {
-			allow = append(allow, "task", "room", "handoff")
+	var allow []string
+	for _, t := range tab.WorkspaceTools(row, c.actToolsEnabled(ctx, projectID), repomap.Available()) {
+		if t == "search_pack" && !packAllow.SearchPack {
+			continue // search_pack reads only attached packs: none attached, nothing to search
 		}
+		allow = append(allow, t)
 	}
 	sort.Strings(allow)
 	pl.Policy = mcp.RunPolicy{Allow: map[string][]string{mcp.WorkspaceServerID: allow}}
 	pl.Tools = append(append([]string(nil), allow...), mcp.ToolFetchRange)
-	// servers the human added to this project and granted to this agent (deny by default: no grant, no server)
-	if specs, grants, exposed := c.mcpServersForRun(ctx, projectID, agentID); len(specs) > 0 {
-		pl.Servers = specs
-		for id, tools := range grants {
-			pl.Policy.Allow[id] = tools
+	// servers the human added to this project and granted to this agent (deny by default: no grant, no server), as far as the
+	// role's row lets it reach that kind of server
+	columns := map[string]string{}
+	if specs, grants, _ := c.mcpServersForRun(ctx, projectID, agentID); len(specs) > 0 {
+		cols := c.serverColumns(ctx, specs)
+		for _, sp := range specs {
+			if !tab.Allowed(row, cols[sp.ID]) {
+				continue
+			}
+			columns[sp.ID] = cols[sp.ID]
+			pl.Servers = append(pl.Servers, sp)
+			pl.Policy.Allow[sp.ID] = grants[sp.ID]
 		}
-		pl.Tools = append(pl.Tools, exposed...)
 	}
+	// the docs servers of the live packs attached for this agent (docs/expert-packs.md): the pack's tool of the catalog server,
+	// through the same gateway pipeline (catalog trust and cache, egress limits, untrusted marking), under the role's row
+	c.addLivePackServers(ctx, &pl, tab, row, packAllow, columns)
+	// the project's CEL rules and the task's narrowing only take tools away, on every list and call (RunPolicy.Refuse)
+	ruleSpecs, err := c.policyRules(ctx, projectID)
+	if err != nil {
+		return no("the project's tool rules could not be read: %v", err)
+	}
+	var rules *mcp.RuleSet
+	if len(ruleSpecs) > 0 {
+		if rules, err = mcp.CompileRules(ruleSpecs); err != nil {
+			return no("the project's tool rules do not compile, so no tools are given until a person fixes them: %v", err)
+		}
+	}
+	narrow, narrowed := c.taskNarrowing(ctx, taskID)
+	pl.Policy.Refuse = toolRefuser(rules, narrow, narrowed, mcp.ToolFacts{Role: row, Adapter: adapter, Task: taskID != ""}, columns)
+	pl.Tools = append(pl.Tools, exposedTools(pl.Servers, pl.Policy.Allow)...)
+	pl.Tools = keepAllowed(pl.Policy, pl.Tools)
 	pl.Attach = true
 	return pl
 }

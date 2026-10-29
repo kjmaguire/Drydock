@@ -43,6 +43,10 @@ const baseClient = (): Partial<Client> => ({
   mcpApprovalList: async () => [],
   skillRegistries: async () => [],
   providerList: async () => [],
+  // GitHub's row opens its settings here (decision P106): its sign-in, repositories and runners
+  githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }),
+  githubProjectRepos: async () => ({ ghInstalled: true, rows: [] }),
+  runnersGet: async () => ({ kinds: [], devDrives: [], slots: [], minFreeBytes: 0, max: 8 }) as never,
 });
 
 /** Where the page sent the window: `went` the addresses it replaced (the choice), `opened` the pages it opened. */
@@ -70,10 +74,14 @@ const open = async (r: R, kind: string) => {
   await r.act(() => it.click());
   return find(r, `[data-testid="integration"][data-kind="${kind}"]`);
 };
-const statusOf = (el: Element) => el.querySelector('[data-tone]')?.textContent ?? '';
+/** A row's state as it reads: its word, or "⚠ " and the problem's name for a row whose warning sign stands in for the word. */
+const statusOf = (el: Element) => {
+  const alert = el.querySelector('[data-testid="row-alert"]');
+  return alert ? `⚠ ${alert.getAttribute('aria-label')}` : (el.querySelector('[data-tone]')?.textContent ?? '');
+};
 
 describe('Integrations: the list', () => {
-  it('lists the five services with their fixed logos and names under Services, GitHub as a link to its own page; the first opens', async () => {
+  it('lists the five services with their fixed logos and names under Services, and their servers under Agent tools; the first opens', async () => {
     const r = show({ integrationList: async () => [], mcpGallery: async () => [galleryCard({ id: 'linear', display: 'Linear', publisher: 'Linear', brand: 'linear', auth: 'oauth', integration: 'linear', tools: [] })] });
     const services = await find(r, 'nav[aria-label="All integrations"] [data-testid="list-group-services"]');
     await waitFor(() => expect(services.querySelectorAll('[data-testid="integration-row"]').length).toBe(5), r);
@@ -87,24 +95,29 @@ describe('Integrations: the list', () => {
     }
     expect(rows[3]!.querySelector('[data-brand="aikido"] path')).not.toBeNull(); // Aikido's own mark, not a lettermark
     expect(rows[0]!.textContent).toContain('Issues and projects');
-    // GitHub's row is a link to its own page (its sign-in, connection, server and CI runners)
-    expect(rows[4]!.tagName).toBe('A');
-    expect(rows[4]!.getAttribute('href')).toBe('/github');
+    // GitHub's row opens here like the others, so the list stays beside it (decision P106)
+    expect(rows[4]!.tagName).toBe('BUTTON');
     // nothing chosen: the first row's detail, which no one can rename
     const card = await find(r, '[data-testid="integration"][data-kind="linear"]');
     expect(rows[0]!.getAttribute('aria-current')).toBe('true');
     expect(card.querySelector('[data-testid="integration-name"]')!.textContent).toBe('Linear');
     expect(card.querySelector('h2')!.textContent).toContain('Linear');
     expect(Array.from(card.querySelectorAll('label')).some((l) => /name/i.test(l.textContent ?? ''))).toBe(false);
-    // the sync detail and the agents' tools of the same vendor are one detail (decision P47)
+    // app sync is the service's detail; its MCP server is its own row under Agent tools, where agent tools are looked for (P106)
     expect(r.$('[data-testid="integration-sync"]')!.contains(card)).toBe(true);
-    const agents = await find(r, '[data-testid="integration-agents"]');
+    expect(r.$('[data-testid="integration-agents"]')).toBeNull();
+    expect(card.textContent).toContain("Linear's own MCP server for agents is under Agent tools");
+    const tools = await find(r, '[data-testid="list-group-tools"]');
+    const linTools = tools.querySelector<HTMLElement>('[data-testid="integration-row"][data-key="tools-linear"]')!;
+    expect(linTools.textContent).toContain('Tools for agents');
+    expect(statusOf(linTools)).toBe('Set up');
+    await r.act(() => linTools.click());
+    const agents = await find(r, '[data-testid="integration-panel"][data-kind="tools-linear"] [data-testid="integration-agents"]');
     expect(agents.querySelector('[data-testid="connector"][data-id="linear"]')).not.toBeNull();
+    expect(r.went).toEqual(['/integrations/tools-linear']);
     expect(r.$('[data-testid="mcp-link"]')).toBeNull();
     // the API it calls, and its documentation
     expect(card.querySelector('[data-testid="api-info"]')!.textContent).toContain('2,500 requests per hour');
-    // the address is left alone until a row is chosen
-    expect(r.went).toEqual([]);
   });
 
   it('groups Services, Agent tools and Your servers; each row says its state in a word; the filters count All, On and Needs you', async () => {
@@ -118,15 +131,16 @@ describe('Integrations: the list', () => {
     });
     const nav = await find(r, 'nav[aria-label="All integrations"]');
     await waitFor(() => expect(nav.querySelectorAll('[data-testid="integration-row"]').length).toBe(10), r);
-    expect(Array.from(nav.querySelectorAll('section > h2')).map((h) => h.textContent)).toEqual(['Servicesapp sync', 'Agent toolsMCP', 'Model providersModels', 'Your serversMCP']);
+    expect(Array.from(nav.querySelectorAll('section > h2')).map((h) => h.textContent)).toEqual(['Servicesapp sync', 'Agent toolsMCP', 'Model providersModels', 'Your serversMCP', 'Backgroundevery connection']);
     const state = (key: string) => statusOf(nav.querySelector(`[data-key="${key}"]`)!);
     expect(state('linear')).toBe('On');
-    expect(state('sentry')).toBe('Key refused');
+    // a problem is a warning sign, not words that widen the list; its detail says what is wrong
+    expect(state('sentry')).toBe('⚠ Key refused');
     expect(state('notion')).toBe('Set up');
     expect(state('mslearn')).toBe('On');
     expect(state('cloudflare')).toBe('Set up');
     expect(state('server-pg')).toBe('On');
-    expect(state('server-new')).toBe('No tools yet');
+    expect(state('server-new')).toBe('Set up');
     expect(state('openrouter')).toBe('Set up');
     // a fact under the name: the projects of a service, the tools of a vendor or a server
     expect(nav.querySelector('[data-key="linear"]')!.textContent).toContain('Issues and projects · 2 projects');
@@ -138,10 +152,10 @@ describe('Integrations: the list', () => {
     expect(nav.querySelector('[data-testid="list-group-servers"] [data-testid="add-server-row"]')!.textContent).toContain('Add a server');
     // the filters and their counts; the header counts what is on
     const f = (k: string) => nav.querySelector<HTMLButtonElement>(`[data-testid="list-filter-${k}"]`)!;
-    expect([f('all').textContent, f('on').textContent, f('needs').textContent]).toEqual(['All 10', 'On 3', 'Needs you 2']);
+    expect([f('all').textContent, f('on').textContent, f('needs').textContent]).toEqual(['All 10', 'On 3', 'Needs you 1']);
     expect(r.$('header')!.textContent).toContain('Connected once for the whole workspace · 3 connected');
     await r.act(() => f('needs').click());
-    await waitFor(() => expect(Array.from(nav.querySelectorAll('[data-testid="integration-row"]')).map((x) => x.getAttribute('data-key'))).toEqual(['sentry', 'server-new']), r);
+    await waitFor(() => expect(Array.from(nav.querySelectorAll('[data-testid="integration-row"]')).map((x) => x.getAttribute('data-key'))).toEqual(['sentry']), r);
     expect(f('needs').getAttribute('aria-pressed')).toBe('true');
     await r.act(() => f('on').click());
     await waitFor(() => expect(Array.from(nav.querySelectorAll('[data-testid="integration-row"]')).map((x) => x.getAttribute('data-key'))).toEqual(['linear', 'mslearn', 'server-pg']), r);
@@ -162,6 +176,17 @@ describe('Integrations: the list', () => {
     await waitFor(() => expect(r.$('[data-testid="list-empty"]')!.textContent).toBe('Nothing needs you.'), r);
   });
 
+  it('Webhooks and sweeps has its own row under Background: Off by default, Listening once turned on, its panel at /integrations/background (decision P114)', async () => {
+    const hooks = (enabled: boolean) => ({ enabled, port: enabled ? 8787 : 0, listening: enabled, endpoints: [], queued: 0, recent: [], exposeNote: 'Drydock does not do that for you.' });
+    const r = show({ integrationList: async () => [], integrationWebhooks: async () => hooks(false), integrationSweep: async () => ({ enabled: true, everyMs: 1 }) }, 'background');
+    const bg = await find(r, '[data-testid="background-row"]');
+    await waitFor(() => expect(statusOf(bg)).toBe('Off'), r);
+    expect(r.$$('[data-testid="integration-row"][data-kind="background"]').length).toBe(0); // not counted as a service
+    expect((await find(r, '[data-testid="background-panel"]')).textContent).toContain('Drydock does not do that for you.');
+    const r2 = show({ integrationList: async () => [], integrationWebhooks: async () => hooks(true), integrationSweep: async () => ({ enabled: true, everyMs: 1 }) });
+    await waitFor(() => expect(statusOf(r2.$('[data-testid="background-row"]')!)).toBe('Listening'), r2);
+  });
+
   it('choosing a row opens its detail and puts it in the address; the address opens a row, and the page follows when it changes', async () => {
     const r = show({ integrationList: async () => [conn()], mcpGallery: async () => [galleryCard({ id: 'cfdocs', display: 'Cloudflare Documentation', publisher: 'Cloudflare', brand: 'cloudflare', group: 'Cloudflare' })] });
     await open(r, 'linear');
@@ -176,10 +201,11 @@ describe('Integrations: the list', () => {
     expect(r.$$('[data-testid="integration-panel"]').length).toBe(1);
     expect(cf.getAttribute('aria-current')).toBe('true');
     expect(r.went).toEqual(['/integrations/linear', '/integrations/cloudflare']);
-    // the arrow keys move through the rows (the GitHub link is skipped) and the address follows
+    // the arrow keys move through the rows and the address follows; GitHub's detail opens in place
     await r.act(() => cf.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })));
-    await waitFor(() => expect(r.went.at(-1)).toBe('/integrations/aikido'), r);
-    await find(r, '[data-testid="integration"][data-kind="aikido"]');
+    await waitFor(() => expect(r.went.at(-1)).toBe('/integrations/github'), r);
+    await find(r, '[data-testid="github-page"] [data-testid="gh-signin-state"]');
+    expect(r.$('nav[aria-label="All integrations"]')).not.toBeNull();
 
     // opened from the address, and following it while mounted
     cleanup();
@@ -258,7 +284,7 @@ describe('Integrations: setting a service up', () => {
     const reads = card.querySelector('[data-testid="integration-reads"]')!;
     expect(reads.querySelectorAll('li').length).toBe(3);
     expect(reads.textContent).toContain('Only the issues the credential can see, through the Linear GraphQL API');
-    expect(reads.textContent).toContain("Linear's own MCP server can be connected for agents below");
+    expect(reads.textContent).toContain("Linear's own MCP server for agents is under Agent tools");
     expect(reads.querySelector('a[data-testid="learn-more"]')!.getAttribute('href')).toBe('/guide/integrations');
   });
 
@@ -473,7 +499,7 @@ describe('Integrations: setting a service up', () => {
     expect(linear.querySelector('[data-testid="integration-no-signin"]')).toBeNull();
   });
 
-  it("GitHub without gh says so as a sentence, with the command as code and no backticks (UI audit 2026-10-26)", async () => {
+  it('GitHub (/integrations/github) opens its settings beside the list: without gh the page says so once, as a sentence with the command as code', async () => {
     const r = show(
       {
         integrationList: async () => [],
@@ -481,30 +507,32 @@ describe('Integrations: setting a service up', () => {
       },
       'github',
     );
-    const card = await find(r, '[data-testid="integration"][data-kind="github"]');
-    const status = await waitFor(() => card.querySelector('[data-testid="gh-status"]') ?? (() => { throw new Error('no gh status'); })(), r);
-    await waitFor(() => expect(status.textContent).toContain('The GitHub CLI (gh) is not installed'), r);
-    expect(status.textContent!.includes('`')).toBe(false);
-    expect(status.querySelector('code')!.textContent).toBe('gh auth login');
-    expect(card.textContent!.includes('`gh auth login`')).toBe(false);
+    const page = await find(r, '[data-testid="github-page"]');
+    expect(r.$('nav[aria-label="All integrations"] [data-key="github"]')!.getAttribute('aria-current')).toBe('true');
+    await waitFor(() => expect(page.textContent).toContain('GitHub CLI not found'), r);
+    expect(page.textContent!.includes('`')).toBe(false);
+    expect(Array.from(page.querySelectorAll('code')).some((c) => c.textContent === 'gh auth login')).toBe(true);
   });
 
-  it('GitHub (/integrations/github) offers the gh sign-in first and a Sign in with GitHub beside it; the gh state shows only for the gh way', async () => {
+  it('GitHub offers the gh sign-in first and a Sign in with GitHub beside it, and the gh state is not said twice', async () => {
     const r = show({ integrationList: async () => [], githubStatus: async () => ({ installed: true, loggedIn: true, login: 'kyle' }) }, 'github');
-    const card = await find(r, '[data-testid="integration"][data-kind="github"]');
-    await waitFor(() => expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
-    const radios = Array.from(card.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
+    const form = await find(r, '[data-testid="github-page"] [data-testid="sync-connect"]');
+    const radios = await waitFor(() => {
+      const xs = Array.from(form.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
+      if (xs.length === 0) throw new Error('no radios');
+      return xs;
+    }, r);
     expect(radios.map((x) => x.value)).toEqual(['gh', 'oauth']);
     expect(radios[0]!.checked).toBe(true);
+    // the hero above says who gh is signed in as: the form does not repeat it
+    expect(form.querySelector('[data-testid="gh-status"]')).toBeNull();
     await r.act(() => radios[1]!.click());
     const setup = await find(r, '[data-testid="oauth-app-setup"]');
     expect(setup.textContent).toContain('register one at GitHub and paste its client id here');
     expect(setup.textContent).toContain('Turn on its device flow. Scopes: repo read:org.');
-    expect(card.querySelector('[data-testid="gh-status"]')).toBeNull();
-    expect(Array.from(card.querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Use the GitHub CLI sign-in')).toBe(false);
   });
 
-  it('GitHub uses the gh sign-in: its state is shown and no token is asked for', async () => {
+  it('GitHub uses the gh sign-in: no token is asked for', async () => {
     const calls: Calls = [];
     const r = show(
       {
@@ -514,14 +542,10 @@ describe('Integrations: setting a service up', () => {
       },
       'github',
     );
-    const card = await find(r, '[data-testid="integration"][data-kind="github"]');
-    await waitFor(() => expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('gh is signed in as kyle'), r);
-    // the claim is about connecting this way only: a Sign in with GitHub does keep a token (audit L45)
-    expect(card.querySelector('[data-testid="gh-status"]')!.textContent).toContain('A connection made this way uses that sign-in and stores no GitHub token.');
-    expect(card.querySelector('input[type="password"]')).toBeNull();
-    // the detail points to the GitHub page that gathers everything about GitHub
-    expect(r.$('[data-testid="integration-panel"][data-kind="github"] [data-testid="github-page-link"]')!.getAttribute('href')).toBe('/github');
-    await r.act(() => byText(card, 'button', 'Use the GitHub CLI sign-in').click());
+    const form = await find(r, '[data-testid="github-page"] [data-testid="sync-connect"]');
+    const use = await button(r, form, 'Use the GitHub CLI sign-in');
+    expect(form.querySelector('input[type="password"]')).toBeNull();
+    await r.act(() => use.click());
     await waitFor(() => expect(calls[0]![0]).toEqual({ kind: 'github', id: undefined }), r);
   });
 
@@ -572,26 +596,35 @@ describe('Integrations: a connected service', () => {
   });
 
   it('the credential of a GitHub connection is the gh sign-in only when it was connected that way; a Sign in with GitHub keeps its token in the credential store (L45)', async () => {
+    /** GitHub's issue sync, as its Manage opens it on GitHub's detail. */
+    const manage = async (r: R) => {
+      const btn = await find(r, '[data-testid="github-page"] [data-testid="sync-manage"]');
+      await r.act(() => btn.click());
+      return (await find(r, '[data-testid="connection-identity"]')).textContent!;
+    };
     const viaGh = show({ integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'gh', hasCredential: false, assignments: [] })] }, 'github');
-    const ghCredential = (await find(viaGh, '[data-testid="connection-identity"]')).textContent!;
-    expect(ghCredential).toContain('your gh sign-in (this connection stores no GitHub token)');
+    expect(await manage(viaGh)).toContain('your gh sign-in (this connection stores no GitHub token)');
     expect(viaGh.$('[data-testid="integration-line"]')!.textContent).toBe('Not assigned to a project yet · your gh sign-in');
     cleanup();
     const viaOAuth = show(
       { integrationList: async () => [conn({ id: 'int_gh', kind: 'github', name: 'GitHub', authKind: 'oauth', hasCredential: true, identity: { account: 'kyle', method: 'Sign in with GitHub (device code)' }, assignments: [] })] },
       'github',
     );
-    const oauthCredential = (await find(viaOAuth, '[data-testid="connection-identity"]')).textContent!;
+    const oauthCredential = await manage(viaOAuth);
     expect(oauthCredential).toContain('stored in the credential store (never shown)');
     expect(oauthCredential).not.toContain('your gh sign-in');
     expect(oauthCredential).not.toContain('stores no GitHub token');
   });
 
-  it('a connection that needs you says so in its row and its header', async () => {
+  it('a connection that needs you shows a warning sign in its row, and its detail opens with what is wrong', async () => {
     const r = show({ integrationList: async () => [conn({ status: 'unauthenticated', statusDetail: 'Linear rejected the key (HTTP 401).' })] });
     const it = await row(r, 'linear');
-    await waitFor(() => expect(statusOf(it)).toBe('Key refused'), r);
+    await waitFor(() => expect(statusOf(it)).toBe('⚠ Key refused'), r);
+    // the sign is the row's last thing, with no words that widen the list
+    expect(it.querySelector('[data-tone]')).toBeNull();
+    expect(it.querySelector('[data-testid="row-alert"]')!.getAttribute('role')).toBe('img');
     const card = await open(r, 'linear');
+    expect((await find(r, '[data-testid="row-problem"]')).textContent).toBe('Key refused: Linear rejected the key (HTTP 401).');
     expect(card.querySelector('[data-testid="detail-status"]')!.textContent).toBe('Needs you');
     expect(card.querySelector('[data-testid="connection-identity"]')!.textContent).toContain('Linear rejected the key (HTTP 401).');
   });
@@ -624,10 +657,9 @@ describe('Integrations: a connected service', () => {
     expect(r.opened).toEqual(['/project/integrations', '/project/integrations']);
     expect(r.services.workspace.project?.id).toBe('prj_3');
     expect(Array.from(r.$$('[role="menuitem"]')).map((m) => m.textContent?.trim())).not.toContain(project.name);
-    // the vendor's server is one row among the connection's, with its facts closed
-    const connector = await find(r, '[data-testid="connector"][data-id="linear"]');
-    expect(connector.querySelector('[data-testid="connector-projects"]')!.textContent).toContain('In 1 project.');
-    expect(connector.querySelector('details > summary')!.textContent).toBe('Details');
+    // the vendor's server is its own row under Agent tools, not in the app sync detail
+    expect(r.$('[data-testid="connector"][data-id="linear"]')).toBeNull();
+    expect(statusOf(r.$('[data-testid="integration-row"][data-key="tools-linear"]')!)).toBe('On');
     // nothing of a project is chosen here: no scope form, no grants, no approvals
     expect(r.$('[data-testid="assignment"]')).toBeNull();
     expect(r.$('[data-testid="assign-form"]')).toBeNull();
@@ -739,7 +771,7 @@ describe('Integrations: a connected service', () => {
       integrationVerify: async () => next,
     });
     const it = await row(r, 'linear');
-    await waitFor(() => expect(statusOf(it)).toBe('Check failed'), r);
+    await waitFor(() => expect(statusOf(it)).toBe('⚠ Check failed'), r);
     expect(r.$('[data-testid="list-filter-needs"]')!.textContent).toBe('Needs you 1');
     const card = await open(r, 'linear');
     expect(card.querySelector('[data-testid="integration-verified"]')!.textContent).toContain('did not pass: Linear did not pass the check');
@@ -821,7 +853,7 @@ describe('Integrations: OpenRouter, a model provider (decision P103)', () => {
     const panel = await find(r, '[data-testid="openrouter-panel"][data-set-up="true"]');
     expect(Array.from(panel.querySelectorAll('[data-testid="openrouter-provider"] [data-part="label"]')).map((x) => x.textContent)).toEqual(['My router']);
     expect(panel.querySelector('form')).toBeNull();
-    await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('Down'), r);
+    await waitFor(() => expect(statusOf(r.$('[data-testid="integration-row"][data-kind="openrouter"]')!)).toBe('⚠ Down'), r);
     expect(r.$('[data-testid="list-filter-needs"]')!.textContent).toBe('Needs you 1');
   });
 
@@ -857,7 +889,7 @@ describe('Integrations: OpenRouter, a model provider (decision P103)', () => {
   it('when the providers cannot be read the row does not say Set up, the list says why, and the panel does not guess', async () => {
     const r = show({ integrationList: async () => [], providerList: async () => Promise.reject(new Error('core busy')) }, 'openrouter');
     const it = await row(r, 'openrouter');
-    expect(statusOf(it)).toBe('Not known');
+    expect(statusOf(it)).toBe('⚠ Not known');
     await waitFor(() => expect(document.body.textContent).toContain('core busy'), r);
     const panel = await find(r, '[data-testid="openrouter-panel"]');
     expect(panel.hasAttribute('data-set-up')).toBe(false);

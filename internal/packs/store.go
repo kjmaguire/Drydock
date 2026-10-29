@@ -433,11 +433,13 @@ type VersionInfo struct {
 	Digest    *Digest   `json:"digest,omitempty"`
 	Summary   string    `json:"summary,omitempty"`
 	Pinned    bool      `json:"pinned,omitempty"`
+	// Sources is the commit each git_docs source was read at ("sources[0]": "<commit>").
+	Sources map[string]string `json:"sources,omitempty"`
 }
 
 // Versions lists a pack's versions, newest first, with their changed-pages digests.
 func (s *Store) Versions(ctx context.Context, packID string) ([]VersionInfo, error) {
-	rows, err := s.o.DB.Reader().QueryContext(ctx, `SELECT v.version,v.seq,v.created_at,v.pages,v.chunks,v.added,v.changed,v.removed,v.skipped,v.failed,v.digest,v.summary,
+	rows, err := s.o.DB.Reader().QueryContext(ctx, `SELECT v.version,v.seq,v.created_at,v.pages,v.chunks,v.added,v.changed,v.removed,v.skipped,v.failed,v.digest,v.summary,v.sources,
 		EXISTS(SELECT 1 FROM pack_pins n WHERE n.pack_id=v.pack_id AND n.version=v.version) FROM pack_versions v WHERE v.pack_id=? ORDER BY v.seq DESC`, packID)
 	if err != nil {
 		return nil, err
@@ -447,9 +449,12 @@ func (s *Store) Versions(ctx context.Context, packID string) ([]VersionInfo, err
 	for rows.Next() {
 		var v VersionInfo
 		var created int64
-		var digest string
-		if err := rows.Scan(&v.Version, &v.Seq, &created, &v.Pages, &v.Chunks, &v.Added, &v.Changed, &v.Removed, &v.Skipped, &v.Failed, &digest, &v.Summary, &v.Pinned); err != nil {
+		var digest, sources string
+		if err := rows.Scan(&v.Version, &v.Seq, &created, &v.Pages, &v.Chunks, &v.Added, &v.Changed, &v.Removed, &v.Skipped, &v.Failed, &digest, &v.Summary, &sources, &v.Pinned); err != nil {
 			return nil, err
+		}
+		if json.Unmarshal([]byte(sources), &v.Sources) != nil || len(v.Sources) == 0 {
+			v.Sources = nil
 		}
 		v.CreatedAt = time.UnixMilli(created).UTC()
 		var d Digest

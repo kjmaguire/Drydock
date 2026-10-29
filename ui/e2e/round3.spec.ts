@@ -62,6 +62,15 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await choose(page.getByLabel('Run kind'), 'room_reply');
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
+  // the tiebreak is off and no turn has a wall-time limit until the person sets one (P112); a limit set is read back
+  const limits = page.getByTestId('route-limits');
+  await expect(limits.getByLabel(/Ask the cheap model when the rules leave a tie/)).not.toBeChecked();
+  await expect(limits.getByTestId('limits-now')).toHaveText('No limit is set.');
+  await limits.getByLabel('Balanced (minutes)').fill('45');
+  await limits.getByRole('button', { name: 'Save limits' }).click();
+  await expect(limits.getByTestId('limits-now')).toHaveText('Set: Balanced 45 min.');
+  await page.reload();
+  await expect(page.getByTestId('route-limits').getByLabel('Balanced (minutes)')).toHaveValue('45');
 
   // telemetry: off by default, local only, a preview of what an export holds
   await workspaceNav(page, 'nav-settings');
@@ -78,6 +87,17 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(tel.getByTestId('telemetry-status')).toHaveAttribute('data-tone', 'ok');
   await tel.getByRole('button', { name: 'Turn telemetry off' }).click();
   await expect(tel.getByRole('button', { name: 'Turn telemetry on' })).toBeVisible();
+  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core
+  const otlp = tel.getByTestId('otlp');
+  await expect(otlp.getByTestId('otlp-status')).toContainText('Not sending: sending is off.');
+  await expect(otlp.getByRole('button', { name: 'Send a test span' })).toBeDisabled();
+  await otlp.getByLabel('Endpoint (OTLP/HTTP)').fill('http://192.0.2.7:4318');
+  await otlp.getByRole('button', { name: 'Save endpoint' }).click();
+  await expect(otlp).toContainText('plain http is allowed only to this computer');
+  await otlp.getByLabel('Endpoint (OTLP/HTTP)').fill('http://127.0.0.1:4318');
+  await otlp.getByRole('button', { name: 'Save endpoint' }).click();
+  await expect(otlp.getByRole('button', { name: 'Send a test span' })).toBeEnabled();
+  await expect(otlp.getByTestId('otlp-status')).toContainText('Not sending: sending is off.');
 
   // project settings: checks and the development flow
   await projectNav(page, 'nav-project');

@@ -83,10 +83,6 @@ const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
     { label: 'Memory', href: routes.memory.href(), testId: 'nav-memory', on: ['memory'] },
     { label: 'Repo map', href: routes.repoMap.href(), testId: 'nav-repo-map', on: ['repo-map'] },
   ],
-  library: [
-    { label: 'Agent templates', href: routes.library.href(), testId: 'nav-library-home', on: ['library'] },
-    { label: 'Skills', href: routes.librarySkills.href(), testId: 'nav-library-skills', on: ['library-skills'] },
-  ],
 };
 
 /** The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. */

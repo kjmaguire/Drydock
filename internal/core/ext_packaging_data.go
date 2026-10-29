@@ -252,6 +252,9 @@ func (p *packaging) bundleInputs(ctx context.Context, r bundleReq) (supportbundl
 	c := p.c
 	in := supportbundle.Inputs{AppVersion: AppVersion, Build: AppBuild, OS: runtime.GOOS + "/" + runtime.GOARCH, OSVersion: supportbundle.OSVersion(),
 		InstallScope: InstallScope, DiskPath: c.cfg.DataDir}
+	if c.cfg.WebView2Version != nil {
+		in.WebView2 = c.cfg.WebView2Version()
+	}
 	in.SchemaVersion, _ = c.DB.SchemaVersion(ctx)
 	in.Tools = p.toolVersions(ctx)
 	for _, cn := range c.Connections.DetectAll(ctx) {

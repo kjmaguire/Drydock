@@ -1,6 +1,7 @@
 # Antigravity (`agy`), the official Google binary the user installed and logged into (decision D2), behind an acknowledgement gate.
-# The transport is UNVERIFIED: there is no agy binary in the evidence environment and no captured stream-json fixtures, so
-# Drydock detects it and shows it but its adapter refuses to start sessions ("not implemented: no captured protocol fixtures").
+# The transport is UNVERIFIED: there is no agy binary in the evidence environment and no captured stream-json fixtures. Its
+# adapter (internal/agents/headless, decision P115) drives the documented headless mode below, tested against a stand-in
+# written from the documentation (headless/fakeagy), never against a real agy.
 meta: {schema: 1, id: antigravity, display_name: Antigravity CLI, kind: agent_cli, license: proprietary, tier: premium, run_modes: [native]}
 binaries: {native: [agy.exe]}
 install:

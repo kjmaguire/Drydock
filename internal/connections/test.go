@@ -255,7 +255,11 @@ func (t *tester) run(ctx context.Context) Report {
 			return t.finish(conn)
 		default:
 		}
-		t.step("T2", "Start and handshake", StepPass, "", "the process started and stayed alive; this transport announces its init event with the first prompt, so the handshake itself is confirmed by T3")
+		if ss.PID() <= 0 { // a custom CLI's runner starts one process per turn (decision P115)
+			t.step("T2", "Start and handshake", StepPass, "", "the program was found; this CLI runs one process per turn, so the first prompt (T3) is what starts it")
+		} else {
+			t.step("T2", "Start and handshake", StepPass, "", "the process started and stayed alive; this transport announces its init event with the first prompt, so the handshake itself is confirmed by T3")
+		}
 	}
 
 	// T3: one tiny prompt, opt-in

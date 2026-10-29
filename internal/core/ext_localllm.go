@@ -28,6 +28,7 @@ import (
 const (
 	settingLocal      = "local:settings"
 	defaultLocalPort  = 9933 // one above llama.cpp's own default, so a llama-server a person runs by hand keeps its port
+	defaultEmbedPort  = 9934 // the embedding server's (decision P111), beside the chat server's
 	localProviderName = "Models on this PC"
 	// oldLocalProviderName is the name earlier versions gave the provider row; renameProvider moves it to localProviderName
 	// (decision P95: the page never names llama.cpp)
@@ -41,9 +42,16 @@ type LocalSettings struct {
 	CacheType   string           `json:"cacheType"`   // q8_0 (default) | q4_0 | f16 | turbo4 | turbo3 (fork only)
 	ContextSize int              `json:"contextSize"` // 0: the model's own
 	Port        int              `json:"port"`
-	ModelID     string           `json:"modelId"`    // the model the server serves (the last one started)
+	ModelID     string           `json:"modelId"`    // the model the server serves (the last one started; the first of Loaded)
 	ProviderID  string           `json:"providerId"` // the provider row the server is registered as
 	Autostart   bool             `json:"autostart"`  // start the server with Drydock when a model was served before
+	// Loaded are the models the server keeps loaded (decision P111): more than one runs llama-server's router mode.
+	Loaded []string `json:"loaded,omitempty"`
+	// Drafts is the draft model a person chose for a model (speculative decoding), by the model's id.
+	Drafts map[string]string `json:"drafts,omitempty"`
+	// EmbeddingModel is the embedding model served last, on its own server at EmbeddingPort.
+	EmbeddingModel string `json:"embeddingModel,omitempty"`
+	EmbeddingPort  int    `json:"embeddingPort"`
 }
 
 // LocalJob is an install or a download in progress, or how the last one ended.
@@ -58,6 +66,8 @@ type LocalJob struct {
 	Error   string    `json:"error,omitempty"`
 	Started time.Time `json:"started"`
 	Ended   time.Time `json:"ended,omitempty"`
+	// Licence is the gated model's page on Hugging Face, where its licence is accepted, when the Hub refused the download for it.
+	Licence string `json:"licence,omitempty"`
 }
 
 // LocalRuntime is the build on this PC.
@@ -97,6 +107,27 @@ type LocalView struct {
 	UsedBy []LocalUser `json:"usedBy"`
 	// Served is the memory the served model takes, for the memory bar: set while the server starts or runs (decision P97).
 	Served *LocalServed `json:"served,omitempty"`
+	// Load is what several models loaded at once may take (decision P111), Embed the embedding model's server, HFToken the
+	// person's Hugging Face token as the page shows it.
+	Load    LocalLoad            `json:"load"`
+	Embed   localllm.ServerState `json:"embed"`
+	HFToken LocalToken           `json:"hfToken"`
+}
+
+// LocalLoad is the room for the models the server keeps loaded: at most Max of them, together within BudgetBytes (the free
+// memory of the GPU with the most, or three quarters of the free RAM; 0 when nothing could be measured), LoadedBytes taken by
+// the ones loaded now (each model's LoadBytes).
+type LocalLoad struct {
+	Max         int    `json:"max"`
+	BudgetBytes uint64 `json:"budgetBytes"`
+	LoadedBytes uint64 `json:"loadedBytes"`
+}
+
+// LocalToken is the Hugging Face token as the page shows it: whether there is one, and its first three and last four
+// characters. The token itself never leaves the core.
+type LocalToken struct {
+	Set    bool   `json:"set"`
+	Masked string `json:"masked,omitempty"`
 }
 
 // LocalUser is an agent that uses the models on this PC.
@@ -115,6 +146,8 @@ type LocalServed struct {
 	ModelBytes uint64           `json:"modelBytes"`
 	KVBytes    uint64           `json:"kvBytes"`
 	KV         localllm.KVCache `json:"kv"`
+	// Models are every model the server keeps loaded; ModelBytes and KVBytes are theirs together (with their drafts').
+	Models []string `json:"models,omitempty"`
 	// Device is "gpu" or "ram"; DeviceName names the GPU.
 	Device      string       `json:"device"`
 	DeviceName  string       `json:"deviceName,omitempty"`
@@ -134,6 +167,12 @@ func init() {
 		l.m.Server.OnChange = func(st localllm.ServerState) {
 			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "server", "state": st.State})
 		}
+		l.m.Embed.OnChange = func(st localllm.ServerState) {
+			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "embeddings", "state": st.State})
+		}
+		// the Hugging Face token is read once from the credential store; the Hub asks for it at each download (decision P111)
+		l.loadToken(ctx)
+		l.m.Hub.Token = l.token
 		l.renameProvider(ctx)
 		wctx, stopWatch := context.WithCancel(context.Background())
 		l.stopWatch = stopWatch
@@ -195,13 +234,43 @@ func init() {
 			}) (any, error) {
 				return l.removeModel(ctx, p.ID, c.Human())
 			}),
+			// one model (modelId), or the models to keep loaded together (modelIds; decision P111)
 			"local.server.start": bind(func(ctx context.Context, p struct {
-				ModelID string `json:"modelId"`
+				ModelID  string   `json:"modelId"`
+				ModelIDs []string `json:"modelIds"`
 			}) (any, error) {
-				return l.startServer(ctx, p.ModelID, c.Human())
+				ids := p.ModelIDs
+				if len(ids) == 0 && p.ModelID != "" {
+					ids = []string{p.ModelID}
+				}
+				return l.startServer(ctx, ids, c.Human())
 			}),
 			"local.server.stop": bind(func(ctx context.Context, _ struct{}) (any, error) {
 				return l.stopServer(ctx, c.Human())
+			}),
+			// a person's word on a downloaded model: whether it is an embedding model, and its draft model ("" for none)
+			"local.model.set": bind(func(ctx context.Context, p struct {
+				ID        string  `json:"id"`
+				Embedding *bool   `json:"embedding"`
+				Draft     *string `json:"draft"`
+			}) (any, error) {
+				return l.setModel(ctx, p.ID, p.Embedding, p.Draft, c.Human())
+			}),
+			"local.embeddings.start": bind(func(ctx context.Context, p struct {
+				ModelID string `json:"modelId"`
+			}) (any, error) {
+				return l.startEmbeddings(ctx, p.ModelID, c.Human())
+			}),
+			"local.embeddings.stop": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				return l.stopEmbeddings(ctx, c.Human())
+			}),
+			"local.hfToken.set": bind(func(ctx context.Context, p struct {
+				Token string `json:"token"`
+			}) (any, error) {
+				return l.setToken(ctx, p.Token, c.Human())
+			}),
+			"local.hfToken.remove": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				return l.removeToken(ctx, c.Human())
 			}),
 		}, l.close, nil
 	}})
@@ -215,6 +284,8 @@ type LocalSettingsEdit struct {
 	ContextSize *int              `json:"contextSize"`
 	Port        *int              `json:"port"`
 	Autostart   *bool             `json:"autostart"`
+	// EmbeddingPort is the embedding server's port (decision P111).
+	EmbeddingPort *int `json:"embeddingPort"`
 }
 
 type localExt struct {
@@ -235,6 +306,9 @@ type localExt struct {
 	// gguf holds each model file's header as read (under mu), kept while the file's size and time stay the same: a header
 	// with its vocabulary is megabytes, and the page reads the view often
 	gguf map[string]ggufEntry
+	// hfToken is the person's Hugging Face token (under mu), read from the credential store at start (decision P111)
+	hfToken       string
+	embedStarting bool // an embedding server start is waiting (under mu)
 }
 
 type ggufEntry struct {
@@ -262,6 +336,7 @@ func (l *localExt) close() {
 	}
 	l.mu.Unlock()
 	l.m.Server.Stop()
+	l.m.Embed.Stop()
 }
 
 func (l *localExt) changed(what string, more map[string]any) {
@@ -284,6 +359,9 @@ func (l *localExt) settings(ctx context.Context) LocalSettings {
 	}
 	if s.Port <= 0 {
 		s.Port = defaultLocalPort
+	}
+	if s.EmbeddingPort <= 0 {
+		s.EmbeddingPort = defaultEmbedPort
 	}
 	if s.CacheType == "" {
 		s.CacheType = "q8_0"
@@ -345,6 +423,15 @@ func (l *localExt) setSettings(ctx context.Context, e LocalSettingsEdit, by stri
 		}
 		s.Port = *e.Port
 	}
+	if e.EmbeddingPort != nil {
+		if *e.EmbeddingPort < 1024 || *e.EmbeddingPort > 65535 {
+			return LocalView{}, errors.New("the port must be between 1024 and 65535")
+		}
+		s.EmbeddingPort = *e.EmbeddingPort
+	}
+	if (e.Port != nil || e.EmbeddingPort != nil) && s.Port == s.EmbeddingPort {
+		return LocalView{}, errors.New("the embedding server needs a port of its own")
+	}
 	if e.Autostart != nil {
 		s.Autostart = *e.Autostart
 	}
@@ -387,22 +474,9 @@ func (l *localExt) view(ctx context.Context) LocalView {
 		v.Runtime.Devices.Devices = []localllm.Device{}
 	}
 	v.Models = l.m.Store.List()
-	// a model's fit counts its KV cache at the settings the next start uses; the served one's at the settings it runs with
-	cache, ctxSize := l.launchCache(s), s.ContextSize
-	for i := range v.Models {
-		c, n := cache, ctxSize
-		if v.Server.ModelID == v.Models[i].ID && (v.Server.State == "running" || v.Server.State == "starting") {
-			c, n = v.Server.CacheType, v.Server.ContextSize
-		}
-		kv := l.kvOf(v.Models[i], n, c)
-		v.Models[i].KV = &kv
-		f := localllm.FitWithKV(v.Models[i].Size, &kv, v.Runtime.Devices, v.Memory)
-		v.Models[i].Fit = &f
-		v.ModelsBytes += v.Models[i].Size
-		if v.Server.ModelID == v.Models[i].ID && (v.Server.State == "running" || v.Server.State == "starting") {
-			v.Served = servedOf(v.Models[i], kv, f, v.Runtime.Devices, v.Memory)
-		}
-	}
+	v.Embed = l.m.Embed.State()
+	l.fillModels(&v, s)
+	v.HFToken = l.tokenView()
 	v.UsedBy = l.usedBy(ctx, s.ProviderID)
 	if free, err := runners.FreeBytes(l.m.Root); err == nil {
 		v.FreeBytes = free
@@ -540,14 +614,24 @@ func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend 
 	// the server runs the build about to be replaced: it is stopped, and started again on the build installed (or, when the
 	// install fails, on the one still in place), so an update does not take the provider down
 	if st := l.m.Server.State(); st.State == "running" || st.State == "starting" {
-		model, auto := st.ModelID, st.Autostarted
-		if model == "" {
-			model = l.settings(ctx).ModelID
+		models, auto := append([]string{}, st.Models...), st.Autostarted
+		if len(models) == 0 && st.ModelID != "" {
+			models = []string{st.ModelID}
 		}
 		l.m.Server.Stop()
 		defer func() {
-			if err := l.serve(context.Background(), model, auto); err != nil {
+			if err := l.serve(context.Background(), models, auto); err != nil {
 				l.c.logf("local models: starting the server again after the install: %v", err)
+			}
+		}()
+	}
+	// the embedding server too (decision P111)
+	if st := l.m.Embed.State(); st.State == "running" || st.State == "starting" {
+		model, auto := st.ModelID, st.Autostarted
+		l.m.Embed.Stop()
+		defer func() {
+			if err := l.serveEmbeddings(context.Background(), model, auto); err != nil {
+				l.c.logf("local models: starting the embedding server again after the install: %v", err)
 			}
 		}()
 	}
@@ -583,6 +667,7 @@ func (l *localExt) removeRuntime(ctx context.Context, by string) (LocalView, err
 		return LocalView{}, errors.New("an install is running")
 	}
 	l.m.Server.Stop()
+	l.m.Embed.Stop()
 	if err := l.m.Runtime.Remove(); err != nil {
 		return LocalView{}, err
 	}
@@ -633,6 +718,13 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 	if v == nil {
 		return LocalView{}, fmt.Errorf("%s has no file named %s", repo, variant)
 	}
+	// a gated model without a token is said so before anything is fetched (decision P111): where to accept its licence, and
+	// that the token goes on this page
+	if l.token() == "" {
+		if info, err := l.m.Hub.Info(ctx, repo); err == nil && info.Gated != "" {
+			return LocalView{}, &localllm.GatedError{Repo: repo}
+		}
+	}
 	id := localllm.ModelID(repo, variant)
 	if free, err := runners.FreeBytes(l.m.Root); err == nil {
 		if err := roomFor(id, v.Size, free); err != nil {
@@ -679,6 +771,10 @@ func (l *localExt) runDownload(ctx context.Context, repo string, v localllm.Vari
 		return
 	}
 	d.job.Ended = time.Now().UTC()
+	var gated *localllm.GatedError
+	if errors.As(err, &gated) {
+		d.job.Licence = localllm.LicenceURL(repo)
+	}
 	switch {
 	case err == nil:
 		d.job.State = "done"
@@ -717,8 +813,17 @@ func (l *localExt) removeModel(ctx context.Context, id string, by string) (Local
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may remove a model")
 	}
-	if st := l.m.Server.State(); st.ModelID == id && (st.State == "running" || st.State == "starting") {
+	st, s0 := l.m.Server.State(), l.settings(ctx)
+	if st.Serves(id) {
 		return LocalView{}, fmt.Errorf("%s is being served: stop the server first", id)
+	}
+	if l.m.Embed.State().Serves(id) {
+		return LocalView{}, fmt.Errorf("%s is being served for embeddings: stop it first", id)
+	}
+	for target, draft := range s0.Drafts {
+		if draft == id && st.Serves(target) {
+			return LocalView{}, fmt.Errorf("%s drafts for %s, which is being served: stop the server first", id, target)
+		}
 	}
 	l.mu.Lock()
 	if d, ok := l.downloads[id]; ok {
@@ -731,30 +836,31 @@ func (l *localExt) removeModel(ctx context.Context, id string, by string) (Local
 	if err := l.m.Store.Remove(id); err != nil {
 		return LocalView{}, err
 	}
+	// the settings forget it: as the model served last, among the models kept loaded, as a draft and as the embedding model
 	s := l.settings(ctx)
-	if s.ModelID == id {
-		s.ModelID = ""
+	if forgetModel(&s, id) {
 		_ = l.save(ctx, s)
 	}
 	l.changed("models", map[string]any{"id": id})
 	return l.view(ctx), nil
 }
 
-// startServer serves a downloaded model: it waits for the model to load, then makes sure the provider row exists and reads
-// its catalog, so the model is routable at once.
-func (l *localExt) startServer(ctx context.Context, modelID string, by string) (LocalView, error) {
+// startServer serves downloaded models (one, or several kept loaded together): it waits for them to load, then makes sure the
+// provider row exists and reads its catalog, so each model is routable at once.
+func (l *localExt) startServer(ctx context.Context, modelIDs []string, by string) (LocalView, error) {
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may start the local model server")
 	}
-	if err := l.serve(ctx, modelID, false); err != nil {
+	if err := l.serve(ctx, modelIDs, false); err != nil {
 		return LocalView{}, err
 	}
 	return l.view(ctx), nil
 }
 
-// serve starts the server on a model; auto says Drydock started it by itself (autostart, or again after an install of a server
-// it had started so), not a person.
-func (l *localExt) serve(ctx context.Context, modelID string, auto bool) error {
+// serve starts the server on models (none: the ones kept loaded last time); auto says Drydock started it by itself (autostart,
+// or again after an install of a server it had started so), not a person. Several models run llama-server's router mode, and
+// are refused when there are more than it keeps or they do not fit this PC's memory together (decision P111).
+func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) error {
 	// the load outlives the request that asked for it: a page reload or a closed window while a large model loads must not
 	// kill the server (installs and downloads are detached the same way), and the provider row is written after the load
 	ctx = context.WithoutCancel(ctx)
@@ -763,10 +869,21 @@ func (l *localExt) serve(ctx context.Context, modelID string, auto bool) error {
 		return errors.New("no llama.cpp build is installed: install one first")
 	}
 	s := l.settings(ctx)
-	if modelID == "" {
-		modelID = s.ModelID
+	if len(modelIDs) == 0 {
+		modelIDs = s.Loaded
 	}
-	m, err := l.m.Store.Get(modelID)
+	if len(modelIDs) == 0 && s.ModelID != "" {
+		modelIDs = []string{s.ModelID}
+	}
+	if len(modelIDs) == 0 {
+		return errors.New("no model to serve: download one first")
+	}
+	src, _ := localllm.SourceByID(in.Source)
+	cache := s.CacheType
+	if !src.CacheType(cache) {
+		cache = src.CacheTypes[0]
+	}
+	plan, err := l.plan(ctx, in, s, modelIDs, cache)
 	if err != nil {
 		return err
 	}
@@ -782,20 +899,20 @@ func (l *localExt) serve(ctx context.Context, modelID string, auto bool) error {
 		l.starting = false
 		l.mu.Unlock()
 	}()
-	src, _ := localllm.SourceByID(in.Source)
-	cache := s.CacheType
-	if !src.CacheType(cache) {
-		cache = src.CacheTypes[0]
-	}
 	prog, args := l.m.ServerProgram(in)
 	// a new key for every start: the server demands it, and only the provider row made for it holds it (audit 2026-10-16, L32)
 	key := localllm.NewAPIKey()
-	launch := localllm.Launch{Program: prog, Args: args, Model: m, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key,
-		Autostarted: auto}
+	launch := localllm.Launch{Program: prog, Args: args, Model: plan.models[0], Drafts: plan.drafts, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize,
+		LogDir: l.m.LogDir(), APIKey: key, Autostarted: auto}
+	if len(plan.models) > 1 {
+		launch.Models, launch.PresetFile, launch.CacheDir = plan.models, l.m.PresetFile(), l.m.RouterCache()
+	}
 	if err := l.m.Server.Start(ctx, launch); err != nil {
 		return err
 	}
-	s.ModelID = modelID
+	// the settings are read again: a person may have changed one while the models loaded
+	s = l.settings(ctx)
+	s.ModelID, s.Loaded = modelIDs[0], append([]string{}, modelIDs...)
 	if id, err := l.ensureProvider(ctx, s, key); err != nil {
 		l.c.logf("local models: provider: %v", err)
 	} else {
@@ -808,7 +925,7 @@ func (l *localExt) serve(ctx context.Context, modelID string, auto bool) error {
 	if err := l.save(ctx, s); err != nil {
 		return err
 	}
-	l.changed("server", map[string]any{"state": "running", "modelId": modelID})
+	l.changed("server", map[string]any{"state": "running", "modelId": modelIDs[0], "models": modelIDs})
 	return nil
 }
 
@@ -880,20 +997,29 @@ func (l *localExt) stopServer(ctx context.Context, by string) (LocalView, error)
 	return l.view(ctx), nil
 }
 
-// autostart serves the model served last time, when the person left that on.
+// autostart serves the models served last time (and the embedding model), when the person left that on.
 func (l *localExt) autostart(ctx context.Context) {
 	s := l.settings(ctx)
-	if !s.Autostart || s.ModelID == "" || !l.m.Supported() {
+	if !s.Autostart || (s.ModelID == "" && len(s.Loaded) == 0 && s.EmbeddingModel == "") || !l.m.Supported() {
 		return
 	}
 	if _, ok := l.m.Runtime.Installed(); !ok {
 		return
 	}
-	safe.Go("core.localExt.autostart", func() {
-		if err := l.serve(context.Background(), s.ModelID, true); err != nil {
-			l.c.logf("local models: autostart: %v", err)
-		}
-	})
+	if s.ModelID != "" || len(s.Loaded) > 0 {
+		safe.Go("core.localExt.autostart", func() {
+			if err := l.serve(context.Background(), nil, true); err != nil {
+				l.c.logf("local models: autostart: %v", err)
+			}
+		})
+	}
+	if s.EmbeddingModel != "" {
+		safe.Go("core.localExt.autostart.embeddings", func() {
+			if err := l.serveEmbeddings(context.Background(), s.EmbeddingModel, true); err != nil {
+				l.c.logf("local models: autostart of the embedding server: %v", err)
+			}
+		})
+	}
 }
 
 // seedBundled installs, in the background, the llama.cpp build the download carries (decision P77, on the owner's words: "I

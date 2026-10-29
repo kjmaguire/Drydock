@@ -179,6 +179,10 @@ export interface DecisionRow {
   /** null = price unknown, never zero */
   estCostUsd: number | null;
   escalatedFrom?: string;
+  /** why Drydock stopped the turn (a wall-time ceiling, P112) */
+  stopReason?: string;
+  /** what an LLM tiebreak did between tied candidates (P112) */
+  tiebreak?: string;
   outcome?: RoutingOutcome;
 }
 export interface RouteAlternative {
@@ -203,7 +207,27 @@ export interface RoutingDecision {
   PoliciesApplied?: string[] | null;
   Alternatives?: RouteAlternative[] | null;
   DecidedBy: string;
-  Facts?: { Tier?: string; DataClass?: string; QuotaRemainingPct?: number; BudgetPctUsed?: number; BudgetDownshift?: boolean; NextEscalation?: string };
+  Facts?: {
+    Tier?: string;
+    DataClass?: string;
+    QuotaRemainingPct?: number;
+    BudgetPctUsed?: number;
+    BudgetDownshift?: boolean;
+    NextEscalation?: string;
+    Tiebreak?: RouteTiebreak | null;
+    Stopped?: string;
+  };
+}
+/** The LLM tiebreak of a decision (router.TiebreakRecord, P112). */
+export interface RouteTiebreak {
+  between: string[];
+  ranked: string;
+  chose: string;
+  by?: string;
+  why?: string;
+  failed?: string;
+  /** a dry run: a real decision would ask */
+  dryRun?: boolean;
 }
 export interface RouteExplain {
   text: string;
@@ -217,6 +241,39 @@ export interface RoutePreview {
   explain?: string;
   budget?: unknown;
   recorded?: boolean;
+  /** the wall-time ceiling a turn of this level runs under, when one is set (P112) */
+  ceilingSeconds?: number;
+}
+/** route.settings.get (P112): the LLM tiebreak and the wall-time ceilings of a turn. */
+export interface RouteSettings {
+  tiebreak: {
+    enabled: boolean;
+    budgetUsd: number;
+    timeoutMs: number;
+    margin?: number;
+    /** provider/model a tiebreak calls now; absent when no cheap model is selected (modelNote says why) */
+    model?: string;
+    modelNote?: string;
+    spentTodayUsd: number;
+    callsToday: number;
+  };
+  /** seconds; a level or agent left out has no ceiling */
+  ceilings: { levels: Record<string, number>; agents: Record<string, number> };
+  /** the level agent turns run at today */
+  level: string;
+  agents: { id: string; name: string; project: string }[];
+}
+export interface RouteSettingsPatch {
+  tiebreak?: { enabled?: boolean; budgetUsd?: number; timeoutMs?: number };
+  ceilings?: { levels?: Record<string, number>; agents?: Record<string, number> };
+}
+/** A model a provider refused for want of data retention (P112). */
+export interface RetentionBlock {
+  providerId: string;
+  model: string;
+  source: string;
+  message: string;
+  seenAt: number;
 }
 export interface CheapSelection {
   providerId: string;
@@ -275,6 +332,41 @@ export interface TelemetryStatus {
   droppedAttributeKeys: Record<string, number> | null;
   destination: string;
   networkExporter: boolean;
+  /** The OTLP exporter (decision P113); absent when it did not start. */
+  otlp?: TelemetryOtlpStatus;
+}
+/** Where telemetry is sent over OTLP/HTTP. Header values are in the credential store and never come back. */
+export interface TelemetryOtlpStatus {
+  enabled: boolean;
+  endpoint: string;
+  encoding: 'protobuf' | 'json';
+  headers: string[] | null;
+  changedBy?: string;
+  /** On, with an endpoint, and telemetry records: spans and metrics are being sent. */
+  active: boolean;
+  queued: number;
+  queueSize: number;
+  sentSpans: number;
+  sentMetrics: number;
+  droppedOverflow: number;
+  droppedFailed: number;
+  rejected: number;
+  lastSuccessAt?: number;
+  lastError?: string;
+  lastErrorAt?: number;
+  canKeepHeaders: boolean;
+}
+export interface TelemetryOtlpChange {
+  enabled?: boolean;
+  endpoint?: string;
+  encoding?: 'protobuf' | 'json';
+  setHeaders?: Record<string, string>;
+  removeHeaders?: string[];
+}
+export interface TelemetryOtlpTest {
+  ok: boolean;
+  error?: string;
+  status: TelemetryOtlpStatus;
 }
 export interface TelemetryDocument {
   schema: string;
@@ -312,13 +404,26 @@ export interface Pack {
   manifestDrift?: boolean;
   nextRefreshAt?: string;
   attribution?: string;
-  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string }[] } | null;
+  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[] } | null;
+}
+/** One of a pack's own files (a pack made from files keeps them in packs/<id>/files). */
+export interface PackFile {
+  name: string;
+  size: number;
+  modified: string;
+}
+/** A file a person gives a pack. */
+export interface PackUpload {
+  name: string;
+  data: Uint8Array;
 }
 export interface PackCitation {
   pack: string;
   version: string;
   url: string;
   headingPath: string;
+  /** The PDF page the passage is on; absent for sources without pages. */
+  page?: number;
   chunkId?: number;
   fetchedAt?: string;
   contentHash: string;
@@ -347,7 +452,8 @@ export interface PackConsult {
   found: boolean;
   answer: string;
   citations: PackCitation[] | null;
-  sources: { n: number; citation: PackCitation; excerpt: string }[] | null;
+  /** used: the model's answer drew on this source (none is marked when no model wrote the answer). */
+  sources: { n: number; citation: PackCitation; excerpt: string; used?: boolean }[] | null;
   confidence: string;
   sourceAgeDays: number;
   route: string;
@@ -371,6 +477,8 @@ export interface PackRefreshResult {
   reasons?: Record<string, number>;
   quarantined: number;
   redactions: number;
+  /** The commit each git_docs source was read at ("sources[0]"). */
+  sources?: Record<string, string>;
 }
 export interface QuarantinedChunk {
   chunkId: number;
@@ -1027,6 +1135,10 @@ export interface ExternalItem {
   importedAt?: number;
   gone: boolean;
   warnings?: string[] | null;
+  /** A Notion data source row's typed properties (decision P114), by name. */
+  properties?: Record<string, { type: string; text: string }> | null;
+  /** The vendor's state of a linked item maps to a task status the task is not in: offered to the person, never applied by itself. */
+  statusSuggestion?: { upstream: string; to: string; taskStatus: string } | null;
 }
 export interface ExternalItemDetail extends ExternalItem {
   body: string;
@@ -1088,6 +1200,101 @@ export interface Outbox {
   receipt?: string;
   error?: string;
   version: number;
+  /** The auto-approve class it went out under (decision P114); absent: a person approved it, or it waits for one. */
+  autoClass?: string;
+  /** The reference of a comment, so a retry looks for it on the vendor first. */
+  marker?: string;
+}
+// --- integrations, decision P114: webhooks, mappings, auto-approve classes, the weekly sweep, attachments ---
+export interface WebhookEndpoint {
+  kind: string;
+  label: string;
+  path: string;
+  /** http://127.0.0.1:<port><path>: what the person's own tunnel forwards to. */
+  url?: string;
+  integrationId?: string;
+  hasSecret: boolean;
+  /** What the secret is called at the vendor (never its value). */
+  secret: string;
+  header: string;
+  where: string;
+}
+export interface WebhookStatus {
+  enabled: boolean;
+  port: number;
+  listening: boolean;
+  error?: string;
+  address?: string;
+  endpoints: WebhookEndpoint[] | null;
+  queued: number;
+  recent: { kind: string; receivedAt: number; outcome: string; externalId?: string }[] | null;
+  /** The token Notion sent when a subscription was created: the person pastes it into Notion and chooses Use this token. */
+  notionVerification?: { token: string; receivedAt: number } | null;
+  exposeNote: string;
+}
+export interface IntegrationMapping {
+  assignmentId?: string;
+  scope?: string;
+  /** The vendor's state (status) or the Drydock field (property: state, priority, assignee, labels). */
+  remote: string;
+  remoteName?: string;
+  /** The task status (status) or the Notion property name (property). */
+  local: string;
+  direction?: string;
+  createdBy?: string;
+  created?: number;
+}
+export interface MappingField {
+  name: string;
+  type?: string;
+  options?: string[] | null;
+  /** The Notion property a status option belongs to. */
+  property?: string;
+}
+export interface AutoApproveClass {
+  integrationId: string;
+  projectId: string;
+  class: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  updated?: number;
+  /** 0: never set. */
+  version: number;
+}
+export interface SweepSettings {
+  enabled: boolean;
+  everyMs: number;
+}
+export interface IntegrationAttachment {
+  id: string;
+  itemId: string;
+  integrationId: string;
+  externalId: string;
+  name: string;
+  mime: string;
+  size: number;
+  url?: string;
+  downloadable: boolean;
+  sha256?: string;
+  textKept: boolean;
+  redactions: number;
+  risk: number;
+  listedAt: number;
+  downloadedAt?: number;
+  downloadedBy?: string;
+  untrusted: boolean;
+}
+export interface AttachmentText {
+  id: string;
+  itemId: string;
+  name: string;
+  text: string;
+  redactions: number;
+  risk: number;
+  untrusted: boolean;
 }
 export interface ProposeReq {
   integrationId: string;

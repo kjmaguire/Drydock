@@ -10,7 +10,10 @@ import type { McpApproval, McpLibraryServer } from '../../api/mcpClient.ts';
 import type { AdapterInfo, Project } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import type { Handle } from 'remix/component';
+import { query, services, watch } from '../../state/services.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
+import { NewChatDialog } from './new-chat-dialog.tsx';
 
 afterEach(cleanup);
 
@@ -123,8 +126,14 @@ function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean 
     ...client,
   });
   s.workspace.start();
-  if (props.newChat) s.ui.requestNewChat();
-  const r = mount(<ChatsScreen id={props.id} onNavigate={() => {}} />, s);
+  // the new chat dialog as Home's Options opens it (the Chats screen's New chat makes a chat at once, decision P107)
+  function Dialog(handle: Handle) {
+    const svc = services(handle);
+    watch(handle, svc.workspace);
+    const adapters = query(handle, { load: () => svc.client.adapterList() });
+    return () => <NewChatDialog open onClose={() => {}} projects={svc.workspace.projectList} projectId="prj_1" adapters={adapters.data} onCreated={() => {}} />;
+  }
+  const r = mount(props.newChat ? <Dialog /> : <ChatsScreen id={props.id} onNavigate={() => {}} />, s);
   return { s, r };
 }
 

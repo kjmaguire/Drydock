@@ -1,21 +1,22 @@
 // The Chats section (docs/chats.md, decisions P29, P97): the human's own conversations with an agent CLI (Claude Code by
 // default). A list column on the left (search, pinned first, the current project's chats or all of them) and the open
-// conversation on the right. It opens with or without a project: a chat may have none. Ctrl+N (outside a field) starts a
-// new chat.
+// conversation on the right. It opens with or without a project: a chat may have none. New chat (and Ctrl+N outside a field,
+// and the palette's New chat) starts one at once, in no project, and opens it: its agent CLI, model, effort and permission mode
+// are chosen in the chat itself, and Move to a project puts it in one (decision P107).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { MessagesSquare, Plus } from 'lucide';
 import { routes } from '../../routes.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
-import { Empty } from '../../ui/feedback.tsx';
+import { Empty, ErrorNote } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChatList, isNewChatKey } from './chat-list.tsx';
 import { ChatView } from './chat-view.tsx';
-import { NewChatDialog } from './new-chat-dialog.tsx';
 
 const screenCss = css({ position: 'relative', display: 'flex', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
 const scrimCss = css({ position: 'absolute', inset: '0', zIndex: '29', border: '0', borderRadius: '0', padding: '0', minHeight: '0', background: 'color-mix(in srgb, black 25%, transparent)', cursor: 'default' });
+const errorCss = css({ position: 'absolute', left: t.s4, right: t.s4, bottom: t.s4, zIndex: '30', maxWidth: '560px', margin: '0 auto' });
 const emptyCss = css({ flex: '1', minWidth: '0', display: 'grid', placeItems: 'center', '& kbd': { margin: '0 2px' } });
 
 export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: string) => void }>) {
@@ -23,42 +24,45 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
   watch(handle, s.workspace);
   watch(handle, s.ui); // the palette's New chat (s.ui.requestNewChat)
   const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
-  let dialog = false;
-
-  const open = () => {
-    dialog = true;
+  // New chat: made at once, in no project, with the agent CLI's own defaults, and opened; one at a time (a second press while
+  // the first is being made would make two)
+  let starting = false;
+  let startError: Error | undefined;
+  const open = async () => {
+    if (starting) return;
+    starting = true;
+    startError = undefined;
     void handle.update();
+    try {
+      const c = await s.client.chatCreate({});
+      const href = routes.chat.href({ id: c.id });
+      if (handle.props.onNavigate) handle.props.onNavigate(href);
+      else void navigate(href).catch(() => {});
+    } catch (e) {
+      startError = e instanceof Error ? e : new Error(String(e));
+    } finally {
+      starting = false;
+      if (!handle.signal.aborted) void handle.update();
+    }
   };
-  // the dialog is not in the URL: closing it leaves the chat (or the list) behind it as it was
-  const close = () => {
-    dialog = false;
-    void handle.update();
-  };
-  // Ctrl+N: the new chat dialog (WebView2 would open a new window: the app keeps the key)
+  // Ctrl+N: a new chat (WebView2 would open a new window: the app keeps the key)
   window.addEventListener(
     'keydown',
     (e) => {
       if (!isNewChatKey(e)) return;
       e.preventDefault();
-      open();
+      void open();
     },
     { signal: handle.signal },
   );
-  const created = (chatId: string) => {
-    dialog = false;
-    void handle.update();
-    const href = routes.chat.href({ id: chatId });
-    if (handle.props.onNavigate) handle.props.onNavigate(href);
-    else void navigate(href).catch(() => {});
-  };
 
   return () => {
     const { id, onNavigate } = handle.props;
-    if (s.ui.takeNewChat()) dialog = true;
+    if (s.ui.takeNewChat()) handle.queueTask(() => void open());
     const ws = s.workspace;
     // a narrow window (a Windows half-screen) shows the list or the chat, and the list over the chat when asked for
     const narrow = s.ui.narrowRails;
-    const list = (layout: 'column' | 'full' | 'drawer') => <ChatList projectId={ws.projectId} selectedId={id} onNew={open} onNavigate={onNavigate} layout={layout} />;
+    const list = (layout: 'column' | 'full' | 'drawer') => <ChatList projectId={ws.projectId} selectedId={id} onNew={() => void open()} onNavigate={onNavigate} layout={layout} />;
     return (
       <div mix={screenCss} data-testid="chats-screen">
         {!narrow ? list('column') : !id ? list('full') : null}
@@ -74,8 +78,8 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
           <div mix={emptyCss}>
             <Empty title="Chats" icon={MessagesSquare}>
               <p>Talk to Claude Code (or another agent CLI) directly. Every chat is kept with its history, continues the same session, and can be searched, forked, attached to a message or read by a later chat.</p>
-              <Button variant="primary" icon={Plus} mix={[on('click', () => open())]}>
-                New chat
+              <Button variant="primary" icon={Plus} disabled={starting} mix={[on('click', () => void open())]} data-testid="chats-empty-new">
+                {starting ? 'Starting…' : 'New chat'}
               </Button>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-faint)' }}>
                 Or press <kbd>Ctrl+N</kbd>.
@@ -83,7 +87,11 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
             </Empty>
           </div>
         )}
-        <NewChatDialog open={dialog} onClose={close} projects={ws.projectList} projectId={ws.projectId} adapters={adapters.data} adaptersError={adapters.error} onCreated={created} />
+        {startError ? (
+          <div mix={errorCss} data-testid="new-chat-error">
+            <ErrorNote error={startError} what="New chat" />
+          </div>
+        ) : null}
       </div>
     );
   };

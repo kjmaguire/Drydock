@@ -41,6 +41,10 @@ export interface Devices {
   probed: boolean;
   devices: Device[];
   error?: string;
+  /** The display adapters Windows has a driver for, whatever the program found (none off Windows). */
+  adapters?: string[];
+  /** What the program said about its backends when it listed no GPU, in its own words. */
+  note?: string;
 }
 
 export interface Memory {
@@ -82,6 +86,8 @@ export interface LocalJob {
   error?: string;
   started: string;
   ended?: string;
+  /** The gated model's page on Hugging Face, where its licence is accepted, when the Hub refused the download for it (decision P111). */
+  licence?: string;
 }
 
 /** The build on this PC. */
@@ -112,6 +118,13 @@ export interface LocalSettings {
   modelId: string;
   providerId: string;
   autostart: boolean;
+  /** The models the server keeps loaded (decision P111): more than one runs the router. */
+  loaded?: string[];
+  /** A model's draft model, by the model's id. */
+  drafts?: Record<string, string>;
+  /** The embedding model served last, on its own server at embeddingPort. */
+  embeddingModel?: string;
+  embeddingPort?: number;
 }
 
 /** The settings a person changes; a field left out stays as it is. */
@@ -122,6 +135,7 @@ export interface LocalSettingsEdit {
   contextSize?: number;
   port?: number;
   autostart?: boolean;
+  embeddingPort?: number;
 }
 
 /** A model repository on the Hub. */
@@ -131,6 +145,8 @@ export interface Repo {
   likes: number;
   updated: string;
   tags?: string[];
+  /** "auto" or "manual" when the Hub shares the files only with an account that accepted the licence (decision P111). */
+  gated?: string;
 }
 
 export interface File {
@@ -147,6 +163,8 @@ export interface Variant {
   quant?: string;
   fit?: Fit;
   notes?: string[];
+  /** The multimodal projector (mmproj) downloaded with the variant, so the model reads images (decision P111). */
+  projector?: File;
 }
 
 /** A model on this PC: a repository's variant, downloaded and checked. */
@@ -161,6 +179,15 @@ export interface LocalModel {
   fit?: Fit;
   /** The KV cache at the settings the next start uses (for the served model: the ones it runs with). */
   kv?: KVCache;
+  /** Its projector (it reads images), decision P111. */
+  projector?: string;
+  /** An embedding model: served on its own, never for chat. */
+  embedding?: boolean;
+  /** The downloaded models that can draft for it, and the one chosen. */
+  drafts?: string[];
+  draft?: string;
+  /** What it takes loaded: its files, its KV cache and its draft's. */
+  loadBytes?: number;
 }
 
 export interface ServerState {
@@ -176,6 +203,10 @@ export interface ServerState {
   /** What it was started with (contextSize 0 or absent: the model's own). */
   cacheType?: string;
   contextSize?: number;
+  /** Every model it keeps loaded (modelId is the first); router: llama-server's router mode; embeddings: the embedding server. */
+  models?: string[];
+  router?: boolean;
+  embeddings?: boolean;
 }
 
 /** An agent, of any project, whose provider is the server's provider row. */
@@ -189,6 +220,8 @@ export interface LocalUser {
 /** The served model's memory, for the memory bar (decision P97). deviceFree is what the device probe read, before the model loaded as a rule. */
 export interface LocalServed {
   modelId: string;
+  /** Every model loaded; modelBytes and kvBytes are theirs together. */
+  models?: string[];
   modelBytes: number;
   /** 0 when kv.known is false. */
   kvBytes: number;
@@ -221,6 +254,24 @@ export interface LocalView {
   usedBy?: LocalUser[];
   /** Set while the server starts or runs. */
   served?: LocalServed;
+  /** The room for models loaded together (decision P111): at most max, within budgetBytes (0: not measured). */
+  load?: LocalLoad;
+  /** The embedding model's server. */
+  embed?: ServerState;
+  /** The Hugging Face token as the page shows it (the token itself never leaves the core). */
+  hfToken?: LocalToken;
+}
+
+export interface LocalLoad {
+  max: number;
+  budgetBytes: number;
+  loadedBytes: number;
+}
+
+export interface LocalToken {
+  set: boolean;
+  /** "hf_…1234" */
+  masked?: string;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
@@ -231,7 +282,11 @@ const view = (v: LocalView): LocalView => ({
   runtime: { ...v.runtime, devices: { ...(v.runtime?.devices ?? { probed: false }), devices: arr(v.runtime?.devices?.devices) } },
   sources: arr(v.sources).map((s) => ({ ...s, cacheTypes: arr(s.cacheTypes) })),
   backends: arr(v.backends),
-  models: arr(v.models).map((m) => ({ ...m, files: arr(m.files) })),
+  models: arr(v.models).map((m) => ({ ...m, files: arr(m.files), drafts: arr(m.drafts) })),
+  server: { ...v.server, models: arr(v.server?.models) },
+  embed: { state: 'stopped', ...(v.embed ?? {}), models: arr(v.embed?.models) },
+  load: v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 },
+  hfToken: v.hfToken ?? { set: false },
   downloads: arr(v.downloads),
   log: arr(v.log),
   usedBy: arr(v.usedBy),
@@ -260,7 +315,17 @@ export interface LocalClient {
   localModelRemove(id: string): Promise<LocalView>;
   /** Serves a downloaded model and registers the server as a provider. */
   localServerStart(modelId: string): Promise<LocalView>;
+  /** Keeps these models loaded together (the router when there are several; refused past the memory or the cap). */
+  localServerStartMany(modelIds: string[]): Promise<LocalView>;
   localServerStop(): Promise<LocalView>;
+  /** Marks a model as an embedding model (or not), or picks its draft model ('' for none). */
+  localModelSet(id: string, e: { embedding?: boolean; draft?: string }): Promise<LocalView>;
+  /** Serves an embedding model on its own server. */
+  localEmbeddingsStart(modelId: string): Promise<LocalView>;
+  localEmbeddingsStop(): Promise<LocalView>;
+  /** Keeps a Hugging Face token in the credential store, for gated models. */
+  localHfTokenSet(token: string): Promise<LocalView>;
+  localHfTokenRemove(): Promise<LocalView>;
 }
 
 export function createLocalClient(t: Transport): LocalClient {
@@ -277,6 +342,12 @@ export function createLocalClient(t: Transport): LocalClient {
     localModelDownloadCancel: async (id) => view(await t.call<LocalView>('local.model.download.cancel', { id })),
     localModelRemove: async (id) => view(await t.call<LocalView>('local.model.remove', { id })),
     localServerStart: async (modelId) => view(await t.call<LocalView>('local.server.start', { modelId })),
+    localServerStartMany: async (modelIds) => view(await t.call<LocalView>('local.server.start', { modelIds })),
     localServerStop: async () => view(await t.call<LocalView>('local.server.stop')),
+    localModelSet: async (id, e) => view(await t.call<LocalView>('local.model.set', { id, ...e })),
+    localEmbeddingsStart: async (modelId) => view(await t.call<LocalView>('local.embeddings.start', { modelId })),
+    localEmbeddingsStop: async () => view(await t.call<LocalView>('local.embeddings.stop')),
+    localHfTokenSet: async (token) => view(await t.call<LocalView>('local.hfToken.set', { token })),
+    localHfTokenRemove: async () => view(await t.call<LocalView>('local.hfToken.remove')),
   };
 }

@@ -15,8 +15,9 @@ query-filters:
   - exclude:
       id: go/disabled-certificate-check
   # go/unvalidated-url-redirection flags an authorization server that redirects to the redirect_uri it is sent, which is what the
-  # protocol has it do. The product issues no redirect: the two in the Go code are in the stand-ins for authorization servers that
-  # the tests talk to (internal/integrations/itfixture, internal/mcp/oauthfake), and no build of the product contains them. A test
-  # fails if any other non-test Go file issues a redirect.
+  # protocol has it do. The product issues no redirect: the ones in the Go code are in the stand-ins for authorization servers that
+  # the tests talk to (internal/integrations/itfixture, internal/mcp/oauthfake) and in the Hugging Face Hub stand-in, which sends a
+  # download to its CDN stand-in as the Hub does (internal/localllm/llamatest, decision P111); no build of the product contains
+  # them. A test fails if any other non-test Go file issues a redirect.
   - exclude:
       id: go/unvalidated-url-redirection

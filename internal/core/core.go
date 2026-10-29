@@ -96,6 +96,11 @@ type Config struct {
 	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
 	// it (the browser harness) the page uses the browser's own link.
 	OpenURL func(ctx context.Context, rawURL string) error
+	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
+	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
+	Restart func(ctx context.Context) error
+	// WebView2Version is the WebView2 runtime the window runs on, for the support bundle; the desktop app sets it.
+	WebView2Version func() string
 	// DevDrives lists this computer's Dev Drives, or says why none was found, for the project folder's hint (decision P58) and
 	// the CI runners' Windows folder (decision P56). Default: runners.DevDrives on Windows (asked once, no administrator rights
 	// needed), none elsewhere; tests and the e2e harness set a labelled stand-in.

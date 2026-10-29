@@ -7,7 +7,7 @@ Scope: this document is the security design for Drydock v1 (Windows-only desktop
 1. All AI-generated actions and all retrieved content are untrusted (brief §16). Retrieved content is data, never instructions, and can never change permissions or answer approvals.
 2. Be honest about enforcement strength. Drydock hard-enforces only what Drydock itself executes or mediates. Everything an agent CLI does inside its own process is **cooperative** (we ask, the CLI may comply) unless an OS-level control (section 14) is in place. The UI must never imply a sandbox that does not exist.
 3. Fail closed: unparseable command, unresolvable path, unknown provider policy, missing consent, scanner error: deny or ask, never allow.
-4. No cloud component and no automatic upload of source (brief §0). Telemetry export is optional, off by default and never carries prompts, code, tool output or secrets (brief §10, D12).
+4. No cloud component and no automatic upload of source (brief §0). Telemetry export is optional, off by default and never carries prompts, code, tool output or secrets (brief §10, D12); since P113 it can be sent over OTLP to an endpoint the person gives (https, or plain http only to this computer), with any header value kept in the credential store.
 5. Humans answer approvals. No message from an agent, tool, MCP server, GitHub, or integration can produce an `APPROVAL`.
 
 ## 2. Threat model

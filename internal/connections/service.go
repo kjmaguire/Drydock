@@ -112,6 +112,19 @@ func (s *Service) Acknowledge(gateID string) {
 	s.mu.Unlock()
 }
 
+// Forget drops an acknowledgement (a person's own CLI was removed: adding one with that id again asks again).
+func (s *Service) Forget(gateID string) {
+	s.mu.Lock()
+	cp := map[string]bool{}
+	for k, v := range s.opts.Acked {
+		if k != gateID {
+			cp[k] = v
+		}
+	}
+	s.opts.Acked = cp
+	s.mu.Unlock()
+}
+
 // RecordTest stores the outcome of a Test connection so a failure degrades the Connection until the next passing Test.
 func (s *Service) RecordTest(id string, r Report) {
 	s.mu.Lock()

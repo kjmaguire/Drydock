@@ -1,12 +1,15 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
+import type { Handle } from 'remix/component';
 import type { Client } from '../../api/client.ts';
 import type { Chat, ChatHit, ChatListItem, ChatMessage } from '../../api/chatClient.ts';
 import type { AdapterInfo, Connection, Project } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, optionsOf, testServices, type, typeKeys, valueOf, waitFor } from '../../test/render.tsx';
 import { lic } from '../../test/fixtures.ts';
 import { CommandPalette } from '../../shell/palette.tsx';
+import { query, services, watch } from '../../state/services.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
+import { NewChatDialog } from './new-chat-dialog.tsx';
 import { RETRY_TEXT } from './chats.ts';
 import { OTHER_MODEL } from '../shared/model-field.tsx';
 import { VirtualList } from '../../ui/virtual-list.tsx';
@@ -95,6 +98,26 @@ function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean;
   return { s, r, navigated };
 }
 
+/**
+ * The new chat dialog on its own, as Home's Options opens it (decision P107: the Chats screen's New chat makes a chat at once).
+ * `projectId` is the project it starts on.
+ */
+function dialogSetup(client: Partial<Client>, projectId = 'prj_1') {
+  const { s } = setup({ chatList: async () => [], ...client });
+  cleanup();
+  const navigated: string[] = [];
+  function Host(handle: Handle) {
+    const svc = services(handle);
+    watch(handle, svc.workspace);
+    const adapters = query(handle, { load: () => svc.client.adapterList() });
+    return () => (
+      <NewChatDialog open onClose={() => {}} projects={svc.workspace.projectList} projectId={projectId} adapters={adapters.data} adaptersError={adapters.error} onCreated={(id) => void navigated.push(`/chats/${id}`)} />
+    );
+  }
+  const r = mount(<Host />, s);
+  return { s, r, navigated };
+}
+
 const rows = (r: R) => $$(r, '[data-testid="chat-row"]');
 const rowTitles = (r: R) => rows(r).map((e) => e.querySelector('.title > span')!.textContent);
 const messages = (r: R) => $$(r, '[data-testid="chat-message"]');
@@ -116,7 +139,7 @@ async function pickMenu(r: R, rowTitle: string, label: string) {
 }
 
 describe('Chats list', () => {
-  it('shows the current project by default, pinned first, and every chat with All chats', async () => {
+  it('shows every chat by default, pinned first, a chat with no project too; the project pill narrows it (P107)', async () => {
     const calls: unknown[] = [];
     const { r } = setup({
       chatList: async (p) => {
@@ -125,15 +148,15 @@ describe('Chats list', () => {
         return p?.projectId ? all : [...all, item({ id: 'c4', title: 'No project chat', projectId: '' })];
       },
     });
+    await waitFor(() => expect(rowTitles(r)).toContain('No project chat'), r);
+    expect((calls[calls.length - 1] as { projectId: string }).projectId).toBe('');
+    expect(byText(r.container, 'button', 'All chats').getAttribute('aria-pressed')).toBe('true');
+    await r.act(() => byText(r.container, 'button', 'gocalc').click());
     await waitFor(() => expect(rowTitles(r)).toEqual(['Pinned one', 'Older', 'Running']), r);
     expect((calls[calls.length - 1] as { projectId: string }).projectId).toBe('prj_1');
     expect(rows(r)[0]!.getAttribute('data-pinned')).toBe('true');
     expect(rows(r)[2]!.querySelector('[data-testid="chat-running"]')).not.toBeNull();
     expect(rows(r)[2]!.querySelector('a')!.getAttribute('aria-label')).toBe('Running, running');
-    await r.act(() => byText(r.container, 'button', 'All chats').click());
-    await waitFor(() => expect(rowTitles(r)).toContain('No project chat'), r);
-    expect((calls[calls.length - 1] as { projectId: string }).projectId).toBe('');
-    expect(byText(r.container, 'button', 'All chats').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('shows the open chat on top when the project filter would hide it (UI review P1-4)', async () => {
@@ -145,6 +168,9 @@ describe('Chats list', () => {
       },
       { id: 'chat_home' },
     );
+    // the list starts on every chat; narrowed to the project, the open chat stays in view on top
+    await waitFor(() => expect(rowTitles(r)).toEqual(['Project chat', 'Started from Home']), r);
+    await r.act(() => byText(r.container, 'button', 'gocalc').click());
     const open = await waitFor(() => must$(r, '[data-testid="chat-list-open"]'), r);
     expect(open.textContent).toContain('Started from Home');
     expect(open.previousElementSibling!.textContent).toBe('Open, not in a project');
@@ -321,10 +347,45 @@ describe('Chats list', () => {
   });
 });
 
-describe('New chat dialog', () => {
+describe('New chat (decision P107)', () => {
+  it('makes a chat at once, in no project, with the CLI defaults, and opens it: no dialog first', async () => {
+    const created: unknown[] = [];
+    const { r, navigated } = setup({ chatCreate: async (p) => (created.push(p), chat({ id: 'c_new', projectId: '' })) });
+    const btn = await waitFor(() => must$(r, '[data-testid="chat-new"]'), r);
+    await r.act(() => btn.click());
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
+    expect(created).toEqual([{}]);
+    expect(doc$$('dialog[open]')).toHaveLength(0);
+  });
+
+  it("the palette's New chat over an open chat makes one and opens it, once", async () => {
+    const created: unknown[] = [];
+    const { r, s, navigated } = setup(
+      { chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }), chatCreate: async (p) => (created.push(p), chat({ id: 'c_new' })) },
+      { id: 'chat_a' },
+    );
+    await waitFor(() => expect(messages(r)).toHaveLength(1), r);
+    await r.act(() => s.ui.requestNewChat()); // the screen is already open
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
+    // asked once, made once: a later render makes no other
+    await r.act(() => s.ui.setTheme('dark'));
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(created).toHaveLength(1);
+  });
+
+  it('says why a chat could not be made, and stays where it was', async () => {
+    const { r, navigated } = setup({ chatCreate: async () => Promise.reject(new Error('the adapter claude has unacknowledged gates')) });
+    const btn = await waitFor(() => must$(r, '[data-testid="chat-new"]'), r);
+    await r.act(() => btn.click());
+    await waitFor(() => expect(must$(r, '[data-testid="new-chat-error"]').textContent).toContain('unacknowledged gates'), r);
+    expect(navigated).toEqual([]);
+  });
+});
+
+describe('New chat dialog (Home\'s Options)', () => {
   it('defaults to the current project and Claude Code, lists missing CLIs disabled with the reason', async () => {
     const created: unknown[] = [];
-    const { r, navigated } = setup({ chatCreate: async (p) => (created.push(p), chat({ id: 'c_new' })) }, { newChat: true });
+    const { r, navigated } = dialogSetup({ chatCreate: async (p) => (created.push(p), chat({ id: 'c_new' })) });
     const dlg = await waitFor(newChatDialog, r);
     const project = byLabel<HTMLElement>(dlg, 'Project');
     await waitFor(() => expect(valueOf(project)).toBe('prj_1'), r);
@@ -347,25 +408,10 @@ describe('New chat dialog', () => {
     await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
   });
 
-  it("the palette's New chat over an open chat keeps it: cancelling leaves it as it was, with no navigation", async () => {
-    const { r, s, navigated } = setup({ chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }) }, { id: 'chat_a' });
-    await waitFor(() => expect(messages(r)).toHaveLength(1), r);
-    expect(doc$$('dialog[open]')).toHaveLength(0);
-    await r.act(() => s.ui.requestNewChat()); // the screen is already open
-    const dlg = await waitFor(newChatDialog, r);
-    expect(messages(r)).toHaveLength(1); // the conversation stays mounted behind the dialog
-    await r.act(() => byText(dlg, 'button', 'Cancel').click());
-    await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
-    expect(navigated).toEqual([]);
-    expect(messages(r)).toHaveLength(1);
-    // asked once, opened once: a later render does not reopen it
-    await r.act(() => s.ui.setTheme('dark'));
-    expect(doc$$('dialog[open]')).toHaveLength(0);
-  });
 
   it('without a project sends the folder to the core, which decides, and shows its refusal', async () => {
     const created: { cwd?: string }[] = [];
-    const { r, navigated } = setup(
+    const { r, navigated } = dialogSetup(
       {
         chatCreate: async (p) => {
           created.push(p);
@@ -373,7 +419,6 @@ describe('New chat dialog', () => {
           return chat({ id: 'c_np', projectId: '' });
         },
       },
-      { newChat: true },
     );
     const dlg = await waitFor(newChatDialog, r);
     await waitFor(() => expect(valueOf(byLabel(dlg, 'Project'))).toBe('prj_1'), r);
@@ -393,7 +438,7 @@ describe('New chat dialog', () => {
   });
 
   it('warns clearly when a permission mode that skips approvals is picked', async () => {
-    const { r } = setup({}, { newChat: true });
+    const { r } = dialogSetup({});
     const dlg = await waitFor(newChatDialog, r);
     const mode = await waitFor(() => byLabel<HTMLElement>(dlg, 'Permission mode'), r);
     await waitFor(() => expect(valueOf(mode)).toBe('default'), r);
@@ -412,13 +457,12 @@ describe('New chat dialog', () => {
     const claudeWSL: AdapterInfo = { ...claude, capabilities: { ...claude.capabilities, runModes: ['native', 'wsl'] } };
     const conn = (distro: string, over: Partial<Connection> = {}) =>
       ({ adapter: 'claude', key: `claude@wsl:${distro}`, runMode: 'wsl', distro, installed: true, status: 'ready', usable: true, version: '2.1.296', platform: 'linux (WSL 2)', ...over }) as Connection;
-    const { r, navigated } = setup(
+    const { r, navigated } = dialogSetup(
       {
         adapterList: async () => [claudeWSL, gemini, cline],
         connectionList: async () => [conn('Ubuntu'), conn('Debian', { status: 'unauthenticated', usable: false })],
         chatCreate: async (p) => (created.push(p), chat({ id: 'c_wsl', projectId: '', wslDistro: 'Ubuntu' })),
       },
-      { newChat: true },
     );
     const dlg = await waitFor(newChatDialog, r);
     await waitFor(() => expect(valueOf(byLabel(dlg, 'Project'))).toBe('prj_1'), r);
@@ -495,7 +539,7 @@ describe('New chat dialog', () => {
   });
 
   it('shows the error the core gave', async () => {
-    const { r } = setup({ chatCreate: async () => Promise.reject(new Error('the adapter claude has unacknowledged gates')) }, { newChat: true });
+    const { r } = dialogSetup({ chatCreate: async () => Promise.reject(new Error('the adapter claude has unacknowledged gates')) });
     const dlg = await waitFor(newChatDialog, r);
     await waitFor(() => expect(valueOf(byLabel(dlg, 'Agent CLI'))).toBe('claude'), r);
     await r.act(() => byText(dlg, 'button', 'Start chat').click());
@@ -508,12 +552,28 @@ describe('Conversation', () => {
     return setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: msgs, hasMore }), ...client }, { id: c.id });
   }
 
+  it('a chat that chose no model names the one Claude Code reported and its default effort, not "default" (P107)', async () => {
+    const { r } = conv(chat({ model: '', effort: '', cliModel: 'claude-opus-5-5', permissionMode: 'default' }), [msg(1, 'user', 'hi')]);
+    await waitFor(() => expect(messages(r)).toHaveLength(1), r);
+    const model = must$(r, '[data-testid="chip-model"]');
+    expect([model.textContent, model.getAttribute('data-default')]).toEqual(['Opus 5.5', 'true']);
+    const effort = must$(r, '[data-testid="chip-effort"]');
+    expect([effort.textContent, effort.getAttribute('data-default')]).toEqual(['medium effort', 'true']);
+    expect(must$(r, '[data-testid="chat-settings-open"]').getAttribute('title')).toContain("Opus 5.5 is the CLI's default");
+    expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Asks before commands');
+    // the settings say what "none chosen" means, by name
+    await r.act(() => must$(r, '[data-testid="chat-settings-open"]').click());
+    const form = await waitFor(() => must(doc$$('form').find((f) => f.textContent!.includes('Chat settings')), 'settings'), r);
+    expect(optionsOf(byLabel<HTMLElement>(form, 'Model'))[0]!.label).toBe('CLI default (Opus 5.5)');
+    expect(optionsOf(byLabel<HTMLElement>(form, 'Effort'))[0]!.label).toBe('default (medium)');
+  });
+
   it('shows the header: title, chips, folder, session, tokens and a cost that is never $0 when unknown', async () => {
     const { r } = conv(chat({ costUsd: null, costUnknownTurns: 2, permissionMode: 'bypassPermissions', skipsApprovals: true }), [msg(1, 'user', 'hi'), msg(2, 'assistant', 'Hello **there**')]);
     await waitFor(() => expect(messages(r)).toHaveLength(2), r);
     expect($(r, '[data-testid="chat-title"]')!.textContent).toBe('Where does Multiply go?');
     expect($(r, '[data-testid="chip-adapter"]')!.textContent).toContain('Claude Code');
-    expect($(r, '[data-testid="chip-model"]')!.textContent).toBe('sonnet');
+    expect($(r, '[data-testid="chip-model"]')!.textContent).toBe('Sonnet');
     expect($(r, '[data-testid="chip-effort"]')!.textContent).toBe('high effort');
     expect($(r, '[data-testid="chip-mode"]')!.getAttribute('data-warn')).toBe('true');
     expect($(r, '[data-testid="chip-mode"]')!.textContent).toContain('skips approvals');
@@ -842,8 +902,8 @@ describe('Conversation', () => {
     const { r } = conv(chat(), [], { chatUpdate: async (u) => (updates.push(u), chat({ ...u, skipsApprovals: u.permissionMode === 'bypassPermissions' } as Partial<Chat>)) });
     const btn = await waitFor(() => must$(r, '[data-testid="chat-settings-open"]'), r);
     expect(btn.closest('[data-testid="chat-composer"]')).not.toBeNull(); // in the composer's row
-    expect(btn.getAttribute('aria-label')).toBe('Model sonnet: chat settings');
-    expect(must$(r, '[data-testid="chip-model"]').textContent).toBe('sonnet');
+    expect(btn.getAttribute('aria-label')).toBe('Model Sonnet, high effort: chat settings');
+    expect(must$(r, '[data-testid="chip-model"]').textContent).toBe('Sonnet');
     expect(must$(r, '[data-testid="chip-effort"]').textContent).toBe('high effort');
     await r.act(() => btn.click());
     const pop = await waitFor(() => {
@@ -1296,19 +1356,20 @@ describe("The palette's New chat", () => {
     await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
   }
 
-  it('opens the dialog over the open chat, without navigating', async () => {
+  it('over the open chat makes a new chat and opens it', async () => {
     await at('/chats/chat_a', async () => {
-      const { r, s, navigated } = setup({ chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }) }, { id: 'chat_a', palette: true });
+      const { r, s, navigated } = setup(
+        { chatList: async () => [item(chat())], chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'still here')], hasMore: false }), chatCreate: async () => chat({ id: 'c_new' }) },
+        { id: 'chat_a', palette: true },
+      );
       await waitFor(() => expect(messages(r)).toHaveLength(1), r);
       await choose(r, s, 'New chat');
-      await waitFor(newChatDialog, r);
-      expect(navigated).toEqual([]);
-      expect(messages(r)).toHaveLength(1);
+      await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
       expect(s.ui.paletteOpen).toBe(false);
     });
   });
 
-  it('from another screen goes to Chats, which opens the dialog', async () => {
+  it('from another screen goes to Chats, which makes the chat and opens it', async () => {
     await at('/tasks', async () => {
       const s = testServices({
         projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
@@ -1316,6 +1377,7 @@ describe("The palette's New chat", () => {
         appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
         adapterList: async () => [claude],
         chatList: async () => [],
+        chatCreate: async () => chat({ id: 'c_new' }),
       });
       s.workspace.start();
       const navigated: string[] = [];
@@ -1324,7 +1386,7 @@ describe("The palette's New chat", () => {
       await waitFor(() => expect(navigated).toEqual(['/chats']), pal);
       // the route renders the Chats screen, which takes the request
       const r = mount(<ChatsScreen onNavigate={(h) => void navigated.push(h)} />, s);
-      await waitFor(newChatDialog, r);
+      await waitFor(() => expect(navigated).toEqual(['/chats', '/chats/c_new']), r);
     });
   });
 });
@@ -1361,22 +1423,23 @@ describe('The graphite Chats screen (P97)', () => {
     expect([btn.textContent, btn.getAttribute('aria-label'), btn.getAttribute('aria-keyshortcuts'), btn.querySelector('kbd')!.textContent]).toEqual(['NewCtrl+N', 'New chat', 'Control+N', 'Ctrl+N']);
   });
 
-  it('Ctrl+N opens the new chat dialog, but not while typing in a field', async () => {
-    const { r } = setup({ chatList: async () => [item({ id: 'c1', title: 'One' })] });
+  it('Ctrl+N makes a new chat, but not while typing in a field', async () => {
+    const created: unknown[] = [];
+    const { r, navigated } = setup({ chatList: async () => [item({ id: 'c1', title: 'One' })], chatCreate: async (p) => (created.push(p), chat({ id: 'c_new' })) });
     await waitFor(() => expect(rows(r)).toHaveLength(1), r);
     // typing in the search box: Ctrl+N is the field's (and the browser's), not the screen's
     const box = byLabel(r.container, 'Search chats');
     const typed = press(box, 'n', { ctrlKey: true });
     await new Promise((ok) => setTimeout(ok, 30));
-    expect([typed.defaultPrevented, doc$$('dialog[open]').length]).toEqual([false, 0]);
+    expect([typed.defaultPrevented, created.length]).toEqual([false, 0]);
     // a plain N does nothing
     press(document.body, 'n');
     await new Promise((ok) => setTimeout(ok, 30));
-    expect(doc$$('dialog[open]')).toHaveLength(0);
+    expect(created).toHaveLength(0);
     let e: KeyboardEvent | undefined;
     await r.act(() => void (e = press(document.body, 'n', { ctrlKey: true })));
     expect(e!.defaultPrevented).toBe(true);
-    await waitFor(newChatDialog, r);
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
   });
 
   it('the header says the CLI with its state, the folder as the CLI sees it and where the chat runs, from its fields', async () => {

@@ -15,6 +15,7 @@ type Citation struct {
 	Version      string    `json:"version"`
 	URL          string    `json:"url"`
 	HeadingPath  string    `json:"headingPath"`
+	Page         int       `json:"page,omitempty"` // the PDF page the passage is on; 0 when the source has no pages
 	ChunkID      int64     `json:"chunkId,omitempty"`
 	FetchedAt    time.Time `json:"fetchedAt,omitempty"`
 	ContentHash  string    `json:"contentHash"` // sha256 of the chunk (heading path + body)
@@ -340,7 +341,7 @@ func (s *Store) queryFTS(ctx context.Context, packIDs []string, match string, li
 		args = append(args, id)
 	}
 	args = append(args, limit)
-	q := `SELECT c.id, c.pack_id, c.page_id, c.heading_path, c.body, p.url, p.fetched_at, p.content_hash, c.chunk_hash, c.version_added, pk.version,
+	q := `SELECT c.id, c.pack_id, c.page_id, c.heading_path, c.page, c.body, p.url, p.fetched_at, p.content_hash, c.chunk_hash, c.version_added, pk.version,
 		bm25(pack_chunks_fts, 4.0, 1.0) AS rank, snippet(pack_chunks_fts, 1, '[', ']', '...', 24)
 		FROM pack_chunks_fts
 		JOIN pack_chunks c ON c.id = pack_chunks_fts.rowid
@@ -360,7 +361,7 @@ func (s *Store) queryFTS(ctx context.Context, packIDs []string, match string, li
 		var pageID, fetched int64
 		var rank float64
 		var curVersion string
-		if err := rows.Scan(&h.Citation.ChunkID, &h.Citation.Pack, &pageID, &h.Citation.HeadingPath, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash,
+		if err := rows.Scan(&h.Citation.ChunkID, &h.Citation.Pack, &pageID, &h.Citation.HeadingPath, &h.Citation.Page, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash,
 			&h.Citation.ContentHash, &h.Citation.VersionAdded, &curVersion, &rank, &h.Snippet); err != nil {
 			return nil, nil, err
 		}
@@ -399,9 +400,9 @@ func (s *Store) ResolveCitation(ctx context.Context, packID, version string, chu
 	var fetched int64
 	var removed *int64
 	var added int64
-	err := s.o.DB.Reader().QueryRowContext(ctx, `SELECT c.id,c.heading_path,c.body,p.url,p.fetched_at,p.content_hash,c.chunk_hash,c.version_added,c.seq_added,c.seq_removed
+	err := s.o.DB.Reader().QueryRowContext(ctx, `SELECT c.id,c.heading_path,c.page,c.body,p.url,p.fetched_at,p.content_hash,c.chunk_hash,c.version_added,c.seq_added,c.seq_removed
 		FROM pack_chunks c JOIN pack_pages p ON p.id=c.page_id WHERE c.id=? AND c.pack_id=? AND c.quarantined=0`, chunkID, packID).
-		Scan(&h.Citation.ChunkID, &h.Citation.HeadingPath, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash, &h.Citation.ContentHash, &h.Citation.VersionAdded, &added, &removed)
+		Scan(&h.Citation.ChunkID, &h.Citation.HeadingPath, &h.Citation.Page, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash, &h.Citation.ContentHash, &h.Citation.VersionAdded, &added, &removed)
 	if err != nil {
 		return h, fmt.Errorf("%w: chunk %d of %s", ErrNotFound, chunkID, packID)
 	}

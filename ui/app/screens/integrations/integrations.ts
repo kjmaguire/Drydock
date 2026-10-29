@@ -147,11 +147,15 @@ export function verifiedText(conn: Pick<IntegrationView, 'verified'>): string {
 /** Where a row stands: working, never set up, or waiting on the person (an expired key, a failed check, a sign-in). */
 export type Bucket = 'on' | 'setup' | 'needs';
 
-/** A row's state in a word or two, with the tone of its dot ('none': the words only) and the filter it counts under. */
+/**
+ * A row's state in a word or two, with the tone of its dot ('none': the words only) and the filter it counts under. A row that
+ * needs the person shows a warning sign in the list instead of the words, and `problem` says what is wrong at the top of its detail.
+ */
 export interface RowState {
   text: string;
   tone: Tone | 'none';
   bucket: Bucket;
+  problem?: string;
 }
 
 const SETUP: RowState = { text: 'Set up', tone: 'none', bucket: 'setup' };
@@ -163,31 +167,48 @@ const CONN_WORD: Record<string, string> = { unauthenticated: 'Key refused', unre
 /** A sync state that means the import does not work: the connection's own, or one of its projects'. */
 const failingSync = (state: string | undefined): boolean => state === 'error' || state === 'forbidden' || state === 'unauthenticated';
 
-/** App sync as one word: Set up, On, or what needs the person (the key, a failed check, a failing sync), the most pressing first. */
+/** What went wrong in a sentence: the reason the core gave, after what it is about. */
+const because = (what: string, why: string | undefined): string => (why?.trim() ? `${what}: ${why.trim()}` : `${what}.`);
+
+/** App sync as one word: Set up, On, or what is wrong (the key, a failed check, a failing sync), the most pressing first. */
 export function serviceState(conn: IntegrationView | undefined): RowState {
   if (!conn) return SETUP;
-  if (conn.status !== 'ok' && conn.status !== 'untested') return { text: CONN_WORD[conn.status] ?? 'Needs you', tone: 'warn', bucket: 'needs' };
-  if (conn.verified && !conn.verified.ok) return { text: 'Check failed', tone: 'err', bucket: 'needs' };
-  if (failingSync(conn.sync?.state) || (conn.assignments ?? []).some((a) => failingSync(a.sync?.state))) return { text: 'Sync failing', tone: 'err', bucket: 'needs' };
+  if (conn.status !== 'ok' && conn.status !== 'untested') {
+    const text = CONN_WORD[conn.status] ?? 'Needs you';
+    return { text, tone: 'warn', bucket: 'needs', problem: because(text, conn.statusDetail) };
+  }
+  if (conn.verified && !conn.verified.ok) return { text: 'Check failed', tone: 'err', bucket: 'needs', problem: verifiedText(conn) };
+  const failing = [conn.sync, ...(conn.assignments ?? []).map((a) => a.sync)].find((x) => failingSync(x?.state));
+  if (failing) return { text: 'Sync failing', tone: 'err', bucket: 'needs', problem: because('The last sync failed', failing.lastError) };
   return ON;
 }
 
-const CARD_WORD: Record<string, RowState> = {
-  error: { text: 'Error', tone: 'err', bucket: 'needs' },
-  needs_token: { text: 'Needs a token', tone: 'warn', bucket: 'needs' },
-  needs_sign_in: { text: 'Needs sign-in', tone: 'warn', bucket: 'needs' },
-};
-
-/** A vendor's MCP servers as one word: the worst of what needs the person, else On when one is connected, else Set up. */
-export function cardsState(cards: readonly Pick<McpGalleryCard, 'status'>[]): RowState {
-  for (const st of ['error', 'needs_token', 'needs_sign_in']) if (cards.some((c) => c.status === st)) return CARD_WORD[st]!;
+/**
+ * A vendor's MCP servers as one word: an error first (it needs the person), else On when one is connected, else Set up. A server
+ * still waiting for its sign-in or token is set up rather than a problem: having a vendor's card does not mean the person uses it.
+ */
+export function cardsState(cards: readonly Pick<McpGalleryCard, 'status' | 'detail' | 'display'>[]): RowState {
+  const bad = cards.find((c) => c.status === 'error');
+  if (bad) return { text: 'Could not connect', tone: 'err', bucket: 'needs', problem: because(`${bad.display} could not connect`, bad.detail) };
   return cards.some((c) => c.status === 'connected') ? ON : SETUP;
 }
 
-/** A vendor's row: what needs the person on either channel (app sync first), else On when either works, else Set up. */
+/** A vendor's row: a service is its app sync (its MCP servers have a row of their own under Agent tools); else its servers. */
 export function vendorState(v: Pick<Vendor, 'kind' | 'cards'>, conn: IntegrationView | undefined): RowState {
-  const parts = [v.kind ? serviceState(conn) : undefined, v.cards.length > 0 ? cardsState(v.cards) : undefined].filter((x): x is RowState => !!x);
-  return parts.find((p) => p.bucket === 'needs') ?? parts.find((p) => p.bucket === 'on') ?? SETUP;
+  return v.kind ? serviceState(conn) : cardsState(v.cards);
+}
+
+/** The key of a service's agent tools row (/integrations/tools-linear): its MCP servers, apart from its app sync. */
+export const toolsKey = (vendor: string): string => `tools-${vendor}`;
+
+/**
+ * The rows under Agent tools: every vendor that has MCP servers. A service (Linear, Notion, Sentry, GitHub) is listed here too,
+ * under a key of its own and without its app sync, so a server connected for agents shows where agent tools are looked for.
+ */
+export function agentToolVendors(all: readonly Vendor[]): Vendor[] {
+  return all
+    .filter((v) => v.cards.length > 0)
+    .map((v) => (v.kind ? { key: toolsKey(v.key), label: v.label, logo: v.logo, blurb: 'Tools for agents', cards: v.cards, skillRegistries: v.skillRegistries } : v));
 }
 
 /**
@@ -199,18 +220,17 @@ export function providerRowState(list: readonly Pick<Provider, 'enabled' | 'stat
   const on = list.filter((p) => p.enabled);
   if (on.length === 0) return list.length > 0 ? { text: 'Disabled', tone: 'muted', bucket: 'setup' } : SETUP;
   if (on.some((p) => p.status === 'up')) return ON;
-  if (on.every((p) => p.status === 'down')) return { text: 'Down', tone: 'err', bucket: 'needs' };
-  return { text: 'Not checked', tone: 'muted', bucket: 'needs' };
+  if (on.every((p) => p.status === 'down')) return { text: 'Down', tone: 'err', bucket: 'needs', problem: 'OpenRouter did not answer its last check. Its page in Models checks it again.' };
+  return { text: 'Not checked', tone: 'none', bucket: 'setup' };
 }
 
 /** The provider list could not be read: the row says so rather than Set up (it may well be set up). */
-export const PROVIDERS_UNREAD: RowState = { text: 'Not known', tone: 'warn', bucket: 'needs' };
+export const PROVIDERS_UNREAD: RowState = { text: 'Not known', tone: 'warn', bucket: 'needs', problem: 'The model providers could not be read, so this row cannot say whether OpenRouter is set up.' };
 
-/** A server you added yourself: a failed connection first, then a missing sign-in, then tools never found. */
+/** A server you added yourself: a failed connection is a problem; one still to sign in or to find its tools is set up. */
 export function ownServerState(s: Pick<McpLibraryServer, 'lastError' | 'oauth' | 'oauthAt' | 'tools'>): RowState {
-  if (s.lastError) return { text: 'Could not connect', tone: 'err', bucket: 'needs' };
-  if (s.oauth && !s.oauthAt) return { text: 'Not signed in', tone: 'warn', bucket: 'needs' };
-  if (s.tools.length === 0) return { text: 'No tools yet', tone: 'warn', bucket: 'needs' };
+  if (s.lastError) return { text: 'Could not connect', tone: 'err', bucket: 'needs', problem: because('Drydock could not connect to this server', s.lastError) };
+  if ((s.oauth && !s.oauthAt) || s.tools.length === 0) return SETUP;
   return ON;
 }
 
@@ -317,4 +337,56 @@ export function connectReply(raw: unknown): { connection: IntegrationView; test?
   const reply: { connection: IntegrationView; test?: IntegrationTestReport } = { connection: raw.connection as unknown as IntegrationView };
   if (raw.test) reply.test = raw.test as IntegrationTestReport;
   return reply;
+}
+
+// ---- decision P114: webhooks, mappings, status sync ----
+
+/** A webhook delivery's outcome in words (the receiver records no body, only what it did). */
+export function hookOutcomeText(outcome: string): string {
+  switch (outcome) {
+    case 'queued':
+      return 'item queued for a read';
+    case 'ignored':
+      return 'names no item Drydock reads';
+    case 'verification':
+      return 'Notion verification token';
+    case 'refused_unsigned':
+      return 'refused: not signed, or no secret saved';
+    case 'refused_signature':
+      return 'refused: wrong signature';
+    case 'refused_stale':
+      return 'refused: too old or not dated';
+    case 'refused_replay':
+      return 'refused: seen before';
+    case 'refused_size':
+      return 'refused: too large';
+    case 'refused_malformed':
+      return 'refused: not JSON';
+    case 'refused_busy':
+      return 'refused: too many queued';
+    case 'refused_not_connected':
+      return 'refused: the service is not connected';
+  }
+  return outcome;
+}
+
+/** The Drydock task statuses a status mapping may name, in the order a task moves. */
+export const TASK_STATUSES = ['READY', 'CLAIMED', 'IN_PROGRESS', 'BLOCKED', 'WAITING_HUMAN', 'REVIEW', 'VERIFICATION', 'COMPLETED', 'FAILED', 'CANCELLED'] as const;
+
+/** A status mapping's direction in words. */
+export function directionText(direction: string | undefined): string {
+  if (direction === 'to_vendor') return 'Drydock to the service';
+  if (direction === 'from_vendor') return 'the service to Drydock (you apply it)';
+  return 'both ways';
+}
+
+/** The Drydock fields a Notion property can fill. */
+export const PROPERTY_FIELDS = ['state', 'priority', 'assignee', 'labels'] as const;
+
+/** Bytes in words: 0 is unknown. */
+export function sizeText(n: number): string {
+  if (!n) return 'size unknown';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 102.4) / 10} KB`;
+  return `${Math.round(n / 104857.6) / 10} MB`;
 }

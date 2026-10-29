@@ -181,7 +181,7 @@ func TestTheSecurityChecksAndPolicyArePresent(t *testing.T) {
 func TestCodeScanningSwitchesOffOnlyTwoQueriesAndTheCodeKeepsTheirReasons(t *testing.T) {
 	root := repoRoot(t)
 	const pin = "internal/providers/pinned_tls.go"
-	redirecting := []string{"internal/integrations/itfixture/oauth.go", "internal/mcp/oauthfake/oauthfake.go"}
+	redirecting := []string{"internal/integrations/itfixture/oauth.go", "internal/mcp/oauthfake/oauthfake.go", "internal/localllm/llamatest/fixtures.go"}
 	b, err := os.ReadFile(filepath.Join(root, ".github", "codeql", "codeql-config.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestCodeScanningSwitchesOffOnlyTwoQueriesAndTheCodeKeepsTheirReasons(t *tes
 		}
 		if redirect.Match(src) {
 			if !slices.Contains(redirecting, rel) {
-				t.Errorf("%s issues a redirect: the query that would flag a redirect to a request's own address is switched off, and the product has none; only the authorization server stand-ins (%v) redirect", rel, redirecting)
+				t.Errorf("%s issues a redirect: the query that would flag a redirect to a request's own address is switched off, and the product has none; only the test stand-ins (%v) redirect", rel, redirecting)
 			} else {
 				redirects[rel] = true
 			}

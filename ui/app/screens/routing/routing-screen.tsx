@@ -1,5 +1,6 @@
-// Model routing (a workspace screen): the rules the router evaluates, a dry-run preview of a decision, and the cheap model
-// selection with its opt-in startup probe. Nothing here is decided without a button press by the human.
+// Model routing (a workspace screen): what the router chooses now, wired (wiring-diagram.tsx, decision P108), the rules the
+// router evaluates, a dry-run preview of a decision, the tiebreak and the wall-time limits of a turn (turn-limits-panel.tsx,
+// decision P112), and the cheap model selection with its opt-in startup probe. Nothing here is decided without a button press by the human.
 
 import { css, on, type Handle } from 'remix/component';
 import { FlaskConical, Route as RouteIcon, TriangleAlert } from 'lucide';
@@ -18,6 +19,8 @@ import { t } from '../../ui/tokens.ts';
 import { money } from '../shared/explain.tsx';
 import { cheapProviders, LEVELS, runKindOptions } from './routing.ts';
 import { RulesPanel } from './rules-panel.tsx';
+import { TurnLimitsPanel } from './turn-limits-panel.tsx';
+import { WiringDiagram } from './wiring-diagram.tsx';
 
 const previewForm = css({
   display: 'grid',
@@ -298,8 +301,10 @@ export function CheapModelPanel(handle: Handle) {
 export function RoutingScreen(_handle: Handle) {
   return () => (
     <Page title="Routing" icon={RouteIcon} subtitle="Which model answers each turn" guide="routing-rules">
+      <WiringDiagram />
       <RulesPanel />
       <PreviewPanel />
+      <TurnLimitsPanel />
       <CheapModelPanel />
     </Page>
   );

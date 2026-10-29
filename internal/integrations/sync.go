@@ -22,6 +22,8 @@ var issueRefRe = regexp.MustCompile(`^(#[0-9]{1,9}|[A-Za-z0-9][A-Za-z0-9_.#-]{0,
 
 var levelEnum = map[string]bool{"fatal": true, "error": true, "warning": true, "info": true, "debug": true}
 var severityEnum = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
+var propTypeRe = regexp.MustCompile(`^[a-z_]{1,30}$`)
+
 var priorityEnum = map[string]bool{"urgent": true, "high": true, "medium": true, "low": true, "none": true}
 
 // buildRecord sanitizes one raw item into a storable record. Every free-text field passes through the sanitizer: control and
@@ -69,6 +71,9 @@ func (s *Service) buildRecord(ctx context.Context, c Connection, a Assignment, r
 	if c.Kind == KindAikido && !severityEnum[prio] {
 		prio = ""
 	}
+	if c.Kind == KindNotion {
+		prio = s.san.Line(ctx, raw.Priority, 40).Text // a typed row's priority property, as the person named its options
+	}
 	meta := map[string]any{}
 	for k, v := range raw.Meta {
 		switch x := v.(type) {
@@ -89,12 +94,36 @@ func (s *Service) buildRecord(ctx context.Context, c Connection, a Assignment, r
 			meta[k] = x
 		}
 	}
+	// a typed row's properties are outside text like the rest: names and values cleaned and scored, types a closed shape
+	var props map[string]Prop
+	for name, p := range raw.Props {
+		if len(props) >= maxProps || !propTypeRe.MatchString(p.Type) {
+			continue
+		}
+		n := s.san.Line(ctx, name, 100)
+		v := s.san.Line(ctx, p.Text, 200)
+		if n.Text == "" {
+			continue
+		}
+		if props == nil {
+			props = map[string]Prop{}
+		}
+		props[n.Text] = Prop{Type: p.Type, Text: v.Text}
+		redactions += n.Redactions + v.Redactions
+		for _, c := range []Clean{n, v} {
+			if c.Risk > risk {
+				risk = c.Risk
+			}
+			flags = unionStrings(flags, c.Flags)
+			rules = unionStrings(rules, c.Rules)
+		}
+	}
 	excerpt, _ := truncateRunes(strings.Join(strings.Fields(bc.Text), " "), MaxExcerptRunes)
 	it := Item{
 		IntegrationID: c.ID, AssignmentID: a.ID, Source: c.Kind, ProjectID: a.ProjectID, ExternalID: clampText(raw.ExternalID, 200), Kind: raw.Kind, IssueRef: ref, URL: validHTTPURL(raw.URL),
 		Title: title.Text, Excerpt: excerpt, State: s.san.Line(ctx, raw.State, 40).Text, Labels: labels, Assignee: s.san.Line(ctx, raw.Assignee, 80).Text, Priority: prio,
 		ParentExternalID: clampText(s.san.Line(ctx, raw.Parent, 200).Text, 200), Meta: meta, ExternalCreated: raw.Created, ExternalUpdated: raw.Updated, Etag: clampText(raw.Etag, 80),
-		Risk: risk, RiskFlags: flags, Redactions: redactions, Truncated: bc.Truncated || title.Truncated, Untrusted: true, Gone: raw.Closed,
+		Risk: risk, RiskFlags: flags, Redactions: redactions, Truncated: bc.Truncated || title.Truncated, Untrusted: true, Gone: raw.Closed, Properties: props,
 	}
 	return ItemRecord{Item: it, Body: bc.Text}, rules
 }
@@ -281,6 +310,10 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 	}
 	bodyBudget := s.o.MaxBodyFetch
 	complete := false
+	var propMap []Mapping
+	if conn.Kind == KindNotion {
+		propMap, _ = s.st.ListMappings(ctx, asg.ID, MapProperty)
+	}
 	for page := 0; page < s.o.MaxPages; page++ {
 		snap := cur // what was committed before this page: a failure persists this, never half a page's progress
 		pageAfter := cur.After
@@ -344,6 +377,7 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 					detail = text
 				}
 			}
+			applyPropMapping(&raw, propMap)
 			rec, _ := s.buildRecord(ctx, conn, asg, raw, detail)
 			recs = append(recs, rec)
 		}
@@ -375,15 +409,7 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 		res.Changed += pr.Changed
 		res.Unchanged += pr.Unchanged
 		res.Gone += pr.Closed
-		for i, it := range pr.Touched {
-			s.emit(ctx, EventItemUpserted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "itemId": it.ID, "externalId": it.ExternalID, "kind": it.Kind, "hash": it.ContentHash, "new": pr.Outcomes[i] == Inserted})
-			if it.Redactions > 0 {
-				s.emit(ctx, EventItemSecretRedacted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "findings": it.Redactions})
-			}
-			if it.Risk >= s.o.ThreatThreshold {
-				s.emit(ctx, EventItemRiskFlagged, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "risk": it.Risk, "flags": it.RiskFlags})
-			}
-		}
+		s.afterCommit(ctx, conn, asg, pr)
 		if done {
 			complete = true
 			break
@@ -402,6 +428,10 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 			res.Gone += n
 		}
 		cur.SweepStart, cur.SweepSeen = 0, 0
+		if o.Full || cur.LastFullAt == 0 {
+			// a full sweep, or the first complete listing (it read everything from the start): the weekly sweep counts from here
+			cur.LastFullAt = s.nowMS()
+		}
 		if err := s.st.PutCursor(ctx, cur); err != nil {
 			return res, err
 		}
@@ -410,6 +440,29 @@ func (s *Service) syncOne(ctx context.Context, conn Connection, ad Adapter, asg 
 	}
 	s.emit(ctx, EventSyncCompleted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "kind": conn.Kind, "pages": res.Pages, "seen": res.Seen, "new": res.New, "changed": res.Changed, "gone": res.Gone, "complete": complete})
 	return res, nil
+}
+
+// afterCommit publishes what a committed page changed: each new or changed item, its redactions and risk, and a vendor state
+// change of an item that has a task (status sync offers it to the person when a mapping says what it means).
+func (s *Service) afterCommit(ctx context.Context, conn Connection, asg Assignment, pr PageResult) {
+	for i, it := range pr.Touched {
+		s.emit(ctx, EventItemUpserted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "itemId": it.ID, "externalId": it.ExternalID, "kind": it.Kind, "hash": it.ContentHash, "new": pr.Outcomes[i] == Inserted})
+		if it.Redactions > 0 {
+			s.emit(ctx, EventItemSecretRedacted, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "findings": it.Redactions})
+		}
+		if it.Risk >= s.o.ThreatThreshold {
+			s.emit(ctx, EventItemRiskFlagged, asg.ProjectID, "", map[string]any{"integrationId": conn.ID, "itemId": it.ID, "risk": it.Risk, "flags": it.RiskFlags})
+		}
+		if it.PrevState != "" && it.TaskID != "" {
+			l := []Item{it}
+			s.suggestStatus(ctx, l)
+			data := map[string]any{"integrationId": conn.ID, "assignmentId": asg.ID, "itemId": it.ID}
+			if sg := l[0].StatusSuggestion; sg != nil {
+				data["suggested"] = sg.To
+			}
+			s.emit(ctx, EventStatusUpstream, asg.ProjectID, it.TaskID, data)
+		}
+	}
 }
 
 // fail records a failed attempt: a plain-language message, a backoff, and the connection status; the cursor keeps its resume
@@ -505,6 +558,7 @@ func (s *Service) Tick(ctx context.Context) []string {
 	}
 	now := s.nowMS()
 	sort.Slice(conns, func(i, j int) bool { return conns[i].ID < conns[j].ID })
+	sweepOn := s.SweepSettings(ctx).Enabled
 	var ran []string
 	for _, c := range conns {
 		if ctx.Err() != nil {
@@ -517,7 +571,8 @@ func (s *Service) Tick(ctx context.Context) []string {
 		if err != nil {
 			continue
 		}
-		var due []Assignment
+		ad, _ := AdapterFor(c.Kind)
+		var due, sweep []Assignment
 		for _, a := range asgs {
 			if !a.Enabled {
 				continue
@@ -531,19 +586,33 @@ func (s *Service) Tick(ctx context.Context) []string {
 			if cur.After == "" && cur.LastAttemptAt > 0 && now-cur.LastAttemptAt < iv {
 				continue
 			}
+			// the weekly automatic sweep (docs/integrations.md section 6): a poll that is due anyway becomes a full sweep once a
+			// week, which is the only way an item deleted upstream is noticed; a vendor that sweeps every time needs none
+			if sweepOn && ad != nil && !ad.FullSweep() && cur.LastFullAt > 0 && now-cur.LastFullAt >= SweepEvery.Milliseconds() {
+				sweep = append(sweep, a)
+				continue
+			}
 			due = append(due, a)
 		}
-		if len(due) == 0 {
+		if len(due) == 0 && len(sweep) == 0 {
 			continue
 		}
 		lk := s.lock("sync:" + c.ID)
 		if !lk.TryLock() {
 			continue
 		}
-		if _, err := s.syncAssignments(ctx, c, due, SyncOpts{}); err != nil {
-			var f *Failure
-			if !errors.As(err, &f) {
-				s.o.Logf("integrations: sync %s: %v", c.ID, err)
+		for _, run := range []struct {
+			asgs []Assignment
+			o    SyncOpts
+		}{{due, SyncOpts{}}, {sweep, SyncOpts{Full: true}}} {
+			if len(run.asgs) == 0 {
+				continue
+			}
+			if _, err := s.syncAssignments(ctx, c, run.asgs, run.o); err != nil {
+				var f *Failure
+				if !errors.As(err, &f) {
+					s.o.Logf("integrations: sync %s: %v", c.ID, err)
+				}
 			}
 		}
 		lk.Unlock()
@@ -578,12 +647,51 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	}
 	t := time.NewTicker(interval)
 	defer t.Stop()
+	wake := make(chan struct{}, 1)
+	s.hooks.mu.Lock()
+	s.hooks.wake = wake
+	s.hooks.mu.Unlock()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-wake:
+			// a webhook queued an item: read it now instead of at the next tick
+			s.ProcessWebhookQueue(ctx)
 		case <-t.C:
 			s.Tick(ctx)
+			s.ProcessWebhookQueue(ctx)
+			s.StatusSync(ctx)
 		}
 	}
+}
+
+// SweepEvery is the interval of the automatic full sweep.
+const SweepEvery = 7 * 24 * time.Hour
+
+const sweepEnabledKey = "integrations.sweep.enabled"
+
+// SweepSettings is the weekly automatic sweep's setting.
+type SweepSettings struct {
+	Enabled bool  `json:"enabled"` // on unless a person turned it off
+	EveryMs int64 `json:"everyMs"`
+}
+
+// SweepSettings reads the weekly sweep's setting.
+func (s *Service) SweepSettings(ctx context.Context) SweepSettings {
+	v, _ := s.setting(ctx, sweepEnabledKey)
+	return SweepSettings{Enabled: v != "0", EveryMs: SweepEvery.Milliseconds()}
+}
+
+// SetSweep turns the weekly automatic sweep on or off. Only a human can. A manual full sync (integration.sync with full) works
+// either way.
+func (s *Service) SetSweep(ctx context.Context, by string, enabled bool) (SweepSettings, error) {
+	if err := requireHuman(by); err != nil {
+		return SweepSettings{}, err
+	}
+	if err := s.putSetting(ctx, sweepEnabledKey, map[bool]string{true: "1", false: "0"}[enabled]); err != nil {
+		return SweepSettings{}, err
+	}
+	s.emit(ctx, "integration.sweep.changed", "", "", map[string]any{"enabled": enabled, "by": by})
+	return s.SweepSettings(ctx), nil
 }

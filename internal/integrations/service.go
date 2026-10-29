@@ -14,6 +14,7 @@ import (
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git/host"
+	"github.com/kjmaguire/drydock/internal/netguard"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -56,6 +57,19 @@ type Options struct {
 	CreateTask TaskCreator
 	// ProjectExists validates a Drydock project id (nil = accept any).
 	ProjectExists func(ctx context.Context, projectID string) error
+	// TaskStatus reads a task's status: status sync offers a vendor's state as a change only when the task is elsewhere.
+	TaskStatus func(ctx context.Context, taskID string) (string, error)
+	// MoveTask moves a task to a status for a person (ApplyStatus); the task service's state machine and guards decide.
+	MoveTask func(ctx context.Context, taskID, status, by string) error
+	// TaskByRef finds the project's task with an issue reference (a link_task rule without a fixed task); "" when none.
+	TaskByRef func(ctx context.Context, projectID, ref string) (string, error)
+	// TaskInProject checks that a task exists in a project (a link_task rule's fixed task).
+	TaskInProject func(ctx context.Context, projectID, taskID string) error
+	// Downloads fetches attachment files a vendor hosts outside its API host (default: through internal/netguard, https to
+	// public addresses only, no credential).
+	Downloads *http.Client
+	// MaxAttachmentBytes caps one attachment download (default 10 MiB, at most 25 MiB).
+	MaxAttachmentBytes int64
 	// BodyDir is <app data>/integrations.
 	BodyDir string
 	// RegisterSecret/UnregisterSecret teach the app's scanner the exact credential values so they are redacted everywhere.
@@ -94,6 +108,10 @@ type Service struct {
 	oauth oauthSessions
 	// oauthApps holds the OAuth apps the owner pasted (oauthapps.go)
 	oauthApps oauthAppSettings
+	// hooks is the webhook receiver (webhooks.go)
+	hooks webhookReceiver
+	// dl fetches attachment files hosted outside a vendor's API host
+	dl *http.Client
 }
 
 // New builds a Service.
@@ -147,7 +165,28 @@ func New(o Options) (*Service, error) {
 				return nil
 			}}
 	}
-	s := &Service{o: o, hc: hc, locks: map[string]*sync.Mutex{}}
+	if o.MaxAttachmentBytes <= 0 {
+		o.MaxAttachmentBytes = 10 << 20
+	}
+	if o.MaxAttachmentBytes > 25<<20 {
+		o.MaxAttachmentBytes = 25 << 20
+	}
+	dl := o.Downloads
+	if dl == nil {
+		// an attachment's address comes from the vendor's answer (outside text): it may not point Drydock at this computer or its
+		// network, and it never receives a credential
+		pol := netguard.Policy{}
+		dl = &http.Client{Transport: netguard.Guard{Base: pol.Transport(), Policy: pol}, Timeout: 2 * time.Minute,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 5 {
+					return http.ErrUseLastResponse
+				}
+				req.Header.Del("Authorization")
+				return nil
+			}}
+	}
+	s := &Service{o: o, hc: hc, locks: map[string]*sync.Mutex{}, dl: dl}
+	s.hooks.queue = map[string]hookJob{}
 	s.auth.limiters, s.auth.tokens = map[string]*limiter{}, map[string]cachedToken{}
 	s.auth.gen, s.auth.credLocks, s.auth.spent = map[string]uint64{}, map[string]chan struct{}{}, map[string]string{}
 	s.oauth.m = map[string]*OAuthSession{}
@@ -157,8 +196,11 @@ func New(o Options) (*Service, error) {
 	return s, nil
 }
 
-// Close stops sign-ins in progress.
-func (s *Service) Close() { s.closeOAuth() }
+// Close stops sign-ins in progress and the webhook receiver.
+func (s *Service) Close() {
+	s.closeOAuth()
+	s.stopWebhooks()
+}
 
 // Store exposes the persistence layer (tests and the core extension).
 func (s *Service) Store() *Store { return s.st }

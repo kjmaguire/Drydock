@@ -102,11 +102,16 @@ type Chat struct {
 	PermissionMode string `json:"permissionMode"`
 	// SkipsApprovals is true when PermissionMode lets the CLI act without approval (bypassPermissions, auto, dontAsk): the
 	// human chose it for this chat and the UI must show it.
-	SkipsApprovals bool     `json:"skipsApprovals"`
-	Cwd            string   `json:"cwd"`
-	SessionID      string   `json:"sessionId"` // the CLI's own session id; "" = the next turn starts a fresh session
-	AllowedTools   []string `json:"allowedTools"`
-	ReadHistory    bool     `json:"readHistory"`
+	SkipsApprovals bool `json:"skipsApprovals"`
+	// CLIModel and CLIPermissionMode are what the chat's CLI reported its session runs with (decision P107): the model by its
+	// full name, also when the chat chose none (the CLI's own default), and the permission mode. A new chat that chooses no
+	// model starts with the default the same CLI last reported. "" = not reported yet.
+	CLIModel          string   `json:"cliModel"`
+	CLIPermissionMode string   `json:"cliPermissionMode"`
+	Cwd               string   `json:"cwd"`
+	SessionID         string   `json:"sessionId"` // the CLI's own session id; "" = the next turn starts a fresh session
+	AllowedTools      []string `json:"allowedTools"`
+	ReadHistory       bool     `json:"readHistory"`
 	// Skills are the workspace library skills chosen for this chat, and MCPServers the workspace library MCP servers its
 	// sessions are granted, with the tools each may call (decision P60). Both reach the CLI through Drydock's MCP gateway.
 	Skills     []SkillRef `json:"skills"`
@@ -128,6 +133,10 @@ type Chat struct {
 	// Version goes up by one with every write to the chat's row. Two snapshots of a chat are ordered by it (never by the clock):
 	// the higher version is the newer state.
 	Version int64 `json:"version"`
+	// ImportedFrom is where the chat was imported from (ImportClaudeCode, decision P109), omitted for a chat made in Drydock;
+	// ImportedSession is the Claude Code session id it was read from (SessionID starts equal to it and follows the CLI).
+	ImportedFrom    string `json:"importedFrom,omitempty"`
+	ImportedSession string `json:"importedSession,omitempty"`
 }
 
 // SkillRef names a workspace library skill chosen for a chat (decision P60).
@@ -219,7 +228,15 @@ type Deps struct {
 	Licensed func(ctx context.Context) error
 	// AttachDir is the folder a chat's attached files are kept in (P90). Nil: files cannot be attached.
 	AttachDir func(chatID string) string
-	Logf      func(format string, args ...any)
+	// ClaudeSources are the places Claude Code keeps its session transcripts, for the import (decision P109): Claude Code on
+	// Windows and in each WSL distro where it is installed. Nil: nothing to import.
+	ClaudeSources func(ctx context.Context) []ClaudeSource
+	// ProjectFor is the project whose folder dir is (a chat's folder as it is stored; distro "" on Windows), "" for none.
+	ProjectFor func(ctx context.Context, distro, dir string) string
+	// DrydockSession reports whether a Claude Code session is one Drydock started (an agent's run, a session in a folder
+	// Drydock made), so the import does not list it. Optional.
+	DrydockSession func(ctx context.Context, sessionID, cwd string) bool
+	Logf           func(format string, args ...any)
 }
 
 // Options tune the service. The zero value is valid.
@@ -425,6 +442,9 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 		return Chat{}, err
 	}
 	c.SkipsApprovals = SkipsApprovals(c.PermissionMode)
+	if c.Model == "" {
+		c.CLIModel = s.defaultModel(ctx, c.Adapter, c.WSLDistro)
+	}
 	now := storage.Now()
 	c.Created, c.Updated, c.Version = now, now, 1
 	if err := s.insertChat(ctx, c); err != nil {
@@ -432,6 +452,18 @@ func (s *Service) Create(ctx context.Context, r CreateReq) (Chat, error) {
 	}
 	s.publish(ctx, "chat.created", c.ProjectID, map[string]any{"chatId": c.ID, "chat": c})
 	return c, nil
+}
+
+// defaultModel is the model the CLI last reported for a chat of the same CLI (and WSL distro) that chose none: its own default,
+// as far as Drydock has seen it; "" before any such turn. Only a name to show: nothing is passed to the CLI from it.
+func (s *Service) defaultModel(ctx context.Context, adapter, distro string) string {
+	var m string
+	err := s.d.DB.Reader().QueryRowContext(ctx, `SELECT cli_model FROM chats WHERE adapter=? AND wsl_distro=? AND model='' AND cli_model<>''
+		ORDER BY updated_at DESC LIMIT 1`, adapter, distro).Scan(&m)
+	if err != nil {
+		return ""
+	}
+	return m
 }
 
 func (s *Service) insertChat(ctx context.Context, c Chat) error {
@@ -443,9 +475,9 @@ func insertChatTx(ctx context.Context, tx *sql.Tx, c Chat) error {
 	sk, _ := json.Marshal(nz(c.Skills))
 	ms, _ := json.Marshal(nz(c.MCPServers))
 	_, err := tx.ExecContext(ctx, `INSERT INTO chats(id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,
-		pinned,archived_at,forked_from,created_at,updated_at,wsl_distro,skills,mcp_servers) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		pinned,archived_at,forked_from,created_at,updated_at,wsl_distro,skills,mcp_servers,cli_model,cli_permission_mode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.ProjectID, c.Title, c.Adapter, c.Model, c.Effort, c.PermissionMode, c.Cwd, c.SessionID, string(rules), b2i(c.ReadHistory), c.Status,
-		b2i(c.Pinned), c.ArchivedAt, c.ForkedFrom, c.Created, c.Updated, c.WSLDistro, string(sk), string(ms))
+		b2i(c.Pinned), c.ArchivedAt, c.ForkedFrom, c.Created, c.Updated, c.WSLDistro, string(sk), string(ms), c.CLIModel, c.CLIPermissionMode)
 	return err
 }
 
@@ -589,7 +621,8 @@ func (s *Service) cleanTitle(t string) (string, error) {
 }
 
 const chatCols = `id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,last_error,pinned,
-	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro,skills,mcp_servers`
+	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro,skills,mcp_servers,cli_model,cli_permission_mode,
+	import_source,import_session`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -600,7 +633,7 @@ func scanChat(r scanner, extra ...any) (Chat, error) {
 	var cost sql.NullFloat64
 	dest := []any{&c.ID, &c.ProjectID, &c.Title, &c.Adapter, &c.Model, &c.Effort, &c.PermissionMode, &c.Cwd, &c.SessionID, &rules, &readHistory, &c.Status,
 		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version, &c.WSLDistro,
-		&skills, &servers}
+		&skills, &servers, &c.CLIModel, &c.CLIPermissionMode, &c.ImportedFrom, &c.ImportedSession}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return c, err
 	}
@@ -965,6 +998,7 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 		if err != nil {
 			return err
 		}
+		was := c // as stored, before this change
 		reset := false
 		if place != nil && (place.moved || place.relinked) && (s.isRunning(c.ID) || c.Status == StatusRunning) {
 			if place.relinked {
@@ -1051,15 +1085,26 @@ func (s *Service) Update(ctx context.Context, r UpdateReq) (Chat, error) {
 		if r.ReadHistory != nil {
 			c.ReadHistory = *r.ReadHistory
 		}
+		// what the CLI reported no longer holds once the model, the CLI or the mode changes: the next turn reports again, and a
+		// chat that now chooses no model shows the default its CLI last reported (decision P107)
+		if c.Model != was.Model || c.Adapter != was.Adapter || c.WSLDistro != was.WSLDistro {
+			c.CLIModel = ""
+			if c.Model == "" {
+				c.CLIModel = s.defaultModel(ctx, c.Adapter, c.WSLDistro)
+			}
+		}
+		if c.PermissionMode != was.PermissionMode || c.Adapter != was.Adapter || c.WSLDistro != was.WSLDistro {
+			c.CLIPermissionMode = ""
+		}
 		sk, _ := json.Marshal(nz(c.Skills))
 		ms, _ := json.Marshal(nz(c.MCPServers))
-		q := `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, adapter=?, wsl_distro=?, cwd=?, skills=?, mcp_servers=?, project_id=?, updated_at=?, version=version+1`
+		q := `UPDATE chats SET title=?, pinned=?, archived_at=?, model=?, effort=?, permission_mode=?, read_history=?, adapter=?, wsl_distro=?, cwd=?, skills=?, mcp_servers=?, project_id=?, cli_model=?, cli_permission_mode=?, updated_at=?, version=version+1`
 		if reset {
 			// the CLI's session belongs to the old agent or folder: the next turn starts a new one, given the transcript
 			q += `, session_id='', cli_usage=''`
 		}
 		if _, err := tx.ExecContext(ctx, q+` WHERE id=?`, c.Title, b2i(c.Pinned), c.ArchivedAt, c.Model, c.Effort, c.PermissionMode, b2i(c.ReadHistory),
-			c.Adapter, c.WSLDistro, c.Cwd, string(sk), string(ms), c.ProjectID, storage.Now(), c.ID); err != nil {
+			c.Adapter, c.WSLDistro, c.Cwd, string(sk), string(ms), c.ProjectID, c.CLIModel, c.CLIPermissionMode, storage.Now(), c.ID); err != nil {
 			return err
 		}
 		out, err = getTx(ctx, tx, c.ID)
@@ -1175,6 +1220,7 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 	n.ID = ids.New(strings.TrimSuffix(AgentPrefix, "_"))
 	n.SessionID, n.Status, n.LastError, n.Pinned, n.ArchivedAt, n.Archived = "", StatusIdle, "", false, 0, false
 	n.TokensIn, n.TokensOut, n.CostUSD, n.CostUnknownTurns, n.ForkedFrom = 0, 0, nil, 0, src.ID
+	n.ImportedFrom, n.ImportedSession = "", "" // the import is the source's (insertChatTx does not write it)
 	if src.Title != "" {
 		n.Title = clipRunes("Fork of "+src.Title, 200)
 	}

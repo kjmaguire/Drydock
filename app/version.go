@@ -13,3 +13,8 @@ var Version = "0.0.0-dev"
 // (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS), so without this no other program can attach to the window, and the release
 // workflow checks that the shipped exe opens no debugging port.
 var DebugPort = ""
+
+// StartURL is the page the window opens on: Home, the workspace's start page (the owner, 2026-10-29: "When I open Drydock it
+// always opens to the project. I would rather it just open the Home Screen"). "/" is the chosen project's page. A test keeps
+// it equal to the Home route of the UI (ui/app/routes.ts, workspace).
+const StartURL = "/home"

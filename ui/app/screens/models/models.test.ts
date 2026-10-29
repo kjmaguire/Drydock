@@ -2,10 +2,12 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { LocalJob, LocalModel, LocalView } from '../../api/localClient.ts';
 import {
+  noGpuWords,
   barLabel,
   compactCount,
   contextWords,
   deviceLine,
+  draftChoices,
   diskLine,
   fitWords,
   gb,
@@ -13,6 +15,11 @@ import {
   gpus,
   hostPort,
   jobFraction,
+  licenceUrl,
+  loadBytesOf,
+  loadedIds,
+  loadLine,
+  loadToo,
   localRow,
   memoryBar,
   memoryBars,
@@ -24,6 +31,7 @@ import {
   splitModelId,
   startedWords,
   switchChoices,
+  tokenWords,
   usedByWords,
   usedOf,
   wholeNumber,
@@ -34,6 +42,13 @@ const MiB = 2 ** 20;
 const job = (over: Partial<LocalJob> = {}): LocalJob => ({ kind: 'install', target: 'x', state: 'running', done: 0, total: 0, started: '', ...over });
 
 describe('Models on this PC helpers', () => {
+  it('with no GPU listed: none, or the card Windows has that the engine could not use', () => {
+    expect(noGpuWords(undefined)).toBe('No GPU found: runs on the CPU');
+    expect(noGpuWords([' '])).toBe('No GPU found: runs on the CPU');
+    expect(noGpuWords(['NVIDIA GeForce RTX 4070'])).toBe('Windows has NVIDIA GeForce RTX 4070, but the engine could not use it: models run on the CPU. An up-to-date graphics driver usually fixes this.');
+    expect(noGpuWords(['Intel(R) UHD Graphics', 'NVIDIA GeForce RTX 4070', 'AMD Radeon'])).toContain('Windows has Intel(R) UHD Graphics, NVIDIA GeForce RTX 4070 and AMD Radeon, but the engine could not use them');
+  });
+
   it('sizes: GB with one decimal, whole MB under a gigabyte, never "0.0 GB"; the bars drop a ".0"', () => {
     expect(gb(8.5 * GiB)).toBe('8.5 GB');
     expect(gb(120 * GiB)).toBe('120.0 GB');
@@ -221,5 +236,49 @@ describe('Models on this PC helpers', () => {
     expect(localRow({ supported: true, runtime: rt(), server: { state: 'failed' } })).toEqual({ text: 'Failed', tone: 'err', sub: 'Nothing served' });
     // a view of a PC that cannot run local models may carry nothing else
     expect(localRow({ supported: false } as LocalView).text).toBe('Not available');
+    // several models loaded (decision P111): the first, and how many more
+    expect(localRow({ supported: true, runtime: rt(), server: { state: 'running', modelId: 'acme/tiny-GGUF:Q4_0', models: ['acme/tiny-GGUF:Q4_0', 'a/b:Q8_0', 'c/d:F16'] } })).toEqual({
+      text: 'Serving',
+      tone: 'ok',
+      sub: 'tiny · Q4_0 and 2 more',
+    });
+  });
+
+  it('several models loaded (decision P111): which are loaded, whether one more fits, the room line, the draft choices, the token', () => {
+    const m = (over: Partial<LocalModel> = {}): LocalModel => ({ id: 'a/b:Q4', repo: 'a/b', variant: 'Q4', files: [], sizeBytes: 4 * GiB, downloadedAt: '', ...over });
+    const running = { state: 'running' as const, modelId: 'x/y:Q4', models: ['x/y:Q4', 'z/w:Q8'] };
+    expect(loadedIds(running)).toEqual(['x/y:Q4', 'z/w:Q8']);
+    expect(loadedIds({ state: 'starting', modelId: 'x/y:Q4' })).toEqual(['x/y:Q4']);
+    expect(loadedIds({ state: 'stopped', modelId: 'x/y:Q4', models: ['x/y:Q4'] })).toEqual([]);
+    expect(loadBytesOf(m({ loadBytes: 5 * GiB }))).toBe(5 * GiB);
+    expect(loadBytesOf(m({ fit: { target: 'gpu', fits: true, availableBytes: 0, needBytes: 4.5 * GiB } }))).toBe(4.5 * GiB);
+    expect(loadBytesOf(m())).toBe(4 * GiB);
+
+    const load = { max: 4, budgetBytes: 24 * GiB, loadedBytes: 18 * GiB };
+    expect(loadToo({ server: running, load }, m({ loadBytes: 5 * GiB }))).toEqual({ ok: true });
+    expect(loadToo({ server: running, load }, m({ loadBytes: 7 * GiB })).why).toBe('Does not fit beside the models loaded: it needs about 7.0 GB, and 6.0 GB of 24.0 GB is left.');
+    expect(loadToo({ server: running, load }, m({ embedding: true })).ok).toBe(false);
+    expect(loadToo({ server: running, load }, m({ id: 'z/w:Q8' })).why).toBe('Loaded already.');
+    const four = { ...running, models: ['1/1:a', '2/2:b', '3/3:c', '4/4:d'] };
+    expect(loadToo({ server: four, load: { ...load, loadedBytes: 0 } }, m()).why).toBe('At most 4 models stay loaded at once: unload one first.');
+    // nothing measured: the person decides
+    expect(loadToo({ server: running, load: { max: 4, budgetBytes: 0, loadedBytes: 0 } }, m({ loadBytes: 900 * GiB })).ok).toBe(true);
+    expect(loadToo({ server: running }, m()).ok).toBe(true);
+
+    expect(loadLine({ server: running, load })).toBe('2 of 4 models loaded · 18 of 24 GB');
+    expect(loadLine({ server: running, load: { max: 4, budgetBytes: 0, loadedBytes: 0 } })).toBe('2 of 4 models loaded');
+
+    const big = m({ id: 'q/coder:Q4', repo: 'q/coder-GGUF', drafts: ['q/small-GGUF:Q8_0'] });
+    const small = m({ id: 'q/small-GGUF:Q8_0', repo: 'q/small-GGUF', variant: 'Q8_0' });
+    expect(draftChoices(big, [big, small])).toEqual([
+      { value: '', label: 'No draft' },
+      { value: 'q/small-GGUF:Q8_0', label: 'Draft: small · Q8_0' },
+    ]);
+    expect(draftChoices(small, [big, small])).toEqual([{ value: '', label: 'No draft' }]);
+
+    expect(tokenWords({ set: true, masked: 'hf_…1234' })).toBe('hf_…1234');
+    expect(tokenWords({ set: false })).toBe('none');
+    expect(tokenWords(undefined)).toBe('none');
+    expect(licenceUrl('meta-llama/Llama-3.2-1B')).toBe('https://huggingface.co/meta-llama/Llama-3.2-1B');
   });
 });

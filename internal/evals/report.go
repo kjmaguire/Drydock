@@ -699,14 +699,14 @@ const maxInt = "9223372036854775807"
 
 func (r *Report) computeRouting(ctx context.Context, db *storage.DB, o Options, until int64) error {
 	g := &r.Routing
-	if err := db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM routing_decisions d WHERE d.run_kind<>'room_reply' AND d.ts>=? AND d.ts<=? AND (?='' OR d.task_id IN (SELECT id FROM tasks WHERE project_id=?))`,
+	if err := db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM routing_decisions d WHERE d.run_kind NOT IN ('room_reply','lead','recommend') AND d.ts>=? AND d.ts<=? AND (?='' OR d.task_id IN (SELECT id FROM tasks WHERE project_id=?))`,
 		o.SinceMS, until, o.ProjectID, o.ProjectID).Scan(&g.Decisions); err != nil {
 		return err
 	}
 	rows, err := db.Reader().QueryContext(ctx, `SELECT d.decided_by, COALESCE(json_extract(d.decision,'$.Facts.Tier'),''), d.provider_id, d.model, COUNT(*),
 		COALESCE(SUM(oc.accepted),0), COALESCE(SUM(oc.escalated),0), COALESCE(SUM(oc.outcome='failed'),0), AVG(oc.iterations)
 		FROM routing_decisions d JOIN routing_outcomes oc ON oc.decision_id=d.id
-		WHERE d.run_kind<>'room_reply' AND d.ts>=? AND d.ts<=? AND (?='' OR d.task_id IN (SELECT id FROM tasks WHERE project_id=?))
+		WHERE d.run_kind NOT IN ('room_reply','lead','recommend') AND d.ts>=? AND d.ts<=? AND (?='' OR d.task_id IN (SELECT id FROM tasks WHERE project_id=?))
 		GROUP BY d.decided_by, 2, d.provider_id, d.model ORDER BY d.decided_by, 2, d.provider_id, d.model`, o.SinceMS, until, o.ProjectID, o.ProjectID)
 	if err != nil {
 		return err
@@ -728,13 +728,13 @@ func (r *Report) computeRouting(ctx context.Context, db *storage.DB, o Options, 
 	}
 	rows.Close()
 	if err := db.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(oc.accepted=1 AND oc.escalated=0),0) FROM routing_decisions d JOIN routing_outcomes oc ON oc.decision_id=d.id
-		WHERE d.run_kind<>'room_reply' AND d.ts>=? AND d.ts<=? AND (?='' OR d.task_id IN (SELECT id FROM tasks WHERE project_id=?))`, o.SinceMS, until, o.ProjectID, o.ProjectID).Scan(&good); err != nil {
+		WHERE d.run_kind NOT IN ('room_reply','lead','recommend') AND d.ts>=? AND d.ts<=? AND (?='' OR d.task_id IN (SELECT id FROM tasks WHERE project_id=?))`, o.SinceMS, until, o.ProjectID, o.ProjectID).Scan(&good); err != nil {
 		return err
 	}
 	g.Pending = g.Decisions - g.WithOutcome
 	g.Good = ratio(good, g.WithOutcome)
 	_ = db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE type='routing.fallback' AND ts>=? AND ts<=?`, o.SinceMS, until).Scan(&g.Fallbacks)
 	_ = db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE type='routing.escalated' AND ts>=? AND ts<=?`, o.SinceMS, until).Scan(&g.Escalations)
-	g.Note = "A decision is good when its task was accepted by a human and never escalated (no routing.escalated event, no second watchdog trip); it is bad when the task failed, was cancelled or escalated. Decisions of tasks that have not ended are pending. Room replies are left out: a chat answer has no task outcome to judge it by. Turns of an agent with no list of models the router may choose between are 'static' decisions (the agent's own configured assignment): for those, this section measures the configured assignments, not router choices."
+	g.Note = "A decision is good when its task was accepted by a human and never escalated (no routing.escalated event, no second watchdog trip); it is bad when the task failed, was cancelled or escalated. Decisions of tasks that have not ended are pending. Room replies, the team lead's decisions and recommendation turns are left out: none has a task outcome to judge it by. Turns of an agent with no list of models the router may choose between are 'static' decisions (the agent's own configured assignment): for those, this section measures the configured assignments, not router choices."
 	return nil
 }

@@ -4,7 +4,7 @@
 // (screens/skills/skill-library-screen.tsx, /library/skills).
 
 import { css, on, type Handle } from 'remix/component';
-import { Cpu, Library, Pencil, Plug, Plus, Trash2, Users } from 'lucide';
+import { Cpu, LayoutTemplate, Pencil, Plug, Plus, Trash2, Users } from 'lucide';
 import type { AgentTemplate } from '../../api/libraryClient.ts';
 import { AgentGallery } from '../team/agent-gallery.tsx';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
@@ -204,8 +204,8 @@ export function LibraryScreen(handle: Handle) {
     const openTemplate = tpls.find((x) => x.id === template);
     return (
       <Page
-        title="Library"
-        icon={Library}
+        title="Agent templates"
+        icon={LayoutTemplate}
         wide
         guide="crew"
         subtitle={templates.data ? `${tpls.length} template${tpls.length === 1 ? '' : 's'}` : undefined}

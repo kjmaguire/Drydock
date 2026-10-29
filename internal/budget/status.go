@@ -90,6 +90,8 @@ type Status struct {
 	CostComplete bool   `json:"costComplete"`
 	CostLabel    string `json:"costLabel"` // "reported", "estimated", "reported + estimated" or "none"
 	Message      string `json:"message"`
+	// Held is what turns in flight hold against the budget (reserve.go), set when a reservation was refused.
+	Held *Held `json:"held,omitempty"`
 }
 
 // Evaluate computes a budget instance's status from the usage rows.

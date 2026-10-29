@@ -55,7 +55,7 @@ attach: {instructions: "Cloudflare: prefer Workers over Pages for new projects; 
 consult: {max_chunks: 8, route: trainable_ok}
 ```
 
-Facts to hold when using it: the deployed site matching the repo HEAD is **unverified**; the `docs-mcp-rag` chunk size is unknown; Cloudflare says to start new projects on Workers and is moving tooling toward a `cf` CLI [tool §1c]. The `git_docs` source type (`cloudflare/cloudflare-docs`, branch `production`, `src/content/docs`) is an offline alternative that needs MDX handling; not specified here.
+Facts to hold when using it: the deployed site matching the repo HEAD is **unverified**; the `docs-mcp-rag` chunk size is unknown; Cloudflare says to start new projects on Workers and is moving tooling toward a `cf` CLI [tool §1c]. The `git_docs` source type (`cloudflare/cloudflare-docs`, branch `production`, `src/content/docs`) is an offline alternative; it is built (decision P110, "As built: PDF and DOCX, packs of files, git_docs and routed answers" below), with MDX handled as for any MDX page.
 
 Microsoft docs (live): no crawl or sitemap facts were gathered, and Learn's commercial-use terms were not found, so v1 makes this a live pack only (content CC BY 4.0, code MIT; service terms unverified [tool §6]).
 
@@ -205,7 +205,7 @@ On-demand delivery depends on the model calling the tool; it cannot be guarantee
 
 ## 10. Requirements (brief section 11, "Requirements")
 
-Requirements are uploaded or synced documents chunked into FTS5 and cited like a pack. Same ingest, chunking and retrieval code; separate tables `requirements`, `requirement_chunks`, `requirement_chunks_fts`; `visibility` is forced to `private` (never `trainable`). Sources: upload (Markdown or plain text in v1; PDF and DOCX conversion is unspecified), or sync from Notion/Linear/GitHub through `external_items` ([`integrations.md`](integrations.md); as built, nothing calls the sync entry point yet: a synced Notion page appears on the Integrations page as a requirements candidate and goes no further, so requirements come from uploads only), each sync producing a new document version when `content_hash` changes and emitting `requirement.changed`. Citations use `REQ:<doc>@<version>#<heading_path>`. Tools: `search_requirements` (Workspace server); the spec gate (brief section 22) writes Given/When/Then criteria that link back via `requirement_links(requirement_id, task_id)`; tasks whose linked requirement version is superseded are flagged. Requirement text is untrusted data like any other external content, and requirements are never sent to `trainable` providers or CONSULT free routes. Events: `requirement.added`, `requirement.changed`, `requirement.linked`.
+Requirements are uploaded or synced documents chunked into FTS5 and cited like a pack. Same ingest, chunking and retrieval code; separate tables `requirements`, `requirement_chunks`, `requirement_chunks_fts`; `visibility` is forced to `private` (never `trainable`). Sources: upload (Markdown or plain text; a PDF or DOCX is read into Markdown first, which the person checks before adding it, decision P110), or sync from Notion/Linear/GitHub through `external_items` ([`integrations.md`](integrations.md); as built, nothing calls the sync entry point yet: a synced Notion page appears on the Integrations page as a requirements candidate and goes no further, so requirements come from uploads only), each sync producing a new document version when `content_hash` changes and emitting `requirement.changed`. Citations use `REQ:<doc>@<version>#<heading_path>`. Tools: `search_requirements` (Workspace server); the spec gate (brief section 22) writes Given/When/Then criteria that link back via `requirement_links(requirement_id, task_id)`; tasks whose linked requirement version is superseded are flagged. Requirement text is untrusted data like any other external content, and requirements are never sent to `trainable` providers or CONSULT free routes. Events: `requirement.added`, `requirement.changed`, `requirement.linked`.
 
 ## 11. Open questions / unverified
 
@@ -213,7 +213,7 @@ Requirements are uploaded or synced documents chunked into FTS5 and cited like a
 - Chunk size targets, token estimates (chars/4), the BM25 column weights, the injection-pattern list and threshold, the 600-character CONSULT limit, and the confidence heuristic are design defaults with no measurements yet; all need the eval harness (brief section 23).
 - The Claude `paths:` frontmatter key for rules is inferred from changelog wording, not a docs page [tool §7]. Whether Codex reads `.agents/skills` and `.codex/skills` is inferred from binary strings. Antigravity `rules.json` semantics are unknown. Nested-file scoping for Gemini and Goose rests on docs summaries and is untested.
 - Skills registry last-commit dates, per-skill licenses, and the accuracy of the "175 skills" count are unverified. No official Microsoft Graph skills repo exists in the evidence.
-- PDF/DOCX requirement ingestion is not specified; FTS5 behavior on NTFS with Defender is pending a Windows run (P2). Contradiction noted: brief section 15 lets the changed-pages digest use a cheap model, while section 6 restricts `trainable` providers to public-docs CONSULT; this document allows the digest on a `trainable` route only for `public` packs, an interpretation for the owner to confirm.
+- FTS5 behavior on NTFS with Defender is pending a Windows run (P2). Contradiction noted: brief section 15 lets the changed-pages digest use a cheap model, while section 6 restricts `trainable` providers to public-docs CONSULT; this document allows the digest on a `trainable` route only for `public` packs, an interpretation for the owner to confirm.
 
 ## As built (Slice 3, 2026-10-08, Linux sandbox)
 
@@ -238,17 +238,105 @@ Code: `internal/packs` (packs, chunker, fetcher, scanner, CONSULT/ATTACH, worksp
 
 **Differences from the text above.**
 - Section 3 schema was extended: `packs` keeps the manifest text, `version_seq`, `last_success_at`, `last_error`; `pack_versions` (history and digest), `pack_attachments`, `pack_pins`; chunks have integer `seq_added/seq_removed` (the `YYYYMMDD.n` strings do not sort once `n >= 10`), `flags`, `quarantined`, `released_by`. Requirements have `requirement_versions` and per-version chunks (`current` flag) because old citations must resolve.
-- Manifest extensions: `sources[].urls` (for `url_list`), `crawl.max_pages` (default 500, cap 5000), `crawl.timeout`, `crawl.refresh_budget`. `crawl.respect_robots: false` is an error, `crawl.allowed_hosts` is required for URL sources, `require_content_signal` needs an explicit `yes` in robots.txt (absent means not granted), `git_docs` is rejected at install ("not built"). `attach.roles` are the roles `pack.attachDefaults` attaches to; they are not enforced elsewhere.
+- Manifest extensions: `sources[].urls` (for `url_list`), `crawl.max_pages` (default 500, cap 5000), `crawl.timeout`, `crawl.refresh_budget`. `crawl.respect_robots: false` is an error, `crawl.allowed_hosts` is required for URL sources, `require_content_signal` needs an explicit `yes` in robots.txt (absent means not granted). `git_docs` was rejected at install until decision P110 built it; `crawl.max_repo_bytes` bounds its fetch. `attach.roles` are the roles `pack.attachDefaults` attaches to; they are not enforced elsewhere.
 - Confidence is exactly: `low` for live-only results, a top hit that matched only some terms, or a source older than `stale_after`; `high` when the top hit matched every term and is within `warn_after`; otherwise `medium`.
 - Injection scoring (weights, threshold 3) is its own table in `packs/risk.go` rather than the gateway's labels, because the gateway's patterns would flag ordinary documentation ("you should run the curl command"); skills treat any hidden character as blocking.
 - The `search_pack` result type `mcp.PackHit` has no origin, confidence or content-hash fields, so the hash is carried in `chunk_id` as `<id>#<first 12 hex of the chunk hash>` (`live#<hash>` for live results) and the text of one hit is cut at 2000 characters. The structured `Consult` result has everything.
 - The exact-match `llm_cache` for CONSULT is not implemented in `packs`: the `Answerer` that wraps the LLM client owns caching (its key must include chunk ids and hashes, as specified).
 - Live results from servers other than Cloudflare docs are parsed generically (JSON `results` arrays with url/title/text, otherwise one hit whose URL is `mcp://<server>/<tool>`); Microsoft Learn's real result shape is unverified.
-- Wired (2026-10-08): the Core now owns a shared MCP gateway (`internal/core/ext_mcp.go`) built with `Knowledge().Workspace()`, and `Knowledge().UseGateway(g)` points live packs at it, so the private on-demand gateway of this extension is no longer started. Every agent turn of a verified adapter (Claude today) gets a run on that gateway whose policy allows `search_pack` only when `Packs.AllowFor(project, agent, role)` reports an attached pack; only the `search_pack` part of the allowance is applied (`Apply`'s live-docs-server entries are not: agents have no direct docs-server access, `search_pack` queries live packs itself). A real Claude turn called `search_pack` through the generated config and quoted pack, version and URL (internal/core `TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig`); see [`mcp.md`](mcp.md) "As built". The default per-role policy is the minimal one described there, not a per-role table. Roles are matched exactly as attached (`pack.attach` role), and a review turn runs as role `reviewer`, so a pack attached to `Backend` is not searchable from that agent's review turns.
+- Wired (2026-10-08): the Core now owns a shared MCP gateway (`internal/core/ext_mcp.go`) built with `Knowledge().Workspace()`, and `Knowledge().UseGateway(g)` points live packs at it, so the private on-demand gateway of this extension is no longer started. Every agent turn of a verified adapter (Claude today) gets a run on that gateway whose policy allows `search_pack` only when `Packs.AllowFor(project, agent, role)` reports an attached pack; until decision P115 only the `search_pack` part of the allowance was applied; since P115 the live pack's docs server reaches the agent too, with exactly the pack's tool and under the role table's docs column ([`mcp.md`](mcp.md) "As built: the role table, rules and task narrowing"), while `search_pack` still queries live packs itself. A real Claude turn called `search_pack` through the generated config and quoted pack, version and URL (internal/core `TestRealClaudeCallsTheSearchPackToolThroughTheGeneratedConfig`); see [`mcp.md`](mcp.md) "As built". The per-role policy is the table of section 3 of mcp.md since P115. Roles are matched exactly as attached (`pack.attach` role), and a review turn runs as role `reviewer`, so a pack attached to `Backend` is not searchable from that agent's review turns.
 - Sections 10 and 8: requirements are chunked by the pack chunker; quarantine applies to them too (a requirement that quotes an attack string is held back until released).
 
 **UI (built since).** The sidebar's Knowledge section has Expert packs (`/packs`: install, refresh, attach and detach, search, CONSULT, quarantined passages to release, remove), Requirements, Skills (repository scan, registries, import, accept, reject, release, deliveries and coverage) and Memory; Milestones is in the Project section (`ui/app/screens`).
 
-**Not built.** PDF/DOCX parsing (only pasted text); `git_docs` sources; an embedding or semantic index (none planned in v1); the LLM-backed `Answerer` and `Summarizer` (interfaces only, no provider route is wired); OpenCode `instructions` globs in `opencode.json`; per-skill script approval (scripts are never delivered); reading `references/` and `assets/` of a skill (only `SKILL.md` is stored); an HTTP proxy for the crawler (corporate proxies are unsupported because the connect-time address check cannot see through a proxy; `FetchPolicy.UseSystemProxy` exists and is off); Notion/Linear/GitHub requirement sync itself (the `Sync` entry point exists for the integrations worker); per-role default allowlists beyond the minimal one in [`mcp.md`](mcp.md) (read-only tools for every role, `search_pack` when a pack is attached); `search_pack` for any CLI other than Claude (their MCP configs are unverified, so they get no MCP).
+**Not built.** An embedding or semantic index (none planned in v1); OpenCode `instructions` globs in `opencode.json` (decided against in P110: OpenCode already finds the run-start copies in `.agents/skills` as skills of its own, and `instructions` would load every matched skill into every turn, which the P37 trial measured as the costly choice; Drydock's OpenCode configuration is also unverified with a real OpenCode); (PDF and DOCX sources, `git_docs` and the model-backed `Answerer` and `Summarizer` are built since, decision P110, below); per-skill script approval (scripts are never delivered); reading `references/` and `assets/` of a skill (only `SKILL.md` is stored); an HTTP proxy for the crawler (corporate proxies are unsupported because the connect-time address check cannot see through a proxy; `FetchPolicy.UseSystemProxy` exists and is off); Notion/Linear/GitHub requirement sync itself (the `Sync` entry point exists for the integrations worker); per-role default allowlists beyond the minimal one in [`mcp.md`](mcp.md) (read-only tools for every role, `search_pack` when a pack is attached); `search_pack` for any CLI other than Claude (their MCP configs are unverified, so they get no MCP).
 
 **Unverified.** Everything on Windows (NTFS with Defender for FTS5, symlink refusal tests skip where symlinks are unavailable, path handling); the live structure of `developers.cloudflare.com` (`llms.txt`, per-product lists, `<page>/index.md`, robots Content-Signal), Learn's crawlability and terms, the real result shapes of both docs MCP servers; GitHub's API and codeload behaviour (fixture only; unauthenticated rate limits apply); the Claude `paths:` front-matter key, Codex/OpenCode/Antigravity reading `.agents/skills`, and Gemini/Goose loading nested instruction files just in time; chunk sizes, BM25 weights, stop words, the injection pattern list, weights and threshold (no measured false-positive rate), the 600-character limit and the confidence heuristic (no eval run); `skill.delivered` coverage numbers (nothing has run with a real agent that calls `skills`). Race detector: passed for packs, requirements, skills, context and memory; the core suite passes except that `TestRealClaudePlansATinyGoal` (needs a logged-in Claude) and a timing-sensitive plan test of another worker were not mine to judge (the latter passes when run alone).
+
+## As built: PDF and DOCX, packs of files, git_docs and routed answers (2026-10-29, decision P110)
+
+**PDF and DOCX** (`internal/docparse`). A PDF is read with `github.com/ledongthuc/pdf` (pure Go, BSD-3-Clause, the one new
+dependency; `docs/software-notes.json`), page by page, in content-stream order with a space where the glyphs leave a gap and a
+line break where the baseline moves; a 2.0 file is shown to the reader as 1.7 (it refuses any header but 1.x). A DOCX is read
+with `archive/zip` and `encoding/xml` alone: headings from the style names in `word/styles.xml` (`heading 1` to `heading 9` and
+`Title` whatever the document's language, or an outline level), list items, tables as Markdown tables, and only the text of
+`w:t` (no deleted tracked changes, field codes, drawing positions or `mc:Fallback` copies). Every file is untrusted: at most
+32 MB, at most 1000 PDF pages (a longer one is refused with its count), at most 16 MB of text, a DOCX's parts read through a
+bound of 128 MB in all whatever the zip claims (a zip bomb fails as such), 60 seconds per file, and a reader panic is that file's
+error. A PDF with fewer than 16 letters or digits is a scan: "no text layer ... run it through OCR first" (no OCR is done). The
+PDF reader cannot be interrupted, so each PDF is read on a goroutine of its own and at most two at once; a slot is given back
+only when its reading really ends, so a file that hangs the reader can hold one until the app closes (a third PDF waits, then
+says the reader is busy). Lines of a document's own text that Markdown would read as a heading or a fence are escaped.
+
+**As pack sources.** `local_dir` lists `.pdf` and `.docx` (bounded by docparse, not `crawl.max_page_bytes`). A PDF is chunked
+page by page: a passage's heading path ends in "Page N" and the chunk keeps N (`pack_chunks.page`, migration `00136`), which
+search, CONSULT and resolved citations return as `Citation.page`. A DOCX becomes Markdown and is chunked by its headings. A
+scanned, encrypted, damaged, too large or too slow document is a failed page whose reason names the kind of trouble (the refresh's
+`reasons`; the page shows them).
+
+**Packs made from files.** `pack.createFromFiles {id, title, visibility?, license?, files}` installs a pack whose only source is
+`{type: local_dir, path: files}`, its own folder `packs/<id>/files`, private unless asked otherwise (so its CONSULT route is
+private only), then writes the files; `pack.files`, `pack.addFiles` and `pack.removeFile` list and change them (a file of the same
+name is replaced). Files come base64 encoded, as room attachments do. Each file is checked before any is written: its name
+keeps its last element (no control characters or characters Windows refuses, never a device name such as `CON`, at most 120
+bytes), its extension is one a pack reads, a PDF or DOCX must start like one, a text file must be UTF-8 without NUL, at most 50
+files a call and 512 MB per pack. Audit entries name the files and their sizes, never their content. The page (Expert packs,
+"Make a pack from your files") reads the picked files in the browser and checks their names, sizes and count first, makes the
+pack and reads it at once; the pack's card lists its files with Add files and Remove (asked first), each change read at once.
+Backups hold the database only, so a restored workspace keeps a files pack's passages but not its folder: its next refresh
+fails and keeps the version it has.
+
+**git_docs** (`internal/git/docs.go`, `internal/packs/gitdocs.go`). `{type: git_docs, url, ref, path}`: an https URL on
+`crawl.allowed_hosts`, a ref that is a plain branch, tag or commit name (no option, no `..`, no `@{`), a folder inside the
+repository (no `..`, no `.git`, no pathspec magic). The pack resolves the host, refuses an address that is not public (as the
+crawler does), and pins the address it checked for git (`http.curloptResolve`), so a name that resolves elsewhere a moment
+later cannot move the fetch. `git.FetchDocs` makes a fresh bare repository in `packs/<id>/tmp`, fetches the ref shallow with no
+blobs (`--depth=1 --filter=blob:none --no-tags --recurse-submodules=no`), lists the tree under the folder, fetches only the blobs
+of the wanted files by id, and reads them with `cat-file --batch`: nothing is checked out, so no filter, hook, LFS or attribute
+of the repository runs; submodules (gitlinks) and symbolic links are counted and skipped, a missing blob is never fetched
+lazily (`GIT_NO_LAZY_FETCH`). Every call has Drydock's git hardening plus https only (http for a test server), no redirects,
+verified TLS, no proxy, no credential helper or askpass, no prompt and the person's global git configuration replaced by an
+empty file (the system one, which tells Git for Windows where its certificates are, is kept). The folder is watched while git
+works and a fetch that grows it past `crawl.max_repo_bytes` (default 256 MB, at most 2 GB) is stopped; it is removed afterwards.
+Only `.md`, `.markdown`, `.mdx` and `.txt` files are read, at most `crawl.max_pages`, each at most `crawl.max_page_bytes`. A
+file on github.com is cited by its page at the ref (`https://github.com/<o>/<r>/blob/<ref>/<path>`), any other as
+`git+<url>@<ref>:<path>` (shown as text). Each version records the commit each source was read at (`pack_versions.sources`,
+migration `00137`; `RefreshResult.sources`, `VersionInfo.sources`). The pack's refresh schedule applies as to any source; every
+refresh fetches the trees again (they are small next to the blobs). A private repository is not reachable (no credentials are
+used) and robots.txt and Content-Signal do not apply to git.
+
+**Routed answers and summaries** (`internal/packs/packmodel`; docs/model-routing.md "As built: expert-pack consults"). The
+`Answerer` routes run kind `consult` and the `Summarizer` run kind `summarize` through the app's router and LLM client, with the
+pack's context ceiling (a private pack, or a question that may not leave on a trainable route, is routed private). A model's
+answer is kept only when its `used` list and every `[n]` in its text name a supplied source; the sources it used are marked
+(`ConsultSource.used`) and the page shows them under "Quoted from", the rest apart. With no model set up, or a router that
+blocks, the answer is the cited passages and `degraded` says why. A digest summary is asked from page titles, statuses, line
+counts and changed headings, never page text; without a model the digest has no summary, as before.
+
+**Requirements.** `requirement.extract {name, data}` returns the title and Markdown of a PDF or DOCX (a PDF's pages as
+"## Page N"), stores nothing; the Requirements page puts it in the text box to be checked, then adds it as Markdown (at most
+1 MiB of text), so a requirement's citation names the page.
+
+**Tests.** `internal/docparse` (pages, gaps, PDF 2.0, a scan, every limit, damaged files, a timeout that frees its slot; DOCX
+headings in another language, lists, tables, left-out text, zip bomb), `internal/packs` (documents in a folder with page and
+heading citations, a scan and a damaged file as failed pages, packs of files and their checks, git_docs against git's own
+http-backend with the commit recorded and a scheduled refresh bringing a new commit, the manifest rules, a private address
+refused), `internal/git/docs_test.go` (only text under the path, a symbolic link and a submodule skipped, a tag, refused refs,
+paths and URLs, the size bound, the pinned address), `internal/packs/packmodel`, `internal/core/ext_packs_model_test.go` (no
+model, an answer by the routed model that quotes what it used and is recorded as a consult decision, a citation of a source not
+supplied refused, a private pack never sent to a trainable provider while a public one may be, a digest summarized), the
+Requirements extract, UI unit and browser tests and `ui/e2e/packs-files.spec.ts` (a PDF and a note made into a pack through the
+page, the page cited, an answer without a model, a file added and removed). The test files are written byte by byte
+(`docparse/docfixture`) and the git server is git's own http-backend (`git/gitfixture`), both labelled fixtures; the model is a
+labelled test-double provider.
+
+**Not built or not verified.** No OCR (a scan is refused with that reason); PDF text order is the content stream's, so a page
+whose producer wrote it out of reading order reads out of order, and right-to-left scripts and vertical text are not handled;
+encrypted PDFs that need a password are refused; DOCX footnotes, comments, headers and footers, text boxes' fallback copies and
+embedded objects are left out; a DOCX has no page numbers (Word computes pages when it draws), so its passages cite headings;
+the PDF reader's memory use inside one file is not bounded beyond the file's size (a hostile stream could inflate within its
+32 MB); `git_docs` against a real host (GitHub's partial-clone support is documented, not exercised here), on Windows with Git
+for Windows (the http-backend fixture and `http.curloptResolve` need git 2.37 or newer), behind a corporate proxy (unsupported,
+as for the crawler) and of a private repository (no credentials); a provider failure during a consult is not retried on the
+router's next choice; files of 32 MB through the Wails bridge (base64 in one message) have not been tried in WebView2; no
+real model has answered a consult (only the test double).

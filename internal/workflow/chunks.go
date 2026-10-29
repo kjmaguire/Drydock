@@ -105,6 +105,8 @@ type SessionChunk struct {
 	SessionID string `json:"sessionId"`
 	Model     string `json:"model,omitempty"`
 	Tools     int    `json:"tools,omitempty"`
+	// PermissionMode is the permission mode the CLI says its session runs in (Claude Code's system/init permissionMode).
+	PermissionMode string `json:"permissionMode,omitempty"`
 }
 
 // ChunkPermissionDenied is a tool use refused without asking anyone: by the CLI, because its permission mode and allow rules

@@ -173,7 +173,9 @@ export const CONCEPTS: readonly Topic[] = [
       { h: 'Which skills go into every turn' },
       { p: 'The repository’s own skills are loaded into every turn (one with paths only when the task names no files or names one of them), and so is an imported skill whose paths match the task’s files. The other skills (a vendor’s, a prebuilt agent’s) are listed by name and purpose and the agent opens one when its work needs it. That costs fewer tokens in every turn; a listed skill the agent does not think of opening is not used. The project can instead load every skill into every turn: large skills with nothing to do with the task then cost tokens on every request, and the run’s context record says when the total is over budget.' },
       { h: 'Expert packs' },
-      { p: 'A **pack** is a body of reference text (documentation, standards) that agents search and cite. Everything inside a pack is outside text: it is shown as inert text, passages that look like instructions are quarantined, and nothing in a pack can grant a permission or make a decision. A pack manifest is YAML; a source can be a local folder (type `local_dir` with a path), a list of URLs or a site. Installing does not fetch anything; use Refresh.' },
+      { p: 'A **pack** is a body of reference text (documentation, standards) that agents search and cite. Everything inside a pack is outside text: it is shown as inert text, passages that look like instructions are quarantined, and nothing in a pack can grant a permission or make a decision. A pack manifest is YAML; a source can be a local folder (type `local_dir` with a path), a list of URLs, a site, or the docs folder of a git repository (type `git_docs` with `url`, `ref` and `path`: only its Markdown and text files are read, and nothing in the repository is run). Installing does not fetch anything; use Refresh.' },
+      { p: 'You can also **make a pack from your own files**: PDF, Word (DOCX), Markdown, text or HTML. Such a pack is private. A PDF’s passages name their page, a DOCX keeps its headings; a scanned PDF has no text to read, so run it through OCR first.' },
+      { p: 'A **question** to the packs is answered by the model the router picks (the cheapest that fits), from the passages it quotes, with their citations. A private pack never goes to a model that may train on what it is sent. With no model set up, or when the router chooses none, the answer is the passages themselves, and the page says why.' },
     ],
     related: ['knowledge', 'untrusted-text'],
   },
@@ -187,7 +189,7 @@ export const CONCEPTS: readonly Topic[] = [
       {
         ul: [
           '**Memory** holds decisions, conventions and known issues that agents read. Agents (and you) can propose entries; only an entry you accept reaches agents. Secrets are redacted before anything is stored. Memory is shared by the whole crew.',
-          '**Requirements** are text you upload or paste. Link its criteria to tasks and see which tasks have passing test evidence. The text is outside text: it is stored with secrets redacted, shown inert, and passages that look like instructions to an agent are quarantined.',
+          '**Requirements** are text you upload or paste (a PDF or DOCX is read into text first, which you check before it is added). Link its criteria to tasks and see which tasks have passing test evidence. The text is outside text: it is stored with secrets redacted, shown inert, and passages that look like instructions to an agent are quarantined.',
           'The **repo map** is the most important code of the repository as agents get it from the `repo_map` tool: files ranked by how much the rest of the code uses them, each with its most important definition lines, within a token budget. Focus paths rank what those files use higher. It is made on this computer from the repository’s files (`.gitignore` is respected); nothing leaves the machine.',
         ],
       },

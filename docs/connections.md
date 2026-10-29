@@ -326,7 +326,7 @@ Ownership: each generated file starts with `<!-- drydock:generated sha256=<hash 
 - **Where things are:** manifests are embedded from `internal/agents/manifests/cli/*.yaml` (claude, codex, gemini, opencode, goose, antigravity, a `custom` template) with a strict validator, `compat.yaml` and a `Registry`; the generic ACP client is `internal/agents/acp` (scripted stand-in agent in `acp/fakeacp`); detection, gates and Test Connection are `internal/connections`; the adapter contract suite is `internal/agents/conformance`.
 - **Resolved by running the real CLIs:** `claude -p --output-format stream-json` requires `--verbose` (in the manifest). `codex-acp@2.1.1` runs its own bundled codex (0.159.3), not the installed one. `opencode providers list` printing "0 credentials" does not mean unusable (free models exist), so auth is reported as unknown. `session/new` without credentials fails with "authentication required" (gemini, codex-acp) or "provider not configured" (goose). Live ACP `initialize` of gemini 0.63.0, opencode 1.18.35, goose 1.53.0 and codex-acp 2.1.1 matches the capability matrix (run with `DRYDOCK_ACP_<NAME>` env vars; otherwise skipped with the reason). Real claude 2.1.294 passes conformance and Test Connection T1 to T5 (the real-CLI test asks for T4; the app's Test never does, see section 5).
 - **Added:** compat class `verified_linux` (between `inspected` and `verified_short`) for a real Linux turn that is not a Windows proof.
-- **Not built / unverified:** no real prompt turn for any ACP CLI (no model credentials here), so real tool names, args and whether `inputTokens` includes cached tokens are unknown; Antigravity `Start` and the `custom` declarative dialect return "not implemented" (no captured fixtures); the codex headless fallback is declared, not built; everything on Windows (`.cmd` shims, tree kill, the logged-out `claude auth status` exit code); whether the Codex bridge honours `CODEX_PATH`.
+- **Not built / unverified:** no real prompt turn for any ACP CLI (no model credentials here), so real tool names, args and whether `inputTokens` includes cached tokens are unknown; Antigravity `Start` and the `custom` declarative dialect are built since decision P115 (below, "As built: Antigravity and custom CLIs") and verified only against stand-ins; the codex headless fallback is declared, not built; everything on Windows (`.cmd` shims, tree kill, the logged-out `claude auth status` exit code); whether the Codex bridge honours `CODEX_PATH`.
 
 ## 17. Cline (added 2026-10-09, decisions P29)
 
@@ -346,3 +346,47 @@ Cline (Apache-2.0, github.com/cline/cline) is the eighth manifest, `internal/age
 | Instructions | reads the workspace `AGENTS.md` (and its own `.clinerules`) | `sdk/packages/core/src/extensions/config/user-instruction-config-loader.ts` |
 
 Not verified: a real prompt turn (no sign-in here), tool names and arguments as Cline reports them, `session/load` of a real stored session, anything on Windows (the npm `.cmd` shim, tree kill of node plus the Bun-based binary).
+
+## As built: Antigravity and custom CLIs (decision P115, 2026-10-29)
+
+Both are driven by `internal/agents/headless`; the registry builds them from their manifests.
+
+- **Antigravity** (`AntigravityAdapter`): one `agy` process per session, started as the manifest says, `-p --input-format
+  stream-json --output-format stream-json --mode default` plus `--effort` when the agent has one. `default` is the mode that
+  asks before acting, so print mode, which cannot ask, refuses instead (D11). A message is the stream-json user line Claude
+  Code reads (`{"type":"user","message":{"role":"user","content":...}}`), which community wrappers of agy send. The output is
+  read as phase0 section 8 names it: `init` (`conversation_id`, the session id; `init.tools`, `init.permission_mode`),
+  `step_update` (`text_delta` as text, `step_type: thinking` as thinking, a `tool` object as a tool call and, when its `state`
+  is done or error, its result; `usage` summed), `result` (`response` as the message, `denied_actions` as permission_denied
+  chunks the person sees, `usage` as the turn's totals, a `status` other than success as an error). `AGY_ERROR: {...}` on
+  stderr with exit 3 ends the turn with agy's message. An unknown event or step type is an adapter drift warning, once.
+  Interrupt, resume and model choice are not offered (their behaviour in print mode is unknown); the environment keeps the
+  base allowlist and `AGY_`, `ANTIGRAVITY_`, `GEMINI_`, `GOOGLE_` variables. Still behind its acknowledgement gate
+  (`CreateAgent`, Test connection). No MCP (section 10: unproven).
+- **A person's own CLI** (`CustomAdapter`): a manifest in `<app data>/adapters/custom/<id>.yaml`, loaded at start (a file that
+  does not load is listed with why) and added or removed on the Agents page ("Add a custom CLI" starts from the embedded
+  template made ready for an id; a custom CLI's Install tab says where its manifest is and removes it, refused while an agent
+  runs on it; removing forgets its acknowledgement). Strict rules (`manifests.ParseUserCustom`): `meta.custom`, an id that is
+  neither a built-in adapter's nor the template's and that names the file, the gate `custom-<id>` with a text, the headless
+  contract only (no Go parser, no ACP, no `provider_config`, `mcp`, `usage` or keychain sections), native only, a program
+  name or a full path, `prompt: {via: stdin}` or `{via: arg}` with `{{prompt}}` in the argv, only the placeholders `cwd`,
+  `model`, `effort`, `session_id` and `prompt`, exit codes mapped to success or failure, 64 KiB at most, and nothing the
+  secret scanner would change. The dialect is `format: jsonl` (each event found by the value of `type_field`, its fields read
+  by paths such as `$.text`; `assistant_text` is required; events `tool_call`, `tool_result`, `usage`, `result`, `error`,
+  `session` with their own fields, checked one by one) or `format: text` (every line is the answer).
+- **The runner** starts one process per turn (the headless contract's prompt-and-exit): the argv with the optional groups
+  whose placeholder has a value, the prompt on stdin (then closed) or in the argv, the working folder as the process's own.
+  It streams what it reads, ends the turn with the message, the usage and a done chunk whose stop reason is the result's
+  status, `error` for a failing exit (with the result's error or the first line of stderr) or `cancelled` after an
+  interrupt, which ends the turn's process; the session stays and takes the next message, and a session id the CLI printed is
+  passed to the next turn's `{{session_id}}`. Its capabilities follow from the manifest (tool calls, usage and resume only
+  when the dialect maps them, a model or effort only when the argv has a place for it). No MCP: the manifest cannot declare a
+  mechanism yet.
+- **Tested** against labelled stand-ins: `fakeagy`, written from agy's documentation (a real process speaking the stream
+  described above), and `fakecustom`, the template's CLI in JSON lines and plain text. The conformance suite runs against
+  both (it gained `PerTurnProcess`: PID 0 until the first turn, a turn's exit does not end the session); Test connection's T2
+  passes for agy after the acknowledgement; the core adds a CLI, gates it, runs a turn through `Runtime.Spawn`, refuses to
+  remove it under an agent, removes it and loads the folder at the next start. **Not verified:** a real `agy` (every field
+  name, the input line, the `--mode` value set, exit codes), a real custom CLI, a `.cmd` program and a prompt passed as an
+  argument through `cmd.exe` on Windows. **Not built:** MCP for either; asking the acknowledgement again when a custom
+  manifest's file changes on disk.

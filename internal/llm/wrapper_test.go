@@ -1245,3 +1245,39 @@ func TestPriceCostFallsBackToDocumentedCacheMultipliers(t *testing.T) {
 		t.Fatal("a zero, non-free row must not price anything")
 	}
 }
+
+// An organization without data retention cannot use an Anthropic Covered Model (400 invalid_request_error "... must have data
+// retention enabled"). The call moves on to the router's next approved target, the model is marked so the router leaves it out
+// from then on, and with no target left the error says what to do (decision P112).
+func TestRetentionRefusalMarksTheModelAndFallsBack(t *testing.T) {
+	e := newEnv(t, nil)
+	const msg = "In order to access this model, your organization or workspace must have data retention enabled."
+	covered := llmtest.New(t, func(c llmtest.Call, w http.ResponseWriter, r *http.Request) {
+		llmtest.WriteError(w, 400, nil, map[string]any{"type": "error", "error": map[string]any{"type": "invalid_request_error", "message": msg}})
+	})
+	alt := llmtest.New(t, okHandler("no retention needed", nil))
+	p := e.provider(providers.NewProvider{Name: "anthropic", BaseURL: covered.URL + "/v1"})
+	q := e.provider(providers.NewProvider{Name: "other", BaseURL: alt.URL + "/v1"})
+	r := req(p, privateManifest)
+	r.Fallbacks = []llm.Target{{Provider: q.ID, Model: "m-alt"}}
+	resp, err := e.w.Complete(e.ctx, r)
+	if err != nil || !resp.Fallback || resp.Content != "no retention needed" {
+		t.Fatalf("the private call must move to the next target: %v %+v", err, resp)
+	}
+	if len(covered.Calls()) != 1 || len(e.clk.slept()) != 0 {
+		t.Fatalf("the refusal is not retried: %d calls, slept %v", len(covered.Calls()), e.clk.slept())
+	}
+	if !e.reg.RetentionBlocked(e.ctx, p.ID, "m1") {
+		t.Fatal("the model must be marked for the router")
+	}
+	bs, _ := e.reg.RetentionBlocks(e.ctx)
+	if len(bs) != 1 || bs[0].Message != providers.RetentionRefusal || strings.Contains(bs[0].Message, "In order") {
+		t.Fatalf("the mark keeps Drydock's words, not the provider's body: %+v", bs)
+	}
+	// no target left: the error says what to do
+	_, err = e.w.Complete(e.ctx, req(p, privateManifest))
+	var ae *llm.APIError
+	if !errors.As(err, &ae) || ae.Kind != llm.KindRetention || !strings.Contains(err.Error(), "enable it in the provider's console") {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -16,7 +16,7 @@ import {
   Cpu,
   House,
   Inbox,
-  Library,
+  LayoutTemplate,
   ListTodo,
   MessagesSquare,
   PanelLeftClose,
@@ -24,6 +24,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   type IconNode,
 } from 'lucide';
@@ -403,7 +404,9 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             {link({ id: 'nav-side-agents', label: 'Agents', icon: Bot, href: routes.agents.href(), current: is('agents') })}
             {link({ id: 'nav-side-integrations', label: 'Integrations', icon: Blocks, href: routes.integrations.href(), current: is('integrations') })}
             {link({ id: 'nav-side-models', label: 'Models', icon: Cpu, href: routes.models.href(), current: is('models') })}
-            {link({ id: 'nav-library', label: 'Library', icon: Library, href: routes.library.href(), current: is('library') })}
+            {/* the Library's two halves, each found in one click (decision P106) */}
+            {link({ id: 'nav-library', label: 'Agent templates', icon: LayoutTemplate, href: routes.library.href(), current: is('library') })}
+            {link({ id: 'nav-library-skills', label: 'Skills', icon: Sparkles, href: routes.librarySkills.href(), current: is('skill-library') })}
           </ul>
           </div>
         <div mix={footCss}>

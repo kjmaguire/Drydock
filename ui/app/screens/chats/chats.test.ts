@@ -16,6 +16,10 @@ import { moveEffect, OUT_OF_PROJECT } from './chat-move.tsx';
 import {
   adapterOptionText,
   adapterUnavailable,
+  chatEffort,
+  chatModelText,
+  defaultEffort,
+  modelName,
   askCallText,
   askHead,
   chatPlaceWords,
@@ -51,6 +55,30 @@ const chat = (over: Partial<Chat> = {}): Chat =>
   ({ id: 'c1', projectId: '', title: '', adapter: 'claude', status: 'idle', allowedTools: [], costUsd: null, costUnknownTurns: 0, version: 1, ...over }) as Chat;
 
 describe('chats helpers', () => {
+  it('names a model as a person reads it, and the effort Claude Code uses by default for it (decision P107)', () => {
+    expect(['claude-opus-5-5', 'opus-5-5-20261001', 'claude-sonnet-4-5-20250929', 'claude-haiku-5-5[1m]', 'sonnet', 'fake-1', 'gpt-6-astra'].map(modelName)).toEqual([
+      'Opus 5.5',
+      'Opus 5.5',
+      'Sonnet 4.5',
+      'Haiku 5.5',
+      'Sonnet',
+      'fake-1',
+      'gpt-6-astra',
+    ]);
+    expect(defaultEffort('claude', 'claude-opus-5-5')).toBe('medium');
+    expect(defaultEffort('claude', 'claude-opus-4-7')).toBe('xhigh');
+    expect(defaultEffort('claude', 'claude-sonnet-4-5')).toBe('high');
+    // an alias names no model of its own, another CLI has its own rules, and a model not known yet has no default to say
+    expect([defaultEffort('claude', 'opus'), defaultEffort('codex', 'gpt-6'), defaultEffort('claude', '')]).toEqual(['', '', '']);
+    const c = { adapter: 'claude', model: '', effort: '', cliModel: 'claude-opus-5-5' };
+    expect(chatModelText(c)).toBe('Opus 5.5');
+    expect(chatEffort(c)).toEqual({ text: 'medium', chosen: false });
+    expect(chatModelText({ ...c, model: 'claude-sonnet-5-5' })).toBe('Sonnet 5.5');
+    expect(chatEffort({ ...c, effort: 'high' })).toEqual({ text: 'high', chosen: true });
+    expect(chatModelText({ model: '', cliModel: '' })).toBe('default model');
+    expect(chatEffort({ ...c, cliModel: undefined })).toEqual({ text: '', chosen: false });
+  });
+
   it('formats relative times for the list', () => {
     const now = new Date('2026-10-09T12:00:00Z').getTime();
     expect(relTime(now - 10_000, now)).toBe('now');
