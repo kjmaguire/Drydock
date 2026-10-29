@@ -47,6 +47,10 @@
     "go:github.com/google/jsonschema-go": {
       "role": "Describes the workspace tools' inputs to MCP clients as JSON Schema."
     },
+    "go:github.com/ledongthuc/pdf": {
+      "role": "Reads the text of PDF files a person gives an expert pack or a requirement, page by page (internal/docparse, decision P110). Pure Go, BSD-3-Clause (a fork of rsc.io/pdf), no dependencies of its own.",
+      "note": "The module has no release tags: the version is the newest commit's pseudo-version (2026-10-20). It panics on damaged files and cannot be interrupted, so internal/docparse reads each PDF on a goroutine of its own with a recover, a size, page and text bound and a time limit, and at most two at once. It reads only %PDF-1.x headers; docparse shows it a 2.0 file as 1.7."
+    },
     "go:github.com/modelcontextprotocol/go-sdk": {
       "role": "The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. Its auth package will carry the OAuth connect flow."
     },
