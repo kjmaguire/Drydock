@@ -233,7 +233,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
             <SettingRow
               label="Most tokens an agent turn starts with"
               for={ceilId}
-              description={`The instructions plus the turn's prompt. Over it, file excerpts go first, then the repository map, memory, design notes, the spec, the handoff and check output. The task and the instructions are never cut, and the turn's context list says what was left out. Empty or 0 means ${CONTEXT_CEILING.default.toLocaleString('en')}.`}
+              description={`Over it, file excerpts, the repository map and memory are cut first; the task and instructions never are. The turn's context list says what was left out. Empty means ${CONTEXT_CEILING.default.toLocaleString('en')}.`}
             >
               <input
                 id={ceilId}
