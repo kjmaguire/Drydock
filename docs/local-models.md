@@ -1,7 +1,8 @@
 # Drydock: models on your PC with llama.cpp (decision P65)
 
-Status (2026-10-15): built and tested on Linux with labelled test doubles and protocol fixtures; nothing here has run against
-the real llama.cpp, GitHub or Hugging Face yet (see "Not verified").
+Status (2026-10-15; several models, vision, drafts, embeddings and gated models added 2026-10-29, decision P111, section 11):
+built and tested on Linux with labelled test doubles and protocol fixtures; nothing here has run against the real llama.cpp,
+GitHub or Hugging Face yet (see "Not verified").
 
 ## 1. What it is for
 
@@ -22,7 +23,7 @@ weekly Windows build, and its server speaks the OpenAI chat completions API that
 |---|---|---|
 | The llama.cpp build | the newest GitHub release of `ggml-org/llama.cpp` that carries a Windows x64 archive for the chosen backend (the weekly builds, tagged `bNNNN`, marked pre-release; the tagged `vX.Y.Z` releases carry no binaries) | the archive's SHA-256 must match the digest GitHub recorded when the maintainer uploaded it (the releases API's `digest` field); an asset without a digest is never offered; only `https://github.com/ggml-org/llama.cpp/releases/download/...` is fetched |
 | The CUDA runtime (CUDA builds only) | the `cudart-llama-bin-win-cuda-*.zip` of the same release | the same digest check; its DLLs are unpacked beside `llama-server.exe` |
-| Models (GGUF files) | public repositories on the Hugging Face Hub (`huggingface.co`); gated and private repositories are not offered (Drydock holds no Hugging Face token) | each file's SHA-256 must match the one the Hub records for it (the LFS object id); a file without one is not offered; a mismatch deletes the file |
+| Models (GGUF files) | public repositories on the Hugging Face Hub (`huggingface.co`), and gated ones with the person's Hugging Face token (section 11); private repositories are not offered | each file's SHA-256 must match the one the Hub records for it (the LFS object id); a file without one is not offered; a mismatch deletes the file |
 | The TurboQuant fork (opt-in) | `AtomicBot-ai/atomic-llama-cpp-turboquant`, its tagged releases (its "Dev latest" pre-releases are skipped) | the same digest check, and a warning on the page: a community build Drydock has not reviewed |
 
 The archive is unpacked with the same guarded unzip the CI runners use (`internal/runners`: no absolute names, no `..`, no
@@ -41,7 +42,8 @@ build stays a source the core can install (`local.install`), and a build install
 
 **What leaves the machine.** The release listing (`api.github.com`, unauthenticated, 20 releases), the archives
 (`github.com`), the model listings and files (`huggingface.co` and its download hosts). No code, no prompt and no project
-content: the server runs on `127.0.0.1` and never calls out. Drydock sends no token to either site.
+content: the server runs on `127.0.0.1` and never calls out. Drydock sends no token to GitHub; the person's Hugging Face token,
+when there is one, goes only as the Authorization header of a file download from `huggingface.co` itself (section 11).
 
 ## 3. Backends
 
@@ -67,7 +69,7 @@ authors convert and keep current. Search finds any public GGUF repository by nam
 suggestions" (or "Close results") takes it and the repository open in it off the page again, so the section shrinks back;
 Show suggestions then returns (the owner asked for this, 2026-10-16). A repository's files are grouped into
 **variants** by quantization (`Q4_K_M`, `Q8_0`, `MXFP4`...; a model split into `-00001-of-00003.gguf` shards is one variant
-of several files); projector files for vision (`mmproj`) are left out, Drydock serves text models.
+of several files); a projector file for vision (`mmproj`) is no variant of its own but goes with each variant (section 11).
 
 **Fit.** Each variant is marked by a simple rule (`localllm.FitOf`): a file that fits the free memory of one GPU "Fits the
 GPU"; one that fits three quarters of the free RAM "Runs on the CPU (slow)" (partly offloaded when there is a GPU); the rest
@@ -91,7 +93,8 @@ checked before they count as present. A drive with less than the file plus 2 GB 
 
 ## 5. The server
 
-One `llama-server` runs at a time, on one model:
+One chat `llama-server` runs at a time (beside it, the embedding server of section 11). On one model it is started so; on
+several it runs llama.cpp's router mode (section 11):
 
 ```
 llama-server --host 127.0.0.1 --port 9933 -m <file.gguf> --alias <owner/repo:VARIANT> --jinja --no-webui -ngl auto
@@ -133,42 +136,61 @@ Changing the cache type, the context size or the port takes effect at the next s
 
 | Setting | Default | Stored |
 |---|---|---|
-| Source | official | `settings` key `local:settings` (JSON: source, backend, cacheType, contextSize, port, modelId, providerId, autostart) |
+| Source | official | `settings` key `local:settings` (JSON: source, backend, cacheType, contextSize, port, modelId, providerId, autostart, loaded, drafts, embeddingModel, embeddingPort) |
 | Backend | the suggested one (CUDA with an NVIDIA driver, else Vulkan) | |
 | KV cache type | `q8_0` | |
 | Context size | 0: the model's own | |
 | Port | 9933 | |
-| Autostart | on | |
+| Autostart | on (serves the models loaded last time, and the embedding model) | |
+| Models kept loaded | the ones served last (`loaded`; `modelId` is the first) | |
+| Draft model of a model | none (`drafts`, by the model's id) | |
+| Embedding model, embeddings port | the one served last; 9934 | |
+| Embedding model or not | what the model's header says | the model's own `model.json` (`embedding`, the person's mark) |
+| Hugging Face token | none | the credential store (the vault: Windows Credential Manager), reference `localmodels:hf-token`; never in `settings` |
 
 Only a person may install, download, start, stop, remove or change these: they bring programs and gigabytes onto the PC
 and take its GPU.
 
 ## 7. Interfaces
 
-Core methods (`internal/core/ext_localllm.go`): `local.get` (the whole view: runtime, devices, models with fit and `kv`,
-downloads in progress, server state (with `startedAt`, `autostarted`: Drydock started it at its own start, and the
-`cacheType` and `contextSize` it runs with), `served` (the served model's `modelBytes`, `kvBytes`, `kv`, and the `device`, gpu or
-ram, with its `deviceTotal` and `deviceFree` as read by the device probe, for the memory bar), `usedBy` (every agent, of any
-project, whose provider is the server's row: `agentId`, `name`, `projectId`, `projectName`), settings, memory, disk), `local.install {source?, backend?}`, `local.runtime.remove`,
+Core methods (`internal/core/ext_localllm.go`, `ext_localllm_models.go`): `local.get` (the whole view: runtime, devices,
+models with fit, `kv`, `projector`, `embedding`, `drafts`, `draft` and `loadBytes`, downloads in progress (a download the Hub
+refused for a gated model has `licence`, its page), server state (with `startedAt`, `autostarted`: Drydock started it at its
+own start, the `cacheType` and `contextSize` it runs with, `models` it keeps loaded and `router`), `served` (the served models'
+`modelBytes`, `kvBytes` together, `kv`, `models`, and the `device`, gpu or ram, with its `deviceTotal` and `deviceFree` as read
+by the device probe, for the memory bar), `load` (`max`, `budgetBytes`, `loadedBytes`), `embed` (the embedding server's
+state), `hfToken` (`set`, `masked`), `usedBy` (every agent, of any project, whose provider is the server's row: `agentId`,
+`name`, `projectId`, `projectName`), settings, memory, disk), `local.install {source?, backend?}`, `local.runtime.remove`,
 `local.settings.set` (any subset of the settings), `local.models.suggested`, `local.models.search {query}`,
 `local.model.variants {repo}`, `local.model.download {repo, variant}`, `local.model.download.cancel {id}` (also clears a
-finished row), `local.model.remove {id}`, `local.server.start {modelId}`, `local.server.stop`. Event: `local.changed`
-`{what: install | download | server | settings | models, ...}`; progress is read from the view, not from events.
+finished row), `local.model.remove {id}`, `local.server.start {modelId}` or `{modelIds}` (the models to keep loaded together),
+`local.server.stop`, `local.model.set {id, embedding?, draft?}`, `local.embeddings.start {modelId}`, `local.embeddings.stop`,
+`local.hfToken.set {token}`, `local.hfToken.remove`. Event: `local.changed` `{what: install | download | server | embeddings |
+settings | models, ...}`; progress is read from the view, not from events.
 
-UI: the "Models on this PC" section at the top of the Providers page (`ui/app/screens/providers/local-models.tsx`).
+UI: Models on this PC, the this-pc detail of the Models page (`ui/app/screens/models/this-pc.tsx`, helpers in `models.ts`).
 
 ## 8. Tests
 
 - `internal/localllm`: release picking (digest required, drafts skipped, the fork's dev builds skipped, CUDA needs its
   runtime), install (download, check, unpack, cudart merged, old builds pruned, a mismatch or a missing program refused),
-  the device list parser and probe, the fit rule, the Hub (listings, gated repositories hidden, variants and shards,
-  download with resume and a deleted mismatch), the store, the server (start waits for the load, arguments, log, stop, a
-  program that fails or never becomes ready, a port in use). The stand-in `llama-server` is the test binary itself
-  (`internal/localllm/llamatest`, a labelled test double); GitHub and the Hub are protocol fixtures in the same package.
+  the device list parser and probe, the fit rule, the Hub (listings, a gated repository marked, variants and shards, the
+  projector picked and downloaded with its variant, download with resume and a deleted mismatch, a gated download with and
+  without the token, the token sent to the Hub's download address only and not to the CDN it redirects to), the store (the
+  projector and the embedding mark kept), the header (tokenizer, pooling, which model can draft for which), the server (start
+  waits for the load, arguments, log, stop, a program that fails or never becomes ready, a port in use; a projector and a
+  draft on one model; an embedding server; the router with two models: its preset, its arguments, its cache folder, the wait
+  for every model, routing by the model field; a model the router cannot load, more than four, a path the preset cannot
+  carry). The stand-in `llama-server` is the test binary itself (`internal/localllm/llamatest`, a labelled test double, both
+  of llama-server's modes); GitHub and the Hub are protocol fixtures in the same package (the Hub with gating and a CDN).
 - `internal/core/ext_localllm_test.go`: the whole path through the RPC methods, ending with a provider of flavor `llamacpp`
-  whose model takes tool calls; a failing build; a restart.
-- `internal/providers/probe_test.go`: the llama-server probe.
-- `ui/e2e/local-models.spec.ts` and the section's browser tests, against the e2e harness's fixtures.
+  whose model takes tool calls; a failing build; a restart. `ext_localllm_models_test.go`: two models kept loaded with a
+  draft and a projector (the router, the provider's two models), what does not fit refused, the embedding model served on its
+  own, a gated model downloaded with the token (which is in no answer, setting or event).
+- `internal/providers/probe_test.go`: the llama-server probe, and the router's listing (only loaded models, each with its
+  own context).
+- `ui/e2e/models.spec.ts` (Load too and Unload against the real core and the stand-in) and the page's browser tests, against
+  the e2e harness's fixtures.
 
 ## 9. Not verified
 
@@ -176,15 +198,80 @@ UI: the "Models on this PC" section at the top of the Providers page (`ui/app/sc
   (`llama-b11669-bin-win-{cpu,vulkan,cuda-12.4,cuda-13.4,rocm-10.0}-x64.zip`, `cudart-llama-bin-win-cuda-*-x64.zip`), that
   `llama-server.exe` sits at the archive's top, that the CUDA build finds the cudart DLLs beside it, the `--list-devices`
   output, how long a real model takes to load, and that a real model answers tool calls through `--jinja`.
-- Anything against the real Hub: the listing and tree API shapes were written from their documentation.
+- Router mode, projectors, drafts and embeddings against a real build: the flags and the preset keys were read from
+  llama.cpp's `tools/server/README.md`, `common/arg.cpp` and `common/preset.cpp` at build b11936 and from the TurboQuant fork's
+  README at b10298-2.0.0 (both have `--models-preset`, `--models-max`, `--mmproj`, `--model-draft`, `--spec-type
+  draft-simple` and `--embeddings`); that the router's instances inherit `-ngl`, `-ctk`, `-ctv` and `-c` from its command line
+  as documented, that `LLAMA_CACHE` keeps the person's own llama.cpp cache out of its listing, and that a real draft pair
+  speeds a model up were not seen. The Job Object that ends the server also ends the router's instances (they are its
+  children); not seen on Windows either.
+- Anything against the real Hub: the listing, the single-repository and tree API shapes, and the 401 and 403 a gated
+  download gets, were written from their documentation; the token has not been sent to the real Hub.
 - The TurboQuant fork: its archive layout and whether its CUDA archives carry the CUDA runtime (no cudart is fetched for it).
 - The owner must run it once on the PC: install (Vulkan or CUDA), download a small model (ggml-org's gpt-oss-20b at MXFP4
-  is 12 GB; a Qwen3 4B at Q4_K_M is 2.5 GB), serve it, run Test on the provider, and give one task to an agent on it.
+  is 12 GB; a Qwen3 4B at Q4_K_M is 2.5 GB), serve it, run Test on the provider, and give one task to an agent on it; then
+  Load too a second small model, a vision model (ggml-org's gemma-3-4b-it), a draft pair (a Qwen3 0.6B for a Qwen3 8B) and
+  an embedding model (Qwen3-Embedding-0.6B), and a gated model with a token.
 
 ## 10. Not built
 
-- Several models loaded at once (llama-server's router mode, `--models-dir`): one model at a time, switched by a restart.
-- Vision models (`mmproj`), embeddings, speculative decoding, draft models.
-- A Hugging Face token for gated models.
 - Linux and macOS: the archives offered are Windows x64 only (Drydock is Windows-only; the development host runs the
   stand-in).
+- Loading or unloading one model while the others keep running: a change to the models kept loaded starts the server again
+  on the new set (the router's `/models/load` and `/models/unload` are not used), so every model loads again.
+- Anything in Drydock that reads embeddings: the embedding server answers `/v1/embeddings` with a key of its own that only the
+  core holds, and is no provider (the router would offer it for chat, which it cannot answer).
+- A projector's memory in the KV estimate: its file is counted with the model's, the memory it takes beyond that is not (as
+  in llama.cpp's own router measurements); the draft's KV cache is estimated like any model's.
+- Draft heads that are not models (MTP, EAGLE-3, DFlash): only a smaller model of the same family drafts.
+
+## 11. Several models, vision, drafts, embeddings and gated models (decision P111)
+
+**Several models at once.** A person keeps up to four downloaded models loaded (llama.cpp's own `--models-max` default). Each
+row has **Load too** while the server runs, and a loaded row **Unload** while there are several; the Server group says
+"Serving 2 models" and the room they take ("2 of 4 models loaded · 18 of 24 GB"). The room is the fit rule's: the free memory
+of the GPU with the most, or three quarters of the free RAM, whichever is more; each model counts its files, its KV cache at
+the server's settings and its draft's (`loadBytes`). What does not fit beside the loaded ones is refused, on the page (Load
+too disabled, its reason as the tooltip) and by the core (`local.server.start` with `modelIds`); one model alone is never
+refused (the fit stays a hint). Two models or more run llama-server's router mode:
+
+```
+llama-server --host 127.0.0.1 --port 9933 --models-preset <data>\local-models\router\models.ini --models-max 2 --jinja --no-webui
+             -ngl auto -ctk q8_0 -ctv q8_0 [-c <context>]
+```
+
+with `LLAMA_CACHE=<data>\local-models\router\cache` (an empty folder, so the router lists no model a person downloaded with
+llama.cpp by hand) and the key in `LLAMA_API_KEY` as before. The preset has a section per model, named by its id (the name the
+router lists and routes by): `model`, `mmproj`, `model-draft` and `spec-type`, `load-on-startup = true`. llama.cpp's preset
+reader ends a value at `;` or `#`, so a path holding one is refused rather than cut. The start waits until the router's listing
+says every model is `loaded`; one whose instance ends fails the start with its name. The provider is the same row: the probe
+reads the router's listing, offers each model that is loaded (or asleep), never one loading, unloaded or failed, and reads each
+one's context from `/props?model=`, since the router's own `/props` names none. A request names its model in the `model`
+field, which Drydock's wire layer always sends.
+
+**Vision.** A repository's projector (`mmproj`, the one in the variant's folder first, F16 before BF16 before Q8_0) is
+downloaded and checked with each variant, counted in its size, kept in its `model.json`, and passed with `--mmproj` (one
+model) or `mmproj` (the router). The row says "vision".
+
+**Drafts (speculative decoding).** A model can be drafted for by a downloaded model that is at most half its size, of the same
+family (the architecture without its `moe` suffix: a dense Qwen3 for a Qwen3 MoE) and with the same tokenizer (its kind, the
+same first and last tokens, a vocabulary within llama.cpp's 128 tokens of slack), read from both GGUF headers
+(`localllm.DraftFits`). Only such a model is offered in the row's Draft choice; the draft runs with `--model-draft` and
+`--spec-type draft-simple` (llama.cpp infers no type from a plain draft model's header). A draft that is gone or no longer
+fits is left out at the start, and logged; a draft cannot be removed while its model is served.
+
+**Embeddings.** A model whose header names a pooling type, or has an encoder architecture (BERT and its kin), is an embedding
+model; the person can say otherwise with the row's "Embedding model" box (kept in the model's `model.json`). An embedding
+model is never served for chat and is not among the models kept loaded: **Serve embeddings** starts a second llama-server of
+its own, with `--embeddings` and without `--jinja`, at the embeddings port (9934), with a key of its own for every start. The
+Embeddings group shows it and Stop. It is not a provider (see section 10).
+
+**Gated models.** The Hub's listing marks a gated repository (`gated`: "auto" or "manual"), which the page shows. Without a
+token the download is refused before anything is fetched: "<repo> is a gated model: Hugging Face shares its files only with an
+account that accepted its licence. Accept it at https://huggingface.co/<repo>, then add a Hugging Face token on this page.";
+the variant says "needs a token" with a link to that page. The token (Server settings, a password field) is checked to start
+with `hf_`, kept in the credential store like a provider's key (`localmodels:hf-token`), taught to the redaction scanner,
+shown as `hf_…1234`, and removable. It is sent as `Authorization: Bearer` only with a file download whose address is the Hub's
+own; a redirect to another host (the Hub sends the bytes from a CDN at a signed address) drops it, since Go would keep it for
+a subdomain such as `cdn-lfs.huggingface.co`. Listings never carry it. A download the Hub refuses (401 without a token, 403 for
+an account without access) says which, with the page to accept the licence on.

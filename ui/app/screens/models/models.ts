@@ -1,7 +1,7 @@
 // Pure helpers of Models on this PC (models-screen.tsx, decisions P65, P97): sizes, fit and state words, the memory bars'
-// arithmetic, the Serving card's lines, progress.
+// arithmetic, the Serving card's lines, progress; the models loaded together, their room and drafts (decision P111).
 
-import type { Device, Fit, LocalJob, LocalModel, LocalRuntime, LocalServerStatus, LocalUser, LocalView } from '../../api/localClient.ts';
+import type { Device, Fit, LocalJob, LocalModel, LocalRuntime, LocalServerStatus, LocalToken, LocalUser, LocalView, ServerState } from '../../api/localClient.ts';
 import { agoWords } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -276,9 +276,71 @@ export function servedName(modelId: string): string {
 export function localRow(v: Pick<LocalView, 'supported' | 'runtime' | 'server'>): { text: string; tone: Tone | 'none'; sub: string } {
   if (!v.supported) return { text: 'Not available', tone: 'muted', sub: 'Not set up' };
   const s = v.server;
-  if (s?.state === 'running') return { text: 'Serving', tone: 'ok', sub: s.modelId ? servedName(s.modelId) : 'Serving' };
-  if (s?.state === 'starting') return { text: 'Starting', tone: 'info', sub: s.modelId ? servedName(s.modelId) : 'Starting' };
+  // several models loaded: the first, and how many more
+  const more = s ? loadedIds(s).length - 1 : 0;
+  const name = (fallback: string) => (s?.modelId ? `${servedName(s.modelId)}${more > 0 ? ` and ${more} more` : ''}` : fallback);
+  if (s?.state === 'running') return { text: 'Serving', tone: 'ok', sub: name('Serving') };
+  if (s?.state === 'starting') return { text: 'Starting', tone: 'info', sub: name('Starting') };
   if (!v.runtime?.installed) return v.runtime?.job?.state === 'running' ? { text: 'Setting up', tone: 'info', sub: 'Not set up' } : { text: 'Set up', tone: 'none', sub: 'Not set up' };
   if (s?.state === 'failed') return { text: 'Failed', tone: 'err', sub: 'Nothing served' };
   return { text: 'Stopped', tone: 'muted', sub: 'Nothing served' };
+}
+
+/** The models the server keeps loaded while it starts or runs (decision P111): its list, else its one model. */
+export function loadedIds(server: Pick<ServerState, 'state' | 'modelId' | 'models'>): string[] {
+  if (server.state !== 'running' && server.state !== 'starting') return [];
+  const list = server.models ?? [];
+  if (list.length > 0) return list;
+  return server.modelId ? [server.modelId] : [];
+}
+
+/** What a model takes loaded, as the core counted it (its files, KV cache and draft), else its fit's need, else its size. */
+export function loadBytesOf(m: LocalModel): number {
+  return m.loadBytes || m.fit?.needBytes || m.sizeBytes || 0;
+}
+
+/**
+ * Whether a model can be loaded beside the ones loaded now (the row's "Load too", decision P111), and why not: an embedding
+ * model is served on its own, at most `load.max` stay loaded, and together they must fit the memory the core measured (a budget
+ * of 0 is not measured: the person decides).
+ */
+export function loadToo(v: Pick<LocalView, 'server' | 'load'>, m: LocalModel): { ok: boolean; why?: string } {
+  const loaded = loadedIds(v.server);
+  const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
+  if (m.embedding) return { ok: false, why: 'An embedding model is served on its own, under Embeddings.' };
+  if (loaded.includes(m.id)) return { ok: false, why: 'Loaded already.' };
+  if (loaded.length >= load.max) return { ok: false, why: `At most ${load.max} models stay loaded at once: unload one first.` };
+  const need = loadBytesOf(m);
+  if (load.budgetBytes > 0 && load.loadedBytes + need > load.budgetBytes) {
+    const left = Math.max(0, load.budgetBytes - load.loadedBytes);
+    return { ok: false, why: `Does not fit beside the models loaded: it needs about ${gb(need)}, and ${gb(left)} of ${gb(load.budgetBytes)} is left.` };
+  }
+  return { ok: true };
+}
+
+/** "2 of 4 models loaded · 18.2 of 24 GB": the room the loaded models take (the memory part only when it was measured). */
+export function loadLine(v: Pick<LocalView, 'server' | 'load'>): string {
+  const n = loadedIds(v.server).length;
+  const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
+  const count = `${n} of ${load.max} models loaded`;
+  return load.budgetBytes > 0 ? `${count} · ${usedOf(load.loadedBytes, load.budgetBytes)}` : count;
+}
+
+/** The draft choices of a model: none, then each downloaded model that can draft for it. */
+export function draftChoices(m: LocalModel, models: readonly LocalModel[]): { value: string; label: string }[] {
+  const name = (id: string) => {
+    const found = models.find((x) => x.id === id);
+    return found ? `${modelName(found.repo)} · ${found.variant}` : id;
+  };
+  return [{ value: '', label: 'No draft' }, ...(m.drafts ?? []).map((id) => ({ value: id, label: `Draft: ${name(id)}` }))];
+}
+
+/** The token as the page shows it: "hf_…1234" as the core masked it, "none" without one. */
+export function tokenWords(tk: LocalToken | undefined): string {
+  return tk?.set ? tk.masked || 'set' : 'none';
+}
+
+/** The Hugging Face page of a repository, where a gated model's licence is accepted. */
+export function licenceUrl(repo: string): string {
+  return `https://huggingface.co/${repo}`;
 }

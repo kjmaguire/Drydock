@@ -161,6 +161,18 @@ test('Models on this PC: the Models page opens it; set up the engine, find and d
   await expect(qwen.getByTestId('local-fit')).toHaveText('Serving · GPU');
   await expect(tiny.getByTestId('local-serve')).toBeEnabled();
 
+  // Load too keeps a second model loaded beside it (decision P111): the server runs the router with both, then Unload takes one
+  // off again
+  await tiny.getByTestId('local-load-too').click();
+  await expect(server.getByTestId('local-server-title')).toHaveText('Serving 2 models', { timeout: 60_000 });
+  await expect(server).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
+  await expect(server.getByTestId('local-load')).toContainText('2 of 4 models loaded');
+  await expect(tiny.getByTestId('local-fit')).toHaveText('Serving · GPU');
+  await tiny.getByTestId('local-unload').click();
+  await expect(server.getByTestId('local-server-title')).toHaveText('Serving Qwen3-Coder-30B-A3B-Instruct', { timeout: 60_000 });
+  await expect(server).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
+  await expect(tiny.getByTestId('local-load-too')).toBeEnabled();
+
   // Stop: the server is stopped, nothing is served
   await server.getByTestId('local-server-stop').click();
   await expect(server).toHaveAttribute('data-state', 'stopped', { timeout: 60_000 });

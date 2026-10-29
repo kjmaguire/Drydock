@@ -5,7 +5,7 @@ import type { Client } from '../../api/client.ts';
 import type { LocalBackend, LocalModel, LocalSettingsEdit, LocalView, Variant } from '../../api/localClient.ts';
 import type { NewProvider, Provider } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ModelsScreen } from './models-screen.tsx';
 
 afterEach(cleanup);
@@ -894,6 +894,199 @@ describe('Models on this PC (the this-pc detail of the Models page)', () => {
     expect(empty.disabled).toBe(true);
     expect(empty.title).toBe('Download a model first');
     expect(need(none.r, '[data-testid="local-models-card"] .empty').textContent).toBe('No model yet: find one on Hugging Face.');
+  });
+});
+
+// decision P111: several models loaded at once, vision, drafts, embeddings, a Hugging Face token for gated models
+describe('Models on this PC: several models, drafts, embeddings and gated models', () => {
+  const coder = model({ id: 'acme/coder-GGUF:Q4_K_M', repo: 'acme/coder-GGUF', variant: 'Q4_K_M', sizeBytes: 9 * GiB, loadBytes: 10 * GiB, drafts: ['acme/small-GGUF:Q8_0'] });
+  const vision = model({ id: 'acme/vision-GGUF:Q4_K_M', repo: 'acme/vision-GGUF', variant: 'Q4_K_M', sizeBytes: 7 * GiB, loadBytes: 8 * GiB, projector: 'C:\\m\\mmproj-F16.gguf' });
+  const small = model({ id: 'acme/small-GGUF:Q8_0', repo: 'acme/small-GGUF', variant: 'Q8_0', sizeBytes: 1 * GiB, loadBytes: 1 * GiB });
+  const huge = model({ id: 'acme/huge-GGUF:F16', repo: 'acme/huge-GGUF', variant: 'F16', sizeBytes: 12 * GiB, loadBytes: 12 * GiB });
+  const embed = model({ id: 'acme/embed-GGUF:Q8_0', repo: 'acme/embed-GGUF', variant: 'Q8_0', sizeBytes: 600 * MiB, loadBytes: 700 * MiB, embedding: true });
+  const all = [coder, vision, small, huge, embed];
+  const two = (over: Partial<LocalView> = {}) =>
+    installed({
+      models: all,
+      server: { state: 'running', modelId: coder.id, models: [coder.id, vision.id], router: true, port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' },
+      load: { max: 4, budgetBytes: 24 * GiB, loadedBytes: 18 * GiB },
+      ...over,
+    });
+  const row = (r: ReturnType<typeof show>['r'], id: string) => need(r, `[data-testid="local-model"][data-id="${id}"]`);
+
+  it('two models loaded: the server says so with the room they take; Load too adds one that fits, is refused with the reason for one that does not, and Unload takes one off', async () => {
+    const many: string[][] = [];
+    const one: string[] = [];
+    let state = two();
+    const { r } = show({
+      localGet: async () => state,
+      localServerStartMany: async (ids) => (many.push(ids), state),
+      localServerStart: async (id) => (one.push(id), state),
+    });
+    await waitFor(() => expect(need(r, '[data-testid="local-server-title"]').textContent).toBe('Serving 2 models'), r);
+    expect(need(r, '[data-testid="local-server-title"]').getAttribute('title')).toBe(`${coder.id}, ${vision.id}`);
+    expect(need(r, '[data-testid="local-load"]').textContent).toBe('2 of 4 models loaded · 18 of 24 GB');
+    expect(need(r, '[data-testid="local-loaded"]').textContent).toContain('coder · Q4_K_M, vision · Q4_K_M');
+    // the loaded ones: Unload, no Serve; one that fits: Load too; one that does not: Load too refused with the numbers
+    expect(row(r, coder.id).getAttribute('data-served')).toBe('true');
+    expect(row(r, coder.id).querySelector('[data-testid="local-serve"]')).toBe(null);
+    const tooSmall = row(r, small.id).querySelector('[data-testid="local-load-too"]') as HTMLButtonElement;
+    expect(tooSmall.disabled).toBe(false);
+    const tooHuge = row(r, huge.id).querySelector('[data-testid="local-load-too"]') as HTMLButtonElement;
+    expect(tooHuge.disabled).toBe(true);
+    expect(tooHuge.title).toBe('Does not fit beside the models loaded: it needs about 12.0 GB, and 6.0 GB of 24.0 GB is left.');
+    // an embedding model is not loaded beside them: it is served under Embeddings
+    expect(row(r, embed.id).querySelector('[data-testid="local-load-too"]')).toBe(null);
+    expect(row(r, embed.id).querySelector('[data-testid="local-serve"]')).toBe(null);
+    expect(row(r, embed.id).querySelector('[data-testid="local-embed-serve"]')).not.toBe(null);
+    await r.act(() => tooSmall.click());
+    await waitFor(() => expect(many).toEqual([[coder.id, vision.id, small.id]]), r);
+    // Unload starts the server again on the rest: one model left is served alone
+    await r.act(() => (row(r, coder.id).querySelector('[data-testid="local-unload"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(one).toEqual([vision.id]), r);
+    // four loaded: no fifth
+    cleanup();
+    const full = show({ localGet: async () => two({ server: { ...two().server, models: [coder.id, vision.id, small.id, 'x/y:Q4'] }, load: { max: 4, budgetBytes: 0, loadedBytes: 0 } }) });
+    const fifth = await waitFor(() => need(full.r, `[data-testid="local-model"][data-id="${huge.id}"] [data-testid="local-load-too"]`) as HTMLButtonElement, full.r);
+    expect(fifth.disabled).toBe(true);
+    expect(fifth.title).toBe('At most 4 models stay loaded at once: unload one first.');
+  });
+
+  it('a model with a projector says it reads images; the draft is chosen from the models that can draft for it; a model is marked as an embedding model', async () => {
+    const sets: [string, { embedding?: boolean; draft?: string }][] = [];
+    const { r } = show({
+      localGet: async () => installed({ models: all }),
+      localModelSet: async (id, e) => (sets.push([id, e]), installed({ models: all })),
+    });
+    await waitFor(() => row(r, vision.id), r);
+    expect(row(r, vision.id).querySelector('[data-testid="local-vision"]')!.textContent).toBe('vision');
+    expect(row(r, coder.id).querySelector('[data-testid="local-vision"]')).toBe(null);
+    expect(row(r, embed.id).querySelector('[data-testid="local-embedding"]')!.textContent).toBe('embeddings');
+    // only a model something can draft for has the choice
+    expect(row(r, vision.id).querySelector('[data-testid="local-draft"]')).toBe(null);
+    const draft = row(r, coder.id).querySelector('[data-testid="local-draft"]') as HTMLElement;
+    expect(optionsOf(draft).map((o) => o.label)).toEqual(['No draft', 'Draft: small · Q8_0']);
+    expect(valueOf(draft)).toBe('');
+    await r.act(() => choose(draft, small.id));
+    await waitFor(() => expect(sets).toEqual([[coder.id, { draft: small.id }]]), r);
+    const mark = (await enabled<HTMLInputElement>(r, `[data-testid="local-model"][data-id="${small.id}"] input[type="checkbox"]`)) as HTMLInputElement;
+    expect(mark.checked).toBe(false);
+    await r.act(() => mark.click());
+    await waitFor(() => expect(sets[1]).toEqual([small.id, { embedding: true }]), r);
+  });
+
+  it('the embedding model is served on its own: Serve embeddings starts it, the Embeddings group shows it with its address, Stop stops it', async () => {
+    const calls: string[] = [];
+    let state = installed({ models: all });
+    const { r } = show({
+      localGet: async () => state,
+      localEmbeddingsStart: async (id) => {
+        calls.push(`start ${id}`);
+        state = installed({ models: all, embed: { state: 'running', modelId: id, port: 9934, baseUrl: 'http://127.0.0.1:9934/v1', embeddings: true } });
+        return state;
+      },
+      localEmbeddingsStop: async () => (calls.push('stop'), (state = installed({ models: all }))),
+    });
+    const group = await waitFor(() => need(r, '[data-testid="local-embeddings"]'), r);
+    expect(group.getAttribute('data-state')).toBe('stopped');
+    expect(need(r, '[data-testid="local-embed-title"]').textContent).toBe('No embedding model served');
+    await r.act(() => (row(r, embed.id).querySelector('[data-testid="local-embed-serve"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(need(r, '[data-testid="local-embed-title"]').textContent).toBe('Serving embed for embeddings'), r);
+    expect(calls).toEqual([`start ${embed.id}`]);
+    expect(need(r, '[data-testid="local-embed-url"]').textContent).toBe('127.0.0.1:9934');
+    expect(row(r, embed.id).textContent).toContain('serving embeddings');
+    await r.act(() => (need(r, '[data-testid="local-embed-stop"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([`start ${embed.id}`, 'stop']), r);
+    // no embedding model at all: no Embeddings group
+    cleanup();
+    const none = show({ localGet: async () => installed({ models: [coder] }) });
+    await waitFor(() => need(none.r, '[data-testid="local-model"]'), none.r);
+    expect(q(none.r, '[data-testid="local-embeddings"]')).toBe(null);
+  });
+
+  it('the Hugging Face token: typed into a password field and sent once, never shown again but masked; Remove takes it away', async () => {
+    const calls: string[] = [];
+    let state = installed();
+    const { r } = show({
+      localGet: async () => state,
+      localHfTokenSet: async (tok) => (calls.push(`set ${tok}`), (state = installed({ hfToken: { set: true, masked: 'hf_…6789' } }))),
+      localHfTokenRemove: async () => (calls.push('remove'), (state = installed({ hfToken: { set: false } }))),
+    });
+    const input = (await waitFor(() => need(r, '[data-testid="local-hf-input"]'), r)) as HTMLInputElement;
+    expect(input.type).toBe('password');
+    expect((need(r, '[data-testid="local-hf-save"]') as HTMLButtonElement).disabled).toBe(true);
+    type(input, 'hf_secrettoken0123456789');
+    await r.act(() => (need(r, '[data-testid="local-hf-form"]') as HTMLFormElement).requestSubmit());
+    await waitFor(() => expect(calls).toEqual(['set hf_secrettoken0123456789']), r);
+    await waitFor(() => expect(need(r, '[data-testid="local-hf-masked"]').textContent).toBe('hf_…6789'), r);
+    expect(q(r, '[data-testid="local-hf-input"]')).toBe(null);
+    expect(need(r, '[data-testid="local-models"]').textContent).not.toContain('hf_secrettoken');
+    await r.act(() => (need(r, '[data-testid="local-hf-remove"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual(['set hf_secrettoken0123456789', 'remove']), r);
+    const again = (await waitFor(() => need(r, '[data-testid="local-hf-input"]'), r)) as HTMLInputElement;
+    expect(again.value).toBe('');
+  });
+
+  it('a gated repository is marked; without a token its files say so with the page to accept the licence on; with one they download; a refused download links the page', async () => {
+    let state = installed();
+    const variants: Variant[] = [{ name: 'Q4_K_M', files: [], sizeBytes: 1 * GiB, fit: { target: 'gpu', fits: true, availableBytes: 14 * GiB }, projector: { path: 'mmproj-F16.gguf', sizeBytes: 100 * MiB, sha256: 'x' } }];
+    const { r } = show({
+      localGet: async () => state,
+      localModelsSearch: async () => [{ id: 'meta-llama/Llama-3.2-1B-Instruct-GGUF', downloads: 5, likes: 0, updated: '', tags: [], gated: 'auto' }],
+      localModelVariants: async () => variants,
+    });
+    await waitFor(() => need(r, '[data-testid="local-search-input"]'), r);
+    type(need(r, '[data-testid="local-search-input"]') as HTMLInputElement, 'llama');
+    await submitSearch(r);
+    const repo = await waitFor(() => need(r, '[data-testid="local-repo"]'), r);
+    expect(repo.querySelector('[data-testid="local-gated"]')!.textContent).toBe('gated');
+    await r.act(() => repo.click());
+    const va = await waitFor(() => need(r, '[data-testid="local-variant"][data-name="Q4_K_M"]'), r);
+    expect(va.getAttribute('data-gated')).toBe('true');
+    expect(va.querySelector('[data-testid="local-download"]')).toBe(null);
+    expect(va.querySelector('[data-testid="local-needs-token"]')!.textContent).toBe('needs a token');
+    expect(va.querySelector('[data-testid="local-gated-note"]')!.textContent).toContain('accept its licence on Hugging Face, then add your Hugging Face token below');
+    const link = va.querySelector('[data-testid="local-licence"]') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct-GGUF');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(va.textContent).toContain('Reads images');
+    // with a token: Download
+    state = installed({ hfToken: { set: true, masked: 'hf_…6789' } });
+    cleanup();
+    const withToken = show({
+      localGet: async () => state,
+      localModelsSearch: async () => [{ id: 'meta-llama/Llama-3.2-1B-Instruct-GGUF', downloads: 5, likes: 0, updated: '', tags: [], gated: 'auto' }],
+      localModelVariants: async () => variants,
+    });
+    await waitFor(() => need(withToken.r, '[data-testid="local-hf-masked"]'), withToken.r);
+    type(need(withToken.r, '[data-testid="local-search-input"]') as HTMLInputElement, 'llama');
+    await submitSearch(withToken.r);
+    await withToken.r.act(async () => (await waitFor(() => need(withToken.r, '[data-testid="local-repo"]'), withToken.r)).click());
+    const va2 = await waitFor(() => need(withToken.r, '[data-testid="local-variant"][data-name="Q4_K_M"]'), withToken.r);
+    expect(va2.querySelector('[data-testid="local-download"]')).not.toBe(null);
+    expect(va2.querySelector('[data-testid="local-licence"]')).not.toBe(null);
+    // a download the Hub refused: its error and the page
+    cleanup();
+    const failed = show({
+      localGet: async () =>
+        installed({
+          downloads: [
+            {
+              kind: 'download',
+              target: 'meta-llama/Llama-3.2-1B-Instruct-GGUF:Q4_K_M',
+              state: 'failed',
+              error: 'Your Hugging Face account has no access to meta-llama/Llama-3.2-1B-Instruct-GGUF yet',
+              licence: 'https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct-GGUF',
+              done: 0,
+              total: 0,
+              started: '',
+            },
+          ],
+        }),
+    });
+    const job = await waitFor(() => need(failed.r, '[data-testid="local-download-row"]'), failed.r);
+    expect(job.textContent).toContain('no access');
+    expect((job.querySelector('[data-testid="local-licence"]') as HTMLAnchorElement).getAttribute('href')).toBe('https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct-GGUF');
   });
 });
 
