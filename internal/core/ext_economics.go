@@ -134,7 +134,7 @@ func (e *economics) fillBudget(ctx context.Context, req *router.RouteRequest) er
 	if req.Budget.Scope != "" {
 		return nil
 	}
-	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID})
+	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID, Workflow: req.Workflow})
 	if err != nil {
 		return err
 	}
@@ -285,6 +285,13 @@ func (e *economics) putSetting(ctx context.Context, key, value string) error {
 	})
 }
 
+func (e *economics) deleteSetting(ctx context.Context, key string) error {
+	return e.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, key)
+		return err
+	})
+}
+
 // seedDefaultRules stores the shipped rules once. Without a stored rule the router falls back to the shipped defaults, but
 // the moment a user stores the first rule the defaults would disappear; seeding keeps them as editable stored copies. A
 // rule the user deleted is not brought back on restart, because this runs only once.
@@ -354,8 +361,8 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 			tier = p.Tier
 		}
 	}
-	level := router.LevelBalanced
-	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level,
+	level, from := e.levelFor(ctx, s.projectID)
+	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level, LevelSource: from,
 		ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate, ContextTokens: s.contextTokens}
 	if sig, ok := router.TurnSignals(s.kind); ok {
 		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
@@ -363,7 +370,7 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 	d := router.RoutingDecision{ID: ids.New("dec"), Agent: router.AgentRef{Adapter: a.Adapter, Instance: a.ID}, Provider: router.ProviderID(provider), Model: a.Model,
 		Effort: router.Effort(a.Effort), TeamSize: 1, Confidence: 1, DecidedBy: "static", Created: time.Now().UTC(),
 		Reason: reason,
-		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
+		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, LevelSource: from, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
 			DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
 	if err := e.rec.Save(ctx, req, d); err != nil {
 		e.c.logf("record decision: %v", err)
@@ -431,8 +438,13 @@ func (e *economics) methods() map[string]Method {
 			TaskID    string `json:"taskId"`
 			RunID     string `json:"runId"`
 			AgentID   string `json:"agentId"`
+			Workflow  string `json:"workflow"`
 		}) (any, error) {
-			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID})
+			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID, Workflow: p.Workflow})
+		}),
+		// the workflows a workflow budget can name (P118): every workflow this core runs, by name
+		"budget.workflows": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"workflows": c.Engine.Workflows()}, nil
 		}),
 		"budget.resume": bind(func(ctx context.Context, p budgetResume) (any, error) { return e.budgetResume(ctx, p) }),
 
@@ -500,6 +512,18 @@ func (e *economics) methods() map[string]Method {
 		}),
 		"route.settings.set": bind(func(ctx context.Context, p routeSettingsPatch) (any, error) {
 			return e.setRouteSettings(ctx, p)
+		}),
+		// the routing level (P118): the workspace's, and a project's own that falls back to it
+		"route.level.get": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return e.routeLevel(ctx, p.ProjectID), nil
+		}),
+		"route.level.set": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			Level     string `json:"level"`
+		}) (any, error) {
+			return e.setRouteLevel(ctx, p.ProjectID, p.Level, human())
 		}),
 		// models a provider refused for want of data retention (P112): listed on the Routing page, cleared by a person
 		"route.retention.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
@@ -643,7 +667,7 @@ func (e *economics) budgetList(ctx context.Context, projectID string, scope budg
 	for _, b := range bs {
 		r := budgetRow{Budget: b}
 		if b.ScopeID != budget.Any {
-			st, err := budget.Evaluate(ctx, e.c.DB, b, b.ScopeID)
+			st, err := budget.Evaluate(ctx, e.c.DB, b, budget.InstanceOf(b))
 			if err != nil {
 				return nil, err
 			}
@@ -660,8 +684,12 @@ func (e *economics) budgetStatus(ctx context.Context, ids budget.ScopeIDs) (any,
 		return nil, err
 	}
 	usage := map[string]budget.Spend{}
-	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
-		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
+	wf := "" // a workflow's spend is counted in the project asked about
+	if ids.Workflow != "" {
+		wf = budget.InstanceOf(budget.Budget{Scope: budget.ScopeWorkflow, ScopeID: ids.Workflow, ProjectID: ids.Project})
+	}
+	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeWorkflow, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
+		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeWorkflow: wf, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
 		if id == "" {
 			continue
 		}

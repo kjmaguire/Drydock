@@ -308,7 +308,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			return pipeline.LoadDevSettings(ctx, db, projectID).PackageCeiling()
 		}}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
-		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted, StartGate: c.startGate}
+		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted, StartGate: c.startGate,
+		Grants: c.Room} // a turn in a room starts only on the room scheduler's grant (P118)
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,

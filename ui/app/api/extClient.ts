@@ -69,6 +69,7 @@ import type {
   RoomTurn,
   RouteExplain,
   RoutePreview,
+  RouteLevel,
   RouteSettings,
   RouteSettingsPatch,
   RetentionBlock,
@@ -107,8 +108,10 @@ export interface ExtClient {
   budgetList(projectId: string, scope?: string): Promise<BudgetRow[]>;
   budgetSet(b: BudgetSet): Promise<Budget>;
   budgetDelete(id: string): Promise<void>;
-  budgetStatus(ids: { projectId?: string; taskId?: string; runId?: string; agentId?: string }): Promise<{ statuses: BudgetStatus[]; usage: Record<string, BudgetSpend>; note: string }>;
+  budgetStatus(ids: { projectId?: string; taskId?: string; runId?: string; agentId?: string; workflow?: string }): Promise<{ statuses: BudgetStatus[]; usage: Record<string, BudgetSpend>; note: string }>;
   budgetResume(req: BudgetResumeReq): Promise<BudgetResumed>;
+  /** The workflows a workflow budget can name (P118). */
+  budgetWorkflows(): Promise<string[]>;
   // evals
   evalsReport(o?: EvalsOptions): Promise<EvalsReportResult>;
   evalsExport(o?: EvalsOptions): Promise<EvalsExportResult>;
@@ -126,6 +129,10 @@ export interface ExtClient {
   routeProbeStartup(enabled: boolean): Promise<{ enabled: boolean; by: string }>;
   routeSettingsGet(): Promise<RouteSettings>;
   routeSettingsSet(patch: RouteSettingsPatch): Promise<RouteSettings>;
+  /** The routing level (P118): the workspace's (projectId ""), or a project's own falling back to it. */
+  routeLevelGet(projectId: string): Promise<RouteLevel>;
+  /** Sets the workspace's level (projectId ""), or a project's own; a project's "" follows the workspace again. */
+  routeLevelSet(projectId: string, level: string): Promise<RouteLevel>;
   routeRetentionList(): Promise<RetentionBlock[]>;
   routeRetentionClear(providerId: string, model: string): Promise<void>;
   // checks, dev settings, telemetry
@@ -314,6 +321,7 @@ export function createExtClient(t: Transport): ExtClient {
       return { statuses: arr(r.statuses), usage: r.usage ?? {}, note: r.note };
     },
     budgetResume: (req) => call('budget.resume', req),
+    budgetWorkflows: async () => arr((await call<{ workflows: string[] | null }>('budget.workflows')).workflows),
 
     evalsReport: (o = {}) => call('evals.report', o),
     evalsExport: (o = {}) => call('evals.export', o),
@@ -330,6 +338,11 @@ export function createExtClient(t: Transport): ExtClient {
     routeProbeStartup: (enabled) => call('route.probe.startup', { enabled }),
     routeSettingsGet: () => call('route.settings.get'),
     routeSettingsSet: (patch) => call('route.settings.set', patch),
+    routeLevelGet: async (projectId) => {
+      const r = await call<RouteLevel>('route.level.get', { projectId });
+      return { ...r, levels: arr(r.levels) };
+    },
+    routeLevelSet: (projectId, level) => call('route.level.set', { projectId, level }),
     routeRetentionList: async () => arr(await call<RetentionBlock[] | null>('route.retention.list')),
     routeRetentionClear: (providerId, model) => voidCall('route.retention.clear', { providerId, model }),
 

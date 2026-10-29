@@ -49,7 +49,7 @@ export function runTone(status: string): Tone {
   return 'info';
 }
 
-export const KIND_LABEL: Record<string, string> = { agent_task: 'agent', check: 'check', request: 'human', route: 'route', subworkflow: 'subworkflow' };
+export const KIND_LABEL: Record<string, string> = { agent_task: 'agent', check: 'check', request: 'human', route: 'route', subworkflow: 'subworkflow', group: 'group discussion' };
 export const STATUS_TEXT: Record<NodeState['status'], string> = {
   pending: 'not run',
   started: 'running',

@@ -5,11 +5,15 @@ import {
   actionChips,
   ceilingWords,
   cheapProviders,
+  LEVELS,
+  levelSentence,
+  levelWords,
   minutesOf,
   newRule,
   parseChain,
   parseMinutes,
   parseThen,
+  projectLevelOptions,
   RUN_KINDS,
   runKindLabel,
   runKindOptions,
@@ -77,5 +81,23 @@ describe('routing helpers', () => {
   it('cheap selection covers cheap, private providers only', () => {
     const p = (id: string, tier: string, dataClass: string) => ({ id, tier, dataClass }) as Provider;
     expect(cheapProviders([p('a', 'cheap', 'private'), p('b', 'cheap', 'trainable'), p('c', 'premium', 'private')]).map((x) => x.id)).toEqual(['a']);
+  });
+});
+
+describe('routing levels (P118)', () => {
+  it("a project's choices follow the workspace first, naming its level, then every level with what it does", () => {
+    const o = projectLevelOptions('quality');
+    expect(o[0]).toEqual({ value: '', label: 'Follow the workspace (Quality)', hint: 'set on the Routing page' });
+    expect(o.slice(1).map((x) => x.value)).toEqual(LEVELS);
+    expect(o.every((x) => !!x.hint)).toBe(true);
+    // a stored level the list does not offer stays choosable
+    expect(projectLevelOptions('balanced', 'custom').map((x) => x.value)).toContain('custom');
+    expect(levelWords('maximum_quality')).toBe('Maximum quality');
+    expect(levelWords('turbo')).toBe('turbo');
+  });
+
+  it('says where the level comes from', () => {
+    expect(levelSentence({ effective: 'quality', source: 'project' })).toBe("This project's agent turns run at Quality, its own level.");
+    expect(levelSentence({ effective: 'balanced', source: 'workspace' })).toBe("This project's agent turns run at Balanced, the workspace's level.");
   });
 });

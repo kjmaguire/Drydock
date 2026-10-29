@@ -17,6 +17,7 @@ import { card, Page, Section } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { money } from '../shared/explain.tsx';
+import { WorkspaceLevelPanel } from './level-panel.tsx';
 import { cheapProviders, LEVELS, runKindOptions } from './routing.ts';
 import { RulesPanel } from './rules-panel.tsx';
 import { TurnLimitsPanel } from './turn-limits-panel.tsx';
@@ -302,6 +303,7 @@ export function RoutingScreen(_handle: Handle) {
   return () => (
     <Page title="Routing" icon={RouteIcon} subtitle="Which model answers each turn" guide="routing-rules">
       <WiringDiagram />
+      <WorkspaceLevelPanel />
       <RulesPanel />
       <PreviewPanel />
       <TurnLimitsPanel />

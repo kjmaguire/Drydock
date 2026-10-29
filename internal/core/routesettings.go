@@ -59,7 +59,8 @@ type CeilingSettings struct {
 type RouteSettings struct {
 	Tiebreak TiebreakSettings `json:"tiebreak"`
 	Ceilings CeilingSettings  `json:"ceilings"`
-	// Level is the level agent turns run at today (no per-project level exists yet), so the page can say which ceiling applies.
+	// Level is the workspace's level (route.level): the level of every project that sets none of its own (P118), so the page
+	// can say which ceiling applies.
 	Level string `json:"level"`
 	// Agents are the agents a ceiling can be set for (every project's team), with their project's name.
 	Agents []RouteAgent `json:"agents"`
@@ -115,7 +116,7 @@ func (e *economics) routeSettings(ctx context.Context) RouteSettings {
 		ts.ModelNote = note
 	}
 	ts.SpentTodayUSD, ts.CallsToday = e.tiebreakSpentToday(ctx)
-	rs := RouteSettings{Tiebreak: ts, Ceilings: e.ceilingSettings(ctx), Level: string(router.LevelBalanced), Agents: []RouteAgent{}}
+	rs := RouteSettings{Tiebreak: ts, Ceilings: e.ceilingSettings(ctx), Level: string(e.workspaceLevel(ctx)), Agents: []RouteAgent{}}
 	if ags, err := e.c.AllAgents(ctx); err == nil {
 		names := map[string]string{}
 		if ps, err := e.c.Projects(ctx); err == nil {
@@ -219,7 +220,8 @@ func (e *economics) ceilingFor(ctx context.Context, s turnSubject) (time.Duratio
 	if sec := cs.Agents[s.agent.ID]; sec > 0 {
 		return time.Duration(sec) * time.Second, "the agent " + s.agent.Name
 	}
-	level := string(router.LevelBalanced) // the level agent turns run at (decide)
+	l, _ := e.levelFor(ctx, s.projectID) // the level the turn runs at (decide)
+	level := string(l)
 	if sec := cs.Levels[level]; sec > 0 {
 		return time.Duration(sec) * time.Second, "the " + level + " level"
 	}

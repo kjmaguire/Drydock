@@ -70,7 +70,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		"integration.outbound.retry",
 		// decision P115
 		"mcp.rolePolicy.get", "mcp.rolePolicy.set", "mcp.policyRule.add", "mcp.policyRule.remove", "task.mcpTools.get", "task.mcpTools.set",
-		"connection.custom.list", "connection.custom.template", "connection.custom.add", "connection.custom.remove"} {
+		"connection.custom.list", "connection.custom.template", "connection.custom.add", "connection.custom.remove",
+		// decision P118
+		"route.level.get", "route.level.set", "budget.workflows"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}
@@ -178,7 +180,9 @@ func TestBudgetPausesTheRunAndTheHumanResumesByRaisingTheLimit(t *testing.T) {
 	a.call("needsyou.list", map[string]string{"projectId": s.project.ID}, &needs)
 	found := false
 	for _, n := range needs {
-		found = found || (n.Kind == room.NeedsApproval && strings.HasPrefix(n.Title, "Budget limit reached"))
+		// a budget item of its own (P118), answered like the approval it is, saying what to do
+		found = found || (n.Kind == room.NeedsBudget && n.BudgetState == room.BudgetPaused && n.ApprovalID != "" && strings.HasPrefix(n.Title, "Budget limit reached") &&
+			strings.Contains(n.Detail, "raise the limit"))
 	}
 	if !found {
 		t.Fatalf("the pause must be in Needs you: %+v", needs)

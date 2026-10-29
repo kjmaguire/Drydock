@@ -351,7 +351,8 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			out.Stopped = "cancelled"
 			break
 		}
-		dec, err := r.d.Room.PlanTurns(ctx, m.ID)
+		// the room's scheduler plans the turns and grants each one; the runtime starts a room turn only on its grant (P118)
+		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID)
 		if err != nil {
 			return out, err
 		}
@@ -362,8 +363,7 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			out.Bounded = true
 			continue
 		}
-		speakers := r.speakers(ctx, rm, m, dec)
-		for _, sp := range speakers {
+		for _, sp := range dec.Speakers {
 			if turns >= r.o.HardTurnCap {
 				out.Stopped = fmt.Sprintf("hard cap of %d agent turns reached", r.o.HardTurnCap)
 				queue = nil
@@ -374,7 +374,7 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 				queue = nil
 				break
 			}
-			info, reply := r.turn(ctx, rm, m, sp, dec)
+			info, reply := r.turn(ctx, rm, m, sp, dec, turnOpts{grant: grants[sp.Member]})
 			if info.Status == "" {
 				continue // already handled (duplicate delivery)
 			}
@@ -386,33 +386,6 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 		}
 	}
 	return out, nil
-}
-
-// speakers applies the room's decision, with two policies of this package: a DM always has its one agent answer, and in
-// an auto room an agent's message wakes only the members it explicitly mentions (the owner and role fallbacks are for
-// human messages; letting them chain agent to agent would spend turns nobody asked for).
-func (r *Responder) speakers(ctx context.Context, rm room.Room, m room.Message, dec room.TurnDecision) []room.Speaker {
-	sp := dec.Speakers
-	if m.Author.Kind == room.AuthorAgent && rm.Mode == room.ModeAuto {
-		var keep []room.Speaker
-		for _, s := range sp {
-			if s.Reason == room.ReasonMention {
-				keep = append(keep, s)
-			}
-		}
-		return keep
-	}
-	if len(sp) == 0 && m.Author.Kind == room.AuthorHuman && rm.Kind == room.KindDM {
-		members, err := r.d.Room.Members(ctx, rm.ID)
-		if err == nil {
-			for _, mem := range members {
-				if mem.Author.Kind == room.AuthorAgent && (mem.State == room.StateActive || mem.State == "") {
-					return []room.Speaker{{Member: mem.Author.Key(), Reason: "dm"}}
-				}
-			}
-		}
-	}
-	return sp
 }
 
 // beginTurn inserts the turn row. false means this (trigger, agent) already had a turn.
@@ -448,7 +421,14 @@ func (r *Responder) endTurn(id string, e turnEnd) {
 }
 
 // turn runs one granted turn end to end and returns the posted reply (nil when nothing was posted as a reply).
-func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, sp room.Speaker, dec room.TurnDecision) (TurnInfo, *room.Message) {
+// turnOpts is what a turn carries besides the scheduler's decision: the grant the scheduler issued for it, and for a turn of a
+// group discussion, what the prompt says about the discussion.
+type turnOpts struct {
+	grant room.TurnGrant
+	group *GroupPrompt
+}
+
+func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, sp room.Speaker, dec room.TurnDecision, o turnOpts) (TurnInfo, *room.Message) {
 	info := TurnInfo{TurnID: ids.New("turn"), AgentID: sp.Member, TriggerID: trig.ID, Reason: string(sp.Reason), Round: dec.Round}
 	started, err := r.beginTurn(ctx, info.TurnID, rm, trig, sp.Member, string(sp.Reason), dec.Round)
 	if err != nil {
@@ -499,7 +479,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if r.d.Brief != nil {
 		brief = r.d.Brief(ctx, rm.ProjectID)
 	}
-	prompt := BuildPrompt(PromptInput{Agent: agent, Room: rm, Members: members, Selection: sel, Extra: extra, Moderator: moderator, Trigger: trig, Brief: brief})
+	prompt := BuildPrompt(PromptInput{Agent: agent, Room: rm, Members: members, Selection: sel, Extra: extra, Moderator: moderator, Trigger: trig, Brief: brief, Group: o.group})
 	r.saveManifest(ctx, info.TurnID, rm, agent, sel, extra, prompt)
 
 	// admission: the global cap, then the project/provider gate (a queued agent shows Waiting)
@@ -538,6 +518,8 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		runID   string
 		ran     Routed
 		spawned bool
+		grant   = o.grant
+		tries   int
 	)
 	attempt := func(actx context.Context, rr Routed, emit func(workflow.Chunk)) error {
 		cfg := base
@@ -548,6 +530,18 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			cfg.Tier = rr.Tier
 		}
 		ran, res, runID = rr, rt.TurnResult{}, ""
+		// the turn starts on the scheduler's grant; a fallback hop is a new session of the same turn and gets a renewed one
+		tries++
+		if tries > 1 && grant.ID != "" {
+			g, err := r.d.Room.RenewGrant(actx, grant)
+			if err != nil {
+				spawned = false
+				return err
+			}
+			grant = g
+		}
+		g := grant
+		cfg.RoomID, cfg.Grant = rm.ID, &g
 		m, err := r.d.Runtime.Spawn(actx, cfg)
 		if err != nil {
 			spawned = false

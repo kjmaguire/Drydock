@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"sort"
 )
 
 // ErrGraphChanged is returned by RegisterNew when a different graph is already registered under the name.
@@ -41,6 +42,18 @@ func (e *Engine) Registered(name string) bool {
 	defer e.mu.Unlock()
 	_, ok := e.graphs[name]
 	return ok
+}
+
+// Workflows lists the names of the registered graphs, sorted (a workflow budget names one of them, decision P118).
+func (e *Engine) Workflows() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]string, 0, len(e.graphs))
+	for name := range e.graphs {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // UseOutermost prepends middleware for nodes of a kind, so it wraps every middleware registered before it. Use appends

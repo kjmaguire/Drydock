@@ -20,6 +20,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/redact"
+	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -63,6 +64,10 @@ type Runtime struct {
 	// gave for a manifest file that has changed since (decision P117). Every session starts through Spawn, so no path starts a
 	// gated CLI without it. Nil: nothing is refused here.
 	StartGate func(ctx context.Context, cfg *Config) error
+	// Grants redeems the turn grant of a turn in a room (room-protocol s6 rule 1, decision P118): Spawn refuses a session whose
+	// Config names a room unless the room's scheduler issued it a grant that is valid now, and uses the grant up. Nil: no room
+	// turn starts (fail closed); every other session is unaffected.
+	Grants GrantRedeemer
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -94,6 +99,38 @@ type Config struct {
 	Spec      agents.RunSpec
 	Provider  string // model provider label for usage rows ("anthropic", "openrouter", a host id)
 	Tier      string // premium | cheap | free
+	// RoomID is set for an agent's turn in a room (a reply, a turn of a group discussion): such a session starts only with
+	// Grant, the room scheduler's grant for this agent in this room (P118). Task work, review, the template roles, the team
+	// lead, a recommendation, a person's chat and a connection test are not turns in a room and carry neither.
+	RoomID string
+	Grant  *room.TurnGrant
+}
+
+// GrantRedeemer uses a room turn's grant (room.Service.RedeemGrant).
+type GrantRedeemer interface {
+	RedeemGrant(ctx context.Context, g room.TurnGrant, roomID, agentID, runID string) error
+}
+
+// checkGrant refuses a turn in a room that has no valid grant, and uses the grant of one that has. A grant given for a session
+// that names no room still names its room: it is checked the same way.
+func (r *Runtime) checkGrant(ctx context.Context, cfg Config, runID string) error {
+	roomID := cfg.RoomID
+	if roomID == "" && cfg.Grant != nil {
+		roomID = cfg.Grant.RoomID
+	}
+	if roomID == "" {
+		return nil // not a turn in a room
+	}
+	if cfg.Grant == nil {
+		return fmt.Errorf("runtime: %w (room %s, agent %s)", room.ErrNoGrant, roomID, cfg.AgentID)
+	}
+	if r.Grants == nil {
+		return fmt.Errorf("runtime: %w: no turn scheduler is connected, so no room turn starts", room.ErrGrantRefused)
+	}
+	if err := r.Grants.RedeemGrant(ctx, *cfg.Grant, roomID, cfg.AgentID, runID); err != nil {
+		return fmt.Errorf("runtime: %w", err)
+	}
+	return nil
 }
 
 // Managed is a running agent session with bookkeeping.
@@ -172,6 +209,11 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		if !ok {
 			return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
 		}
+	}
+	// a turn in a room starts only on the scheduler's grant: checked (and used) before anything about the session is prepared
+	if err := r.checkGrant(ctx, cfg, runID); err != nil {
+		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start", "grant": true})
+		return nil, err
 	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
 		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})

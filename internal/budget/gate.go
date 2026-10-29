@@ -107,7 +107,7 @@ func ApprovedOverLimit(ctx context.Context) bool {
 // at its start, and the planner's is the one the plan names. A per-agent budget used to apply only to work and review turns: a
 // role or planner turn of an agent over its limit ran (audit 2026-10-16, M4).
 func (e *Enforcer) scopeIDs(ctx context.Context, in workflow.NodeInput) ScopeIDs {
-	ids := ScopeIDs{Project: in.ProjectID, Task: in.TaskID, Run: string(in.RunID)}
+	ids := ScopeIDs{Project: in.ProjectID, Task: in.TaskID, Run: string(in.RunID), Workflow: in.Workflow}
 	role := in.Meta["agent"]
 	switch role {
 	case "", "work", "review":

@@ -458,10 +458,16 @@ func (s *Service) transcript(ctx context.Context, trig Message) ([]Message, stri
 	return ms, root, err
 }
 
+// roundMsgs are the turns of a transcript for the round counters. A message derived from another's marker (a [DECISION] line
+// promoted to a DECISION) is part of the turn that wrote it, not a turn of its own: counted, it made the agent look as if it
+// had already spoken in the next round.
 func roundMsgs(ms []Message) []RoundMsg {
-	out := make([]RoundMsg, len(ms))
-	for i, m := range ms {
-		out[i] = RoundMsg{Author: m.Author, Type: m.Type, Pass: m.PayloadBool("pass")}
+	out := make([]RoundMsg, 0, len(ms))
+	for _, m := range ms {
+		if m.PayloadString("source_message_id") != "" {
+			continue
+		}
+		out = append(out, RoundMsg{Author: m.Author, Type: m.Type, Pass: m.PayloadBool("pass")})
 	}
 	return out
 }

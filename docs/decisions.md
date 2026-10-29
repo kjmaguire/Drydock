@@ -1617,3 +1617,32 @@ Open, owner action:
   **Not built:** cutting review and role prompts, a separate turn that asks for a handoff, a per-criterion acceptance status, a
   tokenizer. **Not verified:** a real agent writing a handoff with the tool (the tests store one the way the tool does), any
   effect on what a task costs (no eval run), Windows.
+- **P118. A per-project routing level, a workflow budget scope and budget items in the Inbox, turn grants the runtime
+  enforces, and the group-collaboration workflow node (2026-10-29).** On the owner's words, answering the list of what is not
+  built: "Yes" to building the whole "can be built now" group (the routing, budget and turn-taking items). (1) **Level**
+  ([`model-routing.md`](model-routing.md) "As built: the workspace's level and a project's own"): the workspace has a level
+  (Balanced until a person chooses another on the Routing page) and a project may choose its own on Project settings
+  (`route.level.get/set`, settings rows, no migration); every agent turn, static decision and wall-time ceiling of the
+  project uses it, and each decision records the level and whether it was the project's own, which "Why this model?" says.
+  (2) **Budgets** ([`token-control.md`](token-control.md) "As built: workflow budgets, budget items, turn grants"): a
+  `workflow` scope (migration `00152` rebuilds `budgets` for the CHECK and adds `budget_reservations.workflow`), counting every
+  run of one workflow in the project, seen by the gate, the reservation and the router's budget state, set on the Budgets
+  page from the workflows the core runs (`budget.workflows`); and a `budget` kind in `room.NeedsYou`: a warning, a limit
+  reached and a run's budget pause are typed items with `budgetState` and what to do (a warning or limit opens the Budgets
+  page and can be dismissed; a dismissal never hides the alert fired again after a limit change). (3) **Turn grants**
+  ([`room-protocol.md`](room-protocol.md) s6 "As built"): the room's scheduler stores a single-use grant (room, thread,
+  trigger, agent, round, 30-minute expiry; migration `00153`, `room_turn_grants`) for each reply it plans and each turn of a
+  group discussion; `agents/runtime.Spawn` refuses a session that names a room without a grant it can redeem (never issued,
+  changed, another agent's, used, expired, or no scheduler connected), and a fallback hop gets a renewed grant. The run kinds
+  that need one are turns in a room; task work, review, the template roles, the planner, the lead, recommendations, a
+  person's chat and a connection test need none. The reply rules that lived in the responder (an agent's message in an
+  auto room wakes only whom it mentions; a DM's agent answers its person) moved into the scheduler. (4) **Group node**
+  ([`workflow-engine.md`](workflow-engine.md) s14): `workflow.KindGroup` and `responder.GroupNode`, a bounded discussion
+  between named agents in a room on the sequential round counter (default 3 rounds), ending early when every agent passes,
+  resolved by the scheduler into a DECISION candidate or a blocking QUESTION, its result routed `decision` or `question` to
+  the next node; tested in the engine against the scripted stand-in agent. A promoted `[DECISION]` line no longer counts as
+  a turn in the round counters. UI: Project settings' "Model routing level", the Routing page's "Level", the workflow scope
+  in the budget form, budget items in the Inbox, a group node's icon in the run graph. **Not built:** a shipped template
+  that uses the group node and a way to start one from the UI, group and reply turns counted against a workflow budget, a
+  task-level or template-level routing level, the `ContextPlan` and `MaxRounds` inside a grant, ending a discussion on
+  `SHIP`. **Not verified:** any of it with a real agent CLI (only the scripted stand-in), Windows.

@@ -237,6 +237,8 @@ var ExcludedTables = map[string]string{
 	"integration_auto_approve":       "a person's per-Connection approval classes on this machine; the Connection is not exported",
 	"integration_attachments":        "files of vendor items, which belong to a Connection",
 	"integration_webhook_deliveries": "the workspace receiver's delivery log",
+
+	"room_turn_grants": "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

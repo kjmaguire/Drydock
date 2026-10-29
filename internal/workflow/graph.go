@@ -56,6 +56,7 @@ func (g *Graph) Start(ids ...NodeID) *Graph {
 func AgentTask(id NodeID, h NodeHandler) *Node { return &Node{ID: id, Kind: KindAgentTask, Handler: h} }
 func Check(id NodeID, h NodeHandler) *Node     { return &Node{ID: id, Kind: KindCheck, Handler: h} }
 func Route(id NodeID, h NodeHandler) *Node     { return &Node{ID: id, Kind: KindRoute, Handler: h} }
+func Group(id NodeID, h NodeHandler) *Node     { return &Node{ID: id, Kind: KindGroup, Handler: h} }
 func Request(id NodeID, spec RequestSpec) *Node {
 	return &Node{ID: id, Kind: KindRequest, Request: &spec}
 }

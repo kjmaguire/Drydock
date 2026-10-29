@@ -1,9 +1,9 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { RouteRule, RouteSettings, RouteSettingsPatch } from '../../api/extTypes.ts';
+import type { RouteLevel, RouteRule, RouteSettings, RouteSettingsPatch } from '../../api/extTypes.ts';
 import type { Provider } from '../../api/types.ts';
-import { byLabel, byText, cleanup, errorOf, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, fromMenu, menuItems, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { PRIORITY_ERROR } from './rules-panel.tsx';
 import { RoutingScreen } from './routing-screen.tsx';
 
@@ -41,15 +41,39 @@ function mountWith(client: Partial<Client>) {
       routePreviews: async (reqs) => reqs.map(() => ({ blocked: true, reason: 'no providers' })),
       routeSettingsGet: async () => noSettings(),
       routeRetentionList: async () => [],
+      routeLevelGet: async () => wsLevel('balanced'),
       ...client,
     }),
   );
 }
 
+// TEST DOUBLE of route.level.get for the workspace (P118)
+const wsLevel = (level: string): RouteLevel => ({ workspace: level, project: '', effective: level, source: 'workspace', levels: ['cheapest', 'fast', 'balanced', 'quality', 'maximum_quality', 'custom'] });
+
 /** Choose an action from a rule's "..." menu (Edit, Disable or Enable, Delete). */
 const pick = (r: ReturnType<typeof mountWith>, row: Element, item: string) => fromMenu(r, row.querySelector('[data-testid="route-rule-more"]') as HTMLElement, item);
 
 describe('RoutingScreen', () => {
+  it("sets the workspace's level, which every project without its own follows (P118)", async () => {
+    const calls: string[] = [];
+    let cur = wsLevel('balanced');
+    const r = mountWith({
+      routeLevelGet: async () => cur,
+      routeLevelSet: async (projectId: string, level: string) => {
+        calls.push(`${projectId}:${level}`);
+        cur = wsLevel(level);
+        return cur;
+      },
+    });
+    const sel = await waitFor(() => byLabel<HTMLElement>(r.container, 'Workspace level'), r);
+    await waitFor(() => expect(valueOf(sel)).toBe('balanced'), r);
+    expect(optionsOf(sel).map((o) => o.value)).toEqual(['cheapest', 'fast', 'balanced', 'quality', 'maximum_quality']);
+    expect(need(r, '[data-testid="workspace-level-note"]').textContent).toContain('Balanced: cheap for cheap-first work');
+    type(sel, 'quality');
+    await waitFor(() => expect(calls).toEqual([':quality']), r);
+    await waitFor(() => expect(need(r, '[data-testid="workspace-level-note"]').textContent).toContain('Quality: premium work and review'), r);
+  });
+
   it('lists rules in priority order with readable actions', async () => {
     const r = mountWith({ routeRulesList: async () => [{ ...rule, id: 'low', priority: 1 }, rule, { ...rule, id: 'r0', priority: 5, enabled: false }] });
     const rows = await waitFor(() => {
@@ -320,7 +344,7 @@ describe('the tiebreak and turn limits (decision P112)', () => {
     const r = mountWith({ routeSettingsGet: d.get, routeSettingsSet: d.set });
     const panel = await waitFor(() => need(r, '[data-testid="route-limits"] [data-testid="limits-now"]').closest('[data-testid="route-limits"]') as HTMLElement, r);
     expect(panel.textContent).toContain('No limit is set.');
-    expect(panel.textContent).toContain('Agent turns run at the Balanced level today.');
+    expect(panel.textContent).toContain('projects without a level of their own run at Balanced.');
     type(byLabel(panel, 'Balanced (minutes)'), 'soon');
     await r.act(() => byText(panel, 'button', 'Save limits').click());
     await waitFor(() => expect(errorOf(byLabel(panel, 'Balanced (minutes)'))).toBe('A whole number of minutes from 1 to 1440, or empty for no limit.'), r);
@@ -404,6 +428,7 @@ describe('the wiring diagram (decision P108)', () => {
       providerList: async () => [],
       routeSettingsGet: async () => noSettings(),
       routeRetentionList: async () => [],
+      routeLevelGet: async () => wsLevel('balanced'),
       routePreviews: async (reqs) => (calls++, Promise.all(reqs.map(preview))) as never,
     });
     const r = mount(<RoutingScreen />, svc);

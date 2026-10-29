@@ -3,11 +3,12 @@
 // a worker's tool permission request is approved for the rest of its task when the core allows that, else once, or denied; a
 // plain approval approved or denied; a spec gate accepted as written and a review merged. Everything else (a budget pause, a
 // CI gate, a question to answer, an outbound write) opens where it is decided. J and K move the selection, A approves, D denies,
-// E marks a failed check, a watchdog pause or a question done, Enter opens the item's page. The page is the workspace's: it
+// E marks a failed check, a watchdog pause, a question or a budget's warning or limit done, Enter opens the item's page (a
+// budget's warning or limit opens the Budgets page, P118). The page is the workspace's: it
 // opens with or without a project, and the sidebar's Inbox and Running counts are the same lists.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, ListTree, MessageSquare, OctagonX, Shield, Eye, type IconNode } from 'lucide';
+import { CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, ListTree, MessageSquare, OctagonX, Shield, Eye, Wallet, type IconNode } from 'lucide';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
@@ -60,6 +61,7 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   failed_check: { icon: OctagonX, tone: 'err' },
   watchdog: { icon: CirclePause, tone: 'warn' },
   chat: { icon: MessageSquare, tone: 'warn' },
+  budget: { icon: Wallet, tone: 'warn' },
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
@@ -623,7 +625,8 @@ function NeedsDetail(
     if (d) handle.queueTask(() => handle.props.onAnswer?.(a.kind));
     const ro = readOnly();
     const title = needsRowTitle(it, summary);
-    const description = d?.description || it.detail || '';
+    // a budget item's detail is what to do: it is the hint below, not said twice
+    const description = d?.description || (it.kind === 'budget' ? '' : it.detail) || '';
     const hint = needsHint(it);
     const agent = d?.agent;
     const ctx = it.context;
@@ -636,7 +639,18 @@ function NeedsDetail(
     const review = look === 'spec' || look === 'merge' || look === 'plan' || look === 'review';
     const expires = d?.expiresAt || msOf(it.expiresAt);
     const answerHere = a.kind !== 'open';
-    const openLabel = it.chatId ? 'Open the chat' : review ? 'Open to review' : a.kind === 'open' && d ? 'Open to decide' : it.taskId ? 'Open the task' : 'Open';
+    const budgetPage = it.kind === 'budget' && it.budgetState !== 'paused';
+    const openLabel = it.chatId
+      ? 'Open the chat'
+      : budgetPage
+        ? 'Open Budgets'
+        : review
+          ? 'Open to review'
+          : a.kind === 'open' && d
+            ? 'Open to decide'
+            : it.taskId
+              ? 'Open the task'
+              : 'Open';
     const openLink = (
       <a
         href={needsTarget(it)}
