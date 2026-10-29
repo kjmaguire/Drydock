@@ -226,6 +226,12 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 	// children (the agent processes) inherit these; this process already passed the re-exec check above
 	os.Setenv("DRYDOCK_FAKE_AGENT", "1")
 	os.Setenv("DRYDOCK_FAKE_SCRIPT", scriptPath)
+	// Claude Code's config folder for the import of its chats (ui/e2e/chat-import.spec.ts, decision P109): one fixture session,
+	// so the app never reads the developer's own ~/.claude
+	if err := claudeImportFixture(filepath.Join(root, "claude-config"), filepath.Join(root, "cc-notes")); err != nil {
+		return err
+	}
+	os.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-config"))
 
 	for i := 0; i < nRepos; i++ {
 		dir := filepath.Join(root, fmt.Sprintf("repo%d", i), "gocalc")

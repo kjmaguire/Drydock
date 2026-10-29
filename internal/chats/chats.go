@@ -133,6 +133,10 @@ type Chat struct {
 	// Version goes up by one with every write to the chat's row. Two snapshots of a chat are ordered by it (never by the clock):
 	// the higher version is the newer state.
 	Version int64 `json:"version"`
+	// ImportedFrom is where the chat was imported from (ImportClaudeCode, decision P109), omitted for a chat made in Drydock;
+	// ImportedSession is the Claude Code session id it was read from (SessionID starts equal to it and follows the CLI).
+	ImportedFrom    string `json:"importedFrom,omitempty"`
+	ImportedSession string `json:"importedSession,omitempty"`
 }
 
 // SkillRef names a workspace library skill chosen for a chat (decision P60).
@@ -224,7 +228,15 @@ type Deps struct {
 	Licensed func(ctx context.Context) error
 	// AttachDir is the folder a chat's attached files are kept in (P90). Nil: files cannot be attached.
 	AttachDir func(chatID string) string
-	Logf      func(format string, args ...any)
+	// ClaudeSources are the places Claude Code keeps its session transcripts, for the import (decision P109): Claude Code on
+	// Windows and in each WSL distro where it is installed. Nil: nothing to import.
+	ClaudeSources func(ctx context.Context) []ClaudeSource
+	// ProjectFor is the project whose folder dir is (a chat's folder as it is stored; distro "" on Windows), "" for none.
+	ProjectFor func(ctx context.Context, distro, dir string) string
+	// DrydockSession reports whether a Claude Code session is one Drydock started (an agent's run, a session in a folder
+	// Drydock made), so the import does not list it. Optional.
+	DrydockSession func(ctx context.Context, sessionID, cwd string) bool
+	Logf           func(format string, args ...any)
 }
 
 // Options tune the service. The zero value is valid.
@@ -609,7 +621,8 @@ func (s *Service) cleanTitle(t string) (string, error) {
 }
 
 const chatCols = `id,project_id,title,adapter,model,effort,permission_mode,cwd,session_id,allowed_tools,read_history,status,last_error,pinned,
-	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro,skills,mcp_servers,cli_model,cli_permission_mode`
+	archived_at,forked_from,created_at,updated_at,tokens_in,tokens_out,cost_usd,cost_unknown_turns,version,wsl_distro,skills,mcp_servers,cli_model,cli_permission_mode,
+	import_source,import_session`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -620,7 +633,7 @@ func scanChat(r scanner, extra ...any) (Chat, error) {
 	var cost sql.NullFloat64
 	dest := []any{&c.ID, &c.ProjectID, &c.Title, &c.Adapter, &c.Model, &c.Effort, &c.PermissionMode, &c.Cwd, &c.SessionID, &rules, &readHistory, &c.Status,
 		&c.LastError, &pinned, &c.ArchivedAt, &c.ForkedFrom, &c.Created, &c.Updated, &c.TokensIn, &c.TokensOut, &cost, &c.CostUnknownTurns, &c.Version, &c.WSLDistro,
-		&skills, &servers, &c.CLIModel, &c.CLIPermissionMode}
+		&skills, &servers, &c.CLIModel, &c.CLIPermissionMode, &c.ImportedFrom, &c.ImportedSession}
 	if err := r.Scan(append(dest, extra...)...); err != nil {
 		return c, err
 	}
@@ -1207,6 +1220,7 @@ func (s *Service) Fork(ctx context.Context, id string, uptoSeq int64) (Chat, err
 	n.ID = ids.New(strings.TrimSuffix(AgentPrefix, "_"))
 	n.SessionID, n.Status, n.LastError, n.Pinned, n.ArchivedAt, n.Archived = "", StatusIdle, "", false, 0, false
 	n.TokensIn, n.TokensOut, n.CostUSD, n.CostUnknownTurns, n.ForkedFrom = 0, 0, nil, 0, src.ID
+	n.ImportedFrom, n.ImportedSession = "", "" // the import is the source's (insertChatTx does not write it)
 	if src.Title != "" {
 		n.Title = clipRunes("Fork of "+src.Title, 200)
 	}

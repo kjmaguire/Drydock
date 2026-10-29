@@ -53,6 +53,56 @@ export interface Chat {
   costUnknownTurns: number;
   /** Raised by the core with every write to the chat: of two snapshots of a chat, the higher version is the newer one. */
   version: number;
+  /** 'claude-code' for a chat imported from a Claude Code session (decision P109); absent for a chat made in Drydock. */
+  importedFrom?: string;
+  /** The Claude Code session id it was imported from. */
+  importedSession?: string;
+}
+
+/** A Claude Code session chat.importList found (decision P109). */
+export interface ImportCandidate {
+  sessionId: string;
+  /** Empty: Claude Code on Windows; else the WSL distro whose Claude Code ran it (the imported chat runs there). */
+  wslDistro: string;
+  title: string;
+  /** The folder the session ran in, as the chat will run in it; empty when the transcript names none (see problem). */
+  cwd: string;
+  /** The project whose folder that is; empty: the chat will be in no project. */
+  projectId: string;
+  /** User and assistant messages. */
+  messages: number;
+  firstAt: number;
+  lastAt: number;
+  size: number;
+  /** The chat it was imported as: importing it again does nothing. */
+  chatId?: string;
+  /** Why it cannot be imported. */
+  problem?: string;
+}
+
+/** One place chat.importList read Claude Code's sessions from. */
+export interface ImportSource {
+  wslDistro: string;
+  folder: string;
+  sessions: number;
+  skipped: number;
+  error?: string;
+}
+
+export interface ImportList {
+  sources: ImportSource[];
+  /** The most recently active first. */
+  sessions: ImportCandidate[];
+}
+
+export interface ImportRef {
+  sessionId: string;
+  wslDistro: string;
+}
+
+export interface ImportResult {
+  imported: { sessionId: string; chat: Chat; messages: number }[];
+  skipped: { sessionId: string; wslDistro: string; reason: string; chatId?: string }[];
 }
 
 /** A workspace library skill chosen for a chat. */
@@ -255,6 +305,10 @@ export interface ChatClient {
    * as chatAllowTool does. Claude chats only: for any other agent it is refused with the reason, and the request keeps waiting.
    */
   chatAllowAndRemember(id: string, askId: string): Promise<{ answered: boolean; rule: string }>;
+  /** The Claude Code sessions that can be imported (decision P109), and those imported already. It only reads. */
+  chatImportList(): Promise<ImportList>;
+  /** Imports the sessions named, each as a chat that continues its session; one imported before is skipped. */
+  chatImport(sessions: ImportRef[]): Promise<ImportResult>;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
@@ -300,5 +354,13 @@ export function createChatClient(t: Transport): ChatClient {
       await t.call('chat.answer', { id, askId, allow });
     },
     chatAllowAndRemember: (id, askId) => t.call('chat.answer', { id, askId, allow: true, remember: true }),
+    chatImportList: async () => {
+      const r = await t.call<ImportList | null>('chat.importList', {});
+      return { sources: arr(r?.sources), sessions: arr(r?.sessions) };
+    },
+    chatImport: async (sessions) => {
+      const r = await t.call<ImportResult | null>('chat.import', { sessions });
+      return { imported: arr(r?.imported).map((i) => ({ ...i, chat: normalizeChat(i.chat) })), skipped: arr(r?.skipped) };
+    },
   };
 }

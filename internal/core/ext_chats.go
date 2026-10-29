@@ -88,6 +88,9 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		CheckSkills:    c.checkChatSkills,
 		CheckMCP:       c.checkChatMCP,
 		Instructions:   c.chatInstructions,
+		ClaudeSources:  c.claudeSources,
+		ProjectFor:     c.chatProjectFor,
+		DrydockSession: c.drydockSession,
 		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
 		Logf:           c.logf,
 	}, chats.Options{AskTTL: chatAskTTL})
@@ -176,6 +179,9 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 			}
 			return map[string]bool{"answered": true}, svc.Answer(ctx, p.ID, p.AskID, p.Allow)
 		}),
+		// the import of Claude Code's own chats (decision P109): what can be imported, and the import of the sessions chosen
+		"chat.importList":   bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.ImportClaudeCodeList(ctx) }),
+		"chat.import":       bind(func(ctx context.Context, p chats.ImportReq) (any, error) { return svc.ImportClaudeCode(ctx, p) }),
 		"chat.allowTool":    bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.AllowTool(ctx, p.ID, p.Tool) }),
 		"chat.disallowTool": bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.DisallowTool(ctx, p.ID, p.Tool) }),
 	}
