@@ -358,6 +358,8 @@ var gatedMethods = map[string]string{
 	"lead.split":      "start_work", // a paid turn of the team lead
 	// a run of a task goes on, or a new one starts from a checkpoint (P123)
 	"run.resume": "start_task", "run.timeTravel": "start_task", "run.replay": "start_task",
+	// a worktree put back to a safe point, an ended task run again as a new task (P124)
+	"run.restore": "start_task", "task.runAgain": "start_task",
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an

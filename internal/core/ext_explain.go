@@ -128,6 +128,9 @@ type CheckpointView struct {
 	Latest    bool     `json:"latest,omitempty"`
 	// Next are the nodes that have input waiting at this checkpoint: what runs first when a run goes on from it.
 	Next []string `json:"next,omitempty"`
+	// SafePoint is the safe point that holds the worktree's files as of this checkpoint (the one recorded before the next
+	// agent turn): time travel can put the files back to it (P124). Empty when no agent turn ran after it.
+	SafePoint string `json:"safePoint,omitempty"`
 	// Resumed: this entry is where a person resumed the run after it stopped (its parent is a checkpoint of the same run).
 	Resumed bool `json:"resumed,omitempty"`
 }
@@ -255,6 +258,7 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 				cv.Waiting = append(cv.Waiting, string(n))
 			}
 			cv.Next = nextNodes(out.Graph, cp.State)
+			cv.SafePoint = safePointAfter(execs, cp.Step)
 			out.Checkpoints = append(out.Checkpoints, cv)
 			if cp.State.Origin != nil {
 				out.Origin = cp.State.Origin
