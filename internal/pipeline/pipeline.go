@@ -122,7 +122,8 @@ func SafePointHook(d Deps) func(ctx context.Context, n workflow.NodeInfo) (strin
 		if err != nil {
 			return "", err
 		}
-		return repo.SafePoint(ctx, worktreeOf(t), n.Step*100+n.Attempt)
+		// under the run's own ref: a fork or a replay of the task reaches the same step and attempt numbers (P123)
+		return repo.RunSafePoint(ctx, worktreeOf(t), string(n.RunID), n.Step*100+n.Attempt)
 	}
 }
 

@@ -2,12 +2,13 @@
 // boxes colored by what they did, edges are smooth paths with arrowheads (loops dashed, under the nodes). Drag the
 // background to pan, use the wheel or the buttons to zoom, "Fit to view" to see it all. Nodes are focusable (Tab reaches
 // the graph, the arrow keys move between nodes, Enter or Space selects, Escape clears) and the selection drives the side
-// panel. Read-only: choosing a checkpoint shows the run as it was then; nothing here changes a run.
+// panel. Choosing a checkpoint shows the run as it was then; the bar then offers Time travel and Replay from it, which the run
+// page confirms (P123). An expanded subworkflow is drawn in a frame around its own nodes.
 
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
 import { Bot, GitBranch, ListChecks, Maximize, UserRound, Users, Workflow, ZoomIn, ZoomOut, type IconNode } from 'lucide';
 import type { Agent } from '../../api/types.ts';
-import type { GraphView, RunExplanation } from '../../api/runClient.ts';
+import type { CheckpointView, GraphView, RunExplanation } from '../../api/runClient.ts';
 import type { NodeState } from '../../lib/graphLayout.ts';
 import { agentName, formatCost, formatTime } from '../../lib/format.ts';
 import { Button, IconButton } from '../../ui/button.tsx';
@@ -16,6 +17,7 @@ import { t, tone } from '../../ui/tokens.ts';
 import {
   clip,
   fitView,
+  localName,
   readableView,
   graphGeometry,
   KIND_LABEL,
@@ -27,7 +29,9 @@ import {
   viewTransform,
   zoomAt,
   type Arrow,
+  type Cluster,
   type GraphGeom,
+  type RerunKind,
   type View,
 } from './run-model.ts';
 
@@ -155,6 +159,8 @@ const svgCss = css({
   '@keyframes wf-pulse': { from: { opacity: '0.7', transform: 'scale(1)' }, to: { opacity: '0', transform: 'scale(2.6)' } },
   '@media (prefers-reduced-motion: reduce)': { '& .wf-pulse': { animation: 'none', opacity: '0' } },
   '& text': { userSelect: 'none' },
+  '& .wf-cluster rect': { fill: `color-mix(in srgb, ${t.accent} 5%, transparent)`, stroke: t.borderStrong, strokeWidth: '1px', strokeDasharray: '5 4' },
+  '& .wf-cluster text': { fill: t.textMuted, fontSize: t.textXs, fontWeight: '600', letterSpacing: '0.02em' },
 });
 
 const timelineCss = css({
@@ -209,16 +215,22 @@ export function WorkflowGraph(
     selected?: string;
     /** The node the run is at: the graph opens readable around it. */
     current?: string;
+    /** The graph to draw instead of x.graph: the one with expanded subworkflows, framed by `clusters`. */
+    graph?: GraphView;
+    clusters?: Cluster[];
     onAsOf: (id: string | undefined) => void;
     onSelect: (id: string | undefined) => void;
     onOpenTurns: () => void;
+    /** Time travel or Replay from the chosen checkpoint (the run page confirms first); absent: the bar offers neither. */
+    onRerun?: (kind: RerunKind, cp: CheckpointView) => void;
     /** The side panel (node details). */
     children?: RemixNode;
   }>,
 ) {
   const markerBase = `wf-arrow-${handle.id}`;
   let geoFor: GraphView | undefined;
-  let geo: GraphGeom = { nodes: [], edges: [], bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 } };
+  let geoClusters: Cluster[] | undefined;
+  let geo: GraphGeom = { nodes: [], edges: [], bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 }, clusters: [] };
   let canvas: HTMLDivElement | undefined;
   let size = { w: 0, h: 0 };
   let view: View | undefined; // undefined: the opening view, or all of it after "Fit to view" (both follow resizes)
@@ -226,10 +238,11 @@ export function WorkflowGraph(
   let focusId: string | undefined;
   let drag: { x: number; y: number; vx: number; vy: number; moved: boolean } | undefined;
 
-  const geometry = (g: GraphView): GraphGeom => {
-    if (g !== geoFor) {
+  const geometry = (g: GraphView, clusters: Cluster[] | undefined): GraphGeom => {
+    if (g !== geoFor || clusters !== geoClusters) {
       geoFor = g;
-      geo = graphGeometry(g);
+      geoClusters = clusters;
+      geo = graphGeometry(g, clusters);
     }
     return geo;
   };
@@ -297,8 +310,8 @@ export function WorkflowGraph(
   };
 
   return () => {
-    const { x, agents, states, asOf, selected, onAsOf, onSelect, onOpenTurns, children } = handle.props;
-    const g = x.graph;
+    const { x, agents, states, asOf, selected, onAsOf, onSelect, onOpenTurns, onRerun, clusters, children } = handle.props;
+    const g = handle.props.graph ?? x.graph;
     if (!g) {
       return (
         <p data-testid="workflow-missing" style={{ color: t.textMuted }}>
@@ -306,7 +319,8 @@ export function WorkflowGraph(
         </p>
       );
     }
-    const gm = geometry(g);
+    const gm = geometry(g, clusters);
+    const acts = x.actions;
     const v = current();
     const cp = x.checkpoints.find((c) => c.id === asOf);
     const state = (id: string) => states.get(id) ?? PENDING;
@@ -332,6 +346,28 @@ export function WorkflowGraph(
                 <Button variant="link" size="sm" mix={[on('click', () => onAsOf(undefined))]}>
                   Show the latest
                 </Button>
+                {onRerun ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!acts?.timeTravel}
+                      title={acts?.timeTravel ? 'Start a new run from this checkpoint' : acts?.timeTravelWhy}
+                      mix={[on('click', () => onRerun('timeTravel', cp))]}
+                    >
+                      Time travel from here
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!acts?.replay}
+                      title={acts?.replay ? 'Run this run again from this checkpoint' : acts?.replayWhy}
+                      mix={[on('click', () => onRerun('replay', cp))]}
+                    >
+                      Replay from here
+                    </Button>
+                  </>
+                ) : null}
               </>
             ) : (
               <span>Latest state. Choose a checkpoint below to see the run as it was then.</span>
@@ -409,6 +445,18 @@ export function WorkflowGraph(
                 ))}
               </defs>
               <g transform={viewTransform(v)} data-testid="wf-viewport">
+                {gm.clusters.length ? (
+                  <g aria-hidden="true">
+                    {gm.clusters.map((c) => (
+                      <g key={c.id} class="wf-cluster" data-testid="wf-cluster" data-node={c.id}>
+                        <rect x={c.x} y={c.y} width={c.w} height={c.h} rx={12} />
+                        <text x={c.x + 12} y={c.y + 15}>
+                          {clip(`${c.label} · its own nodes`, 40)}
+                        </text>
+                      </g>
+                    ))}
+                  </g>
+                ) : null}
                 <g aria-hidden="true">
                   {ordered.map((e) => (
                     <g key={e.id} class="wf-edge" data-testid="wf-edge" data-from={e.edge.from} data-to={e.edge.to} data-kind={e.edge.kind} data-taken={String(e.taken)} data-active={String(e.active)}>
@@ -475,7 +523,7 @@ export function WorkflowGraph(
                         <Icon icon={KIND_ICON[n.def.kind] ?? Workflow} size={15} />
                       </g>
                       <text class="wf-title" x={32} y={22}>
-                        {clip(n.id, 16)}
+                        {clip(localName(n.id), 16)}
                       </text>
                       <text class="wf-kind" x={n.w - 12} y={22} text-anchor="end">
                         {kind}
@@ -545,11 +593,13 @@ export function WorkflowGraph(
                 mix={[cpCss, on('click', () => onAsOf(asOf === c.id ? undefined : c.id))]}
                 aria-pressed={asOf === c.id ? 'true' : 'false'}
                 data-latest={String(!!c.latest)}
-                title={`${c.kind} at step ${c.step}, ${formatTime(c.created)}${c.lastNodes?.length ? `, after ${c.lastNodes.join(', ')}` : ''}`}
+                title={`${c.resumed ? 'resumed' : c.kind} at step ${c.step}, ${formatTime(c.created)}${c.lastNodes?.length ? `, after ${c.lastNodes.join(', ')}` : ''}`}
                 data-testid="wf-checkpoint"
+                data-kind={c.resumed ? 'resumed' : c.kind}
               >
-                <i aria-hidden="true" style={{ background: CP_TONE[c.kind] ?? t.textFaint }} />
+                <i aria-hidden="true" style={{ background: c.resumed ? tone.ok.fg : (CP_TONE[c.kind] ?? t.textFaint) }} />
                 {c.step}
+                {c.resumed ? ' (resumed)' : ''}
                 {c.latest ? ' (latest)' : ''}
               </button>
             ))}

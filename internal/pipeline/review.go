@@ -528,7 +528,7 @@ func IterateUntilVerified(d Deps, project func(ctx context.Context, projectID st
 			workflow.AgentTask("review", Review(d)).With("agent", "review"),
 			&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(d)},
 			workflow.Route("changes", Changes(d)),
-			workflow.Route("merge", Merge(d, project)),
+			workflow.Route("merge", Merge(d, project)).Effect(EffectMerge),
 		).
 		Edge("prepare", "work").
 		Edge("work", "guard").

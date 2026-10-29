@@ -182,12 +182,18 @@ func (e *Engine) Start(ctx context.Context, workflow string, input any, opts Sta
 	if err != nil {
 		return "", err
 	}
-	id := RunID(ids.New("run"))
+	return e.startRun(ctx, g, RunID(ids.New("run")), raw, opts, nil)
+}
+
+// startRun creates run id of g from its input and launches it; origin (optional) is carried in its state (a subworkflow's run
+// inside a replay is a replay too).
+func (e *Engine) startRun(ctx context.Context, g *Graph, id RunID, raw json.RawMessage, opts StartOptions, origin *Origin) (RunID, error) {
 	d, ok := e.claim(id) // before the run exists: its first driver is this one, however long the writes below take
 	if !ok {
 		return "", ErrEngineClosed
 	}
 	state := newState(raw, g.TopologyHash())
+	state.Origin = origin
 	for _, n := range g.Entry {
 		state.Inboxes[n] = append(state.Inboxes[n], Message{Value: raw})
 	}
@@ -197,7 +203,7 @@ func (e *Engine) Start(ctx context.Context, workflow string, input any, opts Sta
 		e.giveUp(id, d)
 		return "", err
 	}
-	ok, err = e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
+	ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
 	if err != nil || !ok {
 		e.giveUp(id, d)
 		return id, fmt.Errorf("%w (start)", ErrLeaseHeld)
@@ -578,6 +584,11 @@ func (e *Engine) execNode(ctx context.Context, info RunInfo, g *Graph, n *Node, 
 		}
 		prev = &Previous{Attempt: r.Attempt, PartialRef: r.PartialRef, Error: r.Error}
 	}
+	if st.Origin != nil && st.Origin.Kind == OriginReplay && n.Meta[MetaEffect] != "" {
+		if out, gated, err := e.replayGate(ctx, info, n, step, inbox); gated {
+			return out, err
+		}
+	}
 	if n.Kind == KindAgentTask {
 		if out, gated, err := e.interruptedTurnGate(ctx, info, n, step, interrupted); gated {
 			return out, err
@@ -745,7 +756,7 @@ func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, st
 		// stored every streamed token twice in the events table (audit F10).
 	}
 
-	base := e.baseHandler(n)
+	base := e.baseHandler(n, st.Origin)
 	h := base
 	for i := len(mws) - 1; i >= 0; i-- {
 		h = mws[i](h)
@@ -773,11 +784,11 @@ func (e *Engine) invoke(ctx context.Context, info RunInfo, g *Graph, n *Node, st
 	return out, nil
 }
 
-func (e *Engine) baseHandler(n *Node) NodeHandler {
+func (e *Engine) baseHandler(n *Node, origin *Origin) NodeHandler {
 	switch {
 	case n.Kind == KindSubworkflow:
 		return func(ctx context.Context, in NodeInput) (NodeOutput, error) {
-			return e.runSub(ctx, n, in)
+			return e.runSub(ctx, n, in, origin)
 		}
 	case n.Handler != nil:
 		return n.Handler
@@ -796,9 +807,17 @@ func (e *Engine) baseHandler(n *Node) NodeHandler {
 	}
 }
 
-// runSub executes a subworkflow as its own run and waits for it to complete. A subworkflow that parks at a human
-// request is reported as an error: human interaction belongs in the parent graph in this version.
-func (e *Engine) runSub(ctx context.Context, n *Node, in NodeInput) (NodeOutput, error) {
+// SubRunID is the id of the run a subworkflow node starts at one attempt of one step: derived, not random, so the run
+// explanation finds the nested run of every execution of the node (docs/ui.md 6.2) without a column to link them.
+func SubRunID(parent RunID, node NodeID, step, attempt int) RunID {
+	return RunID(fmt.Sprintf("%s-%s-%d-%d", parent, node, step, attempt))
+}
+
+// runSub executes a subworkflow as its own run (SubRunID) and waits for it to complete. A subworkflow that parks at a human
+// request is stopped (its run cancelled, so its request leaves the inbox) and reported as an error: human interaction belongs
+// in the parent graph in this version. Inside a replay the nested run is a replay too, so a node of it that changes something
+// outside the run stops it the same way instead of running without a fresh approval.
+func (e *Engine) runSub(ctx context.Context, n *Node, in NodeInput, origin *Origin) (NodeOutput, error) {
 	if err := e.Register(n.Sub); err != nil {
 		return NodeOutput{}, err
 	}
@@ -806,15 +825,28 @@ func (e *Engine) runSub(ctx context.Context, n *Node, in NodeInput) (NodeOutput,
 	if len(in.Inbox) > 0 {
 		input = in.Inbox[0].Value
 	}
-	var v any
-	_ = json.Unmarshal(input, &v)
-	id, err := e.Start(ctx, n.Sub.Name, v, StartOptions{})
+	if len(input) == 0 {
+		input = json.RawMessage("null")
+	}
+	var sub *Origin
+	if origin != nil && origin.Kind == OriginReplay {
+		sub = &Origin{Kind: OriginReplay, Run: in.RunID, Step: in.Step, By: origin.By}
+	}
+	id, err := e.startRun(ctx, n.Sub, SubRunID(in.RunID, n.ID, in.Step, in.Attempt), input, StartOptions{}, sub)
 	if err != nil {
 		return NodeOutput{}, err
 	}
 	info, err := e.Await(ctx, id, func(r RunInfo) bool { return r.Status.Terminal() || r.Status == StatusWaitingHuman })
 	if err != nil {
 		return NodeOutput{}, err
+	}
+	if info.Status == StatusWaitingHuman {
+		why := ""
+		if ps, perr := e.Pending(context.WithoutCancel(ctx), id); perr == nil && len(ps) > 0 {
+			why = " (" + ps[0].Spec.Title + ")"
+		}
+		_ = e.Cancel(context.WithoutCancel(ctx), id)
+		return NodeOutput{}, fmt.Errorf("subworkflow %s stopped at a step that needs a person%s: a subworkflow cannot wait for one, so it was stopped", n.Sub.Name, why)
 	}
 	if info.Status != StatusCompleted {
 		return NodeOutput{}, fmt.Errorf("subworkflow %s ended %s: %s", n.Sub.Name, info.Status, info.FailedReason)
@@ -1108,88 +1140,6 @@ func (e *Engine) awaitDriver(ctx context.Context, run RunID, status RunStatus) e
 	case <-t.C:
 		return ErrLeaseHeld
 	}
-}
-
-// ResumeFrom starts a new run (a lineage branch) from any earlier checkpoint. History is never modified.
-func (e *Engine) ResumeFrom(ctx context.Context, cpID CheckpointID) (RunID, error) {
-	src, err := e.st.getCheckpoint(ctx, cpID)
-	if err != nil {
-		return "", err
-	}
-	g, err := e.graph(src.Workflow)
-	if err != nil {
-		return "", err
-	}
-	if src.State.Topology != g.TopologyHash() {
-		return "", ErrTopologyMismatch
-	}
-	srcRun, err := e.st.getRun(ctx, src.RunID)
-	if err != nil {
-		return "", err
-	}
-	id := RunID(ids.New("run"))
-	d, claimed := e.claim(id)
-	if !claimed {
-		return "", ErrEngineClosed
-	}
-	launched := false
-	defer func() {
-		if !launched {
-			e.giveUp(id, d)
-		}
-	}()
-	st := src.State.clone()
-	st.Status = StatusRunning
-	st.Result = nil
-	st.FailedReason = ""
-	cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: id, Workflow: g.Name, Step: st.Step, Kind: CheckpointEntry, Parent: src.ID, State: st, Created: storage.Now()}
-	info := RunInfo{ID: id, Workflow: g.Name, Status: StatusRunning, ProjectID: srcRun.ProjectID, TaskID: srcRun.TaskID, Input: st.Input, Topology: st.Topology, ParentCP: src.ID}
-	if err := e.st.createRun(ctx, info, cp); err != nil {
-		return "", err
-	}
-	// pending requests in the copied state need approval rows in the new run
-	if len(st.Pending) > 0 {
-		var reqs []approvalInsert
-		for _, pr := range st.Pending {
-			reqs = append(reqs, approvalInsert{id: RequestID(ids.New("req")), nodeID: pr.NodeID, spec: pr.Spec, projectID: info.ProjectID, taskID: info.TaskID})
-		}
-		// re-key pending requests to the new approval ids
-		newState := st
-		newState.Pending = map[RequestID]PendingRequest{}
-		newState.Waiting = map[NodeID]RequestID{}
-		for _, r := range reqs {
-			newState.Pending[r.id] = PendingRequest{ID: r.id, NodeID: r.nodeID, Spec: r.spec}
-			newState.Waiting[r.nodeID] = r.id
-		}
-		cp2 := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: id, Workflow: g.Name, Step: st.Step, Kind: CheckpointEntry, Parent: cp.ID, State: newState, Created: storage.Now()}
-		if err := e.st.commit(ctx, stepCommit{cp: cp2, status: StatusRunning, newRequests: reqs}); err != nil {
-			return "", err
-		}
-		cp = cp2
-	}
-	ok, err := e.st.acquireLease(ctx, id, e.cfg.Owner, e.cfg.LeaseTTL)
-	if err != nil || !ok {
-		return id, ErrLeaseHeld
-	}
-	e.emit(ctx, "workflow.started", info, map[string]any{"workflow": g.Name, "branchedFrom": src.ID})
-	launched = true
-	e.launch(d, info, g, cp)
-	return id, nil
-}
-
-// Replay starts a new run from the entry checkpoint of run's lineage using the recorded input.
-func (e *Engine) Replay(ctx context.Context, run RunID) (RunID, error) {
-	lin, err := e.st.lineage(ctx, run)
-	if err != nil {
-		return "", err
-	}
-	info, err := e.st.getRun(ctx, run)
-	if err != nil {
-		return "", err
-	}
-	var v any
-	_ = json.Unmarshal(lin[0].State.Input, &v)
-	return e.Start(ctx, lin[0].Workflow, v, StartOptions{ProjectID: info.ProjectID, TaskID: info.TaskID})
 }
 
 // Cancel stops a run.

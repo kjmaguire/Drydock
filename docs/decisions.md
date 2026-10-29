@@ -1646,3 +1646,54 @@ Open, owner action:
   that uses the group node and a way to start one from the UI, group and reply turns counted against a workflow budget, a
   task-level or template-level routing level, the `ContextPlan` and `MaxRounds` inside a grant, ending a discussion on
   `SHIP`. **Not verified:** any of it with a real agent CLI (only the scripted stand-in), Windows.
+- **P123. Resume, time travel and replay of a run, and the nested subworkflow view (2026-10-29).** On the owner's words,
+  answering the list of what is still not built: "Yes" (the "can be built now" group; `ui.md` 6.2's "Not built: Resume /
+  Time travel / Replay actions (the engine has no service call for them yet); subworkflow nodes are drawn as one node").
+  (1) **Engine calls** (`internal/workflow/timetravel.go`; `workflow-engine.md` section 6 says exactly what each does and does
+  not do). `Continue(run, by)` resumes, in place, a run that FAILED or that a dead driver left RUNNING once its lease ran out:
+  claim, lease, one fenced compare-and-swap to RUNNING (the only write that takes a run out of FAILED, and only on a person's
+  word) with an `entry` checkpoint whose parent is the latest of the same run; the step that stopped runs again as after a
+  crash (finished nodes reused, the failed or cut-off one at its next attempt with `Previous`); the same run id keeps its
+  budgets, approvals (a rejection given stays a rejection: the gate reads it again and the run fails again without asking),
+  loop counters and safe points. `TimeTravel(checkpoint, by)` forks a new run with the state as of any checkpoint; its first
+  checkpoint's parent is that checkpoint, its state carries `Origin{fork, run, checkpoint, step, by}`, and its open requests
+  get new approval rows in the transaction that creates it, the parked node keeping its inbox (`ResumeFrom` used to drop a
+  `Retry` request's inbox and write the requests in a second transaction). `Replay(run, from, by)` runs an ended run's nodes
+  again from a checkpoint of its lineage (the entry by default) with the recorded inboxes, `Origin{replay}`; a node marked
+  `MetaEffect` (`Node.Effect(what)`, metadata outside the topology hash; the pipeline marks `merge`, the GitHub merge,
+  `push_pr` and `plancreate`) never runs there without a fresh approval of the replay: a person's approval that is its own
+  input (the answer just before it in this run) or the request it raises first (gate `replay`, consumed by the one
+  execution it lets through; a rejection ends the replay with the node not run). None of the three rewrites a checkpoint, an
+  execution or an approval of another run, and none rewinds anything outside the engine. Two engine fixes on the way: a
+  subworkflow's run has an id derived from the parent's execution (`SubRunID`), and one that parks at a request is
+  cancelled with its request and fails the step (it used to wait forever, its request open in the inbox); the safe point
+  before an agent turn is recorded under the run's own ref (`refs/drydock/safe/<task>/<run>/<n>`), so a restart, a fork or a
+  replay of a task at the same step and attempt no longer moves the safe point an earlier run's execution names. (2) **RPC
+  and the run page** (`internal/core/ext_runcontrol.go`; `ui/app/screens/run`): `run.resume {taskId, runId}`,
+  `run.timeTravel {taskId, runId, checkpointId}`, `run.replay {taskId, runId, checkpointId?}`, gated like `task.start`. For a
+  task: one live run (a fork or a replay cancels the task's run when it waits for a person or is paused, and is refused
+  while it works); a task that has ended is not run again (its state machine never leaves COMPLETED, CANCELLED or FAILED);
+  the task's status goes back to what it was at the checkpoint (read from its transition events) as far as the state machine
+  and its guards allow, through IN_PROGRESS as a resync, which uses no iteration (a note says what could not be put back);
+  the run that goes on becomes the task's run; the task channel says what the person did. The task's own records
+  (iterations used, evidence, reviews) and the worktree's files stay as they are. `run.explain` gains `actions` (which of the
+  three are possible and why not, the run a fork would stop, who drives the run), `origin`, each checkpoint's `next` nodes
+  and `resumed` mark, and `subruns`. The page: Resume and Replay from the start under the summary, Time travel from here and
+  Replay from here on a checkpoint of the timeline, each behind a confirmation that says what runs first and again (from
+  the run's own executions), which steps ask first in a replay, which run is stopped first and that the files are not put
+  back; a forked or replayed run links the run it came from; "Driven by" is the lease holder indicator of `ui.md` 6.2.
+  (3) **Nested subworkflow view**: a subworkflow node's panel shows its nested run and "Show its nodes in the graph", which
+  draws its nodes after it in a frame (nested ones inside), with their states from the nested run and their own panels. No
+  migration (00161 was not needed: the origin is in the checkpoint state, the resume is an `entry` checkpoint, the nested run
+  is found by its id, the effect is graph metadata), no new dependency. Tests: the engine's (a failed run resumed from its last
+  good checkpoint, a child process killed mid-turn taken over once and not while its lease holds, a waiting or cancelled run
+  refused, a rejection kept; a fork that keeps the original run byte-identical and asks its request afresh with its inbox; a
+  replay that refuses a push without approval, ends on a rejection and runs it once on an approval; the approval just before
+  a merge counting; nested run ids, a parked subworkflow cancelled, a marked step inside a replayed subworkflow not run), the
+  core's (time travel and replay of a task run through the RPC methods to the approval and the merge with the earlier run's
+  history unchanged, a resumed failed run keeping its rejected budget pause, the nested run in the explanation), the
+  pipeline's (every merge, push and task creation marked), the git package's (two runs' safe points), UI unit tests and the
+  run page e2e spec. **Not built:** putting the worktree's files back on time travel (the engine never resets a worktree;
+  the safe point restore stays a human action the page does not offer yet); a subworkflow that waits for a person; running
+  an ended task again. **Not verified:** any of it on Windows; the nested view with a shipped workflow (none uses a
+  subworkflow).

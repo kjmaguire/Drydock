@@ -509,7 +509,7 @@ func TestReplayFromEntryReproducesNodeSequence(t *testing.T) {
 	ctx := context.Background()
 	run, _ := e.eng.Start(ctx, "diamond", "in", wf.StartOptions{})
 	waitStatus(t, e.eng, run, wf.StatusCompleted)
-	replay, err := e.eng.Replay(ctx, run)
+	replay, err := e.eng.Replay(ctx, run, "", "human:test")
 	if err != nil {
 		t.Fatal(err)
 	}

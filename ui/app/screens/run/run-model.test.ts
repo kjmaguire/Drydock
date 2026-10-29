@@ -6,6 +6,15 @@ import { routes } from '../../routes.ts';
 import {
   clip,
   compact,
+  effectNodes,
+  expandSubworkflows,
+  leaseWords,
+  localName,
+  originLine,
+  ranAfter,
+  rerunPlan,
+  subExecutions,
+  subrunOf,
   currentNode,
   connections,
   duration,
@@ -252,5 +261,166 @@ describe('formatting', () => {
   it('sums the cost of every turn', () => {
     const u = (costUsd: number) => ({ costUsd, inputTokens: 1, outputTokens: 1 }) as never;
     expect(runCost({ executions: [ex('a', 1, 'done', 1, { usage: [u(0.01), u(0.02)] }), ex('b', 2)] } as unknown as RunExplanation)).toBeCloseTo(0.03, 6);
+  });
+});
+
+// a workflow with a subworkflow node: build runs draft then lint, and draft is itself a subworkflow of one node
+const inner2: GraphView = { name: 'deep', entry: ['x'], nodes: [{ id: 'x', kind: 'check' }], edges: [] };
+const inner: GraphView = {
+  name: 'inner',
+  entry: ['draft'],
+  nodes: [
+    { id: 'draft', kind: 'subworkflow', sub: inner2 },
+    { id: 'lint', kind: 'check' },
+  ],
+  edges: [{ from: 'draft', to: 'lint', kind: 'direct' }],
+};
+const outer: GraphView = {
+  name: 'outer',
+  entry: ['prepare'],
+  nodes: [
+    { id: 'prepare', kind: 'route' },
+    { id: 'build', kind: 'subworkflow', sub: inner },
+    { id: 'done', kind: 'route', meta: { effect: 'merges the branch' } },
+  ],
+  edges: [
+    { from: 'prepare', to: 'build', kind: 'direct' },
+    { from: 'build', to: 'done', kind: 'direct' },
+  ],
+};
+
+describe('the nested subworkflow view', () => {
+  it('expands an open subworkflow in place: its node heads a frame, its nodes follow, the edges go through them', () => {
+    expect(expandSubworkflows(outer, new Set()).graph).toBe(outer);
+    const { graph, clusters } = expandSubworkflows(outer, new Set(['build']));
+    expect(graph.nodes.map((n) => n.id)).toEqual(['prepare', 'build', 'build/draft', 'build/lint', 'done']);
+    expect(graph.edges.map((e) => `${e.from}>${e.to}${e.nested ? '*' : ''}`)).toEqual(['build/draft>build/lint', 'build>build/draft*', 'prepare>build', 'build/lint>done']);
+    expect(clusters).toEqual([{ id: 'build', label: 'build', members: ['build', 'build/draft', 'build/lint'] }]);
+    const col = Object.fromEntries(layout(graph).map((p) => [p.id, p.column]));
+    expect(col).toEqual({ prepare: 0, build: 1, 'build/draft': 2, 'build/lint': 3, done: 4 });
+    expect(localName('build/draft')).toBe('draft');
+    // a nested subworkflow opens inside its parent's frame
+    const deep = expandSubworkflows(outer, new Set(['build', 'build/draft']));
+    expect(deep.graph.nodes.map((n) => n.id)).toEqual(['prepare', 'build', 'build/draft', 'build/draft/x', 'build/lint', 'done']);
+    expect(deep.graph.edges.some((e) => e.from === 'build/draft/x' && e.to === 'build/lint')).toBe(true);
+    expect(deep.clusters.map((c) => [c.id, c.members.length])).toEqual([
+      ['build/draft', 2],
+      ['build', 4],
+    ]);
+    const gm = graphGeometry(deep.graph, deep.clusters);
+    const box = (id: string) => gm.nodes.find((n) => n.id === id)!;
+    for (const c of gm.clusters) {
+      for (const m of deep.clusters.find((d) => d.id === c.id)!.members) {
+        const b = box(m);
+        expect(b.x >= c.x && b.y >= c.y && b.x + b.w <= c.x + c.w && b.y + b.h <= c.y + c.h).toBe(true);
+      }
+      expect(gm.bounds.minY <= c.y && gm.bounds.maxY >= c.y + c.h).toBe(true);
+    }
+    const [innerBox, outerBox] = gm.clusters;
+    expect(innerBox!.x > outerBox!.x && innerBox!.y > outerBox!.y).toBe(true);
+  });
+
+  it("shows a nested run's executions under the expanded nodes, from the step its subworkflow node ran", () => {
+    const x = {
+      executions: [ex('prepare', 1), ex('build', 2)],
+      checkpoints: [
+        { id: 'c1', step: 1, kind: 'step', created: 1, status: 'RUNNING' },
+        { id: 'c2', step: 2, kind: 'step', created: 2, status: 'COMPLETED', latest: true },
+      ],
+      subruns: [
+        {
+          nodeId: 'build',
+          step: 2,
+          attempt: 1,
+          runId: 'run_1-build-2-1',
+          status: 'FAILED',
+          executions: [ex('draft', 1), ex('lint', 2, 'failed')],
+          subruns: [{ nodeId: 'draft', step: 1, attempt: 1, runId: 'run_1-build-2-1-draft-1-1', status: 'COMPLETED', executions: [ex('x', 1)], subruns: [] }],
+        },
+      ],
+    } as unknown as RunExplanation;
+    expect(subExecutions(x, new Set())).toEqual([]);
+    const subs = subExecutions(x, new Set(['build', 'build/draft']));
+    expect(subs.map((e) => `${e.nodeId}@${e.step}:${e.status}`)).toEqual(['build/draft@2:done', 'build/lint@2:failed', 'build/draft/x@2:done']);
+    const xv = { ...x, executions: [...x.executions, ...subs] };
+    expect(statesAsOf(xv, undefined).get('build/lint')?.status).toBe('failed');
+    expect(statesAsOf(xv, x.checkpoints[0]).get('build/lint')).toBeUndefined();
+    expect(subrunOf(x, 'build')?.runId).toBe('run_1-build-2-1');
+    expect(subrunOf(x, 'build/draft')?.status).toBe('COMPLETED');
+    expect(subrunOf(x, 'done')).toBeUndefined();
+  });
+});
+
+describe('what Resume, Time travel and Replay say will run again (P123)', () => {
+  const x = (over: Partial<RunExplanation> = {}): RunExplanation =>
+    ({
+      run: { id: 'run_1', workflow: 'outer', status: 'WAITING_HUMAN', created: 1, updated: 2 },
+      runs: [],
+      graph: outer,
+      executions: [ex('prepare', 1), ex('build', 2), ex('build', 3, 'failed'), ex('done', 4)],
+      checkpoints: [
+        { id: 'c0', step: 0, kind: 'entry', created: 0, status: 'RUNNING', next: ['prepare'] },
+        { id: 'c1', step: 1, kind: 'step', created: 1, status: 'RUNNING', next: ['build'] },
+        { id: 'c4', step: 4, kind: 'step', created: 4, status: 'WAITING_HUMAN', latest: true, next: ['done'] },
+      ],
+      mcpCalls: [],
+      events: [],
+      actions: { resume: false, timeTravel: true, replay: false, supersedes: 'run_1', supersedesStatus: 'WAITING_HUMAN', lease: { held: false, mine: false, driving: false } },
+      ...over,
+    }) as RunExplanation;
+
+  it('lists the steps that ran after a checkpoint and the ones that change something outside the run', () => {
+    expect(ranAfter(x(), 1)).toEqual({ nodes: ['build', 'done'], turns: 3 });
+    expect(ranAfter(x(), 4)).toEqual({ nodes: [], turns: 0 });
+    expect(effectNodes(outer)).toEqual([{ node: 'done', effect: 'merges the branch' }]);
+    expect(effectNodes(undefined)).toEqual([]);
+  });
+
+  it('time travel: a new run from the checkpoint, what runs first and again, the waiting run stopped, the files as they are', () => {
+    const p = rerunPlan(x(), 'timeTravel', x().checkpoints[1]);
+    expect(p.title).toBe('Time travel to step 1?');
+    expect(p.confirm).toBe('Start the new run');
+    const text = p.lines.join('\n');
+    expect(text).toContain('A new run starts from the checkpoint at step 1');
+    expect(text).toContain('Runs first: build.');
+    expect(text).toContain('build and done (3 turns in this run)');
+    expect(text).toContain('This run (waiting for you) is stopped first');
+    expect(text).toContain("The worktree's files are not put back");
+  });
+
+  it("replay: from the entry by default, the steps that ask first, and the task's other run stopped", () => {
+    const p = rerunPlan(x({ actions: { resume: false, timeTravel: true, replay: true, supersedes: 'run_2', supersedesStatus: 'PAUSED', lease: { held: false, mine: false, driving: false } } }), 'replay');
+    expect(p.title).toBe('Replay this run from step 0?');
+    expect(p.asks).toEqual([{ node: 'done', effect: 'merges the branch' }]);
+    const text = p.lines.join('\n');
+    expect(text).toContain('Runs again: prepare, build and done (4 turns in this run). Agent turns are paid for again.');
+    expect(text).toContain('Asks you first, every time, before a step that changes something outside the run: done (merges the branch).');
+    expect(text).toContain("The task's current run (paused) is stopped first");
+    expect(rerunPlan(x({ graph: { ...outer, nodes: outer.nodes.map((n) => ({ ...n, meta: undefined })) } }), 'replay').lines.join(' ')).toContain(
+      'No step of this workflow changes anything outside the run without asking you.',
+    );
+  });
+
+  it('resume: from the latest checkpoint, why it stopped, what runs again, and that answers stay', () => {
+    const p = rerunPlan(x({ run: { id: 'run_1', workflow: 'outer', status: 'FAILED', created: 1, updated: 2, failedReason: 'node build: overloaded' } }), 'resume');
+    expect(p.title).toBe('Resume this run?');
+    const text = p.lines.join('\n');
+    expect(text).toContain('from step 4, its latest checkpoint, in the same worktree');
+    expect(text).toContain('It stopped because: node build: overloaded');
+    expect(text).toContain('Runs again first: done.');
+    expect(text).toContain('a step you rejected is still rejected');
+  });
+
+  it('says where a forked or replayed run came from and who drives a live run', () => {
+    expect(originLine(x())).toBeUndefined();
+    expect(originLine(x({ origin: { kind: 'fork', run: 'run_0', checkpoint: 'c', step: 3 } }))).toBe('Time travel from step 3 of an earlier run');
+    expect(originLine(x({ origin: { kind: 'replay', run: 'run_0', checkpoint: 'c', step: 0 } }))).toBe('Replay of an earlier run from step 0');
+    const lease = (l: { held: boolean; mine: boolean; driving: boolean }, status = 'RUNNING') =>
+      leaseWords(x({ run: { id: 'run_1', workflow: 'outer', status, created: 1, updated: 2 }, actions: { resume: false, timeTravel: false, replay: false, lease: l } }));
+    expect(lease({ held: true, mine: true, driving: true })).toBe('This Drydock');
+    expect(lease({ held: true, mine: false, driving: false })).toBe('Another Drydock');
+    expect(lease({ held: false, mine: false, driving: false })).toBe('Nobody: it stopped when Drydock did');
+    expect(lease({ held: false, mine: false, driving: false }, 'WAITING_HUMAN')).toBe('Nobody (nothing to run now)');
+    expect(lease({ held: false, mine: false, driving: false }, 'COMPLETED')).toBeUndefined();
   });
 });

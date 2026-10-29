@@ -25,7 +25,7 @@ func (b graphBuilder) tail(extraBeforeApprove []workflow.NodeID) {
 		workflow.AgentTask("review", Review(td.Deps)).With("agent", "review"),
 		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
 		workflow.Route("changes", Changes(td.Deps)),
-		workflow.Route("merge", Merge(td.Deps, td.projectFn())),
+		workflow.Route("merge", Merge(td.Deps, td.projectFn())).Effect(EffectMerge),
 		workflow.Route(NodeAbort, Abort(td.Deps)),
 	)
 	g.Edge("work", "guard").
@@ -66,12 +66,12 @@ func (b graphBuilder) prTail(extraBeforeApprove []workflow.NodeID) {
 		workflow.Check("verify", td.verifyTDD()),
 		workflow.Route("finalize", Finalize(td.Deps)),
 		workflow.AgentTask("review", Review(td.Deps)).With("agent", "review"),
-		workflow.Route("push_pr", PushPR(td.Deps, td.PR)),
+		workflow.Route("push_pr", PushPR(td.Deps, td.PR)).Effect(EffectPush),
 		workflow.Check("ci", CI(td.Deps, td.PR)),
 		workflow.Route("pr_feedback", PRFeedback(td.Deps, td.PR)),
 		&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(td.Deps)},
 		workflow.Route("changes", Changes(td.Deps)),
-		workflow.Route("merge", MergePR(td.Deps, td.PR)),
+		workflow.Route("merge", MergePR(td.Deps, td.PR)).Effect(EffectMergePR),
 		workflow.Route(NodeAbort, Abort(td.Deps)),
 	)
 	next := workflow.NodeID("approve")
@@ -237,10 +237,10 @@ func (td TemplateDeps) securityGraph(pr bool) *workflow.Graph {
 		Loop("gate", "work", "fail", n, esc)
 	if pr {
 		g.Add(
-			workflow.Route("push_pr", PushPR(td.Deps, td.PR)),
+			workflow.Route("push_pr", PushPR(td.Deps, td.PR)).Effect(EffectPush),
 			workflow.Check("ci", CI(td.Deps, td.PR)),
 			workflow.Route("pr_feedback", PRFeedback(td.Deps, td.PR)),
-			workflow.Route("merge", MergePR(td.Deps, td.PR)),
+			workflow.Route("merge", MergePR(td.Deps, td.PR)).Effect(EffectMergePR),
 		)
 		g.Edge("finalize", "sreview")
 		b.prSteps("sreview", "approve")
@@ -248,7 +248,7 @@ func (td TemplateDeps) securityGraph(pr bool) *workflow.Graph {
 	} else {
 		g.Add(
 			workflow.Route("sync", Sync(td.Deps, td.projectFn())),
-			workflow.Route("merge", Merge(td.Deps, td.projectFn())),
+			workflow.Route("merge", Merge(td.Deps, td.projectFn())).Effect(EffectMerge),
 		)
 		g.Edge("finalize", "sync").
 			EdgeWhen("sync", "sreview", RouteCurrent).

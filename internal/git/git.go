@@ -1013,9 +1013,25 @@ func SafePointRef(taskID string, attempt int) string {
 	return fmt.Sprintf("refs/drydock/safe/%s/%d", taskID, attempt)
 }
 
+// RunSafePointRef returns the hidden ref name for attempt n of one run of a task. Each run keeps its own refs, so a run that
+// reaches the same step and attempt as another run of the task (a restart, a fork from a checkpoint, a replay; decision P123)
+// never moves the safe point the other run's execution names.
+func RunSafePointRef(taskID, runID string, n int) string {
+	return fmt.Sprintf("refs/drydock/safe/%s/%s/%d", taskID, runID, n)
+}
+
 // SafePoint records the exact worktree state (tracked and untracked files) as a hidden commit without touching the
 // working branch or the index the agent sees: temporary index, add -A, write-tree, commit-tree, update-ref.
 func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, error) {
+	return r.safePoint(ctx, w, SafePointRef(w.TaskID, attempt), fmt.Sprintf("drydock safe point: task %s attempt %d", w.TaskID, attempt))
+}
+
+// RunSafePoint is SafePoint under the run's own ref (RunSafePointRef): what the workflow engine records before every agent turn.
+func (r *Repo) RunSafePoint(ctx context.Context, w Worktree, runID string, n int) (string, error) {
+	return r.safePoint(ctx, w, RunSafePointRef(w.TaskID, runID, n), fmt.Sprintf("drydock safe point: task %s run %s attempt %d", w.TaskID, runID, n))
+}
+
+func (r *Repo) safePoint(ctx context.Context, w Worktree, ref, msg string) (string, error) {
 	idx, cleanup, err := r.tempIndex(ctx, w)
 	if err != nil {
 		return "", err
@@ -1029,7 +1045,7 @@ func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, 
 	if err != nil {
 		return "", err
 	}
-	args := []string{"commit-tree", strings.TrimSpace(tree), "-m", fmt.Sprintf("drydock safe point: task %s attempt %d", w.TaskID, attempt)}
+	args := []string{"commit-tree", strings.TrimSpace(tree), "-m", msg}
 	if head, err := r.Head(ctx, w); err == nil {
 		args = append(args, "-p", head)
 	}
@@ -1037,7 +1053,6 @@ func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, 
 	if err != nil {
 		return "", err
 	}
-	ref := SafePointRef(w.TaskID, attempt)
 	if _, err := r.git(ctx, w.Path, nil, "update-ref", ref, strings.TrimSpace(commit)); err != nil {
 		return "", err
 	}

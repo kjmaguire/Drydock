@@ -82,7 +82,9 @@ func (s *store) jsonb(b json.RawMessage) json.RawMessage {
 	return redact.JSON(b, s.redact)
 }
 
-func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint) error {
+// createRun writes a new run with its first checkpoint and, for a fork or a replay that starts at open requests, their approval
+// rows, in one transaction: a run never exists without the requests its state waits on.
+func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint, reqs ...approvalInsert) error {
 	st, err := s.stateJSON(cp)
 	if err != nil {
 		return err
@@ -96,8 +98,23 @@ func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint) erro
 			string(info.ParentCP), string(cp.ID), now, now); err != nil {
 			return err
 		}
-		return insertCheckpoint(ctx, tx, cp, st)
+		if err := insertCheckpoint(ctx, tx, cp, st); err != nil {
+			return err
+		}
+		return insertApprovals(ctx, tx, info.ID, reqs, now)
 	})
+}
+
+// insertApprovals writes the REQUESTED approval rows of new requests of run.
+func insertApprovals(ctx context.Context, tx *sql.Tx, run RunID, reqs []approvalInsert, now int64) error {
+	for _, a := range reqs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,phase,status,created_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)`, string(a.id), string(run), string(a.nodeID), a.taskID, a.projectID,
+			a.spec.Kind, a.spec.Title, nz(a.spec.Payload), a.spec.ActionHash, a.spec.Phase, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func nz(b json.RawMessage) []byte {
@@ -328,14 +345,7 @@ func (s *store) commit(ctx context.Context, c stepCommit) error {
 		if err := insertCheckpoint(ctx, tx, c.cp, state); err != nil {
 			return err
 		}
-		for _, a := range c.newRequests {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,phase,status,created_at)
-				VALUES(?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)`, string(a.id), string(c.cp.RunID), string(a.nodeID), a.taskID, a.projectID,
-				a.spec.Kind, a.spec.Title, nz(a.spec.Payload), a.spec.ActionHash, a.spec.Phase, now); err != nil {
-				return err
-			}
-		}
-		return nil
+		return insertApprovals(ctx, tx, c.cp.RunID, c.newRequests, now)
 	})
 }
 

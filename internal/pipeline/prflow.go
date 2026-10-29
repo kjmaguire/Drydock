@@ -645,12 +645,12 @@ func IterateUntilVerifiedPR(d Deps, src PRSource, maxLoops int) *workflow.Graph 
 			workflow.Check("verify", Verify(d)),
 			workflow.Route("finalize", Finalize(d)),
 			workflow.AgentTask("review", Review(d)).With("agent", "review"),
-			workflow.Route("push_pr", PushPR(d, src)),
+			workflow.Route("push_pr", PushPR(d, src)).Effect(EffectPush),
 			workflow.Check("ci", CI(d, src)),
 			workflow.Route("pr_feedback", PRFeedback(d, src)),
 			&workflow.Node{ID: "approve", Kind: workflow.KindRequest, Handler: Approve(d)},
 			workflow.Route("changes", Changes(d)),
-			workflow.Route("merge", MergePR(d, src)),
+			workflow.Route("merge", MergePR(d, src)).Effect(EffectMergePR),
 		).
 		Edge("prepare", "work").
 		Edge("work", "verify").
