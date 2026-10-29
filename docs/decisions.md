@@ -1446,3 +1446,36 @@ Open, owner action:
   design: `docs/model-routing.md` "As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal".
   **Not verified:** a real cheap model's tiebreak, a real CLI stopped at a ceiling on Windows, every CLI version's retention
   wording, holds during a real provider's CLI turn.
+- **P115. The per-role MCP tool table, Antigravity's headless start, the custom CLI dialect and live packs' docs servers in
+  agent runs (2026-10-29).** On the owner's words, answering the list of what is not built: "Proceed with those items" (the
+  agents items of `architecture.md` section 5). (1) **Role table** (`internal/mcp/rolepolicy.go`): section 3 of
+  [`mcp.md`](mcp.md) is the gateway's policy, a row per role (the template roles, then every other role, which keeps all a
+  grant gives) and a column per Workspace tool (`read_range`, `repo_map`, `skills`, `search_memory`, `search_requirements`,
+  `search_pack`, act) and kind of server (docs servers, GitHub, trackers, Sentry, other, by the catalog entry a library
+  server was connected from). PM reads requirements, memory and packs, the UX Designer requirements, packs and files, a
+  reviewer acts by `room` and `handoff`; `propose_memory` stays with every role (P92), `repo_map` is on by default for every
+  role (P62), the act column still needs `mcp.act_tools`. A project changes any cell on its Integrations page (migration
+  `00148`, `mcp_role_policy`; `mcp.rolePolicy.get/set`), which also shows the act switch for the first time. **CEL rules**:
+  `cel.dev/cel-go` was already a dependency (security, router), so a project keeps up to 32 boolean expressions over `role`,
+  `column`, `server`, `tool`, `adapter` and `task` that only take tools away (`mcp_policy_rules`, `mcp.policyRule.add/remove`;
+  checked when saved, a set that no longer compiles gives a run no MCP and says why). **A task narrows** its agents' tools to
+  exposed names or globs (migration `00149`, `task_mcp_tools`; `task.mcpTools.get/set`, the task page's "Agent tools"); it
+  never widens. Rules and narrowing are enforced by the gateway on every list and call (`RunPolicy.Refuse`); the permission
+  prompt and the sandbox's command tools are exempt (they carry how a turn works). Every change is audited. (2)
+  **Antigravity** starts (`internal/agents/headless`): `agy -p --input-format stream-json --output-format stream-json --mode
+  default` with `--effort`, a stream-json user message per stdin line, `init`, `step_update` and `result` read as the
+  documentation names them, `denied_actions` as permission_denied chunks (D11), `AGY_ERROR` and exit 3 as the turn's error;
+  interrupt, resume and model choice are not offered; still behind its acknowledgement gate. **The custom dialect**: a
+  person's manifest in `<app data>/adapters/custom/<id>.yaml`, added and removed on the Agents page
+  (`connection.custom.list/template/add/remove`), validated strictly (its own gate `custom-<id>`, the prompt on stdin or as
+  `{{prompt}}`, only `cwd`, `model`, `effort`, `session_id` and `prompt` placeholders, field paths per event, no provider,
+  MCP or keychain sections, native only, refused when it looks like it holds a secret) and run by a generic runner: one
+  process per turn, JSON lines by type and field path or plain text, the session id carried to the next turn's
+  `{{session_id}}`, interrupt by ending the turn's process. The conformance suite gained per-turn sessions and runs against
+  both stand-ins (`fakeagy`, written from agy's documentation; `fakecustom`, the template's CLI). (3) **Live packs' docs
+  servers** reach an agent run: the catalog server of a live or hybrid pack attached for the agent, with exactly the pack's
+  tool, under the role's docs column, through the gateway's catalog trust, cache, send guard and untrusted marking
+  (`addLivePackServers`); `search_pack` still queries live packs itself. **Not verified:** a real `agy` (every field name,
+  the `--mode` value, the input line, exit codes), a real custom CLI, any of it on Windows (a `.cmd` program, the prompt as
+  an argument through `cmd.exe`). **Not built:** MCP for custom CLIs (their manifest has no `mcp.inject` yet) and for
+  Antigravity, an acknowledgement asked again when a custom manifest's file changes on disk, interrupt for Antigravity.
