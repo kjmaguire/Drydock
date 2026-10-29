@@ -1,7 +1,7 @@
 // The diagnostics categories (docs/packaging.md section 9, decision P121), each a switch of its own, stored with who set it:
 // crash reports (kept on this computer by default, as before; off keeps none and support bundles carry none) and usage counters
-// (off by default; how often each part of Drydock is used, by name only, kept with the local telemetry). OpenTelemetry export and
-// content export are in the Telemetry group.
+// (off by default; how often each part of Drydock is used, by name only, kept with the local telemetry). OpenTelemetry export is
+// in the Telemetry group.
 
 import { type Handle } from 'remix/component';
 import { Stethoscope } from 'lucide';

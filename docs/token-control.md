@@ -188,7 +188,7 @@ Built in `internal/budget` (migration `00060_budget.sql`), `internal/telemetry` 
 - **Router downshift at 80% (s7).** The router's `budget-downshift` rule and the hard-limit block read `RouteRequest.Budget`. `route.preview`, `core.EconomicsRouter` and the routing of agent turns (`internal/core/turnrouting.go`) fill it from the budget store. Agent work and review turns are routed only for an agent whose human listed the models the router may choose between (Team page), so the live downshift applies to those agents only; every other agent runs its configured model. A turn a human allowed with "one more turn" over a hard limit is routed as usual (`budget.ApprovedOverLimit`) instead of being blocked by the router.
 - **Other turns.** Room and DM replies check the budgets before a reply starts (project, the agent, and the task's in a task room; `EconomicsBudgetBlock`): an exceeded budget means no reply, and the refusal is posted in the room. The team lead's turn is checked the same way first. A budget that cannot be read refuses the turn (fail closed). The human's own chats (`chats.md`) are not budget-gated.
 - **Watchdog stage 2 (s5).** As built it does not set the task `WAITING_HUMAN` or the agent `NEEDS_ATTENTION`: the run waits on a question, the task keeps its state and the agent's presence shows Needs Attention (`state-machines.md` s5). Thresholds per node come from `watchdog.ForNode`, not from the per-template table above (`workflow-engine.md` s9).
-- **Telemetry (s10, D12).** A local SQLite sink, **off by default**, human-enabled, and (since decision P113) an optional OTLP/HTTP exporter written by hand, with no new dependency (section "As built: OTLP export and the Wrapper's spans" below). Attribute names are `internal/telemetry` constants (`drydock.*`, and `gen_ai.*` names for model, provider, token type and token counts, with input including cached tokens and cache read/write kept apart). An attribute is stored only if its key is on a closed allowlist and its value is identifier-shaped (no whitespace, at most 96 characters, nothing the secret scanner changes), so free text cannot be recorded by construction; dropped keys are counted by name, never their values. `telemetry.preview` shows what an export would contain, `telemetry.export` writes a generated-name JSON file under `<data dir>/telemetry/` and marks those rows exported. Spans are one per node execution (identity and outcome only); metrics are token usage, cost (only when a cost was reported or estimated) and node duration. LLM Wrapper calls are instrumented since P113. Middleware order is Watchdog, Telemetry, Budget (the core registers the watchdog first), not Telemetry first as in `workflow-engine.md` s7. Since P121: gzip bodies, sending what was recorded before (bounded), content export as its own opt-in (redacted GenAI content attributes) and usage counters (section "As built: gzip, what was recorded before, content export, diagnostics categories").
+- **Telemetry (s10, D12).** A local SQLite sink, **off by default**, human-enabled, and (since decision P113) an optional OTLP/HTTP exporter written by hand, with no new dependency (section "As built: OTLP export and the Wrapper's spans" below). Attribute names are `internal/telemetry` constants (`drydock.*`, and `gen_ai.*` names for model, provider, token type and token counts, with input including cached tokens and cache read/write kept apart). An attribute is stored only if its key is on a closed allowlist and its value is identifier-shaped (no whitespace, at most 96 characters, nothing the secret scanner changes), so free text cannot be recorded by construction; dropped keys are counted by name, never their values. `telemetry.preview` shows what an export would contain, `telemetry.export` writes a generated-name JSON file under `<data dir>/telemetry/` and marks those rows exported. Spans are one per node execution (identity and outcome only); metrics are token usage, cost (only when a cost was reported or estimated) and node duration. LLM Wrapper calls are instrumented since P113. Middleware order is Watchdog, Telemetry, Budget (the core registers the watchdog first), not Telemetry first as in `workflow-engine.md` s7. Since P121: gzip bodies, sending what was recorded before (bounded) and usage counters (section "As built: gzip, what was recorded before, diagnostics categories"). No prompt, completion, code, tool output or secret is ever recorded or sent, whatever is turned on: P121's opt-in for the LLM calls' prompts and completions was removed by P126.
 - **Checks (rule 10 and brief s13a).** `secrets` scans only the lines the task **added** (diff against the base, including uncommitted and untracked files) with the gitleaks-backed scanner; a finding fails the check and the output names rule, file and line only. `deps` runs `osv-scanner` as an external tool if it is on PATH (`--offline` per project); not installed gives `skipped: osv-scanner not installed`, recorded as evidence with no verdict plus a `task.check_inconclusive` event (posted in the room with status `skipped`), never a pass and never sent back to an agent. Per-project settings: secrets on, deps off by default. The JSON shape osv-scanner prints was taken from its documentation, not captured from a real run (it is not installed here).
 
 (A `workflow` budget scope and a budget item type in the room inbox were built later, decision P118; pre-call reservation and settlement and per-turn wall-time ceilings, decision P112; OTLP export and telemetry for Wrapper calls, decision P113.)
@@ -456,10 +456,10 @@ tracer; `internal/llm/trace_test.go` checks the trace of a call, a cache hit, a 
 
 **Not verified:** a real OpenTelemetry Collector or vendor backend (the protobuf encoding is checked only against a decoder
 written from the same field numbers, so a mistake in both would not show), on Windows, and through a proxy. Built since (decision
-P121, the next section): gzip compression of the body, exporting rows recorded before sending was turned on, content export
-(D12's separate opt-in), crash reports and usage counters as their own diagnostics categories.
+P121, the next section): gzip compression of the body, exporting rows recorded before sending was turned on, crash reports and
+usage counters as their own diagnostics categories.
 
-## As built: gzip, what was recorded before, content export, diagnostics categories (2026-10-29, decision P121)
+## As built: gzip, what was recorded before, diagnostics categories (2026-10-29, decision P121)
 
 On the owner's word, answering the list of what is still not built: "Yes" to the whole group that can be built now.
 
@@ -474,26 +474,15 @@ On the owner's word, answering the list of what is still not built: "Yes" to the
   ("Also send what was recorded before" on the page, off unless ticked). It queues the rows stored before that moment that
   no collector has had, recorded since the date (which must be within the 30 days the sink keeps, and not ahead), the newest
   `maxRows` of spans and metrics together (default 500, at most 1000, as the queue holds 2048), oldest first, through the same
-  queue, batches, retries and encoders: the allowlist and the identifier rule are applied again, and content goes only while
-  content export is on. It needs telemetry on (otherwise nothing could be sent) and is refused on a change that does not turn
+  queue, batches, retries and encoders: the allowlist and the identifier rule are applied again. It needs telemetry on (otherwise nothing could be sent) and is refused on a change that does not turn
   sending on. The status keeps what the last one queued and how many rows of the window the cap left out
   (`lastBackfill`); a row is never sent twice.
-- **Content export** (`consent.go`, `llm.go`; `telemetry.content.set`). A switch of its own, off by default, which the core
-  turns on only with `acknowledged` (the Settings dialog says what it sends first). While it is on, and telemetry records, the
-  sink is a `llm.ContentTracer` that wants content: the Wrapper fills `CallTrace.Content` with the call's system blocks,
-  messages and answer (with its tool calls and finish reason), never for a call its secret guard or data-class guard
-  refused. The span then carries the GenAI conventions' content attributes, each a JSON document of messages made of parts:
-  `gen_ai.system_instructions`, `gen_ai.input.messages` (text, `tool_call` and `tool_call_response` parts) and
-  `gen_ai.output.messages` (with `finish_reason`). Every text is redacted by the secret scanner before the document is
-  built, the document is redacted again string by string (`internal/redact.JSON`) when it is stored, and each is at most
-  32 KB (each part cut to fit, marked `[cut]`). The content keys are a set apart from the allowlist: `Sanitize` drops them,
-  `SanitizeContent` keeps them only as JSON documents. The encoders write them only while content export is on, read as
-  each request is encoded, so a row recorded with content waits and goes without it once the switch is off; the preview's
-  allowlist and note say when content is in it. Which rule allows this: brief section 10 ("never includes prompts, code, tool
-  output, or secrets unless explicitly enabled") and `packaging.md` section 9 ("a separate opt-in with a warning");
-  `security.md` principle 4 forbids an automatic upload of source, and this is a person's own choice, sent only to a
-  collector they set up. Only Drydock's own model calls carry content: an agent CLI's session does not go through the
-  Wrapper.
+- **Removed (decision P126).** P121 also built a separate opt-in that added the prompts and completions of Drydock's own model
+  calls to their spans (as the GenAI conventions' content attributes, redacted). The owner had it removed: the method, the
+  switch, the Wrapper's hand-over and the encoders' handling are gone, `llm.CallTrace` has no field for content again, and the
+  attribute allowlist is the only way into a span. A setting a person stored for it is ignored (no migration; `00158` keeps
+  its comment). A row an older build stored with those attributes is sent without them, as `Sanitize` drops every key that
+  is not allowlisted.
 - **Usage counters** (`consent.go`; `diagnostics.set {usageCounters}`). Off by default. On, `Core.Call` tells the sink the name of
   each method the window calls (never its parameters); the sink counts them in memory (at most 512 names between flushes) and
   writes one `drydock.feature.uses` counter point per name (attribute `drydock.feature`) every five minutes, when the
@@ -503,11 +492,13 @@ On the owner's word, answering the list of what is still not built: "Yes" to the
 - **Crash reports** (`internal/core/ext_diagnostics.go`, `diagnostics.set {crashReports}`): `packaging.md` section 9.
 
 **Tests.** `internal/telemetry/p121_test.go` (gzip in both directions and as a setting that survives a restart; the backfill's
-bounds, cap, date, marking and no second sending; a backfilled row through the allowlist again; content export through the
-real Wrapper and the protocol fixture in both encodings, the acknowledgement, a refused call without content, turning it off
-mid-queue; redaction and the 32 KB bound; usage counters on, off, sent and stored), `internal/llm/trace_content_test.go`, the core
-tests `TestDiagnosticsCategoriesAreStoredShownAndHonoured` and `TestContentExportThroughItsMethod`, the Settings browser tests
-and `e2e/diagnostics.spec.ts`. **Not verified:** a real collector decoding a gzip body or the content attributes, Windows.
+bounds, cap, date, marking and no second sending; a backfilled row through the allowlist again, including a content attribute
+an older build stored; usage counters on, off, sent and stored), `internal/telemetry/p126_test.go` (the real Wrapper and the
+protocol fixture with telemetry, OTLP in both encodings, the backfill and the removed switch's stored setting all on: the
+stored rows, the preview and every request the collector stand-in decodes hold only allowlisted identifier-shaped
+attributes and none of the prompt, system text, tool call, tool output or answer), the core tests
+`TestDiagnosticsCategoriesAreStoredShownAndHonoured` and `TestTheRemovedContentSwitchIsGoneAndItsSettingIgnored`, the Settings
+browser tests and `e2e/diagnostics.spec.ts`. **Not verified:** a real collector decoding a gzip body, Windows.
 
 ## As built: package ceiling, file ranges and verified handoffs (2026-10-29, decision P119)
 

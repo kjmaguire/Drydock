@@ -6,8 +6,7 @@ package telemetry
 // one with hex trace and span ids, 64-bit integers as decimal strings and enums as numbers, as the OTLP specification asks.
 //
 // Every attribute is put through Sanitize again here, so whatever reaches an encoder, only allowlisted identifier-shaped values
-// can be written; the content attributes only when the caller says content export is on (decision P121), so a row recorded
-// while it was on is sent without them once it is off.
+// can be written.
 
 import (
 	"encoding/binary"
@@ -39,8 +38,8 @@ type otlpAttr struct {
 	b    bool
 }
 
-func otlpAttrs(in map[string]any, content bool) []otlpAttr {
-	clean, _ := sanitize(in, nil, content)
+func otlpAttrs(in map[string]any) []otlpAttr {
+	clean, _ := Sanitize(in, nil)
 	keys := make([]string, 0, len(clean))
 	for k := range clean {
 		keys = append(keys, k)
@@ -49,9 +48,6 @@ func otlpAttrs(in map[string]any, content bool) []otlpAttr {
 	out := make([]otlpAttr, 0, len(keys))
 	for _, k := range keys {
 		a := otlpAttr{key: k, kind: allowed[k]}
-		if contentKeys[k] {
-			a.kind = kindContent // a JSON document, sent as a string value
-		}
 		switch v := clean[k].(type) {
 		case string:
 			a.s = v
@@ -82,8 +78,8 @@ func (a otlpAttr) json() map[string]any {
 	return map[string]any{"key": a.key, "value": v}
 }
 
-func jsonAttrs(in map[string]any, content bool) []map[string]any {
-	as := otlpAttrs(in, content)
+func jsonAttrs(in map[string]any) []map[string]any {
+	as := otlpAttrs(in)
 	out := make([]map[string]any, 0, len(as))
 	for _, a := range as {
 		out = append(out, a.json())
@@ -122,12 +118,12 @@ func resourceJSON() map[string]any {
 }
 
 // tracesJSON is an ExportTraceServiceRequest in OTLP's JSON encoding.
-func tracesJSON(spans []Span, content bool) []byte {
+func tracesJSON(spans []Span) []byte {
 	out := make([]map[string]any, 0, len(spans))
 	for _, sp := range spans {
 		m := map[string]any{"traceId": hexID(sp.TraceID, 32), "spanId": hexID(sp.SpanID, 16), "name": onlyIdentOr(sp.Name, "unnamed"),
 			"kind": spanKind(sp.Name), "startTimeUnixNano": strconv.FormatUint(nanos(sp.StartMS), 10), "endTimeUnixNano": strconv.FormatUint(nanos(sp.EndMS), 10),
-			"attributes": jsonAttrs(sp.Attrs, content), "status": map[string]any{}}
+			"attributes": jsonAttrs(sp.Attrs), "status": map[string]any{}}
 		if sp.ParentID != "" {
 			m["parentSpanId"] = hexID(sp.ParentID, 16)
 		}
@@ -188,7 +184,7 @@ func metricsJSON(ms []Metric) []byte {
 		for _, p := range g.points {
 			t := strconv.FormatUint(nanos(p.TimeMS), 10)
 			v := finite(p.Value)
-			pt := map[string]any{"attributes": jsonAttrs(p.Attrs, false), "startTimeUnixNano": t, "timeUnixNano": t}
+			pt := map[string]any{"attributes": jsonAttrs(p.Attrs), "startTimeUnixNano": t, "timeUnixNano": t}
 			if g.kind == "histogram" {
 				pt["count"], pt["sum"], pt["min"], pt["max"], pt["bucketCounts"], pt["explicitBounds"] = "1", v, v, v, []string{"1"}, []float64{}
 			} else {
@@ -256,8 +252,8 @@ func (p *pb) msg(field int, f func(q *pb)) {
 }
 
 // common.proto: KeyValue{key=1, value=2}; AnyValue{string_value=1, bool_value=2, int_value=3, double_value=4}.
-func (p *pb) attrs(field int, in map[string]any, content bool) {
-	for _, a := range otlpAttrs(in, content) {
+func (p *pb) attrs(field int, in map[string]any) {
+	for _, a := range otlpAttrs(in) {
 		p.msg(field, func(kv *pb) {
 			kv.str(1, a.key)
 			kv.msg(2, func(v *pb) {
@@ -293,7 +289,7 @@ func (p *pb) scope(field int) { p.msg(field, func(s *pb) { s.str(1, scopeName) }
 // tracesProto is an ExportTraceServiceRequest{resource_spans=1}: ResourceSpans{resource=1, scope_spans=2}, ScopeSpans{scope=1,
 // spans=2}, Span{trace_id=1, span_id=2, parent_span_id=4, name=5, kind=6, start_time_unix_nano=7, end_time_unix_nano=8,
 // attributes=9, status=15}, Status{code=3}.
-func tracesProto(spans []Span, content bool) []byte {
+func tracesProto(spans []Span) []byte {
 	var p pb
 	p.msg(1, func(rs *pb) {
 		rs.resource(1)
@@ -313,7 +309,7 @@ func tracesProto(spans []Span, content bool) []byte {
 					s.uvarint(6, uint64(spanKind(sp.Name)))
 					s.fixed64(7, nanos(sp.StartMS))
 					s.fixed64(8, nanos(sp.EndMS))
-					s.attrs(9, sp.Attrs, content)
+					s.attrs(9, sp.Attrs)
 					s.msg(15, func(st *pb) {
 						if sp.Status == "error" {
 							st.uvarint(3, statusCodeError)
@@ -357,12 +353,12 @@ func metricsProto(ms []Metric) []byte {
 									var one pb
 									one.b = binary.LittleEndian.AppendUint64(one.b, 1)
 									dp.bytes(6, one.b) // packed: one bucket, holding the observation
-									dp.attrs(9, pt.Attrs, false)
+									dp.attrs(9, pt.Attrs)
 									dp.double(11, v)
 									dp.double(12, v)
 								} else {
 									dp.double(4, v)
-									dp.attrs(7, pt.Attrs, false)
+									dp.attrs(7, pt.Attrs)
 								}
 							})
 						}

@@ -1,15 +1,10 @@
 package telemetry
 
-// Two diagnostics switches of their own (decision P121, docs/packaging.md section 9), each a person's decision, stored with who
-// made it and when, and each honoured where it is read:
-//
-//   - Content export: while it is on, the LLM Wrapper's spans also carry the prompts and completions of the call, as the
-//     OpenTelemetry GenAI conventions name them, with the secret scanner's redaction applied first. It is off by default and
-//     is turned on only with an acknowledgement that the person was told what it sends (the Settings page shows the warning).
-//     Turning it off stops recording content at once, and the exporter stops sending the content of rows recorded before.
-//   - Usage counters: how often each feature (a method of the core the window called) was used. Counted in memory, written to
-//     the local sink as one counter point per feature at each flush, and sent with everything else when OTLP export is on. Off
-//     by default; turning it off drops what was counted and not yet written.
+// Usage counters, a diagnostics switch of their own (decision P121, docs/packaging.md section 9): a person's decision, stored
+// with who made it and when. They count how often each feature (a method of the core the window called) was used: in memory,
+// written to the local sink as one counter point per feature at each flush, and sent with everything else when OTLP export is
+// on. Off by default; turning them off drops what was counted and not yet written. (P121's second switch here was removed by
+// decision P126; a setting a person stored for it is ignored.)
 
 import (
 	"context"
@@ -44,29 +39,6 @@ func (s *Sink) putConsent(ctx context.Context, key, byKey, atKey string, on bool
 		}
 		return nil
 	})
-}
-
-// ContentEnabled reports whether content export is on.
-func (s *Sink) ContentEnabled() bool { return s.content.Load() }
-
-// ErrContentNotAcknowledged is SetContent's answer to turning content export on without the acknowledgement.
-var ErrContentNotAcknowledged = errors.New("telemetry: content export sends prompts and completions, which can hold code from your projects; " +
-	"turn it on only after reading what it sends (acknowledged)")
-
-// SetContent turns content export on or off. Only a person may, and turning it on needs acknowledged: the person was shown what
-// it sends. Turning it off stops recording content at once; the exporter leaves out the content of rows recorded before.
-func (s *Sink) SetContent(ctx context.Context, on, acknowledged bool, by string) error {
-	if !human(by) {
-		return errors.New("telemetry: only a person may turn content export on or off")
-	}
-	if on && !acknowledged {
-		return ErrContentNotAcknowledged
-	}
-	if err := s.putConsent(ctx, keyContent, keyContentBy, keyContentAt, on, by); err != nil {
-		return err
-	}
-	s.content.Store(on) // the exporter reads it as it encodes each request, so what waits to be sent goes without its content
-	return nil
 }
 
 // UsageCountersEnabled reports whether usage counters are counted.

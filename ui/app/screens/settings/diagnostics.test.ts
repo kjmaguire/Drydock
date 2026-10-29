@@ -5,7 +5,6 @@ import {
   backfillWords,
   COMPRESSION_OPTIONS,
   compressionWords,
-  CONTENT_WARNING,
   crashWords,
   dateDaysAgo,
   MAX_BACKFILL_ROWS,
@@ -51,11 +50,5 @@ describe('diagnostics words (decision P121)', () => {
       'When Drydock stops unexpectedly, a report stays on this computer. It leaves only in a support bundle you send. None is kept now.',
     );
     expect(crashWords('off', 2)).toBe('Off: a crash leaves no report, and support bundles carry none. 2 reports kept now (Support page).');
-  });
-
-  it('warns that content can hold code, that secrets are masked and that the agents are never included', () => {
-    for (const want of ['can hold code', 'Secrets are masked', 'whoever runs that collector can read it', "agents' own sessions are never included"]) {
-      expect(CONTENT_WARNING).toContain(want);
-    }
   });
 });

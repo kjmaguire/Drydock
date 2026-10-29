@@ -25,10 +25,6 @@ const (
 	keyExported  = "telemetry.exported_through" // ids at or below this have been exported (the preview shows what is after it)
 	keyEnabledBy = "telemetry.enabled_by"
 	keyEnabledAt = "telemetry.enabled_at"
-	// content export (decision P121): its own switch, off by default
-	keyContent   = "telemetry.content.enabled"
-	keyContentBy = "telemetry.content.changed_by"
-	keyContentAt = "telemetry.content.changed_at"
 	// usage counters (decision P121): a diagnostics category of their own, off by default
 	keyUsage   = "diagnostics.usage_counters"
 	keyUsageBy = "diagnostics.usage_counters.changed_by"
@@ -57,8 +53,7 @@ type Sink struct {
 	drop   map[string]int
 	// exp, when set, is offered every span and metric once it is stored (the OTLP exporter, decision P113).
 	exp atomic.Pointer[Exporter]
-	// content is content export (P121); usage is the usage counters' switch and counts what was used since the last flush.
-	content atomic.Bool
+	// usage is the usage counters' switch (decision P121) and counts what was used since the last flush.
 	usageOn atomic.Bool
 	usageMu sync.Mutex
 	usage   map[string]int64
@@ -78,8 +73,6 @@ func New(ctx context.Context, db *storage.DB, o Options) (*Sink, error) {
 		return nil, err
 	}
 	s.on = v == "1"
-	c, _ := s.setting(ctx, keyContent)
-	s.content.Store(c == "1")
 	u, _ := s.setting(ctx, keyUsage)
 	s.usageOn.Store(u == "1")
 	return s, nil
@@ -179,13 +172,12 @@ func NewSpanID() string {
 }
 
 // RecordSpan stores a span if telemetry is enabled. Attributes outside the allowlist, or with values that are not
-// identifier-shaped, are dropped (and counted by name), never stored; the content attributes are kept, redacted, only while
-// content export is on. The stored span, and only it, is what an exporter sends.
+// identifier-shaped, are dropped (and counted by name), never stored. The stored span, and only it, is what an exporter sends.
 func (s *Sink) RecordSpan(ctx context.Context, sp Span) error {
 	if !s.Enabled() {
 		return nil
 	}
-	clean, dropped := sanitize(sp.Attrs, s.opt.Redact, s.ContentEnabled())
+	clean, dropped := Sanitize(sp.Attrs, s.opt.Redact)
 	s.note(dropped)
 	if sp.Status != "error" {
 		sp.Status = "ok"
@@ -279,8 +271,6 @@ type Status struct {
 	NetworkExporter bool           `json:"networkExporter"`
 	// OTLP is the exporter's state, when there is an exporter.
 	OTLP *OTLPStatus `json:"otlp,omitempty"`
-	// Content is content export's switch (decision P121).
-	Content Consent `json:"content"`
 	// UsageCounters is the usage counters' switch (decision P121) and the counts not yet written.
 	UsageCounters UsageStatus `json:"usageCounters"`
 }
@@ -309,7 +299,6 @@ func (s *Sink) Status(ctx context.Context) (Status, error) {
 			st.Destination = "this device (local SQLite), and sent to " + o.Endpoint + " over OTLP/HTTP (" + o.Encoding + ")"
 		}
 	}
-	st.Content = s.consent(ctx, s.ContentEnabled(), keyContentBy, keyContentAt)
 	st.UsageCounters = UsageStatus{Consent: s.consent(ctx, s.UsageCountersEnabled(), keyUsageBy, keyUsageAt), Waiting: s.usageWaiting()}
 	st.EnabledBy, _ = s.setting(ctx, keyEnabledBy)
 	if v, _ := s.setting(ctx, keyEnabledAt); v != "" {
@@ -380,11 +369,6 @@ func (s *Sink) build(ctx context.Context, limit int, mark bool) (Document, error
 	d := Document{Schema: Schema, ExportedAt: s.opt.Now().UnixMilli(), Resource: map[string]any{"service.name": "drydock"}, Spans: []Span{}, Metrics: []Metric{},
 		Allowlist: Allowlist(), Note: "Contains only allowlisted identifier-shaped attributes; no prompts, code, tool output, file contents or secrets can be recorded.",
 		throughSpans: through.spans, throughMetrics: through.metrics}
-	if s.ContentEnabled() {
-		d.Allowlist = append(d.Allowlist, ContentKeys()...)
-		d.Note = "Content export is on: the LLM calls' spans also hold the prompts and completions (" + strings.Join(ContentKeys(), ", ") +
-			"), with secrets masked. Every other attribute is identifier-shaped."
-	}
 	lim := ""
 	if limit > 0 {
 		lim = fmt.Sprintf(" LIMIT %d", limit)

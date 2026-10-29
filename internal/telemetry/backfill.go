@@ -3,8 +3,7 @@ package telemetry
 // "Also send what was recorded before" (decision P121): when a person turns OTLP sending on they may choose to send the spans and
 // metrics the sink recorded earlier as well. It is off unless chosen, and bounded twice: a date (no earlier than the sink's
 // retention window keeps rows) and a number of rows (the newest ones, at most MaxBackfillRows). The rows go through the same
-// queue, batching, retries and encoders as anything recorded now, so the allowlist is applied again and content attributes
-// leave only while content export is on. A row a collector already accepted (otlp_sent_at) is never sent twice.
+// queue, batching, retries and encoders as anything recorded now, so the allowlist is applied again. A row a collector already accepted (otlp_sent_at) is never sent twice.
 
 import (
 	"context"
