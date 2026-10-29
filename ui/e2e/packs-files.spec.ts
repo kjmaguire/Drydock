@@ -63,11 +63,12 @@ test('a pack made from a PDF and a note: page citations, an answer without a mod
   await expect(hit.getByTestId('citation')).toContainText('Operator Manual > Page 2');
   await expect(hit.getByTestId('citation')).toHaveAttribute('data-page', '2');
 
-  // no model is set up in this harness: the answer is the passages, and the page says why
+  // no model answers in this harness: none is set up, or the one models.spec.ts left registered (the specs share one core) is
+  // stopped or set aside by the router. Each way, the answer is the passages and the page says why.
   await page.getByLabel('Ask the packs').fill('how often is the gateway token rotated?');
   await page.getByRole('button', { name: 'Consult' }).click();
   const consult = page.getByTestId('pack-consult');
-  await expect(consult).toContainText('No model is set up for questions');
+  await expect(consult).toContainText('so the answer is the cited passages');
   await expect(consult.getByTestId('consult-no-model')).toBeVisible();
   await expect(consult).toContainText('Page 2');
 

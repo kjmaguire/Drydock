@@ -86,6 +86,23 @@ func TestConsultNothingFoundSaysSoWithoutCallingAModel(t *testing.T) {
 	}
 }
 
+// A model that is set up but cannot be reached (a local server that was stopped) leaves the cited passages, and the notice says
+// so in the same words as every other case without a written answer.
+func TestConsultAModelThatFailsLeavesTheCitedPassagesAndSaysSo(t *testing.T) {
+	ans := &scriptedAnswerer{err: errors.New("llm: provider prov_1 returned HTTP 0 (network): connection refused")}
+	e := consultEnv(t, "private", ans)
+	c, err := e.s.Consult(context.Background(), ConsultRequest{PackIDs: []string{"cf"}, Question: "How do I preview a Worker with wrangler?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ans.calls) != 1 || !c.Found || c.Route != RouteRetrievalOnly || c.Model != "" || !strings.Contains(c.Answer, "versions upload") {
+		t.Fatalf("%+v calls=%d", c, len(ans.calls))
+	}
+	if want := "The model could not answer (llm: provider prov_1 returned HTTP 0 (network): connection refused), so the answer is the cited passages"; c.Degraded != want {
+		t.Fatalf("notice %q, want %q", c.Degraded, want)
+	}
+}
+
 func TestConsultAnswererOutputIsValidatedAndCitationsComeFromStoredMetadata(t *testing.T) {
 	ans := &scriptedAnswerer{res: AnswerResult{Text: "Use versions upload [1]. Visit https://attacker.example/docs", Used: []int{1}, Model: "cheap-1", Route: RoutePrivate, Usage: Usage{InputTokens: 900, OutputTokens: 40, CostUSD: 0.0004}}}
 	e := consultEnv(t, "private", ans)

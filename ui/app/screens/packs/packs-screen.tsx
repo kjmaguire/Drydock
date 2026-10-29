@@ -515,6 +515,8 @@ function PackCard(
 
 // --- a pack's own files ---
 
+const fileInputCss = css({ minHeight: '28px' });
+
 const filesCss = css({
   display: 'grid',
   gap: t.s2,
@@ -706,6 +708,7 @@ function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
               accept={PACK_FILE_ACCEPT}
               {...errorAttrs(fid, pickError)}
               mix={[
+                fileInputCss,
                 ref((n) => (filesInput = n as HTMLInputElement)),
                 on('change', async (e) => {
                   const el = e.currentTarget as HTMLInputElement;
@@ -806,7 +809,7 @@ export function PacksScreen(handle: Handle) {
 
         <Section
           title="Search and ask"
-          description="Search returns passages with citations. A question is answered by the model the router picks, from the passages it quotes; a private pack never goes to a model that may train on it. With no model set up, the answer is the passages themselves."
+          description="Search returns cited passages. A question is answered from them by the model the router picks (never one that may train on a private pack), or with the passages themselves."
         >
           <div mix={[card, formCss]}>
             {list.length > 0 ? (
@@ -876,7 +879,7 @@ export function PacksScreen(handle: Handle) {
 
         <Section
           title="Install a pack"
-          description="Paste a pack manifest (YAML). A source can be a folder, web pages, an llms.txt or sitemap, or a git repository's docs folder (type git_docs, with url, ref and path). Installing fetches nothing yet: use Refresh."
+          description="Paste a pack manifest (YAML). A source is a folder, web pages, an llms.txt or sitemap, or a repository's docs (type git_docs: url, ref, path). Refresh fetches it."
         >
           <form
             mix={[

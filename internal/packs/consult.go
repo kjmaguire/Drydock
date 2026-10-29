@@ -241,7 +241,7 @@ func (s *Store) Consult(ctx context.Context, req ConsultRequest) (Consult, error
 		case errors.Is(aerr, ErrRouteBlocked):
 			out.Degraded = s.o.Scanner.Redact(aerr.Error()) + ", so the answer is the cited passages"
 		case aerr != nil:
-			out.Degraded = "answerer failed: " + s.o.Scanner.Redact(aerr.Error())
+			out.Degraded = "The model could not answer (" + s.o.Scanner.Redact(aerr.Error()) + "), so the answer is the cited passages"
 		default:
 			used, verr := validateUsed(res.Used, len(sr.Hits))
 			if verr == nil {
