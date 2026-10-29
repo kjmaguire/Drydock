@@ -333,7 +333,10 @@ func (r *Registry) Delete(ctx context.Context, id string) error {
 		_ = r.secrets.Delete(ctx, p.KeyRef)
 	}
 	_ = r.db.WriteTx(ctx, func(tx *sql.Tx) error { // the endpoint uptime threshold (uptime.go) goes with the provider
-		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingMinEndpointUptime+id)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, settingMinEndpointUptime+id); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM model_retention_blocks WHERE provider_id=?`, id) // and its retention marks (retention.go)
 		return err
 	})
 	r.dropClient(id)

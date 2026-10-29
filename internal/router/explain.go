@@ -82,6 +82,20 @@ func explain(d RoutingDecision) string {
 			fmt.Fprintf(&b, "- Fallback skipped %s: %s.\n", a.Model, a.Detail)
 		}
 	}
+	if t := f.Tiebreak; t != nil {
+		switch {
+		case t.Failed != "":
+			fmt.Fprintf(&b, "- Tiebreak: the ranking left %s within %.0f%% of each other; the tiebreak call failed (%s), so the ranking's choice stands.\n",
+				strings.Join(t.Between, ", "), TiebreakMargin*100, t.Failed)
+		default:
+			why := ""
+			if t.Why != "" {
+				why = ": \"" + t.Why + "\""
+			}
+			fmt.Fprintf(&b, "- Tiebreak: the ranking left %s within %.0f%% of each other; %s chose %s from a description of the turn and the candidates (no content of the work)%s.\n",
+				strings.Join(t.Between, ", "), TiebreakMargin*100, t.By, t.Chose, why)
+		}
+	}
 	if d.EscalatedFrom != nil {
 		fmt.Fprintf(&b, "- Escalated from %s/%s (%s) with a handoff artifact.\n", d.EscalatedFrom.Provider, d.EscalatedFrom.Model, d.EscalatedFrom.Tier)
 	}
@@ -118,6 +132,9 @@ func explain(d RoutingDecision) string {
 	}
 	if f.NextEscalation != "" {
 		fmt.Fprintf(&b, "- Next: %s\n", f.NextEscalation)
+	}
+	if f.Stopped != "" {
+		fmt.Fprintf(&b, "- Stopped: %s\n", f.Stopped)
 	}
 	return b.String()
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/kjmaguire/drydock/internal/providers"
 )
 
 // The fallback chain of a turn (docs/model-routing.md s8 "Fallback chain", decision P53 (b)). A routing rule may name, in
@@ -61,10 +63,17 @@ var (
 	}
 )
 
+// retentionNeeded is Anthropic's answer to a Covered Model from an organization without data retention: a 400
+// invalid_request_error, which notOurs would otherwise call the work's fault (docs/phase0/model-providers.md D).
+var retentionNeeded = regexp.MustCompile(`(?i)must have data retention enabled|requires? data retention|data retention (is )?not enabled`)
+
 // ClassifyUnavailable names why a provider or model was unavailable from the error a turn ended with, or returns "" when
 // the error is not about availability (the turn's own failure, which never falls back).
 func ClassifyUnavailable(msg string) Cause {
 	msg = strings.TrimSpace(msg)
+	if msg != "" && retentionNeeded.MatchString(msg) {
+		return CauseRetentionRequired // checked first: it is an invalid_request_error, but about the model, not the work
+	}
 	if msg == "" || notOurs.MatchString(msg) {
 		return ""
 	}
@@ -85,6 +94,9 @@ func (r *RuleRouter) FallbackTurn(ctx context.Context, req RouteRequest, prev Ro
 		return RoutingDecision{}, fmt.Errorf("router: %q is not a fallback cause", cause)
 	}
 	stop := func(reason string, rej []Alternative) (RoutingDecision, error) {
+		if cause == CauseRetentionRequired {
+			reason += "; " + providers.RetentionAdvice
+		}
 		return RoutingDecision{}, r.blocked(ctx, req, "fallback chain ended: "+reason, rej)
 	}
 	hop := len(tried)

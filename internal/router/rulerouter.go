@@ -14,7 +14,8 @@ import (
 
 // RuleRouter is the deterministic rule-based router of Slice 2: hard filters, explicit pin, stored CEL policies in
 // priority order, the budget limit, then the level ladder (docs/model-routing.md s2). It is pure apart from reading
-// candidates and writing the decision record; the LLM tiebreak is not implemented.
+// candidates, writing the decision record and, when a Tiebreaker is set and the ranking leaves a tie, the one tiebreak call
+// (tiebreak.go).
 type RuleRouter struct {
 	eng   *Engine
 	store *RuleStore
@@ -22,6 +23,7 @@ type RuleRouter struct {
 	noDef bool
 	src   CandidateSource
 	rec   *Recorder
+	tie   Tiebreaker
 	now   func() time.Time
 
 	mu    sync.Mutex
@@ -37,6 +39,8 @@ type RuleOptions struct {
 	Rules      []Rule // additional fixed rules, applied after the stored ones
 	NoDefaults bool
 	Recorder   *Recorder
+	// Tiebreaker, when set, chooses between candidates the ranking leaves tied (tiebreak.go); nil: the ranking decides.
+	Tiebreaker Tiebreaker
 	Now        func() time.Time
 }
 
@@ -48,7 +52,7 @@ func NewRuleRouter(o RuleOptions) (*RuleRouter, error) {
 	if o.Now == nil {
 		o.Now = func() time.Time { return time.Now().UTC() }
 	}
-	return &RuleRouter{eng: o.Engine, store: o.Store, extra: o.Rules, noDef: o.NoDefaults, src: o.Source, rec: o.Recorder, now: o.Now, cache: map[string]*Compiled{}}, nil
+	return &RuleRouter{eng: o.Engine, store: o.Store, extra: o.Rules, noDef: o.NoDefaults, src: o.Source, rec: o.Recorder, tie: o.Tiebreaker, now: o.Now, cache: map[string]*Compiled{}}, nil
 }
 
 type mode struct {
@@ -347,6 +351,10 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	if len(ranked) == 0 {
 		return RoutingDecision{}, block("the policies leave no candidate", append(append([]Alternative(nil), rejected...), ruleRejected...))
 	}
+	var tb *TiebreakRecord
+	if pin == nil && m.only == "" && !m.quiet {
+		tb = r.tiebreak(ctx, req, level, ranked)
+	}
 	top := ranked[0]
 	c := top.Candidate
 
@@ -369,6 +377,10 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	d.Facts.Level = level
 	d.Facts.FallbackFrom = m.fallbackFrom
 	d.Facts.BudgetDownshift = contains(eff.Applied, "budget-downshift") || contains(global.Applied, "budget-downshift")
+	d.Facts.Tiebreak = tb
+	if tb != nil && tb.Failed == "" {
+		d.DecidedBy = "llm"
+	}
 
 	// Policies applied: invariants first, then the pin, then rules in application order.
 	if req.ContextCeiling != ContextPublicDocs {
@@ -386,6 +398,10 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 			seen[id] = true
 			d.PoliciesApplied = append(d.PoliciesApplied, id)
 		}
+	}
+
+	if tb != nil && tb.Failed == "" {
+		d.PoliciesApplied = append(d.PoliciesApplied, "llm_tiebreak")
 	}
 
 	// Confidence is rule agreement on the tier, not a quality prediction.
@@ -449,6 +465,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	if len(eff.Fallback) > 0 {
 		d.FallbackChain, d.FallbackRule = eff.Fallback, eff.FallbackRule
 	}
+	d.Reason += tiebreakReason(tb)
 	if handoff {
 		d.Handoff = true
 		d.Reason += "; handoff artifact required"
