@@ -25,6 +25,12 @@ func explain(d RoutingDecision) string {
 	if sig, ok := TurnSignals(f.RunKind); ok && sig.Why != "" {
 		fmt.Fprintf(&b, "- Turn: %s; %s.\n", sig.Label, sig.Why)
 	}
+	switch f.LevelSource {
+	case LevelFromProject:
+		fmt.Fprintf(&b, "- Level: %s, the project's own level (its settings).\n", LevelWords(f.Level))
+	case LevelFromWorkspace:
+		fmt.Fprintf(&b, "- Level: %s, the workspace's level (the project sets none of its own).\n", LevelWords(f.Level))
+	}
 	if f.TaskType != "" {
 		risk := "not risky"
 		if f.Risk {

@@ -102,6 +102,44 @@ const (
 	LevelCustom         Level = "custom"
 )
 
+// Where a turn's level came from (decision P118): the project's own level, or the workspace's when the project sets none.
+const (
+	LevelFromProject   = "project"
+	LevelFromWorkspace = "workspace"
+)
+
+// Levels are the levels a person can choose, in the order the pages list them.
+var Levels = []Level{LevelCheapest, LevelFast, LevelBalanced, LevelQuality, LevelMaximumQuality, LevelCustom}
+
+// LevelWords is a level as the pages name it ("Maximum Quality").
+func LevelWords(l Level) string {
+	switch l {
+	case LevelCheapest:
+		return "Cheapest"
+	case LevelFast:
+		return "Fast"
+	case LevelBalanced:
+		return "Balanced"
+	case LevelQuality:
+		return "Quality"
+	case LevelMaximumQuality:
+		return "Maximum Quality"
+	case LevelCustom:
+		return "Custom"
+	}
+	return string(l)
+}
+
+// ValidLevel reports whether l is a level.
+func ValidLevel(l Level) bool {
+	for _, x := range Levels {
+		if x == l {
+			return true
+		}
+	}
+	return false
+}
+
 // Effort is the abstract reasoning effort; adapters map it (docs/model-routing.md s9).
 type Effort string
 
@@ -200,9 +238,11 @@ type RouteRequest struct {
 	DiffLines  int
 	Failures   FailureCounts
 	Level      Level
-	Explicit   *Pin
-	Policies   []Rule
-	Budget     BudgetState
+	// LevelSource says where Level came from (LevelFromProject, LevelFromWorkspace); "" when the caller did not say.
+	LevelSource string
+	Explicit    *Pin
+	Policies    []Rule
+	Budget      BudgetState
 	// ContextCeiling is the highest sensitivity in the context package: private (the default when unsure) or public_docs.
 	ContextCeiling ContextClass
 	Session        *SessionState
@@ -258,6 +298,7 @@ type Alternative struct {
 type DecisionFacts struct {
 	TaskID            string
 	Level             Level
+	LevelSource       string `json:",omitempty"` // where the level came from: the project's own or the workspace's (P118)
 	RunKind           RunKind
 	TaskType          string
 	DiffLines         int

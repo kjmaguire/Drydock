@@ -359,8 +359,9 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 	if len(a.RouteModels) == 0 || e.agentRouter == nil {
 		return ctx, nil, e.saveStatic(ctx, s, "the agent's configured model: routing is off for this agent (Team, Edit: models the router may choose)"), nil
 	}
+	level, from := e.levelFor(ctx, s.projectID) // the project's own level, else the workspace's (P118)
 	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role),
-		Level: router.LevelBalanced, ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate,
+		Level: level, LevelSource: from, ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate,
 		ContextTokens: s.contextTokens, Failures: e.turnFailures(ctx, s)}
 	if sig, ok := router.TurnSignals(s.kind); ok {
 		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity

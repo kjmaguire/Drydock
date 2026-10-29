@@ -285,6 +285,13 @@ func (e *economics) putSetting(ctx context.Context, key, value string) error {
 	})
 }
 
+func (e *economics) deleteSetting(ctx context.Context, key string) error {
+	return e.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, key)
+		return err
+	})
+}
+
 // seedDefaultRules stores the shipped rules once. Without a stored rule the router falls back to the shipped defaults, but
 // the moment a user stores the first rule the defaults would disappear; seeding keeps them as editable stored copies. A
 // rule the user deleted is not brought back on restart, because this runs only once.
@@ -354,8 +361,8 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 			tier = p.Tier
 		}
 	}
-	level := router.LevelBalanced
-	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level,
+	level, from := e.levelFor(ctx, s.projectID)
+	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level, LevelSource: from,
 		ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate, ContextTokens: s.contextTokens}
 	if sig, ok := router.TurnSignals(s.kind); ok {
 		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
@@ -363,7 +370,7 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 	d := router.RoutingDecision{ID: ids.New("dec"), Agent: router.AgentRef{Adapter: a.Adapter, Instance: a.ID}, Provider: router.ProviderID(provider), Model: a.Model,
 		Effort: router.Effort(a.Effort), TeamSize: 1, Confidence: 1, DecidedBy: "static", Created: time.Now().UTC(),
 		Reason: reason,
-		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
+		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, LevelSource: from, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
 			DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
 	if err := e.rec.Save(ctx, req, d); err != nil {
 		e.c.logf("record decision: %v", err)
@@ -505,6 +512,18 @@ func (e *economics) methods() map[string]Method {
 		}),
 		"route.settings.set": bind(func(ctx context.Context, p routeSettingsPatch) (any, error) {
 			return e.setRouteSettings(ctx, p)
+		}),
+		// the routing level (P118): the workspace's, and a project's own that falls back to it
+		"route.level.get": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+		}) (any, error) {
+			return e.routeLevel(ctx, p.ProjectID), nil
+		}),
+		"route.level.set": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			Level     string `json:"level"`
+		}) (any, error) {
+			return e.setRouteLevel(ctx, p.ProjectID, p.Level, human())
 		}),
 		// models a provider refused for want of data retention (P112): listed on the Routing page, cleared by a person
 		"route.retention.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
