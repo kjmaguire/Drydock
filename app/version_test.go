@@ -38,6 +38,12 @@ func TestTheResourceDefinitionCarriesTheAppsDefaultVersion(t *testing.T) {
 // The window opens on Home: the address it starts with is the UI's Home route, not "/" (the chosen project's page).
 func TestTheWindowOpensOnHome(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "ui", "app", "routes.ts"))
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, gerr := os.Stat(filepath.Join("..", "go.mod")); gerr != nil {
+			// the Windows verification bundle runs this binary without the repository around it
+			t.Skip("not in the repository: ui/app/routes.ts is not here")
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
