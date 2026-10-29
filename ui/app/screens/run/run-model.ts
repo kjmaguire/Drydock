@@ -2,7 +2,7 @@
 // (node boxes from the layered layout in lib/graphLayout.ts, smooth edge paths, pan/zoom transforms, keyboard moves).
 // Framework-free so the Node test runner covers them.
 
-import type { CheckpointView, ExecView, GraphEdge, GraphNode, GraphView, RunExplanation, SubrunView } from '../../api/runClient.ts';
+import type { CheckpointView, ExecView, FileChange, GraphEdge, GraphNode, GraphView, RestorePreview, RunExplanation, SubrunView } from '../../api/runClient.ts';
 import { layout, nodeStates, type NodeState } from '../../lib/graphLayout.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -438,8 +438,16 @@ function supersedeLine(x: RunExplanation): string[] {
 
 const filesLine = "The worktree's files are not put back: the new run works on the files as they are now. The task's evidence, reviews and iterations used stay.";
 
-/** What the confirmation of an action says will run again, from the run's own record. */
-export function rerunPlan(x: RunExplanation, kind: RerunKind, cp?: CheckpointView): RerunPlan {
+/** What a time travel that also puts the files back says about them (restore: the preview of the checkpoint's safe point). */
+function restoreLine(step: number, restore: RestorePreview): string {
+  const n = restore.changes.length;
+  if (n === 0) return `The worktree's files are already as they were at step ${step}: none changes. The task's evidence, reviews and iterations used stay.`;
+  return `The worktree's files go back to how they were at step ${step} first (${n} ${n === 1 ? 'file changes' : 'files change'}, listed below); the state before is kept, so this can be undone. The task's evidence, reviews and iterations used stay.`;
+}
+
+/** What the confirmation of an action says will run again, from the run's own record. With restore (time travel only), the
+ * worktree's files go back to the checkpoint's safe point first (P124). */
+export function rerunPlan(x: RunExplanation, kind: RerunKind, cp?: CheckpointView, restore?: RestorePreview): RerunPlan {
   if (kind === 'resume') {
     const latest = x.checkpoints.find((c) => c.latest) ?? x.checkpoints.at(-1);
     const step = latest?.step ?? 0;
@@ -458,7 +466,7 @@ export function rerunPlan(x: RunExplanation, kind: RerunKind, cp?: CheckpointVie
     const lines = [`A new run starts from the checkpoint at step ${step} with this run's state as it was then. This run and its history are kept as they are.`];
     if (from?.next?.length) lines.push(`Runs first: ${list(from.next)}.`);
     lines.push(again ? `Ran after that point here and runs again as the workflow reaches it: ${again}.` : 'Nothing ran after that point in this run.');
-    lines.push('Requests are asked afresh in the new run.', ...supersedeLine(x), filesLine);
+    lines.push('Requests are asked afresh in the new run.', ...supersedeLine(x), restore ? restoreLine(step, restore) : filesLine);
     return { kind, title: `Time travel to step ${step}?`, confirm: 'Start the new run', lines, asks: [] };
   }
   const asks = effectNodes(x.graph);
@@ -471,6 +479,42 @@ export function rerunPlan(x: RunExplanation, kind: RerunKind, cp?: CheckpointVie
   );
   lines.push(...supersedeLine(x), filesLine);
   return { kind, title: `Replay this run from step ${step}?`, confirm: 'Start the replay', lines, asks };
+}
+
+// ---------- safe point restore and run again (decision P124) ----------
+
+/** A safe point of the run a person can put the worktree back to: the state before an agent turn. */
+export interface SafePointChoice {
+  ref: string;
+  label: string;
+  step: number;
+}
+
+/** The run's safe points, oldest first, each named by the turn it was taken before. */
+export function safePoints(x: RunExplanation): SafePointChoice[] {
+  const seen = new Set<string>();
+  const out: SafePointChoice[] = [];
+  for (const e of [...x.executions].sort((a, b) => a.step - b.step || a.attempt - b.attempt)) {
+    if (!e.safePoint || seen.has(e.safePoint)) continue;
+    seen.add(e.safePoint);
+    out.push({ ref: e.safePoint, step: e.step, label: `Before ${e.nodeId} at step ${e.step}${e.attempt > 1 ? `, attempt ${e.attempt}` : ''}` });
+  }
+  return out;
+}
+
+/** One file of a restore, in words. */
+export function changeWords(c: FileChange): string {
+  return c.change === 'restored' ? 'comes back' : c.change === 'removed' ? 'is removed (it did not exist then)' : 'goes back to how it was';
+}
+
+/** What running an ended task again does, for its confirmation. */
+export function runAgainLines(seq: number, status: string): string[] {
+  const how = status === 'FAILED' ? 'failed' : 'was cancelled';
+  return [
+    `A new task with the same title, description, acceptance criteria and template starts from its first step, with the same worker and reviewer.`,
+    `It works in a fresh worktree from the base branch: nothing of task #${seq}'s worktree is carried over.`,
+    `Task #${seq}, which ${how}, stays as it is, with its runs, evidence and reviews.`,
+  ];
 }
 
 /** Where a forked or replayed run came from, in words. */

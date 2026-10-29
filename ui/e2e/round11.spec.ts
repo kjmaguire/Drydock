@@ -66,3 +66,42 @@ test('workflow graph, checkpoint timeline and the explanation of every turn', as
   await expect(graph.locator('[data-testid=wf-node][data-node=approve]')).toHaveAttribute('data-status', 'waiting', { timeout: 90_000 });
   await expect(page.getByTestId('run-history')).toContainText('This task ran 3 times');
 });
+
+// P124 against the real core, a real worktree and the scripted agent: the worktree's files go back to the safe point taken
+// before the work turn (listed first, then undone), and a cancelled task runs again as a new task with the same work.
+test("the worktree's files back to a safe point, and a cancelled task run again", async ({ page }) => {
+  test.slow(); // the task runs twice: once, then again as a new task
+  await createProject(page, 'gocalc-restore');
+  await createAgent(page, 'Worker One', 'backend');
+  await createAgent(page, 'Reviewer One', 'reviewer');
+  await createAndStartTask(page, 'Implement Subtract', 'Worker One', 'Reviewer One');
+  await expect(page.getByTestId('review-panel')).toBeVisible({ timeout: 90_000 });
+  const taskUrl = page.url();
+
+  await page.getByRole('link', { name: 'Workflow and explanation' }).click();
+  const actions = page.getByTestId('run-actions');
+  await actions.getByRole('button', { name: 'Put files back...' }).click();
+  const dialog = page.getByTestId('restore-dialog');
+  await expect(dialog.getByRole('button', { name: 'Put the files back' })).toBeDisabled();
+  await dialog.getByLabel(/^Before work at step \d+$/).check();
+  await expect(dialog.getByTestId('restore-files')).toContainText('calc.go');
+  await dialog.getByRole('button', { name: 'Put the files back' }).click();
+  await expect(dialog.getByTestId('restore-done')).toContainText(/Put back: \d+ files? changed\. What was there before is kept as refs\/drydock\/safe\//);
+  await dialog.getByRole('button', { name: 'Undo the restore' }).click();
+  await expect(dialog.getByTestId('restore-done')).toContainText('Undone: the files are back as they were before the restore');
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  // the task is cancelled; its run page offers to run it again, as a new task that starts from the beginning
+  await page.goto(taskUrl);
+  await page.getByRole('button', { name: 'Cancel task' }).click();
+  await page.getByRole('button', { name: 'Yes, cancel task' }).click();
+  await page.getByRole('link', { name: 'Workflow and explanation' }).click();
+  await expect(page.getByTestId('run-status')).toHaveText('Cancelled', { timeout: 60_000 });
+  await actions.getByRole('button', { name: 'Run again as a new task' }).click();
+  const again = page.getByTestId('run-again-confirm');
+  await expect(again).toContainText('which was cancelled, stays as it is');
+  await again.getByRole('button', { name: 'Run it again' }).click();
+  await expect(page).not.toHaveURL(taskUrl);
+  await expect(page.getByRole('heading', { level: 1, name: /Implement Subtract/ })).toBeVisible();
+  await expect(page.getByTestId('review-panel')).toBeVisible({ timeout: 90_000 });
+});

@@ -13,6 +13,9 @@ import {
   originLine,
   ranAfter,
   rerunPlan,
+  changeWords,
+  runAgainLines,
+  safePoints,
   subExecutions,
   subrunOf,
   currentNode,
@@ -422,5 +425,53 @@ describe('what Resume, Time travel and Replay say will run again (P123)', () => 
     expect(lease({ held: false, mine: false, driving: false })).toBe('Nobody: it stopped when Drydock did');
     expect(lease({ held: false, mine: false, driving: false }, 'WAITING_HUMAN')).toBe('Nobody (nothing to run now)');
     expect(lease({ held: false, mine: false, driving: false }, 'COMPLETED')).toBeUndefined();
+  });
+});
+
+describe('putting the files back and running a task again (P124)', () => {
+  const run = (executions: ExecView[]): RunExplanation => ({ runs: [], executions, checkpoints: [], mcpCalls: [], events: [] }) as unknown as RunExplanation;
+
+  it("lists the run's safe points oldest first, each named by the turn it was taken before", () => {
+    const x = run([
+      ex('review', 3, 'done', 1, { safePoint: 'refs/drydock/safe/t1/run_1/301' }),
+      ex('prepare', 1),
+      ex('work', 2, 'failed', 1, { safePoint: 'refs/drydock/safe/t1/run_1/201' }),
+      ex('work', 2, 'done', 2, { safePoint: 'refs/drydock/safe/t1/run_1/202' }),
+      ex('work', 4, 'done', 1, { safePoint: 'refs/drydock/safe/t1/run_1/301' }),
+    ]);
+    expect(safePoints(x)).toEqual([
+      { ref: 'refs/drydock/safe/t1/run_1/201', step: 2, label: 'Before work at step 2' },
+      { ref: 'refs/drydock/safe/t1/run_1/202', step: 2, label: 'Before work at step 2, attempt 2' },
+      { ref: 'refs/drydock/safe/t1/run_1/301', step: 3, label: 'Before review at step 3' },
+    ]);
+    expect(safePoints(run([ex('prepare', 1)]))).toEqual([]);
+  });
+
+  it('says what happens to each file and what a time travel that puts them back does', () => {
+    expect(changeWords({ path: 'a', change: 'restored' })).toBe('comes back');
+    expect(changeWords({ path: 'a', change: 'removed' })).toBe('is removed (it did not exist then)');
+    expect(changeWords({ path: 'a', change: 'changed' })).toBe('goes back to how it was');
+    const x = {
+      run: { id: 'run_1', workflow: 'w', status: 'WAITING_HUMAN', created: 1, updated: 2 },
+      runs: [],
+      executions: [],
+      checkpoints: [{ id: 'c1', step: 1, kind: 'step', created: 1, status: 'RUNNING', safePoint: 'refs/drydock/safe/t1/run_1/201' }],
+      mcpCalls: [],
+      events: [],
+    } as unknown as RunExplanation;
+    const cp = x.checkpoints[0]!;
+    const files = rerunPlan(x, 'timeTravel', cp, { ref: cp.safePoint!, allowed: true, changes: [{ path: 'calc.go', change: 'changed' }, { path: 'new.go', change: 'removed' }] });
+    expect(files.lines.join('\n')).toContain("The worktree's files go back to how they were at step 1 first (2 files change, listed below)");
+    expect(files.lines.join('\n')).not.toContain('are not put back');
+    expect(rerunPlan(x, 'timeTravel', cp, { ref: cp.safePoint!, allowed: true, changes: [] }).lines.join('\n')).toContain('already as they were at step 1');
+    expect(rerunPlan(x, 'timeTravel', cp).lines.join('\n')).toContain('are not put back');
+  });
+
+  it('says what running an ended task again does', () => {
+    const lines = runAgainLines(3, 'FAILED').join('\n');
+    expect(lines).toContain('A new task with the same title, description, acceptance criteria and template starts from its first step');
+    expect(lines).toContain('fresh worktree from the base branch');
+    expect(lines).toContain('Task #3, which failed, stays as it is');
+    expect(runAgainLines(3, 'CANCELLED').join('\n')).toContain('which was cancelled');
   });
 });
