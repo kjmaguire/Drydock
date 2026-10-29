@@ -107,7 +107,7 @@ var Tables = []Table{
 		Skipped: map[string]string{"id": why_surrogate}},
 	{Name: "workflow_runs", Where: `id IN ` + runIDs, OrderBy: `created_at, id`,
 		Columns: []string{"id", "workflow", "status", "project_id", "task_id", "input", "result", "topology_hash", "parent_checkpoint_id",
-			"latest_checkpoint_id", "failed_reason", "created_at", "updated_at", "version"}, Import: importRun},
+			"latest_checkpoint_id", "failed_reason", "created_at", "updated_at", "version", "parent_run_id"}, Import: importRun},
 	{Name: "workflow_checkpoints", Where: `run_id IN ` + runIDs, OrderBy: `run_id, created_at, rowid`,
 		Columns: []string{"id", "run_id", "workflow", "step", "kind", "parent_id", "state", "created_at"}},
 	{Name: "node_executions", Where: `run_id IN ` + runIDs, OrderBy: `run_id, step, node_id, attempt`,

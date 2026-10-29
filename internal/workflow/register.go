@@ -29,11 +29,50 @@ func (e *Engine) RegisterNew(g *Graph) error {
 	if e.closed {
 		return errors.New("workflow: engine is closed")
 	}
-	if old, ok := e.graphs[g.Name]; ok && old.TopologyHash() != g.TopologyHash() {
-		return fmt.Errorf("%w: %q", ErrGraphChanged, g.Name)
+	subs, err := nestedGraphs(g)
+	if err != nil {
+		return err
+	}
+	for _, s := range append([]*Graph{g}, subs...) {
+		if old, ok := e.graphs[s.Name]; ok && old.TopologyHash() != s.TopologyHash() {
+			return fmt.Errorf("%w: %q", ErrGraphChanged, s.Name)
+		}
 	}
 	e.graphs[g.Name] = g
+	for _, s := range subs {
+		e.graphs[s.Name] = s
+	}
 	return nil
+}
+
+// nestedGraphs are the graphs of g's subworkflow nodes, at any depth, validated. They are registered with g (decision P124):
+// a nested run outlives its parent's step (it waits for a person, or works while Drydock restarts), so the engine that
+// recovers it or records its answer must know its graph before any parent step runs again.
+func nestedGraphs(g *Graph) ([]*Graph, error) {
+	var out []*Graph
+	seen := map[*Graph]bool{g: true}
+	var walk func(g *Graph, depth int) error
+	walk = func(g *Graph, depth int) error {
+		for _, id := range g.order {
+			s := g.Nodes[id].Sub
+			if s == nil || seen[s] {
+				continue
+			}
+			if depth > 8 {
+				return fmt.Errorf("workflow %s: subworkflows nested too deep", g.Name)
+			}
+			if err := s.Validate(); err != nil {
+				return err
+			}
+			seen[s] = true
+			out = append(out, s)
+			if err := walk(s, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return out, walk(g, 0)
 }
 
 // Registered reports whether a graph name is known to the engine.

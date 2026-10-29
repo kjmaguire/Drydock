@@ -214,6 +214,14 @@ func (e *Engine) branch(ctx context.Context, src Checkpoint, kind, by string) (R
 		if !ok {
 			continue
 		}
+		if pr.Spec.Child != "" {
+			// a step that waited on a nested run runs again in the new run, with a nested run of its own (P124)
+			st.Inboxes[nid] = append([]Message(nil), pr.Inbox...)
+			if n := g.Nodes[nid]; n != nil && len(n.FanIn) > 0 {
+				st.Barriers[nid] = append([]NodeID(nil), n.FanIn...)
+			}
+			continue
+		}
 		pr.ID = RequestID(ids.New("req"))
 		pending[pr.ID], waiting[nid] = pr, pr.ID
 		reqs = append(reqs, approvalInsert{id: pr.ID, nodeID: nid, spec: pr.Spec, projectID: srcRun.ProjectID, taskID: srcRun.TaskID})

@@ -107,6 +107,11 @@ type RequestSpec struct {
 	// more message, so the node that runs again sees what the human said. The watchdog's pause uses it: the human's guidance
 	// reaches the agent's next turn, and a rejection is the node's to act on.
 	DeliverAnswer bool `json:"deliverAnswer,omitempty"`
+	// Child is the nested run a subworkflow node waits on while that run waits for a person (decision P124): the parent parks
+	// with it, without an approvals row of its own. ChildRequest is the nested run's request the person answers (Pending reads it
+	// afresh, and an answer to this request goes there); the parent goes on with the nested run's result once it ends.
+	Child        RunID     `json:"child,omitempty"`
+	ChildRequest RequestID `json:"childRequest,omitempty"`
 }
 
 // NodeOutput is what a handler returns: a complete value, optionally a routing label, or a request.
@@ -231,6 +236,9 @@ var (
 	ErrNotStopped = errors.New("workflow: the run has not stopped")
 	// ErrNotFinished: Replay was asked of a run that has not ended.
 	ErrNotFinished = errors.New("workflow: the run has not finished")
+	// ErrNoChildRequest: an answer for a step that waits on a nested run that has no request open (it is working again, or has
+	// several open: answer the nested run's own).
+	ErrNoChildRequest = errors.New("workflow: the nested run this step waits on has no single request open")
 )
 
 // ErrWatchdogTrip is returned by a node cancelled by the watchdog.

@@ -28,6 +28,9 @@ type RunInfo struct {
 	Created      int64           `json:"created"`
 	Updated      int64           `json:"updated"`
 	Version      int64           `json:"version"`
+	// ParentRun is the run whose subworkflow node started this one (decision P124, migration 00162): it waits for this run to
+	// end, and cancelling it cancels this run.
+	ParentRun RunID `json:"parentRun,omitempty"`
 }
 
 // ApprovalRow is the row view of a request.
@@ -92,10 +95,10 @@ func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint, reqs
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		now := storage.Now()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workflow_runs
-			(id,workflow,status,project_id,task_id,input,topology_hash,parent_checkpoint_id,latest_checkpoint_id,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			(id,workflow,status,project_id,task_id,input,topology_hash,parent_checkpoint_id,latest_checkpoint_id,created_at,updated_at,parent_run_id)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 			string(info.ID), info.Workflow, string(info.Status), info.ProjectID, info.TaskID, nz(info.Input), info.Topology,
-			string(info.ParentCP), string(cp.ID), now, now); err != nil {
+			string(info.ParentCP), string(cp.ID), now, now, string(info.ParentRun)); err != nil {
 			return err
 		}
 		if err := insertCheckpoint(ctx, tx, cp, st); err != nil {
@@ -148,8 +151,8 @@ func (s *store) getRun(ctx context.Context, id RunID) (RunInfo, error) {
 	var input, result []byte
 	var status string
 	err := s.db.Reader().QueryRowContext(ctx, `SELECT id,workflow,status,project_id,task_id,input,result,topology_hash,
-		parent_checkpoint_id,latest_checkpoint_id,failed_reason,created_at,updated_at,version FROM workflow_runs WHERE id=?`, string(id)).
-		Scan(&r.ID, &r.Workflow, &status, &r.ProjectID, &r.TaskID, &input, &result, &r.Topology, &r.ParentCP, &r.LatestCP, &r.FailedReason, &r.Created, &r.Updated, &r.Version)
+		parent_checkpoint_id,latest_checkpoint_id,failed_reason,created_at,updated_at,version,parent_run_id FROM workflow_runs WHERE id=?`, string(id)).
+		Scan(&r.ID, &r.Workflow, &status, &r.ProjectID, &r.TaskID, &input, &result, &r.Topology, &r.ParentCP, &r.LatestCP, &r.FailedReason, &r.Created, &r.Updated, &r.Version, &r.ParentRun)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, fmt.Errorf("workflow: run %s not found", id)
 	}
