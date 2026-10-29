@@ -1538,3 +1538,34 @@ Open, owner action:
   the `--mode` value, the input line, exit codes), a real custom CLI, any of it on Windows (a `.cmd` program, the prompt as
   an argument through `cmd.exe`). **Not built:** MCP for custom CLIs (their manifest has no `mcp.inject` yet) and for
   Antigravity, an acknowledgement asked again when a custom manifest's file changes on disk, interrupt for Antigravity.
+- **P119. A ceiling on the whole context package, files as ranges, the missing handoff fields, verified agent handoffs and
+  rule 15 over every deterministic package (2026-10-29).** On the owner's word, answering the list of what is still not built:
+  "Yes" to building the whole group that can be built now (token rules 9, 11, 5 and 6, and 15 of `token-control.md`). (1) **The
+  package ceiling** (`internal/context/assemble.go`): a work turn's package (the instruction files the CLI reads, the handoff, the
+  prompt as pieces) is assembled under a ceiling in estimated tokens, a project setting (`DevSettings.ContextCeiling`, the
+  Development flow group; default 20,000, 4,000 to 200,000). Over it, file excerpts, the repo map, memory, the skill list, design
+  notes, the spec, the diff, the handoff and check output are cut or left out in that fixed order (`ctxeng.CutOrder`), the latest
+  piece of a kind first; the task and the role, project and pack instructions never are. A cut quoted block stays closed and ends
+  with a pointer to the rest. The generated AGENTS.md keeps within half the ceiling by the same order and names what it left out
+  in its last line. Every piece is a manifest entry (`kind`, `tokens`, `exclusion: over_budget` and the reason) and every
+  package gets a `budget:package` line; review and role turns are measured, not cut. (2) **Files as ranges**
+  (`internal/pipeline/files.go`): the files a task names and the worktree files a failing check points at enter a work turn's
+  package (a later pass only the latter), at most 6 and 24 KB; a file of more than 150 lines (or 12 KB) only as at most two ranges around the lines the check
+  names or the first lines that mention the task's identifiers, else its head, with a `read_range` pointer; redacted, read
+  through `safefs`, binaries left out. (3) **Handoffs**: Drydock's artifact gained `goal`, `acceptanceStatus` (by the recorded
+  facts), `worktreeRef` (safe point and head), `decisions`, `files` with content hashes, `failingCheckSignature`,
+  `commandsOfNote`, `evidenceRefs` and `nextStep`. The `handoff` tool takes the fields an agent can state (with `checks` as
+  `{name, passed}`), and a worker that has it is asked in its own prompt to leave one when it stops early (no extra paid turn).
+  Before a fresh session is seeded, the newest unchecked handoff the previous turn's agent wrote during that turn is checked
+  (`pipeline.VerifyAgentHandoff`: required fields, size bounds, no secret, files that exist or were changed, check claims equal
+  to the latest recorded results); one that passes gives the session its account and next step, one that fails falls back to
+  Drydock's, and the result is stored on the agent's handoff (migration `00155`, `handoffs.verification`, classified in
+  `internal/projectio`), in Drydock's artifact, the manifest and the `agent.session` event. (4) **Rule 15**:
+  `TestDeterministicPackagesDoNotImportLLM` runs the `go list -deps` boundary over router, watchdog, room (markers, minutes,
+  inbox), checks (the summarizer), context, repomap and budget, and proves it can see a dependency; `docs/evals.md` defines no
+  eval-corpus assertion, `token-control.md`'s original proposal did ("`model_usage.purpose` in the deterministic set is empty in
+  the eval corpus"), and it is sound, so it is built as the report's rule 15 section (`evals.DeterministicPurposes`) with a
+  source scan that no product code names such a purpose. No new dependency, no new RPC method; migration 00156 was not needed.
+  **Not built:** cutting review and role prompts, a separate turn that asks for a handoff, a per-criterion acceptance status, a
+  tokenizer. **Not verified:** a real agent writing a handoff with the tool (the tests store one the way the tool does), any
+  effect on what a task costs (no eval run), Windows.
