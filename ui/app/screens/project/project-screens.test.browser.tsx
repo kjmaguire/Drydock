@@ -382,7 +382,7 @@ describe('Check settings and development flow', () => {
     const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Most tokens an agent turn starts with'), r);
     expect(box.value).toBe('');
     expect(box.placeholder).toBe('20000');
-    expect(r.container.textContent).toMatch(/file excerpts go first[\s\S]*task and the instructions are never cut/);
+    expect(r.container.textContent).toMatch(/file excerpts, the repository map and memory are cut first; the task and instructions never are/);
     type(box, '1000');
     await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')!.textContent).toContain('4,000 and 200,000'), r);
     type(box, '12000');
