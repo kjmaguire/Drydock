@@ -14,6 +14,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Marker is the first argument that tells a binary to run the stand-in instead of itself.
@@ -492,7 +494,8 @@ func Main(args []string) int {
 			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text}, "finish_reason": "stop"}},
 			"usage":   usage})
 	})
-	// embeddings only with --embeddings, as the real server: a vector of four numbers per input (OpenAI's shape)
+	// embeddings only with --embeddings, as the real server, in OpenAI's shape: a vector per input (WordVector: texts that share
+	// words are near, so a test can tell a ranking by meaning from another; it is no model)
 	mux.HandleFunc("/v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
 		if loading(w) {
 			return
@@ -517,7 +520,7 @@ func Main(args []string) int {
 		}
 		data := []any{}
 		for i, s := range inputs {
-			data = append(data, map[string]any{"object": "embedding", "index": i, "embedding": []float64{float64(len(s)), 0.5, 0.25, 0.125}})
+			data = append(data, map[string]any{"object": "embedding", "index": i, "embedding": WordVector(s)})
 		}
 		writeJSON(w, 200, map[string]any{"object": "list", "model": one.id, "data": data, "usage": map[string]any{"prompt_tokens": len(inputs), "total_tokens": len(inputs)}})
 	})
@@ -545,6 +548,20 @@ func Main(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// WordVector is the stand-in's embedding of a text: 64 counts of its lower-case words, each word counted at a place its FNV
+// hash picks, plus 1 in the last place so no vector is all zeros. Texts that share words are near by cosine similarity; it
+// knows nothing of meaning (a test double).
+func WordVector(s string) []float64 {
+	v := make([]float64, 65)
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(w))
+		v[h.Sum32()%64]++
+	}
+	v[64] = 1
+	return v
 }
 
 // filesOf checks that a model's files are there, as llama-server does when it loads one.

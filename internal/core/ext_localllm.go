@@ -52,6 +52,9 @@ type LocalSettings struct {
 	// EmbeddingModel is the embedding model served last, on its own server at EmbeddingPort.
 	EmbeddingModel string `json:"embeddingModel,omitempty"`
 	EmbeddingPort  int    `json:"embeddingPort"`
+	// RankPacks ranks the passages a pack search finds by meaning with the embedding model, while one is served (decision
+	// P120; off by default).
+	RankPacks bool `json:"rankPacks,omitempty"`
 }
 
 // LocalJob is an install or a download in progress, or how the last one ended.
@@ -164,6 +167,7 @@ func init() {
 			c.cfg.LocalModels(l.m)
 		}
 		l.m.Finish()
+		localRegistry.Store(c, l)
 		l.m.Server.OnChange = func(st localllm.ServerState) {
 			c.publish(context.Background(), "local.changed", "", map[string]any{"what": "server", "state": st.State})
 		}
@@ -286,6 +290,8 @@ type LocalSettingsEdit struct {
 	Autostart   *bool             `json:"autostart"`
 	// EmbeddingPort is the embedding server's port (decision P111).
 	EmbeddingPort *int `json:"embeddingPort"`
+	// RankPacks turns ranking pack searches by meaning on or off (decision P120).
+	RankPacks *bool `json:"rankPacks"`
 }
 
 type localExt struct {
@@ -324,6 +330,7 @@ type localDownload struct {
 }
 
 func (l *localExt) close() {
+	localRegistry.Delete(l.c)
 	if l.stopWatch != nil {
 		l.stopWatch()
 	}
@@ -434,6 +441,9 @@ func (l *localExt) setSettings(ctx context.Context, e LocalSettingsEdit, by stri
 	}
 	if e.Autostart != nil {
 		s.Autostart = *e.Autostart
+	}
+	if e.RankPacks != nil {
+		s.RankPacks = *e.RankPacks
 	}
 	if err := l.save(ctx, s); err != nil {
 		return LocalView{}, err
