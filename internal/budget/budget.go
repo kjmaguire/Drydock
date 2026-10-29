@@ -19,10 +19,13 @@ const (
 	ScopeTask    Scope = "task"
 	ScopeRun     Scope = "run"
 	ScopeAgent   Scope = "agent"
+	// ScopeWorkflow limits every run of one workflow (decision P118): the scope id is the workflow's name, and the budget's
+	// project, when it names one, keeps the count to that project's runs.
+	ScopeWorkflow Scope = "workflow"
 )
 
 // Any as a ScopeID makes the budget a ceiling for every task, run or agent (each judged on its own), optionally limited to
-// one project through Budget.ProjectID. A project budget cannot be a template.
+// one project through Budget.ProjectID. A project or workflow budget cannot be a template.
 const Any = "*"
 
 // Budget is a stored limit. A nil limit means that dimension is not limited.
@@ -59,9 +62,9 @@ func IsHuman(by string) bool { return strings.HasPrefix(by, "human:") && len(by)
 
 func (b *Budget) normalize() error {
 	switch b.Scope {
-	case ScopeProject, ScopeTask, ScopeRun, ScopeAgent:
+	case ScopeProject, ScopeTask, ScopeRun, ScopeAgent, ScopeWorkflow:
 	default:
-		return fmt.Errorf("%w: scope must be project, task, run or agent", ErrInvalid)
+		return fmt.Errorf("%w: scope must be project, workflow, task, run or agent", ErrInvalid)
 	}
 	b.ScopeID = strings.TrimSpace(b.ScopeID)
 	if b.ScopeID == "" {
@@ -70,8 +73,11 @@ func (b *Budget) normalize() error {
 	if b.ScopeID == Any && b.Scope == ScopeProject {
 		return fmt.Errorf("%w: a project budget needs a project id", ErrInvalid)
 	}
-	if b.ScopeID != Any {
-		b.ProjectID = "" // an explicit id needs no project filter
+	if b.Scope == ScopeWorkflow && (b.ScopeID == Any || strings.Contains(b.ScopeID, "/")) {
+		return fmt.Errorf("%w: a workflow budget names one workflow (for example iterate-until-verified)", ErrInvalid)
+	}
+	if b.ScopeID != Any && b.Scope != ScopeWorkflow {
+		b.ProjectID = "" // an explicit id needs no project filter; a workflow runs in every project, so its budget keeps one
 	}
 	if b.LimitUSD == nil && b.LimitTokens == nil && b.LimitTurns == nil {
 		return fmt.Errorf("%w: set at least one of limitUsd, limitTokens, limitTurns", ErrInvalid)
@@ -92,6 +98,23 @@ func (b *Budget) normalize() error {
 		return fmt.Errorf("%w: warnPct must be between 0 and 1 (exclusive)", ErrInvalid)
 	}
 	return nil
+}
+
+// InstanceOf is the instance a budget on an explicit id is judged for: the id itself, or, for a workflow budget that names a
+// project, "<project>/<workflow>" (the runs of that workflow in that project). A '*' ceiling has no single instance.
+func InstanceOf(b Budget) string {
+	if b.Scope == ScopeWorkflow && b.ProjectID != "" {
+		return b.ProjectID + "/" + b.ScopeID
+	}
+	return b.ScopeID
+}
+
+// workflowInstance splits a workflow budget's instance into its project ("" for every project) and the workflow's name.
+func workflowInstance(instance string) (project, workflow string) {
+	if i := strings.Index(instance, "/"); i >= 0 {
+		return instance[:i], instance[i+1:]
+	}
+	return "", instance
 }
 
 const cols = `id,scope,scope_id,project_id,limit_usd,limit_tokens,limit_turns,warn_pct,enabled,note,version,created_at,updated_at,updated_by`
@@ -147,7 +170,7 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Budget, error) {
 		OR (scope='task' AND scope_id IN (SELECT id FROM tasks WHERE project_id=?))
 		OR (scope='agent' AND scope_id IN (SELECT id FROM agents WHERE project_id=?))
 		OR (scope='run' AND scope_id IN (SELECT id FROM workflow_runs WHERE project_id=?)))
-		ORDER BY CASE scope WHEN 'project' THEN 0 WHEN 'task' THEN 1 WHEN 'run' THEN 2 ELSE 3 END, scope_id, id`
+		ORDER BY CASE scope WHEN 'project' THEN 0 WHEN 'workflow' THEN 1 WHEN 'task' THEN 2 WHEN 'run' THEN 3 ELSE 4 END, scope_id, id`
 	rows, err := s.DB.Reader().QueryContext(ctx, q, string(f.Scope), string(f.Scope), f.ScopeID, f.ScopeID, f.ProjectID, f.ProjectID, f.ProjectID, f.ProjectID, f.ProjectID, f.ProjectID)
 	if err != nil {
 		return nil, err

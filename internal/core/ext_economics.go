@@ -134,7 +134,7 @@ func (e *economics) fillBudget(ctx context.Context, req *router.RouteRequest) er
 	if req.Budget.Scope != "" {
 		return nil
 	}
-	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID})
+	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID, Workflow: req.Workflow})
 	if err != nil {
 		return err
 	}
@@ -431,8 +431,13 @@ func (e *economics) methods() map[string]Method {
 			TaskID    string `json:"taskId"`
 			RunID     string `json:"runId"`
 			AgentID   string `json:"agentId"`
+			Workflow  string `json:"workflow"`
 		}) (any, error) {
-			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID})
+			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID, Workflow: p.Workflow})
+		}),
+		// the workflows a workflow budget can name (P118): every workflow this core runs, by name
+		"budget.workflows": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"workflows": c.Engine.Workflows()}, nil
 		}),
 		"budget.resume": bind(func(ctx context.Context, p budgetResume) (any, error) { return e.budgetResume(ctx, p) }),
 
@@ -643,7 +648,7 @@ func (e *economics) budgetList(ctx context.Context, projectID string, scope budg
 	for _, b := range bs {
 		r := budgetRow{Budget: b}
 		if b.ScopeID != budget.Any {
-			st, err := budget.Evaluate(ctx, e.c.DB, b, b.ScopeID)
+			st, err := budget.Evaluate(ctx, e.c.DB, b, budget.InstanceOf(b))
 			if err != nil {
 				return nil, err
 			}
@@ -660,8 +665,12 @@ func (e *economics) budgetStatus(ctx context.Context, ids budget.ScopeIDs) (any,
 		return nil, err
 	}
 	usage := map[string]budget.Spend{}
-	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
-		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
+	wf := "" // a workflow's spend is counted in the project asked about
+	if ids.Workflow != "" {
+		wf = budget.InstanceOf(budget.Budget{Scope: budget.ScopeWorkflow, ScopeID: ids.Workflow, ProjectID: ids.Project})
+	}
+	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeWorkflow, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
+		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeWorkflow: wf, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
 		if id == "" {
 			continue
 		}

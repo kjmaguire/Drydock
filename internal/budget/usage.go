@@ -76,6 +76,13 @@ func usageWhere(scope Scope, id string) (string, []any, error) {
 			AND mu.ts>=(SELECT r.created_at FROM workflow_runs r WHERE r.id=?)
 			AND mu.ts<COALESCE((SELECT MIN(r2.created_at) FROM workflow_runs r2 WHERE r2.task_id=(SELECT r.task_id FROM workflow_runs r WHERE r.id=?)
 				AND r2.created_at>(SELECT r.created_at FROM workflow_runs r WHERE r.id=?)), ` + maxInt64 + `)))`, []any{id, id, id, id, id}, nil
+	case ScopeWorkflow:
+		// every run of the workflow (in the budget's project), each counted as the run scope counts it
+		p, wf := workflowInstance(id)
+		return `EXISTS (SELECT 1 FROM workflow_runs r WHERE r.workflow=? AND (?='' OR r.project_id=?) AND (mu.run_id=r.id
+			OR (mu.run_id='' AND mu.task_id<>'' AND mu.task_id=r.task_id AND mu.ts>=r.created_at
+				AND mu.ts<COALESCE((SELECT MIN(r2.created_at) FROM workflow_runs r2 WHERE r2.task_id=r.task_id AND r2.created_at>r.created_at), ` + maxInt64 + `))))`,
+			[]any{wf, p, p}, nil
 	}
 	return "", nil, fmt.Errorf("budget: unknown scope %q", scope)
 }
@@ -94,6 +101,12 @@ func turnsWhere(scope Scope, id string) (string, []any, error) {
 			AND ar.started_at>=(SELECT r.created_at FROM workflow_runs r WHERE r.id=?)
 			AND ar.started_at<COALESCE((SELECT MIN(r2.created_at) FROM workflow_runs r2 WHERE r2.task_id=(SELECT r.task_id FROM workflow_runs r WHERE r.id=?)
 				AND r2.created_at>(SELECT r.created_at FROM workflow_runs r WHERE r.id=?)), ` + maxInt64 + `))`, []any{id, id, id, id}, nil
+	case ScopeWorkflow:
+		p, wf := workflowInstance(id)
+		return `EXISTS (SELECT 1 FROM workflow_runs r WHERE r.workflow=? AND (?='' OR r.project_id=?) AND ar.task_id<>'' AND ar.task_id=r.task_id
+			AND ar.started_at>=r.created_at
+			AND ar.started_at<COALESCE((SELECT MIN(r2.created_at) FROM workflow_runs r2 WHERE r2.task_id=r.task_id AND r2.created_at>r.created_at), ` + maxInt64 + `))`,
+			[]any{wf, p, p}, nil
 	}
 	return "", nil, fmt.Errorf("budget: unknown scope %q", scope)
 }
