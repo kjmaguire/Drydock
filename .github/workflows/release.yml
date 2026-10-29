@@ -10,10 +10,12 @@
 #                 (ui/e2e-installed: a project on a real repository, every workspace page, a backup, a support bundle); the
 #                 shipped build installed again opens on that data; the uninstaller removes the program and keeps the data.
 #                 Screenshots and timings are kept as the installed-app-proof artifact.
-#   publish       on a tag v*: a DRAFT GitHub release with the files. A person reads it and publishes it; nothing here does.
+#   publish       on a tag v*, or a manual run on main given a tag: a DRAFT GitHub release with the files. A person reads it
+#                 and publishes it; nothing here does. From a manual run the tag does not exist yet: GitHub makes it on the run's
+#                 commit when the draft is published.
 #
 # A pull request that touches the release path runs build and install-test (never publish), so a broken installer is seen
-# before it is merged. The run's version is the tag without its v, or 0.0.0-ci.<run number> when there is no tag.
+# before it is merged. The run's version is the tag without its v, or 0.0.0-ci.<run number> when there is none.
 name: release
 on:
   push:
@@ -28,6 +30,11 @@ on:
       - "ui/e2e-installed/**"
       - "ui/playwright.installed.config.ts"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release this commit of main as a draft with this tag (v<major>.<minor>.<patch>[-pre]); empty: a test build only"
+        required: false
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -35,6 +42,8 @@ concurrency:
   cancel-in-progress: true
 env:
   GOFLAGS: -mod=mod
+  # the tag this run releases: the one pushed, or the one a person gave a manual run on main; empty for a test build
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.tag) || '' }}
 defaults:
   run:
     shell: pwsh
@@ -58,12 +67,12 @@ jobs:
       - name: The version of this build
         id: version
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          ASKED: ${{ inputs.tag }}
           RUN: ${{ github.run_number }}
         run: |
-          if ($env:REF_TYPE -eq 'tag') { $v = $env:REF_NAME.TrimStart('v') } else { $v = "0.0.0-ci.$env:RUN" }
-          if ($v -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$') { throw "the tag $env:REF_NAME is not v<major>.<minor>.<patch>[-pre]" }
+          if ($env:ASKED -and -not $env:RELEASE_TAG) { throw "a release is made from main only: run this workflow on main to release $env:ASKED" }
+          if ($env:RELEASE_TAG) { $v = $env:RELEASE_TAG.TrimStart('v') } else { $v = "0.0.0-ci.$env:RUN" }
+          if ($v -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$') { throw "the tag $env:RELEASE_TAG is not v<major>.<minor>.<patch>[-pre]" }
           # the installer's own version resource takes four numbers
           $vi = "{0}.{1}.{2}.0" -f $Matches[1], $Matches[2], $Matches[3]
           "version=$v" >> $env:GITHUB_OUTPUT
@@ -246,7 +255,7 @@ jobs:
             $msg = "Defender could not scan on this runner: $($unscanned -join ', '). This run does not prove the files clean."
             $msg | Tee-Object -Append "$env:OUT/defender.txt"
             # a release is never published without the scan; a pull request's run goes on to the install proofs
-            if ($env:GITHUB_REF -like 'refs/tags/*') { throw $msg }
+            if ($env:RELEASE_TAG) { throw $msg }
             "::warning title=Defender::$msg"
           } else {
             "Defender: no detection in the installer or drydock.exe" | Tee-Object -Append "$env:OUT/defender.txt"
@@ -378,7 +387,7 @@ jobs:
 
   publish:
     needs: [build, install-test]
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.tag != '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -395,7 +404,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ env.RELEASE_TAG }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -euo pipefail
@@ -411,4 +420,8 @@ jobs:
           %LOCALAPPDATA%\Drydock unless you ask for it to be deleted.
           EOF
           pre=""; case "$VERSION" in *-*) pre="--prerelease";; esac
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft $pre --title "Drydock $VERSION" --notes-file "$notes" dist/*
+          # a manual run names a tag that must not exist yet: GitHub makes it on this run's commit when the draft is published
+          if [ "$GITHUB_REF_TYPE" != tag ] && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "the tag $TAG already exists; release it by its own run, or choose a new version" >&2; exit 1
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft $pre --title "Drydock $VERSION" --notes-file "$notes" dist/*
