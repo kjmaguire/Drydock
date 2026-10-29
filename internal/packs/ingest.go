@@ -38,6 +38,8 @@ type RefreshResult struct {
 	Quarantined int            `json:"quarantined"`
 	Redactions  int            `json:"redactions"`
 	Digest      *Digest        `json:"digest,omitempty"`
+	// Sources is the commit each git_docs source was read at ("sources[0]": "<commit>"); the new version records it.
+	Sources map[string]string `json:"sources,omitempty"`
 }
 
 // Digest is the changed-pages digest of one refresh. It is built from the page diffs without any model; Summary is filled
@@ -141,7 +143,8 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		MaxBytes: m.Crawl.MaxPageBytes, Timeout: m.Crawl.Timeout.D(), AllowLoopback: s.o.AllowLoopbackFetch,
 	}, s.o.FetchTransport)
 	packDir := filepath.Join(s.o.Dir, packID)
-	pages, skipped, err := s.discover(ctx, m, f, packDir)
+	commits := map[string]string{}
+	pages, skipped, err := s.discover(ctx, m, f, packDir, commits)
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("listing sources: %w", err)
 	}
@@ -171,6 +174,9 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 	}
 
 	res = RefreshResult{PackID: packID, Pages: len(pages), Skipped: skipped, Reasons: map[string]int{}}
+	if len(commits) > 0 {
+		res.Sources = commits
+	}
 	for _, r := range results {
 		switch r.status {
 		case "failed":
@@ -276,8 +282,9 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		pageEvents = pageEvents[:0]
 		if res.NewVersion {
 			dj, _ := json.Marshal(digest)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO pack_versions(pack_id,seq,version,created_at,pages,chunks,added,changed,removed,skipped,failed,digest,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				packID, seq, version, now, len(pages), 0, res.Added, res.Changed, res.Removed, res.Skipped, res.Failed, string(dj), digest.Summary); err != nil {
+			sj, _ := json.Marshal(commits)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO pack_versions(pack_id,seq,version,created_at,pages,chunks,added,changed,removed,skipped,failed,digest,summary,sources) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				packID, seq, version, now, len(pages), 0, res.Added, res.Changed, res.Removed, res.Skipped, res.Failed, string(dj), digest.Summary, string(sj)); err != nil {
 				return err
 			}
 		}

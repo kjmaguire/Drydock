@@ -143,7 +143,7 @@ func TestDOCXHeadingsListsTablesAndWhatIsLeftOut(t *testing.T) {
 			docfixture.Para("Kapitel", "Incident response") +
 			docfixture.Para("", "# looks like a heading but is text") +
 			`<w:p><mc:AlternateContent><mc:Choice><w:r><w:t>Box text</w:t></w:r></mc:Choice><mc:Fallback><w:r><w:t>Box text</w:t></w:r></mc:Fallback></mc:AlternateContent></w:p>`)
-	data := docfixture.DOCX(docfixture.Part{"[Content_Types].xml", "<Types/>"}, docfixture.Part{"word/styles.xml", styles}, docfixture.Part{"word/document.xml", body})
+	data := docfixture.DOCX(docfixture.Part{Name: "[Content_Types].xml", Body: "<Types/>"}, docfixture.Part{Name: "word/styles.xml", Body: styles}, docfixture.Part{Name: "word/document.xml", Body: body})
 	doc, err := DOCX(context.Background(), data, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestDOCXHeadingsListsTablesAndWhatIsLeftOut(t *testing.T) {
 
 func TestDOCXTitleFromCoreProperties(t *testing.T) {
 	core := `<?xml version="1.0"?><cp:coreProperties xmlns:cp="x" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Runbook</dc:title></cp:coreProperties>`
-	data := docfixture.DOCX(docfixture.Part{"docProps/core.xml", core}, docfixture.Part{"word/document.xml", docfixture.Body(docfixture.Para("", "Restart the service."))})
+	data := docfixture.DOCX(docfixture.Part{Name: "docProps/core.xml", Body: core}, docfixture.Part{Name: "word/document.xml", Body: docfixture.Body(docfixture.Para("", "Restart the service."))})
 	doc, err := DOCX(context.Background(), data, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +170,7 @@ func TestDOCXTitleFromCoreProperties(t *testing.T) {
 func TestDOCXZipBombAndDamage(t *testing.T) {
 	ctx := context.Background()
 	// a document.xml that unpacks to 4 MB from a few KB: refused at a 1 MB bound
-	bomb := docfixture.DOCX(docfixture.Part{"word/document.xml", docfixture.Body(docfixture.Para("", strings.Repeat("a", 4<<20)))})
+	bomb := docfixture.DOCX(docfixture.Part{Name: "word/document.xml", Body: docfixture.Body(docfixture.Para("", strings.Repeat("a", 4<<20)))})
 	if len(bomb) > 64<<10 {
 		t.Fatalf("the fixture should compress well, it is %d bytes", len(bomb))
 	}
@@ -180,13 +180,13 @@ func TestDOCXZipBombAndDamage(t *testing.T) {
 	if _, err := DOCX(ctx, []byte("PK\x03\x04 not really"), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("damaged: %v", err)
 	}
-	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{"word/other.xml", "x"}), Limits{}); !errors.Is(err, ErrMalformed) {
+	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{Name: "word/other.xml", Body: "x"}), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("no body: %v", err)
 	}
-	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{"word/document.xml", "<w:document><w:body><w:p>"}), Limits{}); !errors.Is(err, ErrMalformed) {
+	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{Name: "word/document.xml", Body: "<w:document><w:body><w:p>"}), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("cut xml: %v", err)
 	}
-	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{"word/document.xml", docfixture.Body("")}), Limits{}); !errors.Is(err, ErrMalformed) {
+	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{Name: "word/document.xml", Body: docfixture.Body("")}), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("empty: %v", err)
 	}
 	if _, err := DOCX(ctx, bomb, Limits{MaxBytes: 100}); !errors.Is(err, ErrTooLarge) {

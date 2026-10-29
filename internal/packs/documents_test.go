@@ -146,11 +146,11 @@ func TestPackFilesAreChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, f := range map[string]UploadFile{
-		"wrong extension": {Name: "tool.exe", Data: []byte("MZ")},
-		"a zip named pdf": {Name: "x.pdf", Data: []byte("PK\x03\x04")},
+		"wrong extension":  {Name: "tool.exe", Data: []byte("MZ")},
+		"a zip named pdf":  {Name: "x.pdf", Data: []byte("PK\x03\x04")},
 		"a pdf named docx": {Name: "x.docx", Data: manualPDF()},
-		"binary as text":  {Name: "x.md", Data: []byte{0, 1, 2}},
-		"empty":           {Name: "x.txt"},
+		"binary as text":   {Name: "x.md", Data: []byte{0, 1, 2}},
+		"empty":            {Name: "x.txt"},
 	} {
 		if _, err := e.s.AddFiles(ctx, human, "ops", []UploadFile{f}); err == nil {
 			t.Fatalf("%s: accepted", name)

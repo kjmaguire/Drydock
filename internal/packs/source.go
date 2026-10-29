@@ -26,7 +26,8 @@ type Page struct {
 
 // discover expands the manifest's sources into pages. A discovery failure is returned so that a refresh never mistakes a
 // partial listing for "the pages were removed". skipped counts entries ignored on purpose (other hosts, llms-full dumps...).
-func (s *Store) discover(ctx context.Context, m *Manifest, f *Fetcher, packDir string) (pages []Page, skipped int, err error) {
+// commits receives, for each git_docs source ("sources[i]"), the commit it was read at.
+func (s *Store) discover(ctx context.Context, m *Manifest, f *Fetcher, packDir string, commits map[string]string) (pages []Page, skipped int, err error) {
 	seen := map[string]bool{}
 	add := func(p Page) bool {
 		if seen[p.URL] {
@@ -40,8 +41,18 @@ func (s *Store) discover(ctx context.Context, m *Manifest, f *Fetcher, packDir s
 		pages = append(pages, p)
 		return true
 	}
-	for _, src := range m.Sources {
+	for i, src := range m.Sources {
 		switch src.Type {
+		case SourceGitDocs:
+			ps, sk, commit, e := s.discoverGit(ctx, src, m, packDir)
+			if e != nil {
+				return nil, skipped, e
+			}
+			commits[fmt.Sprintf("sources[%d]", i)] = commit
+			skipped += sk
+			for _, p := range ps {
+				add(p)
+			}
 		case SourceLocalDir:
 			ps, sk, e := discoverLocal(src, m, packDir)
 			if e != nil {
