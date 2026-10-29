@@ -1833,3 +1833,69 @@ Open, owner action:
   from search extracts); `gh webhook forward` itself; GitHub's hosted MCP server's OAuth (that its metadata leads to
   github.com's authorization server with PKCE and accepts a loopback redirect on any port); everything on Windows: the TCP table
   call and IsProcessInJob were cross-compiled and vetted (`GOOS=windows go vet`), never run.
+- **P124. Group discussions held to their workflow's budgets, the Design Review template, a subworkflow that waits for a
+  person, putting a worktree's files back, and running an ended task again (2026-10-29).** On the owner's words after the
+  "can be built now" group (P117 to P123) was built: "ok keep going", answering the "Not built" lines P118 and P123 wrote
+  (`architecture.md` section 5 "Turn-taking and budgets" and "Run page actions", `token-control.md`, `workflow-engine.md`
+  section 6 and s14, `room-protocol.md` s6, `ui.md` 6.2). (1) **Group-discussion turns and workflow budgets**
+  ([`token-control.md`](token-control.md), [`workflow-engine.md`](workflow-engine.md) s14 "As built (decision P124)"): a turn
+  of a group node names the workflow run that holds it on its session (`rt.Config.WorkflowRun`: `agent_runs.workflow_run_id`,
+  migration `00161`, classified in `internal/projectio`, and `model_usage.run_id`), so the `run` and `workflow` scopes count it
+  wherever the discussion is held (a channel has no task, so the task's window could not find it); the run and workflow scopes
+  count a session that names its run toward that run alone. Each turn is checked (`responder.BudgetScope`, the core's
+  `EconomicsBudgetBlockFor`) and reserved (P112, `ReplyTurn.RunID`/`Workflow`, the router's budget state read for the run)
+  against them too; one at its limit parks the node on the budget pause (`budget.PauseError`, a `workflow.GateError` with the
+  pause's payload: the Inbox's budget item, answered by `budget.resume` or `run.respond`) instead of failing it. The Enforcer
+  wraps group nodes (no discussion starts over a limit; warnings at 80 % and crossings after it), and a person's approval lets
+  one more turn through, after which the budgets are checked again (`budget.WithoutApproval`); the node run again continues
+  the same discussion (its topic is keyed by the message that reached the node, not the step). (2) **A shipped template that
+  uses the group node**: `design-review` ("Design Review", `internal/pipeline/design.go`), brief s4's bounded debate before
+  implementation: prepare, then a discussion of at most 3 rounds between the architect (required role), the worker and the
+  reviewer in the task's channel on the task as written; a DECISION stands as the design, a discussion that does not agree asks
+  the person the question it ended on (`designq`, kind `question`, phase `design`; the Inbox shows that request in place of the
+  room's QUESTION it carries, `payload.questionId`), and the answer (or an approval to build on what was said) is the design; a
+  rejection cancels the task. The design is the task's `design` evidence, which every implementation pass carries as design
+  notes; then the common tail. `TemplateDeps.Discuss` and `TaskRoom` connect it to the room's responder
+  (`responder.GroupNodeWith`). (3) **A subworkflow that waits for a person** ([`workflow-engine.md`](workflow-engine.md)
+  section 6, `internal/workflow/subwait.go`): the nested run records its parent (`workflow_runs.parent_run_id`, migration
+  `00162`), is in the parent's project (its requests in the Inbox, under the parent's task) but in no task (so it never splits
+  the task's budget window). When it parks, the parent parks on a request that names it (`RequestSpec.Child`, no approvals row
+  of its own) and shows its question as its own ("Waiting on <subworkflow>'s question: ...", kind and payload of the nested
+  request); an answer to the parent's request goes to the nested run's; when the nested run ends the parent goes on with its
+  result, or fails with the step's inbox kept so a resume runs it again with a new nested run. Cancelling the parent cancels the
+  nested run. Restarts: nested graphs are registered with their parent; a recovered parent step takes up the nested run an
+  earlier attempt started instead of a second one; recovery finds a parent parked on a nested run that ended while nobody could
+  wake it. Inside a replay, a nested step that changes something outside the run now asks in the nested run, the replay
+  waiting. (4) **Putting a worktree's files back** (`internal/core/runrestore.go`, [`ui.md`](ui.md) 6.2): a person-only action
+  on the run page, `run.restorePreview` (the files that change: restored, changed, removed) then `run.restore` to one of the
+  task's safe points (`git.IsSafePointRef`), refused while the task's run works or an agent session of the task is working,
+  the current state kept under `refs/drydock/safe/<task>/undo/<ms>` (`git.UndoRef`, `Repo.RestoreSafePointTo`; restoring it
+  undoes the restore), with `task.files_restored`, an audit row `worktree.restore` and a line in the task channel. Time travel
+  takes `restoreFiles`: the files go back, before the new run starts, to the checkpoint's safe point, the one taken before the
+  first agent turn after it (`run.explain` names it per checkpoint; none when no turn ran after it, and then it is refused with
+  nothing changed). (5) **Running an ended task again**: decided from the docs. The task state machine never leaves
+  COMPLETED, FAILED or CANCELLED (brief 12, `state-machines.md`), a failed task is a dead letter kept for the evals, and the
+  evals count cost per task (an accepted task's cost must stay that task's), so reopening the ended task is ruled out; "again"
+  is a new task with the same work (title, description, criteria, files, labels, priority, template, worker and reviewer;
+  `tasks.AgainOrigin`, origin `again:<task>`, `Task.AgainOf`) that starts its workflow from the first node in a fresh worktree
+  from the base branch, the ended task, its runs and records kept as they ended. Only a failed or cancelled task is run again
+  (`task.runAgain`, person-only): a completed task's work was merged, and more work on it is a new task. Dependencies and an
+  issue reference are not copied (the first were met when it ran; the second would link the vendor item twice). UI: Put
+  files back... (safe points named by the turn they were taken before, the files listed, then the undo), the time travel box
+  "Also put the worktree's files back to this point", Run again as a new task. New RPC methods `run.restorePreview`,
+  `run.restore`, `task.runAgain` (gated like `task.start` on the license, in `ext_economics_test.go`'s list); no new
+  dependency. Tests: the budget package's (a session that names its run counts toward it alone), the responder's against the
+  real budget store and Enforcer (a workflow budget pauses the third turn of a channel discussion, one approval one turn in the
+  same thread, a rejection ends the run; a budget already over holds the node before its topic), the pipeline's Design Review
+  tests against the scripted stand-in (agreed, asked and answered, rejected; the graph and the catalog), the core's (the shipped
+  template held to a workflow budget through the RPC methods; a safe point put back, refused while busy and for a foreign ref,
+  undone, audited; time travel with the files put back, refused without a safe point; a cancelled task run again as a new task,
+  twice), the engine's (`subwait_test.go`: answer through the parent and directly, cancel, a cancelled nested run resumed into a
+  new one, both waits across a restart, recovery of a parent whose nested run ended elsewhere, a recovered parent waiting for its
+  running nested run; the nested replay gate), the git package's (the change list, the restore and its undo, the ref check), the
+  tasks package's (the origin), UI unit tests and the run page e2e spec (`round11.spec.ts`, the restore and its undo, Run again
+  to the new task's approval). **Not verified:** any of it with a real agent CLI (the scripted stand-in only) or on Windows; the
+  Design Review template's value (whether a real discussion between agents improves the design or what a task costs, no eval
+  run). **Not built:** ending a discussion on `SHIP`; a discussion node in the other templates; a shipped workflow that uses a
+  subworkflow (the waiting is tested with test graphs only); restoring an undo ref of an earlier restore from the page after the
+  dialog is closed (the ref is in the event, the audit row and the task channel).
