@@ -102,7 +102,7 @@ Refresh is scheduled (default 7 days for Cloudflare) or manual, runs with the ap
 
 ## 5. Retrieval
 
-`search_pack(query, pack_ids?, k)` and CONSULT both call one function. Query construction avoids FTS5 syntax injection: split on non-word characters, quote every token (`"tok"`), keep identifiers containing `.` or `_` (such as `wrangler.toml`) as phrase queries, append `*` to the final token, AND the terms first, and if fewer than `k` hits come back retry with OR. Ranking is `bm25(pack_chunks_fts, 4.0, 1.0)` (heading path weighted above body; lower is better), restricted to `version_removed IS NULL` and the requested packs, deduplicated to at most 2 chunks per page, with `snippet()` highlights. The result is `found: false` only when no chunk matches any query term; there is no embedding or semantic index in v1 (brief section 15). Hybrid packs query the local index first; when it returns fewer than `k` or `live.use` is `supplement`, the gateway calls the live tool and merges results marked `origin: live`.
+`search_pack(query, pack_ids?, k)` and CONSULT both call one function. Query construction avoids FTS5 syntax injection: split on non-word characters, quote every token (`"tok"`), keep identifiers containing `.` or `_` (such as `wrangler.toml`) as phrase queries, append `*` to the final token, AND the terms first, and if fewer than `k` hits come back retry with OR. Ranking is `bm25(pack_chunks_fts, 4.0, 1.0)` (heading path weighted above body; lower is better), restricted to `version_removed IS NULL` and the requested packs, deduplicated to at most 2 chunks per page, with `snippet()` highlights. The result is `found: false` only when no chunk matches any query term; there is no embedding or semantic index in v1 (brief section 15). Since decision P120 a person may have the passages BM25 found ranked again by meaning with the embedding model on their PC (opt-in, local only; no index: "As built: ranking by meaning", below). Hybrid packs query the local index first; when it returns fewer than `k` or `live.use` is `supplement`, the gateway calls the live tool and merges results marked `origin: live`.
 
 ## 6. CONSULT
 
@@ -249,7 +249,7 @@ Code: `internal/packs` (packs, chunker, fetcher, scanner, CONSULT/ATTACH, worksp
 
 **UI (built since).** The sidebar's Knowledge section has Expert packs (`/packs`: install, refresh, attach and detach, search, CONSULT, quarantined passages to release, remove), Requirements, Skills (repository scan, registries, import, accept, reject, release, deliveries and coverage) and Memory; Milestones is in the Project section (`ui/app/screens`).
 
-**Not built.** An embedding or semantic index (none planned in v1); OpenCode `instructions` globs in `opencode.json` (decided against in P110: OpenCode already finds the run-start copies in `.agents/skills` as skills of its own, and `instructions` would load every matched skill into every turn, which the P37 trial measured as the costly choice; Drydock's OpenCode configuration is also unverified with a real OpenCode); (PDF and DOCX sources, `git_docs` and the model-backed `Answerer` and `Summarizer` are built since, decision P110, below); per-skill script approval (scripts are never delivered); reading `references/` and `assets/` of a skill (only `SKILL.md` is stored); an HTTP proxy for the crawler (corporate proxies are unsupported because the connect-time address check cannot see through a proxy; `FetchPolicy.UseSystemProxy` exists and is off); Notion/Linear/GitHub requirement sync itself (the `Sync` entry point exists for the integrations worker); per-role default allowlists beyond the minimal one in [`mcp.md`](mcp.md) (read-only tools for every role, `search_pack` when a pack is attached); `search_pack` for any CLI other than Claude (their MCP configs are unverified, so they get no MCP).
+**Not built.** An embedding or semantic index (none planned in v1; ranking the passages BM25 found by meaning with a local embedding model is built since, decision P120, below); OpenCode `instructions` globs in `opencode.json` (decided against in P110: OpenCode already finds the run-start copies in `.agents/skills` as skills of its own, and `instructions` would load every matched skill into every turn, which the P37 trial measured as the costly choice; Drydock's OpenCode configuration is also unverified with a real OpenCode); (PDF and DOCX sources, `git_docs` and the model-backed `Answerer` and `Summarizer` are built since, decision P110, below); per-skill script approval (scripts are never delivered); reading `references/` and `assets/` of a skill (only `SKILL.md` is stored); an HTTP proxy for the crawler (corporate proxies are unsupported because the connect-time address check cannot see through a proxy; `FetchPolicy.UseSystemProxy` exists and is off); Notion/Linear/GitHub requirement sync itself (the `Sync` entry point exists for the integrations worker); per-role default allowlists beyond the minimal one in [`mcp.md`](mcp.md) (read-only tools for every role, `search_pack` when a pack is attached); `search_pack` for any CLI other than Claude (their MCP configs are unverified, so they get no MCP).
 
 **Unverified.** Everything on Windows (NTFS with Defender for FTS5, symlink refusal tests skip where symlinks are unavailable, path handling); the live structure of `developers.cloudflare.com` (`llms.txt`, per-product lists, `<page>/index.md`, robots Content-Signal), Learn's crawlability and terms, the real result shapes of both docs MCP servers; GitHub's API and codeload behaviour (fixture only; unauthenticated rate limits apply); the Claude `paths:` front-matter key, Codex/OpenCode/Antigravity reading `.agents/skills`, and Gemini/Goose loading nested instruction files just in time; chunk sizes, BM25 weights, stop words, the injection pattern list, weights and threshold (no measured false-positive rate), the 600-character limit and the confidence heuristic (no eval run); `skill.delivered` coverage numbers (nothing has run with a real agent that calls `skills`). Race detector: passed for packs, requirements, skills, context and memory; the core suite passes except that `TestRealClaudePlansATinyGoal` (needs a logged-in Claude) and a timing-sensitive plan test of another worker were not mine to judge (the latter passes when run alone).
 
@@ -340,3 +340,29 @@ for Windows (the http-backend fixture and `http.curloptResolve` need git 2.37 or
 as for the crawler) and of a private repository (no credentials); a provider failure during a consult is not retried on the
 router's next choice; files of 32 MB through the Wails bridge (base64 in one message) have not been tried in WebView2; no
 real model has answered a consult (only the test double).
+
+## As built: ranking by meaning with the local embedding model (2026-10-29, decision P120)
+
+The one use Drydock makes of the embedding server of [`local-models.md`](local-models.md) section 11. On the Models page's
+Embeddings group a person ticks **Rank pack searches by meaning** (the `local:settings` key `rankPacks`, off by default). While
+it is on and an embedding model is served, `packs.Store.Search` (behind `search_pack`, CONSULT and the page's search) has BM25
+find three times the passages asked for (at most 30, with the same AND-then-OR passes and two passages per page), sends the
+query and each passage's heading path and first 1,200 bytes to the embedding server in one `POST /v1/embeddings`
+(`localllm.Server.Embed`, 127.0.0.1 only, with the key only the core holds, 20 s at most), orders the passages by the cosine
+similarity of their vector to the query's (ties keep the BM25 order) and keeps the first `k`. The result says `reranked: true`
+and gives each hit its `similarity`; confidence is still the code's heuristic over the first hit. Off, with no embedding model
+served, or when the call fails (logged, redacted), the BM25 order stands, unchanged. Live results are not ranked (they come
+from their server in its own order). Nothing is stored: no vectors, no index, nothing to refresh; the cost is one embedding
+call per search over at most 31 short texts.
+
+Why this use: pack search is the one retrieval in Drydock that answers questions in words other than the documents' own
+(an agent asks "publish a worker", the docs say "deploy"), which BM25 cannot see and an embedding model can; it already has a
+bounded candidate set to order, and a fallback that is the current behaviour. Memory search (FTS5 over short facts the agents
+and the person wrote) was the other candidate the brief named; its entries are written in the project's own words and are
+few, so the gain is smaller. Tests: `internal/packs/rerank_test.go` (a labelled test double embedder whose vectors count two
+topics: the page about releasing comes before the page with the query's words in its heading, k kept from the larger pool, the
+BM25 order when the embedder is off or fails) and `internal/core/ext_localllm_embed_test.go` (the whole path through the RPC
+methods with the stand-in embedding server, whose vectors count shared words). **Not verified:** a real embedding model
+(Qwen3-Embedding, nomic-embed) on real packs: whether its order is better than BM25's for agents' questions has not been
+measured (no eval run), nor whether 1,200 bytes fit every embedding model's batch (llama-server's default physical batch is
+512 tokens; a longer passage is refused by the server, which falls back to BM25).

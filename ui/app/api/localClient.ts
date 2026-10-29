@@ -125,6 +125,8 @@ export interface LocalSettings {
   /** The embedding model served last, on its own server at embeddingPort. */
   embeddingModel?: string;
   embeddingPort?: number;
+  /** Pack searches are ranked by meaning with the embedding model while one is served (decision P120; off by default). */
+  rankPacks?: boolean;
 }
 
 /** The settings a person changes; a field left out stays as it is. */
@@ -136,6 +138,7 @@ export interface LocalSettingsEdit {
   port?: number;
   autostart?: boolean;
   embeddingPort?: number;
+  rankPacks?: boolean;
 }
 
 /** A model repository on the Hub. */
@@ -183,9 +186,13 @@ export interface LocalModel {
   projector?: string;
   /** An embedding model: served on its own, never for chat. */
   embedding?: boolean;
-  /** The downloaded models that can draft for it, and the one chosen. */
+  /** The downloaded models that can draft for it, and the one chosen ("mtp": its own MTP heads, decision P120). */
   drafts?: string[];
   draft?: string;
+  /** It carries its own multi-token prediction heads, which can draft for it (decision P120). */
+  mtp?: boolean;
+  /** An EAGLE-3 draft: it drafts for the model it was made for, and never chats (decision P120). */
+  eagle3?: boolean;
   /** What it takes loaded: its files, its KV cache and its draft's. */
   loadBytes?: number;
 }
@@ -207,6 +214,10 @@ export interface ServerState {
   models?: string[];
   router?: boolean;
   embeddings?: boolean;
+  /** The models the router is loading beside the ones it keeps (they are among models meanwhile), decision P120. */
+  loading?: string[];
+  /** Why the server was started again when a change of its models could not be made on it (decision P120). */
+  note?: string;
 }
 
 /** An agent, of any project, whose provider is the server's provider row. */
@@ -283,7 +294,7 @@ const view = (v: LocalView): LocalView => ({
   sources: arr(v.sources).map((s) => ({ ...s, cacheTypes: arr(s.cacheTypes) })),
   backends: arr(v.backends),
   models: arr(v.models).map((m) => ({ ...m, files: arr(m.files), drafts: arr(m.drafts) })),
-  server: { ...v.server, models: arr(v.server?.models) },
+  server: { ...v.server, models: arr(v.server?.models), loading: arr(v.server?.loading) },
   embed: { state: 'stopped', ...(v.embed ?? {}), models: arr(v.embed?.models) },
   load: v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 },
   hfToken: v.hfToken ?? { set: false },

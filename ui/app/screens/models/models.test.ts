@@ -7,7 +7,9 @@ import {
   compactCount,
   contextWords,
   deviceLine,
+  DRAFT_MTP,
   draftChoices,
+  draftWords,
   diskLine,
   fitWords,
   gb,
@@ -20,6 +22,7 @@ import {
   loadedIds,
   loadLine,
   loadToo,
+  loadTooTitle,
   localRow,
   memoryBar,
   memoryBars,
@@ -32,6 +35,7 @@ import {
   startedWords,
   switchChoices,
   tokenWords,
+  unloadTitle,
   usedByWords,
   usedOf,
   wholeNumber,
@@ -280,5 +284,37 @@ describe('Models on this PC helpers', () => {
     expect(tokenWords({ set: false })).toBe('none');
     expect(tokenWords(undefined)).toBe('none');
     expect(licenceUrl('meta-llama/Llama-3.2-1B')).toBe('https://huggingface.co/meta-llama/Llama-3.2-1B');
+  });
+
+  it('one model in or out of the router, and draft heads that are not models (decision P120)', () => {
+    const m = (over: Partial<LocalModel> = {}): LocalModel => ({ id: 'a/b:Q4', repo: 'a/b', variant: 'Q4', files: [], sizeBytes: 4 * GiB, downloadedAt: '', ...over });
+    // Load too and Unload say whether the others keep running
+    expect(loadTooTitle({ router: true })).toBe('Load it beside the models served: they keep running while it loads');
+    expect(loadTooTitle({ router: false })).toContain('the server starts again with both');
+    expect(loadTooTitle({})).toContain('starts again');
+    expect(unloadTitle({ router: true })).toBe('Unload it: the other models keep running');
+    expect(unloadTitle({})).toBe('Start the server again without this model');
+    // an EAGLE-3 draft is never loaded for chat
+    const running = { state: 'running' as const, modelId: 'x/y:Q4', models: ['x/y:Q4'], router: true };
+    expect(loadToo({ server: running }, m({ eagle3: true }))).toEqual({ ok: false, why: "An EAGLE-3 draft does not chat: choose it as its model's draft." });
+    // the choices: its own MTP heads first, an EAGLE-3 draft named so
+    const glm = m({ id: 'z/glm-GGUF:Q4', repo: 'z/glm-GGUF', mtp: true, drafts: [DRAFT_MTP] });
+    const qwen = m({ id: 'q/qwen-GGUF:Q4', repo: 'q/qwen-GGUF', drafts: ['q/qwen-eagle3-GGUF:BF16', 'q/small-GGUF:Q8_0'] });
+    const eagle = m({ id: 'q/qwen-eagle3-GGUF:BF16', repo: 'q/qwen-eagle3-GGUF', variant: 'BF16', eagle3: true });
+    const small = m({ id: 'q/small-GGUF:Q8_0', repo: 'q/small-GGUF', variant: 'Q8_0' });
+    const all = [glm, qwen, eagle, small];
+    expect(draftChoices(glm, all)).toEqual([
+      { value: '', label: 'No draft' },
+      { value: 'mtp', label: 'Its own MTP heads' },
+    ]);
+    expect(draftChoices(qwen, all)).toEqual([
+      { value: '', label: 'No draft' },
+      { value: 'q/qwen-eagle3-GGUF:BF16', label: 'EAGLE-3: qwen-eagle3 · BF16' },
+      { value: 'q/small-GGUF:Q8_0', label: 'Draft: small · Q8_0' },
+    ]);
+    expect(draftWords({ ...glm, draft: DRAFT_MTP }, all)).toBe('with MTP');
+    expect(draftWords({ ...qwen, draft: eagle.id }, all)).toBe('with EAGLE-3');
+    expect(draftWords({ ...qwen, draft: small.id }, all)).toBe('with a draft');
+    expect(draftWords(qwen, all)).toBeUndefined();
   });
 });

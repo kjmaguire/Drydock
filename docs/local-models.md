@@ -1,6 +1,8 @@
 # Drydock: models on your PC with llama.cpp (decision P65)
 
-Status (2026-10-15; several models, vision, drafts, embeddings and gated models added 2026-10-29, decision P111, section 11):
+Status (2026-10-15; several models, vision, drafts, embeddings and gated models added 2026-10-29, decision P111, section 11;
+one model loaded or unloaded beside the others, the embedding model ranking pack searches, MTP and EAGLE-3 draft heads added
+2026-10-29, decision P120, section 12):
 built and tested on Linux with labelled test doubles and protocol fixtures; nothing here has run against the real llama.cpp,
 GitHub or Hugging Face yet (see "Not verified").
 
@@ -136,15 +138,16 @@ Changing the cache type, the context size or the port takes effect at the next s
 
 | Setting | Default | Stored |
 |---|---|---|
-| Source | official | `settings` key `local:settings` (JSON: source, backend, cacheType, contextSize, port, modelId, providerId, autostart, loaded, drafts, embeddingModel, embeddingPort) |
+| Source | official | `settings` key `local:settings` (JSON: source, backend, cacheType, contextSize, port, modelId, providerId, autostart, loaded, drafts, embeddingModel, embeddingPort, rankPacks) |
 | Backend | the suggested one (CUDA with an NVIDIA driver, else Vulkan) | |
 | KV cache type | `q8_0` | |
 | Context size | 0: the model's own | |
 | Port | 9933 | |
 | Autostart | on (serves the models loaded last time, and the embedding model) | |
 | Models kept loaded | the ones served last (`loaded`; `modelId` is the first) | |
-| Draft model of a model | none (`drafts`, by the model's id) | |
+| Draft of a model | none (`drafts`, by the model's id: a draft model's id, or `mtp` for its own MTP heads) | |
 | Embedding model, embeddings port | the one served last; 9934 | |
+| Rank pack searches by meaning | off (`rankPacks`) | |
 | Embedding model or not | what the model's header says | the model's own `model.json` (`embedding`, the person's mark) |
 | Hugging Face token | none | the credential store (the vault: Windows Credential Manager), reference `localmodels:hf-token`; never in `settings` |
 
@@ -154,9 +157,10 @@ and take its GPU.
 ## 7. Interfaces
 
 Core methods (`internal/core/ext_localllm.go`, `ext_localllm_models.go`): `local.get` (the whole view: runtime, devices,
-models with fit, `kv`, `projector`, `embedding`, `drafts`, `draft` and `loadBytes`, downloads in progress (a download the Hub
+models with fit, `kv`, `projector`, `embedding`, `drafts`, `draft`, `loadBytes`, `mtp` and `eagle3`, downloads in progress (a download the Hub
 refused for a gated model has `licence`, its page), server state (with `startedAt`, `autostarted`: Drydock started it at its
-own start, the `cacheType` and `contextSize` it runs with, `models` it keeps loaded and `router`), `served` (the served models'
+own start, the `cacheType` and `contextSize` it runs with, `models` it keeps loaded, `router`, the models it is `loading` beside
+them and the `note` that says why it was started again when a change could not be made on it), `served` (the served models'
 `modelBytes`, `kvBytes` together, `kv`, `models`, and the `device`, gpu or ram, with its `deviceTotal` and `deviceFree` as read
 by the device probe, for the memory bar), `load` (`max`, `budgetBytes`, `loadedBytes`), `embed` (the embedding server's
 state), `hfToken` (`set`, `masked`), `usedBy` (every agent, of any project, whose provider is the server's row: `agentId`,
@@ -164,7 +168,7 @@ state), `hfToken` (`set`, `masked`), `usedBy` (every agent, of any project, whos
 `local.settings.set` (any subset of the settings), `local.models.suggested`, `local.models.search {query}`,
 `local.model.variants {repo}`, `local.model.download {repo, variant}`, `local.model.download.cancel {id}` (also clears a
 finished row), `local.model.remove {id}`, `local.server.start {modelId}` or `{modelIds}` (the models to keep loaded together),
-`local.server.stop`, `local.model.set {id, embedding?, draft?}`, `local.embeddings.start {modelId}`, `local.embeddings.stop`,
+`local.server.stop`, `local.model.set {id, embedding?, draft?}` (`draft: "mtp"` for a model's own MTP heads), `local.embeddings.start {modelId}`, `local.embeddings.stop`,
 `local.hfToken.set {token}`, `local.hfToken.remove`. Event: `local.changed` `{what: install | download | server | embeddings |
 settings | models, ...}`; progress is read from the view, not from events.
 
@@ -189,8 +193,15 @@ UI: Models on this PC, the this-pc detail of the Models page (`ui/app/screens/mo
   own, a gated model downloaded with the token (which is in no answer, setting or event).
 - `internal/providers/probe_test.go`: the llama-server probe, and the router's listing (only loaded models, each with its
   own context).
-- `ui/e2e/models.spec.ts` (Load too and Unload against the real core and the stand-in) and the page's browser tests, against
-  the e2e harness's fixtures.
+- `ui/e2e/models.spec.ts` (Load too and Unload against the real core and the stand-in: the first Load too starts the server
+  again as the router, then Unload and Load too run on it, as its log shows) and the page's browser tests, against the e2e
+  harness's fixtures.
+- Decision P120 (section 12): `internal/localllm/server_change_test.go` (one model loaded and unloaded on the running router
+  while the others answer, the router's calls in order, down to one model and back; what needs a restart, a server without the
+  calls, a model that fails to load), `draftheads_test.go` (MTP heads read from the header and the tensor list, a split file,
+  EAGLE-3 pairs, the spec types on the command line and in the preset), `internal/core/ext_localllm_inplace_test.go` (Load too
+  and Unload through the RPC methods without a new start or key, a restart that says why, the draft heads on the page's view)
+  and `ext_localllm_embed_test.go` (pack searches ranked by meaning).
 
 ## 9. Not verified
 
@@ -198,6 +209,14 @@ UI: Models on this PC, the this-pc detail of the Models page (`ui/app/screens/mo
   (`llama-b11669-bin-win-{cpu,vulkan,cuda-12.4,cuda-13.4,rocm-10.0}-x64.zip`, `cudart-llama-bin-win-cuda-*-x64.zip`), that
   `llama-server.exe` sits at the archive's top, that the CUDA build finds the cudart DLLs beside it, the `--list-devices`
   output, how long a real model takes to load, and that a real model answers tool calls through `--jinja`.
+- The router's `/models/load`, `/models/unload` and `GET /models?reload=1` against a real build (decision P120): their shapes
+  were read from `tools/server/README.md` and `tools/server/server-models.cpp` at b11936 and the TurboQuant fork's README at
+  b10298-2.0.0; that the fork's router reloads its preset the same way, that a kept model whose preset section is unchanged
+  stays loaded through the reload, and how long a real load takes beside running models were not seen. MTP heads and EAGLE-3
+  drafts on a real build: the flags (`--spec-type draft-mtp`, `draft-eagle3`), the architecture `eagle3` and the MTP tensor
+  name were read from both builds' `common/arg.cpp`, `common/speculative.cpp` and `src/llama-arch.cpp`; the fork names an
+  EAGLE-3 draft's layer list `eagle3.extract_layers` where b11936 names it `eagle3.target_layers`, so an EAGLE-3 file converted
+  for one may not load in the other (not seen either way); whether either speeds a real model up was not measured.
 - Router mode, projectors, drafts and embeddings against a real build: the flags and the preset keys were read from
   llama.cpp's `tools/server/README.md`, `common/arg.cpp` and `common/preset.cpp` at build b11936 and from the TurboQuant fork's
   README at b10298-2.0.0 (both have `--models-preset`, `--models-max`, `--mmproj`, `--model-draft`, `--spec-type
@@ -211,19 +230,23 @@ UI: Models on this PC, the this-pc detail of the Models page (`ui/app/screens/mo
 - The owner must run it once on the PC: install (Vulkan or CUDA), download a small model (ggml-org's gpt-oss-20b at MXFP4
   is 12 GB; a Qwen3 4B at Q4_K_M is 2.5 GB), serve it, run Test on the provider, and give one task to an agent on it; then
   Load too a second small model, a vision model (ggml-org's gemma-3-4b-it), a draft pair (a Qwen3 0.6B for a Qwen3 8B) and
-  an embedding model (Qwen3-Embedding-0.6B), and a gated model with a token.
+  an embedding model (Qwen3-Embedding-0.6B), and a gated model with a token; with three loaded, Unload one and Load too it
+  again while an agent works on another (decision P120), choose a model's own MTP heads and an EAGLE-3 draft (AngelSlim's
+  Qwen3-4B one, converted for the installed build), and search a pack with ranking by meaning on and off.
 
 ## 10. Not built
 
 - Linux and macOS: the archives offered are Windows x64 only (Drydock is Windows-only; the development host runs the
   stand-in).
-- Loading or unloading one model while the others keep running: a change to the models kept loaded starts the server again
-  on the new set (the router's `/models/load` and `/models/unload` are not used), so every model loads again.
-- Anything in Drydock that reads embeddings: the embedding server answers `/v1/embeddings` with a key of its own that only the
-  core holds, and is no provider (the router would offer it for chat, which it cannot answer).
 - A projector's memory in the KV estimate: its file is counted with the model's, the memory it takes beyond that is not (as
-  in llama.cpp's own router measurements); the draft's KV cache is estimated like any model's.
-- Draft heads that are not models (MTP, EAGLE-3, DFlash): only a smaller model of the same family drafts.
+  in llama.cpp's own router measurements); the draft's KV cache is estimated like any model's, the MTP context's is not.
+- DFlash and DSpark drafts (both builds have `draft-dflash` and `draft-dspark`; their examples also set `--spec-draft-n-max`
+  and `-fa on`, which Drydock does not choose for a person), and an MTP head shipped as a file of its own (`--mtp-head`): only
+  a model that carries its heads, an EAGLE-3 draft and a smaller model of the same family draft (decision P120).
+- The first Load too on a server of one model starts it again as the router (a server of one model has no router calls); from
+  then on models are loaded and unloaded on it. The provider's catalog keeps a model the router no longer lists, as for every
+  provider (`UpsertModels`); the router refuses a request for it.
+- An embedding index: the embedding model only orders the passages BM25 found (section 12).
 
 ## 11. Several models, vision, drafts, embeddings and gated models (decision P111)
 
@@ -236,7 +259,7 @@ too disabled, its reason as the tooltip) and by the core (`local.server.start` w
 refused (the fit stays a hint). Two models or more run llama-server's router mode:
 
 ```
-llama-server --host 127.0.0.1 --port 9933 --models-preset <data>\local-models\router\models.ini --models-max 2 --jinja --no-webui
+llama-server --host 127.0.0.1 --port 9933 --models-preset <data>\local-models\router\models.ini --models-max 4 --jinja --no-webui
              -ngl auto -ctk q8_0 -ctv q8_0 [-c <context>]
 ```
 
@@ -247,7 +270,8 @@ reader ends a value at `;` or `#`, so a path holding one is refused rather than 
 says every model is `loaded`; one whose instance ends fails the start with its name. The provider is the same row: the probe
 reads the router's listing, offers each model that is loaded (or asleep), never one loading, unloaded or failed, and reads each
 one's context from `/props?model=`, since the router's own `/props` names none. A request names its model in the `model`
-field, which Drydock's wire layer always sends.
+field, which Drydock's wire layer always sends. A change to the set while the router runs is made on it, one model at a time (decision
+P120, section 12).
 
 **Vision.** A repository's projector (`mmproj`, the one in the variant's folder first, F16 before BF16 before Q8_0) is
 downloaded and checked with each variant, counted in its size, kept in its `model.json`, and passed with `--mmproj` (one
@@ -264,7 +288,7 @@ fits is left out at the start, and logged; a draft cannot be removed while its m
 model; the person can say otherwise with the row's "Embedding model" box (kept in the model's `model.json`). An embedding
 model is never served for chat and is not among the models kept loaded: **Serve embeddings** starts a second llama-server of
 its own, with `--embeddings` and without `--jinja`, at the embeddings port (9934), with a key of its own for every start. The
-Embeddings group shows it and Stop. It is not a provider (see section 10).
+Embeddings group shows it and Stop. It is not a provider (the router would offer it for chat, which it cannot answer); its one use is ranking pack searches (section 12).
 
 **Gated models.** The Hub's listing marks a gated repository (`gated`: "auto" or "manual"), which the page shows. Without a
 token the download is refused before anything is fetched: "<repo> is a gated model: Hugging Face shares its files only with an
@@ -275,3 +299,43 @@ shown as `hf_…1234`, and removable. It is sent as `Authorization: Bearer` only
 own; a redirect to another host (the Hub sends the bytes from a CDN at a signed address) drops it, since Go would keep it for
 a subdomain such as `cdn-lfs.huggingface.co`. Listings never carry it. A download the Hub refuses (401 without a token, 403 for
 an account without access) says which, with the page to accept the licence on.
+
+## 12. One model in or out of the router, embeddings in use, MTP and EAGLE-3 drafts (decision P120)
+
+**One model in or out while the others run.** While the router runs, Load too and Unload (and Serve or Switch model to another
+set) change it in place (`localllm.Server.Change`): the models that go are unloaded (`POST /models/unload {model}`), the preset
+is written with the new set and read again (`GET /models?reload=1`: a model taken out is dropped from the listing, a new one is
+listed unloaded), each model that comes is loaded (`POST /models/load {model}`), and the call waits until the listing says each
+is `loaded`, as llama.cpp's `tools/server/README.md` and `server-models.cpp` at b11936 describe them (the fork's README at
+b10298-2.0.0 has the same calls). Meanwhile the models kept answer as before, the server's state lists the ones `loading`
+(their rows say "loading"), and the process, its start time and its key stay the same, so the provider row is only probed
+again. The router is started with `--models-max 4` (not the number it starts with), so loading one more never makes it unload
+the one used least recently; down to one model it stays a router, so the next Load too is again in place. A change that cannot
+be made there starts the server again on the new set as before: a server of one model (it has no router), a setting of the
+router's command line changed since the start (cache type, context, port, the build), or a kept model whose section of the
+preset changed (its draft or projector), since the router would unload it anyway. A server that does not answer the calls as
+documented (a 404 for the call, an error, no answer) is started again too, and then says so: the Server group shows the note
+"Started again on the new set of models: <what it answered>." and the log has the line. A model that fails to load (its
+instance ends) fails the change with its name and leaves the others loaded. The page's tooltips say which: "Load it beside the
+models served: they keep running while it loads", "Unload it: the other models keep running", and on a server of one model
+"the server starts again with both".
+
+**The embedding server in use.** Its one use is ranking pack searches by meaning, the person's choice ("Rank pack searches by
+meaning" under Embeddings, `rankPacks`, off by default): see [`expert-packs.md`](expert-packs.md), "As built: ranking by meaning".
+`localllm.Server.Embed` is its client: at most 64 texts a call, 127.0.0.1, the key of the embedding server's start, 20 s.
+
+**MTP heads.** A model whose GGUF header names MTP layers (`<arch>.nextn_predict_layers`) and whose tensor list holds the tensor
+llama.cpp itself looks for (`blk.<last block>.nextn.eh_proj.weight`, in `common_speculative_types_from_gguf`; for a model split
+into several files, in any of them) carries its own multi-token prediction heads (GLM-4.5 and Qwen3.5 among them, when their
+converter kept them): the row says "MTP" and its Draft choice offers "Its own MTP heads" (`drafts` holds `mtp`). Chosen, the
+model runs with `--spec-type draft-mtp` and no draft file (both builds create the MTP context against the model itself), in the
+preset `spec-type = draft-mtp`. A model that names the layers without the tensors (left out by its converter) is not offered
+them, and a person cannot choose them for it.
+
+**EAGLE-3 drafts.** A downloaded model of architecture `eagle3` is an EAGLE-3 draft: a one-layer model converted for one target
+(`convert_hf_to_gguf.py --target-model-dir`), whose tokenizer it inherits. It is offered as the draft of a model with that
+tokenizer (the checks of a draft model: kind, size within 128 tokens, the same first and last tokens, at most half the size) and,
+when the file gives it (`eagle3.target_hidden_size`, the TurboQuant build's key), the same embedding length; the family rule
+does not apply to it. Chosen, the model runs with `--model-draft <file> --spec-type draft-eagle3`. The draft's row says
+"EAGLE-3 draft" and "drafts for its model": it is never served for chat (refused by the core too), has no Load too and no
+embedding mark. Neither build infers a spec type from an EAGLE-3 file, so it is always named.

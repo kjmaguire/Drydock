@@ -1617,3 +1617,34 @@ Open, owner action:
   **Not built:** cutting review and role prompts, a separate turn that asks for a handoff, a per-criterion acceptance status, a
   tokenizer. **Not verified:** a real agent writing a handoff with the tool (the tests store one the way the tool does), any
   effect on what a task costs (no eval run), Windows.
+- **P120. Local models: one model loaded or unloaded beside the others, the embedding server ranks pack searches, MTP and
+  EAGLE-3 drafts (2026-10-29).** On the owner's word, answering the list of what is still not built: "Yes" to building the
+  whole group that can be built now (`docs/local-models.md` section 10 and P111's not-built list). (1) **One model in or out
+  while the others run**: while the router runs, a change to the models kept loaded is made on it with llama.cpp's own calls
+  (`POST /models/unload`, the preset written and read again with `GET /models?reload=1`, `POST /models/load`, then the wait for
+  the listing to say `loaded`), as `tools/server/README.md` and `server-models.cpp` at b11936 and the TurboQuant fork's README
+  at b10298-2.0.0 describe them; the process, its key and the models kept stay; the router is started with `--models-max 4`
+  and stays one with one model left. A server of one model, a changed setting of the router's command line or a kept model
+  whose draft or projector changed starts the server again as before; a server that does not answer the calls as documented
+  is started again too and says so (the server's `note`, the log). The labelled stand-in answers the calls as
+  `server-models.cpp` does (the least recently loaded model unloaded past `--models-max`, `--no-router-calls` for a build
+  without them). (2) **The embedding server's use**: ranking a pack search by meaning, opt-in (`rankPacks`, off by default),
+  local only: BM25 finds three times the passages asked for (at most 30), the embedding server embeds the query and each
+  passage's heading and first 1,200 bytes in one call, the passages are ordered by cosine similarity and the first k kept; with
+  it off, no embedding model served or a failed call, the BM25 order stands. No vector is stored: no index. Chosen over
+  re-ranking memory search because pack search is where questions and documents use different words (an agent's "publish a
+  worker" against the docs' "deploy") and BM25 already gives a bounded candidate set with today's order as the fallback;
+  memory entries are short and in the project's own words. (3) **Draft heads that are not models**, both supported by both
+  builds Drydock installs (read in their `common/arg.cpp`, `common/speculative.cpp` and `src/llama-arch.cpp`): a model whose
+  GGUF names MTP layers and lists the last block's `nextn.eh_proj` tensor (any file of a split model) offers "Its own MTP heads"
+  as its draft (`drafts: {id: "mtp"}`) and runs with `--spec-type draft-mtp`; an EAGLE-3 draft (architecture `eagle3`) is
+  offered to the model with its tokenizer and, when the file says it, its embedding length, runs with `--model-draft` and
+  `--spec-type draft-eagle3`, and is never served for chat. The Models page marks both ("MTP", "EAGLE-3 draft", "with MTP",
+  "with EAGLE-3"). No migration (settings JSON and the GGUF header), no new dependency, no new RPC method (a `rankPacks`
+  setting, `local.model.set` with `draft: "mtp"`, the server state's `loading` and `note`, the models' `mtp` and `eagle3`).
+  Details: `local-models.md` section 12, `expert-packs.md` "As built: ranking by meaning". **Not built:** DFlash and DSpark
+  drafts and an MTP head shipped as a file of its own; the first Load too on a server of one model still starts it again (it
+  has no router); the MTP context's memory in the estimate; an embedding index; the provider's catalog keeps a model the router
+  no longer lists (as for every provider). **Not verified:** all of it against a real llama.cpp build (the router's calls, a
+  reload that keeps a loaded model, MTP and EAGLE-3 runs, the fork's EAGLE-3 key `extract_layers` against b11936's
+  `target_layers`), a real embedding model's order against BM25's (no eval run), Windows.
