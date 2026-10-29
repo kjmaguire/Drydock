@@ -10,7 +10,7 @@ import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
-import { Checkbox, Field, formActions } from '../../ui/form.tsx';
+import { Checkbox, Field, errorAttrs, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
@@ -635,10 +635,14 @@ function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
   let pickError = '';
   let idError = '';
   let done = '';
+  let form: HTMLFormElement | undefined;
+  let filesInput: HTMLInputElement | undefined;
   const set = (fn: () => void) => {
     fn();
     void handle.update();
   };
+  // a field the page refused gets the keyboard, as every form here does
+  const focusInvalid = () => handle.queueTask(() => form?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
   return () => {
     const busy = act.busy !== '';
     const effectiveId = idEdited ? id : packIdFromTitle(title);
@@ -647,16 +651,19 @@ function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
         mix={[
           card,
           formCss,
+          ref((n) => (form = n as HTMLFormElement)),
           on('submit', async (e) => {
             e.preventDefault();
             if (busy) return;
             if (!validPackId(effectiveId)) {
               set(() => (idError = 'The id is 2 to 40 lowercase letters, digits and hyphens, starting with a letter.'));
+              focusInvalid();
               return;
             }
             const err = checkPackFiles(picked.map((f) => ({ name: f.name, size: f.data.length })));
             if (err) {
               set(() => (pickError = err));
+              focusInvalid();
               return;
             }
             const made = await act.run('make', () => s.client.packCreateFromFiles({ id: effectiveId, title: title.trim() || effectiveId }, picked));
@@ -668,6 +675,7 @@ function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
               id = '';
               idEdited = false;
               picked = [];
+              if (filesInput) filesInput.value = '';
             });
             handle.props.onMade();
           }),
@@ -683,8 +691,7 @@ function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
               <input
                 id={fid}
                 value={effectiveId}
-                aria-invalid={idError ? 'true' : undefined}
-                aria-describedby={idError ? `${fid}-error` : undefined}
+                {...errorAttrs(fid, idError)}
                 mix={on('input', (e) => set(() => ((id = e.currentTarget.value), (idEdited = true), (idError = ''))))}
               />
             )}
@@ -697,12 +704,15 @@ function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
               type="file"
               multiple
               accept={PACK_FILE_ACCEPT}
-              aria-invalid={pickError ? 'true' : undefined}
-              mix={on('change', async (e) => {
-                const el = e.currentTarget as HTMLInputElement;
-                const { files, error } = await readPicked(el.files);
-                set(() => ((picked = files), (pickError = error), (done = '')));
-              })}
+              {...errorAttrs(fid, pickError)}
+              mix={[
+                ref((n) => (filesInput = n as HTMLInputElement)),
+                on('change', async (e) => {
+                  const el = e.currentTarget as HTMLInputElement;
+                  const { files, error } = await readPicked(el.files);
+                  set(() => ((picked = files), (pickError = error), (done = '')));
+                }),
+              ]}
             />
           )}
         </Field>

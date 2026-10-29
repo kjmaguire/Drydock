@@ -327,6 +327,7 @@ describe('Packs made from files', () => {
     await r.act(() => byText(form, 'button', 'Make the pack').click());
     await waitFor(() => expect(form.textContent).toContain('The id is 2 to 40 lowercase letters'), r);
     expect(byLabel(form, 'Pack id').getAttribute('aria-invalid')).toBe('true');
+    await waitFor(() => expect(document.activeElement).toBe(byLabel(form, 'Pack id')), r);
     expect(made).toEqual([]);
   });
 
