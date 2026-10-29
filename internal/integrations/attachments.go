@@ -33,6 +33,9 @@ type RawAttachment struct {
 	Size         int64
 	URL          string
 	Downloadable bool
+	// Source is where on the item it was found (decision P122): "issue", "event", "property", "page body", "issue body",
+	// "finding".
+	Source string
 }
 
 // attachmentSource is an adapter that can list and download an item's attachments.
@@ -60,18 +63,19 @@ type Attachment struct {
 	Listed        int64  `json:"listedAt"`
 	Downloaded    int64  `json:"downloadedAt,omitempty"`
 	DownloadedBy  string `json:"downloadedBy,omitempty"`
+	Source        string `json:"source,omitempty"`
 	Untrusted     bool   `json:"untrusted"` // always true
 }
 
 // EventAttachmentDownloaded records a person's download (ids, size and hash; never the content).
 const EventAttachmentDownloaded = "integration.attachment.downloaded"
 
-const attCols = `id,item_id,integration_id,external_id,name,mime,size,url,downloadable,local_path,sha256,text_kept,redactions,risk,listed_at,downloaded_at,downloaded_by`
+const attCols = `id,item_id,integration_id,external_id,name,mime,size,url,downloadable,local_path,sha256,text_kept,redactions,risk,listed_at,downloaded_at,downloaded_by,source`
 
 func scanAttachment(r rowScanner) (Attachment, error) {
 	var a Attachment
 	var dl, tk int
-	err := r.Scan(&a.ID, &a.ItemID, &a.IntegrationID, &a.ExternalID, &a.Name, &a.Mime, &a.Size, &a.URL, &dl, &a.LocalPath, &a.SHA256, &tk, &a.Redactions, &a.Risk, &a.Listed, &a.Downloaded, &a.DownloadedBy)
+	err := r.Scan(&a.ID, &a.ItemID, &a.IntegrationID, &a.ExternalID, &a.Name, &a.Mime, &a.Size, &a.URL, &dl, &a.LocalPath, &a.SHA256, &tk, &a.Redactions, &a.Risk, &a.Listed, &a.Downloaded, &a.DownloadedBy, &a.Source)
 	a.Downloadable, a.TextKept, a.Untrusted = dl != 0, tk != 0, true
 	return a, err
 }
@@ -105,9 +109,9 @@ func (s *Store) GetAttachment(ctx context.Context, id string) (Attachment, error
 
 func (s *Store) upsertAttachment(ctx context.Context, a Attachment) error {
 	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO integration_attachments(id,item_id,integration_id,external_id,name,mime,size,url,downloadable,listed_at) VALUES(?,?,?,?,?,?,?,?,?,?)
-			ON CONFLICT(item_id,external_id) DO UPDATE SET name=excluded.name, mime=excluded.mime, size=excluded.size, url=excluded.url, downloadable=excluded.downloadable, listed_at=excluded.listed_at`,
-			a.ID, a.ItemID, a.IntegrationID, a.ExternalID, a.Name, a.Mime, a.Size, a.URL, b2i(a.Downloadable), a.Listed)
+		_, err := tx.ExecContext(ctx, `INSERT INTO integration_attachments(id,item_id,integration_id,external_id,name,mime,size,url,downloadable,listed_at,source) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+			ON CONFLICT(item_id,external_id) DO UPDATE SET name=excluded.name, mime=excluded.mime, size=excluded.size, url=excluded.url, downloadable=excluded.downloadable, listed_at=excluded.listed_at, source=excluded.source`,
+			a.ID, a.ItemID, a.IntegrationID, a.ExternalID, a.Name, a.Mime, a.Size, a.URL, b2i(a.Downloadable), a.Listed, a.Source)
 		return err
 	})
 }
@@ -179,7 +183,7 @@ func (s *Service) RefreshAttachments(ctx context.Context, by, itemID string) ([]
 			break
 		}
 		a := Attachment{ID: ids.New("att"), ItemID: it.ID, IntegrationID: conn.ID, ExternalID: clampText(r.ExternalID, 200), Name: s.san.Line(ctx, r.Name, 160).Text,
-			Mime: cleanMime(r.Mime), Size: r.Size, URL: validHTTPURL(r.URL), Downloadable: r.Downloadable, Listed: s.nowMS()}
+			Mime: cleanMime(r.Mime), Size: r.Size, URL: validHTTPURL(r.URL), Downloadable: r.Downloadable, Listed: s.nowMS(), Source: r.Source}
 		if a.Size < 0 {
 			a.Size = 0
 		}

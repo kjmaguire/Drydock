@@ -212,7 +212,7 @@ func (s *Service) api(ctx context.Context, c Connection) (*API, *Failure) {
 			}
 			return nil, &Failure{Code: CodeUnauthorized, Cause: err, Message: "The GitHub sign-in cannot be read. Sign in with GitHub again on the Integrations page."}
 		}
-		return &API{Conn: c, GH: host.HTTPAPI{BaseURL: apiBase(c), Token: strings.TrimPrefix(auth, "Bearer "), Client: s.hc}}, nil
+		return &API{Conn: c, GH: host.HTTPAPI{BaseURL: apiBase(c), Token: strings.TrimPrefix(auth, "Bearer "), Client: s.hc}, DL: s.dl}, nil
 	}
 	if c.Kind == KindGitHub {
 		if s.o.GitHub == nil {
@@ -222,7 +222,7 @@ func (s *Service) api(ctx context.Context, c Connection) (*API, *Failure) {
 		if err != nil || gh == nil {
 			return nil, &Failure{Code: CodeUnreachable, Cause: err, Message: "The GitHub CLI (gh) is not installed. Install it from https://cli.github.com and run `gh auth login`."}
 		}
-		return &API{Conn: c, GH: gh}, nil
+		return &API{Conn: c, GH: gh, DL: s.dl}, nil
 	}
 	if c.CredentialRef == "" {
 		return nil, &Failure{Code: CodeUnauthorized, Cause: ErrNoCredential, Message: "No credential is stored for " + vendor(c.Kind) + ". Reconnect it on the Integrations page."}

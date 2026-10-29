@@ -72,7 +72,7 @@ func (sentryAdapter) Attachments(ctx context.Context, a *API, cfg map[string]str
 			continue
 		}
 		size, _ := num(m["size"])
-		out = append(out, RawAttachment{ExternalID: proj + "/" + ev + "/" + id, Name: firstNonEmpty(str(m["name"]), id), Mime: str(m["mimetype"]), Size: size, Downloadable: true})
+		out = append(out, RawAttachment{ExternalID: proj + "/" + ev + "/" + id, Name: firstNonEmpty(str(m["name"]), id), Mime: str(m["mimetype"]), Size: size, Downloadable: true, Source: "event"})
 	}
 	return out, nil
 }

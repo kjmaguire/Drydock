@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -42,6 +43,21 @@ import (
 // a re-serialized body, Drydock checks the raw body as sent. Notion's (X-Notion-Signature: "sha256=" + hex HMAC-SHA256 of the raw
 // body keyed with the verification token; the one-time {"verification_token": ...} request) are from memory of Notion's
 // documentation, which could not be read from the build machine: unverified.
+//
+// Decision P122 adds two more. GitHub's, from its webhook documentation (docs.github.com "Validating webhook deliveries"):
+// X-Hub-Signature-256 = "sha256=" + hex HMAC-SHA256 of the raw body with the webhook's secret, X-GitHub-Event names the event and
+// X-GitHub-Delivery is a GUID per delivery (the replay guard). GitHub signs no timestamp, so the window is checked against the
+// updated_at of the issue or comment in the signed body (an hour: a person redelivering an old delivery from GitHub's page is
+// refused as stale; the item is read through the API anyway, so a replay could only cause a read). A person who has no tunnel
+// can use GitHub's own forwarder, the gh extension cli/gh-webhook (`gh webhook forward --repo --events --url --secret`, meant for
+// testing by GitHub), which connects out to GitHub and posts to this receiver; Drydock shows the command and never runs it.
+// Aikido's, from search-engine extracts of apidocs.aikido.dev "Verifying incoming webhooks" and help.aikido.dev "Aikido
+// webhooks" (neither page could be opened from the build machine): X-Aikido-Webhook-Signature is an HMAC-SHA256 of the body
+// with the signing secret created in Aikido (whether it is hex or base64 is not stated; both are accepted), and the body carries
+// event_type (issue.open.created, ...), created_at, dispatched_at (an epoch time; Aikido says to refuse one older than 30
+// seconds), workspace_id and payload {issue_id, severity, status, ...}. Aikido documents no delivery id, so the replay guard is
+// the hash of the signed body. Aikido's API reads findings only as one export, so a delivery queues a sync of the connection,
+// not of one item. Unverified against the live services.
 
 const (
 	hookEnabledKey   = "integrations.webhooks.enabled"
@@ -50,6 +66,8 @@ const (
 	maxHookQueue     = 500
 	hookWindowLinear = time.Minute
 	hookWindow       = 5 * time.Minute
+	hookWindowGitHub = time.Hour
+	hookWindowAikido = 30 * time.Second
 )
 
 // Webhook delivery outcomes.
@@ -73,12 +91,22 @@ var hookKinds = map[string]struct{ Header, Secret, Where string }{
 	KindLinear: {Header: "Linear-Signature", Secret: "signing secret", Where: "Linear: Settings > API > Webhooks > New webhook; copy its signing secret."},
 	KindSentry: {Header: "Sentry-Hook-Signature", Secret: "client secret", Where: "Sentry: Settings > Developer Settings > your integration (with the issue webhook); copy its client secret."},
 	KindNotion: {Header: "X-Notion-Signature", Secret: "verification token", Where: "Notion: your integration's Webhooks tab > Create a subscription with this address; Notion then sends a verification token, which appears here to use and to paste back into Notion."},
+	KindGitHub: {Header: "X-Hub-Signature-256", Secret: "webhook secret", Where: "GitHub: the repository's Settings > Webhooks > Add webhook (content type application/json, the events Issues and Issue comments) with a secret you choose, pasted here too. Without a tunnel of your own, GitHub's forwarder for testing can bring the deliveries: run the command below (it needs `gh extension install cli/gh-webhook`)."},
+	KindAikido: {Header: "X-Aikido-Webhook-Signature", Secret: "signing secret", Where: "Aikido: Integrations > Webhooks > add a webhook with this address and the issue events; copy the signing secret it shows once."},
 }
+
+// hookOrder is the order the receiver's endpoints are listed in.
+var hookOrder = []string{KindLinear, KindSentry, KindNotion, KindGitHub, KindAikido}
+
+// githubHookEvents are the GitHub events whose deliveries name an issue.
+const githubHookEvents = "issues,issue_comment"
 
 type hookJob struct {
 	IntegrationID string
 	ExternalID    string
 	At            int64
+	// Whole means the connection is synced, not one item: Aikido reads findings only as one export.
+	Whole bool
 }
 
 type notionPending struct {
@@ -109,6 +137,9 @@ type WebhookEndpoint struct {
 	Secret        string `json:"secret"` // what the secret is called at the vendor (never its value)
 	Header        string `json:"header"`
 	Where         string `json:"where"`
+	// Commands are what the person can run on this computer to bring the deliveries without a tunnel (GitHub's forwarder, one
+	// per assigned repository); Drydock never runs them. The secret is a placeholder.
+	Commands []string `json:"commands,omitempty"`
 }
 
 // WebhookDelivery is one answered delivery, without its body.
@@ -168,7 +199,7 @@ func (s *Service) WebhookStatus(ctx context.Context) (WebhookStatus, error) {
 	if err != nil {
 		return st, err
 	}
-	for _, k := range []string{KindLinear, KindSentry, KindNotion} {
+	for _, k := range hookOrder {
 		h := hookKinds[k]
 		ep := WebhookEndpoint{Kind: k, Label: vendor(k), Path: "/hooks/" + k, Secret: h.Secret, Header: h.Header, Where: h.Where}
 		if st.Address != "" {
@@ -179,6 +210,9 @@ func (s *Service) WebhookStatus(ctx context.Context) (WebhookStatus, error) {
 				ep.IntegrationID = c.ID
 				ep.HasSecret = s.hookSecret(ctx, c.ID) != ""
 			}
+		}
+		if k == KindGitHub && ep.IntegrationID != "" && ep.URL != "" {
+			ep.Commands = s.githubForwardCommands(ctx, ep.IntegrationID, ep.URL)
 		}
 		st.Endpoints = append(st.Endpoints, ep)
 	}
@@ -356,7 +390,39 @@ func (s *Service) UseNotionVerification(ctx context.Context, by string) error {
 var hookIDRe = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,100}$`)
 var hookItemRe = regexp.MustCompile(`^[A-Za-z0-9-]{1,100}$`)
 
-// WebhookHandler answers POST /hooks/linear, /hooks/sentry and /hooks/notion.
+// githubItemRe is a GitHub item's id as sync stores it: owner/repo#number, lower case.
+var githubItemRe = regexp.MustCompile(`^[a-z0-9_.-]{1,100}/[a-z0-9_.-]{1,100}#[0-9]{1,10}$`)
+
+var githubRepoRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$`)
+
+func hookKey(integrationID, externalID string, whole bool) string {
+	if whole {
+		return integrationID + "/*"
+	}
+	return integrationID + "/" + externalID
+}
+
+// githubForwardCommands are the gh webhook forward commands for the repositories the GitHub connection is assigned (a
+// placeholder repository when it is assigned none). The secret is never put in them.
+func (s *Service) githubForwardCommands(ctx context.Context, integrationID, hookURL string) []string {
+	asgs, _ := s.st.ListAssignments(ctx, integrationID)
+	var out []string
+	seen := map[string]bool{}
+	for _, a := range asgs {
+		repo := a.Config["repo"]
+		if !githubRepoRe.MatchString(repo) || seen[repo] {
+			continue
+		}
+		seen[repo] = true
+		out = append(out, fmt.Sprintf("gh webhook forward --repo=%s --events=%s --url=%s --secret=<the same secret>", repo, githubHookEvents, hookURL))
+	}
+	if len(out) == 0 {
+		out = append(out, fmt.Sprintf("gh webhook forward --repo=OWNER/REPO --events=%s --url=%s --secret=<the same secret>", githubHookEvents, hookURL))
+	}
+	return out
+}
+
+// WebhookHandler answers POST /hooks/linear, /hooks/sentry, /hooks/notion, /hooks/github and /hooks/aikido.
 func (s *Service) WebhookHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		kind, ok := strings.CutPrefix(r.URL.Path, "/hooks/")
@@ -384,6 +450,17 @@ func hmacHex(secret string, body []byte) string {
 
 func sigEqual(got, want string) bool {
 	return hmac.Equal([]byte(strings.ToLower(strings.TrimSpace(got))), []byte(want))
+}
+
+// sigEqualB64 compares a base64 signature (Aikido does not say whether its digest is hex or base64).
+func sigEqualB64(got, secret string, body []byte) bool {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(got))
+	if err != nil {
+		return false
+	}
+	m := hmac.New(sha256.New, []byte(secret))
+	m.Write(body)
+	return hmac.Equal(raw, m.Sum(nil))
 }
 
 // receive checks one delivery and queues the item it names. It returns the HTTP status and the outcome.
@@ -440,10 +517,10 @@ func (s *Service) receive(ctx context.Context, kind string, r *http.Request) (in
 	if sig == "" || secret == "" {
 		return refuse(http.StatusUnauthorized, HookUnsigned, conn.ID)
 	}
-	if kind == KindNotion {
+	if kind == KindNotion || kind == KindGitHub {
 		sig = strings.TrimPrefix(strings.TrimSpace(sig), "sha256=")
 	}
-	if !sigEqual(sig, hmacHex(secret, body)) {
+	if !sigEqual(sig, hmacHex(secret, body)) && !(kind == KindAikido && sigEqualB64(sig, secret, body)) {
 		return refuse(http.StatusUnauthorized, HookBadSignature, conn.ID)
 	}
 	// verified: the body is the vendor's, still only a hint
@@ -456,6 +533,7 @@ func (s *Service) receive(ctx context.Context, kind string, r *http.Request) (in
 	var ts time.Time
 	var deliveryID, ext string
 	window := hookWindow
+	whole := false
 	switch kind {
 	case KindLinear:
 		window = hookWindowLinear
@@ -502,6 +580,38 @@ func (s *Service) receive(ctx context.Context, kind string, r *http.Request) (in
 		case strings.HasPrefix(typ, "comment."):
 			ext = str(asMap(p["data"])["page_id"])
 		}
+	case KindGitHub:
+		window = hookWindowGitHub
+		deliveryID = r.Header.Get("X-GitHub-Delivery")
+		event := r.Header.Get("X-GitHub-Event")
+		if event == "ping" {
+			// sent once when the webhook is created: it names nothing and carries no time
+			ts = now
+			break
+		}
+		issue := asMap(p["issue"])
+		stamp := issue["updated_at"]
+		if c := asMap(p["comment"]); event == "issue_comment" && c != nil && c["updated_at"] != nil {
+			stamp = c["updated_at"]
+		}
+		if t := millis(stamp); t > 0 {
+			ts = time.UnixMilli(t)
+		}
+		// a pull request's comment arrives as issue_comment on an issue with pull_request set: pull requests are not items
+		if (event == "issues" || event == "issue_comment") && issue["pull_request"] == nil {
+			if n, ok := num(issue["number"]); ok && n > 0 {
+				ext = fmt.Sprintf("%s#%d", strings.ToLower(str(asMap(p["repository"])["full_name"])), n)
+			}
+		}
+	case KindAikido:
+		window = hookWindowAikido
+		if t := millis(p["dispatched_at"]); t > 0 {
+			ts = time.UnixMilli(t)
+		}
+		if strings.HasPrefix(str(p["event_type"]), "issue.") {
+			ext = str(asMap(p["payload"])["issue_id"])
+			whole = true
+		}
 	}
 	if ts.IsZero() || now.Sub(ts) > window || ts.Sub(now) > window {
 		return refuse(http.StatusBadRequest, HookStale, conn.ID)
@@ -512,8 +622,8 @@ func (s *Service) receive(ctx context.Context, kind string, r *http.Request) (in
 	} else {
 		key += "body-" + hashHex(string(body))[:32]
 	}
-	if !hookItemRe.MatchString(ext) {
-		ext = ""
+	if !(hookItemRe.MatchString(ext) || (kind == KindGitHub && githubItemRe.MatchString(ext))) {
+		ext, whole = "", false
 	}
 	outcome := HookIgnored
 	if ext != "" {
@@ -529,10 +639,10 @@ func (s *Service) receive(ctx context.Context, kind string, r *http.Request) (in
 	if ext == "" {
 		return http.StatusOK, HookIgnored
 	}
-	if !s.queueItem(conn.ID, ext) {
+	if !s.queueJob(conn.ID, ext, whole) {
 		return http.StatusServiceUnavailable, HookBusy
 	}
-	s.emit(ctx, EventWebhookQueue, "", "", map[string]any{"integrationId": conn.ID, "kind": kind, "externalId": ext})
+	s.emit(ctx, EventWebhookQueue, "", "", map[string]any{"integrationId": conn.ID, "kind": kind, "externalId": ext, "wholeConnection": whole})
 	return http.StatusOK, HookQueued
 }
 
@@ -567,14 +677,16 @@ func (s *Service) recordDelivery(ctx context.Context, id, conn, kind, outcome, e
 	_, _ = s.insertDelivery(ctx, id, conn, kind, outcome, ext, now)
 }
 
-func (s *Service) queueItem(integrationID, externalID string) bool {
+// queueJob queues a read of one item or (whole) a sync of the connection; the findings a burst of deliveries names collapse
+// into one sync.
+func (s *Service) queueJob(integrationID, externalID string, whole bool) bool {
 	s.hooks.mu.Lock()
 	defer s.hooks.mu.Unlock()
-	key := integrationID + "/" + externalID
+	key := hookKey(integrationID, externalID, whole)
 	if _, ok := s.hooks.queue[key]; !ok && len(s.hooks.queue) >= maxHookQueue {
 		return false
 	}
-	s.hooks.queue[key] = hookJob{IntegrationID: integrationID, ExternalID: externalID, At: s.nowMS()}
+	s.hooks.queue[key] = hookJob{IntegrationID: integrationID, ExternalID: externalID, At: s.nowMS(), Whole: whole}
 	if s.hooks.wake != nil {
 		select {
 		case s.hooks.wake <- struct{}{}:
@@ -598,14 +710,20 @@ func (s *Service) ProcessWebhookQueue(ctx context.Context) int {
 		if ctx.Err() != nil {
 			break
 		}
-		_, err := s.SyncItem(ctx, j.IntegrationID, j.ExternalID)
+		var err error
+		if j.Whole {
+			_, err = s.Sync(ctx, j.IntegrationID, SyncOpts{})
+		} else {
+			_, err = s.SyncItem(ctx, j.IntegrationID, j.ExternalID)
+		}
 		var f *Failure
 		if errors.Is(err, ErrSyncBusy) || (errors.As(err, &f) && (f.Code == CodeRateLimited || f.Code == CodeUnreachable || f.Code == CodeTimeout)) {
 			continue // stays queued: the next round reads it (a rate limit holds the connection's limiter until its reset)
 		}
+		key := hookKey(j.IntegrationID, j.ExternalID, j.Whole)
 		s.hooks.mu.Lock()
-		if cur, ok := s.hooks.queue[j.IntegrationID+"/"+j.ExternalID]; ok && cur.At == j.At {
-			delete(s.hooks.queue, j.IntegrationID+"/"+j.ExternalID)
+		if cur, ok := s.hooks.queue[key]; ok && cur.At == j.At {
+			delete(s.hooks.queue, key)
 		}
 		s.hooks.mu.Unlock()
 		if err != nil {
