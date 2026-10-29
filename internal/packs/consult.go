@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +45,9 @@ type ConsultSource struct {
 	N        int      `json:"n"`
 	Citation Citation `json:"citation"`
 	Excerpt  string   `json:"excerpt"`
+	// Used is true for a source a model-written answer drew on (its "used" list); the answer quotes these. Without a model
+	// every source is the answer and none is marked.
+	Used bool `json:"used,omitempty"`
 }
 
 // Consult is the result. Found is false exactly when nothing matched (no model call is made then); Answer is then
@@ -98,6 +103,14 @@ type Answerer interface {
 // ErrNoRoute is returned by an Answerer when no provider satisfies the data-class requirement (CONSULT then degrades to
 // retrieval-only).
 var ErrNoRoute = errors.New("packs: no provider route satisfies the data class")
+
+// ErrNoModel is returned by an Answerer or a Summarizer when no model is set up at all (no provider on the Models page, or
+// the model layer did not start). CONSULT then answers with the cited passages, as it always did without a model.
+var ErrNoModel = errors.New("packs: no model is set up")
+
+// ErrRouteBlocked wraps the model router's refusal (a policy, a budget at its limit, every candidate unavailable); the text
+// after it is the router's reason.
+var ErrRouteBlocked = errors.New("the model router chose no model")
 
 // AnswerInstruction is the fixed instruction every Answerer prompt starts with.
 const AnswerInstruction = "Answer only from the numbered sources. Cite as [n]. If the sources do not contain the answer, say so. " +
@@ -221,13 +234,19 @@ func (s *Store) Consult(ctx context.Context, req ConsultRequest) (Consult, error
 		res, aerr := s.o.Answerer.Answer(actx, ar)
 		cancel()
 		switch {
+		case errors.Is(aerr, ErrNoModel):
+			out.Degraded = "No model is set up for questions, so the answer is the cited passages. Add a model provider on the Models page to have answers written from them."
+		case errors.Is(aerr, ErrNoRoute):
+			out.Degraded = "no provider route satisfies the data class (" + firstNonEmpty(why, "private route required") + "), so the answer is the cited passages"
+		case errors.Is(aerr, ErrRouteBlocked):
+			out.Degraded = s.o.Scanner.Redact(aerr.Error()) + ", so the answer is the cited passages"
 		case aerr != nil:
 			out.Degraded = "answerer failed: " + s.o.Scanner.Redact(aerr.Error())
-			if errors.Is(aerr, ErrNoRoute) {
-				out.Degraded = "no provider route satisfies the data class (" + firstNonEmpty(why, "private route required") + ")"
-			}
 		default:
 			used, verr := validateUsed(res.Used, len(sr.Hits))
+			if verr == nil {
+				verr = validateMarkers(res.Text, len(sr.Hits))
+			}
 			switch {
 			case verr != nil:
 				out.Degraded = "answerer output rejected: " + verr.Error()
@@ -238,6 +257,9 @@ func (s *Store) Consult(ctx context.Context, req ConsultRequest) (Consult, error
 			default:
 				out.Answer = s.o.Scanner.Redact(strings.TrimSpace(res.Text))
 				out.Citations = citationsOf(sr.Hits, used)
+				for _, u := range used {
+					out.Sources[u-1].Used = true
+				}
 				out.Route, out.Model, out.Usage = firstNonEmpty(res.Route, RoutePrivate), res.Model, res.Usage
 				if res.Route == RouteTrainable {
 					out.Route = RouteTrainable
@@ -272,6 +294,19 @@ func validateUsed(used []int, n int) ([]int, error) {
 		}
 	}
 	return out, nil
+}
+
+var markerRe = regexp.MustCompile(`\[(\d{1,4})\]`)
+
+// validateMarkers refuses an answer whose text cites a source number that was not supplied ("[9]" of five sources): the
+// reader would look for a source that does not exist.
+func validateMarkers(text string, n int) error {
+	for _, m := range markerRe.FindAllStringSubmatch(text, -1) {
+		if k, _ := strconv.Atoi(m[1]); k < 1 || k > n {
+			return fmt.Errorf("its text cites [%d], which was not supplied", k)
+		}
+	}
+	return nil
 }
 
 func citationsOf(hits []Hit, used []int) []Citation {

@@ -270,8 +270,8 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		sctx, c2 := context.WithTimeout(ctx, 60*time.Second)
 		if sum, e := s.o.Summarizer.Summarize(sctx, *digest, allowT); e == nil {
 			digest.Summary = s.o.Scanner.Redact(sum)
-		} else {
-			s.o.Logf("packs: digest summary for %s: %v", packID, e)
+		} else if !errors.Is(e, ErrNoModel) { // no model set up is the ordinary case, not a fault
+			s.o.Logf("packs: digest summary for %s: %v", packID, s.o.Scanner.Redact(e.Error()))
 		}
 		c2()
 	}
