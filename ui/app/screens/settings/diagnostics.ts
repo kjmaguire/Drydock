@@ -1,5 +1,5 @@
 // Pure words and values for the diagnostics settings (decision P121): compression of the OTLP bodies, "Also send what was
-// recorded before", content export and the crash report and usage counter categories.
+// recorded before" and the crash report and usage counter categories.
 
 import type { TelemetryBackfillResult, TelemetryCompression, TelemetryOtlpStatus } from '../../api/extTypes.ts';
 
@@ -61,9 +61,3 @@ export function crashWords(mode: 'local' | 'off', kept: number): string {
     ? `When Drydock stops unexpectedly, a report stays on this computer. It leaves only in a support bundle you send. ${keptWords}`
     : `Off: a crash leaves no report, and support bundles carry none. ${keptWords}`;
 }
-
-/** The warning shown before content export is turned on. */
-export const CONTENT_WARNING =
-  "Content export adds what Drydock's own model calls were given and answered (such as summaries and classifications) to the telemetry spans. " +
-  'That text can hold code, file names and messages from your projects. Secrets are masked first, and nothing is sent unless you also set up a collector, ' +
-  "but whoever runs that collector can read it. The agents' own sessions are never included.";

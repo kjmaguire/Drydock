@@ -52,8 +52,8 @@ func TestDiagnosticsCategoriesAreStoredShownAndHonoured(t *testing.T) {
 	var st DiagnosticsStatus
 	diagCall(t, c, "diagnostics.status", map[string]any{}, &st)
 	if st.CrashReports.Mode != CrashReportsLocal || st.CrashReports.Kept != 1 || st.UsageCounters == nil || st.UsageCounters.Enabled ||
-		st.Content == nil || st.Content.Enabled || st.Telemetry || st.OTLP {
-		t.Fatalf("the defaults: crash reports kept locally, usage counters and content export off: %+v", st)
+		st.Telemetry || st.OTLP {
+		t.Fatalf("the defaults: crash reports kept locally, usage counters off: %+v", st)
 	}
 	if _, err := c.Call(ctx, "diagnostics.set", json.RawMessage(`{"crashReports":"upload"}`)); err == nil {
 		t.Fatal("crash reports are local or off")
@@ -137,29 +137,33 @@ func TestDiagnosticsCategoriesAreStoredShownAndHonoured(t *testing.T) {
 	}
 }
 
-// Content export through its method: only with the acknowledgement, and shown in both statuses.
-func TestContentExportThroughItsMethod(t *testing.T) {
+// Decision P126 removed P121's switch for the LLM calls' prompts and completions: its method is gone, and a setting a person
+// stored for it with a build that had it is ignored (no migration removes it; nothing reads it).
+func TestTheRemovedContentSwitchIsGoneAndItsSettingIgnored(t *testing.T) {
 	ctx := context.Background()
-	c, err := Open(ctx, Config{DataDir: t.TempDir(), User: "kyle"})
+	dir := t.TempDir()
+	c, err := Open(ctx, Config{DataDir: dir, User: "kyle"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := c.DB.Writer().ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('telemetry.content.enabled','1'),('telemetry.content.changed_by','human:kyle')`); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	if c, err = Open(ctx, Config{DataDir: dir, User: "kyle"}); err != nil {
+		t.Fatal(err)
+	}
 	defer c.Close()
-	if _, err := c.Call(ctx, "telemetry.content.set", json.RawMessage(`{"enabled":true}`)); err == nil || !strings.Contains(err.Error(), "acknowledged") {
-		t.Fatalf("content export without the acknowledgement: %v", err)
+	if _, err := c.Call(ctx, "telemetry.content.set", json.RawMessage(`{"enabled":true,"acknowledged":true}`)); err == nil || !strings.Contains(err.Error(), "unknown method") {
+		t.Fatalf("the removed method: %v", err)
 	}
-	var ts telemetry.Status
-	diagCall(t, c, "telemetry.content.set", map[string]any{"enabled": true, "acknowledged": true}, &ts)
-	if !ts.Content.Enabled || ts.Content.ChangedBy != "human:kyle" {
-		t.Fatalf("%+v", ts.Content)
-	}
-	var st DiagnosticsStatus
-	diagCall(t, c, "diagnostics.status", map[string]any{}, &st)
-	if st.Content == nil || !st.Content.Enabled {
-		t.Fatalf("%+v", st)
-	}
-	diagCall(t, c, "telemetry.content.set", map[string]any{"enabled": false}, &ts)
-	if ts.Content.Enabled {
-		t.Fatalf("%+v", ts.Content)
+	for _, m := range []string{"diagnostics.status", "telemetry.status"} {
+		res, err := c.Call(ctx, m, json.RawMessage(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(res), `"content"`) {
+			t.Fatalf("%s still reports a content switch: %s", m, res)
+		}
 	}
 }

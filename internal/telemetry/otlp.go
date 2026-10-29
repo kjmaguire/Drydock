@@ -177,8 +177,6 @@ type OTLPStatus struct {
 	Gzip bool `json:"gzip"`
 	// LastBackfill is what the last "Also send what was recorded before" queued.
 	LastBackfill *BackfillResult `json:"lastBackfill,omitempty"`
-	// Content says whether the LLM calls' prompts and completions are sent (content export, decision P121).
-	Content bool `json:"content"`
 }
 
 // TestResult is what "Send a test span" says.
@@ -539,14 +537,13 @@ func (x *Exporter) post(ctx context.Context, cfg OTLPConfig, path string, spans 
 	}
 	var body []byte
 	ct := "application/x-protobuf"
-	content := x.s.ContentEnabled() // read now: a row recorded while content export was on goes without it once it is off
 	switch {
 	case cfg.Encoding == EncodingJSON && spans != nil:
-		body, ct = tracesJSON(spans, content), "application/json"
+		body, ct = tracesJSON(spans), "application/json"
 	case cfg.Encoding == EncodingJSON:
 		body, ct = metricsJSON(metrics), "application/json"
 	case spans != nil:
-		body = tracesProto(spans, content)
+		body = tracesProto(spans)
 	default:
 		body = metricsProto(metrics)
 	}
@@ -870,7 +867,7 @@ func (x *Exporter) Status() OTLPStatus {
 	st := OTLPStatus{OTLPConfig: x.cfg, ChangedBy: x.by, Active: x.activeLocked(), Queued: len(x.queue), QueueSize: x.opt.QueueSize,
 		SentSpans: x.sent[0], SentMetrics: x.sent[1], DroppedOverflow: x.overflow, DroppedFailed: x.failed, Rejected: x.rejected,
 		LastSuccessAt: x.lastOK, LastError: x.lastErr, LastErrorAt: x.lastErrT, CanKeepHeaders: x.opt.Secrets != nil,
-		Gzip: x.cfg.gzipOn(), Content: x.s.ContentEnabled()}
+		Gzip: x.cfg.gzipOn()}
 	st.Headers = append([]string{}, x.cfg.Headers...)
 	if x.backfill != nil {
 		b := *x.backfill

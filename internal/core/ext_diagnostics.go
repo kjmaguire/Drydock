@@ -22,8 +22,9 @@ import (
 //     removes what a crash left without making a report, and a support bundle leaves the kept reports out.
 //   - Usage counters: off by default. On, the name of every method the window calls is counted (internal/telemetry, CountUse)
 //     and written to the local telemetry sink every five minutes; OTLP export sends them like anything else it records.
-//   - Content export (telemetry.content.set): the LLM calls' prompts and completions in the telemetry, redacted; off by default
-//     and turned on only with an acknowledgement of what it sends.
+//
+// P121 also added a switch for the LLM calls' prompts and completions; decision P126 removed it, so telemetry never carries
+// them. A setting a person stored for it is ignored.
 //
 // OpenTelemetry export, the third category of section 9, is the exporter's own switch (telemetry.otlp.set).
 
@@ -69,8 +70,6 @@ type DiagnosticsStatus struct {
 	CrashReports CrashConsent `json:"crashReports"`
 	// UsageCounters is nil when the telemetry sink did not start (the log says why).
 	UsageCounters *telemetry.UsageStatus `json:"usageCounters,omitempty"`
-	// Content is content export's switch (also in telemetry.status).
-	Content *telemetry.Consent `json:"content,omitempty"`
 	// Telemetry and OTLP say whether the local sink records and whether anything is being sent.
 	Telemetry bool `json:"telemetry"`
 	OTLP      bool `json:"otlp"`
@@ -99,7 +98,7 @@ func (c *Core) diagnosticsStatus(ctx context.Context) (DiagnosticsStatus, error)
 		if err != nil {
 			return st, err
 		}
-		st.UsageCounters, st.Content, st.Telemetry = &ts.UsageCounters, &ts.Content, ts.Enabled
+		st.UsageCounters, st.Telemetry = &ts.UsageCounters, ts.Enabled
 		st.OTLP = ts.OTLP != nil && ts.OTLP.Active
 	}
 	return st, nil
@@ -215,22 +214,6 @@ func init() {
 					c.publish(ctx, "diagnostics.changed", "", map[string]any{"category": "usage_counters", "enabled": *p.UsageCounters, "by": c.Human()})
 				}
 				return c.diagnosticsStatus(ctx)
-			}),
-			// content export: the LLM calls' prompts and completions in the telemetry (redacted), with the acknowledgement that the
-			// person was shown what it sends
-			"telemetry.content.set": bind(func(ctx context.Context, p struct {
-				Enabled      bool `json:"enabled"`
-				Acknowledged bool `json:"acknowledged"`
-			}) (any, error) {
-				s, err := needSink()
-				if err != nil {
-					return nil, err
-				}
-				if err := s.SetContent(ctx, p.Enabled, p.Acknowledged, c.Human()); err != nil {
-					return nil, err
-				}
-				c.publish(ctx, "telemetry.content_changed", "", map[string]any{"enabled": p.Enabled, "by": c.Human()})
-				return s.Status(ctx)
 			}),
 		}, closeFn, nil
 	}})

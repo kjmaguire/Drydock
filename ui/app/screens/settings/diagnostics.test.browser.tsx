@@ -1,13 +1,13 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { DiagnosticsChange, DiagnosticsStatus, TelemetryOtlpChange, TelemetryOtlpStatus, TelemetryStatus } from '../../api/extTypes.ts';
-import { byLabel, byText, choose, cleanup, errorOf, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, choose, cleanup, errorOf, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { DiagnosticsPanel } from './diagnostics.tsx';
 import { dateDaysAgo, sinceFromDate } from './diagnostics.ts';
 import { TelemetryPanel } from './telemetry.tsx';
 
-// Decision P121 on the Settings page: the OTLP bodies' compression, "Also send what was recorded before", content export and the
-// diagnostics categories, against a stand-in client that records what the page asks the core.
+// Decision P121 on the Settings page: the OTLP bodies' compression, "Also send what was recorded before" and the diagnostics
+// categories, against a stand-in client that records what the page asks the core. P121's content switch was removed by P126.
 
 afterEach(() => cleanup());
 
@@ -16,7 +16,6 @@ const tid = (root: ParentNode, id: string) => {
   if (!el) throw new Error(`no ${id}`);
   return el;
 };
-const btn = (root: ParentNode, name: string) => byText<HTMLButtonElement>(root, 'button', name);
 
 const otlp: TelemetryOtlpStatus = {
   enabled: false,
@@ -44,14 +43,12 @@ const tel: TelemetryStatus = {
   destination: 'this device only (local SQLite); export on demand',
   networkExporter: false,
   otlp,
-  content: { enabled: false },
   usageCounters: { enabled: false, waiting: 0 },
 };
 
 function telemetry(st0: TelemetryStatus = tel) {
   let st = st0;
   const changes: TelemetryOtlpChange[] = [];
-  const content: [boolean, boolean][] = [];
   const r = mount(
     <TelemetryPanel />,
     testServices({
@@ -68,14 +65,9 @@ function telemetry(st0: TelemetryStatus = tel) {
         st = { ...st, otlp: o };
         return st;
       },
-      telemetryContentSet: async (enabled, acknowledged) => {
-        content.push([enabled, acknowledged]);
-        st = { ...st, content: { enabled, changedBy: 'human:kyle', changedAt: 1 } };
-        return st;
-      },
     }),
   );
-  return { r, changes, content };
+  return { r, changes };
 }
 
 describe('OTLP export: compression and what was recorded before (decision P121)', () => {
@@ -131,29 +123,14 @@ describe('OTLP export: compression and what was recorded before (decision P121)'
   });
 });
 
-describe('Content export (decision P121)', () => {
-  it('is off, shows what it sends before it turns on, and Cancel sends nothing', async () => {
-    const { r, content } = telemetry();
-    const box = await waitFor(() => tid(r.container, 'content-export'), r);
-    expect(box.getAttribute('data-enabled')).toBe('false');
-    expect(box.textContent).toContain('Off unless you turn it on.');
-    await r.act(() => byLabel<HTMLButtonElement>(box, 'Content export').click());
-    const dlg = await waitFor(() => r.container.querySelector<HTMLDialogElement>('dialog[open]')!, r);
-    expect(dlg.textContent).toContain('can hold code');
-    expect(dlg.textContent).toContain('Secrets are masked');
-    await r.act(() => btn(dlg, 'Cancel').click());
-    expect(content).toEqual([]);
-    expect(tid(r.container, 'content-export').getAttribute('data-enabled')).toBe('false');
-
-    await r.act(() => byLabel<HTMLButtonElement>(tid(r.container, 'content-export'), 'Content export').click());
-    const again = await waitFor(() => r.container.querySelector<HTMLDialogElement>('dialog[open]')!, r);
-    await r.act(() => btn(again, 'Turn on content export').click());
-    await waitFor(() => expect(content).toEqual([[true, true]]), r);
-    await waitFor(() => expect(tid(r.container, 'content-export').getAttribute('data-enabled')).toBe('true'), r);
-    expect(tid(r.container, 'content-export').textContent).toContain('turned on by human:kyle');
-    // off at once, with no question
-    await r.act(() => byLabel<HTMLButtonElement>(tid(r.container, 'content-export'), 'Content export').click());
-    await waitFor(() => expect(content).toEqual([[true, true], [false, false]]), r);
+describe('No content switch (decision P126)', () => {
+  it('offers no switch that would send prompts or completions, and says telemetry holds none', async () => {
+    const { r } = telemetry();
+    await waitFor(() => tid(r.container, 'otlp'), r);
+    expect(r.container.querySelector('[data-testid="content-export"]')).toBe(null);
+    expect(r.container.textContent).not.toContain('Content export');
+    expect(r.container.textContent).not.toContain('prompts and completions');
+    expect(r.container.textContent).toContain('no prompts, code or secrets');
   });
 });
 
@@ -161,7 +138,6 @@ describe('DiagnosticsPanel (decision P121)', () => {
   const diag: DiagnosticsStatus = {
     crashReports: { mode: 'local', kept: 1 },
     usageCounters: { enabled: false, waiting: 0 },
-    content: { enabled: false },
     telemetry: false,
     otlp: false,
   };

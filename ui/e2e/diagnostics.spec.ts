@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { choose, createProjectWithoutRepo, workspaceNav } from './helpers';
 
-// Decision P121 against the real Go core: the diagnostics categories (crash reports kept by default, usage counters off), content
-// export behind its own warning, the OTLP bodies' compression and "Also send what was recorded before".
+// Decision P121 against the real Go core: the diagnostics categories (crash reports kept by default, usage counters off), the
+// OTLP bodies' compression and "Also send what was recorded before". P121's content switch was removed by decision P126.
 
-test('diagnostics: each category is its own stored switch, content export asks first, and sending can take what was recorded before', async ({ page }) => {
+test('diagnostics: each category is its own stored switch, and sending can take what was recorded before', async ({ page }) => {
   await createProjectWithoutRepo(page, 'diag-p121'); // the shell, with its sidebar
   await workspaceNav(page, 'nav-settings');
   const diag = page.getByTestId('diagnostics');
@@ -33,20 +33,9 @@ test('diagnostics: each category is its own stored switch, content export asks f
   await page.getByTestId('diagnostics').getByLabel('Count feature use').click();
   await expect(page.getByTestId('diagnostics').getByLabel('Count feature use')).toHaveAttribute('aria-checked', 'false');
 
-  // content export: the warning first; Cancel keeps it off, the dialog's button turns it on, the switch turns it off
-  const content = tel.getByTestId('content-export');
-  await expect(content).toHaveAttribute('data-enabled', 'false');
-  await content.getByRole('switch', { name: 'Content export', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Turn on content export' });
-  await expect(dialog).toContainText('can hold code');
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(content).toHaveAttribute('data-enabled', 'false');
-  await content.getByRole('switch', { name: 'Content export', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Turn on content export' }).getByRole('button', { name: 'Turn on content export' }).click();
-  await expect(content).toHaveAttribute('data-enabled', 'true');
-  await expect(content).toContainText(/turned on by human:\S+/);
-  await content.getByRole('switch', { name: 'Content export', exact: true }).click();
-  await expect(content).toHaveAttribute('data-enabled', 'false');
+  // no switch sends the LLM calls' prompts and completions (decision P126)
+  await expect(tel.getByTestId('content-export')).toHaveCount(0);
+  await expect(tel).not.toContainText('prompts and completions');
 
   // compression and what was recorded before: telemetry on, a collector on this computer that nobody runs
   if ((await tel.getByTestId('telemetry-status').textContent()) !== 'on') await tel.getByRole('button', { name: 'Turn telemetry on' }).click();

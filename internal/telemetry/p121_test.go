@@ -15,7 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/telemetry"
 )
 
-// Decision P121: gzip bodies, "Also send what was recorded before", content export and usage counters, each against the
+// Decision P121: gzip bodies, "Also send what was recorded before" and usage counters, each against the
 // collector stand-in (a TEST DOUBLE that gunzips and decodes every request) and the real sink.
 
 func TestOTLPGzipIsOnForHTTPSByDefaultAndASetting(t *testing.T) {
@@ -210,10 +210,11 @@ func TestOTLPBackfillGoesThroughTheAllowlistAgain(t *testing.T) {
 	col := newCollector(t, false)
 	x, _, _ := newExporter(t, r, nil)
 	r.sink.SetEnabled(r.ctx, true, "human:kyle")
-	// a row as an older build, or a hand edit, might have left it: an attribute that is not allowed and a free-text value
+	// a row as an older build, or a hand edit, might have left it: an attribute that is not allowed, a free-text value, and the
+	// GenAI content attribute a build with P121's content switch (removed by decision P126) could have stored
 	now := time.Now().UnixMilli()
 	attrs, _ := json.Marshal(map[string]any{"drydock.prompt": promptText, telemetry.AttrPurpose: "summarize", telemetry.AttrTier: codeText,
-		telemetry.AttrGenAIInputMessages: `[{"role":"user","parts":[{"type":"text","content":"` + promptText + `"}]}]`})
+		"gen_ai.input.messages": `[{"role":"user","parts":[{"type":"text","content":"` + promptText + `"}]}]`})
 	if _, err := r.db.Writer().Exec(`INSERT INTO telemetry_spans(trace_id,span_id,name,start_ms,end_ms,attrs) VALUES(?,?,?,?,?,?)`,
 		strings.Repeat("a", 32), strings.Repeat("b", 16), "drydock.llm.chat", now-10, now, string(attrs)); err != nil {
 		t.Fatal(err)
@@ -226,7 +227,7 @@ func TestOTLPBackfillGoesThroughTheAllowlistAgain(t *testing.T) {
 	}
 	forbiddenIn(t, "the collector", reqs[0].Body)
 	if a := reqs[0].Spans[0].Attrs; len(a) != 1 || a[telemetry.AttrPurpose] != "summarize" {
-		t.Fatalf("only the allowlisted identifier-shaped attribute, and no content while content export is off: %v", a)
+		t.Fatalf("only the allowlisted identifier-shaped attribute: %v", a)
 	}
 }
 
@@ -250,162 +251,6 @@ func wrapperRig(t *testing.T, r *rig, answer string) (*llm.Wrapper, llm.Request)
 	return w, llm.Request{Provider: p.ID, Model: "vendor/model-x", Purpose: "summarize", ProjectID: "prj_1", RunID: "run_1", NoCache: true,
 		Manifest: &llm.Manifest{Entries: []llm.ManifestEntry{{SourceType: "task", Sensitivity: llm.SensitivityPublicDocs}}},
 		System:   []llm.Block{{Text: "You summarize a task's room."}}, Messages: []llm.Message{{Role: "user", Content: promptText}}}
-}
-
-type genaiMessage struct {
-	Role  string `json:"role"`
-	Parts []struct {
-		Type    string `json:"type"`
-		Content string `json:"content"`
-	} `json:"parts"`
-	FinishReason string `json:"finish_reason"`
-}
-
-func TestContentExportIsAnOptInOfItsOwnAndNeverCarriesASecret(t *testing.T) {
-	for _, enc := range []string{telemetry.EncodingProtobuf, telemetry.EncodingJSON} {
-		t.Run(enc, func(t *testing.T) {
-			r := newRig(t)
-			col := newCollector(t, false)
-			x, _, _ := newExporter(t, r, nil)
-			r.sink.SetEnabled(r.ctx, true, "human:kyle")
-			configure(t, x, telemetry.OTLPChange{Enabled: ptr(true), Endpoint: ptr(col.srv.URL), Encoding: ptr(enc)})
-			w, req := wrapperRig(t, r, "The worker fixed the rounding.")
-
-			// off by default: the span has no content
-			if st, _ := r.sink.Status(r.ctx); st.Content.Enabled || x.Status().Content || r.sink.WantsContent() {
-				t.Fatalf("content export is off by default: %+v", st.Content)
-			}
-			if _, err := w.Complete(r.ctx, req); err != nil {
-				t.Fatal(err)
-			}
-			x.Flush()
-			forbiddenIn(t, "the collector (content export off)", col.requests()[0].Body)
-
-			// only a person, and only after acknowledging what it sends
-			if err := r.sink.SetContent(r.ctx, true, true, "agent:worker"); err == nil {
-				t.Fatal("an agent must not turn content export on")
-			}
-			if err := r.sink.SetContent(r.ctx, true, false, "human:kyle"); err == nil {
-				t.Fatal("content export needs the acknowledgement")
-			}
-			if err := r.sink.SetContent(r.ctx, true, true, "human:kyle"); err != nil {
-				t.Fatal(err)
-			}
-			st, _ := r.sink.Status(r.ctx)
-			if !st.Content.Enabled || st.Content.ChangedBy != "human:kyle" || st.Content.ChangedAt == 0 || !x.Status().Content {
-				t.Fatalf("%+v", st.Content)
-			}
-			before := len(col.requests())
-			if _, err := w.Complete(r.ctx, req); err != nil {
-				t.Fatal(err)
-			}
-			// the Wrapper's secret guard refuses a prompt with a token in it: that call's content is never recorded
-			leak := req
-			leak.Messages = []llm.Message{{Role: "user", Content: "deploy with " + fakeToken()}}
-			if _, err := w.Complete(r.ctx, leak); err == nil {
-				t.Fatal("the scanner let a token out")
-			}
-			x.Flush()
-			var calls []gotSpan
-			for _, q := range col.requests()[before:] {
-				if strings.Contains(string(q.Body), fakeToken()) || strings.Contains(string(q.Body), "Z9q8W7e6") {
-					t.Fatal("a secret reached the collector")
-				}
-				for _, sp := range q.Spans {
-					if sp.Name == "drydock.llm.chat" {
-						calls = append(calls, sp)
-					}
-				}
-			}
-			if len(calls) != 2 {
-				t.Fatalf("two calls: %+v", calls)
-			}
-			ok, refused := calls[0], calls[1]
-			var in, out []genaiMessage
-			var sys []struct{ Type, Content string }
-			if err := json.Unmarshal([]byte(fmt0(ok.Attrs[telemetry.AttrGenAIInputMessages])), &in); err != nil {
-				t.Fatalf("input messages: %v %v", err, ok.Attrs)
-			}
-			json.Unmarshal([]byte(fmt0(ok.Attrs[telemetry.AttrGenAIOutputMessages])), &out)
-			json.Unmarshal([]byte(fmt0(ok.Attrs[telemetry.AttrGenAISystemInstructions])), &sys)
-			if len(in) != 1 || in[0].Role != "user" || in[0].Parts[0].Type != "text" || in[0].Parts[0].Content != promptText ||
-				len(out) != 1 || out[0].Role != "assistant" || out[0].Parts[0].Content != "The worker fixed the rounding." || out[0].FinishReason == "" ||
-				len(sys) != 1 || sys[0].Content != "You summarize a task's room." {
-				t.Fatalf("the GenAI content attributes: in %+v out %+v sys %+v", in, out, sys)
-			}
-			for _, k := range telemetry.ContentKeys() {
-				if _, has := refused.Attrs[k]; has {
-					t.Errorf("the refused call's span holds %s", k)
-				}
-			}
-			// the local rows hold what was sent (the log), and the preview says content is in it
-			doc, _ := r.sink.Preview(r.ctx, 0)
-			if !strings.Contains(doc.Note, "Content export is on") || !strings.Contains(strings.Join(doc.Allowlist, ","), telemetry.AttrGenAIInputMessages) {
-				t.Fatalf("the preview: %s %v", doc.Note, doc.Allowlist)
-			}
-
-			// off again: content is no longer recorded, and a row recorded with it is sent without it
-			if err := r.sink.SetEnabled(r.ctx, true, "human:kyle"); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := w.Complete(r.ctx, req); err != nil { // queued with its content
-				t.Fatal(err)
-			}
-			if err := r.sink.SetContent(r.ctx, false, false, "human:kyle"); err != nil {
-				t.Fatal(err)
-			}
-			before = len(col.requests())
-			if _, err := w.Complete(r.ctx, req); err != nil {
-				t.Fatal(err)
-			}
-			x.Flush()
-			for _, q := range col.requests()[before:] {
-				forbiddenIn(t, "the collector (content export turned off)", q.Body)
-			}
-			var stored int
-			r.db.Reader().QueryRow(`SELECT COUNT(*) FROM telemetry_spans WHERE attrs LIKE '%gen_ai.input.messages%'`).Scan(&stored)
-			if stored != 2 {
-				t.Fatalf("content is recorded only while content export is on: %d rows", stored)
-			}
-		})
-	}
-}
-
-func TestContentIsRedactedAndBoundedBeforeItIsStored(t *testing.T) {
-	r := newRig(t)
-	r.sink.SetEnabled(r.ctx, true, "human:kyle")
-	if err := r.sink.SetContent(r.ctx, true, true, "human:kyle"); err != nil {
-		t.Fatal(err)
-	}
-	c := anLLMCall()
-	huge := strings.Repeat("é", telemetry.MaxContentBytes) // two bytes each: twice the bound
-	c.Content = &llm.CallContent{System: []string{"key " + fakeToken()}, Messages: []llm.Message{{Role: "user", Content: "use " + fakeToken() + " now"},
-		{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1", Name: "read", Arguments: `{"path":"a.go"}`}}}, {Role: "tool", ToolCallID: "c1", Content: huge}},
-		Output: "done", FinishReason: "stop"}
-	r.sink.TraceCall(r.ctx, c)
-	doc, _ := r.sink.Preview(r.ctx, 0)
-	raw, _ := json.Marshal(doc)
-	if strings.Contains(string(raw), fakeToken()) || strings.Contains(string(raw), "Z9q8W7e6") {
-		t.Fatal("a secret was stored")
-	}
-	sp := doc.Spans[0]
-	for _, k := range telemetry.ContentKeys() {
-		v := fmt0(sp.Attrs[k])
-		if v == "" || len(v) > telemetry.MaxContentBytes || !json.Valid([]byte(v)) {
-			t.Errorf("%s: %d bytes, valid=%v", k, len(v), json.Valid([]byte(v)))
-		}
-	}
-	in := fmt0(sp.Attrs[telemetry.AttrGenAIInputMessages])
-	if !strings.Contains(in, "[cut]") || !strings.Contains(in, `"type":"tool_call"`) || !strings.Contains(in, `"type":"tool_call_response"`) {
-		t.Fatalf("the tool output is cut to fit, the parts keep their kinds: %.300s", in)
-	}
-	// content attributes cannot be smuggled in another way: Sanitize drops them, and SanitizeContent only keeps JSON
-	if clean, _ := telemetry.Sanitize(map[string]any{telemetry.AttrGenAIInputMessages: `[]`}, nil); len(clean) != 0 {
-		t.Fatalf("%v", clean)
-	}
-	if clean, dropped := telemetry.SanitizeContent(map[string]any{telemetry.AttrGenAIInputMessages: promptText}, nil); len(clean) != 0 || len(dropped) != 1 {
-		t.Fatalf("free text that is not a JSON document: %v %v", clean, dropped)
-	}
 }
 
 func TestUsageCountersAreACategoryOfTheirOwn(t *testing.T) {
@@ -474,8 +319,8 @@ func TestUsageCountersAreACategoryOfTheirOwn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if y.UsageCountersEnabled() || y.ContentEnabled() {
-		t.Fatal("both switches read back off")
+	if y.UsageCountersEnabled() {
+		t.Fatal("the switch reads back off")
 	}
 	r.sink.SetUsageCounters(r.ctx, true, "human:kyle")
 	if y, _ = telemetry.New(r.ctx, r.db, telemetry.Options{}); !y.UsageCountersEnabled() {

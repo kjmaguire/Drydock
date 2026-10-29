@@ -354,8 +354,6 @@ export interface TelemetryStatus {
   networkExporter: boolean;
   /** The OTLP exporter (decision P113); absent when it did not start. */
   otlp?: TelemetryOtlpStatus;
-  /** Content export (decision P121): the LLM calls' prompts and completions, redacted. Off by default. */
-  content?: Consent;
   /** Usage counters (decision P121): how often each feature was used. Off by default. */
   usageCounters?: UsageCounters;
 }
@@ -408,8 +406,6 @@ export interface TelemetryOtlpStatus {
   /** Whether bodies are compressed now. */
   gzip?: boolean;
   lastBackfill?: TelemetryBackfillResult;
-  /** Whether the LLM calls' prompts and completions are sent (content export). */
-  content?: boolean;
 }
 export type TelemetryCompression = '' | 'gzip' | 'none';
 export interface TelemetryOtlpChange {
@@ -427,7 +423,6 @@ export interface DiagnosticsStatus {
   crashReports: { mode: 'local' | 'off'; changedBy?: string; changedAt?: number; kept: number };
   /** Absent when telemetry did not start. */
   usageCounters?: UsageCounters;
-  content?: Consent;
   telemetry: boolean;
   otlp: boolean;
 }
