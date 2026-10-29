@@ -40,7 +40,7 @@ test('a budget on a workflow names one of the workflows the core runs and counts
   await projectNav(page, 'nav-budgets');
   await page.getByRole('button', { name: 'Add budget' }).first().click();
   const form = page.getByRole('form', { name: 'New budget' });
-  await choose(form.getByLabel('Scope'), 'workflow');
+  await choose(form.getByLabel('Scope', { exact: true }), 'workflow');
   const wf = form.getByLabel('Workflow (its runs in this project)');
   await choose(wf, 'iterate-until-verified');
   await form.getByLabel('Limit in USD').fill('3');
