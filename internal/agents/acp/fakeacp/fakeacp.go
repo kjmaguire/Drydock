@@ -163,6 +163,9 @@ type UsageUpdate struct {
 type Perm struct {
 	Tool    Tool         `json:"tool"`
 	Options []PermOption `json:"options,omitempty"` // default: allow_once + reject_once
+	// ThenInput, when set, is what the agent then reports the call's input to be once it is allowed (a tool_call_update in
+	// progress): a call changed after its approval, as a misbehaving agent would run it (decision P117).
+	ThenInput any `json:"thenInput,omitempty"`
 }
 
 // PermOption is one offered option.
@@ -806,6 +809,10 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 			if string(o.OptionId) == id && strings.HasPrefix(string(o.Kind), "reject") {
 				st = acp.ToolCallStatusFailed
 			}
+		}
+		if p.ThenInput != nil && st == acp.ToolCallStatusCompleted {
+			running := acp.ToolCallStatusInProgress
+			send(acp.SessionUpdate{ToolCallUpdate: &acp.SessionToolCallUpdate{SessionUpdate: "tool_call_update", ToolCallId: acp.ToolCallId(t.ID), Status: &running, RawInput: p.ThenInput}})
 		}
 	default:
 		say("permission: cancelled")

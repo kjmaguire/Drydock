@@ -3,12 +3,17 @@ package acp
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/coder/acp-go-sdk"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -35,6 +40,37 @@ type toolState struct {
 
 	emittedCall   bool
 	emittedResult bool
+
+	// approvedSum is the callSum of the call as it was when Drydock answered its permission request with an allow (decision
+	// P117); changed is set once a later tool_call or tool_call_update made it another call.
+	approvedSum string
+	changed     bool
+}
+
+// callSum is the SHA-256 of what a tool call does, as far as Drydock was asked about it: its kind, its input and, for a kind
+// that acts on the paths it names (read, edit, delete, move), those paths. A search's locations are left out: an agent may
+// report what a search found as its locations when it ends, which does not change the call that was allowed.
+func (t *toolState) callSum() string {
+	doc := map[string]any{"kind": t.kind, "input": t.args()}
+	switch t.kind {
+	case "read", "edit", "delete", "move":
+		doc["locations"] = t.locations
+	}
+	b, _ := json.Marshal(doc)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// changedSinceAllowed reports, once, that a call allowed by its permission request is now another call. Caller holds s.mu.
+func (t *toolState) changedSinceAllowed() bool {
+	if t.approvedSum == "" || t.changed {
+		return false
+	}
+	if subtle.ConstantTimeCompare([]byte(t.callSum()), []byte(t.approvedSum)) == 1 {
+		return false
+	}
+	t.changed = true
+	return true
 }
 
 func (t *toolState) haveInput() bool {
@@ -186,7 +222,11 @@ func (s *Session) onToolCall(tc *acp.SessionUpdateToolCall) {
 	}
 	st.locations = locPaths(tc.Locations, st.locations)
 	st.absorbOutput(tc.Content, tc.RawOutput)
+	changed := st.changedSinceAllowed()
 	s.mu.Unlock()
+	if changed {
+		s.callChanged(st)
+	}
 	s.progressTool(st)
 }
 
@@ -209,8 +249,34 @@ func (s *Session) onToolCallUpdate(tu *acp.SessionToolCallUpdate) {
 	}
 	st.locations = locPaths(tu.Locations, st.locations)
 	st.absorbOutput(tu.Content, tu.RawOutput)
+	changed := st.changedSinceAllowed()
 	s.mu.Unlock()
+	if changed {
+		s.callChanged(st)
+	}
 	s.progressTool(st)
+}
+
+// callChanged handles a call the agent changed after Drydock allowed it (decision P117): an ACP agent runs an allowed call by
+// itself, so Drydock cannot refuse the changed one; it compares what the agent then reports with what was allowed, and on the
+// first difference says so (a permission_denied and an error chunk the person sees, and the session's OnCallChanged) and
+// cancels the turn, so the agent does nothing more on an approval that no longer stands.
+func (s *Session) callChanged(st *toolState) {
+	s.mu.Lock()
+	q := agents.ToolAsk{ToolCallID: st.id, Tool: st.toolName(), Title: st.title, Kind: st.kind, Args: st.args(), Locations: append([]string(nil), st.locations...)}
+	allowed, now := st.approvedSum, st.callSum()
+	s.mu.Unlock()
+	const why = "the agent changed this call after Drydock allowed it, so the approval does not cover it: Drydock stopped the turn"
+	s.emitKind(workflow.ChunkPermissionDenied, workflow.PermissionDenial{ToolName: q.Tool, ToolUseID: q.ToolCallID, Input: q.Args, Reason: why})
+	s.emitKind(workflow.ChunkError, workflow.ErrorChunk{Message: q.Tool + ": " + why})
+	if f := s.spec.OnCallChanged; f != nil {
+		f(q, allowed, now)
+	}
+	safe.Go("acp.Session.callChanged", func() {
+		ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+		defer cancel()
+		_ = s.Interrupt(ctx)
+	})
 }
 
 func planChunk(es []acp.PlanEntry) workflow.PlanChunk {
@@ -431,6 +497,12 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	}
 	for _, o := range req.Options {
 		if o.ID == chosen && chosen != "" {
+			if o.Kind == KindAllowOnce || o.Kind == KindAllowAlways {
+				// what was allowed is this call as it is now: what the agent reports of it later is compared with it
+				s.mu.Lock()
+				st.approvedSum, st.changed = st.callSum(), false
+				s.mu.Unlock()
+			}
 			return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{
 				OptionId: acp.PermissionOptionId(chosen), Outcome: "selected"}}}, nil
 		}

@@ -314,6 +314,30 @@ func TestPermissionApprovalNeverCoversAnotherInput(t *testing.T) {
 	}
 }
 
+// The whole flow with the approval changed under it (decision P117): a person approves a row that was made another call's
+// approval while the call waited; the gate computes the descriptor again from the call it is answering, the hashes differ, and
+// the call is refused, never allowed.
+func TestPermissionGateRefusesWhenTheApprovedCallIsNotTheCallAnswered(t *testing.T) {
+	r := newPermRig(t)
+	ctx := context.Background()
+	req := ToolRequest{Tool: "WebFetch", Input: input(t, map[string]any{"url": "https://a.example"}), Root: r.root}
+	ch := r.decideAsync(t, req)
+	id := r.waitRequested(t)
+	other, _ := ClassifyToolRequest(ctx, r.gate.Analyzer, nil, ToolRequest{Tool: "WebFetch", Input: input(t, map[string]any{"url": "https://evil.example"}), Root: r.root})
+	if _, err := r.db.Writer().Exec(`UPDATE approvals SET action_hash=? WHERE id=?`, r.gate.bind(permScope, other.Action).Hash(), id); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.apr.Decide(ctx, id, DecisionApprove, "human:kyle"); err != nil {
+		t.Fatal(err)
+	}
+	if o := await(t, ch); o.Allow || o.Outcome != PermissionDenied || !strings.Contains(o.Message, "did not match") {
+		t.Fatalf("a call answered on another call's approval: %+v", o)
+	}
+	if !has(r.eventTypes(t), "approval.mismatch") {
+		t.Error("the mismatch was not published")
+	}
+}
+
 // Nobody answering in time, and a run that ends while it waits, both refuse the call.
 func TestPermissionGateTimeoutAndClosedRunDeny(t *testing.T) {
 	r := newPermRig(t)

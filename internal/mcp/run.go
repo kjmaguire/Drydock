@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -225,6 +227,7 @@ type callRec struct {
 	id             string
 	server, tool   string
 	argsHash       string
+	approved       *approvedCall // the call a person approved, when it needed an approval
 	bytesIn        int
 	decision       string
 	reason         string
@@ -359,6 +362,13 @@ func (r *Run) callTool(ctx context.Context, req *sdk.CallToolRequest) *sdk.CallT
 			res = dres
 			return res
 		}
+		// the call that goes out is the call that was approved (decision P117): its target and the hash of the bytes about to be
+		// sent are compared with the approved ones, in constant time, right before it is made
+		if why := c.approved.mismatch(t, args); why != "" {
+			c.decision = DecisionDenied
+			res = r.deny(ctx, c, why)
+			return res
+		}
 	}
 	if t.spec == nil {
 		res = r.callWorkspace(ctx, c, t, args)
@@ -383,7 +393,8 @@ func (r *Run) approval(ctx context.Context, c *callRec, t target, canon []byte) 
 		return textResult(fmt.Sprintf("%q needs a human approval and none can be requested right now; the call was not made", c.tool), true)
 	}
 	c.decision = DecisionApprovalPending
-	ok, err := ap.Approve(ctx, ApprovalRequest{Run: r.cfg.Info, CallID: c.id, Server: t.server, Tool: t.tool, ArgsHash: c.argsHash, Args: canon})
+	// the approver gets its own copy of the bytes: nothing it does to them reaches the call that is made
+	ok, err := ap.Approve(ctx, ApprovalRequest{Run: r.cfg.Info, CallID: c.id, Server: t.server, Tool: t.tool, ArgsHash: c.argsHash, Args: bytes.Clone(canon)})
 	if err != nil || !ok {
 		c.decision = DecisionDenied
 		c.reason = "approval rejected"
@@ -398,7 +409,27 @@ func (r *Run) approval(ctx context.Context, c *callRec, t target, canon []byte) 
 	}
 	c.decision = DecisionAllowed
 	c.reason = "approved"
+	c.approved = &approvedCall{server: t.server, tool: t.tool, hash: c.argsHash}
 	return nil
+}
+
+// approvedCall is what a person approved: the server, the tool and the hash of the canonical arguments.
+type approvedCall struct {
+	server, tool, hash string
+}
+
+// mismatch says why the call about to be made is not the approved one ("" when it is). The arguments are hashed again from the
+// bytes that will be sent; the comparison takes constant time. A call that needed an approval and has none is refused too.
+func (a *approvedCall) mismatch(t target, args []byte) string {
+	if a == nil || a.hash == "" {
+		return "the call has no approval to run on"
+	}
+	got := sha256Hex(args)
+	same := subtle.ConstantTimeCompare([]byte(got), []byte(a.hash)) == 1
+	if !same || t.server != a.server || t.tool != a.tool {
+		return "the call changed after it was approved; it was not made"
+	}
+	return ""
 }
 
 // ---- upstream path ----

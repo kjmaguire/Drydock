@@ -20,7 +20,6 @@ import (
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/core"
-	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/mcp/mcptestserver"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
@@ -640,8 +639,7 @@ func TestAMcpWriteCallThatEndsTakesItsQuestionWithIt(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		ok, err := a.c.TestMCPApprove(ctx, mcp.ApprovalRequest{Run: mcp.RunInfo{ProjectID: p.ID, RunID: "arun_aaaaaaaaaaaa", AgentID: "agt_aaaaaaaaaaaa"},
-			CallID: "call-1", Server: "tst", Tool: "write_file", ArgsHash: strings.Repeat("ab", 32), Args: []byte(`{"path":"x"}`)})
+		ok, err := a.c.TestMCPApprove(ctx, mcpWrite(p.ID, `{"path":"x"}`))
 		if ok {
 			err = errors.New("the call was approved")
 		}
