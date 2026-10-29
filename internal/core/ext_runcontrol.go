@@ -25,16 +25,35 @@ func init() {
 			TaskID       string `json:"taskId"`
 			RunID        string `json:"runId"`
 			CheckpointID string `json:"checkpointId"`
+			// RestoreFiles (time travel): also put the worktree's files back to the safe point recorded after the checkpoint
+			RestoreFiles bool `json:"restoreFiles"`
+		}
+		type restoreParam struct {
+			TaskID string `json:"taskId"`
+			RunID  string `json:"runId"`
+			Ref    string `json:"ref"`
 		}
 		return map[string]Method{
 			"run.resume": bind(func(ctx context.Context, p runParam) (any, error) {
 				return c.ResumeRun(ctx, p.TaskID, p.RunID, c.Human())
 			}),
 			"run.timeTravel": bind(func(ctx context.Context, p runParam) (any, error) {
-				return c.TimeTravelRun(ctx, p.TaskID, p.RunID, p.CheckpointID, c.Human())
+				return c.timeTravelRun(ctx, p.TaskID, p.RunID, p.CheckpointID, c.Human(), p.RestoreFiles)
 			}),
 			"run.replay": bind(func(ctx context.Context, p runParam) (any, error) {
 				return c.ReplayRun(ctx, p.TaskID, p.RunID, p.CheckpointID, c.Human())
+			}),
+			// decision P124: a safe point's files back (shown first, undoable), and an ended task run again as a new task
+			"run.restorePreview": bind(func(ctx context.Context, p restoreParam) (any, error) {
+				return c.RestorePreview(ctx, p.TaskID, p.RunID, p.Ref)
+			}),
+			"run.restore": bind(func(ctx context.Context, p restoreParam) (any, error) {
+				return c.RestoreSafePoint(ctx, p.TaskID, p.RunID, p.Ref, c.Human())
+			}),
+			"task.runAgain": bind(func(ctx context.Context, p struct {
+				TaskID string `json:"taskId"`
+			}) (any, error) {
+				return c.RunAgain(ctx, p.TaskID, c.Human())
 			}),
 		}, nil, nil
 	}})
@@ -54,6 +73,12 @@ type RunActions struct {
 	SupersedesStatus string `json:"supersedesStatus,omitempty"`
 	// Lease is who drives the run (run_leases): this Drydock, another one, or nobody.
 	Lease workflow.LeaseInfo `json:"lease"`
+	// Restore says whether the task's worktree can be put back to a safe point now (P124), RestoreWhy why not.
+	Restore    bool   `json:"restore"`
+	RestoreWhy string `json:"restoreWhy,omitempty"`
+	// RunAgain says whether the task, which has ended, can be run again as a new task (P124), RunAgainWhy why not.
+	RunAgain    bool   `json:"runAgain"`
+	RunAgainWhy string `json:"runAgainWhy,omitempty"`
 }
 
 // RunControlResult is the run that goes on after an action.
@@ -64,17 +89,27 @@ type RunControlResult struct {
 	// TaskStatus is the task's status once the action started the run; Note says what could not be put back (best effort).
 	TaskStatus string `json:"taskStatus"`
 	Note       string `json:"note,omitempty"`
+	// Restored is the restore a time travel made of the worktree's files (P124), when it was asked for.
+	Restored *RestoreResult `json:"restored,omitempty"`
 }
 
 // runActions works out what the run page may do with run info of task t.
 func (c *Core) runActions(ctx context.Context, t tasks.Task, info workflow.RunInfo) RunActions {
 	var a RunActions
 	a.Lease, _ = c.Engine.Lease(ctx, info.ID)
+	a.RestoreWhy = c.restoreRefusal(ctx, t)
+	a.Restore = a.RestoreWhy == ""
+	a.RunAgainWhy = runAgainRefusal(t)
+	a.RunAgain = a.RunAgainWhy == ""
 	off := func(why string) RunActions {
-		return RunActions{ResumeWhy: why, TimeTravelWhy: why, ReplayWhy: why, Lease: a.Lease}
+		return RunActions{ResumeWhy: why, TimeTravelWhy: why, ReplayWhy: why, Lease: a.Lease, Restore: a.Restore, RestoreWhy: a.RestoreWhy, RunAgain: a.RunAgain, RunAgainWhy: a.RunAgainWhy}
 	}
 	if t.Status.Terminal() {
-		return off(fmt.Sprintf("Task #%d is %s: its runs can be read, not run again.", t.Seq, strings.ToLower(string(t.Status))))
+		why := fmt.Sprintf("Task #%d is %s: its runs can be read, not run again.", t.Seq, strings.ToLower(string(t.Status)))
+		if a.RunAgain {
+			why = fmt.Sprintf("Task #%d is %s: its runs can be read. Run it again as a new task to go on.", t.Seq, strings.ToLower(string(t.Status)))
+		}
+		return off(why)
 	}
 	if t.OwnedByPerson() {
 		return off(fmt.Sprintf("A person has taken task #%d on, so no agent works on it.", t.Seq))
@@ -224,17 +259,24 @@ func stoppedWords(s workflow.RunStatus) string {
 // as of that checkpoint. The task's run, when it waits for a person or is paused, is cancelled first (its history stays); the
 // task's status goes back to what it was at the checkpoint, as far as its state machine allows; the new run becomes the task's.
 func (c *Core) TimeTravelRun(ctx context.Context, taskID, runID, cpID, by string) (RunControlResult, error) {
-	return c.branchRun(ctx, taskID, runID, cpID, by, false)
+	return c.branchRun(ctx, taskID, runID, cpID, by, false, false)
+}
+
+// timeTravelRun is TimeTravelRun that, with restore, also puts the worktree's files back to the safe point recorded right
+// after the checkpoint (P124) before the new run starts: refused, with nothing changed, while an agent turn runs in the
+// worktree or when no agent turn ran after the checkpoint (no files were recorded for it).
+func (c *Core) timeTravelRun(ctx context.Context, taskID, runID, cpID, by string, restore bool) (RunControlResult, error) {
+	return c.branchRun(ctx, taskID, runID, cpID, by, false, restore)
 }
 
 // ReplayRun runs the nodes of the task's ended run runID again in a new run, from checkpoint cpID (empty: its entry), with the
 // recorded inputs (workflow.Engine.Replay); every step that merges, pushes or creates tasks asks for a fresh approval first.
 // Otherwise as TimeTravelRun.
 func (c *Core) ReplayRun(ctx context.Context, taskID, runID, cpID, by string) (RunControlResult, error) {
-	return c.branchRun(ctx, taskID, runID, cpID, by, true)
+	return c.branchRun(ctx, taskID, runID, cpID, by, true, false)
 }
 
-func (c *Core) branchRun(ctx context.Context, taskID, runID, cpID, by string, replay bool) (RunControlResult, error) {
+func (c *Core) branchRun(ctx context.Context, taskID, runID, cpID, by string, replay, restore bool) (RunControlResult, error) {
 	what := "time travel"
 	if replay {
 		what = "replay"
@@ -284,6 +326,20 @@ func (c *Core) branchRun(ctx context.Context, taskID, runID, cpID, by string, re
 	if from == nil {
 		return RunControlResult{}, fmt.Errorf("checkpoint %s is not one of this run's", cpID)
 	}
+	// the files go back before anything else changes: refused here, the fork does not happen either
+	safeRef := ""
+	if restore {
+		execs, err := c.Engine.Executions(ctx, info.ID)
+		if err != nil {
+			return RunControlResult{}, err
+		}
+		if safeRef = safePointAfter(execs, from.Step); safeRef == "" {
+			return RunControlResult{}, fmt.Errorf("no agent turn ran after step %d, so no safe point holds the files of that point; time travel without putting the files back", from.Step)
+		}
+		if why := c.restoreRefusal(ctx, t); why != "" {
+			return RunControlResult{}, errors.New(why)
+		}
+	}
 
 	res := RunControlResult{}
 	if a.Supersedes != "" {
@@ -291,6 +347,13 @@ func (c *Core) branchRun(ctx context.Context, taskID, runID, cpID, by string, re
 			return RunControlResult{}, fmt.Errorf("stop the task's run first: %w", err)
 		}
 		res.Superseded = a.Supersedes
+	}
+	if safeRef != "" {
+		r, err := c.restoreTo(ctx, t, runID, safeRef, by, fmt.Sprintf("time travel from step %d", from.Step))
+		if err != nil {
+			return res, fmt.Errorf("the files could not be put back, so the time travel did not start: %w", err)
+		}
+		res.Restored = &r
 	}
 	t, res.Note = c.alignTaskTo(ctx, t, from.Created, fmt.Sprintf("%s by %s from step %d", what, personName(by), from.Step))
 	var id workflow.RunID

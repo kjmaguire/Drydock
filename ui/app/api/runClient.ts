@@ -87,6 +87,8 @@ export interface CheckpointView {
   next?: string[];
   /** Where a person resumed the run after it stopped (an entry whose parent is a checkpoint of the same run). */
   resumed?: boolean;
+  /** The safe point that holds the worktree's files as of this checkpoint (taken before the next agent turn), P124. */
+  safePoint?: string;
 }
 
 export interface EventView {
@@ -138,6 +140,41 @@ export interface RunActions {
   supersedes?: string;
   supersedesStatus?: string;
   lease: LeaseView;
+  /** Whether the task's worktree can be put back to a safe point now, and why not (P124; absent from an older core). */
+  restore?: boolean;
+  restoreWhy?: string;
+  /** Whether the task, which has ended, can be run again as a new task, and why not (P124). */
+  runAgain?: boolean;
+  runAgainWhy?: string;
+}
+
+/** One file a safe point restore changes, from the worktree's side. */
+export interface FileChange {
+  path: string;
+  change: 'restored' | 'changed' | 'removed' | string;
+}
+
+/** What putting the worktree back to a safe point would change now, and whether it may be done (run.restorePreview). */
+export interface RestorePreview {
+  ref: string;
+  changes: FileChange[];
+  allowed: boolean;
+  why?: string;
+}
+
+/** A restore that was made: the state before it is kept under undoRef. */
+export interface RestoreResult {
+  ref: string;
+  undoRef: string;
+  changed: number;
+}
+
+/** The new task an ended task was run again as (task.runAgain). */
+export interface RunAgainResult {
+  taskId: string;
+  seq: number;
+  runId: string;
+  from: string;
 }
 
 /** The run a subworkflow node started at one of its executions, with its own executions. */
@@ -157,6 +194,8 @@ export interface RunControlResult {
   taskStatus: string;
   /** What of the task's status could not be put back. */
   note?: string;
+  /** The worktree's files a time travel put back, when it was asked to (P124). */
+  restored?: RestoreResult;
 }
 
 export interface RunExplanation {
@@ -190,8 +229,15 @@ export interface RunClient {
   runPrompt(taskId: string, runId: string, nodeId: string, step: number, attempt: number): Promise<string>;
   /** Resume a run that failed or stopped when Drydock did, from its latest checkpoint (P123). */
   runResume(taskId: string, runId: string): Promise<RunControlResult>;
-  /** Start a new run from a checkpoint of the run, with the state as of that checkpoint (P123). */
-  runTimeTravel(taskId: string, runId: string, checkpointId: string): Promise<RunControlResult>;
+  /** Start a new run from a checkpoint of the run, with the state as of that checkpoint (P123); with restoreFiles the worktree's
+   * files go back to the checkpoint's safe point first (P124). */
+  runTimeTravel(taskId: string, runId: string, checkpointId: string, restoreFiles?: boolean): Promise<RunControlResult>;
+  /** The files putting the task's worktree back to safe point ref would change, and whether it may be done now (P124). */
+  runRestorePreview(taskId: string, runId: string, ref: string): Promise<RestorePreview>;
+  /** Put the task's worktree back to safe point ref; the state before is kept under the result's undoRef (P124). */
+  runRestore(taskId: string, runId: string, ref: string): Promise<RestoreResult>;
+  /** Run a failed or cancelled task again as a new task with the same work (P124). */
+  taskRunAgain(taskId: string): Promise<RunAgainResult>;
   /** Run an ended run's steps again from a checkpoint (its entry when none); steps that change something outside ask first (P123). */
   runReplay(taskId: string, runId: string, checkpointId?: string): Promise<RunControlResult>;
   /** What the task's agents did, turn by turn, in the typed vocabulary modelled on AG-UI (internal/agui, P87). */
@@ -224,7 +270,13 @@ export function createRunClient(t: Transport): RunClient {
     },
     runPrompt: async (taskId, runId, nodeId, step, attempt) => (await t.call<string | null>('run.prompt', { taskId, runId, nodeId, step, attempt })) ?? '',
     runResume: (taskId, runId) => t.call('run.resume', { taskId, runId }),
-    runTimeTravel: (taskId, runId, checkpointId) => t.call('run.timeTravel', { taskId, runId, checkpointId }),
+    runTimeTravel: (taskId, runId, checkpointId, restoreFiles = false) => t.call('run.timeTravel', { taskId, runId, checkpointId, restoreFiles }),
+    runRestorePreview: async (taskId, runId, ref) => {
+      const p = await t.call<RestorePreview>('run.restorePreview', { taskId, runId, ref });
+      return { ...p, changes: arr(p.changes) };
+    },
+    runRestore: (taskId, runId, ref) => t.call('run.restore', { taskId, runId, ref }),
+    taskRunAgain: (taskId) => t.call('task.runAgain', { taskId }),
     runReplay: (taskId, runId, checkpointId = '') => t.call('run.replay', { taskId, runId, checkpointId }),
   };
 }

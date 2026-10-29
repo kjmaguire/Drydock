@@ -124,6 +124,39 @@ func TestAWorkflowBudgetHoldsWhatItsTurnsInFlightReserved(t *testing.T) {
 	}
 }
 
+// A session that names the workflow run it belongs to (a turn of a group discussion, decision P124) counts toward that run and
+// its workflow alone: in a channel it has no task, and in the task's room it does not fall into another run's window.
+func TestASessionThatNamesItsRunCountsTowardThatRunAlone(t *testing.T) {
+	e := newEnv(t)
+	e.task("t1", "prj1", "agtW", "agtR")
+	e.exec(`INSERT INTO workflow_runs(id,workflow,status,project_id,task_id,topology_hash,created_at,updated_at) VALUES
+		('r1','iuv','RUNNING','prj1','t1','h',1000,1000),
+		('r2','design','RUNNING','prj1','','h',1200,1200)`)
+	e.exec(`INSERT INTO agent_runs(id,agent_id,task_id,status,started_at,workflow_run_id) VALUES
+		('a1','agtW','t1','STOPPED',1500,''),
+		('a2','agtW','','STOPPED',1500,'r2'),
+		('a3','agtR','t1','STOPPED',1600,'r2')`)
+	e.usage(row{task: "", agent: "agtW", in: 3, run: "r2", ts: 1500})
+	e.usage(row{task: "t1", agent: "agtR", in: 5, run: "r2", ts: 1600})
+	e.usage(row{task: "t1", agent: "agtW", in: 7, ts: 1500})
+	for _, c := range []struct {
+		scope         budget.Scope
+		id            string
+		turns, tokens int64
+	}{
+		{budget.ScopeRun, "r1", 1, 7},
+		{budget.ScopeRun, "r2", 2, 8},
+		{budget.ScopeWorkflow, "prj1/design", 2, 8},
+		{budget.ScopeWorkflow, "prj1/iuv", 1, 7},
+		{budget.ScopeTask, "t1", 2, 12},
+	} {
+		sp, err := budget.Usage(e.ctx, e.db, c.scope, c.id)
+		if err != nil || sp.Turns != c.turns || sp.Tokens() != c.tokens {
+			t.Errorf("%s %s: %+v %v (want %d turns, %d tokens)", c.scope, c.id, sp, err, c.turns, c.tokens)
+		}
+	}
+}
+
 // secondTask adds a second task to prj1 (task gives every task the number 1).
 func (e *env) secondTask() {
 	e.exec(`INSERT INTO tasks(id,project_id,seq,title,status,assignee,reviewer,created_at,updated_at) VALUES('t2','prj1',2,'t2','IN_PROGRESS','agtW','agtR',1,1)`)

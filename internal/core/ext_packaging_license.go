@@ -360,6 +360,8 @@ var gatedMethods = map[string]string{
 	"run.resume": "start_task", "run.timeTravel": "start_task", "run.replay": "start_task",
 	// a person confirms or waives an acceptance criterion (P125); saying one is not met, or reopening it, stays available
 	"task.criterion.mark": "approve",
+	// a worktree put back to a safe point, an ended task run again as a new task (P124)
+	"run.restore": "start_task", "task.runAgain": "start_task",
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an

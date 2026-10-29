@@ -225,6 +225,8 @@ func (d Deps) promptContext(ctx context.Context, t tasks.Task, in workflow.NodeI
 	if withSpec {
 		pc.Spec = d.acceptedSpec(ctx, t.ID)
 		pc.Design = d.designNotes(ctx, t.ID)
+	} else if DesignReviewed(in.Workflow) {
+		pc.Design = d.designNotes(ctx, t.ID) // what the design discussion agreed, or the person settled (P124)
 	}
 	if len(t.Acceptance) == 0 {
 		if ev, err := d.Tasks.Evidence(ctx, t.ID); err == nil {

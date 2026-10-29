@@ -420,7 +420,7 @@ func TestReplayCountsTheApprovalJustBeforeTheStep(t *testing.T) {
 }
 
 // A subworkflow's run has an id derived from the parent's node execution, so its nodes can be shown inside the parent's graph;
-// a subworkflow that stops at a request is cancelled (its request leaves the inbox) and fails the parent's step.
+// in a replay a step inside it that changes something outside the run asks first, in the nested run, the parent waiting.
 func TestSubworkflowRunsAreFoundFromTheParentsExecution(t *testing.T) {
 	dir := t.TempDir()
 	e := openEnv(t, dir)
@@ -441,25 +441,8 @@ func TestSubworkflowRunsAreFoundFromTheParentsExecution(t *testing.T) {
 		t.Fatalf("nested executions %v", a)
 	}
 
-	asks := wf.Sequential("asks", wf.AgentTask("x", eff(dir, "x2", "")), wf.Request("q", wf.RequestSpec{Kind: "question", Title: "which one?"}))
-	g2 := wf.Sequential("outer2", &wf.Node{ID: "S", Kind: wf.KindSubworkflow, Sub: asks})
-	if err := e.eng.Register(g2); err != nil {
-		t.Fatal(err)
-	}
-	run2, _ := e.eng.Start(ctx, "outer2", "in", wf.StartOptions{})
-	failed := waitStatus(t, e.eng, run2, wf.StatusFailed)
-	if !strings.Contains(failed.FailedReason, "needs a person (which one?)") {
-		t.Fatalf("reason %q", failed.FailedReason)
-	}
-	child, _ := e.eng.Status(ctx, wf.SubRunID(run2, "S", 1, 1))
-	if child.Status != wf.StatusCancelled {
-		t.Fatalf("the parked subworkflow is stopped: %s", child.Status)
-	}
-	if open, _ := e.eng.Approvals(ctx, "REQUESTED"); len(open) != 0 {
-		t.Fatalf("no request is left open for a run that will never read it: %+v", open)
-	}
-
-	// in a replay, a step inside a subworkflow that changes something outside the run does not run either
+	// in a replay, a step inside a subworkflow that changes something outside the run asks for its fresh approval in the nested
+	// run, and the replay waits with it (P124; before, the nested run was stopped and the replay failed)
 	pushes := wf.Sequential("pushes", wf.Route("p", eff(dir, "p", "")).Effect("pushes"))
 	g3 := wf.Sequential("outer3", &wf.Node{ID: "S", Kind: wf.KindSubworkflow, Sub: pushes})
 	if err := e.eng.Register(g3); err != nil {
@@ -471,9 +454,20 @@ func TestSubworkflowRunsAreFoundFromTheParentsExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitStatus(t, e.eng, replay, wf.StatusFailed)
+	waitStatus(t, e.eng, replay, wf.StatusWaitingHuman)
 	if got := effects(dir); got["p"] != 1 {
 		t.Fatalf("the nested push ran in the replay: %v", got)
+	}
+	ps, _ := e.eng.Pending(ctx, replay)
+	if len(ps) != 1 || !strings.Contains(ps[0].Spec.Title, "Waiting on pushes's question: This replay reached p") || ps[0].Spec.Child != wf.SubRunID(replay, "S", 1, 1) {
+		t.Fatalf("pending %+v", ps)
+	}
+	if err := e.eng.Resume(ctx, replay, wf.Response{RequestID: ps[0].ID, Decision: "rejected", By: "human:test"}); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, e.eng, replay, wf.StatusFailed)
+	if got := effects(dir); got["p"] != 1 {
+		t.Fatalf("the nested push ran after a rejection: %v", got)
 	}
 }
 

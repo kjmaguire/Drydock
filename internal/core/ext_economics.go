@@ -97,19 +97,33 @@ func EconomicsRouter(c *Core) router.ModelRouter {
 // returns an error when the budgets did not start: no turn runs without them. Workflow turns are gated by the budget middleware
 // instead, where a human can resume one turn.
 func EconomicsBudgetBlock(ctx context.Context, c *Core, projectID, taskID, agentID string) error {
+	return EconomicsBudgetBlockFor(ctx, c, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+}
+
+// EconomicsBudgetBlockFor is EconomicsBudgetBlock over every scope a turn counts toward: a turn of a group discussion also
+// counts toward the run and the workflow that hold it (decision P124). A refusal is a *budget.PauseError, which parks the
+// discussion's node on the budget pause; a turn a person approved over the limit (budget.ApprovedOverLimit) is not refused.
+func EconomicsBudgetBlockFor(ctx context.Context, c *Core, ids budget.ScopeIDs) error {
 	store := c.budgets.Load()
 	if store == nil {
 		// no budget store means the economics extension did not start: fail closed, as the workflow gate does
 		return errors.New("the budgets did not start, so the turn does not start (see the log)")
 	}
-	sts, err := store.StatusFor(ctx, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+	sts, err := store.StatusFor(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("budgets could not be read, so the turn does not start: %w", err) // fail closed, as the middleware does
 	}
+	if budget.ApprovedOverLimit(ctx) {
+		return nil
+	}
+	var over []budget.Status
 	for _, st := range sts {
 		if st.State == budget.StateExceeded {
-			return fmt.Errorf("the %s, so agents do not answer until it is raised on the Budgets page", st.Message)
+			over = append(over, st)
 		}
+	}
+	if len(over) > 0 {
+		return &budget.PauseError{Over: over, Text: fmt.Sprintf("the %s, so agents do not answer until it is raised on the Budgets page", over[0].Message)}
 	}
 	return nil
 }
@@ -131,10 +145,16 @@ func (b budgetRouter) Explain(d router.RoutingDecision) string { return b.e.live
 
 // fillBudget sets the request's budget state from the budget store unless the caller supplied one.
 func (e *economics) fillBudget(ctx context.Context, req *router.RouteRequest) error {
+	return e.fillBudgetRun(ctx, req, req.RunID)
+}
+
+// fillBudgetRun is fillBudget with the run whose budgets count the turn named: a group discussion's turn is routed under its
+// own turn id but counts toward the workflow run that holds it (decision P124).
+func (e *economics) fillBudgetRun(ctx context.Context, req *router.RouteRequest, run string) error {
 	if req.Budget.Scope != "" {
 		return nil
 	}
-	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID, Workflow: req.Workflow})
+	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: run, Agent: req.AgentID, Workflow: req.Workflow})
 	if err != nil {
 		return err
 	}
@@ -193,6 +213,10 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		}
 	}
 	c.Engine.Use(workflow.KindAgentTask, mws...)
+	// a group discussion's node (P124): no turn of it starts while a budget it counts toward (its run's and its workflow's
+	// included) is at its limit, warnings and crossings are announced after it, and a person's answer to its budget pause is
+	// read here (an approval lets one more turn through); each turn is also checked and reserved as a reply is
+	c.Engine.Use(workflow.KindGroup, e.enforcer.Middleware())
 	c.budgetGate.Store(true)
 
 	// --- LLM wrapper, quota ledger, router ---

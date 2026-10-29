@@ -239,9 +239,33 @@ nodes** folds it back (`expandSubworkflows`, `subExecutions`). Tests: `run-model
 nested states), `run-screen.test.browser.tsx` (each action's confirmation, call and navigation, a refusal shown in the
 dialog, the nested view), `e2e/round11.spec.ts` (against the real core and the scripted agent: Resume refused for a waiting
 run, time travel from the checkpoint after prepare to the approval again, the earlier run cancelled and kept, its replay to the
-approval again). **Not built / not verified:** putting the worktree's files back on time travel (a safe point restore, a
-human action the page does not offer yet); a subworkflow in any shipped workflow (none uses one, so the nested view is tested
-with test graphs only); the actions on Windows.
+approval again).
+
+**As built (2026-10-29, decision P124): putting the worktree's files back, and Run again.** **Put files back...** (under the
+summary, beside Resume and Replay) opens a dialog listing the run's safe points, each named by the turn it was taken before
+("Before work at step 2", "..., attempt 2"; `safePoints` in `run-model.ts`, from the executions' `safePoint`). Choosing one
+lists the files that would change (`run.restorePreview`: path, and whether it comes back, goes back to how it was, or is
+removed because it did not exist then) before **Put the files back** is possible; the restore (`run.restore`) keeps what was
+there under an undo ref the dialog names ("Put back: 2 files changed. What was there before is kept as
+refs/drydock/safe/<task>/undo/<ms>.") and offers **Undo the restore**. Commits and the branch are not touched. The time travel
+confirmation gains **Also put the worktree's files back to this point**: ticked, it lists the files of the checkpoint's safe
+point (`run.explain` names one per checkpoint: the safe point taken before the next agent turn after it) and the plan says
+"The worktree's files go back to how they were at step N first (M files change, listed below)"; a checkpoint after which no
+agent turn ran says it has no safe point, and the start stays off while the files cannot be put back (with the core's
+reason). The core refuses a restore while the task's run works in the worktree or any agent session of the task is working
+(`actions.restore` and `restoreWhy` say so beforehand), and only for a ref that is one of the task's safe points; each restore
+publishes `task.files_restored`, writes an audit row (`worktree.restore`) and a line in the task channel. **Run again as a new
+task** appears on the run page of a task that has ended: on for a failed or cancelled task (`actions.runAgain`), off with the
+reason for a completed one ("its work was merged: more work on it is a new task"); its confirmation says that a new task with
+the same title, description, acceptance criteria and template starts from its first step with the same worker and reviewer,
+in a fresh worktree from the base branch, and that the ended task stays as it is; it opens the new task. Tests:
+`run-model.test.ts` (the safe point list, the words, the plan with the files), `run-screen.test.browser.tsx` (time travel
+with the files put back and the call it makes, a checkpoint without a safe point, a refused preview keeping the start off,
+the restore and its undo, Run again opening the new task, a completed task's reason), `e2e/round11.spec.ts` (against the real
+core and the scripted agent: the files back to the safe point before the work turn and undone, a cancelled task run again to
+its approval). A step that waits on a subworkflow's question shows that question as its own on the task page ("Waiting on
+<subworkflow>'s question: ..."; the answer goes to the nested run, P124). **Not built / not verified:** a subworkflow in any
+shipped workflow (none uses one, so the nested view is tested with test graphs only); the actions on Windows.
 
 ### 6.3 Command palette (planned with cmdk, built as our own dialog)
 Opened with `Ctrl+K`. Groups: Navigate (rooms, DMs, tasks, screens), Agents (focus, interrupt, restart, open inspector), Tasks (create, open, move per allowed transition), Actions (open terminal, toggle dock, switch theme, test connection), Recent. Commands are registered by screens and filtered by context (a command whose feature is not built is not registered). Destructive commands open the same approval flow as buttons; the palette never bypasses an approval. Fuzzy matching is done by cmdk over a bounded list (recent 200 entities); larger sets query the Go side (FTS5) on input (**proposal**).

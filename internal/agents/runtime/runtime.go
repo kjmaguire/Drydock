@@ -126,6 +126,10 @@ type Config struct {
 	// lead, a recommendation, a person's chat and a connection test are not turns in a room and carry neither.
 	RoomID string
 	Grant  *room.TurnGrant
+	// WorkflowRun is the workflow run a turn in a room belongs to (a turn of a group-discussion node, decision P124): the
+	// session's agent_runs row and its usage rows name it, so the run's and its workflow's budgets count the turn even in a
+	// room that has no task. "" for every other session.
+	WorkflowRun string
 }
 
 // GrantRedeemer uses a room turn's grant (room.Service.RedeemGrant).
@@ -291,8 +295,8 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	m := &Managed{rt: r, cfg: cfg, RunID: runID, Sess: sess, releaseMCP: att.Release, recorded: make(chan struct{})}
 	if r.DB != nil {
 		_ = r.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `INSERT INTO agent_runs(id,agent_id,task_id,session_id,pid,cwd,status,started_at) VALUES(?,?,?,?,?,?,?,?)`,
-				m.RunID, cfg.AgentID, cfg.TaskID, "", sess.PID(), cfg.Spec.Cwd, "WORKING", storage.Now())
+			_, err := tx.ExecContext(ctx, `INSERT INTO agent_runs(id,agent_id,task_id,session_id,pid,cwd,status,started_at,workflow_run_id) VALUES(?,?,?,?,?,?,?,?,?)`,
+				m.RunID, cfg.AgentID, cfg.TaskID, "", sess.PID(), cfg.Spec.Cwd, "WORKING", storage.Now(), cfg.WorkflowRun)
 			return err
 		})
 	}
@@ -594,9 +598,9 @@ func (m *Managed) recordUsage(ctx context.Context, u workflow.UsageChunk) error 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	return m.rt.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO model_usage(ts,agent_run_id,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, storage.Now(), m.RunID, m.cfg.TaskID, m.cfg.AgentID, m.cfg.Provider, model, m.cfg.Tier,
-			u.InputTokens, u.OutputTokens, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens, u.CostUSD, nz(u.Source))
+		_, err := tx.ExecContext(ctx, `INSERT INTO model_usage(ts,agent_run_id,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source,run_id)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, storage.Now(), m.RunID, m.cfg.TaskID, m.cfg.AgentID, m.cfg.Provider, model, m.cfg.Tier,
+			u.InputTokens, u.OutputTokens, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens, u.CostUSD, nz(u.Source), m.cfg.WorkflowRun)
 		return err
 	})
 }

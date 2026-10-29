@@ -69,7 +69,7 @@ type harness struct {
 	logs    map[string]string
 	r       *responder.Responder
 	gate    func(ctx context.Context, project string, a responder.Agent) (func(), error)
-	budget  func(ctx context.Context, project, task string, a responder.Agent) error
+	budget  func(ctx context.Context, s responder.BudgetScope, a responder.Agent) error
 	route   func(ctx context.Context, t responder.ReplyTurn, attempt responder.Attempt) error // the model router's hook, when a test sets it
 	costs   map[string]float64
 	mu      sync.Mutex
@@ -107,9 +107,9 @@ func newHarness(t *testing.T, opt responder.Options) *harness {
 			return a, err
 		},
 		Cwd: func(ctx context.Context, r room.Room) (string, error) { return h.dir, nil },
-		Budget: func(ctx context.Context, p, task string, a responder.Agent) error {
+		Budget: func(ctx context.Context, s responder.BudgetScope, a responder.Agent) error {
 			if h.budget != nil {
-				return h.budget(ctx, p, task, a)
+				return h.budget(ctx, s, a)
 			}
 			return nil
 		},

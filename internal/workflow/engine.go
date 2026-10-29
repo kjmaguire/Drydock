@@ -72,14 +72,21 @@ func New(cfg Config) *Engine {
 	return &Engine{cfg: cfg, st: &store{db: cfg.DB, redact: cfg.Redact}, graphs: map[string]*Graph{}, mw: map[NodeKind][]Middleware{}, active: map[RunID]*driver{}}
 }
 
-// Register makes a graph available by name (needed for Start and Recover).
+// Register makes a graph available by name (needed for Start and Recover), with the graphs of its subworkflow nodes.
 func (e *Engine) Register(g *Graph) error {
 	if err := g.Validate(); err != nil {
+		return err
+	}
+	subs, err := nestedGraphs(g)
+	if err != nil {
 		return err
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.graphs[g.Name] = g
+	for _, s := range subs {
+		e.graphs[s.Name] = s
+	}
 	return nil
 }
 
@@ -188,6 +195,11 @@ func (e *Engine) Start(ctx context.Context, workflow string, input any, opts Sta
 // startRun creates run id of g from its input and launches it; origin (optional) is carried in its state (a subworkflow's run
 // inside a replay is a replay too).
 func (e *Engine) startRun(ctx context.Context, g *Graph, id RunID, raw json.RawMessage, opts StartOptions, origin *Origin) (RunID, error) {
+	return e.startRunAs(ctx, g, id, raw, opts, origin, "")
+}
+
+// startRunAs is startRun for a run that parent's subworkflow node starts ("" for none).
+func (e *Engine) startRunAs(ctx context.Context, g *Graph, id RunID, raw json.RawMessage, opts StartOptions, origin *Origin, parent RunID) (RunID, error) {
 	d, ok := e.claim(id) // before the run exists: its first driver is this one, however long the writes below take
 	if !ok {
 		return "", ErrEngineClosed
@@ -198,7 +210,7 @@ func (e *Engine) startRun(ctx context.Context, g *Graph, id RunID, raw json.RawM
 		state.Inboxes[n] = append(state.Inboxes[n], Message{Value: raw})
 	}
 	cp := Checkpoint{ID: CheckpointID(ids.New("cp")), RunID: id, Workflow: g.Name, Step: 0, Kind: CheckpointEntry, State: state, Created: storage.Now()}
-	info := RunInfo{ID: id, Workflow: g.Name, Status: StatusRunning, ProjectID: opts.ProjectID, TaskID: opts.TaskID, Input: raw, Topology: state.Topology}
+	info := RunInfo{ID: id, Workflow: g.Name, Status: StatusRunning, ProjectID: opts.ProjectID, TaskID: opts.TaskID, Input: raw, Topology: state.Topology, ParentRun: parent}
 	if err := e.st.createRun(ctx, info, cp); err != nil {
 		e.giveUp(id, d)
 		return "", err
@@ -254,6 +266,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 					e.park(info)
 				}
 				e.emit(context.Background(), "workflow.paused", info, map[string]any{"reason": "waiting_human", "pending": len(st.Pending)})
+				e.watchChildren(info.ID, st) // a nested run it waits on may have ended while this step was being recorded
 				return
 			}
 			e.finish(ctx, info, g, &st, &parent)
@@ -300,6 +313,7 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 
 		// Apply: consume inboxes, record outputs, route.
 		var reqs []approvalInsert
+		var waits []PendingRequest
 		for _, r := range results {
 			consumed := st.Inboxes[r.node]
 			delete(st.Inboxes, r.node)
@@ -316,7 +330,11 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 				}
 				st.Pending[rid] = pr
 				st.Waiting[r.node] = rid
-				reqs = append(reqs, approvalInsert{id: rid, nodeID: r.node, spec: spec, projectID: info.ProjectID, taskID: info.TaskID})
+				if spec.Child != "" {
+					waits = append(waits, pr) // a nested run's request is the one a person answers: no row of its own (P124)
+					continue
+				}
+				reqs = append(reqs, approvalInsert{id: rid, nodeID: r.node, spec: spec, projectID: info.ProjectID, taskID: e.approvalTask(ctx, info)})
 				continue
 			}
 			if len(r.out.Value) > 0 {
@@ -351,6 +369,9 @@ func (e *Engine) drive(ctx context.Context, info RunInfo, g *Graph, from Checkpo
 		for _, r := range reqs {
 			e.emit(ctx, "workflow.request_raised", info, map[string]any{"request": r.id, "node": r.nodeID, "kind": r.spec.Kind, "title": r.spec.Title})
 			e.emit(ctx, "approval.requested", info, map[string]any{"request": r.id, "kind": r.spec.Kind, "title": r.spec.Title})
+		}
+		for _, w := range waits {
+			e.emit(ctx, "workflow.waiting_on_child", info, map[string]any{"request": w.ID, "node": w.NodeID, "child": w.Spec.Child})
 		}
 	}
 }
@@ -485,6 +506,7 @@ func (e *Engine) finish(ctx context.Context, info RunInfo, g *Graph, st *RunStat
 	}
 	*parent = cp.ID
 	e.emit(context.Background(), "workflow.completed", info, map[string]any{"result": json.RawMessage(raw)})
+	e.childEnded(info)
 }
 
 func (e *Engine) fail(ctx context.Context, info RunInfo, reason string) {
@@ -502,6 +524,9 @@ func (e *Engine) fail(ctx context.Context, info RunInfo, reason string) {
 		data["unrecorded"] = true // the run could not be marked failed; recovery meets it again
 	}
 	e.emit(context.Background(), "workflow.failed", info, data)
+	if err == nil {
+		e.childEnded(info)
+	}
 }
 
 // failAttempts is how many times a failed run's status is written before giving up.
@@ -813,10 +838,15 @@ func SubRunID(parent RunID, node NodeID, step, attempt int) RunID {
 	return RunID(fmt.Sprintf("%s-%s-%d-%d", parent, node, step, attempt))
 }
 
-// runSub executes a subworkflow as its own run (SubRunID) and waits for it to complete. A subworkflow that parks at a human
-// request is stopped (its run cancelled, so its request leaves the inbox) and reported as an error: human interaction belongs
-// in the parent graph in this version. Inside a replay the nested run is a replay too, so a node of it that changes something
-// outside the run stops it the same way instead of running without a fresh approval.
+// runSub executes a subworkflow as its own run (SubRunID) and waits for it. A nested run that waits for a person parks the
+// parent with it (decision P124): the node's output is a request that names the nested run (RequestSpec.Child) and has no
+// approvals row of its own; the person answers the nested run's request (directly, or through the parent's, which Resume
+// passes on), and the parent goes on with the nested run's result when that run ends (childEnded; recovery finds a parent
+// whose nested run ended while nobody drove it). A step run again after the parent's driver stopped (a crash, the app
+// closing) takes up the nested run an earlier attempt of the same step started instead of starting a second one. The nested
+// run belongs to the parent's project (its requests are in the project's Inbox) but to no task, so it never splits the
+// task's budget window. Inside a replay the nested run is a replay too: a node of it that changes something outside the run
+// asks for its fresh approval in the nested run, the parent waiting meanwhile.
 func (e *Engine) runSub(ctx context.Context, n *Node, in NodeInput, origin *Origin) (NodeOutput, error) {
 	if err := e.Register(n.Sub); err != nil {
 		return NodeOutput{}, err
@@ -832,26 +862,42 @@ func (e *Engine) runSub(ctx context.Context, n *Node, in NodeInput, origin *Orig
 	if origin != nil && origin.Kind == OriginReplay {
 		sub = &Origin{Kind: OriginReplay, Run: in.RunID, Step: in.Step, By: origin.By}
 	}
-	id, err := e.startRun(ctx, n.Sub, SubRunID(in.RunID, n.ID, in.Step, in.Attempt), input, StartOptions{}, sub)
-	if err != nil {
-		return NodeOutput{}, err
+	id := RunID("")
+	for a := 1; a < in.Attempt; a++ {
+		prev := SubRunID(in.RunID, n.ID, in.Step, a)
+		if pi, err := e.st.getRun(ctx, prev); err == nil && (pi.Status == StatusCompleted || !pi.Status.Terminal()) {
+			id = prev // it went on (or is recovered) on its own: wait for it
+			e.emit(ctx, "workflow.subrun_resumed", RunInfo{ID: in.RunID, ProjectID: in.ProjectID, TaskID: in.TaskID}, map[string]any{"node": n.ID, "step": in.Step, "child": prev})
+			break
+		}
 	}
+	if id == "" {
+		var err error
+		if id, err = e.startChild(ctx, n.Sub, SubRunID(in.RunID, n.ID, in.Step, in.Attempt), input, in, sub); err != nil {
+			return NodeOutput{}, err
+		}
+	}
+	return e.awaitChild(ctx, n, in, id)
+}
+
+// startChild starts the nested run of a subworkflow node: in the parent's project, under no task, its parent recorded.
+func (e *Engine) startChild(ctx context.Context, g *Graph, id RunID, raw json.RawMessage, in NodeInput, origin *Origin) (RunID, error) {
+	return e.startRunAs(ctx, g, id, raw, StartOptions{ProjectID: in.ProjectID}, origin, in.RunID)
+}
+
+// awaitChild waits until the nested run ends or waits for a person.
+func (e *Engine) awaitChild(ctx context.Context, n *Node, in NodeInput, id RunID) (NodeOutput, error) {
 	info, err := e.Await(ctx, id, func(r RunInfo) bool { return r.Status.Terminal() || r.Status == StatusWaitingHuman })
 	if err != nil {
 		return NodeOutput{}, err
 	}
-	if info.Status == StatusWaitingHuman {
-		why := ""
-		if ps, perr := e.Pending(context.WithoutCancel(ctx), id); perr == nil && len(ps) > 0 {
-			why = " (" + ps[0].Spec.Title + ")"
-		}
-		_ = e.Cancel(context.WithoutCancel(ctx), id)
-		return NodeOutput{}, fmt.Errorf("subworkflow %s stopped at a step that needs a person%s: a subworkflow cannot wait for one, so it was stopped", n.Sub.Name, why)
+	switch info.Status {
+	case StatusWaitingHuman:
+		return NodeOutput{Request: &RequestSpec{Kind: "subworkflow", Title: fmt.Sprintf("Waiting on %s's question", n.Sub.Name), Child: id, Retry: true}}, nil
+	case StatusCompleted:
+		return NodeOutput{Value: info.Result}, nil
 	}
-	if info.Status != StatusCompleted {
-		return NodeOutput{}, fmt.Errorf("subworkflow %s ended %s: %s", n.Sub.Name, info.Status, info.FailedReason)
-	}
-	return NodeOutput{Value: info.Result}, nil
+	return NodeOutput{}, fmt.Errorf("subworkflow %s ended %s: %s", n.Sub.Name, info.Status, info.FailedReason)
 }
 
 // --- chunk file ---
@@ -973,7 +1019,8 @@ func (c *chunkWriter) Close() {
 
 // --- resume, time travel, replay, cancel, recover, queries ---
 
-// Resume answers a pending request and continues the run.
+// Resume answers a pending request and continues the run. An answer to a step that waits on a nested run goes to the request
+// that run waits on (answerChild): the nested run goes on, and the run goes on when the nested run ends.
 func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	info, err := e.st.getRun(ctx, run)
 	if err != nil {
@@ -981,6 +1028,11 @@ func (e *Engine) Resume(ctx context.Context, run RunID, resp Response) error {
 	}
 	if info.Status.Terminal() {
 		return ErrRunTerminal
+	}
+	if cp, err := e.st.getCheckpoint(ctx, info.LatestCP); err == nil {
+		if pr, ok := cp.State.Pending[resp.RequestID]; ok && pr.Spec.Child != "" {
+			return e.answerChild(ctx, pr, resp)
+		}
 	}
 	g, err := e.graph(info.Workflow)
 	if err != nil {
@@ -1184,6 +1236,8 @@ func (e *Engine) Cancel(ctx context.Context, run RunID) error {
 	}
 	e.mu.Unlock()
 	e.emit(ctx, "workflow.cancelled", info, map[string]any{})
+	e.cancelChildren(ctx, run) // a nested run it waits on (or that still works for it) stops with it (P124)
+	e.childEnded(info)
 	return nil
 }
 
@@ -1247,6 +1301,7 @@ func (e *Engine) recover(ctx context.Context, unleased bool) (int, error) {
 			e.giveUp(id, d)
 		}
 	}
+	e.recoverChildWaits(ctx) // parents parked on a nested run that ended while nobody could wake them (P124)
 	return n, nil
 }
 
@@ -1303,14 +1358,22 @@ func (e *Engine) Approvals(ctx context.Context, status string) ([]ApprovalRow, e
 	return e.st.listApprovals(ctx, status)
 }
 
-// Pending returns the pending requests of a run (from its latest checkpoint).
+// Pending returns the pending requests of a run (from its latest checkpoint). A request that waits on a nested run shows what
+// that run waits for now (resolveChildWait).
 func (e *Engine) Pending(ctx context.Context, run RunID) ([]PendingRequest, error) {
+	return e.pending(ctx, run, 0)
+}
+
+func (e *Engine) pending(ctx context.Context, run RunID, depth int) ([]PendingRequest, error) {
 	cp, err := e.st.latest(ctx, run)
 	if err != nil {
 		return nil, err
 	}
 	var out []PendingRequest
 	for _, p := range cp.State.Pending {
+		if p.Spec.Child != "" && depth < 4 {
+			p = e.resolveChildWait(ctx, p, depth)
+		}
 		out = append(out, p)
 	}
 	return out, nil

@@ -204,8 +204,11 @@ Built in `internal/budget` (migration `00060_budget.sql`), `internal/telemetry` 
   block at 100 %) all see it, because the node's `NodeInfo.Workflow` and the turn's workflow are passed down. A workflow
   budget cannot be a `*` template. Set on the Budgets page (scope "workflow", the workflow from `budget.workflows`, the names
   the engine runs) or `budget.set`; `budget.status` takes `workflow`. A project export keeps a workflow budget kept to the
-  project. Not built: room replies and group-discussion turns are not counted against a workflow budget (they are checked
-  against the project, agent and task budgets as before).
+  project. Since decision P124 a group-discussion node's turns count toward the run and the workflow that hold it as well
+  (their sessions name the run: `agent_runs.workflow_run_id`, migration 00161, and `model_usage.run_id`, so a discussion in a
+  channel counts too); they are checked and reserved against those budgets, and one at its limit parks the node on the budget
+  pause (one approval, one more turn), warnings at 80 % as for agent turns ([`workflow-engine.md`](workflow-engine.md) s14).
+  A room reply outside any workflow belongs to no workflow and is checked against the project, agent and task budgets as before.
 - **Budget items in the room inbox** (`room.NeedsYou`, kind `budget`, room-protocol s9): a budget past its warning point
   (severity 2), a budget at its limit (severity 0) and a run waiting on a budget pause (severity 0; the item is the pause's
   approval row, answered on the task's page as before) are typed items with `budgetId`, `budgetState`
