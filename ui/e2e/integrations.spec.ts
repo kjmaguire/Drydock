@@ -41,9 +41,10 @@ test("integrations: connect Linear without a project, see its fixed name and log
   await expect(card.getByLabel(/name/i)).toHaveCount(0); // nothing to rename
   // the setup: three steps, the way to connect as one choice
   await expect(card.getByTestId('setup-steps')).toContainText('Assign to a project');
-  // the agents' Linear tools (its MCP card) are in the same detail, not on a page of their own
+  // the agents' Linear tools (its MCP server) are a row of their own under Agent tools, where agent tools are looked for (P106)
   await expect(page.getByTestId('integration-sync')).toContainText('Linear');
-  await expect(page.getByTestId('integration-agents').locator('[data-testid="connector"][data-id="linear"]')).toBeVisible();
+  await expect(page.getByTestId('integration-agents')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'All integrations' }).getByTestId('list-group-tools').locator('[data-testid="integration-row"][data-key="tools-linear"]')).toContainText('Linear');
 
   // a Sign in with Linear needs an OAuth app the owner registers with Linear (the vendors' own APIs have no dynamic client
   // registration, unlike their MCP servers): choosing it shows where to register one and takes the app's public client id,
@@ -165,7 +166,9 @@ test('integrations: the list filters by a word and by state, and the address kee
   const box = list.getByTestId('list-filter');
   await expect(box).toBeFocused();
   await page.keyboard.type('notion');
-  await expect(list.getByTestId('integration-row')).toHaveCount(1);
+  // Notion's app sync and its agent tools (P106)
+  await expect(list.getByTestId('integration-row')).toHaveCount(2);
+  await expect(list.getByTestId('integration-row').first()).toHaveAttribute('data-key', 'notion');
   await page.keyboard.press('ArrowDown');
   await expect(page).toHaveURL(/\/integrations\/notion$/);
   await expect(page.locator('[data-testid=integration][data-kind=notion]')).toBeVisible();

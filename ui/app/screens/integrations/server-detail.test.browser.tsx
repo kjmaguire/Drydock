@@ -61,7 +61,7 @@ async function addForm(r: R): Promise<HTMLElement> {
 }
 
 describe('Your servers on the Integrations page', () => {
-  it('lists each server you added by what it is and its state in a word; a built-in brand shows its logo', async () => {
+  it('lists each server you added by what it is and its state in a word, a failure as a warning sign; a built-in brand shows its logo', async () => {
     const r = show({
       mcpLibList: async () => [
         libServer({ projects: [] }),
@@ -76,18 +76,20 @@ describe('Your servers on the Integrations page', () => {
     const rows = Array.from(group.querySelectorAll<HTMLElement>('[data-testid="integration-row"]'));
     expect(rows.map((x) => x.textContent)).toEqual([
       'Test serverProgram on this PC · 2 toolsOn',
-      'LinearWeb addressNot signed in',
+      'LinearWeb addressSet up',
       'Web thingWeb address · 2 toolsOn',
-      'BrokenProgram on this PC · 2 toolsCould not connect',
-      'FreshProgram on this PCNo tools yet',
+      'BrokenProgram on this PC · 2 tools',
+      'FreshProgram on this PCSet up',
     ]);
+    // a server that could not connect shows a warning sign, named by its state (P106)
+    expect(rows[3]!.querySelector('[data-testid="row-alert"]')!.getAttribute('aria-label')).toBe('Could not connect');
     expect(group.querySelector('h2')!.textContent).toBe('Your serversMCP');
     // a known brand shows its logo (from the catalog entry it came from); the others an icon on a neutral square
     expect(rows[1]!.querySelector('[data-brand="linear"]')).not.toBeNull();
     expect(rows[0]!.querySelector('[data-brand]')).toBeNull();
     expect(rows[0]!.querySelector('svg')).not.toBeNull();
-    expect(rows[3]!.querySelector('[data-tone="err"]')).not.toBeNull();
-    expect(rows[1]!.querySelector('[data-tone="warn"]')).not.toBeNull();
+    expect(rows[3]!.querySelector('[data-tone]')).toBeNull();
+    expect(rows[1]!.querySelector('[data-tone="none"]')).not.toBeNull();
   });
 
   it("shows a server's detail as rows (secrets as names only), says where a project gets it, and puts it in the address", async () => {
