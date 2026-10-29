@@ -375,6 +375,22 @@ describe('Check settings and development flow', () => {
     expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
   });
 
+  it('the context ceiling: empty means the default, out of range is explained, a number is saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Most tokens an agent turn starts with'), r);
+    expect(box.value).toBe('');
+    expect(box.placeholder).toBe('20000');
+    expect(r.container.textContent).toMatch(/file excerpts go first[\s\S]*task and the instructions are never cut/);
+    type(box, '1000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')!.textContent).toContain('4,000 and 200,000'), r);
+    type(box, '12000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ contextCeiling: 12000 });
+  });
+
   it('notes that more than five agents at once rarely pays off, and only then', async () => {
     const r = mountDev(async (_p, x) => x);
     const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Maximum parallel agent turns'), r);

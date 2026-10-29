@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { DevSettings } from '../../api/extTypes.ts';
-import { argv, devBody, numOrUndef, parallelWarn } from './project.ts';
+import { argv, ceilingOff, devBody, numOrUndef, parallelWarn } from './project.ts';
 
 describe('project helpers', () => {
   it('reads one argument per line', () => {
@@ -29,5 +29,14 @@ describe('project helpers', () => {
   it('warns above five parallel agents only', () => {
     expect(parallelWarn(5)).toBe(false);
     expect(parallelWarn(6)).toBe(true);
+  });
+
+  it('flags a context ceiling outside the bounds, never an empty one', () => {
+    expect(ceilingOff(undefined)).toBe(false);
+    expect(ceilingOff(0)).toBe(false);
+    expect(ceilingOff(4000)).toBe(false);
+    expect(ceilingOff(200000)).toBe(false);
+    expect(ceilingOff(3999)).toBe(true);
+    expect(ceilingOff(200001)).toBe(true);
   });
 });

@@ -119,7 +119,7 @@ var Tables = []Table{
 	{Name: "watchdog_trips", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "run_id", "node_id", "attempt", "agent_id", "signal", "stage", "evidence", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
-	{Name: "handoffs", Where: `task_id IN ` + taskIDs, Columns: []string{"id", "task_id", "run_id", "agent_id", "artifact", "reason", "created_at"}},
+	{Name: "handoffs", Where: `task_id IN ` + taskIDs, Columns: []string{"id", "task_id", "run_id", "agent_id", "artifact", "reason", "created_at", "verification"}},
 	{Name: "dead_letters", Where: `task_id IN ` + taskIDs, Columns: []string{"id", "task_id", "template", "reason", "detail", "resolved", "note", "created_at"}},
 	{Name: "model_usage", Where: `task_id IN ` + taskIDs + ` OR agent_id IN ` + agentIDs + ` OR run_id IN ` + runIDs, OrderBy: `id`,
 		Columns: []string{"ts", "run_id", "agent_run_id", "task_id", "agent_id", "provider", "host_id", "model", "tier", "input_tokens", "output_tokens",

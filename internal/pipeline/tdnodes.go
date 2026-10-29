@@ -15,6 +15,7 @@ import (
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/runfiles"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -58,7 +59,7 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 			return turnOut{}, fmt.Errorf("the task's sandbox: %w", err)
 		}
 	}
-	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase, nil)
+	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase, nil, nil)
 	prompt := o.Prompt
 	out, err := td.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
 	if err != nil {
@@ -586,14 +587,15 @@ func (td TemplateDeps) implement() workflow.NodeHandler {
 			return *q, err
 		}
 		// the accepted spec and the architect's notes go with every implementation pass, not only the first
-		prompt := WorkPrompt(t, clean, td.promptContext(ctx, t, td.gated(in)))
+		pieces := WorkPieces(t, clean, td.promptContext(ctx, t, clean, cfg.AgentID, td.gated(in)))
 		if red.Red {
-			prompt += ImplementSuffix(red.Failing, red.Output)
+			pieces = append(pieces, implementPiece(red.Failing, red.Output))
 		}
 		if scan.Summary != "" {
-			prompt += "\n\nA security scan of the tree found the following. Fix every finding that is real, and do not just silence the scanner:\n" + quoted("Scan results", clip(scan.Summary, 4000))
+			pieces = append(pieces, quotedPiece(ctxeng.KindFeedback, "security scan", "the security scan's findings", "the scan's whole report is in the task's evidence",
+				"\n\nA security scan of the tree found the following. Fix every finding that is real, and do not just silence the scanner:\n", "Scan results", clip(scan.Summary, 4000), ""))
 		}
-		return td.runWorkTurn(ctx, in, t, cfg, prompt)
+		return td.runWorkTurn(ctx, in, t, cfg, pieces)
 	}
 }
 

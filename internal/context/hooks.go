@@ -25,6 +25,9 @@ type Section struct {
 	Source   string // manifest source, for example "pack:cloudflare"
 	Reason   string
 	Priority int // manifest priority; sections are also ordered by it
+	// Kind (optional) is the section's piece kind for the package ceiling (KindRepoMap, ...). Empty: taken from Source, and a
+	// section of no known cuttable kind counts as instructions, which are never cut.
+	Kind string
 }
 
 // ExtraFile is an app-owned file another subsystem wants in the worktree, for example .claude/rules/<name>.md. Path is
