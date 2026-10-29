@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/kjmaguire/drydock/internal/agents/responder"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -59,6 +60,10 @@ var templates = []Template{
 		Description: "The Feature template plus an optional architect design step, the e2e check and a preview of the result when the project enables them, and a security scan before human approval.",
 		Steps:       []string{"spec (PM)", "human accepts the spec", "design (architect, optional)", "tests first (red)", "implement (green)", "checks + e2e", "independent review", "security scan", "preview", "human approval", "merge"},
 		Roles:       []RoleNeed{{RolePM, true, "writes the spec"}, {RoleTests, false, "writes the tests first (falls back to the worker)"}, {RoleArchitect, false, "writes a short design (skipped when there is no architect)"}}},
+	{Name: "design-review", Title: "Design Review", Workflow: WorkflowDesignReview,
+		Description: "The architect, the worker and the reviewer discuss how to build the task in its channel (at most 3 rounds) before anyone changes code. A design they agree on goes to the worker; without one, you are asked the question they ended on and your answer is the design. Then checks, an independent review and human approval.",
+		Steps:       []string{"design discussion (architect, worker, reviewer)", "you settle it if they do not agree", "implement", "checks", "independent review", "human approval", "merge"},
+		Roles:       []RoleNeed{{RoleArchitect, true, "leads the design discussion with the worker and the reviewer"}}},
 }
 
 // Templates lists the templates.
@@ -101,6 +106,10 @@ type TemplateDeps struct {
 	// PR is the pull request host for the templates' pr_flow variants (their names end in PRSuffix). nil: only the local
 	// merge variants are registered.
 	PR PRSource
+	// Discuss holds a bounded group discussion (responder.Responder.Discuss) for the Design Review template, and TaskRoom
+	// names a task's channel, where it is held. The core sets both; nil: the template's discussion fails, saying why.
+	Discuss  func(ctx context.Context, d responder.Discussion) (responder.DiscussionResult, error)
+	TaskRoom func(ctx context.Context, taskID string) (string, error)
 }
 
 // PRSuffix names a template's pull request variant: after the review the branch is pushed and a PR opened, CI failures and
@@ -130,9 +139,9 @@ func (td TemplateDeps) scans() *ScanRegistry {
 
 // Graphs returns every template graph (iterate-until-verified is built by IterateUntilVerified and registered by the core).
 func (td TemplateDeps) Graphs() []*workflow.Graph {
-	gs := []*workflow.Graph{td.FeatureGraph(), td.BugGraph(), td.SecurityGraph(), td.SaaSGraph()}
+	gs := []*workflow.Graph{td.FeatureGraph(), td.BugGraph(), td.SecurityGraph(), td.SaaSGraph(), td.DesignReviewGraph()}
 	if td.PR != nil {
-		gs = append(gs, td.featureGraph(true), td.bugGraph(true), td.securityGraph(true), td.saasGraph(true))
+		gs = append(gs, td.featureGraph(true), td.bugGraph(true), td.securityGraph(true), td.saasGraph(true), td.designReviewGraph(true))
 	}
 	return gs
 }

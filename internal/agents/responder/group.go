@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -25,10 +26,14 @@ type Discussion struct {
 	Topic  string
 	Agents []string // agent ids, in speaking order; each must already be a member of the room (agents never join on their own)
 	Rounds int      // the bound; default room.DefaultMaxRounds
-	// Key makes the topic idempotent (GroupNode uses the run, node and step), so an attempt run again after a crash continues
-	// the same discussion instead of starting another.
+	// Key makes the topic idempotent (GroupNode uses the run, the node and the message that reached it), so an attempt run
+	// again after a crash, or the node run again after a budget pause was answered, continues the same discussion instead of
+	// starting another.
 	Key    string
 	TaskID string
+	// RunID and Workflow are the workflow run that holds the discussion and its workflow (GroupNode sets them): every turn is
+	// checked against, reserved against and counted toward their budgets as well (decision P124).
+	RunID, Workflow string
 }
 
 // Outcomes of a discussion (the node's routes).
@@ -48,6 +53,7 @@ type DiscussionResult struct {
 	DecisionID string     `json:"decisionId,omitempty"`
 	Decision   string     `json:"decision,omitempty"` // the candidate's text
 	QuestionID string     `json:"questionId,omitempty"`
+	Question   string     `json:"question,omitempty"` // the question's text, for the node that puts it to a person
 	Turns      []TurnInfo `json:"turns"`
 }
 
@@ -92,6 +98,7 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 	}
 	out.ThreadID = topic.Message.ID
 	passes := 0
+	scope := BudgetScope{ProjectID: rm.ProjectID, TaskID: rm.TaskID, RunID: d.RunID, Workflow: d.Workflow}
 	// the bound ends the discussion; the cap is a second stop should the scheduler keep granting (it does not)
 	for n := 0; n <= out.Bound*len(d.Agents); n++ {
 		if ctx.Err() != nil {
@@ -109,13 +116,24 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 		if err != nil {
 			return out, err
 		}
-		info, reply := r.turn(ctx, rm, trig, dec.Speakers[0], dec, turnOpts{grant: *g, group: &GroupPrompt{Round: dec.Round, Rounds: out.Bound, Agents: names}})
+		// a budget at its limit stops the discussion before the turn: the node waits on the budget pause (a GateError) and
+		// goes on from here once a person approves one more turn or raises the limit (P124)
+		if err := r.budgetGate(ctx, scope, g.AgentID); err != nil {
+			return out, err
+		}
+		info, reply := r.turn(ctx, rm, trig, dec.Speakers[0], dec, turnOpts{grant: *g, group: &GroupPrompt{Round: dec.Round, Rounds: out.Bound, Agents: names},
+			run: d.RunID, workflow: d.Workflow})
+		ctx = budget.WithoutApproval(ctx) // a person's approval over a limit lets one turn through, not the rest of the discussion
 		switch info.Status {
 		case "":
 			return out, fmt.Errorf("%w: %s already had a turn after message %s", ErrDiscussion, g.AgentID, trig.ID)
 		case StatusDone, StatusPassed:
 		default:
 			out.Turns = append(out.Turns, info)
+			var ge workflow.GateError
+			if errors.As(info.cause, &ge) {
+				return out, info.cause // its reservation did not fit what the budgets have left: the budget pause, as above
+			}
 			return out, fmt.Errorf("%w: %s's turn ended %s: %s", ErrDiscussion, g.AgentID, info.Status, info.Error)
 		}
 		out.Turns = append(out.Turns, info)
@@ -152,29 +170,63 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 		out.Outcome = OutcomeQuestion
 		for _, m := range thread {
 			if m.Type == room.TypeQuestion && m.Author.Kind == room.AuthorSystem {
-				out.QuestionID = m.ID
+				out.QuestionID, out.Question = m.ID, strings.TrimSpace(m.Body)
 			}
 		}
 	}
 	return out, nil
 }
 
+// budgetGate returns the budget pause (a workflow.GateError) when a budget the next turn counts toward is at its limit;
+// any other refusal is left to the turn, which reports it as a reply's.
+func (r *Responder) budgetGate(ctx context.Context, s BudgetScope, agentID string) error {
+	if r.d.Budget == nil {
+		return nil
+	}
+	a, err := r.d.LookupAgent(ctx, agentID)
+	if err != nil {
+		return nil
+	}
+	err = r.d.Budget(ctx, s, a)
+	var ge workflow.GateError
+	if errors.As(err, &ge) {
+		return err
+	}
+	return nil
+}
+
 // GroupNode is a group-collaboration node: spec reads the discussion from the node's input (the run input and what earlier
 // nodes delivered); the node's value is the DiscussionResult and its route the outcome ("decision" or "question"), so the
 // next node gets the decision or the question to put to a person.
 func GroupNode(id workflow.NodeID, r *Responder, spec func(in workflow.NodeInput) (Discussion, error)) *workflow.Node {
+	return GroupNodeWith(id, r.Discuss, func(_ context.Context, in workflow.NodeInput) (Discussion, error) { return spec(in) })
+}
+
+// GroupNodeWith is GroupNode over a function that holds the discussion (Responder.Discuss) and a spec that may read the
+// database: a package that builds graphs before the responder exists (the pipeline's templates) passes a function that
+// reaches it later.
+func GroupNodeWith(id workflow.NodeID, discuss func(context.Context, Discussion) (DiscussionResult, error), spec func(ctx context.Context, in workflow.NodeInput) (Discussion, error)) *workflow.Node {
 	return workflow.Group(id, func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
-		d, err := spec(in)
+		d, err := spec(ctx, in)
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
 		if d.Key == "" {
-			d.Key = fmt.Sprintf("group:%s:%s:%d", in.RunID, in.NodeID, in.Step)
+			// the message that reached the node, not the step: a node run again after its budget pause (a later step, the same
+			// inbox) continues its discussion, and a loop back to it (another iteration) starts a new one
+			from, iter := workflow.NodeID(""), 0
+			if len(in.Inbox) > 0 {
+				from, iter = in.Inbox[0].From, in.Inbox[0].Iteration
+			}
+			d.Key = fmt.Sprintf("group:%s:%s:%s:%d", in.RunID, in.NodeID, from, iter)
 		}
 		if d.TaskID == "" {
 			d.TaskID = in.TaskID
 		}
-		res, err := r.Discuss(ctx, d)
+		if d.RunID == "" {
+			d.RunID, d.Workflow = string(in.RunID), in.Workflow
+		}
+		res, err := discuss(ctx, d)
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}

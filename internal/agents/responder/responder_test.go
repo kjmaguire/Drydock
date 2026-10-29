@@ -488,8 +488,8 @@ func TestABudgetAtItsLimitStopsTheReplyBeforeItStarts(t *testing.T) {
 	alice := h.agent("alice", "Alice", "backend", say("hi"))
 	ch := h.channel("dev", alice)
 	var asked []string
-	h.budget = func(ctx context.Context, p, task string, a responder.Agent) error {
-		asked = append(asked, p+"/"+a.ID)
+	h.budget = func(ctx context.Context, s responder.BudgetScope, a responder.Agent) error {
+		asked = append(asked, s.ProjectID+"/"+a.ID)
 		return errors.New("the project p1 budget at 307%: $0.3070 of $0.1000 (reported), so agents do not answer until it is raised on the Budgets page")
 	}
 	out, err := h.r.Handle(h.ctx, h.human(ch, "@alice are you there?").ID)

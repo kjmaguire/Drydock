@@ -189,7 +189,7 @@ func TestGoldenPathFeatureTemplateEndToEnd(t *testing.T) {
 
 	var tpls []pipeline.Template
 	a.call("template.list", nil, &tpls)
-	if len(tpls) != 5 {
+	if len(tpls) != 6 {
 		t.Fatalf("templates %+v", tpls)
 	}
 	var task tasks.Task

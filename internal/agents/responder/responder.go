@@ -54,9 +54,11 @@ type Deps struct {
 	// Gate takes the concurrency slots a turn needs (the project's parallel-agent limit and the provider's max_concurrent)
 	// and returns the release function. It blocks until a slot is free or ctx ends. Nil means no limit.
 	Gate func(ctx context.Context, projectID string, a Agent) (release func(), err error)
-	// Budget refuses a turn while a budget that applies to it (the project's, the agent's, the task's in a task room) is at its
-	// hard limit, with the sentence to show; nil means no budgets. A refused turn does not start and the refusal is posted.
-	Budget func(ctx context.Context, projectID, taskID string, a Agent) error
+	// Budget refuses a turn while a budget that applies to it (the project's, the agent's, the task's in a task room, and for a
+	// turn of a group discussion the run's and the workflow's that hold it) is at its hard limit, with the sentence to show; nil
+	// means no budgets. A refused turn does not start and the refusal is posted. A refusal that is a workflow.GateError (a
+	// budget.PauseError) parks a group discussion's node on the budget pause instead of failing it.
+	Budget func(ctx context.Context, s BudgetScope, a Agent) error
 	// Enabled reports whether agents answer in this project (default true).
 	Enabled func(ctx context.Context, projectID string) bool
 	// OnCost receives the cost of a turn in a task room so it counts toward the task (cost per accepted task).
@@ -74,6 +76,13 @@ type Deps struct {
 	Logf  func(format string, args ...any)
 }
 
+// BudgetScope is what a turn in a room counts toward: its project, the task of a task channel, and for a turn of a group
+// discussion the workflow run that holds it and that run's workflow (decision P124).
+type BudgetScope struct {
+	ProjectID, TaskID string
+	RunID, Workflow   string
+}
+
 // ReplyTurn is a reply turn as the model router sees it.
 type ReplyTurn struct {
 	TurnID        string // the room_turns row; the routing decisions of the turn carry it as their run id
@@ -83,6 +92,9 @@ type ReplyTurn struct {
 	TaskID        string // the task of a task channel
 	Agent         Agent
 	ContextTokens int // the selected room context, estimated
+	// RunID and Workflow are the workflow run and workflow of a turn of a group discussion (P124): its reservation is held,
+	// and the router's budget state read, against their budgets too. Empty for a reply.
+	RunID, Workflow string
 }
 
 // Routed is the model one attempt of a reply turn runs on. An empty Model is the agent's configured model.
@@ -147,6 +159,7 @@ type TurnInfo struct {
 	Status    string `json:"status"`
 	MessageID string `json:"messageId,omitempty"`
 	Error     string `json:"error,omitempty"`
+	cause     error  // why a failed turn failed (a budget's pause, for a group discussion)
 }
 
 // Outcome is what Handle did for one human message.
@@ -426,6 +439,8 @@ func (r *Responder) endTurn(id string, e turnEnd) {
 type turnOpts struct {
 	grant room.TurnGrant
 	group *GroupPrompt
+	// run and workflow hold a group discussion's turn (P124): its budgets, its usage rows and its session name them
+	run, workflow string
 }
 
 func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, sp room.Speaker, dec room.TurnDecision, o turnOpts) (TurnInfo, *room.Message) {
@@ -444,7 +459,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		if e != nil {
 			msg += ": " + e.Error()
 		}
-		info.Status, info.Error = StatusFailed, msg
+		info.Status, info.Error, info.cause = StatusFailed, msg, e
 		r.endTurn(info.TurnID, turnEnd{status: StatusFailed, errMsg: msg})
 		if len(msg) > 600 {
 			msg = msg[:600]
@@ -464,7 +479,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		who = agent.Name
 	}
 	if r.d.Budget != nil {
-		if err := r.d.Budget(ctx, rm.ProjectID, rm.TaskID, agent); err != nil {
+		if err := r.d.Budget(ctx, BudgetScope{ProjectID: rm.ProjectID, TaskID: rm.TaskID, RunID: o.run, Workflow: o.workflow}, agent); err != nil {
 			return fail("budget", err)
 		}
 	}
@@ -508,7 +523,8 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		spec = r.d.Spec(agent, spec)
 		spec.PermissionMode, spec.ReadOnly = "plan", true // the application may add environment and MCP, never widen what a reply may do
 	}
-	base := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium"}
+	base := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium",
+		WorkflowRun: o.run}
 	tctx, cancel := context.WithTimeoutCause(ctx, r.o.TurnTimeout, errors.New("the turn timed out"))
 	defer cancel()
 	// one attempt runs the turn on one model; a fallback hop (Route) is another attempt on a fresh session, and the last
@@ -568,7 +584,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	}
 	if r.d.Route != nil {
 		err = r.d.Route(tctx, ReplyTurn{TurnID: info.TurnID, RoomID: rm.ID, RoomKind: string(rm.Kind), ProjectID: rm.ProjectID, TaskID: rm.TaskID, Agent: agent,
-			ContextTokens: sel.Tokens}, attempt)
+			ContextTokens: sel.Tokens, RunID: o.run, Workflow: o.workflow}, attempt)
 	} else {
 		err = attempt(tctx, Routed{}, nil)
 	}

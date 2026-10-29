@@ -76,7 +76,7 @@ var Tables = []Table{
 			"run_mode": "machine-specific (decision P41): an imported agent follows the importing project's run mode", "wsl_distro": "machine-specific: a WSL distro of the exporting PC"},
 		Import: importAgent},
 	{Name: "agent_runs", Where: `agent_id IN ` + agentIDs,
-		Columns: []string{"id", "agent_id", "task_id", "status", "started_at", "ended_at", "exit_code", "error"},
+		Columns: []string{"id", "agent_id", "task_id", "status", "started_at", "ended_at", "exit_code", "error", "workflow_run_id"},
 		Skipped: map[string]string{"session_id": "the agent CLI's own session id, which only resumes on the exporting machine", "pid": why_runtime, "cwd": why_localPath},
 		Import:  importAgentRun},
 	{Name: "rooms", Where: `project_id=@p`,

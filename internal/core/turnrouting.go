@@ -81,10 +81,11 @@ func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attem
 		return attempt(ctx, responder.Routed{}, nil)
 	}
 	s := turnSubject{kind: router.RunRoomReply, agent: a, projectID: t.ProjectID, taskID: t.TaskID, runID: t.TurnID, nodeID: "reply", attempt: 1,
-		contextTokens: t.ContextTokens}
+		contextTokens: t.ContextTokens, workflow: t.Workflow, budgetRun: t.RunID}
 	rctx, rt, staticID, halt := e.decide(ctx, s)
 	if halt != nil {
-		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", halt.Reason)
+		// a pause for a group discussion's node (P124), the refusal a reply posts otherwise
+		return &budget.PauseError{Text: fmt.Sprintf("%s, so the reply was not made; raise the limit on the Budgets page", halt.Reason)}
 	}
 	next := func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		r, ok := pipeline.RoutedFrom(ctx)
@@ -96,7 +97,7 @@ func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attem
 	_, err = e.runTurn(ctx, rctx, s, workflow.NodeInput{}, next, rt, staticID)
 	var re *budget.RefusedError
 	if errors.As(err, &re) {
-		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", re.Message)
+		return &budget.PauseError{Over: re.Over, Text: fmt.Sprintf("%s, so the reply was not made; raise the limit on the Budgets page", re.Message)}
 	}
 	return err
 }
@@ -204,7 +205,7 @@ func (e *economics) runWithFallback(ctx, rctx context.Context, s turnSubject, in
 		}
 		req := rt.req
 		req.Budget = router.BudgetState{} // read again: the failed turn may have spent
-		if berr := e.fillBudget(ctx, &req); berr != nil {
+		if berr := e.fillBudgetRun(ctx, &req, s.budgetRunID()); berr != nil {
 			e.c.logf("route turn: fallback: budget: %v", berr)
 			return out, err // budgets cannot be read: no hop spends more (fail closed, as the budget middleware does)
 		}
@@ -316,6 +317,17 @@ type turnSubject struct {
 	projectID, taskID       string
 	runID, nodeID, workflow string
 	attempt, contextTokens  int
+	// budgetRun is the workflow run a turn counts toward when runID is not one: a turn of a group discussion is routed under
+	// its room turn's id and counts toward the run that holds the discussion (decision P124)
+	budgetRun string
+}
+
+// budgetRunID is the run whose budgets the turn counts toward.
+func (s turnSubject) budgetRunID() string {
+	if s.budgetRun != "" {
+		return s.budgetRun
+	}
+	return s.runID
 }
 
 // subjectOf names the agent and the kind of a workflow agent turn from its node: the task's worker or reviewer, or the agent
@@ -371,7 +383,7 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 			req.Worker = &router.WorkerRef{Model: w}
 		}
 	}
-	if err := e.fillBudget(ctx, &req); err != nil {
+	if err := e.fillBudgetRun(ctx, &req, s.budgetRunID()); err != nil {
 		e.c.logf("route turn: budget: %v", err)
 	}
 	approve := budget.ApprovedOverLimit(ctx)

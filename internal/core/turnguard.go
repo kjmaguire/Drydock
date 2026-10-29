@@ -84,7 +84,7 @@ func (e *economics) attempt(ctx, rctx context.Context, s turnSubject, in workflo
 	if on.estUSD != nil {
 		usd = *on.estUSD
 	}
-	res, err := e.budgets.Reserve(ctx, budget.Hold{Project: s.projectID, Task: s.taskID, Run: s.runID, Agent: s.agent.ID, Workflow: s.workflow, DecisionID: on.decisionID,
+	res, err := e.budgets.Reserve(ctx, budget.Hold{Project: s.projectID, Task: s.taskID, Run: s.budgetRunID(), Agent: s.agent.ID, Workflow: s.workflow, DecisionID: on.decisionID,
 		ProviderID: providerOf(s.agent), Model: on.model, EstUSD: usd, EstTokens: int64(on.estTokens), TTL: ttl, Force: on.force})
 	var re *budget.RefusedError
 	if errors.As(err, &re) {

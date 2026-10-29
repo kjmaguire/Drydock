@@ -394,6 +394,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		// the budgets did not start, so nothing limits what agents spend: no agent turn runs until they do
 		c.logf("the budget gate did not start: agent turns are refused until it does")
 		c.Engine.Use(workflow.KindAgentTask, budget.FailClosed("the budget gate did not start (see the log), so no agent turn runs"))
+		c.Engine.Use(workflow.KindGroup, budget.FailClosed("the budget gate did not start (see the log), so no group discussion runs"))
 	}
 	// the method registry is complete once the extensions have started: build it once for Call
 	m := c.Methods()
