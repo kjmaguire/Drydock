@@ -139,6 +139,10 @@ type CustomConfig struct {
 	PassEnv     func() []string
 	// TurnTimeout ends a turn whose process runs longer (default 30 minutes).
 	TurnTimeout time.Duration
+	// MCPArgs, when set, are the flags that hand the CLI its MCP configuration file (the manifest's mcp.args, decision P117):
+	// given the run's config path, they are added to every turn's argv of a session the gateway was attached to
+	// (RunSpec.MCPConfigPath). A CLI that reads the file from its working folder needs none: the core writes it there.
+	MCPArgs func(configPath string) []string
 }
 
 // CustomAdapter implements agents.Adapter for a person's own CLI.
@@ -249,7 +253,11 @@ func (s *customSession) Send(ctx context.Context, msg string) error {
 	if s.a.cfg.Prompt == PromptArg {
 		vars["prompt"] = msg
 	}
-	args := append(s.a.cfg.Args(vars), s.spec.ExtraArgs...)
+	args := s.a.cfg.Args(vars)
+	if s.spec.MCPConfigPath != "" && s.a.cfg.MCPArgs != nil {
+		args = append(args, s.a.cfg.MCPArgs(s.spec.MCPConfigPath)...)
+	}
+	args = append(args, s.spec.ExtraArgs...)
 	env := childEnv(s.a.cfg.ScrubEnv, s.a.cfg.PassEnv, nil, s.spec.Env)
 	p, err := s.pm.Start(context.WithoutCancel(ctx), proc.Spec{Path: s.exe, Args: args, Dir: s.spec.Cwd, Env: env, Label: "agent:" + s.spec.AgentID})
 	if err != nil {

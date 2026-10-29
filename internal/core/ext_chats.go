@@ -230,7 +230,7 @@ func (c *Core) planChatMCP(ctx context.Context, cfg *rt.Config) mcpPlan {
 	if c.MCPGateway() == nil {
 		return no("the MCP gateway is not running")
 	}
-	if ok, canTry, why := adapterMCPKind(cfg.Adapter); !ok {
+	if ok, canTry, why := c.adapterMCPKind(cfg.Adapter); !ok {
 		if !canTry || !c.mcpTryAllowed(ctx, cfg.Adapter) {
 			return no("%s", why)
 		}
@@ -272,7 +272,7 @@ func (c *Core) planChatMCP(ctx context.Context, cfg *rt.Config) mcpPlan {
 // chatGateway refuses skills and MCP servers for a chat whose agent CLI cannot be given Drydock's MCP gateway: both reach the
 // chat's session only through it.
 func (c *Core) chatGateway(ctx context.Context, adapter string) error {
-	if ok, canTry, why := adapterMCPKind(adapter); !ok && (!canTry || !c.mcpTryAllowed(ctx, adapter)) {
+	if ok, canTry, why := c.adapterMCPKind(adapter); !ok && (!canTry || !c.mcpTryAllowed(ctx, adapter)) {
 		return fmt.Errorf("skills and MCP servers reach a chat only through Drydock's MCP gateway, and %s", why)
 	}
 	return nil

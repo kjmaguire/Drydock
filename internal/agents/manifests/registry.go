@@ -257,9 +257,23 @@ func (r *Registry) buildCustom(m *Manifest, detect func(context.Context) (agents
 	for k, v := range h.ExitCodes {
 		codes[k] = v
 	}
+	// the manifest's mcp section (decision P117): a flag naming the file goes on every turn's argv; a file in the working folder
+	// is written by the core when it attaches the gateway
+	mc, err := m.CustomMCP()
+	if err != nil {
+		return nil, err
+	}
+	var mcpArgs func(string) []string
+	if mc != nil {
+		caps.MCP = true
+		if mc.Via == CustomMCPViaArg {
+			mcpArgs = mc.ArgsFor
+		}
+	}
 	return headless.NewCustom(headless.CustomConfig{
 		ID: m.Meta.ID, Binaries: m.Binaries.Native, Exe: r.opts.Exe[m.Meta.ID], Args: m.HeadlessArgs, Prompt: via, Dialect: d,
 		ExitCodes: codes, Caps: caps, InstallHint: m.InstallHint(), Detect: detect, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
+		MCPArgs: mcpArgs,
 	})
 }
 
