@@ -300,7 +300,7 @@ Differences from the text above: `Reserve(ctx, provider, model) (ok, retryAt, er
 
 Attestations (decision P9): a private-class provider on plain http to a private (non-loopback) address is refused at registration unless `lan_attested` is set, and a private Gemini route needs `billing_enabled`.
 
-Not built (as of that worker's report; the probe, selection, `routing_outcomes` and agent-native candidates were built afterwards, see the next sections): the LLM tiebreak, router handling of the Anthropic retention error (classified only). The Anthropic backend drops replayed reasoning (thinking replay needs signatures). Unverified: real wire shapes for OpenRouter usage through `openai-go`, Gemini compat `/models`, SGLang/vLLM/Ollama endpoints, live provider calls (two live tests skip without keys), and Windows `go-keyring`.
+Not built (as of that worker's report; the probe, selection, `routing_outcomes` and agent-native candidates were built afterwards, see the next sections; the LLM tiebreak and the router's handling of the Anthropic retention error were built with P112, see the last section): the LLM tiebreak, router handling of the Anthropic retention error (classified only). The Anthropic backend drops replayed reasoning (thinking replay needs signatures). Unverified: real wire shapes for OpenRouter usage through `openai-go`, Gemini compat `/models`, SGLang/vLLM/Ollama endpoints, live provider calls (two live tests skip without keys), and Windows `go-keyring`.
 
 
 ## As built: probe, selection, wiring and outcomes (2026-10-08, Slice 2, Linux sandbox)
@@ -514,5 +514,102 @@ it runs. Pipeline (`route_roles_test.go`): the pm, architect, test writer and se
 the security review record names it. Router (`turnkinds_test.go`), evals, projectio, UI unit and browser tests, and
 `ui/e2e/round3.spec.ts` (a routed agent answers in the room on haiku and the room's "Why this model?" says it was a room reply).
 
-**Not built or not verified.** The team lead's turns and the recommendation turns (P52) are not routed; real CLIs were not
-run (the fake agent stands in, D1 holds by construction: `agentSource` offers only the agent's own models on its own CLI).
+**Not built or not verified.** The team lead's turns and the recommendation turns (P52) are not routed (built later with
+P112: see the next section); real CLIs were not run (the fake agent stands in, D1 holds by construction: `agentSource` offers
+only the agent's own models on its own CLI).
+
+## As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal (2026-10-29, decision P112)
+
+On the owner's words, answering the list of what was not built: "Proceed with those items". The OTLP exporter and the B0 arm
+of the evaluation are another decision's.
+
+**1. LLM tiebreak** (`internal/router/tiebreak.go`; the caller's half in `internal/core/routesettings.go`). After the ranking,
+when the candidates at the top cannot be told apart in any way that matters (the same tier, rule penalties and probe result,
+and blended prices within `TiebreakMargin` = 10% of the top one, or no price at all, as for an agent CLI's own models), up to
+four of them (`MaxTiebreakOptions`) go to a `router.Tiebreaker`. Differences from s7: the trigger is a tie in the ranking,
+not conflicting rules of equal priority or an ambiguity band (the router's rules merge, so conflicts do not survive to the
+ranking; ties do, and were decided by name); no tiebreak at the Cheapest level, on an explicit pin, or on a fallback hop. The
+core's Tiebreaker makes one call through the `llm.Wrapper` (data-class guard, secret scan, quota, response cache for an hour,
+`model_usage` rows with purpose `route_tiebreak` counted toward the turn's project and agent budgets) to the configured cheap
+model: the `cheap_default` of the first enabled private provider that has one (cheap tier first, `route.cheap.*`). It is told
+`TiebreakQuery` as JSON: run kind, task class and role, level, complexity, ambiguity, risk, diff size, failure counters, and
+each option's key, provider, model, tier, price, context, tool and probe facts and remaining quota. Nothing of the work: no
+prompt, task text, code, ids of the task, project or agent (the test asserts the task's title and ids never reach the
+fixture). It answers `{"choice": "<key>", "why": "..."}`; an answer that is not one of the options, a timeout (default 8 s),
+an error, no cheap model selected, or its own budget used up (default $0.25 per UTC day, at most 500 calls a day for models
+without a price) leaves the ranking's choice, and `DecisionFacts.Tiebreak` records what happened (`between`, `ranked`,
+`chose`, `by`, `why`, `failed`). A tiebreak that chose sets `DecidedBy = "llm"` and the policy `llm_tiebreak`; the reason
+says "tiebreak by <model> chose it over <ranked>", "Why this model?" has a `- Tiebreak:` line, and the task's decisions show
+"llm tiebreak". **Off by default**: `route.settings.set {tiebreak: {enabled, budgetUsd, timeoutMs}}` (Routing page,
+"Tiebreak and turn limits"). A dry run (`route.preview`, the wiring) never calls it: with the tiebreak on, it says a real
+decision would ask (`dryRun`), and the card says "tiebreak". Escalation counters count `llm` decisions like `rules` ones.
+
+**2. Pre-call reservation** (`internal/budget/reserve.go`, migration `00140_budget_reservations.sql`). Before every agent
+turn the routing middleware runs (workflow turns, room replies, the lead's and recommendation turns, routed or static; each
+fallback hop again), the turn's estimate (the decision's estimated cost when the price is known, else no dollars; its
+estimated tokens; one turn) is checked against every enabled budget of its project, task, run and agent, together with what
+the turns in flight hold, and held, in one write transaction (the database has one writer, so a second reservation reads the
+first). A turn that does not fit does not start: a workflow turn waits on the budget pause (`Enforcer.PauseRefused`; the
+message names what was spent, what is held by how many turns, and the estimate; a person raises the limit or approves one
+turn, whose reservation is then held without the check), a reply or a lead turn says why, and `budget.reservation_refused` is
+published. While the turn runs, what it has reported spending is taken off what it holds (its usage rows count it now), and
+its turn is let go at its first chunk (its `agent_runs` row counts it), so nothing is counted twice; when it ends the
+reservation is settled with its real cost, or released when it never reached the model or was cancelled. A reservation lasts
+the turn's ceiling plus ten minutes, or three hours; all still held at start are expired (`Store.ExpireStale`, the process
+that held them is gone). On a registered provider the estimate is also held on its quota windows
+(`providers.QuotaLedger.Hold`: one request slot, the tokens on token windows, the dollars on a credits window; memory only),
+settled with the turn's tokens and cost, or dropped; a window that cannot take it ends the attempt as `quota_exhausted`, which
+moves along the fallback chain. A budget's own status (Budgets page) is still what was spent; a reservation is not spend.
+Differences from s6: `Reserve` returns a reservation for budgets, the router itself still only checks quota, and an agent
+CLI's own calls are counted only through the hold (Drydock sees no response headers of a CLI's calls).
+
+**3. Wall-time ceilings** (`internal/core/turnguard.go`, migration `00141_turn_stops.sql`). A maximum wall time per level
+and, optionally, per agent (the agent's wins); none by default; 1 minute to 24 hours (`route.settings.set {ceilings: {levels,
+agents}}`, seconds). Agent turns run at Balanced today, so the Balanced ceiling is the one that applies unless the agent has
+its own. A turn past it is stopped (its context ends with the cause `errWallTime`, which the runtime turns into the CLI's
+stop); the reason ("the turn ran past the 30m wall-time ceiling of the balanced level") is written on the decision it ran on
+(`routing_decisions.stop_reason`, `Facts.Stopped`: "Why this model?" has a `- Stopped:` line, the task's decisions a
+"stopped" badge) and copied onto its routing outcome when the task ends (`routing_outcomes.stop_reason`), and
+`routing.stopped` is published. A turn that did no work before the ceiling (no tool call: a model that hung) moves along its
+fallback chain (cause `wall_time`, P53's rules otherwise); one that did work is never moved mid-turn, and a workflow turn then
+waits on an approval (gate `wall_time`: approve runs it again under the same ceiling, reject ends the run). A room reply or a
+lead turn ends with the reason. The watchdog's own 20-minute time cap still nudges first when it is shorter.
+
+**4. The team lead's and the recommendation turns** (P52). Run kinds `lead` (task class `lead`, complexity 0.5, ambiguity 0.4:
+cheap first) and `recommend` (`recommendation`, 0.3: cheap first), routed on that agent's own list through
+`core.EconomicsRouteTurn` (`pipeline.LeadDeps.Route`, `recommendTurn`), with the same budgets, reservation, ceiling, fallback
+chain and decision records; an agent without a list keeps its model (`static`). No escalation counters (each decision stands
+alone). A lead turn's decision carries the run (or nothing, for a project-wide turn such as the stand-up), a recommendation's
+the recommendation's id; both travel with the project's export and deletion (project-wide decisions are found by the
+request's project). They get no routing outcome and the routing report leaves them out, as replies: the task's outcome does not
+judge them. The rule editor and the wiring name them ("team lead", "recommendation").
+
+**5. The Anthropic retention refusal** (`internal/providers/retention.go`, migration `00142_model_retention.sql`). s8 says the
+error removes the model from the candidate set for the organization. As built: a 400 `invalid_request_error` "... must have
+data retention enabled" on one of Drydock's own calls (`llm.KindRetention`), or the same words in an agent turn's error
+(`router.CauseRetentionRequired`, checked before the "not ours" patterns since it is an invalid request about the model, not
+the work), marks the (provider, model) in `model_retention_blocks` (`agent:<adapter>` for an agent CLI's own login; the
+provider's error body is not stored, only Drydock's words). The router leaves a marked model out of every decision (hard filter
+`retention_required`, with what to do: enable retention in the provider's console, where the model then keeps prompts and
+outputs for 30 days, or pick another model). The call or turn moves to the next approved target or the next model of its
+chain, which keeps no data; with none left it ends, or routing.blocked says why, with the same advice. The Routing page lists
+the models set aside with "Try again" (`route.retention.list/clear`); a provider's marks go with it.
+
+**Tests.** Router (`tiebreak_test.go`, with a labelled test double of the Tiebreaker): a tie broken from a content-free
+description, every failure leaving the ranking's choice, no tiebreak without a tie, on a pin or at Cheapest, the 10% margin,
+the retention filter and classifier, the new run kinds. Budget (`reserve_test.go`): two reservations at once, one fits;
+settle, release, tokens and turns; expiry at start and after the TTL; progress while a turn runs. Providers
+(`hold_test.go`): holds on token and credit windows, settle and drop; retention marks. LLM: a retention refusal marks the
+model and falls back. Evals: a stopped turn's outcome, lead and recommendation decisions get none. Core (`turnguard_test.go`,
+end to end with the labelled fake agent): two routed turns that start together under a token budget only one fits in; a
+turn past its ceiling stopped with the reason on its decision, the decisions list and the event; a hung turn falling back at
+the ceiling; a retention refusal moving to the chain's next model and setting the model aside for the next task; the
+settings' checks; the tiebreak through the real Wrapper against a protocol fixture of the cheap model (llmtest), with its
+budget used up; the lead's and a recommendation's turns routed. UI: the panel, the wiring, the decisions table, and
+`e2e/round3.spec.ts` (a limit set and read back).
+
+**Not verified.** The tiebreak against a real cheap model (only the protocol fixture answered; whether a cheap model's choice
+is better than the name order is not measured), the margin and the defaults (design assumptions), a real CLI stopped at a
+ceiling on Windows (the fake agent's process is stopped the way the runtime stops any turn), the exact retention wording of
+every Claude Code version (Anthropic's API text is the one matched), and holds on a real provider's windows during a CLI's
+turn (the CLI's own calls are not seen).
