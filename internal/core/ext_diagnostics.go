@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/crashreport"
@@ -167,15 +168,18 @@ func init() {
 				}
 			})
 		}
+		var once sync.Once // a core may be closed more than once
 		closeFn := func() {
-			c.onCall.Store(nil)
-			if stop != nil {
-				close(stop)
-				<-done
-				if _, err := sink.FlushUsage(context.Background()); err != nil {
-					c.logf("usage counters: %v", err)
+			once.Do(func() {
+				c.onCall.Store(nil)
+				if stop != nil {
+					close(stop)
+					<-done
+					if _, err := sink.FlushUsage(context.Background()); err != nil {
+						c.logf("usage counters: %v", err)
+					}
 				}
-			}
+			})
 		}
 		needSink := func() (*telemetry.Sink, error) {
 			if s := diagnosticsSink(c); s != nil {
