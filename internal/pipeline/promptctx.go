@@ -37,6 +37,10 @@ type PromptContext struct {
 	Spec   string // the accepted spec without its criteria section (feature templates)
 	Design string // the architect's design notes (full-stack template)
 	DoD    string // the definition of done the worker stated for a task without acceptance criteria
+	// Files are excerpts of the files the task names and a failing check points at (work turns; files.go).
+	Files []FileExcerpt
+	// HandoffTool is true when the worker's turn has the handoff tool: it is asked to leave a handoff when it stops early.
+	HandoffTool bool
 }
 
 // brief returns the project's brief for a prompt, bounded; empty when the hook is not wired or the project has none.

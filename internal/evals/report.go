@@ -227,6 +227,7 @@ type Report struct {
 	Resume      ResumeSection   `json:"resume"`
 	Watchdog    WatchdogSection `json:"watchdog"`
 	Routing     RoutingSection  `json:"routing"`
+	Rules       RulesSection    `json:"rules"` // token rule 15 over the window's usage rows
 	Rows        []TaskRow       `json:"rows"`
 	NotMeasured []string        `json:"notMeasured"`
 }
@@ -289,6 +290,9 @@ func Build(ctx context.Context, db *storage.DB, o Options) (Report, error) {
 		return rep, err
 	}
 	if err := rep.computeRouting(ctx, db, o, until); err != nil {
+		return rep, err
+	}
+	if err := rep.computeRules(ctx, db, o, until); err != nil {
 		return rep, err
 	}
 	for _, f := range facts {

@@ -172,7 +172,7 @@ func Review(d Deps) workflow.NodeHandler {
 			return workflow.NodeOutput{}, errors.New("the reviewer must be a different agent instance from the assignee")
 		}
 		prompt := ReviewPrompt(t, evidence, diff)
-		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "review", nil)
+		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "review", nil, nil)
 		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
 		out, err := h(ctx, in)
 		if err != nil {

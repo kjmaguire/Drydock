@@ -298,7 +298,11 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			c.endTaskRules(ctx, t) // a person's "approve for this task" ends with the task
 		},
 	}}
-	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
+	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) },
+		// the project's package ceiling (Development flow settings, P119): AGENTS.md keeps within its share of it
+		Ceiling: func(ctx context.Context, projectID string) int {
+			return pipeline.LoadDevSettings(ctx, db, projectID).PackageCeiling()
+		}}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
 		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted}
 	c.Deps = pipeline.Deps{
