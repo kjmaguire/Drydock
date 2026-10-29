@@ -1027,6 +1027,10 @@ export interface ExternalItem {
   importedAt?: number;
   gone: boolean;
   warnings?: string[] | null;
+  /** A Notion data source row's typed properties (decision P114), by name. */
+  properties?: Record<string, { type: string; text: string }> | null;
+  /** The vendor's state of a linked item maps to a task status the task is not in: offered to the person, never applied by itself. */
+  statusSuggestion?: { upstream: string; to: string; taskStatus: string } | null;
 }
 export interface ExternalItemDetail extends ExternalItem {
   body: string;
@@ -1088,6 +1092,101 @@ export interface Outbox {
   receipt?: string;
   error?: string;
   version: number;
+  /** The auto-approve class it went out under (decision P114); absent: a person approved it, or it waits for one. */
+  autoClass?: string;
+  /** The reference of a comment, so a retry looks for it on the vendor first. */
+  marker?: string;
+}
+// --- integrations, decision P114: webhooks, mappings, auto-approve classes, the weekly sweep, attachments ---
+export interface WebhookEndpoint {
+  kind: string;
+  label: string;
+  path: string;
+  /** http://127.0.0.1:<port><path>: what the person's own tunnel forwards to. */
+  url?: string;
+  integrationId?: string;
+  hasSecret: boolean;
+  /** What the secret is called at the vendor (never its value). */
+  secret: string;
+  header: string;
+  where: string;
+}
+export interface WebhookStatus {
+  enabled: boolean;
+  port: number;
+  listening: boolean;
+  error?: string;
+  address?: string;
+  endpoints: WebhookEndpoint[] | null;
+  queued: number;
+  recent: { kind: string; receivedAt: number; outcome: string; externalId?: string }[] | null;
+  /** The token Notion sent when a subscription was created: the person pastes it into Notion and chooses Use this token. */
+  notionVerification?: { token: string; receivedAt: number } | null;
+  exposeNote: string;
+}
+export interface IntegrationMapping {
+  assignmentId?: string;
+  scope?: string;
+  /** The vendor's state (status) or the Drydock field (property: state, priority, assignee, labels). */
+  remote: string;
+  remoteName?: string;
+  /** The task status (status) or the Notion property name (property). */
+  local: string;
+  direction?: string;
+  createdBy?: string;
+  created?: number;
+}
+export interface MappingField {
+  name: string;
+  type?: string;
+  options?: string[] | null;
+  /** The Notion property a status option belongs to. */
+  property?: string;
+}
+export interface AutoApproveClass {
+  integrationId: string;
+  projectId: string;
+  class: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  updated?: number;
+  /** 0: never set. */
+  version: number;
+}
+export interface SweepSettings {
+  enabled: boolean;
+  everyMs: number;
+}
+export interface IntegrationAttachment {
+  id: string;
+  itemId: string;
+  integrationId: string;
+  externalId: string;
+  name: string;
+  mime: string;
+  size: number;
+  url?: string;
+  downloadable: boolean;
+  sha256?: string;
+  textKept: boolean;
+  redactions: number;
+  risk: number;
+  listedAt: number;
+  downloadedAt?: number;
+  downloadedBy?: string;
+  untrusted: boolean;
+}
+export interface AttachmentText {
+  id: string;
+  itemId: string;
+  name: string;
+  text: string;
+  redactions: number;
+  risk: number;
+  untrusted: boolean;
 }
 export interface ProposeReq {
   integrationId: string;

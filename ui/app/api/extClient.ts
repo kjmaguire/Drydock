@@ -42,6 +42,13 @@ import type {
   Milestone,
   NotionPageText,
   Outbox,
+  WebhookStatus,
+  IntegrationMapping,
+  MappingField,
+  AutoApproveClass,
+  SweepSettings,
+  IntegrationAttachment,
+  AttachmentText,
   Pack,
   PackAttachment,
   PackConsult,
@@ -249,6 +256,25 @@ export interface ExtClient {
   integrationOutboundDecide(req: { id?: string; approvalId?: string; approve: boolean }): Promise<Outbox>;
   integrationOutboundExecute(id: string): Promise<Outbox>;
   integrationOutboundList(filter: { integrationId?: string; status?: string; limit?: number }): Promise<Outbox[]>;
+  /** A failed write: looked for on the vendor first (a comment), else proposed again for a new approval (decision P114). */
+  integrationOutboundRetry(id: string): Promise<Outbox>;
+  integrationWebhooks(): Promise<WebhookStatus>;
+  integrationWebhooksSet(req: { enabled?: boolean; port?: number }): Promise<WebhookStatus>;
+  /** Stores (empty: removes) the secret a connection's webhooks are signed with, in the credential store. */
+  integrationWebhookSecret(integrationId: string, secret: string): Promise<WebhookStatus>;
+  integrationUseNotionToken(): Promise<WebhookStatus>;
+  integrationMappings(assignmentId: string): Promise<IntegrationMapping[]>;
+  integrationMappingsSet(assignmentId: string, scope: 'status' | 'property', mappings: IntegrationMapping[]): Promise<IntegrationMapping[]>;
+  integrationMappingFields(assignmentId: string, scope: 'status' | 'property'): Promise<MappingField[]>;
+  integrationStatusApply(itemId: string): Promise<ExternalItem>;
+  integrationAutoApprove(integrationId: string, projectId: string): Promise<AutoApproveClass[]>;
+  integrationAutoApproveSet(req: { integrationId: string; projectId: string; class: string; enabled: boolean; version: number }): Promise<AutoApproveClass>;
+  integrationSweep(): Promise<SweepSettings>;
+  integrationSweepSet(enabled: boolean): Promise<SweepSettings>;
+  integrationAttachments(itemId: string): Promise<IntegrationAttachment[]>;
+  integrationAttachmentsRefresh(itemId: string): Promise<IntegrationAttachment[]>;
+  integrationAttachmentDownload(id: string): Promise<IntegrationAttachment>;
+  integrationAttachmentText(id: string): Promise<AttachmentText>;
 }
 
 export function createExtClient(t: Transport): ExtClient {
@@ -429,5 +455,22 @@ export function createExtClient(t: Transport): ExtClient {
     integrationOutboundDecide: (req) => call('integration.outbound.decide', req),
     integrationOutboundExecute: (id) => call('integration.outbound.execute', { id }),
     integrationOutboundList: async (f) => arr(await call<Outbox[] | null>('integration.outbound.list', f)),
+    integrationOutboundRetry: (id) => call('integration.outbound.retry', { id }),
+    integrationWebhooks: () => call('integration.webhooks.get'),
+    integrationWebhooksSet: (req) => call('integration.webhooks.set', req),
+    integrationWebhookSecret: (integrationId, secret) => call('integration.webhooks.secret', { integrationId, secret }),
+    integrationUseNotionToken: () => call('integration.webhooks.useNotionToken'),
+    integrationMappings: async (assignmentId) => arr(await call<IntegrationMapping[] | null>('integration.mappings.list', { assignmentId })),
+    integrationMappingsSet: async (assignmentId, scope, mappings) => arr(await call<IntegrationMapping[] | null>('integration.mappings.set', { assignmentId, scope, mappings })),
+    integrationMappingFields: async (assignmentId, scope) => arr(await call<MappingField[] | null>('integration.mappings.fields', { assignmentId, scope })),
+    integrationStatusApply: (itemId) => call('integration.status.apply', { itemId }),
+    integrationAutoApprove: async (integrationId, projectId) => arr(await call<AutoApproveClass[] | null>('integration.autoApprove.list', { integrationId, projectId })),
+    integrationAutoApproveSet: (req) => call('integration.autoApprove.set', req),
+    integrationSweep: () => call('integration.sweep.get'),
+    integrationSweepSet: (enabled) => call('integration.sweep.set', { enabled }),
+    integrationAttachments: async (itemId) => arr(await call<IntegrationAttachment[] | null>('integration.attachments.list', { itemId })),
+    integrationAttachmentsRefresh: async (itemId) => arr(await call<IntegrationAttachment[] | null>('integration.attachments.refresh', { itemId })),
+    integrationAttachmentDownload: (id) => call('integration.attachments.download', { id }),
+    integrationAttachmentText: (id) => call('integration.attachments.text', { id }),
   };
 }

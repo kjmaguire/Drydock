@@ -140,7 +140,7 @@ type WebhookStatus struct {
 	ExposeNote string              `json:"exposeNote"`
 }
 
-const exposeNote = "Drydock listens only on this computer (127.0.0.1). Linear, Sentry and Notion cannot reach it until you expose this port yourself, for example with your own tunnel; Drydock does not do that for you. Without webhooks, Drydock keeps polling."
+const exposeNote = "Drydock listens only on this computer (127.0.0.1). The services reach it only if you expose this port yourself, for example with your own tunnel; Drydock does not do that for you."
 
 func (s *Service) hookSettings(ctx context.Context) (bool, int) {
 	en, _ := s.setting(ctx, hookEnabledKey)
