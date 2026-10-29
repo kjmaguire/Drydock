@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { TASK_LABELS_MAX } from '../../api/types.ts';
-import { addLabel, checkMark, checkName, criteriaWithState, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
+import { addLabel, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
 
 describe('the status pill of the task page', () => {
   it('says Building while the agent works, Running checks while a check runs, and which run it is on', () => {
@@ -40,6 +40,32 @@ describe('the acceptance criteria and the checks', () => {
     ]);
     expect(criteriaWithState(['a'], undefined)).toEqual([{ text: 'a', state: 'unknown', id: '' }]);
     expect(criteriaWithState(undefined, [])).toEqual([]);
+  });
+
+  it('gives each criterion its own status with what showed it, an older core its check state (P125)', () => {
+    const names = (id: string) => ({ a1: 'Dana', a2: 'Rex' })[id] ?? id;
+    expect(
+      criteriaRows(
+        ['a', 'b', 'c', 'd', 'e'],
+        [
+          { index: 0, id: 'AC1', status: 'met', source: 'person', by: 'human:kyle', evidence: 'tried it' },
+          { index: 1, id: 'AC2', status: 'not_met', source: 'check', by: 'test', evidence: 'failing: TestB_AC2' },
+          { index: 2, id: 'AC3', status: 'open', claim: { by: 'a1', evidence: 'TestC_AC3 passes', at: 1 } },
+          { index: 3, id: '', status: 'something new' },
+        ],
+        [{ index: 4, id: 'AC5', state: 'passed' }],
+        names,
+      ),
+    ).toEqual([
+      { index: 0, id: 'AC1', text: 'a', status: 'met', why: 'Confirmed by kyle: tried it.', claim: '', personal: true },
+      { index: 1, id: 'AC2', text: 'b', status: 'not_met', why: 'By the test check: failing: TestB_AC2.', claim: '', personal: false },
+      { index: 2, id: 'AC3', text: 'c', status: 'open', why: '', claim: 'Dana says it is met: TestC_AC3 passes. Not confirmed: a check or a person confirms it.', personal: false },
+      { index: 3, id: '', text: 'd', status: 'open', why: '', claim: '', personal: false },
+      { index: 4, id: 'AC5', text: 'e', status: 'met', why: 'By the test check: the tests pass.', claim: '', personal: false },
+    ]);
+    expect(criterionWhy({ index: 0, id: 'AC1', status: 'not_met', source: 'review', by: 'a2', evidence: 'AC1 fails for zero' }, 'not_met', names)).toBe("Rex's review: AC1 fails for zero.");
+    expect(criterionWhy({ index: 0, id: 'AC1', status: 'not_met', source: 'person', by: 'human:ana' }, 'not_met', names)).toBe('Marked not met by ana.');
+    expect(criteriaRows(undefined, undefined, undefined)).toEqual([]);
   });
 
   it('names the check kinds as the grid does and reads a state the core adds later as not run', () => {

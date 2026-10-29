@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/runfiles"
@@ -108,35 +109,35 @@ func truncate(s string, n int) string {
 // ReviewPrompt tells the reviewer exactly what to do, with the evidence attached so it does not have to find what a tool
 // already found.
 func ReviewPrompt(t tasks.Task, evidence []tasks.Evidence, diff string) string {
-	var sb strings.Builder
-	sb.WriteString("You are the independent reviewer for this task. You did not write this code.\n\n")
-	sb.WriteString(taskBlock(t, false))
+	return Render(ReviewPieces(t, evidence, diff))
+}
+
+// ReviewPieces is ReviewPrompt as package pieces (decision P125): the evidence list may be cut by the package ceiling; the
+// reviewer's instructions, the task with its acceptance criteria (or the worker's definition of done) and the diff never.
+func ReviewPieces(t tasks.Task, evidence []tasks.Evidence, diff string) []ctxeng.Piece {
+	var l pieceList
+	l.add(ctxeng.KindRoleInstructions, "role (review)", "You are the independent reviewer for this task. You did not write this code.\n\n", "the reviewer's instructions", "")
+	l.add(ctxeng.KindTask, "task", taskBlock(t, false), "the task: title, description, acceptance criteria", "")
 	if len(t.Acceptance) == 0 {
 		if dod := statedDoD(evidence); dod != "" {
-			sb.WriteString("\nNo acceptance criteria were given. Check the work against the task text and against the definition of done the worker stated:\n")
-			sb.WriteString(quoted("The worker's definition of done", dod))
+			l.add(ctxeng.KindTask, "definition of done", "\nNo acceptance criteria were given. Check the work against the task text and against the definition of done the worker stated:\n"+
+				quoted("The worker's definition of done", dod), "the worker's definition of done stands in for the criteria", "")
 		} else {
-			sb.WriteString("\nNo acceptance criteria were given and the worker stated no definition of done: check the work against the task text.\n")
+			l.add(ctxeng.KindTask, "definition of done", "\nNo acceptance criteria were given and the worker stated no definition of done: check the work against the task text.\n",
+				"no acceptance criteria and no stated definition of done", "")
 		}
 	}
-	sb.WriteString("\nEvidence already produced by deterministic tools (do not redo it):\n")
-	for _, e := range evidence {
-		if e.Kind == dodKind {
-			continue
-		}
-		status := ""
-		if e.Passed != nil {
-			status = map[bool]string{true: " [passed]", false: " [FAILED]"}[*e.Passed]
-		}
-		fmt.Fprintf(&sb, "- %s%s: %s\n", e.Kind, status, e.Summary)
+	l = append(l, evidencePiece(evidence), diffPiece(diff))
+	ask := ""
+	if hasCriterionIDs(t.Acceptance) {
+		ask = " When an acceptance criterion is not met, name its id (for example AC2) in the feedback."
 	}
-	sb.WriteString(diffSection(diff))
-	sb.WriteString(`
-Review for correctness against the task and acceptance criteria, missed edge cases, and unintended changes. Answer REVISE only for problems that affect correctness, the stated requirements or security; style preferences, extra abstraction and tests for cases that cannot happen are not reasons to revise. You may read files in the working directory. Do not modify anything.
+	l.add(ctxeng.KindRoleInstructions, "verdict (review)", `
+Review for correctness against the task and acceptance criteria, missed edge cases, and unintended changes. Answer REVISE only for problems that affect correctness, the stated requirements or security; style preferences, extra abstraction and tests for cases that cannot happen are not reasons to revise. You may read files in the working directory. Do not modify anything.`+ask+`
 Finish with exactly one JSON object on its own line, and nothing after it:
 {"verdict":"SHIP","feedback":""}   when the change is correct and complete, or
-{"verdict":"REVISE","feedback":"specific, actionable problems"}   otherwise.`)
-	return sb.String()
+{"verdict":"REVISE","feedback":"specific, actionable problems"}   otherwise.`, "what to review and how to answer", "")
+	return l
 }
 
 // Review runs the reviewer agent (a different agent instance) on the committed work, records the verdict and moves the
@@ -171,8 +172,7 @@ func Review(d Deps) workflow.NodeHandler {
 		if cfg.AgentID == t.Assignee {
 			return workflow.NodeOutput{}, errors.New("the reviewer must be a different agent instance from the assignee")
 		}
-		prompt := ReviewPrompt(t, evidence, diff)
-		d.saveManifest(ctx, in, t, cfg.AgentID, prompt, "review", nil, nil)
+		prompt := d.rolePackage(ctx, in, t, cfg.AgentID, "review", ReviewPieces(t, evidence, diff))
 		h := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})
 		out, err := h(ctx, in)
 		if err != nil {

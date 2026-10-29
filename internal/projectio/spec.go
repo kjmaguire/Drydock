@@ -105,6 +105,8 @@ var Tables = []Table{
 	{Name: "task_reviews", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "attempt", "reviewer", "verdict", "feedback", "model", "commit_sha", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
+	{Name: "acceptance_marks", Where: `task_id IN ` + taskIDs, OrderBy: `created_at, id`,
+		Columns: []string{"id", "task_id", "criterion", "criterion_sha", "mark", "actor", "note", "created_at"}},
 	{Name: "workflow_runs", Where: `id IN ` + runIDs, OrderBy: `created_at, id`,
 		Columns: []string{"id", "workflow", "status", "project_id", "task_id", "input", "result", "topology_hash", "parent_checkpoint_id",
 			"latest_checkpoint_id", "failed_reason", "created_at", "updated_at", "version"}, Import: importRun},

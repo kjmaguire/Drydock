@@ -1,10 +1,11 @@
 // The controls a person uses on a task and its agents (internal/core/ext_control.go): steer the running agent, pause and
-// resume the task, and see what an assignment would do (the command menu's "What happens" panel). Handing a task on and taking
+// resume the task, and see what an assignment would do (the command menu's "What happens" panel); and their word on each
+// acceptance criterion (internal/core/ext_criteria.go). Handing a task on and taking
 // it on yourself are taskAssign (client.ts); asking the team lead to split a task is leadSplit (leadClient.ts). Like the rest of
 // the client: no behavior beyond turning Go's nil slices into empty arrays.
 
 import type { Transport } from './transport.ts';
-import type { TaskDetail, TaskStatus } from './types.ts';
+import type { CriterionStatus, TaskDetail, TaskStatus } from './types.ts';
 
 /**
  * core.SteerResult. delivered "now": the running turn was interrupted at its current step and goes on, in the same session,
@@ -87,6 +88,12 @@ export interface ControlClient {
   taskResume(id: string): Promise<TaskDetail>;
   /** What assigning the task to `assignee` (an agent id, or app.info's human) would do. */
   taskAssignPreview(id: string, assignee: string): Promise<AssignPreview>;
+  /**
+   * The person's word on one acceptance criterion (its place in task.acceptance, from 0): met, not_met, waived (note: why) or
+   * open (their earlier word no longer counts). Returns every criterion's status after it. The core records the person as the
+   * author; confirming and waiving are licensed, saying not met and reopening are not.
+   */
+  taskCriterionMark(taskId: string, index: number, mark: 'met' | 'not_met' | 'waived' | 'open', note?: string): Promise<CriterionStatus[]>;
 }
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
@@ -102,5 +109,6 @@ export function createControlClient(t: Transport): ControlClient {
       const p = await t.call<AssignPreview>('task.assignPreview', { id, assignee });
       return { ...p, checks: arr(p.checks), queue: arr(p.queue) };
     },
+    taskCriterionMark: async (taskId, index, mark, note) => arr(await t.call<CriterionStatus[]>('task.criterion.mark', { taskId, index, mark, note: note ?? '' })),
   };
 }

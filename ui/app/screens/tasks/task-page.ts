@@ -1,8 +1,8 @@
 // What the task page (the graphite mockup "Task", decision P97) says about a task in words: the status pill ("Building · run 3",
-// "Paused by kyle"), a criterion's state, the check kinds of the Checks grid, "This run"'s time and test runs, and the labels a
-// person types. Pure: no DOM and no client.
+// "Paused by kyle"), a criterion's state and its own status with what showed it (P125), the check kinds of the Checks grid,
+// "This run"'s time and test runs, and the labels a person types. Pure: no DOM and no client.
 
-import type { CriterionState, Evidence, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
+import type { CriterionState, CriterionStatus, Evidence, SummaryCheck, Task, TaskPause } from '../../api/types.ts';
 import { TASK_LABEL_LEN, TASK_LABELS_MAX } from '../../api/types.ts';
 import { statusLabel } from '../../lib/format.ts';
 import { toMs } from './tasks.ts';
@@ -67,6 +67,73 @@ export function criteriaWithState(acceptance: readonly string[] | undefined, sta
 }
 
 export const CRITERION_WORDS: Record<CriterionMark, string> = { passed: 'passes', failing: 'fails', unknown: 'not checked yet' };
+
+export type CriterionStatusMark = 'open' | 'met' | 'not_met' | 'waived';
+
+export const STATUS_WORDS: Record<CriterionStatusMark, string> = { open: 'open', met: 'met', not_met: 'not met', waived: 'waived' };
+
+/** One criterion as the task page shows it (P125): its status, the line that says what showed it, and an agent's open claim. */
+export interface CriterionRow {
+  index: number;
+  id: string;
+  text: string;
+  status: CriterionStatusMark;
+  /** What showed the status, in a sentence; '' when the criterion is open and nothing was said about it. */
+  why: string;
+  /** An agent's claim that it is met, in a sentence ("Dana says it is met: ... Not confirmed."); '' when there is none. */
+  claim: string;
+  /** A person gave their word on it (met, not met or waived): Reopen takes the word back. */
+  personal: boolean;
+}
+
+const statusMark = (s: string | undefined): CriterionStatusMark => (s === 'met' || s === 'not_met' || s === 'waived' ? s : 'open');
+
+/**
+ * The criteria with their own status (TaskDetail.criteria). An older core sends only acceptanceState: a passing state reads as
+ * met and a failing one as not met, both by the test check. nameOf turns an agent id into its name.
+ */
+export function criteriaRows(
+  acceptance: readonly string[] | undefined,
+  criteria: readonly CriterionStatus[] | undefined,
+  states: readonly CriterionState[] | undefined,
+  nameOf: (id: string) => string = (id) => id,
+): CriterionRow[] {
+  return (acceptance ?? []).map((text, index) => {
+    const c = criteria?.find((x) => x.index === index);
+    if (!c) {
+      const st = criteriaWithState([text], states?.filter((x) => x.index === index).map((x) => ({ ...x, index: 0 })))[0]!;
+      const status: CriterionStatusMark = st.state === 'passed' ? 'met' : st.state === 'failing' ? 'not_met' : 'open';
+      return { index, id: st.id, text, status, why: status === 'open' ? '' : `By the test check: the tests ${st.state === 'passed' ? 'pass' : 'fail'}.`, claim: '', personal: false };
+    }
+    const status = statusMark(c.status);
+    return { index, id: c.id, text, status, why: criterionWhy(c, status, nameOf), claim: c.claim ? claimLine(c.claim, nameOf) : '', personal: c.source === 'person' };
+  });
+}
+
+const sentence = (s: string | undefined): string => {
+  const v = (s ?? '').trim();
+  return !v ? '' : /[.!?]$/.test(v) ? v : `${v}.`;
+};
+
+/** What showed a criterion's status, as the task page says it. */
+export function criterionWhy(c: CriterionStatus, status: CriterionStatusMark, nameOf: (id: string) => string): string {
+  const ev = sentence(c.evidence);
+  switch (c.source) {
+    case 'check':
+      return `By the ${c.by || 'test'} check: ${ev || (status === 'met' ? 'it passes.' : 'it fails.')}`;
+    case 'review':
+      return `${nameOf(c.by ?? '')}'s review: ${ev}`.trim();
+    case 'person': {
+      const who = personName(c.by ?? '');
+      const verb = status === 'waived' ? 'Waived by' : status === 'met' ? 'Confirmed by' : 'Marked not met by';
+      return `${verb} ${who}${ev ? `: ${ev}` : '.'}`;
+    }
+  }
+  return '';
+}
+
+const claimLine = (cl: NonNullable<CriterionStatus['claim']>, nameOf: (id: string) => string): string =>
+  `${nameOf(cl.by)} says it is met${cl.evidence ? `: ${sentence(cl.evidence)}` : '.'} Not confirmed: a check or a person confirms it.`;
 
 /** The name a check kind has in the Checks grid. */
 const CHECK_NAMES: Record<string, string> = { test: 'tests', typecheck: 'types', 'merge-conflicts': 'conflicts' };
