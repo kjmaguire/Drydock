@@ -52,6 +52,10 @@ func TestMain(m *testing.M) {
 	case "sleep":
 		time.Sleep(10 * time.Minute)
 		os.Exit(0)
+	case "peerpost":
+		// a process of its own that posts initialize to a run (peercheck_test.go) and prints the status
+		fmt.Println(postInitialize(os.Getenv("DRYDOCK_MCP_URL"), os.Getenv("DRYDOCK_MCP_TOKEN")))
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }

@@ -203,6 +203,7 @@ func (a *captureAdapter) Start(ctx context.Context, pm proc.Manager, spec agents
 		}
 	}
 	if a.probe && cs.URL != "" {
+		playAgentIn(pm) // the test process plays the agent (decision P122)
 		pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		s, err := connectMCP(pctx, cs.URL, cs.Tok)
 		if err != nil {
@@ -250,6 +251,19 @@ func openWith(t *testing.T, extra map[string]agents.Adapter) *app {
 		Rules:   []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
 		Default: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: impl}}, {Say: "implemented Subtract"}},
 	})
+}
+
+// playAgent is for a test whose own process plays the agent of a run and connects to its endpoint (a go-sdk client reading the
+// run's config): the gateway's peer check (decision P122) answers only the run's processes, so the test process is bound to the
+// run, as the runtime binds an agent's process. TestPeerCheckRefusesAProcessOutsideTheAgent covers the refusal.
+func (a *app) playAgent(runID string) { a.c.MCPGateway().BindPeer(runID, os.Getpid()) }
+
+// playAgentIn is playAgent for an adapter test double that connects to the gateway from its own Start, in this process: the
+// runtime's process manager binds what it is told.
+func playAgentIn(pm proc.Manager) {
+	if b, ok := pm.(interface{ Bind(pid int) }); ok {
+		b.Bind(os.Getpid())
+	}
 }
 
 func openScripted(t *testing.T, extra map[string]agents.Adapter, sc fakeagent.Script) *app {
@@ -646,6 +660,7 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 			t.Fatalf("config file of the session: %v", err)
 		}
 		url, tok := parseSingleEntry(t, raw)
+		a.playAgent(m.RunID)
 		s, err := connectMCP(context.Background(), url, tok)
 		if err != nil {
 			t.Fatal(err)
@@ -806,6 +821,7 @@ func TestActToolsOverTaskRoomAndHandoffServices(t *testing.T) {
 			t.Fatal(err)
 		}
 		url, tok := parseSingleEntry(t, raw)
+		a.playAgent(m.RunID)
 		s, err := connectMCP(context.Background(), url, tok)
 		if err != nil {
 			t.Fatal(err)

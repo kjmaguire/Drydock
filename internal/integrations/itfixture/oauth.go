@@ -354,7 +354,9 @@ func (g *GitHub) Server() http.Handler {
 			}
 			writeJSON(w, 200, append([]any{}, out[start:end]...))
 		default:
-			writeJSON(w, 404, map[string]any{"message": "Not Found"})
+			if !g.serveIssue(w, r) {
+				writeJSON(w, 404, map[string]any{"message": "Not Found"})
+			}
 		}
 	})
 }

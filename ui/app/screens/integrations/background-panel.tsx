@@ -5,6 +5,8 @@
 //   it only through the person's own tunnel, which Drydock does not set up (the page says so in plain words, always). Per vendor:
 //   the address to give the vendor (through the tunnel) and the secret the vendor signs with, kept in the credential store; Notion's
 //   verification token arrives here and is used only when the person says so. Recent deliveries list what was done, never a body.
+//   GitHub's endpoint also shows the gh webhook forward command for each assigned repository (decision P122), for a person
+//   without a tunnel of their own; Drydock never runs it.
 // - The weekly automatic sweep (on unless turned off) re-reads each project's whole scope once a week, the only way to notice an
 //   item deleted upstream.
 
@@ -24,6 +26,8 @@ import { hookOutcomeText } from './integrations.ts';
 
 const panelCss = css({ display: 'grid', gap: t.s5, minWidth: '0', '& p': { margin: '0' } });
 const lineCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', flexWrap: 'wrap', minWidth: '0' });
+// a command to run on this computer (GitHub's forwarder, decision P122): wraps anywhere, never widens the page
+const cmdCss = css({ display: 'block', marginTop: t.s1, padding: '4px 8px', borderRadius: t.rMd, background: t.bgApp, border: `1px solid ${t.border}`, overflowWrap: 'anywhere', userSelect: 'all' });
 const listCss = css({ margin: '0', padding: '0', listStyle: 'none', display: 'grid', gap: t.s1, fontSize: t.textSm });
 
 /** One vendor's address and signing secret. */
@@ -74,6 +78,11 @@ function Endpoint(handle: Handle<{ ep: WebhookEndpoint; onChanged: () => void }>
               <code mix={mono}>{ep.url ?? ep.path}</code> · {ep.hasSecret ? `${ep.secret} saved` : `no ${ep.secret} yet: deliveries are refused`}
               <br />
               <span mix={faint}>{ep.where}</span>
+              {(ep.commands ?? []).map((c) => (
+                <code key={c} mix={[mono, cmdCss]} data-testid="webhook-command">
+                  {c}
+                </code>
+              ))}
             </>
           ) : (
             <span mix={muted}>Connect {ep.label} first.</span>

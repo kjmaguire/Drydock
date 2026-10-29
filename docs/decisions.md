@@ -1772,3 +1772,64 @@ Open, owner action:
   decoding the gzip bodies or the content attributes, Windows (crash output paused and resumed in the desktop app), a real
   B0 run with any CLI or provider: every B0 row of `evals.md` 7.1 stays "not measured", and the run commands are in
   `evals.md` section 15.
+- **P122. GitHub and Aikido webhooks, attachments of GitHub and Aikido items, Notion file blocks, OAuth for catalog servers
+  without dynamic registration, and the peer check (2026-10-29).** On the owner's words, answering the list of what is still
+  not built: "Yes" (the "can be built now" group; `integrations.md` "Not built, unverified" and `mcp.md` "Not built: OAuth for
+  catalog entries ..., the Windows peer check (`GetExtendedTcpTable`)"). (1) **Webhooks** on the existing receiver (still off by
+  default, 127.0.0.1 only, every delivery a hint whose item is read again through the API): `/hooks/github` checks
+  `X-Hub-Signature-256` ("sha256=" + hex HMAC-SHA256 of the raw body, GitHub's documentation), takes `X-GitHub-Delivery` as
+  the replay guard and, because GitHub signs no time, the `updated_at` of the issue or comment in the signed body within an
+  hour; `issues` and `issue_comment` name `owner/repo#n` (a pull request's comment names nothing), `ping` is answered and
+  ignored, and the issue is read with `GET /repos/{owner}/{repo}/issues/{n}` through gh (a new `Fetch` of the GitHub adapter:
+  its repository, the assignment's labels, not a pull request). Where the person has no tunnel, GitHub's own forwarder is
+  offered: the endpoint lists `gh webhook forward --repo=<repo> --events=issues,issue_comment --url=<receiver> --secret=...`
+  for each assigned repository (the gh extension `cli/gh-webhook`, which GitHub documents for testing; Drydock shows the
+  command and never runs it). `/hooks/aikido` checks `X-Aikido-Webhook-Signature` (HMAC-SHA256 of the body with the signing
+  secret, hex or base64 since Aikido does not say which) and `dispatched_at` within 30 seconds, as Aikido's documentation
+  (search-engine extracts of apidocs.aikido.dev; the page could not be opened) says; with no delivery id the replay guard is
+  the signed body's hash; an `issue.*` event queues one sync of the connection (Aikido's API reads findings only as one export,
+  so a burst of deliveries collapses into one). (2) **Attachments**: a GitHub issue's files are the uploads its body links
+  (`github.com/user-attachments/...`, `/<owner>/<repo>/files/...`, `user-images` and `private-user-images.githubusercontent.com`),
+  downloadable without any credential through the guarded client (a gh token never goes to a file host; a private
+  repository's file, which GitHub serves only to a signed-in browser, is refused in plain words), every other link listed and
+  never fetched; an Aikido finding has no files in its API as far as it could be read, so its links (its page, its references)
+  are listed and never fetched; a Notion page's file, image, pdf, video and audio blocks, also inside toggles and columns (three
+  levels, 25 listings at most, `start_cursor` pages), are listed beside the files properties, and a Notion-hosted one is
+  downloaded from a fresh `GET /v1/blocks/{id}` without the credential. Migration 00159 records where an attachment was found
+  (`integration_attachments.source`: issue, event, property, page body, issue body, finding), and the item shows it. (3)
+  **OAuth for catalog servers**: the sign-in of P22 registered Drydock dynamically, so GitHub's hosted server (no dynamic
+  registration; "each host app must configure a GitHub App or OAuth App") was token-only. A library server signing in with
+  OAuth can now hold a client the person registered with the provider (`mcplib.oauth.client {id, clientId, clientSecret}`:
+  both in the same vault as the tokens, `mcp:<id>:oauth-client`, the secret taught to the scanner; migration 00160 keeps only
+  `mcp_library.oauth_client`), used as the SDK's `PreregisteredClient`; changing or removing it, turning OAuth off or moving the
+  server signs out. A catalog entry's `auth.oauth_app {register_url, help}` says such an app can be used; the shipped `gh` entry
+  has one (token still the default), and `mcplib.connect {catalogId, clientId, clientSecret}` connects it that way and starts
+  the sign-in. A provider with neither registration nor a client says what to do. The fake provider (a test double) can start
+  without a registration endpoint and with a pre-registered client whose loopback redirect may use any port. (4) **The peer
+  check**: there was none on any platform, so it was built for both. `internal/peer.Owner` finds the process of a loopback
+  connection's client end: on Windows the TCP table with owning process ids (`GetExtendedTcpTable`, TCP_TABLE_OWNER_PID_CONNECTIONS,
+  IPv4 and IPv6, through `iphlpapi.dll` because `golang.org/x/sys/windows` has no wrapper), on Linux `/proc/net/tcp{,6}` and the
+  socket's inode under `/proc/<pid>/fd`; the table parsers are built everywhere and tested on Linux with tables laid out as
+  `tcpmib.h` documents. `proc.InTree(root, pid)` answers whether a process belongs to a started one: `IsProcessInJob` with the
+  Job Object Drydock created for it on Windows (through `kernel32.dll`), the parent chain otherwise. A gateway run started with
+  `PeerCheck` answers only connections whose process is in the tree of a process bound to it; the runtime binds every process
+  an adapter starts for the session (a headless CLI starts one per turn), the moment it exists and before the adapter talks to
+  it; anything else holding the token gets 403 and `mcp.peer_refused` (rate-limited like `mcp.auth_failed`); the answer is kept
+  per connection; a platform with no lookup is not checked and says so once (`mcp.peer_unchecked`). Every agent session gets it
+  except one in a WSL distro, which connects from inside the distro where neither the table nor the job can follow it. Tests
+  whose own process plays the agent bind themselves. No new dependency (`golang.org/x/sys` was already one). Tests:
+  `internal/integrations/p122_test.go` (GitHub's and Aikido's deliveries: no secret, a wrong one, a tampered body, stale,
+  replayed, ping, a pull request's comment, another repository, a deleted issue, the payload's text never stored, the
+  forwarder command without the secret, both encodings of Aikido's signature, one sync for a burst; GitHub's body files with
+  no credential sent, the private file refused, links never fetched; Aikido's links; Notion's file blocks across pages and a
+  toggle, fetched from a fresh block read), `internal/peer` (both Windows tables, `/proc/net/tcp{,6}`, this process found for
+  a real connection), `internal/proc` (the parent walk, a child in its parent's tree and not the reverse),
+  `internal/mcp/peercheck_test.go` (a child process of the test bound to the run answered and the test process refused, with
+  the real lookups; per connection; never bound; unsupported), `internal/core` (`mcp_oauth_client_test.go`: sign-in through a
+  registered client against the fake provider without registration, nothing secret in any table, event or log, removal and
+  OAuth off forgetting it, the gallery connect; `mcp_peercheck_test.go`: a spawned session refuses the test process), the
+  runtime's binding test, UI unit tests (`p122.test.browser.tsx`, the gallery's) and the e2e specs integrations, round9 and
+  smoke. **Not verified:** any vendor live (every shape is a fixture written from the sources named; Aikido's least of all,
+  from search extracts); `gh webhook forward` itself; GitHub's hosted MCP server's OAuth (that its metadata leads to
+  github.com's authorization server with PKCE and accepts a loopback redirect on any port); everything on Windows: the TCP table
+  call and IsProcessInJob were cross-compiled and vetted (`GOOS=windows go vet`), never run.

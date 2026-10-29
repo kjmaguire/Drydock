@@ -54,6 +54,7 @@ func (a *scenarioAdapter) Start(ctx context.Context, pm proc.Manager, spec agent
 			if json.Unmarshal(raw, &f) == nil {
 				e := f.MCPServers["drydock"]
 				pctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+				playAgentIn(pm)
 				if s, err := connectMCP(pctx, e.Env["DRYDOCK_MCP_URL"], e.Env["DRYDOCK_MCP_TOKEN"]); err == nil {
 					step(pctx, s)
 					_ = s.Close()

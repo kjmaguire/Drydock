@@ -182,6 +182,7 @@ type notionExtra struct {
 	mu          sync.Mutex
 	dataSources map[string]map[string]any // id -> properties schema
 	updates     []map[string]any
+	blocks      map[string][]map[string]any // parent block or page id -> its children (decision P122)
 }
 
 // PutDataSource sets a data source's property schema (GET /v1/data_sources/{id}).

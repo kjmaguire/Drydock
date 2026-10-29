@@ -271,7 +271,7 @@ func TestWebhookReceiverIsOffByDefaultAndListensOnLoopbackOnly(t *testing.T) {
 	port := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 	st, err = h.svc.SetWebhooks(ctx, human, integrations.WebhookSettingsReq{Enabled: &on, Port: &port})
-	if err != nil || !st.Listening || st.Address != fmt.Sprintf("http://127.0.0.1:%d", port) || len(st.Endpoints) != 3 || st.Endpoints[0].URL != st.Address+"/hooks/linear" {
+	if err != nil || !st.Listening || st.Address != fmt.Sprintf("http://127.0.0.1:%d", port) || len(st.Endpoints) != 5 || st.Endpoints[0].URL != st.Address+"/hooks/linear" {
 		t.Fatalf("%+v %v", st, err)
 	}
 	resp, err := http.Post(st.Address+"/hooks/linear", "application/json", strings.NewReader("{}"))

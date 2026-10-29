@@ -555,6 +555,7 @@ func (n *Notion) serve(w http.ResponseWriter, r *http.Request) {
 		n.mu2.Unlock()
 		writeJSON(w, 200, map[string]any{"object": "comment", "id": "comment-1"})
 	case n.serveExtra(w, r, p, body):
+	case n.serveBlocks(w, r, p):
 	default:
 		writeJSON(w, 404, map[string]any{"object": "error", "code": "invalid_request_url"})
 	}
@@ -903,6 +904,9 @@ type AikidoFinding struct {
 	CodeRepoID      int    `json:"code_repo_id"`
 	Status          string `json:"status"`
 	FirstDetectedAt int64  `json:"first_detected_at"` // Unix seconds
+	// URL and References are the finding's links (decision P122; field names as a permissive reader expects, unverified).
+	URL        string   `json:"url,omitempty"`
+	References []string `json:"references,omitempty"`
 }
 
 // Aikido is the Aikido public REST API fixture: POST /api/oauth/token (client credentials, HTTP Basic), then with the bought

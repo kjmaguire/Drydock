@@ -38,6 +38,7 @@ func (a *sandboxProbe) Start(ctx context.Context, pm proc.Manager, spec agents.R
 	a.specs = append(a.specs, spec)
 	a.mu.Unlock()
 	if spec.Sandboxed && spec.MCPConfigPath != "" {
+		playAgentIn(pm) // the probe plays the agent (decision P122)
 		a.probe(ctx, spec.MCPConfigPath)
 	}
 	return a.Adapter.Start(ctx, pm, spec)

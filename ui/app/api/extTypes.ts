@@ -1290,6 +1290,8 @@ export interface WebhookEndpoint {
   secret: string;
   header: string;
   where: string;
+  /** Commands the person can run here to bring deliveries without a tunnel (GitHub's forwarder, decision P122); never run by Drydock. */
+  commands?: string[];
 }
 export interface WebhookStatus {
   enabled: boolean;
@@ -1357,6 +1359,8 @@ export interface IntegrationAttachment {
   listedAt: number;
   downloadedAt?: number;
   downloadedBy?: string;
+  /** Where on the item it was found (decision P122): issue, event, property, page body, issue body, finding. */
+  source?: string;
   untrusted: boolean;
 }
 export interface AttachmentText {

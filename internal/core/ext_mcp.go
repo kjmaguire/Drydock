@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,7 +16,9 @@ import (
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/packs"
+	"github.com/kjmaguire/drydock/internal/peer"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
@@ -62,7 +65,8 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	if repomap.Available() {
 		ws.RepoMap = mcpRepoMap{c} // ext_repomap.go; without CGO the tool answers mcp.RepoMapGatedMessage
 	}
-	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions()})
+	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions(),
+		PeerOwner: peerOwner, PeerMember: proc.InTree})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -331,7 +335,9 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		}
 		pl.Info.WSL = &p
 	}
-	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers})
+	// the peer check (decision P122) follows the agent's processes on this computer; an agent in a WSL distro connects from
+	// inside the distro, where neither the TCP table nor the job can follow it
+	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers, PeerCheck: !cfg.Spec.IsWSL()})
 	if err != nil {
 		return rt.MCPAttachment{}, err
 	}
@@ -359,7 +365,8 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 	}
 	cfg.Spec.MCPConfigPath = ep.ConfigPath
 	cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), cc.AllowedTools...)
-	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release}, nil
+	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release,
+		BindProcess: func(pid int) { gw.BindPeer(runID, pid) }}, nil
 }
 
 // scrubPath keeps an OS error short: it names the path and the failure, never file content.
@@ -422,4 +429,14 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 		addr = gw.Addr()
 	}
 	return map[string]any{"running": gw != nil, "address": addr, "adapters": rows}
+}
+
+// peerOwner is the gateway's PeerOwner (decision P122): the process of a loopback connection's client end, or
+// mcp.ErrPeerUnsupported where this platform cannot find it.
+func peerOwner(client, server netip.AddrPort) (int, error) {
+	pid, err := peer.Owner(client, server)
+	if errors.Is(err, peer.ErrUnsupported) {
+		return 0, mcp.ErrPeerUnsupported
+	}
+	return pid, err
 }

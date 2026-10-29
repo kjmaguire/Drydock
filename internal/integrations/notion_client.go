@@ -63,7 +63,7 @@ func notionFiles(page map[string]any) []RawAttachment {
 		}
 		for i, f := range asList(p["files"]) {
 			fm := asMap(f)
-			att := RawAttachment{ExternalID: fmt.Sprintf("%s#%d", name, i), Name: firstNonEmpty(str(fm["name"]), name)}
+			att := RawAttachment{ExternalID: fmt.Sprintf("%s#%d", name, i), Name: firstNonEmpty(str(fm["name"]), name), Source: "property"}
 			switch str(fm["type"]) {
 			case "file": // hosted by Notion: a signed address that expires after an hour, so it is read again before a download
 				att.URL, att.Downloadable = str(asMap(fm["file"])["url"]), true
@@ -76,13 +76,18 @@ func notionFiles(page map[string]any) []RawAttachment {
 	return out
 }
 
-// Attachments lists the files of a typed row's files properties.
+// Attachments lists the files of a typed row's files properties and the file blocks of the page's body (decision P122).
 func (n notionAdapter) Attachments(ctx context.Context, a *API, _ map[string]string, it Item) ([]RawAttachment, error) {
 	m, err := n.getPage(ctx, a, it.ExternalID)
 	if err != nil {
 		return nil, err
 	}
 	out := notionFiles(m)
+	blocks, err := n.pageFileBlocks(ctx, a, it.ExternalID)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, blocks...)
 	for i := range out {
 		if out[i].Downloadable {
 			out[i].URL = "" // the signed address expires; it is not kept
@@ -94,6 +99,9 @@ func (n notionAdapter) Attachments(ctx context.Context, a *API, _ map[string]str
 // FetchAttachment reads the page again for a fresh signed address of the file and downloads it, without the credential (the
 // address is Notion's file storage, not its API).
 func (n notionAdapter) FetchAttachment(ctx context.Context, a *API, _ map[string]string, it Item, att RawAttachment, max int64) ([]byte, string, error) {
+	if id, ok := strings.CutPrefix(att.ExternalID, "block:"); ok {
+		return n.fetchFileBlock(ctx, a, id, max)
+	}
 	m, err := n.getPage(ctx, a, it.ExternalID)
 	if err != nil {
 		return nil, "", err

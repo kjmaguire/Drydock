@@ -76,7 +76,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		// decision P123
 		"run.resume", "run.timeTravel", "run.replay",
 		// decision P121
-		"diagnostics.status", "diagnostics.set", "telemetry.content.set"} {
+		"diagnostics.status", "diagnostics.set", "telemetry.content.set",
+		// decision P122
+		"mcplib.oauth.client"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}

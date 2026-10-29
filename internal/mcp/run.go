@@ -53,6 +53,9 @@ type Run struct {
 
 	fetchLim *bucket
 	postLim  *bucket
+
+	// peer is the peer check of a run started with PeerCheck (peercheck.go); nil otherwise.
+	peer *peerState
 }
 
 // middleware replaces tools/list and tools/call: the run's policy, not a static tool registry, decides what exists.

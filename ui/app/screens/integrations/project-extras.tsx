@@ -23,6 +23,15 @@ const line = css({ display: 'flex', gap: t.s2, alignItems: 'center', flexWrap: '
 const list = css({ margin: '0', padding: '0', listStyle: 'none', display: 'grid', gap: t.s2 });
 const propsCss = css({ display: 'grid', gridTemplateColumns: 'minmax(90px, max-content) 1fr', gap: `2px ${t.s3}`, margin: '0', fontSize: t.textSm, '& dt': { color: t.textMuted }, '& dd': { margin: '0', overflowWrap: 'anywhere' } });
 const preCss = css({ margin: '0', maxHeight: '260px', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
+// where on the vendor's item an attachment was found (decision P122)
+const ATTACHMENT_SOURCE: Record<string, string> = {
+  issue: 'the issue',
+  event: 'the latest event',
+  property: 'a files property',
+  'page body': 'the page body',
+  'issue body': 'the issue text',
+  finding: 'the finding',
+};
 
 const DIRECTIONS = selectOptions([
   ['both', 'both ways'],
@@ -123,6 +132,7 @@ export function ItemAttachments(handle: Handle<{ item: ExternalItem }>) {
                   <strong>{a.name}</strong>
                   <span mix={faint}>
                     {a.mime || 'type unknown'} · {sizeText(a.size)}
+                    {a.source ? <span data-testid="attachment-source"> · in {ATTACHMENT_SOURCE[a.source] ?? a.source}</span> : null}
                   </span>
                   <Badge tone="warn">untrusted</Badge>
                   {a.downloadedAt ? (

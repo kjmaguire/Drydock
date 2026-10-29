@@ -140,22 +140,31 @@ servers:
 
   # GitHub, hosted. Evidence: github.com/github/github-mcp-server README and docs/remote-server.md: https://api.githubcopilot.com/mcp/
   # over streamable HTTP; OAuth, or a personal access token as Authorization: Bearer; "Each host app must configure a GitHub
-  # App or OAuth App for OAuth access" (no dynamic client registration, so Drydock uses a token); /readonly variants of every
-  # URL and an X-MCP-Readonly header exist; MIT.
+  # App or OAuth App for OAuth access" (no dynamic client registration, so the token is the default); /readonly variants of every
+  # URL and an X-MCP-Readonly header exist; MIT. Since P122 the person may instead register a GitHub OAuth app themselves and
+  # sign in with it (oauth_app); that the server's protected-resource metadata leads to github.com's authorization server with
+  # PKCE and a loopback redirect on any port is unverified (no live sign-in from the build machine).
   - id: gh
     display: GitHub
     publisher: GitHub
     official: true
     brand: github
     summary: "Pull requests, issues, Actions runs and code of your repositories. Every write waits for your approval."
-    description: "GitHub's hosted server: read pull requests, issues, Actions runs and code of your repositories. Needs a personal access token; every tool that writes waits for your approval."
+    description: "GitHub's hosted server: read pull requests, issues, Actions runs and code of your repositories. Needs a personal access token, or a sign-in through a GitHub OAuth app you register; every tool that writes waits for your approval."
     docs_url: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
-    token_help: "A fine-grained personal access token from GitHub, Settings, Developer settings. GitHub's OAuth needs an app registered with GitHub, which Drydock does not have, so the hosted server is connected with a token."
+    token_help: "A fine-grained personal access token from GitHub, Settings, Developer settings. Or sign in with GitHub: GitHub's OAuth needs an OAuth app you register with GitHub, whose client id and secret you enter here."
     integration: github
     transport: http
     url: https://api.githubcopilot.com/mcp/
     # Header support in the agent CLIs is irrelevant here: the gateway, not the CLI, talks to this server.
-    auth: {kind: bearer, header: Authorization, scheme: Bearer, keyring: "mcp/gh"}
+    auth:
+      kind: bearer
+      header: Authorization
+      scheme: Bearer
+      keyring: "mcp/gh"
+      oauth_app:
+        register_url: https://github.com/settings/applications/new
+        help: "Register a GitHub OAuth app with the authorization callback URL http://127.0.0.1/callback (GitHub lets a loopback address use any port), then enter its client id and a client secret it generates."
     trust: private_data
     data_class: private
     # Read subset (docs/mcp.md section 9). The names are from the server's README tool list.

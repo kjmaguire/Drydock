@@ -1,7 +1,8 @@
 // Sign-in for a server that uses OAuth. The core runs the flow; this panel shows the address of the server's own sign-in page
 // (it comes from the server, so it is only linked when it is a safe address to open) and what happened. Not signed in, it is
 // one button, Sign in (its title says the browser opens the server's own sign-in page); signed in, one compact line with
-// Sign out and Sign in again.
+// Sign out and Sign in again. After a failed sign-in it also takes an OAuth app the person registered with a provider that does not
+// let Drydock register itself (decision P122): its client id and secret go to the credential store once.
 
 import { css, on, type Handle } from 'remix/component';
 import { ExternalLink, LogIn, LogOut, ShieldCheck } from 'lucide';
@@ -38,6 +39,20 @@ export function OAuthPanel(handle: Handle<{ server: McpLibraryServer; onChanged:
       handle.props.onChanged();
     }
   };
+  // an OAuth app the person registered, for a provider that does not let Drydock register itself (decision P122)
+  let appOpen = false;
+  let appId = '';
+  let appSecret = '';
+  const setApp = async (id: string, secret: string) => {
+    if (await act.run('client', () => s.client.mcpOAuthClient(handle.props.server.id, id, secret))) {
+      appOpen = false;
+      appSecret = '';
+      st.reload();
+      handle.props.onChanged();
+    }
+    void handle.update();
+  };
+  const field = (set: (v: string) => void) => on<HTMLInputElement, 'input'>('input', (e) => (set(e.currentTarget.value), void handle.update()));
 
   return () => {
     const { server } = handle.props;
@@ -99,6 +114,44 @@ export function OAuthPanel(handle: Handle<{ server: McpLibraryServer; onChanged:
           </div>
         ) : (
           <div mix={actionsCss}>{begin('Sign in', 'primary')}</div>
+        )}
+        {server.oauthClient ? (
+          <p mix={actionsCss} data-testid="oauth-app">
+            <span mix={signedCss}>Signs in through your own OAuth app.</span>
+            <Button size="sm" variant="ghost" disabled={act.busy !== '' || ro.readOnly} mix={[on('click', () => void setApp('', ''))]}>
+              Remove the app
+            </Button>
+          </p>
+        ) : appOpen ? (
+          <form
+            mix={[
+              panelCss,
+              on<HTMLFormElement, 'submit'>('submit', (e) => {
+                e.preventDefault();
+                void setApp(appId.trim(), appSecret.trim());
+              }),
+            ]}
+            data-testid="oauth-app-form"
+          >
+            <label for={`oa-id-${server.id}`}>Client id of your OAuth app</label>
+            <input id={`oa-id-${server.id}`} autocomplete="off" spellcheck={false} required value={appId} mix={field((v) => (appId = v))} />
+            <label for={`oa-secret-${server.id}`}>Client secret (if the app has one)</label>
+            <input id={`oa-secret-${server.id}`} type="password" autocomplete="off" spellcheck={false} value={appSecret} mix={field((v) => (appSecret = v))} />
+            <div mix={actionsCss}>
+              <Button type="submit" size="sm" variant="primary" disabled={act.busy !== ''}>
+                Save the app
+              </Button>
+              <Button size="sm" variant="ghost" mix={[on('click', () => ((appOpen = false), void handle.update()))]}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : d?.state !== 'failed' ? null : (
+          <div mix={actionsCss}>
+            <Button size="sm" variant="ghost" disabled={ro.readOnly} title="For a provider that does not let Drydock register itself: its redirect address is http://127.0.0.1/callback" mix={[on('click', () => ((appOpen = true), void handle.update()))]}>
+              Use your own OAuth app
+            </Button>
+          </div>
         )}
       </div>
     );

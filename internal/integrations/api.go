@@ -167,7 +167,10 @@ func (a *API) fetchFile(ctx context.Context, rawURL, credHost string, maxBody in
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
 		return nil, "", &Failure{Code: CodeOther, Message: "The attachment's address is not a web address Drydock fetches."}
 	}
-	if base, berr := url.Parse(a.HTTP.base); berr == nil && strings.EqualFold(base.Host, u.Host) && base.Scheme == u.Scheme {
+	if a.HTTP == nil {
+		// GitHub through gh: no API client of Drydock's own, so only the guarded download without a credential
+		credHost = ""
+	} else if base, berr := url.Parse(a.HTTP.base); berr == nil && strings.EqualFold(base.Host, u.Host) && base.Scheme == u.Scheme {
 		path := u.EscapedPath()
 		if bp := strings.TrimRight(base.EscapedPath(), "/"); bp != "" {
 			path = strings.TrimPrefix(path, bp)
@@ -184,8 +187,11 @@ func (a *API) fetchFile(ctx context.Context, rawURL, credHost string, maxBody in
 	if a.DL == nil {
 		return nil, "", &Failure{Code: CodeOther, Message: "Downloading attachments is not available."}
 	}
-	if err := a.HTTP.lim.wait(ctx, a.HTTP.kind); err != nil {
-		return nil, "", err
+	kind := a.Conn.Kind
+	if a.HTTP != nil {
+		if err := a.HTTP.lim.wait(ctx, a.HTTP.kind); err != nil {
+			return nil, "", err
+		}
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
@@ -201,7 +207,7 @@ func (a *API) fetchFile(ctx context.Context, rawURL, credHost string, maxBody in
 	}
 	resp, err := a.DL.Do(req)
 	if err != nil {
-		return nil, "", Classify(a.HTTP.kind, err, "")
+		return nil, "", Classify(kind, err, "")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -209,7 +215,7 @@ func (a *API) fetchFile(ctx context.Context, rawURL, credHost string, maxBody in
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
-		return nil, "", Classify(a.HTTP.kind, err, "")
+		return nil, "", Classify(kind, err, "")
 	}
 	if int64(len(b)) > maxBody {
 		return nil, "", &Failure{Code: CodeOther, Cause: ErrTooLarge, Message: fmt.Sprintf("The file is larger than Drydock downloads (%d MB).", maxBody>>20)}
