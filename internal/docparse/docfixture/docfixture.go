@@ -1,17 +1,18 @@
-package docparse
+// Package docfixture writes small, valid PDF and DOCX files for tests: TEST FIXTURES, built byte by byte the way the
+// formats are specified, so readers are tested on real files without shipping binary test data. They prove nothing about
+// files from real producers (Word, Acrobat, browsers' print to PDF).
+package docfixture
 
 import (
 	"archive/zip"
 	"bytes"
 	"fmt"
 	"strings"
-	"testing"
 )
 
-// makePDF writes a small, valid PDF: one page per entry of pages, each a content stream as given. The font is Helvetica
+// PDF writes a small, valid PDF: one page per entry of pages, each a content stream as given. The font is Helvetica
 // with a width for every printable ASCII character, so glyph positions advance the way a real producer's do.
-func makePDF(t testing.TB, header string, title string, pages []string) []byte {
-	t.Helper()
+func PDF(header string, title string, pages []string) []byte {
 	var objs []string
 	n := len(pages)
 	// 1 catalog, 2 pages, 3 font, then a page and a content object per page, then the info dictionary
@@ -25,7 +26,7 @@ func makePDF(t testing.TB, header string, title string, pages []string) []byte {
 	objs = append(objs, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths ["+widths+"] >>")
 	for i, c := range pages {
 		objs = append(objs, fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>", 5+2*i))
-		objs = append(objs, fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(c)+0, c))
+		objs = append(objs, fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(c), c))
 	}
 	info := len(objs) + 1
 	objs = append(objs, fmt.Sprintf("<< /Title (%s) >>", title))
@@ -45,8 +46,8 @@ func makePDF(t testing.TB, header string, title string, pages []string) []byte {
 	return b.Bytes()
 }
 
-// textPage is a content stream that writes each line at 72 pt from the left, 14 pt apart.
-func textPage(lines ...string) string {
+// TextPage is a content stream that writes each line at 72 pt from the left, 14 pt apart.
+func TextPage(lines ...string) string {
 	var b strings.Builder
 	b.WriteString("BT /F1 12 Tf 72 720 Td")
 	for i, l := range lines {
@@ -59,35 +60,38 @@ func textPage(lines ...string) string {
 	return b.String()
 }
 
-type part struct{ name, body string }
+// Part is one file inside a DOCX.
+type Part struct{ Name, Body string }
 
-// makeDOCX writes a zip with the given parts (word/document.xml and the rest), deflated as Word does.
-func makeDOCX(t testing.TB, parts ...part) []byte {
-	t.Helper()
+// DOCX writes a zip with the given parts (word/document.xml and the rest), deflated as Word does.
+func DOCX(parts ...Part) []byte {
 	var b bytes.Buffer
 	zw := zip.NewWriter(&b)
 	for _, p := range parts {
-		w, err := zw.Create(p.name)
+		w, err := zw.Create(p.Name)
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
-		if _, err := w.Write([]byte(p.body)); err != nil {
-			t.Fatal(err)
+		if _, err := w.Write([]byte(p.Body)); err != nil {
+			panic(err)
 		}
 	}
 	if err := zw.Close(); err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 	return b.Bytes()
 }
 
-const wns = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"`
+// NS declares the WordprocessingML and markup-compatibility namespaces.
+const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"`
 
-func docBody(inner string) string {
-	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ` + wns + `><w:body>` + inner + `</w:body></w:document>`
+// Body is a word/document.xml holding inner.
+func Body(inner string) string {
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ` + NS + `><w:body>` + inner + `</w:body></w:document>`
 }
 
-func para(style, text string) string {
+// Para is a paragraph of one run, with a style id when style is not empty.
+func Para(style, text string) string {
 	ppr := ""
 	if style != "" {
 		ppr = `<w:pPr><w:pStyle w:val="` + style + `"/></w:pPr>`

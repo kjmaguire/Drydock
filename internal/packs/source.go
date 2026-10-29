@@ -21,6 +21,7 @@ type Page struct {
 	FetchURL string // what to GET (for markdown_suffix this differs from URL); empty for local files
 	Format   string // markdown | html | mdx | "" (decide from content type)
 	Local    string // absolute path of a local file
+	Data     []byte // the content, already read (a git_docs file); nil when it is fetched or read from Local
 }
 
 // discover expands the manifest's sources into pages. A discovery failure is returned so that a refresh never mistakes a
@@ -257,7 +258,8 @@ func discoverSitemap(ctx context.Context, src Source, m *Manifest, f *Fetcher) (
 	return pages, skipped, nil
 }
 
-var localExts = map[string]string{".md": "markdown", ".markdown": "markdown", ".mdx": "mdx", ".txt": "markdown", ".html": "html", ".htm": "html"}
+var localExts = map[string]string{".md": "markdown", ".markdown": "markdown", ".mdx": "mdx", ".txt": "markdown", ".html": "html", ".htm": "html",
+	".pdf": FormatPDF, ".docx": FormatDOCX}
 
 // discoverLocal lists documents under a directory. Symbolic links are never followed (a link could point at any file the
 // user can read), oversized and non-text files are skipped and counted.
@@ -297,7 +299,7 @@ func discoverLocal(src Source, m *Manifest, packDir string) ([]Page, int, error)
 			return nil
 		}
 		info, err := d.Info()
-		if err != nil || !info.Mode().IsRegular() || info.Size() > m.Crawl.MaxPageBytes {
+		if err != nil || !info.Mode().IsRegular() || info.Size() > maxSourceBytes(format, m) {
 			skipped++
 			return nil
 		}
@@ -313,7 +315,7 @@ func discoverLocal(src Source, m *Manifest, packDir string) ([]Page, int, error)
 		return nil, skipped, err
 	}
 	if len(pages) == 0 {
-		return nil, skipped, errors.New("local_dir " + src.Path + " holds no Markdown, text or HTML documents")
+		return nil, skipped, errors.New("local_dir " + src.Path + " holds no Markdown, text, HTML, PDF or DOCX documents")
 	}
 	return pages, skipped, nil
 }

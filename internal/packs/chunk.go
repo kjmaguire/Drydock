@@ -43,6 +43,7 @@ func (o ChunkOptions) withDefaults() ChunkOptions {
 type Chunk struct {
 	Ordinal     int
 	HeadingPath string // "Page title > H1 > H2"; the page title is repeated in every chunk so BM25 can weight it
+	Page        int    // the PDF page the chunk is on (the heading path ends in "Page N" then); 0 for sources without pages
 	Body        string
 	TokenEst    int
 	Hash        string // sha256(heading_path + body)

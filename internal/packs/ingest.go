@@ -416,14 +416,17 @@ func (s *Store) existingPages(ctx context.Context, packID string) (map[string]ex
 func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPage, co ChunkOptions, force bool, budget *sizeBudget) pageResult {
 	r := pageResult{page: p}
 	var raw, format, title string
-	if p.Local != "" {
+	switch {
+	case p.Data != nil:
+		raw, format = string(p.Data), p.Format
+	case p.Local != "":
 		b, err := os.ReadFile(p.Local)
 		if err != nil {
 			r.status, r.reason = "failed", "read error"
 			return r
 		}
 		raw, format = string(b), p.Format
-	} else {
+	default:
 		cond := Conditional{}
 		if ex.id != 0 && !force && ex.status == "active" {
 			cond = Conditional{ETag: ex.etag, LastModified: ex.lastModified}
@@ -488,6 +491,13 @@ func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPag
 		raw, title = md, t
 	case "mdx":
 		raw = StripMDX(raw)
+	case FormatPDF, FormatDOCX:
+		doc, err := readDocument(ctx, format, []byte(raw))
+		if err != nil {
+			r.status, r.reason = "failed", documentReason(err)
+			return r
+		}
+		raw, title = doc.Markdown, doc.Title
 	}
 	text, _ := Normalize(raw)
 	if strings.TrimSpace(strings.ReplaceAll(text, string(HiddenMark), "")) == "" {
@@ -502,7 +512,13 @@ func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPag
 	red := RedactSecrets(s.o.Scanner, text)
 	r.redact = red.Count
 	r.text = red.Text
-	pageTitle, chunks := ChunkMarkdown(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	var pageTitle string
+	var chunks []Chunk
+	if format == FormatPDF {
+		pageTitle, chunks = chunkPDF(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	} else {
+		pageTitle, chunks = ChunkMarkdown(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	}
 	r.text, _ = StripHidden(r.text) // the stored page never contains hidden characters (the chunks already carry their scan flags)
 	r.title = strings.TrimSpace(pageTitle)
 	if r.title == "" {
@@ -582,8 +598,8 @@ func (s *Store) diffChunks(ctx context.Context, tx *sql.Tx, packID string, pageI
 		if c.quarantined {
 			q = 1
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO pack_chunks(pack_id,page_id,ordinal,heading_path,body,token_est,chunk_hash,version_added,seq_added,risk,flags,quarantined) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-			packID, pageID, c.Ordinal, c.HeadingPath, c.Body, c.TokenEst, c.Hash, version, seq, c.risk, c.flags, q); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO pack_chunks(pack_id,page_id,ordinal,heading_path,page,body,token_est,chunk_hash,version_added,seq_added,risk,flags,quarantined) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			packID, pageID, c.Ordinal, c.HeadingPath, c.Page, c.Body, c.TokenEst, c.Hash, version, seq, c.risk, c.flags, q); err != nil {
 			return err
 		}
 	}

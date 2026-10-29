@@ -7,13 +7,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/docparse/docfixture"
 )
 
 func TestPDFReadsTheTextOfEveryPageWithItsNumber(t *testing.T) {
-	data := makePDF(t, "%PDF-1.4", "Install Guide", []string{
-		textPage("Installing the agent", "Run the installer as yourself."),
+	data := docfixture.PDF("%PDF-1.4", "Install Guide", []string{
+		docfixture.TextPage("Installing the agent", "Run the installer as yourself."),
 		"", // a page with no text is left out, the numbering is kept
-		textPage("# Not a heading", "Rotate the keys every 90 days."),
+		docfixture.TextPage("# Not a heading", "Rotate the keys every 90 days."),
 	})
 	doc, err := PDF(context.Background(), data, Limits{})
 	if err != nil {
@@ -40,7 +42,7 @@ func TestPDFReadsTheTextOfEveryPageWithItsNumber(t *testing.T) {
 
 func TestPDFPutsASpaceWhereTheGlyphsLeaveAGap(t *testing.T) {
 	// TJ with a large negative adjustment moves the next glyph right: the producer's way of writing a space
-	data := makePDF(t, "%PDF-1.7", "", []string{"BT /F1 12 Tf 72 720 Td [(Hello) -2000 (World)] TJ 0 -14 Td [(tight) 0 (ly)] TJ ET " +
+	data := docfixture.PDF("%PDF-1.7", "", []string{"BT /F1 12 Tf 72 720 Td [(Hello) -2000 (World)] TJ 0 -14 Td [(tight) 0 (ly)] TJ ET " +
 		"BT /F1 12 Tf 72 600 Td (and a long enough line of text to count as words) Tj ET"})
 	doc, err := PDF(context.Background(), data, Limits{})
 	if err != nil {
@@ -52,7 +54,7 @@ func TestPDFPutsASpaceWhereTheGlyphsLeaveAGap(t *testing.T) {
 }
 
 func TestPDF2IsRead(t *testing.T) {
-	data := makePDF(t, "%PDF-2.0", "", []string{textPage("A PDF 2.0 file is read like any other one.")})
+	data := docfixture.PDF("%PDF-2.0", "", []string{docfixture.TextPage("A PDF 2.0 file is read like any other one.")})
 	doc, err := PDF(context.Background(), data, Limits{})
 	if err != nil || len(doc.Pages) != 1 {
 		t.Fatalf("%v %+v", err, doc)
@@ -61,7 +63,7 @@ func TestPDF2IsRead(t *testing.T) {
 
 func TestAScannedPDFSaysItHasNoTextLayer(t *testing.T) {
 	// a page that only paints a picture (here a rectangle) and a stray page number
-	data := makePDF(t, "%PDF-1.4", "", []string{"0 0 612 792 re f", textPage("1")})
+	data := docfixture.PDF("%PDF-1.4", "", []string{"0 0 612 792 re f", docfixture.TextPage("1")})
 	_, err := PDF(context.Background(), data, Limits{})
 	if !errors.Is(err, ErrNoText) || !strings.Contains(err.Error(), "OCR") {
 		t.Fatalf("%v", err)
@@ -70,7 +72,7 @@ func TestAScannedPDFSaysItHasNoTextLayer(t *testing.T) {
 
 func TestPDFLimits(t *testing.T) {
 	ctx := context.Background()
-	data := makePDF(t, "%PDF-1.4", "", []string{textPage("one page of text, with enough words"), textPage("two pages of text, with enough words")})
+	data := docfixture.PDF("%PDF-1.4", "", []string{docfixture.TextPage("one page of text, with enough words"), docfixture.TextPage("two pages of text, with enough words")})
 	if _, err := PDF(ctx, data, Limits{MaxBytes: 100}); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("size cap: %v", err)
 	}
@@ -91,10 +93,10 @@ func TestADamagedPDFIsAnErrorNotAPanic(t *testing.T) {
 	ctx := context.Background()
 	for name, data := range map[string][]byte{
 		"not a pdf":     []byte("hello"),
-		"cut":           makePDF(t, "%PDF-1.4", "", []string{textPage("x")})[:200],
+		"cut":           docfixture.PDF("%PDF-1.4", "", []string{docfixture.TextPage("x")})[:200],
 		"no xref":       []byte("%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n"),
-		"bad operators": makePDF(t, "%PDF-1.4", "", []string{"BT /F1 Tf (one argument short) Tj ET"}),
-		"garbage tail":  append(makePDF(t, "%PDF-1.4", "", []string{textPage("x")}), bytes.Repeat([]byte{0xff}, 300)...),
+		"bad operators": docfixture.PDF("%PDF-1.4", "", []string{"BT /F1 Tf (one argument short) Tj ET"}),
+		"garbage tail":  append(docfixture.PDF("%PDF-1.4", "", []string{docfixture.TextPage("x")}), bytes.Repeat([]byte{0xff}, 300)...),
 	} {
 		_, err := PDF(ctx, data, Limits{})
 		if err == nil {
@@ -107,9 +109,9 @@ func TestPDFTimesOut(t *testing.T) {
 	// many pages with text and a time limit too short to read them: the caller gets ErrTimeout, and the slot comes back
 	var pages []string
 	for i := 0; i < 400; i++ {
-		pages = append(pages, textPage(strings.Repeat("words on a page ", 60)))
+		pages = append(pages, docfixture.TextPage(strings.Repeat("words on a page ", 60)))
 	}
-	data := makePDF(t, "%PDF-1.4", "", pages)
+	data := docfixture.PDF("%PDF-1.4", "", pages)
 	_, err := PDF(context.Background(), data, Limits{Timeout: time.Millisecond})
 	if !errors.Is(err, ErrTimeout) && !errors.Is(err, ErrBusy) {
 		t.Fatalf("%v", err)
@@ -124,24 +126,24 @@ func TestPDFTimesOut(t *testing.T) {
 }
 
 func TestDOCXHeadingsListsTablesAndWhatIsLeftOut(t *testing.T) {
-	styles := `<?xml version="1.0"?><w:styles ` + wns + `>` +
+	styles := `<?xml version="1.0"?><w:styles ` + docfixture.NS + `>` +
 		`<w:style w:type="paragraph" w:styleId="berschrift1"><w:name w:val="heading 1"/></w:style>` +
 		`<w:style w:type="paragraph" w:styleId="berschrift2"><w:name w:val="heading 2"/></w:style>` +
 		`<w:style w:type="paragraph" w:styleId="Kapitel"><w:name w:val="Kapitel"/><w:pPr><w:outlineLvl w:val="2"/></w:pPr></w:style>` +
 		`</w:styles>`
-	body := docBody(
-		para("Title", "Security Handbook") +
-			para("berschrift1", "Access") +
-			para("", "Every account has an owner.") +
+	body := docfixture.Body(
+		docfixture.Para("Title", "Security Handbook") +
+			docfixture.Para("berschrift1", "Access") +
+			docfixture.Para("", "Every account has an owner.") +
 			`<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Review access quarterly</w:t></w:r></w:p>` +
 			`<w:p><w:r><w:t>Kept </w:t></w:r><w:del><w:r><w:delText>deleted words</w:delText></w:r></w:del><w:r><w:instrText>PAGE</w:instrText></w:r><w:r><w:t>text</w:t></w:r></w:p>` +
-			para("berschrift2", "Keys") +
+			docfixture.Para("berschrift2", "Keys") +
 			`<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Key</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Rotation</w:t></w:r></w:p></w:tc></w:tr>` +
 			`<w:tr><w:tc><w:p><w:r><w:t>API|token</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>90</w:t></w:r></w:p><w:p><w:r><w:t>days</w:t></w:r></w:p></w:tc></w:tr></w:tbl>` +
-			para("Kapitel", "Incident response") +
-			para("", "# looks like a heading but is text") +
+			docfixture.Para("Kapitel", "Incident response") +
+			docfixture.Para("", "# looks like a heading but is text") +
 			`<w:p><mc:AlternateContent><mc:Choice><w:r><w:t>Box text</w:t></w:r></mc:Choice><mc:Fallback><w:r><w:t>Box text</w:t></w:r></mc:Fallback></mc:AlternateContent></w:p>`)
-	data := makeDOCX(t, part{"[Content_Types].xml", "<Types/>"}, part{"word/styles.xml", styles}, part{"word/document.xml", body})
+	data := docfixture.DOCX(docfixture.Part{"[Content_Types].xml", "<Types/>"}, docfixture.Part{"word/styles.xml", styles}, docfixture.Part{"word/document.xml", body})
 	doc, err := DOCX(context.Background(), data, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +157,7 @@ func TestDOCXHeadingsListsTablesAndWhatIsLeftOut(t *testing.T) {
 
 func TestDOCXTitleFromCoreProperties(t *testing.T) {
 	core := `<?xml version="1.0"?><cp:coreProperties xmlns:cp="x" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Runbook</dc:title></cp:coreProperties>`
-	data := makeDOCX(t, part{"docProps/core.xml", core}, part{"word/document.xml", docBody(para("", "Restart the service."))})
+	data := docfixture.DOCX(docfixture.Part{"docProps/core.xml", core}, docfixture.Part{"word/document.xml", docfixture.Body(docfixture.Para("", "Restart the service."))})
 	doc, err := DOCX(context.Background(), data, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +170,7 @@ func TestDOCXTitleFromCoreProperties(t *testing.T) {
 func TestDOCXZipBombAndDamage(t *testing.T) {
 	ctx := context.Background()
 	// a document.xml that unpacks to 4 MB from a few KB: refused at a 1 MB bound
-	bomb := makeDOCX(t, part{"word/document.xml", docBody(para("", strings.Repeat("a", 4<<20)))})
+	bomb := docfixture.DOCX(docfixture.Part{"word/document.xml", docfixture.Body(docfixture.Para("", strings.Repeat("a", 4<<20)))})
 	if len(bomb) > 64<<10 {
 		t.Fatalf("the fixture should compress well, it is %d bytes", len(bomb))
 	}
@@ -178,13 +180,13 @@ func TestDOCXZipBombAndDamage(t *testing.T) {
 	if _, err := DOCX(ctx, []byte("PK\x03\x04 not really"), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("damaged: %v", err)
 	}
-	if _, err := DOCX(ctx, makeDOCX(t, part{"word/other.xml", "x"}), Limits{}); !errors.Is(err, ErrMalformed) {
+	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{"word/other.xml", "x"}), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("no body: %v", err)
 	}
-	if _, err := DOCX(ctx, makeDOCX(t, part{"word/document.xml", "<w:document><w:body><w:p>"}), Limits{}); !errors.Is(err, ErrMalformed) {
+	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{"word/document.xml", "<w:document><w:body><w:p>"}), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("cut xml: %v", err)
 	}
-	if _, err := DOCX(ctx, makeDOCX(t, part{"word/document.xml", docBody("")}), Limits{}); !errors.Is(err, ErrMalformed) {
+	if _, err := DOCX(ctx, docfixture.DOCX(docfixture.Part{"word/document.xml", docfixture.Body("")}), Limits{}); !errors.Is(err, ErrMalformed) {
 		t.Fatalf("empty: %v", err)
 	}
 	if _, err := DOCX(ctx, bomb, Limits{MaxBytes: 100}); !errors.Is(err, ErrTooLarge) {
