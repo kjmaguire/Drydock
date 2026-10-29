@@ -27,6 +27,10 @@ const (
 	KindRequest     NodeKind = "request"
 	KindRoute       NodeKind = "route"
 	KindSubworkflow NodeKind = "subworkflow"
+	// KindGroup is a group-collaboration node (brief s4, decision P118): a bounded discussion between named agents in a room,
+	// each turn granted by the room's scheduler. Its handler comes from the package that runs room turns
+	// (responder.GroupNode); the engine treats it as any other node.
+	KindGroup NodeKind = "group"
 )
 
 // EdgeKind is how an edge delivers messages.

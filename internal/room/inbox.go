@@ -330,7 +330,8 @@ WHERE t.stage = 2
 
 // budgetItems are the budgets that passed their warning point or reached their limit (the alerts the budget gate fired once
 // each, internal/budget), until the limit is changed (which clears the alerts), the budget is switched off, or a person
-// dismisses the item. An exceeded budget a run is waiting on is left to the pause's own item (the approval row); a warning
+// dismisses the item. The item's key carries the alert's time, so a dismissal does not hide the same alert fired again
+// after a limit change. An exceeded budget a run is waiting on is left to the pause's own item (the approval row); a warning
 // gives way to the same budget's exceeded item.
 func (s *Service) budgetItems(ctx context.Context, projectID string) ([]NeedsYouItem, error) {
 	rows, err := s.db.Reader().QueryContext(ctx, `
@@ -343,7 +344,7 @@ SELECT al.budget_id, al.instance_id, al.level, al.ts, b.scope, b.scope_id, b.war
 FROM budget_alerts al JOIN budgets b ON b.id = al.budget_id
 WHERE b.enabled = 1
   AND NOT (al.level = 'warning' AND EXISTS (SELECT 1 FROM budget_alerts x WHERE x.budget_id = al.budget_id AND x.instance_id = al.instance_id AND x.level = 'exceeded'))
-  AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'budget:' || al.budget_id || ':' || al.instance_id || ':' || al.level)
+  AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'budget:' || al.budget_id || ':' || al.instance_id || ':' || al.level || ':' || al.ts)
   AND NOT (al.level = 'exceeded' AND EXISTS (SELECT 1 FROM approvals p WHERE p.status = 'REQUESTED' AND p.kind = 'approval'
            AND CAST(p.payload AS TEXT) LIKE '%"gate":"budget"%' AND json_valid(CAST(p.payload AS TEXT))
            AND EXISTS (SELECT 1 FROM json_each(CAST(p.payload AS TEXT), '$.exceeded') e WHERE json_extract(e.value, '$.budget.id') = al.budget_id)))
@@ -373,7 +374,7 @@ ORDER BY al.ts, al.budget_id, al.instance_id`)
 		case "agent":
 			it.AgentID = instance
 		}
-		it.Key = "budget:" + it.BudgetID + ":" + instance + ":" + level
+		it.Key = fmt.Sprintf("budget:%s:%s:%s:%d", it.BudgetID, instance, level, at)
 		it.Kind, it.ProjectID, it.CreatedAt, it.BudgetState = NeedsBudget, project, fromMs(at), level
 		if level == BudgetExceeded {
 			it.Severity, it.Title, it.Detail = 0, "Budget reached: the "+what+" is at its limit", budgetExceededDo

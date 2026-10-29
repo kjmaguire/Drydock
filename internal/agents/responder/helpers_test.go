@@ -70,6 +70,7 @@ type harness struct {
 	r       *responder.Responder
 	gate    func(ctx context.Context, project string, a responder.Agent) (func(), error)
 	budget  func(ctx context.Context, project, task string, a responder.Agent) error
+	route   func(ctx context.Context, t responder.ReplyTurn, attempt responder.Attempt) error // the model router's hook, when a test sets it
 	costs   map[string]float64
 	mu      sync.Mutex
 }
@@ -95,7 +96,7 @@ func newHarness(t *testing.T, opt responder.Options) *harness {
 	h.room = room.New(db, h.bus, room.Options{Redact: func(b string) (string, error) { return sc.Redact(b), nil }, OnError: func(err error) { t.Logf("room: %v", err) }})
 	t.Setenv("DRYDOCK_FAKE_AGENT", "1")
 	h.spy = &spyAdapter{Adapter: &claude.Adapter{Exe: os.Args[0]}}
-	h.rt = &rt.Runtime{PM: proc.New(), Bus: h.bus, DB: db, Adapters: map[string]agents.Adapter{"claude": h.spy}, NudgeWait: time.Second}
+	h.rt = &rt.Runtime{PM: proc.New(), Bus: h.bus, DB: db, Adapters: map[string]agents.Adapter{"claude": h.spy}, NudgeWait: time.Second, Grants: h.room}
 	h.ce = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}}
 	h.r = responder.New(responder.Deps{
 		Room: h.room, Runtime: h.rt, Context: h.ce, DB: db, Bus: h.bus,
@@ -111,6 +112,12 @@ func newHarness(t *testing.T, opt responder.Options) *harness {
 				return h.budget(ctx, p, task, a)
 			}
 			return nil
+		},
+		Route: func(ctx context.Context, t responder.ReplyTurn, attempt responder.Attempt) error {
+			if h.route != nil {
+				return h.route(ctx, t, attempt)
+			}
+			return attempt(ctx, responder.Routed{}, nil)
 		},
 		Gate: func(ctx context.Context, p string, a responder.Agent) (func(), error) {
 			if h.gate != nil {

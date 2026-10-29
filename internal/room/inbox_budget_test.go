@@ -36,19 +36,19 @@ func TestBudgetWarningsLimitsAndPausesAreBudgetItems(t *testing.T) {
 	if len(items) != 3 {
 		t.Fatalf("the project's warning, the task's limit (its warning gives way) and the workflow's warning; not the other project's: %+v", items)
 	}
-	p := byKey["budget:bud_p:proj_1:warning"]
+	p := byKey["budget:bud_p:proj_1:warning:10"]
 	if p.BudgetState != BudgetWarning || p.Severity != 2 || p.Title != "Budget warning: the project budget passed 80%" || !strings.Contains(p.Detail, "raise the limit on the Budgets page") {
 		t.Fatalf("project warning %+v", p)
 	}
-	tk := byKey["budget:bud_t:task_1:exceeded"]
+	tk := byKey["budget:bud_t:task_1:exceeded:12"]
 	if tk.BudgetState != BudgetExceeded || tk.Severity != 0 || tk.TaskID != "task_1" || tk.TaskSeq != 1 || tk.Title != "Budget reached: the task budget is at its limit" ||
 		!strings.Contains(tk.Detail, "do not start") {
 		t.Fatalf("task limit %+v", tk)
 	}
-	if w := byKey["budget:bud_w:proj_1/iterate-until-verified:warning"]; w.Title != "Budget warning: the budget of the workflow iterate-until-verified passed 80%" || w.BudgetID != "bud_w" {
+	if w := byKey["budget:bud_w:proj_1/iterate-until-verified:warning:13"]; w.Title != "Budget warning: the budget of the workflow iterate-until-verified passed 80%" || w.BudgetID != "bud_w" {
 		t.Fatalf("workflow warning %+v", w)
 	}
-	if items[0].Key != "budget:bud_t:task_1:exceeded" {
+	if items[0].Key != "budget:bud_t:task_1:exceeded:12" {
 		t.Fatalf("a budget at its limit comes before warnings: %+v", items)
 	}
 
@@ -58,7 +58,7 @@ func TestBudgetWarningsLimitsAndPausesAreBudgetItems(t *testing.T) {
 	items, _ = e.svc.NeedsYou(e.ctx, e.project)
 	var pause *NeedsYouItem
 	for i := range items {
-		if items[i].Key == "budget:bud_t:task_1:exceeded" {
+		if items[i].Key == "budget:bud_t:task_1:exceeded:12" {
 			t.Fatal("the limit's item stays while its pause is the item")
 		}
 		if items[i].ApprovalID == "apr_b" {
@@ -71,13 +71,13 @@ func TestBudgetWarningsLimitsAndPausesAreBudgetItems(t *testing.T) {
 	}
 
 	// a person dismisses the warning; changing the limit clears the alerts (the budget store does) and with them the items
-	if err := e.svc.AckNeedsYou(e.ctx, "budget:bud_p:proj_1:warning", kyle); err != nil {
+	if err := e.svc.AckNeedsYou(e.ctx, "budget:bud_p:proj_1:warning:10", kyle); err != nil {
 		t.Fatal(err)
 	}
 	e.exec(`DELETE FROM budget_alerts WHERE budget_id='bud_w'`)
 	e.exec(`UPDATE approvals SET status='APPROVED' WHERE id='apr_b'`)
 	items, _ = e.svc.NeedsYou(e.ctx, e.project)
-	if len(items) != 1 || items[0].Key != "budget:bud_t:task_1:exceeded" {
+	if len(items) != 1 || items[0].Key != "budget:bud_t:task_1:exceeded:12" {
 		t.Fatalf("after: %+v", items)
 	}
 	// a budget switched off is no item
@@ -89,5 +89,11 @@ func TestBudgetWarningsLimitsAndPausesAreBudgetItems(t *testing.T) {
 	all, _ := e.svc.NeedsYou(e.ctx, "")
 	if len(all) != 1 || all[0].ProjectID != "proj_2" {
 		t.Fatalf("all projects: %+v", all)
+	}
+	// the dismissed warning fires again after a limit change: the dismissal was of the earlier one
+	e.exec(`DELETE FROM budget_alerts WHERE budget_id='bud_p'`)
+	e.exec(`INSERT INTO budget_alerts(budget_id,instance_id,level,ts) VALUES('bud_p','proj_1','warning',30)`)
+	if items, _ = e.svc.NeedsYou(e.ctx, e.project); len(items) != 1 || items[0].Key != "budget:bud_p:proj_1:warning:30" {
+		t.Fatalf("fired again: %+v", items)
 	}
 }
