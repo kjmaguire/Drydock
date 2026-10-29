@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -298,8 +300,11 @@ func TestAfterAnAppUpdateTheServerStartsOnTheNewBundledBuild(t *testing.T) {
 	rig := newLocalRig(t)
 	dataDir := filepath.Join(t.TempDir(), "data")
 	creds := providers.NewMemoryCredentialStoreForTests()
+	// every run of a build records its arguments in a file of its own, numbered in order: the build's --list-devices probe
+	// (the Models page reads the devices of whatever build is installed) runs it too, and is not a start of the server
+	records := t.TempDir()
 	var mu sync.Mutex
-	var started []string // the build each server start ran
+	runs := 0
 	open := func(bundleDir string) *core.Core {
 		c, err := core.Open(context.Background(), core.Config{DataDir: dataDir, User: "kyle", LeaseTTL: 3 * time.Second,
 			Adapters: map[string]agents.Adapter{"claude": &claude.Adapter{Exe: "claude-not-used"}}, Credentials: creds, BundleDir: bundleDir,
@@ -309,9 +314,10 @@ func TestAfterAnAppUpdateTheServerStartsOnTheNewBundledBuild(t *testing.T) {
 				m.Hub = &localllm.Hub{BaseURL: rig.hub.URL}
 				m.Program = func(in localllm.Installed) (string, []string) {
 					mu.Lock()
-					started = append(started, in.Tag)
+					runs++
+					record := filepath.Join(records, fmt.Sprintf("%04d_%s", runs, in.Tag))
 					mu.Unlock()
-					return os.Args[0], llamatest.Args(rig.standin...)
+					return os.Args[0], llamatest.Args(append([]string{"--record=" + record}, rig.standin...)...)
 				}
 			}})
 		if err != nil {
@@ -334,7 +340,7 @@ func TestAfterAnAppUpdateTheServerStartsOnTheNewBundledBuild(t *testing.T) {
 	c.Close()
 
 	mu.Lock()
-	started = nil
+	before := runs
 	mu.Unlock()
 	c2 := open(bundleOf("b10350-2.1.0")) // the app updated, with a newer bundled build
 	t.Cleanup(c2.Close)
@@ -344,8 +350,25 @@ func TestAfterAnAppUpdateTheServerStartsOnTheNewBundledBuild(t *testing.T) {
 		v = localCall(a2, "local.get", nil)
 		return v.Server.State == "running"
 	})
-	mu.Lock()
-	defer mu.Unlock()
+	var started []string // the build each start of the server after the update ran, in order
+	files, err := os.ReadDir(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		var n int
+		var tag string
+		if _, err := fmt.Sscanf(f.Name(), "%d_%s", &n, &tag); err != nil || n <= before {
+			continue
+		}
+		args, err := os.ReadFile(filepath.Join(records, f.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(args), "--list-devices") {
+			started = append(started, tag)
+		}
+	}
 	if v.Runtime.Tag != "b10350-2.1.0" || len(started) == 0 || started[0] != "b10350-2.1.0" {
 		t.Fatalf("installed %s; the server started on %v", v.Runtime.Tag, started)
 	}

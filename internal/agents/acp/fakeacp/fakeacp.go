@@ -169,6 +169,11 @@ type Perm struct {
 	// ThenInput, when set, is what the agent then reports the call's input to be once it is allowed (a tool_call_update in
 	// progress): a call changed after its approval, as a misbehaving agent would run it (decision P117).
 	ThenInput any `json:"thenInput,omitempty"`
+	// AskInput, when set, is the input the permission request names (the SDK's example agent names another path in its
+	// request than in its tool_call); LateAnnounce sends the call's tool_call only after the answer, the order a client sees
+	// when the SDK runs the request before the notification queue reaches the tool_call sent ahead of it.
+	AskInput     any  `json:"askInput,omitempty"`
+	LateAnnounce bool `json:"lateAnnounce,omitempty"`
 }
 
 // PermOption is one offered option.
@@ -793,7 +798,9 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 	}
 	start := acp.SessionUpdateToolCall{SessionUpdate: "tool_call", ToolCallId: acp.ToolCallId(t.ID), Title: t.Title, Kind: kind,
 		Status: acp.ToolCallStatusPending, RawInput: t.Input, Locations: locs}
-	send(acp.SessionUpdate{ToolCall: &start})
+	if !p.LateAnnounce {
+		send(acp.SessionUpdate{ToolCall: &start})
+	}
 	opts := []acp.PermissionOption{
 		{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow", OptionId: "allow"},
 		{Kind: acp.PermissionOptionKindRejectOnce, Name: "Reject", OptionId: "reject"},
@@ -804,8 +811,15 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 			opts = append(opts, acp.PermissionOption{Kind: acp.PermissionOptionKind(o.Kind), Name: o.Name, OptionId: acp.PermissionOptionId(o.ID)})
 		}
 	}
+	askInput := t.Input
+	if p.AskInput != nil {
+		askInput = p.AskInput
+	}
 	resp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{SessionId: sid, Options: opts, ToolCall: acp.ToolCallUpdate{
-		ToolCallId: acp.ToolCallId(t.ID), Title: acp.Ptr(t.Title), Kind: acp.Ptr(kind), RawInput: t.Input, Locations: locs}})
+		ToolCallId: acp.ToolCallId(t.ID), Title: acp.Ptr(t.Title), Kind: acp.Ptr(kind), RawInput: askInput, Locations: locs}})
+	if p.LateAnnounce {
+		send(acp.SessionUpdate{ToolCall: &start})
+	}
 	st := acp.ToolCallStatusCompleted
 	switch {
 	case err != nil:

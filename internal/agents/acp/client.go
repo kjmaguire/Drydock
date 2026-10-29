@@ -45,6 +45,11 @@ type toolState struct {
 	// P117); changed is set once a later tool_call or tool_call_update made it another call.
 	approvedSum string
 	changed     bool
+
+	// asked is set once the call's permission request was handled, announced once its own tool_call was. The SDK runs an
+	// agent's requests beside its notification queue, so a request can be handled before the tool_call the agent sent ahead
+	// of it (seen with the SDK's example agent); onToolCall then treats that tool_call as the announcement it was.
+	asked, announced bool
 }
 
 // callSum is the SHA-256 of what a tool call does, as far as Drydock was asked about it: its kind, its input and, for a kind
@@ -213,16 +218,35 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) (er
 func (s *Session) onToolCall(tc *acp.SessionUpdateToolCall) {
 	st := s.toolFor(tc.ToolCallId)
 	s.mu.Lock()
-	st.title = firstNonEmpty(tc.Title, st.title)
-	st.kind = firstNonEmpty(string(tc.Kind), st.kind)
-	st.status = firstNonEmpty(string(tc.Status), st.status)
-	st.metaName = firstNonEmpty(metaToolName(tc.Meta), st.metaName)
-	if tc.RawInput != nil {
-		st.input = tc.RawInput
+	late := st.asked && !st.announced // the tool_call the agent sent before its permission request, handled after it
+	st.announced = true
+	if late {
+		// what the request said stands and the tool_call fills in only what it left out, as if it had been handled first;
+		// what was allowed is then the call as it would have been, so this is no change to it
+		st.title = firstNonEmpty(st.title, tc.Title)
+		st.kind = firstNonEmpty(st.kind, string(tc.Kind))
+		st.metaName = firstNonEmpty(st.metaName, metaToolName(tc.Meta))
+		if !st.haveInput() && tc.RawInput != nil {
+			st.input = tc.RawInput
+		}
+		if len(st.locations) == 0 {
+			st.locations = locPaths(tc.Locations, nil)
+		}
+	} else {
+		st.title = firstNonEmpty(tc.Title, st.title)
+		st.kind = firstNonEmpty(string(tc.Kind), st.kind)
+		st.metaName = firstNonEmpty(metaToolName(tc.Meta), st.metaName)
+		if tc.RawInput != nil {
+			st.input = tc.RawInput
+		}
+		st.locations = locPaths(tc.Locations, st.locations)
 	}
-	st.locations = locPaths(tc.Locations, st.locations)
+	st.status = firstNonEmpty(string(tc.Status), st.status)
 	st.absorbOutput(tc.Content, tc.RawOutput)
-	changed := st.changedSinceAllowed()
+	if late && st.approvedSum != "" {
+		st.approvedSum = st.callSum()
+	}
+	changed := !late && st.changedSinceAllowed()
 	s.mu.Unlock()
 	if changed {
 		s.callChanged(st)
@@ -445,6 +469,7 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 		st.input = p.ToolCall.RawInput
 	}
 	st.locations = locPaths(p.ToolCall.Locations, st.locations)
+	st.asked = true
 	s.permSeq++
 	req := PermissionRequest{
 		ID: fmt.Sprintf("perm_%d", s.permSeq), SessionID: string(p.SessionId), ToolCallID: st.id,
