@@ -179,6 +179,29 @@ Every loop is bounded (5 by default; 3 for spec and test rework) and exhausts in
 
 **Not verified.** The lead runs on the real agent adapters in the app, but all of it is tested with the scripted stand-in agent (labelled), not with a real lead model: whether a real model keeps to the JSON contract, and how good its decisions are, is unmeasured. Lead turns do not take a parallel-agent slot (they are short and read-only).
 
+## 14. As built: the group-collaboration node (decision P118, `internal/agents/responder/group.go`)
+
+Brief s4's "group collaboration with bounded debate" is a node kind, `group` (`workflow.KindGroup`, `workflow.Group`), whose
+handler is built by `responder.GroupNode(id, responder, spec)`: `spec` reads a `Discussion` from the node's input (the room,
+the topic, the named agents in speaking order, the bound, default 3 rounds). The node posts the topic as a SYSTEM message
+(idempotent per run, node and step, so an attempt run again continues the same discussion) and the discussion is the thread
+under it. Each turn is granted by the room's scheduler in sequential mode with the node's own order and bound
+(`room.GrantGroupTurn`: the round counter of a sequential room, room-protocol s6 rule 7; a person's message in the thread
+starts the count again) and runs as a real, read-only agent turn through the Agent Runtime on its grant, with the reply's
+context selection, manifest, budget check (project, agent, task) and model routing, its prompt saying the round, the bound
+and the other agents. The discussion ends at the bound, or earlier when every agent in turn passed; the scheduler's bound
+resolution then posts the SYSTEM line and either adopts the DECISION an agent proposed (a `[DECISION]` line) as the
+candidate or asks a person with a blocking QUESTION (an Inbox item). The node's value is a `DiscussionResult` (thread,
+rounds held, the outcome, the decision's id and text or the question's id, the turns) and its route the outcome,
+`decision` or `question`, so the next node gets it. A turn that fails, an agent that is not a member of the room (agents do
+not join on their own) or fewer than two agents fail the node. The node is not wrapped by the `agent_task` middleware
+(watchdog, telemetry, the budget gate): its turns are replies and are guarded as replies are. A promoted `[DECISION]` line no
+longer counts as a turn of its own in the round counters (it made the agent look as if it had spoken in the next round).
+Tested in the engine against the scripted stand-in agent (`TestAGroupNodeEndsInADecisionCandidateTheNextNodeReceives`,
+`TestAGroupNodeThatDoesNotConvergeAsksAPersonAtTheBound`). Not built: a shipped template that uses the node, a UI to start
+one, its turns counted against a workflow budget, and early ending on a `SHIP` verdict (it ends on the bound or a round of
+passes).
+
 ## Open questions / unverified
 
 - Windows file-locking behavior for `stream.jsonl` appends during kill tests (the tests run on any host; only Windows CI can confirm).

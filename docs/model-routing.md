@@ -327,7 +327,7 @@ each model cheap or premium, at least one of each, at most six; stored in `agent
 of that agent the `routeTurn` middleware (internal/core/turnrouting.go, in place of the old static recorder) asks a rule router
 whose candidate source is exactly that list: on the agent's registered provider when it has one (with its health, quota and
 prices), else as agent-native routes of its CLI. The router therefore never moves a turn to another adapter or provider. The
-level is Balanced (no per-project level exists yet); the failure counters come from the run: every earlier work turn routed to
+level was Balanced (a per-project level came with P118, see the last section); the failure counters come from the run: every earlier work turn routed to
 a cheap model counts as a cheap iteration (it came back with failing checks or a revise), and REVISE verdicts given since the
 run first routed work to premium count as premium revises. With the shipped thresholds a worker runs three cheap turns and
 escalates to premium on the fourth (tested end to end). The chosen model and its tier reach the node through the context
@@ -335,7 +335,7 @@ escalates to premium on the fourth (tested end to end). The chosen model and its
 (agent-native routes record EffortApplied=false). An agent with no list, or a turn the router cannot decide, runs the
 configured model and records a static decision whose reason says which. Every decision is in the run explanation.
 
-Not built: a per-project level. (Room replies and the template role turns were routed later, decision P63: see "As built:
+Built later: a per-project level (decision P118, the last section). (Room replies and the template role turns were routed later, decision P63: see "As built:
 every turn of an agent is routed" below.)
 
 
@@ -627,3 +627,22 @@ is better than the name order is not measured), the margin and the defaults (des
 ceiling on Windows (the fake agent's process is stopped the way the runtime stops any turn), the exact retention wording of
 every Claude Code version (Anthropic's API text is the one matched), and holds on a real provider's windows during a CLI's
 turn (the CLI's own calls are not seen).
+
+
+## As built: the workspace's level and a project's own (2026-10-29, decision P118)
+
+Section 3's levels were project defaults on paper; until P118 every agent turn ran at Balanced. Now the workspace has a level
+(`settings` row `route.level`, Balanced until a person chooses another on the Routing page, "Level") and a project may choose
+its own on Project settings ("Model routing level"; `route.level:<project id>`, removed with the project; a project export
+leaves it out, as it leaves out where the project's agents run). `route.level.get {projectId}` answers the workspace's level,
+the project's own ("" while it follows the workspace), the level its turns run at and where it came from;
+`route.level.set {projectId, level}` sets the workspace's (`projectId` "") or the project's ("" follows the workspace again);
+only a person may, and `routing.level_changed` is published. Every agent turn of the project (`decide` in
+`internal/core/turnrouting.go`: work, review, the template roles, room replies, the lead, recommendations), its static
+decision when the agent has no model list, and its wall-time ceiling (P112, set per level) use that level. The request and
+the decision record the level and `LevelSource` (`project` or `workspace`), and "Why this model?" says it ("- Level:
+Quality, the project's own level (its settings)."). The task-level override of section 3 is not built, nor a level per
+template; Custom can be stored (`custom`) but the pages offer the five ladder levels only. Tests:
+`TestAProjectsOwnLevelRoutesItsTurnsAndTheExplanationSaysSo` (`internal/core`: at Quality the worker's first turn runs on
+its premium model), `TestTheDecisionSaysWhichLevelItRanAtAndWhere` (`internal/router`), the UI's
+`project-routing-level.test.browser.tsx` and `routing-screen.test.browser.tsx`, and `e2e/routing-level.spec.ts`.
