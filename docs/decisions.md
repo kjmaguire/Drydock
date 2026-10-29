@@ -1586,8 +1586,6 @@ Open, owner action:
   working-folder file's ACL). **Not built:** MCP for Antigravity (above); a file watcher on the custom folder (the checks run
   when the file is looked at); preventing a changed ACP call (Drydock can only detect it and stop the turn: the agent runs
   its calls itself); the comparison for a chat's permission requests is the same, but only an agent turn's is audited.
-  an argument through `cmd.exe`). **Not built:** MCP for custom CLIs (their manifest has no `mcp.inject` yet) and for
-  Antigravity, an acknowledgement asked again when a custom manifest's file changes on disk, interrupt for Antigravity.
 - **P119. A ceiling on the whole context package, files as ranges, the missing handoff fields, verified agent handoffs and
   rule 15 over every deterministic package (2026-10-29).** On the owner's word, answering the list of what is still not built:
   "Yes" to building the whole group that can be built now (token rules 9, 11, 5 and 6, and 15 of `token-control.md`). (1) **The
