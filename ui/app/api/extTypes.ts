@@ -312,13 +312,26 @@ export interface Pack {
   manifestDrift?: boolean;
   nextRefreshAt?: string;
   attribution?: string;
-  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string }[] } | null;
+  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[] } | null;
+}
+/** One of a pack's own files (a pack made from files keeps them in packs/<id>/files). */
+export interface PackFile {
+  name: string;
+  size: number;
+  modified: string;
+}
+/** A file a person gives a pack. */
+export interface PackUpload {
+  name: string;
+  data: Uint8Array;
 }
 export interface PackCitation {
   pack: string;
   version: string;
   url: string;
   headingPath: string;
+  /** The PDF page the passage is on; absent for sources without pages. */
+  page?: number;
   chunkId?: number;
   fetchedAt?: string;
   contentHash: string;
@@ -347,7 +360,8 @@ export interface PackConsult {
   found: boolean;
   answer: string;
   citations: PackCitation[] | null;
-  sources: { n: number; citation: PackCitation; excerpt: string }[] | null;
+  /** used: the model's answer drew on this source (none is marked when no model wrote the answer). */
+  sources: { n: number; citation: PackCitation; excerpt: string; used?: boolean }[] | null;
   confidence: string;
   sourceAgeDays: number;
   route: string;
@@ -371,6 +385,8 @@ export interface PackRefreshResult {
   reasons?: Record<string, number>;
   quarantined: number;
   redactions: number;
+  /** The commit each git_docs source was read at ("sources[0]"). */
+  sources?: Record<string, string>;
 }
 export interface QuarantinedChunk {
   chunkId: number;

@@ -44,6 +44,7 @@ func TestKnowledgeExtensionIsRegisteredWithItsMethods(t *testing.T) {
 	methods := a.c.Methods()
 	for _, name := range []string{
 		"pack.list", "pack.install", "pack.refresh", "pack.search", "pack.consult", "pack.attach", "pack.releaseChunk", "pack.templates",
+		"pack.createFromFiles", "pack.files", "pack.addFiles", "pack.removeFile", "requirement.extract",
 		"requirement.add", "requirement.search", "requirement.link", "requirement.trace", "milestone.create", "milestone.list",
 		"skill.scan", "skill.accept", "skill.import", "skill.registryAdd", "skill.deliveries", "memory.propose", "memory.accept", "memory.delete",
 	} {

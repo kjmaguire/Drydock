@@ -1,6 +1,7 @@
 // Typed client for the Slice 2-5 methods (internal/core/ext_*.go). Same rules as client.ts: one function per method, Go's nil
 // slices (JSON null) become empty arrays, errors are RpcError from the transport.
 
+import { encodeBase64 } from './attachClient.ts';
 import type { Transport } from './transport.ts';
 import type {
   Recommendation,
@@ -45,7 +46,9 @@ import type {
   Pack,
   PackAttachment,
   PackConsult,
+  PackFile,
   PackRefreshResult,
+  PackUpload,
   PackSearchResult,
   Plan,
   PreviewInfo,
@@ -130,6 +133,11 @@ export interface ExtClient {
   packInstall(yaml: string): Promise<Pack>;
   packRemove(id: string): Promise<void>;
   packRefresh(id: string, force?: boolean): Promise<PackRefreshResult>;
+  /** Makes a pack of the person's own files (private unless said otherwise); refresh it to index them. */
+  packCreateFromFiles(p: { id: string; title: string; visibility?: string; license?: string }, files: PackUpload[]): Promise<Pack>;
+  packFiles(id: string): Promise<PackFile[]>;
+  packAddFiles(id: string, files: PackUpload[]): Promise<PackFile[]>;
+  packRemoveFile(id: string, name: string): Promise<void>;
   packSearch(packIds: string[], query: string, k?: number): Promise<PackSearchResult>;
   packConsult(packIds: string[], question: string): Promise<PackConsult>;
   packQuarantined(id: string): Promise<QuarantinedChunk[]>;
@@ -140,6 +148,8 @@ export interface ExtClient {
   // requirements and milestones
   requirementList(projectId: string, includeArchived?: boolean): Promise<Requirement[]>;
   requirementAdd(projectId: string, title: string, text: string, format?: string): Promise<Requirement>;
+  /** The text of a PDF or DOCX, as Markdown (a PDF's pages as "## Page N"), for the page to show before it is added. */
+  requirementExtract(name: string, data: Uint8Array): Promise<{ title: string; text: string }>;
   requirementUpdate(id: string, text: string, format?: string): Promise<{ requirement: Requirement; changed: boolean }>;
   requirementArchive(id: string, archived: boolean): Promise<void>;
   requirementVersions(id: string): Promise<RequirementVersion[]>;
@@ -304,6 +314,10 @@ export function createExtClient(t: Transport): ExtClient {
     packInstall: (yaml) => call('pack.install', { yaml }),
     packRemove: (id) => voidCall('pack.remove', { id }),
     packRefresh: (id, force = false) => call('pack.refresh', { id, force }),
+    packCreateFromFiles: (p, files) => call('pack.createFromFiles', { ...p, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) }),
+    packFiles: async (id) => arr(await call<PackFile[] | null>('pack.files', { id })),
+    packAddFiles: async (id, files) => arr(await call<PackFile[] | null>('pack.addFiles', { id, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) })),
+    packRemoveFile: (id, name) => voidCall('pack.removeFile', { id, name }),
     packSearch: async (packIds, query, k = 0) => {
       const r = await call<PackSearchResult>('pack.search', { packIds, query, k });
       return { ...r, hits: arr(r.hits), searched: arr(r.searched) };
@@ -320,6 +334,7 @@ export function createExtClient(t: Transport): ExtClient {
 
     requirementList: async (projectId, includeArchived = false) => arr(await call<Requirement[] | null>('requirement.list', { projectId, includeArchived })),
     requirementAdd: (projectId, title, text, format = 'markdown') => call('requirement.add', { projectId, title, text, format, source: 'upload' }),
+    requirementExtract: (name, data) => call('requirement.extract', { name, data: encodeBase64(data) }),
     requirementUpdate: (id, text, format = 'markdown') => call('requirement.update', { id, text, format }),
     requirementArchive: (id, archived) => voidCall('requirement.archive', { id, archived }),
     requirementVersions: async (id) => arr(await call<RequirementVersion[] | null>('requirement.versions', { id })),

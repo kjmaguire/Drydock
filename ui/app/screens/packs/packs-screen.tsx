@@ -2,22 +2,35 @@
 // outside text: it is shown inert, passages that look like instructions are quarantined until the human releases them, and
 // nothing in a pack can grant a permission or make a decision.
 
-import { css, on, type Handle } from 'remix/component';
-import { BookOpen, Download, ExternalLink, Library, MessageSquareText, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide';
-import type { Pack, PackAttachment, PackCitation, PackConsult, PackSearchResult, QuarantinedChunk } from '../../api/extTypes.ts';
+import { css, on, ref, type Handle } from 'remix/component';
+import { BookOpen, Download, ExternalLink, FilePlus, Library, MessageSquareText, RefreshCw, Search, ShieldAlert, Trash2, Upload } from 'lucide';
+import type { Pack, PackAttachment, PackCitation, PackConsult, PackFile, PackSearchResult, PackUpload, QuarantinedChunk } from '../../api/extTypes.ts';
 import { formatCost, formatDateTime, plural } from '../../lib/format.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
-import { Checkbox, Field, formActions } from '../../ui/form.tsx';
+import { Checkbox, Field, errorAttrs, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer, stack } from '../../ui/layout.tsx';
 import { Markdown, safeHref } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { visible } from '../../lib/visible.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
-import { attachedText, freshnessText, packIds, refreshText, searchHeadline, zeroTime } from './packs.ts';
+import {
+  attachedText,
+  checkPackFiles,
+  fileSize,
+  freshnessText,
+  hasOwnFiles,
+  PACK_FILE_ACCEPT,
+  packIdFromTitle,
+  packIds,
+  refreshText,
+  searchHeadline,
+  validPackId,
+  zeroTime,
+} from './packs.ts';
 
 // --- citations and results (pack text is untrusted) ---
 
@@ -41,7 +54,7 @@ export function CitationLine(handle: Handle<{ c: PackCitation }>) {
     const c = handle.props.c;
     const href = safeHref(c.url);
     return (
-      <span mix={citeCss} data-testid="citation">
+      <span mix={citeCss} data-testid="citation" data-page={c.page ? String(c.page) : undefined}>
         <code>
           {c.pack}@{c.version}
         </code>
@@ -133,6 +146,15 @@ const answerCss = css({
   borderRadius: t.rMd,
   background: t.bgSurface,
 });
+const quoteCss = css({
+  margin: '0',
+  padding: `${t.s1} ${t.s3}`,
+  borderLeft: `3px solid ${t.border}`,
+  color: t.textMuted,
+  fontSize: t.textSm,
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+});
 const sourcesCss = css({
   display: 'grid',
   gap: t.s2,
@@ -144,6 +166,8 @@ const sourcesCss = css({
 export function ConsultView(handle: Handle<{ r: PackConsult }>) {
   return () => {
     const r = handle.props.r;
+    const used = (r.sources ?? []).filter((s) => s.used);
+    const others = (r.sources ?? []).filter((s) => !s.used);
     return (
       <div mix={resultCss} data-testid="pack-consult" data-found={String(r.found)}>
         <p mix={headlineCss}>
@@ -158,15 +182,44 @@ export function ConsultView(handle: Handle<{ r: PackConsult }>) {
         <div mix={answerCss}>
           <Markdown source={r.answer || '(no answer)'} />
         </div>
-        <h4>Citations</h4>
-        <ol mix={sourcesCss}>
-          {(r.sources ?? []).map((s) => (
-            <li key={s.n}>
-              <CitationLine c={s.citation} />
-              <span mix={faint}>{s.excerpt}</span>
-            </li>
-          ))}
-        </ol>
+        {r.model ? (
+          <>
+            <h4>Quoted from</h4>
+            <ol mix={sourcesCss} data-testid="consult-used">
+              {used.map((s) => (
+                <li key={s.n} value={s.n}>
+                  <CitationLine c={s.citation} />
+                  <blockquote mix={quoteCss}>{s.excerpt}</blockquote>
+                </li>
+              ))}
+            </ol>
+            {others.length > 0 ? (
+              <>
+                <h4>Also found, not used in the answer</h4>
+                <ol mix={sourcesCss} data-testid="consult-other">
+                  {others.map((s) => (
+                    <li key={s.n} value={s.n}>
+                      <CitationLine c={s.citation} />
+                      <span mix={faint}>{s.excerpt}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <h4>Citations</h4>
+            <ol mix={sourcesCss}>
+              {(r.sources ?? []).map((s) => (
+                <li key={s.n}>
+                  <CitationLine c={s.citation} />
+                  <span mix={faint}>{s.excerpt}</span>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
         {r.model ? (
           <p mix={faint}>
             Cost of this question: {formatCost(r.usage.costUsd)} ({r.usage.inputTokens} in / {r.usage.outputTokens} out tokens). The answer is generated from the
@@ -174,7 +227,7 @@ export function ConsultView(handle: Handle<{ r: PackConsult }>) {
           </p>
         ) : (
           <p mix={faint} data-testid="consult-no-model">
-            No model was used: the answer is the cited passages themselves, at no cost.
+            No model wrote this answer: it is the cited passages themselves, at no cost.
           </p>
         )}
       </div>
@@ -453,8 +506,228 @@ function PackCard(
             </Button>
           )}
         </div>
+        {hasOwnFiles(p) ? <PackFiles packId={p.id} onChanged={onChanged} /> : null}
         {showQ ? <QuarantineList packId={p.id} onChanged={onChanged} /> : null}
       </article>
+    );
+  };
+}
+
+// --- a pack's own files ---
+
+const filesCss = css({
+  display: 'grid',
+  gap: t.s2,
+  padding: t.s3,
+  borderRadius: t.rMd,
+  background: t.bgApp,
+  border: `1px solid ${t.border}`,
+  '& ul': { display: 'grid', gap: t.s1, margin: '0', padding: '0', listStyle: 'none' },
+  '& li': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', minWidth: '0', fontSize: t.textMd },
+  '& li code': { overflowWrap: 'anywhere' },
+});
+
+/** Reads the files a person picked, after checking their names and sizes. */
+async function readPicked(list: FileList | null): Promise<{ files: PackUpload[]; error: string }> {
+  const picked = Array.from(list ?? []);
+  const error = checkPackFiles(picked);
+  if (error) return { files: [], error };
+  const files: PackUpload[] = [];
+  for (const f of picked) files.push({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) });
+  return { files, error: '' };
+}
+
+/** The files of a pack made from files: add more, remove one; each change is indexed at once (a refresh). */
+function PackFiles(handle: Handle<{ packId: string; onChanged: () => void }>) {
+  const s = services(handle);
+  const act = action(handle);
+  const q = query(handle, {
+    load: () => s.client.packFiles(handle.props.packId),
+    key: () => handle.props.packId,
+    when: (e) => e.type === 'pack.files_changed',
+  });
+  let pickError = '';
+  let done = '';
+  let input: HTMLInputElement | undefined;
+  const set = (fn: () => void) => {
+    fn();
+    void handle.update();
+  };
+  const reindex = async (what: string) => {
+    const r = await act.run('refresh', () => s.client.packRefresh(handle.props.packId));
+    if (r) set(() => (done = `${what} ${refreshText(r)}`));
+    q.reload();
+    handle.props.onChanged();
+  };
+  return () => {
+    const files: PackFile[] = q.data ?? [];
+    const busy = act.busy !== '';
+    return (
+      <div mix={filesCss} data-testid="pack-files">
+        <ErrorNote error={q.error ?? act.error} />
+        {q.data && files.length === 0 ? <p mix={faint}>This pack has no files.</p> : null}
+        <ul>
+          {files.map((f) => (
+            <li key={f.name} data-testid="pack-file">
+              <code>{f.name}</code>
+              <span mix={muted}>{fileSize(f.size)}</span>
+              <span mix={spacer} />
+              <ConfirmAction
+                label={`Remove ${f.name}`}
+                icon={Trash2}
+                variant="ghost"
+                yes={`Yes, remove ${f.name}`}
+                keep="Keep it"
+                question={`Remove ${f.name} from this pack? Its passages leave search when the pack is read again, which happens now.`}
+                disabled={busy}
+                testId="pack-file-remove"
+                onConfirm={async () => {
+                  const ok = await act.run('remove', async () => (await s.client.packRemoveFile(handle.props.packId, f.name), true));
+                  if (ok) await reindex(`Removed ${f.name}.`);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+        <div mix={actionsCss}>
+          <input
+            type="file"
+            multiple
+            hidden
+            accept={PACK_FILE_ACCEPT}
+            data-testid="pack-file-input"
+            mix={[
+              ref((n) => (input = n as HTMLInputElement)),
+              on('change', async (e) => {
+                const el = e.currentTarget as HTMLInputElement;
+                const { files: picked, error } = await readPicked(el.files);
+                el.value = '';
+                set(() => ((pickError = error), (done = '')));
+                if (error) return;
+                const ok = await act.run('add', () => s.client.packAddFiles(handle.props.packId, picked));
+                if (ok) await reindex(`Added ${picked.length === 1 ? picked[0]!.name : `${picked.length} files`}.`);
+              }),
+            ]}
+          />
+          <Button size="sm" icon={FilePlus} disabled={busy} aria-label={`Add files to ${handle.props.packId}`} mix={on('click', () => input?.click())}>
+            {act.busy === 'add' || act.busy === 'refresh' ? 'Adding...' : 'Add files'}
+          </Button>
+        </div>
+        {pickError ? <ErrorNote error={pickError} /> : null}
+        {done ? (
+          <Notice tone="ok" role="status">
+            {done}
+          </Notice>
+        ) : null}
+      </div>
+    );
+  };
+}
+
+/** Makes a private pack of the files a person picks, then reads them (the first refresh). */
+function FilesPackForm(handle: Handle<{ onMade: () => void }>) {
+  const s = services(handle);
+  const act = action(handle);
+  let title = '';
+  let id = '';
+  let idEdited = false;
+  let picked: PackUpload[] = [];
+  let pickError = '';
+  let idError = '';
+  let done = '';
+  let form: HTMLFormElement | undefined;
+  let filesInput: HTMLInputElement | undefined;
+  const set = (fn: () => void) => {
+    fn();
+    void handle.update();
+  };
+  // a field the page refused gets the keyboard, as every form here does
+  const focusInvalid = () => handle.queueTask(() => form?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+  return () => {
+    const busy = act.busy !== '';
+    const effectiveId = idEdited ? id : packIdFromTitle(title);
+    return (
+      <form
+        mix={[
+          card,
+          formCss,
+          ref((n) => (form = n as HTMLFormElement)),
+          on('submit', async (e) => {
+            e.preventDefault();
+            if (busy) return;
+            if (!validPackId(effectiveId)) {
+              set(() => (idError = 'The id is 2 to 40 lowercase letters, digits and hyphens, starting with a letter.'));
+              focusInvalid();
+              return;
+            }
+            const err = checkPackFiles(picked.map((f) => ({ name: f.name, size: f.data.length })));
+            if (err) {
+              set(() => (pickError = err));
+              focusInvalid();
+              return;
+            }
+            const made = await act.run('make', () => s.client.packCreateFromFiles({ id: effectiveId, title: title.trim() || effectiveId }, picked));
+            if (!made) return;
+            const r = await act.run('refresh', () => s.client.packRefresh(made.id));
+            set(() => {
+              done = r ? `Made ${made.id}. ${refreshText(r)}` : `Made ${made.id}; reading its files failed (see the pack).`;
+              title = '';
+              id = '';
+              idEdited = false;
+              picked = [];
+              if (filesInput) filesInput.value = '';
+            });
+            handle.props.onMade();
+          }),
+        ]}
+        data-testid="files-pack-form"
+      >
+        <div mix={inlineForm}>
+          <Field label="Title">
+            {(fid) => <input id={fid} value={title} placeholder="Operations handbook" mix={on('input', (e) => set(() => ((title = e.currentTarget.value), (done = ''))))} />}
+          </Field>
+          <Field label="Pack id" error={idError} hint="Made from the title; agents and citations name the pack by it.">
+            {(fid) => (
+              <input
+                id={fid}
+                value={effectiveId}
+                {...errorAttrs(fid, idError)}
+                mix={on('input', (e) => set(() => ((id = e.currentTarget.value), (idEdited = true), (idError = ''))))}
+              />
+            )}
+          </Field>
+        </div>
+        <Field label="Files" error={pickError} hint={picked.length ? picked.map((f) => `${f.name} (${fileSize(f.data.length)})`).join(', ') : 'Up to 50 files; a PDF or DOCX up to 32 MB.'}>
+          {(fid) => (
+            <input
+              id={fid}
+              type="file"
+              multiple
+              accept={PACK_FILE_ACCEPT}
+              {...errorAttrs(fid, pickError)}
+              mix={[
+                ref((n) => (filesInput = n as HTMLInputElement)),
+                on('change', async (e) => {
+                  const el = e.currentTarget as HTMLInputElement;
+                  const { files, error } = await readPicked(el.files);
+                  set(() => ((picked = files), (pickError = error), (done = '')));
+                }),
+              ]}
+            />
+          )}
+        </Field>
+        <ErrorNote error={act.error} />
+        {done ? (
+          <Notice tone="ok" role="status">
+            {done}
+          </Notice>
+        ) : null}
+        <div mix={formActions}>
+          <Button type="submit" variant="primary" icon={Upload} disabled={busy || picked.length === 0}>
+            {act.busy === 'make' ? 'Making the pack...' : act.busy === 'refresh' ? 'Reading the files...' : 'Make the pack'}
+          </Button>
+        </div>
+      </form>
     );
   };
 }
@@ -531,7 +804,10 @@ export function PacksScreen(handle: Handle) {
           </div>
         ) : null}
 
-        <Section title="Search and ask" description="Search returns passages with citations. A question returns the passages that answer it, with their citations; no model writes the answer.">
+        <Section
+          title="Search and ask"
+          description="Search returns passages with citations. A question is answered by the model the router picks, from the passages it quotes; a private pack never goes to a model that may train on it. With no model set up, the answer is the passages themselves."
+        >
           <div mix={[card, formCss]}>
             {list.length > 0 ? (
               <fieldset>
@@ -592,8 +868,15 @@ export function PacksScreen(handle: Handle) {
         </Section>
 
         <Section
+          title="Make a pack from your files"
+          description="PDF, Word (DOCX), Markdown, text or HTML files. The pack is private and is read now; a PDF's passages name their page. A scanned PDF has no text to read: run it through OCR first."
+        >
+          <FilesPackForm onMade={reload} />
+        </Section>
+
+        <Section
           title="Install a pack"
-          description="Paste a pack manifest (YAML). Installing fetches nothing yet: use Refresh."
+          description="Paste a pack manifest (YAML). A source can be a folder, web pages, an llms.txt or sitemap, or a git repository's docs folder (type git_docs, with url, ref and path). Installing fetches nothing yet: use Refresh."
         >
           <form
             mix={[

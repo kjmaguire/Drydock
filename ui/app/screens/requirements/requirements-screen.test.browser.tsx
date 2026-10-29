@@ -160,7 +160,7 @@ describe('RequirementsScreen', () => {
     const r = mount(<RequirementsScreen />, servicesWith({ requirementList: async () => [] }));
     await waitFor(() => byText(r.container, 'h2', 'No requirements yet.'), r);
     const input = r.$('input[type=file]') as HTMLInputElement;
-    expect(input.getAttribute('aria-label')).toContain('Upload a text or Markdown file');
+    expect(input.getAttribute('aria-label')).toContain('Upload a PDF, DOCX, text or Markdown file');
     const pick = (f: File) => {
       const dt = new DataTransfer();
       dt.items.add(f);
@@ -179,6 +179,38 @@ describe('RequirementsScreen', () => {
     expect(r.$('[role="alert"]')).toBe(null);
     // the first textarea on the page is the requirement text (the e2e suite relies on it)
     expect(r.$('textarea')).toBe(byLabel<HTMLTextAreaElement>(r.container, 'Text'));
+  });
+
+  it('a PDF is read by the core and its text lands in the box to be checked; a refusal is shown', async () => {
+    const asked: [string, string][] = [];
+    let refuse = false;
+    const r = mount(
+      <RequirementsScreen />,
+      servicesWith({
+        requirementList: async () => [],
+        requirementExtract: async (name, data) => {
+          asked.push([name, new TextDecoder().decode(data)]);
+          if (refuse) throw new Error('requirements: scan.pdf: this PDF has no text layer (it looks like a scan)');
+          return { title: 'Checkout PRD', text: '# Checkout PRD\n\n## Page 1\n\nGiven a paid cart\n' };
+        },
+      }),
+    );
+    await waitFor(() => byText(r.container, 'h2', 'No requirements yet.'), r);
+    const input = r.$('input[type=file]') as HTMLInputElement;
+    const pick = (f: File) => {
+      const dt = new DataTransfer();
+      dt.items.add(f);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    pick(new File(['%PDF-1.4 fake'], 'checkout.pdf', { type: 'application/pdf' }));
+    await waitFor(() => expect(byLabel<HTMLTextAreaElement>(r.container, 'Text').value).toContain('## Page 1'), r);
+    expect(byLabel(r.container, 'Title').value).toBe('Checkout PRD');
+    expect(asked).toEqual([['checkout.pdf', '%PDF-1.4 fake']]);
+    expect(r.container.textContent).toContain('Read checkout.pdf. Check the text before you add it.');
+    refuse = true;
+    pick(new File(['%PDF-1.4 scan'], 'scan.pdf', { type: 'application/pdf' }));
+    await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('no text layer'), r);
   });
 
   it('saves a new version, archives, releases a quarantined passage and removes all links', async () => {
