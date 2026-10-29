@@ -2,11 +2,14 @@
 // tags in Go (router.RoutingDecision, probe results) arrive with their Go field names and are typed that way here.
 
 // --- budgets (internal/budget) ---
-export type BudgetScope = 'project' | 'task' | 'run' | 'agent';
+export type BudgetScope = 'project' | 'workflow' | 'task' | 'run' | 'agent';
 export interface Budget {
   id: string;
   scope: BudgetScope | string;
-  /** A concrete id, or "*" for a ceiling that applies to every task, run or agent (each judged on its own). */
+  /**
+   * A concrete id, or "*" for a ceiling that applies to every task, run or agent (each judged on its own). For the workflow
+   * scope (P118), the workflow's name; its projectId keeps the count to that project's runs.
+   */
   scopeId: string;
   projectId?: string;
   limitUsd?: number | null;
@@ -259,9 +262,18 @@ export interface RouteSettings {
   };
   /** seconds; a level or agent left out has no ceiling */
   ceilings: { levels: Record<string, number>; agents: Record<string, number> };
-  /** the level agent turns run at today */
+  /** the workspace's level: the level of every project that sets none of its own (P118) */
   level: string;
   agents: { id: string; name: string; project: string }[];
+}
+/** route.level.get (P118): the workspace's routing level, a project's own ("" when it follows the workspace) and the result. */
+export interface RouteLevel {
+  projectId?: string;
+  workspace: string;
+  project: string;
+  effective: string;
+  source: 'project' | 'workspace' | string;
+  levels: string[];
 }
 export interface RouteSettingsPatch {
   tiebreak?: { enabled?: boolean; budgetUsd?: number; timeoutMs?: number };

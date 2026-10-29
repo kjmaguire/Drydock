@@ -5,7 +5,7 @@
 // panel. Read-only: choosing a checkpoint shows the run as it was then; nothing here changes a run.
 
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
-import { Bot, GitBranch, ListChecks, Maximize, UserRound, Workflow, ZoomIn, ZoomOut, type IconNode } from 'lucide';
+import { Bot, GitBranch, ListChecks, Maximize, UserRound, Users, Workflow, ZoomIn, ZoomOut, type IconNode } from 'lucide';
 import type { Agent } from '../../api/types.ts';
 import type { GraphView, RunExplanation } from '../../api/runClient.ts';
 import type { NodeState } from '../../lib/graphLayout.ts';
@@ -31,7 +31,7 @@ import {
   type View,
 } from './run-model.ts';
 
-export const KIND_ICON: Record<string, IconNode> = { agent_task: Bot, check: ListChecks, request: UserRound, route: GitBranch, subworkflow: Workflow };
+export const KIND_ICON: Record<string, IconNode> = { agent_task: Bot, check: ListChecks, request: UserRound, route: GitBranch, subworkflow: Workflow, group: Users };
 
 const GRID = 20;
 

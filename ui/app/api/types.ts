@@ -797,7 +797,7 @@ export interface Unread {
   lastReadSeq: number;
 }
 
-export type NeedsKind = 'approval' | 'review' | 'question' | 'failed_check' | 'watchdog_pause' | 'chat_permission';
+export type NeedsKind = 'approval' | 'review' | 'question' | 'failed_check' | 'watchdog_pause' | 'chat_permission' | 'budget';
 
 export interface NeedsYouItem {
   key: string;
@@ -824,6 +824,9 @@ export interface NeedsYouItem {
   agentName?: string;
   /** When an approval lapses unanswered (RFC 3339, like createdAt). */
   expiresAt?: string;
+  /** A budget item's budget and where it stands (kind budget, P118); a paused one carries the pause's approvalId. */
+  budgetId?: string;
+  budgetState?: 'warning' | 'exceeded' | 'paused' | string;
 }
 
 export interface NeedsContext {

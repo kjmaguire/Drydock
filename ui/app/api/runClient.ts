@@ -6,7 +6,7 @@ import type { UsageRow } from './types.ts';
 
 export interface GraphNode {
   id: string;
-  kind: 'agent_task' | 'check' | 'request' | 'route' | 'subworkflow' | string;
+  kind: 'agent_task' | 'check' | 'request' | 'route' | 'subworkflow' | 'group' | string;
   maxAttempts?: number;
   fanIn?: string[];
   request?: string;

@@ -182,7 +182,7 @@ func TestBudgetPausesTheRunAndTheHumanResumesByRaisingTheLimit(t *testing.T) {
 	for _, n := range needs {
 		// a budget item of its own (P118), answered like the approval it is, saying what to do
 		found = found || (n.Kind == room.NeedsBudget && n.BudgetState == room.BudgetPaused && n.ApprovalID != "" && strings.HasPrefix(n.Title, "Budget limit reached") &&
-			strings.Contains(n.Detail, "Raise the limit"))
+			strings.Contains(n.Detail, "raise the limit"))
 	}
 	if !found {
 		t.Fatalf("the pause must be in Needs you: %+v", needs)

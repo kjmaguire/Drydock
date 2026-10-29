@@ -127,7 +127,7 @@ const (
 const (
 	budgetWarningDo  = "Agents keep working. At the limit, the next agent turn waits for you: raise the limit on the Budgets page if this work should go on, or dismiss this."
 	budgetExceededDo = "Agent turns this budget counts toward do not start: a workflow turn waits and a room reply is refused. Raise the limit on the Budgets page."
-	budgetPausedDo   = "A run waits on its next agent turn. Raise the limit, or approve one more turn; rejecting stops the run."
+	budgetPausedDo   = "A budget stopped the next agent turn of a run. Open the task to raise the limit or approve one more turn; rejecting stops the run."
 )
 
 // NeedsYouItem is one row of the inbox. Rows are derived from source tables on every query, so they vanish when the

@@ -242,6 +242,30 @@ describe('the Inbox', () => {
     expect(s.workspace.projectId).toBe('p2');
   });
 
+  it("a budget's warning is its own item: it says what to do, opens the Budgets page, and can be marked done (P118)", async () => {
+    const warning: NeedsYouItem = {
+      key: 'budget:bud1:p2/iterate-until-verified:warning:5', kind: 'budget', severity: 2, title: 'Budget warning: the budget of the workflow iterate-until-verified passed 80%',
+      detail: 'Agents keep working. At the limit, the next agent turn waits for you: raise the limit on the Budgets page if this work should go on, or dismiss this.',
+      projectId: 'p2', budgetId: 'bud1', budgetState: 'warning', createdAt: iso(NOW - 5 * 60_000),
+    };
+    const { r, calls, s, navigated } = await open({}, [warning]);
+    const row = r.$('[data-testid="needs-item"]')!;
+    expect(row.getAttribute('data-kind')).toBe('budget');
+    expect(row.getAttribute('data-look')).toBe('budget');
+    expect(row.textContent).toContain('shop-api · budget');
+    await r.act(() => (r.$('[data-row-key^="needs:budget:"]') as HTMLButtonElement).click());
+    // what to do, once (the detail is the hint, not repeated as a description), and no Approve: nothing is answered here
+    expect(r.$('[data-testid="needs-hint"]')!.textContent).toContain('raise the limit on the Budgets page');
+    expect(r.$('[data-testid="detail-description"]')).toBeNull();
+    expect(r.$('[data-testid="detail-approve"]')).toBeNull();
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open Budgets');
+    await r.act(() => press('e'));
+    await waitFor(() => expect(calls.ack).toEqual([warning.key]), r);
+    await r.act(() => press('Enter'));
+    expect(navigated).toEqual(['/budgets']);
+    expect(s.workspace.projectId).toBe('p2');
+  });
+
   it('the Running tab lists what runs, the Done today tab the tasks completed since midnight', async () => {
     const { r, calls, s } = await open();
     await r.act(() => (r.$('[data-testid="inbox-tab-running"]') as HTMLButtonElement).click());

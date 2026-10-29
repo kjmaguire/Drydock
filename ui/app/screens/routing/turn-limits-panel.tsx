@@ -57,7 +57,7 @@ const draftOf = (s: RouteSettings): Draft => ({
 
 export function TurnLimitsPanel(handle: Handle) {
   const s = services(handle);
-  const settings = query(handle, { load: () => s.client.routeSettingsGet(), when: (e) => e.type === 'routing.settings_changed' });
+  const settings = query(handle, { load: () => s.client.routeSettingsGet(), when: (e) => e.type === 'routing.settings_changed' || e.type === 'routing.level_changed' });
   const aside = query(handle, { load: () => s.client.routeRetentionList(), when: (e) => e.type.startsWith('provider.retention') });
   const tie = action(handle);
   const lim = action(handle);
@@ -159,7 +159,7 @@ export function TurnLimitsPanel(handle: Handle) {
             <p mix={muted}>
               A turn that runs longer is stopped and waits for you; one that did nothing yet moves along its fallback chain. Empty is no limit.
             </p>
-            <p mix={faint}>Agent turns run at the {LEVEL_WORDS[cur.level] ?? cur.level} level today.</p>
+            <p mix={faint}>A turn's limit is its level's: projects without a level of their own run at {LEVEL_WORDS[cur.level] ?? cur.level}.</p>
             <ErrorNote error={lim.error} what="Limits not saved" />
             <div mix={gridCss}>
               {LEVELS.map((l) => (
