@@ -53,6 +53,9 @@ func populateMore(t testing.TB, db *sql.DB) {
 	x(`INSERT INTO integration_cursors(integration_id,scope) VALUES('int_aaaaaaaaaaaa','asg_aaaaaaaaaaaa')`)
 	x(`INSERT INTO integration_rules(id,integration_id,project_id,name,when_cel,action,created_by,created_at,updated_at) VALUES('irule_aaaaaaaaaaaa','int_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','r','true','notify','human:x',?,?)`, now, now)
 	x(`INSERT INTO external_items(id,integration_id,assignment_id,source,project_id,external_id,kind,body_ref,content_hash,fetched_at) VALUES('item_aaaaaaaaaaaa','int_aaaaaaaaaaaa','asg_aaaaaaaaaaaa','linear','prj_aaaaaaaaaaaa','LIN-1','issue','item_aaaaaaaaaaaa.md','h',?)`, now)
+	x(`INSERT INTO integration_mappings(assignment_id,scope,remote_id,local,created_by,created_at) VALUES('asg_aaaaaaaaaaaa','status','st_done','DONE','human:x',?)`, now)
+	x(`INSERT INTO integration_auto_approve(integration_id,project_id,class,enabled,created_by,created_at,updated_at) VALUES('int_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','status_sync',1,'human:x',?,?)`, now, now)
+	x(`INSERT INTO integration_attachments(id,item_id,integration_id,external_id,local_path,listed_at) VALUES('iat_aaaaaaaaaaaa','item_aaaaaaaaaaaa','int_aaaaaaaaaaaa','a1','int_aaaaaaaaaaaa/attachments/item_aaaaaaaaaaaa/iat_aaaaaaaaaaaa.txt',?)`, now)
 	x(`INSERT INTO integration_rule_matches(rule_id,item_id,outcome,first_at,last_at) VALUES('irule_aaaaaaaaaaaa','item_aaaaaaaaaaaa','would_create',?,?)`, now, now)
 	x(`INSERT INTO integration_outbox(id,integration_id,project_id,task_id,op,tool,payload_json,payload_hash,status,idempotency_key,created_by,created_at) VALUES('out_aaaaaaaaaaaa','int_aaaaaaaaaaaa','prj_aaaaaaaaaaaa','task_aaaaaaaaaaaa','comment','t','{}','h','planned','k_aaaaaaaaaaaa','human:x',?)`, now)
 	x(`INSERT INTO skill_uses(ts,project_id,skill_name,how) VALUES(?,'prj_aaaaaaaaaaaa','style','tool')`, now)
@@ -100,7 +103,8 @@ func TestDeleteRemovesEveryRowOfTheProjectAndNothingElse(t *testing.T) {
 	if res.Rows < 60 {
 		t.Errorf("deleted %d rows", res.Rows)
 	}
-	if strings.Join(res.MCPCache, ",") != "raw_aaaaaaaaaaaa" || strings.Join(res.ItemBodies, ",") != "int_aaaaaaaaaaaa/item_aaaaaaaaaaaa.txt" {
+	if strings.Join(res.MCPCache, ",") != "raw_aaaaaaaaaaaa" || strings.Join(res.ItemBodies, ",") != "int_aaaaaaaaaaaa/item_aaaaaaaaaaaa.txt" ||
+		strings.Join(res.Attachments, ",") != "int_aaaaaaaaaaaa/attachments/item_aaaaaaaaaaaa" {
 		t.Errorf("files %+v", res)
 	}
 

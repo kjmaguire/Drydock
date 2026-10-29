@@ -235,6 +235,12 @@ func (c *Core) DeleteProject(ctx context.Context, id, confirmName string) (Proje
 		}
 	}
 
+	for _, f := range res.Attachments {
+		if a, rest, ok := strings.Cut(f, "/attachments/"); ok && plainName(a) && plainName(rest) {
+			removeTree(filepath.Join(c.cfg.DataDir, "integrations", a, "attachments", rest), warn)
+		}
+	}
+
 	c.publish(ctx, "project.deleted", id, map[string]any{"name": p.Name, "worktreesRemoved": out.WorktreesRemoved, "warnings": len(out.Warnings)})
 	return out, nil
 }

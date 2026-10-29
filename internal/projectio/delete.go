@@ -32,6 +32,7 @@ const projectSettings = `length(key) > length(@p) AND substr(key, length(key) - 
 const (
 	assignIDs = `(SELECT id FROM integration_assignments WHERE project_id=@p)`
 	ruleIDs   = `(SELECT id FROM integration_rules WHERE project_id=@p)`
+	itemIDs   = `(SELECT id FROM external_items WHERE project_id=@p OR assignment_id IN ` + assignIDs + ` OR task_id IN ` + taskIDs + `)`
 )
 
 // DeleteSteps run in this order inside one transaction. A table may appear more than once; children come before the rows
@@ -44,6 +45,9 @@ var DeleteSteps = []DeleteStep{
 	{Table: "integration_rules", Where: `project_id=@p`},
 	{Table: "integration_cursors", Where: `scope IN ` + assignIDs},
 	{Table: "integration_outbox", Where: `project_id=@p OR task_id IN ` + taskIDs},
+	{Table: "integration_mappings", Where: `assignment_id IN ` + assignIDs},
+	{Table: "integration_auto_approve", Where: `project_id=@p`},
+	{Table: "integration_attachments", Where: `item_id IN ` + itemIDs},
 	{Table: "external_items", Where: `project_id=@p OR assignment_id IN ` + assignIDs + ` OR task_id IN ` + taskIDs},
 	{Table: "integration_assignments", Where: `project_id=@p`},
 	{Table: "skill_uses", Where: `project_id=@p`},
@@ -132,6 +136,8 @@ var KeptOnDelete = map[string]string{
 	"chat_messages":          "messages of the human's own chats, which are kept (unlinked from the project)",
 	"chat_turns":             "turn bookkeeping of the chats above",
 	"chat_attachments":       "files attached to those chats, kept with them (decision P90)",
+
+	"integration_webhook_deliveries": "the workspace receiver's log of deliveries (no bodies), by Connection: it names no project",
 }
 
 // DeleteResult says what deleting a project removed from the database, and the files that belonged to those rows (the
@@ -142,6 +148,9 @@ type DeleteResult struct {
 	// cache folder) and integration item bodies (<integration>/<item>.txt under the integrations folder).
 	MCPCache   []string
 	ItemBodies []string
+	// Attachments are the folders of the deleted items' downloaded attachments (<integration>/attachments/<item> under the
+	// integrations folder).
+	Attachments []string
 }
 
 // Delete removes one project's rows in the order of DeleteSteps, inside the caller's transaction. It refuses an unknown
@@ -161,6 +170,9 @@ func Delete(ctx context.Context, tx *sql.Tx, projectID string) (DeleteResult, er
 		return res, err
 	}
 	if res.ItemBodies, err = queryStrings(ctx, tx, `SELECT integration_id||'/'||id||'.txt' FROM external_items WHERE (project_id=@p OR assignment_id IN `+assignIDs+` OR task_id IN `+taskIDs+`)`, p); err != nil {
+		return res, err
+	}
+	if res.Attachments, err = queryStrings(ctx, tx, `SELECT DISTINCT integration_id||'/attachments/'||item_id FROM integration_attachments WHERE local_path<>'' AND item_id IN `+itemIDs, p); err != nil {
 		return res, err
 	}
 	for _, st := range DeleteSteps {

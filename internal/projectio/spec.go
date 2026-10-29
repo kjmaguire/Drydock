@@ -229,6 +229,11 @@ var ExcludedTables = map[string]string{
 	"chat_attachments":         "files the human attached to the chats above; the files themselves are on this machine's disk (decision P90)",
 	"chat_messages_fts":        "full-text index, rebuilt by triggers",
 	"chats_fts":                "full-text index, rebuilt by triggers",
+
+	"integration_mappings":           "a Connection assignment's status and property mapping; the assignment is not exported",
+	"integration_auto_approve":       "a person's per-Connection approval classes on this machine; the Connection is not exported",
+	"integration_attachments":        "files of vendor items, which belong to a Connection",
+	"integration_webhook_deliveries": "the workspace receiver's delivery log",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

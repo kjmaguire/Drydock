@@ -59,6 +59,12 @@ func TestDeleteProjectRemovesItsWorkButNeverTheRepository(t *testing.T) {
 	attDir := filepath.Join(data, "attachments", roomID, "att1")
 	os.MkdirAll(attDir, 0o755)
 	os.WriteFile(filepath.Join(attDir, "notes.txt"), []byte("hi"), 0o644)
+	// a downloaded attachment of one of the project's integration items (decision P114)
+	x(`INSERT INTO external_items(id,integration_id,assignment_id,source,project_id,external_id,kind,body_ref,content_hash,fetched_at) VALUES('item_del1','int_del1','','linear','` + p.ID + `','LIN-1','issue','','h',1)`)
+	x(`INSERT INTO integration_attachments(id,item_id,integration_id,external_id,local_path,listed_at) VALUES('iat_del1','item_del1','int_del1','a1','int_del1/attachments/item_del1/iat_del1.txt',1)`)
+	itemAtt := filepath.Join(data, "integrations", "int_del1", "attachments", "item_del1")
+	os.MkdirAll(itemAtt, 0o755)
+	os.WriteFile(filepath.Join(itemAtt, "iat_del1.txt"), []byte("hi"), 0o644)
 
 	// the name must be typed exactly
 	if _, err := a.c.DeleteProject(ctx, p.ID, "gocal"); err == nil || !strings.Contains(err.Error(), "type its name") {
@@ -85,7 +91,7 @@ func TestDeleteProjectRemovesItsWorkButNeverTheRepository(t *testing.T) {
 	if len(list) != 1 || list[0].ID != other.ID {
 		t.Fatalf("projects after delete: %+v", list)
 	}
-	for _, gone := range []string{wt.Path, filepath.Join(data, "worktrees", p.ID), runDir, filepath.Join(data, "attachments", roomID)} {
+	for _, gone := range []string{wt.Path, filepath.Join(data, "worktrees", p.ID), runDir, filepath.Join(data, "attachments", roomID), itemAtt} {
 		if _, err := os.Stat(gone); !os.IsNotExist(err) {
 			t.Errorf("%s is still there (%v)", gone, err)
 		}
