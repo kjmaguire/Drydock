@@ -2,8 +2,10 @@ package integrations
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -34,6 +36,7 @@ func (notionAdapter) Ops() []OpInfo {
 	return []OpInfo{
 		{Op: "create_page", Label: "Create a page", Params: []string{"title", "content"}, Description: "Creates a Notion page under the target page (POST /v1/pages, Markdown content)."},
 		{Op: "comment", Label: "Comment on a page", Params: []string{"body"}, Description: "Adds a comment to a Notion page (POST /v1/comments)."},
+		{Op: "set_status", Label: "Change a row's status", Params: []string{"state", "property", "type"}, Description: "Sets the status (or select) property of a data source row (PATCH /v1/pages/{id})."},
 	}
 }
 
@@ -145,28 +148,161 @@ func (notionAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 	}
 	for _, r := range results {
 		m := asMap(r)
-		id := str(m["id"])
-		if id == "" || str(m["object"]) != "page" {
+		if str(m["id"]) == "" || str(m["object"]) != "page" {
 			continue
 		}
-		state := "page"
-		if t, _ := m["in_trash"].(bool); t {
-			state = "in_trash"
-		} else if t, _ := m["archived"].(bool); t { // the name before 2026-03-11
-			state = "in_trash"
-		}
-		edited := str(m["last_edited_time"])
-		parent := ""
-		if p := asMap(m["parent"]); p != nil {
-			parent = str(pick(p, "page_id", "data_source_id", "database_id"))
-		}
-		pg.Items = append(pg.Items, RawItem{
-			ExternalID: id, Kind: ItemPage, URL: str(m["url"]), Title: notionTitle(m), State: state,
-			Created: millis(m["created_time"]), Updated: millis(edited), Etag: edited, Parent: parent, NeedsBody: true,
-			Meta: map[string]any{"type": "page"},
-		})
+		pg.Items = append(pg.Items, notionRaw(m))
 	}
 	return pg, nil
+}
+
+// notionRaw reads one page of the API's answer (a search or data source result, or GET /v1/pages/{id}). A page that is a row of
+// a data source (its parent is a data source or, before 2025-09-03, a database) is a typed row: its properties are kept with their
+// types (decision P114), and its unique_id property, when it has one, is its reference.
+func notionRaw(m map[string]any) RawItem {
+	id := str(m["id"])
+	state := "page"
+	if t, _ := m["in_trash"].(bool); t {
+		state = "in_trash"
+	} else if t, _ := m["archived"].(bool); t { // the name before 2026-03-11
+		state = "in_trash"
+	}
+	edited := str(m["last_edited_time"])
+	parent, parentType := "", ""
+	if p := asMap(m["parent"]); p != nil {
+		parent = str(pick(p, "page_id", "data_source_id", "database_id"))
+		parentType = str(p["type"])
+	}
+	it := RawItem{
+		ExternalID: id, Kind: ItemPage, URL: str(m["url"]), Title: notionTitle(m), State: state,
+		Created: millis(m["created_time"]), Updated: millis(edited), Etag: edited, Parent: parent, NeedsBody: true,
+		Meta: map[string]any{"type": "page"},
+	}
+	if parentType == "data_source_id" || parentType == "database_id" {
+		it.Meta["type"] = "row"
+		it.Props = notionProps(asMap(m["properties"]))
+		for _, p := range it.Props {
+			if p.Type == "unique_id" && p.Text != "" {
+				it.IssueRef = p.Text
+			}
+		}
+	}
+	return it
+}
+
+// maxProps bounds the properties kept of one row.
+const maxProps = 40
+
+// notionProps reads a row's properties as typed text: what a person sees in the database, not the API's nested objects.
+func notionProps(props map[string]any) map[string]Prop {
+	out := map[string]Prop{}
+	names := make([]string, 0, len(props))
+	for k := range props {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if len(out) >= maxProps {
+			break
+		}
+		p := asMap(props[name])
+		typ := str(p["type"])
+		if typ == "" || typ == "title" { // the title is the item's title
+			continue
+		}
+		out[name] = Prop{Type: typ, Text: notionPropText(typ, p[typ])}
+	}
+	return out
+}
+
+func richText(v any) string {
+	var b strings.Builder
+	for _, t := range asList(v) {
+		b.WriteString(str(asMap(t)["plain_text"]))
+	}
+	return b.String()
+}
+
+// numText is a number as the API sent it (str keeps a json.Number's digits); anything else is "".
+func numText(v any) string {
+	switch v.(type) {
+	case float64, json.Number:
+		return str(v)
+	}
+	return ""
+}
+
+func namesOf(v any) string {
+	var names []string
+	for _, o := range asList(v) {
+		if n := str(asMap(o)["name"]); n != "" {
+			names = append(names, n)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// notionPropText is a property value as a person reads it in Notion.
+func notionPropText(typ string, v any) string {
+	m := asMap(v)
+	switch typ {
+	case "rich_text":
+		return richText(v)
+	case "number":
+		return numText(v)
+	case "select", "status":
+		return str(m["name"])
+	case "multi_select", "people", "files":
+		return namesOf(v)
+	case "date":
+		if e := str(m["end"]); e != "" {
+			return str(m["start"]) + " to " + e
+		}
+		return str(m["start"])
+	case "checkbox":
+		if b, _ := v.(bool); b {
+			return "yes"
+		}
+		return "no"
+	case "url", "email", "phone_number", "created_time", "last_edited_time":
+		return str(v)
+	case "created_by", "last_edited_by":
+		return str(m["name"])
+	case "relation":
+		return fmt.Sprintf("%d linked", len(asList(v)))
+	case "unique_id":
+		n, ok := num(m["number"])
+		if !ok {
+			return ""
+		}
+		if pre := str(m["prefix"]); pre != "" {
+			return fmt.Sprintf("%s-%d", pre, int64(n))
+		}
+		return fmt.Sprintf("%d", int64(n))
+	case "formula":
+		switch ft := str(m["type"]); ft {
+		case "boolean":
+			return notionPropText("checkbox", m[ft])
+		case "date":
+			return notionPropText("date", m[ft])
+		case "number":
+			return numText(m[ft])
+		default:
+			return str(m[ft])
+		}
+	case "rollup":
+		switch str(m["type"]) {
+		case "number":
+			return numText(m["number"])
+		case "array":
+			return fmt.Sprintf("%d values", len(asList(m["array"])))
+		case "date":
+			return notionPropText("date", m["date"])
+		}
+	case "verification":
+		return str(m["state"])
+	}
+	return ""
 }
 
 // Detail reads a page as Markdown (GET /v1/pages/{id}/markdown).
@@ -200,6 +336,8 @@ func (notionAdapter) Build(op, target string, p map[string]string, _ map[string]
 			args["markdown"] = c
 		}
 		return OutCall{Endpoint: "POST /v1/pages", Args: args, Preview: fmt.Sprintf("Create a Notion page %q under page %s:\n%s", title, target, Quote(p["content"]))}, nil
+	case "set_status":
+		return buildSetStatus(target, p)
 	case "comment":
 		body := strings.TrimSpace(p["body"])
 		if target == "" || body == "" {
@@ -214,6 +352,12 @@ func (notionAdapter) Build(op, target string, p map[string]string, _ map[string]
 func (notionAdapter) Send(ctx context.Context, a *API, call OutCall) (string, error) {
 	var path string
 	switch call.Endpoint {
+	case "PATCH /v1/pages/{id}":
+		var res map[string]any
+		if _, err := a.HTTP.json(ctx, "PATCH", "/v1/pages/"+url.PathEscape(argString(call.Args, "pageId")), nil, map[string]any{"properties": call.Args["properties"]}, &res); err != nil {
+			return "", err
+		}
+		return "page " + str(res["id"]) + " updated", nil
 	case "POST /v1/pages":
 		path = "/v1/pages"
 	case "POST /v1/comments":

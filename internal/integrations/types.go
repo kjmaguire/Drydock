@@ -130,6 +130,7 @@ var (
 	ErrAlreadyConnected  = errors.New("integrations: this service is already connected; use Reconnect to change its credential")
 	ErrOAuthUnavailable  = errors.New("integrations: sign-in with this service is not available in this build")
 	ErrCredentialsLocked = errors.New("integrations: the credential store is not available")
+	ErrTooLarge          = errors.New("integrations: the file is larger than Drydock downloads")
 )
 
 // Identity is what the vendor's API says a credential reaches. It is read on Test and on Connect, never typed by a person, and
@@ -245,6 +246,19 @@ type Item struct {
 	Gone             bool           `json:"gone"`
 	Version          int64          `json:"version"`
 	Warnings         []string       `json:"warnings,omitempty"`
+	// Properties are a Notion data source row's typed properties (decision P114); empty for every other item.
+	Properties map[string]Prop `json:"properties,omitempty"`
+	// StatusSuggestion is set when the vendor's state of an item with a task maps (from_vendor) to a task status the task is
+	// not in: a change offered to the person, never applied by itself.
+	StatusSuggestion *StatusSuggestion `json:"statusSuggestion,omitempty"`
+	// PrevState is the state before this upsert of an item with a task whose state changed (sync only; not stored).
+	PrevState string `json:"-"`
+}
+
+// Prop is one typed property of a Notion data source row: its Notion type and its value as text.
+type Prop struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 // ItemFilter selects items.

@@ -71,6 +71,20 @@ func stringsIn(v any, visit func(string)) {
 // proposer may be an agent or a person; only a human can approve. A proposal whose text contains a secret is refused: it would
 // leave the machine. A proposal identical to a live one (same task, operation, target and payload) returns the existing row.
 func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox, error) {
+	return s.propose(ctx, by, r, proposeOpts{})
+}
+
+// proposeOpts are what only Drydock's own writes set: never the caller of Propose (an agent, a tool, the screen).
+type proposeOpts struct {
+	// class is the auto-approve class of a templated write Drydock itself makes (LinkBack, status sync). When the person turned
+	// that class on for the connection and project, the approval is decided in their name and the write is sent.
+	class string
+	// nonce separates writes that are the same call made for different reasons (status sync: the task event), so a second,
+	// later move to the same status is a new proposal instead of the one sent before.
+	nonce string
+}
+
+func (s *Service) propose(ctx context.Context, by string, r ProposeReq, po proposeOpts) (Outbox, error) {
 	if strings.TrimSpace(by) == "" {
 		return Outbox{}, errf(ErrBadRequest, "a proposal needs its author")
 	}
@@ -150,7 +164,10 @@ func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox,
 		return Outbox{}, err
 	}
 	row := Outbox{IntegrationID: conn.ID, ProjectID: project, TaskID: r.TaskID, Op: r.Op, Target: target, Tool: tool, PayloadHash: hash, Preview: s.scrub(call.Preview),
-		Status: OutPlanned, IdempotencyKey: hashHex(conn.ID, r.TaskID, r.Op, target, hash), CreatedBy: by}
+		Status: OutPlanned, IdempotencyKey: hashHex(conn.ID, r.TaskID, r.Op, target, hash), CreatedBy: by, Marker: commentMarker(call)}
+	if po.nonce != "" {
+		row.IdempotencyKey = hashHex(conn.ID, r.TaskID, r.Op, target, hash, po.nonce)
+	}
 	row.rawPayload = string(argsRaw)
 	var args map[string]any
 	_ = json.Unmarshal(argsRaw, &args)
@@ -181,8 +198,68 @@ func (s *Service) Propose(ctx context.Context, by string, r ProposeReq) (Outbox,
 		return row, err
 	}
 	s.emit(ctx, EventOutboundRequested, project, r.TaskID, map[string]any{"outboxId": out.ID, "integrationId": conn.ID, "op": r.Op, "approvalId": apr, "hash": hash, "by": by})
+	if po.class != "" {
+		if sent, ok := s.autoSend(ctx, out, conn, po.class); ok {
+			return sent, nil
+		}
+	}
 	return out, nil
 }
+
+// autoSend approves and sends a proposal under an auto-approve class the person turned on for its connection and project. It
+// reports false, leaving the proposal waiting for a person, when the class is off, does not cover the operation, or the
+// approval cannot be decided. The approval is decided in the name of the person who last turned the class on.
+func (s *Service) autoSend(ctx context.Context, o Outbox, conn Connection, class string) (Outbox, bool) {
+	if !classAllows(class, conn.Kind, o.Op) || o.Status != OutAwaiting {
+		return o, false
+	}
+	a, err := s.st.getAutoApprove(ctx, conn.ID, o.ProjectID, class)
+	if err != nil || !a.Enabled || !security.IsHumanPrincipal(a.UpdatedBy) {
+		return o, false
+	}
+	if err := s.o.Approvals.Decide(ctx, o.ApprovalID, security.DecisionApprove, a.UpdatedBy); err != nil {
+		s.o.Logf("integrations: auto-approve %s: %v", class, err)
+		return o, false
+	}
+	decided, cls := a.UpdatedBy, class
+	if ok, err := s.st.UpdateOutbox(ctx, o.ID, OutboxUpdate{From: []string{OutAwaiting}, To: OutApproved, DecidedBy: &decided, AutoClass: &cls}); err != nil || !ok {
+		return o, false
+	}
+	s.emit(ctx, EventOutboundApproved, o.ProjectID, o.TaskID, map[string]any{"outboxId": o.ID, "integrationId": o.IntegrationID, "approvalId": o.ApprovalID, "hash": o.PayloadHash,
+		"by": decided, "auto": true, "class": class})
+	out, err := s.Execute(ctx, "integration:auto-approve", o.ID)
+	if err != nil {
+		s.o.Logf("integrations: auto-approved %s: %v", class, s.scrub(err.Error()))
+	}
+	return out, true
+}
+
+// commentMarker is the reference of a comment: a hash of its text with whitespace collapsed. A retry looks for a comment with
+// that text on the target before posting again (the vendors offer no idempotency key for comments). "" for any other write.
+func commentMarker(call OutCall) string {
+	text := commentText(call.Args)
+	if text == "" {
+		return ""
+	}
+	return hashHex(normComment(text))[:16]
+}
+
+// commentText is the text of a comment call (Linear: body; Notion: the rich text's content).
+func commentText(args map[string]any) string {
+	if b := argString(args, "body"); b != "" {
+		return b
+	}
+	if _, ok := args["rich_text"]; ok {
+		var b strings.Builder
+		for _, t := range asList(args["rich_text"]) {
+			b.WriteString(str(asMap(asMap(t)["text"])["content"]))
+		}
+		return b.String()
+	}
+	return ""
+}
+
+func normComment(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // outboundConfig finds the remote scope a write runs in: the assignment of the named project, else the assignment whose
 // items hold the target, else the connection's own (pre-P42) scope. It fills the project when the caller named none.
@@ -316,7 +393,8 @@ func (s *Service) Execute(ctx context.Context, by, outboxID string) (Outbox, err
 	if _, err := s.st.UpdateOutbox(ctx, o.ID, OutboxUpdate{From: []string{OutExecuting}, To: OutSent, SentAt: &now, Receipt: &receipt}); err != nil {
 		return o, err
 	}
-	s.emit(ctx, EventOutboundSent, o.ProjectID, o.TaskID, map[string]any{"outboxId": o.ID, "integrationId": o.IntegrationID, "op": o.Op, "hash": o.PayloadHash, "by": by, "auto": false})
+	s.emit(ctx, EventOutboundSent, o.ProjectID, o.TaskID, map[string]any{"outboxId": o.ID, "integrationId": o.IntegrationID, "op": o.Op, "hash": o.PayloadHash, "by": by,
+		"auto": o.AutoClass != "", "class": o.AutoClass})
 	return s.st.GetOutbox(ctx, o.ID)
 }
 
@@ -378,8 +456,95 @@ func (s *Service) LinkBack(ctx context.Context, by, taskID, prURL string) (Outbo
 	default:
 		return Outbox{}, errf(ErrOpUnsupported, "%s has no comment operation, so there is nothing to post back", vendor(conn.Kind))
 	}
-	body := fmt.Sprintf("Drydock opened a pull request for this item: %s\n(task %s, action posted after human approval)", u, taskID)
-	return s.Propose(ctx, by, ProposeReq{IntegrationID: conn.ID, Op: "comment", Target: it.ExternalID, TaskID: taskID, ProjectID: it.ProjectID, Params: map[string]string{"body": body}})
+	body := fmt.Sprintf("Drydock opened a pull request for this item: %s\n(task %s, sent by Drydock)", u, taskID)
+	return s.propose(ctx, by, ProposeReq{IntegrationID: conn.ID, Op: "comment", Target: it.ExternalID, TaskID: taskID, ProjectID: it.ProjectID, Params: map[string]string{"body": body}},
+		proposeOpts{class: ClassLinkback})
+}
+
+// commentFinder is an adapter that can look for a comment on a target by its text (Linear, Notion).
+type commentFinder interface {
+	// FindComment returns the vendor's id of a comment on target whose text (whitespace collapsed) hashes to marker, created at
+	// or after since (ms); found=false when there is none.
+	FindComment(ctx context.Context, a *API, target, marker string, since int64) (id string, found bool, err error)
+}
+
+// Retry handles a write that failed or was interrupted: the vendor may have received it even though Drydock recorded a
+// failure (a time-out after the vendor accepted the call, the app stopping mid-send). For a comment Drydock first looks for it
+// on the target (the comment-marker lookup); when it is there, the write is recorded as sent and nothing is sent again. Any
+// other failed write, or a comment that is not there, is proposed again as the same call, which needs a new approval (the old
+// approval was spent). Only a person retries.
+func (s *Service) Retry(ctx context.Context, by, outboxID string) (Outbox, error) {
+	if err := requireHuman(by); err != nil {
+		return Outbox{}, err
+	}
+	o, err := s.st.GetOutbox(ctx, outboxID)
+	if err != nil {
+		return o, err
+	}
+	if o.Status != OutFailed {
+		return o, errf(ErrBadRequest, "only a failed write can be retried; this one is %s", o.Status)
+	}
+	conn, err := s.st.GetConnection(ctx, o.IntegrationID)
+	if err != nil {
+		return o, err
+	}
+	ad, _ := AdapterFor(conn.Kind)
+	if f, ok := ad.(commentFinder); ok && o.Marker != "" && o.Op == "comment" {
+		api, fail := s.api(ctx, conn)
+		if fail != nil {
+			return o, s.scrubFailure(fail)
+		}
+		cctx, cancel := context.WithTimeout(ctx, s.o.CallTimeout)
+		id, found, ferr := f.FindComment(cctx, api, o.Target, o.Marker, o.Created-5*60*1000)
+		cancel()
+		if ferr != nil {
+			var fl *Failure
+			if !errors.As(ferr, &fl) {
+				fl = Classify(conn.Kind, ferr, "")
+			}
+			return o, s.scrubFailure(fl)
+		}
+		if found {
+			receipt, _ := truncateRunes("found on "+vendor(conn.Kind)+": comment "+s.scrub(id)+"; not sent again", maxReceiptRunes)
+			empty := ""
+			if ok, err := s.st.UpdateOutbox(ctx, o.ID, OutboxUpdate{From: []string{OutFailed}, To: OutSent, Receipt: &receipt, Error: &empty}); err != nil || !ok {
+				return o, fmt.Errorf("integrations: could not record the comment found on %s: %v", vendor(conn.Kind), err)
+			}
+			s.emit(ctx, EventOutboundSent, o.ProjectID, o.TaskID, map[string]any{"outboxId": o.ID, "integrationId": o.IntegrationID, "op": o.Op, "hash": o.PayloadHash, "by": by, "found": true})
+			return s.st.GetOutbox(ctx, o.ID)
+		}
+	}
+	return s.repropose(ctx, by, o, conn)
+}
+
+// repropose stores the same call as a new proposal and asks for a new approval bound to the same hash.
+func (s *Service) repropose(ctx context.Context, by string, o Outbox, conn Connection) (Outbox, error) {
+	if s.o.Approvals == nil {
+		return Outbox{}, errors.New("integrations: no approvals service is configured, so outbound writes are disabled")
+	}
+	row := Outbox{IntegrationID: o.IntegrationID, ProjectID: o.ProjectID, TaskID: o.TaskID, Op: o.Op, Target: o.Target, Tool: o.Tool, PayloadHash: o.PayloadHash, Preview: o.Preview,
+		Status: OutPlanned, IdempotencyKey: o.IdempotencyKey, CreatedBy: by, Marker: o.Marker, Payload: o.Payload}
+	row.rawPayload = o.rawPayload
+	row, existing, err := s.st.InsertOutbox(ctx, row)
+	if err != nil || existing {
+		return row, err
+	}
+	desc, err := descriptorFor(row, conn.Kind)
+	if err != nil {
+		return row, err
+	}
+	reason := fmt.Sprintf("Retry of an outbound write to %s that failed: %s on %s. Proposed again by %s. Nothing is sent until you approve and the action is executed.", vendor(conn.Kind), o.Op, o.Target, by)
+	apr, err := s.o.Approvals.Request(ctx, desc, reason)
+	if err != nil {
+		msg := s.scrub(err.Error())
+		_, _ = s.st.UpdateOutbox(ctx, row.ID, OutboxUpdate{From: []string{OutPlanned}, To: OutCancelled, Error: &msg})
+		return row, fmt.Errorf("integrations: could not request approval: %w", err)
+	}
+	if _, err := s.st.UpdateOutbox(ctx, row.ID, OutboxUpdate{From: []string{OutPlanned}, To: OutAwaiting, ApprovalID: &apr}); err != nil {
+		return row, err
+	}
+	s.emit(ctx, EventOutboundRequested, o.ProjectID, o.TaskID, map[string]any{"outboxId": row.ID, "integrationId": o.IntegrationID, "op": o.Op, "approvalId": apr, "hash": o.PayloadHash, "by": by, "retryOf": o.ID})
+	return s.st.GetOutbox(ctx, row.ID)
 }
 
 // RecoverInterrupted marks actions that were executing when the app stopped as failed. Their approval was spent and the write may

@@ -238,7 +238,7 @@ func (s *Service) api(ctx context.Context, c Connection) (*API, *Failure) {
 	cl := &apiClient{kind: c.Kind, base: base, hc: s.hc, headers: hdr, lim: s.limiterFor(c), now: s.o.Now, maxBody: 16 << 20}
 	cl.renew = c.Kind == KindAikido
 	cl.auth = func(ctx context.Context, renew bool) (string, error) { return s.authorization(ctx, c, renew) }
-	return &API{Conn: c, HTTP: cl}, nil
+	return &API{Conn: c, HTTP: cl, DL: s.dl}, nil
 }
 
 // authorization returns the Authorization header value for a connection.

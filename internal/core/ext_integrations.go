@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -108,6 +109,34 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 			t, err := c.CreateTask(ctx, tasks.CreateReq{ProjectID: in.ProjectID, Title: in.Title, Description: in.Description, Priority: in.Priority, IssueRef: in.IssueRef, Template: in.Template})
 			return t.ID, err
 		},
+		// status sync and link_task rules (decision P114)
+		TaskStatus: func(ctx context.Context, id string) (string, error) {
+			t, err := c.Tasks.Get(ctx, id)
+			return string(t.Status), err
+		},
+		MoveTask: func(ctx context.Context, id, status, by string) error {
+			// the person applies the vendor's state; the task's state machine and guards still decide
+			_, err := c.Tasks.Transition(ctx, id, tasks.Status(status), tasks.TransitionOpts{By: by, Reason: "the linked item's status changed upstream; applied by the person"})
+			return err
+		},
+		TaskByRef: func(ctx context.Context, projectID, ref string) (string, error) {
+			var id string
+			err := c.DB.Reader().QueryRowContext(ctx, `SELECT id FROM tasks WHERE project_id=? AND issue_ref=? ORDER BY created_at LIMIT 1`, projectID, ref).Scan(&id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", nil
+			}
+			return id, err
+		},
+		TaskInProject: func(ctx context.Context, projectID, id string) error {
+			t, err := c.Tasks.Get(ctx, id)
+			if err != nil {
+				return err
+			}
+			if t.ProjectID != projectID {
+				return fmt.Errorf("task %s is not in this project", id)
+			}
+			return nil
+		},
 	})
 	if err != nil {
 		return nil, nil, err
@@ -116,6 +145,8 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 	svc.RecoverInterrupted(ctx)
 	// teach the scanner the exact credential values again after a restart, so they are redacted from anything that passes it
 	svc.RegisterStoredSecrets(ctx)
+	// the webhook receiver, when the person turned it on (off by default; 127.0.0.1 only)
+	svc.StartWebhooks(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	safe.Go("core.startIntegrations", func() {
@@ -264,6 +295,78 @@ func startIntegrations(ctx context.Context, c *Core) (map[string]Method, func(),
 		}) (any, error) {
 			return svc.LinkBack(ctx, human(), p.TaskID, p.PRURL)
 		}),
+		// decision P114: a failed write is looked for on the vendor before it is proposed again
+		"integration.outbound.retry": bind(func(ctx context.Context, p idParam) (any, error) { return svc.Retry(ctx, human(), p.ID) }),
+		// the webhook receiver: off by default, 127.0.0.1 only, the person exposes it themselves
+		"integration.webhooks.get": bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.WebhookStatus(ctx) }),
+		"integration.webhooks.set": bind(func(ctx context.Context, p integrations.WebhookSettingsReq) (any, error) {
+			return svc.SetWebhooks(ctx, human(), p)
+		}),
+		"integration.webhooks.secret": bind(func(ctx context.Context, p struct {
+			IntegrationID string `json:"integrationId"`
+			Secret        string `json:"secret"`
+		}) (any, error) {
+			if err := svc.SetWebhookSecret(ctx, human(), p.IntegrationID, p.Secret); err != nil {
+				return nil, err
+			}
+			return svc.WebhookStatus(ctx)
+		}),
+		"integration.webhooks.useNotionToken": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			if err := svc.UseNotionVerification(ctx, human()); err != nil {
+				return nil, err
+			}
+			return svc.WebhookStatus(ctx)
+		}),
+		// mappings: vendor states to task statuses, Notion properties to fields
+		"integration.mappings.list": bind(func(ctx context.Context, p struct {
+			AssignmentID string `json:"assignmentId"`
+		}) (any, error) {
+			return svc.Mappings(ctx, p.AssignmentID)
+		}),
+		"integration.mappings.set": bind(func(ctx context.Context, p integrations.MappingsReq) (any, error) {
+			return svc.SetMappings(ctx, human(), p)
+		}),
+		"integration.mappings.fields": bind(func(ctx context.Context, p struct {
+			AssignmentID string `json:"assignmentId"`
+			Scope        string `json:"scope"`
+		}) (any, error) {
+			return svc.MappingFields(ctx, p.AssignmentID, p.Scope)
+		}),
+		"integration.status.apply": bind(func(ctx context.Context, p struct {
+			ItemID string `json:"itemId"`
+		}) (any, error) {
+			return svc.ApplyStatus(ctx, human(), p.ItemID)
+		}),
+		// auto-approve classes: off by default, chosen by a person, never destructive
+		"integration.autoApprove.list": bind(func(ctx context.Context, p struct {
+			IntegrationID string `json:"integrationId"`
+			ProjectID     string `json:"projectId"`
+		}) (any, error) {
+			return svc.AutoApprovals(ctx, p.IntegrationID, p.ProjectID)
+		}),
+		"integration.autoApprove.set": bind(func(ctx context.Context, p integrations.AutoApproveReq) (any, error) {
+			return svc.SetAutoApprove(ctx, human(), p)
+		}),
+		// the weekly automatic sweep
+		"integration.sweep.get": bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.SweepSettings(ctx), nil }),
+		"integration.sweep.set": bind(func(ctx context.Context, p struct {
+			Enabled bool `json:"enabled"`
+		}) (any, error) {
+			return svc.SetSweep(ctx, human(), p.Enabled)
+		}),
+		// attachments: listed and downloaded only on the person's action
+		"integration.attachments.list": bind(func(ctx context.Context, p struct {
+			ItemID string `json:"itemId"`
+		}) (any, error) {
+			return svc.Attachments(ctx, p.ItemID)
+		}),
+		"integration.attachments.refresh": bind(func(ctx context.Context, p struct {
+			ItemID string `json:"itemId"`
+		}) (any, error) {
+			return svc.RefreshAttachments(ctx, human(), p.ItemID)
+		}),
+		"integration.attachments.download": bind(func(ctx context.Context, p idParam) (any, error) { return svc.DownloadAttachment(ctx, human(), p.ID) }),
+		"integration.attachments.text":     bind(func(ctx context.Context, p idParam) (any, error) { return svc.AttachmentText(ctx, p.ID) }),
 	}
 	return m, closeFn, nil
 }

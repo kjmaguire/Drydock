@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,8 +17,16 @@ const MaxRuleExprBytes = 1000
 // Rule actions.
 const (
 	ActionCreateTask = "create_task"
-	ActionNotify     = "notify"
+	// ActionLinkTask links a matching item to an existing task instead of creating one (decision P114): the task the rule names
+	// (params.task, chosen by the person), or else the project's task whose issue reference is the item's.
+	ActionLinkTask = "link_task"
+	ActionNotify   = "notify"
 )
+
+// EventTaskLinked records a rule linking an item to an existing task.
+const EventTaskLinked = "integration.task_linked"
+
+var taskIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
 // ruleEnv is the CEL environment of a rule: one variable, `item`, a map of normalized, sanitized facts. Free text can be matched
 // (title.contains(...)) but a rule's parameters are fixed by the human who wrote it; item text can never supply them.
@@ -30,6 +39,7 @@ const (
 //	item.severity    Aikido severity (enum, "" otherwise)
 //	item.project, item.team, item.repo, item.type   strings
 //	item.risk        injection risk score
+//	item.props       a Notion data source row's typed properties, by name, as text (empty for other items)
 var ruleEnv = func() *cel.Env {
 	e, err := cel.NewEnv(cel.Variable("item", cel.MapType(cel.StringType, cel.DynType)))
 	if err != nil {
@@ -55,10 +65,14 @@ func ruleVars(it Item) map[string]any {
 	for _, l := range it.Labels {
 		labels = append(labels, l)
 	}
+	props := map[string]any{}
+	for k, p := range it.Properties {
+		props[k] = p.Text
+	}
 	return map[string]any{"item": map[string]any{
 		"source": it.Source, "kind": it.Kind, "state": it.State, "title": it.Title, "assignee": it.Assignee, "priority": it.Priority, "ref": it.IssueRef,
 		"labels": labels, "level": str("level"), "events": count("events"), "users": count("users"), "severity": str("severity"),
-		"project": str("project"), "team": str("team"), "repo": str("repo"), "type": str("type"), "risk": int64(it.Risk),
+		"project": str("project"), "team": str("team"), "repo": str("repo"), "type": str("type"), "risk": int64(it.Risk), "props": props,
 	}}
 }
 
@@ -115,8 +129,16 @@ func validateParams(p map[string]any) (map[string]any, error) {
 				return nil, errf(ErrBadRequest, "params.template must be a short name")
 			}
 			out[k] = t
+		case "task":
+			t, ok := v.(string)
+			if !ok || (t != "" && !taskIDRe.MatchString(t)) {
+				return nil, errf(ErrBadRequest, "params.task must be a task id")
+			}
+			if t != "" {
+				out[k] = t
+			}
 		default:
-			return nil, errf(ErrBadRequest, "params.%s is not a rule parameter (allowed: priority, template)", k)
+			return nil, errf(ErrBadRequest, "params.%s is not a rule parameter (allowed: priority, template, task)", k)
 		}
 	}
 	return out, nil
@@ -236,9 +258,9 @@ func (s *Service) checkRule(ctx context.Context, r *Rule) error {
 		if conn.Kind == KindNotion {
 			return errf(ErrRuleNotAllowed, "Notion pages become requirement candidates through Import, not tasks; use the notify action for a Notion rule")
 		}
-	case ActionNotify:
+	case ActionNotify, ActionLinkTask:
 	default:
-		return errf(ErrBadRequest, "action must be create_task or notify")
+		return errf(ErrBadRequest, "action must be create_task, link_task or notify")
 	}
 	if _, err := compileRule(r.When); err != nil {
 		return err
@@ -254,6 +276,19 @@ func (s *Service) checkRule(ctx context.Context, r *Rule) error {
 		return err
 	}
 	r.Params = p
+	if t, _ := p["task"].(string); t != "" {
+		if r.Action != ActionLinkTask {
+			return errf(ErrBadRequest, "params.task is a parameter of link_task rules only")
+		}
+		if s.o.TaskInProject != nil {
+			if err := s.o.TaskInProject(ctx, r.ProjectID, t); err != nil {
+				return errf(ErrBadRequest, "the task %s is not a task of this project", t)
+			}
+		}
+	}
+	if r.Action == ActionLinkTask && p["task"] == nil && s.o.TaskByRef == nil {
+		return errf(ErrRuleNotAllowed, "a link_task rule needs the task to link to in this build")
+	}
 	return nil
 }
 
@@ -384,6 +419,9 @@ func (s *Service) applyRule(ctx context.Context, conn Connection, r Rule, it Ite
 		}
 		return out
 	}
+	if r.Action == ActionLinkTask {
+		return s.applyLink(ctx, r, it, prev, record, out)
+	}
 	if r.DryRun || !r.Enabled || r.Action == ActionNotify {
 		// a new rule starts disabled and in dry-run mode: it only lists what it would do (docs/integrations.md section 3)
 		record("would_create", "dry run: no task was created")
@@ -414,6 +452,59 @@ func (s *Service) applyRule(ctx context.Context, conn Connection, r Rule, it Ite
 	default:
 		record("created", "")
 		out.TaskID = tr.TaskID
+	}
+	return out
+}
+
+// applyLink runs a link_task rule on one matching item: it finds the task (the rule's own, or the project's task with the item's
+// issue reference) and, when the rule is enabled and out of dry-run, links the item to it exactly once. Nothing is created; the
+// task's text is not touched. The daily limit counts links like created tasks.
+func (s *Service) applyLink(ctx context.Context, r Rule, it Item, prev string, record func(outcome, detail string), out RuleOutcome) RuleOutcome {
+	task, _ := r.Params["task"].(string)
+	if task == "" && s.o.TaskByRef != nil && it.IssueRef != "" {
+		t, err := s.o.TaskByRef(ctx, r.ProjectID, it.IssueRef)
+		if err != nil {
+			record("error", "could not look up the task with this reference")
+			return out
+		}
+		task = t
+	}
+	if task == "" {
+		record("no_task", fmt.Sprintf("no task of the project has the reference %s", it.IssueRef))
+		return out
+	}
+	out.TaskID = task
+	if r.DryRun || !r.Enabled {
+		record("would_link", "dry run: the item was not linked to "+task)
+		if prev != "would_link" {
+			s.emit(ctx, EventRuleWouldCreate, r.ProjectID, task, map[string]any{"ruleId": r.ID, "itemId": it.ID, "action": ActionLinkTask})
+		}
+		return out
+	}
+	used, err := s.st.CountRuleTasks(ctx, r.ID, s.nowMS()-24*time.Hour.Milliseconds())
+	if err != nil {
+		record("error", "could not count the rule's links")
+		return out
+	}
+	if used >= r.MaxPerDay {
+		record("rate_limited", fmt.Sprintf("the rule already linked %d of its %d items allowed per day", used, r.MaxPerDay))
+		if prev != "rate_limited" {
+			s.emit(ctx, EventRuleRateLimited, r.ProjectID, "", map[string]any{"ruleId": r.ID, "itemId": it.ID, "maxPerDay": r.MaxPerDay})
+		}
+		return out
+	}
+	lk := s.lock("item:" + it.ID)
+	lk.Lock()
+	ok, err := s.st.ClaimItem(ctx, it.ID, task, "rule:"+r.ID)
+	lk.Unlock()
+	switch {
+	case err != nil:
+		record("error", s.scrub(err.Error()))
+	case !ok:
+		record("deduped", "the item already has a task")
+	default:
+		record("linked", "")
+		s.emit(ctx, EventTaskLinked, r.ProjectID, task, map[string]any{"ruleId": r.ID, "itemId": it.ID, "integrationId": it.IntegrationID})
 	}
 	return out
 }
