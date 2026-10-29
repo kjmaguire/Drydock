@@ -206,3 +206,17 @@ func TestPackDigestIsSummarizedByTheRoutedModel(t *testing.T) {
 		t.Fatalf("%v %s", err, kind)
 	}
 }
+
+func TestRequirementExtractReadsAPDFThroughTheMethod(t *testing.T) {
+	a := open(t, "")
+	pdf := docfixture.PDF("%PDF-1.4", "Checkout PRD", []string{docfixture.TextPage("Acceptance", "Given a paid cart, when the order is placed, then an order exists.")})
+	var x struct{ Title, Text string }
+	a.call("requirement.extract", map[string]any{"name": "checkout.pdf", "data": pdf}, &x)
+	if x.Title != "Checkout PRD" || !strings.Contains(x.Text, "## Page 1") || !strings.Contains(x.Text, "order exists") {
+		t.Fatalf("%+v", x)
+	}
+	scan := docfixture.PDF("%PDF-1.4", "", []string{"0 0 612 792 re f"})
+	if err := a.callErr("requirement.extract", map[string]any{"name": "scan.pdf", "data": scan}); err == nil || !strings.Contains(err.Error(), "OCR") {
+		t.Fatalf("a scan says it has no text: %v", err)
+	}
+}

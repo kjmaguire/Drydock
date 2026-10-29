@@ -21,7 +21,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { criteriaLines, evidenceOutcome, fileProblem, linkedTaskIds, titleFromFile } from './requirements.ts';
+import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, linkedTaskIds, titleFromFile } from './requirements.ts';
 
 // --- trace ---
 
@@ -541,12 +541,21 @@ export function RequirementsScreen(handle: Handle) {
   const onFile = async (input: HTMLInputElement) => {
     const f = input.files?.[0];
     if (!f) return;
-    fileErr = fileProblem(f.size);
+    const doc = isDocument(f.name);
+    fileErr = doc ? documentProblem(f.size) : fileProblem(f.size);
     fileName = '';
     if (fileErr) return set(() => undefined);
-    text = await f.text();
+    if (doc) {
+      // the core reads a PDF's or DOCX's text (pages as "## Page N"); it lands in the box to be read before it is added
+      const x = await act.run('read', async () => s.client.requirementExtract(f.name, new Uint8Array(await f.arrayBuffer())));
+      if (!x) return;
+      text = x.text;
+      if (!title.trim()) title = x.title;
+    } else {
+      text = await f.text();
+      if (!title.trim()) title = titleFromFile(f.name);
+    }
     fileName = f.name;
-    if (!title.trim()) title = titleFromFile(f.name);
     void handle.update();
   };
   const add = async () => {
@@ -578,7 +587,7 @@ export function RequirementsScreen(handle: Handle) {
         {q.data && list.length === 0 ? (
           <div mix={card}>
             <Empty title="No requirements yet." icon={FileText}>
-              <p>Add requirements text below: a Markdown file or pasted text.</p>
+              <p>Add requirements below: a PDF, Word (DOCX) or Markdown file, or pasted text.</p>
             </Empty>
           </div>
         ) : null}
@@ -634,12 +643,18 @@ export function RequirementsScreen(handle: Handle) {
                 <input
                   type="file"
                   class="sr-only"
-                  accept=".md,.markdown,.txt,text/plain,text/markdown"
-                  aria-label="Upload a text or Markdown file (read in this browser, then sent to the core)"
+                  accept=".md,.markdown,.txt,.pdf,.docx,text/plain,text/markdown"
+                  aria-label="Upload a PDF, DOCX, text or Markdown file (its text is shown here before it is added)"
                   mix={on('change', (e) => void onFile(e.currentTarget))}
                 />
               </label>
-              <span class="hint">{fileName ? `Read ${fileName}.` : 'A text or Markdown file, read in this browser, then sent to the core.'}</span>
+              <span class="hint">
+                {act.busy === 'read'
+                  ? 'Reading the file...'
+                  : fileName
+                    ? `Read ${fileName}. Check the text before you add it.`
+                    : 'A PDF, DOCX, text or Markdown file. Its text is shown below before it is added; a scanned PDF has none.'}
+              </span>
             </div>
             {fileErr ? <ErrorNote error={fileErr} /> : null}
             <Field label="Text">{(id) => <textarea id={id} rows={8} value={text} mix={on('input', (e) => set(() => (text = e.currentTarget.value)))} />}</Field>

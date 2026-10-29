@@ -511,6 +511,13 @@ func (k *Knowledge) methods() map[string]Method {
 		return k.Requirements.Text(ctx, p.ID, p.Version)
 	})
 	m["requirement.versions"] = bind(func(ctx context.Context, p idParam) (any, error) { return k.Requirements.Versions(ctx, p.ID) })
+	// the text of a PDF or DOCX the person chose, for the page to show before it is added (nothing is stored)
+	m["requirement.extract"] = bind(func(ctx context.Context, p struct {
+		Name string `json:"name"`
+		Data []byte `json:"data"`
+	}) (any, error) {
+		return requirements.Extract(ctx, p.Name, p.Data)
+	})
 	m["requirement.add"] = bind(func(ctx context.Context, p requirements.AddReq) (any, error) {
 		p.By = h()
 		r, err := k.Requirements.Add(ctx, p)

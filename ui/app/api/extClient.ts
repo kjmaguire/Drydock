@@ -148,6 +148,8 @@ export interface ExtClient {
   // requirements and milestones
   requirementList(projectId: string, includeArchived?: boolean): Promise<Requirement[]>;
   requirementAdd(projectId: string, title: string, text: string, format?: string): Promise<Requirement>;
+  /** The text of a PDF or DOCX, as Markdown (a PDF's pages as "## Page N"), for the page to show before it is added. */
+  requirementExtract(name: string, data: Uint8Array): Promise<{ title: string; text: string }>;
   requirementUpdate(id: string, text: string, format?: string): Promise<{ requirement: Requirement; changed: boolean }>;
   requirementArchive(id: string, archived: boolean): Promise<void>;
   requirementVersions(id: string): Promise<RequirementVersion[]>;
@@ -332,6 +334,7 @@ export function createExtClient(t: Transport): ExtClient {
 
     requirementList: async (projectId, includeArchived = false) => arr(await call<Requirement[] | null>('requirement.list', { projectId, includeArchived })),
     requirementAdd: (projectId, title, text, format = 'markdown') => call('requirement.add', { projectId, title, text, format, source: 'upload' }),
+    requirementExtract: (name, data) => call('requirement.extract', { name, data: encodeBase64(data) }),
     requirementUpdate: (id, text, format = 'markdown') => call('requirement.update', { id, text, format }),
     requirementArchive: (id, archived) => voidCall('requirement.archive', { id, archived }),
     requirementVersions: async (id) => arr(await call<RequirementVersion[] | null>('requirement.versions', { id })),
