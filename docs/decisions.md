@@ -1479,3 +1479,29 @@ Open, owner action:
   own (never), attachments of GitHub and Aikido items and Notion file blocks, importing a Notion row as a task, a vendor's status
   applied without the person. **Not verified:** any of it against a live vendor (protocol fixtures only), Notion's signature
   scheme least of all, or on Windows.
+- **P113. OTLP export of the local telemetry, spans for the LLM Wrapper's calls, and the B0 arm of the evaluation
+  (2026-10-29).** On the owner's words, answering the list of what was not built: "Proceed with those items". (1) **OTLP
+  export** (`internal/telemetry`): off by default; a person gives a collector's endpoint (https, or plain http only to this
+  computer, checked on the connection itself; no credentials, query or fragment in it) and turns sending on, and telemetry must be
+  on too. What is sent is what the local sink stores, under the same closed allowlist (applied again by the encoders), so the
+  local rows are the log of everything sent and the preview shows what leaves (`packaging.md`, diagnostics). OTLP/HTTP with
+  protobuf (default) or JSON, **written by hand** rather than through the OpenTelemetry SDK: the spans and metrics already exist,
+  only their wire form was needed, and the SDK with its protobuf and exporter modules would add dependencies (the "about 15 MB"
+  `packaging.md` names) for no gain; no module was added. Header values (an API key) in the credential store, never in settings,
+  the status, a log or an event. A bounded queue (2048), batches of 256 every 5 s, retries with exponential backoff and
+  `Retry-After` for a transport failure, 429, 502, 503 and 504, drop-and-count on a full queue, a refusal or exhausted retries;
+  turning it or telemetry off empties the queue and stops a send in flight. A status line (sent, waiting, dropped, last success,
+  last error in Drydock's own words with header values removed) and "Send a test span" (also kept locally). Methods
+  `telemetry.otlp.set` and `telemetry.otlp.test`; the Telemetry group of Settings. (2) **The Wrapper's calls**: `llm.Options.Tracer`
+  hears of every call, refused ones included, with no field for content; the sink records a `drydock.llm.chat` span and duration,
+  token and cost metrics; new allowlisted keys `drydock.llm.cache_hit`, `drydock.llm.fallback`, `error.type` (a closed class).
+  (3) **B0** (`internal/trial/b0.go`, `drydock-trial run -arms ...,B0`): the naive broadcast team of `evals.md` section 5 as a
+  harness arm: a worker and a reviewer on one model, each turn a new Claude Code session given the whole room in full (every
+  message, tool call and tool output), free-for-all until both say DONE in one round, five rounds, the wall-clock cap or the
+  run's dollar ceiling (a recorded `ceiling`); no router, cheap tier, handoff, cache or watchdog. It records the arm's rounds,
+  stop and broadcast bytes besides section 6.2's fields. No migration. Details: `token-control.md` "As built: OTLP export and the
+  Wrapper's spans", `evals.md` section 15. **Not built:** gzip bodies, exporting rows recorded before sending was on, content
+  export, crash reports and usage counters as their own categories; B0 with CLIs other than Claude Code or a cheap provider.
+  **Not verified:** a real collector or vendor backend (the protobuf encoding is checked only against a decoder written from the
+  same field numbers), Windows, a proxy; **B0 is not measured**: its mechanics and records are proven against the scripted
+  stand-in agent only, and every B0 row of `evals.md` 7.1 stays "not measured" until it is run with a signed-in Claude Code.

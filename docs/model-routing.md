@@ -535,7 +535,7 @@ the real rule router and a labelled test-double provider (an `llmtest` protocol 
 ## As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal (2026-10-29, decision P112)
 
 On the owner's words, answering the list of what was not built: "Proceed with those items". The OTLP exporter and the B0 arm
-of the evaluation are another decision's.
+of the evaluation are another decision's (P113).
 
 **1. LLM tiebreak** (`internal/router/tiebreak.go`; the caller's half in `internal/core/routesettings.go`). After the ranking,
 when the candidates at the top cannot be told apart in any way that matters (the same tier, rule penalties and probe result,
