@@ -22,6 +22,8 @@ export const SAFETY: readonly Topic[] = [
       {
         ul: [
           '**Telemetry** keeps usage counts in a local database, with only allowlisted identifier-shaped attributes (no prompts, code, tool output, file contents or secrets), so you can see and export them. It is off unless you turn it on, and nothing is sent unless you also give a collector of your own (OTLP, in Settings): then the same counts, and nothing more, go there.',
+          "**Content export** is a separate switch beside it, off unless you turn it on after reading what it sends: then the telemetry also holds what Drydock's own model calls were given and answered, with secrets masked, and a collector you set up receives it. The agents' own sessions are never in it.",
+          '**Crash reports** stay on this computer (you can turn them off in Settings, Diagnostics) and leave it only in a support bundle you send. **Usage counters**, off unless you turn them on, count how often each part of Drydock is used, by name only.',
           '**Licenses** are checked offline on this computer; Drydock never contacts a license server. The check protects against casual sharing and gives honest expiry behaviour. It is not tamper-proof.',
           'A **support bundle** is written locally; you decide whether to send it.',
           'API keys and sign-in tokens you give Drydock are kept in the **Windows Credential Manager** and never shown again.',
