@@ -177,6 +177,10 @@ type Core struct {
 	rm         *repomap.Mapper
 	devOnce    sync.Once // this PC's Dev Drives, asked once for the folder hint and the CI runners
 	dev        runners.DevDriveScan
+	// customMu guards customLoaded: per person's own CLI, the SHA-256 of the manifest file its adapter was built from
+	// (ext_customcli.go, decision P117)
+	customMu     sync.Mutex
+	customLoaded map[string]string
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
@@ -300,7 +304,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	}}
 	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
-		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted}
+		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted, StartGate: c.startGate}
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,

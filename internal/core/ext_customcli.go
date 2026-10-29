@@ -65,10 +65,12 @@ func customTemplate(id string) (string, error) {
 
 func startCustomCLI(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	ms, files := manifests.LoadUserCustom(c.customDir())
+	sums := map[string]string{}
 	for _, f := range files {
 		if f.Error != "" {
 			c.logf("custom CLI %s not loaded: %s", f.ID, f.Error)
 		}
+		sums[f.ID] = f.SHA256
 	}
 	for _, m := range ms {
 		a, err := c.Connections.Registry.AddCustom(m, builtinAdapter)
@@ -77,6 +79,9 @@ func startCustomCLI(ctx context.Context, c *Core) (map[string]Method, func(), er
 			continue
 		}
 		c.RegisterAdapter(m.Meta.ID, a)
+		c.setCustomLoaded(m.Meta.ID, sums[m.Meta.ID])
+		// an acknowledgement of other bytes than the file loaded now is taken back (decision P117)
+		c.reconcileCustomAck(ctx, m.Meta.ID, customOnDisk{Sum: sums[m.Meta.ID]})
 	}
 	audit := func(ctx context.Context, action, subject string, detail any) {
 		if k := c.Knowledge(); k != nil {
@@ -84,7 +89,11 @@ func startCustomCLI(ctx context.Context, c *Core) (map[string]Method, func(), er
 		}
 	}
 	methods := map[string]Method{
-		"connection.custom.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.customCLIs(), nil }),
+		// listing looks at every file again: one changed on disk is loaded again and asks for the acknowledgement again (P117)
+		"connection.custom.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			c.recheckCustom(ctx, "")
+			return c.customCLIs(), nil
+		}),
 		"connection.custom.template": bind(func(ctx context.Context, p struct {
 			ID string `json:"id"`
 		}) (any, error) {
@@ -130,6 +139,7 @@ func startCustomCLI(ctx context.Context, c *Core) (map[string]Method, func(), er
 				return nil, err
 			}
 			c.RegisterAdapter(id, a)
+			c.setCustomLoaded(id, manifests.CustomSum([]byte(p.YAML)))
 			audit(ctx, "connection.custom_added", id, map[string]any{"id": id, "program": m.Binaries.Native, "argv": m.Transports.Headless.Argv})
 			c.publish(ctx, "connection.custom_added", "", map[string]any{"adapter": id, "by": c.Human()})
 			return c.Connections.Check(ctx, id)
@@ -159,10 +169,11 @@ func startCustomCLI(ctx context.Context, c *Core) (map[string]Method, func(), er
 			// a CLI added later under this id is a new program: it is acknowledged again
 			gate := manifests.UserGateID(p.ID)
 			_ = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-				_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, gateKey+gate)
+				_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key IN (?,?)`, gateKey+gate, customAckKey+p.ID)
 				return err
 			})
 			c.Connections.Forget(gate)
+			c.setCustomLoaded(p.ID, "")
 			audit(ctx, "connection.custom_removed", p.ID, map[string]any{"id": p.ID})
 			c.publish(ctx, "connection.custom_removed", "", map[string]any{"adapter": p.ID, "by": c.Human()})
 			return c.customCLIs(), nil

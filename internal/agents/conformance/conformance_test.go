@@ -92,11 +92,14 @@ func TestClaudeAdapterAgainstTheRealCLI(t *testing.T) {
 // ---- Antigravity, headless (decision P115) ----------------------------------------------------------------------------
 
 // The adapter the registry builds from antigravity.yaml, against the stand-in written from agy's documentation: a real process
-// on the documented stream-json mode. No real agy was run; tool calls, interrupt and resume are not declared, so their steps
-// are skipped with the reason.
+// on the documented stream-json mode. No real agy was run; tool calls and resume are not declared, so their steps are skipped
+// with the reason. Interrupt ends agy's process (decision P117) and the next message starts it again.
 func TestAntigravityAdapterAgainstTheDocumentedStandIn(t *testing.T) {
 	t.Setenv("DRYDOCK_FAKE_AGY", "1")
-	t.Setenv("DRYDOCK_FAKE_AGY_SCRIPT", writeJSON(t, fakeagy.Script{Default: []fakeagy.Step{{Think: "short answer"}, {Say: "OK", Usage: &[3]int64{40, 2, 8}}}}))
+	t.Setenv("DRYDOCK_FAKE_AGY_SCRIPT", writeJSON(t, fakeagy.Script{
+		Rules:   []fakeagy.Rule{{Match: "long please", Steps: []fakeagy.Step{{Say: "working "}, {SleepMS: 60000}, {Say: "done"}}}},
+		Default: []fakeagy.Step{{Think: "short answer"}, {Say: "OK", Usage: &[3]int64{40, 2, 8}}},
+	}))
 	r, err := manifests.NewRegistry(manifests.Options{Exe: map[string]string{"antigravity": os.Args[0]}})
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +108,7 @@ func TestAntigravityAdapterAgainstTheDocumentedStandIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conformance.Run(t, ad, conformance.Options{ExpectText: "OK", ExpectUsage: true})
+	conformance.Run(t, ad, conformance.Options{ExpectText: "OK", ExpectUsage: true, LongPrompt: "long please"})
 }
 
 // ---- a person's own CLI: the custom dialect (decision P115) --------------------------------------------------------------

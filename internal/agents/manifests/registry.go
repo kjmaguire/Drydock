@@ -223,10 +223,13 @@ func (r *Registry) buildHeadless(m *Manifest, detect func(context.Context) (agen
 		return &detectOverride{Adapter: ad, detect: detect}, nil
 	case h.Parser == ParserAntigravity:
 		// the documented headless mode (decisions D2, D11), unverified against a real agy; the acknowledgement gate is enforced
-		// where agents are created (core.CreateAgent)
+		// where agents are created (core.CreateAgent). Interrupt is Drydock's own: it ends agy's process tree, as the documented
+		// Ctrl+C ends print mode (decision P117), so it does not wait for the manifest to declare a CLI feature.
+		caps := nativeOnly(DeclaredCapabilities(m))
+		caps.Interrupt = true
 		return headless.NewAntigravity(headless.AntigravityConfig{
 			ID: m.Meta.ID, Binaries: m.Binaries.Native, Exe: r.opts.Exe[m.Meta.ID], Args: m.HeadlessArgs,
-			Caps: nativeOnly(DeclaredCapabilities(m)), InstallHint: m.InstallHint(), Detect: detect, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
+			Caps: caps, InstallHint: m.InstallHint(), Detect: detect, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
 		}), nil
 	case h.Parser == "" && h.Dialect != nil && m.Meta.ID == TemplateID:
 		return &unimplemented{id: m.Meta.ID, caps: nativeOnly(DeclaredCapabilities(m)), hint: m.InstallHint(), detect: detect, m: m,
@@ -257,9 +260,23 @@ func (r *Registry) buildCustom(m *Manifest, detect func(context.Context) (agents
 	for k, v := range h.ExitCodes {
 		codes[k] = v
 	}
+	// the manifest's mcp section (decision P117): a flag naming the file goes on every turn's argv; a file in the working folder
+	// is written by the core when it attaches the gateway
+	mc, err := m.CustomMCP()
+	if err != nil {
+		return nil, err
+	}
+	var mcpArgs func(string) []string
+	if mc != nil {
+		caps.MCP = true
+		if mc.Via == CustomMCPViaArg {
+			mcpArgs = mc.ArgsFor
+		}
+	}
 	return headless.NewCustom(headless.CustomConfig{
 		ID: m.Meta.ID, Binaries: m.Binaries.Native, Exe: r.opts.Exe[m.Meta.ID], Args: m.HeadlessArgs, Prompt: via, Dialect: d,
 		ExitCodes: codes, Caps: caps, InstallHint: m.InstallHint(), Detect: detect, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
+		MCPArgs: mcpArgs,
 	})
 }
 

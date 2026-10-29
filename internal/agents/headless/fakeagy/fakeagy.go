@@ -41,6 +41,8 @@ type Step struct {
 	Usage *[3]int64 `json:"usage,omitempty"` // input, output, cached tokens of the step
 	// Unknown prints an event of a type agy's docs do not name (drift).
 	Unknown string `json:"unknown,omitempty"`
+	// SleepMS waits (a long turn to interrupt).
+	SleepMS int `json:"sleepMs,omitempty"`
 }
 
 // Tool is a tool use.
@@ -140,6 +142,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				denied = append(denied, map[string]any{"tool": st.Deny.Name, "args": st.Deny.Args})
 			case st.Unknown != "":
 				_ = enc.Encode(map[string]any{"type": st.Unknown})
+			case st.SleepMS > 0:
+				time.Sleep(time.Duration(st.SleepMS) * time.Millisecond)
 			}
 			if st.Usage != nil {
 				_ = enc.Encode(map[string]any{"type": "step_update", "step_id": id, "step_type": "usage", "state": "done", "usage": map[string]any{"input_tokens": st.Usage[0], "output_tokens": st.Usage[1], "cached_tokens": st.Usage[2]}})

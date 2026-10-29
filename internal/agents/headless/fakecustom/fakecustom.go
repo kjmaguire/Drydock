@@ -39,7 +39,13 @@ type Step struct {
 	Fail string `json:"fail,omitempty"`
 	// Raw prints the line as it is (a line the dialect does not know).
 	Raw string `json:"raw,omitempty"`
+	// MCP uses a server of the MCP configuration this run was given (--mcp-config <file>, else MCPFile in the working folder)
+	// as a real MCP client would, and says what it got as a message ("mcp tools ...", "mcp OK ...", "mcp ERR ...").
+	MCP *MCPCall `json:"mcp,omitempty"`
 }
+
+// MCPFile is where the stand-in looks for its MCP configuration when no --mcp-config names one: the template's file route.
+const MCPFile = ".my-cli/mcp.json"
 
 // Run is the stand-in's main. Environment: DRYDOCK_FAKE_CUSTOM_SCRIPT (a Script as JSON), DRYDOCK_FAKE_CUSTOM_ARGS (a file each
 // run appends its argv to, one run per line).
@@ -102,6 +108,13 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			time.Sleep(time.Duration(st.SleepMS) * time.Millisecond)
 		case st.Raw != "":
 			fmt.Fprintln(stdout, st.Raw)
+		case st.MCP != nil:
+			line := callMCP(valueOf(args, "--mcp-config"), st.MCP)
+			if text {
+				fmt.Fprintln(stdout, line)
+			} else {
+				_ = enc.Encode(map[string]any{"type": "message", "text": line + "\n"})
+			}
 		case st.Say != "" && text:
 			fmt.Fprintln(stdout, st.Say)
 		case st.Say != "":

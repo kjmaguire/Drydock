@@ -2,7 +2,10 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1123,13 +1126,25 @@ func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool
 	// what the person reads: the short fields (where the call goes) first, the whole input up to security.MaxReviewBytes, a long
 	// value cut in the middle with the size of the gap written in; the approval binds the hash of the whole input (audit
 	// 2026-10-16, H8). An input a person cannot be shown is refused.
-	rv, err := security.ReviewInput(req.Args)
+	// the descriptor is computed from the call's own bytes (the digest too, never taken from the request on trust), once to ask and
+	// again when the approval is spent, so the approval is consumed only by the call it was granted for (decision P117)
+	describe := func() (security.ActionDescriptor, error) {
+		rv, err := security.ReviewInput(req.Args)
+		if err != nil {
+			return security.ActionDescriptor{}, err
+		}
+		sum := sha256.Sum256(req.Args)
+		return security.ActionDescriptor{
+			Kind: mcpApprovalKind, Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID, Cwd: req.Run.Worktree,
+			Tool: "mcp:" + req.Server + "/" + req.Tool, Command: rv.Text, ArgvDigest: hex.EncodeToString(sum[:]), Targets: rv.Targets, Shortened: rv.Shortened,
+		}, nil
+	}
+	action, err := describe()
 	if err != nil {
 		return false, err
 	}
-	action := security.ActionDescriptor{
-		Kind: mcpApprovalKind, Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID, Cwd: req.Run.Worktree,
-		Tool: "mcp:" + req.Server + "/" + req.Tool, Command: rv.Text, ArgvDigest: req.ArgsHash, Targets: rv.Targets, Shortened: rv.Shortened,
+	if subtle.ConstantTimeCompare([]byte(action.ArgvDigest), []byte(req.ArgsHash)) != 1 {
+		return false, errors.New("the call's arguments are not the ones its hash was made of")
 	}
 	id, err := ap.Request(ctx, action, "An agent wants to call a tool that is not marked read-only. Approve only if you want this exact call made.")
 	if err != nil {
@@ -1148,7 +1163,11 @@ func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool
 				_, _ = ap.ExpireDue(ctx)
 			}
 		case "APPROVED":
-			if err := ap.Consume(ctx, id, action); err != nil {
+			again, err := describe()
+			if err != nil {
+				return false, err
+			}
+			if err := ap.Consume(ctx, id, again); err != nil {
 				return false, err
 			}
 			return true, nil

@@ -1536,5 +1536,53 @@ Open, owner action:
   tool, under the role's docs column, through the gateway's catalog trust, cache, send guard and untrusted marking
   (`addLivePackServers`); `search_pack` still queries live packs itself. **Not verified:** a real `agy` (every field name,
   the `--mode` value, the input line, exit codes), a real custom CLI, any of it on Windows (a `.cmd` program, the prompt as
-  an argument through `cmd.exe`). **Not built:** MCP for custom CLIs (their manifest has no `mcp.inject` yet) and for
-  Antigravity, an acknowledgement asked again when a custom manifest's file changes on disk, interrupt for Antigravity.
+  an argument through `cmd.exe`). **Not built:** MCP for Antigravity (its documented headless mode has no way to take a
+  per-run MCP configuration; P117). Built since by P117: MCP for custom CLIs (the manifest's `mcp` section), the
+  acknowledgement asked again when a custom manifest's file changes on disk, interrupt for Antigravity.
+- **P117. MCP for custom CLIs, interrupt for Antigravity, a custom CLI's acknowledgement bound to its manifest file, and the
+  call after an approval compared with the approved one (2026-10-29).** On the owner's words, answering the list of what is
+  still not built: "Yes" (the "can be built now" group; the agents items of P115's "Not built" line). (1) **MCP for custom
+  CLIs**: a person's manifest may carry an `mcp` section, `{via: arg, format: mcpServers, args: [..., "{{mcp_config}}"]}`
+  (a flag that names the file) or `{via: file, format: mcpServers, file: <relative .json path>}` (a file the CLI reads from
+  its working folder), checked as strictly as the rest of the manifest (known keys only, the one format, `{{mcp_config}}`
+  exactly once and no other placeholder, a clean relative path inside the working folder and outside `.git`). The
+  configuration is the `mcpServers` JSON with the run's single `drydock` entry (the stdio shim). Like the other unproven
+  CLIs (P20) the gateway reaches it only after a person allows it for that CLI (`mcp.try.set`), then under the role's row of
+  the tool table, rules and narrowing (P115); a custom CLI without the section can never be allowed. The file route never
+  overwrites a file that is there, keeps the path out of git (`info/exclude`) before the token is written, refuses a folder
+  on the way that leads outside the working folder, writes it for the owner only and removes it (and the folders it made)
+  when the run ends. Proven with the custom stand-in reading the configuration it was given by either route, starting the
+  shim and listing and calling gateway tools. (2) **MCP for Antigravity: not built.** agy's MCP servers live in its own
+  `mcp_config.json` (phase0 section 8); its documented headless mode (`-p`, `--input-format`, `--output-format`, `--mode`,
+  `--effort`, `--json-schema`, `--print-timeout`) has no flag, variable or per-session file for an MCP configuration, and
+  writing the gateway into the person's own `mcp_config.json` would change their setup for every agy they run. Nothing was
+  invented; Antigravity stays "cannot be given it". (3) **Interrupt for Antigravity**: print mode documents one way to stop
+  a turn, Ctrl+C, which ends the process with a non-zero code. Interrupt ends agy's process tree through the existing kill
+  path (the Job Object on Windows; the direct process on the development host), the turn ends "cancelled", the session
+  stays (Wait answers only when agy exits by itself or Stop ends it), and the next message starts agy again as a new
+  conversation (print mode has no documented resume), said in a log chunk. With no turn running it does nothing. A custom
+  CLI's interrupt (ending the turn's process) was built by P115. The conformance suite's interrupt step runs for both
+  stand-ins. (4) **A custom CLI's acknowledgement is bound to its manifest file**: the SHA-256 of the file a person
+  acknowledged is kept (`customcli.ack_sha256.<id>` in settings). Whenever the file is looked at again (the Agents page
+  lists the CLIs or checks one, a person acknowledges, any session of it starts) a file whose bytes changed is loaded again
+  if it still validates, and the acknowledgement is taken back (audited and published as `connection.custom_changed`) until
+  a person gives it for the new file; a file that no longer loads cannot be acknowledged. At start a file changed while the
+  app was closed, and an acknowledgement kept from before the hash was, are asked again. There is no file watcher: the
+  checks run at those moments. `Runtime.StartGate` checks a gated CLI's acknowledgement at every session start (before,
+  only making an agent or a chat did), so a changed file stops the next run. The Agents page marks the notice "changed" and
+  says why (`GateStatus.changed`). (5) **The call after an approval is compared with the approved one**, wherever a call is
+  approved by hash and then executed: write-class MCP calls (the approver gets its own copy of the bytes; the core computes
+  the descriptor, its digest too, from the call's bytes when it asks and again when it consumes, and refuses a request whose
+  hash is not of its bytes; the gateway compares the target and the hash of the bytes about to be sent with the approved
+  ones, in constant time, right before the call is made); ACP permission requests (an ACP agent runs an allowed call by
+  itself, so what it reports of the call afterwards is compared with what was allowed: its kind, input and, for read, edit,
+  delete and move, its paths; on the first difference the person is told, the turn is cancelled, and
+  `permission.call_changed` is audited and published with both hashes, never the input). Claude's permission prompts (the
+  gate recomputes the descriptor from the request it answers and the answer's `updatedInput` is the exact input) and
+  integration writes (`Execute` rebuilds the descriptor from the stored row) already did; tests now tamper with the
+  approval under each path and are refused. No migration (settings keys only), no new dependency, no RPC method. Details:
+  `connections.md` "As built: MCP, interrupt and acknowledgement", `security.md` section 5, `mcp.md` section 10.
+  **Not verified:** any real custom CLI, a real agy, Windows (the Job Object tree kill of agy, a `.cmd` program, the
+  working-folder file's ACL). **Not built:** MCP for Antigravity (above); a file watcher on the custom folder (the checks run
+  when the file is looked at); preventing a changed ACP call (Drydock can only detect it and stop the turn: the agent runs
+  its calls itself); the comparison for a chat's permission requests is the same, but only an agent turn's is audited.

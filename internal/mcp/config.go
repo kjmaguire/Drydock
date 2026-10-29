@@ -210,7 +210,7 @@ func ConfigFor(provider string, ep Endpoint, opts ...ConfigOptions) (ClientConfi
 		if cfg.JSON, err = file(); err != nil {
 			return cfg, err
 		}
-		cfg.Notes = append(cfg.Notes, "UNVERIFIED: custom CLI; the manifest's mcp.inject decides whether this file is used (config_file | acp_session_new | env)")
+		cfg.Notes = append(cfg.Notes, "UNVERIFIED: a person's own CLI; its manifest's mcp section (decision P117) says whether this file is named by a flag (via: arg, {{mcp_config}}) or put in its working folder (via: file); a manifest with no section gets nothing")
 	case "antigravity":
 		return ClientConfig{Provider: provider}, ErrMCPUnknown
 	default:

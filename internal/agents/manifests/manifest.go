@@ -556,8 +556,12 @@ func (m *Manifest) Validate() error {
 		if len(m.Binaries.WSL) > 0 {
 			add("custom manifests have no binaries.wsl (they run natively only)")
 		}
-		if m.Provider != nil || m.MCP != nil || m.Usage != nil {
-			add("custom manifests cannot carry provider_config, mcp or usage (the generic runner reads none of them)")
+		if m.Provider != nil || m.Usage != nil {
+			add("custom manifests cannot carry provider_config or usage (the generic runner reads neither)")
+		}
+		if m.MCP != nil {
+			_, mp := parseCustomMCP(m.MCP)
+			p = append(p, mp...)
 		}
 		if len(m.Auth.EnvFromKeyring) > 0 || len(m.Auth.AllowedKinds) > 0 || len(m.Auth.BlockedKinds) > 0 {
 			add("custom manifests cannot read keys from the credential store or declare sign-in kinds")

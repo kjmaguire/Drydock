@@ -122,6 +122,11 @@ type RunSpec struct {
 	// follows its project's default, its CLI is not installed on Windows, and it is ready in WSLDistro (decision P58). The
 	// runtime records it in the run's events so the choice is visible.
 	RunModeWhy string
+
+	// OnCallChanged, if set, hears of a call the CLI changed after Drydock allowed it (decision P117): an ACP agent runs an
+	// allowed call by itself, so the adapter compares what the agent reports of the call afterwards with what was allowed (the
+	// hashes of both are given) and stops the turn on the first difference. The core records it.
+	OnCallChanged func(q ToolAsk, allowedSum, actualSum string) `json:"-"`
 }
 
 // NativeLocator is implemented by an adapter that can say, without starting anything, whether its CLI is installed on this

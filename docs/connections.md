@@ -326,7 +326,7 @@ Ownership: each generated file starts with `<!-- drydock:generated sha256=<hash 
 - **Where things are:** manifests are embedded from `internal/agents/manifests/cli/*.yaml` (claude, codex, gemini, opencode, goose, antigravity, a `custom` template) with a strict validator, `compat.yaml` and a `Registry`; the generic ACP client is `internal/agents/acp` (scripted stand-in agent in `acp/fakeacp`); detection, gates and Test Connection are `internal/connections`; the adapter contract suite is `internal/agents/conformance`.
 - **Resolved by running the real CLIs:** `claude -p --output-format stream-json` requires `--verbose` (in the manifest). `codex-acp@2.1.1` runs its own bundled codex (0.159.3), not the installed one. `opencode providers list` printing "0 credentials" does not mean unusable (free models exist), so auth is reported as unknown. `session/new` without credentials fails with "authentication required" (gemini, codex-acp) or "provider not configured" (goose). Live ACP `initialize` of gemini 0.63.0, opencode 1.18.35, goose 1.53.0 and codex-acp 2.1.1 matches the capability matrix (run with `DRYDOCK_ACP_<NAME>` env vars; otherwise skipped with the reason). Real claude 2.1.294 passes conformance and Test Connection T1 to T5 (the real-CLI test asks for T4; the app's Test never does, see section 5).
 - **Added:** compat class `verified_linux` (between `inspected` and `verified_short`) for a real Linux turn that is not a Windows proof.
-- **Not built / unverified:** no real prompt turn for any ACP CLI (no model credentials here), so real tool names, args and whether `inputTokens` includes cached tokens are unknown; Antigravity `Start` and the `custom` declarative dialect are built since decision P115 (below, "As built: Antigravity and custom CLIs") and verified only against stand-ins; the codex headless fallback is declared, not built; everything on Windows (`.cmd` shims, tree kill, the logged-out `claude auth status` exit code); whether the Codex bridge honours `CODEX_PATH`.
+- **Not built / unverified:** no real prompt turn for any ACP CLI (no model credentials here), so real tool names, args and whether `inputTokens` includes cached tokens are unknown; Antigravity `Start` and the `custom` declarative dialect are built since decision P115 (below, "As built: Antigravity and custom CLIs"), their MCP, interrupt and acknowledgement since P117, and verified only against stand-ins; the codex headless fallback is declared, not built; everything on Windows (`.cmd` shims, tree kill, the logged-out `claude auth status` exit code); whether the Codex bridge honours `CODEX_PATH`.
 
 ## 17. Cline (added 2026-10-09, decisions P29)
 
@@ -360,7 +360,8 @@ Both are driven by `internal/agents/headless`; the registry builds them from the
   is done or error, its result; `usage` summed), `result` (`response` as the message, `denied_actions` as permission_denied
   chunks the person sees, `usage` as the turn's totals, a `status` other than success as an error). `AGY_ERROR: {...}` on
   stderr with exit 3 ends the turn with agy's message. An unknown event or step type is an adapter drift warning, once.
-  Interrupt, resume and model choice are not offered (their behaviour in print mode is unknown); the environment keeps the
+  Resume and model choice are not offered (their behaviour in print mode is unknown; interrupt is built since, P117); the
+  environment keeps the
   base allowlist and `AGY_`, `ANTIGRAVITY_`, `GEMINI_`, `GOOGLE_` variables. Still behind its acknowledgement gate
   (`CreateAgent`, Test connection). No MCP (section 10: unproven).
 - **A person's own CLI** (`CustomAdapter`): a manifest in `<app data>/adapters/custom/<id>.yaml`, loaded at start (a file that
@@ -380,13 +381,56 @@ Both are driven by `internal/agents/headless`; the registry builds them from the
   status, `error` for a failing exit (with the result's error or the first line of stderr) or `cancelled` after an
   interrupt, which ends the turn's process; the session stays and takes the next message, and a session id the CLI printed is
   passed to the next turn's `{{session_id}}`. Its capabilities follow from the manifest (tool calls, usage and resume only
-  when the dialect maps them, a model or effort only when the argv has a place for it). No MCP: the manifest cannot declare a
-  mechanism yet.
+  when the dialect maps them, a model or effort only when the argv has a place for it, MCP only with an `mcp` section,
+  decision P117).
 - **Tested** against labelled stand-ins: `fakeagy`, written from agy's documentation (a real process speaking the stream
   described above), and `fakecustom`, the template's CLI in JSON lines and plain text. The conformance suite runs against
   both (it gained `PerTurnProcess`: PID 0 until the first turn, a turn's exit does not end the session); Test connection's T2
   passes for agy after the acknowledgement; the core adds a CLI, gates it, runs a turn through `Runtime.Spawn`, refuses to
   remove it under an agent, removes it and loads the folder at the next start. **Not verified:** a real `agy` (every field
   name, the input line, the `--mode` value set, exit codes), a real custom CLI, a `.cmd` program and a prompt passed as an
-  argument through `cmd.exe` on Windows. **Not built:** MCP for either; asking the acknowledgement again when a custom
-  manifest's file changes on disk.
+  argument through `cmd.exe` on Windows. **Not built:** MCP for Antigravity (next section). MCP for a custom CLI,
+  interrupt for agy and asking the acknowledgement again when a custom manifest's file changes on disk are built since
+  (decision P117, next section).
+
+## As built: MCP, interrupt and acknowledgement (decision P117, 2026-10-29)
+
+- **MCP for a person's own CLI.** A custom manifest may say how its CLI takes an MCP configuration, always the `mcpServers`
+  JSON the other CLIs read (`{"mcpServers": {"drydock": {...}}}`, the run's single gateway entry, the stdio shim):
+  `mcp: {via: arg, format: mcpServers, args: [--mcp-config, "{{mcp_config}}"]}` adds the flags to every turn's argv with
+  the path of the run's config file (`<app data>/runs/<run>/mcp.json`); `mcp: {via: file, format: mcpServers, file:
+  .my-cli/mcp.json}` writes the same file into the session's working folder. `manifests.parseCustomMCP` checks the section
+  strictly: known keys only (`via`, `format`, `args`, `file`), the one format, `{{mcp_config}}` exactly once and no other
+  placeholder, a clean relative `.json` path with `/` separators inside the working folder and outside `.git`. The CLI is
+  then one whose mechanism no real run has proven: the gateway reaches it only after a person allows it on its MCP gateway
+  row (`mcp.try.set`, decision P20), then under the role's row of the tool table with the project's rules and the task's
+  narrowing (P115). A custom CLI without the section is listed with "its manifest has no mcp section" and can never be
+  allowed. The file route (`core.placeCustomMCPFile`) never overwrites a file that is there (the run goes without the
+  gateway and says why), excludes the path in the repository's `info/exclude` before the token is written, refuses a folder
+  on the way that is a link out of the working folder, writes the file for the owner only, and removes it, with the folders
+  it had to make, when the run ends. Tested with the custom stand-in (`fakecustom`), a real process that reads the
+  configuration it was given by either route, starts the shim and lists and calls gateway tools as an MCP client.
+- **MCP for Antigravity: not built.** agy keeps its MCP servers in its own `mcp_config.json` (docs/phase0/agent-clis.md
+  section 8; plugins namespaced `<plugin>_<server>`). Its documented headless mode has no flag, environment variable or
+  per-session file for an MCP configuration, and putting the gateway into the person's own `mcp_config.json` would change
+  every agy they run. Nothing was invented: Antigravity still cannot be given the gateway (`mcp.ErrMCPUnknown`).
+- **Interrupt for Antigravity.** Print mode documents one way to stop a turn: Ctrl+C ends the process with a non-zero code.
+  `agySession.Interrupt` ends agy's process tree through the existing kill path (the Job Object on Windows; only the direct
+  process on the development host), the turn ends with stop reason `cancelled`, and the session stays: Wait answers only
+  when agy exits by itself (a crash, `AGY_ERROR`) or Stop ends it. The next message starts agy again as a new conversation
+  (print mode documents no resume), which a log chunk says. With no turn running it does nothing. `Capabilities().Interrupt`
+  is set by the registry (it is Drydock's own mechanism, so the manifest keeps `interrupt: unknown` as a fact about the CLI).
+  A custom CLI's interrupt ends the turn's process (P115). The conformance suite's interrupt step runs against both stand-ins.
+- **A custom CLI's acknowledgement is bound to its manifest file.** The SHA-256 of the file a person acknowledged is kept
+  beside the acknowledgement (setting `customcli.ack_sha256.<id>`; `connection.custom.list` shows each file's `sha256`). The
+  file is looked at again when the Agents page lists the custom CLIs (`connection.custom.list`) or the Connections
+  (`connection.list`), when one Connection is checked, when a person acknowledges, and when any session of the CLI starts. A
+  file whose bytes changed and that still validates is loaded again (its adapter rebuilt; running sessions keep theirs), and
+  the acknowledgement is taken back, audited and published (`connection.custom_changed`, with both hashes shortened) until a
+  person acknowledges the new file; a file that no longer loads, or is gone, takes it back too and cannot be acknowledged.
+  At start, a file changed while the app was closed and an acknowledgement kept from before the hash was are asked again.
+  The gate is checked at every session start (`Runtime.StartGate`; before, only making an agent or a chat did), so no run
+  starts on a changed file. The Agents page marks the notice `changed` ("Its manifest file changed on disk since you
+  accepted this"). There is no file watcher: the checks run at those moments.
+- **Not verified:** a real custom CLI reading either route, a real agy being interrupted (whether it leaves anything
+  behind), the Job Object tree kill of agy and the working-folder file's ACL on Windows.

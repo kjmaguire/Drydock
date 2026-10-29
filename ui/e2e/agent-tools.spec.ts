@@ -1,7 +1,9 @@
 // Agent tools by role and a person's own CLI (decision P115) against the real core: a cell of the project's table changed on
 // its Integrations page stays changed after a reload and goes back to the default; a rule the core cannot compile is refused
 // with the reason and a sound one is kept; on the Agents page a custom CLI is added from the template (its program is not
-// installed here, so its Connection says so), shown behind its own notice, and removed.
+// installed here, so its Connection says so), shown behind its own notice, asked again when its manifest file changes on disk
+// (decision P117), and removed.
+import { appendFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createProjectWithoutRepo, projectNav, workspaceNav } from './helpers';
 
@@ -54,8 +56,26 @@ test('a custom CLI is added from the template on the Agents page, gated, and rem
   const detail = page.getByTestId('agent-detail');
   await expect(detail).toHaveAttribute('data-adapter', 'e2e-cli');
   await expect(detail.getByTestId('gate')).toBeVisible();
+  await expect(detail.getByTestId('gate')).toHaveAttribute('data-changed', 'false');
+  await detail.getByTestId('gate').getByLabel('I have read this and accept it').check();
+  await detail.getByTestId('gate').getByRole('button', { name: 'Accept' }).click();
+  await expect(detail.getByTestId('gate')).toHaveAttribute('data-acked', 'true');
   await detail.getByTestId('agent-tab-install').click();
   await expect(detail.getByTestId('custom-cli')).toContainText('e2e-cli.yaml');
+  // the manifest file changes on disk (decision P117): reloaded, the page asks for the notice again and says why
+  const file = (await detail.getByTestId('custom-cli').locator('code').textContent())!.trim();
+  appendFileSync(file, '\n# changed by hand\n');
+  await page.reload();
+  const again = page.getByTestId('agent-detail');
+  await expect(again).toHaveAttribute('data-adapter', 'e2e-cli');
+  await expect(again.getByTestId('gate')).toHaveAttribute('data-acked', 'false');
+  await expect(again.getByTestId('gate')).toHaveAttribute('data-changed', 'true');
+  await expect(again.getByTestId('gate-changed')).toContainText('manifest file changed on disk');
+  await again.getByTestId('gate').getByLabel('I have read this and accept it').check();
+  await again.getByTestId('gate').getByRole('button', { name: 'Accept' }).click();
+  await expect(again.getByTestId('gate')).toHaveAttribute('data-acked', 'true');
+  await expect(again.getByTestId('gate-changed')).toHaveCount(0);
+  await detail.getByTestId('agent-tab-install').click();
   await detail.getByTestId('custom-cli-remove').click();
   await detail.getByTestId('custom-cli-remove-confirm').click();
   await expect(row).toHaveCount(0);
