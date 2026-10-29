@@ -1,4 +1,5 @@
-// Telemetry settings (decision D12): off by default, local only, with a preview of exactly what an export would contain.
+// Telemetry settings (decision D12): off by default, kept on this computer, with a preview of exactly what an export would contain,
+// and sending to a collector over OTLP only when a person turns it on (decision P113, telemetry-otlp.tsx).
 
 import { css, on, type Handle } from 'remix/component';
 import { Activity, Eye, FileDown } from 'lucide';
@@ -10,6 +11,7 @@ import { Badge, faint, kv, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Done, Group, panel, Row } from './settings-kit.tsx';
+import { OtlpExport } from './telemetry-otlp.tsx';
 
 const actionsRow = css({ display: 'flex', gap: t.s2, flexWrap: 'wrap' });
 const previewCss = css({
@@ -53,7 +55,7 @@ export function TelemetryPanel(handle: Handle) {
         icon={Activity}
         label="Telemetry"
         testId="telemetry"
-        description="Local usage counts only: no prompts, code or secrets, and nothing is sent anywhere. Off unless you turn it on."
+        description="Usage counts only: no prompts, code or secrets. Kept on this computer, and sent to a collector only if you set one up. Off unless you turn it on."
       >
         <ErrorNote error={q.error ?? act.error} what="Telemetry" />
         {!st && q.loading ? <Loading /> : null}
@@ -99,6 +101,7 @@ export function TelemetryPanel(handle: Handle) {
             </div>
           </div>
         ) : null}
+        {st?.otlp ? <OtlpExport status={st.otlp} telemetryOn={st.enabled} onChanged={(next) => q.set(next)} /> : null}
         {exported ? (
           <Done testId="telemetry-exported">
             <span>

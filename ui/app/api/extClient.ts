@@ -89,6 +89,8 @@ import type {
   StartTemplateResult,
   TelemetryDocument,
   TelemetryExport,
+  TelemetryOtlpChange,
+  TelemetryOtlpTest,
   TelemetryStatus,
   TickResult,
   ProposedTask,
@@ -141,6 +143,10 @@ export interface ExtClient {
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
   telemetryPreview(limit?: number): Promise<TelemetryDocument>;
   telemetryExport(): Promise<TelemetryExport>;
+  /** Where telemetry is sent over OTLP (decision P113); a person's change only. Header values go to the credential store. */
+  telemetryOtlpSet(change: TelemetryOtlpChange): Promise<TelemetryStatus>;
+  /** Sends one test span now to the configured endpoint (kept in the local sink like everything sent). */
+  telemetryOtlpTest(): Promise<TelemetryOtlpTest>;
   // expert packs
   packList(): Promise<Pack[]>;
   packGet(id: string): Promise<Pack>;
@@ -345,6 +351,8 @@ export function createExtClient(t: Transport): ExtClient {
       return { ...d, spans: arr(d.spans), metrics: arr(d.metrics), allowlist: arr(d.allowlist) };
     },
     telemetryExport: () => call('telemetry.export'),
+    telemetryOtlpSet: (change) => call('telemetry.otlp.set', change),
+    telemetryOtlpTest: () => call('telemetry.otlp.test'),
 
     packList: async () => arr(await call<Pack[] | null>('pack.list')),
     packGet: (id) => call('pack.get', { id }),

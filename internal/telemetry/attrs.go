@@ -34,6 +34,11 @@ const (
 	AttrCacheWrite = "drydock.usage.cache_write_tokens"
 	AttrCheckKind  = "drydock.check.kind"
 	AttrCheckPass  = "drydock.check.passed"
+	// The LLM Wrapper's calls (decision P113): whether the response cache answered, whether a router-approved alternative did.
+	AttrLLMCacheHit = "drydock.llm.cache_hit"
+	AttrLLMFallback = "drydock.llm.fallback"
+	// AttrErrorType is OpenTelemetry's error.type: a closed class (llm.ErrorType), never an error's text.
+	AttrErrorType = "error.type"
 
 	AttrGenAIOperation     = "gen_ai.operation.name"
 	AttrGenAIProvider      = "gen_ai.provider.name"
@@ -50,6 +55,7 @@ const (
 	MetricCostUSD    = "drydock.cost"              // counter, unit USD; only emitted when a cost is known
 	MetricNodeTime   = "drydock.node.duration"     // histogram, unit ms
 	MetricDropped    = "drydock.telemetry.dropped_attributes"
+	MetricLLMTime    = "drydock.llm.duration" // histogram, unit ms: one LLM Wrapper call, retries and waits included
 )
 
 type valueKind int
@@ -68,6 +74,7 @@ var allowed = map[string]valueKind{
 	AttrCostUSD: kindFloat, AttrCostSource: kindIdent, AttrCacheRead: kindInt, AttrCacheWrite: kindInt, AttrCheckKind: kindIdent, AttrCheckPass: kindBool,
 	AttrGenAIOperation: kindIdent, AttrGenAIProvider: kindIdent, AttrGenAIRequestModel: kindIdent, AttrGenAIResponseModel: kindIdent,
 	AttrGenAITokenType: kindIdent, AttrGenAIInputTokens: kindInt, AttrGenAIOutputTokens: kindInt,
+	AttrLLMCacheHit: kindBool, AttrLLMFallback: kindBool, AttrErrorType: kindIdent,
 }
 
 // Allowlist returns the attribute keys that may be stored, sorted (shown by the preview so the human sees the whole
