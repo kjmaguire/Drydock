@@ -1,22 +1,39 @@
 // A run, explained (docs/ui.md S14 and S16): the workflow graph with its checkpoint timeline and a side panel for the
 // selected node, then every turn with what it was given (context manifest and exact prompt), what it cost, which model
-// and why, plus the checkpoints, MCP calls and events. Read-only.
+// and why, plus the checkpoints, MCP calls and events. Its actions (P123): Resume a run that stopped, Time travel from a
+// checkpoint of the timeline and Replay an ended run, each after a confirmation that says what runs again; and a
+// subworkflow node opens into its own nodes in the graph.
 
-import { css, ref, type Handle } from 'remix/component';
-import { ArrowLeft, Workflow } from 'lucide';
-import type { RunExplanation } from '../../api/runClient.ts';
+import { css, navigate, on, ref, type Handle } from 'remix/component';
+import { ArrowLeft, Play, Repeat, Workflow } from 'lucide';
+import type { CheckpointView, RunExplanation } from '../../api/runClient.ts';
 import { formatCost, formatDateTime, formatTime, statusLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
-import { query, services, watch } from '../../state/services.tsx';
-import { buttonStyle } from '../../ui/button.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
+import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
+import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t } from '../../ui/tokens.ts';
 import { NodePanel, NoNodeSelected } from './node-panel.tsx';
-import { currentNode, PENDING, runCost, runTone, statesAsOf } from './run-model.ts';
+import {
+  currentNode,
+  expandSubworkflows,
+  leaseWords,
+  originLine,
+  PENDING,
+  rerunPlan,
+  runCost,
+  runTone,
+  statesAsOf,
+  subExecutions,
+  type Cluster,
+  type RerunKind,
+} from './run-model.ts';
 import { Checkpoints, Events, McpCalls } from './run-tables.tsx';
 import { Turns } from './turns.tsx';
 import { WorkflowGraph } from './workflow-graph.tsx';
@@ -48,11 +65,30 @@ const runsCss = css({
 });
 
 const subCss = css({ display: 'inline-flex', alignItems: 'center', gap: t.s2, '& code': { fontSize: t.textSm } });
+const actionsCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: `${t.s2} ${t.s3}`,
+  margin: '0',
+  fontSize: t.textSm,
+  '& p': { margin: '0', color: t.textMuted, flexBasis: '100%' },
+});
+const planCss = css({ display: 'grid', gap: t.s2, margin: '0', paddingLeft: t.s5, fontSize: t.textMd, lineHeight: '1.5' });
 const tabsWrap = css({ display: 'grid', gap: t.s3, minWidth: '0', scrollMarginTop: t.s4 });
 const panelCss = css({ paddingTop: t.s3 });
 
-export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
+/** The expanded view of a run: its graph with the open subworkflows' own nodes, and their executions beside the run's. */
+interface View {
+  x: RunExplanation;
+  key: string;
+  xv: RunExplanation;
+  clusters: Cluster[];
+}
+
+export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
+  const act = action(handle);
   watch(handle, s.project);
   const task = query(handle, {
     load: () => s.client.taskGet(handle.props.taskId),
@@ -73,6 +109,50 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
   let openTurn: string | undefined;
   let tabsEl: HTMLElement | undefined;
   let benchEl: HTMLElement | undefined;
+  /** The subworkflow nodes whose own nodes the graph shows. */
+  const open = new Set<string>();
+  let view: View | undefined;
+  /** The action waiting for its confirmation. */
+  let asking: { kind: RerunKind; cp?: CheckpointView } | undefined;
+
+  const viewOf = (x: RunExplanation): View => {
+    const key = [...open].sort().join('|');
+    if (view?.x !== x || view.key !== key) {
+      const ex = x.graph && open.size ? expandSubworkflows(x.graph, open) : undefined;
+      view = { x, key, xv: ex ? { ...x, graph: ex.graph, executions: [...x.executions, ...subExecutions(x, open)] } : x, clusters: ex?.clusters ?? [] };
+    }
+    return view;
+  };
+  const toggleSub = (id: string) => {
+    if (open.has(id)) {
+      for (const o of [...open]) if (o === id || o.startsWith(`${id}/`)) open.delete(o);
+    } else open.add(id);
+    update();
+  };
+  const ask = (kind: RerunKind, cp?: CheckpointView) => {
+    act.clear();
+    asking = { kind, cp };
+    update();
+  };
+  const go = (href: string) => {
+    if (handle.props.onNavigate) handle.props.onNavigate(href);
+    else void navigate(href);
+  };
+  const confirm = async (x: RunExplanation) => {
+    const r = x.run;
+    const a = asking;
+    if (!r || !a) return;
+    const { taskId } = handle.props;
+    const res = await act.run('rerun', () =>
+      a.kind === 'resume' ? s.client.runResume(taskId, r.id) : a.kind === 'timeTravel' ? s.client.runTimeTravel(taskId, r.id, a.cp!.id) : s.client.runReplay(taskId, r.id, a.cp?.id),
+    );
+    if (!res) return;
+    asking = undefined;
+    asOf = undefined;
+    update();
+    if (res.runId && res.runId !== r.id) go(routes.run.href({ id: taskId, runId: res.runId }));
+    else void q.reload();
+  };
 
   const update = () => void handle.update();
   const showTab = (name: Tab, scrollTo?: string) => {
@@ -92,10 +172,17 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
     const agents = s.project.agentList;
     const r = x?.run;
     const cp = x?.checkpoints.find((c) => c.id === asOf);
-    const states = x ? statesAsOf(x, cp) : new Map();
-    const at = x?.graph ? currentNode(x.graph, states) : undefined;
+    const v = x ? viewOf(x) : undefined;
+    const xv = v?.xv;
+    const states = xv ? statesAsOf(xv, cp) : new Map();
+    const at = xv?.graph ? currentNode(xv.graph, states) : undefined;
     const want = selected === null ? undefined : (selected ?? at);
-    const sel = want && x?.graph?.nodes.some((n) => n.id === want) ? want : undefined;
+    const sel = want && xv?.graph?.nodes.some((n) => n.id === want) ? want : undefined;
+    const acts = x?.actions;
+    const whys = acts ? [...new Set([!acts.resume ? acts.resumeWhy : '', !acts.replay ? acts.replayWhy : '', !acts.timeTravel ? acts.timeTravelWhy : ''].filter(Boolean))] : [];
+    const plan = x && asking ? rerunPlan(x, asking.kind, asking.cp) : undefined;
+    const origin = x ? originLine(x) : undefined;
+    const lease = x ? leaseWords(x) : undefined;
 
     return (
       <Page
@@ -152,6 +239,20 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                 <dt>Started</dt>
                 <dd title={formatDateTime(r.created)}>{formatTime(r.created)}</dd>
               </div>
+              {origin && x.origin ? (
+                <div data-testid="run-origin">
+                  <dt>Started from</dt>
+                  <dd>
+                    <a href={routes.run.href({ id: taskId, runId: x.origin.run })}>{origin}</a>
+                  </dd>
+                </div>
+              ) : null}
+              {lease ? (
+                <div data-testid="run-lease">
+                  <dt>Driven by</dt>
+                  <dd>{lease}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Cost of its turns</dt>
                 <dd>{formatCost(runCost(x))}</dd>
@@ -178,9 +279,25 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
               </p>
             ) : null}
 
+            {acts ? (
+              <div mix={actionsCss} role="group" aria-label="Run actions" data-testid="run-actions">
+                <Button size="sm" variant="secondary" icon={Play} disabled={!acts.resume} title={acts.resume ? 'Go on from the latest checkpoint' : acts.resumeWhy} mix={[on('click', () => ask('resume'))]}>
+                  Resume
+                </Button>
+                <Button size="sm" variant="secondary" icon={Repeat} disabled={!acts.replay} title={acts.replay ? 'Run this run again from its start' : acts.replayWhy} mix={[on('click', () => ask('replay'))]}>
+                  Replay from the start
+                </Button>
+                {acts.timeTravel && x.graph ? <span mix={muted}>To time travel, choose a checkpoint under the graph.</span> : null}
+                {whys.length ? <p data-testid="run-actions-why">{whys.join(' ')}</p> : null}
+              </div>
+            ) : null}
+
             <div mix={[ref((n) => (benchEl = n as HTMLElement))]} style={{ minWidth: '0', scrollMarginTop: '16px' }}>
               <WorkflowGraph
-                x={x}
+                x={xv!}
+                graph={xv!.graph}
+                clusters={v!.clusters}
+                onRerun={acts ? (kind, c) => ask(kind, c) : undefined}
                 agents={agents}
                 states={states}
                 asOf={cp?.id}
@@ -199,7 +316,10 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                 {sel ? (
                   <NodePanel
                     key={sel}
-                    x={x}
+                    x={xv!}
+                    source={x}
+                    expanded={open.has(sel)}
+                    onToggleSub={toggleSub}
                     nodeId={sel}
                     state={states.get(sel) ?? PENDING}
                     agents={agents}
@@ -267,6 +387,41 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string }>) {
                 }
               </Tabs>
             </div>
+
+            <Dialog
+              open={!!plan}
+              title={plan?.title ?? ''}
+              onClose={() => {
+                asking = undefined;
+                update();
+              }}
+            >
+              {plan ? (
+                <div style={{ display: 'grid', gap: t.s4 }} data-testid="rerun-confirm" data-kind={plan.kind}>
+                  <ul mix={planCss} data-testid="rerun-plan">
+                    {plan.lines.map((l) => (
+                      <li key={l}>{l}</li>
+                    ))}
+                  </ul>
+                  <ErrorNote error={act.error} what="It did not start" />
+                  <div mix={formActions}>
+                    <Button variant="primary" disabled={!!act.busy} mix={[on('click', () => void confirm(x))]}>
+                      {act.busy ? 'Starting...' : plan.confirm}
+                    </Button>
+                    <Button
+                      mix={[
+                        on('click', () => {
+                          asking = undefined;
+                          update();
+                        }),
+                      ]}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </Dialog>
           </>
         )}
       </Page>
