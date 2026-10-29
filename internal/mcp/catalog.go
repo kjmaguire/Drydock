@@ -175,6 +175,16 @@ type AuthSpec struct {
 	Keyring string `yaml:"keyring,omitempty"`
 	// Optional (extension): the server works without a credential (Context7 with rate limits).
 	Optional bool `yaml:"optional,omitempty"`
+	// OAuthApp (extension, decision P122): the server also signs in with OAuth, but only with a client the person registers with
+	// the provider (no dynamic client registration). RegisterURL is where that app is registered.
+	OAuthApp *OAuthAppSpec `yaml:"oauth_app,omitempty"`
+}
+
+// OAuthAppSpec says where a person registers the OAuth app a catalog server's sign-in needs.
+type OAuthAppSpec struct {
+	RegisterURL string `yaml:"register_url"`
+	// Help says what to enter when registering (the redirect address, the scopes), in plain words.
+	Help string `yaml:"help,omitempty"`
 }
 
 // ToolDecl declares one tool for lazy listing.
@@ -413,6 +423,9 @@ func (s *ServerSpec) Validate(shipped bool) error {
 		}
 		if s.Auth.Keyring == "" && !s.Auth.Optional && s.Auth.Kind == AuthBearer {
 			add("auth bearer needs a keyring reference (or optional: true)")
+		}
+		if a := s.Auth.OAuthApp; a != nil && !strings.HasPrefix(a.RegisterURL, "https://") {
+			add("auth.oauth_app.register_url must be an https address")
 		}
 	default:
 		add("auth.kind must be none, bearer, oauth2_pkce or oauth_dcr (got %q)", s.Auth.Kind)
