@@ -270,10 +270,12 @@ func TestGateBlocksStartUntilAcknowledged(t *testing.T) {
 		t.Fatalf("%+v", rep.Steps)
 	}
 	svc.Acknowledge("antigravity-third-party-v1")
+	// from here the agy on PATH is the stand-in written from agy's documentation (headless/fakeagy), not the probe stub
+	t.Setenv("DRYDOCK_FAKE_AGY", "1")
 	rep, _ = svc.TestConnection(context.Background(), "antigravity", connections.TestOptions{})
 	s = stepMap(rep)
-	if s["T2"].Status != connections.StepFail || !strings.Contains(s["T2"].Reason, "not implemented: no captured protocol fixtures") {
-		t.Fatalf("after acknowledging, start must fail with the not-implemented error: %+v", s["T2"])
+	if s["T2"].Status != connections.StepPass || s["T5"].Status != connections.StepPass {
+		t.Fatalf("after acknowledging, the documented headless mode starts and stops: %+v", rep.Steps)
 	}
 	if !strings.Contains(strings.Join(rep.Degraded, "\n"), "marked unverified") {
 		t.Fatalf("degraded %v", rep.Degraded)

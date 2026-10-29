@@ -13,6 +13,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/acp"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
+	"github.com/kjmaguire/drydock/internal/agents/headless"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/wsl"
 )
@@ -47,6 +48,8 @@ type Options struct {
 	ClaudeExe string
 	// WSL reaches the WSL distros for adapters with the wsl run mode (Claude Code, decision P41). Nil: native only.
 	WSL *wsl.Host
+	// Exe overrides the executable of a headless adapter by id (Antigravity, a custom CLI): tests point them at a stand-in.
+	Exe map[string]string
 }
 
 // Registry builds agents.Adapter instances from manifests.
@@ -219,13 +222,45 @@ func (r *Registry) buildHeadless(m *Manifest, detect func(context.Context) (agen
 		}
 		return &detectOverride{Adapter: ad, detect: detect}, nil
 	case h.Parser == ParserAntigravity:
+		// the documented headless mode (decisions D2, D11), unverified against a real agy; the acknowledgement gate is enforced
+		// where agents are created (core.CreateAgent)
+		return headless.NewAntigravity(headless.AntigravityConfig{
+			ID: m.Meta.ID, Binaries: m.Binaries.Native, Exe: r.opts.Exe[m.Meta.ID], Args: m.HeadlessArgs,
+			Caps: nativeOnly(DeclaredCapabilities(m)), InstallHint: m.InstallHint(), Detect: detect, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
+		}), nil
+	case h.Parser == "" && h.Dialect != nil && m.Meta.ID == TemplateID:
 		return &unimplemented{id: m.Meta.ID, caps: nativeOnly(DeclaredCapabilities(m)), hint: m.InstallHint(), detect: detect, m: m,
-			why: "no captured protocol fixtures for `agy` stream-json (no agy binary was available to verify against); detection and the acknowledgement gate work"}, nil
+			why: "this is the template for your own CLI: add a copy with its own id and program on the Agents page (it is kept in <app data>/adapters/custom/<id>.yaml)"}, nil
 	case h.Parser == "" && h.Dialect != nil:
-		return &unimplemented{id: m.Meta.ID, caps: nativeOnly(DeclaredCapabilities(m)), hint: m.InstallHint(), detect: detect, m: m,
-			why: "the declarative headless dialect adapter for custom CLIs is not built yet"}, nil
+		return r.buildCustom(m, detect)
 	}
 	return nil, fmt.Errorf("adapter %q: no Go parser is registered for %q", m.Meta.ID, h.Parser)
+}
+
+// buildCustom drives a person's own CLI with the generic runner (decision P115). What the runner can do follows from the
+// manifest: the runner ends a turn's process to interrupt it, reads tool calls, usage and a session id only when the dialect
+// maps them, and passes a model, an effort or a session id only when the argv has a place for it.
+func (r *Registry) buildCustom(m *Manifest, detect func(context.Context) (agents.Detection, error)) (agents.Adapter, error) {
+	h := m.Transports.Headless
+	via, _ := promptVia(h.Prompt)
+	vars := map[string]bool{}
+	for _, v := range collectVars(h.Argv, h.Optional) {
+		vars[v] = true
+	}
+	d := headless.Dialect{Format: h.Dialect.Format, TypeField: h.Dialect.TypeField, Map: h.Dialect.Map}
+	caps := agents.Capabilities{
+		Streaming: true, Headless: true, Interrupt: true, RunModes: []string{agents.RunModeNative},
+		ToolCallVisibility: d.Map["tool_call"] != nil, TokenUsage: d.Map["usage"] != nil,
+		SessionResume: vars["session_id"] && d.Map["session"] != nil, ModelSelection: vars["model"], EffortControl: vars["effort"],
+	}
+	codes := map[int]string{}
+	for k, v := range h.ExitCodes {
+		codes[k] = v
+	}
+	return headless.NewCustom(headless.CustomConfig{
+		ID: m.Meta.ID, Binaries: m.Binaries.Native, Exe: r.opts.Exe[m.Meta.ID], Args: m.HeadlessArgs, Prompt: via, Dialect: d,
+		ExitCodes: codes, Caps: caps, InstallHint: m.InstallHint(), Detect: detect, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
+	})
 }
 
 // detectOverride routes Detect through the registry's manifest-driven detector and leaves everything else to the wrapped adapter.

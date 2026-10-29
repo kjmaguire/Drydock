@@ -55,6 +55,13 @@ type Options struct {
 	HandshakeOnly bool
 	SkipReason    string
 
+	// PerTurnProcess is for an adapter that starts one process per turn (a prompt-and-exit CLI driven by the custom dialect):
+	// Start runs nothing, so PID is 0 until the first turn, a turn's process ending does not end the session (only Stop does),
+	// and Interrupt ends the turn's process. Every other step is the same.
+	PerTurnProcess bool
+	// NoSessionID is for a CLI that prints no session id (a plain-text custom CLI): Session.ID may stay empty.
+	NoSessionID bool
+
 	// StepTimeout bounds each wait; default 90s.
 	StepTimeout time.Duration
 }
@@ -228,12 +235,12 @@ func (s *suite) startSession(t *testing.T, spec agents.RunSpec) agents.Session {
 func (s *suite) start() {
 	s.t.Run("start", func(t *testing.T) {
 		sess := s.startSession(t, s.o.Spec)
-		if sess.PID() <= 0 {
+		if sess.PID() <= 0 && !s.o.PerTurnProcess {
 			t.Fatalf("PID %d", sess.PID())
 		}
 		select {
 		case ei := <-sess.Wait():
-			t.Fatalf("the process exited right after Start: %+v stderr=%q", ei, sess.Stderr())
+			t.Fatalf("the session ended right after Start: %+v stderr=%q", ei, sess.Stderr())
 		case <-time.After(300 * time.Millisecond):
 		}
 		// an interrupt with nothing running must not end the session
@@ -319,7 +326,7 @@ func (s *suite) sendStream() {
 		if s.o.ExpectText != "" && !strings.Contains(strings.ToLower(final), strings.ToLower(s.o.ExpectText)) {
 			t.Errorf("final message %q does not contain %q", final, s.o.ExpectText)
 		}
-		if sess.ID() == "" {
+		if sess.ID() == "" && !s.o.NoSessionID {
 			t.Errorf("Session.ID() is empty after a turn")
 		}
 		// nothing meaningful may trail the done chunk
@@ -618,7 +625,9 @@ func (s *suite) stop() {
 				t.Fatal("Output was not closed after Stop")
 			}
 		}
-		if gone, known := processGone(pid); known && !gone {
+		if pid <= 0 && s.o.PerTurnProcess {
+			// nothing was started: a per-turn session runs its first process with its first message
+		} else if gone, known := processGone(pid); known && !gone {
 			t.Errorf("pid %d still exists after Stop", pid)
 		}
 		if err := sess.Stop(sctx); err != nil {

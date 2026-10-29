@@ -64,7 +64,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 	for _, name := range []string{"budget.list", "budget.set", "budget.delete", "budget.status", "budget.resume", "evals.report", "evals.export", "route.explain", "route.decisions",
 		"route.rules.list", "route.rules.set", "route.rules.delete", "route.preview", "route.previews", "route.cheap.select", "route.cheap.get", "route.settings.get", "route.settings.set", "route.retention.list", "route.retention.clear", "checks.settings.get", "checks.settings.set",
 		"telemetry.status", "telemetry.enable", "telemetry.preview", "telemetry.export", "chat.importList", "chat.import",
-		"local.model.set", "local.embeddings.start", "local.embeddings.stop", "local.hfToken.set", "local.hfToken.remove"} {
+		"local.model.set", "local.embeddings.start", "local.embeddings.stop", "local.hfToken.set", "local.hfToken.remove",
+		"mcp.rolePolicy.get", "mcp.rolePolicy.set", "mcp.policyRule.add", "mcp.policyRule.remove", "task.mcpTools.get", "task.mcpTools.set",
+		"connection.custom.list", "connection.custom.template", "connection.custom.add", "connection.custom.remove"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}
