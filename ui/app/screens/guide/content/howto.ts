@@ -124,7 +124,7 @@ export const HOWTO: readonly Topic[] = [
     section: 'howto',
     title: 'Run a local model',
     summary: 'Drydock comes with its own model engine, with Google’s TurboQuant; models come from the Hugging Face Hub.',
-    keywords: ['local model', 'hugging face', 'gguf', 'kv cache', 'turboquant', 'cuda', 'vulkan', 'llama.cpp'],
+    keywords: ['local model', 'hugging face', 'gguf', 'kv cache', 'turboquant', 'cuda', 'vulkan', 'llama.cpp', 'gated', 'embeddings', 'vision', 'draft'],
     body: [
       { p: '[Models on this PC](/models/this-pc), on the Models page, shows the model served, the memory it takes and the models you can download from Hugging Face.' },
       { p: 'Drydock comes with its own model engine, built with Google’s TurboQuant. It is put in place at the first start (from the download, or fetched from GitHub and checked against the digest GitHub recorded), in Drydock’s own folder: nothing has to be installed by hand, and nothing is added to the PC’s `PATH`. Models come from the Hugging Face Hub, checked the same way.' },
@@ -132,6 +132,10 @@ export const HOWTO: readonly Topic[] = [
         ul: [
           '**Updates:** Drydock looks for a newer build twice a day, and **Check for updates** installs it.',
           '**KV cache type:** `turbo4` (the default) and `turbo3` are TurboQuant’s, and keep the most context in the least memory. `q8_0` is near-lossless with half the KV memory of `f16`; `q4_0` uses a quarter.',
+          '**Several models:** while a model is served, **Load too** keeps another loaded beside it (up to four, as long as they fit the memory together); each is a model of the provider, and **Unload** takes one off. A change starts the server again.',
+          '**Vision and drafts:** a model whose repository has a projector (`mmproj`) is downloaded with it and reads images. A smaller model of the same family can be its **draft**, which makes answers faster (speculative decoding).',
+          '**Embeddings:** an embedding model is served on its own, under **Embeddings**, never for chat.',
+          '**Gated models:** some repositories share their files only with a Hugging Face account that accepted their licence. Accept it on Hugging Face, then add your Hugging Face token in the server settings: it is kept in the Windows Credential Manager and sent only with downloads from huggingface.co.',
         ],
       },
     ],

@@ -1374,3 +1374,28 @@ Open, owner action:
   single-instance check, which would otherwise hand the launch back to the closing app. Running agents stop as on any quit. A
   browser build says to quit and reopen. (2) The support bundle's `os.webview2` is the version the window reports
   (`core.Config.WebView2Version`, from Wails' environment info). Neither has been run by hand on Windows.
+- **P111. Local models: several loaded at once, vision, drafts, embeddings and gated models (2026-10-29).** On the owner's
+  words, answering the list of what is not built: "Proceed with those items" (the items of docs/local-models.md section 10 but
+  Linux and macOS, which a Windows-only app does not need). (1) **Several models at once**: the person keeps up to four
+  downloaded models loaded (llama.cpp's `--models-max` default), Load too and Unload on the model rows, within the memory the
+  page already estimates (each model's files, KV cache and draft against the fit rule's room); what does not fit beside the
+  loaded ones is refused on the page and by the core (`local.server.start {modelIds}`). Two or more run llama-server's router
+  mode with a preset file Drydock writes (a section per model id: `model`, `mmproj`, `model-draft`, `spec-type`,
+  `load-on-startup`), `--models-max`, its own empty `LLAMA_CACHE`, and the shared options on its command line, as llama.cpp's
+  `tools/server/README.md` at build b11936 (and the TurboQuant fork's at b10298-2.0.0) describes them; a change to the set starts
+  the server again. The provider stays one row: the probe offers each model the router lists as loaded, with the context its
+  instance runs with (`/props?model=`). (2) **Vision**: a repository's projector goes with each variant, is checked and kept with
+  it, and is passed with `--mmproj`. (3) **Drafts**: a model can be drafted for by a downloaded model of the same family and
+  tokenizer at most half its size (read from both GGUF headers), chosen on its row and run with `--model-draft` and
+  `--spec-type draft-simple`. (4) **Embeddings**: a model whose header names a pooling type or an encoder architecture, or that
+  the person marks so, is served only by a second llama-server of its own (`--embeddings`, port 9934, its own key) and is not a
+  provider (the router would offer it for chat). (5) **A Hugging Face token** for gated models: kept in the credential store
+  like a provider's key, taught to the redaction scanner, shown as `hf_…1234`, removable; sent as the Authorization header of a
+  file download from the Hub's own address only (dropped on the redirect to its CDN, never with a listing). A gated repository
+  is listed and marked; without a token its download is refused at once with the page to accept the licence on, and a download
+  the Hub refuses says why with that page. The stand-in llama-server runs both of its modes and refuses a projector or draft
+  that is missing and a draft without its spec type; the Hub fixture gates files by token and redirects downloads to a CDN.
+  No migration: the choices are in the `local:settings` JSON and each model's `model.json`. docs/local-models.md section 11.
+  **Not built:** loading or unloading one model while the others run (the router's load and unload calls), anything in Drydock
+  that reads embeddings, a projector's memory beyond its file, draft heads that are not models (MTP, EAGLE-3). **Not verified:**
+  any of it against a real llama.cpp build, the real Hub or a real token, or on Windows.
