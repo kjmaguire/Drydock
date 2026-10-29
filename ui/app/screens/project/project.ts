@@ -1,6 +1,6 @@
 // Pure helpers for the project screens (no DOM, no services).
 
-import type { DevSettings } from '../../api/extTypes.ts';
+import { CONTEXT_CEILING, type DevSettings } from '../../api/extTypes.ts';
 
 /** One argument per line; blank lines and surrounding spaces are dropped. */
 export const argv = (s: string): string[] =>
@@ -39,3 +39,6 @@ export const STRATEGIES: [string, string][] = [
 
 /** Anthropic suggests 3 to 5 agents at once; above five the page says why more rarely pays off. */
 export const parallelWarn = (n: number): boolean => n > 5;
+
+/** A context ceiling the core refuses: set, and outside CONTEXT_CEILING's bounds (0 or empty means the default). */
+export const ceilingOff = (n: number | undefined): boolean => !!n && (n < CONTEXT_CEILING.min || n > CONTEXT_CEILING.max);

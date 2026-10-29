@@ -293,6 +293,8 @@ export interface CheckSettings {
 }
 /** The skill delivery a project has when it never chose one (the core's skills.DefaultDelivery). */
 export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';
+/** The context package ceiling's default and bounds in tokens (the core's ctxeng.DefaultCeiling, MinCeiling, MaxCeiling). */
+export const CONTEXT_CEILING = { default: 20000, min: 4000, max: 200000 } as const;
 
 export interface DevSettings {
   maxParallel: number;
@@ -319,6 +321,12 @@ export interface DevSettings {
    * Absent means DEFAULT_SKILL_DELIVERY.
    */
   skillDelivery?: 'all' | 'relevant';
+  /**
+   * The ceiling, in estimated tokens, on what each agent turn starts with (instruction files plus the turn's prompt). Over it,
+   * file excerpts, the repository map, memory, design notes, the spec, the handoff and check output are cut in that order; the
+   * task and the instructions never are. 0 or absent: CONTEXT_CEILING.default; otherwise CONTEXT_CEILING.min to max.
+   */
+  contextCeiling?: number;
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }
