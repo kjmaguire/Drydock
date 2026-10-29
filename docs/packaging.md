@@ -206,6 +206,8 @@ the updater, Credential Manager under a locked store, OneDrive paths, Windows 10
   runner and makes a **draft** GitHub release with `drydock-<version>-windows-x64.exe` (the installer), `drydock-<version>-windows-x64-update.zip`
   (the updater's payload) and `SHA256SUMS.txt`; its notes are the version's section of `CHANGELOG.md` (a tag without one is
   refused). A person reads the draft and publishes it. Signing runs when the Azure Artifact Signing secrets and variables are set.
+  Where a tag cannot be pushed, a manual run of the workflow on `main` with the `tag` input does the same; the tag does not
+  exist until the draft is published, when GitHub makes it on that run's commit (a tag that already exists is refused).
 - **Installer:** `packaging/windows/drydock.nsi`, hand-written NSIS (not `wails3 package`): user scope, `%LOCALAPPDATA%\Programs\Drydock`,
   the tools folder replaced whole, a Start menu shortcut, the Apps & features entry under HKCU, a WebView2 check that refuses
   instead of installing something that cannot open, and exit 4 when Drydock is running (silent installs never half-install).
