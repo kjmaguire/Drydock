@@ -318,6 +318,26 @@ describe('Agents page', () => {
     expect(r.$('[data-testid="gate"]')!.textContent).toContain('accepted');
   });
 
+  it('says a notice is owed again because the manifest file changed on disk, until it is accepted again (P117)', async () => {
+    let acked = false;
+    const gateOf = () => ({ id: 'custom-mine', text: 'Runs a program you chose.', acked, changed: !acked });
+    const r = show({
+      connectionList: async () => [conn({ gates: [gateOf()] })],
+      connectionAcknowledge: async () => {
+        acked = true;
+      },
+    });
+    const c = await detail(r);
+    const gate = c.querySelector('[data-testid="gate"]')!;
+    expect(gate.getAttribute('data-changed')).toBe('true');
+    expect(gate.querySelector('[data-testid="gate-changed"]')!.textContent).toContain('manifest file changed on disk since you accepted this');
+    await r.act(() => byLabel(gate, 'I have read this and accept it').click());
+    await r.act(() => byText(gate, 'button', 'Accept').click());
+    await waitFor(() => expect(r.$('[data-testid="gate"]')!.getAttribute('data-acked')).toBe('true'), r);
+    expect(r.$('[data-testid="gate"]')!.getAttribute('data-changed')).toBe('false');
+    expect(r.$('[data-testid="gate-changed"]')).toBeNull();
+  });
+
   it('shows the core refusal when accepting fails', async () => {
     const r = show({
       connectionList: async () => [conn()],

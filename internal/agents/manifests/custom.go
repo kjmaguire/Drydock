@@ -1,6 +1,8 @@
 package manifests
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -59,6 +61,14 @@ type CustomFile struct {
 	ID    string `json:"id"`
 	Path  string `json:"path"`
 	Error string `json:"error,omitempty"` // why it was not loaded
+	// SHA256 is the hash of the bytes read, when they loaded: what an acknowledgement of this CLI is bound to (decision P117).
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+// CustomSum is the SHA-256 (hex) of a custom manifest file's bytes.
+func CustomSum(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
 }
 
 // LoadUserCustom reads every *.yaml directly in dir (missing dir: none). A file that does not validate, or whose name is not
@@ -93,6 +103,7 @@ func LoadUserCustom(dir string) ([]*Manifest, []CustomFile) {
 			} else if m.Meta.ID != f.ID {
 				f.Error = fmt.Sprintf("meta.id %q must match the file name", m.Meta.ID)
 			} else {
+				f.SHA256 = CustomSum(b)
 				ms = append(ms, m)
 			}
 		}

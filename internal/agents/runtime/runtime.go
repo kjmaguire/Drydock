@@ -59,6 +59,10 @@ type Runtime struct {
 	// (agents.RepoConfigReader) is not started in a folder that has any of them unless what is there is trusted (audit
 	// 2026-10-16, M3). Nil: nothing is trusted.
 	RepoConfigTrusted func(ctx context.Context, projectID, adapter, fingerprint string) bool
+	// StartGate, if set, refuses to start a session (an error says why): a CLI whose acknowledgement a person has not given, or
+	// gave for a manifest file that has changed since (decision P117). Every session starts through Spawn, so no path starts a
+	// gated CLI without it. Nil: nothing is refused here.
+	StartGate func(ctx context.Context, cfg *Config) error
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -158,6 +162,16 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	runID := ids.New("arun")
 	if cfg.Spec.RunMode == "" && r.RunMode != nil && cfg.AgentID != "" {
 		cfg.Spec.RunMode, cfg.Spec.WSLDistro, cfg.Spec.RunModeWhy = r.RunMode(ctx, cfg.AgentID)
+	}
+	if r.StartGate != nil {
+		if err := r.StartGate(ctx, &cfg); err != nil {
+			r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})
+			return nil, err
+		}
+		ad, ok = r.Adapters[cfg.Adapter] // the gate may have loaded a changed manifest again: its adapter is the one to start
+		if !ok {
+			return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
+		}
 	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
 		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})

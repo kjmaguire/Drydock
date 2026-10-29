@@ -197,20 +197,30 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
   };
 }
 
-/** A notice the person must read and accept before the CLI is usable. Only a person can accept it: a tick, then Accept. */
+/**
+ * A notice the person must read and accept before the CLI is usable. Only a person can accept it: a tick, then Accept. A notice
+ * accepted before is owed again when what was accepted changed: a person's own CLI's manifest file changed on disk (P117).
+ */
 function Gate(handle: Handle<{ g: GateStatus; onAck: (id: string) => Promise<void> }>) {
   let checked = false;
   let busy = false;
   return () => {
     const { g, onAck } = handle.props;
+    const changed = !g.acked && !!g.changed;
     return (
-      <div mix={gateCss} data-testid="gate" data-gate={g.id} data-acked={String(g.acked)}>
+      <div mix={gateCss} data-testid="gate" data-gate={g.id} data-acked={String(g.acked)} data-changed={String(changed)}>
         <p mix={lineCss}>
           <span mix={markCss} style={{ color: g.acked ? tone.ok.fg : tone.warn.fg }}>
             <Icon icon={g.acked ? CircleCheck : ScrollText} size={15} />
           </span>
           <span>{g.text}</span>
         </p>
+        {changed ? (
+          <p data-testid="gate-changed">
+            <Badge tone="warn">changed</Badge> Its manifest file changed on disk since you accepted this. Nothing runs on it until
+            you read the file again (Install tab) and accept again.
+          </p>
+        ) : null}
         {g.acked ? (
           <div>
             <Badge tone="ok">accepted</Badge>

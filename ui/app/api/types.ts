@@ -950,6 +950,8 @@ export interface GateStatus {
   id: string;
   text: string;
   acked: boolean;
+  /** It was accepted, and what was accepted changed since: a person's own CLI's manifest file changed on disk (decision P117). */
+  changed?: boolean;
 }
 
 /** connections.Connection embeds agents.Detection, so the Detection fields are at the top level. */

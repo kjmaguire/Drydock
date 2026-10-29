@@ -155,7 +155,10 @@ func (c *Core) Methods() map[string]Method {
 			return c.PullRequest(ctx, p.TaskID)
 		}),
 
-		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Connections.DetectAll(ctx), nil }),
+		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			c.recheckCustom(ctx, "") // a person's CLI whose manifest file changed asks for the acknowledgement again (P117)
+			return c.Connections.DetectAll(ctx), nil
+		}),
 		// connection.check checks one Connection again now, its sign-in included (a distro's probe runs afresh), without probing
 		// every CLI and distro: the card's "Check again", and its re-check when its sign-in ends.
 		"connection.check": bind(func(ctx context.Context, p struct {
@@ -166,6 +169,7 @@ func (c *Core) Methods() map[string]Method {
 			if p.Distro != "" {
 				key = connections.WSLKey(p.Adapter, p.Distro)
 			}
+			c.recheckCustom(ctx, p.Adapter)
 			return c.Connections.CheckKey(ctx, key)
 		}),
 		"connection.acknowledge": bind(func(ctx context.Context, p struct {
