@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/inuse"
 	"github.com/kjmaguire/drydock/internal/proc"
 )
 
@@ -144,7 +145,8 @@ func (g *guard) read(ctx context.Context) (RepoState, error) {
 		case st.IsDir():
 			data = []byte("dir")
 		default:
-			if data, err = os.ReadFile(p); err != nil {
+			// git replaces its config by renaming a lock file over it; on Windows a read at that moment is refused for a moment
+			if err = inuse.Do(func() (e error) { data, e = os.ReadFile(p); return e }); err != nil {
 				return nil, fmt.Errorf("git guard: read %s: %w", rel, err)
 			}
 		}
