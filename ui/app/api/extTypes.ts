@@ -354,6 +354,34 @@ export interface TelemetryStatus {
   networkExporter: boolean;
   /** The OTLP exporter (decision P113); absent when it did not start. */
   otlp?: TelemetryOtlpStatus;
+  /** Content export (decision P121): the LLM calls' prompts and completions, redacted. Off by default. */
+  content?: Consent;
+  /** Usage counters (decision P121): how often each feature was used. Off by default. */
+  usageCounters?: UsageCounters;
+}
+/** A switch a person turned on or off, and who did it when. */
+export interface Consent {
+  enabled: boolean;
+  changedBy?: string;
+  changedAt?: number;
+}
+export interface UsageCounters extends Consent {
+  /** Uses counted and not yet written to the local telemetry. */
+  waiting: number;
+}
+/** "Also send what was recorded before" (decision P121): rows since sinceMs that no collector had, the newest maxRows. */
+export interface TelemetryBackfill {
+  sinceMs: number;
+  maxRows?: number;
+}
+export interface TelemetryBackfillResult {
+  at: number;
+  sinceMs: number;
+  maxRows: number;
+  queued: number;
+  /** Rows in the window the cap left out. */
+  left: number;
+  by?: string;
 }
 /** Where telemetry is sent over OTLP/HTTP. Header values are in the credential store and never come back. */
 export interface TelemetryOtlpStatus {
@@ -375,13 +403,37 @@ export interface TelemetryOtlpStatus {
   lastError?: string;
   lastErrorAt?: number;
   canKeepHeaders: boolean;
+  /** What the person chose: gzip, none, or '' for automatic (gzip for https). Decision P121. */
+  compression?: TelemetryCompression;
+  /** Whether bodies are compressed now. */
+  gzip?: boolean;
+  lastBackfill?: TelemetryBackfillResult;
+  /** Whether the LLM calls' prompts and completions are sent (content export). */
+  content?: boolean;
 }
+export type TelemetryCompression = '' | 'gzip' | 'none';
 export interface TelemetryOtlpChange {
   enabled?: boolean;
   endpoint?: string;
   encoding?: 'protobuf' | 'json';
   setHeaders?: Record<string, string>;
   removeHeaders?: string[];
+  compression?: TelemetryCompression;
+  /** With a change that turns sending on: also send what was recorded before. */
+  backfill?: TelemetryBackfill;
+}
+/** The diagnostics categories (docs/packaging.md section 9, decision P121). */
+export interface DiagnosticsStatus {
+  crashReports: { mode: 'local' | 'off'; changedBy?: string; changedAt?: number; kept: number };
+  /** Absent when telemetry did not start. */
+  usageCounters?: UsageCounters;
+  content?: Consent;
+  telemetry: boolean;
+  otlp: boolean;
+}
+export interface DiagnosticsChange {
+  crashReports?: 'local' | 'off';
+  usageCounters?: boolean;
 }
 export interface TelemetryOtlpTest {
   ok: boolean;

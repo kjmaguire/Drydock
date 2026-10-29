@@ -1,7 +1,9 @@
 // Sending telemetry to a collector over OTLP/HTTP (decision P113): off unless a person gives the endpoint and turns it on. What is
 // sent is what the local sink records (the same allowlisted, content-free spans and metrics the preview shows), so the local rows
 // stay the log of everything sent. Header values (an API key) go to the credential store and are never shown again; only their
-// names come back. Plain http is accepted only for a collector on this computer.
+// names come back. Plain http is accepted only for a collector on this computer. Since decision P121: the bodies' compression
+// (automatic: gzip for https), and "Also send what was recorded before", chosen as sending is turned on (off unless chosen,
+// bounded by a date and a number of rows).
 
 import { css, on, type Handle } from 'remix/component';
 import { KeyRound, Send, Trash2 } from 'lucide';
@@ -11,15 +13,34 @@ import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
-import { Field, formActions, Switch } from '../../ui/form.tsx';
+import { Checkbox, errorAttrs, Field, formActions, Switch } from '../../ui/form.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import {
+  backfillProblem,
+  backfillWords,
+  COMPRESSION_OPTIONS,
+  compressionWords,
+  dateDaysAgo,
+  DEFAULT_BACKFILL_ROWS,
+  MAX_BACKFILL_ROWS,
+  sinceFromDate,
+} from './diagnostics.ts';
 import { Done, panel, Row } from './settings-kit.tsx';
 
-const formCss = css({ display: 'grid', gap: t.s3, gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, 180px)', alignItems: 'end' });
+// the endpoint, then compression and encoding; one column when the page is narrow
+const formCss = css({
+  display: 'grid',
+  gap: t.s3,
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(130px, 170px) minmax(130px, 170px)',
+  alignItems: 'end',
+  '@container (max-width: 560px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+});
 const lineCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', flexWrap: 'wrap', minWidth: '0' });
 // name, value and the button on one row, so the button stays level with the fields at any width
 const headerFormCss = css({ display: 'grid', gap: t.s2, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', alignItems: 'center' });
 const listCss = css({ margin: '0', padding: '0', listStyle: 'none', display: 'grid', gap: t.s2 });
+const backfillCss = css({ display: 'grid', gap: t.s2, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', alignItems: 'end' });
 
 /** The status line: whether spans and metrics are leaving, how many did, and the last success and error. */
 export function otlpStatusWords(st: TelemetryOtlpStatus, telemetryOn: boolean): string {
@@ -42,6 +63,34 @@ export function OtlpExport(handle: Handle<{ status: TelemetryOtlpStatus; telemet
   let headerName = '';
   let headerValue = '';
   let test: TelemetryOtlpTest | undefined;
+  // "Also send what was recorded before": off unless chosen, the last week and the default number of rows when it is
+  let backfill = false;
+  let sinceDate = dateDaysAgo(Date.now(), 7);
+  let rows = String(DEFAULT_BACKFILL_ROWS);
+  let backfillError: string | undefined;
+  let backfillField: 'since' | 'rows' = 'since';
+
+  const turnOn = () => {
+    const change: Parameters<typeof s.client.telemetryOtlpSet>[0] = { enabled: true, endpoint: endpoint.trim(), encoding };
+    if (backfill) {
+      const since = sinceFromDate(sinceDate);
+      const n = Number(rows);
+      backfillError = backfillProblem(since, n, Date.now());
+      backfillField = Number.isInteger(n) && n >= 1 && n <= MAX_BACKFILL_ROWS ? 'since' : 'rows';
+      if (backfillError) {
+        void handle.update();
+        return;
+      }
+      change.backfill = { sinceMs: since!, maxRows: n };
+    }
+    backfillError = undefined;
+    void set('enable', change).then((r) => {
+      if (r) {
+        backfill = false;
+        void handle.update();
+      }
+    });
+  };
 
   const set = async (what: string, change: Parameters<typeof s.client.telemetryOtlpSet>[0]) => {
     const r = await act.run(what, () => s.client.telemetryOtlpSet(change));
@@ -75,9 +124,48 @@ export function OtlpExport(handle: Handle<{ status: TelemetryOtlpStatus; telemet
             label="Send to a collector"
             checked={st.enabled}
             disabled={busy}
-            onChange={(v) => void set('enable', v ? { enabled: true, endpoint: endpoint.trim(), encoding } : { enabled: false })}
+            onChange={(v) => (v ? turnOn() : void set('enable', { enabled: false }))}
           />
         </Row>
+        {!st.enabled ? (
+          <div data-testid="otlp-backfill">
+            <Checkbox
+              label="Also send what was recorded before"
+              description="Off: only what is recorded from now on is sent. On: the rows recorded since the date that no collector has had, the newest first, up to the limit."
+              checked={backfill}
+              disabled={busy}
+              onChange={(v) => ((backfill = v), (backfillError = undefined), void handle.update())}
+            />
+            {backfill ? (
+              <div mix={backfillCss} style={{ marginTop: t.s2 }}>
+                <Field label="Recorded since" error={backfillField === 'since' ? backfillError : undefined}>
+                  {(id) => (
+                    <input
+                      id={id}
+                      type="date"
+                      value={sinceDate}
+                      {...errorAttrs(id, backfillField === 'since' ? backfillError : undefined)}
+                      mix={on('input', (e) => ((sinceDate = e.currentTarget.value), (backfillError = undefined), void handle.update()))}
+                    />
+                  )}
+                </Field>
+                <Field label={`At most (rows, up to ${MAX_BACKFILL_ROWS})`} error={backfillField === 'rows' ? backfillError : undefined}>
+                  {(id) => (
+                    <input
+                      id={id}
+                      {...errorAttrs(id, backfillField === 'rows' ? backfillError : undefined)}
+                      type="number"
+                      min="1"
+                      max={String(MAX_BACKFILL_ROWS)}
+                      value={rows}
+                      mix={on('input', (e) => ((rows = e.currentTarget.value), (backfillError = undefined), void handle.update()))}
+                    />
+                  )}
+                </Field>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div>
           <form
             mix={[formCss, on<HTMLFormElement, 'submit'>('submit', (e) => (e.preventDefault(), void set('endpoint', { endpoint: endpoint.trim(), encoding })))]}
@@ -93,6 +181,18 @@ export function OtlpExport(handle: Handle<{ status: TelemetryOtlpStatus; telemet
                   placeholder="https://collector.example.com:4318"
                   value={endpoint}
                   mix={on('input', (e) => ((endpoint = e.currentTarget.value), void handle.update()))}
+                />
+              )}
+            </Field>
+            <Field label="Compression">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={st.compression ?? ''}
+                  disabled={busy}
+                  testId="otlp-compression"
+                  options={COMPRESSION_OPTIONS}
+                  onChange={(v) => void set('compression', { compression: v === 'gzip' || v === 'none' ? v : '' })}
                 />
               )}
             </Field>
@@ -176,6 +276,14 @@ export function OtlpExport(handle: Handle<{ status: TelemetryOtlpStatus; telemet
         </div>
         <div data-testid="otlp-status" data-active={String(st.active)}>
           <p style={{ margin: '0' }}>{otlpStatusWords(st, telemetryOn)}</p>
+          <p mix={muted} style={{ margin: '0' }} data-testid="otlp-compression-words">
+            {compressionWords(st)}
+          </p>
+          {st.lastBackfill ? (
+            <p mix={muted} style={{ margin: '0' }} data-testid="otlp-backfill-result">
+              {backfillWords(st.lastBackfill, formatDateTime)}
+            </p>
+          ) : null}
           <p mix={muted} style={{ margin: '0' }}>
             Last success: {st.lastSuccessAt ? formatDateTime(st.lastSuccessAt) : 'none yet'}
             {st.lastError ? (

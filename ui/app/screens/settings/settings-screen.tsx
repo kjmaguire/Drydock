@@ -13,6 +13,7 @@ import { t } from '../../ui/tokens.ts';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT, THEMES } from './settings.ts';
 import { Group, panel, settingsColumn, tableWrap } from './settings-kit.tsx';
+import { DiagnosticsPanel } from './diagnostics.tsx';
 import { TelemetryPanel } from './telemetry.tsx';
 
 // --- theme picker: three cards, each with a small picture of the app in that theme ---
@@ -226,6 +227,7 @@ export function SettingsScreen(_handle: Handle) {
         </Group>
         <AgentEnvSection />
         <TelemetryPanel />
+        <DiagnosticsPanel />
         <UpdatesSection />
         <NotBuilt />
       </div>

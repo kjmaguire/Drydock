@@ -92,6 +92,8 @@ import type {
   TelemetryExport,
   TelemetryOtlpChange,
   TelemetryOtlpTest,
+  DiagnosticsChange,
+  DiagnosticsStatus,
   TelemetryStatus,
   TickResult,
   ProposedTask,
@@ -154,6 +156,11 @@ export interface ExtClient {
   telemetryOtlpSet(change: TelemetryOtlpChange): Promise<TelemetryStatus>;
   /** Sends one test span now to the configured endpoint (kept in the local sink like everything sent). */
   telemetryOtlpTest(): Promise<TelemetryOtlpTest>;
+  /** Content export (decision P121): turning it on needs acknowledged, the person was shown what it sends. */
+  telemetryContentSet(enabled: boolean, acknowledged: boolean): Promise<TelemetryStatus>;
+  /** The diagnostics categories: crash reports and usage counters (decision P121). */
+  diagnosticsStatus(): Promise<DiagnosticsStatus>;
+  diagnosticsSet(change: DiagnosticsChange): Promise<DiagnosticsStatus>;
   // expert packs
   packList(): Promise<Pack[]>;
   packGet(id: string): Promise<Pack>;
@@ -366,6 +373,9 @@ export function createExtClient(t: Transport): ExtClient {
     telemetryExport: () => call('telemetry.export'),
     telemetryOtlpSet: (change) => call('telemetry.otlp.set', change),
     telemetryOtlpTest: () => call('telemetry.otlp.test'),
+    telemetryContentSet: (enabled, acknowledged) => call('telemetry.content.set', { enabled, acknowledged }),
+    diagnosticsStatus: () => call('diagnostics.status'),
+    diagnosticsSet: (change) => call('diagnostics.set', change),
 
     packList: async () => arr(await call<Pack[] | null>('pack.list')),
     packGet: (id) => call('pack.get', { id }),
