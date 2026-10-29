@@ -10,12 +10,17 @@ export interface ShellClient {
    * message that does not repeat the address. Resolves when the shell has handed the address over.
    */
   shellOpenExternal(url: string): Promise<void>;
+  /** Starts Drydock again and closes this window, so a staged restore is applied now (decision P116). Only the desktop window can. */
+  shellRestart(): Promise<void>;
 }
 
 export function createShellClient(t: Transport): ShellClient {
   return {
     shellOpenExternal: async (url) => {
       await t.call('shell.openExternal', { url });
+    },
+    shellRestart: async () => {
+      await t.call('shell.restart', {});
     },
   };
 }

@@ -19,6 +19,8 @@ export interface AppInfo {
   user: string;
   human: string;
   dataDir: string;
+  /** Whether this window can restart Drydock ("Restart now" after a staged restore, decision P116); false in a browser. */
+  canRestart?: boolean;
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';

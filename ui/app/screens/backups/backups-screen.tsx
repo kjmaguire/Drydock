@@ -6,7 +6,7 @@ import { Archive, CalendarClock, DatabaseBackup, FolderClock, History, RotateCcw
 import type { BackupInfo, BackupVerify, RestoreStaged } from '../../api/pkgTypes.ts';
 import { formatBytes, formatDateTime } from '../../lib/format.ts';
 import { starts } from '../../state/live.ts';
-import { action, query, services } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, kv, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
@@ -131,6 +131,7 @@ export function BackupsScreen(handle: Handle) {
   const status = query(handle, { load: () => s.client.backupRestoreStatus(), when: (e) => starts(e, 'backup.') });
   const act = action(handle);
   const saveAct = action(handle);
+  watch(handle, s.workspace); // app.info says whether this window can restart Drydock
   let label = '';
   let checked: Record<string, Checked> = {};
   let confirming = '';
@@ -191,6 +192,11 @@ export function BackupsScreen(handle: Handle) {
     void handle.update();
   };
 
+  // "Restart now" (decision P116): the window starts Drydock again and closes; the restore is applied as that start opens
+  const restartNow = async () => {
+    await act.run('restart', () => s.client.shellRestart());
+  };
+
   const cancelStaged = async () => {
     await act.run('cancel', () => s.client.backupRestoreCancel());
     staged = undefined;
@@ -209,6 +215,7 @@ export function BackupsScreen(handle: Handle) {
       form = formFrom(st);
     }
     const confirmB = confirming ? backups.find((b) => b.name === confirming) : undefined;
+    const canRestart = s.workspace.info.data?.canRestart === true;
 
     return (
       <Page title="Backups" icon={DatabaseBackup} subtitle={l ? `${backups.length} in the backup folder` : undefined} guide="backups">
@@ -220,10 +227,15 @@ export function BackupsScreen(handle: Handle) {
               <p>
                 The backup <strong>{pending.backup}</strong>
                 {pending.requested ? ` (requested ${formatDateTime(pending.requested)})` : ''} will replace the current database{' '}
-                <strong>the next time Drydock starts</strong>. Nothing has changed yet. Quit and reopen Drydock to apply it; the current database is kept as{' '}
-                <code>replaced-&lt;time&gt;.db</code> in the backup folder.
+                <strong>the next time Drydock starts</strong>. Nothing has changed yet. {canRestart ? 'Restart now' : 'Quit and reopen Drydock'} to apply it;
+                running agents stop. The current database is kept as <code>replaced-&lt;time&gt;.db</code> in the backup folder.
               </p>
-              <div>
+              <div mix={formActions}>
+                {canRestart ? (
+                  <Button variant="primary" disabled={busy} data-testid="restart-now" mix={on('click', () => void restartNow())}>
+                    {act.busy === 'restart' ? 'Restarting…' : 'Restart now'}
+                  </Button>
+                ) : null}
                 <Button disabled={busy} mix={on('click', () => void cancelStaged())}>
                   Cancel the staged restore
                 </Button>

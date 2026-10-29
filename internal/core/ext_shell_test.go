@@ -83,3 +83,51 @@ func TestAnAddressIsOpenedInThePersonsBrowserOnlyAfterTheCheck(t *testing.T) {
 		t.Fatalf("without a shell: %v", err)
 	}
 }
+
+// "Restart now" (decision P116) asks the shell to start Drydock again, only for a person; app.info says whether this window can,
+// and a build without a shell says to quit and reopen. The support bundle carries the window's WebView2 version.
+func TestRestartNowAsksTheShellOnlyForAPersonAndTheBundleNamesWebView2(t *testing.T) {
+	restarts := 0
+	dataDir := filepath.Join(t.TempDir(), "data")
+	c, err := core.Open(context.Background(), core.Config{DataDir: dataDir, User: "kyle", LeaseTTL: 3 * time.Second,
+		// TEST DOUBLES: the shell's restart and the window's WebView2 version
+		Restart:         func(context.Context) error { restarts++; return nil },
+		WebView2Version: func() string { return "131.0.2903.70" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var info map[string]any
+	a.call("app.info", map[string]any{}, &info)
+	if info["canRestart"] != true {
+		t.Fatalf("app.info %v", info)
+	}
+	var got map[string]bool
+	a.call("shell.restart", map[string]any{}, &got)
+	if !got["restarting"] || restarts != 1 {
+		t.Fatalf("%v, %d restarts", got, restarts)
+	}
+	if err := c.Restart(context.Background(), "agent:agt_1"); err == nil || restarts != 1 {
+		t.Fatalf("an agent restarted Drydock: %v", err)
+	}
+	dest := filepath.Join(t.TempDir(), "bundle.zip")
+	a.call("supportbundle.create", map[string]any{"dest": dest}, nil)
+	found := false
+	for _, body := range readZipFiles(t, dest) {
+		found = found || strings.Contains(body, `"webview2": "131.0.2903.70"`) || strings.Contains(body, `"webview2":"131.0.2903.70"`)
+	}
+	if !found {
+		t.Fatal("the support bundle does not name the WebView2 version")
+	}
+
+	b := open(t, "")
+	b.call("app.info", map[string]any{}, &info)
+	if info["canRestart"] != false {
+		t.Fatalf("without a shell app.info says %v", info)
+	}
+	if err := b.callErr("shell.restart", map[string]any{}); err == nil || !strings.Contains(err.Error(), "quit and reopen") {
+		t.Fatalf("without a shell: %v", err)
+	}
+}

@@ -49,8 +49,12 @@ func dialogResult(path string, err error) (string, error) {
 
 // Early is the first thing main does, before the single-instance check and before the core opens. When this process is the
 // updater's helper (the same executable, started to swap the new file in once the app has closed) it does that and exits: it must
-// not open the core, which would treat the app that is still shutting down as a crashed one (audit 2026-10-16, H10).
-func Early() { updater.HandleHelperMode() }
+// not open the core, which would treat the app that is still shutting down as a crashed one (audit 2026-10-16, H10). A process
+// started by "Restart now" waits here for the old one to close (restart_windows.go).
+func Early() {
+	updater.HandleHelperMode()
+	waitForRestartedFrom()
+}
 
 // ReportStartupFailure tells the person why Drydock did not start. The executable is built for the Windows GUI subsystem and has no
 // console, so a line printed to standard error went nowhere and a failed start looked like a double-click that did nothing (audit
@@ -150,6 +154,19 @@ func Run(assets fs.FS) error {
 			return fmt.Errorf("the window is not open yet")
 		}
 		return wa.Browser.OpenURL(rawURL)
+	}, Restart: func(context.Context) error {
+		// "Restart now" after a staged restore (decision P116)
+		if wa == nil {
+			return fmt.Errorf("the window is not open yet")
+		}
+		return restart(wa)
+	}, WebView2Version: func() string {
+		// for the support bundle: the WebView2 runtime the window runs on
+		if wa == nil {
+			return ""
+		}
+		v, _ := wa.Env.Info().PlatformInfo["WebView2"].(string)
+		return v
 	}})
 	if err != nil {
 		return fmt.Errorf("open Drydock: %w", err)

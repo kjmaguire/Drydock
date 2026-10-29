@@ -1348,3 +1348,12 @@ Open, owner action:
   smoke test flags a page that asks one method fourteen times): nothing is recorded and no quota is taken; they are read again when a rule, a provider or the
   cheap model changes. When every card is blocked for the same reason (no provider yet), the page says it once, with a link to
   Models. The model names are `lib/model-name.ts`, shared with the chat chips (P107).
+- **P116. Restart now after a staged restore, and the WebView2 version in the support bundle (2026-10-29).** On the owner's
+  words, answering the list of what is not built: "Proceed with those items". (1) The Backups page shows **Restart now** beside
+  a staged restore when the window can restart (`app.info` `canRestart`); `shell.restart` (a person only) asks the shell
+  (`core.Config.Restart`, `app/restart_windows.go`) to start `drydock.exe` again with `CREATE_BREAKAWAY_FROM_JOB` (the app job
+  allows it, as for the updater's helper) and quit; the new process carries the old one's process id in
+  `DRYDOCK_RESTART_AFTER`, removes it from its environment, and waits up to a minute for that process to end before the
+  single-instance check, which would otherwise hand the launch back to the closing app. Running agents stop as on any quit. A
+  browser build says to quit and reopen. (2) The support bundle's `os.webview2` is the version the window reports
+  (`core.Config.WebView2Version`, from Wails' environment info). Neither has been run by hand on Windows.
