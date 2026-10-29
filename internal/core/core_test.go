@@ -14,6 +14,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/acp/fakeacp"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/agents/headless/fakecustom"
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/localllm/llamatest"
@@ -49,6 +50,11 @@ func TestMain(m *testing.M) {
 	// the scripted ACP agent (a Codex stand-in) is told apart by the variables its adapter adds, so it is checked first
 	if os.Getenv("DRYDOCK_FAKE_ACP") == "1" {
 		os.Exit(fakeacp.Run(os.Args[1:], os.Stdin, os.Stdout))
+	}
+	// a person's own prompt-and-exit CLI (the custom dialect's LABELLED stand-in, ext_customcli_test.go); before the Claude
+	// stand-in, whose switch the test process also carries
+	if os.Getenv("DRYDOCK_FAKE_CUSTOM") == "1" {
+		os.Exit(fakecustom.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 	}
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))

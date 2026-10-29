@@ -8,12 +8,13 @@
 // Choosing a row puts it in the address (/agents/<key>, replacing the entry); the controller keeps the page mounted.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
+import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, Plus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
+import type { Agent, Connection, ConnectionReport, CustomCLIs, GateStatus, WSLFacts } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
+import { AddCustomCLI, CustomCLIPanel } from './custom-cli.tsx';
 import { adapterLabel, cliName } from '../shared/cli-name.ts';
 import { supportsWSL } from '../team/run-mode.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
@@ -321,6 +322,8 @@ interface DetailProps {
   crew: CrewUse[];
   onOpenAgent: (a: Agent) => void;
   onChanged: () => void;
+  /** The person's own CLIs (connection.custom.list), for a custom CLI's panel. */
+  customs?: CustomCLIs;
 }
 
 /** The chosen install: its header with the actions, one notice, and the tabs. */
@@ -609,6 +612,7 @@ function AgentDetail(handle: Handle<DetailProps>) {
     const prereqs = c.prereqs ?? [];
     const install = (
       <div mix={panelCss} data-testid="install-tab">
+        {c.custom && c.adapter !== 'custom' && !inWSL ? <CustomCLIPanel adapter={c.adapter} files={p.customs} readOnly={p.readOnly} onRemoved={p.onChanged} /> : null}
         <SettingsGroup title={installed ? 'Update' : 'Install'}>
           {c.installHint ? (
             <SettingRow label="Command" control={<CopyCommand text={c.installHint} />}>
@@ -766,6 +770,11 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // says so while "Used by" goes by the installs found; a re-read that fails keeps the last answer (the query does), and the
   // note says the re-read failed
   const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // the person's own CLIs (decision P115): the folder, and a file that did not load with why; an older core has none
+  const customs = query(handle, { load: () => orElse(() => s.client.connectionCustomList(), { dir: '', files: [] } as CustomCLIs), when: (e) => e.type.startsWith('connection.custom') });
+  let adding = false;
+  // a CLI just added: chosen once the list has it (a list read before it was added would put the choice back on the first row)
+  let pendingKey = '';
   // whether an adapter can run in WSL, as the core decides where an agent runs (effectiveRunMode): once the adapters are known,
   // the adapter's declared run modes decide, and an adapter the core does not list cannot. Only while no answer has arrived yet
   // (the first read is on its way, or failed) does a WSL install of the CLI stand in for the answer.
@@ -858,6 +867,12 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     const { installed, missing } = agentGroups(list);
     // the chosen row; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first. It
     // stays chosen: accepting its notice does not move the selection to the next one that needs attention.
+    if (pendingKey && list.some((c) => connectionKey(c) === pendingKey)) {
+      const k = pendingKey;
+      pendingKey = '';
+      selected = k;
+      handle.queueTask(() => choose(k));
+    }
     if (q.data && !list.some((c) => connectionKey(c) === selected)) selected = defaultAgent(list);
     const open = list.find((c) => connectionKey(c) === selected);
     const rowOf = (c: Connection): ListItem => {
@@ -905,6 +920,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           crew={usedBy(open, crew.data ?? [], runModes.data ?? new Map(), list, canWSL).map((a) => ({ agent: a, project: projectName(a.projectId) }))}
           onOpenAgent={openAgent}
           onChanged={() => void q.reload()}
+          customs={customs.data}
         />
       );
     }
@@ -918,11 +934,41 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
         flush
         testId="agents-page"
         actions={
-          <Button size="sm" variant="ghost" icon={RefreshCw} disabled={checkingAll || q.loading} data-testid="check-all" mix={on('click', () => void checkAll())} title="Look for every agent CLI again, on Windows and in each WSL distro">
-            {checkingAll ? 'Checking...' : 'Check all again'}
-          </Button>
+          <>
+            <Button size="sm" variant="ghost" icon={Plus} disabled={s.workspace.license.readOnly} data-testid="custom-cli-open" mix={on('click', () => ((adding = true), void handle.update()))} title="Add your own agent CLI from a manifest">
+              Add a custom CLI
+            </Button>
+            <Button size="sm" variant="ghost" icon={RefreshCw} disabled={checkingAll || q.loading} data-testid="check-all" mix={on('click', () => void checkAll())} title="Look for every agent CLI again, on Windows and in each WSL distro">
+              {checkingAll ? 'Checking...' : 'Check all again'}
+            </Button>
+          </>
         }
       >
+        <AddCustomCLI
+          open={adding}
+          dir={customs.data?.dir ?? ''}
+          taken={list.map((x) => x.adapter)}
+          onClose={() => ((adding = false), void handle.update())}
+          onAdded={(c) => {
+            adding = false;
+            pendingKey = connectionKey(c);
+            void customs.reload();
+            void q.reload();
+          }}
+        />
+        {(customs.data?.files ?? []).filter((f) => f.error).length > 0 ? (
+          <div mix={padCss} data-testid="custom-cli-broken">
+            <ErrorNote
+              error={new Error(
+                (customs.data?.files ?? [])
+                  .filter((f) => f.error)
+                  .map((f) => `${f.path}: ${f.error}`)
+                  .join('\n'),
+              )}
+              what="A custom CLI was not loaded"
+            />
+          </div>
+        ) : null}
         {q.error && !q.data ? (
           <div mix={padCss}>
             <ErrorNote error={q.error} what="Could not list the agent CLIs" />

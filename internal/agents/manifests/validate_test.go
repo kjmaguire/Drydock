@@ -118,6 +118,7 @@ transports:
   primary: headless
   headless:
     argv: [run, --json]
+    prompt: {via: stdin}
     dialect: {format: jsonl, type_field: type, map: {assistant_text: {type: message, text: $.text}}}
 `
 
@@ -133,6 +134,32 @@ func TestCustomManifestRules(t *testing.T) {
 		"acp transport":         {customBase + "  acp: {argv: [x]}\n", "cannot define an acp transport"},
 		"bad dialect format":    {strings.Replace(customBase, "format: jsonl", "format: xml", 1), "dialect.format"},
 		"unknown dialect event": {strings.Replace(customBase, "assistant_text:", "telepathy:", 1), "unknown event"},
+		"no prompt route":       {strings.Replace(customBase, "    prompt: {via: stdin}\n", "", 1), "transports.headless.prompt"},
+		"prompt by carrier":     {strings.Replace(customBase, "via: stdin", "via: pigeon", 1), "via must be stdin or arg"},
+		"arg without prompt":    {strings.Replace(customBase, "via: stdin", "via: arg", 1), "needs {{prompt}} in argv"},
+		"stdin with prompt arg": {strings.Replace(customBase, "argv: [run, --json]", `argv: [run, --json, "{{prompt}}"]`, 1), "cannot hold {{prompt}}"},
+		"unknown placeholder":   {strings.Replace(customBase, "argv: [run, --json]", `argv: [run, "{{mcp.config_path}}"]`, 1), "not {{mcp.config_path}}"},
+		"field that is no path": {strings.Replace(customBase, "text: $.text", "text: text", 1), "is not a field path"},
+		"field the event lacks": {strings.Replace(customBase, "text: $.text", "text: $.text, colour: $.c", 1), `unknown field "colour"`},
+		"event without a type":  {strings.Replace(customBase, "{type: message, text: $.text}", "{text: $.text}", 1), "type: the value"},
+		"no answer event":       {strings.Replace(customBase, "assistant_text: {type: message, text: $.text}", "usage: {type: u, input: $.in}", 1), "needs assistant_text"},
+		"text with a map":       {strings.Replace(customBase, "format: jsonl", "format: text", 1), "a text dialect has no type_field or map"},
+		"exit code word":        {strings.Replace(customBase, "    prompt: {via: stdin}\n", "    prompt: {via: stdin}\n    exit_codes: {0: fine}\n", 1), "must be success or failure"},
+		"runs in wsl":           {strings.Replace(customBase, "custom: true}", "custom: true, run_modes: [wsl]}", 1), "natively only"},
+		"relative program":      {strings.Replace(customBase, "[my-cli.exe]", "[bin/my-cli]", 1), "a program name found on PATH or a full path"},
+		"reads the vault":       {strings.Replace(customBase, "gate:", "auth: {env_from_keyring: {KEY: x}}\ngate:", 1), "credential store"},
+		"names a protocol":      {strings.Replace(customBase, "    argv: [run, --json]\n", "    argv: [run, --json]\n    denied_actions: surface_to_human\n", 1), "argv, optional, prompt, exit_codes and dialect only"},
+	}
+	text := strings.Replace(customBase, "dialect: {format: jsonl, type_field: type, map: {assistant_text: {type: message, text: $.text}}}", "dialect: {format: text}", 1)
+	if _, err := manifests.Parse([]byte(text)); err != nil {
+		t.Errorf("a plain-text dialect: %v", err)
+	}
+	arg := strings.Replace(strings.Replace(customBase, "via: stdin", "via: arg", 1), "argv: [run, --json]", `argv: [run, --prompt, "{{prompt}}"]`, 1)
+	if _, err := manifests.Parse([]byte(arg)); err != nil {
+		t.Errorf("the prompt as an argument: %v", err)
+	}
+	if _, err := manifests.Parse([]byte(strings.Replace(baseACP, "acp: {argv: [demo", `acp: {argv: [demo, "{{prompt}}"`, 1))); err == nil || !strings.Contains(err.Error(), "for custom manifests") {
+		t.Errorf("a built-in manifest cannot take the prompt in its argv: %v", err)
 	}
 	for name, tc := range cases {
 		if _, err := manifests.Parse([]byte(tc.yaml)); err == nil || !strings.Contains(err.Error(), tc.want) {

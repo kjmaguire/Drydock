@@ -67,7 +67,10 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		"local.model.set", "local.embeddings.start", "local.embeddings.stop", "local.hfToken.set", "local.hfToken.remove",
 		// decision P114
 		"integration.webhooks.get", "integration.webhooks.set", "integration.mappings.set", "integration.autoApprove.set", "integration.sweep.set", "integration.attachments.download",
-		"integration.outbound.retry"} {
+		"integration.outbound.retry",
+		// decision P115
+		"mcp.rolePolicy.get", "mcp.rolePolicy.set", "mcp.policyRule.add", "mcp.policyRule.remove", "task.mcpTools.get", "task.mcpTools.set",
+		"connection.custom.list", "connection.custom.template", "connection.custom.add", "connection.custom.remove"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}

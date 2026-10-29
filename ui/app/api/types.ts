@@ -979,6 +979,12 @@ export interface Connection extends Detection {
   custom?: boolean;
 }
 
+/** connection.custom.list (decision P115): where a person's own CLIs are kept, and every manifest file there. */
+export interface CustomCLIs {
+  dir: string;
+  files: { id: string; path: string; error?: string }[];
+}
+
 /** connections.WSLFacts: the distro behind a WSL Connection. */
 export interface WSLFacts {
   distro: string;
