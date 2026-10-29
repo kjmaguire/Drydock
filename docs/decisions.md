@@ -1501,8 +1501,8 @@ Open, owner action:
   run's dollar ceiling (a recorded `ceiling`); no router, cheap tier, handoff, cache or watchdog. It records the arm's rounds,
   stop and broadcast bytes besides section 6.2's fields. No migration. Details: `token-control.md` "As built: OTLP export and the
   Wrapper's spans", `evals.md` section 15. Built since by P121: gzip bodies, exporting rows recorded before sending was on,
-  content export, crash reports and usage counters as their own categories, B0 with CLIs other than Claude Code and on a
-  cheap provider. **Not verified:** a real collector or vendor backend (the protobuf encoding is checked only against a decoder written from the
+  content export (removed by P126), crash reports and usage counters as their own categories, B0 with CLIs other than Claude
+  Code and on a cheap provider. **Not verified:** a real collector or vendor backend (the protobuf encoding is checked only against a decoder written from the
   same field numbers), Windows, a proxy; **B0 is not measured**: its mechanics and records are proven against the scripted
   stand-in agent only, and every B0 row of `evals.md` 7.1 stays "not measured" until it is run with a signed-in Claude Code.
 - **P115. The per-role MCP tool table, Antigravity's headless start, the custom CLI dialect and live packs' docs servers in
@@ -1728,8 +1728,8 @@ Open, owner action:
   no longer lists (as for every provider). **Not verified:** all of it against a real llama.cpp build (the router's calls, a
   reload that keeps a loaded model, MTP and EAGLE-3 runs, the fork's EAGLE-3 key `extract_layers` against b11936's
   `target_layers`), a real embedding model's order against BM25's (no eval run), Windows.
-- **P121. gzip bodies, sending what was recorded before, content export, crash reports and usage counters as categories of
-  their own, and B0 with other CLIs and on a cheap provider (2026-10-29).** On the owner's word, answering the list of what is
+- **P121. gzip bodies, sending what was recorded before, content export (removed by P126), crash reports and usage
+  counters as categories of their own, and B0 with other CLIs and on a cheap provider (2026-10-29).** On the owner's word, answering the list of what is
   still not built: "Yes" to building the whole "can be built now" group (the items of P113's "Not built" line). (1) **gzip**
   (`internal/telemetry/otlp.go`): request bodies are gzip-compressed with `Content-Encoding: gzip`, a setting
   (`telemetry.otlp.compression`: automatic, gzip or none; automatic is gzip for https and none for a collector on this
@@ -1738,7 +1738,7 @@ Open, owner action:
   sending on may carry `backfill {sinceMs, maxRows}` (off unless chosen), which queues the rows recorded before that no
   collector has had, since a date within the 30 days telemetry keeps, the newest up to a cap (default 500, at most 1000),
   through the same queue, batching, retries and encoders (so the allowlist is applied again); telemetry must be on, and the
-  status keeps what the last one queued and what the cap left out. (3) **Content export**: the rules allow it with consent,
+  status keeps what the last one queued and what the cap left out. (3) **Content export** (removed by P126): the rules allow it with consent,
   and say so: brief section 10 ("never includes prompts, code, tool output, or secrets unless explicitly enabled") and
   `packaging.md` section 9 ("unless the user explicitly enables content export, which is a separate opt-in with a warning");
   `security.md` principle 4 forbids an *automatic* upload of source, and this is a person's separate choice to a collector of
@@ -1766,7 +1766,7 @@ Open, owner action:
   the report name the CLI and the provider; `drydock-trial run -b0-cli -b0-provider -b0-provider-url -b0-provider-key-env
   -b0-price-in -b0-price-out`. Proven against the labelled test doubles only (the scripted ACP agent through the real ACP
   adapter, which gained `ReportEnv`, and the stand-in for Claude Code). New methods `diagnostics.status`, `diagnostics.set`,
-  `telemetry.content.set`; migration `00158` (classified with the telemetry tables, which a project export leaves out); no
+  `telemetry.content.set` (removed by P126); migration `00158` (classified with the telemetry tables, which a project export leaves out); no
   new dependency. **Not built:** sending crash reports anywhere (a report still leaves only in a support bundle), content of
   the agent CLIs' own sessions, a provider for CLIs other than Claude Code and OpenCode. **Not verified:** a real collector
   decoding the gzip bodies or the content attributes, Windows (crash output paused and resumed in the desktop app), a real
@@ -1833,3 +1833,25 @@ Open, owner action:
   from search extracts); `gh webhook forward` itself; GitHub's hosted MCP server's OAuth (that its metadata leads to
   github.com's authorization server with PKCE and accepts a loopback redirect on any port); everything on Windows: the TCP table
   call and IsProcessInJob were cross-compiled and vetted (`GOOS=windows go vet`), never run.
+- **P126. Content export removed (2026-10-29).** The owner was told what P121's content export does (a separate opt-in,
+  off by default, that adds the redacted prompts and completions of Drydock's own model calls, consult answers, digest
+  summaries and the routing tiebreak, as the OpenTelemetry GenAI content attributes of the spans sent to the person's own
+  OTLP collector) and that nothing depends on it, and answered: "remove it". Removed: `telemetry.content.set` and the
+  `telemetry.content_changed` event; the switch in the sink (`SetContent`, `ContentEnabled`, the `content` field of
+  `telemetry.status`, `diagnostics.status` and the OTLP status); `llm.ContentTracer`, `llm.CallContent`, `CallTrace.Content`
+  and where the Wrapper filled it; the `gen_ai.system_instructions`, `gen_ai.input.messages` and `gen_ai.output.messages`
+  keys, `SanitizeContent` and their encoding in both OTLP encodings; the Settings switch and its dialog
+  (`telemetry-content.tsx`), the client call and types, the Guide's paragraph, and their tests. Why: the benefit was narrow
+  (only Drydock's own model calls were ever included, never an agent CLI's session, where nearly all the work and tokens
+  are), and without it `security.md` principle 4 holds without exception again: telemetry export never carries prompts,
+  code, tool output or secrets, whatever a person turns on. No migration: a setting row a person stored for the switch
+  (`telemetry.content.*`) is simply ignored (the feature never shipped), migration `00158` keeps its comment, and
+  `otlp_sent_at` stays because the backfill uses it; a row an older build stored with content attributes is sent without
+  them, since `Sanitize` keeps only allowlisted keys. Stays as P121 built it: gzip bodies, "Also send what was recorded
+  before", the crash report and usage counter categories, and B0. Tests: `internal/telemetry/p126_test.go` runs the real
+  Wrapper against the protocol fixture with telemetry, OTLP sending in both encodings, the backfill and the old setting all
+  on, and finds only allowlisted identifier-shaped attributes, and none of the prompt, system text, tool call, tool output
+  or answer, in the stored rows, the preview and every request the collector stand-in decodes (it fails against P121's
+  code); the backfill test keeps a row with an old content attribute; `TestTheRemovedContentSwitchIsGoneAndItsSettingIgnored`
+  (core); the Settings browser test and `e2e/diagnostics.spec.ts` find no such switch. Docs: `security.md` principle 4,
+  `packaging.md` section 9, `token-control.md`, `ui.md` S19, `architecture.md`. No new dependency.
