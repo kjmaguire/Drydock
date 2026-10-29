@@ -38,6 +38,7 @@ const settingsClient = (over: Partial<Client> = {}): Partial<Client> => ({
   licenseStatus: async () => null as never,
   agentEnvGet: async () => ({ pass: [], kept: ['PATH'], prefixes: ['CLAUDE_'] }),
   telemetryStatus: async () => tel,
+  diagnosticsStatus: async () => ({ crashReports: { mode: 'local', kept: 0 }, usageCounters: { enabled: false, waiting: 0 }, telemetry: false, otlp: false }),
   ...over,
 });
 
@@ -54,6 +55,7 @@ describe('SettingsScreen', () => {
     tid(r.container, 'agent-env');
     tid(r.container, 'updates-section');
     await waitFor(() => tid(r.container, 'telemetry-counts'), r);
+    await waitFor(() => tid(r.container, 'diag-usage'), r); // the diagnostics categories (decision P121)
     // the event stream line follows the store
     s.emit({ type: 'x.y' });
     await waitFor(() => expect(tid(r.container, 'stream-status').textContent).toMatch(/last seq [1-9]\d*/), r);

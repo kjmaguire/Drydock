@@ -74,7 +74,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		// decision P118
 		"route.level.get", "route.level.set", "budget.workflows",
 		// decision P123
-		"run.resume", "run.timeTravel", "run.replay"} {
+		"run.resume", "run.timeTravel", "run.replay",
+		// decision P121
+		"diagnostics.status", "diagnostics.set", "telemetry.content.set"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}

@@ -92,7 +92,7 @@ Purpose: show what an AI team costs when none of Drydock's controls exist, on th
 | **B1 single premium agent** | One premium agent, no team, same stop conditions. A lower bound on cost for tasks that do not need a team. |
 | **D(slice)** | Drydock at the slice under test with its real routing, context engine, turn-taking, handoffs, watchdog and token controls enabled as implemented. Features not built in that slice are off and the row says so. |
 
-Fairness rules: same fixture repository and start commit, same task prompt, same acceptance checks, same CLI versions (from `compat.yaml`), same pricing table date, same machine; arms interleaved in time to spread provider variance; each (task, arm) repeated at least `k` times (proposal: k = 3) because model output is nondeterministic; worktrees are fresh per run. A per-run budget ceiling prevents runaway baseline spend; hitting it is a recorded outcome (`ceiling`), not a discarded run. The baseline needs real credentials, quota and (for cheap arms) a network route to a private cheap provider, so it cannot run in the sandbox (P3) and is entered as "not measured". B0 is built as an arm of the trial harness since decision P113 (section 15); it has not been run with a real CLI.
+Fairness rules: same fixture repository and start commit, same task prompt, same acceptance checks, same CLI versions (from `compat.yaml`), same pricing table date, same machine; arms interleaved in time to spread provider variance; each (task, arm) repeated at least `k` times (proposal: k = 3) because model output is nondeterministic; worktrees are fresh per run. A per-run budget ceiling prevents runaway baseline spend; hitting it is a recorded outcome (`ceiling`), not a discarded run. The baseline needs real credentials, quota and (for cheap arms) a network route to a private cheap provider, so it cannot run in the sandbox (P3) and is entered as "not measured". B0 is built as an arm of the trial harness since decision P113 (section 15), with any CLI and on a cheap provider since P121; it has not been run with a real CLI.
 
 ## 6. Recording results
 
@@ -514,7 +514,7 @@ machine under load (wall times include waiting for CPUs). The follow-up is six r
 origin rule was set after the follow-up and is covered by tests, not by another paid run. A suite whose
 tickets leave rules to the codebase's skills is what would show whether skills raise acceptance.
 
-## 15. The naive broadcast arm, B0 (built 2026-10-29, decision P113; not measured)
+## 15. The naive broadcast arm, B0 (built 2026-10-29, decisions P113 and P121; not measured)
 
 On the owner's words, answering the list of what was not built: "Proceed with those items". Section 5's B0 is an arm of the trial
 harness (`internal/trial/b0.go`, `drydock-trial run -arms D,B1,B0`), not part of the product, so it runs the same tasks, fixture,
@@ -549,4 +549,42 @@ so the tests say nothing about what broadcasting costs. **No B0 row has a measur
 Code and money, which this environment does not have. To measure it, on a machine with Claude Code signed in, from a commit:
 `go run ./cmd/drydock-trial run -arms D,B1,B0 -suite tally -k 3 -model haiku -ceiling-usd 2 -total-usd 150 -work <a folder outside
 the repository>`, then `go run ./cmd/drydock-trial report -trial <name>`; the 7.1 rows are then filled from the generated report.
-B0 runs only Claude Code; a broadcast team of other CLIs, or on a cheap provider, is not built.
+
+**Other CLIs and a cheap provider (built 2026-10-29, decision P121; not measured).** On the owner's word, answering the list of
+what is still not built: "Yes". The CLI and the provider are parameters of the arm (`internal/trial/b0cli.go`):
+
+- `-b0-cli <id>` runs every member of the team on that CLI: `claude` (the default, `claude -p` as above) or the id of another
+  CLI's manifest (`codex`, `gemini`, `opencode`, `goose`, `cline`, or a person's own), whose adapter the harness builds as the
+  Connections page does (`connections.NewService`, with the ACP terminal on so the team can run commands, as B1's Bash). Each
+  turn is a new session through that adapter, given the same prompt (role, task, the whole room); its normalized text, tool
+  calls, tool results and usage make up the room and the record, and its permission requests are all allowed. The run is
+  refused before it starts when the CLI is not installed. With no per-session budget flag, the dollar ceiling is checked before
+  each turn and against each usage report, which ends the turn once reached (`ceiling`); a turn that ends in error, is refused
+  or cancelled, or whose process ends early is `failed` with the CLI's reason. A CLI that reports no cost leaves
+  `callsWithoutCost` set and the cost a lower bound, as before.
+- `-b0-provider <id> -b0-provider-url <base URL> -b0-provider-key-env <variable>` runs the team on a provider instead of the CLI's
+  own sign-in. The key stays in the harness's environment and reaches only the CLI's: it is never in the record or on a command
+  line (what the CLI itself prints goes to the transcript, redacted as B1's). Claude Code is pointed at an Anthropic-compatible endpoint (`ANTHROPIC_BASE_URL`,
+  `ANTHROPIC_AUTH_TOKEN`, every model alias set to `-model` so no call goes to another model); OpenCode at an OpenAI-compatible one
+  (an inline `OPENCODE_CONFIG_CONTENT` naming the provider with `@ai-sdk/openai-compatible`, its key read from the variable,
+  and the model `<id>/<model>`). Any other CLI refuses a provider. The URL must be https (or http on this computer).
+  `-b0-price-in` and `-b0-price-out` (USD per million tokens) put each turn's cost at the provider's prices, from the tokens
+  (cached ones at the input price: an upper bound), instead of the CLI's own figure, which is at its vendor's prices; the
+  record then says `costSource: estimated`.
+- The record names the CLI (`agentCli`, and in `cli` its name and the version it reports) and the provider; the report's B0
+  table has a "CLI, provider" column.
+
+**Proven in tests, not measured.** `internal/trial/b0cli_test.go` runs a team of the scripted ACP agent (`fakeacp`, a labelled
+test double) through Drydock's real ACP adapter: the reviewer answers only when its prompt holds the worker's tool output, the
+worker writes the reference solution through the client's file system and the hidden check passes, cost and tokens add up to
+what the agent reported, the ceiling stops a turn as a usage report crosses it, a failed prompt ends the run; Claude Code's stand-in
+(`fakeagent`) on a provider gets the gateway variables and the cost at the provider's prices with the key in neither the record
+nor the arguments; OpenCode's inline configuration reaches the session (the agent reports its model and environment); and the
+refusals (a CLI that cannot take a provider, plain http elsewhere, credentials in the URL, an empty key). **No row of it is
+measured**: the variables Claude Code reads for another endpoint, OpenCode's configuration keys and every other CLI's behaviour
+as a B0 member are taken from their documentation and the manifests, not from a run. To measure, on a machine with the CLI
+installed and signed in (or the provider's key in a variable), from a commit:
+`go run ./cmd/drydock-trial run -arms D,B1,B0 -b0-cli opencode -model <model> -b0-provider <id> -b0-provider-url <https://.../v1>
+-b0-provider-key-env <VARIABLE> -b0-price-in <usd> -b0-price-out <usd> -suite tally -k 3 -ceiling-usd 2 -total-usd 50 -work <a
+folder outside the repository>` (or `-b0-cli codex`, `gemini`, ... on their own sign-in), then
+`go run ./cmd/drydock-trial report -trial <name>`.

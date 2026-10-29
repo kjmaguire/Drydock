@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/safe"
 )
 
@@ -27,9 +28,17 @@ import (
 // reason: that is where a broadcast team runs out.
 //
 // It is a harness arm, not part of the product, and it runs on this machine with Bash allowed, as B1 does.
+//
+// Since decision P121 the CLI and the provider are parameters (b0cli.go): the team can be any CLI Drydock drives (CLI and Adapter;
+// Claude Code by default) and can run on a provider other than the CLI's own (Provider).
 type B0 struct {
-	Bin        string // default "claude"
-	Model      string
+	Bin   string // default "claude"
+	Model string
+	// CLI is the agent CLI every member runs: "claude" (the default) or the id of another CLI's manifest, driven by Adapter.
+	CLI     string
+	Adapter agents.Adapter
+	// Provider, when set, is where the team's model calls go instead of the CLI's own sign-in.
+	Provider   *B0Provider
 	CeilingUSD float64
 	Wall       time.Duration
 	// Roles are the team in turn order; default the Drydock arm's worker and reviewer.
@@ -78,9 +87,21 @@ func (b B0) Detail() string {
 	for _, r := range b.roles() {
 		names = append(names, r.Name)
 	}
-	return fmt.Sprintf("naive broadcast: %d Claude Code agents (%s), one model, every room message and tool output to every agent each turn, "+
+	who := "Claude Code"
+	if b.cli() != CLIClaude {
+		who = b.cli()
+	}
+	on := ""
+	if b.Provider != nil {
+		on = " on the provider " + b.Provider.ID
+		if b.Provider.priced() {
+			on += fmt.Sprintf(" (cost estimated at $%s/$%s per million input/output tokens)", strconv.FormatFloat(b.Provider.InputPerMTok, 'f', -1, 64),
+				strconv.FormatFloat(b.Provider.OutputPerMTok, 'f', -1, 64))
+		}
+	}
+	return fmt.Sprintf("naive broadcast: %d %s agents (%s), one model%s, every room message and tool output to every agent each turn, "+
 		"free-for-all until all say %s or %d rounds; no router, cheap tier, handoff, cache or watchdog; on this machine with Bash",
-		len(names), strings.Join(names, ", "), DoneWord, b.rounds())
+		len(names), who, strings.Join(names, ", "), on, DoneWord, b.rounds())
 }
 
 // Args are the CLI arguments of one turn; the prompt goes on standard input (it holds the whole room, which can outgrow a
@@ -91,8 +112,10 @@ func (b B0) Args(remainingUSD float64) []string {
 		"--no-session-persistence"}
 }
 
-// Env is the CLI's environment, the same as B1's.
-func (b B0) Env(parent []string) []string { return B1{ExtraEnv: b.ExtraEnv}.Env(parent) }
+// Env is Claude Code's environment, the same as B1's, pointed at the provider when there is one.
+func (b B0) Env(parent []string) []string {
+	return B1{ExtraEnv: append(b.ProviderEnv(), b.ExtraEnv...)}.Env(parent)
+}
 
 // RoomEntry is one thing that happened in the room: an agent said something, called a tool, or a tool answered.
 type RoomEntry struct {
@@ -140,7 +163,20 @@ func saidDone(text string) bool {
 // measured part (the caller adds the acceptance verdict) and the room as it ended.
 func (b B0) Run(ctx context.Context, t Task, repo string, transcript io.Writer) (Record, []RoomEntry) {
 	roles := b.roles()
-	rec := Record{Arm: ArmB0, ArmDetail: b.Detail(), TaskID: t.ID, Model: b.Model, CeilingUSD: b.CeilingUSD, Agents: len(roles)}
+	rec := Record{Arm: ArmB0, ArmDetail: b.Detail(), TaskID: t.ID, Model: b.Model, CeilingUSD: b.CeilingUSD, Agents: len(roles), AgentCLI: b.cli()}
+	if b.Provider != nil {
+		rec.Provider = b.Provider.ID
+		if b.Provider.priced() {
+			rec.CostSource = "estimated"
+		}
+	}
+	if err := b.Check(); err != nil {
+		rec.Outcome, rec.Reason, rec.Stop = Failed, err.Error(), "error"
+		return rec, nil
+	}
+	if b.cli() != CLIClaude {
+		rec.Notes = append(rec.Notes, "the dollar ceiling is checked before each turn and against each usage report: "+b.cli()+" has no per-session budget flag")
+	}
 	ctx, cancel := context.WithTimeout(ctx, b.Wall)
 	defer cancel()
 	start := time.Now()
@@ -162,11 +198,9 @@ func (b B0) Run(ctx context.Context, t Task, repo string, transcript io.Writer) 
 			prompt := b.Prompt(t, role, room)
 			rec.BroadcastBytes += int64(len(prompt))
 			rec.MaxPromptBytes = max(rec.MaxPromptBytes, int64(len(prompt)))
-			out, err := b.turn(ctx, repo, prompt, b.CeilingUSD-rec.CostUSD)
-			_, _ = transcript.Write(out)
-			st := ReadStream(bytes.NewReader(out), b.Root, b.Hidden)
-			var one Record
-			st.apply(&one)
+			tr := b.runTurn(ctx, repo, round, role, prompt, b.CeilingUSD-rec.CostUSD)
+			_, _ = transcript.Write(tr.stream)
+			one := tr.rec
 			rec.Sessions++
 			rec.CostUSD += one.CostUSD
 			rec.CallsWithoutCost += one.CallsWithoutCost
@@ -185,20 +219,14 @@ func (b B0) Run(ctx context.Context, t Task, repo string, transcript io.Writer) 
 				}
 				rec.ToolUses[k] += v
 			}
-			said := roomEntries(out, round, role.Name)
+			said := tr.entries
 			room = append(room, said...)
-			switch res := st.result; {
+			switch {
 			case ctx.Err() == context.DeadlineExceeded:
 				rec.Outcome, rec.Reason, rec.Stop = Failed, fmt.Sprintf("the wall-clock cap of %s ended it", b.Wall), "wall"
 				return finishB0(rec, models), room
-			case res == nil:
-				rec.Outcome, rec.Reason, rec.Stop = Failed, fmt.Sprintf("the %s's session ended without a result: %s", role.Name, errText(err, "")), "error"
-				return finishB0(rec, models), room
-			case strings.Contains(res.Subtype, "budget"):
-				rec.Outcome, rec.Reason, rec.Stop = Ceiling, "claude stopped at the dollar ceiling ("+res.Subtype+")", "ceiling"
-				return finishB0(rec, models), room
-			case res.IsError || strings.HasPrefix(res.Subtype, "error"):
-				rec.Outcome, rec.Reason, rec.Stop = Failed, fmt.Sprintf("the %s's session reported an error: %s %s", role.Name, res.Subtype, strings.Join(res.Errors, "; ")), "error"
+			case tr.stop != "":
+				rec.Outcome, rec.Reason, rec.Stop = tr.outcome, tr.reason, tr.stop
 				return finishB0(rec, models), room
 			}
 			last := ""

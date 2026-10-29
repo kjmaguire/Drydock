@@ -342,12 +342,27 @@ func writeB0(b *strings.Builder, recs []Record) {
 	if len(rs) == 0 {
 		return
 	}
-	b.WriteString("\nThe broadcast team (B0), every run:\n\n| Task | # | Agents | Rounds | Stopped by | Sessions | Broadcast, all turns | Largest prompt |\n")
-	b.WriteString("|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("\nThe broadcast team (B0), every run:\n\n| Task | # | Agents | Rounds | Stopped by | Sessions | Broadcast, all turns | Largest prompt | CLI, provider |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|---|\n")
 	for _, r := range rs {
-		fmt.Fprintf(b, "| %s | %d | %d | %d | %s | %d | %s | %s |\n", r.TaskID, r.Repeat, r.Agents, r.Rounds, r.Stop, r.Sessions,
-			kib(r.BroadcastBytes), kib(r.MaxPromptBytes))
+		fmt.Fprintf(b, "| %s | %d | %d | %d | %s | %d | %s | %s | %s |\n", r.TaskID, r.Repeat, r.Agents, r.Rounds, r.Stop, r.Sessions,
+			kib(r.BroadcastBytes), kib(r.MaxPromptBytes), b0Where(r))
 	}
+}
+
+// b0Where is the CLI a B0 run's team ran and the provider it ran on (decision P121); a record from before names neither.
+func b0Where(r Record) string {
+	cli := r.AgentCLI
+	if cli == "" {
+		cli = CLIClaude
+	}
+	if r.Provider == "" {
+		return cli + ", its own sign-in"
+	}
+	if r.CostSource == "estimated" {
+		return cli + ", " + r.Provider + " (cost estimated at its prices)"
+	}
+	return cli + ", " + r.Provider
 }
 
 func kib(n int64) string { return fmt.Sprintf("%.1f KiB", float64(n)/1024) }

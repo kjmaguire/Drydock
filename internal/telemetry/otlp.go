@@ -7,9 +7,14 @@ package telemetry
 // full or the retries run out. Header values (an API key) are kept in the credential store, never in settings, the status, a
 // log or an event. Plain http is allowed only to this computer (the connection itself is checked, not only the name); anything
 // else must be https. Turning it off, or turning telemetry off, empties the queue and stops a send in flight.
+//
+// Since decision P121 the bodies are gzip-compressed (a setting; by default on for https, where the bytes cross a network, and
+// off for a collector on this computer), each row a collector accepted is marked sent in the local sink, and a person who turns
+// sending on can choose to also send what was recorded before (bounded by a date and a number of rows, through the same queue).
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -46,6 +51,22 @@ const (
 	keyOTLPLastOK    = "telemetry.otlp.last_success_at"
 	keyOTLPLastErr   = "telemetry.otlp.last_error"
 	keyOTLPLastErrAt = "telemetry.otlp.last_error_at"
+	keyOTLPGzip      = "telemetry.otlp.compression"   // gzip | none | "" (automatic: gzip for https)
+	keyOTLPBackfill  = "telemetry.otlp.last_backfill" // JSON BackfillResult
+)
+
+// Compression settings of the body.
+const (
+	CompressionAuto = ""
+	CompressionGzip = "gzip"
+	CompressionNone = "none"
+)
+
+// Backfill bounds: rows of at most the retention window, and at most MaxBackfillRows of them (they go through the queue, which
+// holds 2048).
+const (
+	DefaultBackfillRows = 500
+	MaxBackfillRows     = 1000
 )
 
 // MaxOTLPHeaders bounds how many headers a person can give the exporter.
@@ -88,6 +109,36 @@ type OTLPConfig struct {
 	Encoding string `json:"encoding"`
 	// Headers are the names of the headers sent with each request; their values are in the credential store and never shown.
 	Headers []string `json:"headers"`
+	// Compression is what the person chose: gzip, none, or "" for the default (gzip for https, none for this computer).
+	Compression string `json:"compression"`
+}
+
+// gzipOn reports whether request bodies are compressed.
+func (c OTLPConfig) gzipOn() bool {
+	switch c.Compression {
+	case CompressionGzip:
+		return true
+	case CompressionNone:
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(c.Endpoint), "https://")
+}
+
+// Backfill is "Also send what was recorded before", chosen when sending is turned on: the spans and metrics recorded since
+// SinceMS that no collector has had, the newest MaxRows of them (0: DefaultBackfillRows).
+type Backfill struct {
+	SinceMS int64 `json:"sinceMs"`
+	MaxRows int   `json:"maxRows,omitempty"`
+}
+
+// BackfillResult is what the last backfill queued.
+type BackfillResult struct {
+	At      int64  `json:"at"`
+	SinceMS int64  `json:"sinceMs"`
+	MaxRows int    `json:"maxRows"`
+	Queued  int    `json:"queued"`
+	Left    int    `json:"left"` // rows in the window the cap left out
+	By      string `json:"by,omitempty"`
 }
 
 // OTLPChange is a person's edit of the configuration. A nil field is left as it is.
@@ -98,6 +149,10 @@ type OTLPChange struct {
 	// SetHeaders stores (or replaces) each header's value; RemoveHeaders forgets headers by name.
 	SetHeaders    map[string]string `json:"setHeaders,omitempty"`
 	RemoveHeaders []string          `json:"removeHeaders,omitempty"`
+	// Compression is gzip, none or "" (automatic).
+	Compression *string `json:"compression,omitempty"`
+	// Backfill, with a change that turns sending on, also queues rows recorded before (default: only what is recorded from now).
+	Backfill *Backfill `json:"backfill,omitempty"`
 }
 
 // OTLPStatus is the exporter's state for the settings screen. LastError is Drydock's own description of what went wrong (the
@@ -118,6 +173,12 @@ type OTLPStatus struct {
 	LastError       string `json:"lastError,omitempty"`
 	LastErrorAt     int64  `json:"lastErrorAt,omitempty"`
 	CanKeepHeaders  bool   `json:"canKeepHeaders"` // there is a credential store
+	// Gzip is whether bodies are compressed now (Compression, or its default for the endpoint).
+	Gzip bool `json:"gzip"`
+	// LastBackfill is what the last "Also send what was recorded before" queued.
+	LastBackfill *BackfillResult `json:"lastBackfill,omitempty"`
+	// Content says whether the LLM calls' prompts and completions are sent (content export, decision P121).
+	Content bool `json:"content"`
 }
 
 // TestResult is what "Send a test span" says.
@@ -128,6 +189,7 @@ type TestResult struct {
 }
 
 type queued struct {
+	id     int64 // the row in the local sink, marked sent once a collector accepted it
 	span   *Span
 	metric *Metric
 }
@@ -150,6 +212,7 @@ type Exporter struct {
 	lastOK   int64
 	lastErr  string
 	lastErrT int64
+	backfill *BackfillResult
 
 	wake    chan struct{}
 	stop    chan struct{}
@@ -214,7 +277,17 @@ func (x *Exporter) load(ctx context.Context) error {
 	if _, err := x.s.setting(ctx, keyOTLPEnabled); err != nil {
 		return err
 	}
-	x.cfg = OTLPConfig{Enabled: get(keyOTLPEnabled) == "1", Endpoint: get(keyOTLPEndpoint), Encoding: get(keyOTLPEncoding), Headers: []string{}}
+	x.cfg = OTLPConfig{Enabled: get(keyOTLPEnabled) == "1", Endpoint: get(keyOTLPEndpoint), Encoding: get(keyOTLPEncoding), Headers: []string{},
+		Compression: get(keyOTLPGzip)}
+	if x.cfg.Compression != CompressionGzip && x.cfg.Compression != CompressionNone {
+		x.cfg.Compression = CompressionAuto
+	}
+	if v := get(keyOTLPBackfill); v != "" {
+		var b BackfillResult
+		if json.Unmarshal([]byte(v), &b) == nil {
+			x.backfill = &b
+		}
+	}
 	if x.cfg.Encoding != EncodingJSON {
 		x.cfg.Encoding = EncodingProtobuf
 	}
@@ -263,17 +336,18 @@ func (x *Exporter) activeLocked() bool {
 	return x.cfg.Enabled && x.cfg.Endpoint != "" && x.s.Enabled()
 }
 
-// offer queues a recorded span or metric when the exporter is active, dropping (and counting) it when the queue is full.
-func (x *Exporter) offer(q queued) {
+// offer queues a recorded span or metric when the exporter is active, dropping (and counting) it when the queue is full. It
+// reports whether it was queued.
+func (x *Exporter) offer(q queued) bool {
 	x.mu.Lock()
 	if !x.activeLocked() {
 		x.mu.Unlock()
-		return
+		return false
 	}
 	if len(x.queue) >= x.opt.QueueSize {
 		x.overflow++
 		x.mu.Unlock()
-		return
+		return false
 	}
 	x.queue = append(x.queue, q)
 	full := len(x.queue) >= x.opt.BatchSize
@@ -281,6 +355,7 @@ func (x *Exporter) offer(q queued) {
 	if full {
 		x.kick()
 	}
+	return true
 }
 
 func (x *Exporter) kick() {
@@ -313,18 +388,19 @@ func (x *Exporter) flush() {
 
 		var spans []Span
 		var metrics []Metric
+		var spanIDs, metricIDs []int64
 		for _, q := range batch {
 			if q.span != nil {
-				spans = append(spans, *q.span)
+				spans, spanIDs = append(spans, *q.span), append(spanIDs, q.id)
 			} else if q.metric != nil {
-				metrics = append(metrics, *q.metric)
+				metrics, metricIDs = append(metrics, *q.metric), append(metricIDs, q.id)
 			}
 		}
-		if len(spans) > 0 {
-			x.deliver(ctx, cfg, "/v1/traces", spans, nil)
+		if len(spans) > 0 && x.deliver(ctx, cfg, "/v1/traces", spans, nil) {
+			x.markSent("telemetry_spans", spanIDs)
 		}
-		if len(metrics) > 0 {
-			x.deliver(ctx, cfg, "/v1/metrics", nil, metrics)
+		if len(metrics) > 0 && x.deliver(ctx, cfg, "/v1/metrics", nil, metrics) {
+			x.markSent("telemetry_metrics", metricIDs)
 		}
 		if ctx.Err() != nil {
 			return
@@ -332,8 +408,29 @@ func (x *Exporter) flush() {
 	}
 }
 
-// deliver sends one request, retrying what the OTLP specification says to retry, and records the outcome.
-func (x *Exporter) deliver(ctx context.Context, cfg OTLPConfig, path string, spans []Span, metrics []Metric) {
+// markSent records in the local sink that the collector accepted these rows (the items a partial success rejected cannot be
+// told apart, so the whole request counts).
+func (x *Exporter) markSent(table string, ids []int64) {
+	var keep []any
+	for _, id := range ids {
+		if id > 0 {
+			keep = append(keep, id)
+		}
+	}
+	if len(keep) == 0 {
+		return
+	}
+	now := x.s.opt.Now().UnixMilli()
+	q := `UPDATE ` + table + ` SET otlp_sent_at=? WHERE id IN (?` + strings.Repeat(",?", len(keep)-1) + `)`
+	_ = x.s.db.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(context.Background(), q, append([]any{now}, keep...)...)
+		return err
+	})
+}
+
+// deliver sends one request, retrying what the OTLP specification says to retry, records the outcome and reports whether the
+// collector accepted it.
+func (x *Exporter) deliver(ctx context.Context, cfg OTLPConfig, path string, spans []Span, metrics []Metric) bool {
 	n := int64(len(spans) + len(metrics))
 	var err error
 	for attempt := 1; ; attempt++ {
@@ -342,11 +439,11 @@ func (x *Exporter) deliver(ctx context.Context, cfg OTLPConfig, path string, spa
 		var rejected int64
 		rejected, retry, after, err = x.post(ctx, cfg, path, spans, metrics)
 		if ctx.Err() != nil {
-			return // turned off or closed: not a failure, and nothing more is sent
+			return false // turned off or closed: not a failure, and nothing more is sent
 		}
 		if err == nil {
 			x.succeeded(len(spans) > 0, n, rejected)
-			return
+			return true
 		}
 		if !retry || attempt >= x.opt.MaxAttempts {
 			break
@@ -359,13 +456,14 @@ func (x *Exporter) deliver(ctx context.Context, cfg OTLPConfig, path string, spa
 			wait = x.opt.MaxDelay
 		}
 		if x.opt.Sleep(ctx, wait) != nil {
-			return
+			return false
 		}
 	}
 	x.mu.Lock()
 	x.failed += n
 	x.mu.Unlock()
 	x.failedWith(err)
+	return false
 }
 
 func (x *Exporter) succeeded(spans bool, n, rejected int64) {
@@ -441,15 +539,24 @@ func (x *Exporter) post(ctx context.Context, cfg OTLPConfig, path string, spans 
 	}
 	var body []byte
 	ct := "application/x-protobuf"
+	content := x.s.ContentEnabled() // read now: a row recorded while content export was on goes without it once it is off
 	switch {
 	case cfg.Encoding == EncodingJSON && spans != nil:
-		body, ct = tracesJSON(spans), "application/json"
+		body, ct = tracesJSON(spans, content), "application/json"
 	case cfg.Encoding == EncodingJSON:
 		body, ct = metricsJSON(metrics), "application/json"
 	case spans != nil:
-		body = tracesProto(spans)
+		body = tracesProto(spans, content)
 	default:
 		body = metricsProto(metrics)
+	}
+	gz := cfg.gzipOn()
+	if gz {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		_, _ = zw.Write(body) // a bytes.Buffer does not fail
+		_ = zw.Close()
+		body = buf.Bytes()
 	}
 	rctx, cancel := context.WithTimeout(ctx, x.opt.Timeout)
 	defer cancel()
@@ -459,6 +566,9 @@ func (x *Exporter) post(ctx context.Context, cfg OTLPConfig, path string, spans 
 	}
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("User-Agent", "Drydock-OTLP")
+	if gz {
+		req.Header.Set("Content-Encoding", "gzip") // OTLP/HTTP's compression
+	}
 	for _, h := range cfg.Headers {
 		v, herr := x.header(ctx, h)
 		if herr != nil {
@@ -623,11 +733,39 @@ func (x *Exporter) Configure(ctx context.Context, ch OTLPChange, by string) (OTL
 			return OTLPStatus{}, fmt.Errorf("the encoding is %s or %s, not %q", EncodingProtobuf, EncodingJSON, *ch.Encoding)
 		}
 	}
+	if ch.Compression != nil {
+		switch *ch.Compression {
+		case CompressionAuto, CompressionGzip, CompressionNone:
+			next.Compression = *ch.Compression
+		default:
+			return OTLPStatus{}, fmt.Errorf("compression is %s, %s or automatic (empty), not %q", CompressionGzip, CompressionNone, *ch.Compression)
+		}
+	}
+	wasOn := next.Enabled
 	if ch.Enabled != nil {
 		next.Enabled = *ch.Enabled
 	}
 	if next.Enabled && next.Endpoint == "" {
 		return OTLPStatus{}, errors.New("give the collector's endpoint before turning sending on")
+	}
+	var bf *Backfill
+	if ch.Backfill != nil {
+		if wasOn || !next.Enabled {
+			return OTLPStatus{}, errors.New("sending what was recorded before is chosen when sending is turned on")
+		}
+		b, err := x.checkBackfill(*ch.Backfill)
+		if err != nil {
+			return OTLPStatus{}, err
+		}
+		bf = &b
+	}
+	// the rows "recorded before" are those stored now: whatever is recorded once sending is on is offered as it comes
+	var through watermark
+	if bf != nil {
+		var err error
+		if through, err = x.s.maxIDs(ctx); err != nil {
+			return OTLPStatus{}, err
+		}
 	}
 	remove := map[string]bool{}
 	for _, h := range ch.RemoveHeaders {
@@ -676,7 +814,8 @@ func (x *Exporter) Configure(ctx context.Context, ch OTLPChange, by string) (OTL
 		on = "1"
 	}
 	err := x.s.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		for k, v := range map[string]string{keyOTLPEnabled: on, keyOTLPEndpoint: next.Endpoint, keyOTLPEncoding: next.Encoding, keyOTLPHeaders: string(hb), keyOTLPBy: by} {
+		for k, v := range map[string]string{keyOTLPEnabled: on, keyOTLPEndpoint: next.Endpoint, keyOTLPEncoding: next.Encoding, keyOTLPHeaders: string(hb), keyOTLPBy: by,
+			keyOTLPGzip: next.Compression} {
 			if err := x.s.put(ctx, tx, k, v); err != nil {
 				return err
 			}
@@ -702,6 +841,12 @@ func (x *Exporter) Configure(ctx context.Context, ch OTLPChange, by string) (OTL
 		x.revokeLocked()
 	}
 	x.mu.Unlock()
+	if bf != nil {
+		if err := x.queueBackfill(ctx, *bf, through, by); err != nil {
+			return x.Status(), fmt.Errorf("sending is on, but what was recorded before could not be queued: %w", err)
+		}
+		x.kick()
+	}
 	return x.Status(), nil
 }
 
@@ -724,8 +869,13 @@ func (x *Exporter) Status() OTLPStatus {
 	defer x.mu.Unlock()
 	st := OTLPStatus{OTLPConfig: x.cfg, ChangedBy: x.by, Active: x.activeLocked(), Queued: len(x.queue), QueueSize: x.opt.QueueSize,
 		SentSpans: x.sent[0], SentMetrics: x.sent[1], DroppedOverflow: x.overflow, DroppedFailed: x.failed, Rejected: x.rejected,
-		LastSuccessAt: x.lastOK, LastError: x.lastErr, LastErrorAt: x.lastErrT, CanKeepHeaders: x.opt.Secrets != nil}
+		LastSuccessAt: x.lastOK, LastError: x.lastErr, LastErrorAt: x.lastErrT, CanKeepHeaders: x.opt.Secrets != nil,
+		Gzip: x.cfg.gzipOn(), Content: x.s.ContentEnabled()}
 	st.Headers = append([]string{}, x.cfg.Headers...)
+	if x.backfill != nil {
+		b := *x.backfill
+		st.LastBackfill = &b
+	}
 	return st
 }
 
@@ -745,7 +895,8 @@ func (x *Exporter) SendTest(ctx context.Context, by string) (TestResult, error) 
 	now := x.s.opt.Now().UnixMilli()
 	sp := Span{TraceID: newTraceID(), SpanID: NewSpanID(), Name: "drydock.telemetry.test", StartMS: now, EndMS: now, Status: "ok",
 		Attrs: map[string]any{AttrOutcome: "ok"}}
-	if err := x.s.insertSpan(ctx, sp); err != nil {
+	id, err := x.s.insertSpan(ctx, sp)
+	if err != nil {
 		return TestResult{}, err
 	}
 	rejected, _, _, err := x.post(ctx, cfg, "/v1/traces", []Span{sp}, nil)
@@ -758,5 +909,6 @@ func (x *Exporter) SendTest(ctx context.Context, by string) (TestResult, error) 
 		return TestResult{OK: false, Error: st.LastError, Status: st}, nil
 	}
 	x.succeeded(true, 1, 0)
+	x.markSent("telemetry_spans", []int64{id})
 	return TestResult{OK: true, Status: x.Status()}, nil
 }
