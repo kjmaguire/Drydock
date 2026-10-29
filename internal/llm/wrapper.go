@@ -44,7 +44,8 @@ type Options struct {
 	Now       func() time.Time         // default time.Now
 	// Sleep waits for d or until ctx ends; default a timer. Tests shorten waits through the policy, not by faking the clock.
 	Sleep func(ctx context.Context, d time.Duration) error
-	// Tracer, when set, is told about every call once it ends (the telemetry sink, decision P113). It sees no content.
+	// Tracer, when set, is told about every call once it ends (the telemetry sink, decision P113). It sees no content unless it
+	// is a ContentTracer that asks for it (content export, decision P121).
 	Tracer CallTracer
 }
 

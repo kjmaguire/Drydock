@@ -72,7 +72,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		"mcp.rolePolicy.get", "mcp.rolePolicy.set", "mcp.policyRule.add", "mcp.policyRule.remove", "task.mcpTools.get", "task.mcpTools.set",
 		"connection.custom.list", "connection.custom.template", "connection.custom.add", "connection.custom.remove",
 		// decision P118
-		"route.level.get", "route.level.set", "budget.workflows"} {
+		"route.level.get", "route.level.set", "budget.workflows",
+		// decision P121
+		"diagnostics.status", "diagnostics.set", "telemetry.content.set"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}

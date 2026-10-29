@@ -74,6 +74,56 @@ func Arm(dataDir string) (*Armed, error) {
 	return &Armed{f: f, path: p}, nil
 }
 
+// Pause stops Go writing this process's crash output to a file (a person turned crash reports off, decision P121). The armed
+// file stays empty, and Disarm removes it at exit.
+func Pause() error { return debug.SetCrashOutput(nil, debug.CrashOptions{}) }
+
+// Resume points this process's crash output at path again (the armed file, after crash reports were turned back on). An empty
+// path, a process that was never armed, does nothing.
+func Resume(path string) error {
+	if path == "" {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close() // SetCrashOutput keeps its own duplicate of the descriptor
+	return debug.SetCrashOutput(f, debug.CrashOptions{})
+}
+
+// Discard removes every crash output file in Dir(dataDir) other than skip without reading it into a report: what Collect does
+// while a person has crash reports turned off. It returns how many held a crash.
+func Discard(dataDir, skip string) (int, error) {
+	dir := Dir(dataDir)
+	ents, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	var errs []error
+	for _, e := range ents {
+		name := e.Name()
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, pendingPrefix) || !strings.HasSuffix(name, pendingExt) {
+			continue
+		}
+		p := filepath.Join(dir, name)
+		if skip != "" && sameFile(p, skip) {
+			continue
+		}
+		if st, err := e.Info(); err == nil && st.Size() > 0 {
+			n++
+		}
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return n, errors.Join(errs...)
+}
+
 // Disarm stops writing crash output to the file and removes it when nothing was written.
 func (a *Armed) Disarm() {
 	if a == nil || a.f == nil {

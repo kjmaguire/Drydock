@@ -1,6 +1,8 @@
 package telemetry_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
@@ -50,10 +52,13 @@ type gotMetric struct {
 type gotRequest struct {
 	Path, ContentType string
 	Header            http.Header
-	Body              []byte
-	Resource          map[string]any
-	Spans             []gotSpan
-	Metrics           []gotMetric
+	// Body is the request body as decoded (gunzipped when the request said Content-Encoding: gzip); Wire is what came over the
+	// wire.
+	Body, Wire []byte
+	Gzip       bool
+	Resource   map[string]any
+	Spans      []gotSpan
+	Metrics    []gotMetric
 }
 
 type collectorStandIn struct {
@@ -79,7 +84,22 @@ func newCollector(t *testing.T, tls bool) *collectorStandIn {
 }
 
 func (c *collectorStandIn) serve(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
+	wire, _ := io.ReadAll(r.Body)
+	body := wire
+	gz := r.Header.Get("Content-Encoding") == "gzip"
+	if gz {
+		zr, err := gzip.NewReader(bytes.NewReader(wire))
+		if err == nil {
+			body, err = io.ReadAll(zr)
+		}
+		if err != nil {
+			c.t.Errorf("the stand-in could not gunzip the request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	} else if enc := r.Header.Get("Content-Encoding"); enc != "" {
+		c.t.Errorf("unexpected Content-Encoding %q", enc)
+	}
 	if c.hold != nil {
 		select {
 		case <-c.hold:
@@ -87,7 +107,7 @@ func (c *collectorStandIn) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	g := gotRequest{Path: r.URL.Path, ContentType: r.Header.Get("Content-Type"), Header: r.Header.Clone(), Body: body}
+	g := gotRequest{Path: r.URL.Path, ContentType: r.Header.Get("Content-Type"), Header: r.Header.Clone(), Body: body, Wire: wire, Gzip: gz}
 	var err error
 	switch {
 	case g.ContentType == "application/json" && r.URL.Path == "/v1/traces":

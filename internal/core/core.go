@@ -194,7 +194,9 @@ type Core struct {
 	limits agentLimits
 	// methods is the registry Call dispatches through, built once after the extensions started (nil before)
 	methods atomic.Pointer[map[string]Method]
-	cancel  context.CancelFunc
+	// onCall, when set, is told the name of every method Call dispatches (the usage counters, decision P121)
+	onCall atomic.Pointer[func(name string)]
+	cancel context.CancelFunc
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.
