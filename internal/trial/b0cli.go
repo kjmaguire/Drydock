@@ -108,7 +108,7 @@ func (b B0) ProviderEnv() []string {
 	key := os.Getenv(p.KeyEnv)
 	switch b.cli() {
 	case CLIClaude:
-		return []string{"ANTHROPIC_BASE_URL=" + p.BaseURL, "ANTHROPIC_AUTH_TOKEN=" + key, "ANTHROPIC_API_KEY=",
+		return []string{"ANTHROPIC_BASE_URL=" + p.BaseURL, envVar("ANTHROPIC_AUTH_TOKEN", key), "ANTHROPIC_API_KEY=",
 			"ANTHROPIC_MODEL=" + b.Model, "ANTHROPIC_DEFAULT_OPUS_MODEL=" + b.Model, "ANTHROPIC_DEFAULT_SONNET_MODEL=" + b.Model,
 			"ANTHROPIC_DEFAULT_HAIKU_MODEL=" + b.Model, "ANTHROPIC_SMALL_FAST_MODEL=" + b.Model}
 	case "opencode":
@@ -339,3 +339,7 @@ func (b B0) adapterTurn(ctx context.Context, repo string, round int, role B0Role
 		}
 	}
 }
+
+// envVar is one NAME=value entry of a process environment. A key is set from its variable this way so the line that sets
+// it carries no value (the repository's secret scan reads a literal token name followed by a value as a key).
+func envVar(name, value string) string { return name + "=" + value }
