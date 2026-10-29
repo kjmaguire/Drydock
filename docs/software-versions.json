@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-29T07:01:21Z",
-  "commit": "da24cd6",
+  "generated": "2026-10-29T07:17:57Z",
+  "commit": "9e54f13",
   "summary": {
     "current": 173,
     "major": 3,
@@ -678,7 +678,7 @@
       "usedDate": "2026-10-06",
       "where": "go.mod",
       "role": "Windows Job Objects (killing an agent's whole process tree) and other Windows calls.",
-      "usedBy": 11,
+      "usedBy": 12,
       "inBuild": true
     },
     {
@@ -6551,8 +6551,8 @@
       "group": "Tools Drydock runs or you install",
       "name": "llama.cpp (the local models' engine, decision P65)",
       "kind": "tool",
-      "used": "b11980",
-      "latest": "b11980",
+      "used": "b11981",
+      "latest": "b11981",
       "status": "current",
       "where": "docs/decisions.md section 2",
       "role": "The local models' engine (decision P65, docs/local-models.md): Drydock downloads the newest weekly Windows build of ggml-org/llama.cpp for the chosen backend and runs its llama-server on the person's PC as a provider. MIT.",
