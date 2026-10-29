@@ -130,3 +130,10 @@ func SetChatAskTTL(d time.Duration) func() {
 
 // ACPToolRequest exposes how an ACP tool call is read for the permission gate.
 var ACPToolRequest = acpToolRequest
+
+// SetSlowCallForTests changes how long a call may take before Call logs it; the returned func restores it.
+func SetSlowCallForTests(d time.Duration) func() {
+	old := slowCall
+	slowCall = d
+	return func() { slowCall = old }
+}

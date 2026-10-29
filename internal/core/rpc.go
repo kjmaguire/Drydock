@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/events"
@@ -349,6 +350,9 @@ func (c *Core) Methods() map[string]Method {
 }
 
 // Call dispatches one method by name.
+// slowCall is how long a call may take before Call logs it.
+var slowCall = 5 * time.Second
+
 func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
 	reg := c.methods.Load()
 	if reg == nil { // a call made while the core is still opening
@@ -366,6 +370,14 @@ func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (j
 	// end of the application and of every run in it (audit 2026-10-16, H9)
 	var v any
 	var err error
+	start := time.Now()
+	defer func() {
+		// a call the window waits on for seconds is said, by name and time only (never its parameters): a composer stuck on
+		// "Sending..." in CI (2026-10-29) left no trace of whether the core or the browser held the request
+		if d := time.Since(start); d >= slowCall {
+			c.logf("rpc %s took %s", name, d.Round(time.Millisecond))
+		}
+	}()
 	if perr := safe.Do("rpc "+name, func() { v, err = m(ctx, params) }); perr != nil {
 		return nil, perr
 	}
