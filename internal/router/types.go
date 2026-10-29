@@ -131,12 +131,12 @@ const (
 	CauseRetentionRequired Cause = "retention_required"
 	// CauseWallTime: Drydock stopped the turn at its wall-time ceiling (decision P112). It moves along the fallback chain only
 	// when the turn did no work (a model that hung without a tool call).
-	CauseWallTime Cause = "wall_time"
-	CauseCheapStuck       Cause = "cheap_stuck"      // cheap iterations without passing checks
-	CausePremiumRevise    Cause = "premium_revise"   // premium reviewer returned REVISE repeatedly
-	CauseWatchdogStage2   Cause = "watchdog_stage2"  // second watchdog trip
-	CausePremiumResolved  Cause = "premium_resolved" // the premium resolution finished; the next unit starts cheap again
-	CauseBudgetDownshift  Cause = "budget_downshift"
+	CauseWallTime        Cause = "wall_time"
+	CauseCheapStuck      Cause = "cheap_stuck"      // cheap iterations without passing checks
+	CausePremiumRevise   Cause = "premium_revise"   // premium reviewer returned REVISE repeatedly
+	CauseWatchdogStage2  Cause = "watchdog_stage2"  // second watchdog trip
+	CausePremiumResolved Cause = "premium_resolved" // the premium resolution finished; the next unit starts cheap again
+	CauseBudgetDownshift Cause = "budget_downshift"
 )
 
 // FailureCounts are the per-task counters that drive escalation.

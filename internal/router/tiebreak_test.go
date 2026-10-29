@@ -141,7 +141,7 @@ func TestAModelThatNeedsDataRetentionIsLeftOut(t *testing.T) {
 	// the refusal of an agent turn is told apart from the work's own invalid requests
 	for msg, want := range map[string]Cause{
 		`API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"In order to access this model, your organization or workspace must have data retention enabled."}}`: CauseRetentionRequired,
-		`API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long"}}`:                                                                             "",
+		`API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long"}}`:                                                                              "",
 	} {
 		if got := ClassifyUnavailable(msg); got != want {
 			t.Errorf("%q: %q, want %q", msg, got, want)
