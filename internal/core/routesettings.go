@@ -61,6 +61,15 @@ type RouteSettings struct {
 	Ceilings CeilingSettings  `json:"ceilings"`
 	// Level is the level agent turns run at today (no per-project level exists yet), so the page can say which ceiling applies.
 	Level string `json:"level"`
+	// Agents are the agents a ceiling can be set for (every project's team), with their project's name.
+	Agents []RouteAgent `json:"agents"`
+}
+
+// RouteAgent is an agent as the Routing page names it.
+type RouteAgent struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Project string `json:"project"`
 }
 
 // Ceiling bounds (seconds): shorter than a minute stops any real turn; longer than a day is no ceiling.
@@ -106,7 +115,19 @@ func (e *economics) routeSettings(ctx context.Context) RouteSettings {
 		ts.ModelNote = note
 	}
 	ts.SpentTodayUSD, ts.CallsToday = e.tiebreakSpentToday(ctx)
-	return RouteSettings{Tiebreak: ts, Ceilings: e.ceilingSettings(ctx), Level: string(router.LevelBalanced)}
+	rs := RouteSettings{Tiebreak: ts, Ceilings: e.ceilingSettings(ctx), Level: string(router.LevelBalanced), Agents: []RouteAgent{}}
+	if ags, err := e.c.AllAgents(ctx); err == nil {
+		names := map[string]string{}
+		if ps, err := e.c.Projects(ctx); err == nil {
+			for _, p := range ps {
+				names[p.ID] = p.Name
+			}
+		}
+		for _, a := range ags {
+			rs.Agents = append(rs.Agents, RouteAgent{ID: a.ID, Name: a.Name, Project: names[a.ProjectID]})
+		}
+	}
+	return rs
 }
 
 // routeSettingsPatch is route.settings.set: a part left out stays as it is; a ceilings map given replaces the stored one.

@@ -197,6 +197,19 @@ func TestATurnPastItsWallTimeCeilingIsStoppedWithAReason(t *testing.T) {
 	if !strings.Contains(ex.Text, "- Stopped: the turn ran past the 2s wall-time ceiling") {
 		t.Fatalf("Why this model? does not say it was stopped:\n%s", ex.Text)
 	}
+	// the task's decisions list says it too
+	var rows []struct {
+		ID         string `json:"id"`
+		StopReason string `json:"stopReason"`
+	}
+	g.a.call("route.decisions", map[string]string{"taskId": task.ID}, &rows)
+	stopped := false
+	for _, r := range rows {
+		stopped = stopped || (r.ID == id && r.StopReason == why)
+	}
+	if !stopped {
+		t.Fatalf("route.decisions %+v", rows)
+	}
 	evs := g.a.eventsOf("routing.stopped")
 	if len(evs) != 1 || evs[0]["decisionId"] != id || evs[0]["ceilingSeconds"] != float64(2) {
 		t.Fatalf("events %v", evs)
@@ -380,6 +393,14 @@ func TestTheTiebreakChoosesBetweenTiedModelsThroughTheCheapModel(t *testing.T) {
 	if d.DecidedBy != "llm" || d.Facts.Tiebreak == nil || d.Facts.Tiebreak.Ranked != "agent:claude/haiku" || d.Facts.Tiebreak.By != prov.ID+"/cheap-good" ||
 		d.Facts.Tiebreak.Why != "the larger of two equal options" || !strings.Contains(d.Reason, "tiebreak by") {
 		t.Fatalf("decision %+v / %+v", d, d.Facts.Tiebreak)
+	}
+	var rows []struct {
+		DecidedBy string `json:"decidedBy"`
+		Tiebreak  string `json:"tiebreak"`
+	}
+	g.a.call("route.decisions", map[string]string{"taskId": task.ID}, &rows)
+	if len(rows) == 0 || rows[0].DecidedBy != "llm" || !strings.Contains(rows[0].Tiebreak, "chose agent:claude/sonnet over agent:claude/haiku") {
+		t.Fatalf("route.decisions %+v", rows)
 	}
 	mu.Lock()
 	got := strings.Join(asked, "\n")

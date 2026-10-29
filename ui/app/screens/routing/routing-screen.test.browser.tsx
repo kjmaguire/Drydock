@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { RouteRule } from '../../api/extTypes.ts';
+import type { RouteRule, RouteSettings, RouteSettingsPatch } from '../../api/extTypes.ts';
 import type { Provider } from '../../api/types.ts';
 import { byLabel, byText, cleanup, errorOf, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { PRIORITY_ERROR } from './rules-panel.tsx';
@@ -21,10 +21,28 @@ const has = (r: { container: Element }, s: string | RegExp) => () => {
   if (typeof s === 'string' ? !txt.includes(s) : !s.test(txt)) throw new Error(`no text ${String(s)}`);
 };
 
+// TEST DOUBLE of route.settings.get: nothing set yet, no cheap model selected
+const noSettings = (): RouteSettings => ({
+  tiebreak: { enabled: false, budgetUsd: 0.25, timeoutMs: 8000, margin: 0.1, modelNote: 'no cheap model is selected yet', spentTodayUsd: 0, callsToday: 0 },
+  ceilings: { levels: {}, agents: {} },
+  level: 'balanced',
+  agents: [
+    { id: 'agt_1', name: 'Backend #1', project: 'gocalc' },
+    { id: 'agt_2', name: 'Lead', project: 'gocalc' },
+  ],
+});
+
 function mountWith(client: Partial<Client>) {
   return mount(
     <RoutingScreen />,
-    testServices({ routeRulesList: async () => [], providerList: async () => [], routePreviews: async (reqs) => reqs.map(() => ({ blocked: true, reason: 'no providers' })), ...client }),
+    testServices({
+      routeRulesList: async () => [],
+      providerList: async () => [],
+      routePreviews: async (reqs) => reqs.map(() => ({ blocked: true, reason: 'no providers' })),
+      routeSettingsGet: async () => noSettings(),
+      routeRetentionList: async () => [],
+      ...client,
+    }),
   );
 }
 
@@ -262,6 +280,77 @@ describe('RoutingScreen', () => {
   });
 });
 
+describe('the tiebreak and turn limits (decision P112)', () => {
+  /** A TEST DOUBLE of route.settings.set that applies the patch as the core does and keeps every call. */
+  const settingsDouble = () => {
+    let cur = noSettings();
+    const calls: RouteSettingsPatch[] = [];
+    return {
+      calls,
+      get: async () => cur,
+      set: async (p: RouteSettingsPatch) => {
+        calls.push(p);
+        if (p.tiebreak) cur = { ...cur, tiebreak: { ...cur.tiebreak, ...p.tiebreak } };
+        if (p.ceilings) cur = { ...cur, ceilings: { levels: p.ceilings.levels ?? cur.ceilings.levels, agents: p.ceilings.agents ?? cur.ceilings.agents } };
+        return cur;
+      },
+    };
+  };
+
+  it('turns the tiebreak on with its budget and timeout, and says why it has no model yet', async () => {
+    const d = settingsDouble();
+    const r = mountWith({ routeSettingsGet: d.get, routeSettingsSet: d.set });
+    const panel = await waitFor(() => need(r, '[data-testid="route-limits"] [data-testid="tiebreak-model"]').closest('[data-testid="route-limits"]') as HTMLElement, r);
+    expect(panel.textContent).toContain('no cheap model is selected yet');
+    const box = byLabel<HTMLInputElement>(panel, /Ask the cheap model when the rules leave a tie/);
+    expect(box.checked).toBe(false);
+    await r.act(() => box.click());
+    type(byLabel(panel, 'Daily budget (USD)'), '12');
+    await r.act(() => byText(panel, 'button', 'Save tiebreak').click());
+    await waitFor(() => expect(errorOf(byLabel(panel, 'Daily budget (USD)'))).toBe('A dollar amount from 0 to 10.'), r);
+    expect(d.calls).toEqual([]);
+    type(byLabel(panel, 'Daily budget (USD)'), '0.5');
+    type(byLabel(panel, 'Timeout (seconds)'), '5');
+    await r.act(() => byText(panel, 'button', 'Save tiebreak').click());
+    await waitFor(() => expect(d.calls).toEqual([{ tiebreak: { enabled: true, budgetUsd: 0.5, timeoutMs: 5000 } }]), r);
+  });
+
+  it('sets a limit per level and per agent in minutes; a bad number is told under its field and nothing is sent', async () => {
+    const d = settingsDouble();
+    const r = mountWith({ routeSettingsGet: d.get, routeSettingsSet: d.set });
+    const panel = await waitFor(() => need(r, '[data-testid="route-limits"] [data-testid="limits-now"]').closest('[data-testid="route-limits"]') as HTMLElement, r);
+    expect(panel.textContent).toContain('No limit is set.');
+    expect(panel.textContent).toContain('Agent turns run at the Balanced level today.');
+    type(byLabel(panel, 'Balanced (minutes)'), 'soon');
+    await r.act(() => byText(panel, 'button', 'Save limits').click());
+    await waitFor(() => expect(errorOf(byLabel(panel, 'Balanced (minutes)'))).toBe('A whole number of minutes from 1 to 1440, or empty for no limit.'), r);
+    expect(d.calls).toEqual([]);
+    type(byLabel(panel, 'Balanced (minutes)'), '30');
+    // a limit for one agent wins over the level's
+    await r.act(() => type(byLabel(panel, "A limit for one agent (it wins over the level's)"), 'agt_2'));
+    await r.act(() => byText(panel, 'button', 'Add').click());
+    const row = await waitFor(() => need(r, '[data-testid="agent-limit"][data-agent="agt_2"]'), r);
+    expect(row.textContent).toContain('Lead');
+    type(byLabel(row, 'Minutes for Lead'), '10');
+    await r.act(() => byText(panel, 'button', 'Save limits').click());
+    await waitFor(() => expect(d.calls).toEqual([{ ceilings: { levels: { balanced: 1800 }, agents: { agt_2: 600 } } }]), r);
+    await waitFor(has(r, 'Set: Balanced 30 min, Lead 10 min.'), r);
+  });
+
+  it('lists the models a provider refused for want of data retention and tries one again', async () => {
+    const cleared: string[] = [];
+    const r = mountWith({
+      routeRetentionList: async () => [{ providerId: 'prov_ant', model: 'claude-fable-5', source: 'api', message: 'refused', seenAt: 1 }],
+      routeRetentionClear: async (p, m) => void cleared.push(`${p}/${m}`),
+    });
+    const row = await waitFor(() => need(r, '[data-testid="retention-block"]'), r);
+    expect(r.$('[data-testid="retention-blocks"]')!.textContent).toContain('no data retention enabled');
+    await r.act(() => byText(row, 'button', 'Try again').click());
+    await waitFor(() => expect(cleared).toEqual(['prov_ant/claude-fable-5']), r);
+    await waitFor(() => expect(r.$('[data-testid="retention-block"]')).toBeNull(), r);
+  });
+});
+
 describe('the wiring diagram (decision P108)', () => {
   // TEST DOUBLE of route.previews: a model per level of agent work, the cheap one for the app's own small calls
   const byLevel: Record<string, string> = { cheapest: 'claude-haiku-5-5', fast: 'claude-sonnet-5-5', balanced: 'claude-opus-5-5', quality: 'claude-opus-5-5', maximum_quality: 'claude-fable-5-1' };
@@ -310,7 +399,13 @@ describe('the wiring diagram (decision P108)', () => {
 
   it('reads the answers again when a rule changes', async () => {
     let calls = 0;
-    const svc = testServices({ routeRulesList: async () => [], providerList: async () => [], routePreviews: async (reqs) => (calls++, Promise.all(reqs.map(preview))) as never });
+    const svc = testServices({
+      routeRulesList: async () => [],
+      providerList: async () => [],
+      routeSettingsGet: async () => noSettings(),
+      routeRetentionList: async () => [],
+      routePreviews: async (reqs) => (calls++, Promise.all(reqs.map(preview))) as never,
+    });
     const r = mount(<RoutingScreen />, svc);
     await waitFor(() => expect(calls).toBeGreaterThan(0), r);
     await waitFor(() => need(r, '[data-testid="wire-card"][data-key="level-cheapest"] [data-testid="wire-model"]').textContent === 'Haiku 5.5' || (() => { throw new Error('not yet'); })(), r);

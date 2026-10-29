@@ -59,6 +59,9 @@ import type {
   RoomTurn,
   RouteExplain,
   RoutePreview,
+  RouteSettings,
+  RouteSettingsPatch,
+  RetentionBlock,
   RouteRule,
   RuleReq,
   SchedulerStatus,
@@ -109,6 +112,10 @@ export interface ExtClient {
   routeCheapGet(providerId: string): Promise<{ selection: CheapSelection | null; selected: boolean }>;
   routeCheapSelect(providerId: string, force?: boolean): Promise<CheapSelection>;
   routeProbeStartup(enabled: boolean): Promise<{ enabled: boolean; by: string }>;
+  routeSettingsGet(): Promise<RouteSettings>;
+  routeSettingsSet(patch: RouteSettingsPatch): Promise<RouteSettings>;
+  routeRetentionList(): Promise<RetentionBlock[]>;
+  routeRetentionClear(providerId: string, model: string): Promise<void>;
   // checks, dev settings, telemetry
   checksSettingsGet(projectId: string): Promise<CheckSettings>;
   checksSettingsSet(projectId: string, s: CheckSettings): Promise<CheckSettings>;
@@ -279,6 +286,10 @@ export function createExtClient(t: Transport): ExtClient {
     routeCheapGet: (providerId) => call('route.cheap.get', { providerId }),
     routeCheapSelect: (providerId, force = false) => call('route.cheap.select', { providerId, force }),
     routeProbeStartup: (enabled) => call('route.probe.startup', { enabled }),
+    routeSettingsGet: () => call('route.settings.get'),
+    routeSettingsSet: (patch) => call('route.settings.set', patch),
+    routeRetentionList: async () => arr(await call<RetentionBlock[] | null>('route.retention.list')),
+    routeRetentionClear: (providerId, model) => voidCall('route.retention.clear', { providerId, model }),
 
     checksSettingsGet: (projectId) => call('checks.settings.get', { projectId }),
     checksSettingsSet: (projectId, s) => call('checks.settings.set', { projectId, ...s }),

@@ -746,7 +746,10 @@ type decisionRow struct {
 	DecidedBy     string   `json:"decidedBy"`
 	EstCostUSD    *float64 `json:"estCostUsd"` // nil = price unknown, never zero
 	EscalatedFrom string   `json:"escalatedFrom,omitempty"`
-	Outcome       *struct {
+	// StopReason says why Drydock stopped the turn (a wall-time ceiling); Tiebreak what an LLM tiebreak did (P112).
+	StopReason string `json:"stopReason,omitempty"`
+	Tiebreak   string `json:"tiebreak,omitempty"`
+	Outcome    *struct {
 		Outcome    string  `json:"outcome"`
 		Accepted   bool    `json:"accepted"`
 		Escalated  bool    `json:"escalated"`
@@ -758,6 +761,8 @@ type decisionRow struct {
 
 func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisionRow, error) {
 	rows, err := e.c.DB.Reader().QueryContext(ctx, `SELECT d.id,d.ts,d.run_id,d.node_id,d.attempt,d.run_kind,d.level,d.agent,d.provider_id,d.model,d.effort,d.decided_by,d.est_cost_usd,d.escalated_from,
+		d.stop_reason, COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.chose'),''), COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.ranked'),''),
+		COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.failed'),''), COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.by'),''),
 		o.outcome,o.accepted,o.escalated,o.iterations,o.cost_usd,o.cost_source
 		FROM routing_decisions d LEFT JOIN routing_outcomes o ON o.decision_id=d.id WHERE d.task_id=? ORDER BY d.ts, d.id`, taskID)
 	if err != nil {
@@ -772,9 +777,18 @@ func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisi
 		var acc, esc, it sql.NullInt64
 		var cost sql.NullFloat64
 		var cs sql.NullString
+		var chose, ranked, failed, by string
 		if err := rows.Scan(&r.ID, &r.TS, &r.RunID, &r.NodeID, &r.Attempt, &r.RunKind, &r.Level, &r.Agent, &r.Provider, &r.Model, &r.Effort, &r.DecidedBy, &est, &r.EscalatedFrom,
-			&oc, &acc, &esc, &it, &cost, &cs); err != nil {
+			&r.StopReason, &chose, &ranked, &failed, &by, &oc, &acc, &esc, &it, &cost, &cs); err != nil {
 			return nil, err
+		}
+		switch {
+		case failed != "":
+			r.Tiebreak = "tiebreak failed (" + failed + "): the ranking's choice stands"
+		case chose != "" && chose != ranked:
+			r.Tiebreak = "tiebreak by " + by + " chose " + chose + " over " + ranked
+		case chose != "":
+			r.Tiebreak = "tiebreak by " + by + " kept " + chose
 		}
 		if est.Valid {
 			v := est.Float64
