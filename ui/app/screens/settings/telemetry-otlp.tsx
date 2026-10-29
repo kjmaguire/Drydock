@@ -17,6 +17,8 @@ import { Done, panel, Row } from './settings-kit.tsx';
 
 const formCss = css({ display: 'grid', gap: t.s3, gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, 180px)', alignItems: 'end' });
 const lineCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', flexWrap: 'wrap', minWidth: '0' });
+// name, value and the button on one row, so the button stays level with the fields at any width
+const headerFormCss = css({ display: 'grid', gap: t.s2, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', alignItems: 'center' });
 const listCss = css({ margin: '0', padding: '0', listStyle: 'none', display: 'grid', gap: t.s2 });
 
 /** The status line: whether spans and metrics are leaving, how many did, and the last success and error. */
@@ -135,7 +137,7 @@ export function OtlpExport(handle: Handle<{ status: TelemetryOtlpStatus; telemet
           {st.canKeepHeaders ? (
             <form
               mix={[
-                lineCss,
+                headerFormCss,
                 on<HTMLFormElement, 'submit'>('submit', async (e) => {
                   e.preventDefault();
                   const r = await set('header', { setHeaders: { [headerName.trim()]: headerValue } });
