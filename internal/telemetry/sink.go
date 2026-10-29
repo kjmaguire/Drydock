@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -46,6 +47,8 @@ type Sink struct {
 	on     bool
 	dropMu sync.Mutex
 	drop   map[string]int
+	// exp, when set, is offered every span and metric once it is stored (the OTLP exporter, decision P113).
+	exp atomic.Pointer[Exporter]
 }
 
 // New builds a Sink and reads whether telemetry is enabled (default off).
@@ -106,6 +109,9 @@ func (s *Sink) SetEnabled(ctx context.Context, on bool, by string) error {
 	s.mu.Lock()
 	s.on = on
 	s.mu.Unlock()
+	if x := s.exp.Load(); x != nil && !on {
+		x.revoke() // revoking consent stops sending at once, a send in flight included
+	}
 	return nil
 }
 
@@ -156,7 +162,7 @@ func NewSpanID() string {
 }
 
 // RecordSpan stores a span if telemetry is enabled. Attributes outside the allowlist, or with values that are not
-// identifier-shaped, are dropped (and counted by name), never stored.
+// identifier-shaped, are dropped (and counted by name), never stored. The stored span, and only it, is what an exporter sends.
 func (s *Sink) RecordSpan(ctx context.Context, sp Span) error {
 	if !s.Enabled() {
 		return nil
@@ -166,14 +172,25 @@ func (s *Sink) RecordSpan(ctx context.Context, sp Span) error {
 	if sp.Status != "error" {
 		sp.Status = "ok"
 	}
-	name := sp.Name
-	if !identValue.MatchString(name) {
-		name = "unnamed"
+	if !identValue.MatchString(sp.Name) {
+		sp.Name = "unnamed"
 	}
-	attrs, _ := json.Marshal(clean)
+	sp.Attrs = clean
+	if err := s.insertSpan(ctx, sp); err != nil {
+		return err
+	}
+	if x := s.exp.Load(); x != nil {
+		x.offer(queued{span: &sp})
+	}
+	return nil
+}
+
+// insertSpan writes a span that is already clean.
+func (s *Sink) insertSpan(ctx context.Context, sp Span) error {
+	attrs, _ := json.Marshal(sp.Attrs)
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO telemetry_spans(trace_id,span_id,parent_id,name,start_ms,end_ms,status,attrs) VALUES(?,?,?,?,?,?,?,?)`,
-			sp.TraceID, sp.SpanID, sp.ParentID, name, sp.StartMS, sp.EndMS, sp.Status, string(attrs))
+			sp.TraceID, sp.SpanID, sp.ParentID, sp.Name, sp.StartMS, sp.EndMS, sp.Status, string(attrs))
 		return err
 	})
 }
@@ -196,11 +213,16 @@ func (s *Sink) RecordMetric(ctx context.Context, m Metric) error {
 	default:
 		m.Kind = "gauge"
 	}
+	m.Unit, m.Attrs = onlyIdent(m.Unit), clean
 	attrs, _ := json.Marshal(clean)
-	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO telemetry_metrics(ts,name,kind,unit,value,attrs) VALUES(?,?,?,?,?,?)`, m.TimeMS, m.Name, m.Kind, onlyIdent(m.Unit), m.Value, string(attrs))
+	err := s.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO telemetry_metrics(ts,name,kind,unit,value,attrs) VALUES(?,?,?,?,?,?)`, m.TimeMS, m.Name, m.Kind, m.Unit, m.Value, string(attrs))
 		return err
 	})
+	if x := s.exp.Load(); err == nil && x != nil {
+		x.offer(queued{metric: &m})
+	}
+	return err
 }
 
 func onlyIdent(s string) string {
@@ -221,11 +243,21 @@ type Status struct {
 	DroppedByKey    map[string]int `json:"droppedAttributeKeys"`
 	Destination     string         `json:"destination"`
 	NetworkExporter bool           `json:"networkExporter"`
+	// OTLP is the exporter's state, when there is an exporter.
+	OTLP *OTLPStatus `json:"otlp,omitempty"`
 }
 
 // Status reports the sink's state.
 func (s *Sink) Status(ctx context.Context) (Status, error) {
 	st := Status{Enabled: s.Enabled(), DroppedByKey: map[string]int{}, Destination: "this device only (local SQLite); export on demand", NetworkExporter: false}
+	if x := s.exp.Load(); x != nil {
+		o := x.Status()
+		st.OTLP = &o
+		if o.Active {
+			st.NetworkExporter = true
+			st.Destination = "this device (local SQLite), and sent to " + o.Endpoint + " over OTLP/HTTP (" + o.Encoding + ")"
+		}
+	}
 	st.EnabledBy, _ = s.setting(ctx, keyEnabledBy)
 	if v, _ := s.setting(ctx, keyEnabledAt); v != "" {
 		_, _ = fmt.Sscan(v, &st.EnabledAt) // a malformed setting reads as "not recorded"

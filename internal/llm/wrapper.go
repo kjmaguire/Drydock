@@ -44,6 +44,8 @@ type Options struct {
 	Now       func() time.Time         // default time.Now
 	// Sleep waits for d or until ctx ends; default a timer. Tests shorten waits through the policy, not by faking the clock.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Tracer, when set, is told about every call once it ends (the telemetry sink, decision P113). It sees no content.
+	Tracer CallTracer
 }
 
 // Wrapper is the policy layer over the provider backends. It implements Client.
@@ -60,6 +62,7 @@ type Wrapper struct {
 	ttls    map[string]time.Duration
 	now     func() time.Time
 	sleep   func(ctx context.Context, d time.Duration) error
+	tracer  CallTracer
 }
 
 // NewWrapper validates o and builds the Wrapper.
@@ -103,7 +106,7 @@ func NewWrapper(o Options) (*Wrapper, error) {
 		}
 	}
 	return &Wrapper{reg: o.Registry, db: o.DB, factory: o.Factory, scanner: o.Scanner, ledger: o.Ledger, mon: o.Monitor,
-		uptime: o.Uptime, bus: o.Bus, retry: o.Retry, ttls: o.CacheTTLs, now: o.Now, sleep: o.Sleep}, nil
+		uptime: o.Uptime, bus: o.Bus, retry: o.Retry, ttls: o.CacheTTLs, now: o.Now, sleep: o.Sleep, tracer: o.Tracer}, nil
 }
 
 // Complete runs one call through the policy pipeline.
@@ -120,6 +123,13 @@ func (w *Wrapper) Stream(ctx context.Context, req Request, fn func(Delta) error)
 }
 
 func (w *Wrapper) run(ctx context.Context, req Request, fn func(Delta) error) (Response, error) {
+	start := w.now()
+	resp, err := w.call(ctx, req, fn)
+	w.trace(ctx, req, start, fn != nil, resp, err)
+	return resp, err
+}
+
+func (w *Wrapper) call(ctx context.Context, req Request, fn func(Delta) error) (Response, error) {
 	if req.Provider == "" || req.Model == "" {
 		return Response{}, errors.New("llm: request needs a provider and a model")
 	}

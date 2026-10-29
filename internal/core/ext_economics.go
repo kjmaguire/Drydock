@@ -57,6 +57,7 @@ type economics struct {
 	src         *router.RegistrySource
 	prober      *probe.Prober
 	sink        *telemetry.Sink
+	otlp        *telemetry.Exporter // nil when the sink did not start
 	outcomes    *evals.Outcomes
 }
 
@@ -173,6 +174,23 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		mws = append([]workflow.Middleware{sink.Middleware()}, mws...)
 		c.Engine.Use(workflow.KindCheck, sink.Middleware())
 		c.Engine.Observe(sink.Observer())
+		// the OTLP exporter (decision P113): off until a person gives an endpoint and turns it on; header values in the vault
+		x, err := telemetry.NewExporter(ctx, sink, telemetry.ExporterOptions{Secrets: c.secrets,
+			Known: func(name, value string) {
+				if c.Scanner != nil {
+					_ = c.Scanner.RegisterSecret(otlpSecretName(name), value) // a value too short to scan for is still never logged
+				}
+			},
+			Forget: func(name string) {
+				if c.Scanner != nil {
+					c.Scanner.UnregisterSecret(otlpSecretName(name))
+				}
+			}})
+		if err != nil {
+			c.logf("telemetry: the OTLP exporter did not start: %v", err)
+		} else {
+			e.otlp = x // started once everything else has
+		}
 	}
 	c.Engine.Use(workflow.KindAgentTask, mws...)
 	c.budgetGate.Store(true)
@@ -182,8 +200,12 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	e.ledger.StartPolling(ctx)
 	e.uptime = providers.NewEndpointUptime(c.Providers, providers.UptimeOptions{})
 	var err error
+	var tracer llm.CallTracer // the Wrapper's own calls are recorded like node executions (P113); never a typed nil
+	if e.sink != nil {
+		tracer = e.sink
+	}
 	e.wrapper, err = llm.NewWrapper(llm.Options{Registry: c.Providers, DB: c.DB, Factory: backends.Factory, Scanner: secretadapt.LLM(c.Scanner),
-		Ledger: e.ledger, Monitor: c.Health, Uptime: e.uptime, Bus: c.Bus})
+		Ledger: e.ledger, Monitor: c.Health, Uptime: e.uptime, Bus: c.Bus, Tracer: tracer})
 	if err != nil {
 		return nil, nil, fmt.Errorf("llm wrapper: %w", err)
 	}
@@ -228,10 +250,16 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		safe.Go("core.startEconomics#2", func() { e.startupProbe(ctx) })
 	}
 
+	if e.otlp != nil {
+		e.otlp.Start()
+	}
 	econMu.Lock()
 	econByCore[c] = e
 	econMu.Unlock()
 	closeFn := func() {
+		if e.otlp != nil {
+			e.otlp.Close()
+		}
 		e.outcomes.Stop()
 		e.ledger.StopPolling()
 		econMu.Lock()
@@ -577,8 +605,27 @@ func (e *economics) methods() map[string]Method {
 			}
 			return map[string]any{"path": path, "spans": len(doc.Spans), "metrics": len(doc.Metrics), "document": doc}, nil
 		}),
+		// OTLP export (decision P113): where telemetry is sent, by a person only; header values go to the credential store
+		"telemetry.otlp.set": bind(func(ctx context.Context, p telemetry.OTLPChange) (any, error) {
+			if e.otlp == nil {
+				return nil, errors.New("the telemetry exporter did not start (see the log)")
+			}
+			if _, err := e.otlp.Configure(ctx, p, human()); err != nil {
+				return nil, err
+			}
+			return e.sink.Status(ctx)
+		}),
+		"telemetry.otlp.test": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			if e.otlp == nil {
+				return nil, errors.New("the telemetry exporter did not start (see the log)")
+			}
+			return e.otlp.SendTest(ctx, human())
+		}),
 	}
 }
+
+// otlpSecretName is the name under which the secret scanner knows an OTLP header's value.
+func otlpSecretName(header string) string { return "otlp-header-" + strings.ToLower(header) }
 
 // --- budget methods ---
 

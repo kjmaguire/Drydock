@@ -332,6 +332,41 @@ export interface TelemetryStatus {
   droppedAttributeKeys: Record<string, number> | null;
   destination: string;
   networkExporter: boolean;
+  /** The OTLP exporter (decision P113); absent when it did not start. */
+  otlp?: TelemetryOtlpStatus;
+}
+/** Where telemetry is sent over OTLP/HTTP. Header values are in the credential store and never come back. */
+export interface TelemetryOtlpStatus {
+  enabled: boolean;
+  endpoint: string;
+  encoding: 'protobuf' | 'json';
+  headers: string[] | null;
+  changedBy?: string;
+  /** On, with an endpoint, and telemetry records: spans and metrics are being sent. */
+  active: boolean;
+  queued: number;
+  queueSize: number;
+  sentSpans: number;
+  sentMetrics: number;
+  droppedOverflow: number;
+  droppedFailed: number;
+  rejected: number;
+  lastSuccessAt?: number;
+  lastError?: string;
+  lastErrorAt?: number;
+  canKeepHeaders: boolean;
+}
+export interface TelemetryOtlpChange {
+  enabled?: boolean;
+  endpoint?: string;
+  encoding?: 'protobuf' | 'json';
+  setHeaders?: Record<string, string>;
+  removeHeaders?: string[];
+}
+export interface TelemetryOtlpTest {
+  ok: boolean;
+  error?: string;
+  status: TelemetryOtlpStatus;
 }
 export interface TelemetryDocument {
   schema: string;
