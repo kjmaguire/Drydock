@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { Pack, PackSearchResult } from '../../api/extTypes.ts';
+import type { Pack, PackConsult, PackSearchResult } from '../../api/extTypes.ts';
 import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
 import { ConsultView, PacksScreen, SearchResultView } from './packs-screen.tsx';
 
@@ -260,7 +260,147 @@ describe('PacksScreen', () => {
   });
 });
 
+const pick = async (r: ReturnType<typeof mount>, input: HTMLInputElement, files: File[]) => {
+  const dt = new DataTransfer();
+  for (const f of files) dt.items.add(f);
+  input.files = dt.files;
+  await r.act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+};
+
+const refreshed = (id: string) => ({
+  packId: id,
+  version: '20261029.1',
+  newVersion: true,
+  pages: 1,
+  added: 1,
+  changed: 0,
+  removed: 0,
+  unchanged: 0,
+  skipped: 0,
+  failed: 0,
+  quarantined: 0,
+  redactions: 0,
+});
+
+describe('Packs made from files', () => {
+  it('makes a private pack of the picked files and reads them at once', async () => {
+    const made: unknown[][] = [];
+    const refreshedIds: string[] = [];
+    const r = mount(
+      <PacksScreen />,
+      servicesWith({
+        packList: async () => [],
+        packCreateFromFiles: async (...a) => (made.push(a), pack({ id: 'operations-handbook' })),
+        packRefresh: async (id) => (refreshedIds.push(id), refreshed(id)),
+      }),
+    );
+    const form = await waitFor(() => need(r.$('[data-testid="files-pack-form"]')), r);
+    type(byLabel(form, 'Title'), 'Operations Handbook');
+    r.root.flush();
+    expect(byLabel<HTMLInputElement>(form, 'Pack id').value).toBe('operations-handbook');
+    const make = byText<HTMLButtonElement>(form, 'button', 'Make the pack');
+    expect(make.disabled).toBe(true);
+    // a file a pack does not read is refused here, before anything is sent
+    await pick(r, byLabel<HTMLInputElement>(form, 'Files'), [new File(['MZ'], 'tool.exe')]);
+    await waitFor(() => expect(form.textContent).toContain('tool.exe is not a document a pack reads'), r);
+    await pick(r, byLabel<HTMLInputElement>(form, 'Files'), [new File(['%PDF-1.4 ...'], 'manual.pdf'), new File(['# Notes'], 'notes.md')]);
+    await waitFor(() => expect(form.textContent).toContain('manual.pdf (12 bytes), notes.md (7 bytes)'), r);
+    await r.act(() => byText(form, 'button', 'Make the pack').click());
+    await waitFor(() => expect(need(form.querySelector('[role="status"]')).textContent).toContain('Made operations-handbook. Version 20261029.1'), r);
+    const [p, files] = made[0] as [{ id: string; title: string }, { name: string; data: Uint8Array }[]];
+    expect(p).toEqual({ id: 'operations-handbook', title: 'Operations Handbook' });
+    expect(files.map((f) => [f.name, new TextDecoder().decode(f.data)])).toEqual([
+      ['manual.pdf', '%PDF-1.4 ...'],
+      ['notes.md', '# Notes'],
+    ]);
+    expect(refreshedIds).toEqual(['operations-handbook']);
+  });
+
+  it('an id the core would refuse is said on the page', async () => {
+    const made: unknown[] = [];
+    const r = mount(<PacksScreen />, servicesWith({ packList: async () => [], packCreateFromFiles: async (...a) => (made.push(a), pack()) }));
+    const form = await waitFor(() => need(r.$('[data-testid="files-pack-form"]')), r);
+    type(byLabel(form, 'Pack id'), 'Bad Id');
+    r.root.flush();
+    await pick(r, byLabel<HTMLInputElement>(form, 'Files'), [new File(['# A'], 'a.md')]);
+    await waitFor(() => expect(byText<HTMLButtonElement>(form, 'button', 'Make the pack').disabled).toBe(false), r);
+    await r.act(() => byText(form, 'button', 'Make the pack').click());
+    await waitFor(() => expect(form.textContent).toContain('The id is 2 to 40 lowercase letters'), r);
+    expect(byLabel(form, 'Pack id').getAttribute('aria-invalid')).toBe('true');
+    expect(made).toEqual([]);
+  });
+
+  it("a pack's own files are listed, added to and removed, and each change is read at once", async () => {
+    const calls: string[] = [];
+    let files = [{ name: 'manual.pdf', size: 2048, modified: '2026-10-29T10:00:00Z' }];
+    const r = mount(
+      <PacksScreen />,
+      servicesWith({
+        packList: async () => [pack({ id: 'ops', manifest: { sources: [{ type: 'local_dir', path: 'files' }] } })],
+        packFiles: async () => files,
+        packAddFiles: async (id, fs) => (calls.push(`add ${id} ${fs.map((f) => f.name).join(',')}`), (files = [...files, { name: 'faq.txt', size: 12, modified: '' }])),
+        packRemoveFile: async (id, name) => void (calls.push(`remove ${id} ${name}`), (files = files.filter((f) => f.name !== name))),
+        packRefresh: async (id) => (calls.push(`refresh ${id}`), refreshed(id)),
+      }),
+    );
+    const box = await waitFor(() => {
+      const b = need(r.$('[data-testid="pack-files"]'));
+      if (!b.textContent?.includes('manual.pdf')) throw new Error('not yet');
+      return b;
+    }, r);
+    expect(box.textContent).toContain('2 KB');
+    await pick(r, need(box.querySelector<HTMLInputElement>('[data-testid="pack-file-input"]')), [new File(['where?'], 'faq.txt')]);
+    await waitFor(() => expect(need(box.querySelector('[role="status"]')).textContent).toContain('Added faq.txt. Version 20261029.1'), r);
+    expect(calls).toEqual(['add ops faq.txt', 'refresh ops']);
+    await r.act(() => byText(box, 'button', 'Remove manual.pdf').click());
+    expect(calls.length).toBe(2); // one click only asks
+    await r.act(() => byText(box, 'button', 'Yes, remove manual.pdf').click());
+    await waitFor(() => expect(calls).toEqual(['add ops faq.txt', 'refresh ops', 'remove ops manual.pdf', 'refresh ops']), r);
+    await waitFor(() => expect(box.textContent).not.toContain('manual.pdf2 KB'), r);
+  });
+
+  it('a pack that reads another folder has no files box', async () => {
+    const r = mount(<PacksScreen />, servicesWith({}));
+    await waitFor(() => need(r.$('[data-testid="pack"]')), r);
+    expect(r.$('[data-testid="pack-files"]')).toBe(null);
+  });
+});
+
 describe('SearchResultView and ConsultView', () => {
+  it('a model answer quotes the passages it used, with their pages, and lists the rest apart', () => {
+    const cite = (n: number, page?: number) => ({
+      pack: 'ops',
+      version: 'v1',
+      url: 'local:manual.pdf',
+      headingPath: page ? `Operator Manual > Page ${page}` : 'FAQ',
+      page,
+      contentHash: `hash${n}xxxxxx`,
+      origin: 'indexed',
+    });
+    const c: PackConsult = {
+      found: true,
+      answer: 'Rotate it every ninety days [1].',
+      citations: [cite(1, 3)],
+      sources: [
+        { n: 1, citation: cite(1, 3), excerpt: 'Rotate the gateway token every ninety days.', used: true },
+        { n: 2, citation: cite(2), excerpt: 'Where are the logs?' },
+      ],
+      confidence: 'high',
+      sourceAgeDays: 0,
+      route: 'private',
+      model: 'fixture-private',
+      usage: { inputTokens: 400, outputTokens: 30, costUsd: 0.0001 },
+    };
+    const r = renderPlain(<ConsultView r={c} />);
+    r.root.flush();
+    const used = need(r.$('[data-testid="consult-used"]'));
+    expect(used.textContent).toContain('Operator Manual > Page 3');
+    expect(need(used.querySelector('blockquote')).textContent).toBe('Rotate the gateway token every ninety days.');
+    expect(need(used.querySelector('[data-testid="citation"]')).getAttribute('data-page')).toBe('3');
+    expect(need(r.$('[data-testid="consult-other"]')).textContent).toContain('Where are the logs?');
+    expect(r.container.textContent).toContain('route private, model fixture-private');
+  });
+
   it('shows a refresh failure from the core and a not-found result honestly', () => {
     const r = renderPlain(
       <SearchResultView
@@ -296,7 +436,7 @@ describe('SearchResultView and ConsultView', () => {
       />,
     );
     r.root.flush();
-    expect(r.$('[data-testid="consult-no-model"]')!.textContent).toContain('No model was used');
+    expect(r.$('[data-testid="consult-no-model"]')!.textContent).toContain('No model wrote this answer');
     expect(r.container.textContent).not.toContain('Cost of this question');
     expect(r.container.textContent).not.toContain('source age');
   });
