@@ -30,6 +30,7 @@ import type {
   AgentDetail,
   Connection,
   ConnectionReport,
+  CustomCLIs,
   NewProvider,
   ProbeResult,
   Provider,
@@ -63,6 +64,7 @@ import type {
 
 const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const gitConfig = (v: GitConfigStatus | null): GitConfigStatus => ({ trusted: v?.trusted === true, changed: arr(v?.changed), fingerprint: v?.fingerprint ?? '' });
+const customs = (v: CustomCLIs | null): CustomCLIs => ({ dir: v?.dir ?? '', files: arr(v?.files) });
 const agentConfig = (v: AgentConfigFinding[] | null | undefined): AgentConfigFinding[] => arr(v).map((f) => ({ ...f, files: arr(f.files), taskId: f.taskId ?? '', trusted: f.trusted === true }));
 const usageTotals = (v: UsageTotals | null | undefined): UsageTotals => ({
   rows: Number(v?.rows) || 0,
@@ -149,6 +151,14 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   connectionSignIn(adapter: string, distro?: string): Promise<TerminalInfo>;
   /** Checks one Connection again now, its sign-in included (the card's "Check again", and when its sign-in ends). */
   connectionCheck(adapter: string, distro?: string): Promise<Connection>;
+  /** A person's own CLIs (decision P115): the folder they are kept in and every file, with why one did not load. */
+  connectionCustomList(): Promise<CustomCLIs>;
+  /** The template of a custom manifest, made ready for an id. */
+  connectionCustomTemplate(id: string): Promise<string>;
+  /** Adds a person's own CLI from its manifest (checked strictly by the core); its Connection is returned. */
+  connectionCustomAdd(yaml: string): Promise<Connection>;
+  /** Removes a person's own CLI (refused while an agent runs on it). */
+  connectionCustomRemove(id: string): Promise<CustomCLIs>;
   providerList(): Promise<Provider[]>;
   providerCreate(p: NewProvider): Promise<Provider>;
   providerDelete(id: string): Promise<void>;
@@ -250,6 +260,10 @@ export function createClient(t: Transport): Client {
     },
     connectionSignIn: (adapter, distro = '') => t.call<TerminalInfo>('connection.signIn', { adapter, distro }),
     connectionCheck: (adapter, distro = '') => t.call<Connection>('connection.check', { adapter, distro }),
+    connectionCustomList: async () => customs(await t.call<CustomCLIs>('connection.custom.list', {})),
+    connectionCustomTemplate: async (id) => (await t.call<{ yaml: string }>('connection.custom.template', { id })).yaml,
+    connectionCustomAdd: (yaml) => t.call<Connection>('connection.custom.add', { yaml }),
+    connectionCustomRemove: async (id) => customs(await t.call<CustomCLIs>('connection.custom.remove', { id })),
     providerList: async () => arr(await t.call<Provider[] | null>('provider.list')),
     providerCreate: (p) => t.call('provider.create', p),
     providerDelete: async (id) => {

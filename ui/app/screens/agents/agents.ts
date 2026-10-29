@@ -309,3 +309,15 @@ export function usedBy<A extends Pick<Agent, 'adapter' | 'runMode' | 'wslDistro'
     return distro ? same(distro, c.distro) : defaultDistro ? same(defaultDistro, c.distro) : true;
   });
 }
+
+/** The id rule of a person's own CLI's manifest (internal/agents/manifests: meta.id). */
+export const CUSTOM_ID = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** The Add a custom CLI dialog's check of the id before anything is sent ('' when it may be). taken are the ids listed. */
+export function customIdProblem(id: string, taken: readonly string[]): string {
+  const v = id.trim();
+  if (!v) return 'Give your CLI an id.';
+  if (!CUSTOM_ID.test(v)) return 'An id is lowercase letters, digits and dashes, starting with a letter, at most 32 characters.';
+  if (v === 'custom' || taken.includes(v)) return 'That id is taken: choose another.';
+  return '';
+}

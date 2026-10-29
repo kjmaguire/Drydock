@@ -145,7 +145,7 @@ func startCustomCLI(ctx context.Context, c *Core) (map[string]Method, func(), er
 				return nil, err
 			}
 			if n > 0 {
-				return nil, fmt.Errorf("%d %s run on %s: give them another CLI or remove them first", n, plural(n, "agent", "agents"), p.ID)
+				return nil, fmt.Errorf("%d %s on %s: give them another CLI or remove them first", n, plural(n, "agent runs", "agents run"), p.ID)
 			}
 			if err := c.Connections.Registry.RemoveCustom(p.ID, builtinAdapter); err != nil {
 				return nil, err
