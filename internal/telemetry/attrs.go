@@ -1,7 +1,7 @@
 // Package telemetry is Drydock's local telemetry sink (decision D12, brief s10): spans and metrics are written to the local
-// SQLite database, only when the human turned telemetry on, with Drydock's own attribute names. There is no network
-// exporter and no OTLP dependency: "export" means producing a JSON document on demand that the human can read first
-// (Preview) and then save or hand to a collector themselves.
+// SQLite database, only when the human turned telemetry on, with Drydock's own attribute names. "Export" means producing a
+// JSON document on demand that the human can read first (Preview) and then save, or, since decision P113, the optional OTLP
+// exporter a person points at a collector of their own (otlp.go, written without an OTLP dependency).
 //
 // What can never be in an attribute: prompts, code, tool output, file contents, secrets. This is enforced structurally, not
 // by care: an attribute is stored only if its key is in the allowlist below AND its value has an identifier-shaped form

@@ -1500,9 +1500,9 @@ Open, owner action:
   message, tool call and tool output), free-for-all until both say DONE in one round, five rounds, the wall-clock cap or the
   run's dollar ceiling (a recorded `ceiling`); no router, cheap tier, handoff, cache or watchdog. It records the arm's rounds,
   stop and broadcast bytes besides section 6.2's fields. No migration. Details: `token-control.md` "As built: OTLP export and the
-  Wrapper's spans", `evals.md` section 15. **Not built:** gzip bodies, exporting rows recorded before sending was on, content
-  export, crash reports and usage counters as their own categories; B0 with CLIs other than Claude Code or a cheap provider.
-  **Not verified:** a real collector or vendor backend (the protobuf encoding is checked only against a decoder written from the
+  Wrapper's spans", `evals.md` section 15. Built since by P121: gzip bodies, exporting rows recorded before sending was on,
+  content export, crash reports and usage counters as their own categories, B0 with CLIs other than Claude Code and on a
+  cheap provider. **Not verified:** a real collector or vendor backend (the protobuf encoding is checked only against a decoder written from the
   same field numbers), Windows, a proxy; **B0 is not measured**: its mechanics and records are proven against the scripted
   stand-in agent only, and every B0 row of `evals.md` 7.1 stays "not measured" until it is run with a signed-in Claude Code.
 - **P115. The per-role MCP tool table, Antigravity's headless start, the custom CLI dialect and live packs' docs servers in
@@ -1646,3 +1646,47 @@ Open, owner action:
   that uses the group node and a way to start one from the UI, group and reply turns counted against a workflow budget, a
   task-level or template-level routing level, the `ContextPlan` and `MaxRounds` inside a grant, ending a discussion on
   `SHIP`. **Not verified:** any of it with a real agent CLI (only the scripted stand-in), Windows.
+- **P121. gzip bodies, sending what was recorded before, content export, crash reports and usage counters as categories of
+  their own, and B0 with other CLIs and on a cheap provider (2026-10-29).** On the owner's word, answering the list of what is
+  still not built: "Yes" to building the whole "can be built now" group (the items of P113's "Not built" line). (1) **gzip**
+  (`internal/telemetry/otlp.go`): request bodies are gzip-compressed with `Content-Encoding: gzip`, a setting
+  (`telemetry.otlp.compression`: automatic, gzip or none; automatic is gzip for https and none for a collector on this
+  computer); the stand-in collector gunzips every request. (2) **What was recorded before** (`backfill.go`, migration `00158`,
+  `otlp_sent_at` on `telemetry_spans` and `telemetry_metrics`): each row a collector accepted is marked; a change that turns
+  sending on may carry `backfill {sinceMs, maxRows}` (off unless chosen), which queues the rows recorded before that no
+  collector has had, since a date within the 30 days telemetry keeps, the newest up to a cap (default 500, at most 1000),
+  through the same queue, batching, retries and encoders (so the allowlist is applied again); telemetry must be on, and the
+  status keeps what the last one queued and what the cap left out. (3) **Content export**: the rules allow it with consent,
+  and say so: brief section 10 ("never includes prompts, code, tool output, or secrets unless explicitly enabled") and
+  `packaging.md` section 9 ("unless the user explicitly enables content export, which is a separate opt-in with a warning");
+  `security.md` principle 4 forbids an *automatic* upload of source, and this is a person's separate choice to a collector of
+  their own. Never secrets: the Wrapper hands content to a tracer only when it asks (`llm.ContentTracer`) and never for a call
+  its secret or data-class guard refused; the sink records `gen_ai.system_instructions`, `gen_ai.input.messages` and
+  `gen_ai.output.messages` (the GenAI conventions' JSON message shape) with the scanner's redaction applied to every text
+  and again to the document (`internal/redact`), each at most 32 KB (cut part by part); every other attribute keeps the
+  identifier rule. Off by default; `telemetry.content.set` refuses to turn it on without `acknowledged` (the Settings page's
+  dialog says what it sends); turning it off stops recording content and the encoders leave it out of rows still waiting.
+  The local rows hold what was sent, as before. Only the Wrapper's own calls carry content: the agent CLIs' sessions never
+  pass through it. (4) **Categories** (`internal/core/ext_diagnostics.go`, `diagnostics.status`, `diagnostics.set`): crash
+  reports `local` (the default, as before) or `off`, stored with who and when; off pauses this process's crash output at once
+  (`crashreport.Pause`, `Resume` when turned back on), the next start removes what a crash left unread
+  (`crashreport.Discard`), and a support bundle leaves the kept reports out. Usage counters, off by default: the core counts
+  the name of each method the window calls (`Core.Call`, never its parameters), writes one counter point per feature
+  (`drydock.feature.uses`, `drydock.feature`) to the local sink every five minutes and at close, and OTLP export sends them
+  with the rest; they are recorded under their own switch even while telemetry is off. The Settings page has a Diagnostics
+  group and, in Telemetry, the compression dropdown, "Also send what was recorded before" and the content switch.
+  (5) **B0** (`internal/trial/b0cli.go`): `B0.CLI` and `B0.Adapter` run the team on any CLI Drydock builds an adapter for from
+  its manifest (one new session per turn, the normalized text, tool calls, tool results and usage making the room and the
+  record; the ceiling checked against each usage report, there being no budget flag), and `B0.Provider` (base URL, the
+  environment variable of its key, optional prices) points Claude Code at an Anthropic-compatible endpoint (its gateway
+  variables, every model alias set to the run's model) or OpenCode at an OpenAI-compatible one (an inline configuration);
+  other CLIs refuse a provider. With prices the cost is estimated from the tokens (`costSource: estimated`). The record and
+  the report name the CLI and the provider; `drydock-trial run -b0-cli -b0-provider -b0-provider-url -b0-provider-key-env
+  -b0-price-in -b0-price-out`. Proven against the labelled test doubles only (the scripted ACP agent through the real ACP
+  adapter, which gained `ReportEnv`, and the stand-in for Claude Code). New methods `diagnostics.status`, `diagnostics.set`,
+  `telemetry.content.set`; migration `00158` (classified with the telemetry tables, which a project export leaves out); no
+  new dependency. **Not built:** sending crash reports anywhere (a report still leaves only in a support bundle), content of
+  the agent CLIs' own sessions, a provider for CLIs other than Claude Code and OpenCode. **Not verified:** a real collector
+  decoding the gzip bodies or the content attributes, Windows (crash output paused and resumed in the desktop app), a real
+  B0 run with any CLI or provider: every B0 row of `evals.md` 7.1 stays "not measured", and the run commands are in
+  `evals.md` section 15.
