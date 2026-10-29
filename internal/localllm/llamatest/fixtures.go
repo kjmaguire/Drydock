@@ -424,12 +424,15 @@ func (f *HubFixture) resolve(w http.ResponseWriter, r *http.Request) {
 		// the Hub's answers for a gated file: 401 without a token, 403 for an account without access
 		switch auth := r.Header.Get("Authorization"); {
 		case auth == "":
+			// the Hub names the repository in these words; the stand-in does not repeat what the request said
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"Access to model ` + repo + ` is restricted. You must have access to it and be authenticated to access it. Please log in."}`))
+			_, _ = w.Write([]byte(`{"error":"Access to this model is restricted. You must have access to it and be authenticated to access it. Please log in."}`))
 			return
 		case auth != "Bearer "+rp.token:
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			_, _ = w.Write([]byte(`{"error":"Access to model ` + repo + ` is restricted and you are not in the authorized list. Visit https://huggingface.co/` + repo + ` to ask for access."}`))
+			_, _ = w.Write([]byte(`{"error":"Access to this model is restricted and you are not in the authorized list. Visit the model's page on the Hub to ask for access."}`))
 			return
 		}
 	}
