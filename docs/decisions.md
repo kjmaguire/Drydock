@@ -1833,3 +1833,51 @@ Open, owner action:
   from search extracts); `gh webhook forward` itself; GitHub's hosted MCP server's OAuth (that its metadata leads to
   github.com's authorization server with PKCE and accepts a loopback redirect on any port); everything on Windows: the TCP table
   call and IsProcessInJob were cross-compiled and vetted (`GOOS=windows go vet`), never run.
+- **P125. Review and role prompts cut to the package ceiling, a turn that asks the outgoing agent for a handoff, a status for
+  each acceptance criterion, and no tokenizer (2026-10-29).** On the owner's words, "ok keep going", answering the "Not built"
+  lines P119 wrote (`token-control.md` "As built: package ceiling, file ranges and verified handoffs": "cutting review and role
+  turn prompts to the ceiling (measured only); a turn that asks the outgoing agent for a handoff ...; a per-criterion acceptance
+  status ...; a tokenizer"). (1) **Role prompts under the ceiling** (`internal/pipeline/prompts.go`, `review.go`, `plan.go`):
+  the reviewer's, security reviewer's, spec writer's, architect's, test writer's and planner's prompts are package pieces,
+  assembled under the project's ceiling like a work turn's (`Deps.rolePackage`; the planner's manifest has no task), in the fixed
+  order of `ctxeng.CutOrder`. Never cut: the role's instructions and the shape of its answer, the task with its acceptance
+  criteria or the definition of done that stands in for them, and the diff under review (`ctxeng.Piece.Keep`, new: a kind that
+  may be cut elsewhere that this package never cuts; `diffSection` still bounds it at 48 KB). Cut, with a pointer: the evidence
+  list, the accepted spec, a previous spec (before its feedback), feedback, the planner's requirements. A prompt that fits is
+  the same bytes as before; a package whose uncut pieces are over the ceiling is sent as it is and says `OVER THE CEILING`. A
+  reviewer of criteria with ids is asked to name the id of one it finds not met. (2) **The handoff turn**
+  (`internal/pipeline/handoffturn.go`): when a work turn replaces a session for context pressure, an escalation or a model
+  change, Drydock first resumes the outgoing session for a read-only turn that asks only for a handoff with the `handoff` tool,
+  inside the same node execution, with a budget of 4,000 new tokens (not read from the cache) and 2 minutes; it is not asked
+  after a crash or a watchdog stop (section 3 of `token-control.md` says Drydock writes those), when another agent takes over,
+  when the session could not be resumed, when the CLI cannot resume or the agent has no handoff tool, or when the session has
+  less than 4,000 tokens of its window left (`over_budget`). What it writes is checked by `VerifyAgentHandoff` as before; when it
+  is not asked, does not answer in time, ends without a handoff, answers badly or goes over its budget, the fresh session gets
+  Drydock's handoff, and the outcome and reason are in the work node's output, Drydock's artifact (`handoffRequest`), the manifest
+  and the `agent.session` event. The turn's cost goes on the task. This replaces P39's "no extra paid turn" for those three
+  triggers. (3) **A status for each criterion** (`pipeline.CriteriaStatus`, `tasks.Service.MarkCriterion`, migration `00163`
+  `acceptance_marks`, classified in `internal/projectio`; `task.criterion.mark`, a new RPC method gated as `approve` except for
+  not met and reopen): open, met, not met or waived, with what showed it. Decided from the docs: a check confirms met or shows
+  not met (the test names that carry the criterion's id, P97's `AcceptanceState`); a review only shows not met (a REVISE that
+  names the id; a reviewer is an agent and a SHIP accepts nothing); a person confirms, says not met, waives with a reason or
+  reopens, as the core's person (only a person accepts a task or waives CI or a verdict); an agent only claims a criterion met,
+  with evidence, through the handoff tool's new `criteria`, a claim that is shown and never sets the status. A waiver holds until
+  the person changes it; otherwise the newest fact counts; a mark binds only the text it was made on. The handoff carries it
+  (`criteria`, `criteriaSummary`), an agent's handoff that claims a criterion met that something says is not fails its check,
+  and the task page shows each status, what showed it, a claim, and a menu for the person's word. (4) **No tokenizer**: the
+  pure-Go ones (`github.com/tiktoken-go/tokenizer` v0.10.0, `github.com/pkoukk/tiktoken-go` v0.1.8, `github.com/sugarme/tokenizer`
+  v0.3.0, read from the Go module proxy) count OpenAI's encodings or Hugging Face files, not the Claude models most turns run on
+  (Anthropic publishes no tokenizer for them, only a counting API call that would send the package again), so one would trade an
+  estimate for another estimate and a dependency; chars/4 stays, to be looked at again when an eval run shows it matters or for
+  local models. Migration 00164 was not needed; no new dependency. Tests: `internal/pipeline` (`rolecut_internal_test.go` per
+  prompt kind, `p125_test.go` with the scripted Claude stand-in: the review turn under a 4,000-token ceiling, which sessions are
+  asked, a turn that does not answer in time, one over its budget, one without a handoff; `acceptance_test.go`),
+  `internal/tasks` (`criteria_test.go`), `internal/core` (`p125_test.go`: the stand-in calling the real gateway's handoff tool,
+  a good handoff used, a bad one rejected, no answer, a session without room not asked, a claim on the task page, an unknown
+  criterion refused by the tool, a person's marks; the method list), `internal/projectio`, UI unit tests (`criteria.test.browser.tsx`,
+  `task-page.test.ts`, `client.test.ts`, `task-detail-screen.test.browser.tsx`) and the e2e specs `task-page` and `smoke`.
+  **Not verified:** a real agent CLI answering the handoff turn or writing a handoff (only the stand-in); whether another CLI's
+  read-only mode lets the `handoff` tool through (a refused call means Drydock's handoff); the budget's reading of a CLI's usage
+  other than Claude Code's; whether any of it lowers what a task costs (no eval run); Windows. **Not built:** a review finding
+  for a criterion written without an id, a check that confirms a criterion other than through test names, asking the outgoing
+  agent after another agent takes over.
