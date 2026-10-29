@@ -615,8 +615,27 @@ export interface TaskDetail {
   allowRules?: TaskAllowRule[];
   /** Each acceptance criterion's state by the newest test check, in the order of task.acceptance. Absent from older cores. */
   acceptanceState?: CriterionState[];
+  /** Each acceptance criterion's own status with what showed it (pipeline.CriteriaStatus, P125), in the order of task.acceptance. Absent from older cores. */
+  criteria?: CriterionStatus[];
   /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
   paused?: TaskPause;
+}
+
+/**
+ * pipeline.CriterionStatus (decision P125): open, met, not_met or waived. A check result (source "check", by its kind) confirms
+ * met or shows not met; a review (source "review", by the reviewer's agent id) only shows not met; a person (source "person", by
+ * "human:<name>") confirms, says not met or waives. evidence is what showed it, at when (Unix ms). claim is an agent's claim that
+ * the criterion is met, which nothing has confirmed: it never makes the criterion met.
+ */
+export interface CriterionStatus {
+  index: number;
+  id: string;
+  status: 'open' | 'met' | 'not_met' | 'waived' | string;
+  source?: 'check' | 'review' | 'person' | string;
+  by?: string;
+  evidence?: string;
+  at?: number;
+  claim?: { by: string; evidence: string; at: number };
 }
 
 /** core.TaskPause: who paused a task's run (a "human:<name>" identity), and when (Unix ms). */

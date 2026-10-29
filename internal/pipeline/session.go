@@ -25,8 +25,10 @@ import (
 // Between two work turns of the same run, Drydock decides whether the next turn continues the previous turn's CLI session
 // (--resume) or starts a fresh one. The decision is taken only when a turn starts, from what the previous turn reported when it
 // ended, so a turn is never cut in the middle. A fresh session that follows another session of the task is seeded with a handoff
-// artifact that Drydock writes deterministically (no extra agent turn): the task and its acceptance criteria, what the previous
-// session said it did, the diff stat of the worktree, the failing checks and the open questions. It never gets the transcript.
+// artifact that Drydock writes deterministically: the task and its acceptance criteria, what the previous session said it did,
+// the diff stat of the worktree, the failing checks and the open questions. It never gets the transcript. Since P125 the outgoing
+// session is first asked for a handoff of its own in a bounded turn when it can answer (handoffturn.go); Drydock's artifact
+// records what came of that and carries the agent's handoff only when it passes Drydock's checks.
 
 // ContextHandoffPct is the context occupancy (percent of the model's context window) at or above which the next turn of a task
 // does not continue the session but starts a fresh one seeded with a handoff artifact.
@@ -70,6 +72,8 @@ type SessionDecision struct {
 	FromModel   string `json:"fromModel,omitempty"`
 	ToModel     string `json:"toModel,omitempty"`
 	Handoff     string `json:"handoff,omitempty"` // the handoff artifact's id, for SessionHandoff
+	// Request is what came of asking the outgoing session for a handoff (SessionHandoff only, P125).
+	Request *HandoffRequest `json:"handoffRequest,omitempty"`
 }
 
 // SessionPlan is what the next turn will be.
@@ -277,6 +281,11 @@ type HandoffArtifact struct {
 	// AgentHandoff is the handoff the previous session wrote itself with the handoff tool, as Drydock checked it: when it
 	// passed, the fresh session gets its account of the work; when it failed, the reasons, and the session gets Drydock's own.
 	AgentHandoff *AgentHandoffCheck `json:"agentHandoff,omitempty"`
+	// HandoffRequest is what came of asking the outgoing session for a handoff before this one was written (P125).
+	HandoffRequest *HandoffRequest `json:"handoffRequest,omitempty"`
+	// Criteria are each acceptance criterion's status and what showed it (P125); CriteriaSummary says it in one line.
+	Criteria        []HandoffCriterion `json:"criteria,omitempty"`
+	CriteriaSummary string             `json:"criteriaSummary,omitempty"`
 }
 
 // WorktreeRef is where a handoff's work starts from: the safe point recorded before this attempt and the branch head.
@@ -405,6 +414,10 @@ func (d Deps) buildHandoff(ctx context.Context, in workflow.NodeInput, t tasks.T
 		h.CommandsOfNote, h.EvidenceRefs = checkCommandsAndRefs(ev)
 	}
 	h.AcceptanceStatus = acceptanceStatus(t, len(h.FailingChecks) > 0)
+	if cs := d.criteriaStatus(ctx, t); len(cs) > 0 {
+		h.Criteria = handoffCriteria(cs)
+		h.CriteriaSummary = clip(CriteriaSummary(cs), 1200)
+	}
 	h.NextStep = nextStep(h)
 	return h
 }
@@ -485,6 +498,9 @@ func handoffBody(h HandoffArtifact) string {
 	if h.AcceptanceStatus != "" {
 		b.WriteString("Acceptance criteria: " + h.AcceptanceStatus + "\n")
 	}
+	if h.CriteriaSummary != "" {
+		b.WriteString("Each criterion (met only when a check or a person confirmed it): " + h.CriteriaSummary + "\n")
+	}
 	if (agent == nil || !agent.Accepted) && len(h.OpenQuestions) > 0 {
 		b.WriteString("Open questions the previous session left:\n")
 		for _, q := range h.OpenQuestions {
@@ -557,8 +573,17 @@ func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks
 		_, _, totals := prev.Occupancy()
 		cfg.Spec.ResumeID, cfg.Spec.UsageBaseline = prev.SessionID, totals
 	case SessionHandoff:
+		// the outgoing session is asked for a handoff first, in a bounded turn of its own, when it can be (P125)
+		req := d.requestHandoff(ctx, in, t, *cfg, prev, *dec)
+		dec.Request = &req
 		art := d.buildHandoff(ctx, in, t, prev, *dec)
+		art.HandoffRequest = &req
 		check = d.checkAgentHandoff(ctx, t, prev, art)
+		if check != nil && req.Outcome == HandoffOverBudget && check.ID == req.Handoff {
+			// written in a turn that went over its budget: not used, whatever it says
+			check.Accepted, check.Handoff = false, nil
+			check.Reasons = append([]string{req.Reason}, check.Reasons...)
+		}
 		art.AgentHandoff = check
 		if check != nil && check.Accepted {
 			art.NextStep = nonEmptyStr(check.Handoff.NextStep, art.NextStep)
@@ -578,6 +603,7 @@ func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks
 			"the handoff tool (action get) reads it whole", d.redact(handoffIntro(id, art)), "Handoff", d.redact(handoffBody(art)), "\n")
 		hp.Priority = 2
 		head = append(head, hp)
+		head = append(head, ctxeng.Piece{Source: "handoff request", Priority: 2, Skip: requestNote(req)})
 		if check != nil {
 			it := ctxeng.Piece{Source: "agent handoff:" + check.ID, Priority: 2}
 			if check.Accepted {
@@ -594,6 +620,10 @@ func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks
 		"contextUsed": dec.ContextUsed, "contextSize": dec.ContextSize, "thresholdPct": dec.ThresholdPct, "handoff": dec.Handoff,
 		"fromModel": dec.FromModel, "toModel": dec.ToModel, "node": string(in.NodeID), "attempt": in.Attempt,
 		"packageTokens": asm.Tokens, "packageCeiling": asm.Ceiling, "leftOut": len(asm.LeftOut())}
+	if dec.Request != nil {
+		data["handoffRequest"] = dec.Request.Outcome
+		data["handoffRequestReason"] = dec.Request.Reason
+	}
 	if check != nil {
 		data["agentHandoff"] = check.ID
 		data["agentHandoffAccepted"] = check.Accepted

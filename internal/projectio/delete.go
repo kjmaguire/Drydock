@@ -95,6 +95,7 @@ var DeleteSteps = []DeleteStep{
 	{Table: "node_executions", Where: `run_id IN ` + runIDs},
 	{Table: "workflow_checkpoints", Where: `run_id IN ` + runIDs},
 	{Table: "workflow_runs", Where: `id IN ` + runIDs},
+	{Table: "acceptance_marks", Where: `task_id IN ` + taskIDs},
 	{Table: "task_reviews", Where: `task_id IN ` + taskIDs},
 	{Table: "task_evidence", Where: `task_id IN ` + taskIDs},
 	{Table: "task_deps", Where: `task_id IN ` + taskIDs + ` OR depends_on IN ` + taskIDs},

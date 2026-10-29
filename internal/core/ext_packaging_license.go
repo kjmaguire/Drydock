@@ -358,6 +358,8 @@ var gatedMethods = map[string]string{
 	"lead.split":      "start_work", // a paid turn of the team lead
 	// a run of a task goes on, or a new one starts from a checkpoint (P123)
 	"run.resume": "start_task", "run.timeTravel": "start_task", "run.replay": "start_task",
+	// a person confirms or waives an acceptance criterion (P125); saying one is not met, or reopening it, stays available
+	"task.criterion.mark": "approve",
 }
 
 // onlyReduces reports whether a call to a gated method can only stop or refuse work: rejecting a request, declining an
@@ -367,6 +369,7 @@ func onlyReduces(method string, params json.RawMessage) bool {
 	var p struct {
 		Decision string `json:"decision"`
 		Approve  *bool  `json:"approve"`
+		Mark     string `json:"mark"`
 	}
 	if json.Unmarshal(params, &p) != nil {
 		return false
@@ -376,6 +379,8 @@ func onlyReduces(method string, params json.RawMessage) bool {
 		return p.Decision == "rejected"
 	case "integration.outbound.decide":
 		return p.Approve != nil && !*p.Approve
+	case "task.criterion.mark":
+		return p.Mark == "not_met" || p.Mark == "open"
 	}
 	return false
 }

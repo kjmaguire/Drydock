@@ -234,6 +234,20 @@ func (p mcpHandoffs) Create(ctx context.Context, run mcp.RunInfo, h mcp.Handoff)
 	if len(b) > maxHandoffBytes {
 		return "", fmt.Errorf("the handoff is %d bytes, over the %d byte cap: shorten the summary and lists", len(b), maxHandoffBytes)
 	}
+	// what it says about the acceptance criteria names criteria of its task (P125)
+	var acceptance []string
+	if len(h.Criteria) > 0 {
+		t, err := p.c.Tasks.Get(ctx, run.TaskID)
+		if run.TaskID == "" || err != nil {
+			return "", errors.New("criteria: this session works on no task, so it has no acceptance criteria to report on")
+		}
+		acceptance = t.Acceptance
+		for _, cr := range h.Criteria {
+			if pipeline.CriterionIndex(acceptance, cr.ID) < 0 {
+				return "", fmt.Errorf("criteria: the task has no criterion %q (it has %d; name one by its id, such as AC1, or its number)", cr.ID, len(acceptance))
+			}
+		}
+	}
 	id := ids.New("hnd")
 	err = p.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO handoffs(id,task_id,run_id,agent_id,artifact,reason,created_at) VALUES(?,?,?,?,?,?,?)`,
@@ -245,6 +259,12 @@ func (p mcpHandoffs) Create(ctx context.Context, run mcp.RunInfo, h mcp.Handoff)
 	}
 	data, _ := json.Marshal(map[string]any{"handoff": id, "bytes": len(b)})
 	_, _ = p.c.Bus.Publish(ctx, events.Event{Type: "handoff.created", ProjectID: run.ProjectID, TaskID: run.TaskID, AgentID: run.AgentID, RunID: run.RunID, Data: data})
+	// a criterion the agent says is met is recorded as its claim, with the evidence: shown on the task page, never a status
+	for _, cr := range h.Criteria {
+		if cr.Met {
+			_, _ = p.c.Tasks.MarkCriterion(ctx, run.TaskID, pipeline.CriterionIndex(acceptance, cr.ID), tasks.MarkClaimMet, run.AgentID, clipRunes(cr.Evidence, tasks.MaxMarkNote-40)+" (handoff "+id+")")
+		}
+	}
 	return id, nil
 }
 

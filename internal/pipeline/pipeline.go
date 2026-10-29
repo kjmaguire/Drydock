@@ -82,6 +82,10 @@ type Deps struct {
 	// ResetWatch, if set, is called when a human continues a task past a limit and when a task moves on successfully (its
 	// checks passed and it entered review): the watchdog's trip count for the task starts again (watchdog.Watchdog.Reset).
 	ResetWatch func(ctx context.Context, taskID string)
+	// HandoffTurnTokens and HandoffTurnTimeout bound the turn that asks an outgoing session for a handoff (handoffturn.go);
+	// 0: HandoffTurnTokens and HandoffTurnTimeout.
+	HandoffTurnTokens  int
+	HandoffTurnTimeout time.Duration
 }
 
 // MCPStatus is the manifest view of one turn's MCP attachment.
@@ -326,10 +330,19 @@ func mdFiles(dir string) []mdFile {
 	return out
 }
 
+// rolePackage assembles a review or role turn's package under the project's ceiling (decision P125): the instruction files the
+// CLI reads, counted, and the prompt's pieces, cut in the fixed order with what the turn is for never cut. It records the
+// manifest and returns the prompt the turn sends.
+func (d Deps) rolePackage(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, role string, pieces []ctxeng.Piece) string {
+	asm := ctxeng.Assemble(d.packageCeiling(ctx, t), append(d.instructionPieces(t), pieces...))
+	d.saveManifest(ctx, in, t, agentID, asm.Text, role, nil, &asm)
+	return asm.Text
+}
+
 // saveManifest records what this attempt was given and what was deliberately left out.
-// sess is the session decision of a work turn (nil for the other turns, which always start a fresh session). asm is the work
-// turn's package as assembled under the ceiling; nil for the other turns, whose prompt is measured against the ceiling but not
-// cut (each piece of it is bounded where it is built).
+// sess is the session decision of a work turn (nil for the other turns, which always start a fresh session). asm is the turn's
+// package as assembled under the ceiling (a work turn's by prepareSession, a review or role turn's by rolePackage); nil measures
+// prompt as one piece that is never cut.
 func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string, sess *SessionDecision, asm *ctxeng.Assembly) {
 	if d.Context == nil {
 		return

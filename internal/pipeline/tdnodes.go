@@ -26,9 +26,10 @@ import (
 type turnOpts struct {
 	Role     string // template role: pm, tests, architect, security
 	ReadOnly bool
-	Prompt   string
-	Phase    string // manifest label
-	PostAs   string // role name passed to OnTurn ("review" makes the room post a RESULT)
+	// Pieces are the prompt as package pieces: the turn sends them as assembled under the project's ceiling (P125).
+	Pieces []ctxeng.Piece
+	Phase  string // manifest label
+	PostAs string // role name passed to OnTurn ("review" makes the room post a RESULT)
 }
 
 type turnOut struct {
@@ -59,8 +60,7 @@ func (td TemplateDeps) roleTurn(ctx context.Context, in workflow.NodeInput, t ta
 			return turnOut{}, fmt.Errorf("the task's sandbox: %w", err)
 		}
 	}
-	td.saveManifest(ctx, in, t, cfg.AgentID, o.Prompt, o.Phase, nil, nil)
-	prompt := o.Prompt
+	prompt := td.rolePackage(ctx, in, t, cfg.AgentID, o.Phase, o.Pieces)
 	out, err := td.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
 	if err != nil {
 		return turnOut{}, err
@@ -165,7 +165,7 @@ func (td TemplateDeps) specDraft() workflow.NodeHandler {
 			return workflow.NodeOutput{}, err
 		}
 		feedback, previous := feedbackFromInbox(in)
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RolePM, ReadOnly: true, Phase: "spec", Prompt: SpecPrompt(t, previous, feedback, td.taskBrief(ctx, t))})
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RolePM, ReadOnly: true, Phase: "spec", Pieces: SpecPieces(t, previous, feedback, td.taskBrief(ctx, t))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -354,7 +354,7 @@ func (td TemplateDeps) design() workflow.NodeHandler {
 			return workflow.NodeOutput{Value: json.RawMessage(`{"design":"skipped: no architect agent on the team"}`)}, nil
 		}
 		cur, _ := td.Tasks.Get(ctx, t.ID)
-		out, err := td.roleTurn(ctx, in, cur, turnOpts{Role: RoleArchitect, ReadOnly: true, Phase: "design", Prompt: DesignPrompt(cur, td.acceptedSpec(ctx, t.ID), td.taskBrief(ctx, t))})
+		out, err := td.roleTurn(ctx, in, cur, turnOpts{Role: RoleArchitect, ReadOnly: true, Phase: "design", Pieces: DesignPieces(cur, td.acceptedSpec(ctx, t.ID), td.taskBrief(ctx, t))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -393,7 +393,7 @@ func (td TemplateDeps) writeTests(bug bool) workflow.NodeHandler {
 		if !bug {
 			spec = td.acceptedSpec(ctx, t.ID)
 		}
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleTests, Phase: phase, Prompt: TestsPrompt(t, bug, feedback, spec, td.taskBrief(ctx, t))})
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleTests, Phase: phase, Pieces: TestsPieces(t, bug, feedback, spec, td.taskBrief(ctx, t))})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}
@@ -768,7 +768,7 @@ func (td TemplateDeps) securityReview() workflow.NodeHandler {
 		if agentID == t.Assignee {
 			return workflow.NodeOutput{}, errors.New("the security reviewer must be a different agent from the one that did the work")
 		}
-		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleSecurity, ReadOnly: true, Phase: "security-review", PostAs: "review", Prompt: SecurityReviewPrompt(t, ev, diff)})
+		out, err := td.roleTurn(ctx, in, t, turnOpts{Role: RoleSecurity, ReadOnly: true, Phase: "security-review", PostAs: "review", Pieces: SecurityReviewPieces(t, ev, diff)})
 		if err != nil {
 			return workflow.NodeOutput{}, err
 		}

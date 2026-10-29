@@ -82,6 +82,9 @@ type Piece struct {
 	// Skip, when set, makes the piece a manifest line only: something the package named but did not take (a file that is not
 	// in the worktree, say), with this reason. It has no text and no size.
 	Skip string
+	// Keep marks a piece of a kind that may be cut elsewhere which this package never cuts, because the turn is about it: the
+	// diff a reviewer reviews (decision P125). It counts with the pieces that are never cut.
+	Keep bool
 }
 
 func (p Piece) size() int {
@@ -136,8 +139,8 @@ func (a Assembly) LeftOut() []Item {
 }
 
 // Assemble renders pieces under a ceiling in tokens (0 or less: none). When the package is over it, the pieces whose kind is in
-// CutOrder are cut or left out kind by kind in that order, the latest piece of a kind first, until it fits; the others are never
-// touched, so a package whose fixed pieces alone are over the ceiling is assembled with every cuttable piece left out and Over set.
+// CutOrder are cut or left out kind by kind in that order, the latest piece of a kind first, until it fits; the others (and a
+// piece marked Keep) are never touched, so a package whose fixed pieces alone are over the ceiling is assembled with every cuttable piece left out and Over set.
 func Assemble(ceiling int, pieces []Piece) Assembly {
 	ps := append([]Piece(nil), pieces...)
 	orig := make([]int, len(ps))
@@ -151,7 +154,7 @@ func Assemble(ceiling int, pieces []Piece) Assembly {
 		for _, kind := range CutOrder {
 			for i := len(ps) - 1; i >= 0 && total > ceiling; i-- {
 				p := ps[i]
-				if p.Kind != kind || p.Counted || p.Text == "" {
+				if p.Kind != kind || p.Counted || p.Keep || p.Text == "" {
 					continue
 				}
 				excess := total - ceiling
@@ -173,7 +176,7 @@ func Assemble(ceiling int, pieces []Piece) Assembly {
 	a := Assembly{Ceiling: max(ceiling, 0), Tokens: total}
 	var sb strings.Builder
 	for i, p := range ps {
-		if !Cuttable(p.Kind) {
+		if !Cuttable(p.Kind) || p.Keep {
 			a.Fixed += p.tokens()
 		}
 		if p.Skip != "" {
@@ -204,7 +207,7 @@ func Assemble(ceiling int, pieces []Piece) Assembly {
 	case ceiling <= 0:
 		line.Reason = fmt.Sprintf("about %d tokens (estimated); no package ceiling", a.Tokens)
 	case a.Over:
-		line.Reason = fmt.Sprintf("OVER THE CEILING: the task and instructions alone are about %d tokens, more than the package ceiling of %d; every piece that may be cut was left out and nothing that may not was touched", a.Fixed, ceiling)
+		line.Reason = fmt.Sprintf("OVER THE CEILING: the task and instructions (and what the turn is about) alone are about %d tokens, more than the package ceiling of %d; every piece that may be cut was left out and nothing that may not was touched", a.Fixed, ceiling)
 	case len(a.LeftOut()) > 0:
 		line.Reason = fmt.Sprintf("about %d tokens of a package ceiling of %d (estimated): %d piece(s) cut or left out to fit, in the fixed order", a.Tokens, ceiling, len(a.LeftOut()))
 	default:

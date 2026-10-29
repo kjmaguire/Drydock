@@ -53,6 +53,15 @@ type AgentHandoff struct {
 	Commands  []string     `json:"commands,omitempty"`
 	NextStep  string       `json:"next_step,omitempty"`
 	Checks    []CheckClaim `json:"checks,omitempty"`
+	// Criteria are what it says about the task's acceptance criteria (P125).
+	Criteria []CriterionReport `json:"criteria,omitempty"`
+}
+
+// CriterionReport is what an agent's handoff says about one acceptance criterion (mcp.HandoffCriterion).
+type CriterionReport struct {
+	ID       string `json:"id"`
+	Met      bool   `json:"met"`
+	Evidence string `json:"evidence,omitempty"`
 }
 
 // CheckClaim is what an agent's handoff says about one check.
@@ -81,6 +90,10 @@ type HandoffFacts struct {
 	Checks map[string]bool
 	// Redact is the secret scanner's redaction.
 	Redact func(string) string
+	// Acceptance is the task's acceptance list and Criteria each criterion's status (CriteriaStatus): a criterion the handoff
+	// claims met must exist and must not stand not met by a check, a review or a person.
+	Acceptance []string
+	Criteria   []CriterionStatus
 }
 
 // VerifyAgentHandoff checks an agent's handoff (raw is the stored JSON) against the facts and returns why it fails, nothing when
@@ -139,8 +152,30 @@ func VerifyAgentHandoff(raw string, facts HandoffFacts) (AgentHandoff, []string)
 			why = append(why, fmt.Sprintf("it says the %s check %s, but its latest recorded result is that it %s", c.Name, passWord(c.Passed), passWord(rec)))
 		}
 	}
+	for _, c := range h.Criteria {
+		i := CriterionIndex(facts.Acceptance, c.ID)
+		switch {
+		case i < 0:
+			why = append(why, fmt.Sprintf("it reports on criterion %s, which the task does not have", c.ID))
+		case c.Met && strings.TrimSpace(c.Evidence) == "":
+			why = append(why, fmt.Sprintf("it says criterion %s is met but not what shows it", c.ID))
+		case c.Met && i < len(facts.Criteria) && facts.Criteria[i].Status == CriterionNotMet:
+			st := facts.Criteria[i]
+			why = append(why, fmt.Sprintf("it says criterion %s is met, but the %s says it is not (%s)", c.ID, sourceWord(st.Source), st.Evidence))
+		}
+	}
 	sort.Strings(why)
 	return h, why
+}
+
+func sourceWord(source string) string {
+	switch source {
+	case SourceCheck:
+		return "newest test run"
+	case SourceReview:
+		return "newest review"
+	}
+	return "person's word"
 }
 
 func passWord(passed bool) string {
@@ -175,6 +210,7 @@ func (d Deps) checkAgentHandoff(ctx context.Context, t tasks.Task, prev *WorkOut
 	if ev, err := d.Tasks.Evidence(ctx, t.ID); err == nil {
 		facts.Checks = latestChecks(ev)
 	}
+	facts.Acceptance, facts.Criteria = t.Acceptance, d.criteriaStatus(ctx, t)
 	h, why := VerifyAgentHandoff(raw, facts)
 	c := &AgentHandoffCheck{ID: id, Accepted: len(why) == 0, Reasons: why}
 	if len(why) > maxHandoffReasons { // the reasons are stored in Drydock's artifact too, which has a cap
@@ -273,6 +309,40 @@ func acceptanceStatus(t tasks.Task, failing bool) string {
 		return "not met yet: the reviewer asked for changes"
 	}
 	return "not judged yet: the reviewer judges them once the checks pass"
+}
+
+// criteriaStatus is each of the task's acceptance criteria's status now (CriteriaStatus over its evidence, reviews and marks).
+func (d Deps) criteriaStatus(ctx context.Context, t tasks.Task) []CriterionStatus {
+	if len(t.Acceptance) == 0 || d.Tasks == nil {
+		return nil
+	}
+	ev, _ := d.Tasks.Evidence(ctx, t.ID)
+	rv, _ := d.Tasks.Reviews(ctx, t.ID)
+	marks, _ := d.Tasks.CriterionMarks(ctx, t.ID)
+	return CriteriaStatus(t.Acceptance, ev, rv, marks)
+}
+
+// HandoffCriterion is one acceptance criterion as a handoff carries it: its status and what showed it, without the evidence's
+// text (the task page has it), so the artifact stays within its cap.
+type HandoffCriterion struct {
+	Index   int    `json:"index"`
+	ID      string `json:"id,omitempty"`
+	Status  string `json:"status"`
+	Source  string `json:"source,omitempty"`
+	By      string `json:"by,omitempty"`
+	ClaimBy string `json:"claimBy,omitempty"` // an agent claims it met, unconfirmed
+}
+
+func handoffCriteria(cs []CriterionStatus) []HandoffCriterion {
+	out := make([]HandoffCriterion, 0, len(cs))
+	for _, c := range cs {
+		hc := HandoffCriterion{Index: c.Index, ID: c.ID, Status: c.Status, Source: c.Source, By: c.By}
+		if c.Claim != nil {
+			hc.ClaimBy = c.Claim.By
+		}
+		out = append(out, hc)
+	}
+	return out
 }
 
 // nextStep is the next step by the recorded facts.
