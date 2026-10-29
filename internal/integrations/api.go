@@ -23,6 +23,8 @@ type API struct {
 	Conn Connection
 	HTTP *apiClient
 	GH   host.API
+	// DL fetches files a vendor hosts outside its API host (attachments): through internal/netguard, never with the credential.
+	DL *http.Client
 }
 
 // apiClient calls a vendor's HTTP API: base URL, the Authorization header, fixed headers (Notion-Version), the documented rate
@@ -79,6 +81,11 @@ func CheckAPIBase(raw string) (string, error) {
 // do sends one request. path starts with "/"; q and body may be nil. A 401 on a renewable credential is retried once with a
 // renewed one.
 func (c *apiClient) do(ctx context.Context, method, path string, q url.Values, body any) (*apiResponse, error) {
+	return c.doMax(ctx, method, path, q, body, c.maxBody)
+}
+
+// doMax is do with its own limit on the response size (an attachment download).
+func (c *apiClient) doMax(ctx context.Context, method, path string, q url.Values, body any, maxBody int64) (*apiResponse, error) {
 	var raw []byte
 	if body != nil {
 		var err error
@@ -125,12 +132,15 @@ func (c *apiClient) do(ctx context.Context, method, path string, q url.Values, b
 			return nil, Classify(c.kind, err, "")
 		}
 		traceCall(ctx, method, path, resp.StatusCode)
-		b, rerr := io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
+		b, rerr := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 		resp.Body.Close()
 		if rerr != nil {
 			return nil, Classify(c.kind, rerr, "")
 		}
-		if int64(len(b)) > c.maxBody {
+		if int64(len(b)) > maxBody {
+			if maxBody != c.maxBody {
+				return nil, &Failure{Code: CodeOther, Cause: ErrTooLarge, Message: fmt.Sprintf("The file is larger than Drydock downloads (%d MB).", maxBody>>20)}
+			}
 			return nil, &Failure{Code: CodeSchemaDrift, Cause: errors.New("response too large"),
 				Message: vendor(c.kind) + " sent a response larger than Drydock accepts (" + fmt.Sprint(c.maxBody>>20) + " MB). Narrow the project's scope."}
 		}
@@ -146,6 +156,65 @@ func (c *apiClient) do(ctx context.Context, method, path string, q url.Values, b
 		}
 		return r, c.statusFailure(r)
 	}
+}
+
+// fetchFile downloads a file the vendor hosts, at most maxBody bytes. A file on the API's own host goes through the API client
+// (the credential, the rate limit); any other host is fetched over https with DL (internal/netguard: public addresses only),
+// without the credential unless the host is credHost (Linear's uploads host, which needs it). It returns the bytes and the
+// content type.
+func (a *API) fetchFile(ctx context.Context, rawURL, credHost string, maxBody int64) ([]byte, string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
+		return nil, "", &Failure{Code: CodeOther, Message: "The attachment's address is not a web address Drydock fetches."}
+	}
+	if base, berr := url.Parse(a.HTTP.base); berr == nil && strings.EqualFold(base.Host, u.Host) && base.Scheme == u.Scheme {
+		path := u.EscapedPath()
+		if bp := strings.TrimRight(base.EscapedPath(), "/"); bp != "" {
+			path = strings.TrimPrefix(path, bp)
+		}
+		r, err := a.HTTP.doMax(ctx, "GET", path, u.Query(), nil, maxBody)
+		if err != nil {
+			return nil, "", err
+		}
+		return r.Body, r.Header.Get("Content-Type"), nil
+	}
+	if u.Scheme != "https" {
+		return nil, "", &Failure{Code: CodeOther, Message: "The attachment's address is not https, so Drydock does not fetch it."}
+	}
+	if a.DL == nil {
+		return nil, "", &Failure{Code: CodeOther, Message: "Downloading attachments is not available."}
+	}
+	if err := a.HTTP.lim.wait(ctx, a.HTTP.kind); err != nil {
+		return nil, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	if credHost != "" && strings.EqualFold(u.Hostname(), credHost) {
+		authz, err := a.HTTP.auth(ctx, false)
+		if err != nil {
+			return nil, "", err
+		}
+		req.Header.Set("Authorization", authz)
+	}
+	resp, err := a.DL.Do(req)
+	if err != nil {
+		return nil, "", Classify(a.HTTP.kind, err, "")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, "", &Failure{Code: CodeOther, Message: fmt.Sprintf("The file's host did not send it (HTTP %d).", resp.StatusCode)}
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	if err != nil {
+		return nil, "", Classify(a.HTTP.kind, err, "")
+	}
+	if int64(len(b)) > maxBody {
+		return nil, "", &Failure{Code: CodeOther, Cause: ErrTooLarge, Message: fmt.Sprintf("The file is larger than Drydock downloads (%d MB).", maxBody>>20)}
+	}
+	return b, resp.Header.Get("Content-Type"), nil
 }
 
 // getJSON / sendJSON decode a successful response into out; a body that does not decode is schema drift.

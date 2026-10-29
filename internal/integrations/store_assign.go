@@ -158,6 +158,8 @@ func (s *Store) UpdateAssignment(ctx context.Context, a Assignment, expectVersio
 // DeleteAssignment removes an assignment, its cursor, the rules of its project for this connection, and its items that never
 // became a task. Items that became a task stay (marked gone) so the task keeps its provenance.
 func (s *Store) DeleteAssignment(ctx context.Context, a Assignment) error {
+	untasked, _ := s.UntaskedItemIDs(ctx, a.IntegrationID, a.ID)
+	defer s.removeAttachmentFiles(a.IntegrationID, untasked)
 	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		for _, st := range []struct {
 			q    string
@@ -166,6 +168,9 @@ func (s *Store) DeleteAssignment(ctx context.Context, a Assignment) error {
 			{`DELETE FROM integration_cursors WHERE integration_id=? AND scope=?`, []any{a.IntegrationID, a.ID}},
 			{`DELETE FROM integration_rule_matches WHERE rule_id IN (SELECT id FROM integration_rules WHERE integration_id=? AND project_id=?)`, []any{a.IntegrationID, a.ProjectID}},
 			{`DELETE FROM integration_rules WHERE integration_id=? AND project_id=?`, []any{a.IntegrationID, a.ProjectID}},
+			{`DELETE FROM integration_attachments WHERE item_id IN (SELECT id FROM external_items WHERE assignment_id=? AND task_id='')`, []any{a.ID}},
+			{`DELETE FROM integration_mappings WHERE assignment_id=?`, []any{a.ID}},
+			{`DELETE FROM integration_auto_approve WHERE integration_id=? AND project_id=?`, []any{a.IntegrationID, a.ProjectID}},
 			{`DELETE FROM external_items WHERE assignment_id=? AND task_id=''`, []any{a.ID}},
 			{`UPDATE external_items SET gone=1 WHERE assignment_id=?`, []any{a.ID}},
 			{`DELETE FROM integration_assignments WHERE id=?`, []any{a.ID}},

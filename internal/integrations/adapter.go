@@ -32,6 +32,8 @@ type RawItem struct {
 	Meta       map[string]any
 	// NeedsBody is true when Body is only a summary and the full text must be fetched with Detail (Notion).
 	NeedsBody bool
+	// Props are a Notion data source row's typed properties (raw values as text, cleaned by buildRecord).
+	Props map[string]Prop
 	// Closed says the item has left the open set upstream (a closed GitHub issue, a resolved Sentry issue). It is stored gone,
 	// so it is not listed, imported or matched by a rule; one that was never stored is not stored.
 	Closed bool

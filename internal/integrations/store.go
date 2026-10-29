@@ -150,14 +150,56 @@ func (s *Store) UpdateConnection(ctx context.Context, c Connection, expectVersio
 	return s.GetConnection(ctx, c.ID)
 }
 
+// UntaskedItemIDs lists the items of a connection (or of one assignment) that never became a task: what a disconnect or an
+// unassign deletes, with their downloaded attachments.
+func (s *Store) UntaskedItemIDs(ctx context.Context, integrationID, assignmentID string) ([]string, error) {
+	q, args := `SELECT id FROM external_items WHERE integration_id=? AND task_id=''`, []any{integrationID}
+	if assignmentID != "" {
+		q += ` AND assignment_id=?`
+		args = append(args, assignmentID)
+	}
+	rows, err := s.DB.Reader().QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// removeAttachmentFiles deletes the downloaded attachments of items (their folders under the connection).
+func (s *Store) removeAttachmentFiles(integrationID string, itemIDs []string) {
+	if s.BodyDir == "" || integrationID == "" {
+		return
+	}
+	for _, id := range itemIDs {
+		if id == "" || strings.ContainsAny(id, `/\.`) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(s.BodyDir, integrationID, "attachments", id))
+	}
+}
+
 // DeleteConnection removes a connection, its cursors, rules and outbox, and the items that never became a task. Items that
 // did become a task stay (marked gone) so the task keeps its provenance.
 func (s *Store) DeleteConnection(ctx context.Context, id string) error {
+	untasked, _ := s.UntaskedItemIDs(ctx, id, "")
+	defer s.removeAttachmentFiles(id, untasked)
 	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		for _, q := range []string{
 			`DELETE FROM integration_cursors WHERE integration_id=?`,
 			`DELETE FROM integration_rule_matches WHERE rule_id IN (SELECT id FROM integration_rules WHERE integration_id=?)`,
 			`DELETE FROM integration_rules WHERE integration_id=?`,
+			`DELETE FROM integration_attachments WHERE integration_id=? AND item_id IN (SELECT id FROM external_items WHERE task_id='')`,
+			`DELETE FROM integration_mappings WHERE assignment_id IN (SELECT id FROM integration_assignments WHERE integration_id=?)`,
+			`DELETE FROM integration_auto_approve WHERE integration_id=?`,
 			`DELETE FROM external_items WHERE integration_id=? AND task_id=''`,
 			`UPDATE external_items SET gone=1 WHERE integration_id=?`,
 			`DELETE FROM integration_assignments WHERE integration_id=?`,
@@ -191,6 +233,8 @@ type Cursor struct {
 	// SweepSeen counts items of the running sweep, SweepStart marks its start (full-sweep adapters mark missing items gone).
 	SweepSeen  int
 	SweepStart int64
+	// LastFullAt is when the assignment last completed a full sweep (the weekly automatic sweep counts from it).
+	LastFullAt int64
 }
 
 type cursorJSON struct {
@@ -198,6 +242,7 @@ type cursorJSON struct {
 	Pending    int64  `json:"pending,omitempty"`
 	SweepSeen  int    `json:"sweepSeen,omitempty"`
 	SweepStart int64  `json:"sweepStart,omitempty"`
+	LastFullAt int64  `json:"lastFullAt,omitempty"`
 }
 
 const defaultScope = "default"
@@ -225,12 +270,12 @@ func getCursor(ctx context.Context, q queryRower, integrationID, scope string) (
 	}
 	var j cursorJSON
 	_ = json.Unmarshal([]byte(cj), &j)
-	c.After, c.Pending, c.SweepSeen, c.SweepStart = j.After, j.Pending, j.SweepSeen, j.SweepStart
+	c.After, c.Pending, c.SweepSeen, c.SweepStart, c.LastFullAt = j.After, j.Pending, j.SweepSeen, j.SweepStart, j.LastFullAt
 	return c, nil
 }
 
 func putCursor(ctx context.Context, tx *sql.Tx, c Cursor) error {
-	cj, _ := json.Marshal(cursorJSON{After: c.After, Pending: c.Pending, SweepSeen: c.SweepSeen, SweepStart: c.SweepStart})
+	cj, _ := json.Marshal(cursorJSON{After: c.After, Pending: c.Pending, SweepSeen: c.SweepSeen, SweepStart: c.SweepStart, LastFullAt: c.LastFullAt})
 	_, err := tx.ExecContext(ctx, `INSERT INTO integration_cursors(integration_id,scope,cursor_json,watermark,last_success_at,last_attempt_at,last_error,last_error_code,items_last_sync,consecutive_failures,next_attempt_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(integration_id,scope) DO UPDATE SET cursor_json=excluded.cursor_json, watermark=excluded.watermark, last_success_at=excluded.last_success_at,
@@ -266,15 +311,15 @@ const (
 )
 
 const itemCols = `id,integration_id,assignment_id,source,project_id,external_id,kind,issue_ref,url,title,excerpt,body_ref,state,labels_json,assignee,priority,parent_external_id,meta_json,
-external_created_at,external_updated_at,etag,content_hash,fetched_at,risk,risk_flags,redactions,truncated,task_id,imported_by,imported_at,gone,version`
+external_created_at,external_updated_at,etag,content_hash,fetched_at,risk,risk_flags,redactions,truncated,task_id,imported_by,imported_at,gone,version,properties_json`
 
 func scanItem(r rowScanner) (Item, error) {
 	var it Item
-	var labels, meta, flags string
+	var labels, meta, flags, props string
 	var trunc, gone int
 	if err := r.Scan(&it.ID, &it.IntegrationID, &it.AssignmentID, &it.Source, &it.ProjectID, &it.ExternalID, &it.Kind, &it.IssueRef, &it.URL, &it.Title, &it.Excerpt, &it.BodyRef, &it.State, &labels,
 		&it.Assignee, &it.Priority, &it.ParentExternalID, &meta, &it.ExternalCreated, &it.ExternalUpdated, &it.Etag, &it.ContentHash, &it.FetchedAt, &it.Risk, &flags, &it.Redactions,
-		&trunc, &it.TaskID, &it.ImportedBy, &it.ImportedAt, &gone, &it.Version); err != nil {
+		&trunc, &it.TaskID, &it.ImportedBy, &it.ImportedAt, &gone, &it.Version, &props); err != nil {
 		return it, err
 	}
 	it.Untrusted = true
@@ -284,6 +329,9 @@ func scanItem(r rowScanner) (Item, error) {
 	_ = json.Unmarshal([]byte(labels), &it.Labels)
 	_ = json.Unmarshal([]byte(flags), &it.RiskFlags)
 	_ = json.Unmarshal([]byte(meta), &it.Meta)
+	if props != "" && props != "{}" {
+		_ = json.Unmarshal([]byte(props), &it.Properties)
+	}
 	return it, nil
 }
 
@@ -291,6 +339,11 @@ func scanItem(r rowScanner) (Item, error) {
 func ContentHash(it Item, body string) string {
 	lb, _ := json.Marshal(it.Labels)
 	mb, _ := json.Marshal(it.Meta) // map keys are sorted by encoding/json
+	if len(it.Properties) > 0 {
+		// a typed row (decision P114): its properties are part of what changed; items without any keep their earlier hash
+		pb, _ := json.Marshal(it.Properties)
+		return hashHex(it.Kind, it.IssueRef, it.URL, it.Title, hashHex(body), it.State, string(lb), it.Assignee, it.Priority, it.ParentExternalID, string(mb), it.Etag, string(pb))
+	}
 	return hashHex(it.Kind, it.IssueRef, it.URL, it.Title, hashHex(body), it.State, string(lb), it.Assignee, it.Priority, it.ParentExternalID, string(mb), it.Etag)
 }
 
@@ -304,12 +357,17 @@ func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (it It
 	it = rec.Item
 	it.ContentHash = ContentHash(it, rec.Body)
 	now := s.now()
-	var id, oldHash string
+	var id, oldHash, oldState, taskID string
 	var oldGone int
-	err = tx.QueryRowContext(ctx, `SELECT id, content_hash, gone FROM external_items WHERE integration_id=? AND assignment_id=? AND external_id=?`, it.IntegrationID, it.AssignmentID, it.ExternalID).Scan(&id, &oldHash, &oldGone)
+	err = tx.QueryRowContext(ctx, `SELECT id, content_hash, gone, state, task_id FROM external_items WHERE integration_id=? AND assignment_id=? AND external_id=?`, it.IntegrationID, it.AssignmentID, it.ExternalID).
+		Scan(&id, &oldHash, &oldGone, &oldState, &taskID)
 	lb, _ := json.Marshal(nzs(it.Labels))
 	mb, _ := json.Marshal(it.Meta)
 	fb, _ := json.Marshal(nzs(it.RiskFlags))
+	pb := []byte("{}")
+	if len(it.Properties) > 0 {
+		pb, _ = json.Marshal(it.Properties)
+	}
 	switch {
 	case errors.Is(err, sql.ErrNoRows) && it.Gone:
 		return it, Skipped, false, nil // closed upstream before Drydock ever stored it: nothing to offer or to keep
@@ -319,16 +377,20 @@ func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (it It
 			it.BodyRef = s.writeBody(it.IntegrationID, it.ID, rec.Body)
 		}
 		it.FetchedAt = now
-		_, err := tx.ExecContext(ctx, `INSERT INTO external_items(`+itemCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		_, err := tx.ExecContext(ctx, `INSERT INTO external_items(`+itemCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			it.ID, it.IntegrationID, it.AssignmentID, it.Source, it.ProjectID, it.ExternalID, it.Kind, it.IssueRef, it.URL, it.Title, it.Excerpt, it.BodyRef, it.State, string(lb), it.Assignee, it.Priority,
-			it.ParentExternalID, string(mb), it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, it.FetchedAt, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), "", "", 0, 0, 1)
+			it.ParentExternalID, string(mb), it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, it.FetchedAt, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), "", "", 0, 0, 1, string(pb))
 		it.Version = 1
 		return it, Inserted, false, err
 	case err != nil:
 		return it, Unchanged, false, err
 	}
 	it.ID = id
+	it.TaskID = taskID
 	closedNow = it.Gone && oldGone == 0
+	if taskID != "" && !strings.EqualFold(oldState, it.State) {
+		it.PrevState = oldState // the vendor moved an item that has a task: status sync offers it to the person
+	}
 	if oldHash == it.ContentHash {
 		_, err := tx.ExecContext(ctx, `UPDATE external_items SET fetched_at=?, gone=? WHERE id=?`, now, b2i(it.Gone), id)
 		return it, Unchanged, closedNow, err
@@ -337,9 +399,9 @@ func (s *Store) upsertTx(ctx context.Context, tx *sql.Tx, rec ItemRecord) (it It
 		it.BodyRef = s.writeBody(it.IntegrationID, id, rec.Body)
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE external_items SET project_id=?, kind=?, issue_ref=?, url=?, title=?, excerpt=?, body_ref=CASE WHEN ?<>'' THEN ? ELSE body_ref END, state=?, labels_json=?, assignee=?, priority=?,
-		parent_external_id=?, meta_json=?, external_created_at=?, external_updated_at=?, etag=?, content_hash=?, fetched_at=?, risk=?, risk_flags=?, redactions=?, truncated=?, gone=?, version=version+1 WHERE id=?`,
+		parent_external_id=?, meta_json=?, external_created_at=?, external_updated_at=?, etag=?, content_hash=?, fetched_at=?, risk=?, risk_flags=?, redactions=?, truncated=?, gone=?, properties_json=?, version=version+1 WHERE id=?`,
 		it.ProjectID, it.Kind, it.IssueRef, it.URL, it.Title, it.Excerpt, it.BodyRef, it.BodyRef, it.State, string(lb), it.Assignee, it.Priority, it.ParentExternalID, string(mb),
-		it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, now, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), b2i(it.Gone), id)
+		it.ExternalCreated, it.ExternalUpdated, it.Etag, it.ContentHash, now, it.Risk, string(fb), it.Redactions, b2i(it.Truncated), b2i(it.Gone), string(pb), id)
 	return it, Updated, closedNow, err
 }
 
@@ -761,7 +823,11 @@ type Outbox struct {
 	Receipt        string         `json:"receipt,omitempty"`
 	Error          string         `json:"error,omitempty"`
 	Version        int64          `json:"version"`
-	rawPayload     string
+	// AutoClass is the auto-approve class this action went out under ("" = a person approved it, or it waits for one).
+	AutoClass string `json:"autoClass,omitempty"`
+	// Marker is the short reference a comment carries ("drydock:<marker>"), so a retry can first look for it on the vendor.
+	Marker     string `json:"marker,omitempty"`
+	rawPayload string
 }
 
 // Outbox statuses.
@@ -777,12 +843,12 @@ const (
 	OutCancelled = "cancelled"
 )
 
-const outCols = `id,integration_id,project_id,task_id,op,target_external_id,tool,payload_json,payload_hash,preview,approval_id,status,idempotency_key,created_by,created_at,decided_by,sent_at,receipt,error,version`
+const outCols = `id,integration_id,project_id,task_id,op,target_external_id,tool,payload_json,payload_hash,preview,approval_id,status,idempotency_key,created_by,created_at,decided_by,sent_at,receipt,error,version,auto_class,marker`
 
 func scanOutbox(r rowScanner) (Outbox, error) {
 	var o Outbox
 	if err := r.Scan(&o.ID, &o.IntegrationID, &o.ProjectID, &o.TaskID, &o.Op, &o.Target, &o.Tool, &o.rawPayload, &o.PayloadHash, &o.Preview, &o.ApprovalID, &o.Status, &o.IdempotencyKey,
-		&o.CreatedBy, &o.Created, &o.DecidedBy, &o.SentAt, &o.Receipt, &o.Error, &o.Version); err != nil {
+		&o.CreatedBy, &o.Created, &o.DecidedBy, &o.SentAt, &o.Receipt, &o.Error, &o.Version, &o.AutoClass, &o.Marker); err != nil {
 		return o, err
 	}
 	o.Payload = map[string]any{}
@@ -810,8 +876,8 @@ func (s *Store) InsertOutbox(ctx context.Context, o Outbox) (out Outbox, existin
 		if !errors.Is(qerr, sql.ErrNoRows) {
 			return qerr
 		}
-		_, e := tx.ExecContext(ctx, `INSERT INTO integration_outbox(`+outCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			o.ID, o.IntegrationID, o.ProjectID, o.TaskID, o.Op, o.Target, o.Tool, string(pb), o.PayloadHash, o.Preview, o.ApprovalID, o.Status, o.IdempotencyKey, o.CreatedBy, o.Created, "", 0, "", "", 1)
+		_, e := tx.ExecContext(ctx, `INSERT INTO integration_outbox(`+outCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			o.ID, o.IntegrationID, o.ProjectID, o.TaskID, o.Op, o.Target, o.Tool, string(pb), o.PayloadHash, o.Preview, o.ApprovalID, o.Status, o.IdempotencyKey, o.CreatedBy, o.Created, "", 0, "", "", 1, "", o.Marker)
 		out = o
 		return e
 	})
@@ -875,6 +941,7 @@ type OutboxUpdate struct {
 	SentAt     *int64
 	Receipt    *string
 	Error      *string
+	AutoClass  *string
 }
 
 // UpdateOutbox applies u and reports whether the row was in an allowed state.
@@ -894,6 +961,9 @@ func (s *Store) UpdateOutbox(ctx context.Context, id string, u OutboxUpdate) (bo
 	}
 	if u.Error != nil {
 		set, args = append(set, "error=?"), append(args, *u.Error)
+	}
+	if u.AutoClass != nil {
+		set, args = append(set, "auto_class=?"), append(args, *u.AutoClass)
 	}
 	ph := strings.TrimSuffix(strings.Repeat("?,", len(u.From)), ",")
 	args = append(args, id)

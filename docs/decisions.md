@@ -1446,3 +1446,36 @@ Open, owner action:
   design: `docs/model-routing.md` "As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal".
   **Not verified:** a real cheap model's tiebreak, a real CLI stopped at a ceiling on Windows, every CLI version's retention
   wording, holds during a real provider's CLI turn.
+- **P114. Integrations: webhooks, typed clients, mappings, status sync, auto-approve classes, attachments (2026-10-29).** On the
+  owner's words, answering the list docs/integrations.md gave as not built: "Proceed with those items". (1) **Webhooks**: a
+  receiver, off by default, listening on 127.0.0.1 only at a port the person chooses, for Linear (`Linear-Signature`, the signed
+  `webhookTimestamp` within 60 s, as `@linear/sdk` 100.0.0 checks), Sentry (`Sentry-Hook-Signature` with the client secret,
+  `Sentry-Hook-Timestamp` within 5 minutes, `Request-ID`, from Sentry's webhook documentation) and Notion (`X-Notion-Signature`
+  keyed with the verification token, the event's `timestamp` and `id`; **unverified**, from memory: Notion's documentation was
+  unreachable). A delivery is refused when it is unsigned, signed wrongly, larger than 1 MiB, stale or a replay (its id is kept a
+  day); a verified one only queues a read of the item it names through the normal adapter, so nothing in the payload becomes item
+  data. Drydock does not expose the port: the page says, always, that the person must (their own tunnel). The secrets are in the
+  credential store; Notion's verification token is used only when the person says so. (2) **Typed clients**: the REST and GraphQL
+  clients exist since P42; added are the typed calls the listing could not do (one item, attachments, comments, team states, a
+  data source's schema, a page's properties), through the same client, credential, rate limit and time-outs; a file a vendor keeps
+  on another host goes through `internal/netguard` without the credential. (3) **`integration_mappings`** per assignment, chosen by
+  a person: vendor states and task statuses with a direction; which Notion property fills state, priority, assignee, labels.
+  (4) **Notion data sources as typed rows**: a row's properties with their types, cleaned and scored like any outside text, the
+  first status property its state, a `unique_id` its reference, `item.props` in rules. (5) **Two-way status sync**: a linked task
+  entering a mapped status proposes the vendor write through the ordinary outbox (Linear `set_state`, Notion `set_status`, Sentry
+  `resolve`/`unresolve`); the vendor's state of a linked item is offered to the person as a change to the task, never applied by
+  itself (P37). (6) **`link_task` rules**: link a matching item to a named task, or to the project's task with the item's
+  reference; disabled and dry run first, daily limit, risky items never. (7) **Auto-approve classes**: a closed list,
+  `linkback_comment` and `status_sync`, each off until a person turns it on for one connection in one project; nothing destructive,
+  suppressing or in bulk; only Drydock's own templated writes name a class, never an agent's or a tool's proposal; the approval is
+  decided in the name of the person who turned it on and the send is recorded `auto: true`. (8) **The comment lookup before a
+  retry**: a failed comment is first looked for on the target by a hash of its text; found, it is recorded as sent; otherwise the
+  same call is proposed again for a new approval. (9) **The weekly automatic sweep**, in the backups' scheduler style: on unless
+  turned off; a due poll becomes a full sweep once a week. (10) **Attachments**: listed and downloaded only on a person's action,
+  capped at 10 MiB, kept under the app's data folder, a text file only as its secret-redacted copy, which is the only text of it an
+  agent is given. Migrations 00144 to 00147. UI: Webhooks and sweeps under Background on the workspace's Integrations page;
+  Mappings, Auto-approve, Full sync, attachments, typed properties, the offered status and Retry on a project's Integrations page.
+  docs/integrations.md "As built: webhooks, mappings, status sync". **Not built:** Aikido and GitHub webhooks, a relay of Drydock's
+  own (never), attachments of GitHub and Aikido items and Notion file blocks, importing a Notion row as a task, a vendor's status
+  applied without the person. **Not verified:** any of it against a live vendor (protocol fixtures only), Notion's signature
+  scheme least of all, or on Windows.

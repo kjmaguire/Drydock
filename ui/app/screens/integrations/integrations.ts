@@ -338,3 +338,55 @@ export function connectReply(raw: unknown): { connection: IntegrationView; test?
   if (raw.test) reply.test = raw.test as IntegrationTestReport;
   return reply;
 }
+
+// ---- decision P114: webhooks, mappings, status sync ----
+
+/** A webhook delivery's outcome in words (the receiver records no body, only what it did). */
+export function hookOutcomeText(outcome: string): string {
+  switch (outcome) {
+    case 'queued':
+      return 'item queued for a read';
+    case 'ignored':
+      return 'names no item Drydock reads';
+    case 'verification':
+      return 'Notion verification token';
+    case 'refused_unsigned':
+      return 'refused: not signed, or no secret saved';
+    case 'refused_signature':
+      return 'refused: wrong signature';
+    case 'refused_stale':
+      return 'refused: too old or not dated';
+    case 'refused_replay':
+      return 'refused: seen before';
+    case 'refused_size':
+      return 'refused: too large';
+    case 'refused_malformed':
+      return 'refused: not JSON';
+    case 'refused_busy':
+      return 'refused: too many queued';
+    case 'refused_not_connected':
+      return 'refused: the service is not connected';
+  }
+  return outcome;
+}
+
+/** The Drydock task statuses a status mapping may name, in the order a task moves. */
+export const TASK_STATUSES = ['READY', 'CLAIMED', 'IN_PROGRESS', 'BLOCKED', 'WAITING_HUMAN', 'REVIEW', 'VERIFICATION', 'COMPLETED', 'FAILED', 'CANCELLED'] as const;
+
+/** A status mapping's direction in words. */
+export function directionText(direction: string | undefined): string {
+  if (direction === 'to_vendor') return 'Drydock to the service';
+  if (direction === 'from_vendor') return 'the service to Drydock (you apply it)';
+  return 'both ways';
+}
+
+/** The Drydock fields a Notion property can fill. */
+export const PROPERTY_FIELDS = ['state', 'priority', 'assignee', 'labels'] as const;
+
+/** Bytes in words: 0 is unknown. */
+export function sizeText(n: number): string {
+  if (!n) return 'size unknown';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 102.4) / 10} KB`;
+  return `${Math.round(n / 104857.6) / 10} MB`;
+}

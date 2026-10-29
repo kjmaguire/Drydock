@@ -2,7 +2,9 @@
 // from the service on request), its sync state, its items (outside text: redacted, scored for injection risk, shown inert and
 // quoted as data when imported as a task), its rules (they start disabled and in dry-run) and its outbound writes (nothing is
 // sent before the human approves the exact text). Shown on the project's Integrations page (project-integrations-screen.tsx);
-// connecting a service once for the workspace stays on the workspace's Integrations page (integrations-screen.tsx).
+// connecting a service once for the workspace stays on the workspace's Integrations page (integrations-screen.tsx). Decision P114
+// adds, per assignment, its mappings and auto-approve classes, and per item its attachments, typed properties and the status the
+// service reports for a linked task (project-extras.tsx); a rule may link items to an existing task; a failed write can be retried.
 
 import { css, on, type Handle } from 'remix/component';
 import { BadgeCheck, Check, ExternalLink, FileText, FolderPlus, ListChecks, Pencil, Plus, RefreshCw, Send, Trash2, Unplug, Workflow } from 'lucide';
@@ -23,6 +25,7 @@ import { t } from '../../ui/tokens.ts';
 import { ShownNotes } from '../shared/approval-text.tsx';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { kindLabel, outboxTone, parseParams, riskText, riskTone, scopeSummary, syncText, syncTone } from './integrations.ts';
+import { AttachmentsButton, AutoApprove, ItemAttachments, Mappings, PropsTable, StatusSuggestionNote } from './project-extras.tsx';
 
 /** Opens a task (the page passes navigate; tests record the address). */
 export type OpenTask = (href: string) => void;
@@ -92,6 +95,7 @@ function ItemRow(handle: Handle<{ it: ExternalItem; projectId: string; onChanged
   const act = action(handle);
   let detail: ExternalItemDetail | undefined;
   let page: NotionPageText | undefined;
+  let attachments = false;
   return () => {
     const { it, projectId, onChanged, openTask } = handle.props;
     const chosen = it.projectId || projectId;
@@ -123,6 +127,8 @@ function ItemRow(handle: Handle<{ it: ExternalItem; projectId: string; onChanged
           ) : null}
         </div>
         {it.excerpt ? <Markdown source={it.excerpt} maxChars={600} /> : null}
+        <PropsTable item={it} />
+        <StatusSuggestionNote item={it} onChanged={onChanged} />
         {it.redactions > 0 ? <p mix={faint}>{plural(it.redactions, 'secret')} {it.redactions === 1 ? 'was' : 'were'} redacted from this text before it was stored.</p> : null}
         {(it.warnings ?? []).map((w, i) => (
           <Notice key={i} tone="warn">
@@ -144,6 +150,7 @@ function ItemRow(handle: Handle<{ it: ExternalItem; projectId: string; onChanged
           >
             {detail ? 'Hide text' : 'Show full text'}
           </Button>
+          {it.source !== 'aikido' && it.source !== 'github' ? <AttachmentsButton open={attachments} onToggle={() => ((attachments = !attachments), void handle.update())} /> : null}
           {it.kind === 'page' ? (
             <Button
               size="sm"
@@ -184,6 +191,7 @@ function ItemRow(handle: Handle<{ it: ExternalItem; projectId: string; onChanged
           </span>
         </div>
         {detail ? <QuotedBlock text={detail.quoted || detail.body} /> : null}
+        {attachments ? <ItemAttachments item={it} /> : null}
         {page ? (
           <div data-testid="notion-page" mix={stack}>
             <p mix={[muted]}>
@@ -288,6 +296,11 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projectId: string }>) 
             </pre>
             {o.error ? <p mix={errLine}>{o.error}</p> : null}
             {o.receipt ? <p mix={faint}>Receipt: {o.receipt}</p> : null}
+            {o.autoClass ? (
+              <p mix={faint} data-testid="outbox-auto">
+                Approved automatically under the auto-approve class {o.autoClass}, in the name of {o.decidedBy}.
+              </p>
+            ) : null}
             <div mix={toolbar}>
               {o.status === 'awaiting_approval' ? (
                 <>
@@ -323,6 +336,22 @@ function Outbound(handle: Handle<{ conn: IntegrationView; projectId: string }>) 
                   Send now
                 </Button>
               ) : null}
+              {o.status === 'failed' ? (
+                <Button
+                  size="sm"
+                  icon={RefreshCw}
+                  disabled={act.busy !== '' || ro.readOnly}
+                  title={o.op === 'comment' ? 'Looks for the comment on the service first; posts it again only after a new approval' : 'Proposes the same write again; it needs a new approval'}
+                  mix={[
+                    on('click', async () => {
+                      await act.run('retry', () => s.client.integrationOutboundRetry(o.id));
+                      q.reload();
+                    }),
+                  ]}
+                >
+                  Retry
+                </Button>
+              ) : null}
             </div>
           </div>
         ))}
@@ -342,6 +371,8 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
   let name = '';
   let when = 'item.state == "open"';
   let maxPerDay = '5';
+  let ruleAction = '';
+  let linkTask = '';
   const change = async (r: IntegrationRule, patch: Partial<{ enabled: boolean; dryRun: boolean; delete: boolean }>) => {
     await act.run('rule', () =>
       s.client.integrationRulesSet({ id: r.id, version: r.version, integrationId: r.integrationId, projectId: r.projectId, name: r.name, when: r.when, action: r.action, ...patch }),
@@ -349,14 +380,15 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
     q.reload();
   };
 
+  const actionOf = () => ruleAction || (handle.props.conn.kind === 'notion' ? 'link_task' : 'create_task');
   return () => {
     const { conn, projectId } = handle.props;
     const rules: IntegrationRule[] = (q.data ?? []).filter((r) => r.projectId === projectId);
     return (
       <section aria-label="Rules" mix={panel}>
-        <h4>Rules (create tasks automatically)</h4>
+        <h4>Rules (create or link tasks automatically)</h4>
         <p mix={faint}>
-          A rule creates backlog tasks from matching items. Only you can create, change or enable a rule. A new rule starts disabled and in dry-run: it lists what it would create and
+          A rule creates backlog tasks from matching items, or links them to a task that already exists. Only you can create, change or enable a rule. A new rule starts disabled and in dry-run: it lists what it would create and
           creates nothing until you turn both on. Items with an injection risk of 3 or more are never created by a rule, and item text cannot set a rule parameter.
         </p>
         <ErrorNote error={q.error ?? act.error} what="Rules" />
@@ -409,6 +441,26 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
           <Field label="At most per day">
             {(id) => <input id={id} inputMode="numeric" value={maxPerDay} mix={on('input', (e) => ((maxPerDay = e.currentTarget.value), void handle.update()))} />}
           </Field>
+          <Field label="Action">
+            {(id) => (
+              <Select
+                id={id}
+                label="Action"
+                value={actionOf()}
+                options={[
+                  ...(conn.kind === 'notion' ? [] : [{ value: 'create_task', label: 'Create a backlog task' }]),
+                  { value: 'link_task', label: 'Link to an existing task' },
+                  { value: 'notify', label: 'Only record the match' },
+                ]}
+                onChange={(v) => ((ruleAction = v), void handle.update())}
+              />
+            )}
+          </Field>
+          {actionOf() === 'link_task' ? (
+            <Field label="Task id (empty: the task with the item's reference)">
+              {(id) => <input id={id} value={linkTask} spellcheck={false} mix={[mono, on('input', (e) => ((linkTask = e.currentTarget.value), void handle.update()))]} />}
+            </Field>
+          ) : null}
           <div mix={formActions}>
             <Button
               icon={Workflow}
@@ -418,7 +470,15 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
                   const v = maxPerDay.trim();
                   const n = v === '' ? undefined : Number(v);
                   const r = await act.run('create', () =>
-                    s.client.integrationRulesSet({ integrationId: conn.id, projectId, name: name.trim(), when, action: 'create_task', maxPerDay: n !== undefined && Number.isFinite(n) ? n : undefined }),
+                    s.client.integrationRulesSet({
+                      integrationId: conn.id,
+                      projectId,
+                      name: name.trim(),
+                      when,
+                      action: actionOf(),
+                      params: actionOf() === 'link_task' && linkTask.trim() ? { task: linkTask.trim() } : undefined,
+                      maxPerDay: n !== undefined && Number.isFinite(n) ? n : undefined,
+                    }),
                   );
                   if (r) {
                     name = '';
@@ -567,7 +627,7 @@ export function AssignmentRow(
 ) {
   const s = services(handle);
   const act = action(handle);
-  let show: 'items' | 'rules' | 'outbound' | 'settings' | '' = '';
+  let show: 'items' | 'rules' | 'outbound' | 'settings' | 'mappings' | 'auto' | '' = '';
   let confirm = false;
   let sync: string | undefined;
   const toggle = (v: typeof show) => {
@@ -609,6 +669,21 @@ export function AssignmentRow(
           >
             Sync now
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={act.busy !== ''}
+            title="Reads the whole scope again and marks what is gone upstream (the weekly sweep does this by itself)"
+            mix={[
+              on('click', async () => {
+                const r = await act.run('full', () => s.client.integrationSyncAssignment(a.id, true));
+                if (r) sync = syncText(r);
+                onChanged();
+              }),
+            ]}
+          >
+            Full sync
+          </Button>
           <span mix={segmented}>
             <button type="button" aria-expanded={show === 'items'} mix={on('click', () => toggle('items'))}>
               Items
@@ -620,6 +695,16 @@ export function AssignmentRow(
               <button type="button" aria-expanded={show === 'outbound'} mix={on('click', () => toggle('outbound'))}>
                 Outbound
               </button>
+            ) : null}
+            {conn.kind === 'linear' || conn.kind === 'notion' || conn.kind === 'sentry' ? (
+              <>
+                <button type="button" aria-expanded={show === 'mappings'} mix={on('click', () => toggle('mappings'))}>
+                  Mappings
+                </button>
+                <button type="button" aria-expanded={show === 'auto'} mix={on('click', () => toggle('auto'))}>
+                  Auto-approve
+                </button>
+              </>
             ) : null}
           </span>
           <span mix={push}>
@@ -658,6 +743,8 @@ export function AssignmentRow(
         {show === 'items' ? <AssignmentItems a={a} openTask={openTask} /> : null}
         {show === 'rules' ? <Rules conn={conn} projectId={a.projectId} /> : null}
         {show === 'outbound' ? <Outbound conn={conn} projectId={a.projectId} /> : null}
+        {show === 'mappings' ? <Mappings conn={conn} a={a} /> : null}
+        {show === 'auto' ? <AutoApprove conn={conn} projectId={a.projectId} /> : null}
       </div>
     );
   };

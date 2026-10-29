@@ -218,3 +218,28 @@ test('integrations: OpenRouter is listed under Model providers and sets up as a 
     await expect(panel.getByTestId('openrouter-open')).toHaveAttribute('href', /^\/models\/.+/);
   }
 });
+
+test('integrations: Webhooks and sweeps, off by default, listens on 127.0.0.1 at the chosen port and says the person exposes it (decision P114)', async ({ page }) => {
+  await page.goto(appUrl());
+  await workspaceNav(page, 'nav-integrations');
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  const row = list.getByTestId('list-group-background').getByTestId('background-row');
+  await expect(row).toContainText('Webhooks and sweeps');
+  await row.click();
+  await expect(page).toHaveURL(/\/integrations\/background$/);
+  const panel = page.getByTestId('background-panel');
+  await expect(panel.getByTestId('webhook-expose')).toContainText('Drydock does not do that for you');
+  await expect(panel.getByTestId('webhook-state')).toHaveAttribute('data-listening', 'false');
+  await expect(panel.getByTestId('sweep-state')).toHaveAttribute('data-enabled', 'true');
+  // a port in the dynamic range, chosen by the test; then off again, so the harness's core is left as it was
+  const port = String(30000 + Math.floor(Math.random() * 20000));
+  await panel.getByLabel('Port on 127.0.0.1 (1024 to 65535)').fill(port);
+  await panel.getByRole('switch', { name: 'Receive webhooks' }).click();
+  await expect(panel.getByTestId('webhook-state')).toHaveAttribute('data-listening', 'true');
+  await expect(panel.getByTestId('webhook-state')).toContainText(`http://127.0.0.1:${port}`);
+  // an unsigned delivery is refused (401), or 404 when the harness has no Linear connection at that moment
+  const answer = await page.request.post(`http://127.0.0.1:${port}/hooks/linear`, { data: {} });
+  expect([401, 404]).toContain(answer.status());
+  await panel.getByRole('switch', { name: 'Receive webhooks' }).click();
+  await expect(panel.getByTestId('webhook-state')).toHaveAttribute('data-listening', 'false');
+});

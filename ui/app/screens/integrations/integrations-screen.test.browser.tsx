@@ -131,7 +131,7 @@ describe('Integrations: the list', () => {
     });
     const nav = await find(r, 'nav[aria-label="All integrations"]');
     await waitFor(() => expect(nav.querySelectorAll('[data-testid="integration-row"]').length).toBe(10), r);
-    expect(Array.from(nav.querySelectorAll('section > h2')).map((h) => h.textContent)).toEqual(['Servicesapp sync', 'Agent toolsMCP', 'Model providersModels', 'Your serversMCP']);
+    expect(Array.from(nav.querySelectorAll('section > h2')).map((h) => h.textContent)).toEqual(['Servicesapp sync', 'Agent toolsMCP', 'Model providersModels', 'Your serversMCP', 'Backgroundevery connection']);
     const state = (key: string) => statusOf(nav.querySelector(`[data-key="${key}"]`)!);
     expect(state('linear')).toBe('On');
     // a problem is a warning sign, not words that widen the list; its detail says what is wrong
@@ -174,6 +174,17 @@ describe('Integrations: the list', () => {
     expect((await find(r, '[data-testid="list-empty"]')).textContent).toBe('Nothing is on yet.');
     await r.act(() => (r.$('[data-testid="list-filter-needs"]') as HTMLElement).click());
     await waitFor(() => expect(r.$('[data-testid="list-empty"]')!.textContent).toBe('Nothing needs you.'), r);
+  });
+
+  it('Webhooks and sweeps has its own row under Background: Off by default, Listening once turned on, its panel at /integrations/background (decision P114)', async () => {
+    const hooks = (enabled: boolean) => ({ enabled, port: enabled ? 8787 : 0, listening: enabled, endpoints: [], queued: 0, recent: [], exposeNote: 'Drydock does not do that for you.' });
+    const r = show({ integrationList: async () => [], integrationWebhooks: async () => hooks(false), integrationSweep: async () => ({ enabled: true, everyMs: 1 }) }, 'background');
+    const bg = await find(r, '[data-testid="background-row"]');
+    await waitFor(() => expect(statusOf(bg)).toBe('Off'), r);
+    expect(r.$$('[data-testid="integration-row"][data-kind="background"]').length).toBe(0); // not counted as a service
+    expect((await find(r, '[data-testid="background-panel"]')).textContent).toContain('Drydock does not do that for you.');
+    const r2 = show({ integrationList: async () => [], integrationWebhooks: async () => hooks(true), integrationSweep: async () => ({ enabled: true, everyMs: 1 }) });
+    await waitFor(() => expect(statusOf(r2.$('[data-testid="background-row"]')!)).toBe('Listening'), r2);
   });
 
   it('choosing a row opens its detail and puts it in the address; the address opens a row, and the page follows when it changes', async () => {
