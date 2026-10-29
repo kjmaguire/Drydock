@@ -88,6 +88,28 @@ type MCPAttachment struct {
 	// Release ends the gateway run and removes the config file. Spawn calls it exactly once, when the session ends (Stop,
 	// process exit, crash) or when the process could not be started.
 	Release func()
+	// BindProcess, if set, is told the pid of the agent's process the moment it is started, before the adapter talks to it, so
+	// the gateway's peer check knows whose connections to answer (decision P122). Every process the adapter starts is told.
+	BindProcess func(pid int)
+}
+
+// bindingPM tells BindProcess the pid of every process the adapter starts for the session (the agent CLI; a headless CLI
+// starts one per turn).
+type bindingPM struct {
+	proc.Manager
+	bind func(pid int)
+}
+
+// Bind binds a process the adapter did not start through the manager: an adapter whose agent runs in this process (a test
+// double that plays the agent and connects to the gateway itself) binds its own pid.
+func (b *bindingPM) Bind(pid int) { b.bind(pid) }
+
+func (b *bindingPM) Start(ctx context.Context, spec proc.Spec) (proc.Proc, error) {
+	p, err := b.Manager.Start(ctx, spec)
+	if err == nil {
+		b.bind(p.PID()) // each one: a CLI that starts a process per turn binds them all
+	}
+	return p, err
 }
 
 // Config describes one agent session to start.
@@ -254,7 +276,11 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		}
 		r.publish(ctx, "agent.mcp", cfg, runID, info)
 	}
-	sess, err := ad.Start(ctx, r.PM, cfg.Spec)
+	pm := r.PM
+	if att.BindProcess != nil {
+		pm = &bindingPM{Manager: r.PM, bind: att.BindProcess}
+	}
+	sess, err := ad.Start(ctx, pm, cfg.Spec)
 	if err != nil {
 		if att.Release != nil {
 			att.Release()

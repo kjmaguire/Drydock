@@ -140,6 +140,7 @@ func (manager) Start(ctx context.Context, spec Spec) (Proc, error) {
 
 	p := &winProc{cmd: cmd, job: job, stdin: inW, stdout: outR, stderr: errR,
 		exit: make(chan ExitInfo, 1), done: make(chan struct{})}
+	jobs.Store(cmd.Process.Pid, p) // for InTree: the peer check asks whether a process is in this job
 	safe.Go("proc.manager.Start", func() {
 		err := cmd.Wait()
 		ei := ExitInfo{Code: cmd.ProcessState.ExitCode()}
@@ -214,6 +215,7 @@ func resumeMainThread(pid uint32) error {
 
 func (p *winProc) closeJobLocked() {
 	if p.job != 0 {
+		jobs.CompareAndDelete(p.cmd.Process.Pid, p)
 		windows.CloseHandle(p.job) // KILL_ON_JOB_CLOSE terminates every process still in the job
 		p.job = 0
 	}
