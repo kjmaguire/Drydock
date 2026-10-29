@@ -75,6 +75,12 @@ var turnSignals = map[RunKind]TurnSignal{
 		Why: "a recommendation reads the project and lists who gets which skill, server or integration; a person applies each item: the ladder tries the cheap tier first, and no escalation counters apply"},
 }
 
+// IsAgentTurn reports whether a run kind is a turn of an agent (the kinds TurnSignals knows), not one of Drydock's own calls.
+func IsAgentTurn(k RunKind) bool {
+	_, ok := turnSignals[k]
+	return ok
+}
+
 // TurnSignals returns the signals of a turn kind; false for a kind that is not an agent turn (consult, summarize, ...).
 func TurnSignals(k RunKind) (TurnSignal, bool) {
 	s, ok := turnSignals[k]

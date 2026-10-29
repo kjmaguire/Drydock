@@ -27,6 +27,10 @@ const MaxTiebreakOptions = 4
 // ErrTiebreakOff is what a Tiebreaker returns when it is switched off: nothing is recorded and the ranking decides.
 var ErrTiebreakOff = errors.New("router: tiebreak off")
 
+// ErrTiebreakDryRun is what the Tiebreaker of a dry run (route.preview) returns when the tiebreak is on: the record says a real
+// decision would ask (TiebreakRecord.DryRun) and no call is made.
+var ErrTiebreakDryRun = errors.New("router: tiebreak not asked in a dry run")
+
 // Tiebreaker chooses between tied candidates. Choose returns the chosen option's Key, or an error (the ranking's choice
 // then stands, and the error's text is recorded as why).
 type Tiebreaker interface {
@@ -47,8 +51,9 @@ type TiebreakQuery struct {
 	Failures      FailureCounts    `json:"failures"`
 	ChecksPassing bool             `json:"checksPassing"`
 	Options       []TiebreakOption `json:"options"`
-	// ProjectID and AgentID say whose budgets the call counts toward; they are not sent to the model.
+	// ProjectID, TaskID and AgentID say whose budgets the call counts toward; they are not sent to the model.
 	ProjectID string `json:"-"`
+	TaskID    string `json:"-"`
 	AgentID   string `json:"-"`
 }
 
@@ -82,6 +87,7 @@ type TiebreakRecord struct {
 	By      string   `json:"by,omitempty"`     // the cheap model that answered
 	Why     string   `json:"why,omitempty"`    // its reason
 	Failed  string   `json:"failed,omitempty"` // why the ranking's choice stands
+	DryRun  bool     `json:"dryRun,omitempty"` // a preview: a real decision would ask By, nothing was called
 }
 
 // tiedWithTop returns the ranked candidates the ranking cannot tell from the top one in any way that matters.
@@ -114,7 +120,7 @@ func tiedWithTop(ranked []Scored) []Scored {
 
 func tiebreakQuery(req RouteRequest, level Level, tied []Scored) TiebreakQuery {
 	q := TiebreakQuery{RunKind: req.RunKind, TaskType: req.TaskType, Role: string(req.Role), Level: level, Complexity: req.Complexity, Ambiguity: req.Ambiguity,
-		Risk: req.Risk, DiffLines: req.DiffLines, Failures: req.Failures, ChecksPassing: req.ChecksPassing, ProjectID: req.ProjectID, AgentID: req.AgentID}
+		Risk: req.Risk, DiffLines: req.DiffLines, Failures: req.Failures, ChecksPassing: req.ChecksPassing, ProjectID: req.ProjectID, TaskID: req.TaskID, AgentID: req.AgentID}
 	for _, s := range tied {
 		price := -1.0
 		if s.PriceKnown {
@@ -147,6 +153,10 @@ func (r *RuleRouter) tiebreak(ctx context.Context, req RouteRequest, level Level
 		return nil
 	}
 	rec.By, rec.Why = ans.By, ans.Why
+	if errors.Is(err, ErrTiebreakDryRun) {
+		rec.DryRun = true
+		return rec
+	}
 	if err != nil {
 		rec.Failed = clipLine(err.Error(), 200)
 		return rec
@@ -189,6 +199,8 @@ func tiebreakReason(t *TiebreakRecord) string {
 	switch {
 	case t == nil:
 		return ""
+	case t.DryRun:
+		return fmt.Sprintf("; a real decision asks %s to break the tie between %s (not asked in a dry run)", orStr(t.By, "the cheap model"), strings.Join(t.Between, ", "))
 	case t.Failed != "":
 		return fmt.Sprintf("; tiebreak between %s failed (%s), the ranking's choice stands", strings.Join(t.Between, ", "), t.Failed)
 	case t.Chose == t.Ranked:

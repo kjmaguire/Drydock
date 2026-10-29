@@ -34,6 +34,9 @@ type Script struct {
 	// assistant message, then an error result (see failTurn). An overloaded or rate-limited provider, a model that does not
 	// exist. The message is the test's; the real wording varies by version.
 	ModelErrors map[string]string `json:"modelErrors,omitempty"`
+	// ModelSteps makes every turn of a session started with --model <m> named here run these steps instead of the prompt's
+	// (a model that hangs, say, beside others that answer).
+	ModelSteps map[string][]Step `json:"modelSteps,omitempty"`
 }
 
 // Rule selects steps by prompt content.
@@ -434,6 +437,9 @@ func (a *agent) runTurn(prompt string) {
 		}
 	}
 	steps := a.steps(prompt)
+	if ms, ok := a.script.ModelSteps[a.model]; ok && a.model != "" {
+		steps = ms
+	}
 	// as Claude Code does: the model the session runs (--model's, else its own default) and its permission mode
 	model, mode := "fake-1", a.mode
 	if a.model != "" {

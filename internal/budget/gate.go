@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -164,6 +165,22 @@ func (e *Enforcer) PauseBlocked(ctx context.Context, in workflow.NodeInput, reas
 		return workflow.NodeOutput{}, fmt.Errorf("budget: the agent turn did not start: %s", reason)
 	}
 	return e.pause(ctx, in, ids, over), nil
+}
+
+// PauseRefused parks the run on the budget pause for a turn whose reservation did not fit (reserve.go): its estimate, with
+// what the turns in flight hold, would take a budget past its limit. A human answers it as any budget pause: raise the limit,
+// or approve this one turn (its reservation is then held without the check).
+func (e *Enforcer) PauseRefused(ctx context.Context, in workflow.NodeInput, r *RefusedError) workflow.NodeOutput {
+	ids := e.scopeIDs(ctx, in)
+	over := r.Over
+	if len(over) == 0 {
+		over = []Status{{Message: r.Message}}
+	}
+	why := strings.TrimPrefix(r.Message, refusedPrefix)
+	for i := range over {
+		over[i].Message = why // the reason names spent, held and estimated: the pause says it, not only the spend
+	}
+	return e.pause(ctx, in, ids, over)
 }
 
 // priorDecision reads the human's answer to this node's budget pause. It returns true when an approved, human-decided

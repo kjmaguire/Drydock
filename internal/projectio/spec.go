@@ -126,7 +126,7 @@ var Tables = []Table{
 			"cached_tokens", "cache_write_tokens", "reasoning_tokens", "cost_usd", "source", "cache_hit", "purpose", "decision_id", "latency_ms",
 			"cost_source", "est_saved_usd"},
 		Skipped: map[string]string{"id": why_surrogate}},
-	{Name: "routing_decisions", Where: `task_id IN ` + taskIDs + ` OR run_id IN ` + runIDs + ` OR run_id IN (SELECT id FROM room_turns WHERE project_id=@p)`, OrderBy: `ts, id`,
+	{Name: "routing_decisions", Where: `task_id IN ` + taskIDs + ` OR run_id IN ` + runIDs + ` OR run_id IN (SELECT id FROM room_turns WHERE project_id=@p) OR (task_id='' AND json_extract(request,'$.ProjectID')=@p)`, OrderBy: `ts, id`,
 		Columns: []string{"id", "ts", "run_id", "task_id", "node_id", "attempt", "run_kind", "level", "agent", "provider_id", "model", "effort", "decided_by",
 			"est_cost_usd", "escalated_from", "request", "decision", "stop_reason"}},
 	{Name: "routing_outcomes", Where: `task_id IN ` + taskIDs, OrderBy: `id`,

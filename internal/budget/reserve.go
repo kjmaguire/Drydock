@@ -60,6 +60,8 @@ type RefusedError struct {
 
 func (e *RefusedError) Error() string { return "budget: " + e.Message }
 
+const refusedPrefix = "the turn did not start: "
+
 // ErrRefused matches a RefusedError with errors.Is.
 var ErrRefused = errors.New("budget: the turn's estimate does not fit the budget")
 
@@ -81,8 +83,10 @@ func heldWhere(sc Scope) string {
 // HeldFor sums what the reservations in flight hold against one scope instance.
 func (s *Store) HeldFor(ctx context.Context, sc Scope, instance string) (Held, error) {
 	var h Held
-	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(est_usd),0), COALESCE(SUM(est_tokens),0), COUNT(*) FROM budget_reservations
-		WHERE state='held' AND expires_at>? AND `+heldWhere(sc), storage.Now(), instance).Scan(&h.USD, &h.Tokens, &h.Turns)
+	// what a turn already reported spending is in the usage rows: only the rest of its estimate is held, and its turn only until
+	// its agent_runs row exists
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(MAX(est_usd-real_usd,0)),0), COALESCE(SUM(MAX(est_tokens-real_tokens,0)),0), COALESCE(SUM(holds_turn),0)
+		FROM budget_reservations WHERE state='held' AND expires_at>? AND `+heldWhere(sc), storage.Now(), instance).Scan(&h.USD, &h.Tokens, &h.Turns)
 	return h, err
 }
 
@@ -126,7 +130,7 @@ func (s *Store) Reserve(ctx context.Context, h Hold) (Reservation, error) {
 				}
 			}
 			if len(over) > 0 {
-				return &RefusedError{Over: over, Message: "the turn did not start: " + strings.Join(why, "; ")}
+				return &RefusedError{Over: over, Message: refusedPrefix + strings.Join(why, "; ")}
 			}
 		}
 		r.ExpiresAt = now + h.TTL.Milliseconds()
@@ -165,6 +169,19 @@ func doesNotFit(st Status, held Held, h Hold) string {
 		}
 	}
 	return ""
+}
+
+// Progress records, while the turn runs, that it started (its agent_runs row now counts the turn) and what it has reported
+// spending so far (now in the usage rows): the reservation holds only the rest.
+func (s *Store) Progress(ctx context.Context, id string, started bool, spentUSD float64, spentTokens int64) error {
+	if id == "" {
+		return nil
+	}
+	return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE budget_reservations SET holds_turn=CASE WHEN ? THEN 0 ELSE holds_turn END, real_usd=?, real_tokens=? WHERE id=? AND state='held'`,
+			started, spentUSD, spentTokens, id)
+		return err
+	})
 }
 
 // Settle ends a reservation whose turn ran, recording its real cost (the budgets read it from the usage rows from now on).

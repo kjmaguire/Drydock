@@ -76,7 +76,7 @@ var DeleteSteps = []DeleteStep{
 	{Table: "budgets", Where: budgetWh},
 	{Table: "routing_rules", Where: `scope='project:'||@p`},
 	{Table: "routing_outcomes", Where: `project_id=@p OR task_id IN ` + taskIDs},
-	{Table: "routing_decisions", Where: `task_id IN ` + taskIDs + ` OR run_id IN ` + runIDs + ` OR run_id IN (SELECT id FROM room_turns WHERE project_id=@p)`},
+	{Table: "routing_decisions", Where: `task_id IN ` + taskIDs + ` OR run_id IN ` + runIDs + ` OR run_id IN (SELECT id FROM room_turns WHERE project_id=@p) OR (task_id='' AND json_extract(request,'$.ProjectID')=@p)`},
 	{Table: "room_inbox_acks", Where: `item_key IN (SELECT 'question:'||id FROM messages WHERE room_id IN ` + roomIDs + `) OR item_key IN (SELECT 'check:'||id FROM messages WHERE room_id IN ` + roomIDs + `) OR item_key IN (SELECT 'watchdog:'||id FROM tasks WHERE project_id=@p)`},
 	{Table: "dead_letters", Where: `task_id IN ` + taskIDs},
 	{Table: "handoffs", Where: `task_id IN ` + taskIDs},

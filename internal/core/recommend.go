@@ -18,6 +18,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/libver"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/router"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -762,7 +763,18 @@ func (c *Core) recommendTurn(ctx context.Context, r Recommendation, advisor Agen
 	cfg.Spec = agents.RunSpec{AgentID: advisor.ID, Role: advisor.Role, Model: advisor.Model, Effort: advisor.Effort, PermissionMode: "plan", ReadOnly: true,
 		Cwd: c.leadCwd(ctx, r.ProjectID, "")}
 	in := workflow.NodeInput{NodeInfo: workflow.NodeInfo{ProjectID: r.ProjectID, NodeID: "recommend", Kind: workflow.KindAgentTask, Meta: map[string]string{"agent": "recommend"}}}
-	out, err := c.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
+	// routed on the advisor's own list of models, like every other turn (P112); the decision carries the recommendation's id
+	out, err := EconomicsRouteTurn(ctx, c, DirectTurn{Kind: router.RunRecommend, AgentID: advisor.ID, ProjectID: r.ProjectID, RunID: r.ID, NodeID: "recommend"}, in,
+		func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
+			c2 := cfg
+			if m, ok := pipeline.RoutedFrom(ctx); ok {
+				c2.Spec.Model = m.Model
+				if m.Tier != "" {
+					c2.Tier = m.Tier
+				}
+			}
+			return c.Runtime.AgentTask(rt.TaskSpec{Config: c2, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
+		})
 	if err != nil {
 		return "", 0, err
 	}

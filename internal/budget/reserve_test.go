@@ -146,3 +146,36 @@ func TestStaleReservationsExpireAtStartAndAfterTheirTTL(t *testing.T) {
 		t.Fatalf("state %s", state)
 	}
 }
+
+// While a turn runs, what it reported spending is in the usage rows and its agent_runs row counts the turn: the reservation
+// holds only the rest, so nothing is counted twice.
+func TestARunningTurnsReservationHoldsOnlyWhatItHasNotSpentYet(t *testing.T) {
+	e := newEnv(t)
+	e.task("t1", "prj1", "agtW", "agtR")
+	e.set(budget.Budget{Scope: budget.ScopeAgent, ScopeID: "agtW", LimitTokens: i(5000), LimitTurns: i(2), Enabled: true})
+	r, err := e.st.Reserve(e.ctx, budget.Hold{Project: "prj1", Task: "t1", Agent: "agtW", EstUSD: 0.10, EstTokens: 2000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the turn started (its agent_runs row now exists) and reported 1500 tokens and $0.04
+	e.exec(`INSERT INTO agent_runs(id,agent_id,task_id,status,started_at) VALUES('ar1','agtW','t1','RUNNING',?)`, storage.Now())
+	e.usage(row{task: "t1", agent: "agtW", in: 1000, out: 500, cost: 0.04})
+	if err := e.st.Progress(e.ctx, r.ID, true, 0.04, 1500); err != nil {
+		t.Fatal(err)
+	}
+	held, err := e.st.HeldFor(e.ctx, budget.ScopeAgent, "agtW")
+	if err != nil || held.Turns != 0 || held.Tokens != 500 || held.USD < 0.0599 || held.USD > 0.0601 {
+		t.Fatalf("held %+v %v", held, err)
+	}
+	// one turn running and one more fits the two-turn limit: 1 (its agent_runs row) + 0 held + 1
+	if _, err := e.st.Reserve(e.ctx, budget.Hold{Project: "prj1", Task: "t1", Agent: "agtW", EstTokens: 1000}); err != nil {
+		t.Fatalf("the running turn must not be counted twice: %v", err)
+	}
+	// spending past the estimate holds nothing more (never negative)
+	if err := e.st.Progress(e.ctx, r.ID, true, 0.50, 9000); err != nil {
+		t.Fatal(err)
+	}
+	if held, _ := e.st.HeldFor(e.ctx, budget.ScopeAgent, "agtW"); held.Tokens != 1000 || held.Turns != 1 {
+		t.Fatalf("held %+v", held)
+	}
+}

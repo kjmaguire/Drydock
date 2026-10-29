@@ -84,6 +84,9 @@ func explain(d RoutingDecision) string {
 	}
 	if t := f.Tiebreak; t != nil {
 		switch {
+		case t.DryRun:
+			fmt.Fprintf(&b, "- Tiebreak: the ranking leaves %s within %.0f%% of each other; a real decision asks %s to choose between them (a dry run does not call it).\n",
+				strings.Join(t.Between, ", "), TiebreakMargin*100, orStr(t.By, "the cheap model"))
 		case t.Failed != "":
 			fmt.Fprintf(&b, "- Tiebreak: the ranking left %s within %.0f%% of each other; the tiebreak call failed (%s), so the ranking's choice stands.\n",
 				strings.Join(t.Between, ", "), TiebreakMargin*100, t.Failed)

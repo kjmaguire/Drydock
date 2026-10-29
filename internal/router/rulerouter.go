@@ -378,7 +378,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	d.Facts.FallbackFrom = m.fallbackFrom
 	d.Facts.BudgetDownshift = contains(eff.Applied, "budget-downshift") || contains(global.Applied, "budget-downshift")
 	d.Facts.Tiebreak = tb
-	if tb != nil && tb.Failed == "" {
+	if tb != nil && tb.Failed == "" && !tb.DryRun {
 		d.DecidedBy = "llm"
 	}
 
@@ -400,7 +400,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		}
 	}
 
-	if tb != nil && tb.Failed == "" {
+	if tb != nil && tb.Failed == "" && !tb.DryRun {
 		d.PoliciesApplied = append(d.PoliciesApplied, "llm_tiebreak")
 	}
 
