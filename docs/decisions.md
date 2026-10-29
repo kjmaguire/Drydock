@@ -1348,6 +1348,23 @@ Open, owner action:
   smoke test flags a page that asks one method fourteen times): nothing is recorded and no quota is taken; they are read again when a rule, a provider or the
   cheap model changes. When every card is blocked for the same reason (no provider yet), the page says it once, with a link to
   Models. The model names are `lib/model-name.ts`, shared with the chat chips (P107).
+
+- **P109. Import Claude Code's own chats into Chats (2026-10-29).** On the owner's words, "Proceed with those items", answering the
+  list of what was not built, with the shape agreed for this one. **Import from Claude Code** on the Chats screen (beside New,
+  and under an empty list) lists the sessions Claude Code kept on this PC, every one not imported yet chosen, and copies the
+  chosen ones in (`chat.importList`, `chat.import`; `internal/chats/claudeimport.go`, `transcript.go`; docs/chats.md section 7).
+  Sources: `%CLAUDE_CONFIG_DIR%` or `%USERPROFILE%\.claude`, and `~/.claude` in each WSL distro where Claude Code is installed,
+  read through `\\wsl.localhost\<distro>`. Only `projects/<folder>/<session id>.jsonl` is opened (never the sign-in, settings,
+  `.claude.json` or plugins: D1); links are not followed; a file over 64 MB, a line over 8 MB and a line that is not readable
+  JSON are skipped. A chat gets the person's messages and the text answers at their original times, a tool call as "Used tool
+  <name>", no reasoning, tool output or sub-agent lines, everything redacted before it is stored; its title is the session's
+  name, summary or first line. It is a Claude Code chat (in the distro for a distro's session) whose session id is the imported
+  one, so its next turn resumes that session in the session's folder; a session in a project's repository folder joins that
+  project, any other is a chat without one (P107). The session id is unique among imported chats (migration
+  `00134_chat_import.sql`): importing again does nothing, deleting the chat frees it. Sessions Drydock started (its chats' and
+  agents' sessions, its own folders) are not listed. **Not verified:** the transcript format against a real Claude Code (it is
+  undocumented), anything on Windows, a real resume of an interactive session, and the first turn's cost (Claude Code may count
+  the session's earlier cost again; its baseline is in `.claude.json`, closed by D1).
 - **P116. Restart now after a staged restore, and the WebView2 version in the support bundle (2026-10-29).** On the owner's
   words, answering the list of what is not built: "Proceed with those items". (1) The Backups page shows **Restart now** beside
   a staged restore when the window can restart (`app.info` `canRestart`); `shell.restart` (a person only) asks the shell

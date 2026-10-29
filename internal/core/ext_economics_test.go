@@ -63,7 +63,7 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 	m := a.c.Methods()
 	for _, name := range []string{"budget.list", "budget.set", "budget.delete", "budget.status", "budget.resume", "evals.report", "evals.export", "route.explain", "route.decisions",
 		"route.rules.list", "route.rules.set", "route.rules.delete", "route.preview", "route.previews", "route.cheap.select", "route.cheap.get", "checks.settings.get", "checks.settings.set",
-		"telemetry.status", "telemetry.enable", "telemetry.preview", "telemetry.export"} {
+		"telemetry.status", "telemetry.enable", "telemetry.preview", "telemetry.export", "chat.importList", "chat.import"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}

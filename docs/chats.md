@@ -8,7 +8,8 @@ message, or looked up by a later chat through the `chats` workspace tool. Code: 
 skipped without a logged-in `claude`: resume, fallback, a refusal and its allow rule), `internal/chats/text_test.go`,
 `internal/mcp/workspace_chats_test.go`, `internal/core/chats_wsl_test.go` (a chat inside a WSL distro, through the stand-in
 wsl.exe and the LABELLED stand-in claude of `internal/wsl/wsltest`), `internal/core/chat_properties_test.go` (a chat's skills
-and MCP servers reaching its session, decision P60). Not verified: a real ACP chat turn, anything on Windows (a chat in a real
+and MCP servers reaching its session, decision P60), `internal/chats/claudeimport_test.go` and `internal/core/chats_import_test.go` (the
+import of Claude Code's own chats, section 7), `ui/app/screens/chats/chat-import.test{,.browser}.ts(x)`. Not verified: a real ACP chat turn, anything on Windows (a chat in a real
 distro is covered by the agent run mode's real-distro tests only as far as the shared start goes), a real Claude Code reading a
 chat's skill through the skills tool (section 6).
 
@@ -43,7 +44,8 @@ until the next turn reports again.
   "status": "idle | running | error", "lastError": "",
   "pinned": false, "archived": false, "archivedAt": 0, "forkedFrom": "",
   "createdAt": 1791500000000, "updatedAt": 1791500000000,
-  "tokensIn": 10, "tokensOut": 5, "costUsd": 0.0002, "costUnknownTurns": 0, "version": 7
+  "tokensIn": 10, "tokensOut": 5, "costUsd": 0.0002, "costUnknownTurns": 0, "version": 7,
+  "importedFrom": "claude-code (omitted for a chat made in Drydock)", "importedSession": "the Claude Code session id it was imported from"
 }
 ```
 
@@ -96,6 +98,8 @@ Parameters are JSON objects; omitted fields take the default in brackets. Errors
 | `chat.delete` | `{id}` | `{deleted: true}` |
 | `chat.search` | `{query, projectId?, limit?[50, max 200]}` | `[Hit]` (archived chats included and marked) |
 | `chat.fork` | `{id, uptoSeq?[all]}` | `Chat` (new, messages copied up to and including `uptoSeq`, no session) |
+| `chat.importList` | `{}` | `{sources: [{wslDistro, folder, sessions, skipped, error?}], sessions: [ImportCandidate]}`: the Claude Code sessions found (section 7), the most recently active first. It only reads |
+| `chat.import` | `{sessions: [{sessionId, wslDistro}]}` (at most 500) | `{imported: [{sessionId, chat: Chat, messages}], skipped: [{sessionId, wslDistro, reason, chatId?}]}` (section 7) |
 | `chat.allowTool` | `{id, tool}` | `Chat` |
 | `chat.disallowTool` | `{id, tool}` | `Chat` |
 | `chat.attachment` | `{id}` | `{id, name, mime, size, kind: text \| image \| file, data (base64)}`: a file sent with a message, checked against the hash kept when it was attached (P90) |
@@ -241,3 +245,51 @@ message on. The session otherwise starts exactly as every Drydock Claude Code se
   servers' tools, and nothing else; with none of them the session has no MCP entry at all.
 
 The folder field of the new chat dialog and of Properties has "Choose folder..." (the window's own dialog, `fs.pickFolder`, decision P58) in the desktop app; the path can still be typed.
+
+## 7. Importing Claude Code's chats (decision P109)
+
+**Import from Claude Code** (the button beside New in the chat list, and under an empty list) opens a dialog that lists the
+chats Claude Code keeps on this PC and lets the person pick which to copy in; every one not imported yet starts chosen. It is
+a one-time, read-only copy: Claude Code's files are never written, and an imported chat's later turns are Drydock's own.
+Code: `internal/chats/transcript.go` (reading a transcript), `internal/chats/claudeimport.go` (listing and importing),
+`internal/core/ext_chats_import.go` (where to look, which project, which sessions are Drydock's), migration
+`00134_chat_import.sql`, `ui/app/screens/chats/chat-import.tsx`.
+
+- **Where.** Claude Code on Windows: `%CLAUDE_CONFIG_DIR%\projects` when that variable is set (the adapter passes it on to every
+  claude it starts), else `%USERPROFILE%\.claude\projects`. Claude Code in WSL: for each distro where the Connections page
+  finds Claude Code installed, `~/.claude/projects` in the distro user's home (the probe's HOME), read through the distro's
+  file share (`\\wsl.localhost\<distro>\...`, the form a distro chat's folder is stored in). A `CLAUDE_CONFIG_DIR` set inside a
+  distro is not known to Drydock and is not followed.
+- **What is read.** Only `projects/<folder>/<session id>.jsonl`, two levels down: the projects folder is listed, each plain
+  folder in it is listed, and each plain `.jsonl` file whose name is a session id is opened. Nothing outside the projects folder
+  is opened: never `.credentials.json`, `.claude.json`, `settings*.json` or `plugins/` (decision D1). An entry that is a link, a
+  junction or anything but a plain folder or file is passed over, and a file is checked again once open (the same file, still
+  not a link). Caps: a file over 64 MB is not read, a line over 8 MB is skipped, at most 5,000 session files per place, the
+  newest 5,000 messages of a session (a note in the chat says how many earlier ones were left out). A line that is not JSON
+  Drydock can read is skipped.
+- **What a chat gets.** The person's messages and the model's text answers (an answer's blocks joined into one message), each
+  at its original time; a tool call as a one-line `tool` message ("Used tool Bash"), ok or failed from its result; the
+  model's reasoning, tool output, pictures, sub-agent (sidechain) lines, the CLI's meta lines and slash commands with their
+  output are left out ("[Request interrupted by user]" becomes "Stopped by you."). Every body and title goes through the
+  secret scanner line by line before it is stored (a title is redacted before it is shortened). The title is the name the
+  person gave the session in Claude Code, else its summary (one that summarises this session's own messages first), else the
+  first line of the first message. The chat's created and updated times are the session's first and last.
+- **How it continues.** The chat is a Claude Code chat (in the session's WSL distro for a distro's session) whose `sessionId` is
+  the imported session, so its next turn resumes it (`--resume <id>`, section 4), in the folder the session ran in (the
+  transcript's `cwd`; a distro's Linux folder is stored the Windows way, a drive under its mount root as the drive's path):
+  Claude Code keeps a session to its folder. A session whose folder is the repository of a Drydock project is put in that
+  project (an exact match: a session in a subfolder is in no project, since a project's chat runs in the project's folder);
+  any other is a chat without a project (P107). A session that names no folder is listed with the reason and cannot be
+  imported. A session that can no longer be resumed falls back as any chat does (section 4, step 3). A note at the end of the
+  chat says where it came from.
+- **Once.** The session id is unique among imported chats (`chats.import_session`, a unique index): importing it again does
+  nothing and the dialog shows it as imported, with a link to its chat. Deleting the imported chat frees the session to be
+  imported again. Sessions Drydock started itself are not listed: a chat's session (on the chat or any of its turns), an
+  agent run's, or one in a folder Drydock made (its data folder, `.drydock-worktrees`, a distro chat's `~/.drydock/chats`).
+- **Not verified:** the transcript format against a real Claude Code (it is undocumented; the fixtures follow the format of
+  Claude Code 2.x as Drydock knows it: `type`, `cwd`, `timestamp`, `message.content` as a string or blocks, `summary` with
+  `leafUuid`, `custom-title` with `customTitle`, `isSidechain`, `isMeta`, `isApiErrorMessage`), anything on Windows (the
+  `%USERPROFILE%` folder, reading a distro through `\\wsl.localhost`, letter case of folders), and a real `--resume` of a
+  session the person started in an interactive Claude Code. Claude Code reports a resumed session's cost including the
+  session's earlier processes when it restores them, so the first turn of an imported chat may count what the session cost in
+  Claude Code before (Drydock cannot read that baseline: it lives in `.claude.json`, which D1 keeps closed).

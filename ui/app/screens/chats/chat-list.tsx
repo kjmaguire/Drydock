@@ -2,15 +2,15 @@
 // highlighted), "All chats" (off: the current project's chats only), then the chats, pinned first. Each row shows the title and
 // a faint line: the project (when the chat is in one), the CLI (named as the Connections page names it: "Claude Code WSL") and
 // when it was last active, or that a turn is running; its actions menu pins, renames, forks, archives or deletes (with a
-// confirmation).
+// confirmation). The import button beside New opens "Import from Claude Code" (chat-import.tsx, decision P109).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { Archive, ArchiveRestore, Ellipsis, GitFork, Pencil, Pin, PinOff, Search, Trash2 } from 'lucide';
+import { Archive, ArchiveRestore, Ellipsis, GitFork, Import, Pencil, Pin, PinOff, Search, Trash2 } from 'lucide';
 import type { ChatHit, ChatListItem } from '../../api/chatClient.ts';
 import type { Connection } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -20,6 +20,7 @@ import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ownsKeys } from '../../lib/keys.ts';
 import { chatCliText, chatRowLine, chatTitle, listWhen, snippetParts } from './chats.ts';
+import { ImportClaudeDialog } from './chat-import.tsx';
 
 const colCss = css({
   display: 'flex',
@@ -156,6 +157,8 @@ export function ChatList(
   let renaming: ChatListItem | undefined;
   let renameText = '';
   let deleting: ChatListItem | undefined;
+  let importing = false;
+  const openImport = () => ((importing = true), void handle.update());
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
 
   const scope = () => (all || !handle.props.projectId ? '' : handle.props.projectId);
@@ -313,6 +316,7 @@ export function ChatList(
       <aside mix={[colCss, handle.props.layout === 'full' ? fullCss : handle.props.layout === 'drawer' ? drawerCss : undefined]} aria-label="Chats" data-layout={handle.props.layout ?? 'column'}>
         <div mix={headCss}>
           <h1>Chats</h1>
+          <IconButton icon={Import} size={15} label="Import from Claude Code" mix={[on('click', openImport)]} data-testid="chat-import-open-dialog" />
           <Button size="sm" variant="secondary" mix={[on('click', () => onNew())]} data-testid="chat-new" aria-label="New chat" aria-keyshortcuts="Control+N" title="New chat (Ctrl+N)">
             New
             <kbd aria-hidden="true">Ctrl+N</kbd>
@@ -369,6 +373,13 @@ export function ChatList(
                   <Button size="sm" mix={[on('click', () => onNew())]}>
                     Start a chat
                   </Button>
+                  {!archived ? (
+                    <p style={{ margin: '12px 0 0' }}>
+                      <Button size="sm" variant="link" mix={[on('click', openImport)]} data-testid="chat-import-empty">
+                        Import from Claude Code
+                      </Button>
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {pinned.length ? (
@@ -390,6 +401,15 @@ export function ChatList(
             </>
           )}
         </div>
+        <ImportClaudeDialog
+          open={importing}
+          onClose={() => {
+            importing = false;
+            void chats.reload();
+            void handle.update();
+          }}
+          onNavigate={handle.props.onNavigate}
+        />
         <Dialog open={!!renaming} onClose={() => ((renaming = undefined), void handle.update())} title="Rename chat">
           <form
             style={{ display: 'grid', gap: '16px' }}

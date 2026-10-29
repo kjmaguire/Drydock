@@ -58,7 +58,8 @@ app/
                       a provider's detail, the add form and their helpers are in screens/providers/
   screens/chats/      the Chats section: list, conversation (ChatFeed: chat.get + chat.* events), new chat dialog (Ctrl+N), a chat's
                       properties (chat-properties.tsx: CLI, folder, library skills and MCP servers, its MCP approvals), a waiting
-                      request as an inline card (chat-asks.tsx), Move to a project (chat-move.tsx)
+                      request as an inline card (chat-asks.tsx), Move to a project (chat-move.tsx), Import from Claude Code
+                      (chat-import.tsx, its words in chat-import.ts; decision P109)
   styles/app.css      design tokens (light-dark()) + base layer for native elements
   test/               labelled test doubles (fakes.ts) and render helpers (render.tsx)
 ```
