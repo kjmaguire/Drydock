@@ -34,6 +34,8 @@ func TestRunRefusesUnknownArmsTasksAndModes(t *testing.T) {
 		want string
 	}{
 		{[]string{"-arms", "D,B2"}, `unknown arm "B2"`},
+		{[]string{"-arms", "B0,B3"}, `unknown arm "B3"`},
+		{[]string{"-arms", "B0", "-tasks", "saasapi-invoice-rules"}, "claude --version"}, // B0 is an arm: the run gets as far as asking for the CLI
 		{[]string{"-tasks", "no-such-task"}, "no such task: no-such-task"},
 		{[]string{"-d-mode", "vm"}, "-d-mode is sandbox or checks"},
 	} {
@@ -115,5 +117,28 @@ func TestRedactMakesEarlierRunsSafeToCommit(t *testing.T) {
 	}
 	if strings.Contains(string(got), `"plugins":`) || strings.Contains(string(got), "org_x") || strings.Contains(string(got), "Slack") || !strings.Contains(string(got), `"tools":["Bash"]`) {
 		t.Fatalf("the transcript still holds the account's details, or lost the tools: %s", got)
+	}
+}
+
+// No arm always runs first: the order turns by one per (repeat, task) pair, and two arms keep the swap the trial always made.
+func TestTheArmsTakeTurnsToRunFirst(t *testing.T) {
+	two := []string{"D", "B1"}
+	if got := strings.Join(interleave(two, 2), ","); got != "B1,D" {
+		t.Fatalf("an even pair swaps: %s", got)
+	}
+	if got := strings.Join(interleave(two, 3), ","); got != "D,B1" {
+		t.Fatalf("an odd pair keeps the order: %s", got)
+	}
+	three := []string{"D", "B1", "B0"}
+	firsts := map[string]bool{}
+	for n := 0; n < 3; n++ {
+		o := interleave(three, n)
+		firsts[o[0]] = true
+		if len(o) != 3 || o[0] == o[1] || o[1] == o[2] || o[0] == o[2] {
+			t.Fatalf("%v", o)
+		}
+	}
+	if len(firsts) != 3 {
+		t.Fatalf("each arm runs first once in three pairs: %v", firsts)
 	}
 }

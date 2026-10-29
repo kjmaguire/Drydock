@@ -1,9 +1,10 @@
 // Command drydock-trial runs the head-to-head trial of docs/evals.md section 13: each task of evals/tasks done by Drydock
-// (arm D) and by plain Claude Code (arm B1) from the same start commit with the same model, judged by hidden acceptance
-// checks, and records every run under evals/results. It spends real money on the signed-in Claude account (bounded by
-// -ceiling-usd per run).
+// (arm D), by plain Claude Code (arm B1) and, when asked, by the naive broadcast team (arm B0, section 5) from the same start
+// commit with the same model, judged by hidden acceptance checks, and records every run under evals/results. It spends real
+// money on the signed-in Claude account (bounded by -ceiling-usd per run).
 //
 //	drydock-trial run -tasks saasapi-invoice-rules -k 1 -model haiku
+//	drydock-trial run -arms D,B1,B0 -k 3 -model haiku   # the broadcast baseline as well
 //	drydock-trial report -trial 2026-10-10-pilot
 //	drydock-trial selfcheck
 //	drydock-trial redact                  # make the files of runs recorded earlier safe to commit (new runs are written that way)
@@ -93,10 +94,11 @@ func run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	taskList := fs.String("tasks", "", "comma-separated task ids (default: every task of -suite)")
 	suiteName := fs.String("suite", "", "only the tasks of this suite (default: every task in evals/tasks)")
-	armList := fs.String("arms", "D,B1", "arms to run: D (Drydock), B1 (plain Claude Code)")
+	armList := fs.String("arms", "D,B1", "arms to run: D (Drydock), B1 (plain Claude Code), B0 (the naive broadcast team)")
+	b0Rounds := fs.Int("b0-rounds", 5, "B0 only: rounds of the team's free-for-all before it is stopped")
 	k := fs.Int("k", 1, "repeats of each (task, arm)")
 	model := fs.String("model", "haiku", "the model both arms use (a Claude Code --model value)")
-	ceiling := fs.Float64("ceiling-usd", 2, "dollar ceiling per run (B1: --max-budget-usd; D: a project budget)")
+	ceiling := fs.Float64("ceiling-usd", 2, "dollar ceiling per run (B1: --max-budget-usd; B0: the whole team's, each turn's --max-budget-usd what is left; D: a project budget)")
 	wall := fs.Duration("wall", 30*time.Minute, "wall-clock cap per run")
 	mode := fs.String("d-mode", trial.ModeSandbox, "how D's worker runs commands: sandbox (P30) or checks (P24)")
 	image := fs.String("sandbox-image", "", "workspace image for -d-mode sandbox (default: build the offline Go image from this machine)")
@@ -139,10 +141,10 @@ func run(ctx context.Context, args []string) error {
 	var armOrder []string
 	for _, a := range strings.Split(*armList, ",") {
 		switch a = strings.TrimSpace(a); a {
-		case trial.ArmDrydock, trial.ArmB1:
+		case trial.ArmDrydock, trial.ArmB1, trial.ArmB0:
 			armOrder = append(armOrder, a)
 		default:
-			return fmt.Errorf("unknown arm %q (D or B1)", a)
+			return fmt.Errorf("unknown arm %q (D, B1 or B0)", a)
 		}
 	}
 	if *mode != trial.ModeSandbox && *mode != trial.ModeChecks {
@@ -181,10 +183,7 @@ func run(ctx context.Context, args []string) error {
 	fetcher := &trial.CachingFetcher{Inner: skills.NewGitHubFetcher()} // the runs import the same pinned skills
 	for rep := *firstRep; rep < *firstRep+*k; rep++ {
 		for i, t := range tasks {
-			order := append([]string(nil), armOrder...)
-			if (rep+i)%2 == 0 && len(order) == 2 { // interleave, so neither arm always runs first (docs/evals.md 5)
-				order[0], order[1] = order[1], order[0]
-			}
+			order := interleave(armOrder, rep+i)
 			for _, arm := range order {
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -199,7 +198,7 @@ func run(ctx context.Context, args []string) error {
 					return finish(outDir, *name)
 				}
 				dir := filepath.Join(*work, fmt.Sprintf("%s-%s-%d", t.ID, arm, rep))
-				rec, extra := runOne(ctx, root, dir, t, arm, *model, *ceiling, *wall, *mode, *image, *bin, skillSetup{dir: *skillsDir, prebuilt: *prebuilt, mode: *skillMode, fetcher: fetcher})
+				rec, extra := runOne(ctx, root, dir, t, arm, *model, *ceiling, *wall, *mode, *image, *bin, skillSetup{dir: *skillsDir, prebuilt: *prebuilt, mode: *skillMode, fetcher: fetcher}, *b0Rounds)
 				rec.Schema, rec.Trial, rec.Commit, rec.Repeat, rec.CLI = 1, *name, commit, rep, cli
 				rec.Host = runtime.GOOS + "/" + runtime.GOARCH
 				where, err := rec.Write(outDir, extra)
@@ -216,6 +215,16 @@ func run(ctx context.Context, args []string) error {
 		}
 	}
 	return finish(outDir, *name)
+}
+
+// interleave is the arms' order for the n-th (repeat, task) pair, so no arm always runs first (docs/evals.md 5): it turns by one
+// each time; with two arms that is the swap on every other pair the trial has always made.
+func interleave(arms []string, n int) []string {
+	order := make([]string, len(arms))
+	for j := range arms {
+		order[j] = arms[(j+n+1)%len(arms)]
+	}
+	return order
 }
 
 // finish writes the trial's report next to its runs (every batch so far) and prints it.
@@ -250,7 +259,7 @@ type skillSetup struct {
 	fetcher  *trial.CachingFetcher
 }
 
-func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model string, ceiling float64, wall time.Duration, mode, image, bin string, sk skillSetup) (trial.Record, map[string][]byte) {
+func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model string, ceiling float64, wall time.Duration, mode, image, bin string, sk skillSetup, b0Rounds int) (trial.Record, map[string][]byte) {
 	started := time.Now()
 	extra := map[string][]byte{}
 	repo := filepath.Join(dir, "repo")
@@ -263,10 +272,15 @@ func runOne(ctx context.Context, root, dir string, t trial.Task, arm, model stri
 	}
 	var rec trial.Record
 	switch arm {
-	case trial.ArmB1:
+	case trial.ArmB1, trial.ArmB0:
 		var transcript bytes.Buffer
-		b := trial.B1{Bin: bin, Model: model, CeilingUSD: ceiling, Wall: wall, Root: root, Hidden: []string{"evals/testdata", "zz_hidden_"}}
-		rec = b.Run(ctx, t, repo, &transcript)
+		if arm == trial.ArmB1 {
+			b := trial.B1{Bin: bin, Model: model, CeilingUSD: ceiling, Wall: wall, Root: root, Hidden: []string{"evals/testdata", "zz_hidden_"}}
+			rec = b.Run(ctx, t, repo, &transcript)
+		} else {
+			b := trial.B0{Bin: bin, Model: model, CeilingUSD: ceiling, Wall: wall, Rounds: b0Rounds, Root: root, Hidden: []string{"evals/testdata", "zz_hidden_"}}
+			rec, _ = b.Run(ctx, t, repo, &transcript) // the room is in the transcript, every session's stream one after the other
+		}
 		extra["transcript.jsonl"] = transcript.Bytes()
 		res := trial.Accept(ctx, root, t, repo)
 		rec.EvalAccept = &res
