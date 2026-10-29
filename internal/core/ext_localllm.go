@@ -859,7 +859,10 @@ func (l *localExt) startServer(ctx context.Context, modelIDs []string, by string
 
 // serve starts the server on models (none: the ones kept loaded last time); auto says Drydock started it by itself (autostart,
 // or again after an install of a server it had started so), not a person. Several models run llama-server's router mode, and
-// are refused when there are more than it keeps or they do not fit this PC's memory together (decision P111).
+// are refused when there are more than it keeps or they do not fit this PC's memory together (decision P111). While a router
+// runs, a change of the set is made on it: the models kept stay loaded, one more is loaded beside them or one is unloaded
+// (decision P120); the server starts again on the new set only when the change cannot be made so, and says why when it was
+// because the server did not answer the router's calls.
 func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) error {
 	// the load outlives the request that asked for it: a page reload or a closed window while a large model loads must not
 	// kill the server (installs and downloads are detached the same way), and the provider row is written after the load
@@ -902,10 +905,29 @@ func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) erro
 	prog, args := l.m.ServerProgram(in)
 	// a new key for every start: the server demands it, and only the provider row made for it holds it (audit 2026-10-16, L32)
 	key := localllm.NewAPIKey()
-	launch := localllm.Launch{Program: prog, Args: args, Model: plan.models[0], Drafts: plan.drafts, Port: s.Port, CacheType: cache, ContextSize: s.ContextSize,
-		LogDir: l.m.LogDir(), APIKey: key, Autostarted: auto}
+	launch := localllm.Launch{Program: prog, Args: args, Model: plan.models[0], Drafts: plan.drafts, SpecTypes: plan.specs, Port: s.Port, CacheType: cache,
+		ContextSize: s.ContextSize, LogDir: l.m.LogDir(), APIKey: key, Autostarted: auto}
 	if len(plan.models) > 1 {
 		launch.Models, launch.PresetFile, launch.CacheDir = plan.models, l.m.PresetFile(), l.m.RouterCache()
+	}
+	if st := l.m.Server.State(); st.State == "running" && st.Router {
+		changed := launch
+		changed.Models, changed.PresetFile, changed.CacheDir, changed.RouterMode = plan.models, l.m.PresetFile(), l.m.RouterCache(), true
+		err := l.m.Server.Change(ctx, changed)
+		var nr *localllm.NeedsRestart
+		switch {
+		case err == nil:
+			return l.changedInPlace(ctx, modelIDs)
+		case errors.As(err, &nr):
+			if nr.Unanswered {
+				l.c.logf("local models: the server did not load or unload the model in place (%s): starting it again on the new set", nr.Reason)
+				launch.Note = "Started again on the new set of models: " + nr.Reason + "."
+			}
+		default:
+			// a model that could not be loaded: the others stay loaded, and the provider lists what is
+			_ = l.changedInPlace(ctx, served(l.m.Server.State()))
+			return err
+		}
 	}
 	if err := l.m.Server.Start(ctx, launch); err != nil {
 		return err
@@ -926,6 +948,27 @@ func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) erro
 		return err
 	}
 	l.changed("server", map[string]any{"state": "running", "modelId": modelIDs[0], "models": modelIDs})
+	return nil
+}
+
+// changedInPlace records the models the running router keeps after a change made on it (decision P120): the settings, and the
+// provider's catalog read again, so a model loaded is routable at once and one unloaded is not offered. The key stays the one
+// the server was started with, which the provider row already holds.
+func (l *localExt) changedInPlace(ctx context.Context, ids []string) error {
+	s := l.settings(ctx)
+	if len(ids) > 0 {
+		s.ModelID, s.Loaded = ids[0], append([]string{}, ids...)
+	}
+	if s.ProviderID != "" {
+		if _, err := l.c.Prober.Probe(ctx, s.ProviderID); err != nil {
+			l.c.logf("local models: probe: %v", err)
+		}
+		_, _ = l.c.Health.CheckNow(ctx, s.ProviderID)
+	}
+	if err := l.save(ctx, s); err != nil {
+		return err
+	}
+	l.changed("server", map[string]any{"state": "running", "modelId": s.ModelID, "models": s.Loaded, "inPlace": true})
 	return nil
 }
 

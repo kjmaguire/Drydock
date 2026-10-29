@@ -156,7 +156,7 @@ func TestSeveralModelsAreServedByTheRouter(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 	args, _ := os.ReadFile(record)
-	for _, want := range []string{"--models-preset\n" + l.PresetFile, "--models-max\n2", "--port\n" + strconv.Itoa(port), "-ctk\nq8_0", "-c\n32768", "--jinja"} {
+	for _, want := range []string{"--models-preset\n" + l.PresetFile, "--models-max\n4", "--port\n" + strconv.Itoa(port), "-ctk\nq8_0", "-c\n32768", "--jinja"} {
 		if !strings.Contains(string(args), want) {
 			t.Fatalf("arguments lack %q:\n%s", want, args)
 		}
