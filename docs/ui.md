@@ -205,9 +205,43 @@ deterministic layered layout in `ui/app/lib/graphLayout.ts`; node state from exe
 read-only, nodes are not draggable) with a side panel for the selected node, then the tabs Turns (each turn expands into
 "Why this model", "What it was given" (the manifest: source, included, size, priority, reason), the exact prompt on request,
 its usage and a link to its stream), Checkpoints, MCP calls, Events. The checkpoint timeline under the graph puts the graph in
-"as of checkpoint" mode (node states from the executions up to that step). Not built: Resume / Time travel / Replay actions
-(the engine has no service call for them yet); subworkflow nodes are drawn as one node (their nested view is in the data but
-not expanded).
+"as of checkpoint" mode (node states from the executions up to that step).
+
+**As built (2026-10-29, decision P123): Resume, Time travel, Replay and the nested subworkflow view.** The page's actions sit
+under the summary: **Resume** (a run that failed, or that stopped when Drydock did and nobody drives: the engine's `Continue`)
+and **Replay from the start**; choosing a checkpoint on the timeline adds **Time travel from here** and **Replay from here** to
+the graph's bar. The core says which are possible (`run.explain`'s `actions`, computed by the same rules `run.resume`,
+`run.timeTravel` and `run.replay` enforce in `internal/core/ext_runcontrol.go`) and why one is off, shown as a line under the
+buttons ("The run is waiting for you: answer it on the task page.", "Only a run that has ended is replayed; ...", "Task #3 is
+completed: its runs can be read, not run again."). Each action opens a confirmation that says, from the run's own record
+(`screens/run/run-model.ts` `rerunPlan`): for Resume, the step it goes on from, why it stopped, what runs again first, that
+answers already given stay (a rejected step is still rejected) and that budgets and loop counts carry on; for Time travel,
+that a new run starts from that checkpoint with the state as it was and this run is kept, what runs first (the checkpoint's
+`next` nodes), what ran after that point and runs again (with the number of turns), that requests are asked afresh; for
+Replay, what runs again (agent turns are paid for again) and the steps that ask first, every time, because they change
+something outside the run (the graph's `meta.effect` nodes: the merge, the push, the plan's task creation); for both, that
+the task's run waiting for you or paused is stopped first (its history stays), and that the worktree's files are not put back
+and the task's evidence, reviews and iterations used stay. Rules the core keeps for a task: one live run (a fork or a replay
+cancels the task's run when it waits for a person or is paused, and is refused while it works: "pause the task or wait for
+the run to stop first"); the task's status goes back to what it was at the checkpoint as far as its state machine allows (from
+the task's transition events; back to IN_PROGRESS as a resync, which uses no iteration, then forward when the guards allow; a
+note says what could not be put back); the new run becomes the task's run; the task channel says what the person did; a task
+that has ended (completed, cancelled, failed) is not run again. A fork or a replay opens the new run's page, whose summary says
+"Started from: Time travel from step 1 of an earlier run" (or "Replay of an earlier run from step 0") linking the run it came
+from; a run that has not ended says who drives it ("Driven by: This Drydock", "Another Drydock", "Nobody: it stopped when
+Drydock did"), which is the lease holder indicator above; a resume is a marker "(resumed)" on the timeline.
+**Subworkflow nodes**: the node's panel shows the nested graph's name, its nested run and its status (`run.explain`'s
+`subruns`: the run each execution of the node started, with its executions, nested runs to four levels) and **Show its nodes
+in the graph**, which draws the node's own nodes after it, in a dashed frame labelled with the node (a nested subworkflow
+opens inside its parent's frame), the edges into the node's entries and out of its last nodes, each nested node with its
+state from the nested run (as of a checkpoint: only from the step the subworkflow node ran) and its own panel; **Hide its
+nodes** folds it back (`expandSubworkflows`, `subExecutions`). Tests: `run-model.test.ts` (the plans, the expansion, the
+nested states), `run-screen.test.browser.tsx` (each action's confirmation, call and navigation, a refusal shown in the
+dialog, the nested view), `e2e/round11.spec.ts` (against the real core and the scripted agent: Resume refused for a waiting
+run, time travel from the checkpoint after prepare to the approval again, the earlier run cancelled and kept, its replay to the
+approval again). **Not built / not verified:** putting the worktree's files back on time travel (a safe point restore, a
+human action the page does not offer yet); a subworkflow in any shipped workflow (none uses one, so the nested view is tested
+with test graphs only); the actions on Windows.
 
 ### 6.3 Command palette (planned with cmdk, built as our own dialog)
 Opened with `Ctrl+K`. Groups: Navigate (rooms, DMs, tasks, screens), Agents (focus, interrupt, restart, open inspector), Tasks (create, open, move per allowed transition), Actions (open terminal, toggle dock, switch theme, test connection), Recent. Commands are registered by screens and filtered by context (a command whose feature is not built is not registered). Destructive commands open the same approval flow as buttons; the palette never bypasses an approval. Fuzzy matching is done by cmdk over a bounded list (recent 200 entities); larger sets query the Go side (FTS5) on input (**proposal**).
