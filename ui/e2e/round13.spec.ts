@@ -33,13 +33,13 @@ test('wizard: a project with no repository opens, gets a repository from setting
   await projectNav(page, 'nav-project');
   await expect(page.getByTestId('no-repo')).toHaveText('No repository yet');
   await expect(page.getByLabel('Project brief')).toHaveValue('A calculator library. Keep changes small and tested.');
-  await expect(page.getByLabel('Mode')).toBeDisabled();
+  await expect(page.getByLabel('Mode', { exact: true })).toBeDisabled();
   const attach = page.getByTestId('attach-repo');
   await attach.getByLabel('Repository path').fill(freshRepo());
   await attach.getByRole('button', { name: 'Attach repository' }).click();
   await expect(page.getByTestId('attach-repo')).toHaveCount(0);
   await expect(page.getByTestId('no-repo')).toHaveCount(0);
-  await expect(page.getByLabel('Mode')).toBeEnabled();
+  await expect(page.getByLabel('Mode', { exact: true })).toBeEnabled();
 
   // now it works like any project: a task can be created
   await projectNav(page, 'nav-tasks');

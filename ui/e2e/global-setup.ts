@@ -14,9 +14,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const uiDir = resolve(here, '..');
 const repoRoot = resolve(uiDir, '..');
 // One fresh repository for every project a spec makes with a repository. 49 was two short when the whole suite ran (the last two
-// tests, in wsl.spec.ts and xss.spec.ts, found the pool empty), the rules folder test of security.spec.ts took one more, and the density test one more, the task page's live run (task-page.spec.ts) one more, the chat performance test (chat-perf.spec.ts) one more; a
+// tests, in wsl.spec.ts and xss.spec.ts, found the pool empty), the rules folder test of security.spec.ts took one more, and the density test one more, the task page's live run (task-page.spec.ts) one more, the chat performance test (chat-perf.spec.ts) one more, the specs of P117 to P123 (agent tools, routing level, diagnostics, time travel) took the pool empty again for xss.spec.ts, so four more; a
 // spec that only needs a project uses createProjectWithoutRepo (helpers.ts) and takes none.
-const REPOS = 56;
+const REPOS = 60;
 const GREEN = 8;
 const LICENSED_REPOS = 4;
 // What each harness printed (stdout and stderr) and, when it stops, its diagnostics (-diag: every goroutine's stack and the
