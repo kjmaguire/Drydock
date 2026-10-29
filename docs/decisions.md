@@ -1374,3 +1374,27 @@ Open, owner action:
   single-instance check, which would otherwise hand the launch back to the closing app. Running agents stop as on any quit. A
   browser build says to quit and reopen. (2) The support bundle's `os.webview2` is the version the window reports
   (`core.Config.WebView2Version`, from Wails' environment info). Neither has been run by hand on Windows.
+- **P110. Expert packs read PDF, DOCX and git repositories, and a model answers their questions (2026-10-29).** On the owner's
+  words, answering the list of what is not built: "Proceed with those items". From the expert-pack list
+  (docs/expert-packs.md, "Not built"), everything but the embedding index, which v1 does not plan. (1) **PDF and DOCX**
+  (`internal/docparse`): a PDF through `github.com/ledongthuc/pdf` (pure Go, BSD-3-Clause, the newest commit's pseudo-version
+  0.0.0-20261020125853-5e46805f718e, since the module has no tags), page by page; a DOCX through `archive/zip` and
+  `encoding/xml` alone (headings, lists, tables). Every file is untrusted: 32 MB, 1000 pages, 16 MB of text, 128 MB unpacked
+  for a DOCX whatever the zip says, 60 seconds, at most two PDFs at once, a reader panic is the file's error, and a PDF without a
+  text layer is refused as a scan (no OCR). A pack's `local_dir` reads them; a PDF passage keeps its page (migration `00136`,
+  `Citation.page`) and a DOCX passage its headings. The Expert packs page makes a private pack of picked files
+  (`pack.createFromFiles`, `pack.files`, `pack.addFiles`, `pack.removeFile`; its own `packs/<id>/files` folder), and the
+  Requirements page reads a PDF or DOCX into the text box to be checked (`requirement.extract`). (2) **`git_docs`**
+  (`git.FetchDocs`): url, ref and path; a fresh bare repository, a shallow fetch with no blobs, then only the wanted Markdown,
+  MDX and text blobs by id, read with `cat-file`; nothing checked out, no hooks, submodules, symbolic links, lazy fetch,
+  credentials, proxy or personal git configuration; the address checked as the crawler checks it and pinned for git; a size
+  bound (`crawl.max_repo_bytes`, 256 MB); the commit each version read is recorded (migration `00137`); the pack's refresh
+  schedule applies. (3) **Answers and summaries by a model** (`internal/packs/packmodel`): CONSULT routes run kind `consult`
+  and a refresh digest `summarize` through the app's router and LLM client at level cheapest, with the pack's context ceiling
+  (a private pack never reaches a trainable provider); an answer must cite supplied sources only, the sources it used are
+  quoted, and with no model or a router that blocks, the answer is the cited passages with the reason. (4) **Decided against:**
+  OpenCode `instructions` globs, because OpenCode already finds the run-start skill copies in `.agents/skills` and
+  `instructions` would load each matched skill into every turn (the cost P37 measured), and Drydock's OpenCode configuration
+  is unverified. **Not verified:** `git_docs` against a real host and on Windows, a real model answering a consult, large files
+  through the Wails bridge, PDFs from real producers beyond the tests' hand-written ones. docs/expert-packs.md "As built: PDF
+  and DOCX, packs of files, git_docs and routed answers"; docs/model-routing.md "As built: expert-pack consults".

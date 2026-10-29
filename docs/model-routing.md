@@ -516,3 +516,17 @@ the security review record names it. Router (`turnkinds_test.go`), evals, projec
 
 **Not built or not verified.** The team lead's turns and the recommendation turns (P52) are not routed; real CLIs were not
 run (the fake agent stands in, D1 holds by construction: `agentSource` offers only the agent's own models on its own CLI).
+
+## As built: expert-pack consults and digest summaries are routed (2026-10-29, decision P110)
+
+CONSULT answers and the changed-pages summary of a pack refresh are the app's own calls of run kinds `consult` and
+`summarize` (`internal/packs/packmodel`): each asks the app's router (`EconomicsRouter`: the rule router over the provider
+registry, budgets filled in, every decision recorded in `routing_decisions`) at level `cheapest` and calls the chosen model
+through the app's LLM client (`EconomicsLLM`: the Wrapper's data-class guard, secret scan, quota, cache and usage). The context
+ceiling is the pack's: `public_docs` only when every pack is public and allows a trainable route and the question passes the
+trainable test (docs/expert-packs.md section 6), otherwise `private`, with manifest entries of the same class, so a private
+pack is never routed to a `trainable` provider (and the Wrapper would refuse one). Free models remain consult-only by the
+invariant. No provider registered is "no model" (the answer is the cited passages, and the page says to add a provider); any
+other refusal (a policy, a budget at its limit, every candidate unavailable) keeps the router's reason in the answer's notice.
+One attempt per question: a provider failure is not retried on `Next`. Tests: `internal/core/ext_packs_model_test.go` against
+the real rule router and a labelled test-double provider (an `llmtest` protocol fixture), `internal/packs/packmodel`.
