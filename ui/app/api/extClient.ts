@@ -104,6 +104,8 @@ export interface ExtClient {
   routeRulesSet(rule: RouteRule): Promise<RouteRule>;
   routeRulesDelete(id: string): Promise<void>;
   routePreview(request: Record<string, unknown>): Promise<RoutePreview>;
+  /** Several dry runs in one call, in the order asked (at most 32); a failed one is { error } in its place. */
+  routePreviews(requests: Record<string, unknown>[]): Promise<(RoutePreview | { error: string })[]>;
   routeCheapGet(providerId: string): Promise<{ selection: CheapSelection | null; selected: boolean }>;
   routeCheapSelect(providerId: string, force?: boolean): Promise<CheapSelection>;
   routeProbeStartup(enabled: boolean): Promise<{ enabled: boolean; by: string }>;
@@ -273,6 +275,7 @@ export function createExtClient(t: Transport): ExtClient {
     routeRulesSet: (rule) => call('route.rules.set', { rule }),
     routeRulesDelete: (id) => voidCall('route.rules.delete', { id }),
     routePreview: (request) => call('route.preview', { request }),
+    routePreviews: async (requests) => (await call<(RoutePreview | { error: string })[] | null>('route.previews', { requests })) ?? [],
     routeCheapGet: (providerId) => call('route.cheap.get', { providerId }),
     routeCheapSelect: (providerId, force = false) => call('route.cheap.select', { providerId, force }),
     routeProbeStartup: (enabled) => call('route.probe.startup', { enabled }),

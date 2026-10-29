@@ -3,6 +3,7 @@
 import type { AdapterInfo, Connection } from '../../api/types.ts';
 import type { Chat, ChatMcpGrant, ChatMessage, ChatSkillRef } from '../../api/chatClient.ts';
 import type { LibrarySkill } from '../../api/extTypes.ts';
+import { modelName } from '../../lib/model-name.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatUsd } from '../../lib/format.ts';
 import { adapterLabel, chatInstall, cliName, type CliInstall } from '../shared/cli-name.ts';
@@ -308,18 +309,7 @@ export function modeWords(mode: string): string {
   }
 }
 
-/**
- * A model id as a person reads it: "claude-opus-5-5" and "opus-5-5-20261001" are "Opus 5.5", the alias "sonnet" is "Sonnet";
- * an id of another vendor stays as it is.
- */
-export function modelName(id: string): string {
-  const m = id.trim().replace(/\[[^\]]*\]$/, '');
-  const x = /^(?:claude-)?(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d{1,2}))?)?(?:-\d{8})?$/i.exec(m);
-  if (!x) return m;
-  const family = x[1]!.charAt(0).toUpperCase() + x[1]!.slice(1).toLowerCase();
-  const version = x[2] ? (x[3] ? `${x[2]}.${x[3]}` : x[2]) : '';
-  return version ? `${family} ${version}` : family;
-}
+export { modelName };
 
 /**
  * The effort Claude Code uses when none is chosen, by model (its documentation, 2026-10: medium for Opus, Sonnet and Haiku 5.5,

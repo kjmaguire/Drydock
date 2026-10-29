@@ -465,6 +465,25 @@ func (e *economics) methods() map[string]Method {
 		}) (any, error) {
 			return e.routePreview(ctx, p.Request)
 		}),
+		// several dry runs in one call (the Routing page's wiring, decision P108): each answer in the order asked, a failure as
+		// {"error": ...} in its place, at most maxPreviews
+		"route.previews": bind(func(ctx context.Context, p struct {
+			Requests []router.RouteRequest `json:"requests"`
+		}) (any, error) {
+			if len(p.Requests) > maxPreviews {
+				return nil, fmt.Errorf("at most %d previews in one call, got %d", maxPreviews, len(p.Requests))
+			}
+			out := make([]any, len(p.Requests))
+			for i, r := range p.Requests {
+				v, err := e.routePreview(ctx, r)
+				if err != nil {
+					out[i] = map[string]string{"error": err.Error()}
+					continue
+				}
+				out[i] = v
+			}
+			return out, nil
+		}),
 		"route.cheap.select": bind(func(ctx context.Context, p struct {
 			ProviderID string `json:"providerId"`
 			Force      bool   `json:"force"`
@@ -751,6 +770,9 @@ func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisi
 
 // routePreview dry-runs the router: the same rules, candidates, quotas and budget state as a real decision, but nothing is
 // recorded, no event is published and no quota slot is taken. A budget at its hard limit is read from the budget store.
+// maxPreviews bounds route.previews: the wiring asks fourteen.
+const maxPreviews = 32
+
 func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (any, error) {
 	if sig, ok := router.TurnSignals(req.RunKind); ok && req.TaskType == "" {
 		// an agent turn kind is previewed with the signals a real turn of that kind gives the router (P63)

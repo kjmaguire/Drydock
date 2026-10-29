@@ -22,7 +22,10 @@ const has = (r: { container: Element }, s: string | RegExp) => () => {
 };
 
 function mountWith(client: Partial<Client>) {
-  return mount(<RoutingScreen />, testServices({ routeRulesList: async () => [], providerList: async () => [], ...client }));
+  return mount(
+    <RoutingScreen />,
+    testServices({ routeRulesList: async () => [], providerList: async () => [], routePreviews: async (reqs) => reqs.map(() => ({ blocked: true, reason: 'no providers' })), ...client }),
+  );
 }
 
 /** Choose an action from a rule's "..." menu (Edit, Disable or Enable, Delete). */
@@ -256,5 +259,63 @@ describe('RoutingScreen', () => {
   it('says when there is no cheap private provider', async () => {
     const r = mountWith({});
     await waitFor(has(r, 'No enabled cheap private provider.'), r);
+  });
+});
+
+describe('the wiring diagram (decision P108)', () => {
+  // TEST DOUBLE of route.previews: a model per level of agent work, the cheap one for the app's own small calls
+  const byLevel: Record<string, string> = { cheapest: 'claude-haiku-5-5', fast: 'claude-sonnet-5-5', balanced: 'claude-opus-5-5', quality: 'claude-opus-5-5', maximum_quality: 'claude-fable-5-1' };
+  const preview = async (req: Record<string, unknown>) => {
+    if (req.RunKind === 'classify') return { blocked: true, reason: 'denied by rule r9' };
+    if (req.RunKind === 'consult') return { error: 'the rules could not be read' };
+    const model = req.RunKind === 'agent_task' ? byLevel[req.Level as string]! : req.RunKind === 'summarize' ? 'claude-haiku-5-5' : 'claude-opus-5-5';
+    return { blocked: false, decision: { ID: 'd', Provider: 'anthropic', Model: model, Effort: req.Level === 'maximum_quality' ? 'max' : '', Reason: `${req.Level} for ${req.RunKind}`, Confidence: 1, EstCostUSD: null, DecidedBy: 'router' } };
+  };
+
+  it("names each level's and each purpose's model, wires every card to the router, and asks only dry runs", async () => {
+    const asked: Record<string, unknown>[][] = [];
+    const r = mountWith({ routePreviews: async (reqs) => (asked.push(reqs), Promise.all(reqs.map(preview))) as never });
+    const cards = await waitFor(() => {
+      const xs = Array.from(r.$$('[data-testid="wire-card"]')) as HTMLElement[];
+      if (xs.length === 0 || xs[0]!.querySelector('[data-testid="wire-model"]')!.textContent === '…') throw new Error('not yet');
+      return xs;
+    }, r);
+    const model = (key: string) => cards.find((c) => c.dataset.key === key)!.querySelector('[data-testid="wire-model"]')!.textContent;
+    expect(['level-cheapest', 'level-fast', 'level-balanced', 'level-maximum_quality'].map(model)).toEqual(['Haiku 5.5', 'Sonnet 5.5', 'Opus 5.5', 'Fable 5.1']);
+    expect(model('kind-summarize')).toBe('Haiku 5.5');
+    expect(cards.find((c) => c.dataset.key === 'level-maximum_quality')!.textContent).toContain('anthropic · max effort');
+    // a purpose a rule denies says so on its card, with the router's reason as its tooltip
+    const denied = cards.find((c) => c.dataset.key === 'kind-classify')!;
+    expect([denied.dataset.blocked, model('kind-classify'), denied.getAttribute('title')]).toEqual(['true', 'Blocked', 'denied by rule r9']);
+    // one wire per card into the router node; the groups are headed
+    expect(r.$$('[data-testid="wire-lines"] path').length).toBe(cards.length);
+    expect(r.$('[data-testid="wire-node"]')!.textContent).toContain('Router');
+    expect(Array.from(r.$$('[data-testid="wire-group"]')).map((g) => g.textContent)).toEqual(['Levelsagent work', 'Purposesbalanced']);
+    // one call for every card (a page that asks fourteen times trips the smoke test's guard), with the Preview panel's defaults
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toHaveLength(cards.length);
+    expect(asked[0]!.every((q) => q.Role === 'backend' && q.ContextCeiling === 'private')).toBe(true);
+    // an answer the core could not give is that card's alone
+    expect([model('kind-consult'), cards.find((c) => c.dataset.key === 'kind-consult')!.getAttribute('title')]).toEqual(['Not known', 'the rules could not be read']);
+    // not one blocked reason for all: no notice
+    expect(r.$('[data-testid="wire-blocked"]')).toBeNull();
+  });
+
+  it('says once, above the cards, that every turn is blocked and where to add a provider', async () => {
+    const r = mountWith({});
+    const note = await waitFor(() => need(r, '[data-testid="wire-blocked"]'), r);
+    expect(note.textContent).toContain('Every turn is blocked: no providers.');
+    expect(note.querySelector('a')!.getAttribute('href')).toBe('/models');
+  });
+
+  it('reads the answers again when a rule changes', async () => {
+    let calls = 0;
+    const svc = testServices({ routeRulesList: async () => [], providerList: async () => [], routePreviews: async (reqs) => (calls++, Promise.all(reqs.map(preview))) as never });
+    const r = mount(<RoutingScreen />, svc);
+    await waitFor(() => expect(calls).toBeGreaterThan(0), r);
+    await waitFor(() => need(r, '[data-testid="wire-card"][data-key="level-cheapest"] [data-testid="wire-model"]').textContent === 'Haiku 5.5' || (() => { throw new Error('not yet'); })(), r);
+    const before = calls;
+    svc.emit({ type: 'routing.rule_changed' });
+    await waitFor(() => expect(calls).toBeGreaterThan(before), r);
   });
 });

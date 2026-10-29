@@ -1336,3 +1336,15 @@ Open, owner action:
   setting can make it differ; "CLI default (Opus 5.5)" and "default (medium)" replace "adapter default" in the settings. Not
   proven against a real Claude Code: the `permissionMode` field of its init message (the stand-in sends it; the SDK's type
   names it).
+
+- **P108. Routing as a wiring diagram (2026-10-29).** On the owner's words, with a picture of mode and feature cards wired to one
+  node: "when it comes to routing, is it possible to have this design at all?" and "go ahead and build the routing diagram". The
+  Routing page opens with **Wiring** (`screens/routing/wiring-diagram.tsx`, layout and words in `wiring.ts`): a card per level of
+  agent work (cheapest, fast, balanced, quality, maximum quality, each its own colour) and per other kind of turn at the
+  balanced level (review, room reply, spec, tests, design, security review, consult, summarize, classify, grey), each naming the
+  model the router would choose now ("Haiku 5.5", its provider and effort) or "Blocked" with the router's reason as its
+  tooltip, wired by a curve into one Router node. The answers are dry runs with the Preview panel's defaults (role backend,
+  private context), all in one call (`route.previews`, new: up to 32 `route.preview`s, each answer or its error in order; the
+  smoke test flags a page that asks one method fourteen times): nothing is recorded and no quota is taken; they are read again when a rule, a provider or the
+  cheap model changes. When every card is blocked for the same reason (no provider yet), the page says it once, with a link to
+  Models. The model names are `lib/model-name.ts`, shared with the chat chips (P107).
