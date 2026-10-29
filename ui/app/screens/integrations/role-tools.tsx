@@ -27,6 +27,8 @@ const tableCss = css({
   '& td[data-changed="true"]': { background: t.accentSoft },
   '& input': { margin: '0', width: '16px', height: '16px' },
 });
+// the box is hit through a label of 28 px around it (the density budget's smallest target)
+const hitCss = css({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '28px', minHeight: '28px', cursor: 'pointer' });
 const rowHead = css({ display: 'flex', alignItems: 'center', gap: t.s2, '& button': { marginLeft: 'auto' } });
 const rulesCss = css({ display: 'grid', gap: t.s3, '& h3': { margin: '0', fontSize: t.textMd, fontWeight: '600' }, '& p': { margin: '0' } });
 const ruleList = css({ display: 'grid', gap: t.s2, margin: '0', padding: '0', listStyle: 'none', '& li': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' }, '& code': { overflowWrap: 'anywhere' } });
@@ -98,7 +100,7 @@ export function RoleToolsPanel(handle: Handle<{ projectId: string }>) {
         label="Agent tools by role"
         testId="role-tools"
         title="Agent tools by role"
-        description="Which tools each role's agents get in this project, and which kinds of servers they may reach. A server is reached only when it is also granted to the agent above. Every role may propose memory; you decide what is kept."
+        description="Which tools each role's agents get here, and which kinds of servers they may reach once a server is granted to them above. Every role may propose memory; you decide what is kept."
       >
         <ErrorNote error={q.error} what="Could not load the table" />
         <ErrorNote error={act.error} what="Not changed" />
@@ -155,13 +157,15 @@ export function RoleToolsPanel(handle: Handle<{ projectId: string }>) {
                           const cell = r.cells[c.key];
                           return (
                             <td key={c.key} data-changed={String(!!cell?.changed)} data-column={c.key}>
-                              <input
-                                type="checkbox"
-                                aria-label={cellLabel(r.label, c.label)}
-                                checked={!!cell?.allowed}
-                                disabled={ro || !!act.busy || !cell}
-                                mix={on('change', () => void toggle(r.role, c.key))}
-                              />
+                              <label mix={hitCss}>
+                                <input
+                                  type="checkbox"
+                                  aria-label={cellLabel(r.label, c.label)}
+                                  checked={!!cell?.allowed}
+                                  disabled={ro || !!act.busy || !cell}
+                                  mix={on('change', () => void toggle(r.role, c.key))}
+                                />
+                              </label>
                             </td>
                           );
                         })}

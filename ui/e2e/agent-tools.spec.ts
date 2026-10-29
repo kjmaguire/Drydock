@@ -13,7 +13,9 @@ test("a project's tools by role: a changed cell is kept and put back, rules are 
   const cell = panel.getByLabel('PM: Read files', { exact: true });
   await expect(cell).not.toBeChecked();
   await expect(panel.getByLabel('Backend: Read files', { exact: true })).toBeChecked();
-  await cell.check();
+  // the box shows what the core answers (a controlled checkbox), so the click is checked by the answer, not by check()
+  await cell.click();
+  await expect(cell).toBeChecked();
   await expect(panel.locator('tr[data-role="pm"] td[data-column="read_range"]')).toHaveAttribute('data-changed', 'true');
   await page.reload();
   await expect(page.getByTestId('role-tools').getByLabel('PM: Read files', { exact: true })).toBeChecked();

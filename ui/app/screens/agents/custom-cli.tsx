@@ -62,8 +62,8 @@ export function AddCustomCLI(handle: Handle<{ open: boolean; dir: string; taken:
       <Dialog open={open} title="Add a custom CLI" wide onClose={onClose}>
         <form mix={[formCss, ref((el) => (formEl = el as HTMLElement)), on('submit', (e) => (e.preventDefault(), void add()))]} data-testid="custom-cli-form">
           <p>
-            Your own agent CLI, described by a manifest: the program, its arguments, how it takes the prompt and what it prints. Drydock runs one process of it per turn, with your
-            account's permissions, and keeps the manifest in <code>{dir || 'the adapters/custom folder'}</code>.
+            Your own agent CLI, described by a manifest. Drydock runs one process of it per turn, with your account's permissions, and keeps the manifest in{' '}
+            <code>{dir || 'adapters/custom'}</code>.
           </p>
           <div class="row">
             <Field label="Id" error={idProblem || undefined}>
