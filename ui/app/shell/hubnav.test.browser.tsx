@@ -43,11 +43,10 @@ describe('the hubs', () => {
     const o = mount(<SubNav route={{ name: 'budgets' }} />);
     expect(Array.from(o.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-overview-home', 'nav-activity', 'nav-budgets', 'nav-evals', 'nav-security', 'nav-project', 'nav-project-integrations']);
     cleanup();
-    const l = mount(<SubNav route={{ name: 'library-skills' }} />);
-    expect(Array.from(l.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-library-home', 'nav-library-skills']);
-    expect(l.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
-    // the Library keeps the agent templates; its MCP servers moved to Integrations (decision P98)
-    expect(l.$('[data-testid="nav-library-home"]')!.textContent).toBe('Agent templates');
+    // Agent templates and Skills are entries of the sidebar (decision P106): no pills between them
+    expect(mount(<SubNav route={{ name: 'library-skills' }} />).$('nav')).toBeNull();
+    cleanup();
+    expect(mount(<SubNav route={{ name: 'library' }} />).$('nav')).toBeNull();
     cleanup();
     expect(mount(<SubNav route={{ name: 'team' }} />).$('nav')).toBeNull();
     cleanup();

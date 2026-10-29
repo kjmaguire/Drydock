@@ -54,8 +54,23 @@ func NewAPIKey() string {
 	return hex.EncodeToString(b)
 }
 
-// childEnv is the environment llama-server and its probes start with: the allowlist that agents get, none of the app's tokens.
-func childEnv() []string { return proc.ScrubEnv(os.Environ(), proc.BaseEnvNames, nil) }
+// gpuEnvNames are what a GPU driver and its loader read, besides the allowlist agents get: Windows' own facts (a display driver
+// looks for its files under DRIVERDATA and SYSTEMDRIVE) and the CPU's. None of them carries a credential.
+var gpuEnvNames = []string{
+	"SYSTEMDRIVE", "DRIVERDATA", "ALLUSERSPROFILE", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432",
+	"OS", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION",
+	"CUDA_PATH", "CUDA_VISIBLE_DEVICES", "HIP_PATH", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES",
+}
+
+// gpuEnvPrefixes are the families of settings of the Vulkan loader (VK_ICD_FILENAMES, VK_DRIVER_FILES), CUDA's paths by version
+// (CUDA_PATH_V12_8) and ggml's own (GGML_VK_VISIBLE_DEVICES): the person's choices of which GPU the program uses.
+var gpuEnvPrefixes = []string{"VK_", "CUDA_PATH_", "GGML_"}
+
+// childEnv is the environment llama-server and its probes start with: the allowlist that agents get and what a GPU driver
+// needs to be found (without them a Vulkan or CUDA build may see no GPU), none of the app's tokens.
+func childEnv() []string {
+	return proc.ScrubEnv(os.Environ(), append(append([]string{}, proc.BaseEnvNames...), gpuEnvNames...), gpuEnvPrefixes)
+}
 
 // ServerState is what the page shows about the server.
 type ServerState struct {

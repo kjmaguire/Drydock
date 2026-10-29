@@ -20,6 +20,7 @@ import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
@@ -45,6 +46,7 @@ import {
   localRow,
   memoryBars,
   modelName,
+  noGpuWords,
   progressText,
   runtimeLine,
   serverTone,
@@ -82,6 +84,8 @@ const searchCss = css({
 // Memory and Engine side by side on a wide detail, one under the other on a narrow one
 const topCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: t.s5, alignItems: 'start', minWidth: '0' });
 // what a group holds besides its rows (a bar, a note, the log), inside the group's surface
+// the engine's own lines, wrapped: a driver path is long
+const noteCss = css({ margin: '0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm });
 const blockCss = css({
   display: 'grid',
   gap: t.s2,
@@ -722,8 +726,13 @@ export function ThisPcDetail(
               ) : (
                 <div mix={blockCss}>
                   <p class="note" data-testid="local-devices">
-                    No GPU found: runs on the CPU
+                    {noGpuWords(v.runtime.devices.adapters)}
                   </p>
+                  {v.runtime.devices.note ? (
+                    <Disclosure summary="What the engine said" testId="local-devices-note">
+                      <pre mix={[mono, noteCss]}>{v.runtime.devices.note}</pre>
+                    </Disclosure>
+                  ) : null}
                 </div>
               )
             ) : v.runtime.devices.error ? (

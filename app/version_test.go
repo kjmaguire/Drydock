@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/winident"
@@ -31,5 +32,20 @@ func TestTheResourceDefinitionCarriesTheAppsDefaultVersion(t *testing.T) {
 	}
 	if p := winident.CheckVersionInfo(&d.Version, Version); len(p) > 0 {
 		t.Error(p)
+	}
+}
+
+// The window opens on Home: the address it starts with is the UI's Home route, not "/" (the chosen project's page).
+func TestTheWindowOpensOnHome(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "ui", "app", "routes.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*workspace: get\('([^']+)'\)`).FindSubmatch(b)
+	if m == nil {
+		t.Fatal("routes.ts has no workspace route")
+	}
+	if StartURL != string(m[1]) || StartURL == "/" {
+		t.Fatalf("the window opens on %q; Home is %q", StartURL, m[1])
 	}
 }

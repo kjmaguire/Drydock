@@ -2,6 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { LocalJob, LocalModel, LocalView } from '../../api/localClient.ts';
 import {
+  noGpuWords,
   barLabel,
   compactCount,
   contextWords,
@@ -34,6 +35,13 @@ const MiB = 2 ** 20;
 const job = (over: Partial<LocalJob> = {}): LocalJob => ({ kind: 'install', target: 'x', state: 'running', done: 0, total: 0, started: '', ...over });
 
 describe('Models on this PC helpers', () => {
+  it('with no GPU listed: none, or the card Windows has that the engine could not use', () => {
+    expect(noGpuWords(undefined)).toBe('No GPU found: runs on the CPU');
+    expect(noGpuWords([' '])).toBe('No GPU found: runs on the CPU');
+    expect(noGpuWords(['NVIDIA GeForce RTX 4070'])).toBe('Windows has NVIDIA GeForce RTX 4070, but the engine could not use it: models run on the CPU. An up-to-date graphics driver usually fixes this.');
+    expect(noGpuWords(['Intel(R) UHD Graphics', 'NVIDIA GeForce RTX 4070', 'AMD Radeon'])).toContain('Windows has Intel(R) UHD Graphics, NVIDIA GeForce RTX 4070 and AMD Radeon, but the engine could not use them');
+  });
+
   it('sizes: GB with one decimal, whole MB under a gigabyte, never "0.0 GB"; the bars drop a ".0"', () => {
     expect(gb(8.5 * GiB)).toBe('8.5 GB');
     expect(gb(120 * GiB)).toBe('120.0 GB');

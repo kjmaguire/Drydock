@@ -4,17 +4,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { appUrl, workspaceNav } from './helpers';
 
-/**
- * Opens the GitHub page the way a person does: Integrations, then its GitHub row. Until the rebuilt Integrations page lists
- * GitHub in its "All integrations" navigation, the page is opened by its address.
- */
-async function openGitHub(page: Page): Promise<void> {
-  await workspaceNav(page, 'nav-integrations');
-  const row = page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]');
-  if (await row.count()) await row.click();
-  else await page.goto(new URL('/github', page.url()).toString());
-  await expect(page.getByTestId('github-page')).toBeVisible();
-}
+/** Opens GitHub the way a person does: Integrations, then its GitHub row, whose detail opens beside the list. */
+const openGitHub = (page: Page): Promise<void> => workspaceNav(page, 'nav-github');
 
 test('CI runners: a public repository is refused; a Linux runner runs a job; a Windows one needs the person to accept it; off and remove unregister', async ({ page }) => {
   await page.goto(appUrl());

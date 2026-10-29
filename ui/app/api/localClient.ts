@@ -41,6 +41,10 @@ export interface Devices {
   probed: boolean;
   devices: Device[];
   error?: string;
+  /** The display adapters Windows has a driver for, whatever the program found (none off Windows). */
+  adapters?: string[];
+  /** What the program said about its backends when it listed no GPU, in its own words. */
+  note?: string;
 }
 
 export interface Memory {

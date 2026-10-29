@@ -6,7 +6,7 @@ import type { ProjectRepoRow, ProjectRepos } from '../../api/types.ts';
 import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
 import { conn, kinds } from '../integrations/fixtures.ts';
 import { galleryCard, projServer } from '../mcp/fixtures.ts';
-import { GitHubScreen, signInState, syncChip } from './github-screen.tsx';
+import { GitHubDetail, signInState, syncChip } from './github-screen.tsx';
 
 afterEach(cleanup);
 
@@ -64,7 +64,7 @@ const base = (): Partial<Client> => ({
 function show(client: Partial<Client> = {}) {
   const s = testServices({ ...base(), ...client });
   s.workspace.start();
-  const r = mount(<GitHubScreen />, s);
+  const r = mount(<GitHubDetail />, s);
   return Object.assign(r, { s });
 }
 type R = ReturnType<typeof show>;
@@ -85,21 +85,17 @@ const words = (el: Element | null): string => {
 };
 const line = (r: R, sel: string) => words(r.$(sel));
 
-describe('the GitHub settings page', () => {
-  it('has the header of every page: an icon, the title, a subtitle, Learn more, and a link back to Integrations', async () => {
+describe('GitHub on the Integrations page', () => {
+  it('is a detail, not a page: no header or way back of its own, since the Integrations list stays beside it (decision P106)', async () => {
     const r = show();
-    const h1 = await find(r, '[data-testid="github-page"] h1');
-    expect(h1.textContent).toBe('GitHub');
-    expect(h1.querySelector('svg')).not.toBeNull();
-    // no breadcrumb of its own: the way back is the header's link (the UI audit of 2026-10-26)
+    await find(r, '[data-testid="github-page"] [data-testid="gh-signin-state"]');
+    expect(r.$('[data-testid="github-page"] h1')).toBeNull();
+    expect(r.$('[data-testid="gh-crumb"]')).toBeNull();
     expect(r.$('nav[aria-label="Breadcrumb"]')).toBeNull();
-    const back = r.$('[data-testid="github-page"] header a[data-testid="gh-crumb"]')!;
-    expect(back.textContent).toBe('All integrations');
-    expect(back.getAttribute('href')).toBe('/integrations');
-    // what the page leaves out is in the Guide, one link away, called what every page calls it
-    const guide = r.$('[data-testid="github-page"] header a[data-testid="learn-more"]')!;
-    expect(guide.getAttribute('href')).toBe('/guide/github');
-    expect(guide.textContent).toBe('Learn more');
+    for (const part of ['access-sync', 'access-mcp', 'gh-tokens']) expect(r.$(`[data-testid="${part}"]`)).not.toBeNull();
+    // a GitHub repository into a folder of this PC, linked as a project: the new project wizard clones it
+    const clone = await find(r, '[data-testid="repos-clone"]');
+    expect([clone.textContent, clone.getAttribute('href')]).toEqual(['Clone a repository', '/project/new']);
     // the old stacked boxes are gone
     for (const old of ['gh-connection', 'gh-integrations-link', 'gh-runners', 'integration-tile', 'gh-about']) expect(r.$(`[data-testid="${old}"]`)).toBeNull();
     expect(r.$('a[href="/connections"]')).toBeNull();

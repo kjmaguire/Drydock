@@ -162,9 +162,10 @@ export const controller = createController(routes, {
       const { Redirect } = await import('../shell/redirect.tsx');
       return render(<Redirect to={routes.agents.href()} />);
     },
+    // GitHub is a row of Integrations (decision P106): the list stays beside its detail
     async github({ render }) {
-      const { GitHubScreen } = await import('../screens/github/github-screen.tsx');
-      return render(<GitHubScreen />);
+      const { Redirect } = await import('../shell/redirect.tsx');
+      return render(<Redirect to={routes.integrations.href({ key: 'github' })} />);
     },
     async securityScan({ render }) {
       const { WorkspaceSecurityScreen } = await import('../screens/security/workspace-security-screen.tsx');

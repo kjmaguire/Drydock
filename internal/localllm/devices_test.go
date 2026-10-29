@@ -3,6 +3,7 @@ package localllm_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/localllm"
@@ -29,6 +30,29 @@ func TestTheDeviceListIsRead(t *testing.T) {
 	if _, ok := localllm.ParseDevices("error: unknown argument"); ok {
 		t.Fatal("garbage parsed")
 	}
+	// a device printed without its memory is still a device, and the CPU is no GPU
+	d, _ = localllm.ParseDevices("Available devices:\n  Vulkan0: AMD Radeon RX 7800 XT\n  CPU: AMD Ryzen 9 7950X (65536 MiB, 60000 MiB free)\n")
+	if len(d.Devices) != 2 || d.Devices[0].Kind != "Vulkan" || d.Devices[0].Name != "AMD Radeon RX 7800 XT" || d.Devices[0].Total != 0 || d.Devices[1].Kind != "CPU" {
+		t.Fatalf("%+v", d)
+	}
+	if !d.HasGPU() {
+		t.Fatal("a Vulkan device is a GPU")
+	}
+	d, _ = localllm.ParseDevices("Available devices:\n  CPU: AMD Ryzen 9 7950X (65536 MiB, 60000 MiB free)\n")
+	if d.HasGPU() {
+		t.Fatal("the CPU alone is no GPU")
+	}
+}
+
+// The adapters Windows reports: Microsoft's fallback display drivers are no GPU, and each card is named once.
+func TestDisplayAdaptersKeepTheGPUs(t *testing.T) {
+	got := localllm.Adapters([]string{" NVIDIA GeForce RTX 4070 ", "Microsoft Basic Display Adapter", "", "Microsoft Remote Display Adapter", "NVIDIA GeForce RTX 4070", "AMD Radeon(TM) Graphics"})
+	if strings.Join(got, "|") != "NVIDIA GeForce RTX 4070|AMD Radeon(TM) Graphics" {
+		t.Fatalf("%q", got)
+	}
+	if localllm.Adapters(nil) != nil {
+		t.Fatal("none from none")
+	}
 }
 
 // The stand-in answers --list-devices like the real program; a program that does not answer leaves nothing known.
@@ -38,9 +62,16 @@ func TestDevicesAreProbedThroughTheProgram(t *testing.T) {
 	if !d.Probed || len(d.Devices) != 1 || d.Devices[0].Kind != "CUDA" || d.Devices[0].Free != 14336<<20 {
 		t.Fatalf("%+v", d)
 	}
+	if d.Note != "" {
+		t.Fatalf("a build that found its GPU has nothing to explain: %q", d.Note)
+	}
 	d = localllm.ListDevices(context.Background(), pm, os.Args[0], llamatest.Args("--devices=none"))
 	if !d.Probed || len(d.Devices) != 0 {
 		t.Fatalf("%+v", d)
+	}
+	// no GPU listed: what the program said about its backends is kept, in its words
+	if d.Note != "ggml_vulkan: No devices found.\nload_backend: loaded CPU backend from stand-in-cpu.dll" {
+		t.Fatalf("note %q", d.Note)
 	}
 	d = localllm.ListDevices(context.Background(), pm, os.Args[0], llamatest.Args("--devices=fail"))
 	if d.Probed || d.Error == "" {

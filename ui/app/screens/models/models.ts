@@ -224,6 +224,17 @@ export function deviceLine(d: Device): string {
   return `${d.id}: ${d.name}, ${gb(d.freeBytes)} free of ${gb(d.totalBytes)}`;
 }
 
+/**
+ * What to say when the engine listed no GPU: that there is none, or, when Windows has a graphics card the engine did not list,
+ * that this build could not use it (the card is there; the person should not be told it is not).
+ */
+export function noGpuWords(adapters: readonly string[] | undefined): string {
+  const cards = (adapters ?? []).filter((a) => a.trim());
+  if (cards.length === 0) return 'No GPU found: runs on the CPU';
+  const names = cards.length === 1 ? cards[0] : `${cards.slice(0, -1).join(', ')} and ${cards.at(-1)}`;
+  return `Windows has ${names}, but the engine could not use ${cards.length === 1 ? 'it' : 'them'}: models run on the CPU. An up-to-date graphics driver usually fixes this.`;
+}
+
 /** The devices llama.cpp can compute on (its CPU entry, when it lists one, is not a GPU). */
 export function gpus(devices: Device[]): Device[] {
   return devices.filter((d) => d.kind !== 'CPU');

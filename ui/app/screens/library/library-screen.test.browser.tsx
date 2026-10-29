@@ -138,7 +138,7 @@ describe('Library page', () => {
     expect(tp.querySelector('[data-testid="lib-template-where"] a')!.textContent).toBe('Crew');
     // the server it gives, by its name
     expect(tp.querySelector('ul[aria-label="MCP servers it gets"]')!.textContent).toContain('Test server');
-    expect(r.$('h1')!.textContent).toContain('Library');
+    expect(r.$('h1')!.textContent).toContain('Agent templates');
   });
 
   it('carries nothing of a single project: no project names, no agents, no put-in-project controls', async () => {

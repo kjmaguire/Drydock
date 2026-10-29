@@ -27,10 +27,10 @@ test('OAuth: sign in to a server of your own, the tools appear, sign out forgets
   const card = page.getByTestId('server-detail').filter({ hasText: 'Hosted tracker' });
   await expect(card).toBeVisible();
   // the address is the built-in Hosted tracker's, so the core counts it as that card's server: its row (under Agent tools, not
-  // Your servers) says what it needs
+  // Your servers) says Set up until it is signed in
   const list = page.getByRole('navigation', { name: 'All integrations' });
   const row = list.locator('[data-testid="integration-row"][data-kind="faketrk"]');
-  await expect(row).toContainText('Needs sign-in');
+  await expect(row).toContainText('Set up');
   await expect(list.locator('[data-testid="integration-row"][data-server="lin"]')).toHaveCount(0);
   const panel = card.getByTestId('oauth-panel');
   // not signed in, the sign-in is one control: the Sign in button, nothing else

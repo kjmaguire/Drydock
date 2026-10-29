@@ -189,9 +189,24 @@ describe('Models on this PC (the this-pc detail of the Models page)', () => {
     expect(need(r, '[data-testid="local-memory"]').textContent).toBe('Models on disk: 0 MB · Free disk: 120.0 GB');
   });
 
-  it('devices: "No GPU found" when probed with none; the probe error when it did not answer', async () => {
+  it('devices: "No GPU found" when probed with none, the card Windows has when the engine could not use it; the probe error when it did not answer', async () => {
     const none = show({ localGet: async () => installed({ runtime: { ...installed().runtime, devices: { probed: true, devices: [] } } }) });
     await waitFor(() => expect(need(none.r, '[data-testid="local-devices"]').textContent).toBe('No GPU found: runs on the CPU'), none.r);
+    expect(q(none.r, '[data-testid="local-devices-note"]')).toBe(null);
+    // Windows has a graphics card the engine did not list: the page says the card is there and the engine could not use it,
+    // with what the engine said (the owner's PC: "No GPU found" was not true)
+    const unused = show({
+      localGet: async () =>
+        installed({ runtime: { ...installed().runtime, devices: { probed: true, devices: [], adapters: ['NVIDIA GeForce RTX 4070'], note: 'ggml_vulkan: No devices found.' } } }),
+    });
+    await waitFor(
+      () =>
+        expect(need(unused.r, '[data-testid="local-devices"]').textContent).toBe(
+          'Windows has NVIDIA GeForce RTX 4070, but the engine could not use it: models run on the CPU. An up-to-date graphics driver usually fixes this.',
+        ),
+      unused.r,
+    );
+    expect(need(unused.r, '[data-testid="local-devices-note"]').textContent).toContain('ggml_vulkan: No devices found.');
     const err = show({ localGet: async () => installed({ runtime: { ...installed().runtime, devices: { probed: false, devices: [], error: 'the program printed no device list' } } }) });
     await waitFor(() => expect(need(err.r, '[data-testid="local-devices"]').textContent).toContain('the program printed no device list'), err.r);
   });

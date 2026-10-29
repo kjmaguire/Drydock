@@ -174,7 +174,7 @@ func Run(assets fs.FS) error {
 		Height:    860,
 		MinWidth:  1000,
 		MinHeight: 600,
-		URL:       "/",
+		URL:       StartURL,
 	})
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)

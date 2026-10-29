@@ -5,17 +5,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createProjectWithoutRepo, workspaceNav } from './helpers';
 
-/**
- * Opens the GitHub page the way a person does: Integrations, then its GitHub row. Until the rebuilt Integrations page lists
- * GitHub in its "All integrations" navigation, the page is opened by its address.
- */
-async function openGitHub(page: Page): Promise<void> {
-  await workspaceNav(page, 'nav-integrations');
-  const row = page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]');
-  if (await row.count()) await row.click();
-  else await page.goto(new URL('/github', page.url()).toString());
-  await expect(page.getByTestId('github-page')).toBeVisible();
-}
+/** Opens GitHub the way a person does: Integrations, then its GitHub row, whose detail opens beside the list. */
+const openGitHub = (page: Page): Promise<void> => workspaceNav(page, 'nav-github');
 
 /** Records what the page asks the shell to open; the shell here says it did. */
 async function shellStandIn(page: Page): Promise<unknown[]> {
@@ -43,14 +34,14 @@ test('in the desktop window a link to another site, window.open and a navigation
   await link.click();
   await expect.poll(() => asked.length).toBe(1);
   expect(asked[0]).toEqual({ url: 'https://cli.github.com/' });
-  await expect(page).toHaveURL(/\/github$/);
+  await expect(page).toHaveURL(/\/integrations\/github$/);
   expect(popups).toBe(0);
 
   // by the keyboard it is the same
   await link.focus();
   await page.keyboard.press('Enter');
   await expect.poll(() => asked.length).toBe(2);
-  await expect(page).toHaveURL(/\/github$/);
+  await expect(page).toHaveURL(/\/integrations\/github$/);
 
   // the app's own links still route inside the app
   await workspaceNav(page, 'nav-integrations');
@@ -100,5 +91,5 @@ test('in a browser (not the desktop window) a link to another site opens as it a
   const [popup] = await Promise.all([page.waitForEvent('popup'), link.click()]);
   await popup.close();
   expect(asked).toEqual([]);
-  await expect(page).toHaveURL(/\/github$/);
+  await expect(page).toHaveURL(/\/integrations\/github$/);
 });

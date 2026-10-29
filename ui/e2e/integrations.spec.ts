@@ -181,9 +181,11 @@ test('integrations: the list filters by a word and by state, and the address kee
   await page.goto(new URL('/integrations/sentry', page.url()).toString());
   await expect(page.locator('[data-testid=integration][data-kind=sentry]')).toBeVisible();
   await expect(list.locator('[data-key=sentry]')).toHaveAttribute('aria-current', 'true');
-  // GitHub's row is its own page
-  await list.locator('a[href="/github"]').click();
-  await expect(page).toHaveURL(/\/github$/);
+  // GitHub's row opens its settings beside the list (decision P106)
+  await list.locator('[data-testid="integration-row"][data-key="github"]').click();
+  await expect(page).toHaveURL(/\/integrations\/github$/);
+  await expect(page.getByTestId('github-page')).toBeVisible();
+  await expect(list).toBeVisible();
 });
 
 test('integrations: OpenRouter is listed under Model providers and sets up as a provider, the form filled in for it (decision P103)', async ({ page }) => {

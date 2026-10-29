@@ -71,6 +71,8 @@ func Main(args []string) int {
 				fmt.Fprintln(os.Stderr, "stand-in: told not to list devices")
 				return 1
 			case "none":
+				// what a Vulkan build says on a PC whose driver it could not load (the words of llama.cpp's own lines)
+				fmt.Fprintln(os.Stderr, "ggml_vulkan: No devices found.\nload_backend: loaded CPU backend from stand-in-cpu.dll")
 				fmt.Println("Available devices:\n  (none)")
 			default:
 				fmt.Println("Available devices:\n  CUDA0: Stand-in GPU (a Drydock test double) (16384 MiB, 14336 MiB free)")
