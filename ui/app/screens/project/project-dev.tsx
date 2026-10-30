@@ -71,6 +71,7 @@ export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
             <ToggleRow label="Secrets scan of the diff" description="Looks for keys and tokens in what the agent changed." checked={c.secrets} onChange={(v) => patch({ secrets: v })} />
             <ToggleRow label="Dependency vulnerability scan" description="Checks the project's dependencies against known vulnerabilities." checked={c.deps} onChange={(v) => patch({ deps: v })} />
             <ToggleRow label="Offline only (no database download)" checked={c.depsOffline} disabled={!c.deps} onChange={(v) => patch({ depsOffline: v })} />
+            <ToggleRow label="Security scan of the change" description="Runs Opengrep and osv-scanner from the Security page on what the agent changed." checked={c.scan} onChange={(v) => patch({ scan: v })} />
             <div mix={footerCss}>
               <span class="hint" />
               {saved ? <span role="status">Saved.</span> : null}

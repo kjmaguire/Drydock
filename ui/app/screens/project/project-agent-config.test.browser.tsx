@@ -192,7 +192,7 @@ describe('Project settings carries the group', () => {
         licenseStatus: async () => lic(),
         appInfo: async () => ({}) as never,
         routeLevelGet: async () => ({ workspace: 'balanced', project: '', effective: 'balanced', source: 'workspace', levels: [] }),
-        checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false }),
+        checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false, scan: false }),
         projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } }),
         projectAgentConfig: async () => [],
       });

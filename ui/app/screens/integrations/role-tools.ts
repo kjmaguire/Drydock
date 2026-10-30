@@ -43,7 +43,7 @@ export function ruleProblem(name: string, expr: string): string {
 /** The variables a rule reads, for the form's help. */
 export const RULE_VARIABLES: { name: string; help: string }[] = [
   { name: 'role', help: 'the row: pm, architect, ux designer, frontend, backend, database, devops, qa, security, reviewer, other' },
-  { name: 'column', help: 'the column: read_range, repo_map, skills, search_memory, search_requirements, search_pack, act, docs, github, trackers, sentry, other' },
+  { name: 'column', help: 'the column: read_range, repo_map, skills, search_memory, search_requirements, search_pack, security_findings, act, docs, github, trackers, sentry, other' },
   { name: 'server', help: '"workspace" for Drydock\'s own tools, else the server\'s id' },
   { name: 'tool', help: 'the tool\'s own name' },
   { name: 'adapter', help: 'the agent\'s CLI: claude, codex, ...' },
