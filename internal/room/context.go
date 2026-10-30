@@ -11,16 +11,18 @@ import (
 
 // ContextPlan says what an agent's turn may see from a room (room-protocol s11). SelectContext is the only way room
 // content reaches an agent: it picks by rule from a pool and records why each message was kept or left out.
+//
+// A turn grant carries the plan its turn is selected by (decision P127): it is stored with the grant as this JSON.
 type ContextPlan struct {
-	RoomID       string
-	AgentKey     string
-	TriggerID    string
-	TaskID       string   // the task this turn works on, "" if none
-	Roles        []string // the agent's roles in the room, for role mentions and handoffs
-	LastTurnSeq  int64    // seq of the agent's own previous message here; mentions are taken since then
-	ThreadWindow int      // K: last messages of the thread (default 12)
-	MaxMentions  int      // mention messages since the last turn (default 10)
-	MaxTokens    int      // size cap on the whole selection (default 6000, estimated)
+	RoomID       string   `json:"roomId"`
+	AgentKey     string   `json:"agentKey"`
+	TriggerID    string   `json:"triggerId"`
+	TaskID       string   `json:"taskId,omitempty"` // the task this turn works on, "" if none
+	Roles        []string `json:"roles,omitempty"`  // the agent's roles in the room, for role mentions and handoffs
+	LastTurnSeq  int64    `json:"lastTurnSeq"`      // seq of the agent's own previous message here; mentions are taken since then
+	ThreadWindow int      `json:"threadWindow"`     // K: last messages of the thread (default 12)
+	MaxMentions  int      `json:"maxMentions"`      // mention messages since the last turn (default 10)
+	MaxTokens    int      `json:"maxTokens"`        // size cap on the whole selection (default 6000, estimated)
 }
 
 func (p *ContextPlan) defaults() {
@@ -359,15 +361,26 @@ type ContextOptions struct {
 }
 
 // ContextFor loads the pool for one agent turn and selects from it. The agent must be a member of the room (the same
-// check the Workspace room tool makes). Only this room is read: never another room, never the whole history.
+// check the Workspace room tool makes). Only this room is read: never another room, never the whole history. A turn that
+// runs on a grant is selected by the plan its grant carries instead (ContextForGrant).
 func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, triggerID string, opt ContextOptions) (ContextSelection, error) {
-	room, err := s.GetRoom(ctx, roomID)
+	plan, err := s.planContext(ctx, roomID, agent, triggerID, ContextBounds{ThreadWindow: opt.ThreadWindow, MaxMentions: opt.MaxMentions, MaxTokens: opt.MaxTokens})
 	if err != nil {
 		return ContextSelection{}, err
 	}
+	return s.selectPlan(ctx, plan, opt.Digest)
+}
+
+// planContext is the context plan of an agent's turn after a message, within bounds (the defaults filled in): what the
+// scheduler writes into a grant, and what ContextFor selects by.
+func (s *Service) planContext(ctx context.Context, roomID string, agent Author, triggerID string, b ContextBounds) (ContextPlan, error) {
+	room, err := s.GetRoom(ctx, roomID)
+	if err != nil {
+		return ContextPlan{}, err
+	}
 	members, err := s.Members(ctx, roomID)
 	if err != nil {
-		return ContextSelection{}, err
+		return ContextPlan{}, err
 	}
 	var roles []string
 	isMember := false
@@ -380,15 +393,36 @@ func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, t
 		}
 	}
 	if !isMember {
-		return ContextSelection{}, fmt.Errorf("%w: %s in %s", ErrNotMember, agent.Key(), room.Name)
+		return ContextPlan{}, fmt.Errorf("%w: %s in %s", ErrNotMember, agent.Key(), room.Name)
 	}
 	trig, err := s.GetMessage(ctx, triggerID)
 	if err != nil {
-		return ContextSelection{}, err
+		return ContextPlan{}, err
 	}
 	if trig.RoomID != roomID {
-		return ContextSelection{}, fmt.Errorf("%w: trigger %s is not in room %s", ErrNotFound, triggerID, roomID)
+		return ContextPlan{}, fmt.Errorf("%w: trigger %s is not in room %s", ErrNotFound, triggerID, roomID)
 	}
+	var lastTurn int64
+	if err := s.db.Reader().QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM messages WHERE room_id=? AND author=?`, roomID, agent.Key()).Scan(&lastTurn); err != nil {
+		return ContextPlan{}, err
+	}
+	plan := ContextPlan{RoomID: roomID, AgentKey: agent.Key(), TriggerID: triggerID, TaskID: room.TaskID, Roles: roles, LastTurnSeq: lastTurn,
+		ThreadWindow: b.ThreadWindow, MaxMentions: b.MaxMentions, MaxTokens: b.MaxTokens}
+	plan.defaults()
+	return plan, nil
+}
+
+// selectPlan loads the pool a plan draws from (the trigger's thread, the plan's task statement and decisions, handoffs,
+// mentions since the plan's previous turn, corrections) and selects from it by the plan.
+func (s *Service) selectPlan(ctx context.Context, plan ContextPlan, digest DigestFunc) (ContextSelection, error) {
+	trig, err := s.GetMessage(ctx, plan.TriggerID)
+	if err != nil {
+		return ContextSelection{}, err
+	}
+	if trig.RoomID != plan.RoomID {
+		return ContextSelection{}, fmt.Errorf("%w: trigger %s is not in room %s", ErrNotFound, plan.TriggerID, plan.RoomID)
+	}
+	roomID := plan.RoomID
 	root := trig.ThreadRootID
 	if root == "" {
 		root = trig.ID
@@ -403,19 +437,15 @@ func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, t
 		pool = append(pool, ms...)
 		return err
 	}
-	var lastTurn int64
-	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM messages WHERE room_id=? AND author=?`, roomID, agent.Key()).Scan(&lastTurn); err != nil {
-		return ContextSelection{}, err
-	}
-	if room.TaskID != "" {
-		if err := add(`room_id=? AND task_id=? AND type IN ('TASK','DECISION') ORDER BY seq DESC LIMIT 100`, roomID, room.TaskID); err != nil {
+	if plan.TaskID != "" {
+		if err := add(`room_id=? AND task_id=? AND type IN ('TASK','DECISION') ORDER BY seq DESC LIMIT 100`, roomID, plan.TaskID); err != nil {
 			return ContextSelection{}, err
 		}
 	}
 	if err := add(`room_id=? AND type='HANDOFF' ORDER BY seq DESC LIMIT 20`, roomID); err != nil {
 		return ContextSelection{}, err
 	}
-	if err := add(`room_id=? AND seq>? AND mentions<>'[]' ORDER BY seq DESC LIMIT 200`, roomID, lastTurn); err != nil {
+	if err := add(`room_id=? AND seq>? AND mentions<>'[]' ORDER BY seq DESC LIMIT 200`, roomID, plan.LastTurnSeq); err != nil {
 		return ContextSelection{}, err
 	}
 	if err := add(`room_id=? AND supersedes_id<>'' ORDER BY seq DESC LIMIT 200`, roomID); err != nil {
@@ -429,9 +459,7 @@ func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, t
 			uniq = append(uniq, m)
 		}
 	}
-	plan := ContextPlan{RoomID: roomID, AgentKey: agent.Key(), TriggerID: triggerID, TaskID: room.TaskID, Roles: roles, LastTurnSeq: lastTurn,
-		ThreadWindow: opt.ThreadWindow, MaxMentions: opt.MaxMentions, MaxTokens: opt.MaxTokens}
-	return SelectContext(ctx, plan, uniq, opt.Digest)
+	return SelectContext(ctx, plan, uniq, digest)
 }
 
 // transcript loads the messages the turn counters look at: the trigger's thread, or the last top-level messages.

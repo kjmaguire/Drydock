@@ -108,7 +108,7 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		dec, g, err := r.d.Room.GrantGroupTurn(ctx, room.GroupTurn{RoomID: rm.ID, Thread: out.ThreadID, Order: d.Agents, Rounds: out.Bound})
+		dec, g, err := r.d.Room.GrantGroupTurn(ctx, room.GroupTurn{RoomID: rm.ID, Thread: out.ThreadID, Order: d.Agents, Rounds: out.Bound, Context: r.contextBounds()})
 		if err != nil {
 			return out, err
 		}
@@ -125,7 +125,8 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 		if err := r.budgetGate(ctx, scope, g.AgentID); err != nil {
 			return out, err
 		}
-		info, reply := r.turn(ctx, rm, trig, dec.Speakers[0], dec, turnOpts{grant: *g, group: &GroupPrompt{Round: dec.Round, Rounds: out.Bound, Agents: names},
+		// the turn is told the round and the bound its grant carries (P127): what the scheduler decided, not what this loop thinks
+		info, reply := r.turn(ctx, rm, trig, dec.Speakers[0], dec, turnOpts{grant: *g, group: &GroupPrompt{Round: g.Round, Rounds: g.MaxRounds, Agents: names},
 			run: d.RunID, workflow: d.Workflow})
 		ctx = budget.WithoutApproval(ctx) // a person's approval over a limit lets one turn through, not the rest of the discussion
 		switch info.Status {

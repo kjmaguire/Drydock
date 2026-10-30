@@ -222,6 +222,41 @@ func TestAGroupNodeEndsWhenEveryAgentPasses(t *testing.T) {
 	}
 }
 
+// Each turn of a discussion sees what its grant's plan says (room-protocol s6 rule 4, decision P127): with a thread window of
+// one written into the grants, Ada's second turn is given the topic and Bo's last reply, not her own first one, and it is told
+// the round and the bound its grant carries.
+func TestAGroupTurnSeesWhatItsGrantsPlanSays(t *testing.T) {
+	h := newHarness(t, responder.Options{Context: room.ContextOptions{ThreadWindow: 1}})
+	a := h.agent("agt_a", "Ada", "architect", roundOne("ALPHA-ONE: a hand-written parser."))
+	b := h.agent("agt_b", "Bo", "backend", roundOne("BRAVO-ONE: a generated one."))
+	rm := h.channel("design", a, b)
+	eng, _ := h.groupEngine(rm, []string{a, b}, 2)
+	h.runGroup(eng, "Which parser?")
+	p := h.prompts(a)
+	if len(p) != 2 {
+		t.Fatalf("%d prompts", len(p))
+	}
+	if !strings.Contains(p[1], "This is round 2 of a discussion of at most 2 rounds") || !strings.Contains(p[1], "BRAVO-ONE") || !strings.Contains(p[1], "Which parser?") ||
+		strings.Contains(p[1], "ALPHA-ONE") {
+		t.Fatalf("the second turn's prompt:\n%s", p[1])
+	}
+	var plans []string
+	rows, _ := h.db.Reader().Query(`SELECT max_rounds, context_plan FROM room_turn_grants WHERE room_id=? ORDER BY issued_at, rowid`, rm.ID)
+	for rows.Next() {
+		var max int
+		var plan string
+		rows.Scan(&max, &plan)
+		if max != 2 || !strings.Contains(plan, `"threadWindow":1`) {
+			t.Fatalf("a grant's bound %d and plan %s", max, plan)
+		}
+		plans = append(plans, plan)
+	}
+	rows.Close()
+	if len(plans) != 4 {
+		t.Fatalf("%d grants", len(plans))
+	}
+}
+
 func TestShipIsTheWholeReply(t *testing.T) {
 	for in, want := range map[string]bool{"SHIP": true, " ship. ": true, "Ship!": true, "SHIPPING it would be a mistake": false, "SHIP it, but": false, "": false} {
 		if responder.IsShip(in) != want {

@@ -376,7 +376,7 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			break
 		}
 		// the room's scheduler plans the turns and grants each one; the runtime starts a room turn only on its grant (P118)
-		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID)
+		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID, r.contextBounds())
 		if err != nil {
 			return out, err
 		}
@@ -494,7 +494,14 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			return fail("budget", err)
 		}
 	}
-	sel, err := r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
+	// a granted turn sees what its grant's plan says (room-protocol s6 rule 4): the scheduler decided it when it chose the
+	// speaker, and a grant whose plan was changed is refused here, before anything is selected or the agent starts
+	var sel room.ContextSelection
+	if o.grant.ID != "" {
+		sel, err = r.d.Room.ContextForGrant(ctx, o.grant, r.o.Context.Digest)
+	} else {
+		sel, err = r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
+	}
 	if err != nil {
 		return fail("context", err)
 	}
@@ -675,6 +682,11 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	r.endTurn(info.TurnID, end)
 	reply := posted.Message
 	return info, &reply
+}
+
+// contextBounds are the bounds the scheduler writes into the context plan of each grant it issues for this responder's turns.
+func (r *Responder) contextBounds() room.ContextBounds {
+	return room.ContextBounds{ThreadWindow: r.o.Context.ThreadWindow, MaxMentions: r.o.Context.MaxMentions, MaxTokens: r.o.Context.MaxTokens}
 }
 
 func providerLabel(a Agent) string {
