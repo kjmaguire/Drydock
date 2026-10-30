@@ -223,7 +223,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
     const setDetail = (next?: TaskDetail) => (next ? detail.set(next) : void detail.reload());
     const setTask = (tk: Task) => detail.set({ ...d, task: { ...d.task, ...tk } });
     const name = task.assignee ? (task.assignee.startsWith('human:') ? task.assignee.slice(6) : agentName(task.assignee, agents)) : '';
-    const criteria = criteriaRows(task.acceptance, d.criteria, d.acceptanceState, (id) => agentName(id, agents));
+    const criteria = criteriaRows(task.acceptance, d.criteria, d.acceptanceState, (id) => agentName(id, agents), d.evidence);
     const tone = statusDot(task, d.paused);
     return (
       <Page

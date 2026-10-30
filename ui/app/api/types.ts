@@ -21,6 +21,9 @@ export interface AppInfo {
   dataDir: string;
   /** Whether this window can restart Drydock ("Restart now" after a staged restore, decision P116); false in a browser. */
   canRestart?: boolean;
+  /** The build's version and build id, as the release set them (decision P129); "0.0.0-dev" for a build from the source tree. Absent from older cores. */
+  version?: string;
+  build?: string;
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';
@@ -631,6 +634,8 @@ export interface CriterionStatus {
   index: number;
   id: string;
   status: 'open' | 'met' | 'not_met' | 'waived' | string;
+  /** The check the criterion names to confirm it (`[check: lint]` or `(check: lint)`, P128): the newest result of that kind decides. */
+  check?: string;
   source?: 'check' | 'review' | 'person' | string;
   by?: string;
   evidence?: string;

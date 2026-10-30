@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { TASK_LABELS_MAX } from '../../api/types.ts';
-import { addLabel, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
+import { addLabel, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
 
 describe('the status pill of the task page', () => {
   it('says Building while the agent works, Running checks while a check runs, and which run it is on', () => {
@@ -57,15 +57,41 @@ describe('the acceptance criteria and the checks', () => {
         names,
       ),
     ).toEqual([
-      { index: 0, id: 'AC1', text: 'a', status: 'met', why: 'Confirmed by kyle: tried it.', claim: '', personal: true },
-      { index: 1, id: 'AC2', text: 'b', status: 'not_met', why: 'By the test check: failing: TestB_AC2.', claim: '', personal: false },
-      { index: 2, id: 'AC3', text: 'c', status: 'open', why: '', claim: 'Dana says it is met: TestC_AC3 passes. Not confirmed: a check or a person confirms it.', personal: false },
-      { index: 3, id: '', text: 'd', status: 'open', why: '', claim: '', personal: false },
-      { index: 4, id: 'AC5', text: 'e', status: 'met', why: 'By the test check: the tests pass.', claim: '', personal: false },
+      { index: 0, id: 'AC1', text: 'a', status: 'met', why: 'Confirmed by kyle: tried it.', claim: '', personal: true, check: '', findings: [] },
+      { index: 1, id: 'AC2', text: 'b', status: 'not_met', why: 'By the test check: failing: TestB_AC2.', claim: '', personal: false, check: '', findings: [] },
+      { index: 2, id: 'AC3', text: 'c', status: 'open', why: '', claim: 'Dana says it is met: TestC_AC3 passes. Not confirmed: a check or a person confirms it.', personal: false, check: '', findings: [] },
+      { index: 3, id: '', text: 'd', status: 'open', why: '', claim: '', personal: false, check: '', findings: [] },
+      { index: 4, id: 'AC5', text: 'e', status: 'met', why: 'By the test check: the tests pass.', claim: '', personal: false, check: '', findings: [] },
     ]);
     expect(criterionWhy({ index: 0, id: 'AC1', status: 'not_met', source: 'review', by: 'a2', evidence: 'AC1 fails for zero' }, 'not_met', names)).toBe("Rex's review: AC1 fails for zero.");
     expect(criterionWhy({ index: 0, id: 'AC1', status: 'not_met', source: 'person', by: 'human:ana' }, 'not_met', names)).toBe('Marked not met by ana.');
     expect(criteriaRows(undefined, undefined, undefined)).toEqual([]);
+  });
+
+  it('puts the check a criterion names and the review findings about it beside it (P128 on the page, P129)', () => {
+    const evidence = [
+      { kind: 'review_finding', summary: 'old text', data: { kind: 'no_id', severity: 'low', criterion: 1, text: 'Acceptance criterion 2 has no id.' }, created: 1 },
+      { kind: 'review_finding', summary: 's', data: { kind: 'unknown_check', severity: 'medium', criterion: 0, check: 'e2e', text: 'Acceptance criterion AC1 names the check "e2e".' }, created: 3 },
+      { kind: 'review_finding', summary: 'twice', data: { severity: 'low', criterion: 1, text: 'Acceptance criterion 2 has no id.' }, created: 2 },
+      { kind: 'review_finding', summary: 'no place', data: {}, created: 4 },
+      { kind: 'test', summary: 'tests', data: { criterion: 0 }, created: 5 },
+    ];
+    const rows = criteriaRows(
+      ['AC1 [check: e2e] it opens', 'it closes'],
+      [
+        { index: 0, id: 'AC1', status: 'open', check: 'e2e' },
+        { index: 1, id: '', status: 'open' },
+      ],
+      undefined,
+      undefined,
+      evidence,
+    );
+    expect(rows.map((r) => [r.check, r.findings])).toEqual([
+      ['e2e', [{ severity: 'medium', text: 'Acceptance criterion AC1 names the check "e2e".' }]],
+      ['', [{ severity: 'low', text: 'Acceptance criterion 2 has no id.' }]],
+    ]);
+    expect(criteriaRows(['x'], [{ index: 0, id: 'AC1', status: 'met', check: 'test', source: 'check', by: 'test' }], undefined)[0]!.check).toBe('tests');
+    expect(findingsByCriterion(undefined).size).toBe(0);
   });
 
   it('names the check kinds as the grid does and reads a state the core adds later as not run', () => {

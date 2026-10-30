@@ -57,6 +57,23 @@ describe('acceptance criteria with a status each', () => {
     expect(rows(r)[0]!.querySelector('.claim')).toBeNull();
   });
 
+  it('shows the check a criterion names and the review findings about it beside it (P129)', async () => {
+    const named = [{ ...statuses[0]!, check: 'lint' }, statuses[1]!, { index: 2, id: '', status: 'open' }];
+    const evidence = [
+      { id: 9, taskId: 't1', attempt: 1, kind: 'review_finding', passed: null, summary: 's', created: 9, data: { kind: 'no_id', severity: 'low', criterion: 2, text: 'Acceptance criterion 3 has no id.' } },
+      { id: 10, taskId: 't1', attempt: 1, kind: 'review_finding', passed: null, summary: 's', created: 10, data: { kind: 'unknown_check', severity: 'medium', criterion: 0, check: 'lint', text: 'Acceptance criterion AC1 names the check "lint", which this project does not run.' } },
+    ];
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => detail({ task: task({ acceptance }), criteria: named, evidence }) }));
+    await waitFor(() => expect(rows(r).length).toBe(3), r);
+    expect(rows(r)[0]!.querySelector('[data-testid="criterion-check"]')!.textContent).toBe('Confirmed by the lint check');
+    expect(rows(r)[1]!.querySelector('[data-testid="criterion-check"]')).toBeNull();
+    expect(rows(r).map((li) => Array.from(li.querySelectorAll('[data-testid="criterion-finding"]')).map((f) => [f.getAttribute('data-severity'), f.textContent]))).toEqual([
+      [['medium', 'Review finding (medium): Acceptance criterion AC1 names the check "lint", which this project does not run.']],
+      [],
+      [['low', 'Review finding (low): Acceptance criterion 3 has no id.']],
+    ]);
+  });
+
   it("records the person's word from the menu and shows the core's answer", async () => {
     const mark = recorder(async (_t: string, i: number, m: string): Promise<CriterionStatus[]> =>
       statuses.map((c) => (c.index === i ? { index: i, id: c.id, status: m, source: 'person', by: 'human:kyle', at: 9 } : c)),

@@ -84,6 +84,31 @@ export interface CriterionRow {
   claim: string;
   /** A person gave their word on it (met, not met or waived): Reopen takes the word back. */
   personal: boolean;
+  /** The check the criterion names to confirm it (`[check: lint]`, P128), in the Checks grid's words; '' when it names none. */
+  check: string;
+  /** The review findings about how the criterion is written (P128: no id, or a check the project does not run), newest first. */
+  findings: CriterionFinding[];
+}
+
+/** A review finding about one criterion (pipeline.AcceptanceFinding, recorded as review_finding evidence by P128). */
+export interface CriterionFinding {
+  severity: 'low' | 'medium' | string;
+  text: string;
+}
+
+/** The review findings of the task's evidence by the criterion they name (its place in the list, from 0). */
+export function findingsByCriterion(evidence: readonly Pick<Evidence, 'kind' | 'data' | 'summary' | 'created'>[] | undefined): Map<number, CriterionFinding[]> {
+  const out = new Map<number, CriterionFinding[]>();
+  const sorted = [...(evidence ?? [])].filter((e) => e.kind === 'review_finding').sort((a, b) => b.created - a.created);
+  for (const e of sorted) {
+    const d = (e.data ?? {}) as { criterion?: unknown; severity?: unknown; text?: unknown };
+    if (typeof d.criterion !== 'number' || d.criterion < 0) continue;
+    const text = typeof d.text === 'string' && d.text ? d.text : e.summary;
+    const list = out.get(d.criterion) ?? [];
+    if (!list.some((f) => f.text === text)) list.push({ severity: typeof d.severity === 'string' ? d.severity : 'low', text });
+    out.set(d.criterion, list);
+  }
+  return out;
 }
 
 const statusMark = (s: string | undefined): CriterionStatusMark => (s === 'met' || s === 'not_met' || s === 'waived' ? s : 'open');
@@ -97,16 +122,21 @@ export function criteriaRows(
   criteria: readonly CriterionStatus[] | undefined,
   states: readonly CriterionState[] | undefined,
   nameOf: (id: string) => string = (id) => id,
+  evidence?: readonly Pick<Evidence, 'kind' | 'data' | 'summary' | 'created'>[],
 ): CriterionRow[] {
+  const found = findingsByCriterion(evidence);
   return (acceptance ?? []).map((text, index) => {
     const c = criteria?.find((x) => x.index === index);
+    const findings = found.get(index) ?? [];
     if (!c) {
       const st = criteriaWithState([text], states?.filter((x) => x.index === index).map((x) => ({ ...x, index: 0 })))[0]!;
       const status: CriterionStatusMark = st.state === 'passed' ? 'met' : st.state === 'failing' ? 'not_met' : 'open';
-      return { index, id: st.id, text, status, why: status === 'open' ? '' : `By the test check: the tests ${st.state === 'passed' ? 'pass' : 'fail'}.`, claim: '', personal: false };
+      const why = status === 'open' ? '' : `By the test check: the tests ${st.state === 'passed' ? 'pass' : 'fail'}.`;
+      return { index, id: st.id, text, status, why, claim: '', personal: false, check: '', findings };
     }
     const status = statusMark(c.status);
-    return { index, id: c.id, text, status, why: criterionWhy(c, status, nameOf), claim: c.claim ? claimLine(c.claim, nameOf) : '', personal: c.source === 'person' };
+    const check = c.check ? checkName(c.check) : '';
+    return { index, id: c.id, text, status, why: criterionWhy(c, status, nameOf), claim: c.claim ? claimLine(c.claim, nameOf) : '', personal: c.source === 'person', check, findings };
   });
 }
 

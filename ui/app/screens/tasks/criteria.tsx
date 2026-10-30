@@ -1,5 +1,6 @@
 // The task's acceptance criteria, each with its own status (decision P125): open, met, not met or waived, the line that says what
-// showed it (a check, a review, a person) and an agent's claim that nothing has confirmed. The person gives their word on a
+// showed it (a check, a review, a person), an agent's claim that nothing has confirmed, the check the criterion names to confirm
+// it and the review findings about how it is written (P128, shown beside it since P129). The person gives their word on a
 // criterion from its "..." menu: met, not met, waive (with a reason, asked for in place) or reopen. A claim never makes a
 // criterion met; only a check or a person confirms it, and only a person waives it.
 
@@ -25,8 +26,8 @@ const listCss = css({
   '& > li': { display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', columnGap: '10px', rowGap: '2px', alignItems: 'start', lineHeight: '20px' },
   '& > li > svg': { marginTop: '2px' },
   '& > li > .text': { overflowWrap: 'anywhere' },
-  '& > li > .why, & > li > .claim, & > li > form': { gridColumn: '2 / 4', fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere' },
-  '& > li > .claim': { color: t.warning },
+  '& > li > .why, & > li > .claim, & > li > .check, & > li > .finding, & > li > form': { gridColumn: '2 / 4', fontSize: t.textSm, color: t.textMuted, overflowWrap: 'anywhere' },
+  '& > li > .claim, & > li > .finding[data-severity="medium"]': { color: t.warning },
   '& > li[data-state="met"] > svg': { color: t.success },
   '& > li[data-state="not_met"] > svg': { color: t.danger },
   '& > li[data-state="waived"] > svg': { color: t.textMuted },
@@ -92,6 +93,16 @@ export function CriteriaList(handle: Handle<{ taskId: string; rows: CriterionRow
                     {c.claim}
                   </span>
                 ) : null}
+                {c.check ? (
+                  <span class="check" data-testid="criterion-check" title={`A passing ${c.check} check confirms it, a failing one shows it not met`}>
+                    Confirmed by the {c.check} check
+                  </span>
+                ) : null}
+                {c.findings.map((f) => (
+                  <span key={f.text} class="finding" data-testid="criterion-finding" data-severity={f.severity}>
+                    Review finding ({f.severity}): {f.text}
+                  </span>
+                ))}
                 {waiving === c.index ? (
                   <form
                     aria-label={`Waive ${name}`}
