@@ -748,5 +748,8 @@ thresholds (`TestDrydocksOccupancyEstimate`), a session continued on the estimat
 (`TestASessionCorrectedTwiceRestartsWithAHandoff`, `TestWhatCountsAsACorrection`); `p125_test.go`'s table now asks after a
 takeover; `internal/agents/runtime` (`SeenBytes`); `internal/core/p128_test.go` (the catalog window); the UI's `tasks.test.ts`
 (the task page lists a finding in its evidence as "Review finding", without a result). No migration (00166 and 00167 were not
-needed), no new RPC method, no new dependency. **Not built:** a finding shown beside its criterion on the task page, and the check
-a criterion names shown there.
+needed), no new RPC method, no new dependency. **Built since (decision P129):** on the task page each criterion shows the check
+it names ("Confirmed by the lint check", `criterion-check`, from `CriterionStatus.check`, which the UI's type now carries) and the
+review findings about it beside it ("Review finding (medium): ...", `criterion-finding` with its severity, read from the
+`review_finding` evidence's `criterion`, newest first, each text once); the evidence list keeps them too (`task-page.ts`
+`findingsByCriterion`, `criteria.tsx`; `task-page.test.ts`, `criteria.test.browser.tsx`).

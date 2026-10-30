@@ -2015,3 +2015,49 @@ Open, owner action:
   CLI answering, a real subscription's `allowed_warning`, whether any of it lowers what a task costs (no eval run), Windows. The
   task page lists a finding in its evidence ("Review finding", `screens/tasks/tasks.ts`, its unit test). **Not built:** a finding
   shown beside its criterion, and the check a criterion names shown on the task page.
+- **P129. Local models: DFlash, DSpark and MTP head drafts, the MTP context's memory, a catalog that follows the server; Settings >
+  About, three shortcuts, Copy that says when it cannot, and the task page's criteria with their check and findings
+  (2026-10-30).** On the owner's words after P124 to P128: "ok keep going", answering the "Not built" lines of
+  `local-models.md` section 10 (DFlash and DSpark drafts, an MTP head shipped as a file of its own, the MTP context's memory,
+  "the provider's catalog keeps a model the router no longer lists"), `ui.md` (S19: "the app version, a licenses link and a
+  keyboard map on this page"; section 14's shortcuts; the Connections "a Copy button for install commands") and P128's ("a
+  finding shown beside its criterion, and the check a criterion names shown on the task page"). (1) **Drafts**
+  ([`local-models.md`](local-models.md) section 13), read in both builds' sources at b11936 and b10298-2.0.0 (`common/arg.cpp`,
+  `common/speculative.cpp`, `docs/speculative.md`, `src/llama-arch.cpp`, the converter), never guessed: a file of architecture
+  `dflash` is a DFlash draft, one listing `markov_w1.weight` a DSpark draft, each offered to a model with its tokenizer whose
+  layers reach `dflash.target_layers` and run with `--model-draft` and `--spec-type draft-dflash` or `draft-dspark`; a file of a
+  model's MTP heads alone (what `convert_hf_to_gguf.py --mtp` writes: the model's architecture, the MTP tensor, no tensor of the
+  main blocks) is an MTP head, offered to a model of its architecture, embedding length and main layers and run with
+  `--model-draft <file> --spec-type draft-mtp` (the fork's `--mtp-head` is another name for `--model-draft`; the official build
+  has no `--mtp-head`). `--spec-draft-n-max` and `-fa on` stay the person's: the builds clamp the draft size to the trained block,
+  default flash attention to `auto`, and refuse a DSpark draft only for a `--spec-draft-p-min` above its default of 0. Each such
+  file only drafts: never served for chat (refused by the core), no Load too, marked on the Models page ("DFlash draft",
+  "DSpark draft", "MTP head"; `draftKind`). (2) **The MTP context's memory**: llama.cpp keeps a model's MTP layers out of its own
+  cache and gives them to an MTP context as long as the model's, so `EstimateKV` counts the main layers and `EstimateMTPKV` the MTP
+  ones; a model drafting with its heads adds that context to `loadBytes` (`mtpKvBytes`), its fit and the served memory, and a head
+  file's cache is its context's. It also fixes the served memory of a model drafting with its own heads, which counted the size
+  of the first model listed. A projector's memory beyond its file is left out on purpose: it depends on the image and the batch,
+  which no GGUF number gives. (3) **The catalog**: after each probe of the local provider that the server answered, the rows of
+  models its listing no longer has are removed (`providers.Registry.DropUnlisted`), only for that provider, whose list is
+  Drydock's own; a turn pinned to an unloaded model finds no candidate. (4) **Settings > About** (`screens/settings/about.tsx`):
+  the version and build (`app.info` now names `core.AppVersion` and `AppBuild`, which the release sets), "Third-party
+  licenses" (a new method, `app.licenses`, reads THIRD_PARTY_NOTICES.md from beside the executable, where the installer puts it,
+  at most 1 MB of text, and the page draws it with the Markdown renderer; a build from the source tree says it has none beside
+  it; no file is opened outside the window, since `shell.openExternal` takes only web and mail addresses), and the keyboard map,
+  read-only, from `lib/keys.ts` `KEYMAP`, which lists only shortcuts that exist. (5) **Shortcuts**: `Ctrl+B` folds the sidebar,
+  `Ctrl+.` opens the Agent Inspector on an agent's page, `Esc Esc` in a chat's message box stops the agent answering (the first
+  Esc says so, the second within 1.5 s stops it); all ignored inside the terminal and Monaco. Not built, each for want of a
+  target: `Ctrl+.` in a direct-message room (its room record has no agent id), `Esc Esc` in a room's composer (no running agent
+  of its own), `Ctrl+1`-`4` (no region focus model), ``Ctrl+` `` and `Ctrl+Shift+K` (reached otherwise), `Alt+Up/Down`. (6) **Copy**:
+  the Agents page has had a Copy button for the install command since P98; it is now named "Copy the command" and says to select
+  the command and press Ctrl+C when the window refuses the clipboard. (7) **Criteria**: the task page shows the check a criterion
+  names and the review findings about it beside it (the UI's `CriterionStatus` gained `check`; the types are written by hand in
+  `api/types.ts`, `internal/tsgen` generates only the AG-UI events). No migration (00168 and 00169 were not needed), no new
+  dependency, one new RPC method (`app.licenses`). Tests: `internal/localllm/drafts129_test.go`, `draftheads_test.go`,
+  `internal/core/ext_localllm_p129_test.go`, `ext_localllm_inplace_test.go`, `ext_shell_test.go`, `ext_economics_test.go`'s list;
+  the UI's `models.test.ts`, `models-screen.test.browser.tsx`, `settings-screen.test.browser.tsx`, `agents-screen.test.browser.tsx`,
+  `chats-screen.test.browser.tsx`, `sidebar.test.browser.tsx`, `a11y.test.browser.tsx`, `task-page.test.ts`,
+  `criteria.test.browser.tsx`. **Not built:** a projector's memory beyond its file, the TurboQuant build's own MTP assistant files
+  (`gemma4_assistant`, the older `qwen35*_mtp`), the shortcuts above, rebinding. **Not verified:** a real DFlash, DSpark or MTP
+  head file against either build (fixture GGUF headers and the labelled stand-in only), the MTP context's real memory against
+  the estimate, the clipboard in WebView2, Windows.

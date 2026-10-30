@@ -238,15 +238,17 @@ UI: Models on this PC, the this-pc detail of the Models page (`ui/app/screens/mo
 
 - Linux and macOS: the archives offered are Windows x64 only (Drydock is Windows-only; the development host runs the
   stand-in).
-- A projector's memory in the KV estimate: its file is counted with the model's, the memory it takes beyond that is not (as
-  in llama.cpp's own router measurements); the draft's KV cache is estimated like any model's, the MTP context's is not.
-- DFlash and DSpark drafts (both builds have `draft-dflash` and `draft-dspark`; their examples also set `--spec-draft-n-max`
-  and `-fa on`, which Drydock does not choose for a person), and an MTP head shipped as a file of its own (`--mtp-head`): only
-  a model that carries its heads, an EAGLE-3 draft and a smaller model of the same family draft (decision P120).
+- A projector's memory in the KV estimate beyond its file: what the vision encoder takes while it reads an image depends on
+  the image and the batch, which no GGUF number says, so it is not counted (as in llama.cpp's own router measurements; decision
+  P129 looked and left it so). The MTP context's memory is counted since P129 (section 13).
+- MTP heads of the TurboQuant build's own kinds: a Gemma 4 "assistant" file (architecture `gemma4_assistant`, the fork's
+  `MTP.md`) and the fork's older standalone `qwen35*_mtp` files are not offered; only the layout both builds' converters write
+  with `--mtp` is (section 13).
 - The first Load too on a server of one model starts it again as the router (a server of one model has no router calls); from
-  then on models are loaded and unloaded on it. The provider's catalog keeps a model the router no longer lists, as for every
-  provider (`UpsertModels`); the router refuses a request for it.
+  then on models are loaded and unloaded on it.
 - An embedding index: the embedding model only orders the passages BM25 found (section 12).
+- Not verified (P129): a real DFlash, DSpark or MTP head file against either build, the MTP context's real memory against the
+  estimate, Windows.
 
 ## 11. Several models, vision, drafts, embeddings and gated models (decision P111)
 
@@ -339,3 +341,52 @@ when the file gives it (`eagle3.target_hidden_size`, the TurboQuant build's key)
 does not apply to it. Chosen, the model runs with `--model-draft <file> --spec-type draft-eagle3`. The draft's row says
 "EAGLE-3 draft" and "drafts for its model": it is never served for chat (refused by the core too), has no Load too and no
 embedding mark. Neither build infers a spec type from an EAGLE-3 file, so it is always named.
+
+## 13. DFlash, DSpark and MTP head drafts, the MTP context's memory, a catalog that follows the server (decision P129)
+
+What the flags and the files are was read in both builds' sources at the tags the rest of this page names (b11936 and the
+TurboQuant fork's b10298-2.0.0): `common/arg.cpp`, `common/speculative.cpp`, `common/download.cpp`, `docs/speculative.md`,
+`src/llama-arch.cpp`, `src/llama-model.cpp` (`create_memory`) and the converter (`convert_hf_to_gguf.py`, `conversion/qwen.py`).
+
+**DFlash and DSpark drafts.** A downloaded model of architecture `dflash` is a DFlash draft: a small block-diffusion model
+converted for one target (`--target-model-dir`, whose tokenizer and token embeddings it inherits) that drafts a whole block of
+tokens in one pass from the target's hidden states. One whose tensor list holds `markov_w1.weight` (the Markov head; the
+official build's `common_speculative_types_from_gguf` looks for that very tensor) is a DSpark draft. Each is offered to a model
+with its tokenizer (the checks of a draft model) whose layers reach the deepest one it reads (`dflash.target_layers`, written
+as the layer's index plus one); the family rule does not apply, as for EAGLE-3. Chosen, the model runs with `--model-draft
+<file> --spec-type draft-dflash` (or `draft-dspark`), in the preset `model-draft` and `spec-type`. The builds' examples also pass
+`--spec-draft-n-max` and `-fa on`; Drydock passes neither: the draft size is clamped to the draft's trained block size and the
+default of 3 runs, flash attention defaults to `auto`, and the one refusal in the code (`DSpark draft has no confidence head:
+please set --spec-draft-p-min 0`) only fires when `--spec-draft-p-min` is above its default of 0. A person who wants other
+values sets them on the server's command line themselves.
+
+**An MTP head shipped as a file of its own.** `convert_hf_to_gguf.py --mtp` writes a model's MTP heads alone (the file name
+starts `mtp-`): the model's own architecture, its block count with the MTP layers, `<arch>.nextn_predict_layers`, the token
+embeddings, the output and the MTP blocks, and no tensor of the blocks before them. Drydock reads the whole tensor list of a file
+that names MTP layers: one with the MTP tensor and none of the main blocks is an MTP head file (`mtpHead`), which only drafts.
+It is offered to a model of the same architecture, embedding length and main layers (the block count less the MTP layers, so a
+model converted with `--no-nextn` and one that names its layers both match), with its tokenizer, and runs with `--model-draft
+<file> --spec-type draft-mtp`: the official build loads the draft file into an MTP context when the type is `draft-mtp`
+(`common_speculative_init_result`), and the fork's `--mtp-head` is only another name for `--model-draft`, which the official
+build alone has. The row says "MTP head", the drafted model "with an MTP head".
+
+**The MTP context's memory.** llama.cpp keeps a model's MTP layers out of its own KV cache (the layer filter of `create_memory`:
+`il < n_layer()`) and gives them to the MTP draft context, which is as long as the model's context and has its cache type. The
+model's KV estimate therefore counts its main layers only (`EstimateKV`), and the MTP context counts the MTP layers
+(`EstimateMTPKV`); a head file's own estimate is its MTP context's. A model drafting with its own heads adds that context to
+what it takes loaded (`loadBytes`, shown as `mtpKvBytes`), to its fit and to the served memory; a head file's context is its
+draft's cache. Before P129 a model's estimate counted the MTP layers in its own cache and their context not at all, which over
+counted a model that did not draft with them; it also added another model's size to the served memory of a model drafting with
+its own heads (the draft id "mtp" was looked up as a model), which P129 fixed.
+
+**The catalog follows the server.** After every probe of the local provider that the server answered (a start, a change on the
+router, a model that failed to load), the catalog rows of models the listing no longer has are removed
+(`providers.Registry.DropUnlisted`): the local server's list is Drydock's own, so a model it does not list was unloaded or left
+out of a start on fewer models, and the router must not choose it. Every other provider keeps such rows, as before. A probe
+that fails changes nothing.
+
+Tests: `internal/localllm/drafts129_test.go` (the headers of a DFlash, a DSpark and an MTP head file, a model with its own heads in
+either tensor order; which models each fits; the MTP context's estimate apart from the model's; the flags on one server and in
+the preset), `draftheads_test.go`; `internal/core/ext_localllm_p129_test.go` (offered by kind, refused for chat, run with their
+flags, `loadBytes`, `mtpKvBytes`, the fit and the served memory; an Unload and a start on one model drop the catalog rows and a
+turn pinned to the dropped model finds no candidate), `ext_localllm_inplace_test.go`; the Models page's unit and browser tests.
