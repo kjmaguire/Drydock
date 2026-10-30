@@ -2117,3 +2117,50 @@ Open, owner action:
   the estimate, the clipboard in WebView2, Windows. Shown beside its criterion, a finding is one paragraph of the task page, so
   the two finding texts were shortened to keep within the density budget of 200 characters with their label (the check's name
   cut to 20; `TestAFindingBesideItsCriterionKeepsToTheDensityBudget`, found by `e2e/density.spec.ts`).
+- **P130. Rooms and the Inbox: the scheduler's `Complete`, five more Inbox items with a rule against duplicates, muting a room,
+  join rules and the request to join, `Ctrl+.` in a direct message and `Esc Esc` in a room's composer (2026-10-30).** On the
+  owner's words after P124 to P129: "ok keep going", answering the "Not built" lines of `room-protocol.md` s6 ("`Complete` (the
+  turn row records the end)", P127's "the scheduler's `Complete` call"), s9 ("items for task `WAITING_HUMAN` as such, agent
+  `NEEDS_ATTENTION`/`FAILED`, Connection problems and unread mentions ..., muting a room from the UI"), s10 ("(c) stored join
+  rules and the 'request to join' question are not built") and P129's ("`Ctrl+.` in a direct-message room", "`Esc Esc` in a
+  room's composer"). (1) **`Complete`** ([`room-protocol.md`](room-protocol.md) s6 "As built (decision P130)"):
+  `room.Complete(grant, result)` closes a grant with its turn's outcome (done, passed, empty, failed, stopped, interrupted) and
+  reply (migration 00166), publishes `room.turn_completed`, and names the message the next speakers are planned from (the reply
+  of a done or passed turn; nothing after an empty, failed, stopped or interrupted one), so the grant used, its round and what
+  follows are decided by the scheduler in one place; the responder ends every granted turn through it (`responder.turn`'s
+  `end`) and keeps writing the `room_turns` row for what the turn cost. A grant is completed once, its reply must be the agent's
+  own message in that room, one completed before its agent started is closed and can no longer start a turn, a renewal closes
+  the used grant as `renewed` and can be made once, and open grants are completed as interrupted at start. (2) **Stopping**: a
+  new method `room.stop` (`responder.Stop`) cancels the turns running in a room, which complete as `stopped`, post nothing they
+  said and one SYSTEM line ("You stopped Ada's answer."), and end their chain. (3) **Inbox items** (s9 "As built (decision
+  P130)"): `task_waiting`, `mention` (the oldest 50 unread), `join_request` from the room's tables; `agent` (presence Failed or
+  Needs Attention) and `connection` (an agent CLI an agent uses whose newest check says not ready; `connections.Service.Last`
+  keeps the newest check of each Connection, so the Inbox starts no CLI and a CLI nothing checked since start has no item) from
+  what the core holds. **The rule against duplicates**: one item per cause, the one that says most wins: a task's waiting item
+  gives way to any other item of the task, a mention to the blocking question its message already is, an agent's item to the
+  watchdog pause that put it there; one Connection item stands for every agent using the CLI. A mention and an agent's item can
+  be marked done; a task waiting, a CLI not ready and a request to join cannot. (4) **Muting** (`room.setMuted`, the room's
+  "..." menu, Room actions > Mute room): the person's member state `muted` (it existed in the core); a muted room counts only
+  messages that mention the person by name, in its unread count, its badge and the Inbox (a role mention does not), and the
+  Rooms rail shows it with a struck bell and reads ", muted" with its name. This changes P118-era behaviour ("muted rooms count
+  unread but do not notify"): `TestUnreadAndMentionCounts` now expects 0 for a muted room. (5) **Join rules and the request to
+  join** (s10, migration 00167, methods `room.joinRules`, `room.joinRule.add`, `room.joinRule.remove`, `room.answerJoin`, the
+  `room` tool's action `request_join`): the design left choices open; each was read the safest way and written down there: a
+  rule reaches only task rooms created after it, matches the files the task names when its room is created (never the
+  worktree), and adds its agent as an observer unless the person chose active; a request names a channel of the agent's own
+  project, keeps a redacted reason of at most 300 characters as data, and a person's Let in adds the agent as an observer. (6)
+  **Shortcuts**: a DM's room record carries its agent (`Room.agentId`, from the DM's name, which `CreateDM` makes of the human
+  and the agent: no migration needed), so `Ctrl+.` opens its Agent Inspector; `Esc Esc` in a room's message box stops the agent
+  answering there (the first Esc says "Press Esc again to stop <name>", the second within 1.5 s calls `room.stop`), beside a
+  Stop button shown while a turn runs (`room.turns`); both ignored inside the terminal and Monaco, like P129's. No new
+  dependency. Tests: `internal/room/p130_test.go` (Complete, renewal and interruption, muted counts, task and mention items
+  and their duplicates, join rules, requests and the DM's agent), `inbox_test.go`'s muted count,
+  `internal/agents/responder/p130_test.go` (every turn completed by the scheduler, Stop ends the turn and its chain),
+  `internal/core/p130_test.go` (agent and Connection items, muting and the DM through the core, join rules and `request_join`),
+  `ext_economics_test.go`'s list, `internal/projectio` (the new tables deleted with a project, not exported); the UI's
+  `roomClient.test.ts`, `room-agents.test.browser.tsx` (join rules), `room-screen.test.browser.tsx` (Esc Esc, Stop, Mute),
+  `needs-you.test.ts`, `needs-you-screen.test.browser.tsx` (Let in), `a11y.test.browser.tsx` (`Ctrl+.` in a DM),
+  `hubnav.test.browser.tsx` (muted), and `e2e/rooms.spec.ts`; `smoke`, `density`, `inbox`, `round2`, `round3`, `crew` and
+  `guide` pass. **Not built:** desktop (Windows toast) notifications (they need an AppUserModelID, `docs/windows-identity.md`),
+  a join rule matched again when a task names its files later, a rule for channels. **Not verified:** a real agent CLI calling
+  `request_join` through the Workspace MCP server (the core's provider is tested directly), Windows.
