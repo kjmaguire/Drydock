@@ -280,26 +280,34 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   };
 }
 
-/** A command to copy: Drydock shows install guidance, it never runs it. */
-function CopyCommand(handle: Handle<{ text: string }>) {
-  let copied = false;
+/**
+ * A command to copy: Drydock shows install guidance, it never runs it. The window may refuse the clipboard (a page that is not
+ * focused, a WebView2 without the permission): the button then says to copy the command by hand, which stays on the page.
+ */
+export function CopyCommand(handle: Handle<{ text: string }>) {
+  let state: '' | 'copied' | 'refused' = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(handle.props.text);
-      copied = true;
-      void handle.update();
-      clearTimeout(timer);
-      timer = setTimeout(() => ((copied = false), void handle.update()), 1500);
+      state = 'copied';
     } catch {
-      /* the clipboard can be refused; the command is still there to select */
+      state = 'refused';
     }
+    void handle.update();
+    clearTimeout(timer);
+    timer = setTimeout(() => ((state = ''), void handle.update()), state === 'copied' ? 1500 : 6000);
   };
   return () => (
-    <Button size="sm" variant="ghost" icon={copied ? Check : Copy} data-testid="copy-install" mix={on('click', () => void copy())}>
-      {copied ? 'Copied' : 'Copy'}
-    </Button>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+      <Button size="sm" variant="ghost" icon={state === 'copied' ? Check : Copy} data-testid="copy-install" aria-label="Copy the command" mix={on('click', () => void copy())}>
+        {state === 'copied' ? 'Copied' : 'Copy'}
+      </Button>
+      <span role="status" mix={muted} data-testid="copy-install-status">
+        {state === 'refused' ? 'The window did not allow copying: select the command and press Ctrl+C.' : ''}
+      </span>
+    </span>
   );
 }
 

@@ -283,7 +283,24 @@ describe('Agents page', () => {
     const install = await find(r, '[data-testid="install-tab"]', d);
     expect(install.querySelector('[data-testid="install-hint"]')!.textContent).toBe('irm https://claude.ai/install.ps1 | iex');
     expect(install.textContent).toContain('Drydock never runs this for you');
-    expect(install.querySelector('[data-testid="copy-install"]')).not.toBeNull();
+    // Copy puts the command on the clipboard (a test double of it), and says when the window refused it (P129)
+    const copied: string[] = [];
+    let refuse = false;
+    const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (s: string) => (refuse ? Promise.reject(new Error('denied')) : void copied.push(s)) } });
+    try {
+      const copy = install.querySelector<HTMLButtonElement>('[data-testid="copy-install"]')!;
+      expect(copy.getAttribute('aria-label')).toBe('Copy the command');
+      await r.act(() => copy.click());
+      await waitFor(() => expect(copy.textContent).toBe('Copied'), r);
+      expect(copied).toEqual(['irm https://claude.ai/install.ps1 | iex']);
+      refuse = true;
+      await r.act(() => copy.click());
+      await waitFor(() => expect(install.querySelector('[data-testid="copy-install-status"]')!.textContent).toContain('select the command and press Ctrl+C'), r);
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+      if (real) Object.defineProperty(Navigator.prototype, 'clipboard', real);
+    }
   });
 
   it('shows the notice text and only the person can accept it: checkbox first, then Accept calls connection.acknowledge', async () => {

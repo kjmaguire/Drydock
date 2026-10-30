@@ -1,5 +1,5 @@
-// Settings and about: the theme, what this session is connected to, what agents inherit, telemetry, how updates work, and
-// the features that are not built yet. A workspace screen: it works with no project.
+// Settings and about: the theme, what this session is connected to, what agents inherit, telemetry, how updates work, the
+// version, licenses and keyboard map (About Drydock), and the features that are not built yet. A workspace screen: it works with no project.
 
 import { css, on, type Handle } from 'remix/component';
 import { Check, Construction, Info, Palette, RefreshCw, Settings } from 'lucide';
@@ -10,6 +10,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
+import { AboutDrydock } from './about.tsx';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT, THEMES } from './settings.ts';
 import { Group, panel, settingsColumn, tableWrap } from './settings-kit.tsx';
@@ -229,6 +230,7 @@ export function SettingsScreen(_handle: Handle) {
         <TelemetryPanel />
         <DiagnosticsPanel />
         <UpdatesSection />
+        <AboutDrydock />
         <NotBuilt />
       </div>
     </Page>

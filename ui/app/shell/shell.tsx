@@ -6,7 +6,7 @@
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
 import { PanelLeftOpen, PlugZap } from 'lucide';
 import { projectHasRepo } from '../api/types.ts';
-import { ownsKeys } from '../lib/keys.ts';
+import { ownsKeys, shellKey } from '../lib/keys.ts';
 import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
@@ -55,11 +55,19 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   let dmError: Error | undefined;
   /** The dock acts on a project: it is there only on a project's pages (UI review P1-8), and so are its shortcuts. */
   let dockHere = false;
+  /** The agent whose page is open: Ctrl+. opens the Agent Inspector for it (decision P129). */
+  let agentHere: string | undefined;
 
-  // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff; not inside the terminal or the diff editor, which use them
+  // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff, Ctrl+. inspects the agent of the page; not inside the terminal or the
+  // diff editor, which use them
   window.addEventListener(
     'keydown',
     (e) => {
+      if (shellKey(e) === 'inspect' && agentHere) {
+        e.preventDefault();
+        s.ui.openInspector(agentHere);
+        return;
+      }
       if (ownsKeys(e.target) || !dockHere) return;
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
         e.preventDefault();
@@ -124,6 +132,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
     // a workspace page shows nothing of a project: no repository banner, no details panel, no dock
     const inProject = !!project && !isWorkspacePage(route);
     dockHere = inProject;
+    agentHere = route.name === 'agent' ? route.id : undefined;
     const taskContext =
       route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
     const fullRail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;

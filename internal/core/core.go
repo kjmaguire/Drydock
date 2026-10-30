@@ -99,6 +99,9 @@ type Config struct {
 	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
 	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
 	Restart func(ctx context.Context) error
+	// NoticesFile is the third-party notices the build ships (THIRD_PARTY_NOTICES.md), which Settings > About shows (decision
+	// P129). Empty: the file beside the executable, where the installer puts it (packaging/windows/drydock.nsi).
+	NoticesFile string
 	// WebView2Version is the WebView2 runtime the window runs on, for the support bundle; the desktop app sets it.
 	WebView2Version func() string
 	// DevDrives lists this computer's Dev Drives, or says why none was found, for the project folder's hint (decision P58) and

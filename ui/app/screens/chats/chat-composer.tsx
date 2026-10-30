@@ -12,6 +12,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Popover } from '../../ui/popover.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ESC_AGAIN_MS, escapesTwice } from '../../lib/keys.ts';
 import { checkFiles, formatSize, MAX_FILES } from '../room/messages.ts';
 import { adapterLabel, agentWord, chatTitle, MAX_ATTACH, relTime } from './chats.ts';
 
@@ -217,6 +218,24 @@ export function ChatComposer(
   /** The title of each attached chat, from when it was picked: a chip keeps it when the chat leaves the list shown. */
   const titles = new Map<string, string>();
   let area: HTMLTextAreaElement | undefined;
+  // Esc Esc stops the agent that is answering (decision P129): the first Esc says so, a second within ESC_AGAIN_MS stops it
+  let escAt = 0;
+  let escTimer: ReturnType<typeof setTimeout> | undefined;
+  handle.signal.addEventListener('abort', () => clearTimeout(escTimer));
+  const onEscape = () => {
+    const { running, stopping, onStop } = handle.props;
+    if (!running || stopping) return false;
+    clearTimeout(escTimer);
+    if (escapesTwice(escAt, Date.now())) {
+      escAt = 0;
+      onStop();
+    } else {
+      escAt = Date.now();
+      escTimer = setTimeout(() => ((escAt = 0), void handle.update()), ESC_AGAIN_MS);
+    }
+    void handle.update();
+    return true;
+  };
   // the other chats of every project (attaching one from another project is the human's choice), read when the picker opens:
   // the most recent ones, or with a filter the ones chat.list's search finds (archived chats included)
   const others = query(handle, {
@@ -378,6 +397,8 @@ export function ChatComposer(
                 if (sendsOnKey(k)) {
                   k.preventDefault();
                   void submit();
+                } else if (k.key === 'Escape' && !k.isComposing && onEscape()) {
+                  k.preventDefault();
                 }
               }),
               on('paste', (e) => {
@@ -463,8 +484,13 @@ export function ChatComposer(
               <ErrorNote error={others.error} />
             </Popover>
             <span style={{ marginLeft: 'auto' }} />
+            {running && escAt > 0 && !stopping ? (
+              <span role="status" mix={explainCss} data-testid="chat-esc-again">
+                Press Esc again to stop {who}
+              </span>
+            ) : null}
             {running ? (
-              <button type="button" mix={[stopCss, on('click', () => onStop())]} disabled={stopping} data-testid="chat-stop">
+              <button type="button" mix={[stopCss, on('click', () => onStop())]} disabled={stopping} data-testid="chat-stop" title="Stop the answer (Esc Esc in the message box)">
                 <Icon icon={Square} size={12} />
                 {stopping ? 'Stopping...' : 'Stop'}
               </button>

@@ -702,6 +702,19 @@ describe('Conversation', () => {
     await waitFor(() => expect(stopped).toEqual(['chat_a']), r);
   });
 
+  it('Esc Esc in the message box stops a running turn: the first Esc says so, the second stops it (P129)', async () => {
+    const stopped: string[] = [];
+    const { r } = conv(chat({ status: 'running' }), [msg(1, 'user', 'long job')], { chatStop: async (id) => (stopped.push(id), { stopped: true }) });
+    await waitFor(() => must$(r, '[data-testid="chat-stop"]'), r);
+    const box = byLabel<HTMLTextAreaElement>(r.container, 'Message');
+    const esc = () => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await r.act(() => esc());
+    await waitFor(() => expect(must$(r, '[data-testid="chat-esc-again"]').textContent).toContain('Press Esc again to stop'), r);
+    expect(stopped).toEqual([]);
+    await r.act(() => esc());
+    await waitFor(() => expect(stopped).toEqual(['chat_a']), r);
+  });
+
   it('a refusal offers the suggested rule, Allow for this chat, then Retry', async () => {
     let c = chat();
     const allowed: unknown[] = [];
