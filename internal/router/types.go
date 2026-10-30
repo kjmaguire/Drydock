@@ -245,9 +245,9 @@ type RouteRequest struct {
 	// the caller did not say. LevelTemplate names the template for LevelFromTemplate ("Security").
 	LevelSource   string
 	LevelTemplate string
-	Explicit    *Pin
-	Policies    []Rule
-	Budget      BudgetState
+	Explicit      *Pin
+	Policies      []Rule
+	Budget        BudgetState
 	// ContextCeiling is the highest sensitivity in the context package: private (the default when unsure) or public_docs.
 	ContextCeiling ContextClass
 	Session        *SessionState

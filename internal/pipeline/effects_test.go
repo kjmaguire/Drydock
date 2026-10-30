@@ -38,3 +38,37 @@ func TestEveryStepThatChangesSomethingOutsideTheRunIsMarked(t *testing.T) {
 		t.Fatalf("marked %v", marked)
 	}
 }
+
+// No shipped workflow runs a subworkflow (decision P127, docs/workflow-engine.md s14): a nested run belongs to no task, so an
+// agent turn inside one would have no safe point before it and would escape the parent run's and its workflow's budgets. The
+// one group discussion, Design Review's, is a node of its template's own graph, held to that workflow's budget. A template that
+// nests a graph must first give the nested run the parent's task; this test is the reminder.
+func TestNoShippedTemplateRunsASubworkflow(t *testing.T) {
+	src := pipeline.PRSource(func(ctx context.Context, projectID string) (pipeline.PRConfig, error) {
+		return pipeline.PRConfig{}, nil
+	})
+	graphs := []*workflow.Graph{
+		pipeline.IterateUntilVerified(pipeline.Deps{}, nil, 5),
+		pipeline.IterateUntilVerifiedPR(pipeline.Deps{}, src, 5),
+		pipeline.TaskPipeline(pipeline.Deps{}, 5),
+		pipeline.PlanDeps{}.PlanGraph(),
+	}
+	graphs = append(graphs, pipeline.TemplateDeps{PR: src}.Graphs()...)
+	groups := 0
+	for _, g := range graphs {
+		for id, n := range g.Nodes {
+			if n.Kind == workflow.KindSubworkflow || n.Sub != nil {
+				t.Errorf("%s: node %s runs a subworkflow", g.Name, id)
+			}
+			if n.Kind == workflow.KindGroup {
+				groups++
+				if g.Name != pipeline.WorkflowDesignReview && g.Name != pipeline.WorkflowDesignReview+pipeline.PRSuffix {
+					t.Errorf("%s: a discussion outside the Design Review template", g.Name)
+				}
+			}
+		}
+	}
+	if groups != 2 {
+		t.Fatalf("%d discussion nodes, want Design Review's two variants", groups)
+	}
+}

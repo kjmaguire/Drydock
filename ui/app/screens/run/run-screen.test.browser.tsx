@@ -714,6 +714,33 @@ describe("RunScreen: the worktree's files back, and an ended task run again (P12
     ]);
   });
 
+  it('lists the undo points earlier restores kept and restores one with the same preview, after the dialog that made it closed (P127)', async () => {
+    const undo = 'refs/drydock/safe/t1/undo/1700000000000';
+    const asked: unknown[][] = [];
+    const restored: unknown[][] = [];
+    const s = setup({
+      // a run with no safe point of its own still offers the undo points of the task
+      runExplain: async () => withFiles({ executions: explanation().executions, undoPoints: [{ ref: undo, at: 1700000000000, restored: 'refs/drydock/safe/t1/run_0/101' }] }),
+      runRestorePreview: async (...a: unknown[]) => (asked.push(a), { ref: undo, allowed: true, changes: [{ path: 'calc.go', change: 'changed' }] }),
+      runRestore: async (...a: unknown[]) => (restored.push(a), { ref: undo, undoRef: 'refs/drydock/safe/t1/undo/1700000000500', changed: 1 }),
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, s);
+    await ready(r);
+    await r.act(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Put files back...').click());
+    const dlg = await waitFor(() => r.$('[data-testid="restore-dialog"]')!, r);
+    const list = dlg.querySelector('[data-testid="undo-points"]')!;
+    expect(list.querySelector('legend')!.textContent).toBe('Undo an earlier restore');
+    const radio = list.querySelector<HTMLInputElement>('input[type="radio"]')!;
+    expect(radio.closest('label')!.textContent).toContain('As the files were before the restore of');
+    expect(radio.closest('label')!.textContent).toContain('(to a safe point of another run)');
+    await r.act(() => radio.click());
+    await waitFor(() => expect(r.$('[data-testid="restore-files"]')!.textContent).toContain('calc.go'), r);
+    expect(asked).toEqual([['t1', 'run_1', undo]]);
+    await r.act(() => byText(dlg, 'button', 'Put the files back').click());
+    await waitFor(() => expect(r.$('[data-testid="restore-done"]')!.textContent).toContain('refs/drydock/safe/t1/undo/1700000000500'), r);
+    expect(restored).toEqual([['t1', 'run_1', undo]]);
+  });
+
   it('runs a cancelled task again as a new task and opens it; a completed one says why not', async () => {
     const asked: unknown[][] = [];
     const went: string[] = [];

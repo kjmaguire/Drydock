@@ -34,6 +34,7 @@ import {
   runTone,
   safePoints,
   statesAsOf,
+  undoPoints,
   subExecutions,
   type Cluster,
   type RerunKind,
@@ -283,6 +284,8 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
     const sel = want && xv?.graph?.nodes.some((n) => n.id === want) ? want : undefined;
     const acts = x?.actions;
     const points = x ? safePoints(x) : [];
+    // what earlier restores kept (P127): restorable from here whenever the person wants, not only from the dialog that made them
+    const undos = x ? undoPoints(x, formatDateTime) : [];
     const ended = !!tk && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(tk.status);
     const whys = acts
       ? [
@@ -291,7 +294,7 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
               !acts.resume ? acts.resumeWhy : '',
               !acts.replay ? acts.replayWhy : '',
               !acts.timeTravel ? acts.timeTravelWhy : '',
-              acts.restore === false && points.length ? acts.restoreWhy : '',
+              acts.restore === false && (points.length || undos.length) ? acts.restoreWhy : '',
               ended && acts.runAgain === false ? acts.runAgainWhy : '',
             ].filter(Boolean),
           ),
@@ -405,13 +408,13 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
                 <Button size="sm" variant="secondary" icon={Repeat} disabled={!acts.replay} title={acts.replay ? 'Run this run again from its start' : acts.replayWhy} mix={[on('click', () => ask('replay'))]}>
                   Replay from the start
                 </Button>
-                {acts.restore !== undefined && points.length ? (
+                {acts.restore !== undefined && (points.length || undos.length) ? (
                   <Button
                     size="sm"
                     variant="secondary"
                     icon={RotateCcw}
                     disabled={!acts.restore}
-                    title={acts.restore ? "Put the worktree's files back to a safe point of this run" : acts.restoreWhy}
+                    title={acts.restore ? "Put the worktree's files back to a safe point of this run, or undo an earlier restore" : acts.restoreWhy}
                     mix={[on('click', () => openRestore())]}
                   >
                     Put files back...
@@ -636,15 +639,28 @@ export function RunScreen(handle: Handle<{ taskId: string; runId?: string; onNav
                         Drydock takes a safe point of the worktree before every agent turn. The files go back to the one you choose, and what is there now is kept so you
                         can undo it. Commits and the branch are not touched.
                       </p>
-                      <fieldset mix={pointsCss}>
-                        <legend>Safe point</legend>
-                        {points.map((p) => (
-                          <label key={p.ref}>
-                            <input type="radio" name="safe-point" value={p.ref} checked={restoring!.ref === p.ref} mix={[on('change', () => void choosePoint(x, p.ref))]} />
-                            <span>{p.label}</span>
-                          </label>
-                        ))}
-                      </fieldset>
+                      {points.length ? (
+                        <fieldset mix={pointsCss}>
+                          <legend>Safe point</legend>
+                          {points.map((p) => (
+                            <label key={p.ref}>
+                              <input type="radio" name="safe-point" value={p.ref} checked={restoring!.ref === p.ref} mix={[on('change', () => void choosePoint(x, p.ref))]} />
+                              <span>{p.label}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                      ) : null}
+                      {undos.length ? (
+                        <fieldset mix={pointsCss} data-testid="undo-points">
+                          <legend>Undo an earlier restore</legend>
+                          {undos.map((p) => (
+                            <label key={p.ref}>
+                              <input type="radio" name="safe-point" value={p.ref} checked={restoring!.ref === p.ref} mix={[on('change', () => void choosePoint(x, p.ref))]} />
+                              <span>{p.label}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                      ) : null}
                       {fx.busy === 'preview' ? <Loading /> : null}
                       {restoring.preview ? <FileList changes={restoring.preview.changes} /> : null}
                       {restoring.preview && !restoring.preview.allowed ? <p data-testid="restore-why">{restoring.preview.why}</p> : null}
