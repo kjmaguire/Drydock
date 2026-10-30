@@ -21,6 +21,12 @@ export interface LiveOptions<T> {
    * (a throttle: a steady stream never postpones the read indefinitely, as a debounce would).
    */
   noisy?: boolean;
+  /**
+   * While false no event, reconnect or reload reads. Asked each time, not only when the data is first read: a read that a
+   * screen shows only now and then (the command menu's) was otherwise enabled until then, and an event without a task id
+   * matched its `e.taskId === props.taskId` while it had none (smoke: `task.get {}` refused on the Backups page).
+   */
+  enabled?: () => boolean;
 }
 
 /**
@@ -53,7 +59,7 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
     if (when) {
       this.#off.push(
         this.#store.onEvent((e) => {
-          if (!this.#enabled || !when(e)) return;
+          if (!this.#on() || !when(e)) return;
           if (isNoisy(e)) {
             if (!this.#opts.noisy || this.#timer !== undefined) return;
           } else {
@@ -72,11 +78,15 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
         const epoch = this.#store.getSnapshot().epoch;
         if (epoch === this.#epoch) return;
         this.#epoch = epoch;
-        if (this.#enabled) this.reload();
+        if (this.#on()) this.reload();
       }),
     );
     signal?.addEventListener('abort', () => this.stop(), { once: true });
     return this;
+  }
+
+  #on(): boolean {
+    return this.#enabled && (this.#opts.enabled?.() ?? true);
   }
 
   stop(): void {
@@ -91,7 +101,7 @@ export class Live<T> extends TypedEventTarget<{ change: Event }> {
    * answered, failed (the failure is in `error`), or a newer read took its place. It never rejects, so a poll can wait for it.
    */
   reload = (): Promise<void> => {
-    if (!this.#enabled) return Promise.resolve();
+    if (!this.#on()) return Promise.resolve();
     const my = ++this.#gen;
     this.loading = true;
     return Promise.resolve()
