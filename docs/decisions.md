@@ -2117,3 +2117,43 @@ Open, owner action:
   the estimate, the clipboard in WebView2, Windows. Shown beside its criterion, a finding is one paragraph of the task page, so
   the two finding texts were shortened to keep within the density budget of 200 characters with their label (the check's name
   cut to 20; `TestAFindingBesideItsCriterionKeepsToTheDensityBudget`, found by `e2e/density.spec.ts`).
+- **P131. The security scan as a check and as the agents' tool, and the sandbox for other CLIs (2026-10-30).** On the owner's
+  words after P129: "ok keep going", answering the "Not built" lines of `security-scan.md` section 7 ("The scan is not a
+  workflow check node yet", "No MCP tool exposes the scan to agents; findings are for the person") and `sandbox.md` section 7
+  ("Only Claude Code agents can work in a sandboxed project ... its ACP terminal requests are not routed into the container
+  yet", "No port forwarding from the sandbox to the human's machine"). (1) **The `scan` check**
+  ([`security-scan.md`](security-scan.md) section 10): the scan's Code engine (Opengrep with the built-in rules and the rules
+  folder) and Dependencies engine (osv-scanner) over a task's worktree (`scan.CheckSpec`, a scan of some engines:
+  `scan.Options.Engines`), after build, test and lint in Verify when the project turns it on (Verification checks, "Security
+  scan of the change"; `checks.Settings.Scan`, migration 00168, off by default, exported with the project). A finding counts
+  only when it is the task's: on a line it added, or in a manifest or lockfile it changed; a dismissed one does not. Skipped
+  with the reasons without the tools, errored when one broke and none judged, never a pass; git is not asked for the worktree's
+  files. The Security template judges the whole tree (its task is what is there), by name or joining its default scans when the
+  setting is on; the SaaS template's gate judges the change. (2) **`security_findings`**, a read-only Workspace tool in a new
+  column of the role table (no for PM and UX Designer): the project's last finished scan, its findings not dismissed, filtered
+  and capped, redacted whole. It cannot start a scan, dismiss or change rules. **No line of code in it**, decided: the scan
+  read the person's own checkout, which may hold changes not committed, and that text would go to the agent's model provider;
+  the agent reads the source in its worktree, and the file and line find it. (3) **Other CLIs in a sandboxed project**
+  ([`sandbox.md`](sandbox.md) section 9): a CLI whose manifest says how it asks before every command it runs itself
+  (`transports.acp.sandbox`, with its source: Gemini CLI in `default` mode, Goose with `GOOSE_MODE=approve`, Cline) gets its ACP
+  terminal routed into the container (`agents.RunSpec.Terminals`; quoted, in its folder, only the agent's own variables,
+  `sandbox_run`'s limits, output streamed, `sandbox.command` with `via: terminal`), the manifest's mode replacing the agent's own
+  and required (the session does not start without it; leaving it stops the turn), its permission requests answered by the
+  sandbox's rules (commands refused with where to run them, reads and edits inside the worktree allowed but not into `.git`,
+  links followed), and an `execute` call it reports as ended without asking and without a terminal of the session stops the
+  turn and is recorded (`sandbox.escape`): detection after the fact, said so. Codex and OpenCode declare nothing (their
+  defaults run commands without asking) and their turns stay a question for the person, which now names the CLIs that can.
+  (4) **Port forwarding: judged and not built**: a forwarder container on the internal network publishing `127.0.0.1` only is
+  buildable, but it is not small (a relay mode of the egress binary and its image, a per-task record, a method, the task page,
+  Docker Desktop's loopback publishing on Windows unchecked) and it needs the owner's choice: an agent's page opened in the
+  person's browser at `127.0.0.1:<port>` shares the cookies of every local app on 127.0.0.1 (cookies are not separated by
+  port), so it would open in a window of Drydock's own with its own storage, or on another loopback address. Migration 00168
+  only (00169 was not needed), no new dependency, no new RPC method. Tests: `internal/scan/check_test.go`,
+  `internal/pipeline/scan_check_test.go`, `sandbox_internal_test.go`, `internal/mcp/workspace_security_test.go` and the role
+  table tests, `internal/agents/acp/sandbox_test.go`, `internal/sandbox/terminal_test.go`, `internal/core/ext_security_check_test.go`,
+  `ext_sandbox_acp_internal_test.go`, `sandbox_acp_test.go` (the whole loop with a real container engine, Docker 29.9, and the
+  scripted ACP agent as the worker), `internal/projectio`; the UI's `project-screens.test.browser.tsx` and
+  `project-sandbox.test.browser.tsx`. **Not built:** port forwarding, Codex and OpenCode in a sandboxed project, an agent starting
+  a scan or seeing a finding's lines, a lockfile compared with its base. **Not verified:** a real Opengrep or osv-scanner run of
+  the check (labelled stand-ins), Gemini CLI, Goose and Cline in a sandboxed project (the mode ids, whether each uses the
+  client's terminal, how often each runs a command without asking), Windows.

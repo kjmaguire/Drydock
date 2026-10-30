@@ -49,7 +49,7 @@ Write-class tools (`side_effects: true` in the catalog: create or update issues,
 | Security | all | y | y | y | - | y |
 | Reviewer | all | y (`room`, `handoff`) | - | y | - | - |
 
-As built (decision P115): this table is the gateway's policy, with a row "Other roles" that keeps all a grant gives, `repo_map` on for every role (P62) and `propose_memory` outside the table (P92); a project changes cells, adds CEL rules that only take tools away, and a task narrows its agents' tools. See "As built: the role table, rules and task narrowing" at the end.
+As built (decision P115): this table is the gateway's policy, with a row "Other roles" that keeps all a grant gives, `repo_map` on for every role (P62) and `propose_memory` outside the table (P92); a project changes cells, adds CEL rules that only take tools away, and a task narrows its agents' tools. See "As built: the role table, rules and task narrowing" at the end. Decision P131 added the column `security_findings` (the read-only tool of that name: the project's last security scan, without a secret's value or a line of code, [`security-scan.md`](security-scan.md) section 10): no for the PM and the UX Designer, yes for every other row.
 
 ## 4. Result cache
 
