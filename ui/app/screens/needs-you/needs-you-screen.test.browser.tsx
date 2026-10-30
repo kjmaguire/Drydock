@@ -317,4 +317,22 @@ describe('the Inbox', () => {
     s.emit({ type: 'approval.decided', projectId: 'p1' });
     await waitFor(() => expect(r.$$('[data-testid="needs-item"]').length).toBe(1), r);
   });
+
+  it('an agent asking to join a channel is let in or declined from the detail (P130)', async () => {
+    const join: NeedsYouItem = {
+      key: 'join:jr1', kind: 'join_request', severity: 3, title: 'Asks to join #architecture', detail: 'Why: I record security decisions', projectId: 'p1', roomId: 'r9',
+      agentId: 'a3', agentName: 'Sec', joinRequestId: 'jr1', createdAt: iso(NOW - 60_000),
+    };
+    const answers: unknown[][] = [];
+    const { r, calls } = await open({ roomAnswerJoin: async (...a) => (answers.push(a), { id: 'jr1' }) as never }, [join]);
+    await r.act(() => (r.$('[data-row-key="needs:join:jr1"]') as HTMLButtonElement).click());
+    expect(r.$('[data-testid="detail-description"]')!.textContent).toBe('Why: I record security decisions');
+    expect(r.$('[data-testid="needs-hint"]')!.textContent).toContain('Let it in as an observer');
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the channel');
+    expect(r.$('[data-testid="detail-done"]')).toBeNull();
+    await r.act(() => press('e'));
+    expect(calls.ack).toEqual([]);
+    await r.act(() => (r.$('[data-testid="detail-let-in"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(answers).toEqual([['jr1', true]]), r);
+  });
 });

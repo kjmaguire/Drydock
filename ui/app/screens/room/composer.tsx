@@ -3,10 +3,11 @@
 // What a mention means is decided by the room core when the message is posted; files go with the message.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { ArrowUp, AtSign, Hash, Paperclip, SquareSlash, Users, X } from 'lucide';
+import { ArrowUp, AtSign, Hash, Paperclip, Square, SquareSlash, Users, X } from 'lucide';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { activeToken, applySuggestion, mentionHandle, parseSlash, SLASH_COMMANDS, suggest, type MentionTarget, type Suggestion, type Token } from '../../lib/composer.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
+import { ESC_AGAIN_MS, escapesTwice } from '../../lib/keys.ts';
 import { routes } from '../../routes.ts';
 import { services } from '../../state/services.tsx';
 import { IconButton } from '../../ui/button.tsx';
@@ -66,6 +67,23 @@ const hintCss = css({
   textOverflow: 'ellipsis',
   '@media (max-width: 719px)': { visibility: 'hidden' },
   '& kbd': { margin: '0 2px' },
+});
+// Stop, while an agent answers in the room (decision P130): as the chat's
+const stopCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  flex: 'none',
+  height: '28px',
+  minHeight: '0',
+  padding: '0 10px',
+  border: `1px solid ${t.borderStrong}`,
+  borderRadius: t.rMd,
+  background: t.bgRaised,
+  color: t.text,
+  fontSize: t.textXs,
+  fontWeight: '600',
+  '&:hover': { background: t.dangerSoft, color: t.danger, borderColor: 'transparent' },
 });
 // the send button is a round black disc with an arrow (Crew HQ, decision P64); its name stays "Send" for readers
 export const sendCss = css({
@@ -168,6 +186,13 @@ export interface ComposerProps {
   onSent: () => void;
   /** Where /task goes after creating the task (defaults to the router's navigate). */
   onNavigate?: (href: string) => void;
+  /**
+   * The agent answering in the room now, by name ('' or absent: none), and how to stop it (decision P130): Esc Esc in the box
+   * stops it, as in a chat (the first Esc says so, a second within ESC_AGAIN_MS stops it).
+   */
+  answering?: string;
+  stopping?: boolean;
+  onStop?: () => void;
 }
 
 export function Composer(handle: Handle<ComposerProps>) {
@@ -186,6 +211,24 @@ export function Composer(handle: Handle<ComposerProps>) {
   let fileInput: HTMLInputElement | undefined;
   const id = `composer-input-${handle.id}`;
   const listId = `composer-suggest-${handle.id}`;
+  // Esc Esc stops the agent answering (decision P130, as P129's chat box): the first Esc says so, a second soon after stops it
+  let escAt = 0;
+  let escTimer: ReturnType<typeof setTimeout> | undefined;
+  handle.signal.addEventListener('abort', () => clearTimeout(escTimer));
+  const onEscape = (): boolean => {
+    const { answering, stopping, onStop } = handle.props;
+    if (!answering || stopping || !onStop) return false;
+    clearTimeout(escTimer);
+    if (escapesTwice(escAt, Date.now())) {
+      escAt = 0;
+      onStop();
+    } else {
+      escAt = Date.now();
+      escTimer = setTimeout(() => ((escAt = 0), void handle.update()), ESC_AGAIN_MS);
+    }
+    void handle.update();
+    return true;
+  };
 
   const update = () => void handle.update();
 
@@ -335,11 +378,13 @@ export function Composer(handle: Handle<ComposerProps>) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       void send();
+    } else if (e.key === 'Escape' && !e.isComposing && onEscape()) {
+      e.preventDefault();
     }
   };
 
   return () => {
-    const { room, agents, disabled } = handle.props;
+    const { room, agents, disabled, answering, stopping, onStop } = handle.props;
     const { tok, list } = current();
     const open = list.length > 0;
     const idx = Math.min(active, Math.max(list.length - 1, 0));
@@ -582,13 +627,25 @@ export function Composer(handle: Handle<ComposerProps>) {
                 }),
               ]}
             />
-            <span mix={hintCss} aria-hidden="true">
-              {disabled ? '' : (
-                <>
-                  <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send · <kbd>/</kbd> for commands · <kbd>@</kbd> to mention
-                </>
-              )}
-            </span>
+            {answering && escAt > 0 && !stopping ? (
+              <span mix={hintCss} role="status" data-testid="room-esc-again">
+                Press Esc again to stop {answering}
+              </span>
+            ) : (
+              <span mix={hintCss} aria-hidden="true">
+                {disabled ? '' : (
+                  <>
+                    <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send · <kbd>/</kbd> for commands · <kbd>@</kbd> to mention
+                  </>
+                )}
+              </span>
+            )}
+            {answering && onStop ? (
+              <button type="button" mix={[stopCss, on('click', () => onStop())]} disabled={stopping} data-testid="room-stop" title={`Stop ${answering} (Esc Esc in the message box)`}>
+                <Icon icon={Square} size={12} />
+                {stopping ? 'Stopping...' : 'Stop'}
+              </button>
+            ) : null}
             <button type="submit" mix={sendCss} disabled={disabled || busy || (!text.trim() && files.length === 0)} title={busy ? 'Sending...' : 'Send (Ctrl+Enter)'}>
               <Icon icon={ArrowUp} size={18} />
               <span class="sr-only">{busy ? 'Sending...' : 'Send'}</span>

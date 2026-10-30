@@ -32,7 +32,7 @@ export function shellKey(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 
   return undefined;
 }
 
-/** How soon a second Esc must follow the first to stop the agent that is answering (Esc Esc in a chat's message box). */
+/** How soon a second Esc must follow the first to stop the agent that is answering (Esc Esc in a chat's or a room's message box). */
 export const ESC_AGAIN_MS = 1500;
 
 /** Whether an Esc at now is the second of two (the first at firstAt, 0 for none) close enough to stop the agent. */
@@ -57,10 +57,10 @@ export const KEYMAP: readonly KeyLine[] = [
   { keys: ['Ctrl', 'B'], action: 'Fold or unfold the sidebar (also [ when not typing)', where: 'Everywhere' },
   { keys: ['Ctrl', 'J'], action: 'Show or hide the dock', where: "A project's pages" },
   { keys: ['Ctrl', 'Shift', 'D'], action: 'Open the dock on the diff', where: "A project's pages" },
-  { keys: ['Ctrl', '.'], action: 'Open the Agent Inspector for the agent', where: "An agent's page" },
+  { keys: ['Ctrl', '.'], action: 'Open the Agent Inspector for the agent', where: "An agent's page, a direct message" },
   { keys: ['Ctrl', 'N'], action: 'Start a new chat', where: 'Chats' },
   { keys: ['Enter'], action: 'Send the message (Shift+Enter: a new line)', where: "A chat's message box" },
-  { keys: ['Esc', 'Esc'], action: 'Stop the agent that is answering', where: "A chat's message box" },
+  { keys: ['Esc', 'Esc'], action: 'Stop the agent that is answering', where: "A chat's or a room's message box" },
   { keys: ['Ctrl', 'Enter'], action: 'Send the message', where: "A room's message box, a thread, a chat" },
   { keys: ['@', '#', '/'], action: 'Suggest agents, tasks and commands', where: "A room's message box" },
   { keys: ['/'], action: 'Search the list', where: 'Agents, Integrations, Models' },

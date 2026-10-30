@@ -156,6 +156,26 @@ func (p mcpRoom) resolve(ctx context.Context, run mcp.RunInfo, channel string) (
 	return rm, nil
 }
 
+// RequestJoin asks a person to let the run's agent into a channel of its project it is not in (decision P130). The request is
+// an Inbox item; the agent joins only if the person allows it, as an observer.
+func (p mcpRoom) RequestJoin(ctx context.Context, run mcp.RunInfo, channel, reason string) (string, error) {
+	channel = strings.TrimPrefix(strings.TrimSpace(channel), "#")
+	rooms, err := p.c.Room.ListRooms(ctx, run.ProjectID, false)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range rooms {
+		if r.Name == channel && r.Kind == room.KindChannel && r.ProjectID == run.ProjectID {
+			jr, err := p.c.Room.RequestJoin(ctx, r.ID, run.AgentID, reason)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("asked to join #%s (request %s): a person decides; until then you are not a member", r.Name, jr.ID), nil
+		}
+	}
+	return "", fmt.Errorf("no channel %q in this project", channel)
+}
+
 func (p mcpRoom) Read(ctx context.Context, run mcp.RunInfo, q mcp.RoomQuery) ([]mcp.RoomMessage, error) {
 	rm, err := p.resolve(ctx, run, q.Channel)
 	if err != nil {

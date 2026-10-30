@@ -35,7 +35,7 @@ export class ProjectData extends Model {
     const mine = (e: { projectId?: string }) => !e.projectId || e.projectId === this.#id;
     this.agents = new Live(store, { load: () => client.agentList(pid()), when: (e) => starts(e, 'agent.') && mine(e) });
     this.rooms = new Live(store, { load: () => client.roomList(pid()), when: (e) => starts(e, 'room.created', 'room.archived', 'room.member', 'room.kind', 'room.mode') });
-    this.unread = new Live(store, { load: () => client.roomUnread(pid()), when: (e) => starts(e, 'room.message_posted', 'room.read_cursor', 'room.created', 'room.archived') });
+    this.unread = new Live(store, { load: () => client.roomUnread(pid()), when: (e) => starts(e, 'room.message_posted', 'room.read_cursor', 'room.created', 'room.archived', 'room.member_state_changed') });
     this.needs = new Live(store, {
       load: () => client.needsYouList(pid()),
       when: needsChanged,

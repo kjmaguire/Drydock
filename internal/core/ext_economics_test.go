@@ -84,7 +84,9 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 		// decision P124
 		"run.restorePreview", "run.restore", "task.runAgain",
 		// decision P129
-		"app.licenses"} {
+		"app.licenses",
+		// decision P130
+		"room.stop", "room.setMuted", "room.joinRules", "room.joinRule.add", "room.joinRule.remove", "room.answerJoin"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}
