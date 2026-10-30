@@ -145,7 +145,7 @@ func (c *Core) stateItems(ctx context.Context, projectID string) []room.NeedsYou
 			key = connections.WSLKey(a.adapter, a.distro)
 		}
 		ck, ok := last[key]
-		if !ok || ck.Usable || seen[key] {
+		if !ok || ck.Usable || seen[key] || c.given[a.adapter] {
 			continue
 		}
 		seen[key] = true

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,12 +50,18 @@ func TestAgentAndConnectionItemsFollowWhatTheCoreHolds(t *testing.T) {
 	if err != nil {
 		t.Skip("git is not installed")
 	}
-	if err := os.Symlink(gitExe, filepath.Join(empty, "git")); err != nil {
+	path := empty
+	if runtime.GOOS == "windows" {
+		// Git for Windows' own folder holds git.exe and its tools, no agent CLI; a link would need a privilege
+		path = filepath.Dir(gitExe)
+	} else if err := os.Symlink(gitExe, filepath.Join(empty, "git")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", empty)
+	t.Setenv("PATH", path)
 	t.Setenv("HOME", empty)
 	t.Setenv("USERPROFILE", empty)
+	t.Setenv("APPDATA", empty)
+	t.Setenv("LOCALAPPDATA", empty)
 	a := open(t, "")
 	var p core.Project
 	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
@@ -67,6 +74,12 @@ func TestAgentAndConnectionItemsFollowWhatTheCoreHolds(t *testing.T) {
 	}
 	if _, err := a.c.Call(context.Background(), "needsyou.ack", mustJSON(map[string]any{"key": "connection:codex"})); err == nil {
 		t.Fatal("a Connection item was marked done")
+	}
+	// the scripted agent the test put in place of claude is what its agents start: the installed CLI's check is no item
+	var cl core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Cl", Adapter: "claude", Role: "backend"}, &cl)
+	if it, ok := needsKeys(a, p.ID)["connection:claude"]; ok {
+		t.Fatalf("an item for the claude CLI its agents do not start: %+v", it)
 	}
 	// the agent fails: an item until it starts again
 	data, _ := json.Marshal(map[string]any{"error": "exit status 1"})

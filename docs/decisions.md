@@ -2163,7 +2163,9 @@ Open, owner action:
   `hubnav.test.browser.tsx` (muted), and `e2e/rooms.spec.ts`; `smoke`, `density`, `inbox`, `round2`, `round3`, `crew` and
   `guide` pass. **Not built:** desktop (Windows toast) notifications (they need an AppUserModelID, `docs/windows-identity.md`),
   a join rule matched again when a task names its files later, a rule for channels. **Not verified:** a real agent CLI calling
-  `request_join` through the Workspace MCP server (the core's provider is tested directly), Windows.
+  `request_join` through the Workspace MCP server (the core's provider is tested directly), Windows. Found by Windows CI: an adapter
+  a caller put in place of the built one (`Config.Adapters`, the e2e core's scripted claude) raises no Connection item, since the
+  check reads the installed CLI its agents never start (`TestAgentAndConnectionItemsFollowWhatTheCoreHolds`, winverify's smoke).
 - **P131. The security scan as a check and as the agents' tool, and the sandbox for other CLIs (2026-10-30).** On the owner's
   words after P129: "ok keep going", answering the "Not built" lines of `security-scan.md` section 7 ("The scan is not a
   workflow check node yet", "No MCP tool exposes the scan to agents; findings are for the person") and `sandbox.md` section 7
