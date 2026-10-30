@@ -46,11 +46,14 @@ type Reservation struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
-// Held is what the turns in flight hold against one budget instance.
+// Held is what the turns in flight hold against one budget instance. Turns counts only the turns not started yet (a started
+// turn's agent_runs row counts it against a turn limit); InFlight counts every reservation held, started or not, which is what a
+// refusal's message names beside the money or tokens they hold.
 type Held struct {
-	USD    float64 `json:"usd"`
-	Tokens int64   `json:"tokens"`
-	Turns  int64   `json:"turns"`
+	USD      float64 `json:"usd"`
+	Tokens   int64   `json:"tokens"`
+	Turns    int64   `json:"turns"`
+	InFlight int64   `json:"inFlight"`
 }
 
 // RefusedError is a reservation that does not fit: Over holds each budget it would take past its limit, Message says why.
@@ -90,8 +93,8 @@ func (s *Store) HeldFor(ctx context.Context, sc Scope, instance string) (Held, e
 	// what a turn already reported spending is in the usage rows: only the rest of its estimate is held, and its turn only until
 	// its agent_runs row exists
 	w, args := heldWhere(sc, instance)
-	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(MAX(est_usd-real_usd,0)),0), COALESCE(SUM(MAX(est_tokens-real_tokens,0)),0), COALESCE(SUM(holds_turn),0)
-		FROM budget_reservations WHERE state='held' AND expires_at>? AND `+w, append([]any{storage.Now()}, args...)...).Scan(&h.USD, &h.Tokens, &h.Turns)
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(MAX(est_usd-real_usd,0)),0), COALESCE(SUM(MAX(est_tokens-real_tokens,0)),0), COALESCE(SUM(holds_turn),0), COUNT(*)
+		FROM budget_reservations WHERE state='held' AND expires_at>? AND `+w, append([]any{storage.Now()}, args...)...).Scan(&h.USD, &h.Tokens, &h.Turns, &h.InFlight)
 	return h, err
 }
 
@@ -158,14 +161,14 @@ func doesNotFit(st Status, held Held, h Hold) string {
 		spent := st.Spend.KnownUSD()
 		if spent+held.USD+h.EstUSD > *b.LimitUSD+1e-9 {
 			return fmt.Sprintf("the %s has $%.4f left after $%.4f spent and $%.4f held by %d turn(s) in flight; this turn is estimated at $%.4f",
-				what, math.Max(0, *b.LimitUSD-spent-held.USD), spent, held.USD, held.Turns, h.EstUSD)
+				what, math.Max(0, *b.LimitUSD-spent-held.USD), spent, held.USD, held.InFlight, h.EstUSD)
 		}
 	}
 	if b.LimitTokens != nil {
 		used := st.Spend.Tokens()
 		if used+held.Tokens+h.EstTokens > *b.LimitTokens {
 			return fmt.Sprintf("the %s has %d tokens left after %d used and %d held by %d turn(s) in flight; this turn is estimated at %d",
-				what, max(0, *b.LimitTokens-used-held.Tokens), used, held.Tokens, held.Turns, h.EstTokens)
+				what, max(0, *b.LimitTokens-used-held.Tokens), used, held.Tokens, held.InFlight, h.EstTokens)
 		}
 	}
 	if b.LimitTurns != nil {

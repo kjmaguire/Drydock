@@ -1,5 +1,5 @@
-// The task page's properties panel (the graphite mockup "Task", decision P97): Status, Agent, Reviewer, Runs on, Model, Branch,
-// Template and Labels (editable), the links, the step the task is at, the Checks grid, "This run" (elapsed, test runs, cost so
+// The task page's properties panel (the graphite mockup "Task", decision P97): Status, Agent, Reviewer, Runs on, Model, Routing
+// (the task's routing level, P127), Branch, Template and Labels (editable), the links, the step the task is at, the Checks grid, "This run" (elapsed, test runs, cost so
 // far), and the buttons: Open the worktree (O: a terminal in the dock, in the task's worktree) and Hand to another agent (the
 // project's agents; the core picks the reviewer and its refusal is shown). Its class task-meta is what the end-to-end suite
 // compares before and after a reload.
@@ -24,6 +24,7 @@ import { SourceTag, distinctSources } from '../shared/usage.tsx';
 import { clockText } from './activity-steps.ts';
 import { stepsFor, type Step } from './steps.ts';
 import { CancelTask } from './task-controls.tsx';
+import { TaskRoutingLevel } from './task-level.tsx';
 import { addLabel, CHECK_WORDS, checkMark, checkName, runMs, runNumber, statusDot, statusWords, testRuns } from './task-page.ts';
 import { isRunActive, isTerminal } from './tasks.ts';
 
@@ -384,6 +385,10 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
           ) : null}
           <dt>Model</dt>
           <dd>{model ? <span>{task.effort ? `${model} · ${task.effort}` : model}</span> : <span mix={faint}>default</span>}</dd>
+          <dt>Routing</dt>
+          <dd>
+            <TaskRoutingLevel taskId={task.id} />
+          </dd>
           {task.branch ? (
             <>
               <dt>Branch</dt>

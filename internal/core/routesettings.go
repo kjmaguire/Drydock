@@ -220,7 +220,7 @@ func (e *economics) ceilingFor(ctx context.Context, s turnSubject) (time.Duratio
 	if sec := cs.Agents[s.agent.ID]; sec > 0 {
 		return time.Duration(sec) * time.Second, "the agent " + s.agent.Name
 	}
-	l, _ := e.levelFor(ctx, s.projectID) // the level the turn runs at (decide)
+	l, _, _ := e.levelFor(ctx, s.projectID, s.taskID, s.workflow) // the level the turn runs at (decide)
 	level := string(l)
 	if sec := cs.Levels[level]; sec > 0 {
 		return time.Duration(sec) * time.Second, "the " + level + " level"

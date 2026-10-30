@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,10 +96,33 @@ func TestASafePointOfATaskRunIsPutBackAndCanBeUndone(t *testing.T) {
 	if audited != 1 {
 		t.Fatalf("audit rows %d", audited)
 	}
-	// the undo puts the turn's work back
-	a.call("run.restore", map[string]string{"taskId": tk.ID, "runId": run, "ref": res.UndoRef}, &res)
+	// later, with the dialog long closed (P127): the run page lists the undo point the restore kept, with the safe point it put
+	// back, and it is restored like a safe point: its files listed first, refused while an agent turn runs, person-only
+	x = c.explain(tk.ID, run)
+	if len(x.UndoPoints) != 1 || x.UndoPoints[0].Ref != res.UndoRef || x.UndoPoints[0].Restored != workRef || x.UndoPoints[0].At == 0 {
+		t.Fatalf("undo points %+v", x.UndoPoints)
+	}
+	undo := x.UndoPoints[0].Ref
+	a.call("run.restorePreview", map[string]string{"taskId": tk.ID, "runId": run, "ref": undo}, &pv)
+	if !pv.Allowed || len(pv.Changes) != 1 || pv.Changes[0].Path != "calc.go" {
+		t.Fatalf("the undo's preview %+v", pv)
+	}
+	if _, err := a.c.DB.Writer().Exec(`INSERT INTO agent_runs(id,agent_id,task_id,status,started_at) VALUES('ar_busy2',?,?,'WORKING',1)`, c.worker.ID, tk.ID); err != nil {
+		t.Fatal(err)
+	}
+	mustErr(t, a.callErr("run.restore", map[string]string{"taskId": tk.ID, "runId": run, "ref": undo}), "agent turn is running")
+	a.c.DB.Writer().Exec(`DELETE FROM agent_runs WHERE id='ar_busy2'`)
+	if _, err := a.c.RestoreSafePoint(context.Background(), tk.ID, run, undo, "agent:"+c.worker.ID); err == nil || !strings.Contains(err.Error(), "only a person") {
+		t.Fatalf("an agent restored an undo point: %v", err)
+	}
+	// the undo puts the turn's work back, and keeps an undo point of its own
+	a.call("run.restore", map[string]string{"taskId": tk.ID, "runId": run, "ref": undo}, &res)
 	if readFile(t, wt, "calc.go") != impl {
 		t.Fatal("the undo did not bring the work back")
+	}
+	x = c.explain(tk.ID, run)
+	if len(x.UndoPoints) != 2 || x.UndoPoints[0].Ref != res.UndoRef || x.UndoPoints[0].Restored != undo {
+		t.Fatalf("undo points after the undo %+v", x.UndoPoints)
 	}
 }
 

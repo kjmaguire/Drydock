@@ -488,6 +488,8 @@ export interface SafePointChoice {
   ref: string;
   label: string;
   step: number;
+  /** an undo point an earlier restore kept, not a safe point of the run (P127) */
+  undo?: boolean;
 }
 
 /** The run's safe points, oldest first, each named by the turn it was taken before. */
@@ -500,6 +502,19 @@ export function safePoints(x: RunExplanation): SafePointChoice[] {
     out.push({ ref: e.safePoint, step: e.step, label: `Before ${e.nodeId} at step ${e.step}${e.attempt > 1 ? `, attempt ${e.attempt}` : ''}` });
   }
   return out;
+}
+
+/**
+ * The undo points earlier restores of the task's worktree kept, newest first (P127), as choices beside the safe points: each
+ * says when its restore was made and what that restore put back. Restoring one undoes that restore. `when` formats the time.
+ */
+export function undoPoints(x: RunExplanation, when: (ms: number) => string): SafePointChoice[] {
+  const named = new Map(safePoints(x).map((p) => [p.ref, p.label]));
+  const undos = x.undoPoints ?? [];
+  return undos.map((u) => {
+    const to = u.restored ? (named.get(u.restored) ?? (undos.some((o) => o.ref === u.restored) ? 'an earlier undo point' : 'a safe point of another run')) : '';
+    return { ref: u.ref, step: 0, undo: true, label: `As the files were before the restore of ${when(u.at)}${to ? ` (to ${to.charAt(0).toLowerCase()}${to.slice(1)})` : ''}` };
+  });
 }
 
 /** One file of a restore, in words. */

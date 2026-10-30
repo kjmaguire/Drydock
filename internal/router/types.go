@@ -102,8 +102,11 @@ const (
 	LevelCustom         Level = "custom"
 )
 
-// Where a turn's level came from (decision P118): the project's own level, or the workspace's when the project sets none.
+// Where a turn's level came from (decisions P118 and P127), most specific first: the task's own level (a person set it on the
+// task), the level the task's workflow template declares, the project's own level, or the workspace's.
 const (
+	LevelFromTask      = "task"
+	LevelFromTemplate  = "template"
 	LevelFromProject   = "project"
 	LevelFromWorkspace = "workspace"
 )
@@ -238,11 +241,13 @@ type RouteRequest struct {
 	DiffLines  int
 	Failures   FailureCounts
 	Level      Level
-	// LevelSource says where Level came from (LevelFromProject, LevelFromWorkspace); "" when the caller did not say.
-	LevelSource string
-	Explicit    *Pin
-	Policies    []Rule
-	Budget      BudgetState
+	// LevelSource says where Level came from (LevelFromTask, LevelFromTemplate, LevelFromProject, LevelFromWorkspace); "" when
+	// the caller did not say. LevelTemplate names the template for LevelFromTemplate ("Security").
+	LevelSource   string
+	LevelTemplate string
+	Explicit      *Pin
+	Policies      []Rule
+	Budget        BudgetState
 	// ContextCeiling is the highest sensitivity in the context package: private (the default when unsure) or public_docs.
 	ContextCeiling ContextClass
 	Session        *SessionState
@@ -298,7 +303,8 @@ type Alternative struct {
 type DecisionFacts struct {
 	TaskID            string
 	Level             Level
-	LevelSource       string `json:",omitempty"` // where the level came from: the project's own or the workspace's (P118)
+	LevelSource       string `json:",omitempty"` // where the level came from: the task's, its template's, the project's or the workspace's (P118, P127)
+	LevelTemplate     string `json:",omitempty"` // the template, when the level is its (P127)
 	RunKind           RunKind
 	TaskType          string
 	DiffLines         int

@@ -66,6 +66,19 @@ func TestASafePointRestoreListsItsChangesAndCanBeUndone(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(w.Path, "junk", "new.txt")); string(b) != "junk\n" {
 		t.Fatalf("undo: %q", b)
 	}
+	// both restores kept their undo point, listed newest first with the safe point each put back (P127); another task's are
+	// not listed
+	pts, err := r.UndoPoints(ctx, w.TaskID)
+	if err != nil || len(pts) != 2 {
+		t.Fatalf("undo points %+v %v", pts, err)
+	}
+	if pts[0].Ref != UndoRef(w.TaskID, 1700000000001) || pts[0].At != 1700000000001 || pts[0].Restored != undoRef ||
+		pts[1].Ref != undoRef || pts[1].Restored != ref {
+		t.Fatalf("undo points %+v", pts)
+	}
+	if other, err := r.UndoPoints(ctx, "task_1"); err != nil || len(other) != 0 {
+		t.Fatalf("another task's %+v %v", other, err)
+	}
 
 	if _, err := r.SafePointChanges(ctx, w, "refs/drydock/safe/task_9/run_x/999"); err == nil {
 		t.Fatal("a safe point that was never recorded")

@@ -167,6 +167,14 @@ func TestARunningTurnsReservationHoldsOnlyWhatItHasNotSpentYet(t *testing.T) {
 	if err != nil || held.Turns != 0 || held.Tokens != 500 || held.USD < 0.0599 || held.USD > 0.0601 {
 		t.Fatalf("held %+v %v", held, err)
 	}
+	// a refusal still names the started turn as in flight beside what it holds (windows-latest verify, dfdceac: "2000 held by 0
+	// turn(s) in flight" once the first turn had started)
+	if held.InFlight != 1 {
+		t.Fatalf("in flight %+v", held)
+	}
+	if _, err := e.st.Reserve(e.ctx, budget.Hold{Project: "prj1", Task: "t1", Agent: "agtW", EstTokens: 4000}); err == nil || !strings.Contains(err.Error(), "500 held by 1 turn(s) in flight") {
+		t.Fatalf("refusal: %v", err)
+	}
 	// one turn running and one more fits the two-turn limit: 1 (its agent_runs row) + 0 held + 1
 	if _, err := e.st.Reserve(e.ctx, budget.Hold{Project: "prj1", Task: "t1", Agent: "agtW", EstTokens: 1000}); err != nil {
 		t.Fatalf("the running turn must not be counted twice: %v", err)

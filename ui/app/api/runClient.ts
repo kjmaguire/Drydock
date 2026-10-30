@@ -211,6 +211,17 @@ export interface RunExplanation {
   actions?: RunActions;
   /** The nested runs of the run's subworkflow nodes (absent from an older core). */
   subruns?: SubrunView[];
+  /** What earlier restores of the task's worktree kept, newest first (P127; absent from an older core). */
+  undoPoints?: UndoPointView[];
+}
+
+/** The state a restore kept before it put files back: restoring it undoes that restore (P127). */
+export interface UndoPointView {
+  ref: string;
+  /** when the restore was made, Unix ms */
+  at: number;
+  /** the safe point (or earlier undo point) that restore put back */
+  restored?: string;
 }
 
 export interface RoomExportView {

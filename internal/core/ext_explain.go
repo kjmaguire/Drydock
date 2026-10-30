@@ -10,8 +10,10 @@ import (
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/runfiles"
+	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -59,6 +61,9 @@ type RunExplanation struct {
 	Actions *RunActions `json:"actions,omitempty"`
 	// Subruns are the nested runs of the run's subworkflow nodes, one per execution, with their own executions (docs/ui.md 6.2).
 	Subruns []SubrunView `json:"subruns"`
+	// UndoPoints are the states of the task's worktree that earlier restores kept, newest first (P127): the run page lists
+	// them beside the run's safe points, and restoring one undoes its restore.
+	UndoPoints []git.UndoPoint `json:"undoPoints"`
 }
 
 // SubrunView is the run a subworkflow node started at one of its executions (workflow.SubRunID).
@@ -151,7 +156,8 @@ const explainEventData = 16 << 10
 
 // ExplainRun explains a run of a task: runID, or the task's current run.
 func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplanation, error) {
-	out := RunExplanation{Runs: []RunSummary{}, Executions: []ExecView{}, Checkpoints: []CheckpointView{}, MCPCalls: []EventView{}, Events: []EventView{}, Subruns: []SubrunView{}}
+	out := RunExplanation{Runs: []RunSummary{}, Executions: []ExecView{}, Checkpoints: []CheckpointView{}, MCPCalls: []EventView{}, Events: []EventView{}, Subruns: []SubrunView{},
+		UndoPoints: []git.UndoPoint{}}
 	if taskID == "" {
 		return out, errors.New("explain: name a task")
 	}
@@ -193,6 +199,7 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 	out.Run = &info
 	acts := c.runActions(ctx, t, info)
 	out.Actions = &acts
+	out.UndoPoints = c.undoPoints(ctx, t)
 	var kinds map[string]string
 	if g, err := c.Engine.Describe(info.Workflow); err == nil {
 		out.Graph = &g
@@ -485,4 +492,19 @@ func (c *Core) TurnPrompt(ctx context.Context, taskID, runID, nodeID string, ste
 		return "", errors.New("explain: no prompt was kept for this turn")
 	}
 	return string(b), err
+}
+
+// undoPoints lists what earlier restores of task t's worktree kept (none when the task has no repository to ask).
+func (c *Core) undoPoints(ctx context.Context, t tasks.Task) []git.UndoPoint {
+	out := []git.UndoPoint{}
+	r, err := c.repo(ctx, t.ProjectID)
+	if err != nil {
+		return out
+	}
+	pts, err := r.UndoPoints(ctx, t.ID)
+	if err != nil {
+		c.logf("explain: undo points of %s: %v", t.ID, err)
+		return out
+	}
+	return append(out, pts...)
 }

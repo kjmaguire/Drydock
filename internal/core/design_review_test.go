@@ -20,7 +20,8 @@ import (
 func TestTheDesignReviewTemplatesDiscussionIsHeldToItsWorkflowBudget(t *testing.T) {
 	script := devScript()
 	script.Rules = append([]fakeagent.Rule{
-		{Match: "This is round 1 of", Steps: []fakeagent.Step{{Say: "[DECISION] Put Multiply in multiply.go beside calc.go"}}},
+		{Match: "This is round 1 of", Steps: []fakeagent.Step{{Say: "I would put Multiply in its own file, multiply.go."}}},
+		{Match: "This is round 2 of", Steps: []fakeagent.Step{{Say: "[DECISION] Put Multiply in multiply.go beside calc.go"}}},
 		{Match: "Drydock phase: group-discussion", Steps: []fakeagent.Step{{Say: "PASS"}}},
 	}, script.Rules...)
 	a, plog := openDev(t, script)
@@ -67,11 +68,12 @@ func TestTheDesignReviewTemplatesDiscussionIsHeldToItsWorkflowBudget(t *testing.
 		d = a.detail(task.ID)
 		return len(d.Pending) == 1 && d.Pending[0].NodeID == "discuss" && groupTurns(t, plog) == 3
 	})
-	// raising the limit lets the discussion end; the decision is the worker's design
+	// raising the limit lets the discussion end: the architect states the decision in round 2, which ends it there (P127);
+	// the decision is the worker's design
 	a.call("budget.resume", map[string]any{"runId": string(started.RunID), "decision": "approved", "limitTurns": 100}, nil)
 	a.waitPending(task.ID, "approve")
-	if n := groupTurns(t, plog); n != 6 {
-		t.Fatalf("%d discussion turns (two rounds of three)", n)
+	if n := groupTurns(t, plog); n != 4 {
+		t.Fatalf("%d discussion turns (round 1 of three, and the decision)", n)
 	}
 	work := ""
 	for _, pr := range promptLog(t, plog) {
@@ -84,7 +86,7 @@ func TestTheDesignReviewTemplatesDiscussionIsHeldToItsWorkflowBudget(t *testing.
 	}
 	var sessions int
 	a.c.DB.Reader().QueryRow(`SELECT COUNT(*) FROM agent_runs WHERE workflow_run_id=?`, string(started.RunID)).Scan(&sessions)
-	if sessions != 6 {
+	if sessions != 4 {
 		t.Fatalf("%d sessions name the run", sessions)
 	}
 }

@@ -26,6 +26,14 @@ func explain(d RoutingDecision) string {
 		fmt.Fprintf(&b, "- Turn: %s; %s.\n", sig.Label, sig.Why)
 	}
 	switch f.LevelSource {
+	case LevelFromTask:
+		fmt.Fprintf(&b, "- Level: %s, this task's own level (set on its page).\n", LevelWords(f.Level))
+	case LevelFromTemplate:
+		tpl := "its workflow template"
+		if f.LevelTemplate != "" {
+			tpl = "the " + f.LevelTemplate + " template"
+		}
+		fmt.Fprintf(&b, "- Level: %s, the level %s declares (the task sets none of its own).\n", LevelWords(f.Level), tpl)
 	case LevelFromProject:
 		fmt.Fprintf(&b, "- Level: %s, the project's own level (its settings).\n", LevelWords(f.Level))
 	case LevelFromWorkspace:
