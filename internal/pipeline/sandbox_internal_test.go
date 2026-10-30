@@ -34,12 +34,16 @@ func (f *fakeSandbox) Check(_ context.Context, _ tasks.Task, s checks.Spec) (che
 	s.Argv = append([]string{"engine", "exec"}, s.Argv...)
 	return s, nil
 }
-func (f *fakeSandbox) Terminals(t tasks.Task, _ string) agents.TerminalHost { return fakeTerminals{task: t.ID} }
+func (f *fakeSandbox) Terminals(t tasks.Task, _ string) agents.TerminalHost {
+	return fakeTerminals{task: t.ID}
+}
 
 // fakeTerminals is the labelled test double of the container's terminals: it names the task it was made for.
 type fakeTerminals struct{ task string }
 
-func (fakeTerminals) Run(context.Context, agents.TerminalRequest, io.Writer) (int, error) { return 0, nil }
+func (fakeTerminals) Run(context.Context, agents.TerminalRequest, io.Writer) (int, error) {
+	return 0, nil
+}
 
 func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
 	ctx := context.Background()

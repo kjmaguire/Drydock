@@ -32,8 +32,12 @@ type lockedBuf struct {
 	b  strings.Builder
 }
 
-func (l *lockedBuf) Write(p []byte) (int, error) { l.mu.Lock(); defer l.mu.Unlock(); return l.b.Write(p) }
-func (l *lockedBuf) String() string              { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
 
 // An ACP terminal reads a command's output while it runs (ExecRequest.Output), and its quoted arguments arrive whole. Real
 // engine only (skipped without one).
