@@ -941,7 +941,7 @@ describe('Models on this PC: several models, drafts, embeddings and gated models
     expect(row(r, embed.id).querySelector('[data-testid="local-embed-serve"]')).not.toBe(null);
     await r.act(() => tooSmall.click());
     await waitFor(() => expect(many).toEqual([[coder.id, vision.id, small.id]]), r);
-    // Unload starts the server again on the rest: one model left is served alone
+    // Unload asks for the rest (the router unloads the one model; decision P120): one model left is asked for alone
     await r.act(() => (row(r, coder.id).querySelector('[data-testid="local-unload"]') as HTMLButtonElement).click());
     await waitFor(() => expect(one).toEqual([vision.id]), r);
     // four loaded: no fifth
@@ -1002,6 +1002,117 @@ describe('Models on this PC: several models, drafts, embeddings and gated models
     const none = show({ localGet: async () => installed({ models: [coder] }) });
     await waitFor(() => need(none.r, '[data-testid="local-model"]'), none.r);
     expect(q(none.r, '[data-testid="local-embeddings"]')).toBe(null);
+  });
+
+  it('on the router Load too and Unload leave the other models running, and say so; a model loading beside them is marked; a restart the server needed says why', async () => {
+    const many: string[][] = [];
+    let state = two({ server: { ...two().server, loading: [vision.id] } });
+    const { r } = show({ localGet: async () => state, localServerStartMany: async (ids) => (many.push(ids), state), localServerStart: async () => state });
+    await waitFor(() => row(r, vision.id).querySelector('[data-testid="local-loading"]'), r);
+    expect(row(r, coder.id).querySelector('[data-testid="local-loading"]')).toBe(null);
+    const too = row(r, small.id).querySelector('[data-testid="local-load-too"]') as HTMLButtonElement;
+    expect(too.title).toBe('Load it beside the models served: they keep running while it loads');
+    expect((row(r, coder.id).querySelector('[data-testid="local-unload"]') as HTMLButtonElement).title).toBe('Unload it: the other models keep running');
+    expect(q(r, '[data-testid="local-server-note"]')).toBe(null);
+    // the router kept one model: Unload is gone (nothing to unload it beside), Load too still loads beside it
+    cleanup();
+    state = two({ server: { ...two().server, models: [coder.id], loading: [] }, load: { max: 4, budgetBytes: 24 * GiB, loadedBytes: 10 * GiB } });
+    const kept = show({ localGet: async () => state, localServerStartMany: async (ids) => (many.push(ids), state) });
+    const again = await waitFor(() => need(kept.r, `[data-testid="local-model"][data-id="${small.id}"] [data-testid="local-load-too"]`) as HTMLButtonElement, kept.r);
+    expect(again.title).toBe('Load it beside the models served: they keep running while it loads');
+    await kept.r.act(() => again.click());
+    await waitFor(() => expect(many).toEqual([[coder.id, small.id]]), kept.r);
+    // a server of one model (no router): Load too says the server starts again
+    cleanup();
+    const single = show({ localGet: async () => two({ server: { state: 'running', modelId: coder.id, models: [coder.id], port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' } }) });
+    const tooOne = await waitFor(() => need(single.r, `[data-testid="local-model"][data-id="${small.id}"] [data-testid="local-load-too"]`) as HTMLButtonElement, single.r);
+    expect(tooOne.title).toContain('the server starts again with both');
+    // the core could not change the set on the running server and started it again: the note says why
+    cleanup();
+    const note = 'Started again on the new set of models: the server answered POST /models/load for acme/small-GGUF:Q8_0 with 404 (File Not Found).';
+    const restarted = show({ localGet: async () => two({ server: { ...two().server, note } }) });
+    await waitFor(() => expect(need(restarted.r, '[data-testid="local-server-note"]').textContent).toBe(note), restarted.r);
+  });
+
+  it('draft heads that are not models: a model with MTP heads offers them as its draft; an EAGLE-3 draft is offered to its model, marked, and never served', async () => {
+    const glm = model({ id: 'z/glm-GGUF:Q4_K_M', repo: 'z/glm-GGUF', variant: 'Q4_K_M', sizeBytes: 9 * GiB, mtp: true, drafts: ['mtp'] });
+    const qwen = model({ id: 'q/qwen-GGUF:Q4_K_M', repo: 'q/qwen-GGUF', variant: 'Q4_K_M', sizeBytes: 5 * GiB, drafts: ['q/qwen-eagle3-GGUF:BF16'], draft: 'q/qwen-eagle3-GGUF:BF16' });
+    const eagle = model({ id: 'q/qwen-eagle3-GGUF:BF16', repo: 'q/qwen-eagle3-GGUF', variant: 'BF16', sizeBytes: 400 * MiB, eagle3: true });
+    const models = [glm, qwen, eagle];
+    const sets: [string, { embedding?: boolean; draft?: string }][] = [];
+    const { r } = show({
+      localGet: async () => installed({ models, server: { state: 'running', modelId: qwen.id, models: [qwen.id], port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' } }),
+      localModelSet: async (id, e) => (sets.push([id, e]), installed({ models })),
+    });
+    await waitFor(() => row(r, glm.id), r);
+    expect(row(r, glm.id).querySelector('[data-testid="local-mtp"]')!.textContent).toBe('MTP');
+    const choice = row(r, glm.id).querySelector('[data-testid="local-draft"]') as HTMLElement;
+    expect(optionsOf(choice).map((o) => o.label)).toEqual(['No draft', 'Its own MTP heads']);
+    await r.act(() => choose(choice, 'mtp'));
+    await waitFor(() => expect(sets).toEqual([[glm.id, { draft: 'mtp' }]]), r);
+    // the drafted model says with what
+    expect(row(r, qwen.id).querySelector('[data-testid="local-drafted"]')!.textContent).toBe('with EAGLE-3');
+    expect(optionsOf(row(r, qwen.id).querySelector('[data-testid="local-draft"]') as HTMLElement).map((o) => o.label)).toEqual(['No draft', 'EAGLE-3: qwen-eagle3 · BF16']);
+    // the EAGLE-3 draft: marked, no Serve, no Load too, no embedding mark, no draft of its own
+    const e = row(r, eagle.id);
+    expect(e.querySelector('[data-testid="local-eagle3"]')!.textContent).toBe('EAGLE-3 draft');
+    expect(e.querySelector('[data-testid="local-serve"]')).toBe(null);
+    expect(e.querySelector('[data-testid="local-load-too"]')).toBe(null);
+    expect(e.querySelector('[data-testid="local-draft"]')).toBe(null);
+    expect(e.querySelector('input[type="checkbox"]')).toBe(null);
+    expect(e.textContent).toContain('drafts for its model');
+  });
+
+  it('DFlash, DSpark and MTP head drafts (decision P129): offered to their model by kind, marked, and never served or loaded', async () => {
+    const qwen = model({ id: 'q/qwen-GGUF:Q4_K_M', repo: 'q/qwen-GGUF', variant: 'Q4_K_M', sizeBytes: 5 * GiB, drafts: ['q/qwen-DFlash-GGUF:BF16', 'q/qwen-DSpark-GGUF:BF16'], draft: 'q/qwen-DSpark-GGUF:BF16' });
+    const dflash = model({ id: 'q/qwen-DFlash-GGUF:BF16', repo: 'q/qwen-DFlash-GGUF', variant: 'BF16', sizeBytes: 900 * MiB, draftKind: 'dflash' });
+    const dspark = model({ id: 'q/qwen-DSpark-GGUF:BF16', repo: 'q/qwen-DSpark-GGUF', variant: 'BF16', sizeBytes: 900 * MiB, draftKind: 'dspark' });
+    const q35 = model({ id: 'q/qwen35-GGUF:Q4_K_M', repo: 'q/qwen35-GGUF', variant: 'Q4_K_M', sizeBytes: 17 * GiB, drafts: ['q/qwen35-MTP-GGUF:Q8_0'], draft: 'q/qwen35-MTP-GGUF:Q8_0' });
+    const head = model({ id: 'q/qwen35-MTP-GGUF:Q8_0', repo: 'q/qwen35-MTP-GGUF', variant: 'Q8_0', sizeBytes: 2 * GiB, draftKind: 'mtp-head' });
+    const models = [qwen, dflash, dspark, q35, head];
+    const { r } = show({
+      localGet: async () => installed({ models, server: { state: 'running', modelId: qwen.id, models: [qwen.id], port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' } }),
+    });
+    await waitFor(() => row(r, qwen.id), r);
+    expect(optionsOf(row(r, qwen.id).querySelector('[data-testid="local-draft"]') as HTMLElement).map((o) => o.label)).toEqual([
+      'No draft',
+      'DFlash: qwen-DFlash · BF16',
+      'DSpark: qwen-DSpark · BF16',
+    ]);
+    expect(row(r, qwen.id).querySelector('[data-testid="local-drafted"]')!.textContent).toBe('with DSpark');
+    expect(row(r, q35.id).querySelector('[data-testid="local-drafted"]')!.textContent).toBe('with an MTP head');
+    for (const [d, badge] of [[dflash, 'DFlash draft'], [dspark, 'DSpark draft'], [head, 'MTP head']] as const) {
+      const e = row(r, d.id);
+      expect(e.querySelector('[data-testid="local-draft-only"]')!.textContent).toBe(badge);
+      expect(e.querySelector('[data-testid="local-serve"]')).toBe(null);
+      expect(e.querySelector('[data-testid="local-load-too"]')).toBe(null);
+      expect(e.querySelector('[data-testid="local-draft"]')).toBe(null);
+      expect(e.querySelector('input[type="checkbox"]')).toBe(null);
+      expect(e.textContent).toContain('drafts for its model');
+    }
+  });
+
+  it('the embedding model ranks pack searches by meaning when the person turns it on: the box sends just that setting', async () => {
+    const edits: LocalSettingsEdit[] = [];
+    let state = installed({ models: all, embed: { state: 'running', modelId: embed.id, port: 9934, baseUrl: 'http://127.0.0.1:9934/v1', embeddings: true } });
+    const { r } = show({
+      localGet: async () => state,
+      localSettingsSet: async (e) => {
+        edits.push(e);
+        state = { ...state, settings: { ...state.settings, ...e } };
+        return state;
+      },
+    });
+    const box = (await waitFor(() => need(r, '[data-testid="local-rank-packs"] input[type="checkbox"]'), r)) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(need(r, '[data-testid="local-rank-packs"]').textContent).toContain('The text stays on this PC.');
+    await r.act(() => box.click());
+    await waitFor(() => expect(edits).toEqual([{ rankPacks: true }]), r);
+    await waitFor(() => expect((need(r, '[data-testid="local-rank-packs"] input[type="checkbox"]') as HTMLInputElement).checked).toBe(true), r);
+    // no embedding model served: it says it waits for one
+    cleanup();
+    const off = show({ localGet: async () => installed({ models: all, settings: { ...installed().settings, rankPacks: true } }) });
+    await waitFor(() => expect(need(off.r, '[data-testid="local-rank-packs"]').textContent).toContain('While an embedding model is served'), off.r);
   });
 
   it('the Hugging Face token: typed into a password field and sent once, never shown again but masked; Remove takes it away', async () => {

@@ -350,6 +350,8 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await expect(page.getByTestId('pending-request').first()).toHaveAttribute('data-kind', 'approval');
   await projectNav(page, 'nav-needs-you');
   const budgetItem = page.getByTestId('needs-item').filter({ hasText: 'gocalc-budget' }).filter({ hasText: 'Budget limit' });
+  // a budget item of its own (P118), not a plain approval
+  await expect(budgetItem).toHaveAttribute('data-kind', 'budget');
   await budgetItem.getByRole('button').click();
   // the Inbox does not answer a budget pause: it says where, and opens the task
   const pane = page.getByRole('complementary', { name: 'Selected item' });

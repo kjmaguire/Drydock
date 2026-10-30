@@ -51,6 +51,13 @@ type MCPGalleryCard struct {
 	AuthOptional bool   `json:"authOptional"`
 	SecretEnv    string `json:"secretEnv,omitempty"`
 	TokenHelp    string `json:"tokenHelp,omitempty"`
+	// OAuthApp is set when the server can also sign in with OAuth through an app the person registers with the provider
+	// (decision P122: no dynamic client registration); Connect then takes the app's client id and secret.
+	OAuthApp *MCPOAuthApp `json:"oauthApp,omitempty"`
+	// OAuth is true when the connected library server signs in with OAuth (an oauth entry, or an oauth_app one connected through
+	// the person's app); OAuthClient when that sign-in uses a client the person registered.
+	OAuth       bool `json:"oauth,omitempty"`
+	OAuthClient bool `json:"oauthClient,omitempty"`
 	// Template is a program the human installs; Drydock never ships it (D14).
 	Template     bool   `json:"template"`
 	License      string `json:"license"`
@@ -80,6 +87,16 @@ type MCPGalleryCard struct {
 type MCPConnectReq struct {
 	CatalogID string `json:"catalogId"`
 	Token     string `json:"token"`
+	// ClientID and ClientSecret are an OAuth app the person registered with the provider (decision P122): the server is then
+	// connected to sign in with OAuth through that app. They go to the credential store and are never returned.
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+}
+
+// MCPOAuthApp says where the person registers the OAuth app a catalog server's sign-in needs.
+type MCPOAuthApp struct {
+	RegisterURL string `json:"registerUrl"`
+	Help        string `json:"help,omitempty"`
 }
 
 // MCPConnectResult is the card after Connect; OAuth is set when the human has to sign in in the browser.
@@ -151,6 +168,9 @@ func (c *Core) galleryCard(ctx context.Context, s mcp.ServerSpec) (MCPGalleryCar
 	if s.Command != nil {
 		card.Command = append([]string(nil), s.Command.Argv...)
 	}
+	if a := s.Auth.OAuthApp; a != nil && s.Transport == mcp.TransportHTTP {
+		card.OAuthApp = &MCPOAuthApp{RegisterURL: a.RegisterURL, Help: a.Help}
+	}
 	for _, t := range s.Tools {
 		card.Tools = append(card.Tools, mcp.ToolInfo{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema, ReadOnlyHint: matchesAnyGlob(s.ReadOnlyTools, t.Name)})
 	}
@@ -171,6 +191,7 @@ func (c *Core) galleryCard(ctx context.Context, s mcp.ServerSpec) (MCPGalleryCar
 		return card, nil // removed meanwhile
 	}
 	card.LibraryID, card.Account, card.ServerInfo, card.Projects = r.ID, r.Account, r.ServerInfo, r.Projects
+	card.OAuth, card.OAuthClient = r.OAuth, r.OAuthClient
 	card.ReadOnlyTools = r.ReadOnlyTools
 	if r.DiscoveredAt > 0 {
 		card.Tools, card.ToolsListed = r.Tools, true
@@ -178,9 +199,11 @@ func (c *Core) galleryCard(ctx context.Context, s mcp.ServerSpec) (MCPGalleryCar
 		card.Tools = r.Tools
 	}
 	switch {
+	case r.OAuth && r.OAuthAt == 0 && card.OAuthApp != nil && !r.OAuthClient:
+		card.Status, card.Detail = GalleryNeedsSignIn, "Register an OAuth app with "+orName(s.Publisher, s.Display)+" and enter its client id to sign in."
 	case r.OAuth && r.OAuthAt == 0:
 		card.Status, card.Detail = GalleryNeedsSignIn, "Sign in with your "+orName(s.Publisher, s.Display)+" account to finish connecting."
-	case auth == "bearer" && !s.Auth.Optional && !r.HasToken:
+	case auth == "bearer" && !s.Auth.Optional && !r.HasToken && !r.OAuth: // an entry signed in through the person's OAuth app needs no token
 		card.Status, card.Detail = GalleryNeedsToken, "Paste a token to finish connecting."
 	case auth == "env" && !contains(r.SecretEnv, secretEnv):
 		card.Status, card.Detail = GalleryNeedsToken, "Give "+secretEnv+" to finish connecting."
@@ -256,7 +279,46 @@ func (c *Core) mcpConnect(ctx context.Context, req MCPConnectReq) (MCPConnectRes
 	token := strings.TrimSpace(req.Token)
 	guard := true
 	var libID string
+	if strings.TrimSpace(req.ClientID) != "" || strings.TrimSpace(req.ClientSecret) != "" {
+		// sign in through an OAuth app the person registered (decision P122)
+		if s.Transport != mcp.TransportHTTP || (s.Auth.OAuthApp == nil && auth != "oauth") {
+			return MCPConnectResult{}, fmt.Errorf("%s does not sign in with an OAuth app", s.Display)
+		}
+		if token != "" {
+			return MCPConnectResult{}, fmt.Errorf("give either a token or an OAuth app for %s, not both", s.Display)
+		}
+		id, err := c.libraryForCatalog(ctx, s)
+		if err != nil {
+			return MCPConnectResult{}, err
+		}
+		if id == "" {
+			added, err := c.addMCPFromCatalog(ctx, s.ID)
+			if err != nil {
+				return MCPConnectResult{}, err
+			}
+			id = added.Server.ID
+		}
+		r, err := svc.load(ctx, id)
+		if err != nil {
+			return MCPConnectResult{}, err
+		}
+		if !r.OAuth {
+			if r.HasToken {
+				return MCPConnectResult{}, fmt.Errorf("%s is connected with a token; remove the token on the Library page first", r.Display)
+			}
+			on, g := true, r.Guard
+			if _, err := svc.save(ctx, MCPServerInput{ID: r.ID, Display: r.Display, Transport: r.Transport, URL: r.URL, Guard: &g, ReadOnlyTools: r.ReadOnlyTools, OAuth: &on}); err != nil {
+				return MCPConnectResult{}, err
+			}
+		}
+		if _, err := svc.setOAuthClient(ctx, OAuthClientReq{ID: id, ClientID: req.ClientID, ClientSecret: req.ClientSecret}); err != nil {
+			return MCPConnectResult{}, err
+		}
+		libID = id
+		auth = "client"
+	}
 	switch auth {
+	case "client":
 	case "":
 		return MCPConnectResult{}, fmt.Errorf("%s cannot be connected from the gallery: connect it by hand", s.Display)
 	case "env":

@@ -19,6 +19,7 @@ import {
   doingLine,
   editedCriteria,
   elapsed,
+  EVIDENCE_LABEL,
   evidenceResult,
   failingLine,
   finishedWhen,
@@ -298,6 +299,9 @@ describe('task create and detail helpers', () => {
     expect(evidenceResult({ kind: 'e2e', passed: null })).toBe('skipped');
     expect(evidenceResult({ kind: 'preview', passed: undefined })).toBe('skipped');
     expect(evidenceResult({ kind: 'spec', passed: null })).toBe('info');
+    // Drydock's findings about how the criteria are written carry no verdict (P128)
+    expect(evidenceResult({ kind: 'review_finding', passed: null })).toBe('info');
+    expect(EVIDENCE_LABEL['review_finding']).toBe('Review finding');
   });
 });
 

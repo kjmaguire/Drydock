@@ -37,6 +37,24 @@ func mcpEvents(t *testing.T, h *harness) []map[string]any {
 	return out
 }
 
+// The gateway's peer check is told the pid of the agent's process as soon as it is started (decision P122): the one the session
+// reports, before the first turn.
+func TestMCPHookIsToldTheAgentProcess(t *testing.T) {
+	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "ok"}}}})
+	var bound []int
+	h.rt.MCP = func(ctx context.Context, cfg *rt.Config, runID string) (rt.MCPAttachment, error) {
+		return rt.MCPAttachment{Attached: true, Release: func() {}, BindProcess: func(pid int) { bound = append(bound, pid) }}, nil
+	}
+	m, err := h.rt.Spawn(context.Background(), h.config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Stop(context.Background())
+	if len(bound) != 1 || bound[0] != m.Sess.PID() || bound[0] <= 0 {
+		t.Fatalf("bound %v, the session's process is %d", bound, m.Sess.PID())
+	}
+}
+
 func TestMCPHookAttachesAndReleasesOnStop(t *testing.T) {
 	h := newHarness(t, fakeagent.Script{Turns: [][]fakeagent.Step{{{Say: "ok"}}}})
 	var released atomic.Int32

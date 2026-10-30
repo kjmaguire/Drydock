@@ -2,7 +2,7 @@
 // (node boxes from the layered layout in lib/graphLayout.ts, smooth edge paths, pan/zoom transforms, keyboard moves).
 // Framework-free so the Node test runner covers them.
 
-import type { CheckpointView, ExecView, GraphEdge, GraphNode, GraphView, RunExplanation } from '../../api/runClient.ts';
+import type { CheckpointView, ExecView, FileChange, GraphEdge, GraphNode, GraphView, RestorePreview, RunExplanation, SubrunView } from '../../api/runClient.ts';
 import { layout, nodeStates, type NodeState } from '../../lib/graphLayout.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -49,7 +49,7 @@ export function runTone(status: string): Tone {
   return 'info';
 }
 
-export const KIND_LABEL: Record<string, string> = { agent_task: 'agent', check: 'check', request: 'human', route: 'route', subworkflow: 'subworkflow' };
+export const KIND_LABEL: Record<string, string> = { agent_task: 'agent', check: 'check', request: 'human', route: 'route', subworkflow: 'subworkflow', group: 'group discussion' };
 export const STATUS_TEXT: Record<NodeState['status'], string> = {
   pending: 'not run',
   started: 'running',
@@ -126,10 +126,21 @@ export interface Bounds {
   maxY: number;
 }
 
+/** The frame drawn around an expanded subworkflow: its node and the nodes of its nested graph. */
+export interface ClusterBox {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface GraphGeom {
   nodes: NodeBox[];
   edges: EdgeGeom[];
   bounds: Bounds;
+  clusters: ClusterBox[];
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -140,7 +151,7 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
  * edges that point back as arcs under the nodes (longer spans dip deeper so nested loops do not cross), self-loops as a
  * small arc above the node. Deterministic: the same graph always gets the same picture.
  */
-export function graphGeometry(g: GraphView): GraphGeom {
+export function graphGeometry(g: GraphView, clusters: readonly Cluster[] = []): GraphGeom {
   const placed = layout(g);
   const perCol = new Map<number, number>();
   for (const p of placed) perCol.set(p.column, (perCol.get(p.column) ?? 0) + 1);
@@ -188,9 +199,29 @@ export function graphGeometry(g: GraphView): GraphGeom {
     maxY = Math.max(maxY, low);
     edges.push({ id, edge: e, d: `M ${r1(x1)} ${r1(y1)} C ${r1(x1)} ${r1(low)}, ${r1(x2)} ${r1(low)}, ${r1(x2)} ${r1(y2)}`, lx: r1((x1 + x2) / 2), ly: r1((y1 + y2) / 8 + 0.75 * low), label, back: true });
   });
-  const maxX = Math.max(NODE_W, ...nodes.map((n) => n.x + n.w));
-  return { nodes, edges, bounds: { minX: 0, minY, maxX, maxY } };
+  let maxX = Math.max(NODE_W, ...nodes.map((n) => n.x + n.w));
+  let minX = 0;
+  // a frame around each expanded subworkflow, a nested one inside its parent's (the deeper, the closer to its nodes)
+  const deepest = Math.max(0, ...clusters.map((c) => depthOf(c.id)));
+  const boxes: ClusterBox[] = [];
+  for (const c of clusters) {
+    const inside = c.members.map((m) => byId.get(m)).filter((b): b is NodeBox => !!b);
+    if (!inside.length) continue;
+    const pad = 10 + 8 * (deepest - depthOf(c.id));
+    const x0 = Math.min(...inside.map((b) => b.x)) - pad;
+    const y0 = Math.min(...inside.map((b) => b.y)) - pad - 16;
+    const x1 = Math.max(...inside.map((b) => b.x + b.w)) + pad;
+    const y1 = Math.max(...inside.map((b) => b.y + b.h)) + pad;
+    boxes.push({ id: c.id, label: c.label, x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    minX = Math.min(minX, x0);
+    minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1);
+    maxY = Math.max(maxY, y1);
+  }
+  return { nodes, edges, bounds: { minX, minY, maxX, maxY }, clusters: boxes };
 }
+
+const depthOf = (id: string): number => id.split(SUB_SEP).length - 1;
 
 // ---------- pan and zoom ----------
 
@@ -273,4 +304,247 @@ export function neighbor(nodes: readonly NodeBox[], fromId: string, key: Arrow):
 /** The edges into and out of a node, for the side panel. */
 export function connections(g: GraphView, id: string): { incoming: GraphEdge[]; outgoing: GraphEdge[] } {
   return { incoming: g.edges.filter((e) => e.to === id && e.from !== id), outgoing: g.edges.filter((e) => e.from === id) };
+}
+
+// ---------- subworkflows: the nested view (docs/ui.md 6.2) ----------
+
+/** Joins a subworkflow node's id and the id of a node of its nested graph ("build/draft"). */
+export const SUB_SEP = '/';
+
+/** The last part of a node id of the expanded view: the node's own name in its graph. */
+export const localName = (id: string): string => id.slice(id.lastIndexOf(SUB_SEP) + 1);
+
+/** An expanded subworkflow: its node (the frame's header) and every node of its nested graph, nested ones included. */
+export interface Cluster {
+  id: string;
+  label: string;
+  members: string[];
+}
+
+/** The nodes of a graph a run leaves from: none of their edges goes on (loop edges back aside). */
+function exitsOf(g: GraphView): string[] {
+  const out = g.nodes.filter((n) => !g.edges.some((e) => e.from === n.id && e.kind !== 'loop' && e.to !== n.id)).map((n) => n.id);
+  return out.length ? out : g.nodes.slice(-1).map((n) => n.id);
+}
+
+/**
+ * The graph with every subworkflow node named in `open` expanded in place: the node stays (it heads the frame), its nested
+ * graph's nodes follow it as `<node>/<nested>` (and deeper, `<node>/<nested>/<inner>`), an edge leads from the node to each
+ * nested entry, and the node's own out-edges leave from the nested graph's last nodes. Pure: the same graph and set give the
+ * same picture, so the layout does not jump.
+ */
+export function expandSubworkflows(g: GraphView, open: ReadonlySet<string>): { graph: GraphView; clusters: Cluster[] } {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  const clusters: Cluster[] = [];
+  const flat = (gv: GraphView, prefix: string): Map<string, { into: string[]; from: string[] }> => {
+    const ports = new Map<string, { into: string[]; from: string[] }>();
+    for (const n of gv.nodes) {
+      const id = prefix + n.id;
+      nodes.push({ ...n, id });
+      if (n.kind === 'subworkflow' && n.sub && open.has(id)) {
+        const first = nodes.length;
+        const inner = flat(n.sub, id + SUB_SEP);
+        const members = nodes.slice(first).map((m) => m.id);
+        for (const e of n.sub.entry) for (const to of inner.get(e)?.into ?? []) edges.push({ from: id, to, kind: 'direct', nested: true });
+        const exits = exitsOf(n.sub).flatMap((x) => inner.get(x)?.from ?? []);
+        clusters.push({ id, label: n.id, members: [id, ...members] });
+        ports.set(n.id, { into: [id], from: exits.length ? exits : [id] });
+      } else {
+        ports.set(n.id, { into: [id], from: [id] });
+      }
+    }
+    for (const e of gv.edges) {
+      const a = ports.get(e.from);
+      const b = ports.get(e.to);
+      if (!a || !b) continue;
+      for (const from of a.from) for (const to of b.into) edges.push({ ...e, from, to });
+    }
+    return ports;
+  };
+  if (open.size === 0) return { graph: g, clusters };
+  flat(g, '');
+  return { graph: { ...g, nodes, edges }, clusters };
+}
+
+/**
+ * The executions of the nested runs of the expanded subworkflows, as executions of the expanded view: each nested node's id
+ * is `<node>/<nested>`, and its step is the step at which the parent's node ran, so "as of a checkpoint" shows a nested run
+ * only from the step its subworkflow node ran at.
+ */
+export function subExecutions(x: RunExplanation, open: ReadonlySet<string>): ExecView[] {
+  const out: ExecView[] = [];
+  const walk = (subs: readonly SubrunView[], prefix: string, step: number | undefined) => {
+    for (const s of subs) {
+      const id = prefix + s.nodeId;
+      if (!open.has(id)) continue;
+      const at = step ?? s.step;
+      for (const e of s.executions) out.push({ ...e, nodeId: id + SUB_SEP + e.nodeId, step: at });
+      walk(s.subruns ?? [], id + SUB_SEP, at);
+    }
+  };
+  walk(x.subruns ?? [], '', undefined);
+  return out;
+}
+
+/** The nested run of a subworkflow node of the expanded view (its latest), if it has run. */
+export function subrunOf(x: RunExplanation, id: string): SubrunView | undefined {
+  const parts = id.split(SUB_SEP);
+  let subs: readonly SubrunView[] = x.subruns ?? [];
+  let found: SubrunView | undefined;
+  for (const part of parts) {
+    found = subs.filter((s) => s.nodeId === part).at(-1);
+    if (!found) return undefined;
+    subs = found.subruns ?? [];
+  }
+  return found;
+}
+
+// ---------- resume, time travel and replay (decision P123) ----------
+
+export type RerunKind = 'resume' | 'timeTravel' | 'replay';
+
+/** What a confirmation says before an action: its title, its button, and one line per thing that happens. */
+export interface RerunPlan {
+  kind: RerunKind;
+  title: string;
+  confirm: string;
+  lines: string[];
+  /** The steps that ask first in a replay (they change something outside the run). */
+  asks: { node: string; effect: string }[];
+}
+
+/** The nodes of a graph that change something outside the run (meta.effect), in the graph's order. */
+export function effectNodes(g: GraphView | undefined): { node: string; effect: string }[] {
+  return (g?.nodes ?? []).filter((n) => n.meta?.effect).map((n) => ({ node: n.id, effect: n.meta!.effect! }));
+}
+
+/** The nodes that ran after a step in this run, in the order they first ran, and how many turns that was. */
+export function ranAfter(x: RunExplanation, step: number): { nodes: string[]; turns: number } {
+  const after = x.executions.filter((e) => e.step > step);
+  return { nodes: [...new Set(after.map((e) => e.nodeId))], turns: after.length };
+}
+
+const list = (xs: readonly string[]): string => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
+
+const runWords: Record<string, string> = { WAITING_HUMAN: 'waiting for you', PAUSED: 'paused' };
+
+function supersedeLine(x: RunExplanation): string[] {
+  const a = x.actions;
+  if (!a?.supersedes) return [];
+  const which = a.supersedes === x.run?.id ? 'This run' : "The task's current run";
+  return [`${which} (${runWords[a.supersedesStatus ?? ''] ?? (a.supersedesStatus ?? '').toLowerCase()}) is stopped first; its history stays as it is.`];
+}
+
+const filesLine = "The worktree's files are not put back: the new run works on the files as they are now. The task's evidence, reviews and iterations used stay.";
+
+/** What a time travel that also puts the files back says about them (restore: the preview of the checkpoint's safe point). */
+function restoreLine(step: number, restore: RestorePreview): string {
+  const n = restore.changes.length;
+  if (n === 0) return `The worktree's files are already as they were at step ${step}: none changes. The task's evidence, reviews and iterations used stay.`;
+  return `The worktree's files go back to how they were at step ${step} first (${n} ${n === 1 ? 'file changes' : 'files change'}, listed below); the state before is kept, so this can be undone. The task's evidence, reviews and iterations used stay.`;
+}
+
+/** What the confirmation of an action says will run again, from the run's own record. With restore (time travel only), the
+ * worktree's files go back to the checkpoint's safe point first (P124). */
+export function rerunPlan(x: RunExplanation, kind: RerunKind, cp?: CheckpointView, restore?: RestorePreview): RerunPlan {
+  if (kind === 'resume') {
+    const latest = x.checkpoints.find((c) => c.latest) ?? x.checkpoints.at(-1);
+    const step = latest?.step ?? 0;
+    const lines = [`It goes on in this run from step ${step}, its latest checkpoint, in the same worktree.`];
+    if (x.run?.failedReason) lines.push(`It stopped because: ${x.run.failedReason}`);
+    if (latest?.next?.length) lines.push(`Runs again first: ${list(latest.next)}. What finished before it is not run again.`);
+    lines.push('Answers already given stay as they were: a step you rejected is still rejected and stops the run again.');
+    lines.push('Its budgets and loop counts carry on from where they were.');
+    return { kind, title: 'Resume this run?', confirm: 'Resume the run', lines, asks: [] };
+  }
+  const from = cp ?? x.checkpoints[0];
+  const step = from?.step ?? 0;
+  const after = ranAfter(x, step);
+  const again = after.nodes.length ? `${list(after.nodes)} (${after.turns} ${after.turns === 1 ? 'turn' : 'turns'} in this run)` : '';
+  if (kind === 'timeTravel') {
+    const lines = [`A new run starts from the checkpoint at step ${step} with this run's state as it was then. This run and its history are kept as they are.`];
+    if (from?.next?.length) lines.push(`Runs first: ${list(from.next)}.`);
+    lines.push(again ? `Ran after that point here and runs again as the workflow reaches it: ${again}.` : 'Nothing ran after that point in this run.');
+    lines.push('Requests are asked afresh in the new run.', ...supersedeLine(x), restore ? restoreLine(step, restore) : filesLine);
+    return { kind, title: `Time travel to step ${step}?`, confirm: 'Start the new run', lines, asks: [] };
+  }
+  const asks = effectNodes(x.graph);
+  const lines = [`A new run goes through this run's steps again from step ${step}, with the inputs they had then. This run is kept as it is.`];
+  lines.push(again ? `Runs again: ${again}. Agent turns are paid for again.` : 'Nothing ran after that point in this run.');
+  lines.push(
+    asks.length
+      ? `Asks you first, every time, before a step that changes something outside the run: ${asks.map((a) => `${a.node} (${a.effect})`).join('; ')}.`
+      : 'No step of this workflow changes anything outside the run without asking you.',
+  );
+  lines.push(...supersedeLine(x), filesLine);
+  return { kind, title: `Replay this run from step ${step}?`, confirm: 'Start the replay', lines, asks };
+}
+
+// ---------- safe point restore and run again (decision P124) ----------
+
+/** A safe point of the run a person can put the worktree back to: the state before an agent turn. */
+export interface SafePointChoice {
+  ref: string;
+  label: string;
+  step: number;
+  /** an undo point an earlier restore kept, not a safe point of the run (P127) */
+  undo?: boolean;
+}
+
+/** The run's safe points, oldest first, each named by the turn it was taken before. */
+export function safePoints(x: RunExplanation): SafePointChoice[] {
+  const seen = new Set<string>();
+  const out: SafePointChoice[] = [];
+  for (const e of [...x.executions].sort((a, b) => a.step - b.step || a.attempt - b.attempt)) {
+    if (!e.safePoint || seen.has(e.safePoint)) continue;
+    seen.add(e.safePoint);
+    out.push({ ref: e.safePoint, step: e.step, label: `Before ${e.nodeId} at step ${e.step}${e.attempt > 1 ? `, attempt ${e.attempt}` : ''}` });
+  }
+  return out;
+}
+
+/**
+ * The undo points earlier restores of the task's worktree kept, newest first (P127), as choices beside the safe points: each
+ * says when its restore was made and what that restore put back. Restoring one undoes that restore. `when` formats the time.
+ */
+export function undoPoints(x: RunExplanation, when: (ms: number) => string): SafePointChoice[] {
+  const named = new Map(safePoints(x).map((p) => [p.ref, p.label]));
+  const undos = x.undoPoints ?? [];
+  return undos.map((u) => {
+    const to = u.restored ? (named.get(u.restored) ?? (undos.some((o) => o.ref === u.restored) ? 'an earlier undo point' : 'a safe point of another run')) : '';
+    return { ref: u.ref, step: 0, undo: true, label: `As the files were before the restore of ${when(u.at)}${to ? ` (to ${to.charAt(0).toLowerCase()}${to.slice(1)})` : ''}` };
+  });
+}
+
+/** One file of a restore, in words. */
+export function changeWords(c: FileChange): string {
+  return c.change === 'restored' ? 'comes back' : c.change === 'removed' ? 'is removed (it did not exist then)' : 'goes back to how it was';
+}
+
+/** What running an ended task again does, for its confirmation. */
+export function runAgainLines(seq: number, status: string): string[] {
+  const how = status === 'FAILED' ? 'failed' : 'was cancelled';
+  return [
+    `A new task with the same title, description, acceptance criteria and template starts from its first step, with the same worker and reviewer.`,
+    `It works in a fresh worktree from the base branch: nothing of task #${seq}'s worktree is carried over.`,
+    `Task #${seq}, which ${how}, stays as it is, with its runs, evidence and reviews.`,
+  ];
+}
+
+/** Where a forked or replayed run came from, in words. */
+export function originLine(x: RunExplanation): string | undefined {
+  const o = x.origin;
+  if (!o) return undefined;
+  return o.kind === 'replay' ? `Replay of an earlier run from step ${o.step}` : `Time travel from step ${o.step} of an earlier run`;
+}
+
+/** Who drives the run, in words, for a run that has not ended. */
+export function leaseWords(x: RunExplanation): string | undefined {
+  const r = x.run;
+  const l = x.actions?.lease;
+  if (!r || !l || ['COMPLETED', 'FAILED', 'CANCELLED'].includes(r.status)) return undefined;
+  if (l.driving || (l.held && l.mine)) return 'This Drydock';
+  if (l.held) return 'Another Drydock';
+  return r.status === 'RUNNING' || r.status === 'RECOVERING' ? 'Nobody: it stopped when Drydock did' : 'Nobody (nothing to run now)';
 }

@@ -1,5 +1,6 @@
 // The side panel of the workflow graph: what the selected node is and what it did (status, agent, model, cost), why that
-// model (the routing explanation), its exact prompt, every turn it ran and the nodes it connects to. Read-only.
+// model (the routing explanation), its exact prompt, every turn it ran and the nodes it connects to; for a subworkflow, its
+// nested run and the switch that shows its own nodes in the graph. Read-only.
 
 import { css, on, type Handle } from 'remix/component';
 import { ArrowLeft, ArrowRight, MousePointerClick, Sparkles, SquareTerminal, X } from 'lucide';
@@ -13,7 +14,7 @@ import { Avatar, Badge, kv, muted } from '../../ui/data.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t, tone } from '../../ui/tokens.ts';
 import { ExplainText } from '../shared/explain.tsx';
-import { connections, duration, EXEC_TONE, edgeLabel, execKey, KIND_LABEL, NODE_TONE, statusLine, usageCost } from './run-model.ts';
+import { connections, duration, EXEC_TONE, edgeLabel, execKey, KIND_LABEL, NODE_TONE, statusLine, subrunOf, usageCost } from './run-model.ts';
 import { DecisionSummary, PromptView, promptBox } from './turns.tsx';
 import { KIND_ICON } from './workflow-graph.tsx';
 
@@ -125,12 +126,17 @@ export function NodePanel(
     asOfStep?: number;
     onSelect: (id: string | undefined) => void;
     onOpenTurn: (key: string) => void;
+    /** Whether a subworkflow node's own nodes are shown in the graph, and the switch for it. */
+    expanded?: boolean;
+    onToggleSub?: (id: string) => void;
+    /** The run explanation the nested runs are read from (x is the expanded view's). */
+    source?: RunExplanation;
   }>,
 ) {
   const s = services(handle);
   let explainFor: string | undefined;
   return () => {
-    const { x, nodeId, state: st, agents, taskId, asOfStep, onSelect, onOpenTurn } = handle.props;
+    const { x, nodeId, state: st, agents, taskId, asOfStep, onSelect, onOpenTurn, expanded, onToggleSub } = handle.props;
     const def = x.graph?.nodes.find((n) => n.id === nodeId);
     const kind = def ? (KIND_LABEL[def.kind] ?? def.kind) : '';
     const last = st.last;
@@ -140,6 +146,8 @@ export function NodePanel(
     const hasUsage = turns.some((e) => e.usage && e.usage.length);
     const agent = last?.agentId ? agentName(last.agentId, agents) || last.agentId : '';
     const conn = x.graph ? connections(x.graph, nodeId) : { incoming: [], outgoing: [] };
+    const sub = def?.kind === 'subworkflow' && def.sub ? def.sub : undefined;
+    const nested = sub ? subrunOf(handle.props.source ?? x, nodeId) : undefined;
     const d = last?.decision;
     const link = (e: GraphEdge, to: string) => {
       const when = edgeLabel(e);
@@ -220,6 +228,28 @@ export function NodePanel(
             </>
           ) : null}
         </dl>
+
+        {sub ? (
+          <section aria-label="Subworkflow" data-testid="node-subworkflow">
+            <h3>Subworkflow</h3>
+            <p>
+              <code>{sub.name}</code>, {sub.nodes.length} {sub.nodes.length === 1 ? 'node' : 'nodes'}
+              {nested ? (
+                <>
+                  ; its run <code>{nested.runId}</code> is {nested.status.toLowerCase().replace('_', ' ')}
+                </>
+              ) : (
+                '; it has not run'
+              )}
+              .
+            </p>
+            {onToggleSub ? (
+              <Button size="sm" variant="secondary" aria-expanded={expanded ? 'true' : 'false'} mix={[on('click', () => onToggleSub(nodeId))]}>
+                {expanded ? 'Hide its nodes' : 'Show its nodes in the graph'}
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
 
         {!last ? <p mix={muted}>{st.status === 'waiting' ? 'This node is waiting for you.' : asOfStep !== undefined ? 'This node had not run at this checkpoint.' : 'This node has not run yet.'}</p> : null}
 

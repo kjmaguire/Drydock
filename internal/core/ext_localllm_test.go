@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -376,5 +377,52 @@ func TestTheLocalProviderMadeByAnEarlierVersionIsRenamed(t *testing.T) {
 		if err != nil || p.Name != want {
 			t.Fatalf("%s: %q %v, want %q", id, p.Name, err, want)
 		}
+	}
+}
+
+// A start of the server probes its provider before it records what it serves; a setting a person changes meanwhile is kept
+// (CI 2026-10-30, Windows: the cache type set right after the server started again following an update was written back
+// to the old one when that start saved the settings it had read before its probe).
+func TestASettingChangedWhileTheServerStartsIsKept(t *testing.T) {
+	rig := newLocalRig(t)
+	a := localCore(t, rig)
+	v := localCall(a, "local.install", map[string]any{"backend": "cpu"})
+	a.waitFor("the install to finish", func() bool {
+		v = localCall(a, "local.get", nil)
+		return v.Runtime.Job != nil && v.Runtime.Job.State != "running"
+	})
+	localCall(a, "local.settings.set", map[string]any{"port": freePort(t)})
+	localCall(a, "local.model.download", map[string]any{"repo": "acme/tiny-GGUF", "variant": "Q4_0"})
+	a.waitFor("the download to finish", func() bool {
+		v = localCall(a, "local.get", nil)
+		return len(v.Downloads) == 1 && v.Downloads[0].State != "running"
+	})
+	probed, proceed := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	defer core.SetLocalServeProbedForTests(func() {
+		once.Do(func() {
+			close(probed)
+			<-proceed
+		})
+	})()
+	started := make(chan core.LocalView, 1)
+	go func() {
+		started <- localCall(a, "local.server.start", map[string]any{"modelId": "acme/tiny-GGUF:Q4_0"})
+	}()
+	select {
+	case <-probed:
+	case <-time.After(time.Minute):
+		t.Fatal("the start never probed its provider")
+	}
+	if v = localCall(a, "local.settings.set", map[string]any{"cacheType": "q4_0", "contextSize": 65536}); v.Settings.CacheType != "q4_0" {
+		t.Fatalf("%+v", v.Settings)
+	}
+	close(proceed)
+	v = <-started
+	if v.Server.State != "running" || v.Settings.ModelID != "acme/tiny-GGUF:Q4_0" || v.Settings.ProviderID == "" {
+		t.Fatalf("the start did not record what it serves: %+v %+v", v.Server, v.Settings)
+	}
+	if v.Settings.CacheType != "q4_0" || v.Settings.ContextSize != 65536 {
+		t.Fatalf("the start put back the settings it read before its probe: %+v", v.Settings)
 	}
 }

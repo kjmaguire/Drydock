@@ -259,7 +259,22 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	var tok *oauth2.Token
 	var attempts int  // the SDK asks again after a failed attempt; a flow gets exactly one answer from the human
 	var reason string // why the first attempt failed, kept for the message
+	// a client the human registered with the provider is used instead of registering one (decision P122); without one the
+	// provider must offer dynamic client registration
+	var pre *oauthex.ClientCredentials
+	cl, err := s.oauthClient(ctx, r.ID)
+	if err != nil {
+		fail(err)
+		return
+	}
+	if cl != nil {
+		pre = &oauthex.ClientCredentials{ClientID: cl.ClientID}
+		if cl.ClientSecret != "" {
+			pre.ClientSecretAuth = &oauthex.ClientSecretAuth{ClientSecret: cl.ClientSecret}
+		}
+	}
 	h, err := auth.NewAuthorizationCodeHandler(&auth.AuthorizationCodeHandlerConfig{
+		PreregisteredClient: pre,
 		DynamicClientRegistrationConfig: &auth.DynamicClientRegistrationConfig{Metadata: &oauthex.ClientRegistrationMetadata{
 			RedirectURIs: []string{redirect}, ClientName: "Drydock", GrantTypes: []string{"authorization_code", "refresh_token"}, ResponseTypes: []string{"code"},
 		}},
@@ -308,6 +323,11 @@ func (s *mcpServers) runOAuth(ctx context.Context, f *oauthFlow, r mcpRow, by st
 	client := sdk.NewClient(&sdk.Implementation{Name: "drydock", Version: "1"}, nil)
 	cs, err := client.Connect(ctx, &sdk.StreamableClientTransport{Endpoint: r.URL, OAuthHandler: h, HTTPClient: hc, DisableStandaloneSSE: true}, nil)
 	if err != nil {
+		if strings.Contains(err.Error(), "no configured client registration methods") {
+			// the provider has no dynamic client registration (decision P122): say what the human can do about it
+			fail(errors.New("this provider does not let Drydock register itself: register an OAuth app with it (redirect address http://127.0.0.1/callback) and enter its client id on the server's card, then sign in again"))
+			return
+		}
 		fail(fmt.Errorf("sign-in failed: %w", err))
 		return
 	}

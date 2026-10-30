@@ -197,6 +197,19 @@ describe('the sidebar', () => {
     document.body.append(input);
     await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true })));
     expect(aside.getAttribute('data-rail')).toBeNull();
+    // Ctrl+B folds and unfolds it too, also from a field (it types nothing there), never inside the terminal (P129)
+    await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true })));
+    expect(aside.getAttribute('data-rail')).toBe('true');
+    await r.act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true })));
+    expect(aside.getAttribute('data-rail')).toBeNull();
+    const term = document.createElement('div');
+    term.className = 'xterm';
+    document.body.append(term);
+    const inTerm = new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true });
+    await r.act(() => term.dispatchEvent(inTerm));
+    expect(aside.getAttribute('data-rail')).toBeNull();
+    expect(inTerm.defaultPrevented).toBe(false);
+    term.remove();
     input.remove();
     // a new model reads the stored choice back
     expect(new UiModel({ media: wideWindow }).sidebarRail).toBe(false);

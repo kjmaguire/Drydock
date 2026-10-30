@@ -23,10 +23,36 @@ const (
 	hfTokenName = "huggingface-token"
 )
 
-// servePlan is what serve starts: the models in the order asked, and the draft of each that has one.
+// servePlan is what serve starts: the models in the order asked, the draft of each that has one, and the kind of speculative
+// decoding of each that is not a plain draft model's (a file that only drafts, or the model's own MTP heads; decisions P120 and
+// P129).
 type servePlan struct {
 	models []localllm.Model
 	drafts map[string]localllm.Model
+	specs  map[string]string
+}
+
+// heads says what a model's header says of draft heads that are not models (decisions P120 and P129): whether it carries its
+// own MTP heads, and the kind of draft it is when it only drafts ("eagle3", "dflash", "dspark", "mtp-head"; "" for a model).
+func (l *localExt) heads(m localllm.Model) (mtp bool, kind string) {
+	info, err := l.ggufOf(m)
+	if err != nil {
+		return false, ""
+	}
+	return info.OwnMTP(), info.DraftOnly()
+}
+
+// mtpKVOf is the memory of the MTP draft context of a model that drafts with MTP heads (decision P129): its own (m) or a head
+// file's (draft), at the model's context size and cache type; 0 when it cannot be estimated.
+func (l *localExt) mtpKVOf(m localllm.Model, contextSize int, cache string) uint64 {
+	info, err := l.ggufOf(m)
+	if err != nil {
+		return 0
+	}
+	if kv := localllm.EstimateMTPKV(info, contextSize, cache); kv.Known {
+		return kv.Bytes
+	}
+	return 0
 }
 
 // isEmbedding is a model's kind: the person's mark, else what its header says.
@@ -73,7 +99,7 @@ func loadBudget(d localllm.Devices, mem localllm.Memory) uint64 {
 // there are several, all of them (with their drafts and KV caches) within the memory budget. A draft that is gone or no longer
 // fits its model is left out, not refused: the model still runs, only slower.
 func (l *localExt) plan(ctx context.Context, in localllm.Installed, s LocalSettings, ids []string, cache string) (servePlan, error) {
-	p := servePlan{drafts: map[string]localllm.Model{}}
+	p := servePlan{drafts: map[string]localllm.Model{}, specs: map[string]string{}}
 	if len(ids) > localllm.MaxLoaded {
 		return p, fmt.Errorf("at most %d models stay loaded at once", localllm.MaxLoaded)
 	}
@@ -91,11 +117,27 @@ func (l *localExt) plan(ctx context.Context, in localllm.Installed, s LocalSetti
 		if l.isEmbedding(m) {
 			return p, fmt.Errorf("%s is an embedding model: it is served on its own, as the embedding model", id)
 		}
+		mtp, kind := l.heads(m)
+		if kind != "" {
+			return p, fmt.Errorf("%s is %s: it does not chat, it drafts for the model it was made for (choose it as that model's draft)", id, localllm.DraftKindPhrase(kind))
+		}
 		p.models = append(p.models, m)
 		total += needBytes(m, l.kvOf(m, s.ContextSize, cache))
-		if did := s.Drafts[id]; did != "" {
+		if did := s.Drafts[id]; did == localllm.DraftMTP {
+			// the model's own heads draft: no file, and a context of their own whose cache holds the MTP layers (decision P129)
+			if mtp {
+				p.specs[id] = localllm.SpecMTP
+				total += l.mtpKVOf(m, s.ContextSize, cache)
+			} else {
+				l.c.logf("local models: %s is served without MTP drafting (its file carries no MTP heads)", id)
+			}
+		} else if did != "" {
 			if d, err := l.m.Store.Get(did); err == nil && l.draftOK(m, d) {
 				p.drafts[id] = d
+				if _, k := l.heads(d); k != "" {
+					p.specs[id] = localllm.SpecOf(k)
+				}
+				// a head file's cache is its MTP context's (localllm.EstimateKV)
 				total += needBytes(d, l.kvOf(d, s.ContextSize, cache))
 			} else {
 				l.c.logf("local models: %s is served without its draft %s (gone, or no longer one it can use)", id, did)
@@ -133,13 +175,18 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		f := localllm.FitWithKV(m.Size, &kv, v.Runtime.Devices, v.Memory)
 		m.Fit = &f
 		m.Embedding = l.isEmbedding(*m)
+		m.MTP, m.DraftKind = l.heads(*m)
+		m.Eagle3 = m.DraftKind == localllm.DraftOnlyEagle3
 		v.ModelsBytes += m.Size
 	}
 	for i := range v.Models {
 		m := &v.Models[i]
 		m.LoadBytes = needBytes(*m, kvs[i])
-		if m.Embedding {
+		if m.Embedding || m.DraftKind != "" {
 			continue
+		}
+		if m.MTP {
+			m.Drafts = append(m.Drafts, localllm.DraftMTP)
 		}
 		for j := range v.Models {
 			if i != j && l.draftOK(*m, v.Models[j]) {
@@ -148,9 +195,21 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		}
 		if d := s.Drafts[m.ID]; d != "" {
 			for _, c := range m.Drafts {
-				if c == d {
-					m.Draft = d
-					m.LoadBytes += needBytes(v.Models[byID[d]], kvs[byID[d]])
+				if c != d {
+					continue
+				}
+				m.Draft = d
+				if d == localllm.DraftMTP {
+					// the MTP context, as long as the model's, with the model's cache type: in what it takes and in its fit
+					m.MTPKVBytes = l.mtpKVOf(*m, kvs[i].ContextSize, kvs[i].CacheType)
+					m.LoadBytes += m.MTPKVBytes
+					f := localllm.FitWithKV(m.Size+m.MTPKVBytes, m.KV, v.Runtime.Devices, v.Memory)
+					m.Fit = &f
+				} else if j, ok := byID[d]; ok {
+					m.LoadBytes += needBytes(v.Models[j], kvs[j])
+					if v.Models[j].DraftKind == localllm.DraftOnlyMTPHead && kvs[j].Known {
+						m.MTPKVBytes = kvs[j].Bytes
+					}
 				}
 			}
 		}
@@ -175,8 +234,10 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		if kvs[i].Known {
 			v.Served.KVBytes += kvs[i].Bytes
 		}
-		if m.Draft != "" {
-			d := byID[m.Draft]
+		if m.Draft == localllm.DraftMTP {
+			// its own heads: no file, their context's cache (an MTP head file's is its draft's cache below)
+			v.Served.KVBytes += m.MTPKVBytes
+		} else if d, ok := byID[m.Draft]; ok {
 			v.Served.ModelBytes += v.Models[d].Size
 			if kvs[d].Known {
 				v.Served.KVBytes += kvs[d].Bytes
@@ -249,33 +310,43 @@ func (l *localExt) setModel(ctx context.Context, id string, embedding *bool, dra
 		}
 		m.Mark = embedding
 	}
-	s := l.settings(ctx)
-	if draft != nil {
-		if *draft == "" {
-			delete(s.Drafts, id)
-		} else {
-			d, err := l.m.Store.Get(*draft)
-			if err != nil {
-				return LocalView{}, err
+	if err := l.update(ctx, func(s *LocalSettings) error {
+		if draft != nil {
+			if *draft == localllm.DraftMTP {
+				// its own MTP heads (decision P120): only a model whose file carries them
+				if mtp, _ := l.heads(m); !mtp {
+					return fmt.Errorf("%s carries no MTP heads: its file has no multi-token prediction layers", id)
+				}
+				if s.Drafts == nil {
+					s.Drafts = map[string]string{}
+				}
+				s.Drafts[id] = localllm.DraftMTP
+			} else if *draft == "" {
+				delete(s.Drafts, id)
+			} else {
+				d, err := l.m.Store.Get(*draft)
+				if err != nil {
+					return err
+				}
+				if !l.draftOK(m, d) {
+					return fmt.Errorf("%s cannot draft for %s: a draft is a much smaller model of the same family, with the same tokenizer", *draft, id)
+				}
+				if s.Drafts == nil {
+					s.Drafts = map[string]string{}
+				}
+				s.Drafts[id] = *draft
 			}
-			if !l.draftOK(m, d) {
-				return LocalView{}, fmt.Errorf("%s cannot draft for %s: a draft is a much smaller model of the same family, with the same tokenizer", *draft, id)
-			}
-			if s.Drafts == nil {
-				s.Drafts = map[string]string{}
-			}
-			s.Drafts[id] = *draft
 		}
-	}
-	if embedding != nil && *embedding {
-		delete(s.Drafts, id) // an embedding model drafts for nothing and has no draft
-		for target, d := range s.Drafts {
-			if d == id {
-				delete(s.Drafts, target)
+		if embedding != nil && *embedding {
+			delete(s.Drafts, id) // an embedding model drafts for nothing and has no draft
+			for target, d := range s.Drafts {
+				if d == id {
+					delete(s.Drafts, target)
+				}
 			}
 		}
-	}
-	if err := l.save(ctx, s); err != nil {
+		return nil
+	}); err != nil {
 		return LocalView{}, err
 	}
 	l.changed("models", map[string]any{"id": id})
@@ -330,9 +401,10 @@ func (l *localExt) serveEmbeddings(ctx context.Context, modelID string, auto boo
 	if err := l.m.Embed.Start(ctx, launch); err != nil {
 		return err
 	}
-	s = l.settings(ctx)
-	s.EmbeddingModel = modelID
-	if err := l.save(ctx, s); err != nil {
+	if err := l.update(ctx, func(s *LocalSettings) error {
+		s.EmbeddingModel = modelID
+		return nil
+	}); err != nil {
 		return err
 	}
 	l.changed("embeddings", map[string]any{"state": "running", "modelId": modelID})

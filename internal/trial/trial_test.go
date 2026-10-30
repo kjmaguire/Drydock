@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/agents/acp/fakeacp"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
 	"github.com/kjmaguire/drydock/internal/mcp"
@@ -23,13 +24,17 @@ import (
 )
 
 // The arms' agent in these tests is the repository's scripted stand-in for Claude Code (internal/agents/fakeagent, a TEST
-// DOUBLE): this test binary re-executes itself as it. The real CLI runs in the trial itself (docs/evals.md section 13).
+// DOUBLE): this test binary re-executes itself as it. The real CLI runs in the trial itself (docs/evals.md section 13). B0 with
+// another CLI uses the scripted ACP agent (internal/agents/acp/fakeacp, a TEST DOUBLE too) the same way.
 func TestMain(m *testing.M) {
 	if code, ok := mcp.MaybeRunShim(os.Args); ok {
 		os.Exit(code)
 	}
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
+	}
+	if os.Getenv("DRYDOCK_FAKE_ACP") == "1" {
+		os.Exit(fakeacp.Run(os.Args[1:], os.Stdin, os.Stdout))
 	}
 	os.Exit(m.Run())
 }

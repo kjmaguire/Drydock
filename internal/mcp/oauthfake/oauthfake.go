@@ -34,11 +34,32 @@ type Server struct {
 	mcpCalls  int
 	refreshes int
 	regs      int
+	noDCR     bool              // the authorization server offers no dynamic client registration (decision P122)
+	secrets   map[string]string // client id -> secret of a pre-registered client ("" for a public one)
 }
 
+// loopbackAnyPort is the redirect of a pre-registered client: http://127.0.0.1/callback on any port, as GitHub documents for a
+// loopback redirect of an OAuth app.
+const loopbackAnyPort = "loopback"
+
 // New starts the server. Close it when done.
-func New() *Server {
-	f := &Server{ttl: 3600, clients: map[string]string{}, codes: map[string][]string{}}
+func New() *Server { return start(false) }
+
+// NewWithoutRegistration starts a provider that offers no dynamic client registration, as GitHub's: only a client registered
+// beforehand (Preregister) can sign in.
+func NewWithoutRegistration() *Server { return start(true) }
+
+// Preregister registers a client with the provider the way a person registers an OAuth app: its id, its secret ("" for a
+// public client) and the redirect http://127.0.0.1/callback on any port.
+func (f *Server) Preregister(id, secret string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.clients[id] = loopbackAnyPort
+	f.secrets[id] = secret
+}
+
+func start(noDCR bool) *Server {
+	f := &Server{ttl: 3600, clients: map[string]string{}, codes: map[string][]string{}, noDCR: noDCR, secrets: map[string]string{}}
 	mux := http.NewServeMux()
 	mcpSrv := sdk.NewServer(&sdk.Implementation{Name: "oauthy", Title: "OAuth test double", Version: "1"}, nil)
 	type in struct{}
@@ -66,14 +87,22 @@ func New() *Server {
 		writeJSON(w, map[string]any{"resource": f.srv.URL + "/mcp", "authorization_servers": []string{f.srv.URL}, "scopes_supported": []string{"read"}, "bearer_methods_supported": []string{"header"}})
 	})
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{
+		m := map[string]any{
 			"issuer": f.srv.URL, "authorization_endpoint": f.srv.URL + "/authorize", "token_endpoint": f.srv.URL + "/token", "registration_endpoint": f.srv.URL + "/register",
 			"response_types_supported": []string{"code"}, "code_challenge_methods_supported": []string{"S256"}, "grant_types_supported": []string{"authorization_code", "refresh_token"},
 			"token_endpoint_auth_methods_supported": []string{"client_secret_post", "client_secret_basic", "none"}, "scopes_supported": []string{"read", "offline_access"},
 			"authorization_response_iss_parameter_supported": true,
-		})
+		}
+		if f.noDCR {
+			delete(m, "registration_endpoint")
+		}
+		writeJSON(w, m)
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		if f.noDCR {
+			http.NotFound(w, r)
+			return
+		}
 		var m struct {
 			RedirectURIs []string `json:"redirect_uris"`
 		}
@@ -91,7 +120,15 @@ func New() *Server {
 		f.mu.Lock()
 		redirect, ok := f.clients[q.Get("client_id")]
 		f.mu.Unlock()
-		if !ok || redirect != q.Get("redirect_uri") || q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" || q.Get("response_type") != "code" {
+		if ok && redirect == loopbackAnyPort {
+			// a registered app's loopback redirect: the port may be any (the path and host may not)
+			if u, err := url.Parse(q.Get("redirect_uri")); err == nil && u.Scheme == "http" && u.Hostname() == "127.0.0.1" && u.Path == "/callback" {
+				redirect = q.Get("redirect_uri")
+			} else {
+				redirect = ""
+			}
+		}
+		if !ok || redirect == "" || redirect != q.Get("redirect_uri") || q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" || q.Get("response_type") != "code" {
 			http.Error(w, "bad authorization request", http.StatusBadRequest)
 			return
 		}
@@ -111,7 +148,11 @@ func New() *Server {
 		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		if _, ok := f.clients[id]; !ok || secret != "client-secret-"+id {
+		want := "client-secret-" + id
+		if s, pre := f.secrets[id]; pre {
+			want = s
+		}
+		if _, ok := f.clients[id]; !ok || secret != want {
 			http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
 			return
 		}

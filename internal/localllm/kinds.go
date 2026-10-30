@@ -25,14 +25,34 @@ const vocabSlack = 128
 // family is an architecture without its mixture-of-experts suffix: a dense Qwen3 drafts for a Qwen3 MoE.
 func family(arch string) string { return strings.TrimSuffix(arch, "moe") }
 
+// DraftMTP is the draft a person chooses for a model that drafts with its own MTP heads (decision P120): it stands in the
+// settings where a draft model's id would (a model's id always holds a ":", so no model is called so).
+const DraftMTP = "mtp"
+
 // DraftFits says whether draft can draft for target in speculative decoding (llama-server --model-draft): a model of the same
 // family with the same tokenizer (kind, size within llama.cpp's slack, the same first and last tokens), at most half the
-// target's size, neither of them an embedding model. When it cannot, the reason says why in a sentence.
+// target's size, neither of them an embedding model. An EAGLE-3 draft (decision P120) is of no family: it was converted for one
+// target, whose tokenizer it inherits (llama.cpp's convert_hf_to_gguf.py --target-model-dir) and whose embedding length it
+// names when the file gives it. A DFlash or DSpark draft (decision P129) is of no family either, for the same reason, and reads
+// layers of its model up to the one it names (dflash.target_layers), which the model must have. An MTP head shipped as a file
+// of its own (decision P129) is the model's own architecture, embedding length and layers: llama.cpp loads it beside the model
+// and runs its MTP blocks against the model's hidden states. When it cannot, the reason says why in a sentence.
 func DraftFits(target, draft GGUFInfo, targetBytes, draftBytes uint64) (bool, string) {
+	kind := draft.DraftOnly()
 	switch {
 	case LooksLikeEmbedding(target) || LooksLikeEmbedding(draft):
 		return false, "an embedding model neither drafts nor is drafted for"
-	case target.Architecture == "" || family(target.Architecture) != family(draft.Architecture):
+	case target.DraftOnly() != "":
+		return false, anOf(DraftKindName(target.DraftOnly())) + " is drafted for by nothing"
+	case draft.Eagle3() && draft.TargetHiddenSize > 0 && draft.TargetHiddenSize != target.EmbeddingLength:
+		return false, fmt.Sprintf("it is an EAGLE-3 draft for a model of %d dimensions, and the model has %d", draft.TargetHiddenSize, target.EmbeddingLength)
+	case (kind == DraftOnlyDFlash || kind == DraftOnlyDSpark) && draft.TargetLayer > target.BlockCount:
+		return false, fmt.Sprintf("it is %s that reads layer %d of its model, and the model has %d", anOf(DraftKindName(kind)), draft.TargetLayer, target.BlockCount)
+	case kind == DraftOnlyMTPHead && (draft.Architecture != target.Architecture || draft.EmbeddingLength != target.EmbeddingLength ||
+		mainLayers(draft) != mainLayers(target)):
+		return false, fmt.Sprintf("it is an MTP head for a %s model of %d layers and %d dimensions, and the model is %s with %d and %d",
+			draft.Architecture, mainLayers(draft), draft.EmbeddingLength, target.Architecture, mainLayers(target), target.EmbeddingLength)
+	case target.Architecture == "" || (kind == "" && family(target.Architecture) != family(draft.Architecture)):
 		return false, fmt.Sprintf("it is a %s model and the model is %s: a draft must be of the same family", draft.Architecture, target.Architecture)
 	case target.Tokenizer == "" || target.Tokenizer != draft.Tokenizer || target.VocabSize <= 0 || draft.VocabSize <= 0:
 		return false, "its tokenizer is not the model's"
@@ -44,4 +64,30 @@ func DraftFits(target, draft GGUFInfo, targetBytes, draftBytes uint64) (bool, st
 		return false, "it is not much smaller than the model, so it would not speed it up"
 	}
 	return true, ""
+}
+
+// DraftKindName is a draft-only kind in words, for messages: "EAGLE-3 draft", "DFlash draft", "DSpark draft", "MTP head".
+func DraftKindName(kind string) string {
+	switch kind {
+	case DraftOnlyEagle3:
+		return "EAGLE-3 draft"
+	case DraftOnlyDFlash:
+		return "DFlash draft"
+	case DraftOnlyDSpark:
+		return "DSpark draft"
+	case DraftOnlyMTPHead:
+		return "MTP head"
+	}
+	return "draft"
+}
+
+// DraftKindPhrase is a draft-only kind with its article, for messages: "an EAGLE-3 draft", "a DSpark draft".
+func DraftKindPhrase(kind string) string { return anOf(DraftKindName(kind)) }
+
+// anOf is a kind's name with its article, as it is said: "an EAGLE-3 draft", "an MTP head", "a DFlash draft".
+func anOf(name string) string {
+	if strings.HasPrefix(name, "EAGLE") || strings.HasPrefix(name, "MTP") {
+		return "an " + name
+	}
+	return "a " + name
 }

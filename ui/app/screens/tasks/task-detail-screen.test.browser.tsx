@@ -79,13 +79,15 @@ describe('Task view: header, properties and content', () => {
     expect(byText(bar, 'a', 'Open task channel').getAttribute('href')).toBe('/room/room_9');
     // description as Markdown, the criteria with their state in words
     expect(r.$('.md strong')!.textContent).toBe('Multiply');
+    // (an older core sends only acceptanceState: passing reads as met by the test check, failing as not met)
     const crit = Array.from(r.$$('[data-testid="task-criteria"] li'));
-    expect(crit.map((li) => [li.getAttribute('data-state'), li.textContent, li.querySelector('svg')!.getAttribute('aria-label')])).toEqual([
-      ['passed', 'Given 3 and 4 When Multiply Then 12', 'passes'],
-      ['failing', 'Given 0 When Multiply Then 0', 'fails'],
-      ['unknown', 'Existing tests still pass', 'not checked yet'],
+    expect(crit.map((li) => [li.getAttribute('data-state'), li.querySelector('.text')!.textContent, li.querySelector('svg')!.getAttribute('aria-label')])).toEqual([
+      ['met', 'Given 3 and 4 When Multiply Then 12', 'met'],
+      ['not_met', 'Given 0 When Multiply Then 0', 'not met'],
+      ['open', 'Existing tests still pass', 'open'],
     ]);
-    expect(crit[0]!.getAttribute('title')).toBe('AC1: passes');
+    expect(crit[0]!.getAttribute('title')).toBe('AC1: met');
+    expect(crit[1]!.querySelector('.why')!.textContent).toBe('By the test check: the tests fail.');
     // the properties
     const meta = r.$('.task-meta')!;
     await waitFor(() => expect(meta.textContent).toContain('Dana'), r);

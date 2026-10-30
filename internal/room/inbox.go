@@ -110,6 +110,24 @@ const (
 	// NeedsChatPermission is a chat's CLI waiting for the person to allow a tool call (chats.PendingAsk). The core adds
 	// these; they live only while the request waits.
 	NeedsChatPermission NeedsKind = "chat_permission"
+	// NeedsBudget is a budget that passed its warning point or reached its limit (decision P118): its own item, saying what to
+	// do, whether or not a run is waiting on a budget pause (the pause's approval row becomes this item rather than a plain
+	// approval).
+	NeedsBudget NeedsKind = "budget"
+)
+
+// Budget states of a NeedsBudget item.
+const (
+	BudgetWarning  = "warning"  // past the warning point (80% by default); agents keep working
+	BudgetExceeded = "exceeded" // at the limit; the turns it counts toward do not start
+	BudgetPaused   = "paused"   // a run waits on the budget pause for its next turn
+)
+
+// What a person can do about each budget state, in the item's detail.
+const (
+	budgetWarningDo  = "Agents keep working. At the limit, the next agent turn waits for you: raise the limit on the Budgets page if this work should go on, or dismiss this."
+	budgetExceededDo = "Agent turns this budget counts toward do not start: a workflow turn waits and a room reply is refused. Raise the limit on the Budgets page."
+	budgetPausedDo   = "A budget stopped the next agent turn of a run. Open the task to raise the limit or approve one more turn; rejecting stops the run."
 )
 
 // NeedsYouItem is one row of the inbox. Rows are derived from source tables on every query, so they vanish when the
@@ -140,6 +158,9 @@ type NeedsYouItem struct {
 	// Context is what a task's item is about, so the person can see what they are deciding before they open it (UI review
 	// P1-1). The core adds it to items of a task; nil for the rest.
 	Context *NeedsContext `json:"context,omitempty"`
+	// BudgetID and BudgetState are a budget item's budget and where it stands (BudgetWarning, BudgetExceeded, BudgetPaused).
+	BudgetID    string `json:"budgetId,omitempty"`
+	BudgetState string `json:"budgetState,omitempty"`
 }
 
 // NeedsContext is a task's state in one line: who did the work, how big the change is, how its checks went and what its
@@ -157,8 +178,9 @@ type NeedsContext struct {
 
 // NeedsYou returns what a human must act on, approvals and failures first, then by age (oldest first). projectID may
 // be "". Sources: open approvals-table rows (approval, review, question), blocking questions in messages, the latest
-// failed check per room and check kind, and stage-2 watchdog pauses. Agent-state, budget and Connection items need
-// tables that do not exist yet and are not included.
+// failed check per room and check kind, stage-2 watchdog pauses, and budgets past their warning point or at their limit
+// (budget_alerts; a budget pause's approval row is the budget item of its run). Agent-state and Connection items need tables
+// that do not exist yet and are not included.
 func (s *Service) NeedsYou(ctx context.Context, projectID string) ([]NeedsYouItem, error) {
 	var out []NeedsYouItem
 	q := s.db.Reader()
@@ -167,16 +189,18 @@ func (s *Service) NeedsYou(ctx context.Context, projectID string) ([]NeedsYouIte
 SELECT a.id, a.kind, a.title, a.task_id, a.project_id, a.created_at, a.phase, a.expires_at,
   COALESCE((SELECT r.id FROM rooms r WHERE a.task_id <> '' AND r.kind = 'task' AND r.task_id = a.task_id), ''),
   COALESCE(NULLIF(CASE WHEN a.run_id = '' AND json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.action.agentId') END, ''),
-           (SELECT t.assignee FROM tasks t WHERE a.task_id <> '' AND t.id = a.task_id), '')
+           (SELECT t.assignee FROM tasks t WHERE a.task_id <> '' AND t.id = a.task_id), ''),
+  COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.gate') END, ''),
+  COALESCE(CASE WHEN json_valid(CAST(a.payload AS TEXT)) THEN json_extract(CAST(a.payload AS TEXT), '$.exceeded[0].budget.id') END, '')
 FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var it NeedsYouItem
-		var kind string
+		var kind, gate, budgetID string
 		var at, expires int64
-		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID); err != nil {
+		if err := rows.Scan(&it.ApprovalID, &kind, &it.Title, &it.TaskID, &it.ProjectID, &at, &it.Phase, &expires, &it.RoomID, &it.AgentID, &gate, &budgetID); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -185,10 +209,13 @@ FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`,
 			e := fromMs(expires)
 			it.ExpiresAt = &e
 		}
-		switch kind {
-		case "review":
+		switch {
+		case kind == "approval" && gate == "budget":
+			// the budget gate's pause (budget.PauseGate): a budget item that is answered like an approval
+			it.Kind, it.Severity, it.BudgetID, it.BudgetState, it.Detail = NeedsBudget, 0, budgetID, BudgetPaused, budgetPausedDo
+		case kind == "review":
 			it.Kind, it.Severity = NeedsReview, 2
-		case "question":
+		case kind == "question":
 			it.Kind, it.Severity = NeedsQuestion, 3
 		default:
 			it.Kind, it.Severity = NeedsApproval, 0
@@ -197,8 +224,16 @@ FROM approvals a WHERE a.status = 'REQUESTED' AND (? = '' OR a.project_id = ?)`,
 	}
 	rows.Close()
 
+	budgets, err := s.budgetItems(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, budgets...)
+
 	// A blocking QUESTION to a human, until a human replies, it is superseded, acked, or its request row exists (the
-	// approvals-table row above is then the item, or it is resolved). A question that is itself a thread reply (the debate
+	// approvals-table row above is then the item, or it is resolved), or a workflow's question request carries it (the
+	// question a design discussion ended on, which the Design Review template puts to the person, P124). A question that
+	// is itself a thread reply (the debate
 	// limit asks under the message that started the round) cannot be replied to directly, threads being one level deep: a
 	// human's later message in the same thread answers it.
 	rows, err = q.QueryContext(ctx, `
@@ -212,7 +247,9 @@ WHERE m.type = 'QUESTION' AND r.archived = 0 AND (? = '' OR r.project_id = ?)
                   AND (a.supersedes_id = m.id OR ((a.reply_to_id = m.id OR a.thread_id = m.id
                        OR (COALESCE(m.thread_id, '') <> '' AND a.thread_id = m.thread_id)) AND a.author LIKE 'human:%')))
   AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'question:' || m.id)
-  AND NOT EXISTS (SELECT 1 FROM approvals p WHERE p.id = COALESCE(json_extract(m.payload, '$.request_id'), ''))`, projectID, projectID)
+  AND NOT EXISTS (SELECT 1 FROM approvals p WHERE p.id = COALESCE(json_extract(m.payload, '$.request_id'), ''))
+  AND NOT EXISTS (SELECT 1 FROM approvals p WHERE p.kind = 'question' AND p.project_id = r.project_id
+                  AND json_valid(CAST(p.payload AS TEXT)) AND json_extract(CAST(p.payload AS TEXT), '$.questionId') = m.id)`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +329,73 @@ WHERE t.stage = 2
 		return nil, err
 	}
 	SortNeedsYou(out)
+	return out, nil
+}
+
+// budgetItems are the budgets that passed their warning point or reached their limit (the alerts the budget gate fired once
+// each, internal/budget), until the limit is changed (which clears the alerts), the budget is switched off, or a person
+// dismisses the item. The item's key carries the alert's time, so a dismissal does not hide the same alert fired again
+// after a limit change. An exceeded budget a run is waiting on is left to the pause's own item (the approval row); a warning
+// gives way to the same budget's exceeded item.
+func (s *Service) budgetItems(ctx context.Context, projectID string) ([]NeedsYouItem, error) {
+	rows, err := s.db.Reader().QueryContext(ctx, `
+SELECT al.budget_id, al.instance_id, al.level, al.ts, b.scope, b.scope_id, b.warn_pct,
+  CASE b.scope WHEN 'project' THEN b.scope_id
+    WHEN 'task' THEN COALESCE((SELECT t.project_id FROM tasks t WHERE t.id = al.instance_id), '')
+    WHEN 'agent' THEN COALESCE((SELECT g.project_id FROM agents g WHERE g.id = al.instance_id), '')
+    WHEN 'run' THEN COALESCE((SELECT r.project_id FROM workflow_runs r WHERE r.id = al.instance_id), '')
+    ELSE b.project_id END
+FROM budget_alerts al JOIN budgets b ON b.id = al.budget_id
+WHERE b.enabled = 1
+  AND NOT (al.level = 'warning' AND EXISTS (SELECT 1 FROM budget_alerts x WHERE x.budget_id = al.budget_id AND x.instance_id = al.instance_id AND x.level = 'exceeded'))
+  AND NOT EXISTS (SELECT 1 FROM room_inbox_acks k WHERE k.item_key = 'budget:' || al.budget_id || ':' || al.instance_id || ':' || al.level || ':' || al.ts)
+  AND NOT (al.level = 'exceeded' AND EXISTS (SELECT 1 FROM approvals p WHERE p.status = 'REQUESTED' AND p.kind = 'approval'
+           AND CAST(p.payload AS TEXT) LIKE '%"gate":"budget"%' AND json_valid(CAST(p.payload AS TEXT))
+           AND EXISTS (SELECT 1 FROM json_each(CAST(p.payload AS TEXT), '$.exceeded') e WHERE json_extract(e.value, '$.budget.id') = al.budget_id)))
+ORDER BY al.ts, al.budget_id, al.instance_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NeedsYouItem
+	for rows.Next() {
+		var it NeedsYouItem
+		var instance, level, scope, scopeID, project string
+		var at int64
+		var warn float64
+		if err := rows.Scan(&it.BudgetID, &instance, &level, &at, &scope, &scopeID, &warn, &project); err != nil {
+			return nil, err
+		}
+		if projectID != "" && project != projectID {
+			continue
+		}
+		what := scope + " budget"
+		switch scope {
+		case "workflow":
+			what = "budget of the workflow " + scopeID
+		case "task":
+			it.TaskID = instance
+		case "agent":
+			it.AgentID = instance
+		}
+		it.Key = fmt.Sprintf("budget:%s:%s:%s:%d", it.BudgetID, instance, level, at)
+		it.Kind, it.ProjectID, it.CreatedAt, it.BudgetState = NeedsBudget, project, fromMs(at), level
+		if level == BudgetExceeded {
+			it.Severity, it.Title, it.Detail = 0, "Budget reached: the "+what+" is at its limit", budgetExceededDo
+		} else {
+			it.Severity, it.Title, it.Detail = 2, fmt.Sprintf("Budget warning: the %s passed %.0f%%", what, warn*100), budgetWarningDo
+		}
+		out = append(out, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// a task's budget item opens in the task's room
+	for i := range out {
+		if out[i].TaskID != "" {
+			_ = s.db.Reader().QueryRowContext(ctx, `SELECT id FROM rooms WHERE kind='task' AND task_id=?`, out[i].TaskID).Scan(&out[i].RoomID)
+		}
+	}
 	return out, nil
 }
 

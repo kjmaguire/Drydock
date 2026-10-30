@@ -2,11 +2,14 @@
 // tags in Go (router.RoutingDecision, probe results) arrive with their Go field names and are typed that way here.
 
 // --- budgets (internal/budget) ---
-export type BudgetScope = 'project' | 'task' | 'run' | 'agent';
+export type BudgetScope = 'project' | 'workflow' | 'task' | 'run' | 'agent';
 export interface Budget {
   id: string;
   scope: BudgetScope | string;
-  /** A concrete id, or "*" for a ceiling that applies to every task, run or agent (each judged on its own). */
+  /**
+   * A concrete id, or "*" for a ceiling that applies to every task, run or agent (each judged on its own). For the workflow
+   * scope (P118), the workflow's name; its projectId keeps the count to that project's runs.
+   */
   scopeId: string;
   projectId?: string;
   limitUsd?: number | null;
@@ -259,9 +262,23 @@ export interface RouteSettings {
   };
   /** seconds; a level or agent left out has no ceiling */
   ceilings: { levels: Record<string, number>; agents: Record<string, number> };
-  /** the level agent turns run at today */
+  /** the workspace's level: the level of every project that sets none of its own (P118) */
   level: string;
   agents: { id: string; name: string; project: string }[];
+}
+/** route.level.get (P118): the workspace's routing level, a project's own ("" when it follows the workspace) and the result. */
+export interface RouteLevel {
+  projectId?: string;
+  workspace: string;
+  project: string;
+  /** Asked for a task (P127): its id, its own level ("" or absent when it follows), its template's title and declared level. */
+  taskId?: string;
+  task?: string;
+  template?: string;
+  templateLevel?: string;
+  effective: string;
+  source: 'task' | 'template' | 'project' | 'workspace' | string;
+  levels: string[];
 }
 export interface RouteSettingsPatch {
   tiebreak?: { enabled?: boolean; budgetUsd?: number; timeoutMs?: number };
@@ -293,6 +310,8 @@ export interface CheckSettings {
 }
 /** The skill delivery a project has when it never chose one (the core's skills.DefaultDelivery). */
 export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';
+/** The context package ceiling's default and bounds in tokens (the core's ctxeng.DefaultCeiling, MinCeiling, MaxCeiling). */
+export const CONTEXT_CEILING = { default: 20000, min: 4000, max: 200000 } as const;
 
 export interface DevSettings {
   maxParallel: number;
@@ -319,6 +338,12 @@ export interface DevSettings {
    * Absent means DEFAULT_SKILL_DELIVERY.
    */
   skillDelivery?: 'all' | 'relevant';
+  /**
+   * The ceiling, in estimated tokens, on what each agent turn starts with (instruction files plus the turn's prompt). Over it,
+   * file excerpts, the repository map, memory, design notes, the spec, the handoff and check output are cut in that order; the
+   * task and the instructions never are. 0 or absent: CONTEXT_CEILING.default; otherwise CONTEXT_CEILING.min to max.
+   */
+  contextCeiling?: number;
   e2e: { enabled: boolean; command?: string[]; timeoutSec?: number };
   preview: { enabled: boolean; command?: string[]; url?: string; timeoutSec?: number };
 }
@@ -334,6 +359,32 @@ export interface TelemetryStatus {
   networkExporter: boolean;
   /** The OTLP exporter (decision P113); absent when it did not start. */
   otlp?: TelemetryOtlpStatus;
+  /** Usage counters (decision P121): how often each feature was used. Off by default. */
+  usageCounters?: UsageCounters;
+}
+/** A switch a person turned on or off, and who did it when. */
+export interface Consent {
+  enabled: boolean;
+  changedBy?: string;
+  changedAt?: number;
+}
+export interface UsageCounters extends Consent {
+  /** Uses counted and not yet written to the local telemetry. */
+  waiting: number;
+}
+/** "Also send what was recorded before" (decision P121): rows since sinceMs that no collector had, the newest maxRows. */
+export interface TelemetryBackfill {
+  sinceMs: number;
+  maxRows?: number;
+}
+export interface TelemetryBackfillResult {
+  at: number;
+  sinceMs: number;
+  maxRows: number;
+  queued: number;
+  /** Rows in the window the cap left out. */
+  left: number;
+  by?: string;
 }
 /** Where telemetry is sent over OTLP/HTTP. Header values are in the credential store and never come back. */
 export interface TelemetryOtlpStatus {
@@ -355,13 +406,34 @@ export interface TelemetryOtlpStatus {
   lastError?: string;
   lastErrorAt?: number;
   canKeepHeaders: boolean;
+  /** What the person chose: gzip, none, or '' for automatic (gzip for https). Decision P121. */
+  compression?: TelemetryCompression;
+  /** Whether bodies are compressed now. */
+  gzip?: boolean;
+  lastBackfill?: TelemetryBackfillResult;
 }
+export type TelemetryCompression = '' | 'gzip' | 'none';
 export interface TelemetryOtlpChange {
   enabled?: boolean;
   endpoint?: string;
   encoding?: 'protobuf' | 'json';
   setHeaders?: Record<string, string>;
   removeHeaders?: string[];
+  compression?: TelemetryCompression;
+  /** With a change that turns sending on: also send what was recorded before. */
+  backfill?: TelemetryBackfill;
+}
+/** The diagnostics categories (docs/packaging.md section 9, decision P121). */
+export interface DiagnosticsStatus {
+  crashReports: { mode: 'local' | 'off'; changedBy?: string; changedAt?: number; kept: number };
+  /** Absent when telemetry did not start. */
+  usageCounters?: UsageCounters;
+  telemetry: boolean;
+  otlp: boolean;
+}
+export interface DiagnosticsChange {
+  crashReports?: 'local' | 'off';
+  usageCounters?: boolean;
 }
 export interface TelemetryOtlpTest {
   ok: boolean;
@@ -1218,6 +1290,8 @@ export interface WebhookEndpoint {
   secret: string;
   header: string;
   where: string;
+  /** Commands the person can run here to bring deliveries without a tunnel (GitHub's forwarder, decision P122); never run by Drydock. */
+  commands?: string[];
 }
 export interface WebhookStatus {
   enabled: boolean;
@@ -1285,6 +1359,8 @@ export interface IntegrationAttachment {
   listedAt: number;
   downloadedAt?: number;
   downloadedBy?: string;
+  /** Where on the item it was found (decision P122): issue, event, property, page body, issue body, finding. */
+  source?: string;
   untrusted: boolean;
 }
 export interface AttachmentText {

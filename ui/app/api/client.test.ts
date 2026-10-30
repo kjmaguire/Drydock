@@ -553,6 +553,18 @@ describe('task control client methods', () => {
       ['task.assign', { id: 't1', assignee: 'human:kyle', reviewer: '' }],
     ]);
   });
+
+  it("sends a person's word on a criterion with the names the core decodes and normalizes a null answer (P125)", async () => {
+    const f = mock.fn(async () => json({ result: null }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.taskCriterionMark('t1', 1, 'waived', 'out of scope')).toEqual([]);
+    await c.taskCriterionMark('t1', 0, 'met');
+    const sent = f.mock.calls.map((x) => x.arguments as unknown as [string, RequestInit]).map(([u, init]) => [u.replace('/rpc/', ''), JSON.parse(init.body as string)]);
+    expect(sent).toEqual([
+      ['task.criterion.mark', { taskId: 't1', index: 1, mark: 'waived', note: 'out of scope' }],
+      ['task.criterion.mark', { taskId: 't1', index: 0, mark: 'met', note: '' }],
+    ]);
+  });
 });
 
 describe('shell client method (audit M23)', () => {

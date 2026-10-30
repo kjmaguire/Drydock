@@ -3,6 +3,8 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { TelemetryOtlpChange, TelemetryOtlpStatus, TelemetryStatus } from '../../api/extTypes.ts';
 import { byLabel, byText, cleanup, errorOf, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { KEYMAP } from '../../lib/keys.ts';
+import { versionWords } from './about.tsx';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT } from './settings.ts';
 import { SettingsScreen, UpdatesSection } from './settings-screen.tsx';
@@ -38,6 +40,7 @@ const settingsClient = (over: Partial<Client> = {}): Partial<Client> => ({
   licenseStatus: async () => null as never,
   agentEnvGet: async () => ({ pass: [], kept: ['PATH'], prefixes: ['CLAUDE_'] }),
   telemetryStatus: async () => tel,
+  diagnosticsStatus: async () => ({ crashReports: { mode: 'local', kept: 0 }, usageCounters: { enabled: false, waiting: 0 }, telemetry: false, otlp: false }),
   ...over,
 });
 
@@ -54,9 +57,45 @@ describe('SettingsScreen', () => {
     tid(r.container, 'agent-env');
     tid(r.container, 'updates-section');
     await waitFor(() => tid(r.container, 'telemetry-counts'), r);
+    await waitFor(() => tid(r.container, 'diag-usage'), r); // the diagnostics categories (decision P121)
     // the event stream line follows the store
     s.emit({ type: 'x.y' });
     await waitFor(() => expect(tid(r.container, 'stream-status').textContent).toMatch(/last seq [1-9]\d*/), r);
+  });
+
+  it('About Drydock: the version, the third-party licenses the build ships, and the keyboard map (P129)', async () => {
+    const reads: string[] = [];
+    const s = testServices(
+      settingsClient({
+        appInfo: async () => ({ name: 'Drydock', user: 'kyle', human: 'human:kyle', dataDir: 'C:\\d', version: '0.4.2', build: 'abc123' }),
+        appLicenses: async () => (reads.push('x'), { shipped: true, file: 'C:\\Drydock\\THIRD_PARTY_NOTICES.md', text: '# Third-party notices\n\nThe Go modules.' }),
+      }),
+    );
+    s.workspace.start();
+    const r = mount(<SettingsScreen />, s);
+    await waitFor(() => expect(tid(r.container, 'about-version').textContent).toBe('0.4.2, build abc123'), r);
+    const rows = Array.from(tid(r.container, 'about-keymap').querySelectorAll('tbody tr'));
+    expect(rows.length).toBe(KEYMAP.length);
+    expect(rows.map((tr) => Array.from(tr.querySelectorAll('kbd')).map((k) => k.textContent).join('+')).includes('Ctrl+B')).toBe(true);
+    expect(rows.some((tr) => tr.textContent!.includes('Stop the agent that is answering'))).toBe(true);
+    await r.act(() => tid(r.container, 'about-licenses').click());
+    await waitFor(() => expect(tid(document.body, 'about-licenses-text').textContent).toContain('The Go modules.'), r);
+    expect(reads).toEqual(['x']);
+    cleanup();
+
+    // a build from the source tree has no notices beside it, and says so; a development version says what it is
+    const dev = testServices(
+      settingsClient({
+        appInfo: async () => ({ name: 'Drydock', user: 'kyle', human: 'human:kyle', dataDir: 'C:\\d', version: '0.0.0-dev' }),
+        appLicenses: async () => ({ shipped: false, file: '', note: 'This build has no third-party notices beside it.' }),
+      }),
+    );
+    dev.workspace.start();
+    const d = mount(<SettingsScreen />, dev);
+    await waitFor(() => expect(tid(d.container, 'about-version').textContent).toBe('0.0.0-dev (a build from the source)'), d);
+    await d.act(() => tid(d.container, 'about-licenses').click());
+    await waitFor(() => expect(tid(document.body, 'about-licenses-note').textContent).toBe('This build has no third-party notices beside it.'), d);
+    expect(versionWords(undefined, undefined)).toBe('unknown');
   });
 
   it('keeps the "Not built yet" list exactly', async () => {

@@ -33,7 +33,8 @@ func TestUserCustomManifestsAreStrict(t *testing.T) {
 		"too large":            {userManifest("mycli") + "# " + strings.Repeat("x", manifests.MaxCustomBytes), "larger than"},
 		"two documents":        {userManifest("mycli") + "---\n" + userManifest("other"), "more than one YAML document"},
 		"an unknown key":       {userManifest("mycli") + "surprise: true\n", "surprise"},
-		"an mcp section":       {userManifest("mycli") + "mcp: {inject: env}\n", "cannot carry provider_config, mcp or usage"},
+		"a built-in mcp shape": {userManifest("mycli") + "mcp: {inject: env}\n", `unknown key "inject"`},
+		"a usage section":      {userManifest("mycli") + "usage: {quota: {argv: [x]}}\n", "cannot carry provider_config or usage"},
 		"a built-in gate text": {strings.Replace(userManifest("mycli"), `text: "This Connection runs a program you chose with the permissions of your user account. Only enable CLIs you trust."`, `text: ""`, 1), "gate.text"},
 	} {
 		if _, err := manifests.ParseUserCustom([]byte(c.yaml)); err == nil || !strings.Contains(err.Error(), c.want) {

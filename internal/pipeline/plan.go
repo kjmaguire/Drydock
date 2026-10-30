@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -347,14 +348,23 @@ type PlanContext struct {
 
 // PlanPrompt asks the planner for the proposal.
 func PlanPrompt(goal, requirements string, team []TeamMember, feedback string, pc PlanContext) string {
-	var b strings.Builder
-	b.WriteString("Drydock phase: plan\n")
-	b.WriteString("You are the planner of an engineering team. Break the goal into a small set of tasks, each of which one agent can build and verify on its own branch. You may read the repository to ground the plan. Do not write or change any code.\n\n")
-	b.WriteString(briefBlock(pc.Brief))
-	fmt.Fprintf(&b, "Goal (from the human):\n%s\n", strings.TrimSpace(goal))
+	return Render(PlanPieces(goal, requirements, team, feedback, pc))
+}
+
+// PlanPieces is PlanPrompt as package pieces (decision P125): the requirements and the validator's feedback may be cut by the
+// project's ceiling; the planner's instructions, the goal, the open tasks and the team (each bounded) never.
+func PlanPieces(goal, requirements string, team []TeamMember, feedback string, pc PlanContext) []ctxeng.Piece {
+	var l pieceList
+	l.add(ctxeng.KindRoleInstructions, "role (plan)", "Drydock phase: plan\n"+
+		"You are the planner of an engineering team. Break the goal into a small set of tasks, each of which one agent can build and verify on its own branch. You may read the repository to ground the plan. Do not write or change any code.\n\n",
+		"the planner's instructions", "")
+	l.add(ctxeng.KindProjectInstructions, "brief", briefBlock(pc.Brief), "the project brief", "")
+	l.add(ctxeng.KindTask, "goal", fmt.Sprintf("Goal (from the human):\n%s\n", strings.TrimSpace(goal)), "the person's goal", "")
 	if strings.TrimSpace(requirements) != "" {
-		b.WriteString("\n" + quoted("Requirements", clip(requirements, 24000)))
+		l = append(l, quotedPiece(ctxeng.KindSpec, "requirements", "the requirements the person gave with the goal", "the whole requirements are kept with the plan in Drydock",
+			"\n", "Requirements", clip(requirements, 24000), ""))
 	}
+	var b strings.Builder
 	if len(pc.Open) > 0 {
 		b.WriteString("\nTasks already open in this project (do not propose these again; depend on them only by describing the order in the notes):\n")
 		for i, t := range pc.Open {
@@ -394,13 +404,16 @@ func PlanPrompt(goal, requirements string, team []TeamMember, feedback string, p
 		sort.Strings(rs)
 		b.WriteString(strings.Join(rs, ", ") + "\n")
 	}
+	l.add(ctxeng.KindWorkflowState, "open tasks and team", b.String(), "the project's open tasks and its team, each list bounded", "")
 	if feedback != "" {
-		b.WriteString("\nYour previous reply was rejected by the validator. Fix every point and answer again:\n" + quoted("Validator output", feedback))
+		l = append(l, quotedPiece(ctxeng.KindFeedback, "feedback", "why the validator rejected the previous reply", "the whole validator output is the plan check's answer in the run",
+			"\nYour previous reply was rejected by the validator. Fix every point and answer again:\n", "Validator output", feedback, ""))
 	}
 	templates := make([]string, 0, len(Templates()))
 	for _, t := range Templates() {
 		templates = append(templates, t.Name)
 	}
+	b.Reset()
 	fmt.Fprintf(&b, `
 Answer with exactly one JSON object and nothing else (no prose, no code fence needed):
 {"tasks":[{"key":"short-id","title":"one line","description":"what and why","role":"backend","dependsOn":["other-key"],"acceptance":["Given <state>, when <action>, then <observable result>"],"template":"feature","priority":0,"files":["internal/auth/"]}],"notes":"optional remarks for the human"}
@@ -413,7 +426,8 @@ Rules:
 - priority 0 to 9 (higher first), optional. At most %d tasks. Prefer fewer, larger-than-trivial tasks over many tiny ones.
 - Tasks that can run at the same time must change different files. If two tasks need the same file, make the later one depend on the earlier one (dependsOn). List the files or folders a task will touch in "files" (relative to the repository, at most %d); the scheduler holds back a task whose files overlap one that is running.
 Nothing is created until a human reviews your plan.`, strings.Join(PlanRoles, ", "), maxAcceptances, strings.Join(templates, ", "), maxPlanTasks, maxPlanFiles)
-	return b.String()
+	l.add(ctxeng.KindRoleInstructions, "answer (plan)", b.String(), "the shape the plan is read in and its rules", "")
+	return l
 }
 
 // PlanDeps are the services the planner workflow needs.
@@ -526,7 +540,18 @@ func (pd PlanDeps) planNode() workflow.NodeHandler {
 		cfg.Spec.Cwd = dir
 		cfg.Spec.PermissionMode, cfg.Spec.ReadOnly = "plan", true
 		open, _ := pd.Tasks.List(ctx, tasks.Filter{ProjectID: pi.ProjectID, Statuses: openStatuses, Limit: maxPlanOpenTasks + 1})
-		prompt := PlanPrompt(pi.Goal, pi.Requirements, team, feedback, PlanContext{Brief: pd.brief(ctx, pi.ProjectID), Open: open})
+		// the planner's package under the project's ceiling (P125): the instruction files at the repository root are counted, the
+		// requirements and the validator's feedback may be cut
+		where := tasks.Task{ProjectID: pi.ProjectID, Worktree: dir}
+		asm := ctxeng.Assemble(pd.packageCeiling(ctx, where), append(pd.instructionPieces(where),
+			PlanPieces(pi.Goal, pi.Requirements, team, feedback, PlanContext{Brief: pd.brief(ctx, pi.ProjectID), Open: open})...))
+		prompt := asm.Text
+		if pd.Context != nil {
+			var m ctxeng.Manifest
+			m.Add("prompt (plan)", true, len(prompt), "the goal, the requirements, the open tasks and the team", 1)
+			m.Items = append(m.Items, asm.Items...)
+			_ = pd.Context.SaveManifest(ctx, string(in.RunID), string(in.NodeID), in.Attempt, "", cfg.AgentID, m)
+		}
 		out, err := pd.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
 		if err != nil {
 			return workflow.NodeOutput{}, err
@@ -777,7 +802,7 @@ func (pd PlanDeps) PlanGraph() *workflow.Graph {
 		workflow.Route("plancheck", pd.planCheck()),
 		workflow.Route("planfailed", pd.planFailed()),
 		&workflow.Node{ID: "planreview", Kind: workflow.KindRequest, Handler: pd.planReview()},
-		workflow.Route("plancreate", pd.planCreate()),
+		workflow.Route("plancreate", pd.planCreate()).Effect(EffectCreateTasks),
 		workflow.Route("planreject", pd.planReject()),
 	)
 	g.Edge("plan", "plancheck").

@@ -52,6 +52,10 @@ func TestMain(m *testing.M) {
 	case "sleep":
 		time.Sleep(10 * time.Minute)
 		os.Exit(0)
+	case "peerpost":
+		// a process of its own that posts initialize to a run (peercheck_test.go) and prints the status
+		fmt.Println(postInitialize(os.Getenv("DRYDOCK_MCP_URL"), os.Getenv("DRYDOCK_MCP_TOKEN")))
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
@@ -63,6 +67,7 @@ type testState struct {
 	calls   map[string]int
 	counter atomic.Int64
 	writes  atomic.Int64
+	written []string // the text of every write call, as the server received it
 }
 
 func newTestState() *testState { return &testState{calls: map[string]int{}} }
@@ -136,6 +141,9 @@ func newTestMCPServer(version string, st *testState) *sdk.Server {
 	})
 	sdk.AddTool(srv, &sdk.Tool{Name: "write", Description: "a write-class tool"}, func(_ context.Context, _ *sdk.CallToolRequest, in echoIn) (*sdk.CallToolResult, any, error) {
 		st.hit("write")
+		st.mu.Lock()
+		st.written = append(st.written, in.Text)
+		st.mu.Unlock()
 		return txt("wrote " + strconv.FormatInt(st.writes.Add(1), 10)), nil, nil
 	})
 	sdk.AddTool(srv, &sdk.Tool{Name: "fail", Description: "a tool that reports an error", Annotations: ro}, func(_ context.Context, _ *sdk.CallToolRequest, _ emptyIn) (*sdk.CallToolResult, any, error) {

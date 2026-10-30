@@ -59,6 +59,78 @@ export function withChain(then: RouteAction, chain: string[]): RouteAction {
 }
 
 export const LEVELS = ['cheapest', 'fast', 'balanced', 'quality', 'maximum_quality'];
+
+/** A level as the pages name it. */
+export const LEVEL_WORDS: Record<string, string> = {
+  cheapest: 'Cheapest',
+  fast: 'Fast',
+  balanced: 'Balanced',
+  quality: 'Quality',
+  maximum_quality: 'Maximum quality',
+  custom: 'Custom',
+};
+export const levelWords = (l: string): string => LEVEL_WORDS[l] ?? l;
+
+/** What each level does, in one line (docs/model-routing.md s3). */
+export const LEVEL_INTENT: Record<string, string> = {
+  cheapest: 'cheap models first, escalating after 2 cheap tries',
+  fast: 'cheap, fast models first',
+  balanced: 'cheap for cheap-first work, premium where it matters, one premium review',
+  quality: 'premium work and review; cheap only for exploration, docs and test fixes',
+  maximum_quality: 'the best models at top effort',
+  custom: 'only the stored rules decide',
+};
+
+/**
+ * The choices of a project's own level (P118): following the workspace (the empty value, naming the workspace's level), then
+ * each level. A stored level the list does not know (custom) stays choosable.
+ */
+export function projectLevelOptions(workspace: string, current = ''): { value: string; label: string; hint?: string }[] {
+  const levels = current && !LEVELS.includes(current) ? [...LEVELS, current] : LEVELS;
+  return [
+    { value: '', label: `Follow the workspace (${levelWords(workspace)})`, hint: 'set on the Routing page' },
+    ...levels.map((l) => ({ value: l, label: levelWords(l), hint: LEVEL_INTENT[l] })),
+  ];
+}
+
+/** What a task follows when it sets no level of its own (P127): the level its template declares, else the project's, else the workspace's. */
+function taskFollows(rl: { workspace: string; project: string; template?: string; templateLevel?: string }): string {
+  if (rl.templateLevel) return `Follow the ${rl.template ?? 'template'} template (${levelWords(rl.templateLevel)})`;
+  if (rl.project) return `Follow the project (${levelWords(rl.project)})`;
+  return `Follow the workspace (${levelWords(rl.workspace)})`;
+}
+
+/**
+ * The choices of a task's own level (P127): following what applies without one (its template's, the project's or the
+ * workspace's, named), then each level. A stored level the list does not know stays choosable.
+ */
+export function taskLevelOptions(rl: { workspace: string; project: string; task?: string; template?: string; templateLevel?: string }): { value: string; label: string; hint?: string }[] {
+  const current = rl.task ?? '';
+  const levels = current && !LEVELS.includes(current) ? [...LEVELS, current] : LEVELS;
+  return [{ value: '', label: taskFollows(rl) }, ...levels.map((l) => ({ value: l, label: levelWords(l), hint: LEVEL_INTENT[l] }))];
+}
+
+/** Where a task's turns get their level, in a sentence (P127). */
+export function taskLevelSentence(rl: { effective: string; source: string; template?: string }): string {
+  const at = `This task's agent turns run at ${levelWords(rl.effective)}`;
+  switch (rl.source) {
+    case 'task':
+      return `${at}, its own level.`;
+    case 'template':
+      return `${at}, the level the ${rl.template ?? 'task'} template declares.`;
+    case 'project':
+      return `${at}, the project's level.`;
+    default:
+      return `${at}, the workspace's level.`;
+  }
+}
+
+/** Where a project's turns get their level, in a sentence. */
+export function levelSentence(rl: { effective: string; source: string }): string {
+  return rl.source === 'project'
+    ? `This project's agent turns run at ${levelWords(rl.effective)}, its own level.`
+    : `This project's agent turns run at ${levelWords(rl.effective)}, the workspace's level.`;
+}
 /** The run kinds a decision is for, as a rule matches them with run.kind. The agent turn kinds come first (decision P63:
  * every turn of an agent is routed), then the app's own model calls. */
 export const RUN_KINDS = ['agent_task', 'review', 'room_reply', 'spec', 'tests', 'design', 'security_review', 'lead', 'recommend', 'consult', 'summarize', 'classify'];

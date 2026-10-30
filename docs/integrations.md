@@ -696,11 +696,48 @@ this computer, Sentry's binary attachment never offered as text; typed rows, pro
 written to a row's property; the weekly sweep on and off), `p114_migrate_test.go`. `go test ./internal/core -run P114` drives the
 receiver over real HTTP, the mappings, the status applied to a real task, the classes and the sweep through the UI methods.
 
+### GitHub and Aikido webhooks, more attachments (decision P122)
+
+- **GitHub** (`/hooks/github`, from GitHub's "Validating webhook deliveries"): `X-Hub-Signature-256` is "sha256=" + hex
+  HMAC-SHA256 of the raw body with the webhook's secret (pasted here and in GitHub); `X-GitHub-Delivery` is the replay guard;
+  GitHub signs no time, so the `updated_at` of the issue (or of the comment, for `issue_comment`) in the signed body must be
+  within an hour (a delivery redelivered later from GitHub's page is refused as stale; it could only cause a read). `issues` and
+  `issue_comment` name `owner/repo#n`; a pull request's comment and any other event are answered and ignored, `ping` included.
+  The issue is then read with `GET /repos/{owner}/{repo}/issues/{n}` through gh or the Sign in with GitHub token (the adapter's
+  new `Fetch`: the assignment's repository, every label it filters on, not a pull request); an issue gone from GitHub is marked
+  gone. Without a tunnel of their own, the person can run GitHub's forwarder for testing, the gh extension `cli/gh-webhook`: the
+  endpoint lists `gh webhook forward --repo=<repo> --events=issues,issue_comment --url=http://127.0.0.1:<port>/hooks/github
+  --secret=<the same secret>` for each assigned repository. Drydock shows it and never runs it; its `--secret` flag is from the
+  extension's release notes.
+- **Aikido** (`/hooks/aikido`, from search-engine extracts of apidocs.aikido.dev "Verifying incoming webhooks" and help.aikido.dev
+  "Aikido webhooks"; neither page could be opened): `X-Aikido-Webhook-Signature` is an HMAC-SHA256 of the body with the signing
+  secret Aikido shows once (hex or base64: the documentation does not say, both are accepted); `dispatched_at` (an epoch time)
+  must be within 30 seconds, as Aikido says; the body is `{event_type, created_at, dispatched_at, workspace_id, payload}` with
+  `payload.issue_id`. No delivery id is documented, so the replay guard is the hash of the signed body. An `issue.*` event queues
+  one sync of the connection: Aikido's API reads findings only as one export, so a burst of deliveries is one sync.
+- **GitHub attachments**: GitHub has no attachment API; a file added to an issue is an upload linked from the body. Uploads
+  (`github.com/user-attachments/assets|files/...`, `github.com/<owner>/<repo>/files/...`, `user-images.githubusercontent.com`,
+  `private-user-images.githubusercontent.com`) are listed as downloadable, every other link as a link. A download reads the issue
+  again, finds the same upload and fetches it through the guarded client with no credential at all (a gh token is never sent to
+  a file host): a public repository's file arrives; a private one's, which GitHub serves only to a signed-in browser, is refused
+  in plain words.
+- **Aikido attachments**: the API, as far as it could be read, keeps no files on a finding. Its links (the finding's page in
+  Aikido, its references) are listed from the export and never fetched.
+- **Notion file blocks inside a page body**: `GET /v1/blocks/{id}/children` (`start_cursor` pages of 100; the children of a block
+  that has them, three levels deep, at most 25 listings; a child page is a page of its own and not read) gives the file, image,
+  pdf, video and audio blocks next to a row's files properties. A Notion-hosted file (`type: file`, a signed address that
+  expires) is downloaded from a fresh `GET /v1/blocks/{id}`, without the credential; an external one is a link. From the SDK's
+  endpoint definitions (@notionhq/client 5.27.0: blocks.children.list, blocks.retrieve).
+- Each attachment records where it was found (`integration_attachments.source`, migration 00159: issue, event, property, page
+  body, issue body, finding), and the item says so ("in the page body").
+- Tests: `p122_test.go` (fixtures in `itfixture/p122.go`) and `ui/app/screens/integrations/p122.test.browser.tsx`.
+
 ### Not built, unverified
 
 - No live vendor: every shape above is a fixture written from the sources named; Notion's webhook signature and verification flow
-  least of all (from memory). The live checks (`TestLive*`) do not cover webhooks, attachments or writes.
-- Not built: Aikido and GitHub webhooks (GitHub's would come through `gh`); a relay or tunnel of Drydock's own (by design, never);
-  attachments of GitHub and Aikido items and Notion file blocks inside a page body; importing a Notion row as a task (a row is
-  linked by a rule); a status from a service applied to a task without the person; webhooks for more than one connection per vendor.
+  least of all (from memory), Aikido's webhook (search extracts only). The live checks (`TestLive*`) do not cover webhooks,
+  attachments or writes. `gh webhook forward` was not run.
+- Not built: a relay or tunnel of Drydock's own (by design, never); importing a Notion row as a task (a row is linked by a rule);
+  a status from a service applied to a task without the person; webhooks for more than one connection per vendor; a private
+  GitHub repository's uploaded files (GitHub serves them only to a signed-in browser).
 - Windows: the receiver, the downloads and the credential store entries were cross-compiled and vetted, not run on Windows.

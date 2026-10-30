@@ -56,6 +56,7 @@ func (g *Graph) Start(ids ...NodeID) *Graph {
 func AgentTask(id NodeID, h NodeHandler) *Node { return &Node{ID: id, Kind: KindAgentTask, Handler: h} }
 func Check(id NodeID, h NodeHandler) *Node     { return &Node{ID: id, Kind: KindCheck, Handler: h} }
 func Route(id NodeID, h NodeHandler) *Node     { return &Node{ID: id, Kind: KindRoute, Handler: h} }
+func Group(id NodeID, h NodeHandler) *Node     { return &Node{ID: id, Kind: KindGroup, Handler: h} }
 func Request(id NodeID, spec RequestSpec) *Node {
 	return &Node{ID: id, Kind: KindRequest, Request: &spec}
 }
@@ -74,6 +75,14 @@ func (n *Node) With(k, v string) *Node {
 	n.Meta[k] = v
 	return n
 }
+
+// MetaEffect is the metadata key of a node that changes something outside the run (a merge, a push, tasks created); its
+// value says what, in a few words. A replay never runs such a node without a fresh approval (docs/workflow-engine.md s6).
+const MetaEffect = "effect"
+
+// Effect marks n as changing something outside the run (MetaEffect). It is metadata, not topology: marking a node does not
+// change the graph's topology hash.
+func (n *Node) Effect(what string) *Node { return n.With(MetaEffect, what) }
 
 // Sequential builds a linear graph from nodes.
 func Sequential(name string, nodes ...*Node) *Graph {

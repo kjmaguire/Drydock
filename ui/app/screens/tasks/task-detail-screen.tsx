@@ -7,7 +7,7 @@
 // (O) and Hand to another agent.
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
-import { Check, Circle, ClipboardList, Columns2, MessagesSquare, X } from 'lucide';
+import { ClipboardList, Columns2, MessagesSquare } from 'lucide';
 import type { AssignPreview } from '../../api/controlClient.ts';
 import type { Connection, SummaryCheck, Task, TaskDetail } from '../../api/types.ts';
 import { agentName } from '../../lib/format.ts';
@@ -27,13 +27,14 @@ import { TaskDecisions } from '../shared/explain.tsx';
 import { UsageTable } from '../shared/usage.tsx';
 import { Interventions, leadOf } from '../team/lead.tsx';
 import { TaskActivity } from './activity-panel.tsx';
+import { CriteriaList } from './criteria.tsx';
 import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
 import { DiffView } from './raw-diff.tsx';
 import { ReviewPanel } from './review-panel.tsx';
 import { SteerBox } from './steer-box.tsx';
 import { TaskControls } from './task-controls.tsx';
-import { CRITERION_WORDS, criteriaWithState, statusDot, statusPill } from './task-page.ts';
+import { criteriaRows, statusDot, statusPill } from './task-page.ts';
 import { TaskProperties } from './task-properties.tsx';
 import { TaskTools } from './task-tools.tsx';
 import { isWaitingForTask, newestDiffId } from './tasks.ts';
@@ -115,21 +116,6 @@ const descCss = css({ color: t.textMuted, lineHeight: '1.6', maxWidth: '720px', 
 // under the title: the badge of a task the team lead split off, and the one sentence under it
 const originCss = css({ display: 'grid', justifyItems: 'start', gap: '4px', color: t.textMuted, fontSize: t.textMd });
 
-const criteriaCss = css({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  margin: '0',
-  padding: '0',
-  listStyle: 'none',
-  '& > li': { display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: '0', overflowWrap: 'anywhere', lineHeight: '20px' },
-  '& > li > svg': { flex: 'none', marginTop: '2px' },
-  '& > li[data-state="passed"] > svg': { color: t.success },
-  '& > li[data-state="failing"] > svg': { color: t.danger },
-  '& > li[data-state="unknown"] > svg': { color: t.textFaint },
-  '& > li[data-state="unknown"] > span': { color: t.textMuted },
-});
-
 // the sections after the Activity, each headed like it: a quiet name and a hairline
 const sectionCss = css({
   display: 'grid',
@@ -177,8 +163,6 @@ function Part(handle: Handle<{ title: string; label?: string; testId?: string; a
     );
   };
 }
-
-const CRITERION_ICON = { passed: Check, failing: X, unknown: Circle };
 
 export function TaskDetailScreen(handle: Handle<{ id: string }>) {
   const s = services(handle);
@@ -239,7 +223,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
     const setDetail = (next?: TaskDetail) => (next ? detail.set(next) : void detail.reload());
     const setTask = (tk: Task) => detail.set({ ...d, task: { ...d.task, ...tk } });
     const name = task.assignee ? (task.assignee.startsWith('human:') ? task.assignee.slice(6) : agentName(task.assignee, agents)) : '';
-    const criteria = criteriaWithState(task.acceptance, d.acceptanceState);
+    const criteria = criteriaRows(task.acceptance, d.criteria, d.acceptanceState, (id) => agentName(id, agents), d.evidence);
     const tone = statusDot(task, d.paused);
     return (
       <Page
@@ -283,16 +267,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
                   <section aria-label="Description" mix={descCss}>
                     {task.description ? <Markdown source={task.description} /> : <p mix={muted}>No description.</p>}
                   </section>
-                  {criteria.length ? (
-                    <ul mix={criteriaCss} aria-label="Acceptance criteria" data-testid="task-criteria">
-                      {criteria.map((c, i) => (
-                        <li key={i} data-state={c.state} title={`${c.id ? `${c.id}: ` : ''}${CRITERION_WORDS[c.state]}`}>
-                          <Icon icon={CRITERION_ICON[c.state]} size={15} strokeWidth={2.2} label={CRITERION_WORDS[c.state]} />
-                          <span>{c.text}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
+                  {criteria.length ? <CriteriaList taskId={task.id} rows={criteria} onChanged={(cs) => detail.set({ ...d, criteria: cs })} /> : null}
                 </div>
                 {task.blockedReason ? <BlockedNote task={task} onChanged={reload} /> : null}
                 <ReviewPanel detail={d} onChanged={reload} />

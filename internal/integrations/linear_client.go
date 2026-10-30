@@ -76,7 +76,7 @@ func (linearAdapter) Attachments(ctx context.Context, a *API, _ map[string]strin
 		if u, err := url.Parse(n.URL); err == nil && ((u.Scheme == "https" && strings.EqualFold(u.Hostname(), linearUploadsHost)) || sameHost(a, u)) {
 			dl = true
 		}
-		out = append(out, RawAttachment{ExternalID: n.ID, Name: firstNonEmpty(n.Title, n.Subtitle, n.ID), URL: n.URL, Downloadable: dl})
+		out = append(out, RawAttachment{ExternalID: n.ID, Name: firstNonEmpty(n.Title, n.Subtitle, n.ID), URL: n.URL, Downloadable: dl, Source: "issue"})
 	}
 	return out, nil
 }

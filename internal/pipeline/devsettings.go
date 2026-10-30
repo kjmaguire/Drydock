@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -51,6 +52,11 @@ type DevSettings struct {
 	// (skills.DeliveryAll, skills.DeliveryRelevant). Empty means the default (skills.DefaultDelivery, relevant). Other CLIs
 	// always get the matching ones at the start and the rest from the skills tool.
 	SkillDelivery string `json:"skillDelivery,omitempty"`
+	// ContextCeiling is the ceiling, in estimated tokens, on the whole initial package of an agent turn: the generated
+	// instruction files plus the turn's prompt (docs/token-control.md rule 9, decision P119). Over it, file excerpts, the repo
+	// map, memory, design notes, the spec, the diff, the handoff and check output are cut or left out in that order; the task
+	// and the instructions never are. 0 means ctxeng.DefaultCeiling.
+	ContextCeiling int `json:"contextCeiling,omitempty"`
 }
 
 // The CI modes (DevSettings.CIMode).
@@ -68,6 +74,14 @@ func (s DevSettings) LeadStall() time.Duration {
 		return DefaultLeadStallMinutes * time.Minute
 	}
 	return time.Duration(s.LeadStallMinutes) * time.Minute
+}
+
+// PackageCeiling is the context package ceiling in force, in tokens.
+func (s DevSettings) PackageCeiling() int {
+	if s.ContextCeiling <= 0 {
+		return ctxeng.DefaultCeiling
+	}
+	return s.ContextCeiling
 }
 
 // GuardOn reports whether the collision guard is in force.
@@ -126,6 +140,9 @@ func (s *DevSettings) Validate() error {
 	}
 	if s.CIMode == CIRequired {
 		s.CINoneBy, s.CINoneAt = "", 0
+	}
+	if s.ContextCeiling != 0 && (s.ContextCeiling < ctxeng.MinCeiling || s.ContextCeiling > ctxeng.MaxCeiling) {
+		return fmt.Errorf("devloop: contextCeiling must be 0 (the default, %d) or %d to %d tokens", ctxeng.DefaultCeiling, ctxeng.MinCeiling, ctxeng.MaxCeiling)
 	}
 	switch s.SkillDelivery {
 	case "", "all", "relevant":

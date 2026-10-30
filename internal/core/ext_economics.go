@@ -97,19 +97,33 @@ func EconomicsRouter(c *Core) router.ModelRouter {
 // returns an error when the budgets did not start: no turn runs without them. Workflow turns are gated by the budget middleware
 // instead, where a human can resume one turn.
 func EconomicsBudgetBlock(ctx context.Context, c *Core, projectID, taskID, agentID string) error {
+	return EconomicsBudgetBlockFor(ctx, c, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+}
+
+// EconomicsBudgetBlockFor is EconomicsBudgetBlock over every scope a turn counts toward: a turn of a group discussion also
+// counts toward the run and the workflow that hold it (decision P124). A refusal is a *budget.PauseError, which parks the
+// discussion's node on the budget pause; a turn a person approved over the limit (budget.ApprovedOverLimit) is not refused.
+func EconomicsBudgetBlockFor(ctx context.Context, c *Core, ids budget.ScopeIDs) error {
 	store := c.budgets.Load()
 	if store == nil {
 		// no budget store means the economics extension did not start: fail closed, as the workflow gate does
 		return errors.New("the budgets did not start, so the turn does not start (see the log)")
 	}
-	sts, err := store.StatusFor(ctx, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+	sts, err := store.StatusFor(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("budgets could not be read, so the turn does not start: %w", err) // fail closed, as the middleware does
 	}
+	if budget.ApprovedOverLimit(ctx) {
+		return nil
+	}
+	var over []budget.Status
 	for _, st := range sts {
 		if st.State == budget.StateExceeded {
-			return fmt.Errorf("the %s, so agents do not answer until it is raised on the Budgets page", st.Message)
+			over = append(over, st)
 		}
+	}
+	if len(over) > 0 {
+		return &budget.PauseError{Over: over, Text: fmt.Sprintf("the %s, so agents do not answer until it is raised on the Budgets page", over[0].Message)}
 	}
 	return nil
 }
@@ -131,10 +145,16 @@ func (b budgetRouter) Explain(d router.RoutingDecision) string { return b.e.live
 
 // fillBudget sets the request's budget state from the budget store unless the caller supplied one.
 func (e *economics) fillBudget(ctx context.Context, req *router.RouteRequest) error {
+	return e.fillBudgetRun(ctx, req, req.RunID)
+}
+
+// fillBudgetRun is fillBudget with the run whose budgets count the turn named: a group discussion's turn is routed under its
+// own turn id but counts toward the workflow run that holds it (decision P124).
+func (e *economics) fillBudgetRun(ctx context.Context, req *router.RouteRequest, run string) error {
 	if req.Budget.Scope != "" {
 		return nil
 	}
-	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID})
+	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: run, Agent: req.AgentID, Workflow: req.Workflow})
 	if err != nil {
 		return err
 	}
@@ -193,6 +213,10 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		}
 	}
 	c.Engine.Use(workflow.KindAgentTask, mws...)
+	// a group discussion's node (P124): no turn of it starts while a budget it counts toward (its run's and its workflow's
+	// included) is at its limit, warnings and crossings are announced after it, and a person's answer to its budget pause is
+	// read here (an approval lets one more turn through); each turn is also checked and reserved as a reply is
+	c.Engine.Use(workflow.KindGroup, e.enforcer.Middleware())
 	c.budgetGate.Store(true)
 
 	// --- LLM wrapper, quota ledger, router ---
@@ -285,6 +309,13 @@ func (e *economics) putSetting(ctx context.Context, key, value string) error {
 	})
 }
 
+func (e *economics) deleteSetting(ctx context.Context, key string) error {
+	return e.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, key)
+		return err
+	})
+}
+
 // seedDefaultRules stores the shipped rules once. Without a stored rule the router falls back to the shipped defaults, but
 // the moment a user stores the first rule the defaults would disappear; seeding keeps them as editable stored copies. A
 // rule the user deleted is not brought back on restart, because this runs only once.
@@ -354,8 +385,8 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 			tier = p.Tier
 		}
 	}
-	level := router.LevelBalanced
-	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level,
+	level, from, tpl := e.levelFor(ctx, s.projectID, s.taskID, s.workflow)
+	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level, LevelSource: from, LevelTemplate: tpl,
 		ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate, ContextTokens: s.contextTokens}
 	if sig, ok := router.TurnSignals(s.kind); ok {
 		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
@@ -363,7 +394,7 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 	d := router.RoutingDecision{ID: ids.New("dec"), Agent: router.AgentRef{Adapter: a.Adapter, Instance: a.ID}, Provider: router.ProviderID(provider), Model: a.Model,
 		Effort: router.Effort(a.Effort), TeamSize: 1, Confidence: 1, DecidedBy: "static", Created: time.Now().UTC(),
 		Reason: reason,
-		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
+		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, LevelSource: from, LevelTemplate: tpl, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
 			DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
 	if err := e.rec.Save(ctx, req, d); err != nil {
 		e.c.logf("record decision: %v", err)
@@ -431,8 +462,13 @@ func (e *economics) methods() map[string]Method {
 			TaskID    string `json:"taskId"`
 			RunID     string `json:"runId"`
 			AgentID   string `json:"agentId"`
+			Workflow  string `json:"workflow"`
 		}) (any, error) {
-			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID})
+			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID, Workflow: p.Workflow})
+		}),
+		// the workflows a workflow budget can name (P118): every workflow this core runs, by name
+		"budget.workflows": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"workflows": c.Engine.Workflows()}, nil
 		}),
 		"budget.resume": bind(func(ctx context.Context, p budgetResume) (any, error) { return e.budgetResume(ctx, p) }),
 
@@ -500,6 +536,21 @@ func (e *economics) methods() map[string]Method {
 		}),
 		"route.settings.set": bind(func(ctx context.Context, p routeSettingsPatch) (any, error) {
 			return e.setRouteSettings(ctx, p)
+		}),
+		// the routing level (P118): the workspace's, and a project's own that falls back to it; with taskId, a task's own that
+		// falls back to its template's, then the project's (P127)
+		"route.level.get": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			TaskID    string `json:"taskId"`
+		}) (any, error) {
+			return e.routeLevel(ctx, p.ProjectID, p.TaskID)
+		}),
+		"route.level.set": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			TaskID    string `json:"taskId"`
+			Level     string `json:"level"`
+		}) (any, error) {
+			return e.setRouteLevel(ctx, p.ProjectID, p.TaskID, p.Level, human())
 		}),
 		// models a provider refused for want of data retention (P112): listed on the Routing page, cleared by a person
 		"route.retention.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
@@ -643,7 +694,7 @@ func (e *economics) budgetList(ctx context.Context, projectID string, scope budg
 	for _, b := range bs {
 		r := budgetRow{Budget: b}
 		if b.ScopeID != budget.Any {
-			st, err := budget.Evaluate(ctx, e.c.DB, b, b.ScopeID)
+			st, err := budget.Evaluate(ctx, e.c.DB, b, budget.InstanceOf(b))
 			if err != nil {
 				return nil, err
 			}
@@ -660,8 +711,12 @@ func (e *economics) budgetStatus(ctx context.Context, ids budget.ScopeIDs) (any,
 		return nil, err
 	}
 	usage := map[string]budget.Spend{}
-	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
-		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
+	wf := "" // a workflow's spend is counted in the project asked about
+	if ids.Workflow != "" {
+		wf = budget.InstanceOf(budget.Budget{Scope: budget.ScopeWorkflow, ScopeID: ids.Workflow, ProjectID: ids.Project})
+	}
+	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeWorkflow, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
+		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeWorkflow: wf, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
 		if id == "" {
 			continue
 		}

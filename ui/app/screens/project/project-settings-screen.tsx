@@ -1,5 +1,6 @@
-// Project settings: what the project is, how its work is delivered (merge locally or open a pull request), the extra
-// verification checks, the development flow and, last, deleting the project (decision P51).
+// Project settings: what the project is, how its work is delivered (merge locally or open a pull request), the model routing
+// level of its agent turns (P118), the extra verification checks, the development flow and, last, deleting the project
+// (decision P51).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { FolderGit2, Settings2, Trash2 } from 'lucide';
@@ -13,6 +14,7 @@ import { Select, selectOptions } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AgentConfigPanel } from './project-agent-config.tsx';
 import { CheckSettingsPanel, DevSettingsPanel } from './project-dev.tsx';
+import { RoutingLevelPanel } from './project-routing-level.tsx';
 import { RunModePanel } from './project-run-mode.tsx';
 import { SandboxPanel } from './project-sandbox.tsx';
 import { MODES, STRATEGIES } from './project.ts';
@@ -217,6 +219,7 @@ export function ProjectSettingsScreen(handle: Handle) {
           {projectHasRepo(p) ? null : <AttachRepository key={`attach-${p.id}`} project={p} />}
           <BriefPanel key={`brief-${p.id}`} project={p} />
           <Delivery project={p} />
+          <RoutingLevelPanel key={`routelevel-${p.id}`} projectId={p.id} />
           <CheckSettingsPanel key={`checks-${p.id}`} projectId={p.id} />
           <DevSettingsPanel key={`dev-${p.id}`} projectId={p.id} />
           <RunModePanel key={`runmode-${p.id}`} projectId={p.id} />

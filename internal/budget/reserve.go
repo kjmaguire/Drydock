@@ -29,6 +29,7 @@ const DefaultReservationTTL = 3 * time.Hour
 // Hold is what a turn asks to reserve.
 type Hold struct {
 	Project, Task, Run, Agent string
+	Workflow                  string // the workflow of the turn's run ("" outside one)
 	DecisionID                string
 	ProviderID, Model         string
 	EstUSD                    float64 // 0 when the price is unknown: nothing is guessed
@@ -45,11 +46,14 @@ type Reservation struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
-// Held is what the turns in flight hold against one budget instance.
+// Held is what the turns in flight hold against one budget instance. Turns counts only the turns not started yet (a started
+// turn's agent_runs row counts it against a turn limit); InFlight counts every reservation held, started or not, which is what a
+// refusal's message names beside the money or tokens they hold.
 type Held struct {
-	USD    float64 `json:"usd"`
-	Tokens int64   `json:"tokens"`
-	Turns  int64   `json:"turns"`
+	USD      float64 `json:"usd"`
+	Tokens   int64   `json:"tokens"`
+	Turns    int64   `json:"turns"`
+	InFlight int64   `json:"inFlight"`
 }
 
 // RefusedError is a reservation that does not fit: Over holds each budget it would take past its limit, Message says why.
@@ -67,17 +71,20 @@ var ErrRefused = errors.New("budget: the turn's estimate does not fit the budget
 
 func (e *RefusedError) Is(t error) bool { return t == ErrRefused }
 
-// heldWhere is the budget_reservations predicate for a scope instance.
-func heldWhere(sc Scope) string {
+// heldWhere is the budget_reservations predicate for a scope instance, with its arguments.
+func heldWhere(sc Scope, instance string) (string, []any) {
 	switch sc {
 	case ScopeProject:
-		return "project_id=?"
+		return "project_id=?", []any{instance}
 	case ScopeTask:
-		return "task_id=?"
+		return "task_id=?", []any{instance}
 	case ScopeRun:
-		return "run_id=?"
+		return "run_id=?", []any{instance}
+	case ScopeWorkflow:
+		p, wf := workflowInstance(instance)
+		return "workflow=? AND (?='' OR project_id=?)", []any{wf, p, p}
 	}
-	return "agent_id=?"
+	return "agent_id=?", []any{instance}
 }
 
 // HeldFor sums what the reservations in flight hold against one scope instance.
@@ -85,8 +92,9 @@ func (s *Store) HeldFor(ctx context.Context, sc Scope, instance string) (Held, e
 	var h Held
 	// what a turn already reported spending is in the usage rows: only the rest of its estimate is held, and its turn only until
 	// its agent_runs row exists
-	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(MAX(est_usd-real_usd,0)),0), COALESCE(SUM(MAX(est_tokens-real_tokens,0)),0), COALESCE(SUM(holds_turn),0)
-		FROM budget_reservations WHERE state='held' AND expires_at>? AND `+heldWhere(sc), storage.Now(), instance).Scan(&h.USD, &h.Tokens, &h.Turns)
+	w, args := heldWhere(sc, instance)
+	err := s.DB.Reader().QueryRowContext(ctx, `SELECT COALESCE(SUM(MAX(est_usd-real_usd,0)),0), COALESCE(SUM(MAX(est_tokens-real_tokens,0)),0), COALESCE(SUM(holds_turn),0), COUNT(*)
+		FROM budget_reservations WHERE state='held' AND expires_at>? AND `+w, append([]any{storage.Now()}, args...)...).Scan(&h.USD, &h.Tokens, &h.Turns, &h.InFlight)
 	return h, err
 }
 
@@ -102,7 +110,7 @@ func (s *Store) Reserve(ctx context.Context, h Hold) (Reservation, error) {
 	if h.EstTokens < 0 {
 		h.EstTokens = 0
 	}
-	scope := ScopeIDs{Project: h.Project, Task: h.Task, Run: h.Run, Agent: h.Agent}
+	scope := ScopeIDs{Project: h.Project, Task: h.Task, Run: h.Run, Agent: h.Agent, Workflow: h.Workflow}
 	r := Reservation{ID: ids.New("brs")}
 	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		now := storage.Now()
@@ -134,8 +142,8 @@ func (s *Store) Reserve(ctx context.Context, h Hold) (Reservation, error) {
 			}
 		}
 		r.ExpiresAt = now + h.TTL.Milliseconds()
-		_, err := tx.ExecContext(ctx, `INSERT INTO budget_reservations(id,project_id,task_id,run_id,agent_id,decision_id,provider_id,model,est_usd,est_tokens,state,created_at,expires_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,'held',?,?)`, r.ID, h.Project, h.Task, h.Run, h.Agent, h.DecisionID, h.ProviderID, h.Model, h.EstUSD, h.EstTokens, now, r.ExpiresAt)
+		_, err := tx.ExecContext(ctx, `INSERT INTO budget_reservations(id,project_id,task_id,run_id,agent_id,workflow,decision_id,provider_id,model,est_usd,est_tokens,state,created_at,expires_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,'held',?,?)`, r.ID, h.Project, h.Task, h.Run, h.Agent, h.Workflow, h.DecisionID, h.ProviderID, h.Model, h.EstUSD, h.EstTokens, now, r.ExpiresAt)
 		return err
 	})
 	if err != nil {
@@ -148,19 +156,19 @@ func (s *Store) Reserve(ctx context.Context, h Hold) (Reservation, error) {
 // flight hold and this turn's estimate together may not pass a limit.
 func doesNotFit(st Status, held Held, h Hold) string {
 	b := st.Budget
-	what := fmt.Sprintf("%s %s budget", b.Scope, shortID(st.InstanceID))
+	what := scopeLabel(b, st.InstanceID) + " budget"
 	if b.LimitUSD != nil {
 		spent := st.Spend.KnownUSD()
 		if spent+held.USD+h.EstUSD > *b.LimitUSD+1e-9 {
 			return fmt.Sprintf("the %s has $%.4f left after $%.4f spent and $%.4f held by %d turn(s) in flight; this turn is estimated at $%.4f",
-				what, math.Max(0, *b.LimitUSD-spent-held.USD), spent, held.USD, held.Turns, h.EstUSD)
+				what, math.Max(0, *b.LimitUSD-spent-held.USD), spent, held.USD, held.InFlight, h.EstUSD)
 		}
 	}
 	if b.LimitTokens != nil {
 		used := st.Spend.Tokens()
 		if used+held.Tokens+h.EstTokens > *b.LimitTokens {
 			return fmt.Sprintf("the %s has %d tokens left after %d used and %d held by %d turn(s) in flight; this turn is estimated at %d",
-				what, max(0, *b.LimitTokens-used-held.Tokens), used, held.Tokens, held.Turns, h.EstTokens)
+				what, max(0, *b.LimitTokens-used-held.Tokens), used, held.Tokens, held.InFlight, h.EstTokens)
 		}
 	}
 	if b.LimitTurns != nil {

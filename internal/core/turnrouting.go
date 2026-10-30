@@ -81,10 +81,11 @@ func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attem
 		return attempt(ctx, responder.Routed{}, nil)
 	}
 	s := turnSubject{kind: router.RunRoomReply, agent: a, projectID: t.ProjectID, taskID: t.TaskID, runID: t.TurnID, nodeID: "reply", attempt: 1,
-		contextTokens: t.ContextTokens}
+		contextTokens: t.ContextTokens, workflow: t.Workflow, budgetRun: t.RunID}
 	rctx, rt, staticID, halt := e.decide(ctx, s)
 	if halt != nil {
-		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", halt.Reason)
+		// a pause for a group discussion's node (P124), the refusal a reply posts otherwise
+		return &budget.PauseError{Text: fmt.Sprintf("%s, so the reply was not made; raise the limit on the Budgets page", halt.Reason)}
 	}
 	next := func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
 		r, ok := pipeline.RoutedFrom(ctx)
@@ -96,7 +97,7 @@ func (e *economics) routeReply(ctx context.Context, t responder.ReplyTurn, attem
 	_, err = e.runTurn(ctx, rctx, s, workflow.NodeInput{}, next, rt, staticID)
 	var re *budget.RefusedError
 	if errors.As(err, &re) {
-		return fmt.Errorf("%s, so the reply was not made; raise the limit on the Budgets page", re.Message)
+		return &budget.PauseError{Over: re.Over, Text: fmt.Sprintf("%s, so the reply was not made; raise the limit on the Budgets page", re.Message)}
 	}
 	return err
 }
@@ -204,7 +205,7 @@ func (e *economics) runWithFallback(ctx, rctx context.Context, s turnSubject, in
 		}
 		req := rt.req
 		req.Budget = router.BudgetState{} // read again: the failed turn may have spent
-		if berr := e.fillBudget(ctx, &req); berr != nil {
+		if berr := e.fillBudgetRun(ctx, &req, s.budgetRunID()); berr != nil {
 			e.c.logf("route turn: fallback: budget: %v", berr)
 			return out, err // budgets cannot be read: no hop spends more (fail closed, as the budget middleware does)
 		}
@@ -316,6 +317,17 @@ type turnSubject struct {
 	projectID, taskID       string
 	runID, nodeID, workflow string
 	attempt, contextTokens  int
+	// budgetRun is the workflow run a turn counts toward when runID is not one: a turn of a group discussion is routed under
+	// its room turn's id and counts toward the run that holds the discussion (decision P124)
+	budgetRun string
+}
+
+// budgetRunID is the run whose budgets the turn counts toward.
+func (s turnSubject) budgetRunID() string {
+	if s.budgetRun != "" {
+		return s.budgetRun
+	}
+	return s.runID
 }
 
 // subjectOf names the agent and the kind of a workflow agent turn from its node: the task's worker or reviewer, or the agent
@@ -359,8 +371,9 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 	if len(a.RouteModels) == 0 || e.agentRouter == nil {
 		return ctx, nil, e.saveStatic(ctx, s, "the agent's configured model: routing is off for this agent (Team, Edit: models the router may choose)"), nil
 	}
+	level, from, tpl := e.levelFor(ctx, s.projectID, s.taskID, s.workflow) // the task's, its template's, the project's, the workspace's (P118, P127)
 	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role),
-		Level: router.LevelBalanced, ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate,
+		Level: level, LevelSource: from, LevelTemplate: tpl, ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate,
 		ContextTokens: s.contextTokens, Failures: e.turnFailures(ctx, s)}
 	if sig, ok := router.TurnSignals(s.kind); ok {
 		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
@@ -370,7 +383,7 @@ func (e *economics) decide(ctx context.Context, s turnSubject) (context.Context,
 			req.Worker = &router.WorkerRef{Model: w}
 		}
 	}
-	if err := e.fillBudget(ctx, &req); err != nil {
+	if err := e.fillBudgetRun(ctx, &req, s.budgetRunID()); err != nil {
 		e.c.logf("route turn: budget: %v", err)
 	}
 	approve := budget.ApprovedOverLimit(ctx)
@@ -497,7 +510,12 @@ func (s agentSource) Candidates(ctx context.Context, req router.RouteRequest) ([
 		}
 		// the CLI's own report of a rejected rate limit makes the model unavailable until the limit resets (agentlimits.go)
 		limited, _ := s.e.c.limits.blocked(a.Adapter, r.Model, time.Now())
-		out = append(out, router.Candidate{Provider: router.ProviderID("agent:" + a.Adapter), Model: r.Model, Tier: tier, DataClass: providers.DataPrivate,
+		// a limit the CLI said is near makes a premium model the router's second choice where the rules allow (P128)
+		warning := ""
+		if near, lim := s.e.c.limits.warned(a.Adapter, r.Model, time.Now()); near {
+			warning = lim.warning(a.Adapter)
+		}
+		out = append(out, router.Candidate{QuotaWarning: warning, Provider: router.ProviderID("agent:" + a.Adapter), Model: r.Model, Tier: tier, DataClass: providers.DataPrivate,
 			Enabled: true, PrivateEligible: true, SupportsTools: true, ResponsesValidated: true, Healthy: true, QuotaOK: !limited, QuotaRemainingPct: -1,
 			AgentNative: true, RetentionRequired: s.e.c.Providers.RetentionBlocked(ctx, "agent:"+a.Adapter, r.Model)}) // no tool-call probe ran: the agent CLI brings its own tools (the explanation says so)
 	}

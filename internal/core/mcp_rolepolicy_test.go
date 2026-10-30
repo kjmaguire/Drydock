@@ -64,6 +64,7 @@ func spawnTools(t *testing.T, a *app, ag core.Agent, projectID, taskID, cwd stri
 		t.Fatalf("%s got no gateway entry: %v", ag.Name, err)
 	}
 	url, tok := parseSingleEntry(t, raw)
+	a.playAgent(m.RunID)
 	s, err := connectMCP(context.Background(), url, tok)
 	if err != nil {
 		t.Fatal(err)

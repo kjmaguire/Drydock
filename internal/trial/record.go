@@ -68,6 +68,12 @@ type Record struct {
 	Stop           string `json:"stop,omitempty"`
 	BroadcastBytes int64  `json:"broadcastBytes,omitempty"`
 	MaxPromptBytes int64  `json:"maxPromptBytes,omitempty"`
+	// AgentCLI is the CLI B0's team ran (claude, or another CLI's manifest id; decision P121) and Provider the provider it ran on
+	// instead of the CLI's own sign-in ("" for none). CostSource is "estimated" when the cost was computed from the tokens at the
+	// provider's prices rather than taken from the CLI ("" means the CLI's own figure).
+	AgentCLI   string `json:"agentCli,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	CostSource string `json:"costSource,omitempty"`
 	// ModelTurns is the CLI's num_turns (B1 only; the core does not store it).
 	ModelTurns int      `json:"modelTurns,omitempty"`
 	Reviews    []Review `json:"reviews,omitempty"`

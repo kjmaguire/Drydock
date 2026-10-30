@@ -308,6 +308,8 @@ export function loadToo(v: Pick<LocalView, 'server' | 'load'>, m: LocalModel): {
   const loaded = loadedIds(v.server);
   const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
   if (m.embedding) return { ok: false, why: 'An embedding model is served on its own, under Embeddings.' };
+  const kind = draftOnly(m);
+  if (kind) return { ok: false, why: `${DRAFT_KINDS[kind].article} does not chat: choose it as its model's draft.` };
   if (loaded.includes(m.id)) return { ok: false, why: 'Loaded already.' };
   if (loaded.length >= load.max) return { ok: false, why: `At most ${load.max} models stay loaded at once: unload one first.` };
   const need = loadBytesOf(m);
@@ -326,13 +328,87 @@ export function loadLine(v: Pick<LocalView, 'server' | 'load'>): string {
   return load.budgetBytes > 0 ? `${count} · ${usedOf(load.loadedBytes, load.budgetBytes)}` : count;
 }
 
-/** The draft choices of a model: none, then each downloaded model that can draft for it. */
+/** The draft a model chooses when its own MTP heads draft for it (decision P120): no model is called so. */
+export const DRAFT_MTP = 'mtp';
+
+export type DraftKind = NonNullable<LocalModel['draftKind']>;
+
+/**
+ * The words for each kind of file that only drafts (decisions P120 and P129): its badge, its prefix in a draft choice, the
+ * row's word once chosen, the kind with its article, and the badge's tooltip.
+ */
+export const DRAFT_KINDS: Record<DraftKind, { badge: string; prefix: string; with: string; article: string; title: string }> = {
+  eagle3: {
+    badge: 'EAGLE-3 draft',
+    prefix: 'EAGLE-3',
+    with: 'with EAGLE-3',
+    article: 'An EAGLE-3 draft',
+    title: "An EAGLE-3 draft: it reads its model's hidden states to guess ahead. It drafts for that model and does not chat.",
+  },
+  dflash: {
+    badge: 'DFlash draft',
+    prefix: 'DFlash',
+    with: 'with DFlash',
+    article: 'A DFlash draft',
+    title: "A DFlash draft: it guesses a whole block of tokens at once from its model's hidden states. It drafts for that model and does not chat.",
+  },
+  dspark: {
+    badge: 'DSpark draft',
+    prefix: 'DSpark',
+    with: 'with DSpark',
+    article: 'A DSpark draft',
+    title: 'A DSpark draft: a DFlash draft with a head that reads the token before, so more of its guesses hold. It drafts for its model and does not chat.',
+  },
+  'mtp-head': {
+    badge: 'MTP head',
+    prefix: 'MTP head',
+    with: 'with an MTP head',
+    article: 'An MTP head',
+    title: "The multi-token prediction (MTP) heads of a model, shipped as a file of their own. They draft for that model and do not chat.",
+  },
+};
+
+/** The kind of a file that only drafts, or undefined for a model that chats (an older core says only eagle3). */
+export function draftOnly(m: Pick<LocalModel, 'draftKind' | 'eagle3'>): DraftKind | undefined {
+  return m.draftKind ?? (m.eagle3 ? 'eagle3' : undefined);
+}
+
+/**
+ * The draft choices of a model: none, its own MTP heads when its file carries them, then each downloaded model that can draft
+ * for it, a file that only drafts named by its kind (decisions P120 and P129).
+ */
 export function draftChoices(m: LocalModel, models: readonly LocalModel[]): { value: string; label: string }[] {
-  const name = (id: string) => {
+  const label = (id: string) => {
+    if (id === DRAFT_MTP) return 'Its own MTP heads';
     const found = models.find((x) => x.id === id);
-    return found ? `${modelName(found.repo)} · ${found.variant}` : id;
+    const name = found ? `${modelName(found.repo)} · ${found.variant}` : id;
+    const kind = found ? draftOnly(found) : undefined;
+    return `${kind ? DRAFT_KINDS[kind].prefix : 'Draft'}: ${name}`;
   };
-  return [{ value: '', label: 'No draft' }, ...(m.drafts ?? []).map((id) => ({ value: id, label: `Draft: ${name(id)}` }))];
+  return [{ value: '', label: 'No draft' }, ...(m.drafts ?? []).map((id) => ({ value: id, label: label(id) }))];
+}
+
+/** The row's word for the draft chosen: its own MTP heads, a file that only drafts, or a draft model (undefined for none). */
+export function draftWords(m: LocalModel, models: readonly LocalModel[]): string | undefined {
+  if (!m.draft) return undefined;
+  if (m.draft === DRAFT_MTP) return 'with MTP';
+  const found = models.find((x) => x.id === m.draft);
+  const kind = found ? draftOnly(found) : undefined;
+  return kind ? DRAFT_KINDS[kind].with : 'with a draft';
+}
+
+/**
+ * What Load too and Unload do, as their tooltips (decision P120): on the router the model is loaded or unloaded while the others
+ * keep running; a server of one model has no router, so Load too starts it again with both.
+ */
+export function loadTooTitle(server: Pick<ServerState, 'router'>): string {
+  return server.router
+    ? 'Load it beside the models served: they keep running while it loads'
+    : 'Keep it loaded beside the model served: the server starts again with both, since one model alone runs without the router';
+}
+
+export function unloadTitle(server: Pick<ServerState, 'router'>): string {
+  return server.router ? 'Unload it: the other models keep running' : 'Start the server again without this model';
 }
 
 /** The token as the page shows it: "hf_…1234" as the core masked it, "none" without one. */

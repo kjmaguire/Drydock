@@ -20,6 +20,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/redact"
+	"github.com/kjmaguire/drydock/internal/room"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -59,6 +60,14 @@ type Runtime struct {
 	// (agents.RepoConfigReader) is not started in a folder that has any of them unless what is there is trusted (audit
 	// 2026-10-16, M3). Nil: nothing is trusted.
 	RepoConfigTrusted func(ctx context.Context, projectID, adapter, fingerprint string) bool
+	// StartGate, if set, refuses to start a session (an error says why): a CLI whose acknowledgement a person has not given, or
+	// gave for a manifest file that has changed since (decision P117). Every session starts through Spawn, so no path starts a
+	// gated CLI without it. Nil: nothing is refused here.
+	StartGate func(ctx context.Context, cfg *Config) error
+	// Grants redeems the turn grant of a turn in a room (room-protocol s6 rule 1, decision P118): Spawn refuses a session whose
+	// Config names a room unless the room's scheduler issued it a grant that is valid now, and uses the grant up. Nil: no room
+	// turn starts (fail closed); every other session is unaffected.
+	Grants GrantRedeemer
 
 	wmu     sync.Mutex
 	running map[*Managed]struct{} // sessions whose end is not recorded yet (Wait)
@@ -79,6 +88,28 @@ type MCPAttachment struct {
 	// Release ends the gateway run and removes the config file. Spawn calls it exactly once, when the session ends (Stop,
 	// process exit, crash) or when the process could not be started.
 	Release func()
+	// BindProcess, if set, is told the pid of the agent's process the moment it is started, before the adapter talks to it, so
+	// the gateway's peer check knows whose connections to answer (decision P122). Every process the adapter starts is told.
+	BindProcess func(pid int)
+}
+
+// bindingPM tells BindProcess the pid of every process the adapter starts for the session (the agent CLI; a headless CLI
+// starts one per turn).
+type bindingPM struct {
+	proc.Manager
+	bind func(pid int)
+}
+
+// Bind binds a process the adapter did not start through the manager: an adapter whose agent runs in this process (a test
+// double that plays the agent and connects to the gateway itself) binds its own pid.
+func (b *bindingPM) Bind(pid int) { b.bind(pid) }
+
+func (b *bindingPM) Start(ctx context.Context, spec proc.Spec) (proc.Proc, error) {
+	p, err := b.Manager.Start(ctx, spec)
+	if err == nil {
+		b.bind(p.PID()) // each one: a CLI that starts a process per turn binds them all
+	}
+	return p, err
 }
 
 // Config describes one agent session to start.
@@ -90,6 +121,42 @@ type Config struct {
 	Spec      agents.RunSpec
 	Provider  string // model provider label for usage rows ("anthropic", "openrouter", a host id)
 	Tier      string // premium | cheap | free
+	// RoomID is set for an agent's turn in a room (a reply, a turn of a group discussion): such a session starts only with
+	// Grant, the room scheduler's grant for this agent in this room (P118). Task work, review, the template roles, the team
+	// lead, a recommendation, a person's chat and a connection test are not turns in a room and carry neither.
+	RoomID string
+	Grant  *room.TurnGrant
+	// WorkflowRun is the workflow run a turn in a room belongs to (a turn of a group-discussion node, decision P124): the
+	// session's agent_runs row and its usage rows name it, so the run's and its workflow's budgets count the turn even in a
+	// room that has no task. "" for every other session.
+	WorkflowRun string
+}
+
+// GrantRedeemer uses a room turn's grant (room.Service.RedeemGrant).
+type GrantRedeemer interface {
+	RedeemGrant(ctx context.Context, g room.TurnGrant, roomID, agentID, runID string) error
+}
+
+// checkGrant refuses a turn in a room that has no valid grant, and uses the grant of one that has. A grant given for a session
+// that names no room still names its room: it is checked the same way.
+func (r *Runtime) checkGrant(ctx context.Context, cfg Config, runID string) error {
+	roomID := cfg.RoomID
+	if roomID == "" && cfg.Grant != nil {
+		roomID = cfg.Grant.RoomID
+	}
+	if roomID == "" {
+		return nil // not a turn in a room
+	}
+	if cfg.Grant == nil {
+		return fmt.Errorf("runtime: %w (room %s, agent %s)", room.ErrNoGrant, roomID, cfg.AgentID)
+	}
+	if r.Grants == nil {
+		return fmt.Errorf("runtime: %w: no turn scheduler is connected, so no room turn starts", room.ErrGrantRefused)
+	}
+	if err := r.Grants.RedeemGrant(ctx, *cfg.Grant, roomID, cfg.AgentID, runID); err != nil {
+		return fmt.Errorf("runtime: %w", err)
+	}
+	return nil
 }
 
 // Managed is a running agent session with bookkeeping.
@@ -159,6 +226,21 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	if cfg.Spec.RunMode == "" && r.RunMode != nil && cfg.AgentID != "" {
 		cfg.Spec.RunMode, cfg.Spec.WSLDistro, cfg.Spec.RunModeWhy = r.RunMode(ctx, cfg.AgentID)
 	}
+	if r.StartGate != nil {
+		if err := r.StartGate(ctx, &cfg); err != nil {
+			r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})
+			return nil, err
+		}
+		ad, ok = r.Adapters[cfg.Adapter] // the gate may have loaded a changed manifest again: its adapter is the one to start
+		if !ok {
+			return nil, fmt.Errorf("runtime: unknown adapter %q", cfg.Adapter)
+		}
+	}
+	// a turn in a room starts only on the scheduler's grant: checked (and used) before anything about the session is prepared
+	if err := r.checkGrant(ctx, cfg, runID); err != nil {
+		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start", "grant": true})
+		return nil, err
+	}
 	if err := agents.CheckRunMode(ad, cfg.Spec); err != nil {
 		r.publish(ctx, "agent.failed", cfg, runID, map[string]any{"error": err.Error(), "phase": "start"})
 		return nil, err
@@ -198,7 +280,11 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 		}
 		r.publish(ctx, "agent.mcp", cfg, runID, info)
 	}
-	sess, err := ad.Start(ctx, r.PM, cfg.Spec)
+	pm := r.PM
+	if att.BindProcess != nil {
+		pm = &bindingPM{Manager: r.PM, bind: att.BindProcess}
+	}
+	sess, err := ad.Start(ctx, pm, cfg.Spec)
 	if err != nil {
 		if att.Release != nil {
 			att.Release()
@@ -209,8 +295,8 @@ func (r *Runtime) Spawn(ctx context.Context, cfg Config) (*Managed, error) {
 	m := &Managed{rt: r, cfg: cfg, RunID: runID, Sess: sess, releaseMCP: att.Release, recorded: make(chan struct{})}
 	if r.DB != nil {
 		_ = r.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-			_, err := tx.ExecContext(ctx, `INSERT INTO agent_runs(id,agent_id,task_id,session_id,pid,cwd,status,started_at) VALUES(?,?,?,?,?,?,?,?)`,
-				m.RunID, cfg.AgentID, cfg.TaskID, "", sess.PID(), cfg.Spec.Cwd, "WORKING", storage.Now())
+			_, err := tx.ExecContext(ctx, `INSERT INTO agent_runs(id,agent_id,task_id,session_id,pid,cwd,status,started_at,workflow_run_id) VALUES(?,?,?,?,?,?,?,?,?)`,
+				m.RunID, cfg.AgentID, cfg.TaskID, "", sess.PID(), cfg.Spec.Cwd, "WORKING", storage.Now(), cfg.WorkflowRun)
 			return err
 		})
 	}
@@ -512,9 +598,9 @@ func (m *Managed) recordUsage(ctx context.Context, u workflow.UsageChunk) error 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	return m.rt.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO model_usage(ts,agent_run_id,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, storage.Now(), m.RunID, m.cfg.TaskID, m.cfg.AgentID, m.cfg.Provider, model, m.cfg.Tier,
-			u.InputTokens, u.OutputTokens, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens, u.CostUSD, nz(u.Source))
+		_, err := tx.ExecContext(ctx, `INSERT INTO model_usage(ts,agent_run_id,task_id,agent_id,provider,model,tier,input_tokens,output_tokens,cached_tokens,cache_write_tokens,reasoning_tokens,cost_usd,source,run_id)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, storage.Now(), m.RunID, m.cfg.TaskID, m.cfg.AgentID, m.cfg.Provider, model, m.cfg.Tier,
+			u.InputTokens, u.OutputTokens, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens, u.CostUSD, nz(u.Source), m.cfg.WorkflowRun)
 		return err
 	})
 }
@@ -536,6 +622,10 @@ type TurnResult struct {
 	// Started is false for a turn that ended without its session ever starting: no session announcement, no text, no tool
 	// call (Claude Code answers a --resume of a session it does not have with an error result and nothing else).
 	Started bool `json:"started"`
+	// SeenBytes is the size of what the turn added to the session that the runtime saw: its complete messages, tool calls and
+	// tool results, as their chunks encode them. The session policy estimates a session's occupancy from it when the CLI reports
+	// none (internal/pipeline, decision P128).
+	SeenBytes int64 `json:"seenBytes,omitempty"`
 }
 
 // Controller implements workflow.TurnController for one managed session (the watchdog steers through it).
@@ -629,6 +719,10 @@ func (m *Managed) RunTurnImages(ctx context.Context, prompt string, images []age
 			m.observe(ctx, c)
 			if emit != nil {
 				emit(c)
+			}
+			switch c.Kind {
+			case workflow.ChunkMessageEnd, workflow.ChunkToolCall, workflow.ChunkToolResult:
+				res.SeenBytes += int64(len(c.Data))
 			}
 			switch c.Kind {
 			case workflow.ChunkMessageEnd:

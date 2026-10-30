@@ -19,6 +19,7 @@ describe('Project settings', () => {
       projectList: async () => [project],
       licenseStatus: async () => lic(),
       appInfo: async () => ({}) as never,
+      routeLevelGet: async () => ({ workspace: 'balanced', project: '', effective: 'balanced', source: 'workspace', levels: [] }),
       checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false }),
       projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } }),
       ...client,
@@ -373,6 +374,22 @@ describe('Check settings and development flow', () => {
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
+  });
+
+  it('the context ceiling: empty means the default, out of range is explained, a number is saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Most tokens an agent turn starts with'), r);
+    expect(box.value).toBe('');
+    expect(box.placeholder).toBe('20000');
+    expect(r.container.textContent).toMatch(/file excerpts, the repository map and memory are cut first; the task and instructions never are/);
+    type(box, '1000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')!.textContent).toContain('4,000 and 200,000'), r);
+    type(box, '12000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ contextCeiling: 12000 });
   });
 
   it('notes that more than five agents at once rarely pays off, and only then', async () => {

@@ -149,8 +149,8 @@ func TestAntigravityDeniedActionsToolStepsAndFailures(t *testing.T) {
 	if !strings.Contains(string(env), "GEMINI_API_KEY=kept-for-agy") || strings.Contains(string(env), "not-for-agy") {
 		t.Errorf("the scrubbed environment keeps agy's own variables only")
 	}
-	if err := s.Interrupt(context.Background()); err == nil {
-		t.Error("interrupt is not claimed")
+	if err := s.Interrupt(context.Background()); err != nil {
+		t.Errorf("an interrupt with no turn running does nothing: %v", err)
 	}
 
 	cs = turn(t, s, "crash now")
@@ -173,6 +173,82 @@ func TestAntigravityDeniedActionsToolStepsAndFailures(t *testing.T) {
 	}
 	if _, err := ad.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "a1", Cwd: t.TempDir(), ResumeID: "x"}); err == nil {
 		t.Error("resume is not claimed")
+	}
+}
+
+// Interrupting agy (decision P117) ends its process, as the documented Ctrl+C ends print mode: the turn ends "cancelled", the
+// session stays (Wait does not answer), and the next message starts agy again, as a new conversation the person is told about.
+func TestAntigravityInterruptEndsTheTurnAndTheNextMessageStartsAgyAgain(t *testing.T) {
+	t.Setenv("DRYDOCK_FAKE_AGY", "1")
+	script(t, "DRYDOCK_FAKE_AGY_SCRIPT", fakeagy.Script{Rules: []fakeagy.Rule{
+		{Match: "long", Steps: []fakeagy.Step{{Say: "working "}, {SleepMS: 60000}, {Say: "done"}}},
+	}, Default: []fakeagy.Step{{Say: "OK"}}})
+	ad := headless.NewAntigravity(headless.AntigravityConfig{Exe: os.Args[0], Caps: agents.Capabilities{Headless: true, Interrupt: true}})
+	s, err := ad.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "a1", Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Stop(context.Background()) })
+	first := s.PID()
+	if err := s.Send(context.Background(), "a long one"); err != nil {
+		t.Fatal(err)
+	}
+	var cs []workflow.Chunk
+	deadline := time.After(20 * time.Second)
+wait:
+	for {
+		select {
+		case c := <-s.Output():
+			cs = append(cs, c)
+			if c.Kind == workflow.ChunkText {
+				break wait
+			}
+		case <-deadline:
+			t.Fatalf("no output to interrupt: %v", kinds(cs))
+		}
+	}
+	start := time.Now()
+	ictx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Interrupt(ictx); err != nil {
+		t.Fatal(err)
+	}
+	cs = nil
+	for {
+		c := <-s.Output()
+		cs = append(cs, c)
+		if c.Kind == workflow.ChunkDone {
+			break
+		}
+	}
+	if stopReason(t, cs) != "cancelled" || len(of(cs, workflow.ChunkError)) != 0 || time.Since(start) > 10*time.Second {
+		t.Fatalf("the interrupted turn: %v (stop %q)", kinds(cs), stopReason(t, cs))
+	}
+	select {
+	case ei := <-s.Wait():
+		t.Fatalf("the session ended with the interrupted agy: %+v", ei)
+	case <-time.After(300 * time.Millisecond):
+	}
+	cs = turn(t, s, "and now a short one")
+	var said string
+	for _, c := range of(cs, workflow.ChunkMessageEnd) {
+		var d workflow.TextDelta
+		_ = c.Decode(&d)
+		said = d.Text
+	}
+	if said != "OK" || stopReason(t, cs) != "success" || s.PID() == first || s.PID() <= 0 {
+		t.Fatalf("the next message: %q %v, pid %d (first %d)", said, kinds(cs), s.PID(), first)
+	}
+	if len(of(cs, workflow.ChunkLog)) != 1 || len(of(cs, workflow.ChunkSession)) != 1 {
+		t.Errorf("a new agy is said and its conversation reported: %v", kinds(cs))
+	}
+	if err := s.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.Wait():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not end the session")
 	}
 }
 

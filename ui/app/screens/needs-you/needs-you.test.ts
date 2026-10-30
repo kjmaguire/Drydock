@@ -201,3 +201,28 @@ describe('verdictWords', () => {
     expect(verdictWords('NEEDS_ATTENTION')).toBe('needs attention');
   });
 });
+
+describe('budget items (P118)', () => {
+  const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ ...base, kind: 'budget', severity: 0, ...over }) as NeedsYouItem;
+
+  it('a warning or a limit opens the Budgets page and can be marked done; a pause opens its task and is answered there', () => {
+    const warning = item({ key: 'budget:bud_1:prj_1:warning:10', title: 'Budget warning: the project budget passed 80%', budgetState: 'warning', budgetId: 'bud_1' });
+    const limit = item({ key: 'budget:bud_2:t1:exceeded:12', title: 'Budget reached: the task budget is at its limit', budgetState: 'exceeded', taskId: 't1' });
+    const pause = item({ key: 'approval:req_1', title: 'Budget limit reached: task t1 budget at 120%', budgetState: 'paused', taskId: 't1', approvalId: 'req_1' });
+    expect(needsLook(warning)).toBe('budget');
+    expect(needsTarget(warning)).toBe('/budgets');
+    expect(needsTarget(limit)).toBe('/budgets');
+    expect(needsTarget(pause)).toBe('/task/t1');
+    expect(canAck(warning)).toBe(true);
+    expect(canAck(limit)).toBe(true);
+    expect(canAck(pause)).toBe(false);
+  });
+
+  it("says what to do in the core's words, with its own words when the core sent none", () => {
+    expect(needsHint(item({ budgetState: 'warning', detail: 'Agents keep working.' }))).toBe('Agents keep working.');
+    expect(needsHint(item({ budgetState: 'warning' }))).toContain('Agents keep working');
+    expect(needsHint(item({ budgetState: 'exceeded' }))).toContain('Raise the limit on the Budgets page');
+    expect(needsHint(item({ budgetState: 'paused' }))).toContain('budget stopped the next agent turn');
+    expect(needsSubtitle(item({ budgetState: 'warning' }), 'gocalc', undefined, Date.parse('2026-01-01T00:00:00Z'))).toContain('gocalc · budget');
+  });
+});

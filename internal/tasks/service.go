@@ -41,7 +41,7 @@ type Task struct {
 	Effort         string   `json:"effort,omitempty"`
 	CostUSD        float64  `json:"costUsd"`
 	IssueRef       string   `json:"issueRef,omitempty"`
-	Origin         string   `json:"origin,omitempty"` // "lead:N": a follow-up the team lead split off (see LeadDepth); empty when a person made it
+	Origin         string   `json:"origin,omitempty"` // "lead:N": a follow-up the team lead split off (see LeadDepth); "again:<task>": a person ran that ended task again (AgainOf); empty when a person made it
 	PRRef          string   `json:"prRef,omitempty"`
 	RunID          string   `json:"runId,omitempty"`
 	BlockedReason  string   `json:"blockedReason,omitempty"`
@@ -80,6 +80,21 @@ const (
 
 // LeadOrigin is the origin of a follow-up the lead split off at this depth.
 func LeadOrigin(depth int) string { return leadOrigin + strconv.Itoa(depth) }
+
+const againOrigin = "again:"
+
+// AgainOrigin is the origin of a task a person ran again (decision P124): a new task with the same work as the ended task
+// taskID, which stays as it ended.
+func AgainOrigin(taskID string) string { return againOrigin + taskID }
+
+// AgainOf is the ended task this one runs again, or "".
+func (t Task) AgainOf() string {
+	id, _ := strings.CutPrefix(t.Origin, againOrigin)
+	if id == t.Origin {
+		return ""
+	}
+	return id
+}
 
 // LeadDepth is how many steps the task is from one a person made through the team lead's splits: 0 for a task a person, an
 // import or a plan made, 1 for a lead's follow-up of that, and so on.
@@ -164,7 +179,8 @@ type CreateReq struct {
 	Acceptance  []string
 	DependsOn   []string
 	IssueRef    string
-	// Origin is LeadOrigin(depth) for a follow-up the team lead split off; empty for any other task.
+	// Origin is LeadOrigin(depth) for a follow-up the team lead split off, AgainOrigin(task) for an ended task a person runs
+	// again; empty for any other task.
 	Origin        string
 	MaxIterations int
 	// Labels are normalized by NormalizeLabels (refused past its limits).
@@ -190,10 +206,15 @@ func (r CreateReq) validate() error {
 		return fmt.Errorf("tasks: at most %d iterations (each is a paid work and review turn), not %d", MaxIterationsCap, r.MaxIterations)
 	case r.Priority < -MaxPriority || r.Priority > MaxPriority:
 		return fmt.Errorf("tasks: priority %d is outside -%d to %d", r.Priority, MaxPriority, MaxPriority)
-	case r.Origin != "" && !validLeadOrigin(r.Origin):
+	case r.Origin != "" && !validLeadOrigin(r.Origin) && !validAgainOrigin(r.Origin):
 		return fmt.Errorf("tasks: the origin %q is not one a task is made with; a team lead's follow-up is %s1 to %s%d", r.Origin, leadOrigin, leadOrigin, MaxLeadDepth)
 	}
 	return nil
+}
+
+func validAgainOrigin(o string) bool {
+	id, ok := strings.CutPrefix(o, againOrigin)
+	return ok && id != "" && len(id) <= 64 && strings.Trim(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
 }
 
 func validLeadOrigin(o string) bool {
@@ -232,7 +253,7 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (Task, error) {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM tasks WHERE project_id=?`, req.ProjectID).Scan(&seq); err != nil {
 			return err
 		}
-		if req.Origin != "" { // counted in the transaction that inserts, so two splits at once cannot both pass the limit
+		if validLeadOrigin(req.Origin) { // counted in the transaction that inserts, so two splits at once cannot both pass the limit
 			var open int
 			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE project_id=? AND origin LIKE 'lead:%' AND status NOT IN (?,?,?)`,
 				req.ProjectID, string(Completed), string(Failed), string(Cancelled)).Scan(&open); err != nil {

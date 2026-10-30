@@ -37,6 +37,9 @@ type Script struct {
 	// ModelSteps makes every turn of a session started with --model <m> named here run these steps instead of the prompt's
 	// (a model that hangs, say, beside others that answer).
 	ModelSteps map[string][]Step `json:"modelSteps,omitempty"`
+	// NoOccupancy leaves the model's context window out of every result, so the session reports no context occupancy, as a CLI
+	// that reports none does (Drydock then estimates it; decision P128).
+	NoOccupancy bool `json:"noOccupancy,omitempty"`
 }
 
 // Rule selects steps by prompt content.
@@ -643,9 +646,13 @@ loop:
 		n, total := a.turns, a.cost
 		a.saveState()
 		a.mu.Unlock()
+		mu := map[string]any{"inputTokens": 10 * n, "outputTokens": 5 * n, "cacheReadInputTokens": 100 * n, "cacheCreationInputTokens": 0, "costUSD": 0.0002 * float64(n), "contextWindow": 200000}
+		if a.script.NoOccupancy {
+			delete(mu, "contextWindow")
+		}
 		a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": lastText, "stop_reason": "end_turn", "session_id": a.session,
 			"permission_denials": denials, "total_cost_usd": total, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
-			"modelUsage": map[string]any{"fake-1": map[string]any{"inputTokens": 10 * n, "outputTokens": 5 * n, "cacheReadInputTokens": 100 * n, "cacheCreationInputTokens": 0, "costUSD": 0.0002 * float64(n), "contextWindow": 200000}}})
+			"modelUsage": map[string]any{"fake-1": mu}})
 	}
 	a.mu.Lock()
 	a.running = false

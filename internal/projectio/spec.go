@@ -76,7 +76,7 @@ var Tables = []Table{
 			"run_mode": "machine-specific (decision P41): an imported agent follows the importing project's run mode", "wsl_distro": "machine-specific: a WSL distro of the exporting PC"},
 		Import: importAgent},
 	{Name: "agent_runs", Where: `agent_id IN ` + agentIDs,
-		Columns: []string{"id", "agent_id", "task_id", "status", "started_at", "ended_at", "exit_code", "error"},
+		Columns: []string{"id", "agent_id", "task_id", "status", "started_at", "ended_at", "exit_code", "error", "workflow_run_id"},
 		Skipped: map[string]string{"session_id": "the agent CLI's own session id, which only resumes on the exporting machine", "pid": why_runtime, "cwd": why_localPath},
 		Import:  importAgentRun},
 	{Name: "rooms", Where: `project_id=@p`,
@@ -97,7 +97,9 @@ var Tables = []Table{
 		Columns: []string{"id", "project_id", "seq", "title", "description", "status", "priority", "assignee", "reviewer", "template", "files", "acceptance",
 			"branch", "base_branch", "iteration", "max_iterations", "review_feedback", "verdict", "model", "effort", "cost_usd", "issue_ref", "origin", "pr_ref",
 			"run_id", "blocked_reason", "accepted_by", "created_at", "updated_at", "started_at", "completed_at", "version", "labels"},
-		Skipped: map[string]string{"worktree": why_localPath}, Import: importTask},
+		Skipped: map[string]string{"worktree": why_localPath,
+
+			"route_level": "a person's routing choice on this installation (decision P127), left out as the project's own level is: an imported task follows the importing project's level"}, Import: importTask},
 	{Name: "task_deps", Where: `task_id IN ` + taskIDs + ` AND depends_on IN ` + taskIDs, Columns: []string{"task_id", "depends_on"}},
 	{Name: "task_evidence", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "attempt", "kind", "passed", "summary", "ref", "data", "created_at"},
@@ -105,9 +107,11 @@ var Tables = []Table{
 	{Name: "task_reviews", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "attempt", "reviewer", "verdict", "feedback", "model", "commit_sha", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
+	{Name: "acceptance_marks", Where: `task_id IN ` + taskIDs, OrderBy: `created_at, id`,
+		Columns: []string{"id", "task_id", "criterion", "criterion_sha", "mark", "actor", "note", "created_at"}},
 	{Name: "workflow_runs", Where: `id IN ` + runIDs, OrderBy: `created_at, id`,
 		Columns: []string{"id", "workflow", "status", "project_id", "task_id", "input", "result", "topology_hash", "parent_checkpoint_id",
-			"latest_checkpoint_id", "failed_reason", "created_at", "updated_at", "version"}, Import: importRun},
+			"latest_checkpoint_id", "failed_reason", "created_at", "updated_at", "version", "parent_run_id"}, Import: importRun},
 	{Name: "workflow_checkpoints", Where: `run_id IN ` + runIDs, OrderBy: `run_id, created_at, rowid`,
 		Columns: []string{"id", "run_id", "workflow", "step", "kind", "parent_id", "state", "created_at"}},
 	{Name: "node_executions", Where: `run_id IN ` + runIDs, OrderBy: `run_id, step, node_id, attempt`,
@@ -119,7 +123,7 @@ var Tables = []Table{
 	{Name: "watchdog_trips", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "run_id", "node_id", "attempt", "agent_id", "signal", "stage", "evidence", "created_at"},
 		Skipped: map[string]string{"id": why_surrogate}},
-	{Name: "handoffs", Where: `task_id IN ` + taskIDs, Columns: []string{"id", "task_id", "run_id", "agent_id", "artifact", "reason", "created_at"}},
+	{Name: "handoffs", Where: `task_id IN ` + taskIDs, Columns: []string{"id", "task_id", "run_id", "agent_id", "artifact", "reason", "created_at", "verification"}},
 	{Name: "dead_letters", Where: `task_id IN ` + taskIDs, Columns: []string{"id", "task_id", "template", "reason", "detail", "resolved", "note", "created_at"}},
 	{Name: "model_usage", Where: `task_id IN ` + taskIDs + ` OR agent_id IN ` + agentIDs + ` OR run_id IN ` + runIDs, OrderBy: `id`,
 		Columns: []string{"ts", "run_id", "agent_run_id", "task_id", "agent_id", "provider", "host_id", "model", "tier", "input_tokens", "output_tokens",
@@ -237,6 +241,8 @@ var ExcludedTables = map[string]string{
 	"integration_auto_approve":       "a person's per-Connection approval classes on this machine; the Connection is not exported",
 	"integration_attachments":        "files of vendor items, which belong to a Connection",
 	"integration_webhook_deliveries": "the workspace receiver's delivery log",
+
+	"room_turn_grants": "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

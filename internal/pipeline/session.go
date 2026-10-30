@@ -11,10 +11,12 @@ import (
 
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
+	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
+	"github.com/kjmaguire/drydock/internal/watchdog"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -23,12 +25,21 @@ import (
 // Between two work turns of the same run, Drydock decides whether the next turn continues the previous turn's CLI session
 // (--resume) or starts a fresh one. The decision is taken only when a turn starts, from what the previous turn reported when it
 // ended, so a turn is never cut in the middle. A fresh session that follows another session of the task is seeded with a handoff
-// artifact that Drydock writes deterministically (no extra agent turn): the task and its acceptance criteria, what the previous
-// session said it did, the diff stat of the worktree, the failing checks and the open questions. It never gets the transcript.
+// artifact that Drydock writes deterministically: the task and its acceptance criteria, what the previous session said it did,
+// the diff stat of the worktree, the failing checks and the open questions. It never gets the transcript. Since P125 the outgoing
+// session is first asked for a handoff of its own in a bounded turn when it can answer (handoffturn.go); Drydock's artifact
+// records what came of that and carries the agent's handoff only when it passes Drydock's checks. Since P128 a CLI that reports
+// no occupancy is continued on Drydock's own estimate below a lower threshold (estimate.go), and a session that was corrected
+// twice is replaced (MaxSessionCorrections).
 
 // ContextHandoffPct is the context occupancy (percent of the model's context window) at or above which the next turn of a task
 // does not continue the session but starts a fresh one seeded with a handoff artifact.
 const ContextHandoffPct = 70
+
+// MaxSessionCorrections is how many corrections one session takes (a failing check or a review that sent the work back, each
+// time); the work turn after the second starts a fresh session with a handoff (docs/claude-best-practices.md s2: a session
+// corrected more than twice is cluttered with the approaches that failed).
+const MaxSessionCorrections = 2
 
 // MaxHandoffBytes bounds one stored handoff artifact (token-control s3: about 1,500 tokens, enforced at write time).
 const MaxHandoffBytes = 8 << 10
@@ -49,6 +60,7 @@ const (
 	HandoffInterrupted     = "interrupted"      // the previous attempt of this turn was cut off (the app stopped)
 	HandoffWatchdog        = "watchdog"         // the watchdog paused the previous turn and a human let the work go on
 	HandoffResumeFailed    = "resume_failed"    // the session to continue could not be resumed
+	HandoffCorrections     = "corrections"      // the session was corrected MaxSessionCorrections times (P128)
 )
 
 // SessionDecision is what the session policy decided for one work turn. It is recorded in the turn's output, its context
@@ -63,11 +75,18 @@ type SessionDecision struct {
 	ContextSize  int64   `json:"contextSize,omitempty"`
 	OccupancyPct float64 `json:"occupancyPct,omitempty"`
 	ThresholdPct int     `json:"thresholdPct"`
+	// Estimated is true when ContextUsed and ContextSize are Drydock's estimate (the CLI reported no occupancy; P128), judged
+	// against EstimatedHandoffPct instead of ContextHandoffPct.
+	Estimated bool `json:"estimated,omitempty"`
+	// Corrections is how many corrections the previous turn's session had taken (P128).
+	Corrections int `json:"corrections,omitempty"`
 	// Compactions is how many times the CLI compacted the previous turn's context (a handoff for context pressure).
 	Compactions int    `json:"compactions,omitempty"`
 	FromModel   string `json:"fromModel,omitempty"`
 	ToModel     string `json:"toModel,omitempty"`
 	Handoff     string `json:"handoff,omitempty"` // the handoff artifact's id, for SessionHandoff
+	// Request is what came of asking the outgoing session for a handoff (SessionHandoff only, P125).
+	Request *HandoffRequest `json:"handoffRequest,omitempty"`
 }
 
 // SessionPlan is what the next turn will be.
@@ -92,6 +111,14 @@ type WorkOutput struct {
 	Adapter string           `json:"adapter,omitempty"`
 	Model   string           `json:"model,omitempty"`
 	Session *SessionDecision `json:"session,omitempty"`
+	// StartedAt is when the turn started (Unix milliseconds): a handoff the agent wrote with the handoff tool counts as this
+	// turn's only when it is newer.
+	StartedAt int64 `json:"startedAt,omitempty"`
+	// Estimate is Drydock's estimate of the session's context occupancy after the turn, when the CLI reported none (P128).
+	Estimate *ContextEstimate `json:"contextEstimate,omitempty"`
+	// Corrections is how many corrections the turn's session has taken, this turn's included: a turn that ran because a check
+	// failed or a review sent the work back is one (P128).
+	Corrections int `json:"corrections,omitempty"`
 }
 
 // Occupancy is the context occupancy the turn's agent reported last: tokens in the context and the model's window (0 when the
@@ -127,6 +154,9 @@ func DecideSession(prev *WorkOutput, p SessionPlan) SessionDecision {
 	}
 	d.PrevSession, d.FromModel = prev.SessionID, prev.Model
 	d.ContextUsed, d.ContextSize, _ = prev.Occupancy()
+	if d.ContextSize <= 0 && prev.Estimate != nil && prev.Estimate.Size > 0 {
+		d.ContextUsed, d.ContextSize, d.Estimated, d.ThresholdPct = prev.Estimate.Used, prev.Estimate.Size, true, EstimatedHandoffPct
+	}
 	if d.ContextSize > 0 {
 		d.OccupancyPct = math.Round(1000*float64(d.ContextUsed)/float64(d.ContextSize)) / 10
 	}
@@ -155,13 +185,26 @@ func DecideSession(prev *WorkOutput, p SessionPlan) SessionDecision {
 		d.Compactions = prev.Compactions()
 		return handoff(HandoffContextPressure, "the agent's CLI compacted the session's context during the previous turn (it ran out of room)")
 	case d.ContextSize <= 0:
-		d.Action, d.Reason = SessionFresh, "the previous turn reported no context occupancy: a fresh session with the task and the latest feedback"
+		d.Action, d.Reason = SessionFresh, "the previous turn reported no context occupancy and Drydock has no estimate of it: a fresh session with the task and the latest feedback"
 		return d
-	case d.ContextUsed*100 >= d.ContextSize*ContextHandoffPct:
-		return handoff(HandoffContextPressure, fmt.Sprintf("%s is at or above the %d%% threshold", occ, ContextHandoffPct))
+	case d.ContextUsed*100 >= d.ContextSize*int64(d.ThresholdPct):
+		return handoff(HandoffContextPressure, fmt.Sprintf("%s is at or above the %d%% threshold%s", occ, d.ThresholdPct, estimatedNote(d)))
+	case prev.Corrections >= MaxSessionCorrections:
+		d.Corrections = prev.Corrections
+		return handoff(HandoffCorrections, fmt.Sprintf("the session was corrected %d times (a failing check or a review sent the work back each time), "+
+			"and a session that needed %d corrections restarts rather than carry the approaches that failed", prev.Corrections, MaxSessionCorrections))
 	}
-	d.Action, d.Reason = SessionContinue, fmt.Sprintf("%s is below the %d%% threshold: the same session continues", occ, ContextHandoffPct)
+	d.Corrections = prev.Corrections
+	d.Action, d.Reason = SessionContinue, fmt.Sprintf("%s is below the %d%% threshold%s: the same session continues", occ, d.ThresholdPct, estimatedNote(d))
 	return d
+}
+
+// estimatedNote says, after an occupancy, that it is Drydock's estimate and why its threshold is lower.
+func estimatedNote(d SessionDecision) string {
+	if !d.Estimated {
+		return ""
+	}
+	return fmt.Sprintf(" (Drydock's estimate: the CLI reports no occupancy, so an estimate is held to %d%%, not %d%%)", EstimatedHandoffPct, ContextHandoffPct)
 }
 
 func orNone(model string) string {
@@ -256,6 +299,40 @@ type HandoffArtifact struct {
 	ContextUsed   int64       `json:"contextUsed,omitempty"`
 	ContextSize   int64       `json:"contextSize,omitempty"`
 	OccupancyPct  float64     `json:"occupancyPct,omitempty"`
+	// The fields of token-control section 3 that P39 did not write (decision P119): the goal, where the acceptance criteria
+	// stand by the recorded facts, the safe point and head the work starts from, the task's decisions, the touched files with
+	// their content hashes, the failing check's signature, the commands Drydock ran, references to the evidence on disk (never
+	// its content) and the next step.
+	Goal                  string        `json:"goal,omitempty"`
+	AcceptanceStatus      string        `json:"acceptanceStatus,omitempty"`
+	WorktreeRef           *WorktreeRef  `json:"worktreeRef,omitempty"`
+	Decisions             []string      `json:"decisions,omitempty"`
+	Files                 []HandoffFile `json:"files,omitempty"`
+	FailingCheckSignature string        `json:"failingCheckSignature,omitempty"`
+	CommandsOfNote        []string      `json:"commandsOfNote,omitempty"`
+	EvidenceRefs          []string      `json:"evidenceRefs,omitempty"`
+	NextStep              string        `json:"nextStep,omitempty"`
+	// AgentHandoff is the handoff the previous session wrote itself with the handoff tool, as Drydock checked it: when it
+	// passed, the fresh session gets its account of the work; when it failed, the reasons, and the session gets Drydock's own.
+	AgentHandoff *AgentHandoffCheck `json:"agentHandoff,omitempty"`
+	// HandoffRequest is what came of asking the outgoing session for a handoff before this one was written (P125).
+	HandoffRequest *HandoffRequest `json:"handoffRequest,omitempty"`
+	// Criteria are each acceptance criterion's status and what showed it (P125); CriteriaSummary says it in one line.
+	Criteria        []HandoffCriterion `json:"criteria,omitempty"`
+	CriteriaSummary string             `json:"criteriaSummary,omitempty"`
+}
+
+// WorktreeRef is where a handoff's work starts from: the safe point recorded before this attempt and the branch head.
+type WorktreeRef struct {
+	SafePoint string `json:"safePoint,omitempty"`
+	Head      string `json:"head,omitempty"`
+}
+
+// HandoffFile is a file the work touched, with the first 12 hex digits of the SHA-256 of its content now ("deleted" when it is
+// gone), so the next session can tell whether a file changed since.
+type HandoffFile struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // HandoffRecord is one row of handoffs.
@@ -325,6 +402,7 @@ func (d Deps) buildHandoff(ctx context.Context, in workflow.NodeInput, t tasks.T
 		h.Done = clip(strings.TrimSpace(prev.Text), 1500)
 		h.OpenQuestions = questions(prev.Text, 5)
 	}
+	h.Goal = t.Title
 	if d.Repo != nil && t.Worktree != "" {
 		if repo, err := d.Repo(ctx, t.ProjectID); err == nil {
 			w := worktreeOf(t)
@@ -332,10 +410,18 @@ func (d Deps) buildHandoff(ctx context.Context, in workflow.NodeInput, t tasks.T
 				h.DiffStat = fmt.Sprintf("%d file(s), +%d -%d", st.Files, st.Insertions, st.Deletions)
 			}
 			if paths, err := repo.ChangedPaths(ctx, w, t.BaseBranch); err == nil {
+				h.Files = fileHashes(t.Worktree, paths, maxHandoffFiles)
 				if len(paths) > 40 {
 					paths = append(paths[:40], fmt.Sprintf("... and %d more", len(paths)-40))
 				}
 				h.FilesTouched = paths
+			}
+			ref := &WorktreeRef{SafePoint: d.safePointOf(ctx, in.NodeInfo)}
+			if head, err := repo.Head(ctx, w); err == nil {
+				ref.Head = head
+			}
+			if ref.SafePoint != "" || ref.Head != "" {
+				h.WorktreeRef = ref
 			}
 		}
 	}
@@ -347,6 +433,9 @@ func (d Deps) buildHandoff(ctx context.Context, in workflow.NodeInput, t tasks.T
 				f += ": " + clip(strings.Join(cr.FailingTests, ", "), 400)
 			}
 			h.FailingChecks = append(h.FailingChecks, f)
+			if h.FailingCheckSignature == "" {
+				h.FailingCheckSignature = cr.Name + ":" + watchdog.FailureSignature(cr.Output, cr.FailingTests)
+			}
 		}
 	}
 	for _, f := range inboxFeedback(in) {
@@ -354,6 +443,16 @@ func (d Deps) buildHandoff(ctx context.Context, in workflow.NodeInput, t tasks.T
 			h.Remaining = append(h.Remaining, clip(f, 600))
 		}
 	}
+	h.Decisions = d.taskDecisions(ctx, t.ID)
+	if ev, err := d.Tasks.Evidence(ctx, t.ID); err == nil {
+		h.CommandsOfNote, h.EvidenceRefs = checkCommandsAndRefs(ev)
+	}
+	h.AcceptanceStatus = acceptanceStatus(t, len(h.FailingChecks) > 0)
+	if cs := d.criteriaStatus(ctx, t); len(cs) > 0 {
+		h.Criteria = handoffCriteria(cs)
+		h.CriteriaSummary = clip(CriteriaSummary(cs), 1200)
+	}
+	h.NextStep = nextStep(h)
 	return h
 }
 
@@ -373,10 +472,42 @@ func questions(text string, n int) []string {
 }
 
 // HandoffPrompt is what a fresh session seeded with a handoff gets before the turn's own prompt. The task, its acceptance
-// criteria and what to fix now are in that prompt, so they are not repeated here.
+// criteria and what to fix now are in that prompt, so they are not repeated here. When the previous session's own handoff passed
+// Drydock's checks, its account of the work takes the place of its final text.
 func HandoffPrompt(id string, h HandoffArtifact) string {
+	return handoffIntro(id, h) + quoted("Handoff", handoffBody(h)) + "\n"
+}
+
+// handoffIntro is what the fresh session is told before the handoff's data block.
+func handoffIntro(id string, h HandoffArtifact) string {
+	why := strings.TrimSuffix(h.Reason, ": a fresh session seeded with a handoff artifact, never the transcript")
+	return fmt.Sprintf("This is a fresh session on a task another session was working on (%s). Its transcript is not included; "+
+		"Drydock wrote this handoff (%s) of where the work stands. The files in the working folder are the current state: read them "+
+		"before you change anything. The task and what to do now follow the handoff.\n\n", why, nonEmptyStr(id, "not stored"))
+}
+
+// handoffBody is the handoff's data block.
+func handoffBody(h HandoffArtifact) string {
 	var b strings.Builder
-	if h.Done != "" {
+	agent := h.AgentHandoff
+	if agent != nil && agent.Accepted && agent.Handoff != nil {
+		a := agent.Handoff
+		b.WriteString("The previous session's own handoff (" + agent.ID + "; Drydock checked that its files exist and that what it says about the checks matches their recorded results):\n")
+		b.WriteString(a.Summary + "\n")
+		list := func(title string, items []string) {
+			if len(items) > 0 {
+				b.WriteString(title + ":\n")
+				for _, it := range items {
+					b.WriteString("- " + it + "\n")
+				}
+			}
+		}
+		list("Done", a.Done)
+		list("Remaining", a.Remaining)
+		list("Decisions", a.Decisions)
+		list("Commands of note", a.Commands)
+		list("Open questions", a.Open)
+	} else if h.Done != "" {
 		b.WriteString("What the previous session said it did:\n" + h.Done + "\n")
 	}
 	if h.DiffStat != "" {
@@ -386,10 +517,25 @@ func HandoffPrompt(id string, h HandoffArtifact) string {
 		}
 		b.WriteString("\n")
 	}
+	if h.WorktreeRef != nil && h.WorktreeRef.SafePoint != "" {
+		b.WriteString("Safe point of this attempt: " + h.WorktreeRef.SafePoint + "\n")
+	}
 	if len(h.FailingChecks) > 0 {
 		b.WriteString("Failing checks: " + strings.Join(h.FailingChecks, "; ") + "\n")
 	}
-	if len(h.OpenQuestions) > 0 {
+	if len(h.Decisions) > 0 {
+		b.WriteString("Decisions recorded for this task: " + strings.Join(h.Decisions, "; ") + "\n")
+	}
+	if len(h.CommandsOfNote) > 0 {
+		b.WriteString("Commands Drydock runs as checks: " + strings.Join(h.CommandsOfNote, "; ") + "\n")
+	}
+	if h.AcceptanceStatus != "" {
+		b.WriteString("Acceptance criteria: " + h.AcceptanceStatus + "\n")
+	}
+	if h.CriteriaSummary != "" {
+		b.WriteString("Each criterion (met only when a check or a person confirmed it): " + h.CriteriaSummary + "\n")
+	}
+	if (agent == nil || !agent.Accepted) && len(h.OpenQuestions) > 0 {
 		b.WriteString("Open questions the previous session left:\n")
 		for _, q := range h.OpenQuestions {
 			b.WriteString("- " + q + "\n")
@@ -398,21 +544,27 @@ func HandoffPrompt(id string, h HandoffArtifact) string {
 	if b.Len() == 0 {
 		b.WriteString("The previous session left no summary and the working folder has no changes yet.\n")
 	}
-	why := strings.TrimSuffix(h.Reason, ": a fresh session seeded with a handoff artifact, never the transcript")
-	return fmt.Sprintf("This is a fresh session on a task another session was working on (%s). Its transcript is not included; "+
-		"Drydock wrote this handoff (%s) of where the work stands. The files in the working folder are the current state: read them "+
-		"before you change anything. The task and what to do now follow the handoff.\n\n", why, nonEmptyStr(id, "not stored")) + quoted("Handoff", b.String()) + "\n"
+	next := h.NextStep
+	if agent != nil && agent.Accepted && agent.Handoff != nil && agent.Handoff.NextStep != "" {
+		next = agent.Handoff.NextStep
+	}
+	if next != "" {
+		b.WriteString("Next step: " + next + "\n")
+	}
+	return b.String()
 }
 
 // runWorkTurn runs a worker's turn under the session policy: it decides between continuing the previous turn's session and a
-// fresh one (seeded with a handoff artifact when another session of the task came before), records the decision (turn output,
-// context manifest, agent.session event), runs the turn, and adds its cost to the task.
-func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg rt.Config, prompt string) (workflow.NodeOutput, error) {
+// fresh one (seeded with a handoff artifact when another session of the task came before), assembles the turn's package under
+// the project's ceiling, records the decision (turn output, context manifest, agent.session event), runs the turn, and adds its
+// cost to the task.
+func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg rt.Config, pieces []ctxeng.Piece) (workflow.NodeOutput, error) {
 	prev := previousWork(in)
 	routed, _ := RoutedFrom(ctx)
 	dec := DecideSession(prev, SessionPlan{Agent: cfg.AgentID, Adapter: cfg.Adapter, Model: cfg.Spec.Model, CanResume: d.canResume(cfg),
 		Escalated: routed.Handoff, Interrupted: in.Previous != nil, WatchdogPause: watchdogNotice(in)})
-	turnPrompt := d.prepareSession(ctx, in, t, &cfg, prev, &dec, prompt)
+	started := storage.Now()
+	turnPrompt, sent := d.prepareSession(ctx, in, t, &cfg, prev, &dec, pieces)
 	out, err := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return turnPrompt }})(ctx, in)
 	if dec.Action == SessionContinue && resumeFailed(ctx, out, err) {
 		// the stored session is gone (deleted, or kept by another machine): hand the work to a fresh session instead
@@ -420,7 +572,7 @@ func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Ta
 		dec.Action, dec.Trigger = SessionHandoff, HandoffResumeFailed
 		dec.Reason = "session " + failed + " could not be resumed: a fresh session seeded with a handoff artifact, never the transcript"
 		cfg.Spec.ResumeID, cfg.Spec.UsageBaseline = "", nil
-		turnPrompt = d.prepareSession(ctx, in, t, &cfg, prev, &dec, prompt)
+		turnPrompt, sent = d.prepareSession(ctx, in, t, &cfg, prev, &dec, pieces)
 		out, err = d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return turnPrompt }})(ctx, in)
 	}
 	if err != nil {
@@ -437,22 +589,47 @@ func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Ta
 		if d.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
 			d.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
 		}
-		b, _ := json.Marshal(WorkOutput{TurnResult: res, Agent: cfg.AgentID, Adapter: cfg.Adapter, Model: cfg.Spec.Model, Session: &dec})
+		wo := WorkOutput{TurnResult: res, Agent: cfg.AgentID, Adapter: cfg.Adapter, Model: cfg.Spec.Model, Session: &dec, StartedAt: started,
+			Estimate: d.estimateTurn(ctx, cfg, prev, dec, sent, res)}
+		if dec.Action == SessionContinue && prev != nil {
+			wo.Corrections = prev.Corrections
+		}
+		if Corrected(in) {
+			wo.Corrections++
+		}
+		b, _ := json.Marshal(wo)
 		out.Value = b
 	}
 	return out, nil
 }
 
-// prepareSession applies a decision to the turn: the session to resume, or the handoff artifact written and put before the
-// prompt. It records the decision in the manifest and as an agent.session event, and returns the prompt the turn sends.
-func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg *rt.Config, prev *WorkOutput, dec *SessionDecision, prompt string) string {
-	turnPrompt := prompt
+// prepareSession applies a decision to the turn: the session to resume, or the handoff artifact written (with the previous
+// session's own handoff when it passes Drydock's checks) and put before the prompt. It assembles the package under the project's
+// ceiling, records the decision and the package in the manifest and as an agent.session event, and returns the prompt the turn
+// sends.
+func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg *rt.Config, prev *WorkOutput, dec *SessionDecision, pieces []ctxeng.Piece) (string, int) {
+	var head []ctxeng.Piece
+	var check *AgentHandoffCheck
 	switch dec.Action {
 	case SessionContinue:
 		_, _, totals := prev.Occupancy()
 		cfg.Spec.ResumeID, cfg.Spec.UsageBaseline = prev.SessionID, totals
 	case SessionHandoff:
+		// the outgoing session is asked for a handoff first, in a bounded turn of its own, when it can be (P125)
+		req := d.requestHandoff(ctx, in, t, *cfg, prev, *dec)
+		dec.Request = &req
 		art := d.buildHandoff(ctx, in, t, prev, *dec)
+		art.HandoffRequest = &req
+		check = d.checkAgentHandoff(ctx, t, prev, art)
+		if check != nil && req.Outcome == HandoffOverBudget && check.ID == req.Handoff {
+			// written in a turn that went over its budget: not used, whatever it says
+			check.Accepted, check.Handoff = false, nil
+			check.Reasons = append([]string{req.Reason}, check.Reasons...)
+		}
+		art.AgentHandoff = check
+		if check != nil && check.Accepted {
+			art.NextStep = nonEmptyStr(check.Handoff.NextStep, art.NextStep)
+		}
 		id := ""
 		if d.Tasks != nil && d.Tasks.DB != nil {
 			var err error
@@ -460,18 +637,53 @@ func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks
 				AgentID: cfg.AgentID, Reason: dec.Trigger, Artifact: art, Event: map[string]any{"node": string(in.NodeID), "attempt": in.Attempt}}); err != nil {
 				id = ""
 			}
+			d.recordHandoffCheck(ctx, check, id)
 		}
 		dec.Handoff = id
-		turnPrompt = d.redact(HandoffPrompt(id, art)) + prompt
+		hp := quotedPiece(ctxeng.KindHandoff, "handoff:"+nonEmptyStr(id, "unsaved"),
+			"handoff artifact ("+dec.Trigger+") put before the prompt: what the previous session did, the diff stat, failing checks, decisions and the next step",
+			"the handoff tool (action get) reads it whole", d.redact(handoffIntro(id, art)), "Handoff", d.redact(handoffBody(art)), "\n")
+		hp.Priority = 2
+		head = append(head, hp)
+		head = append(head, ctxeng.Piece{Source: "handoff request", Priority: 2, Skip: requestNote(req)})
+		if check != nil {
+			it := ctxeng.Piece{Source: "agent handoff:" + check.ID, Priority: 2}
+			if check.Accepted {
+				it.Skip = "the previous session's own handoff passed Drydock's checks: its account of the work is in the handoff above"
+			} else {
+				it.Skip = "the previous session's own handoff was not used, Drydock's handoff was: " + strings.Join(check.Reasons, "; ")
+			}
+			head = append(head, it)
+		}
 	}
-	d.saveManifest(ctx, in, t, cfg.AgentID, turnPrompt, "work", dec)
-	b, _ := json.Marshal(map[string]any{"action": dec.Action, "trigger": dec.Trigger, "reason": dec.Reason, "occupancyPct": dec.OccupancyPct,
+	asm := ctxeng.Assemble(d.packageCeiling(ctx, t), append(append(d.instructionPieces(t), head...), pieces...))
+	d.saveManifest(ctx, in, t, cfg.AgentID, asm.Text, "work", dec, &asm)
+	data := map[string]any{"action": dec.Action, "trigger": dec.Trigger, "reason": dec.Reason, "occupancyPct": dec.OccupancyPct,
 		"contextUsed": dec.ContextUsed, "contextSize": dec.ContextSize, "thresholdPct": dec.ThresholdPct, "handoff": dec.Handoff,
-		"fromModel": dec.FromModel, "toModel": dec.ToModel, "node": string(in.NodeID), "attempt": in.Attempt})
+		"fromModel": dec.FromModel, "toModel": dec.ToModel, "node": string(in.NodeID), "attempt": in.Attempt,
+		"packageTokens": asm.Tokens, "packageCeiling": asm.Ceiling, "leftOut": len(asm.LeftOut())}
+	if dec.Estimated {
+		data["estimated"] = true
+	}
+	if dec.Corrections > 0 {
+		data["corrections"] = dec.Corrections
+	}
+	if dec.Request != nil {
+		data["handoffRequest"] = dec.Request.Outcome
+		data["handoffRequestReason"] = dec.Request.Reason
+	}
+	if check != nil {
+		data["agentHandoff"] = check.ID
+		data["agentHandoffAccepted"] = check.Accepted
+		if !check.Accepted {
+			data["agentHandoffReasons"] = check.Reasons
+		}
+	}
+	b, _ := json.Marshal(data)
 	if d.Bus != nil {
 		_, _ = d.Bus.Publish(ctx, events.Event{Type: "agent.session", ProjectID: t.ProjectID, TaskID: t.ID, RunID: string(in.RunID), AgentID: cfg.AgentID, Data: b})
 	}
-	return turnPrompt
+	return asm.Text, asm.Tokens
 }
 
 // resumeFailed reports whether a turn that tried to continue a session failed before the session started.

@@ -63,6 +63,44 @@ func (r *Registry) UpsertModels(ctx context.Context, providerID string, models [
 	})
 }
 
+// DropUnlisted removes a provider's catalog rows for models its listing no longer has (decision P129). It is for a provider
+// whose listing is Drydock's own choice, the local models' server, where a model the router no longer lists was unloaded on
+// purpose: every other provider keeps such rows (UpsertModels), since a listing may drop a model for a while. It reports how
+// many rows went.
+func (r *Registry) DropUnlisted(ctx context.Context, providerID string, listed []Model) (int64, error) {
+	keep := map[string]bool{}
+	for _, m := range listed {
+		keep[m.ID] = true
+	}
+	var n int64
+	err := r.db.WriteTx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT model FROM model_catalog WHERE provider_id=?`, providerID)
+		if err != nil {
+			return err
+		}
+		var gone []string
+		for rows.Next() {
+			var m string
+			if rows.Scan(&m) == nil && !keep[m] {
+				gone = append(gone, m)
+			}
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		for _, m := range gone {
+			res, err := tx.ExecContext(ctx, `DELETE FROM model_catalog WHERE provider_id=? AND model=?`, providerID, m)
+			if err != nil {
+				return err
+			}
+			c, _ := res.RowsAffected()
+			n += c
+		}
+		return nil
+	})
+	return n, err
+}
+
 const modelCols = `provider_id,model,context_length,max_output,supports_tools,supports_reasoning,data_class,tier,is_free,
 input_price_per_m,output_price_per_m,cached_price_per_m,cache_write_price_per_m,price_source,price_updated_at,supported_parameters,
 source,fetched_at,probe_status,probe_at`

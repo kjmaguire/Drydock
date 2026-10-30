@@ -5,16 +5,20 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/packs"
+	"github.com/kjmaguire/drydock/internal/peer"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
@@ -61,7 +65,8 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	if repomap.Available() {
 		ws.RepoMap = mcpRepoMap{c} // ext_repomap.go; without CGO the tool answers mcp.RepoMapGatedMessage
 	}
-	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions()})
+	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions(),
+		PeerOwner: peerOwner, PeerMember: proc.InTree})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -96,7 +101,7 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 			if !known {
 				return nil, fmt.Errorf("unknown adapter %q", p.Adapter)
 			}
-			if _, canTry, why := adapterMCPKind(p.Adapter); !canTry {
+			if _, canTry, why := c.adapterMCPKind(p.Adapter); !canTry {
 				return nil, fmt.Errorf("%s", why)
 			}
 			v := "0"
@@ -160,11 +165,43 @@ type mcpPlan struct {
 	Servers    []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
-// adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the configuration can be generated but no real run has proven it, so the human may
-// choose to attach the gateway anyway (mcp.try.set). A CLI with no known mechanism (Antigravity) can never be tried.
-func adapterMCPKind(adapter string) (verified, canTry bool, why string) {
+// customMCP says whether adapter is a person's own CLI (decision P115) and, when its manifest has an mcp section, how its CLI
+// takes the MCP configuration (decision P117).
+func (c *Core) customMCP(adapter string) (custom bool, how *manifests.CustomMCP) {
+	if c.Connections == nil || c.Connections.Registry == nil {
+		return false, nil
+	}
+	m, ok := c.Connections.Registry.Set.Get(adapter)
+	if !ok || !m.Meta.Custom {
+		return false, nil
+	}
+	how, _ = m.CustomMCP() // a loaded manifest validated, so an error cannot happen here; nil is "declares none" either way
+	return true, how
+}
+
+// mcpProvider is the provider mcp.ConfigFor knows an adapter by: a person's own CLI is "custom".
+func (c *Core) mcpProvider(adapter string) string {
+	if custom, _ := c.customMCP(adapter); custom {
+		return "custom"
+	}
+	return adapter
+}
+
+// adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the
+// configuration can be generated but no real run has proven it, so the human may choose to attach the gateway anyway
+// (mcp.try.set). A CLI with no known mechanism (Antigravity, a person's own CLI whose manifest has no mcp section) can never be
+// tried.
+func (c *Core) adapterMCPKind(adapter string) (verified, canTry bool, why string) {
+	if custom, how := c.customMCP(adapter); custom && how == nil {
+		return false, false, adapter + ": its manifest has no mcp section, so Drydock does not know how this CLI takes an MCP configuration"
+	}
+	return adapterMCPKind(c.mcpProvider(adapter), adapter)
+}
+
+// adapterMCPKind is Core.adapterMCPKind for a provider ConfigFor knows; adapter is the id the reason names.
+func adapterMCPKind(provider, adapter string) (verified, canTry bool, why string) {
 	probe := mcp.Endpoint{RunID: "probe", URL: "http://127.0.0.1:1/mcp/probe", Token: "probe", ShimCommand: []string{"drydock", "mcp-shim"}}
-	cfg, err := mcp.ConfigFor(adapter, probe)
+	cfg, err := mcp.ConfigFor(provider, probe)
 	switch {
 	case errors.Is(err, mcp.ErrMCPUnknown):
 		return false, false, adapter + ": per-run MCP configuration is unproven for this CLI (docs/mcp.md section 10)"
@@ -194,7 +231,7 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 	if c.MCPGateway() == nil {
 		return no("the MCP gateway is not running")
 	}
-	if ok, canTry, why := adapterMCPKind(adapter); !ok {
+	if ok, canTry, why := c.adapterMCPKind(adapter); !ok {
 		if !canTry || !c.mcpTryAllowed(ctx, adapter) {
 			return no("%s", why)
 		}
@@ -298,7 +335,9 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		}
 		pl.Info.WSL = &p
 	}
-	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers})
+	// the peer check (decision P122) follows the agent's processes on this computer; an agent in a WSL distro connects from
+	// inside the distro, where neither the TCP table nor the job can follow it
+	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers, PeerCheck: !cfg.Spec.IsWSL()})
 	if err != nil {
 		return rt.MCPAttachment{}, err
 	}
@@ -306,7 +345,7 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		gw.EndRun(runID)
 		_ = os.Remove(ep.ConfigPath)
 	}
-	cc, err := mcp.ConfigFor(cfg.Adapter, *ep, mcp.ConfigOptions{Tools: pl.Tools})
+	cc, err := mcp.ConfigFor(c.mcpProvider(cfg.Adapter), *ep, mcp.ConfigOptions{Tools: pl.Tools})
 	if err == nil {
 		err = mcp.WriteConfig(ep.ConfigPath, cc)
 	}
@@ -314,9 +353,20 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		release()
 		return rt.MCPAttachment{}, errors.New("could not write the MCP config: " + scrubPath(err))
 	}
+	if _, how := c.customMCP(cfg.Adapter); how != nil && how.Via == manifests.CustomMCPViaFile {
+		// a person's own CLI that reads its MCP configuration from its working folder (decision P117) gets the same file there
+		removeFile, ferr := placeCustomMCPFile(ctx, cfg.Spec.Cwd, how.File, cc.JSON)
+		if ferr != nil {
+			release()
+			return rt.MCPAttachment{}, ferr
+		}
+		endRun := release
+		release = func() { removeFile(); endRun() }
+	}
 	cfg.Spec.MCPConfigPath = ep.ConfigPath
 	cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), cc.AllowedTools...)
-	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release}, nil
+	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release,
+		BindProcess: func(pid int) { gw.BindPeer(runID, pid) }}, nil
 }
 
 // scrubPath keeps an OS error short: it names the path and the failure, never file content.
@@ -369,7 +419,7 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 	sort.Strings(names)
 	rows := make([]adapterRow, 0, len(names))
 	for _, id := range names {
-		ok, canTry, why := adapterMCPKind(id)
+		ok, canTry, why := c.adapterMCPKind(id)
 		trying := canTry && c.mcpTryAllowed(ctx, id)
 		rows = append(rows, adapterRow{Adapter: id, Attached: ok || trying, Reason: why, CanTry: canTry, Trying: trying})
 	}
@@ -379,4 +429,14 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 		addr = gw.Addr()
 	}
 	return map[string]any{"running": gw != nil, "address": addr, "adapters": rows}
+}
+
+// peerOwner is the gateway's PeerOwner (decision P122): the process of a loopback connection's client end, or
+// mcp.ErrPeerUnsupported where this platform cannot find it.
+func peerOwner(client, server netip.AddrPort) (int, error) {
+	pid, err := peer.Owner(client, server)
+	if errors.Is(err, peer.ErrUnsupported) {
+		return 0, mcp.ErrPeerUnsupported
+	}
+	return pid, err
 }

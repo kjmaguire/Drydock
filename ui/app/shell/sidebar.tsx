@@ -29,7 +29,7 @@ import {
   type IconNode,
 } from 'lucide';
 import type { LocalView } from '../api/localClient.ts';
-import { ownsKeys } from '../lib/keys.ts';
+import { ownsKeys, shellKey } from '../lib/keys.ts';
 import { hubOf, isWorkspaceHub, type Hub, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { query, services, watch } from '../state/services.tsx';
@@ -224,10 +224,16 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
   handle.signal.addEventListener('abort', off);
   const engine = query(handle, { load: () => s.client.localGet(), when: (e) => e.type === 'local.changed' });
 
-  // "[" folds and unfolds the sidebar, as in Linear; never while typing or inside a widget that owns its keys
+  // "[" folds and unfolds the sidebar, as in Linear; never while typing or inside a widget that owns its keys. Ctrl+B does too
+  // (decision P129), also from a field, since it types nothing there; never inside the terminal or the editor
   window.addEventListener(
     'keydown',
     (e) => {
+      if (shellKey(e) === 'sidebar') {
+        e.preventDefault();
+        s.ui.toggleSidebar();
+        return;
+      }
       if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;

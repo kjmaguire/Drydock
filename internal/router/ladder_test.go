@@ -397,6 +397,44 @@ func TestRouterDoesNotImportLLM(t *testing.T) {
 	}
 }
 
+// TestDeterministicPackagesDoNotImportLLM is the same boundary over every package rule 15 names (docs/token-control.md, decision
+// P119): none of them may depend on internal/llm, directly or through another package. A package added here is one whose job
+// rules do; the sanctioned LLM uses (token-control section 9) live elsewhere. The check is proven able to see a dependency: the
+// Anthropic client, which is LLM code, must show one.
+func TestDeterministicPackagesDoNotImportLLM(t *testing.T) {
+	const mod = "github.com/kjmaguire/drydock/internal/"
+	llmDeps := func(pkg string) []string {
+		t.Helper()
+		out, err := exec.Command("go", "list", "-deps", mod+pkg).CombinedOutput()
+		if err != nil {
+			t.Skipf("go list unavailable: %v: %s", err, out)
+		}
+		var hits []string
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if line == mod+"llm" || strings.HasPrefix(line, mod+"llm/") {
+				hits = append(hits, line)
+			}
+		}
+		return hits
+	}
+	for pkg, why := range map[string]string{
+		"router":   "routing by rule, the ladder, fallbacks and the explanation",
+		"watchdog": "tool spin, error echo, caps and stagnation",
+		"room":     "the marker parser, minutes and ADR export, inbox derivation and turn scheduling",
+		"checks":   "the check runners and the check summarizer",
+		"context":  "the instruction files and the package ceiling",
+		"repomap":  "the repo map",
+		"budget":   "budgets, reservations and ceilings",
+	} {
+		if hits := llmDeps(pkg); len(hits) > 0 {
+			t.Errorf("internal/%s (%s) depends on %v", pkg, why, hits)
+		}
+	}
+	if hits := llmDeps("llm/anthropic"); len(hits) == 0 {
+		t.Fatal("the check sees no dependency on internal/llm even in the Anthropic client: it would pass anything")
+	}
+}
+
 // A model that answered the tool-call probe wrongly never gets agent work (before it was only ranked lower and could still
 // be chosen when the better model was denied); a probe that could not run (an error) says nothing and excludes nothing.
 func TestAModelThatFailedTheToolProbeGetsNoAgentWork(t *testing.T) {

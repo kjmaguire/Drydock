@@ -33,15 +33,31 @@ func (c *Core) loadGateAcks(ctx context.Context) (map[string]bool, error) {
 
 // AcknowledgeGate records that the human accepted a gate's notice. Only a human action reaches this method.
 func (c *Core) AcknowledgeGate(ctx context.Context, gateID string) error {
-	err := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,'1') ON CONFLICT(key) DO UPDATE SET value='1'`, gateKey+gateID)
+	// a person's own CLI is acknowledged for its manifest file as it is now (decision P117, ext_customack.go)
+	sum, custom, err := c.acknowledgeCustom(ctx, gateID)
+	if err != nil {
 		return err
+	}
+	err = c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,'1') ON CONFLICT(key) DO UPDATE SET value='1'`, gateKey+gateID); err != nil {
+			return err
+		}
+		if custom {
+			_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+				customAckKey+strings.TrimPrefix(gateID, "custom-"), sum)
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	c.Connections.Acknowledge(gateID)
-	c.publish(ctx, "connection.gate_acknowledged", "", map[string]any{"gate": gateID, "by": c.Human()})
+	data := map[string]any{"gate": gateID, "by": c.Human()}
+	if custom {
+		data["manifest"] = shortSum(sum)
+	}
+	c.publish(ctx, "connection.gate_acknowledged", "", data)
 	return nil
 }
 

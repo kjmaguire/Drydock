@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,5 +130,47 @@ func TestRestartNowAsksTheShellOnlyForAPersonAndTheBundleNamesWebView2(t *testin
 	}
 	if err := b.callErr("shell.restart", map[string]any{}); err == nil || !strings.Contains(err.Error(), "quit and reopen") {
 		t.Fatalf("without a shell: %v", err)
+	}
+}
+
+// Settings > About (decision P129): app.info names the build's version, and app.licenses reads the third-party notices the
+// build ships (the installer puts THIRD_PARTY_NOTICES.md beside the executable); a build without them, or a file that is not
+// them, says so instead.
+func TestAboutNamesTheVersionAndReadsTheShippedNotices(t *testing.T) {
+	dir := t.TempDir()
+	notices := filepath.Join(dir, "THIRD_PARTY_NOTICES.md")
+	if err := os.WriteFile(notices, []byte("# Third-party notices\n\n| Module | License |\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	open := func(file string) *app {
+		c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second, NoticesFile: file})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(c.Close)
+		return &app{t: t, c: c}
+	}
+	a := open(notices)
+	var info map[string]any
+	a.call("app.info", nil, &info)
+	if info["version"] != core.AppVersion || info["version"] == "" {
+		t.Fatalf("app.info %v", info)
+	}
+	var l core.Licenses
+	a.call("app.licenses", nil, &l)
+	if !l.Shipped || !strings.HasPrefix(l.Text, "# Third-party notices") || l.File != notices || l.Note != "" {
+		t.Fatalf("%+v", l)
+	}
+	l = core.Licenses{}
+	open(filepath.Join(dir, "none.md")).call("app.licenses", nil, &l)
+	if l.Shipped || l.Text != "" || !strings.Contains(l.Note, "no third-party notices") {
+		t.Fatalf("without the file: %+v", l)
+	}
+	bin := filepath.Join(dir, "bin.md")
+	_ = os.WriteFile(bin, []byte{0xff, 0xfe, 0x00}, 0o644)
+	l = core.Licenses{}
+	open(bin).call("app.licenses", nil, &l)
+	if l.Shipped || !strings.Contains(l.Note, "not its third-party notices") {
+		t.Fatalf("a file that is not text: %+v", l)
 	}
 }

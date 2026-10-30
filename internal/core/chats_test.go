@@ -715,6 +715,7 @@ func (p *chatsProbe) Start(ctx context.Context, pm proc.Manager, spec agents.Run
 		_ = json.Unmarshal(raw, &f)
 		ent := f.MCPServers["drydock"]
 		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		playAgentIn(pm)
 		if s, err := connectMCP(cctx, ent.Env["DRYDOCK_MCP_URL"], ent.Env["DRYDOCK_MCP_TOKEN"]); err == nil {
 			if lt, err := s.ListTools(cctx, nil); err == nil {
 				for _, tl := range lt.Tools {

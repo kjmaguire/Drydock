@@ -102,6 +102,47 @@ const (
 	LevelCustom         Level = "custom"
 )
 
+// Where a turn's level came from (decisions P118 and P127), most specific first: the task's own level (a person set it on the
+// task), the level the task's workflow template declares, the project's own level, or the workspace's.
+const (
+	LevelFromTask      = "task"
+	LevelFromTemplate  = "template"
+	LevelFromProject   = "project"
+	LevelFromWorkspace = "workspace"
+)
+
+// Levels are the levels a person can choose, in the order the pages list them.
+var Levels = []Level{LevelCheapest, LevelFast, LevelBalanced, LevelQuality, LevelMaximumQuality, LevelCustom}
+
+// LevelWords is a level as the pages name it ("Maximum Quality").
+func LevelWords(l Level) string {
+	switch l {
+	case LevelCheapest:
+		return "Cheapest"
+	case LevelFast:
+		return "Fast"
+	case LevelBalanced:
+		return "Balanced"
+	case LevelQuality:
+		return "Quality"
+	case LevelMaximumQuality:
+		return "Maximum Quality"
+	case LevelCustom:
+		return "Custom"
+	}
+	return string(l)
+}
+
+// ValidLevel reports whether l is a level.
+func ValidLevel(l Level) bool {
+	for _, x := range Levels {
+		if x == l {
+			return true
+		}
+	}
+	return false
+}
+
 // Effort is the abstract reasoning effort; adapters map it (docs/model-routing.md s9).
 type Effort string
 
@@ -200,9 +241,13 @@ type RouteRequest struct {
 	DiffLines  int
 	Failures   FailureCounts
 	Level      Level
-	Explicit   *Pin
-	Policies   []Rule
-	Budget     BudgetState
+	// LevelSource says where Level came from (LevelFromTask, LevelFromTemplate, LevelFromProject, LevelFromWorkspace); "" when
+	// the caller did not say. LevelTemplate names the template for LevelFromTemplate ("Security").
+	LevelSource   string
+	LevelTemplate string
+	Explicit      *Pin
+	Policies      []Rule
+	Budget        BudgetState
 	// ContextCeiling is the highest sensitivity in the context package: private (the default when unsure) or public_docs.
 	ContextCeiling ContextClass
 	Session        *SessionState
@@ -258,6 +303,8 @@ type Alternative struct {
 type DecisionFacts struct {
 	TaskID            string
 	Level             Level
+	LevelSource       string `json:",omitempty"` // where the level came from: the task's, its template's, the project's or the workspace's (P118, P127)
+	LevelTemplate     string `json:",omitempty"` // the template, when the level is its (P127)
 	RunKind           RunKind
 	TaskType          string
 	DiffLines         int
@@ -279,6 +326,10 @@ type DecisionFacts struct {
 	Tiebreak *TiebreakRecord `json:",omitempty"`
 	// Stopped says why the turn this decision ran was stopped by Drydock (a wall-time ceiling), written when it happens.
 	Stopped string `json:",omitempty"`
+	// QuotaWarning is a premium candidate's subscription warning that its limit is near (Candidate.QuotaWarning), and
+	// QuotaDownshift whether it moved this turn to the cheap tier first (P128).
+	QuotaWarning   string `json:",omitempty"`
+	QuotaDownshift bool   `json:",omitempty"`
 }
 
 // RoutingDecision is the record of one routing choice (docs/model-routing.md s1).

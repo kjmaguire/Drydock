@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -125,6 +127,26 @@ func TestAnEmbeddingModelIsServedOnItsOwn(t *testing.T) {
 	if code, _ := call(t, "POST", base+"/v1/embeddings", "", map[string]any{"input": "x"}); code != http.StatusUnauthorized {
 		t.Fatalf("embeddings without the key: %d", code)
 	}
+	// Embed, the core's client of it (decision P120): a vector per text, in order, with the server's key
+	vecs, err := srv.Embed(context.Background(), []string{"publish a worker", "tail the logs"})
+	if err != nil || len(vecs) != 2 || len(vecs[0]) != 65 || slices.Equal(vecs[0], vecs[1]) {
+		t.Fatalf("%v %v", vecs, err)
+	}
+	if _, err := srv.Embed(context.Background(), make([]string, localllm.MaxEmbedInputs+1)); err == nil {
+		t.Fatal("too many texts at once")
+	}
+	srv.Stop()
+	if _, err := srv.Embed(context.Background(), []string{"x"}); !errors.Is(err, localllm.ErrNoEmbeddings) {
+		t.Fatalf("a stopped server: %v", err)
+	}
+	chat := &localllm.Server{PM: proc.New()}
+	if err := chat.Start(context.Background(), localllm.Launch{Program: os.Args[0], Args: llamatest.Args(), Model: m, Port: freePort(t), Timeout: 30 * time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	defer chat.Stop()
+	if _, err := chat.Embed(context.Background(), []string{"x"}); !errors.Is(err, localllm.ErrNoEmbeddings) {
+		t.Fatalf("a chat server: %v", err)
+	}
 }
 
 // Several models are served by the router (decision P111): the preset file lists each by its id with its file, its projector
@@ -156,7 +178,7 @@ func TestSeveralModelsAreServedByTheRouter(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 	args, _ := os.ReadFile(record)
-	for _, want := range []string{"--models-preset\n" + l.PresetFile, "--models-max\n2", "--port\n" + strconv.Itoa(port), "-ctk\nq8_0", "-c\n32768", "--jinja"} {
+	for _, want := range []string{"--models-preset\n" + l.PresetFile, "--models-max\n4", "--port\n" + strconv.Itoa(port), "-ctk\nq8_0", "-c\n32768", "--jinja"} {
 		if !strings.Contains(string(args), want) {
 			t.Fatalf("arguments lack %q:\n%s", want, args)
 		}

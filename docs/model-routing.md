@@ -69,7 +69,7 @@ Slice 1: `StaticRouter` returns the agent's configured provider/model and record
 
 ## 3. Levels
 
-Levels are project defaults and per-task overrides (brief §6). Team templates set defaults, not model locks (brief §1). **All numbers below are proposed starting values, unmeasured; they are tuned through the eval harness (brief §23).**
+Levels are project defaults and per-task overrides (brief §6). Team templates set defaults, not model locks (brief §1). As built, the most specific level applies: the task's own, then the one its template declares, then the project's, then the workspace's (decision P127, "As built: a task's own level and a template's" below). **All numbers below are proposed starting values, unmeasured; they are tuned through the eval harness (brief §23).**
 
 | Level | Intent | Worker tier order | Review policy | Effort default | Escalate after |
 |---|---|---|---|---|---|
@@ -140,7 +140,7 @@ type QuotaLedger interface {
 | OpenAI | `x-ratelimit-limit/remaining/reset-{requests,tokens}` (optional; missing or odd on some models) | `insufficient_quota` is not retryable | `Retry-After` is a minimum; add jitter |
 | Google Gemini | Nothing proactive found | Per-model RPM/RPD/TPM configured by the user or learned from the 429 body (`QuotaFailure.quotaId`, `RetryInfo.retryDelay`); per project, daily reset midnight Pacific | Body `retryDelay`, not a header; classify by `quotaId`, stop retrying per-day quotas even if `retryDelay` is short |
 | vLLM / SGLang / Ollama | Concurrency and queue only (vLLM `/metrics`, `/load`; SGLang `/metrics`, `/server_info`; Ollama `/api/ps`, 503 when queue of 512 is full) | `max_concurrent` from benchmark | none |
-| Claude Code subscription | Stream `rate_limit_event.rate_limit_info{status: allowed\|allowed_warning\|rejected, resetsAt, utilization}` (CLI >= 2.1.181); ACP bridge forwards as `_meta["_claude/rateLimit"]` (AC s1, s10) | No JSON usage command | `rejected` marks unavailable until `resetsAt` (built 2026-10-11, `internal/core/agentlimits.go`: the CLI's models, or only the family a limit names such as a weekly Opus limit, are filtered as quota-exhausted until the reset); `allowed_warning` downshifts premium use (not built) |
+| Claude Code subscription | Stream `rate_limit_event.rate_limit_info{status: allowed\|allowed_warning\|rejected, resetsAt, utilization}` (CLI >= 2.1.181); ACP bridge forwards as `_meta["_claude/rateLimit"]` (AC s1, s10) | No JSON usage command | `rejected` marks unavailable until `resetsAt` (built 2026-10-11, `internal/core/agentlimits.go`: the CLI's models, or only the family a limit names such as a weekly Opus limit, are filtered as quota-exhausted until the reset); `allowed_warning` downshifts premium use (built 2026-10-30, decision P128: the models the warned limit covers carry the warning until the reset or the next report of that limit, and the turns the ladder's rules allow try the cheap tier first; section "As built: a subscription's warning downshifts premium use") |
 | Codex subscription | `codex app-server` `account/rateLimits/read` and `account/rateLimits/updated` (primary/secondary windows with `usedPercent`, `windowDurationMins`, `resetsAt`); a side-channel client in Go; over ACP only `/status` text | | |
 | Antigravity | `agy -p "/usage"` prints plan quota and reset times (CHANGELOG, SNIPPET-ONLY on format) | | |
 | Gemini CLI, OpenCode, Goose | None programmatic (Gemini internal `retrieveUserQuota` only, via interactive `/stats`); local accounting only | Docs list static daily limits for Gemini CLI auth methods (consumer sign-in reportedly retired 2026-06-18) | |
@@ -327,7 +327,7 @@ each model cheap or premium, at least one of each, at most six; stored in `agent
 of that agent the `routeTurn` middleware (internal/core/turnrouting.go, in place of the old static recorder) asks a rule router
 whose candidate source is exactly that list: on the agent's registered provider when it has one (with its health, quota and
 prices), else as agent-native routes of its CLI. The router therefore never moves a turn to another adapter or provider. The
-level is Balanced (no per-project level exists yet); the failure counters come from the run: every earlier work turn routed to
+level was Balanced (a per-project level came with P118, see the last section); the failure counters come from the run: every earlier work turn routed to
 a cheap model counts as a cheap iteration (it came back with failing checks or a revise), and REVISE verdicts given since the
 run first routed work to premium count as premium revises. With the shipped thresholds a worker runs three cheap turns and
 escalates to premium on the fourth (tested end to end). The chosen model and its tier reach the node through the context
@@ -335,7 +335,7 @@ escalates to premium on the fourth (tested end to end). The chosen model and its
 (agent-native routes record EffortApplied=false). An agent with no list, or a turn the router cannot decide, runs the
 configured model and records a static decision whose reason says which. Every decision is in the run explanation.
 
-Not built: a per-project level. (Room replies and the template role turns were routed later, decision P63: see "As built:
+Built later: a per-project level (decision P118, the last section). (Room replies and the template role turns were routed later, decision P63: see "As built:
 every turn of an agent is routed" below.)
 
 
@@ -627,3 +627,71 @@ is better than the name order is not measured), the margin and the defaults (des
 ceiling on Windows (the fake agent's process is stopped the way the runtime stops any turn), the exact retention wording of
 every Claude Code version (Anthropic's API text is the one matched), and holds on a real provider's windows during a CLI's
 turn (the CLI's own calls are not seen).
+
+
+## As built: the workspace's level and a project's own (2026-10-29, decision P118)
+
+Section 3's levels were project defaults on paper; until P118 every agent turn ran at Balanced. Now the workspace has a level
+(`settings` row `route.level`, Balanced until a person chooses another on the Routing page, "Level") and a project may choose
+its own on Project settings ("Model routing level"; `route.level:<project id>`, removed with the project; a project export
+leaves it out, as it leaves out where the project's agents run). `route.level.get {projectId}` answers the workspace's level,
+the project's own ("" while it follows the workspace), the level its turns run at and where it came from;
+`route.level.set {projectId, level}` sets the workspace's (`projectId` "") or the project's ("" follows the workspace again);
+only a person may, and `routing.level_changed` is published. Every agent turn of the project (`decide` in
+`internal/core/turnrouting.go`: work, review, the template roles, room replies, the lead, recommendations), its static
+decision when the agent has no model list, and its wall-time ceiling (P112, set per level) use that level. The request and
+the decision record the level and `LevelSource` (`project` or `workspace`), and "Why this model?" says it ("- Level:
+Quality, the project's own level (its settings)."). The task-level override of section 3 and a level per template were built
+since (decision P127, next section); Custom can be stored (`custom`) but the pages offer the five ladder levels only. Tests:
+`TestAProjectsOwnLevelRoutesItsTurnsAndTheExplanationSaysSo` (`internal/core`: at Quality the worker's first turn runs on
+its premium model), `TestTheDecisionSaysWhichLevelItRanAtAndWhere` (`internal/router`), the UI's
+`project-routing-level.test.browser.tsx` and `routing-screen.test.browser.tsx`, and `e2e/routing-level.spec.ts`.
+
+## As built: a task's own level and a template's (2026-10-30, decision P127)
+
+Section 3's "per-task overrides" and "team templates set defaults". A person sets a task's own level on the task page (the
+properties panel's **Routing** row: "Follow the Security template (Quality)", "Follow the project (Cheapest)" or "Follow the
+workspace (Balanced)", then the five levels; `route.level.get {taskId}`, `route.level.set {taskId, level}`, only a person,
+`routing.level_changed` with the task; `tasks.route_level`, migration 00165, left out of a project export as the project's
+own level is). A workflow template may declare a level (`pipeline.Template.Level`): the Security template declares Quality,
+since fixing security findings is a premium-only class of brief s6's ladder; the others declare none. **Order, most specific
+first:** the task's own, the level its template declares, the project's own, the workspace's. The template sits under the task
+and over the project because a task chooses its template, and the template says what kind of work the task is, which the
+project's level (a default for all its work) does not; a person who wants another level for one task sets the task's. The
+template is the workflow the turn runs in (either variant: a name ending in `-pr` is its PR variant), else the task's template
+(a room reply in the task's room). `LevelSource` gains `task` and `template` (and `LevelTemplate` names it), stored with the
+decision; "Why this model?" says "- Level: Quality, this task's own level (set on its page)." or "- Level: Quality, the level
+the Security template declares (the task sets none of its own).", and the wall-time ceiling of a level (P112) follows the same
+level. Templates are code, not edited in the UI, so there is no template control. Tests: `TestATasksOwnLevelAndItsTemplatesRouteItsTurns`
+(`internal/core`: the Security template's level over the project's Cheapest, the task's own over it, the refusals, the events,
+a work turn on the premium model at the task's Quality and its explanation), `TestTheDecisionSaysWhichLevelItRanAtAndWhere`
+(`internal/router`), the UI's `task-level.test.browser.tsx` and `routing.test.ts`, and `e2e/routing-level.spec.ts` (a task's
+own level over the project's, kept across a reload). Not verified: a real model's choice at these levels (only the stand-in
+and the router's own tests), Windows.
+
+## As built: a subscription's warning downshifts premium use (2026-10-30, decision P128)
+
+Claude Code reports each of its account's limits mid-turn as a `rate_limit_event` (status `allowed`, `allowed_warning` or
+`rejected`, the limit's type, its reset time). Since P128 an `allowed_warning` (the limit is near) is kept per CLI and limit type
+beside the rejected limits (`internal/core/agentlimits.go`, in memory, nothing stored) until the limit's `resetsAt` passes or the
+CLI reports the same limit again (`allowed`, or `rejected`, which then blocks as before). A limit whose type names a model family
+(`seven_day_opus`) covers only that family. The agent's route candidates (`agentSource`) carry it as `Candidate.QuotaWarning`
+("Claude Code reported its seven day opus limit near (allowed_warning, resets ...)"). The shape the ACP bridge forwards in
+`_meta["_claude/rateLimit"]` is read as the info itself, which is unverified.
+
+When a premium candidate of the turn is warned, the router prefers the cheap tier for the turn (`router.QuotaDownshift`, policy
+id `quota-warning-downshift`), and the ladder's rules decide which turns allow it: not on the Maximum Quality level, not for a
+risky task, not for a turn a person pinned, not when a rule already chose the tier to prefer; and a rule that requires the premium
+tier (the premium-only classes such as architecture or a security review, an escalation after cheap turns failed) still filters
+the cheap candidates out, so those turns stay premium. Without a cheap candidate the premium one runs. At Balanced and the levels
+below it a work turn tries the cheap tier first anyway, so in practice the downshift changes the Quality level's turns. It applies
+only to an agent whose person listed the models the router may choose (an agent without a list keeps its model). "Why this
+model?" says either "- Subscription limit: ..., so premium use is downshifted: the cheap tier is tried first until the limit
+resets or is reported allowed again." or "...; no downshift for this turn (...)", from the decision record
+(`DecisionFacts.QuotaWarning`, `QuotaDownshift`).
+
+Tests: `internal/router/quotawarning_test.go` (Quality goes to the cheap model while the premium one is warned; the
+premium-only class, a risky task, an escalation, Maximum Quality and a pin stay premium with the warning shown; a warning on the
+cheap model alone changes nothing; no cheap model left), `internal/core/p128_test.go` (the warning until the reset or the next
+report, an account-wide one, the ACP shape; a warning published by a session reaching the agent's candidates on the premium
+model only). **Not verified:** a real Claude Code subscription's warning (the fixture's `rate_limit_event` lines only).

@@ -9,7 +9,7 @@ import (
 // CallTracer receives one record per Wrapper call (decision P113): the local telemetry sink turns it into a span and its token
 // and cost metrics. The record is content-free by construction: it carries the call's identity (purpose, provider, models, the
 // project, task and run it belongs to), its timing, a closed error class and the usage figures, never a prompt, a completion,
-// a tool call or an error message.
+// a tool call or an error message, whatever is turned on (decision P126).
 type CallTracer interface {
 	TraceCall(ctx context.Context, c CallTrace)
 }

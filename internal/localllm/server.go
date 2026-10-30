@@ -33,9 +33,19 @@ type Launch struct {
 	// then not used).
 	Model  Model
 	Models []Model
-	// Drafts are the draft models of speculative decoding, by the id of the model each drafts for (--model-draft with
-	// --spec-type draft-simple).
+	// Drafts are the draft files of speculative decoding, by the id of the model each drafts for (--model-draft with
+	// --spec-type draft-simple, or the type of a file that only drafts).
 	Drafts map[string]Model
+	// SpecTypes is the kind of speculative decoding of a model, by its id, when it is not draft-simple (decisions P120 and
+	// P129): SpecEagle3, SpecDFlash or SpecDSpark for such a draft in Drafts, SpecMTP for a file of MTP heads in Drafts or, with
+	// no draft, for a model that drafts with its own MTP heads.
+	SpecTypes map[string]string
+	// RouterMode runs the router even for one model: a router that kept one model loaded after the others were unloaded stays
+	// one, so another can be loaded beside it again without a restart (decision P120).
+	RouterMode bool
+	// Note is why this start happened, shown with the server's state (ServerState.Note): set when a change of the models kept
+	// loaded could not be made on the running server and it was started again instead.
+	Note string
 	// Embeddings serves an embedding model: --embeddings, which makes the server answer /v1/embeddings and nothing else.
 	Embeddings bool
 	// PresetFile is where the router's model list is written, and CacheDir the empty folder the router is given as its
@@ -105,6 +115,10 @@ type ServerState struct {
 	Models     []string `json:"models,omitempty"`
 	Router     bool     `json:"router,omitempty"`
 	Embeddings bool     `json:"embeddings,omitempty"`
+	// Loading are the models the router is loading beside the ones it keeps (Change; they are among Models meanwhile), Note why
+	// the server was started again when a change could not be made on the running one (Launch.Note; decision P120).
+	Loading []string `json:"loading,omitempty"`
+	Note    string   `json:"note,omitempty"`
 }
 
 // Serves reports whether the server keeps the model loaded, or is loading it.
@@ -121,7 +135,8 @@ func (st ServerState) Serves(id string) bool {
 }
 
 // MaxLoaded is how many models the router keeps loaded at once: llama.cpp's own default (--models-max 4), the most a PC that
-// has room for them needs.
+// has room for them needs. The router is always started with it, not with the number it loads at the start, so a model loaded
+// beside them later does not make it unload the one used least recently (decision P120).
 const MaxLoaded = 4
 
 // models are the chat models of the launch, the one model first.
@@ -132,8 +147,8 @@ func (l Launch) models() []Model {
 	return []Model{l.Model}
 }
 
-// Router reports whether the launch runs llama-server's router mode: two models or more.
-func (l Launch) Router() bool { return len(l.Models) > 1 }
+// Router reports whether the launch runs llama-server's router mode: two models or more, or one when RouterMode says so.
+func (l Launch) Router() bool { return len(l.Models) > 1 || (l.RouterMode && len(l.Models) == 1) }
 
 // Server runs one llama-server at a time.
 type Server struct {
@@ -144,6 +159,7 @@ type Server struct {
 
 	mu    sync.Mutex
 	st    ServerState
+	cur   Launch // what the current process was started with (or changed to since, by Change)
 	p     proc.Proc
 	done  chan struct{} // closed when the current process has ended and its output is drained
 	lines []string
@@ -193,9 +209,54 @@ func (s *Server) addLine(l string) {
 	s.mu.Unlock()
 }
 
-// specType is the kind of speculative decoding a draft model runs: llama.cpp infers none from a plain draft model's header
-// (only from an MTP or DFlash head), so it is named.
-const specType = "draft-simple"
+// The kinds of speculative decoding Drydock runs (llama-server --spec-type), named on every start: llama.cpp infers none from
+// a plain draft model's header, and the TurboQuant build infers none at all (its common/arg.cpp at b10298-2.0.0 has no
+// inference from the draft's header). Both builds Drydock installs have all five (decisions P120 and P129: the types in their
+// common/speculative.cpp, the examples in their docs/speculative.md).
+const (
+	// SpecSimple is a smaller model of the same family drafting (--model-draft).
+	SpecSimple = "draft-simple"
+	// SpecEagle3 is an EAGLE-3 draft (--model-draft): a one-layer model trained for one target, reading its hidden states.
+	SpecEagle3 = "draft-eagle3"
+	// SpecMTP is multi-token prediction (MTP, NextN) heads drafting: the model's own (no draft file), or a file of heads alone
+	// (--model-draft: the TurboQuant build's --mtp-head is another name for it, and the official build has only --model-draft).
+	SpecMTP = "draft-mtp"
+	// SpecDFlash is a DFlash draft (--model-draft): a small block-diffusion model trained for one target that drafts a whole
+	// block of tokens in one pass. SpecDSpark is a DFlash draft with a Markov head.
+	SpecDFlash = "draft-dflash"
+	SpecDSpark = "draft-dspark"
+)
+
+// SpecOf is the --spec-type a draft-only kind of file runs with (GGUFInfo.DraftOnly); "" for a draft model (draft-simple).
+func SpecOf(kind string) string {
+	switch kind {
+	case DraftOnlyEagle3:
+		return SpecEagle3
+	case DraftOnlyDFlash:
+		return SpecDFlash
+	case DraftOnlyDSpark:
+		return SpecDSpark
+	case DraftOnlyMTPHead:
+		return SpecMTP
+	}
+	return ""
+}
+
+// spec is the kind of speculative decoding a model of the launch runs ("" for none) and the draft file it loads for it ("" for
+// none: the model's own MTP heads).
+func (l Launch) spec(id string) (sp, draft string) {
+	if d, ok := l.Drafts[id]; ok && len(d.Files) > 0 {
+		switch t := l.SpecTypes[id]; t {
+		case SpecEagle3, SpecDFlash, SpecDSpark, SpecMTP:
+			return t, d.Files[0]
+		}
+		return SpecSimple, d.Files[0]
+	}
+	if l.SpecTypes[id] == SpecMTP {
+		return SpecMTP, ""
+	}
+	return "", ""
+}
 
 // Arguments is the command line Start uses, for tests and the page. One model: -m with its alias, its projector and its draft.
 // Several: the router with the preset file (Preset), each model's own options in it; the options every model shares (the GPU
@@ -204,7 +265,7 @@ func Arguments(l Launch) []string {
 	args := append([]string{}, l.Args...)
 	args = append(args, "--host", "127.0.0.1", "--port", strconv.Itoa(l.Port))
 	if l.Router() {
-		args = append(args, "--models-preset", l.PresetFile, "--models-max", strconv.Itoa(len(l.Models)))
+		args = append(args, "--models-preset", l.PresetFile, "--models-max", strconv.Itoa(MaxLoaded))
 	} else {
 		m := l.models()[0]
 		args = append(args, "-m", m.Files[0], "--alias", m.ID)
@@ -214,8 +275,12 @@ func Arguments(l Launch) []string {
 			if m.Projector != "" {
 				args = append(args, "--mmproj", m.Projector)
 			}
-			if d, ok := l.Drafts[m.ID]; ok && len(d.Files) > 0 {
-				args = append(args, "--model-draft", d.Files[0], "--spec-type", specType)
+			sp, draft := l.spec(m.ID)
+			if draft != "" {
+				args = append(args, "--model-draft", draft)
+			}
+			if sp != "" {
+				args = append(args, "--spec-type", sp)
 			}
 		}
 	}
@@ -244,6 +309,19 @@ func Arguments(l Launch) []string {
 func Preset(l Launch) (string, error) {
 	var b strings.Builder
 	b.WriteString("; written by Drydock for llama-server's router mode: each section is a model it keeps loaded\nversion = 1\n")
+	for _, m := range l.Models {
+		sec, err := section(l, m)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(sec)
+	}
+	return b.String(), nil
+}
+
+// section is one model's section of the preset: its id, its file, its projector, its draft and kind of speculative decoding.
+func section(l Launch, m Model) (string, error) {
+	var b strings.Builder
 	value := func(k, v string) error {
 		if strings.ContainsAny(v, ";#\r\n") {
 			return fmt.Errorf("the path %q holds a character (; # or a line break) llama-server's model list cannot carry: move Drydock's data folder", v)
@@ -251,27 +329,28 @@ func Preset(l Launch) (string, error) {
 		fmt.Fprintf(&b, "%s = %s\n", k, v)
 		return nil
 	}
-	for _, m := range l.Models {
-		if strings.ContainsAny(m.ID, "[]\r\n;#") || len(m.Files) == 0 {
-			return "", fmt.Errorf("%q cannot be listed for llama-server's router", m.ID)
-		}
-		fmt.Fprintf(&b, "\n[%s]\n", m.ID)
-		if err := value("model", m.Files[0]); err != nil {
+	if strings.ContainsAny(m.ID, "[]\r\n;#") || len(m.Files) == 0 {
+		return "", fmt.Errorf("%q cannot be listed for llama-server's router", m.ID)
+	}
+	fmt.Fprintf(&b, "\n[%s]\n", m.ID)
+	if err := value("model", m.Files[0]); err != nil {
+		return "", err
+	}
+	if m.Projector != "" {
+		if err := value("mmproj", m.Projector); err != nil {
 			return "", err
 		}
-		if m.Projector != "" {
-			if err := value("mmproj", m.Projector); err != nil {
-				return "", err
-			}
-		}
-		if d, ok := l.Drafts[m.ID]; ok && len(d.Files) > 0 {
-			if err := value("model-draft", d.Files[0]); err != nil {
-				return "", err
-			}
-			_ = value("spec-type", specType)
-		}
-		_ = value("load-on-startup", "true")
 	}
+	sp, draft := l.spec(m.ID)
+	if draft != "" {
+		if err := value("model-draft", draft); err != nil {
+			return "", err
+		}
+	}
+	if sp != "" {
+		_ = value("spec-type", sp)
+	}
+	_ = value("load-on-startup", "true")
 	return b.String(), nil
 }
 
@@ -322,11 +401,13 @@ func (s *Server) Start(ctx context.Context, l Launch) error {
 	s.gen++
 	gen := s.gen
 	s.lines = nil
+	s.cur = l
 	s.mu.Unlock()
 	base := "http://127.0.0.1:" + strconv.Itoa(l.Port)
 	s.set(func(st *ServerState) {
 		*st = ServerState{State: "starting", ModelID: ids[0], Port: l.Port, BaseURL: base + "/v1", StartedAt: time.Now().UTC(),
-			Autostarted: l.Autostarted, CacheType: l.CacheType, ContextSize: l.ContextSize, Models: ids, Router: l.Router(), Embeddings: l.Embeddings}
+			Autostarted: l.Autostarted, CacheType: l.CacheType, ContextSize: l.ContextSize, Models: ids, Router: l.Router(), Embeddings: l.Embeddings,
+			Note: l.Note}
 	})
 	if err := portFree(l.Port); err != nil {
 		s.set(func(st *ServerState) { st.State, st.Error = "failed", err.Error() })

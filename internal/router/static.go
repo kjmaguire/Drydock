@@ -251,7 +251,7 @@ func factsFor(req RouteRequest, c Candidate, excludedTrainable int) DecisionFact
 	if ceiling != ContextPublicDocs {
 		ceiling = ContextPrivate
 	}
-	return DecisionFacts{TaskID: req.TaskID, Level: req.Level, RunKind: req.RunKind, TaskType: req.TaskType, DiffLines: req.DiffLines, Risk: req.Risk, Attempt: req.Attempt,
+	return DecisionFacts{TaskID: req.TaskID, Level: req.Level, LevelSource: req.LevelSource, LevelTemplate: req.LevelTemplate, RunKind: req.RunKind, TaskType: req.TaskType, DiffLines: req.DiffLines, Risk: req.Risk, Attempt: req.Attempt,
 		ContextCeiling: ceiling, Tier: c.Tier, DataClass: c.DataClass, ExcludedTrainable: excludedTrainable, QuotaRemainingPct: c.QuotaRemainingPct,
 		BudgetScope: req.Budget.Scope, BudgetPctUsed: req.Budget.PctUsed, ProbePassed: c.ProbePassed, PriceUpdatedAt: c.PriceUpdatedAt}
 }

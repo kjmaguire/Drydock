@@ -1,5 +1,6 @@
 // Telemetry settings (decision D12): off by default, kept on this computer, with a preview of exactly what an export would contain,
-// and sending to a collector over OTLP only when a person turns it on (decision P113, telemetry-otlp.tsx).
+// and sending to a collector over OTLP only when a person turns it on (decision P113, telemetry-otlp.tsx). It never holds prompts,
+// completions, code or secrets, whatever is turned on (decision P126).
 
 import { css, on, type Handle } from 'remix/component';
 import { Activity, Eye, FileDown } from 'lucide';

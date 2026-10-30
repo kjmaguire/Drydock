@@ -1,6 +1,6 @@
 // Package budget enforces spending limits (brief s7 rules 12 and 14, docs/token-control.md s7).
 //
-// A budget limits one scope (project, task, run or agent) in USD, tokens and/or agent turns. Usage is never copied into
+// A budget limits one scope (project, workflow, task, run or agent) in USD, tokens and/or agent turns. Usage is never copied into
 // the budget: every evaluation sums model_usage (and agent_runs for turns), so the figure shown is always the figure in the
 // rows. Cost is split by source: reported (the provider or CLI returned it), estimated (computed from the price table),
 // and unknown (nothing was reported and no price is known). Unknown is never counted as zero: it is shown as a count of

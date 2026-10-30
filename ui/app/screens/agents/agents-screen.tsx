@@ -197,20 +197,30 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
   };
 }
 
-/** A notice the person must read and accept before the CLI is usable. Only a person can accept it: a tick, then Accept. */
+/**
+ * A notice the person must read and accept before the CLI is usable. Only a person can accept it: a tick, then Accept. A notice
+ * accepted before is owed again when what was accepted changed: a person's own CLI's manifest file changed on disk (P117).
+ */
 function Gate(handle: Handle<{ g: GateStatus; onAck: (id: string) => Promise<void> }>) {
   let checked = false;
   let busy = false;
   return () => {
     const { g, onAck } = handle.props;
+    const changed = !g.acked && !!g.changed;
     return (
-      <div mix={gateCss} data-testid="gate" data-gate={g.id} data-acked={String(g.acked)}>
+      <div mix={gateCss} data-testid="gate" data-gate={g.id} data-acked={String(g.acked)} data-changed={String(changed)}>
         <p mix={lineCss}>
           <span mix={markCss} style={{ color: g.acked ? tone.ok.fg : tone.warn.fg }}>
             <Icon icon={g.acked ? CircleCheck : ScrollText} size={15} />
           </span>
           <span>{g.text}</span>
         </p>
+        {changed ? (
+          <p data-testid="gate-changed">
+            <Badge tone="warn">changed</Badge> Its manifest file changed on disk since you accepted this. Nothing runs on it until
+            you read the file again (Install tab) and accept again.
+          </p>
+        ) : null}
         {g.acked ? (
           <div>
             <Badge tone="ok">accepted</Badge>
@@ -270,26 +280,34 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   };
 }
 
-/** A command to copy: Drydock shows install guidance, it never runs it. */
-function CopyCommand(handle: Handle<{ text: string }>) {
-  let copied = false;
+/**
+ * A command to copy: Drydock shows install guidance, it never runs it. The window may refuse the clipboard (a page that is not
+ * focused, a WebView2 without the permission): the button then says to copy the command by hand, which stays on the page.
+ */
+export function CopyCommand(handle: Handle<{ text: string }>) {
+  let state: '' | 'copied' | 'refused' = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(handle.props.text);
-      copied = true;
-      void handle.update();
-      clearTimeout(timer);
-      timer = setTimeout(() => ((copied = false), void handle.update()), 1500);
+      state = 'copied';
     } catch {
-      /* the clipboard can be refused; the command is still there to select */
+      state = 'refused';
     }
+    void handle.update();
+    clearTimeout(timer);
+    timer = setTimeout(() => ((state = ''), void handle.update()), state === 'copied' ? 1500 : 6000);
   };
   return () => (
-    <Button size="sm" variant="ghost" icon={copied ? Check : Copy} data-testid="copy-install" mix={on('click', () => void copy())}>
-      {copied ? 'Copied' : 'Copy'}
-    </Button>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+      <Button size="sm" variant="ghost" icon={state === 'copied' ? Check : Copy} data-testid="copy-install" aria-label="Copy the command" mix={on('click', () => void copy())}>
+        {state === 'copied' ? 'Copied' : 'Copy'}
+      </Button>
+      <span role="status" mix={muted} data-testid="copy-install-status">
+        {state === 'refused' ? 'The window did not allow copying: select the command and press Ctrl+C.' : ''}
+      </span>
+    </span>
   );
 }
 

@@ -26,7 +26,9 @@ import (
 // UNVERIFIED: no agy binary was available. The field names below (step_type, state, text_delta, tool, usage, response,
 // denied_actions) are the documentation's words, and the input line is the stream-json user message Claude Code reads, which
 // community wrappers of agy send; the --mode value is the CLI's default (it asks, so in print mode it denies). The stand-in
-// (fakeagy) is written from the same reading. Interrupt, resume and model selection are unknown and not offered.
+// (fakeagy) is written from the same reading. Resume and model selection are unknown and not offered. Interrupt ends agy's
+// process tree, as the documented Ctrl+C ends print mode (decision P117); the next message starts agy again, as a new
+// conversation.
 
 // AgyConservativeMode is the --mode value sessions run in. The value set of --mode is unverified (docs/connections.md section
 // 15); "default" is the mode that asks before acting, which print mode turns into a refusal.
@@ -104,28 +106,38 @@ func (a *AntigravityAdapter) Start(ctx context.Context, pm proc.Manager, spec ag
 		return nil, fmt.Errorf("%s: %w", a.cfg.ID, err)
 	}
 	env := childEnv(a.cfg.ScrubEnv, a.cfg.PassEnv, AgyEnvPrefixes, spec.Env)
-	p, err := pm.Start(ctx, proc.Spec{Path: exe, Args: a.Args(spec), Dir: spec.Cwd, Env: env, Label: "agent:" + spec.AgentID})
+	ps := proc.Spec{Path: exe, Args: a.Args(spec), Dir: spec.Cwd, Env: env, Label: "agent:" + spec.AgentID}
+	s := &agySession{id: a.cfg.ID, stream: newStream(), exited: make(chan struct{})}
+	// every agy the session starts lives as long as the session's context: the first one, and one started again after an
+	// interrupt ended its predecessor
+	s.launch = func() (proc.Proc, error) { return pm.Start(ctx, ps) }
+	p, err := s.launch()
 	if err != nil {
 		return nil, err
 	}
-	s := &agySession{id: a.cfg.ID, p: p, stream: newStream(), exited: make(chan struct{})}
-	safe.Go("headless.agy.wait", func() { s.ei = <-p.Wait(); close(s.exited) })
-	safe.Go("headless.agy.stdout", s.readStdout)
-	safe.Go("headless.agy.stderr", func() { _, _ = bufio.NewReader(p.Stderr()).WriteTo(&s.errTail) })
+	s.attach(p)
 	return s, nil
 }
 
 type agySession struct {
-	id string
-	p  proc.Proc
+	id     string
+	launch func() (proc.Proc, error)
 	stream
-	exited chan struct{}
-	ei     proc.ExitInfo
-	wmu    sync.Mutex
-	mu     sync.Mutex
-	sid    string
-	turn   *agyTurn // the turn in progress (nil between turns)
-	drift  drift
+	exited  chan struct{} // closed when the session ended (its agy exited by itself, or Stop)
+	endOnce sync.Once
+	ei      proc.ExitInfo
+	wmu     sync.Mutex
+	mu      sync.Mutex
+	p       proc.Proc     // the running agy; nil after an interrupt ended it, until the next message starts another
+	gone    chan struct{} // closed when the reader of p is done with it
+	lastPID int
+	// interrupted is set while Interrupt ends p: its end is the end of the turn, not of the session
+	interrupted bool
+	stopping    bool
+	restarts    int
+	sid         string
+	turn        *agyTurn // the turn in progress (nil between turns)
+	drift       drift
 }
 
 // agyTurn is what one turn has said so far.
@@ -139,78 +151,196 @@ type agyTurn struct {
 func (s *agySession) ID() string                    { s.mu.Lock(); defer s.mu.Unlock(); return s.sid }
 func (s *agySession) Output() <-chan workflow.Chunk { return s.out }
 func (s *agySession) Stderr() string                { return s.errTail.String() }
-func (s *agySession) PID() int                      { return s.p.PID() }
 
+// PID is the running agy's process, else the last one's.
+func (s *agySession) PID() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.p != nil {
+		return s.p.PID()
+	}
+	return s.lastPID
+}
+
+// Wait answers when the session ends: its agy exited by itself (a crash, AGY_ERROR, the end of its input) or Stop ended it.
+// The agy an interrupt ends is not the session ending.
 func (s *agySession) Wait() <-chan proc.ExitInfo {
 	ch := make(chan proc.ExitInfo, 1)
-	safe.Go("headless.agy.Wait", func() { <-s.exited; ch <- s.ei })
+	safe.Go("headless.agy.Wait", func() {
+		<-s.exited
+		s.mu.Lock()
+		ei := s.ei
+		s.mu.Unlock()
+		ch <- ei
+	})
 	return ch
 }
 
-func (s *agySession) Send(ctx context.Context, msg string) error {
+// attach reads a started agy: its stdout as the stream, its stderr into the tail. Called with s.mu not held.
+func (s *agySession) attach(p proc.Proc) {
+	gone := make(chan struct{})
 	s.mu.Lock()
-	if s.turn == nil {
-		s.turn = &agyTurn{tools: map[string]workflow.ToolCall{}}
-	}
+	s.p, s.gone, s.lastPID = p, gone, p.PID()
 	s.mu.Unlock()
+	errDone := make(chan struct{})
+	safe.Go("headless.agy.stderr", func() { _, _ = bufio.NewReader(p.Stderr()).WriteTo(&s.errTail); close(errDone) })
+	safe.Go("headless.agy.stdout", func() { s.read(p, gone, errDone) })
+}
+
+func (s *agySession) Send(ctx context.Context, msg string) error {
+	var p proc.Proc
+	for {
+		s.mu.Lock()
+		if s.stopping {
+			s.mu.Unlock()
+			return errors.New(s.id + ": the session was stopped")
+		}
+		if s.p != nil && s.interrupted {
+			// the interrupted agy is still on its way out: the next one starts once its reader is done
+			gone := s.gone
+			s.mu.Unlock()
+			select {
+			case <-gone:
+				continue
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		if s.p == nil {
+			// an interrupt ended the last agy: this message starts another. agy's print mode documents no resume, so it is a new
+			// conversation, and the person is told so
+			np, err := s.launch()
+			if err != nil {
+				s.mu.Unlock()
+				return fmt.Errorf("%s: starting agy again after the interrupt: %w", s.id, err)
+			}
+			s.restarts++
+			s.mu.Unlock()
+			s.attach(np)
+			s.emit(chunk(workflow.ChunkLog, workflow.TextDelta{Text: "agy was started again after the interrupt; its print mode has no resume, so it does not carry the earlier conversation\n"}))
+			continue
+		}
+		p = s.p
+		if s.turn == nil {
+			s.turn = &agyTurn{tools: map[string]workflow.ToolCall{}}
+		}
+		s.mu.Unlock()
+		break
+	}
 	b, err := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": msg}})
 	if err != nil {
 		return err
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
-	_, err = s.p.Stdin().Write(append(b, '\n'))
+	_, err = p.Stdin().Write(append(b, '\n'))
 	return err
 }
 
-// Interrupt is not available: agy's print mode documents no way to cancel a turn and keep the session (Ctrl+C ends the
-// process with a non-zero code), so Drydock does not claim one.
+// Interrupt stops the turn in progress the way agy's print mode documents it can be stopped: Ctrl+C ends the process
+// (docs/phase0/agent-clis.md section 8: "print-mode Ctrl+C non-zero"). Drydock ends agy's whole process tree (the Job Object
+// on Windows), the turn ends with stop reason "cancelled", and the session stays: the next message starts agy again, as a new
+// conversation (print mode has no documented resume). With no turn running it does nothing. UNVERIFIED against a real agy.
 func (s *agySession) Interrupt(ctx context.Context) error {
-	return fmt.Errorf("%s: interrupting a turn is not available in agy's headless mode; stop the session instead", s.id)
+	s.mu.Lock()
+	p := s.p
+	if p == nil || s.turn == nil || s.stopping || s.interrupted {
+		s.mu.Unlock()
+		return nil
+	}
+	s.interrupted = true
+	gone := s.gone
+	s.mu.Unlock()
+	if err := p.Kill(true); err != nil {
+		return err
+	}
+	select {
+	case <-gone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *agySession) Stop(ctx context.Context) error {
-	defer s.markStopped()
-	_ = s.p.Stdin().Close()
+	s.mu.Lock()
+	s.stopping = true
+	p := s.p
+	s.mu.Unlock()
+	s.markStopped()
+	if p == nil {
+		s.end(proc.ExitInfo{}) // an interrupt ended the last agy and no message started another
+		return nil
+	}
+	_ = p.Stdin().Close()
 	select {
 	case <-s.exited:
 		return nil
 	case <-time.After(2 * time.Second):
 	case <-ctx.Done():
 	}
-	return s.p.Kill(true)
+	return p.Kill(true)
 }
 
-func (s *agySession) readStdout() {
-	defer close(s.out)
-	sc := bufio.NewScanner(s.p.Stdout())
+// end ends the session once: Output closes and Wait answers with ei.
+func (s *agySession) end(ei proc.ExitInfo) {
+	s.endOnce.Do(func() {
+		s.mu.Lock()
+		s.ei = ei
+		s.mu.Unlock()
+		close(s.out)
+		close(s.exited)
+	})
+}
+
+// read turns one agy's output into chunks until it exits. An agy that an interrupt ended ends only its turn; one that exits by
+// itself, or that Stop ended, ends the session.
+func (s *agySession) read(p proc.Proc, gone, errDone chan struct{}) {
+	defer close(gone)
+	sc := bufio.NewScanner(p.Stdout())
 	sc.Buffer(make([]byte, 1<<20), 32<<20)
 	for sc.Scan() {
 		for _, c := range s.parse(sc.Bytes()) {
 			if !s.emit(c) {
+				_ = p.Kill(true)
+				ei, _ := proc.WaitTimeout(p, 2*time.Second)
+				s.end(ei)
 				return
 			}
 		}
 	}
-	// the output ended: the process exited. A turn it did not finish ends here, with what agy said on stderr.
-	select {
-	case <-s.exited:
+	// the output ended: the process is exiting
+	ei, _ := proc.WaitTimeout(p, 2*time.Second)
+	select { // what agy said on its way out
+	case <-errDone:
 	case <-time.After(2 * time.Second):
 	}
 	s.mu.Lock()
+	interrupted, stopping := s.interrupted, s.stopping
 	open := s.turn != nil
 	s.turn = nil
 	s.mu.Unlock()
-	if open {
+	if interrupted && !stopping {
+		if open {
+			s.emit(chunk(workflow.ChunkDone, workflow.DoneChunk{StopReason: "cancelled"}))
+		}
+		s.mu.Lock()
+		s.p, s.interrupted = nil, false
+		s.mu.Unlock()
+		return
+	}
+	// a turn agy did not finish ends here, with what agy said on stderr
+	if open && !stopping {
 		msg := "agy ended before the turn finished"
 		if e := agyError(s.errTail.String()); e != "" {
 			msg += ": " + e
-		} else if s.ei.Code != 0 {
-			msg += fmt.Sprintf(" (exit %d)", s.ei.Code)
+		} else if ei.Code != 0 {
+			msg += fmt.Sprintf(" (exit %d)", ei.Code)
 		}
 		s.emit(chunk(workflow.ChunkError, workflow.ErrorChunk{Message: msg, Fatal: true}))
 		s.emit(chunk(workflow.ChunkDone, workflow.DoneChunk{StopReason: "error"}))
 	}
+	s.end(ei)
 }
 
 // agyError is the message of the `AGY_ERROR: {...}` line agy prints on stderr when it fails (exit 3).

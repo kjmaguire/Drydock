@@ -1,22 +1,23 @@
 // The add/edit form for a budget (shown in a dialog). A limit field holds a plain number or nothing: text that is not a number
 // is an error under its field and nothing is sent (M25), so a mistyped limit is never saved as "no limit". The core validates the
-// rest: a budget without any limit is refused and its words are shown verbatim.
+// rest: a budget without any limit is refused and its words are shown verbatim. A workflow budget (P118) names one of the
+// workflows the core runs, chosen from its list, and counts that workflow's runs in this project.
 
 import { css, on, type Handle } from 'remix/component';
 import type { Budget } from '../../api/extTypes.ts';
-import { action, services } from '../../state/services.tsx';
+import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
-import { formValues, parseBudgetForm, type BudgetFormValues } from './budgets.ts';
+import { BUDGET_SCOPES, formValues, parseBudgetForm, scopeIdAfter, type BudgetFormValues } from './budgets.ts';
 
-const SCOPES = ['project', 'task', 'run', 'agent'];
 const wide = css({ gridColumn: '1 / -1' });
 
 export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget; onDone: () => void; onCancel?: () => void }>) {
   const s = services(handle);
   const act = action(handle);
+  const workflows = query(handle, { load: () => s.client.budgetWorkflows() });
   const v: BudgetFormValues = formValues(handle.props.projectId, handle.props.initial);
   // the text of a limit that is not a number, by field; an error goes when its field is edited
   const errors: Partial<Record<keyof BudgetFormValues, string>> = {};
@@ -63,6 +64,8 @@ export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget;
   return () => {
     const { initial, onCancel } = handle.props;
     const editing = !!initial;
+    // the workflow scope was chosen before the list arrived: it starts on the first workflow, as choosing it now would
+    if (v.scope === 'workflow' && !v.scopeId && workflows.data?.length) v.scopeId = workflows.data[0]!;
     return (
       <form
         mix={[
@@ -83,15 +86,34 @@ export function BudgetForm(handle: Handle<{ projectId: string; initial?: Budget;
               id={id}
               value={v.scope}
               disabled={editing}
-              options={selectValues(SCOPES)}
+              options={selectValues(BUDGET_SCOPES)}
               onChange={(sc) => {
+                v.scopeId = scopeIdAfter(v.scope, sc, v.scopeId, handle.props.projectId, workflows.data ?? []);
                 v.scope = sc;
+                delete errors.scopeId;
                 void handle.update();
               }}
             />
           )}
         </Field>
-        {text('Scope id (an id, or * for every task, run or agent)', 'scopeId', { disabled: editing, required: true })}
+        {v.scope === 'workflow' && (workflows.data?.length ?? 0) > 0 ? (
+          <Field label="Workflow (its runs in this project)">
+            {(id) => (
+              <Select
+                id={id}
+                value={v.scopeId}
+                disabled={editing}
+                options={selectValues(workflows.data!.includes(v.scopeId) || !v.scopeId ? workflows.data! : [v.scopeId, ...workflows.data!])}
+                onChange={(wf) => {
+                  v.scopeId = wf;
+                  void handle.update();
+                }}
+              />
+            )}
+          </Field>
+        ) : (
+          text(v.scope === 'workflow' ? 'Workflow (its runs in this project)' : 'Scope id (an id, or * for every task, run or agent)', 'scopeId', { disabled: editing, required: true })
+        )}
         {text('Limit in USD', 'usd', { mode: 'decimal', placeholder: 'no limit' })}
         {text('Limit in tokens', 'tokens', { mode: 'numeric', placeholder: 'no limit' })}
         {text('Limit in turns', 'turns', { mode: 'numeric', placeholder: 'no limit' })}

@@ -10,8 +10,10 @@ import (
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/events"
+	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/runfiles"
+	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
 
@@ -53,6 +55,26 @@ type RunExplanation struct {
 	Events      []EventView         `json:"events"`
 	// EventsTruncated says only the latest events are listed.
 	EventsTruncated bool `json:"eventsTruncated,omitempty"`
+	// Origin says where a forked or replayed run started (P123); absent for a run started from its input.
+	Origin *workflow.Origin `json:"origin,omitempty"`
+	// Actions are the run page's Resume, Time travel and Replay: which are possible now and why not (P123).
+	Actions *RunActions `json:"actions,omitempty"`
+	// Subruns are the nested runs of the run's subworkflow nodes, one per execution, with their own executions (docs/ui.md 6.2).
+	Subruns []SubrunView `json:"subruns"`
+	// UndoPoints are the states of the task's worktree that earlier restores kept, newest first (P127): the run page lists
+	// them beside the run's safe points, and restoring one undoes its restore.
+	UndoPoints []git.UndoPoint `json:"undoPoints"`
+}
+
+// SubrunView is the run a subworkflow node started at one of its executions (workflow.SubRunID).
+type SubrunView struct {
+	NodeID     string       `json:"nodeId"`
+	Step       int          `json:"step"`
+	Attempt    int          `json:"attempt"`
+	RunID      string       `json:"runId"`
+	Status     string       `json:"status"`
+	Executions []ExecView   `json:"executions"`
+	Subruns    []SubrunView `json:"subruns,omitempty"`
 }
 
 // RunSummary names one run of the task (a task restarted after a failure has several).
@@ -109,6 +131,13 @@ type CheckpointView struct {
 	LastNodes []string `json:"lastNodes,omitempty"`
 	Waiting   []string `json:"waiting,omitempty"`
 	Latest    bool     `json:"latest,omitempty"`
+	// Next are the nodes that have input waiting at this checkpoint: what runs first when a run goes on from it.
+	Next []string `json:"next,omitempty"`
+	// SafePoint is the safe point that holds the worktree's files as of this checkpoint (the one recorded before the next
+	// agent turn): time travel can put the files back to it (P124). Empty when no agent turn ran after it.
+	SafePoint string `json:"safePoint,omitempty"`
+	// Resumed: this entry is where a person resumed the run after it stopped (its parent is a checkpoint of the same run).
+	Resumed bool `json:"resumed,omitempty"`
 }
 
 // EventView is one persisted event.
@@ -127,7 +156,8 @@ const explainEventData = 16 << 10
 
 // ExplainRun explains a run of a task: runID, or the task's current run.
 func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplanation, error) {
-	out := RunExplanation{Runs: []RunSummary{}, Executions: []ExecView{}, Checkpoints: []CheckpointView{}, MCPCalls: []EventView{}, Events: []EventView{}}
+	out := RunExplanation{Runs: []RunSummary{}, Executions: []ExecView{}, Checkpoints: []CheckpointView{}, MCPCalls: []EventView{}, Events: []EventView{}, Subruns: []SubrunView{},
+		UndoPoints: []git.UndoPoint{}}
 	if taskID == "" {
 		return out, errors.New("explain: name a task")
 	}
@@ -167,6 +197,9 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 	}
 	info.Input, info.Result = nil, nil // the input is the task spec; the result is in the evidence
 	out.Run = &info
+	acts := c.runActions(ctx, t, info)
+	out.Actions = &acts
+	out.UndoPoints = c.undoPoints(ctx, t)
 	var kinds map[string]string
 	if g, err := c.Engine.Describe(info.Workflow); err == nil {
 		out.Graph = &g
@@ -214,19 +247,29 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 		}
 		out.Executions = append(out.Executions, v)
 	}
+	out.Subruns = c.subruns(ctx, workflow.RunID(runID), out.Graph, execs, 0)
 
 	cps, err := c.Engine.RunCheckpoints(ctx, workflow.RunID(runID))
 	if err == nil {
+		own := map[workflow.CheckpointID]bool{}
+		for _, cp := range cps {
+			own[cp.ID] = true
+		}
 		for _, cp := range cps {
 			cv := CheckpointView{ID: string(cp.ID), Step: cp.Step, Kind: string(cp.Kind), Parent: string(cp.Parent), Created: cp.Created,
-				Status: string(cp.State.Status), Latest: cp.ID == info.LatestCP}
+				Status: string(cp.State.Status), Latest: cp.ID == info.LatestCP, Resumed: cp.Kind == workflow.CheckpointEntry && own[cp.Parent]}
 			for _, n := range cp.State.LastNodes {
 				cv.LastNodes = append(cv.LastNodes, string(n))
 			}
 			for n := range cp.State.Waiting {
 				cv.Waiting = append(cv.Waiting, string(n))
 			}
+			cv.Next = nextNodes(out.Graph, cp.State)
+			cv.SafePoint = safePointAfter(execs, cp.Step)
 			out.Checkpoints = append(out.Checkpoints, cv)
+			if cp.State.Origin != nil {
+				out.Origin = cp.State.Origin
+			}
 		}
 	}
 
@@ -259,6 +302,74 @@ func (c *Core) ExplainRun(ctx context.Context, taskID, runID string) (RunExplana
 	slices.Reverse(out.Events)
 	slices.Reverse(out.MCPCalls)
 	return out, evRows.Err()
+}
+
+// nextNodes are the nodes with input waiting in st, in the graph's order (in name order without a graph).
+func nextNodes(g *workflow.GraphView, st workflow.RunState) []string {
+	var out []string
+	if g != nil {
+		for _, n := range g.Nodes {
+			if len(st.Inboxes[n.ID]) > 0 {
+				out = append(out, string(n.ID))
+			}
+		}
+		return out
+	}
+	for n, in := range st.Inboxes {
+		if len(in) > 0 {
+			out = append(out, string(n))
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// maxSubrunDepth is how deep nested subworkflows are explained.
+const maxSubrunDepth = 4
+
+// subruns are the nested runs of the subworkflow nodes of g among execs (workflow.SubRunID), each with its executions and, to
+// maxSubrunDepth, its own nested runs.
+func (c *Core) subruns(ctx context.Context, run workflow.RunID, g *workflow.GraphView, execs []workflow.ExecRow, depth int) []SubrunView {
+	out := []SubrunView{}
+	if g == nil || depth >= maxSubrunDepth {
+		return out
+	}
+	subs := map[workflow.NodeID]*workflow.GraphView{}
+	for _, n := range g.Nodes {
+		if n.Kind == workflow.KindSubworkflow && n.Sub != nil {
+			subs[n.ID] = n.Sub
+		}
+	}
+	if len(subs) == 0 {
+		return out
+	}
+	for _, x := range execs {
+		sg, ok := subs[x.NodeID]
+		if !ok {
+			continue
+		}
+		id := workflow.SubRunID(run, x.NodeID, x.Step, x.Attempt)
+		info, err := c.Engine.Status(ctx, id)
+		if err != nil {
+			continue // the attempt stopped before its run was written
+		}
+		rows, err := c.Engine.Executions(ctx, id)
+		if err != nil {
+			continue
+		}
+		kinds := map[workflow.NodeID]string{}
+		for _, n := range sg.Nodes {
+			kinds[n.ID] = string(n.Kind)
+		}
+		v := SubrunView{NodeID: string(x.NodeID), Step: x.Step, Attempt: x.Attempt, RunID: string(id), Status: string(info.Status), Executions: []ExecView{}}
+		for _, r := range rows {
+			v.Executions = append(v.Executions, ExecView{NodeID: string(r.NodeID), Kind: kinds[r.NodeID], Step: r.Step, Attempt: r.Attempt, Status: r.Status,
+				Error: r.Error, Started: r.Started, Finished: r.Finished})
+		}
+		v.Subruns = c.subruns(ctx, id, sg, rows, depth+1)
+		out = append(out, v)
+	}
+	return out
 }
 
 type timedDecision struct {
@@ -381,4 +492,19 @@ func (c *Core) TurnPrompt(ctx context.Context, taskID, runID, nodeID string, ste
 		return "", errors.New("explain: no prompt was kept for this turn")
 	}
 	return string(b), err
+}
+
+// undoPoints lists what earlier restores of task t's worktree kept (none when the task has no repository to ask).
+func (c *Core) undoPoints(ctx context.Context, t tasks.Task) []git.UndoPoint {
+	out := []git.UndoPoint{}
+	r, err := c.repo(ctx, t.ProjectID)
+	if err != nil {
+		return out
+	}
+	pts, err := r.UndoPoints(ctx, t.ID)
+	if err != nil {
+		c.logf("explain: undo points of %s: %v", t.ID, err)
+		return out
+	}
+	return append(out, pts...)
 }

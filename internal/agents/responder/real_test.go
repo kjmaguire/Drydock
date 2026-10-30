@@ -35,7 +35,7 @@ func TestRealClaudeAnswersInTheRoomReadOnly(t *testing.T) {
 	h := newHarness(t, responder.Options{TurnTimeout: 150 * time.Second})
 	t.Setenv("DRYDOCK_FAKE_AGENT", "")
 	real := &spyAdapter{Adapter: ad}
-	h.rt = &rt.Runtime{PM: proc.New(), Bus: h.bus, DB: h.db, Adapters: map[string]agents.Adapter{"claude": real}}
+	h.rt = &rt.Runtime{PM: proc.New(), Bus: h.bus, DB: h.db, Adapters: map[string]agents.Adapter{"claude": real}, Grants: h.room}
 	h.r = responder.New(responder.Deps{Room: h.room, Runtime: h.rt, Context: h.ce, DB: h.db, Bus: h.bus,
 		LookupAgent: func(ctx context.Context, id string) (responder.Agent, error) {
 			var a responder.Agent

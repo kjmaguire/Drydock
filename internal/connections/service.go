@@ -109,19 +109,53 @@ func (s *Service) Acknowledge(gateID string) {
 		cp[k] = v
 	}
 	s.opts.Acked = cp
+	s.opts.Reasked = without(s.opts.Reasked, gateID)
 	s.mu.Unlock()
+}
+
+// Acked reports whether a gate is acknowledged now (the check every session start makes, decision P117).
+func (s *Service) Acked(gateID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.opts.Acked[gateID]
+}
+
+// Reask takes an acknowledgement back because what was acknowledged changed (a person's own CLI's manifest file changed on
+// disk, decision P117): the gate is owed again, and its status says why.
+func (s *Service) Reask(gateID string) {
+	s.mu.Lock()
+	s.opts.Acked = without(s.opts.Acked, gateID)
+	cp := map[string]bool{gateID: true}
+	for k, v := range s.opts.Reasked {
+		cp[k] = v
+	}
+	s.opts.Reasked = cp
+	s.mu.Unlock()
+}
+
+// Reasked reports whether a gate is owed again because what was acknowledged changed.
+func (s *Service) Reasked(gateID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.opts.Reasked[gateID]
+}
+
+// without is a copy of m without key (the maps in Options are replaced, never changed in place).
+func without(m map[string]bool, key string) map[string]bool {
+	cp := map[string]bool{}
+	for k, v := range m {
+		if k != key {
+			cp[k] = v
+		}
+	}
+	return cp
 }
 
 // Forget drops an acknowledgement (a person's own CLI was removed: adding one with that id again asks again).
 func (s *Service) Forget(gateID string) {
 	s.mu.Lock()
-	cp := map[string]bool{}
-	for k, v := range s.opts.Acked {
-		if k != gateID {
-			cp[k] = v
-		}
-	}
-	s.opts.Acked = cp
+	s.opts.Acked = without(s.opts.Acked, gateID)
+	s.opts.Reasked = without(s.opts.Reasked, gateID)
 	s.mu.Unlock()
 }
 

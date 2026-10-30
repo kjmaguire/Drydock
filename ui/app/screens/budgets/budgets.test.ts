@@ -1,7 +1,21 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Budget, BudgetSet } from '../../api/extTypes.ts';
-import { formValues, limitsText, parseBudgetForm, parseLimits, plural, stateTone, TOKENS_ERROR, TURNS_ERROR, USD_ERROR, WARN_ERROR, type BudgetFormValues } from './budgets.ts';
+import {
+  BUDGET_SCOPES,
+  formValues,
+  limitsText,
+  parseBudgetForm,
+  parseLimits,
+  plural,
+  scopeIdAfter,
+  stateTone,
+  TOKENS_ERROR,
+  TURNS_ERROR,
+  USD_ERROR,
+  WARN_ERROR,
+  type BudgetFormValues,
+} from './budgets.ts';
 import { drawFraction } from './meter.tsx';
 
 const b = (over: Partial<Budget> = {}): Budget => ({
@@ -103,5 +117,31 @@ describe('budget helpers', () => {
     expect(drawFraction(-1)).toBe(0);
     expect(drawFraction(null)).toBe(0);
     expect(drawFraction(0.25)).toBe(0.25);
+  });
+});
+
+describe('workflow budgets (P118)', () => {
+  it('a workflow budget names a workflow and belongs to the project it is made in', () => {
+    const r = parseBudgetForm({ ...formValues('prj_1'), scope: 'workflow', scopeId: 'iterate-until-verified', usd: '5' }, 'prj_1');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.request.scope).toBe('workflow');
+      expect(r.request.scopeId).toBe('iterate-until-verified');
+      expect(r.request.projectId).toBe('prj_1');
+    }
+    // a budget on an explicit task still names no project
+    const t = parseBudgetForm({ ...formValues('prj_1'), scope: 'task', scopeId: 'task_1', usd: '5' }, 'prj_1');
+    expect(t.ok && t.request.projectId).toBe(undefined);
+  });
+
+  it('changing the scope to or from workflow changes the scope id with it', () => {
+    const wfs = ['bug', 'iterate-until-verified'];
+    expect(BUDGET_SCOPES).toContain('workflow');
+    expect(scopeIdAfter('project', 'workflow', 'prj_1', 'prj_1', wfs)).toBe('bug');
+    expect(scopeIdAfter('project', 'workflow', 'prj_1', 'prj_1', [])).toBe('');
+    expect(scopeIdAfter('workflow', 'project', 'bug', 'prj_1', wfs)).toBe('prj_1');
+    expect(scopeIdAfter('workflow', 'task', 'bug', 'prj_1', wfs)).toBe('');
+    expect(scopeIdAfter('task', 'run', 'task_1', 'prj_1', wfs)).toBe('task_1');
+    expect(scopeIdAfter('workflow', 'workflow', 'bug', 'prj_1', wfs)).toBe('bug');
   });
 });
