@@ -69,7 +69,7 @@ Slice 1: `StaticRouter` returns the agent's configured provider/model and record
 
 ## 3. Levels
 
-Levels are project defaults and per-task overrides (brief §6). Team templates set defaults, not model locks (brief §1). **All numbers below are proposed starting values, unmeasured; they are tuned through the eval harness (brief §23).**
+Levels are project defaults and per-task overrides (brief §6). Team templates set defaults, not model locks (brief §1). As built, the most specific level applies: the task's own, then the one its template declares, then the project's, then the workspace's (decision P127, "As built: a task's own level and a template's" below). **All numbers below are proposed starting values, unmeasured; they are tuned through the eval harness (brief §23).**
 
 | Level | Intent | Worker tier order | Review policy | Effort default | Escalate after |
 |---|---|---|---|---|---|
@@ -641,8 +641,30 @@ only a person may, and `routing.level_changed` is published. Every agent turn of
 `internal/core/turnrouting.go`: work, review, the template roles, room replies, the lead, recommendations), its static
 decision when the agent has no model list, and its wall-time ceiling (P112, set per level) use that level. The request and
 the decision record the level and `LevelSource` (`project` or `workspace`), and "Why this model?" says it ("- Level:
-Quality, the project's own level (its settings)."). The task-level override of section 3 is not built, nor a level per
-template; Custom can be stored (`custom`) but the pages offer the five ladder levels only. Tests:
+Quality, the project's own level (its settings)."). The task-level override of section 3 and a level per template were built
+since (decision P127, next section); Custom can be stored (`custom`) but the pages offer the five ladder levels only. Tests:
 `TestAProjectsOwnLevelRoutesItsTurnsAndTheExplanationSaysSo` (`internal/core`: at Quality the worker's first turn runs on
 its premium model), `TestTheDecisionSaysWhichLevelItRanAtAndWhere` (`internal/router`), the UI's
 `project-routing-level.test.browser.tsx` and `routing-screen.test.browser.tsx`, and `e2e/routing-level.spec.ts`.
+
+## As built: a task's own level and a template's (2026-10-30, decision P127)
+
+Section 3's "per-task overrides" and "team templates set defaults". A person sets a task's own level on the task page (the
+properties panel's **Routing** row: "Follow the Security template (Quality)", "Follow the project (Cheapest)" or "Follow the
+workspace (Balanced)", then the five levels; `route.level.get {taskId}`, `route.level.set {taskId, level}`, only a person,
+`routing.level_changed` with the task; `tasks.route_level`, migration 00165, left out of a project export as the project's
+own level is). A workflow template may declare a level (`pipeline.Template.Level`): the Security template declares Quality,
+since fixing security findings is a premium-only class of brief s6's ladder; the others declare none. **Order, most specific
+first:** the task's own, the level its template declares, the project's own, the workspace's. The template sits under the task
+and over the project because a task chooses its template, and the template says what kind of work the task is, which the
+project's level (a default for all its work) does not; a person who wants another level for one task sets the task's. The
+template is the workflow the turn runs in (either variant: a name ending in `-pr` is its PR variant), else the task's template
+(a room reply in the task's room). `LevelSource` gains `task` and `template` (and `LevelTemplate` names it), stored with the
+decision; "Why this model?" says "- Level: Quality, this task's own level (set on its page)." or "- Level: Quality, the level
+the Security template declares (the task sets none of its own).", and the wall-time ceiling of a level (P112) follows the same
+level. Templates are code, not edited in the UI, so there is no template control. Tests: `TestATasksOwnLevelAndItsTemplatesRouteItsTurns`
+(`internal/core`: the Security template's level over the project's Cheapest, the task's own over it, the refusals, the events,
+a work turn on the premium model at the task's Quality and its explanation), `TestTheDecisionSaysWhichLevelItRanAtAndWhere`
+(`internal/router`), the UI's `task-level.test.browser.tsx` and `routing.test.ts`, and `e2e/routing-level.spec.ts` (a task's
+own level over the project's, kept across a reload). Not verified: a real model's choice at these levels (only the stand-in
+and the router's own tests), Windows.

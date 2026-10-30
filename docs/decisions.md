@@ -1969,3 +1969,57 @@ Open, owner action:
   code); the backfill test keeps a row with an old content attribute; `TestTheRemovedContentSwitchIsGoneAndItsSettingIgnored`
   (core); the Settings browser test and `e2e/diagnostics.spec.ts` find no such switch. Docs: `security.md` principle 4,
   `packaging.md` section 9, `token-control.md`, `ui.md` S19, `architecture.md`. No new dependency.
+- **P127. Discussions that end on `SHIP` or a decision, the bound and the context plan inside a turn grant, a task's own
+  routing level and a template's, undo points on the run page, and where discussions and subworkflows belong (2026-10-30).**
+  On the owner's words after P124 to P126 were built: "ok keep going", answering the "Not built" lines P118, P123 and P124
+  wrote (`room-protocol.md` s6, `token-control.md` "turn grants", `model-routing.md` "As built: the workspace's level and a
+  project's own", `workflow-engine.md` s14, `ui.md` 6.2, `architecture.md` section 5). (1) **Ending on `SHIP` or a decision**
+  ([`room-protocol.md`](room-protocol.md) s6 "As built (decision P127)", [`workflow-engine.md`](workflow-engine.md) s14): rule
+  7's "the group returns SHIP/a decision", decided from the conventions already in use, not a new one: a turn whose reply
+  states a `DECISION` (the `[DECISION]` line the discussion prompt asked for, or a reply that is one, P93) or is exactly `SHIP`
+  (the review's single-word verdict, read as `pipeline.ParseVerdict` reads it) ends the discussion at that turn. The result
+  says why (`Ended`: `bound`, `passes`, `ship`, `decision`) and whose turn (`EndedBy`), and so do the SYSTEM line in the thread
+  and `room.debate_bounded` (`room.EndDiscussion`; `ApplyDebateBound` is its bound case). The resolution stays the bound's: a
+  proposed `DECISION` stands as the candidate, else a person is asked; a `SHIP` is an agent's word and decides nothing alone, so
+  without a decision written down the question says an agent returned SHIP (in Design Review an approval without text then
+  builds on what was said). The prompt tells the agents both endings. (2) **The bound and the plan in the grant**
+  ([`room-protocol.md`](room-protocol.md) s6 rules 2 and 4, s11): the scheduler writes `MaxRounds` (the room's bound, or the
+  discussion's) and a `ContextPlan` (trigger, task, the agent's roles and previous message, the thread window, the mention and
+  size bounds, defaults filled in) into every grant (migration `00164`: `room_turn_grants.max_rounds`, `context_plan`; the
+  table was already left out of exports). A granted turn is selected by `room.ContextForGrant` from the grant's plan, nothing
+  recomputed; it and `RedeemGrant` refuse a grant whose bound or plan differs from what was stored, or whose round is past its
+  bound; a renewed grant carries the used one's plan; a group turn's prompt says the round and bound of its grant. (3) **A
+  task's own level and a template's** ([`model-routing.md`](model-routing.md) "As built: a task's own level and a
+  template's"): a person sets a task's level on the task page's new Routing row (`route.level.get/set` with `taskId`, an
+  event; migration `00165`, `tasks.route_level`, skipped in a project export as the project's own level is); a template may
+  declare one (`pipeline.Template.Level`; Security declares Quality, the premium-only class of fixing security findings).
+  Order, decided from section 3 and brief s1 ("team templates set defaults"): the task's own, its template's, the project's,
+  the workspace's. The template sits over the project because a task chooses its template, which says what kind of work it is;
+  the project's level is a default for all its work; a person overrides either for one task. `LevelSource` gains `task` and
+  `template` (`LevelTemplate` names it) and "Why this model?" says it; templates are code, so there is no template control. No
+  new RPC method: `route.level.get/set` take `taskId`. (4) **A shipped workflow that uses a subworkflow: none, decided**
+  ([`workflow-engine.md`](workflow-engine.md) s14): a nested run belongs to no task (P124, so it never splits the task's budget
+  window), so an agent turn in one would get no safe point before it and would leave the parent run's and its workflow's
+  budgets (undoing P124's workflow budget on the Design Review discussion); the candidates (the design discussion as a nested
+  graph, a fix-then-verify child) run agent turns and none is shared by two templates, so nesting would buy only a frame in the
+  graph. A shipped subworkflow waits for a nested run that keeps its parent's task. `TestNoShippedTemplateRunsASubworkflow`
+  holds it. (5) **Undo points on the run page** ([`ui.md`](ui.md) 6.2 "As built (decision P127)"): Put files back... lists
+  the undo points earlier restores kept (`run.explain` `undoPoints`, `git.Repo.UndoPoints`: newest first, each with when its
+  restore was made and what it put back), each restored like a safe point (the files first, person-only, refused while a turn
+  runs, keeping an undo point of its own), whenever the person opens the dialog again. (6) **A discussion node in the other
+  templates: none, decided per template** ([`workflow-engine.md`](workflow-engine.md) s14): brief s22 gives Feature, Bug,
+  Security, Full Stack SaaS and Iterate Until Verified their gates (a person's spec gate and approval, tests first, the scan,
+  one independent reviewer) and no discussion, and s7 makes each agent turn a cost to justify; a person picks Design Review for
+  a task that needs one, until an eval run shows a discussion pays. No new dependency. Tests: `internal/agents/responder`
+  (`group_test.go`: ending on a decision, on SHIP, on a round of passes and at the bound against the scripted stand-in through
+  the engine; a group turn seeing what its grant's plan says; `IsShip`), `internal/room` (a grant's plan decides the selection,
+  five changed grants refused at the selection and the redemption, a used one, a renewed one's plan, a round past its bound),
+  `internal/agents/runtime` (a widened plan and a raised bound refused at `Spawn`), `internal/pipeline` (the Design Review
+  discussion ending on its DECISION; no subworkflow, discussions in Design Review only), `internal/router` (the task and template
+  lines, stored and loaded), `internal/core` (`TestATasksOwnLevelAndItsTemplatesRouteItsTurns`; the Design Review budget test
+  now ending on the architect's round-2 decision; the restore test with the undo points), the git package's restore test,
+  `internal/projectio`, UI unit tests (`routing.test.ts`, `task-level.test.browser.tsx`, `run-model.test.ts`,
+  `run-screen.test.browser.tsx`) and the e2e specs `routing-level`, `round11`, `task-page` and `smoke`. **Not verified:** any of
+  it with a real agent CLI (the scripted stand-in only) or on Windows; whether ending on the first decision makes designs better
+  or worse than a round of passes (no eval run). **Not built:** the scheduler's `Complete` call; a subworkflow in a shipped
+  workflow (see 4).
