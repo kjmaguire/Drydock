@@ -28,6 +28,19 @@ func TestTheDecisionSaysWhichLevelItRanAtAndWhere(t *testing.T) {
 	if text := r.Explain(mustDecide(t, r, q)); !strings.Contains(text, "- Level: Maximum Quality, the workspace's level (the project sets none of its own).\n") {
 		t.Fatalf("explain:\n%s", text)
 	}
+	// a task's own level, and its template's (decision P127)
+	q.Level, q.LevelSource = LevelCheapest, LevelFromTask
+	if text := r.Explain(mustDecide(t, r, q)); !strings.Contains(text, "- Level: Cheapest, this task's own level (set on its page).\n") {
+		t.Fatalf("explain:\n%s", text)
+	}
+	q.Level, q.LevelSource, q.LevelTemplate = LevelQuality, LevelFromTemplate, "Security"
+	d = mustDecide(t, r, q)
+	if text := r.Explain(d); !strings.Contains(text, "- Level: Quality, the level the Security template declares (the task sets none of its own).\n") {
+		t.Fatalf("explain:\n%s", text)
+	}
+	if _, back, err := w.rec.Load(w.ctx, d.ID); err != nil || back.Facts.LevelTemplate != "Security" || r.Explain(back) != r.Explain(d) {
+		t.Fatalf("loaded %+v %v", back.Facts, err)
+	}
 	q.LevelSource = ""
 	if text := r.Explain(mustDecide(t, r, q)); strings.Contains(text, "- Level:") {
 		t.Fatalf("no source, no line:\n%s", text)

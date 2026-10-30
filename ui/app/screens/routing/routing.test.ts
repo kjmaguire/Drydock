@@ -15,6 +15,8 @@ import {
   parseThen,
   projectLevelOptions,
   RUN_KINDS,
+  taskLevelOptions,
+  taskLevelSentence,
   runKindLabel,
   runKindOptions,
   sortRules,
@@ -99,5 +101,18 @@ describe('routing levels (P118)', () => {
   it('says where the level comes from', () => {
     expect(levelSentence({ effective: 'quality', source: 'project' })).toBe("This project's agent turns run at Quality, its own level.");
     expect(levelSentence({ effective: 'balanced', source: 'workspace' })).toBe("This project's agent turns run at Balanced, the workspace's level.");
+  });
+
+  it("offers a task's own level after what it follows, and says where a task's level comes from (P127)", () => {
+    const opts = taskLevelOptions({ workspace: 'balanced', project: 'cheapest', template: 'Security', templateLevel: 'quality' });
+    expect(opts[0]).toEqual({ value: '', label: 'Follow the Security template (Quality)' });
+    expect(opts.map((o) => o.value)).toEqual(['', ...LEVELS]);
+    expect(taskLevelOptions({ workspace: 'balanced', project: 'cheapest' })[0]!.label).toBe('Follow the project (Cheapest)');
+    expect(taskLevelOptions({ workspace: 'fast', project: '' })[0]!.label).toBe('Follow the workspace (Fast)');
+    expect(taskLevelOptions({ workspace: 'fast', project: '', task: 'custom' }).map((o) => o.value)).toContain('custom');
+    expect(taskLevelSentence({ effective: 'fast', source: 'task' })).toBe("This task's agent turns run at Fast, its own level.");
+    expect(taskLevelSentence({ effective: 'quality', source: 'template', template: 'Security' })).toBe("This task's agent turns run at Quality, the level the Security template declares.");
+    expect(taskLevelSentence({ effective: 'cheapest', source: 'project' })).toBe("This task's agent turns run at Cheapest, the project's level.");
+    expect(taskLevelSentence({ effective: 'balanced', source: 'workspace' })).toBe("This task's agent turns run at Balanced, the workspace's level.");
   });
 });

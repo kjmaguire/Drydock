@@ -44,7 +44,7 @@ func BuildPrompt(in PromptInput) string {
 	b.WriteString("Rules:\n")
 	if g := in.Group; g != nil {
 		fmt.Fprintf(&b, `- This is round %d of a discussion of at most %d rounds between %s, on the topic at the top of the thread. Speak in turn: build on what was said, and say where you disagree and why. Be concise and concrete (under 250 words).
-- When the group agrees, state the outcome on a line that starts with [DECISION]. If you have nothing to add, reply with exactly: PASS
+- When the group agrees, state the outcome on a line that starts with [DECISION]: that ends the discussion. If the proposal on the table is good to build as it stands, reply with exactly: SHIP (that ends it too). If you have nothing to add, reply with exactly: PASS
 `, g.Round, g.Rounds, strings.Join(g.Agents, ", "))
 	} else {
 		b.WriteString("- Answer what the latest human message asks. Be concise and concrete (under 250 words unless asked for detail). Say what you do not know instead of guessing.\n")

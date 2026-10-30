@@ -1071,6 +1071,39 @@ func UndoRef(taskID string, at int64) string {
 	return fmt.Sprintf("refs/drydock/safe/%s/undo/%d", taskID, at)
 }
 
+// UndoPoint is the state of a task's worktree that a person's restore kept before it put files back (decision P127): restoring
+// it undoes that restore, from the run page, whenever the person wants.
+type UndoPoint struct {
+	Ref string `json:"ref"`
+	// At is when the restore was made (Unix ms, from the ref's name); Restored is the safe point that restore put back.
+	At       int64  `json:"at"`
+	Restored string `json:"restored,omitempty"`
+}
+
+// UndoPoints lists the undo points earlier restores of task taskID kept, newest first.
+func (r *Repo) UndoPoints(ctx context.Context, taskID string) ([]UndoPoint, error) {
+	prefix := "refs/drydock/safe/" + taskID + "/undo/"
+	out, err := r.git(ctx, r.Root, nil, "for-each-ref", "--format=%(refname)%00%(contents:subject)", prefix)
+	if err != nil {
+		return nil, err
+	}
+	var pts []UndoPoint
+	for _, line := range strings.Split(out, "\n") {
+		ref, subject, _ := strings.Cut(strings.TrimSpace(line), "\x00")
+		at, err := strconv.ParseInt(strings.TrimPrefix(ref, prefix), 10, 64)
+		if !strings.HasPrefix(ref, prefix) || err != nil {
+			continue
+		}
+		p := UndoPoint{Ref: ref, At: at}
+		if _, restored, ok := strings.Cut(subject, " before restoring "); ok && IsSafePointRef(taskID, restored) {
+			p.Restored = restored
+		}
+		pts = append(pts, p)
+	}
+	sort.Slice(pts, func(i, j int) bool { return pts[i].At > pts[j].At })
+	return pts, nil
+}
+
 // IsSafePointRef reports whether ref is one of task taskID's safe points (a run's, an attempt's or an undo of a restore).
 func IsSafePointRef(taskID, ref string) bool {
 	rest, ok := strings.CutPrefix(ref, "refs/drydock/safe/"+taskID+"/")

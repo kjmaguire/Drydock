@@ -44,12 +44,16 @@ const (
 
 // DiscussionResult is how a discussion ended.
 type DiscussionResult struct {
-	RoomID     string     `json:"roomId"`
-	ThreadID   string     `json:"threadId"`
-	Rounds     int        `json:"rounds"`    // rounds held
-	Bound      int        `json:"bound"`     // the bound
-	Converged  bool       `json:"converged"` // every agent in turn passed before the bound
-	Outcome    string     `json:"outcome"`   // OutcomeDecision or OutcomeQuestion
+	RoomID    string `json:"roomId"`
+	ThreadID  string `json:"threadId"`
+	Rounds    int    `json:"rounds"`    // rounds held
+	Bound     int    `json:"bound"`     // the bound
+	Converged bool   `json:"converged"` // every agent in turn passed before the bound
+	// Ended is why the discussion ended (room.EndBound, EndPasses, EndShip or EndDecision, P127) and EndedBy the agent whose
+	// turn ended it (SHIP or a DECISION).
+	Ended      string     `json:"ended"`
+	EndedBy    string     `json:"endedBy,omitempty"`
+	Outcome    string     `json:"outcome"` // OutcomeDecision or OutcomeQuestion
 	DecisionID string     `json:"decisionId,omitempty"`
 	Decision   string     `json:"decision,omitempty"` // the candidate's text
 	QuestionID string     `json:"questionId,omitempty"`
@@ -104,7 +108,7 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		dec, g, err := r.d.Room.GrantGroupTurn(ctx, room.GroupTurn{RoomID: rm.ID, Thread: out.ThreadID, Order: d.Agents, Rounds: out.Bound})
+		dec, g, err := r.d.Room.GrantGroupTurn(ctx, room.GroupTurn{RoomID: rm.ID, Thread: out.ThreadID, Order: d.Agents, Rounds: out.Bound, Context: r.contextBounds()})
 		if err != nil {
 			return out, err
 		}
@@ -121,7 +125,8 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 		if err := r.budgetGate(ctx, scope, g.AgentID); err != nil {
 			return out, err
 		}
-		info, reply := r.turn(ctx, rm, trig, dec.Speakers[0], dec, turnOpts{grant: *g, group: &GroupPrompt{Round: dec.Round, Rounds: out.Bound, Agents: names},
+		// the turn is told the round and the bound its grant carries (P127): what the scheduler decided, not what this loop thinks
+		info, reply := r.turn(ctx, rm, trig, dec.Speakers[0], dec, turnOpts{grant: *g, group: &GroupPrompt{Round: g.Round, Rounds: g.MaxRounds, Agents: names},
 			run: d.RunID, workflow: d.Workflow})
 		ctx = budget.WithoutApproval(ctx) // a person's approval over a limit lets one turn through, not the rest of the discussion
 		switch info.Status {
@@ -137,17 +142,35 @@ func (r *Responder) Discuss(ctx context.Context, d Discussion) (DiscussionResult
 			return out, fmt.Errorf("%w: %s's turn ended %s: %s", ErrDiscussion, g.AgentID, info.Status, info.Error)
 		}
 		out.Turns = append(out.Turns, info)
+		// a turn that states a DECISION or returns SHIP ends the discussion (room-protocol s6 rule 7): the group returned its
+		// outcome, and more turns would only spend
+		if info.DecisionID != "" || info.Ship {
+			out.Ended, out.EndedBy = room.EndShip, g.AgentID
+			if info.DecisionID != "" {
+				out.Ended = room.EndDecision
+			}
+			break
+		}
 		if info.Status == StatusPassed {
 			passes++
 		} else {
 			passes = 0
 		}
 		if reply != nil && passes >= len(d.Agents) {
-			out.Converged = true // everyone in turn had nothing to add
+			out.Converged, out.Ended = true, room.EndPasses // everyone in turn had nothing to add
 			break
 		}
 	}
-	res, _, err := r.d.Room.ApplyDebateBound(ctx, rm.ID, out.ThreadID)
+	if out.Ended == "" {
+		out.Ended = room.EndBound
+	}
+	by := out.EndedBy
+	for i, id := range d.Agents {
+		if id == by {
+			by = names[i]
+		}
+	}
+	res, _, err := r.d.Room.EndDiscussion(ctx, rm.ID, out.ThreadID, room.DiscussionEnd{Why: out.Ended, Agent: by})
 	if err != nil {
 		return out, err
 	}

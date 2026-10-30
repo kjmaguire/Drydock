@@ -93,6 +93,38 @@ export function projectLevelOptions(workspace: string, current = ''): { value: s
   ];
 }
 
+/** What a task follows when it sets no level of its own (P127): the level its template declares, else the project's, else the workspace's. */
+function taskFollows(rl: { workspace: string; project: string; template?: string; templateLevel?: string }): string {
+  if (rl.templateLevel) return `Follow the ${rl.template ?? 'template'} template (${levelWords(rl.templateLevel)})`;
+  if (rl.project) return `Follow the project (${levelWords(rl.project)})`;
+  return `Follow the workspace (${levelWords(rl.workspace)})`;
+}
+
+/**
+ * The choices of a task's own level (P127): following what applies without one (its template's, the project's or the
+ * workspace's, named), then each level. A stored level the list does not know stays choosable.
+ */
+export function taskLevelOptions(rl: { workspace: string; project: string; task?: string; template?: string; templateLevel?: string }): { value: string; label: string; hint?: string }[] {
+  const current = rl.task ?? '';
+  const levels = current && !LEVELS.includes(current) ? [...LEVELS, current] : LEVELS;
+  return [{ value: '', label: taskFollows(rl) }, ...levels.map((l) => ({ value: l, label: levelWords(l), hint: LEVEL_INTENT[l] }))];
+}
+
+/** Where a task's turns get their level, in a sentence (P127). */
+export function taskLevelSentence(rl: { effective: string; source: string; template?: string }): string {
+  const at = `This task's agent turns run at ${levelWords(rl.effective)}`;
+  switch (rl.source) {
+    case 'task':
+      return `${at}, its own level.`;
+    case 'template':
+      return `${at}, the level the ${rl.template ?? 'task'} template declares.`;
+    case 'project':
+      return `${at}, the project's level.`;
+    default:
+      return `${at}, the workspace's level.`;
+  }
+}
+
 /** Where a project's turns get their level, in a sentence. */
 export function levelSentence(rl: { effective: string; source: string }): string {
   return rl.source === 'project'

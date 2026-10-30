@@ -159,7 +159,18 @@ type TurnInfo struct {
 	Status    string `json:"status"`
 	MessageID string `json:"messageId,omitempty"`
 	Error     string `json:"error,omitempty"`
-	cause     error  // why a failed turn failed (a budget's pause, for a group discussion)
+	// Ship is a turn of a group discussion that returned SHIP (the reply was exactly that word, the review's convention), and
+	// DecisionID the DECISION a turn stated (a [DECISION] line, or a reply that was one): either ends the discussion (P127).
+	Ship       bool   `json:"ship,omitempty"`
+	DecisionID string `json:"decisionId,omitempty"`
+	cause      error  // why a failed turn failed (a budget's pause, for a group discussion)
+}
+
+// IsShip reports a reply that is exactly the word SHIP, read as the review's verdict is when it is a single word
+// (pipeline.ParseVerdict: case and a trailing full stop or exclamation mark do not matter; "SHIPPING it would be wrong" is not
+// SHIP).
+func IsShip(text string) bool {
+	return strings.ToUpper(strings.TrimRight(strings.TrimSpace(text), ".!")) == "SHIP"
 }
 
 // Outcome is what Handle did for one human message.
@@ -365,7 +376,7 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			break
 		}
 		// the room's scheduler plans the turns and grants each one; the runtime starts a room turn only on its grant (P118)
-		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID)
+		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID, r.contextBounds())
 		if err != nil {
 			return out, err
 		}
@@ -483,7 +494,14 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			return fail("budget", err)
 		}
 	}
-	sel, err := r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
+	// a granted turn sees what its grant's plan says (room-protocol s6 rule 4): the scheduler decided it when it chose the
+	// speaker, and a grant whose plan was changed is refused here, before anything is selected or the agent starts
+	var sel room.ContextSelection
+	if o.grant.ID != "" {
+		sel, err = r.d.Room.ContextForGrant(ctx, o.grant, r.o.Context.Digest)
+	} else {
+		sel, err = r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
+	}
 	if err != nil {
 		return fail("context", err)
 	}
@@ -629,6 +647,12 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		payload["pass"] = true
 		text = "(passed: nothing to add)"
 		info.Status, end.status = StatusPassed, StatusPassed
+	case o.group != nil && IsShip(text):
+		// a turn of a group discussion that returns SHIP: what is on the table is good to build on, and the discussion ends
+		payload["ship"] = true
+		text = "SHIP"
+		info.Ship = true
+		info.Status, end.status = StatusDone, StatusDone
 	default:
 		if len(text) > r.o.MaxReplyBytes {
 			cut := r.o.MaxReplyBytes
@@ -645,9 +669,24 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		return fail("could not post the reply", err)
 	}
 	info.MessageID, end.messageID = posted.Message.ID, posted.Message.ID
+	// the DECISION the turn stated: the reply itself when it was nothing but a [DECISION] line (stored as the DECISION, P93),
+	// else the one its [DECISION] line was promoted to
+	if posted.Message.Type == room.TypeDecision {
+		info.DecisionID = posted.Message.ID
+	}
+	for _, d := range posted.Derived {
+		if d.Type == room.TypeDecision && info.DecisionID == "" {
+			info.DecisionID = d.ID
+		}
+	}
 	r.endTurn(info.TurnID, end)
 	reply := posted.Message
 	return info, &reply
+}
+
+// contextBounds are the bounds the scheduler writes into the context plan of each grant it issues for this responder's turns.
+func (r *Responder) contextBounds() room.ContextBounds {
+	return room.ContextBounds{ThreadWindow: r.o.Context.ThreadWindow, MaxMentions: r.o.Context.MaxMentions, MaxTokens: r.o.Context.MaxTokens}
 }
 
 func providerLabel(a Agent) string {

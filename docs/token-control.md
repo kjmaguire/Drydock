@@ -225,8 +225,10 @@ Built in `internal/budget` (migration `00060_budget.sql`), `internal/telemetry` 
   reply (the model router's chain) runs on a renewed grant (`RenewGrant`, only of a used one). Which run kinds need one: an
   agent's turn in a room (replies in channels, task rooms, DMs and groups, and group-discussion turns); task work, review,
   the template roles, the planner, the team lead, recommendations, a person's chat and a connection test are not turns in a
-  room and need none. `room.turn_granted` is published per grant. Not built: the `ContextPlan` room-protocol s6 puts in a
-  grant (the context engine still selects from the room as before).
+  room and need none. `room.turn_granted` is published per grant. Since decision P127 a grant also carries the debate bound
+  of its round and the turn's `ContextPlan` (room-protocol s6 "As built (decision P127)", migration `00164`): the turn's room
+  context is selected by the plan in the grant (`room.ContextForGrant`), and a grant whose bound or plan was changed is
+  refused like any other changed grant.
 - **Group collaboration (rule 3)**: see [`workflow-engine.md`](workflow-engine.md) s14.
 
 ## As built: Claude Code sessions and unattended spend (2026-10-10, decision P36)

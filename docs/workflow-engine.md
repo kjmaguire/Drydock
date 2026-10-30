@@ -236,8 +236,34 @@ and Enforcer on the node: a workflow budget of two turns pauses the third, one a
 rejection ends the run; a budget already over holds the node before its topic), `design_test.go` in the pipeline (agreed,
 asked and answered, rejected; the graph and the catalog), `design_review_test.go` in the core (the shipped template through
 the RPC methods to the approval, held to a workflow budget: paused, one turn, raised, the decision in the worker's prompt).
-Not built: early ending on a `SHIP` verdict (it ends on the bound or a round of passes), a discussion node in the other
-templates.
+
+**As built (decision P127): the ending, the grant, and where discussions belong.** (1) A discussion ends at its bound, after
+a round in which every agent passed, or on a turn that states a `DECISION` or returns `SHIP` (room-protocol s6 rule 7 and "As
+built (decision P127)"): the result says why (`Ended`: `bound`, `passes`, `ship`, `decision`) and whose turn ended it
+(`EndedBy`), and the SYSTEM line in the thread says it too. A `SHIP` without a decision written down asks the person. The
+Design Review template now ends on the agreed `[DECISION]` in the round it is written, not after a round of passes. (2) Each
+turn's grant carries the node's bound and the turn's context plan, and the turn is told the round and the bound its grant
+carries. (3) **A discussion node in the other templates: none, decided per template from brief s4, s7 and s22.** Brief s22
+describes Feature, Bug, Security, Full Stack SaaS and Iterate Until Verified without a discussion: their gates are a person's
+(the spec gate, the approval), a deterministic check (tests first, the scan) or one independent reviewer, and s7 ("no
+broadcast context", "bounded debate", "team-size routing") makes every agent turn a cost to justify. Feature and Bug: the spec
+gate and the failing test already settle what to build; a debate before them would be turns no step reads. Security: the
+findings are the scan's and the sign-off is the security reviewer's; agreeing among agents on a fix adds no evidence. Full
+Stack SaaS: its optional design step is the architect's one turn, which the person reads at the approval; a discussion there
+is what the Design Review template is for, and a person picks it for a task that needs it. Iterate Until Verified: brief s22
+says its task room is not a conversation among agents. So the discussion stays in Design Review only, until an eval run shows
+it improves a design or what a task costs (none has).
+
+**No shipped workflow runs a subworkflow (decision P127).** The candidates were the design discussion run as a nested graph of
+Design Review (or of Full Stack SaaS) and a "fix then verify" child of Bug or Security. Each runs agent turns, and a nested run
+belongs to no task (P124 chose that so that it never splits the task's budget window): its node inputs name no task, so no safe
+point is taken before its agent turns (the safe point hook keys on the task), the parent run's `run` budget does not count it
+(its turns name the nested run) and a workflow budget counts the nested graph's name instead of the template's, which would
+undo P124's "the discussion is held to its workflow's budget". None of the candidates is shared by two templates either, so
+nesting would buy only a frame in the graph. A shipped subworkflow waits for a nested run that keeps the parent's task (safe
+points and the run and workflow budgets of the parent), or for a piece two templates share. The nested view and the waiting
+stay tested with test graphs (`subwait_test.go`, the run page's tests), and `TestNoShippedTemplateRunsASubworkflow` keeps this
+true until then.
 
 ## Open questions / unverified
 

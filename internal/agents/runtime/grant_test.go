@@ -35,7 +35,7 @@ func TestARoomTurnStartsOnlyOnAValidGrantAndOtherRunsNeedNone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dec, grants, err := rs.GrantTurns(ctx, msg.Message.ID)
+	dec, grants, err := rs.GrantTurns(ctx, msg.Message.ID, room.ContextBounds{})
 	if err != nil || len(dec.Speakers) != 1 || grants["a1"].ID == "" || grants["a2"].ID != "" {
 		t.Fatalf("the scheduler grants the agent it chose, and only it: %+v %+v %v", dec, grants, err)
 	}
@@ -62,6 +62,16 @@ func TestARoomTurnStartsOnlyOnAValidGrantAndOtherRunsNeedNone(t *testing.T) {
 	moved := g
 	moved.Round = 3
 	refused("a grant changed after it was issued", inRoom(&moved), room.ErrGrantRefused)
+	// the plan of what the turn may see, and the bound, are part of the grant (P127)
+	if g.MaxRounds != room.DefaultMaxRounds || g.ContextPlan.TriggerID != msg.Message.ID || g.ContextPlan.ThreadWindow == 0 {
+		t.Fatalf("the grant's bound and plan: %+v", g)
+	}
+	wider := g
+	wider.ContextPlan.ThreadWindow = 500
+	refused("a grant whose context plan was widened", inRoom(&wider), room.ErrGrantRefused)
+	longer := g
+	longer.MaxRounds = 30
+	refused("a grant whose bound was raised", inRoom(&longer), room.ErrGrantRefused)
 	other := h.config()
 	other.AgentID, other.RoomID, other.Grant = "a2", ch.ID, &g
 	refused("another agent's grant", other, room.ErrGrantRefused)
@@ -103,7 +113,7 @@ func TestARoomTurnStartsOnlyOnAValidGrantAndOtherRunsNeedNone(t *testing.T) {
 	refused("an expired grant", inRoom(&renewed), room.ErrGrantRefused)
 
 	// no scheduler connected: no room turn starts at all (fail closed)
-	_, grants, _ = rs.GrantTurns(ctx, msg.Message.ID)
+	_, grants, _ = rs.GrantTurns(ctx, msg.Message.ID, room.ContextBounds{})
 	h.rt.Grants = nil
 	fresh := grants["a1"]
 	refused("no scheduler", inRoom(&fresh), room.ErrGrantRefused)
@@ -118,7 +128,7 @@ func TestARoomTurnStartsOnlyOnAValidGrantAndOtherRunsNeedNone(t *testing.T) {
 
 	// every refusal was announced as a start that failed, and none started a process
 	evs, _ := h.bus.Replay(ctx, 0, events.Filter{Types: []string{"agent.failed"}}, 100)
-	if len(evs) != 8 {
+	if len(evs) != 10 {
 		t.Fatalf("%d agent.failed events, want one per refusal", len(evs))
 	}
 	var started int

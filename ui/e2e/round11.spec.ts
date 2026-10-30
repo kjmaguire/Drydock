@@ -91,6 +91,18 @@ test("the worktree's files back to a safe point, and a cancelled task run again"
   await expect(dialog.getByTestId('restore-done')).toContainText('Undone: the files are back as they were before the restore');
   await dialog.getByRole('button', { name: 'Close' }).click();
 
+  // later, the dialog closed and the page read again (P127): both restores' undo points are listed beside the safe points,
+  // and the newest (the files before the undo) is put back with the same preview
+  await page.reload();
+  await actions.getByRole('button', { name: 'Put files back...' }).click();
+  const undos = dialog.getByTestId('undo-points');
+  await expect(undos.getByRole('radio')).toHaveCount(2);
+  await undos.getByLabel(/before the restore of .* \(to an earlier undo point\)$/).check();
+  await expect(dialog.getByTestId('restore-files')).toContainText('calc.go');
+  await dialog.getByRole('button', { name: 'Put the files back' }).click();
+  await expect(dialog.getByTestId('restore-done')).toContainText(/Put back: \d+ files? changed\./);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
   // the task is cancelled; its run page offers to run it again, as a new task that starts from the beginning
   await page.goto(taskUrl);
   await page.getByRole('button', { name: 'Cancel task' }).click();

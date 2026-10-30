@@ -16,6 +16,7 @@ import {
   changeWords,
   runAgainLines,
   safePoints,
+  undoPoints,
   subExecutions,
   subrunOf,
   currentNode,
@@ -445,6 +446,25 @@ describe('putting the files back and running a task again (P124)', () => {
       { ref: 'refs/drydock/safe/t1/run_1/301', step: 3, label: 'Before review at step 3' },
     ]);
     expect(safePoints(run([ex('prepare', 1)]))).toEqual([]);
+  });
+
+  it('lists the undo points earlier restores kept, each saying when and what that restore put back (P127)', () => {
+    const x = {
+      ...run([ex('work', 2, 'done', 1, { safePoint: 'refs/drydock/safe/t1/run_1/201' })]),
+      undoPoints: [
+        { ref: 'refs/drydock/safe/t1/undo/30', at: 30, restored: 'refs/drydock/safe/t1/undo/20' },
+        { ref: 'refs/drydock/safe/t1/undo/20', at: 20, restored: 'refs/drydock/safe/t1/run_1/201' },
+        { ref: 'refs/drydock/safe/t1/undo/10', at: 10, restored: 'refs/drydock/safe/t1/run_0/101' },
+        { ref: 'refs/drydock/safe/t1/undo/5', at: 5 },
+      ],
+    } as RunExplanation;
+    expect(undoPoints(x, (ms) => `t${ms}`)).toEqual([
+      { ref: 'refs/drydock/safe/t1/undo/30', step: 0, undo: true, label: 'As the files were before the restore of t30 (to an earlier undo point)' },
+      { ref: 'refs/drydock/safe/t1/undo/20', step: 0, undo: true, label: 'As the files were before the restore of t20 (to before work at step 2)' },
+      { ref: 'refs/drydock/safe/t1/undo/10', step: 0, undo: true, label: 'As the files were before the restore of t10 (to a safe point of another run)' },
+      { ref: 'refs/drydock/safe/t1/undo/5', step: 0, undo: true, label: 'As the files were before the restore of t5' },
+    ]);
+    expect(undoPoints(run([]), String)).toEqual([]);
   });
 
   it('says what happens to each file and what a time travel that puts them back does', () => {
