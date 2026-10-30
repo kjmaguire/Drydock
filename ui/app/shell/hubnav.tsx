@@ -157,7 +157,7 @@ const itemCss = css({
   '&[data-unread="true"]': { color: t.text, fontWeight: '600' },
   '&:focus-visible': { boxShadow: `inset ${t.focus}`, outline: 'none' },
 });
-const mutedCss = css({ display: 'inline-flex', flex: 'none', color: t.textFaint });
+const mutedCss = css({ flex: 'none', color: t.textFaint, lineHeight: '0' });
 // the unread count is a quiet number, read once ("general, 3 unread")
 const countCss = css({ minWidth: '18px', height: '18px', padding: '0 5px', borderRadius: t.rFull, background: t.accent, color: t.onAccent, fontSize: t.textXs, fontWeight: '700', lineHeight: '18px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' });
 
@@ -246,11 +246,14 @@ export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
               <Icon icon={roomIcon(r.kind)} size={14} />
             </span>
           )}
-          <span class="label">{label}</span>
+          {/* "muted" is read with the name; the icon is only drawn */}
+          <span class="label">
+            {label}
+            {muted ? <span class="sr-only">, muted</span> : null}
+          </span>
           {muted ? (
-            <span mix={mutedCss} title="Muted: only messages that name you count" data-testid="room-muted">
+            <span mix={mutedCss} title="Muted: only messages that name you count" data-testid="room-muted" aria-hidden="true">
               <Icon icon={BellOff} size={13} />
-              <span class="sr-only">, muted</span>
             </span>
           ) : null}
           {n > 0 ? (

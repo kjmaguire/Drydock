@@ -117,7 +117,8 @@ describe('the hubs', () => {
     await waitFor(() => expect(r.$$('[data-room-muted], [data-muted="true"]')).toHaveLength(1), r);
     const [general, task] = Array.from(r.$$('[data-testid="room-link"]')) as HTMLAnchorElement[];
     expect(general!.getAttribute('data-muted')).toBeNull();
-    expect(task!.querySelector('[data-testid="room-muted"] .sr-only')!.textContent).toBe(', muted');
+    expect(task!.querySelector('.label')!.textContent).toBe('task-3-subtract, muted');
+    expect(task!.querySelector('[data-testid="room-muted"]')!.getAttribute('aria-hidden')).toBe('true');
     expect(task!.textContent).toBe('task-3-subtract, muted1, 1 unread');
   });
 
