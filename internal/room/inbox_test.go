@@ -74,11 +74,11 @@ func TestUnreadAndMentionCounts(t *testing.T) {
 		t.Fatalf("cursor events %d (only real advances publish)", n)
 	}
 
-	// muted rooms still count
+	// a muted room counts only the messages that mention the member by name (decision P130; TestAMutedRoomCountsOnlyMentionsByName)
 	if err := e.svc.SetMemberState(e.ctx, r.ID, sam, StateMuted, kyle); err != nil {
 		t.Fatal(err)
 	}
-	if u := get(sam); !u.Muted || u.Unread != 1 {
+	if u := get(sam); !u.Muted || u.Unread != 0 {
 		t.Fatalf("muted: %+v", u)
 	}
 	// archived rooms drop out

@@ -200,6 +200,9 @@ type Room struct {
 	Mode       Mode       `json:"mode"`
 	ModeParams ModeParams `json:"modeParams"`
 	TaskID     string     `json:"taskId,omitempty"`
+	// AgentID is a direct message's agent (decision P130: Ctrl+. in a DM opens its Agent Inspector). A DM is created with one
+	// human and one agent and named after both (CreateDM), so the record carries the agent from its name; "" for other kinds.
+	AgentID    string     `json:"agentId,omitempty"`
 	Archived   bool       `json:"archived"`
 	ArchivedAt time.Time  `json:"archivedAt,omitzero"`
 	CreatedBy  string     `json:"createdBy,omitempty"`

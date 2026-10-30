@@ -147,7 +147,12 @@ const (
 	StatusEmpty       = "empty"
 	StatusFailed      = "failed"
 	StatusInterrupted = "interrupted"
+	// StatusStopped is a turn a person stopped (Stop, Esc Esc in the room's composer): it posts no reply and ends its chain.
+	StatusStopped = "stopped"
 )
+
+// ErrStopped is the cause of a turn a person stopped.
+var ErrStopped = errors.New("stopped by you")
 
 // TurnInfo describes one agent turn of a chain.
 type TurnInfo struct {
@@ -191,7 +196,9 @@ type Responder struct {
 	rooms   map[string]*roomState
 	queues  map[string][]string
 	running map[string]bool
-	wg      sync.WaitGroup
+	// answering are the turns running now, by room and turn id: Stop cancels them
+	answering map[string]map[string]context.CancelCauseFunc
+	wg        sync.WaitGroup
 }
 
 type roomState struct {
@@ -202,7 +209,41 @@ type roomState struct {
 // New returns a Responder.
 func New(d Deps, o Options) *Responder {
 	o.defaults()
-	return &Responder{d: d, o: o, sem: make(chan struct{}, o.MaxConcurrent), rooms: map[string]*roomState{}, queues: map[string][]string{}, running: map[string]bool{}}
+	return &Responder{d: d, o: o, sem: make(chan struct{}, o.MaxConcurrent), rooms: map[string]*roomState{}, queues: map[string][]string{}, running: map[string]bool{},
+		answering: map[string]map[string]context.CancelCauseFunc{}}
+}
+
+// Stop stops the agents answering in a room now (a person's Esc Esc in the room's composer, room.stop): each running turn is
+// cancelled and recorded as stopped, and the chain they belong to takes no further turn. It returns how many turns it
+// stopped; 0 when no agent was answering.
+func (r *Responder) Stop(roomID string) int {
+	r.state(roomID).gen.Add(1) // the chain stops before its next turn, as for a newer human message
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, cancel := range r.answering[roomID] {
+		cancel(ErrStopped)
+		n++
+	}
+	return n
+}
+
+// answeringNow registers a running turn so Stop can cancel it; the function returned removes it when the turn ends.
+func (r *Responder) answeringNow(roomID, turnID string, cancel context.CancelCauseFunc) func() {
+	r.mu.Lock()
+	if r.answering[roomID] == nil {
+		r.answering[roomID] = map[string]context.CancelCauseFunc{}
+	}
+	r.answering[roomID][turnID] = cancel
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		delete(r.answering[roomID], turnID)
+		if len(r.answering[roomID]) == 0 {
+			delete(r.answering, roomID)
+		}
+		r.mu.Unlock()
+	}
 }
 
 func (r *Responder) logf(format string, a ...any) {
@@ -304,6 +345,9 @@ func (r *Responder) markInterrupted(ctx context.Context) error {
 			StatusInterrupted, storage.Now(), StatusRunning)
 		return err
 	}); err != nil {
+		return err
+	}
+	if _, err := r.d.Room.InterruptOpenGrants(ctx); err != nil {
 		return err
 	}
 	// the human's message would otherwise just go unanswered: say what happened, under it (no re-run: that is a new, billed turn)
@@ -464,14 +508,51 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if !started {
 		return TurnInfo{}, nil
 	}
+	// a person can stop the turn from now on (Stop); the cause tells a stop from a timeout or the app closing
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	defer r.answeringNow(rm.ID, info.TurnID, stop)()
+	grant := o.grant // the grant the turn runs on: a fallback hop's renewed one replaces it
 	who := sp.Member // the agent's name once it is known; never the raw id when the name can be found
+	// end records the turn's end twice over: the turn row (what it cost) and the scheduler's Complete (the grant's outcome and
+	// what follows), and returns the message the next speakers are planned from (nil: the end wakes nobody)
+	end := func(e turnEnd) *room.Message {
+		r.endTurn(info.TurnID, e)
+		if grant.ID == "" {
+			return nil
+		}
+		c, err := r.d.Room.Complete(context.WithoutCancel(ctx), grant, room.TurnResult{Status: e.status, MessageID: e.messageID, RunID: e.runID, Error: e.errMsg})
+		if err != nil {
+			r.logf("complete turn %s: %v", info.TurnID, err)
+			return nil
+		}
+		if c.Next == "" {
+			return nil
+		}
+		m, err := r.d.Room.GetMessage(context.WithoutCancel(ctx), c.Next)
+		if err != nil {
+			return nil
+		}
+		return &m
+	}
 	fail := func(reason string, e error) (TurnInfo, *room.Message) {
+		if errors.Is(context.Cause(ctx), ErrStopped) {
+			// a person stopped the agent: no failure to report, one line saying it ended, and the chain ends with it
+			info.Status, info.Error = StatusStopped, ErrStopped.Error()
+			end(turnEnd{status: StatusStopped, errMsg: info.Error})
+			if _, perr := r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeSystem, Author: room.System, ReplyToID: trig.ID,
+				Body:    fmt.Sprintf("You stopped %s's answer.", who),
+				Payload: map[string]any{"code": "agent_turn_stopped", "turn_id": info.TurnID, "agent_id": sp.Member}}); perr != nil {
+				r.logf("post stopped turn: %v", perr)
+			}
+			return info, nil
+		}
 		msg := reason
 		if e != nil {
 			msg += ": " + e.Error()
 		}
 		info.Status, info.Error, info.cause = StatusFailed, msg, e
-		r.endTurn(info.TurnID, turnEnd{status: StatusFailed, errMsg: msg})
+		end(turnEnd{status: StatusFailed, errMsg: msg})
 		if len(msg) > 600 {
 			msg = msg[:600]
 		}
@@ -552,7 +633,6 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		runID   string
 		ran     Routed
 		spawned bool
-		grant   = o.grant
 		tries   int
 	)
 	attempt := func(actx context.Context, rr Routed, emit func(workflow.Chunk)) error {
@@ -609,8 +689,8 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if err != nil && !spawned {
 		return fail("could not start the agent", err)
 	}
-	if err != nil {
-		return fail("the turn failed", err)
+	if err != nil || errors.Is(context.Cause(ctx), ErrStopped) {
+		return fail("the turn failed", err) // a stopped turn posts nothing it said, even when the CLI returned a part of it
 	}
 	model := agent.Model
 	if ran.Model != "" {
@@ -623,13 +703,13 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		outTok += int(u.OutputTokens)
 		cost += u.CostUSD
 	}
-	end := turnEnd{runID: runID, ctxMsgs: len(sel.Messages) + len(extra), ctxTokens: sel.Tokens, inTokens: in, outToks: outTok, cost: cost}
+	done := turnEnd{runID: runID, ctxMsgs: len(sel.Messages) + len(extra), ctxTokens: sel.Tokens, inTokens: in, outToks: outTok, cost: cost}
 	if cost > 0 && rm.TaskID != "" && r.d.OnCost != nil {
 		r.d.OnCost(ctx, rm.TaskID, cost)
 	}
 	text := strings.TrimSpace(strings.ToValidUTF8(res.Text, "�"))
 	payload := map[string]any{"turn_id": info.TurnID, "in_reply_to": trig.ID, "model": model, "read_only": true, "round": dec.Round,
-		"reason": string(sp.Reason), "context_messages": end.ctxMsgs, "context_tokens": end.ctxTokens,
+		"reason": string(sp.Reason), "context_messages": done.ctxMsgs, "context_tokens": done.ctxTokens,
 		"input_tokens": in, "output_tokens": outTok, "cost_usd": cost, "tool_calls": res.ToolCalls}
 	if ran.DecisionID != "" {
 		payload["decision_id"] = ran.DecisionID // "Why this model?" for this reply
@@ -637,8 +717,8 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	switch {
 	case text == "":
 		info.Status = StatusEmpty
-		end.status = StatusEmpty
-		r.endTurn(info.TurnID, end)
+		done.status = StatusEmpty
+		end(done)
 		_, _ = r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeError, Author: room.System, ReplyToID: trig.ID,
 			Body:    fmt.Sprintf("%s ended its turn without a reply.", agent.Name),
 			Payload: map[string]any{"code": "empty_reply", "class": "agent", "recoverable": true, "turn_id": info.TurnID, "agent_id": agent.ID}})
@@ -646,13 +726,13 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	case strings.EqualFold(text, "PASS"):
 		payload["pass"] = true
 		text = "(passed: nothing to add)"
-		info.Status, end.status = StatusPassed, StatusPassed
+		info.Status, done.status = StatusPassed, StatusPassed
 	case o.group != nil && IsShip(text):
 		// a turn of a group discussion that returns SHIP: what is on the table is good to build on, and the discussion ends
 		payload["ship"] = true
 		text = "SHIP"
 		info.Ship = true
-		info.Status, end.status = StatusDone, StatusDone
+		info.Status, done.status = StatusDone, StatusDone
 	default:
 		if len(text) > r.o.MaxReplyBytes {
 			cut := r.o.MaxReplyBytes
@@ -661,14 +741,14 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			}
 			text = text[:cut] + "\n[reply truncated by Drydock]"
 		}
-		info.Status, end.status = StatusDone, StatusDone
+		info.Status, done.status = StatusDone, StatusDone
 	}
 	posted, err := r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeChat, Author: room.Agent(agent.ID), Body: text,
 		ReplyToID: trig.ID, Payload: payload, RunID: runID, IdempotencyKey: "turn:" + info.TurnID})
 	if err != nil {
 		return fail("could not post the reply", err)
 	}
-	info.MessageID, end.messageID = posted.Message.ID, posted.Message.ID
+	info.MessageID, done.messageID = posted.Message.ID, posted.Message.ID
 	// the DECISION the turn stated: the reply itself when it was nothing but a [DECISION] line (stored as the DECISION, P93),
 	// else the one its [DECISION] line was promoted to
 	if posted.Message.Type == room.TypeDecision {
@@ -679,9 +759,13 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			info.DecisionID = d.ID
 		}
 	}
-	r.endTurn(info.TurnID, end)
-	reply := posted.Message
-	return info, &reply
+	if grant.ID == "" {
+		r.endTurn(info.TurnID, done)
+		reply := posted.Message
+		return info, &reply
+	}
+	// the scheduler completes the turn and says whether its reply goes on to the next speakers
+	return info, end(done)
 }
 
 // contextBounds are the bounds the scheduler writes into the context plan of each grant it issues for this responder's turns.

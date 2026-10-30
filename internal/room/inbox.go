@@ -17,9 +17,14 @@ type Unread struct {
 	Kind     Kind   `json:"kind"`
 	Unread   int    `json:"unread"`   // messages from others with seq > last_read_seq
 	Mentions int    `json:"mentions"` // messages that mention the member with seq > last_mention_read_seq
-	Muted    bool   `json:"muted"`    // muted rooms count unread but do not notify
-	LastRead int64  `json:"lastReadSeq"`
+	// Muted is a room the member muted (decision P130): its messages raise neither count nor an Inbox item, except a message
+	// that mentions the member by name (not a role it holds), which still counts in both.
+	Muted    bool  `json:"muted"`
+	LastRead int64 `json:"lastReadSeq"`
 }
+
+// directMention is the SQL condition that message x mentions member m by name (@handle), not through a role.
+const directMention = `x.mentions <> '[]' AND EXISTS (SELECT 1 FROM json_each(x.mentions) j WHERE json_extract(j.value, '$.id') = m.member_id)`
 
 // UnreadCap is the most unread messages (or mentions) counted for one room: a room nobody has opened for a long time would
 // otherwise be counted message by message at every refresh of the sidebar. A count at the cap means "this many or more"
@@ -27,16 +32,18 @@ type Unread struct {
 const UnreadCap = 1000
 
 // UnreadCounts returns the unread and mention counts per room for a member, archived rooms excluded. projectID may be "". A
-// count stops at UnreadCap. Messages without mentions are skipped before their mention list is read.
+// count stops at UnreadCap. Messages without mentions are skipped before their mention list is read. In a room the member
+// muted only the messages that mention it by name count, in both.
 func (s *Service) UnreadCounts(ctx context.Context, member Author, projectID string) ([]Unread, error) {
 	rows, err := s.db.Reader().QueryContext(ctx, `
 SELECT r.id, r.name, r.kind, m.state, m.last_read_seq,
-  (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_read_seq AND x.author <> m.member_id LIMIT `+fmt.Sprint(UnreadCap)+`)),
+  (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_read_seq AND x.author <> m.member_id
+     AND (m.state <> 'muted' OR (`+directMention+`)) LIMIT `+fmt.Sprint(UnreadCap)+`)),
   (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_mention_read_seq AND x.author <> m.member_id
      AND x.mentions <> '[]'
      AND EXISTS (SELECT 1 FROM json_each(x.mentions) j
                  WHERE json_extract(j.value, '$.id') = m.member_id
-                    OR EXISTS (SELECT 1 FROM json_each(j.value, '$.members') k WHERE k.value = m.member_id)) LIMIT `+fmt.Sprint(UnreadCap)+`))
+                    OR (m.state <> 'muted' AND EXISTS (SELECT 1 FROM json_each(j.value, '$.members') k WHERE k.value = m.member_id))) LIMIT `+fmt.Sprint(UnreadCap)+`))
 FROM room_members m JOIN rooms r ON r.id = m.room_id
 WHERE m.member_id = ? AND r.archived = 0 AND (? = '' OR r.project_id = ?)
 ORDER BY r.kind, r.name`, member.Key(), projectID, projectID)
@@ -114,6 +121,15 @@ const (
 	// do, whether or not a run is waiting on a budget pause (the pause's approval row becomes this item rather than a plain
 	// approval).
 	NeedsBudget NeedsKind = "budget"
+	// Decision P130: a task waiting for a person with nothing else in the inbox saying why (NeedsTaskWaiting), a message that
+	// mentions the person and is not read yet (NeedsMention), an agent asking to join a channel (NeedsJoinRequest); and, added by
+	// the core from what it holds in memory, an agent that failed or needs attention (NeedsAgent) and an agent CLI an agent of
+	// the workspace uses that is not ready (NeedsConnection).
+	NeedsTaskWaiting NeedsKind = "task_waiting"
+	NeedsMention     NeedsKind = "mention"
+	NeedsJoinRequest NeedsKind = "join_request"
+	NeedsAgent       NeedsKind = "agent"
+	NeedsConnection  NeedsKind = "connection"
 )
 
 // Budget states of a NeedsBudget item.
@@ -161,6 +177,11 @@ type NeedsYouItem struct {
 	// BudgetID and BudgetState are a budget item's budget and where it stands (BudgetWarning, BudgetExceeded, BudgetPaused).
 	BudgetID    string `json:"budgetId,omitempty"`
 	BudgetState string `json:"budgetState,omitempty"`
+	// JoinRequestID is a join request's id (room.answerJoin answers it); Adapter and ConnectionKey a Connection item's agent
+	// CLI and its Connection (the Agents page opens on it).
+	JoinRequestID string `json:"joinRequestId,omitempty"`
+	Adapter       string `json:"adapter,omitempty"`
+	ConnectionKey string `json:"connectionKey,omitempty"`
 }
 
 // NeedsContext is a task's state in one line: who did the work, how big the change is, how its checks went and what its
@@ -179,8 +200,9 @@ type NeedsContext struct {
 // NeedsYou returns what a human must act on, approvals and failures first, then by age (oldest first). projectID may
 // be "". Sources: open approvals-table rows (approval, review, question), blocking questions in messages, the latest
 // failed check per room and check kind, stage-2 watchdog pauses, and budgets past their warning point or at their limit
-// (budget_alerts; a budget pause's approval row is the budget item of its run). Agent-state and Connection items need tables
-// that do not exist yet and are not included.
+// (budget_alerts; a budget pause's approval row is the budget item of its run), and since decision P130 tasks waiting for a
+// person, unread mentions of a person and agents' requests to join a channel (inbox_items.go, with the rule against
+// duplicates). Agent-state and Connection items come from what the core holds in memory and are added there.
 func (s *Service) NeedsYou(ctx context.Context, projectID string) ([]NeedsYouItem, error) {
 	var out []NeedsYouItem
 	q := s.db.Reader()
@@ -322,6 +344,9 @@ WHERE t.stage = 2
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out, err = s.moreItems(ctx, projectID, out); err != nil {
 		return nil, err
 	}
 
