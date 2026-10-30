@@ -2114,4 +2114,6 @@ Open, owner action:
   `criteria.test.browser.tsx`. **Not built:** a projector's memory beyond its file, the TurboQuant build's own MTP assistant files
   (`gemma4_assistant`, the older `qwen35*_mtp`), the shortcuts above, rebinding. **Not verified:** a real DFlash, DSpark or MTP
   head file against either build (fixture GGUF headers and the labelled stand-in only), the MTP context's real memory against
-  the estimate, the clipboard in WebView2, Windows.
+  the estimate, the clipboard in WebView2, Windows. Shown beside its criterion, a finding is one paragraph of the task page, so
+  the two finding texts were shortened to keep within the density budget of 200 characters with their label (the check's name
+  cut to 20; `TestAFindingBesideItsCriterionKeepsToTheDensityBudget`, found by `e2e/density.spec.ts`).

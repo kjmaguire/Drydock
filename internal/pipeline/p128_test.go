@@ -3,10 +3,12 @@ package pipeline_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
@@ -73,11 +75,11 @@ func TestTheReviewStepFindsCriteriaWithoutAnIDOrWithAnUnknownCheck(t *testing.T)
 		t.Fatalf("findings %+v", fs)
 	}
 	if f := fs[0]; f.Kind != pipeline.FindingNoID || f.Severity != "low" || f.Criterion != 1 ||
-		!strings.Contains(f.Text, "Acceptance criterion 2 has no id") || !strings.Contains(f.Text, `"AC4 Given 0 and 0`) {
+		!strings.Contains(f.Text, "Criterion 2 has no id") || !strings.Contains(f.Text, `"AC4 Given 0 and 0`) {
 		t.Errorf("no id: %+v", f)
 	}
 	if f := fs[1]; f.Kind != pipeline.FindingUnknownCheck || f.Severity != "medium" || f.Criterion != 2 || f.Check != "perf" ||
-		!strings.Contains(f.Text, `criterion AC3 names the check "perf", which this project does not run (its checks: build, test, lint, secrets)`) {
+		!strings.Contains(f.Text, `Criterion AC3 names "perf", a check this project does not run (it runs build, test, lint, secrets)`) {
 		t.Errorf("unknown check: %+v", f)
 	}
 	rv, _ := e.tasks.Reviews(context.Background(), e.task.ID)
@@ -137,11 +139,31 @@ func TestACriterionANamedCheckConfirms(t *testing.T) {
 		t.Errorf("findings %+v", fs)
 	}
 	if fs := pipeline.AcceptanceFindings([]string{"Given a, then b [check: lint]"}, nil); len(fs) != 2 || !strings.Contains(fs[0].Text, `"AC1 Given a, then b`) ||
-		!strings.Contains(fs[1].Text, "criterion 1 names the check \"lint\", which this project does not run (its checks: none)") {
+		!strings.Contains(fs[1].Text, `Criterion 1 names "lint", a check this project does not run (it runs no checks)`) {
 		t.Errorf("findings without ids or checks %+v", fs)
 	}
 	if fs := pipeline.AcceptanceFindings(acList, []string{"test"}); len(fs) != 0 {
 		t.Errorf("criteria with ids and no checks: %+v", fs)
+	}
+}
+
+// The task page shows a finding beside its criterion with its label (P129), and a page keeps every paragraph to 200 characters
+// (the density budget, ui/e2e/density.spec.ts): the longest criterion, a long check name and every check Verify detects still fit.
+func TestAFindingBesideItsCriterionKeepsToTheDensityBudget(t *testing.T) {
+	long := strings.Repeat("Given a long criterion with no id ", 6) + "[check: integration-tests-for-the-whole-app]"
+	ac := make([]string, 12)
+	for i := range ac {
+		ac[i] = fmt.Sprintf("AC%d ok", i+1)
+	}
+	ac[10], ac[11] = long, "AC12 named "+long[len(long)-45:]
+	fs := pipeline.AcceptanceFindings(ac, []string{"build", "test", "lint", "secrets", "deps", "e2e", "preview"})
+	if len(fs) != 3 {
+		t.Fatalf("findings %+v", fs)
+	}
+	for _, f := range fs {
+		if shown := "Review finding (" + f.Severity + "): " + f.Text; utf8.RuneCountInString(shown) > 200 {
+			t.Errorf("%d characters beside the criterion: %s", utf8.RuneCountInString(shown), shown)
+		}
 	}
 }
 

@@ -231,21 +231,22 @@ func AcceptanceFindings(acceptance []string, known []string) []AcceptanceFinding
 		have[k] = true
 	}
 	for i, a := range acceptance {
-		name := "criterion " + criterionID(a)
+		name := "Criterion " + criterionID(a)
 		if criterionID(a) == "" {
-			name = "criterion " + strconv.Itoa(i+1)
+			name = "Criterion " + strconv.Itoa(i+1)
 			want := fmt.Sprintf("AC%d %s", next, shortLine(strings.TrimSpace(a), 60))
 			next++
-			out = append(out, AcceptanceFinding{Kind: FindingNoID, Severity: "low", Criterion: i, Text: fmt.Sprintf("Acceptance criterion %d has no id, so no "+
-				"test, review or handoff can name it and no test can be traced to it: start it with an id, for example %q.", i+1, want)})
+			out = append(out, AcceptanceFinding{Kind: FindingNoID, Severity: "low", Criterion: i, Text: fmt.Sprintf("Criterion %d has no id, so no test "+
+				"or review can name it: start it with one, for example %q.", i+1, want)})
 		}
 		if c := CriterionCheck(a); c != "" && !have[c] {
-			runs := "none"
+			runs := "no checks"
 			if len(known) > 0 {
 				runs = strings.Join(known, ", ")
 			}
-			out = append(out, AcceptanceFinding{Kind: FindingUnknownCheck, Severity: "medium", Criterion: i, Check: c, Text: fmt.Sprintf("Acceptance %s names "+
-				"the check %q, which this project does not run (its checks: %s), so no check can confirm it: name one of those, or a person marks it.", name, c, runs)})
+			// the task page shows a finding beside its criterion: with its label it keeps to the density budget of 200 characters
+			out = append(out, AcceptanceFinding{Kind: FindingUnknownCheck, Severity: "medium", Criterion: i, Check: c, Text: fmt.Sprintf("%s names %q, "+
+				"a check this project does not run (it runs %s): name one, or a person marks it.", name, shortLine(c, 20), runs)})
 		}
 	}
 	return out
