@@ -46,6 +46,14 @@ test('Agents: Claude Code inside a WSL distro is its own row with its own sign-i
   await expect(report).toContainText('T2 Start and handshake: pass');
   await expect(report).toContainText('T5 Stop and process cleanup: pass');
   await expect(report).toContainText('killed by its marker');
+  // the run is kept as this install's history, beside its capability matrix (decision P132); it survives a reload
+  await expect(card.getByTestId('test-run')).toHaveCount(1);
+  await expect(card.getByRole('table', { name: 'Capability matrix' })).toHaveCount(1);
+  await page.reload();
+  await expect(card).toBeVisible({ timeout: 60_000 });
+  await card.getByTestId('agent-tab-tests').click();
+  await expect(card.getByTestId('test-run')).toHaveCount(1);
+  await expect(card.getByTestId('capability-matrix')).toContainText('Streams its answer');
 
   // the Windows install is still there, a row of its own, and says where it runs
   await page.locator('[data-testid=agent-row][data-key=claude]').click();
