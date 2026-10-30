@@ -750,6 +750,8 @@ export interface Room {
   mode: string;
   modeParams?: { order?: string[]; moderator?: string; max_rounds?: number; max_parallel?: number };
   taskId?: string;
+  /** A direct message's agent (decision P130): Ctrl+. in the DM opens its Agent Inspector. */
+  agentId?: string;
   archived: boolean;
   createdBy?: string;
   createdAt: string;
@@ -821,7 +823,20 @@ export interface Unread {
   lastReadSeq: number;
 }
 
-export type NeedsKind = 'approval' | 'review' | 'question' | 'failed_check' | 'watchdog_pause' | 'chat_permission' | 'budget';
+export type NeedsKind =
+  | 'approval'
+  | 'review'
+  | 'question'
+  | 'failed_check'
+  | 'watchdog_pause'
+  | 'chat_permission'
+  | 'budget'
+  // decision P130
+  | 'task_waiting'
+  | 'mention'
+  | 'join_request'
+  | 'agent'
+  | 'connection';
 
 export interface NeedsYouItem {
   key: string;
@@ -851,6 +866,11 @@ export interface NeedsYouItem {
   /** A budget item's budget and where it stands (kind budget, P118); a paused one carries the pause's approvalId. */
   budgetId?: string;
   budgetState?: 'warning' | 'exceeded' | 'paused' | string;
+  /** An agent's request to join a channel (kind join_request, P130): room.answerJoin answers it. */
+  joinRequestId?: string;
+  /** An agent CLI that is not ready (kind connection, P130): the Agents page opens on adapter. */
+  adapter?: string;
+  connectionKey?: string;
 }
 
 export interface NeedsContext {

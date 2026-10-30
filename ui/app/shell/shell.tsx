@@ -55,7 +55,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   let dmError: Error | undefined;
   /** The dock acts on a project: it is there only on a project's pages (UI review P1-8), and so are its shortcuts. */
   let dockHere = false;
-  /** The agent whose page is open: Ctrl+. opens the Agent Inspector for it (decision P129). */
+  /** The agent whose page or direct message is open: Ctrl+. opens the Agent Inspector for it (decisions P129, P130). */
   let agentHere: string | undefined;
 
   // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff, Ctrl+. inspects the agent of the page; not inside the terminal or the
@@ -132,7 +132,8 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
     // a workspace page shows nothing of a project: no repository banner, no details panel, no dock
     const inProject = !!project && !isWorkspacePage(route);
     dockHere = inProject;
-    agentHere = route.name === 'agent' ? route.id : undefined;
+    // an agent's page, and a direct message: its agent (decision P130)
+    agentHere = route.name === 'agent' ? route.id : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id && r.kind === 'dm')?.agentId : undefined;
     const taskContext =
       route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
     const fullRail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;

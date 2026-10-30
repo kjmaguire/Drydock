@@ -1,6 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { RoomTurn } from '../../api/extTypes.ts';
+import type { JoinRule } from '../../api/roomClient.ts';
 import type { Agent, Room, RoomMember } from '../../api/types.ts';
 import { byLabel, byText, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ROUNDS_ERROR, RoomAgentsPanel, RoomTab } from './room-agents.tsx';
@@ -17,12 +18,12 @@ const agents = [agent('a1', 'Dana', 'backend'), agent('a2', 'Rex', 'reviewer')];
 const button = (r: { container: HTMLElement }, name: string) => byText<HTMLButtonElement>(r.container, 'button', name);
 
 describe('RoomAgentsPanel', () => {
-  it('lays out the mode and the agents for the Room tab, with the turns folded away (UI review P1-5)', () => {
-    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [] }));
+  it('lays out the mode, the agents and the project\'s join rules for the Room tab, with the turns folded away (UI review P1-5, P130)', () => {
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => [] }));
     const panel = r.container.querySelector<HTMLElement>('[data-testid="room-agents"]')!;
     expect(panel.tagName).toBe('DIV');
     expect(panel.textContent).toContain('Current mode: auto');
-    expect(Array.from(panel.querySelectorAll('section')).map((x) => x.getAttribute('aria-label'))).toEqual(['Turn-taking mode', 'Agents']);
+    expect(Array.from(panel.querySelectorAll('section')).map((x) => x.getAttribute('aria-label'))).toEqual(['Turn-taking mode', 'Agents', 'Join rules']);
     const turns = panel.querySelector<HTMLDetailsElement>('details[data-testid="room-turns"]')!;
     expect([turns.open, turns.querySelector('summary')!.textContent]).toEqual([false, 'Recent agent turns']);
   });
@@ -195,5 +196,45 @@ describe('RoomAgentsPanel', () => {
     await waitFor(() => expect(r.container.textContent).toContain('No agent has answered in this room.'), r);
     expect(r.container.textContent).toContain('No agent is in this room.');
     expect(r.container.textContent).not.toContain('Ask agents to reply');
+  });
+});
+
+describe('JoinRules (P130)', () => {
+  it('lists the project\'s rules in words, adds one with its folder and state, and removes one', async () => {
+    const added: unknown[] = [];
+    const removed: string[] = [];
+    let rules: JoinRule[] = [{ id: 'jr1', projectId: 'prj_1', agentId: 'a2', pathPrefix: 'auth/', state: 'observer', createdBy: 'human:kyle', createdAt: 1 }];
+    const s = testServices({
+      roomTurns: async () => [],
+      roomJoinRules: async () => rules,
+      roomJoinRuleAdd: async (rule) => {
+        added.push(rule);
+        const r = { id: 'jr2', projectId: rule.projectId, agentId: rule.agentId, pathPrefix: rule.pathPrefix, state: rule.state ?? 'observer', createdBy: 'human:kyle', createdAt: 2 };
+        rules = [...rules, r];
+        return r;
+      },
+      roomJoinRuleRemove: async (id) => {
+        removed.push(id);
+        rules = rules.filter((r) => r.id !== id);
+      },
+    });
+    const r = mount(<RoomAgentsPanel room={room} agents={agents} members={members} />, s);
+    await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(1), r);
+    expect(r.container.querySelector('[data-testid="join-rule"]')!.textContent).toContain('Rex joins as an observer: tasks naming a file under auth/');
+    await r.act(() => type(byLabel(r.container, 'Agent for the rule'), 'a1'));
+    await r.act(() => type(byLabel(r.container, 'Folder (optional)'), ' web/ '));
+    await r.act(() => type(byLabel(r.container, 'Joins as'), 'active'));
+    await r.act(() => button(r, 'Add rule').click());
+    await waitFor(() => expect(added).toEqual([{ projectId: 'prj_1', agentId: 'a1', pathPrefix: 'web/', state: 'active' }]), r);
+    await waitFor(() => expect(r.container.querySelectorAll('[data-testid="join-rule"]').length).toBe(2), r);
+    expect(r.container.querySelectorAll('[data-testid="join-rule"]')[1]!.textContent).toContain('Dana joins as an active member: tasks naming a file under web/');
+    await r.act(() => byLabel<HTMLButtonElement>(r.container, 'Remove the rule for Rex').click());
+    await waitFor(() => expect(removed).toEqual(['jr1']), r);
+  });
+
+  it('is not shown in a direct message', () => {
+    const dm: Room = { ...room, kind: 'dm', name: 'dm:human:kyle+a1', agentId: 'a1' };
+    const r = mount(<RoomAgentsPanel room={dm} agents={agents} members={members} />, testServices({ roomTurns: async () => [], roomJoinRules: async () => [] }));
+    expect(r.container.querySelector('[data-testid="join-rules"]')).toBe(null);
   });
 });
