@@ -1,20 +1,26 @@
 // Rooms against the real core (decision P130): a person mutes a channel from its menu and the Rooms rail says so; Ctrl+. in a
 // direct message opens the Agent Inspector for its agent; a join rule is made and removed in the Room tab (that it adds its agent
 // to the next task room whose task names a file under its folder is tested in the core, internal/core/p130_test.go).
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { choose, createAgent, createProjectWithoutRepo, openAgentPage, openRoom, roomLink } from './helpers';
+
+/** Open a kit menu by its trigger (repeated while it is still closing after the last choice) and choose an item. */
+async function fromMenu(trigger: Locator, item: Locator): Promise<void> {
+  await expect(async () => {
+    if (!(await item.isVisible())) await trigger.click();
+    await item.click({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+}
 
 test('a room is muted and unmuted from its menu, and the Rooms rail says it is muted', async ({ page }) => {
   await createProjectWithoutRepo(page, 'mute-rooms');
   await openRoom(page, 'general');
   await expect(page.getByLabel('Messages in general')).toBeVisible();
   const menu = page.getByTestId('room-menu');
-  await menu.click();
-  await page.getByRole('menuitem', { name: 'Mute room' }).click();
+  await fromMenu(menu, page.getByRole('menuitem', { name: 'Mute room' }));
   await expect(roomLink(page, 'general')).toHaveAttribute('data-muted', 'true');
   await expect(roomLink(page, 'general')).toHaveAccessibleName(/^general ?, muted/);
-  await menu.click();
-  await page.getByRole('menuitem', { name: 'Unmute room' }).click();
+  await fromMenu(menu, page.getByRole('menuitem', { name: 'Unmute room' }));
   await expect(roomLink(page, 'general')).not.toHaveAttribute('data-muted', 'true');
 });
 

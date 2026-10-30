@@ -131,7 +131,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
     if (!pid) return;
     dmError = undefined;
     try {
-      const r = await s.client.roomCreateDM(pid, agentId);
+      const r = await s.project.openDM(pid, agentId);
       await navigate(routes.room.href({ id: r.id }));
     } catch (e) {
       dmError = e as Error;
