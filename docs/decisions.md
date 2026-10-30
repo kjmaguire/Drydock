@@ -2266,3 +2266,18 @@ Open, owner action:
   real Gemma 4 assistant file against either build (fixture GGUF headers and the labelled stand-in only) and whether it speeds
   a model up, the keys in WebView2 on Windows (that WebView2 leaves Ctrl+1 to 4, Ctrl+\` and Alt+arrows to the page), a real
   CLI's Test connection history beyond the test double's.
+- **P133. A join rule is matched again when a task names its files later (2026-10-30).** On the owner's words "when you are done
+  doing the CI, continue on to the next tasks autonomously throughout the night", from the "Not built" line of P130. A task
+  names its files twice: when a person creates it, and when a work turn finishes (the pipeline stores the files of the diff,
+  `tasks.files`). The rule matched only the first, so a security agent with a rule for `auth/` joined a task that said so at
+  creation and missed one that only touched `auth/` while it was worked. Now the pipeline tells the room after it stored the
+  files (`Deps.OnFiles`, the core's `joinRulesAgain`), and `Service.ReapplyJoinRules` matches the task's room against the rules
+  again: an archived room, a task with no room and an unknown task change nothing and are not errors. The same safe readings as
+  P130 hold: a rule never reaches a room made before it, the agent joins as an observer unless the person chose active, and a
+  rule acts **once** in a room, judged by the SYSTEM line it wrote (`join_rule` with the rule's id): calling again adds nothing
+  and an agent a person took out of the room is not brought back by the next turn (removing a member deletes its row, so the
+  line is the only record that the rule had acted). No migration. Tests: `TestAJoinRuleIsMatchedAgainWhenATaskNamesItsFilesLater`
+  (core: no files, then files, a task outside the prefix, a second call, a removed agent, an archived room; mutating the
+  once-only check fails it), `TestTheRoomIsToldWhenAWorkTurnNamedTheTasksFiles` (pipeline: the hook is called once with the
+  files already stored). **Not built:** a rule for channels, desktop notifications. **Not verified:** a real work turn on a
+  real CLI naming the files, Windows.

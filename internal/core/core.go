@@ -327,6 +327,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		AgentConfig:  c.agentConfig,
 		OnCheck:      c.postCheck,
 		OnTurn:       c.postTurn,
+		OnFiles:      c.joinRulesAgain,
 		MCPStatus:    c.mcpStatus,
 		WorkerChecks: c.workerChecks,
 		Sandbox:      sandboxHook{c},     // ext_sandbox.go
