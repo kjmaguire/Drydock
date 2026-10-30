@@ -159,7 +159,18 @@ type TurnInfo struct {
 	Status    string `json:"status"`
 	MessageID string `json:"messageId,omitempty"`
 	Error     string `json:"error,omitempty"`
-	cause     error  // why a failed turn failed (a budget's pause, for a group discussion)
+	// Ship is a turn of a group discussion that returned SHIP (the reply was exactly that word, the review's convention), and
+	// DecisionID the DECISION a turn stated (a [DECISION] line, or a reply that was one): either ends the discussion (P127).
+	Ship       bool   `json:"ship,omitempty"`
+	DecisionID string `json:"decisionId,omitempty"`
+	cause      error  // why a failed turn failed (a budget's pause, for a group discussion)
+}
+
+// IsShip reports a reply that is exactly the word SHIP, read as the review's verdict is when it is a single word
+// (pipeline.ParseVerdict: case and a trailing full stop or exclamation mark do not matter; "SHIPPING it would be wrong" is not
+// SHIP).
+func IsShip(text string) bool {
+	return strings.ToUpper(strings.TrimRight(strings.TrimSpace(text), ".!")) == "SHIP"
 }
 
 // Outcome is what Handle did for one human message.
@@ -629,6 +640,12 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		payload["pass"] = true
 		text = "(passed: nothing to add)"
 		info.Status, end.status = StatusPassed, StatusPassed
+	case o.group != nil && IsShip(text):
+		// a turn of a group discussion that returns SHIP: what is on the table is good to build on, and the discussion ends
+		payload["ship"] = true
+		text = "SHIP"
+		info.Ship = true
+		info.Status, end.status = StatusDone, StatusDone
 	default:
 		if len(text) > r.o.MaxReplyBytes {
 			cut := r.o.MaxReplyBytes
@@ -645,6 +662,16 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		return fail("could not post the reply", err)
 	}
 	info.MessageID, end.messageID = posted.Message.ID, posted.Message.ID
+	// the DECISION the turn stated: the reply itself when it was nothing but a [DECISION] line (stored as the DECISION, P93),
+	// else the one its [DECISION] line was promoted to
+	if posted.Message.Type == room.TypeDecision {
+		info.DecisionID = posted.Message.ID
+	}
+	for _, d := range posted.Derived {
+		if d.Type == room.TypeDecision && info.DecisionID == "" {
+			info.DecisionID = d.ID
+		}
+	}
 	r.endTurn(info.TurnID, end)
 	reply := posted.Message
 	return info, &reply

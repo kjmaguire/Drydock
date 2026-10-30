@@ -540,6 +540,31 @@ func (s *Service) PlanTurns(ctx context.Context, messageID string) (TurnDecision
 // agents' proposed DECISION stands as the candidate or a blocking QUESTION goes to a human. It is idempotent per
 // thread and human message, so repeated calls post nothing new. thread may be "" for the room's top level.
 func (s *Service) ApplyDebateBound(ctx context.Context, roomID, thread string) (BoundResolution, bool, error) {
+	return s.EndDiscussion(ctx, roomID, thread, DiscussionEnd{Why: EndBound})
+}
+
+// Why a discussion ended (room-protocol s6 rule 7, decision P127): at its bound, after a round in which every agent passed,
+// on a turn that returned SHIP, or on a turn that stated a DECISION.
+const (
+	EndBound    = "bound"
+	EndPasses   = "passes"
+	EndShip     = "ship"
+	EndDecision = "decision"
+)
+
+// DiscussionEnd is why a discussion ended, and the agent whose turn ended it (for SHIP and a DECISION).
+type DiscussionEnd struct {
+	Why   string // EndBound (the default), EndPasses, EndShip or EndDecision
+	Agent string // the agent's name or id
+}
+
+// boundShipNoDecisionText is the question when an agent returned SHIP but nobody wrote the outcome down as a DECISION.
+const boundShipNoDecisionText = "An agent returned SHIP, but no decision was written down. Please state the decision, or give direction, to continue."
+
+// EndDiscussion is ApplyDebateBound for a discussion that ended for the reason end gives: the SYSTEM line says why, and the
+// resolution is the same (the DECISION proposed since the last human message stands as the candidate; otherwise a human is
+// asked). Its idempotency key is the bound's, so a discussion is ended once whatever ended it.
+func (s *Service) EndDiscussion(ctx context.Context, roomID, thread string, end DiscussionEnd) (BoundResolution, bool, error) {
 	var ms []Message
 	var err error
 	if thread != "" {
@@ -564,14 +589,32 @@ func (s *Service) ApplyDebateBound(ctx context.Context, roomID, thread string) (
 	res := ResolveBound(dm)
 	rounds := CountRounds(roundMsgs(ms))
 	key := fmt.Sprintf("bound:%s:%s:%d", roomID, thread, lastHuman)
-	body := fmt.Sprintf("Debate bound reached after %d rounds. ", rounds)
+	who := end.Agent
+	if who == "" {
+		who = "an agent"
+	}
+	var body string
+	switch end.Why {
+	case EndPasses:
+		body = fmt.Sprintf("The discussion ended after %d rounds: every agent passed. ", rounds)
+	case EndShip:
+		body = fmt.Sprintf("The discussion ended after %d rounds: %s returned SHIP. ", rounds, who)
+		if res.Action == BoundEscalateHuman {
+			res.Question = boundShipNoDecisionText
+		}
+	case EndDecision:
+		body = fmt.Sprintf("The discussion ended after %d rounds: %s stated a decision. ", rounds, who)
+	default:
+		end.Why = EndBound
+		body = fmt.Sprintf("Debate bound reached after %d rounds. ", rounds)
+	}
 	if res.Action == BoundAdoptDecision {
 		body += "The proposed decision " + res.DecisionID + " stands as the candidate; a human accepts, edits or rejects it. Further agent turns on this topic need a human message."
 	} else {
 		body += "No decision was proposed; a human is asked. Further agent turns on this topic need a human message."
 	}
 	p, err := s.Post(ctx, PostParams{RoomID: roomID, Type: TypeSystem, Author: System, Body: body, ThreadRootID: thread, IdempotencyKey: key,
-		Payload: map[string]any{"event": "debate_bounded", "params": map[string]any{"rounds": rounds, "action": res.Action, "decision_id": res.DecisionID}}})
+		Payload: map[string]any{"event": "debate_bounded", "params": map[string]any{"rounds": rounds, "action": res.Action, "decision_id": res.DecisionID, "ended": end.Why}}})
 	if err != nil {
 		return res, false, err
 	}
@@ -586,6 +629,6 @@ func (s *Service) ApplyDebateBound(ctx context.Context, roomID, thread string) (
 	}
 	room, _ := s.GetRoom(ctx, roomID)
 	s.flush(ctx, []pendingEvent{{typ: "room.debate_bounded", scope: events.Event{ProjectID: room.ProjectID, TaskID: room.TaskID},
-		data: map[string]any{"room": roomID, "thread": thread, "rounds": rounds, "outcome": res.Action}}})
+		data: map[string]any{"room": roomID, "thread": thread, "rounds": rounds, "outcome": res.Action, "ended": end.Why}}})
 	return res, true, nil
 }

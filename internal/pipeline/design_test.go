@@ -87,7 +87,8 @@ func TestDesignReviewTemplateBuildsTheDesignTheDiscussionAgreed(t *testing.T) {
 		t.Fatalf("the run went on to the approval: %+v", p)
 	}
 
-	// the discussion: in the task's channel, the architect, the worker and the reviewer in turn, round 1 then a round of passes
+	// the discussion: in the task's channel, the architect, the worker and the reviewer in turn; the reviewer's DECISION ends
+	// it in round 1 (P127), so nobody is asked for a round of passes
 	rm, _ := rs.RoomByTask(context.Background(), e.task.ID)
 	ms, _ := rs.Messages(context.Background(), rm.ID, 0, 200)
 	var order []string
@@ -96,7 +97,7 @@ func TestDesignReviewTemplateBuildsTheDesignTheDiscussionAgreed(t *testing.T) {
 			order = append(order, m.Author.ID)
 		}
 	}
-	if strings.Join(order, ",") != strings.Join([]string{aArch, aWork, aReview, aArch, aWork, aReview}, ",") {
+	if strings.Join(order, ",") != strings.Join([]string{aArch, aWork, aReview}, ",") {
 		t.Fatalf("turns %v", order)
 	}
 	// the decision is the task's design, and the worker's turn carried it

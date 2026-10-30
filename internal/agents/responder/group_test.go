@@ -89,9 +89,9 @@ func TestAGroupNodeEndsInADecisionCandidateTheNextNodeReceives(t *testing.T) {
 	if res.Outcome != responder.OutcomeDecision || res.DecisionID == "" || !strings.Contains(res.Decision, "Keep the hand-written parser") || res.Bound != 3 {
 		t.Fatalf("result %+v", res)
 	}
-	// round 1: both speak; round 2: both pass, so the group had nothing more to add before the bound
-	if !res.Converged || len(res.Turns) != 4 || res.Turns[2].Status != responder.StatusPassed || res.Turns[3].Status != responder.StatusPassed {
-		t.Fatalf("turns %+v", res.Turns)
+	// round 1: Ada speaks, Bo states the decision, and that ends the discussion (P127): nobody is asked for another round
+	if res.Ended != room.EndDecision || res.EndedBy != b || res.Converged || len(res.Turns) != 2 || res.Turns[1].DecisionID != res.DecisionID {
+		t.Fatalf("turns %+v (ended %s by %s)", res.Turns, res.Ended, res.EndedBy)
 	}
 	if _, asked := seen.Load("question"); asked {
 		t.Fatal("the question route ran too")
@@ -104,9 +104,9 @@ func TestAGroupNodeEndsInADecisionCandidateTheNextNodeReceives(t *testing.T) {
 		if m.Author.Kind == room.AuthorAgent && m.Type == room.TypeChat {
 			order = append(order, m.Author.ID)
 		}
-		bounded = bounded || (m.Type == room.TypeSystem && strings.Contains(m.Body, "stands as the candidate"))
+		bounded = bounded || (m.Type == room.TypeSystem && strings.Contains(m.Body, "ended after 1 rounds: Bo stated a decision") && strings.Contains(m.Body, "stands as the candidate"))
 	}
-	if strings.Join(order, ",") != strings.Join([]string{a, b, a, b}, ",") || !bounded {
+	if strings.Join(order, ",") != strings.Join([]string{a, b}, ",") || !bounded {
 		t.Fatalf("thread order %v, bounded %v", order, bounded)
 	}
 	// every turn ran on its own grant from the scheduler, round by round
@@ -123,11 +123,11 @@ func TestAGroupNodeEndsInADecisionCandidateTheNextNodeReceives(t *testing.T) {
 		grants = append(grants, agent+":"+string(rune('0'+round)))
 	}
 	rows.Close()
-	if strings.Join(grants, " ") != a+":1 "+b+":1 "+a+":2 "+b+":2" {
+	if strings.Join(grants, " ") != a+":1 "+b+":1" {
 		t.Fatalf("grants %v", grants)
 	}
 	// the agents were told it is a bounded group discussion
-	if p := h.prompts(a); len(p) != 2 || !strings.HasPrefix(p[0], "Drydock phase: group-discussion") || !strings.Contains(p[0], "at most 3 rounds between Ada, Bo") ||
+	if p := h.prompts(a); len(p) != 1 || !strings.HasPrefix(p[0], "Drydock phase: group-discussion") || !strings.Contains(p[0], "at most 3 rounds between Ada, Bo") ||
 		!strings.Contains(p[0], "Should the expression parser be generated") {
 		t.Fatalf("prompts %v", p)
 	}
@@ -146,7 +146,7 @@ func TestAGroupNodeThatDoesNotConvergeAsksAPersonAtTheBound(t *testing.T) {
 	}
 	res := v.(responder.DiscussionResult)
 	// two rounds of two turns each, then the bound: nobody proposed a decision, so a person is asked
-	if res.Outcome != responder.OutcomeQuestion || res.QuestionID == "" || res.Converged || len(res.Turns) != 4 || res.Rounds != 2 {
+	if res.Outcome != responder.OutcomeQuestion || res.QuestionID == "" || res.Converged || res.Ended != room.EndBound || len(res.Turns) != 4 || res.Rounds != 2 {
 		t.Fatalf("result %+v", res)
 	}
 	items, err := h.room.NeedsYou(h.ctx, h.project)
@@ -159,6 +159,74 @@ func TestAGroupNodeThatDoesNotConvergeAsksAPersonAtTheBound(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the question is in the person's inbox: %+v", items)
+	}
+}
+
+// A turn that returns SHIP ends the discussion there (room-protocol s6 rule 7, decision P127). SHIP is an agent's word, so it
+// decides nothing by itself: with no DECISION written down, a person is asked, and the question says an agent returned SHIP.
+func TestAGroupNodeEndsWhenAnAgentReturnsShip(t *testing.T) {
+	h := newHarness(t, responder.Options{})
+	a := h.agent("agt_a", "Ada", "architect", say("Keep the parser hand-written: it is small, and a generator adds a build step."))
+	b := h.agent("agt_b", "Bo", "backend", say("Ship."))
+	rm := h.channel("design", a, b)
+	eng, seen := h.groupEngine(rm, []string{a, b}, 0)
+	h.runGroup(eng, "Should the expression parser be generated or hand-written?")
+	v, ok := seen.Load("question")
+	if !ok {
+		t.Fatal("the next node on the question route did not run")
+	}
+	res := v.(responder.DiscussionResult)
+	if res.Ended != room.EndShip || res.EndedBy != b || len(res.Turns) != 2 || !res.Turns[1].Ship || res.Rounds != 1 || res.Converged {
+		t.Fatalf("result %+v", res)
+	}
+	if !strings.Contains(res.Question, "returned SHIP") {
+		t.Fatalf("question %q", res.Question)
+	}
+	if p := h.prompts(a); len(p) != 1 || !strings.Contains(p[0], "reply with exactly: SHIP") {
+		t.Fatalf("Ada was asked again, or not told about SHIP: %v", p)
+	}
+	thread, _ := h.room.Thread(h.ctx, res.ThreadID)
+	var ship, said bool
+	for _, m := range thread {
+		ship = ship || (m.Author.ID == b && m.Body == "SHIP" && m.PayloadBool("ship"))
+		said = said || (m.Type == room.TypeSystem && strings.Contains(m.Body, "Bo returned SHIP"))
+	}
+	if !ship || !said {
+		t.Fatalf("the SHIP turn %v, the line that says why it ended %v", ship, said)
+	}
+}
+
+// A round in which every agent passed ends the discussion before its bound, and the result says that is why.
+func TestAGroupNodeEndsWhenEveryAgentPasses(t *testing.T) {
+	h := newHarness(t, responder.Options{})
+	a := h.agent("agt_a", "Ada", "architect", say("PASS"))
+	b := h.agent("agt_b", "Bo", "backend", say("PASS"))
+	rm := h.channel("design", a, b)
+	eng, seen := h.groupEngine(rm, []string{a, b}, 0)
+	h.runGroup(eng, "Anything to change in the logging?")
+	v, ok := seen.Load("question")
+	if !ok {
+		t.Fatal("the next node on the question route did not run")
+	}
+	res := v.(responder.DiscussionResult)
+	if res.Ended != room.EndPasses || res.EndedBy != "" || !res.Converged || len(res.Turns) != 2 {
+		t.Fatalf("result %+v", res)
+	}
+	thread, _ := h.room.Thread(h.ctx, res.ThreadID)
+	said := false
+	for _, m := range thread {
+		said = said || (m.Type == room.TypeSystem && strings.Contains(m.Body, "every agent passed"))
+	}
+	if !said {
+		t.Fatal("the line that says why it ended")
+	}
+}
+
+func TestShipIsTheWholeReply(t *testing.T) {
+	for in, want := range map[string]bool{"SHIP": true, " ship. ": true, "Ship!": true, "SHIPPING it would be a mistake": false, "SHIP it, but": false, "": false} {
+		if responder.IsShip(in) != want {
+			t.Fatalf("%q: want %v", in, want)
+		}
 	}
 }
 
