@@ -201,11 +201,15 @@ func (r *Registry) buildACP(m *Manifest, detect func(context.Context) (agents.De
 		}
 		env = append(env, k+"="+a.Env[k])
 	}
+	var sb *acp.SandboxSupport
+	if a.Sandbox != nil {
+		sb = &acp.SandboxSupport{Mode: a.Sandbox.Mode}
+	}
 	return acp.New(acp.Config{
 		ID: m.Meta.ID, Command: a.Argv[0], Args: append([]string(nil), a.Argv[1:]...), Env: env, ClientMeta: maps.Clone(a.ClientMeta),
 		Declared: nativeOnly(DeclaredCapabilities(m)), InstallHint: m.InstallHint(), Detector: detect,
 		Permission: r.opts.Permission, Terminal: r.opts.Terminal, ScrubEnv: r.opts.ScrubEnv, PassEnv: r.opts.PassEnv,
-		RepoConfig: slices.Clone(m.RepoConfig),
+		RepoConfig: slices.Clone(m.RepoConfig), Sandbox: sb,
 	}), nil
 }
 

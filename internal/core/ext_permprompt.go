@@ -241,6 +241,13 @@ func (c *Core) permissionAsker(ctx context.Context, cfg *rt.Config, runID string
 	if cfg.Spec.OnCallChanged == nil {
 		cfg.Spec.OnCallChanged = c.recordCallChanged(*cfg, runID)
 	}
+	if cfg.Spec.Sandboxed && cfg.Adapter != "claude" && !cfg.Spec.ReadOnly && cfg.Spec.Cwd != "" {
+		// a sandboxed ACP worker (decision P131): its commands go to the container, what its CLI would run here is refused
+		if cfg.Spec.OnSandboxEscape == nil {
+			cfg.Spec.OnSandboxEscape = c.recordSandboxEscape(*cfg, runID)
+		}
+		return sandboxAsker(cfg.Spec.Cwd)
+	}
 	if !cfg.Spec.PermissionPrompts || cfg.Spec.ReadOnly || cfg.Spec.Sandboxed || cfg.Adapter == "claude" || cfg.Spec.Cwd == "" {
 		return nil
 	}

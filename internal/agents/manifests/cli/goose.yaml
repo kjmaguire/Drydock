@@ -14,6 +14,8 @@ transports:
   acp:
     argv: [goose, acp]
     env: {GOOSE_MODE: approve}                      # auto | approve | smart_approve | chat
+    # a sandboxed project (decision P131): in approve mode Goose asks before every tool call (its documentation; not run here)
+    sandbox: {why: "GOOSE_MODE approve: Goose asks before every tool call (Goose documentation; not run here)"}
   headless:
     argv: [run, --output-format, stream-json, --no-profile]
     optional:

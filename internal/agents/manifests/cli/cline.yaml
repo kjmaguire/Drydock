@@ -18,7 +18,8 @@ auth:
 transports:
   primary: acp
   # Tool approval stays on: --auto-approve and --yolo are never passed, so every tool call reaches Drydock as a permission request.
-  acp: {argv: [cline, --acp]}
+  # The same makes it able to work in a sandboxed project (decision P131): what it would run itself is asked, and refused.
+  acp: {argv: [cline, --acp], sandbox: {why: "no --auto-approve or --yolo: every tool call is a permission request (apps/cli/src/acp/permissions.ts, 3.0.70)"}}
   headless: none
 # Cline's ACP agent stores session/new.mcpServers but, at 3.0.70, nothing in apps/cli reads them back: the servers are most
 # likely ignored. The gateway is therefore unverified and off until the human allows it (mcp.try.set, decision P20).
