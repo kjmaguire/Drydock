@@ -72,6 +72,12 @@ func explain(d RoutingDecision) string {
 	default:
 		fmt.Fprintf(&b, "- Budget: %s at %.0f%%, no downshift.\n", scope, f.BudgetPctUsed*100)
 	}
+	switch {
+	case f.QuotaDownshift:
+		fmt.Fprintf(&b, "- Subscription limit: %s, so premium use is downshifted: the cheap tier is tried first until the limit resets or is reported allowed again.\n", f.QuotaWarning)
+	case f.QuotaWarning != "":
+		fmt.Fprintf(&b, "- Subscription limit: %s; no downshift for this turn (its level, its risk, a pin, a rule that keeps or requires the premium tier, or no cheaper model).\n", f.QuotaWarning)
+	}
 	chain := strings.Join(d.FallbackChain, ", then ")
 	switch {
 	case f.FallbackFrom != nil && d.FallbackHop > 0:

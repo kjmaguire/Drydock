@@ -28,11 +28,18 @@ import (
 // artifact that Drydock writes deterministically: the task and its acceptance criteria, what the previous session said it did,
 // the diff stat of the worktree, the failing checks and the open questions. It never gets the transcript. Since P125 the outgoing
 // session is first asked for a handoff of its own in a bounded turn when it can answer (handoffturn.go); Drydock's artifact
-// records what came of that and carries the agent's handoff only when it passes Drydock's checks.
+// records what came of that and carries the agent's handoff only when it passes Drydock's checks. Since P128 a CLI that reports
+// no occupancy is continued on Drydock's own estimate below a lower threshold (estimate.go), and a session that was corrected
+// twice is replaced (MaxSessionCorrections).
 
 // ContextHandoffPct is the context occupancy (percent of the model's context window) at or above which the next turn of a task
 // does not continue the session but starts a fresh one seeded with a handoff artifact.
 const ContextHandoffPct = 70
+
+// MaxSessionCorrections is how many corrections one session takes (a failing check or a review that sent the work back, each
+// time); the work turn after the second starts a fresh session with a handoff (docs/claude-best-practices.md s2: a session
+// corrected more than twice is cluttered with the approaches that failed).
+const MaxSessionCorrections = 2
 
 // MaxHandoffBytes bounds one stored handoff artifact (token-control s3: about 1,500 tokens, enforced at write time).
 const MaxHandoffBytes = 8 << 10
@@ -53,6 +60,7 @@ const (
 	HandoffInterrupted     = "interrupted"      // the previous attempt of this turn was cut off (the app stopped)
 	HandoffWatchdog        = "watchdog"         // the watchdog paused the previous turn and a human let the work go on
 	HandoffResumeFailed    = "resume_failed"    // the session to continue could not be resumed
+	HandoffCorrections     = "corrections"      // the session was corrected MaxSessionCorrections times (P128)
 )
 
 // SessionDecision is what the session policy decided for one work turn. It is recorded in the turn's output, its context
@@ -67,6 +75,11 @@ type SessionDecision struct {
 	ContextSize  int64   `json:"contextSize,omitempty"`
 	OccupancyPct float64 `json:"occupancyPct,omitempty"`
 	ThresholdPct int     `json:"thresholdPct"`
+	// Estimated is true when ContextUsed and ContextSize are Drydock's estimate (the CLI reported no occupancy; P128), judged
+	// against EstimatedHandoffPct instead of ContextHandoffPct.
+	Estimated bool `json:"estimated,omitempty"`
+	// Corrections is how many corrections the previous turn's session had taken (P128).
+	Corrections int `json:"corrections,omitempty"`
 	// Compactions is how many times the CLI compacted the previous turn's context (a handoff for context pressure).
 	Compactions int    `json:"compactions,omitempty"`
 	FromModel   string `json:"fromModel,omitempty"`
@@ -101,6 +114,11 @@ type WorkOutput struct {
 	// StartedAt is when the turn started (Unix milliseconds): a handoff the agent wrote with the handoff tool counts as this
 	// turn's only when it is newer.
 	StartedAt int64 `json:"startedAt,omitempty"`
+	// Estimate is Drydock's estimate of the session's context occupancy after the turn, when the CLI reported none (P128).
+	Estimate *ContextEstimate `json:"contextEstimate,omitempty"`
+	// Corrections is how many corrections the turn's session has taken, this turn's included: a turn that ran because a check
+	// failed or a review sent the work back is one (P128).
+	Corrections int `json:"corrections,omitempty"`
 }
 
 // Occupancy is the context occupancy the turn's agent reported last: tokens in the context and the model's window (0 when the
@@ -136,6 +154,9 @@ func DecideSession(prev *WorkOutput, p SessionPlan) SessionDecision {
 	}
 	d.PrevSession, d.FromModel = prev.SessionID, prev.Model
 	d.ContextUsed, d.ContextSize, _ = prev.Occupancy()
+	if d.ContextSize <= 0 && prev.Estimate != nil && prev.Estimate.Size > 0 {
+		d.ContextUsed, d.ContextSize, d.Estimated, d.ThresholdPct = prev.Estimate.Used, prev.Estimate.Size, true, EstimatedHandoffPct
+	}
 	if d.ContextSize > 0 {
 		d.OccupancyPct = math.Round(1000*float64(d.ContextUsed)/float64(d.ContextSize)) / 10
 	}
@@ -164,13 +185,26 @@ func DecideSession(prev *WorkOutput, p SessionPlan) SessionDecision {
 		d.Compactions = prev.Compactions()
 		return handoff(HandoffContextPressure, "the agent's CLI compacted the session's context during the previous turn (it ran out of room)")
 	case d.ContextSize <= 0:
-		d.Action, d.Reason = SessionFresh, "the previous turn reported no context occupancy: a fresh session with the task and the latest feedback"
+		d.Action, d.Reason = SessionFresh, "the previous turn reported no context occupancy and Drydock has no estimate of it: a fresh session with the task and the latest feedback"
 		return d
-	case d.ContextUsed*100 >= d.ContextSize*ContextHandoffPct:
-		return handoff(HandoffContextPressure, fmt.Sprintf("%s is at or above the %d%% threshold", occ, ContextHandoffPct))
+	case d.ContextUsed*100 >= d.ContextSize*int64(d.ThresholdPct):
+		return handoff(HandoffContextPressure, fmt.Sprintf("%s is at or above the %d%% threshold%s", occ, d.ThresholdPct, estimatedNote(d)))
+	case prev.Corrections >= MaxSessionCorrections:
+		d.Corrections = prev.Corrections
+		return handoff(HandoffCorrections, fmt.Sprintf("the session was corrected %d times (a failing check or a review sent the work back each time), "+
+			"and a session that needed %d corrections restarts rather than carry the approaches that failed", prev.Corrections, MaxSessionCorrections))
 	}
-	d.Action, d.Reason = SessionContinue, fmt.Sprintf("%s is below the %d%% threshold: the same session continues", occ, ContextHandoffPct)
+	d.Corrections = prev.Corrections
+	d.Action, d.Reason = SessionContinue, fmt.Sprintf("%s is below the %d%% threshold%s: the same session continues", occ, d.ThresholdPct, estimatedNote(d))
 	return d
+}
+
+// estimatedNote says, after an occupancy, that it is Drydock's estimate and why its threshold is lower.
+func estimatedNote(d SessionDecision) string {
+	if !d.Estimated {
+		return ""
+	}
+	return fmt.Sprintf(" (Drydock's estimate: the CLI reports no occupancy, so an estimate is held to %d%%, not %d%%)", EstimatedHandoffPct, ContextHandoffPct)
 }
 
 func orNone(model string) string {
@@ -530,7 +564,7 @@ func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Ta
 	dec := DecideSession(prev, SessionPlan{Agent: cfg.AgentID, Adapter: cfg.Adapter, Model: cfg.Spec.Model, CanResume: d.canResume(cfg),
 		Escalated: routed.Handoff, Interrupted: in.Previous != nil, WatchdogPause: watchdogNotice(in)})
 	started := storage.Now()
-	turnPrompt := d.prepareSession(ctx, in, t, &cfg, prev, &dec, pieces)
+	turnPrompt, sent := d.prepareSession(ctx, in, t, &cfg, prev, &dec, pieces)
 	out, err := d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return turnPrompt }})(ctx, in)
 	if dec.Action == SessionContinue && resumeFailed(ctx, out, err) {
 		// the stored session is gone (deleted, or kept by another machine): hand the work to a fresh session instead
@@ -538,7 +572,7 @@ func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Ta
 		dec.Action, dec.Trigger = SessionHandoff, HandoffResumeFailed
 		dec.Reason = "session " + failed + " could not be resumed: a fresh session seeded with a handoff artifact, never the transcript"
 		cfg.Spec.ResumeID, cfg.Spec.UsageBaseline = "", nil
-		turnPrompt = d.prepareSession(ctx, in, t, &cfg, prev, &dec, pieces)
+		turnPrompt, sent = d.prepareSession(ctx, in, t, &cfg, prev, &dec, pieces)
 		out, err = d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return turnPrompt }})(ctx, in)
 	}
 	if err != nil {
@@ -555,7 +589,15 @@ func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Ta
 		if d.OnTurn != nil && strings.TrimSpace(res.Text) != "" {
 			d.OnTurn(ctx, t, cfg.AgentID, "work", res.Text)
 		}
-		b, _ := json.Marshal(WorkOutput{TurnResult: res, Agent: cfg.AgentID, Adapter: cfg.Adapter, Model: cfg.Spec.Model, Session: &dec, StartedAt: started})
+		wo := WorkOutput{TurnResult: res, Agent: cfg.AgentID, Adapter: cfg.Adapter, Model: cfg.Spec.Model, Session: &dec, StartedAt: started,
+			Estimate: d.estimateTurn(ctx, cfg, prev, dec, sent, res)}
+		if dec.Action == SessionContinue && prev != nil {
+			wo.Corrections = prev.Corrections
+		}
+		if Corrected(in) {
+			wo.Corrections++
+		}
+		b, _ := json.Marshal(wo)
 		out.Value = b
 	}
 	return out, nil
@@ -565,7 +607,7 @@ func (d Deps) runWorkTurn(ctx context.Context, in workflow.NodeInput, t tasks.Ta
 // session's own handoff when it passes Drydock's checks) and put before the prompt. It assembles the package under the project's
 // ceiling, records the decision and the package in the manifest and as an agent.session event, and returns the prompt the turn
 // sends.
-func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg *rt.Config, prev *WorkOutput, dec *SessionDecision, pieces []ctxeng.Piece) string {
+func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg *rt.Config, prev *WorkOutput, dec *SessionDecision, pieces []ctxeng.Piece) (string, int) {
 	var head []ctxeng.Piece
 	var check *AgentHandoffCheck
 	switch dec.Action {
@@ -620,6 +662,12 @@ func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks
 		"contextUsed": dec.ContextUsed, "contextSize": dec.ContextSize, "thresholdPct": dec.ThresholdPct, "handoff": dec.Handoff,
 		"fromModel": dec.FromModel, "toModel": dec.ToModel, "node": string(in.NodeID), "attempt": in.Attempt,
 		"packageTokens": asm.Tokens, "packageCeiling": asm.Ceiling, "leftOut": len(asm.LeftOut())}
+	if dec.Estimated {
+		data["estimated"] = true
+	}
+	if dec.Corrections > 0 {
+		data["corrections"] = dec.Corrections
+	}
 	if dec.Request != nil {
 		data["handoffRequest"] = dec.Request.Outcome
 		data["handoffRequestReason"] = dec.Request.Reason
@@ -635,7 +683,7 @@ func (d Deps) prepareSession(ctx context.Context, in workflow.NodeInput, t tasks
 	if d.Bus != nil {
 		_, _ = d.Bus.Publish(ctx, events.Event{Type: "agent.session", ProjectID: t.ProjectID, TaskID: t.ID, RunID: string(in.RunID), AgentID: cfg.AgentID, Data: b})
 	}
-	return asm.Text
+	return asm.Text, asm.Tokens
 }
 
 // resumeFailed reports whether a turn that tried to continue a session failed before the session started.

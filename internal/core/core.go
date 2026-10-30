@@ -334,6 +334,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			return c.projectDir(p)
 		},
 	}
+	c.Deps.ContextWindow = c.modelWindow // sizes the occupancy estimate of a CLI that reports none (P128)
 	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps), Redact: c.Scanner.Redact})
 	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, c.watchdogHooks(), watchdog.ForNode)
 	c.Engine.Use(workflow.KindAgentTask, c.Watch.Middleware())
@@ -952,6 +953,23 @@ func (c *Core) agentTier(a Agent) string {
 		}
 	}
 	return "premium"
+}
+
+// modelWindow is pipeline.Deps.ContextWindow (decision P128): the context length the provider catalog gives a turn's model, on
+// the agent's own provider when it has one, else the smallest any provider lists for that model (an estimate held to the smaller
+// window errs toward a fresh session); 0 when no catalog row knows the model.
+func (c *Core) modelWindow(ctx context.Context, cfg rt.Config) int64 {
+	if cfg.Spec.Model == "" {
+		return 0
+	}
+	if a, err := c.agent(ctx, cfg.AgentID); err == nil && a.ProviderID != "" && c.Providers != nil {
+		if m, err := c.Providers.Model(ctx, a.ProviderID, cfg.Spec.Model); err == nil && m.ContextLength > 0 {
+			return int64(m.ContextLength)
+		}
+	}
+	var n sql.NullInt64
+	_ = c.DB.Reader().QueryRowContext(ctx, `SELECT MIN(context_length) FROM model_catalog WHERE model=? AND context_length>0`, cfg.Spec.Model).Scan(&n)
+	return n.Int64
 }
 
 func providerLabel(a Agent) string {

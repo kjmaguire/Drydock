@@ -622,6 +622,10 @@ type TurnResult struct {
 	// Started is false for a turn that ended without its session ever starting: no session announcement, no text, no tool
 	// call (Claude Code answers a --resume of a session it does not have with an error result and nothing else).
 	Started bool `json:"started"`
+	// SeenBytes is the size of what the turn added to the session that the runtime saw: its complete messages, tool calls and
+	// tool results, as their chunks encode them. The session policy estimates a session's occupancy from it when the CLI reports
+	// none (internal/pipeline, decision P128).
+	SeenBytes int64 `json:"seenBytes,omitempty"`
 }
 
 // Controller implements workflow.TurnController for one managed session (the watchdog steers through it).
@@ -715,6 +719,10 @@ func (m *Managed) RunTurnImages(ctx context.Context, prompt string, images []age
 			m.observe(ctx, c)
 			if emit != nil {
 				emit(c)
+			}
+			switch c.Kind {
+			case workflow.ChunkMessageEnd, workflow.ChunkToolCall, workflow.ChunkToolResult:
+				res.SeenBytes += int64(len(c.Data))
 			}
 			switch c.Kind {
 			case workflow.ChunkMessageEnd:

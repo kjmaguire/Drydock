@@ -75,7 +75,8 @@ func TestAskForHandoffOnlyWhenTheOutgoingSessionCanAnswer(t *testing.T) {
 	dec := func(trigger string) pipeline.SessionDecision {
 		return pipeline.SessionDecision{Action: pipeline.SessionHandoff, Trigger: trigger}
 	}
-	for _, trig := range []string{pipeline.HandoffContextPressure, pipeline.HandoffEscalation, pipeline.HandoffModelChange} {
+	// since P128 also when another agent takes over (the outgoing agent is asked) and after two corrections
+	for _, trig := range []string{pipeline.HandoffContextPressure, pipeline.HandoffEscalation, pipeline.HandoffModelChange, pipeline.HandoffAgentChange, pipeline.HandoffCorrections} {
 		if ask, _, why := pipeline.AskForHandoff(dec(trig), prev, true, true); !ask {
 			t.Errorf("%s: not asked: %s", trig, why)
 		}
@@ -91,7 +92,6 @@ func TestAskForHandoffOnlyWhenTheOutgoingSessionCanAnswer(t *testing.T) {
 		{dec(pipeline.HandoffInterrupted), prev, true, true, pipeline.HandoffNotAsked, "after a crash"},
 		{dec(pipeline.HandoffWatchdog), prev, true, true, pipeline.HandoffNotAsked, "the watchdog stopped"},
 		{dec(pipeline.HandoffResumeFailed), prev, true, true, pipeline.HandoffNotAsked, "could not be resumed"},
-		{dec(pipeline.HandoffAgentChange), prev, true, true, pipeline.HandoffNotAsked, "another agent takes the task over"},
 		{dec(pipeline.HandoffContextPressure), prev, false, true, pipeline.HandoffNotAsked, "cannot continue a stored session"},
 		{dec(pipeline.HandoffContextPressure), prev, true, false, pipeline.HandoffNotAsked, "no handoff tool"},
 		{dec(pipeline.HandoffContextPressure), nil, true, true, pipeline.HandoffNotAsked, "no outgoing session"},

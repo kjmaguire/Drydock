@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,6 +17,11 @@ import (
 //   - a review finding: the newest review asked for changes and its feedback names the criterion's id (not met). A reviewer is an
 //     agent: a review never confirms a criterion met;
 //   - a person's word (tasks.CriterionMark): met, not met, waived with a reason, or open again.
+//
+// Since P128 a criterion may also name one of the project's checks ("[check: lint]", "(check: e2e)"): the newest result of that
+// check with a verdict confirms it met or shows it not met, beside the test-name trace. A name that is not a check kind never
+// gives a fact (the criterion stays open, never a silent pass), and the review step raises a finding for a check the project does
+// not run (AcceptanceFindings), as it does for a criterion written without an id.
 //
 // A waiver holds until the person reopens or marks the criterion otherwise. Otherwise the newest of the person's word, the check
 // result and the review finding counts (on the same moment, the person's). An agent's claim that a criterion is met (claim_met,
@@ -42,6 +48,8 @@ type CriterionStatus struct {
 	Index  int    `json:"index"` // its place in the task's acceptance list, from 0
 	ID     string `json:"id"`    // AC1, AC2...: '' for a criterion written without one
 	Status string `json:"status"`
+	// Check is the check the criterion names to confirm it (CriterionCheck); '' when it names none.
+	Check string `json:"check,omitempty"`
 	// Source, By, Evidence and At say what showed the status: a check (By its kind), a review (By the reviewer) or a person
 	// (By their human: identity), what it was (the test, the finding, the person's reason) and when (Unix ms). Empty when open.
 	Source   string `json:"source,omitempty"`
@@ -75,7 +83,7 @@ func CriteriaStatus(acceptance []string, ev []tasks.Evidence, reviews []tasks.Re
 	}
 	out := make([]CriterionStatus, 0, len(acceptance))
 	for i, text := range acceptance {
-		cs := CriterionStatus{Index: i, ID: criterionID(text), Status: CriterionOpen}
+		cs := CriterionStatus{Index: i, ID: criterionID(text), Status: CriterionOpen, Check: CriterionCheck(text)}
 		sha := tasks.CriterionSHA(text)
 		type fact struct {
 			status, source, by, evidence string
@@ -101,6 +109,13 @@ func CriteriaStatus(acceptance []string, ev []tasks.Evidence, reviews []tasks.Re
 				facts = append(facts, fact{CriterionMet, SourceCheck, "test", "the newest test run passed, and its tests carry " + cs.ID, testAt})
 			case CriterionFailing:
 				facts = append(facts, fact{CriterionNotMet, SourceCheck, "test", "failing: " + shortLine(strings.Join(namesWith(failing, cs.ID), ", "), 300), testAt})
+			}
+		}
+		if e := newestVerdict(ev, cs.Check); e != nil {
+			if *e.Passed {
+				facts = append(facts, fact{CriterionMet, SourceCheck, cs.Check, "the newest " + cs.Check + " check passed", e.Created})
+			} else {
+				facts = append(facts, fact{CriterionNotMet, SourceCheck, cs.Check, "the newest " + cs.Check + " check failed: " + shortLine(e.Summary, 300), e.Created})
 			}
 		}
 		if last != nil && cs.ID != "" && strings.EqualFold(last.Verdict, "REVISE") {
@@ -154,6 +169,86 @@ func CriteriaSummary(cs []CriterionStatus) string {
 		parts = append(parts, s)
 	}
 	return strings.Join(parts, "; ")
+}
+
+// checkRef is how a criterion names the check that confirms it: "[check: lint]" or "(check: e2e)", anywhere in its text.
+var checkRef = regexp.MustCompile(`(?i)[\[(]\s*check\s*:\s*([a-z0-9][a-z0-9_.-]*)\s*[\])]`)
+
+// CriterionCheck is the check a criterion names to confirm it, in lower case; empty when it names none.
+func CriterionCheck(text string) string {
+	if m := checkRef.FindStringSubmatch(text); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return ""
+}
+
+// newestVerdict is the newest result with a verdict of a check kind: nil when there is none, and for a name that is not a check
+// kind (an approval, a spec acceptance or any other evidence never confirms a criterion).
+func newestVerdict(ev []tasks.Evidence, kind string) *tasks.Evidence {
+	if !CheckKinds[kind] {
+		return nil
+	}
+	var out *tasks.Evidence
+	for i := range ev {
+		if ev[i].Kind == kind && ev[i].Passed != nil {
+			out = &ev[i]
+		}
+	}
+	return out
+}
+
+// What the review step finds wrong with how the acceptance criteria are written (decision P128). The severities are those of the
+// security scan's findings (scan.Severity); no finding blocks anything: each is recorded as evidence without a verdict.
+const (
+	FindingNoID         = "criterion_without_id"
+	FindingUnknownCheck = "criterion_unknown_check"
+	// ReviewFindingKind is the evidence kind of a finding.
+	ReviewFindingKind = "review_finding"
+)
+
+// AcceptanceFinding is one finding about how an acceptance criterion is written.
+type AcceptanceFinding struct {
+	Kind      string `json:"kind"`
+	Severity  string `json:"severity"`  // low | medium
+	Criterion int    `json:"criterion"` // its place in the task's acceptance list, from 0
+	Check     string `json:"check,omitempty"`
+	Text      string `json:"text"`
+}
+
+// AcceptanceFindings lists what is wrong with how the criteria are written: a criterion without an id (no test, review or handoff
+// can name it; low), and one that names a check the project does not run, which no check could ever confirm (medium). known are
+// the checks the project runs.
+func AcceptanceFindings(acceptance []string, known []string) []AcceptanceFinding {
+	var out []AcceptanceFinding
+	next := 1
+	for _, a := range acceptance {
+		if n, err := strconv.Atoi(strings.TrimPrefix(criterionID(a), "AC")); err == nil && n >= next {
+			next = n + 1
+		}
+	}
+	have := map[string]bool{}
+	for _, k := range known {
+		have[k] = true
+	}
+	for i, a := range acceptance {
+		name := "criterion " + criterionID(a)
+		if criterionID(a) == "" {
+			name = "criterion " + strconv.Itoa(i+1)
+			want := fmt.Sprintf("AC%d %s", next, shortLine(strings.TrimSpace(a), 60))
+			next++
+			out = append(out, AcceptanceFinding{Kind: FindingNoID, Severity: "low", Criterion: i, Text: fmt.Sprintf("Acceptance criterion %d has no id, so no "+
+				"test, review or handoff can name it and no test can be traced to it: start it with an id, for example %q.", i+1, want)})
+		}
+		if c := CriterionCheck(a); c != "" && !have[c] {
+			runs := "none"
+			if len(known) > 0 {
+				runs = strings.Join(known, ", ")
+			}
+			out = append(out, AcceptanceFinding{Kind: FindingUnknownCheck, Severity: "medium", Criterion: i, Check: c, Text: fmt.Sprintf("Acceptance %s names "+
+				"the check %q, which this project does not run (its checks: %s), so no check can confirm it: name one of those, or a person marks it.", name, c, runs)})
+		}
+	}
+	return out
 }
 
 // namesWith are the names that carry a criterion's id.

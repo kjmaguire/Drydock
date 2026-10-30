@@ -19,8 +19,10 @@ import (
 // first resumes that session for one short turn of its own: a small budget of new tokens and a time limit, read-only, and a
 // prompt that asks only for a handoff written with the handoff tool. What the agent writes is then checked as any agent handoff
 // is (VerifyAgentHandoff). Drydock writes the handoff itself, and records why, when the agent is not asked (a crash, a watchdog
-// stop, another agent taking over, a CLI that cannot resume, no handoff tool, no room left in the session), does not answer in
-// time, ends its turn without a handoff, answers badly (the check rejects it), or goes over the budget.
+// stop, a CLI that cannot resume, no handoff tool, no room left in the session), does not answer in time, ends its turn without a
+// handoff, answers badly (the check rejects it), or goes over the budget. Since P128 the outgoing agent is asked too when another
+// agent takes the task over (resumed with its own config, before the new agent starts), and no agent is asked when the handoff
+// it left during its turn already passes Drydock's checks.
 
 // Bounds of the handoff turn.
 const (
@@ -48,7 +50,9 @@ type HandoffRequest struct {
 	Asked   bool   `json:"asked"`
 	Outcome string `json:"outcome"`
 	Reason  string `json:"reason"`
-	// Session is the outgoing session asked; Model the model it ran on.
+	// Agent is the outgoing agent (another agent than the next turn's when it takes the task over, P128), Session the outgoing
+	// session asked, Model the model it ran on.
+	Agent   string `json:"agent,omitempty"`
 	Session string `json:"session,omitempty"`
 	Model   string `json:"model,omitempty"`
 	// Tokens are the new tokens the turn used, against Budget; TimeoutS is its time limit in seconds.
@@ -76,14 +80,15 @@ func AskForHandoff(dec SessionDecision, prev *WorkOutput, canResume, hasTool boo
 		return false, HandoffNotAsked, "the watchdog stopped the outgoing session: Drydock writes the handoff of a stopped session"
 	case dec.Trigger == HandoffResumeFailed:
 		return false, HandoffNotAsked, "the outgoing session could not be resumed"
-	case dec.Trigger == HandoffAgentChange:
-		return false, HandoffNotAsked, "another agent takes the task over: Drydock does not start the outgoing agent again"
 	case !canResume:
 		return false, HandoffNotAsked, "the outgoing agent's CLI cannot continue a stored session, so it cannot be asked"
 	case !hasTool:
 		return false, HandoffNotAsked, "the outgoing agent has no handoff tool here (no MCP gateway, or the project does not let agents act)"
 	}
 	used, size, _ := prev.Occupancy()
+	if size <= 0 && prev.Estimate != nil {
+		used, size = prev.Estimate.Used, prev.Estimate.Size
+	}
 	if size > 0 && size-used < HandoffTurnRoom {
 		return false, HandoffOverBudget, fmt.Sprintf("the outgoing session has %d tokens of its context window left, less than the %d the handoff turn needs", max(size-used, 0), HandoffTurnRoom)
 	}
@@ -136,19 +141,32 @@ func (d Deps) hasHandoffTool(ctx context.Context, t tasks.Task, agentID string) 
 }
 
 // requestHandoff asks the outgoing session for a handoff in a bounded turn, when it can be asked, and says what came of it.
-// cfg is the next turn's config: the outgoing session is the same agent and CLI (another agent is never asked), on the model
-// the previous turn ran on.
+// cfg is the next turn's config. The outgoing session is resumed on the model the previous turn ran on, by the same agent; when
+// another agent takes the task over (P128), by the outgoing agent, with its own config, before the new agent's session starts.
 func (d Deps) requestHandoff(ctx context.Context, in workflow.NodeInput, t tasks.Task, cfg rt.Config, prev *WorkOutput, dec SessionDecision) HandoffRequest {
 	r := HandoffRequest{Budget: d.handoffTurnTokens(), TimeoutS: int(d.handoffTurnTimeout() / time.Second)}
+	hc := cfg
 	if prev != nil {
 		r.Session, r.Model = prev.SessionID, prev.Model
+		if dec.Trigger == HandoffAgentChange && prev.Agent != "" && d.AgentConfig != nil {
+			hc = d.outgoingConfig(t, prev.Agent)
+			if hc.Adapter != prev.Adapter {
+				r.Agent, r.Outcome, r.Reason = hc.AgentID, HandoffNotAsked, "the outgoing agent no longer runs the CLI its session was on, so the session cannot be resumed"
+				return r
+			}
+		}
 	}
-	ask, outcome, why := AskForHandoff(dec, prev, d.canResume(cfg), d.hasHandoffTool(ctx, t, cfg.AgentID))
+	r.Agent = hc.AgentID
+	ask, outcome, why := AskForHandoff(dec, prev, d.canResume(hc), d.hasHandoffTool(ctx, t, hc.AgentID))
 	if !ask {
 		r.Outcome, r.Reason = outcome, why
 		return r
 	}
-	hc := cfg
+	// a handoff the outgoing agent left during its turn that passes Drydock's checks is missing nothing: no turn is needed for it
+	if c := d.checkAgentHandoff(ctx, t, prev, HandoffArtifact{}); c != nil && c.Accepted {
+		r.Outcome, r.Reason = HandoffNotAsked, "the outgoing session's own handoff "+c.ID+" from its turn passed Drydock's checks, so nothing is missing to ask for"
+		return r
+	}
 	hc.Spec.Model = prev.Model
 	_, _, totals := prev.Occupancy()
 	hc.Spec.ResumeID, hc.Spec.UsageBaseline = prev.SessionID, totals
@@ -168,7 +186,7 @@ func (d Deps) requestHandoff(ctx context.Context, in workflow.NodeInput, t tasks
 	if r.CostUSD > 0 && d.Tasks != nil {
 		_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{AddCost: r.CostUSD})
 	}
-	written := d.handoffWrittenSince(ctx, t.ID, cfg.AgentID, r.StartedAt)
+	written := d.handoffWrittenSince(ctx, t.ID, hc.AgentID, r.StartedAt)
 	switch {
 	case ctx.Err() != nil:
 		r.Outcome, r.Reason = HandoffNoAnswer, "the run was stopped while the outgoing session was asked"
@@ -189,6 +207,16 @@ func (d Deps) requestHandoff(ctx context.Context, in workflow.NodeInput, t tasks
 		r.Handoff = written
 	}
 	return r
+}
+
+// outgoingConfig is the work config of the agent a task is moving away from: the task as it was assigned to it.
+func (d Deps) outgoingConfig(t tasks.Task, agentID string) rt.Config {
+	ot := t
+	ot.Assignee = agentID
+	oc := d.AgentConfig(ot, "work")
+	oc.TaskID, oc.ProjectID = t.ID, t.ProjectID
+	oc.Spec.Cwd = t.Worktree
+	return oc
 }
 
 // handoffWrittenSince is the newest handoff an agent wrote with the handoff tool for a task since a time (” when none).
