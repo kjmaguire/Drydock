@@ -2170,7 +2170,8 @@ Open, owner action:
   `ext_connhistory_test.go`, `ext_keys_test.go`, `ext_economics_test.go`'s list, `internal/connections/history_test.go`,
   `internal/projectio` (the table decided for export, deletion and an older archive); the UI's `lib/keys.test.ts`,
   `shell/regions.test.browser.tsx`, `a11y.test.browser.tsx`, `settings/keyboard.test.browser.tsx`, `settings-screen.test.browser.tsx`,
-  `agents.test.ts`, `agents-screen.test.browser.tsx`, `models.test.ts`, `models-screen.test.browser.tsx`, `client.test.ts`.
+  `agents.test.ts`, `agents-screen.test.browser.tsx`, `models.test.ts`, `models-screen.test.browser.tsx`, `client.test.ts`; the e2e
+  `keys.spec.ts` (new) and `wsl.spec.ts` (the history after a reload), with `smoke` and `density`.
   **Not built:** `Ctrl+.` in a direct-message room and Esc Esc in a room's composer (P130's), a binding of a key pressed after
   another (the chords G then I, J and K stay as they are), a binding per person rather than per workspace. **Not verified:** a
   real Gemma 4 assistant file against either build (fixture GGUF headers and the labelled stand-in only) and whether it speeds
