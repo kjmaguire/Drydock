@@ -70,8 +70,12 @@ func TestAPersonBindsAShortcutAndTheCoreKeepsIt(t *testing.T) {
 
 // The core's shortcuts and defaults are the keyboard map's (ui/app/lib/keys.ts KEYMAP, the lines with an id), and its reserved
 // keys the page's RESERVED: a shortcut added on one side only would be refused by the core or bound to keys the page never
-// checks.
+// checks. The Windows verification bundle runs the compiled test without the source tree, so it is skipped there; CI's go job
+// runs it from the source on Linux and Windows.
 func TestTheCoresShortcutsAreTheKeyboardMaps(t *testing.T) {
+	if _, err := os.Stat(filepath.Join("..", "..", "go.mod")); err != nil {
+		t.Skip("not run from the source checkout: there is no keys.ts here to compare")
+	}
 	src, err := os.ReadFile(filepath.Join("..", "..", "ui", "app", "lib", "keys.ts"))
 	if err != nil {
 		t.Fatal(err)
