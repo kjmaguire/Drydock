@@ -2281,3 +2281,20 @@ Open, owner action:
   once-only check fails it), `TestTheRoomIsToldWhenAWorkTurnNamedTheTasksFiles` (pipeline: the hook is called once with the
   files already stored). **Not built:** a rule for channels, desktop notifications. **Not verified:** a real work turn on a
   real CLI naming the files, Windows.
+- **P133 (2). A vulnerable package the base already had is not the task's (2026-10-30).** The same night's second item, from
+  `security-scan.md` section 7 ("the check does not compare a lockfile with its base"). A task that changed one line of a
+  lockfile owned every vulnerable package in it, which it cannot fix: the worker was sent back for them until the iteration limit
+  parked the task. `scan.CheckOptions.BaseFile` (the pipeline wires it to the repository at the task's merge base,
+  `Repo.ShowFileMax`, 64 MiB) gives the base's copy of each file the counted dependency findings are in; those copies are written
+  to a temporary folder (a path that is not local to it is never read) and the dependency engine runs over it with the same
+  tool, environment and redaction. A finding is the base's when the file, package and version are the same (the advisory ids are
+  left out of the key: the database can move between two runs a minute apart); another version of the package is a new finding
+  for the task, as is a file the base does not have. The comparison runs only in the judging-the-change mode and only when a
+  dependency finding would count, so a task that touches no lockfile pays nothing. If the base cannot be read or scanned the
+  comparison is not made: every finding still counts (never fewer than before) and the output says "not compared with the base".
+  Tests: `TestADependencyTheBaseAlreadyHadIsNotTheTasks` and `TestTheBaseNotBeingReadableLeavesEveryFindingCounted` (scan: the
+  stand-in osv-scanner got `--follow-tree`, which answers from the go.mod of the folder it scans; mutating the subtraction fails
+  the first), `TestAVulnerablePackageTheBaseHadIsNotTheWorkersToFix` and `TestAVulnerablePackageTheWorkerBroughtGoesBackToTheWorker`
+  (pipeline: a real git repository, the base read at the merge base, the stand-in tools; without the wiring the first never
+  passes). **Not built:** a cache of the tools' results across passes of Verify. **Not verified:** a real osv-scanner over a
+  base folder of one lockfile (the stand-in follows go.mod only), a lockfile osv-scanner reads only together with its manifest.

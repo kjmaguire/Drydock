@@ -703,6 +703,15 @@ func (d Deps) scanSpec(ctx context.Context, repo *git.Repo, t tasks.Task, change
 	o := d.ScanTools(ctx, t.ProjectID)
 	if change {
 		o.Added = func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }
+		// a dependency finding the base already had is not the task's (decision P133)
+		o.BaseFile = func(ctx context.Context, path string) (string, bool, error) {
+			w := worktreeOf(t)
+			base, err := repo.MergeBase(ctx, w, w.Base)
+			if err != nil {
+				return "", false, err
+			}
+			return repo.ShowFileMax(ctx, base, path, 64<<20)
+		}
 	}
 	return scan.CheckSpec(t.Worktree, o)
 }
