@@ -137,3 +137,10 @@ func SetSlowCallForTests(d time.Duration) func() {
 	slowCall = d
 	return func() { slowCall = old }
 }
+
+// SetLocalServeProbedForTests makes every start of the local model server call f after its probe, before it writes the
+// settings; the returned func removes it.
+func SetLocalServeProbedForTests(f func()) func() {
+	localServeProbed.Store(&f)
+	return func() { localServeProbed.Store(nil) }
+}

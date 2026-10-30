@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/localllm"
@@ -305,6 +306,7 @@ type localExt struct {
 	devices   localllm.Devices
 	devFor    string     // the server program the devices were read for ("" until a build was asked)
 	devMu     sync.Mutex // one device probe at a time
+	setMu     sync.Mutex // one change of the saved settings at a time (update)
 	starting  bool
 	latest    string // the installed build's newest release, as the last update check read it (under mu)
 	latestFor string // the source and backend that release is of (buildKey), so a build of another one is never offered it
@@ -387,20 +389,44 @@ func (l *localExt) save(ctx context.Context, s LocalSettings) error {
 	})
 }
 
+// localServeProbed, when set (tests only), runs after a start's probe, before the start writes the settings.
+var localServeProbed atomic.Pointer[func()]
+
+// update changes the saved settings by fn, read and written as one step: a slow step (a server's load, a probe) between a
+// read and its write would otherwise put back what a person changed meanwhile (CI 2026-10-30: a cache type set while the
+// server started again after an update was lost). fn's error leaves the settings as they were.
+func (l *localExt) update(ctx context.Context, fn func(*LocalSettings) error) error {
+	l.setMu.Lock()
+	defer l.setMu.Unlock()
+	s := l.settings(ctx)
+	if err := fn(&s); err != nil {
+		return err
+	}
+	return l.save(ctx, s)
+}
+
 func (l *localExt) setSettings(ctx context.Context, e LocalSettingsEdit, by string) (LocalView, error) {
 	if !isPerson(by) {
 		return LocalView{}, errors.New("only a person may change the local models' settings")
 	}
-	s := l.settings(ctx)
+	if err := l.update(ctx, func(s *LocalSettings) error { return l.edit(s, e) }); err != nil {
+		return LocalView{}, err
+	}
+	l.changed("settings", nil)
+	return l.view(ctx), nil
+}
+
+// edit applies a person's edit to the settings, refusing a value the build or this PC cannot take.
+func (l *localExt) edit(s *LocalSettings, e LocalSettingsEdit) error {
 	if e.Source != nil {
 		if _, ok := localllm.SourceByID(*e.Source); !ok {
-			return LocalView{}, fmt.Errorf("%q is not a build source", *e.Source)
+			return fmt.Errorf("%q is not a build source", *e.Source)
 		}
 		s.Source = *e.Source
 	}
 	if e.Backend != nil {
 		if *e.Backend != "" && !e.Backend.Valid() {
-			return LocalView{}, fmt.Errorf("%q is not a backend", *e.Backend)
+			return fmt.Errorf("%q is not a backend", *e.Backend)
 		}
 		s.Backend = *e.Backend
 	}
@@ -414,30 +440,30 @@ func (l *localExt) setSettings(ctx context.Context, e LocalSettingsEdit, by stri
 			}
 		}
 		if !src.CacheType(*e.CacheType) {
-			return LocalView{}, fmt.Errorf("%q is not a KV cache type of %s (one of %s)", *e.CacheType, src.Name, strings.Join(src.CacheTypes, ", "))
+			return fmt.Errorf("%q is not a KV cache type of %s (one of %s)", *e.CacheType, src.Name, strings.Join(src.CacheTypes, ", "))
 		}
 		s.CacheType = *e.CacheType
 	}
 	if e.ContextSize != nil {
 		if *e.ContextSize < 0 || *e.ContextSize > 4_000_000 || (*e.ContextSize > 0 && *e.ContextSize < 1024) {
-			return LocalView{}, errors.New("the context size is tokens: 0 for the model's own, else at least 1024")
+			return errors.New("the context size is tokens: 0 for the model's own, else at least 1024")
 		}
 		s.ContextSize = *e.ContextSize
 	}
 	if e.Port != nil {
 		if *e.Port < 1024 || *e.Port > 65535 {
-			return LocalView{}, errors.New("the port must be between 1024 and 65535")
+			return errors.New("the port must be between 1024 and 65535")
 		}
 		s.Port = *e.Port
 	}
 	if e.EmbeddingPort != nil {
 		if *e.EmbeddingPort < 1024 || *e.EmbeddingPort > 65535 {
-			return LocalView{}, errors.New("the port must be between 1024 and 65535")
+			return errors.New("the port must be between 1024 and 65535")
 		}
 		s.EmbeddingPort = *e.EmbeddingPort
 	}
 	if (e.Port != nil || e.EmbeddingPort != nil) && s.Port == s.EmbeddingPort {
-		return LocalView{}, errors.New("the embedding server needs a port of its own")
+		return errors.New("the embedding server needs a port of its own")
 	}
 	if e.Autostart != nil {
 		s.Autostart = *e.Autostart
@@ -445,11 +471,7 @@ func (l *localExt) setSettings(ctx context.Context, e LocalSettingsEdit, by stri
 	if e.RankPacks != nil {
 		s.RankPacks = *e.RankPacks
 	}
-	if err := l.save(ctx, s); err != nil {
-		return LocalView{}, err
-	}
-	l.changed("settings", nil)
-	return l.view(ctx), nil
+	return nil
 }
 
 func (l *localExt) view(ctx context.Context) LocalView {
@@ -568,7 +590,10 @@ func (l *localExt) startInstall(ctx context.Context, source string, backend loca
 	l.job = job
 	l.jobCancel = cancel
 	l.mu.Unlock()
-	if err := l.save(ctx, s); err != nil {
+	if err := l.update(ctx, func(cur *LocalSettings) error {
+		cur.Source, cur.Backend, cur.CacheType = s.Source, s.Backend, s.CacheType
+		return nil
+	}); err != nil {
 		// nothing will run: the job must not stay "running" and block every later install
 		cancel()
 		l.mu.Lock()
@@ -847,10 +872,10 @@ func (l *localExt) removeModel(ctx context.Context, id string, by string) (Local
 		return LocalView{}, err
 	}
 	// the settings forget it: as the model served last, among the models kept loaded, as a draft and as the embedding model
-	s := l.settings(ctx)
-	if forgetModel(&s, id) {
-		_ = l.save(ctx, s)
-	}
+	_ = l.update(ctx, func(s *LocalSettings) error {
+		forgetModel(s, id)
+		return nil
+	})
 	l.changed("models", map[string]any{"id": id})
 	return l.view(ctx), nil
 }
@@ -942,19 +967,29 @@ func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) erro
 	if err := l.m.Server.Start(ctx, launch); err != nil {
 		return err
 	}
-	// the settings are read again: a person may have changed one while the models loaded
+	// the settings are read again: a person may have changed one while the models loaded; only what this start decided is
+	// written, and as one step, so a change made during the probe below is kept too
 	s = l.settings(ctx)
 	s.ModelID, s.Loaded = modelIDs[0], append([]string{}, modelIDs...)
-	if id, err := l.ensureProvider(ctx, s, key); err != nil {
+	provID, err := l.ensureProvider(ctx, s, key)
+	if err != nil {
 		l.c.logf("local models: provider: %v", err)
 	} else {
-		s.ProviderID = id
-		if _, err := l.c.Prober.Probe(ctx, id); err != nil {
+		if _, err := l.c.Prober.Probe(ctx, provID); err != nil {
 			l.c.logf("local models: probe: %v", err)
 		}
-		_, _ = l.c.Health.CheckNow(ctx, id)
+		_, _ = l.c.Health.CheckNow(ctx, provID)
 	}
-	if err := l.save(ctx, s); err != nil {
+	if f := localServeProbed.Load(); f != nil {
+		(*f)()
+	}
+	if err := l.update(ctx, func(cur *LocalSettings) error {
+		cur.ModelID, cur.Loaded = modelIDs[0], append([]string{}, modelIDs...)
+		if provID != "" {
+			cur.ProviderID = provID
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	l.changed("server", map[string]any{"state": "running", "modelId": modelIDs[0], "models": modelIDs})
@@ -975,7 +1010,10 @@ func (l *localExt) changedInPlace(ctx context.Context, ids []string) error {
 		}
 		_, _ = l.c.Health.CheckNow(ctx, s.ProviderID)
 	}
-	if err := l.save(ctx, s); err != nil {
+	if err := l.update(ctx, func(cur *LocalSettings) error {
+		cur.ModelID, cur.Loaded = s.ModelID, s.Loaded
+		return nil
+	}); err != nil {
 		return err
 	}
 	l.changed("server", map[string]any{"state": "running", "modelId": s.ModelID, "models": s.Loaded, "inPlace": true})
@@ -1130,9 +1168,10 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 		if did {
 			l.c.logf("local models: %s %s (%s) installed from the download", src.Name, in.Tag, in.Backend)
 			if !chosen {
-				s := l.settings(context.Background())
-				s.Source, s.Backend, s.CacheType = src.ID, in.Backend, src.CacheTypes[0]
-				if err := l.save(context.Background(), s); err != nil {
+				if err := l.update(context.Background(), func(s *LocalSettings) error {
+					s.Source, s.Backend, s.CacheType = src.ID, in.Backend, src.CacheTypes[0]
+					return nil
+				}); err != nil {
 					l.c.logf("local models: settings for the bundled build: %v", err)
 				}
 			}
@@ -1176,9 +1215,11 @@ func (l *localExt) setupMissing(ctx context.Context, then func()) {
 		backend = localllm.Vulkan
 	}
 	// as with the bundled build: when nobody chose yet, the settings follow the build (its first cache type, turbo4)
-	if s, chosen := l.savedSettings(ctx); !chosen {
-		s.Source, s.CacheType = src.ID, src.CacheTypes[0]
-		if err := l.save(ctx, s); err != nil {
+	if _, chosen := l.savedSettings(ctx); !chosen {
+		if err := l.update(ctx, func(s *LocalSettings) error {
+			s.Source, s.CacheType = src.ID, src.CacheTypes[0]
+			return nil
+		}); err != nil {
 			l.c.logf("local models: settings for the runtime: %v", err)
 		}
 	}

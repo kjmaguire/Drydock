@@ -282,42 +282,43 @@ func (l *localExt) setModel(ctx context.Context, id string, embedding *bool, dra
 		}
 		m.Mark = embedding
 	}
-	s := l.settings(ctx)
-	if draft != nil {
-		if *draft == localllm.DraftMTP {
-			// its own MTP heads (decision P120): only a model whose file carries them
-			if mtp, _ := l.heads(m); !mtp {
-				return LocalView{}, fmt.Errorf("%s carries no MTP heads: its file has no multi-token prediction layers", id)
-			}
-			if s.Drafts == nil {
-				s.Drafts = map[string]string{}
-			}
-			s.Drafts[id] = localllm.DraftMTP
-		} else if *draft == "" {
-			delete(s.Drafts, id)
-		} else {
-			d, err := l.m.Store.Get(*draft)
-			if err != nil {
-				return LocalView{}, err
-			}
-			if !l.draftOK(m, d) {
-				return LocalView{}, fmt.Errorf("%s cannot draft for %s: a draft is a much smaller model of the same family, with the same tokenizer", *draft, id)
-			}
-			if s.Drafts == nil {
-				s.Drafts = map[string]string{}
-			}
-			s.Drafts[id] = *draft
-		}
-	}
-	if embedding != nil && *embedding {
-		delete(s.Drafts, id) // an embedding model drafts for nothing and has no draft
-		for target, d := range s.Drafts {
-			if d == id {
-				delete(s.Drafts, target)
+	if err := l.update(ctx, func(s *LocalSettings) error {
+		if draft != nil {
+			if *draft == localllm.DraftMTP {
+				// its own MTP heads (decision P120): only a model whose file carries them
+				if mtp, _ := l.heads(m); !mtp {
+					return fmt.Errorf("%s carries no MTP heads: its file has no multi-token prediction layers", id)
+				}
+				if s.Drafts == nil {
+					s.Drafts = map[string]string{}
+				}
+				s.Drafts[id] = localllm.DraftMTP
+			} else if *draft == "" {
+				delete(s.Drafts, id)
+			} else {
+				d, err := l.m.Store.Get(*draft)
+				if err != nil {
+					return err
+				}
+				if !l.draftOK(m, d) {
+					return fmt.Errorf("%s cannot draft for %s: a draft is a much smaller model of the same family, with the same tokenizer", *draft, id)
+				}
+				if s.Drafts == nil {
+					s.Drafts = map[string]string{}
+				}
+				s.Drafts[id] = *draft
 			}
 		}
-	}
-	if err := l.save(ctx, s); err != nil {
+		if embedding != nil && *embedding {
+			delete(s.Drafts, id) // an embedding model drafts for nothing and has no draft
+			for target, d := range s.Drafts {
+				if d == id {
+					delete(s.Drafts, target)
+				}
+			}
+		}
+		return nil
+	}); err != nil {
 		return LocalView{}, err
 	}
 	l.changed("models", map[string]any{"id": id})
@@ -372,9 +373,10 @@ func (l *localExt) serveEmbeddings(ctx context.Context, modelID string, auto boo
 	if err := l.m.Embed.Start(ctx, launch); err != nil {
 		return err
 	}
-	s = l.settings(ctx)
-	s.EmbeddingModel = modelID
-	if err := l.save(ctx, s); err != nil {
+	if err := l.update(ctx, func(s *LocalSettings) error {
+		s.EmbeddingModel = modelID
+		return nil
+	}); err != nil {
 		return err
 	}
 	l.changed("embeddings", map[string]any{"state": "running", "modelId": modelID})
