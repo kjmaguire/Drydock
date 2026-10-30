@@ -40,6 +40,7 @@ import {
   DRAFT_KINDS,
   draftChoices,
   draftOnly,
+  draftOnlyWord,
   draftWords,
   type FitWords,
   fitWords,
@@ -645,7 +646,7 @@ export function ThisPcDetail(
             ) : null}
             {!isServed && !forEmbeddings ? (
               <>
-                {only ? <span class="word">drafts for its model</span> : null}
+                {only ? <span class="word">{draftOnlyWord(only)}</span> : null}
                 {!m.embedding && !only ? (
                   <Button
                     size="sm"

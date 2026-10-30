@@ -36,7 +36,9 @@ const DraftMTP = "mtp"
 // names when the file gives it. A DFlash or DSpark draft (decision P129) is of no family either, for the same reason, and reads
 // layers of its model up to the one it names (dflash.target_layers), which the model must have. An MTP head shipped as a file
 // of its own (decision P129) is the model's own architecture, embedding length and layers: llama.cpp loads it beside the model
-// and runs its MTP blocks against the model's hidden states. When it cannot, the reason says why in a sentence.
+// and runs its MTP blocks against the model's hidden states. A Gemma 4 assistant (decision P132) drafts for a Gemma 4 model
+// whose hidden state is as wide as the one it names (embedding_length_out), with its tokenizer; an MTP file of the TurboQuant
+// fork's older layouts drafts for nothing, since neither build loads it. When it cannot, the reason says why in a sentence.
 func DraftFits(target, draft GGUFInfo, targetBytes, draftBytes uint64) (bool, string) {
 	kind := draft.DraftOnly()
 	switch {
@@ -44,6 +46,12 @@ func DraftFits(target, draft GGUFInfo, targetBytes, draftBytes uint64) (bool, st
 		return false, "an embedding model neither drafts nor is drafted for"
 	case target.DraftOnly() != "":
 		return false, anOf(DraftKindName(target.DraftOnly())) + " is drafted for by nothing"
+	case kind == DraftOnlyOldMTP:
+		return false, "it is an MTP file made for an older TurboQuant build, which no engine Drydock installs loads"
+	case kind == DraftOnlyAssistant && target.Architecture != Gemma4:
+		return false, fmt.Sprintf("it is a Gemma 4 assistant, and the model is %s", target.Architecture)
+	case kind == DraftOnlyAssistant && embdOut(draft) != embdOut(target):
+		return false, fmt.Sprintf("it is a Gemma 4 assistant for a model of %d dimensions, and the model has %d", embdOut(draft), embdOut(target))
 	case draft.Eagle3() && draft.TargetHiddenSize > 0 && draft.TargetHiddenSize != target.EmbeddingLength:
 		return false, fmt.Sprintf("it is an EAGLE-3 draft for a model of %d dimensions, and the model has %d", draft.TargetHiddenSize, target.EmbeddingLength)
 	case (kind == DraftOnlyDFlash || kind == DraftOnlyDSpark) && draft.TargetLayer > target.BlockCount:
@@ -77,6 +85,10 @@ func DraftKindName(kind string) string {
 		return "DSpark draft"
 	case DraftOnlyMTPHead:
 		return "MTP head"
+	case DraftOnlyAssistant:
+		return "Gemma 4 assistant"
+	case DraftOnlyOldMTP:
+		return "old MTP file"
 	}
 	return "draft"
 }
@@ -86,7 +98,7 @@ func DraftKindPhrase(kind string) string { return anOf(DraftKindName(kind)) }
 
 // anOf is a kind's name with its article, as it is said: "an EAGLE-3 draft", "an MTP head", "a DFlash draft".
 func anOf(name string) string {
-	if strings.HasPrefix(name, "EAGLE") || strings.HasPrefix(name, "MTP") {
+	if strings.HasPrefix(name, "EAGLE") || strings.HasPrefix(name, "MTP") || strings.HasPrefix(name, "old") {
 		return "an " + name
 	}
 	return "a " + name

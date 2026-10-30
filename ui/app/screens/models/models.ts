@@ -309,6 +309,7 @@ export function loadToo(v: Pick<LocalView, 'server' | 'load'>, m: LocalModel): {
   const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
   if (m.embedding) return { ok: false, why: 'An embedding model is served on its own, under Embeddings.' };
   const kind = draftOnly(m);
+  if (kind === 'old-mtp') return { ok: false, why: 'No engine Drydock installs loads an old MTP file.' };
   if (kind) return { ok: false, why: `${DRAFT_KINDS[kind].article} does not chat: choose it as its model's draft.` };
   if (loaded.includes(m.id)) return { ok: false, why: 'Loaded already.' };
   if (loaded.length >= load.max) return { ok: false, why: `At most ${load.max} models stay loaded at once: unload one first.` };
@@ -366,7 +367,24 @@ export const DRAFT_KINDS: Record<DraftKind, { badge: string; prefix: string; wit
     article: 'An MTP head',
     title: "The multi-token prediction (MTP) heads of a model, shipped as a file of their own. They draft for that model and do not chat.",
   },
+  assistant: {
+    badge: 'Gemma 4 assistant',
+    prefix: 'Assistant',
+    with: 'with its assistant',
+    article: 'A Gemma 4 assistant',
+    title: "Google's small drafter for a Gemma 4 model: it reads that model's cache to guess ahead. It drafts for that model and does not chat.",
+  },
+  'old-mtp': {
+    badge: 'Old MTP file',
+    prefix: 'Old MTP file',
+    with: 'with an old MTP file',
+    article: 'An old MTP file',
+    title: 'An MTP file made for an older TurboQuant build. No engine Drydock installs loads it: download a newer conversion.',
+  },
 };
+
+/** The row's word for a file that only drafts: what it is for (an old MTP file is for nothing any engine here loads). */
+export const draftOnlyWord = (kind: DraftKind): string => (kind === 'old-mtp' ? 'no engine here loads it' : 'drafts for its model');
 
 /** The kind of a file that only drafts, or undefined for a model that chats (an older core says only eagle3). */
 export function draftOnly(m: Pick<LocalModel, 'draftKind' | 'eagle3'>): DraftKind | undefined {

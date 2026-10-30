@@ -58,6 +58,10 @@ type GGUFInfo struct {
 	MTPHead     bool `json:"mtpHead,omitempty"`
 	DSpark      bool `json:"dspark,omitempty"`
 	TargetLayer int  `json:"targetLayer,omitempty"`
+	// EmbeddingLengthOut is <arch>.embedding_length_out, the width of the hidden state a model hands on (decision P132): a Gemma
+	// 4 assistant names its model's there (the converter writes the model's backbone_hidden_size), and llama.cpp refuses the
+	// pair unless it is the model's own (common_speculative_impl_draft_mtp compares llama_model_n_embd_out of both).
+	EmbeddingLengthOut int `json:"embeddingLengthOut,omitempty"`
 }
 
 // The kinds of files that only draft (decisions P120 and P129): each is made for one model, drafts for it with its own
@@ -67,7 +71,28 @@ const (
 	DraftOnlyDFlash  = "dflash"
 	DraftOnlyDSpark  = "dspark"
 	DraftOnlyMTPHead = "mtp-head"
+	// DraftOnlyAssistant is a Gemma 4 assistant (decision P132): architecture "gemma4-assistant" in both builds' llama-arch.cpp
+	// (the TurboQuant fork's b10298-2.0.0 and the official b11936), a few blocks that read the cache of the Gemma 4 model they
+	// were made for and draft for it with --spec-type draft-mtp.
+	DraftOnlyAssistant = "assistant"
+	// DraftOnlyOldMTP is an MTP file of the TurboQuant fork's own older layouts (decision P132): a Gemma 4 assistant converted
+	// before the fork's b10018 sync (architecture "gemma4_assistant", which the fork's llama-model.cpp at b10298-2.0.0 refuses
+	// by name: "predates the b10018 sync and is no longer supported") and a standalone Qwen 3.5 NextN file (architecture
+	// "qwen35_mtp" or "qwen35moe_mtp" in the fork's NEXTN.md, which neither build's llama-arch.cpp names any more). No engine
+	// Drydock installs loads one, so it is marked and offered to nothing.
+	DraftOnlyOldMTP = "old-mtp"
 )
+
+// Gemma4Assistant is the architecture of a Gemma 4 assistant, and Gemma4 that of the model it drafts for.
+const (
+	Gemma4Assistant = "gemma4-assistant"
+	Gemma4          = "gemma4"
+)
+
+// oldMTPArch says whether an architecture is one of the TurboQuant fork's older MTP layouts (DraftOnlyOldMTP).
+func oldMTPArch(arch string) bool {
+	return arch == "gemma4_assistant" || arch == "qwen35_mtp" || arch == "qwen35moe_mtp"
+}
 
 // DraftOnly is the kind of draft the file is when it only drafts ("" for a model that chats).
 func (i GGUFInfo) DraftOnly() string {
@@ -80,8 +105,21 @@ func (i GGUFInfo) DraftOnly() string {
 		return DraftOnlyDFlash
 	case i.MTPHead:
 		return DraftOnlyMTPHead
+	case i.Architecture == Gemma4Assistant:
+		return DraftOnlyAssistant
+	case oldMTPArch(i.Architecture):
+		return DraftOnlyOldMTP
 	}
 	return ""
+}
+
+// embdOut is the width of the hidden state a model hands on: <arch>.embedding_length_out when the file names it, else its
+// embedding length (llama_hparams::n_embd_out).
+func embdOut(i GGUFInfo) int {
+	if i.EmbeddingLengthOut > 0 {
+		return i.EmbeddingLengthOut
+	}
+	return i.EmbeddingLength
 }
 
 // OwnMTP says the model carries MTP heads beside its own layers, so it can draft for itself (a file of heads alone cannot).
@@ -304,7 +342,8 @@ func clampNeg(v int64) uint64 {
 // wantedSuffixes are the keys the estimate reads, after the architecture's name.
 var wantedSuffixes = map[string]bool{".block_count": true, ".context_length": true, ".embedding_length": true, ".attention.head_count": true,
 	".attention.head_count_kv": true, ".attention.key_length": true, ".attention.value_length": true, ".attention.sliding_window": true,
-	".attention.kv_lora_rank": true, ".pooling_type": true, ".nextn_predict_layers": true, ".target_hidden_size": true, ".target_layers": true}
+	".attention.kv_lora_rank": true, ".pooling_type": true, ".nextn_predict_layers": true, ".target_hidden_size": true, ".target_layers": true,
+	".embedding_length_out": true}
 
 // wanted says whether a key is one the estimate reads: an architecture's name (one word, no dot) and one of wantedSuffixes,
 // exactly. "a.<anything>.block_count" is not one (review 2026-10-27: such keys were kept without bound).
@@ -467,7 +506,7 @@ func parseHeader(r *bufio.Reader, find string) (GGUFInfo, bool, error) {
 		HeadCount: ints[arch+".attention.head_count"], HeadCountKV: ints[arch+".attention.head_count_kv"], KeyLength: one("attention.key_length"),
 		ValueLength: one("attention.value_length"), SlidingWindow: one("attention.sliding_window"), MLA: one("attention.kv_lora_rank") > 0,
 		Pooling: len(ints[arch+".pooling_type"]) > 0, Tokenizer: tokModel, BOS: bos, EOS: eos,
-		NextNLayers: one("nextn_predict_layers"), TargetHiddenSize: one("target_hidden_size")}
+		NextNLayers: one("nextn_predict_layers"), TargetHiddenSize: one("target_hidden_size"), EmbeddingLengthOut: one("embedding_length_out")}
 	if vocab < 1<<31 {
 		info.VocabSize = int(vocab)
 	}
@@ -536,6 +575,11 @@ const (
 // a model that carries them are not counted: llama.cpp keeps them out of the model's own cache (EstimateMTPKV counts them).
 // A file of MTP heads alone is only ever loaded for an MTP context, so its cache is that context's.
 func EstimateKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
+	if info.DraftOnly() == DraftOnlyAssistant {
+		// its layers attend to its model's cache (llama_model::create_memory shares the model's last full and sliding layers
+		// with it, at both tags), so it keeps none of its own
+		return KVCache{Known: true, ContextSize: contextSize, CacheType: cacheType, Note: "It reads its model's cache and keeps none of its own."}
+	}
 	if info.MTPHead {
 		return EstimateMTPKV(info, contextSize, cacheType)
 	}

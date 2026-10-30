@@ -193,8 +193,9 @@ export interface LocalModel {
   mtp?: boolean;
   /** An EAGLE-3 draft: it drafts for the model it was made for, and never chats (decision P120). */
   eagle3?: boolean;
-  /** The kind of a file that only drafts (decision P129): an EAGLE-3, DFlash or DSpark draft, or an MTP head of its own. */
-  draftKind?: 'eagle3' | 'dflash' | 'dspark' | 'mtp-head';
+  /** The kind of a file that only drafts (decisions P129 and P132): an EAGLE-3, DFlash or DSpark draft, an MTP head of its own, a
+   * Gemma 4 assistant, or an MTP file of an older TurboQuant layout that no engine loads. */
+  draftKind?: 'eagle3' | 'dflash' | 'dspark' | 'mtp-head' | 'assistant' | 'old-mtp';
   /** What it takes loaded: its files, its KV cache and its draft's (with the MTP context of MTP heads). */
   loadBytes?: number;
   /** The memory of the MTP draft context when its own MTP heads or a head file draft for it (decision P129). */

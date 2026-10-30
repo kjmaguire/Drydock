@@ -1092,6 +1092,26 @@ describe('Models on this PC: several models, drafts, embeddings and gated models
     }
   });
 
+  it("a Gemma 4 assistant and an old MTP file (decision P132): the one offered to its model, the other to nothing, neither served", async () => {
+    const gemma = model({ id: 'g/gemma-4-GGUF:Q4_K_M', repo: 'g/gemma-4-GGUF', variant: 'Q4_K_M', sizeBytes: 17 * GiB, drafts: ['g/gemma-4-assistant-GGUF:Q8_0'], draft: 'g/gemma-4-assistant-GGUF:Q8_0' });
+    const assistant = model({ id: 'g/gemma-4-assistant-GGUF:Q8_0', repo: 'g/gemma-4-assistant-GGUF', variant: 'Q8_0', sizeBytes: 400 * MiB, draftKind: 'assistant' });
+    const old = model({ id: 'g/gemma-4-assistant-old-GGUF:Q8_0', repo: 'g/gemma-4-assistant-old-GGUF', variant: 'Q8_0', sizeBytes: 400 * MiB, draftKind: 'old-mtp' });
+    const { r } = show({
+      localGet: async () => installed({ models: [gemma, assistant, old], server: { state: 'running', modelId: gemma.id, models: [gemma.id], port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' } }),
+    });
+    await waitFor(() => row(r, gemma.id), r);
+    expect(optionsOf(row(r, gemma.id).querySelector('[data-testid="local-draft"]') as HTMLElement).map((o) => o.label)).toEqual(['No draft', 'Assistant: gemma-4-assistant · Q8_0']);
+    expect(row(r, gemma.id).querySelector('[data-testid="local-drafted"]')!.textContent).toBe('with its assistant');
+    for (const [d, badge, word] of [[assistant, 'Gemma 4 assistant', 'drafts for its model'], [old, 'Old MTP file', 'no engine here loads it']] as const) {
+      const e = row(r, d.id);
+      expect(e.querySelector('[data-testid="local-draft-only"]')!.textContent).toBe(badge);
+      expect(e.querySelector('[data-testid="local-serve"]')).toBe(null);
+      expect(e.querySelector('[data-testid="local-load-too"]')).toBe(null);
+      expect(e.querySelector('[data-testid="local-draft"]')).toBe(null);
+      expect(e.textContent).toContain(word);
+    }
+  });
+
   it('the embedding model ranks pack searches by meaning when the person turns it on: the box sends just that setting', async () => {
     const edits: LocalSettingsEdit[] = [];
     let state = installed({ models: all, embed: { state: 'running', modelId: embed.id, port: 9934, baseUrl: 'http://127.0.0.1:9934/v1', embeddings: true } });
