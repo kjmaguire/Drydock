@@ -14,11 +14,13 @@ import (
 
 // Settings are a project's choices about the verification checks that go beyond build, test and lint (brief s13a). The
 // secrets check is on by default, the dependency check is off by default (it needs a tool and, unless offline, sends
-// package metadata to osv.dev).
+// package metadata to osv.dev). Scan is the security scan's code and dependency engines on every task's change (decision
+// P131, internal/scan), off by default for the same reasons.
 type Settings struct {
 	Secrets     bool `json:"secrets"`
 	Deps        bool `json:"deps"`
 	DepsOffline bool `json:"depsOffline"`
+	Scan        bool `json:"scan"`
 }
 
 // DefaultSettings applies to a project that never saved settings.
@@ -30,12 +32,12 @@ func LoadSettings(ctx context.Context, db *storage.DB, projectID string) Setting
 	if db == nil || projectID == "" {
 		return s
 	}
-	var sec, deps, off int
-	err := db.Reader().QueryRowContext(ctx, `SELECT secrets_enabled,deps_enabled,deps_offline FROM project_check_settings WHERE project_id=?`, projectID).Scan(&sec, &deps, &off)
+	var sec, deps, off, scan int
+	err := db.Reader().QueryRowContext(ctx, `SELECT secrets_enabled,deps_enabled,deps_offline,scan_enabled FROM project_check_settings WHERE project_id=?`, projectID).Scan(&sec, &deps, &off, &scan)
 	if errors.Is(err, sql.ErrNoRows) || err != nil {
 		return s
 	}
-	return Settings{Secrets: sec != 0, Deps: deps != 0, DepsOffline: off != 0}
+	return Settings{Secrets: sec != 0, Deps: deps != 0, DepsOffline: off != 0, Scan: scan != 0}
 }
 
 // SaveSettings stores a project's settings. Turning a safety check off is a human decision.
@@ -44,9 +46,9 @@ func SaveSettings(ctx context.Context, db *storage.DB, projectID string, s Setti
 		return fmt.Errorf("checks: only a human: identity may change a project's checks")
 	}
 	return db.WriteTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO project_check_settings(project_id,secrets_enabled,deps_enabled,deps_offline,updated_at,updated_by) VALUES(?,?,?,?,?,?)
+		_, err := tx.ExecContext(ctx, `INSERT INTO project_check_settings(project_id,secrets_enabled,deps_enabled,deps_offline,scan_enabled,updated_at,updated_by) VALUES(?,?,?,?,?,?,?)
 			ON CONFLICT(project_id) DO UPDATE SET secrets_enabled=excluded.secrets_enabled, deps_enabled=excluded.deps_enabled, deps_offline=excluded.deps_offline,
-			updated_at=excluded.updated_at, updated_by=excluded.updated_by`, projectID, b2i(s.Secrets), b2i(s.Deps), b2i(s.DepsOffline), storage.Now(), by)
+			scan_enabled=excluded.scan_enabled, updated_at=excluded.updated_at, updated_by=excluded.updated_by`, projectID, b2i(s.Secrets), b2i(s.Deps), b2i(s.DepsOffline), b2i(s.Scan), storage.Now(), by)
 		return err
 	})
 }
@@ -66,9 +68,12 @@ type Extras struct {
 	Diff    func(ctx context.Context) (string, error)
 	Scanner security.SecretScanner
 	Deps    DepsOptions
+	// Scan builds the `scan` check (internal/scan.CheckSpec, which this package cannot import); nil leaves it out even when
+	// the setting is on.
+	Scan func() Spec
 }
 
-// ExtraSpecs returns the secrets and deps checks that are enabled, in that order. Both come after the detected
+// ExtraSpecs returns the secrets, deps and scan checks that are enabled, in that order. They come after the detected
 // build/test/lint checks: the cheap deterministic ones first (token rule 10), the broader ones when the work builds.
 func ExtraSpecs(x Extras) []Spec {
 	var out []Spec
@@ -79,6 +84,9 @@ func ExtraSpecs(x Extras) []Spec {
 		o := x.Deps
 		o.Offline = o.Offline || x.Settings.DepsOffline
 		out = append(out, DepsSpec(x.Dir, o))
+	}
+	if x.Settings.Scan && x.Scan != nil {
+		out = append(out, x.Scan())
 	}
 	return out
 }

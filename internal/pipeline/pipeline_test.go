@@ -21,6 +21,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/scan/scantest"
 	"github.com/kjmaguire/drydock/internal/storage"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -29,6 +30,9 @@ import (
 func TestMain(m *testing.M) {
 	if os.Getenv("DRYDOCK_FAKE_AGENT") == "1" {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
+	}
+	if scantest.IsStandIn(os.Args) { // the LABELLED stand-in osv-scanner and opengrep of the `scan` check (scan_check_test.go)
+		os.Exit(scantest.Main(os.Args))
 	}
 	os.Exit(m.Run())
 }

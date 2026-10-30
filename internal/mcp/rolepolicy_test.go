@@ -40,7 +40,11 @@ func TestRoleTableDefaultsAreSectionThree(t *testing.T) {
 	no("qa", ColDocs, ColTrackers)
 	yes("security", ColDocs, ColGitHub, ColSentry)
 	no("security", ColTrackers)
-	yes("reviewer", ColGitHub, ColAct, ColReadRange)
+	yes("reviewer", ColGitHub, ColAct, ColReadRange, ColSecurity)
+	no("pm", ColSecurity)
+	no("ux designer", ColSecurity)
+	yes("security", ColSecurity)
+	yes("backend", ColSecurity)
 	no("reviewer", ColDocs, ColTrackers, ColSentry)
 	for _, c := range RoleColumns {
 		if !RoleDefault(RoleOther, c.Key) {

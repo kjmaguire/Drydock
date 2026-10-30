@@ -118,7 +118,7 @@ func TestRoleTableDecidesEveryRunsToolsAndLivePackServersReachAgents(t *testing.
 		t.Fatalf("pm tools: %v, want %v", got, want)
 	}
 	bs, got := spawnTools(t, a, backend, p.ID, "", repo)
-	if want := withRepoMap("fetch_range", "propose_memory", "read_range", "search_memory", "search_pack", "search_requirements", "skills", "docs__search"); !sameSet(got, want...) {
+	if want := withRepoMap("fetch_range", "propose_memory", "read_range", "search_memory", "search_pack", "search_requirements", "security_findings", "skills", "docs__search"); !sameSet(got, want...) {
 		t.Fatalf("backend tools (docs server yes, GitHub no): %v, want %v", got, want)
 	}
 	_, got = spawnTools(t, a, devops, p.ID, "", repo)
