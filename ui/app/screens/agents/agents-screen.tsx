@@ -10,7 +10,8 @@
 import { css, navigate, on, ref, type Handle } from 'remix/component';
 import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, Plus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport, CustomCLIs, GateStatus, WSLFacts } from '../../api/types.ts';
+import type { Agent, Connection, ConnectionHistory, ConnectionReport, CustomCLIs, GateStatus, WSLFacts } from '../../api/types.ts';
+import { agoWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
@@ -33,6 +34,8 @@ import {
   agentGroups,
   agentNotice,
   agentState,
+  capabilityName,
+  cardValue,
   agentSub,
   cellText,
   connectionKey,
@@ -42,11 +45,13 @@ import {
   headerLine,
   isInstalled,
   isWSL,
+  matrixFrom,
   matrixRows,
   netModeText,
   prereqText,
   provTone,
   readyLine,
+  runLine,
   reportMeta,
   runsText,
   signedInLine,
@@ -128,10 +133,11 @@ function Mark(handle: Handle<{ status: 'pass' | 'fail' | 'skip' }>) {
 }
 
 /** Plain-language result of Test connection: a verdict, the steps, what is limited, and the capability matrix with provenance. */
-export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
+export function ReportView(handle: Handle<{ r: ConnectionReport; matrix?: boolean }>) {
   return () => {
     const { r } = handle.props;
-    const matrix = matrixRows(r);
+    // the card shows its own matrix beside the report (decision P132): the report's is not said twice there
+    const matrix = handle.props.matrix === false ? [] : matrixRows(r);
     return (
       <div mix={reportCss} data-testid="connection-report" data-ok={String(r.ok)}>
         <p>
@@ -334,6 +340,8 @@ interface DetailProps {
   readOnly: boolean;
   onGateway: (enabled: boolean) => void;
   report?: ConnectionReport;
+  /** How many tests of this install ran on this page: its history is read again after each (decision P132). */
+  tested: number;
   testing: boolean;
   testError?: unknown;
   onTest: (prompt: boolean) => void;
@@ -347,6 +355,14 @@ interface DetailProps {
 /** The chosen install: its header with the actions, one notice, and the tabs. */
 function AgentDetail(handle: Handle<DetailProps>) {
   const s = services(handle);
+  // the install's conformance history and capability matrix (decision P132), read again after each test; an older core has none
+  const history = query(handle, {
+    load: () => {
+      const c = handle.props.c;
+      return orElse(() => s.client.connectionHistory(c.adapter, isWSL(c) ? c.distro : undefined), undefined as ConnectionHistory | undefined);
+    },
+    key: () => `${connectionKey(handle.props.c)}:${handle.props.tested}`,
+  });
   let tab: Tab = 'overview';
   let confirming = false;
   let prompt = false; // the only step that spends tokens: never without the person ticking it
@@ -613,16 +629,57 @@ function AgentDetail(handle: Handle<DetailProps>) {
       </div>
     );
 
+    const h = history.data;
+    const runs = h?.runs ?? [];
+    const cells = h ? matrixRows(h) : [];
     const tests = (
       <div mix={panelCss} data-testid="test-results">
         {p.testing ? <Loading label={`Testing ${p.name}...`} /> : null}
         <ErrorNote error={p.testError} what="Test connection" />
         {p.report ? (
-          <ReportView r={p.report} />
-        ) : !p.testing ? (
+          <ReportView r={p.report} matrix={cells.length === 0} />
+        ) : !p.testing && runs.length === 0 ? (
           <p mix={quietP}>
             {installed ? `No test of ${p.name} in this session yet. Test connection starts the real CLI ${where} and checks that it starts, answers and stops.` : `${p.name} is not installed.`}
           </p>
+        ) : null}
+        {cells.length > 0 && h ? (
+          <SettingsGroup title="What it can do" testId="capability-matrix" label="What it can do" actions={<span mix={faint}>{matrixFrom(h, p.now)}</span>}>
+            <table mix={tableCss} aria-label="Capability matrix">
+              <thead>
+                <tr>
+                  <th scope="col">Capability</th>
+                  <th scope="col">Value</th>
+                  <th scope="col">Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cells.map(([k, cell]) => (
+                  <tr key={k} data-cap={k}>
+                    <td>{capabilityName(k)}</td>
+                    <td>{cardValue(cell)}</td>
+                    <td>
+                      <Badge tone={provTone(cell.provenance)} title="observed: seen in a test. declared: the CLI or its adapter says so. unknown: not verified.">
+                        {cell.provenance}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SettingsGroup>
+        ) : null}
+        {runs.length > 0 ? (
+          <SettingsGroup title="Past tests" testId="test-history" label="Past tests" actions={<span mix={faint}>{runs.length === 1 ? '1 test kept' : `${runs.length} tests kept`}</span>}>
+            {runs.map((run) => (
+              <SettingRow key={run.id} testId="test-run" label={<span title={new Date(run.at).toLocaleString()}>{agoWords(run.at, p.now)}</span>}>
+                <span data-ok={String(run.ok)}>
+                  <Badge tone={run.ok ? 'ok' : 'err'}>{run.ok ? 'passed' : 'did not pass'}</Badge> <span mix={muted}>{runLine(run)}</span>
+                  {run.reason ? <div mix={faint}>{run.reason}</div> : null}
+                </span>
+              </SettingRow>
+            ))}
+          </SettingsGroup>
         ) : null}
       </div>
     );
@@ -830,6 +887,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // Test connection, per install: its report stays when another row is chosen
   const reports = new Map<string, ConnectionReport>();
   const testErrors = new Map<string, unknown>();
+  const tested = new Map<string, number>(); // tests run per install, so its history is read again
   const testing = new Set<string>();
   const runTest = async (c: Connection, prompt: boolean) => {
     const key = connectionKey(c);
@@ -839,6 +897,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     try {
       const r = isWSL(c) ? await s.client.connectionTest(c.adapter, prompt, c.distro) : await s.client.connectionTest(c.adapter, prompt);
       reports.set(key, r);
+      tested.set(key, (tested.get(key) ?? 0) + 1);
       void q.reload();
     } catch (e) {
       testErrors.set(key, e);
@@ -932,6 +991,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           readOnly={s.workspace.license.readOnly}
           onGateway={(v) => void setGateway(open.adapter, v)}
           report={reports.get(key)}
+          tested={tested.get(key) ?? 0}
           testing={testing.has(key)}
           testError={testErrors.get(key)}
           onTest={(prompt) => void runTest(open, prompt)}

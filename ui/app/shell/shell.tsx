@@ -6,11 +6,11 @@
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
 import { PanelLeftOpen, PlugZap } from 'lucide';
 import { projectHasRepo } from '../api/types.ts';
-import { ownsKeys, shellKey } from '../lib/keys.ts';
-import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute } from '../lib/route.ts';
+import { ownsKeys, shellKey, shortcutOf } from '../lib/keys.ts';
+import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
-import { services, watch } from '../state/services.tsx';
+import { query, services, watch } from '../state/services.tsx';
 import { Button } from '../ui/button.tsx';
 import { ErrorBoundary } from '../ui/error-boundary.tsx';
 import { ErrorNote, Loading } from '../ui/feedback.tsx';
@@ -24,6 +24,7 @@ import { TermsNotice } from './terms-notice.tsx';
 import { AgentConfigBanner } from './agent-config-banner.tsx';
 import { RepoConfigBanner } from './repo-config-banner.tsx';
 import { CommandPalette } from './palette.tsx';
+import { chatOrder, focusRegion, neighbour, REGION_OF, roomOrder } from './regions.ts';
 import { Sidebar } from './sidebar.tsx';
 
 const rootCss = css({ display: 'flex', height: '100vh', overflow: 'hidden', background: t.bgApp });
@@ -47,7 +48,8 @@ const skipNav = css({ position: 'absolute', top: '0', left: '0', zIndex: '10' })
 const drawerBar = css({ display: 'flex', alignItems: 'center', gap: t.s2, flex: 'none', padding: `${t.s1} ${t.s3}`, borderBottom: `1px solid ${t.border}` });
 const scrimCss = css({ position: 'absolute', inset: '0', zIndex: '29', border: '0', borderRadius: '0', padding: '0', minHeight: '0', background: 'color-mix(in srgb, black 25%, transparent)', cursor: 'default' });
 
-export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
+/** `onNavigate` replaces the router's navigate for the shell's own keys (tests). */
+export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.project);
@@ -57,8 +59,12 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   let dockHere = false;
   /** The agent whose page is open: Ctrl+. opens the Agent Inspector for it (decision P129). */
   let agentHere: string | undefined;
+  /** The page open: Alt+Up and Alt+Down move from its room or chat (decision P132). */
+  let here: Route = { name: 'not-found' };
+  const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href));
 
-  // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff, Ctrl+. inspects the agent of the page; not inside the terminal or the
+  // Ctrl+J toggles the dock, Ctrl+Shift+D opens the diff, Ctrl+` shows or hides its terminal (decision P132; or the keys the
+  // person bound them to), Ctrl+. inspects the agent of the page; not inside the terminal or the
   // diff editor, which use them
   window.addEventListener(
     'keydown',
@@ -69,16 +75,56 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
         return;
       }
       if (ownsKeys(e.target) || !dockHere) return;
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+      const id = shortcutOf(e);
+      if (id === 'dock') {
         e.preventDefault();
         s.ui.toggleDock();
-      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+      } else if (id === 'diff') {
         e.preventDefault();
         s.ui.openDock('diff');
+      } else if (id === 'terminal') {
+        e.preventDefault();
+        s.ui.toggleTerminal();
+        if (s.ui.dock.open) handle.queueTask(() => focusRegion('dock'));
       }
     },
     { signal: handle.signal },
   );
+
+  // the region focus model, the Inbox and the room or chat above or below (decision P132); none inside the terminal or the
+  // editor (shortcutOf), and the arrows leave a dropdown's own keys alone
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      const id = shortcutOf(e);
+      if (!id) return;
+      const region = REGION_OF[id];
+      if (region) {
+        if (focusRegion(region)) e.preventDefault();
+      } else if (id === 'inbox') {
+        e.preventDefault();
+        go(routes.needsYou.href());
+      } else if (id === 'room-prev' || id === 'room-next') {
+        const el = e.target as HTMLElement | null;
+        if (el?.closest?.('[role="combobox"], [role="listbox"], [role="menu"]')) return;
+        const dir = id === 'room-prev' ? -1 : 1;
+        const next =
+          here.name === 'room'
+            ? neighbour(roomOrder(s.project.roomList), here.id, dir)
+            : here.name === 'chat'
+              ? neighbour(chatOrder(), here.id, dir)
+              : undefined;
+        if (!next) return;
+        e.preventDefault();
+        go(here.name === 'room' ? routes.room.href({ id: next.id }) : routes.chat.href({ id: next.id }));
+      }
+    },
+    { signal: handle.signal },
+  );
+
+  // the person's key bindings, kept by the core (keys.get); a change made in another window arrives as keys.changed
+  const keys = query(handle, { load: () => s.client.keysGet(), when: (e) => e.type === 'keys.changed' });
+  let keysSeen: unknown;
 
   const openDM = async (agentId: string) => {
     const pid = s.workspace.projectId;
@@ -97,6 +143,12 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
   return () => {
     const { url, children } = handle.props;
     const route = parseRoute(url.pathname);
+    here = route;
+    if (keys.data && keys.data !== keysSeen) {
+      keysSeen = keys.data;
+      const b = keys.data.bindings;
+      handle.queueTask(() => s.ui.setKeys(b));
+    }
     if (url.pathname !== lastPath) {
       // a navigation closes a drawer left open (the page it was opened over is gone)
       if (lastPath && s.ui.drawerOpen) handle.queueTask(() => s.ui.setDrawer(false));
@@ -171,7 +223,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode }>) {
             ) : null}
             {inProject && project && projectHasRepo(project) ? <RepoConfigBanner key={`repo:${project.id}`} projectId={project.id} /> : null}
             {inProject && project && projectHasRepo(project) ? <AgentConfigBanner key={`agents:${project.id}`} projectId={project.id} /> : null}
-            <main id="main" tabIndex={-1} mix={mainCss}>
+            <main id="main" tabIndex={-1} mix={mainCss} data-region="main">
               {/* a page that fails to draw shows what failed here and leaves the top bar, the dock and the panel working */}
               <ErrorBoundary label="this page" resetKey={url.pathname}>
                 {center}

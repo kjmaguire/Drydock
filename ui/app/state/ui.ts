@@ -1,6 +1,8 @@
 // Cross-region UI state: the details panel (which tab, which agent is inspected, which thread is open), the dock and the
-// command palette. Components subscribe with watch(handle, ui). Nothing here comes from the core.
+// command palette. Components subscribe with watch(handle, ui). Nothing here comes from the core but the key bindings, which it
+// keeps and setKeys applies (decision P132).
 
+import { useBindings } from '../lib/keys.ts';
 import { applyTheme, loadTheme, type ThemeChoice } from '../lib/theme.ts';
 import type { SkillPick } from '../api/extTypes.ts';
 import { isRecord } from '../api/guards.ts';
@@ -344,5 +346,17 @@ export class UiModel extends Model {
 
   toggleDock(): void {
     this.setDock({ open: !this.dock.open });
+  }
+
+  /** Ctrl+` (decision P132): the dock opens on its terminal, or closes when it shows the terminal already. */
+  toggleTerminal(): void {
+    const d = this.dock;
+    this.setDock(d.open && d.tab === 'terminal' ? { open: false } : { open: true, tab: 'terminal' });
+  }
+
+  /** The person's key bindings (decision P132), applied to lib/keys.ts; the change redraws what shows a shortcut's keys. */
+  setKeys(b: Partial<Record<string, string>> | null | undefined): void {
+    useBindings(b);
+    this.changed();
   }
 }

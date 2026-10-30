@@ -1070,6 +1070,33 @@ export interface ConnectionReport {
   distro?: string;
 }
 
+/** One kept Test connection run (core.TestRun, decision P132): its steps counted, never the CLI's output. */
+export interface TestRun {
+  id: number;
+  cliVersion?: string;
+  transport?: string;
+  ok: boolean;
+  /** The run also sent the tiny prompt. */
+  prompt: boolean;
+  passed: number;
+  failed: number;
+  skipped: number;
+  /** The first failed step's reason, redacted. */
+  reason?: string;
+  elapsedMs: number;
+  /** Unix milliseconds. */
+  at: number;
+}
+
+/** connection.history (decision P132): an install's runs, newest first, and its capability matrix. */
+export interface ConnectionHistory {
+  key: string;
+  runs: TestRun[];
+  matrix: Record<string, MatrixCell>;
+  /** When the run whose cells the matrix shows ran; 0 when none did (the adapter's declarations only). */
+  matrixAt: number;
+}
+
 // --- providers (internal/providers) ---
 
 export type ProviderKind = 'aggregator' | 'direct' | 'host';

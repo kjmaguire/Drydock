@@ -18,7 +18,7 @@ import { Field, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ownsKeys } from '../../lib/keys.ts';
+import { comboFor, shortcutOf } from '../../lib/keys.ts';
 import { chatCliText, chatRowLine, chatTitle, listWhen, snippetParts } from './chats.ts';
 import { ImportClaudeDialog } from './chat-import.tsx';
 
@@ -130,9 +130,12 @@ const DEBOUNCE_MS = 250;
 // in a narrow window (ui.ts NARROW_RAILS) the list is either the whole screen (no chat open) or a drawer over the open chat
 const fullCss = css({ width: '100%', borderRight: '0' });
 
-/** A key press that opens the new chat dialog: Ctrl+N, not while typing in a field, inside a widget with its own keys or a dialog. */
+/**
+ * A key press that opens the new chat dialog: Ctrl+N (or the person's binding, decision P132), not while typing in a field, inside
+ * a widget with its own keys or a dialog.
+ */
 export function isNewChatKey(e: KeyboardEvent): boolean {
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.repeat || e.defaultPrevented || e.key.toLowerCase() !== 'n' || ownsKeys(e.target)) return false;
+  if (e.repeat || e.defaultPrevented || shortcutOf(e) !== 'new-chat') return false;
   const el = e.target as HTMLElement | null;
   return !(el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.closest?.('dialog, [role="menu"], [role="listbox"]')));
 }
@@ -317,9 +320,9 @@ export function ChatList(
         <div mix={headCss}>
           <h1>Chats</h1>
           <IconButton icon={Import} size={15} label="Import from Claude Code" mix={[on('click', openImport)]} data-testid="chat-import-open-dialog" />
-          <Button size="sm" variant="secondary" mix={[on('click', () => onNew())]} data-testid="chat-new" aria-label="New chat" aria-keyshortcuts="Control+N" title="New chat (Ctrl+N)">
+          <Button size="sm" variant="secondary" mix={[on('click', () => onNew())]} data-testid="chat-new" aria-label="New chat" aria-keyshortcuts={comboFor('new-chat').replace('Ctrl', 'Control')} title={`New chat (${comboFor('new-chat')})`}>
             New
-            <kbd aria-hidden="true">Ctrl+N</kbd>
+            <kbd aria-hidden="true">{comboFor('new-chat')}</kbd>
           </Button>
         </div>
         <div mix={toolsCss}>

@@ -243,6 +243,7 @@ var ExcludedTables = map[string]string{
 	"integration_webhook_deliveries": "the workspace receiver's delivery log",
 
 	"room_turn_grants": "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
+	"connection_tests": "Test connection runs of the agent CLIs on this machine, not project data (decision P132)",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

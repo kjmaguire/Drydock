@@ -121,6 +121,7 @@ var KeptOnDelete = map[string]string{
 	"model_usage":            "what was spent, kept indefinitely: workspace budgets, provider quotas and the evals report still count money that was spent",
 	"receipts":               "idempotency receipts of this installation, not project content",
 	"workspaces":             "not project data",
+	"connection_tests":       "Test connection runs of the agent CLIs on this machine, not project data (decision P132)",
 	"providers":              "workspace connections to model providers, shared by every project",
 	"provider_quotas":        "provider runtime state",
 	"model_retention_blocks": "which models a provider refused for want of data retention: provider state, shared by every project",
