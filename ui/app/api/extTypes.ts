@@ -271,8 +271,13 @@ export interface RouteLevel {
   projectId?: string;
   workspace: string;
   project: string;
+  /** Asked for a task (P127): its id, its own level ("" or absent when it follows), its template's title and declared level. */
+  taskId?: string;
+  task?: string;
+  template?: string;
+  templateLevel?: string;
   effective: string;
-  source: 'project' | 'workspace' | string;
+  source: 'task' | 'template' | 'project' | 'workspace' | string;
   levels: string[];
 }
 export interface RouteSettingsPatch {

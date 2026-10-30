@@ -135,6 +135,10 @@ export interface ExtClient {
   routeLevelGet(projectId: string): Promise<RouteLevel>;
   /** Sets the workspace's level (projectId ""), or a project's own; a project's "" follows the workspace again. */
   routeLevelSet(projectId: string, level: string): Promise<RouteLevel>;
+  /** A task's routing level (P127): its own, else its template's, the project's or the workspace's. */
+  routeLevelTaskGet(taskId: string): Promise<RouteLevel>;
+  /** Sets a task's own level (a person only); "" follows its template, project and workspace again. */
+  routeLevelTaskSet(taskId: string, level: string): Promise<RouteLevel>;
   routeRetentionList(): Promise<RetentionBlock[]>;
   routeRetentionClear(providerId: string, model: string): Promise<void>;
   // checks, dev settings, telemetry
@@ -348,6 +352,11 @@ export function createExtClient(t: Transport): ExtClient {
       return { ...r, levels: arr(r.levels) };
     },
     routeLevelSet: (projectId, level) => call('route.level.set', { projectId, level }),
+    routeLevelTaskGet: async (taskId) => {
+      const r = await call<RouteLevel>('route.level.get', { taskId });
+      return { ...r, levels: arr(r.levels) };
+    },
+    routeLevelTaskSet: (taskId, level) => call('route.level.set', { taskId, level }),
     routeRetentionList: async () => arr(await call<RetentionBlock[] | null>('route.retention.list')),
     routeRetentionClear: (providerId, model) => voidCall('route.retention.clear', { providerId, model }),
 

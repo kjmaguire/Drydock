@@ -38,6 +38,9 @@ type Template struct {
 	TestFirst   bool       `json:"testFirst"`
 	Steps       []string   `json:"steps"`
 	Roles       []RoleNeed `json:"roles"` // beyond the task's worker and reviewer
+	// Level is the model routing level the template declares for its tasks' agent turns (docs/model-routing.md s3, decision
+	// P127): a default, between a task's own level and its project's; "" declares none.
+	Level string `json:"level,omitempty"`
 }
 
 var templates = []Template{
@@ -55,7 +58,10 @@ var templates = []Template{
 	{Name: "security", Title: "Security", Workflow: WorkflowSecurity,
 		Description: "Scan the tree (secrets, dependencies and any scan you plug in), fix the findings, scan again, a reviewer with the security role signs off, human approval.",
 		Steps:       []string{"scan", "fix findings", "checks", "re-scan", "security review", "human approval", "merge"},
-		Roles:       []RoleNeed{{RoleSecurity, true, "reviews the change for security"}}},
+		Roles:       []RoleNeed{{RoleSecurity, true, "reviews the change for security"}},
+		// fixing security findings is a premium-only class of brief s6's ladder: premium work and review unless the task says
+		// otherwise
+		Level: "quality"},
 	{Name: "full-stack-saas", Title: "Full Stack SaaS", Workflow: WorkflowSaaS, SpecGate: true, TestFirst: true,
 		Description: "The Feature template plus an optional architect design step, the e2e check and a preview of the result when the project enables them, and a security scan before human approval.",
 		Steps:       []string{"spec (PM)", "human accepts the spec", "design (architect, optional)", "tests first (red)", "implement (green)", "checks + e2e", "independent review", "security scan", "preview", "human approval", "merge"},

@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { choose, createProject, projectNav, workspaceNav } from './helpers';
+import { choose, createProject, createProjectWithoutRepo, projectNav, workspaceNav } from './helpers';
 
 // Decision P118 against the real Go core: a project's own routing level that falls back to the workspace's (Project settings
-// and the Routing page), and a budget on a workflow.
+// and the Routing page), and a budget on a workflow. Decision P127: a task's own level on the task page, over the project's.
 
 test("a project's routing level follows the workspace until it chooses its own, and both are kept", async ({ page }) => {
   await createProject(page, 'gocalc-level');
@@ -49,4 +49,29 @@ test('a budget on a workflow names one of the workflows the core runs and counts
   await expect(card).toBeVisible();
   await expect(card).toContainText('iterate-until-verified');
   await expect(card).toContainText('$3');
+});
+
+test("a task's own routing level is chosen on its page, over the project's, and kept", async ({ page }) => {
+  await createProjectWithoutRepo(page, 'gocalc-tasklevel');
+  await projectNav(page, 'nav-project');
+  await choose(page.getByTestId('routing-level-panel').getByLabel('Level', { exact: true }), 'cheapest');
+  await expect(page.getByTestId('routing-level-panel').getByTestId('routing-level-now')).toHaveAttribute('data-source', 'project');
+  await projectNav(page, 'nav-tasks');
+  await page.getByRole('link', { name: 'New task' }).click();
+  await page.getByLabel('Task title').fill('Tune the parser');
+  await page.getByRole('button', { name: 'Create task' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /Tune the parser/ })).toBeVisible();
+
+  const row = page.getByTestId('task-routing-level');
+  const level = row.getByLabel('Routing level');
+  await expect(row).toHaveAttribute('data-source', 'project');
+  await expect(row.getByTestId('task-routing-level-now')).toHaveText("This task's agent turns run at Cheapest, the project's level.");
+  await choose(level, 'quality');
+  await expect(row).toHaveAttribute('data-source', 'task');
+  await expect(row.getByTestId('task-routing-level-now')).toHaveText("This task's agent turns run at Quality, its own level.");
+  await page.reload();
+  await expect(page.getByTestId('task-routing-level').getByLabel('Routing level')).toHaveAttribute('data-value', 'quality');
+  // following again: the project's level applies
+  await choose(page.getByTestId('task-routing-level').getByLabel('Routing level'), '');
+  await expect(page.getByTestId('task-routing-level')).toHaveAttribute('data-source', 'project');
 });

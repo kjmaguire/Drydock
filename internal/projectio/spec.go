@@ -97,7 +97,9 @@ var Tables = []Table{
 		Columns: []string{"id", "project_id", "seq", "title", "description", "status", "priority", "assignee", "reviewer", "template", "files", "acceptance",
 			"branch", "base_branch", "iteration", "max_iterations", "review_feedback", "verdict", "model", "effort", "cost_usd", "issue_ref", "origin", "pr_ref",
 			"run_id", "blocked_reason", "accepted_by", "created_at", "updated_at", "started_at", "completed_at", "version", "labels"},
-		Skipped: map[string]string{"worktree": why_localPath}, Import: importTask},
+		Skipped: map[string]string{"worktree": why_localPath,
+
+			"route_level": "a person's routing choice on this installation (decision P127), left out as the project's own level is: an imported task follows the importing project's level"}, Import: importTask},
 	{Name: "task_deps", Where: `task_id IN ` + taskIDs + ` AND depends_on IN ` + taskIDs, Columns: []string{"task_id", "depends_on"}},
 	{Name: "task_evidence", Where: `task_id IN ` + taskIDs, OrderBy: `id`,
 		Columns: []string{"task_id", "attempt", "kind", "passed", "summary", "ref", "data", "created_at"},
