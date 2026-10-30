@@ -29,7 +29,7 @@ import {
   type IconNode,
 } from 'lucide';
 import type { LocalView } from '../api/localClient.ts';
-import { ownsKeys, shellKey } from '../lib/keys.ts';
+import { comboFor, ownsKeys, shellKey } from '../lib/keys.ts';
 import { hubOf, isWorkspaceHub, type Hub, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { query, services, watch } from '../state/services.tsx';
@@ -245,7 +245,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
 
   // roving focus: the arrow keys move up and down the sidebar's links (the switcher's menu keeps its own keys)
   const onKey = (e: KeyboardEvent) => {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    if (e.altKey || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return; // Alt+arrows go to another room or chat
     const nav = e.currentTarget as HTMLElement;
     if (!(e.target instanceof HTMLElement) || !e.target.hasAttribute('data-nav')) return;
     const items = Array.from(nav.querySelectorAll<HTMLElement>('[data-nav]')).filter((n) => n.offsetParent !== null);
@@ -290,7 +290,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     ];
 
     return (
-      <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar">
+      <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar" data-region="sidebar">
         <nav aria-label="Main" mix={[navCss, on<HTMLElement, 'keydown'>('keydown', onKey)]}>
           <div mix={scrollCss}>
           <div mix={headCss}>
@@ -313,10 +313,10 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
               <Icon icon={rail ? PanelLeftOpen : PanelLeftClose} size={15} />
             </button>
           </div>
-          <button type="button" mix={[searchCss, on('click', () => s.ui.setPalette(true))]} aria-label="Search and jump (Ctrl+K)" title="Search or run a command (Ctrl+K)">
+          <button type="button" mix={[searchCss, on('click', () => s.ui.setPalette(true))]} aria-label={`Search and jump (${comboFor('palette')})`} title={`Search or run a command (${comboFor('palette')})`}>
             <Icon icon={Search} size={14} />
             <span class="lbl">Search</span>
-            <kbd>Ctrl K</kbd>
+            <kbd>{comboFor('palette').split('+').join(' ')}</kbd>
           </button>
 
           <ul mix={listCss} role="list">

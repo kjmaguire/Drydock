@@ -241,14 +241,14 @@ UI: Models on this PC, the this-pc detail of the Models page (`ui/app/screens/mo
 - A projector's memory in the KV estimate beyond its file: what the vision encoder takes while it reads an image depends on
   the image and the batch, which no GGUF number says, so it is not counted (as in llama.cpp's own router measurements; decision
   P129 looked and left it so). The MTP context's memory is counted since P129 (section 13).
-- MTP heads of the TurboQuant build's own kinds: a Gemma 4 "assistant" file (architecture `gemma4_assistant`, the fork's
-  `MTP.md`) and the fork's older standalone `qwen35*_mtp` files are not offered; only the layout both builds' converters write
-  with `--mtp` is (section 13).
+- The TurboQuant fork's older MTP layouts (a Gemma 4 assistant of before its b10018 sync, `gemma4_assistant`, and the
+  standalone `qwen35*_mtp` NextN files) run on neither build at the tags read: they are marked and offered to nothing (section
+  14). A Gemma 4 assistant of today's layout is offered since P132.
 - The first Load too on a server of one model starts it again as the router (a server of one model has no router calls); from
   then on models are loaded and unloaded on it.
 - An embedding index: the embedding model only orders the passages BM25 found (section 12).
 - Not verified (P129): a real DFlash, DSpark or MTP head file against either build, the MTP context's real memory against the
-  estimate, Windows.
+  estimate, Windows. Not verified (P132): a real Gemma 4 assistant against either build, and whether it speeds its model up.
 
 ## 11. Several models, vision, drafts, embeddings and gated models (decision P111)
 
@@ -390,3 +390,40 @@ either tensor order; which models each fits; the MTP context's estimate apart fr
 the preset), `draftheads_test.go`; `internal/core/ext_localllm_p129_test.go` (offered by kind, refused for chat, run with their
 flags, `loadBytes`, `mtpKvBytes`, the fit and the served memory; an Unload and a start on one model drop the catalog rows and a
 turn pinned to the dropped model finds no candidate), `ext_localllm_inplace_test.go`; the Models page's unit and browser tests.
+
+## 14. The TurboQuant build's own MTP files (decision P132)
+
+What these files are and how they run was read in the TurboQuant fork's source at b10298-2.0.0 (`src/llama-arch.cpp`,
+`src/llama-model.cpp`, `src/models/gemma4-assistant.cpp`, `conversion/gemma.py`, `common/arg.cpp`, `common/speculative.cpp`,
+`MTP.md`, `NEXTN.md`) and in the official build at b11936 (`src/llama-arch.cpp`, `src/llama-model.cpp`, `common/arg.cpp`,
+`common/speculative.cpp`), fetched through the proxy.
+
+**A Gemma 4 assistant.** Google's drafter for a Gemma 4 model: a few transformer blocks that read the last hidden state of the
+model and its KV cache and guess the next tokens. Both builds name its architecture `gemma4-assistant`; the converter
+(`Gemma4AssistantModel`) writes every block as an MTP layer (`nextn_predict_layers` is the block count) and the model's hidden
+width as `gemma4-assistant.embedding_length_out` (its `backbone_hidden_size`). Drydock reads that key (`EmbeddingLengthOut`) and
+marks the file "Gemma 4 assistant" (`draftKind` `assistant`): it is offered to a Gemma 4 model (architecture `gemma4`) whose
+hidden state is as wide (its own `embedding_length_out`, else its embedding length; `common_speculative_impl_draft_mtp` asserts
+the two widths are equal), that has its tokenizer and is much larger, and runs with `--model-draft <file> --spec-type
+draft-mtp`, in the preset `model-draft` and `spec-type = draft-mtp`: both builds load a draft file into an MTP context when the
+type is `draft-mtp` (`common_speculative_init_result`); the fork's `--mtp-head` and `-md` are other names of `--model-draft`
+and its "mtp" and "nextn" aliases of `draft-mtp` since its b10018 sync (its `MTP.md` still describes the older
+`llama_model_load_mtp_from_file` path, which the code no longer has). Both builds give it the model's own cache
+(`create_memory` shares the model's last full and sliding-window layers with it), so its estimate is known and nothing:
+"It reads its model's cache and keeps none of its own." Since the official build loads it the same way, it is offered on both.
+It never chats (refused by the core), has no Load too and drafts for nothing but a Gemma 4 model.
+
+**The fork's older layouts.** Two kinds of MTP file the fork once took run on neither build at these tags: a Gemma 4 assistant
+converted before the fork's b10018 sync (architecture `gemma4_assistant`, which the fork's `llama_model_create` refuses by name:
+"this Gemma 4 assistant GGUF predates the b10018 sync and is no longer supported", and the official build does not know), and a
+standalone Qwen 3.5 NextN file (`qwen35_mtp`, `qwen35moe_mtp`: `NEXTN.md` calls it a fallback, but neither build's
+`llama-arch.cpp` names those architectures any more; a Qwen 3.5 model's own heads, in its own file, are the MTP heads of
+section 12). Drydock marks such a file "Old MTP file" ("no engine here loads it", `draftKind` `old-mtp`): it is offered to no
+model, has no Load too, and the core refuses it for chat with "an MTP file made for an older TurboQuant build: no engine Drydock
+installs loads it". Downloading a newer conversion is the way out.
+
+Tests: `internal/localllm/assistant132_test.go` (the headers of an assistant and of the three old kinds; which model an assistant
+fits and why another does not; no cache of its own; the flags on one server and in the preset; fixture GGUF headers only),
+`internal/core/ext_localllm_p132_test.go` (offered by kind, refused for chat, an old file offered to nothing, what the model takes
+loaded, run with its flags); the Models page's `models.test.ts` and `models-screen.test.browser.tsx`. Not verified: a real
+assistant file against either build.

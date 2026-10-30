@@ -62,7 +62,7 @@ export function Details(handle: Handle<{ taskId: string | undefined; roomId?: st
     ui.detailsPage(page);
     if (!ui.detailsOpen) {
       return (
-        <aside mix={closedCss} aria-label="Details">
+        <aside mix={closedCss} aria-label="Details" data-region="details">
           <IconButton icon={PanelRightOpen} label="Show details" aria-expanded={false} mix={on('click', () => ui.setDetails(true))} />
         </aside>
       );
@@ -76,7 +76,7 @@ export function Details(handle: Handle<{ taskId: string | undefined; roomId?: st
     const agents = s.project.agentList;
     const presence = s.project.presence.data ?? [];
     return (
-      <aside mix={panelCss} aria-label="Details">
+      <aside mix={panelCss} aria-label="Details" data-region="details">
         <div mix={headCss}>
           <Tabs label="Details" items={items} active={tab} onChange={(n) => ui.setTab(n as DetailsTab)} />
           <IconButton icon={PanelRightClose} label="Hide details" mix={on('click', () => ui.setDetails(false))} />

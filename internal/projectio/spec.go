@@ -245,6 +245,7 @@ var ExcludedTables = map[string]string{
 	"room_turn_grants":   "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
 	"room_join_rules":    "a person's rules that add agents to new task rooms on this machine; the person makes them again after an import (decision P130)",
 	"room_join_requests": "agents' requests to join a channel, answered or waiting for the person on this machine (decision P130)",
+	"connection_tests":   "Test connection runs of the agent CLIs on this machine, not project data (decision P132)",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

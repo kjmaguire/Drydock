@@ -118,6 +118,9 @@ func (l *localExt) plan(ctx context.Context, in localllm.Installed, s LocalSetti
 			return p, fmt.Errorf("%s is an embedding model: it is served on its own, as the embedding model", id)
 		}
 		mtp, kind := l.heads(m)
+		if kind == localllm.DraftOnlyOldMTP {
+			return p, fmt.Errorf("%s is an MTP file made for an older TurboQuant build: no engine Drydock installs loads it", id)
+		}
 		if kind != "" {
 			return p, fmt.Errorf("%s is %s: it does not chat, it drafts for the model it was made for (choose it as that model's draft)", id, localllm.DraftKindPhrase(kind))
 		}

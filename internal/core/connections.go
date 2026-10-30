@@ -82,6 +82,10 @@ func (c *Core) TestConnectionIn(ctx context.Context, adapterID, distro string, p
 			key = adapterID
 		}
 		c.Connections.RecordTest(key, rep)
+		// the run joins the install's conformance history (decision P132)
+		if herr := c.keepTestRun(ctx, key, rep, prompt); herr != nil {
+			c.logf("keep the Test connection run: %v", herr)
+		}
 		out := connections.TestOutcome{OK: rep.OK, Reason: rep.FailureReason(), Version: rep.CLIVersion}
 		if b, jerr := json.Marshal(out); jerr == nil {
 			if werr := c.DB.WriteTx(ctx, func(tx *sql.Tx) error {

@@ -1,8 +1,10 @@
 // The bottom dock (docs/ui.md 2): Terminal, Diff, Logs and Activity for the task in context (Diff and Logs need one). Its
-// open state, tab and height are kept per project. Ctrl+J toggles it; Ctrl+Shift+D opens the diff.
+// open state, tab and height are kept per project. Ctrl+J toggles it; Ctrl+Shift+D opens the diff, Ctrl+` the terminal (or the
+// keys the person bound them to, decision P132).
 
 import { css, on, type Handle } from 'remix/component';
 import { ChevronDown, ChevronUp, FileDiff, ScrollText, SquareTerminal, BarChart3 } from 'lucide';
+import { comboFor } from '../lib/keys.ts';
 import { services, watch } from '../state/services.tsx';
 import type { DockTab } from '../state/ui.ts';
 import { ActivityPanel } from '../screens/dock/activity-panel.tsx';
@@ -71,7 +73,7 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
     const { projectId, taskId } = handle.props;
     const d = s.ui.dock;
     return (
-      <section mix={dockCss} aria-label="Dock" style={d.open ? { height: `${d.height}px` } : undefined}>
+      <section mix={dockCss} aria-label="Dock" data-region="dock" style={d.open ? { height: `${d.height}px` } : undefined}>
         {d.open ? (
           <div
             role="separator"
@@ -123,9 +125,11 @@ export function Dock(handle: Handle<{ projectId: string | undefined; taskId: str
           </div>
           <div mix={hintCss}>
             <span>
-              <kbd>Ctrl</kbd> <kbd>J</kbd>
+              {comboFor('dock')
+                .split('+')
+                .flatMap((k, i) => (i > 0 ? [' ', <kbd key={k}>{k}</kbd>] : [<kbd key={k}>{k}</kbd>]))}
             </span>
-            <IconButton icon={d.open ? ChevronDown : ChevronUp} label={d.open ? 'Hide dock' : 'Show dock'} aria-expanded={d.open} title="Ctrl+J" mix={on('click', () => s.ui.toggleDock())} />
+            <IconButton icon={d.open ? ChevronDown : ChevronUp} label={d.open ? 'Hide dock' : 'Show dock'} aria-expanded={d.open} title={comboFor('dock')} mix={on('click', () => s.ui.toggleDock())} />
           </div>
         </div>
         {d.open ? (

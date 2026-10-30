@@ -11,6 +11,7 @@ import { Page } from '../../ui/layout.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
 import { AboutDrydock } from './about.tsx';
+import { KeyboardSection } from './keyboard.tsx';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT, THEMES } from './settings.ts';
 import { Group, panel, settingsColumn, tableWrap } from './settings-kit.tsx';
@@ -230,6 +231,7 @@ export function SettingsScreen(_handle: Handle) {
         <TelemetryPanel />
         <DiagnosticsPanel />
         <UpdatesSection />
+        <KeyboardSection />
         <AboutDrydock />
         <NotBuilt />
       </div>

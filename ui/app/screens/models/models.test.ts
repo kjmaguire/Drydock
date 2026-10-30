@@ -10,6 +10,7 @@ import {
   DRAFT_MTP,
   draftChoices,
   draftOnly,
+  draftOnlyWord,
   draftWords,
   diskLine,
   fitWords,
@@ -326,6 +327,15 @@ describe('Models on this PC helpers', () => {
     expect(draftWords({ ...qwen, draft: head.id }, more)).toBe('with an MTP head');
     expect(loadToo({ server: running }, head).why).toBe("An MTP head does not chat: choose it as its model's draft.");
     expect(loadToo({ server: running }, m({ draftKind: 'dspark' })).why).toBe("A DSpark draft does not chat: choose it as its model's draft.");
+    // a Gemma 4 assistant and an old MTP file (decision P132): the one drafts for its model, the other for nothing
+    const assistant = m({ id: 'g/gemma-4-assistant-GGUF:Q8_0', repo: 'g/gemma-4-assistant-GGUF', variant: 'Q8_0', draftKind: 'assistant' });
+    const old = m({ id: 'g/gemma-4-assistant-old-GGUF:Q8_0', repo: 'g/gemma-4-assistant-old-GGUF', variant: 'Q8_0', draftKind: 'old-mtp' });
+    expect(draftChoices({ ...qwen, drafts: [assistant.id] }, [...more, assistant]).map((c) => c.label)).toEqual(['No draft', 'Assistant: gemma-4-assistant · Q8_0']);
+    expect(draftWords({ ...qwen, draft: assistant.id }, [...more, assistant])).toBe('with its assistant');
+    expect(loadToo({ server: running }, assistant).why).toBe("A Gemma 4 assistant does not chat: choose it as its model's draft.");
+    expect(loadToo({ server: running }, old).why).toBe('No engine Drydock installs loads an old MTP file.');
+    expect(draftOnlyWord('assistant')).toBe('drafts for its model');
+    expect(draftOnlyWord('old-mtp')).toBe('no engine here loads it');
     expect(draftOnly(m({ eagle3: true }))).toBe('eagle3');
     expect(draftOnly(m())).toBeUndefined();
   });

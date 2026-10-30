@@ -2164,3 +2164,63 @@ Open, owner action:
   `guide` pass. **Not built:** desktop (Windows toast) notifications (they need an AppUserModelID, `docs/windows-identity.md`),
   a join rule matched again when a task names its files later, a rule for channels. **Not verified:** a real agent CLI calling
   `request_join` through the Workspace MCP server (the core's provider is tested directly), Windows.
+- **P132. Shortcuts: four regions, Ctrl+\`, Ctrl+Shift+K, Alt+Up/Down and rebinding; the Agents card's conformance history and
+  capability matrix; the TurboQuant build's own MTP files (2026-10-30).** On the owner's words after P129: "ok keep going",
+  answering the "Not built" lines of `ui.md` section 14 and S19 ("`Ctrl+1`-`4` (there is no region focus model yet), ``Ctrl+` ``,
+  `Ctrl+Shift+K`, `Alt+Up/Down` and rebinding"), its Connections line ("Still not built: conformance history and the capability
+  matrix on the card") and `local-models.md` section 10 ("MTP heads of the TurboQuant build's own kinds: a Gemma 4 assistant
+  file ... and the fork's older standalone `qwen35*_mtp` files are not offered"). (1) **Regions**: the shell is four regions,
+  each marked `data-region` (`shell/regions.ts`): `Ctrl+1` the sidebar (the link of the page open), `Ctrl+2` the page (`#main`,
+  the skip link's target), `Ctrl+3` the details panel (its chosen tab, or Show details when it is closed), `Ctrl+4` the dock
+  (its chosen tab); a region the page does not have (a workspace page has no panel or dock) leaves the key alone. ``Ctrl+` ``
+  opens the dock on its terminal and puts the keyboard there, or closes the dock when it shows the terminal already;
+  `Ctrl+Shift+K` opens the Inbox; `Alt+Up` and `Alt+Down` go to the room above or below in the Rooms rail's order (team, task,
+  direct), or the chat above or below in the chat list, and leave a dropdown's arrows alone. All are ignored inside the
+  terminal and Monaco, like the others (`shortcutOf` in `lib/keys.ts`); `Ctrl+.` in a direct-message room and Esc Esc in a
+  room's composer are not this decision's. A key that changes with Shift or is a dead key on some layouts (`` ` `` on a German
+  one) is read by its place on the keyboard (`KeyboardEvent.code`), letters by the layout. (2) **Rebinding**: the fourteen
+  shortcuts with Ctrl or Alt carry an id in `KEYMAP` (palette, Inbox, sidebar, the four regions, dock, terminal, diff,
+  inspector, the two room keys, new chat); Settings > Keyboard shortcuts (`screens/settings/keyboard.tsx`) waits for the new
+  keys after Change (Esc cancels), says at once why keys cannot be used and sends nothing then: Ctrl or Alt must be held (a
+  plain key would fire while typing), the key one the map can name (a letter, digit, punctuation key, arrow, Home, End, Page
+  Up or Down, F1 to F12), nothing the window or the fields keep (`RESERVED`: reload, find, print, developer tools, close, the
+  editing keys, Ctrl+Enter), and no other shortcut on the keys, by default or bound. Save sends every binding to two new methods,
+  `keys.get` and `keys.set` (`internal/core/ext_keys.go`), which check the same and keep the ones that differ from the defaults
+  in the settings row `ui.keybindings` for the workspace, with `keys.changed` for the other windows; Reset and Reset all go back.
+  The page and the core each hold the list; `TestTheCoresShortcutsAreTheKeyboardMaps` reads `keys.ts` and fails when they part.
+  The About map, the sidebar's search, the dock's hint and New chat show the keys in use. (3) **Detect**: the line's Detect is
+  the Agents page's **Check all again**, which reads `connection.list` again and so runs the core's detection of every CLI and
+  distro afresh (built with P98); no second button was added. (4) **Conformance history**: every Test connection run is kept in
+  a new table, `connection_tests` (migration 00170; 00171 was not needed), the newest 30 of each install: the CLI version, the
+  transport, passed, failed and skipped counts, whether the tiny prompt was sent, the first failed step's reason through the
+  secret scanner, the time, and the report's capability matrix; no output of the CLI. Neither a project export nor a project's
+  deletion touches it (it is this machine's, `projectio`). A new method, `connection.history`, answers an install's runs, newest
+  first, and its **capability matrix**: what the adapter declares (its capabilities, with the provenance its manifest gives
+  each, and its permission modes), with the cells of the newest run that filled one over it (`connections.CardMatrix`). The
+  Test results tab shows "What it can do" (the capability in words, Yes or No, the evidence) and "Past tests" (when, passed or
+  not, version, counts, the prompt, the time, the reason); the session's report no longer repeats the matrix beside it. (5) **The
+  TurboQuant build's own MTP files**, read in its source at b10298-2.0.0 (`src/llama-arch.cpp`, `src/llama-model.cpp`,
+  `src/models/gemma4-assistant.cpp`, `conversion/gemma.py`, `common/arg.cpp`, `common/speculative.cpp`, `MTP.md`, `NEXTN.md`,
+  fetched through the proxy) and in the official b11936 (`src/llama-arch.cpp`, `src/llama-model.cpp`, `common/speculative.cpp`,
+  `common/arg.cpp`): a **Gemma 4 assistant** is architecture `gemma4-assistant` in both (the converter writes its blocks as MTP
+  layers and its model's hidden width as `embedding_length_out`), shares the cache of its model (both builds' `create_memory`),
+  and is run with `--model-draft <file> --spec-type draft-mtp` (the fork's `--mtp-head` and `-md` are one flag with
+  `--model-draft`, its "mtp" and "nextn" aliases of `draft-mtp` since its b10018 sync). It is offered to a Gemma 4 model whose
+  hidden state is as wide (`common_speculative_impl_draft_mtp` refuses another width) with its tokenizer, on either build, since
+  both load it; it never chats, has no Load too and keeps no cache of its own in the estimate. The fork's **older layouts** are
+  loaded by neither build at these tags: a Gemma 4 assistant converted before b10018 (`gemma4_assistant`, which the fork's
+  `llama_model_create` refuses by name: "predates the b10018 sync and is no longer supported") and a standalone Qwen 3.5 NextN
+  file (`qwen35_mtp`, `qwen35moe_mtp`: `NEXTN.md` still calls it a fallback, but no `llama-arch.cpp` names the architecture),
+  so such a file is marked "Old MTP file" ("no engine here loads it"), offered to nothing and refused for chat with that
+  reason. No new dependency; three new RPC methods (`connection.history`, `keys.get`, `keys.set`) and one event
+  (`keys.changed`). Tests: `internal/localllm/assistant132_test.go`, `internal/core/ext_localllm_p132_test.go`,
+  `ext_connhistory_test.go`, `ext_keys_test.go`, `ext_economics_test.go`'s list, `internal/connections/history_test.go`,
+  `internal/projectio` (the table decided for export, deletion and an older archive); the UI's `lib/keys.test.ts`,
+  `shell/regions.test.browser.tsx`, `a11y.test.browser.tsx`, `settings/keyboard.test.browser.tsx`, `settings-screen.test.browser.tsx`,
+  `agents.test.ts`, `agents-screen.test.browser.tsx`, `models.test.ts`, `models-screen.test.browser.tsx`, `client.test.ts`; the e2e
+  `keys.spec.ts` (new) and `wsl.spec.ts` (the history after a reload), with `smoke` and `density`.
+  **Not built:** `Ctrl+.` in a direct-message room and Esc Esc in a room's composer (P130's), a binding of a key pressed after
+  another (the chords G then I, J and K stay as they are), a binding per person rather than per workspace. **Not verified:** a
+  real Gemma 4 assistant file against either build (fixture GGUF headers and the labelled stand-in only) and whether it speeds
+  a model up, the keys in WebView2 on Windows (that WebView2 leaves Ctrl+1 to 4, Ctrl+\` and Alt+arrows to the page), a real
+  CLI's Test connection history beyond the test double's.
