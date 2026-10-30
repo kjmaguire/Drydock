@@ -12,14 +12,14 @@ on:
   pull_request:
 permissions:
   contents: read
-# a newer push to the same branch or pull request supersedes the run still going (the Windows jobs take 15 minutes)
+# a newer push to the same branch or pull request supersedes the run still going (the Windows jobs take about 30 minutes)
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   go:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     # CGO on, said outright: the repo map's tree-sitter parser is C (decision P62), and without a C compiler Go would quietly
     # build the tests without it. GitHub's Windows images have MinGW gcc on PATH.
     env:
@@ -62,8 +62,10 @@ jobs:
         # the output is kept in a file as well, so a failure can be listed on its own below
         # the trial suite's hidden-check self-check runs in its own job (below): it builds and tests every task's fixture
         # twice at once, and on one runner it starved the other packages' tests
+        # -timeout only catches a hang: the core package alone takes about 25 minutes on windows-latest (1476 s on c3057b6),
+        # and at 25m its tests ran out of time with none of them stuck (f9745a5, the last one running for 3 s)
         run: |
-          go test ./... -count=1 -timeout 25m -skip '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' | Tee-Object -FilePath "$env:RUNNER_TEMP/go-test.log"
+          go test ./... -count=1 -timeout 45m -skip '^TestEveryHiddenCheckFailsOnTheFixtureAndPassesOnTheReferenceSolution$' | Tee-Object -FilePath "$env:RUNNER_TEMP/go-test.log"
           exit $LASTEXITCODE
       - name: Show the failed tests
         # the core package logs thousands of lines, which bury a failing test in the log above
