@@ -140,7 +140,7 @@ type QuotaLedger interface {
 | OpenAI | `x-ratelimit-limit/remaining/reset-{requests,tokens}` (optional; missing or odd on some models) | `insufficient_quota` is not retryable | `Retry-After` is a minimum; add jitter |
 | Google Gemini | Nothing proactive found | Per-model RPM/RPD/TPM configured by the user or learned from the 429 body (`QuotaFailure.quotaId`, `RetryInfo.retryDelay`); per project, daily reset midnight Pacific | Body `retryDelay`, not a header; classify by `quotaId`, stop retrying per-day quotas even if `retryDelay` is short |
 | vLLM / SGLang / Ollama | Concurrency and queue only (vLLM `/metrics`, `/load`; SGLang `/metrics`, `/server_info`; Ollama `/api/ps`, 503 when queue of 512 is full) | `max_concurrent` from benchmark | none |
-| Claude Code subscription | Stream `rate_limit_event.rate_limit_info{status: allowed\|allowed_warning\|rejected, resetsAt, utilization}` (CLI >= 2.1.181); ACP bridge forwards as `_meta["_claude/rateLimit"]` (AC s1, s10) | No JSON usage command | `rejected` marks unavailable until `resetsAt` (built 2026-10-11, `internal/core/agentlimits.go`: the CLI's models, or only the family a limit names such as a weekly Opus limit, are filtered as quota-exhausted until the reset); `allowed_warning` downshifts premium use (not built) |
+| Claude Code subscription | Stream `rate_limit_event.rate_limit_info{status: allowed\|allowed_warning\|rejected, resetsAt, utilization}` (CLI >= 2.1.181); ACP bridge forwards as `_meta["_claude/rateLimit"]` (AC s1, s10) | No JSON usage command | `rejected` marks unavailable until `resetsAt` (built 2026-10-11, `internal/core/agentlimits.go`: the CLI's models, or only the family a limit names such as a weekly Opus limit, are filtered as quota-exhausted until the reset); `allowed_warning` downshifts premium use (built 2026-10-30, decision P128: the models the warned limit covers carry the warning until the reset or the next report of that limit, and the turns the ladder's rules allow try the cheap tier first; section "As built: a subscription's warning downshifts premium use") |
 | Codex subscription | `codex app-server` `account/rateLimits/read` and `account/rateLimits/updated` (primary/secondary windows with `usedPercent`, `windowDurationMins`, `resetsAt`); a side-channel client in Go; over ACP only `/status` text | | |
 | Antigravity | `agy -p "/usage"` prints plan quota and reset times (CHANGELOG, SNIPPET-ONLY on format) | | |
 | Gemini CLI, OpenCode, Goose | None programmatic (Gemini internal `retrieveUserQuota` only, via interactive `/stats`); local accounting only | Docs list static daily limits for Gemini CLI auth methods (consumer sign-in reportedly retired 2026-06-18) | |
@@ -646,3 +646,30 @@ template; Custom can be stored (`custom`) but the pages offer the five ladder le
 `TestAProjectsOwnLevelRoutesItsTurnsAndTheExplanationSaysSo` (`internal/core`: at Quality the worker's first turn runs on
 its premium model), `TestTheDecisionSaysWhichLevelItRanAtAndWhere` (`internal/router`), the UI's
 `project-routing-level.test.browser.tsx` and `routing-screen.test.browser.tsx`, and `e2e/routing-level.spec.ts`.
+
+## As built: a subscription's warning downshifts premium use (2026-10-30, decision P128)
+
+Claude Code reports each of its account's limits mid-turn as a `rate_limit_event` (status `allowed`, `allowed_warning` or
+`rejected`, the limit's type, its reset time). Since P128 an `allowed_warning` (the limit is near) is kept per CLI and limit type
+beside the rejected limits (`internal/core/agentlimits.go`, in memory, nothing stored) until the limit's `resetsAt` passes or the
+CLI reports the same limit again (`allowed`, or `rejected`, which then blocks as before). A limit whose type names a model family
+(`seven_day_opus`) covers only that family. The agent's route candidates (`agentSource`) carry it as `Candidate.QuotaWarning`
+("Claude Code reported its seven day opus limit near (allowed_warning, resets ...)"). The shape the ACP bridge forwards in
+`_meta["_claude/rateLimit"]` is read as the info itself, which is unverified.
+
+When a premium candidate of the turn is warned, the router prefers the cheap tier for the turn (`router.QuotaDownshift`, policy
+id `quota-warning-downshift`), and the ladder's rules decide which turns allow it: not on the Maximum Quality level, not for a
+risky task, not for a turn a person pinned, not when a rule already chose the tier to prefer; and a rule that requires the premium
+tier (the premium-only classes such as architecture or a security review, an escalation after cheap turns failed) still filters
+the cheap candidates out, so those turns stay premium. Without a cheap candidate the premium one runs. At Balanced and the levels
+below it a work turn tries the cheap tier first anyway, so in practice the downshift changes the Quality level's turns. It applies
+only to an agent whose person listed the models the router may choose (an agent without a list keeps its model). "Why this
+model?" says either "- Subscription limit: ..., so premium use is downshifted: the cheap tier is tried first until the limit
+resets or is reported allowed again." or "...; no downshift for this turn (...)", from the decision record
+(`DecisionFacts.QuotaWarning`, `QuotaDownshift`).
+
+Tests: `internal/router/quotawarning_test.go` (Quality goes to the cheap model while the premium one is warned; the
+premium-only class, a risky task, an escalation, Maximum Quality and a pin stay premium with the warning shown; a warning on the
+cheap model alone changes nothing; no cheap model left), `internal/core/p128_test.go` (the warning until the reset or the next
+report, an account-wide one, the ACP shape; a warning published by a session reaching the agent's candidates on the premium
+model only). **Not verified:** a real Claude Code subscription's warning (the fixture's `rate_limit_event` lines only).

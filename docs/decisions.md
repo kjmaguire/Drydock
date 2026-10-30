@@ -1969,3 +1969,49 @@ Open, owner action:
   code); the backfill test keeps a row with an old content attribute; `TestTheRemovedContentSwitchIsGoneAndItsSettingIgnored`
   (core); the Settings browser test and `e2e/diagnostics.spec.ts` find no such switch. Docs: `security.md` principle 4,
   `packaging.md` section 9, `token-control.md`, `ui.md` S19, `architecture.md`. No new dependency.
+- **P128. Drydock's own occupancy estimate, a fresh session after two corrections, the outgoing agent asked after a takeover,
+  criteria a named check confirms, findings about how criteria are written, and a subscription's warning downshifting premium
+  use (2026-10-30).** On the owner's words, after P124 to P126 were built and pushed: "ok keep going", answering the "Not built"
+  lines P39, P119 and P125 wrote and two more (P39 (5): "Drydock's own occupancy estimate is not built"; P39 "Not done:
+  restarting a session after two corrections"; P125: "a review finding for a criterion written without an id, a check that
+  confirms a criterion other than through test names, asking the outgoing agent after another agent takes over";
+  `model-routing.md` s6: "`allowed_warning` downshifts premium use (not built)"). (1) **The estimate**
+  (`internal/pipeline/estimate.go`, [`token-control.md`](token-control.md) "As built: occupancy estimate, two corrections, the
+  outgoing agent, criteria by check"): after a work turn whose CLI reported no occupancy, the work node's output carries
+  `contextEstimate`: the packages Drydock sent into the session (chars/4, instruction files counted each turn) plus what came
+  back, the larger of what the runtime saw (`TurnResult.SeenBytes`, new: messages, tool calls and tool results) and the output
+  tokens reported, with a 25 % margin and 10,000 tokens for the CLI's own prompt and tools, against the catalog's context length
+  of the model (`Deps.ContextWindow`, `Core.modelWindow`: the agent's provider, else the smallest any provider lists) or 128,000.
+  The session continues only below **50 %**, chosen so that an estimate 40 % under the real occupancy still hands off before the
+  real one reaches 70 %; the decision (`estimated`, threshold 50), its reason (and so the manifest line) and the `agent.session`
+  event say it is an estimate; a reported figure always wins. (2) **Two corrections**: a correction is a work turn sent back by a
+  failing check, a reviewer's REVISE or a person's Request changes (`pipeline.Corrected`; guidance, a merge conflict and a
+  watchdog notice are not), counted per session in the work output (`corrections`); after the second, the next work turn is a
+  fresh session with a handoff, reason `corrections` (after context pressure in the order of reasons), and the outgoing session
+  is asked for its handoff as for context pressure. (3) **The outgoing agent after a takeover**: the P125 handoff turn runs on the
+  outgoing agent with its own work config, its session and model, the same budgets, before the new agent starts (not when it
+  no longer runs the CLI its session was on); `HandoffRequest.agent` names it; Drydock's handoff on any failure, as before. For
+  every trigger, an agent whose own handoff from its turn already passes Drydock's checks is not asked ("nothing is missing"),
+  which the brief described as the existing behaviour and P125 had not built. (4) **Criteria by check**: a criterion naming
+  `[check: <name>]` or `(check: <name>)` is confirmed met or shown not met by the newest result with a verdict of that check
+  kind (`CriterionStatus.check`), beside the test-name trace; any other evidence never confirms, and a name the project does not
+  run leaves it open. (5) **Findings**: after each review, `pipeline.AcceptanceFindings` records, once per task, `review_finding`
+  evidence without a verdict and a `task.review_finding` event for a criterion without an id (severity low, on the security scan's
+  scale; it suggests the next free id) and one naming a check the project does not run (medium; the checks Verify detects,
+  secrets and deps when on, e2e and preview when set up, and kinds the task already has); neither changes the verdict or blocks the
+  criteria that have ids. (6) **`allowed_warning`** ([`model-routing.md`](model-routing.md) "As built: a subscription's warning
+  downshifts premium use"): `agentlimits` keeps a warning per CLI and limit type until the reset or the next report of that limit
+  (also from the ACP bridge's shape, unverified), the agent's candidates carry it (`Candidate.QuotaWarning`), and
+  `router.QuotaDownshift` makes the cheap tier the first choice (`quota-warning-downshift`) unless the level is Maximum Quality,
+  the task is risky, a person pinned the turn or a rule chose the tier; a rule requiring premium (premium-only classes, an
+  escalation) still keeps it premium; "Why this model?" says which (`DecisionFacts.QuotaWarning`, `QuotaDownshift`). The
+  labelled stand-in gained `Script.NoOccupancy` (a CLI that reports no occupancy). No migration (00166 and 00167 were not
+  needed), no new RPC method, no new dependency. Tests: `internal/pipeline/p128_test.go` (the review findings and a lint-named
+  criterion end to end; named checks; the takeover asked, answered and seeding the new agent; not asked when its handoff passes;
+  asked and silent; the estimate's arithmetic, a session continued on it and one handed off with a small window; two corrections
+  then a fresh session; what counts as a correction), `p125_test.go`'s table, `internal/agents/runtime` (`SeenBytes`),
+  `internal/router/quotawarning_test.go`, `internal/core/p128_test.go` (the warning's life, its wiring to the candidates, the
+  catalog window). **Not verified:** the estimate's margins against a real CLI's own figure, a real outgoing agent of another
+  CLI answering, a real subscription's `allowed_warning`, whether any of it lowers what a task costs (no eval run), Windows. The
+  task page lists a finding in its evidence ("Review finding", `screens/tasks/tasks.ts`, its unit test). **Not built:** a finding
+  shown beside its criterion, and the check a criterion names shown on the task page.

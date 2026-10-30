@@ -165,7 +165,7 @@ OpenTelemetry export is optional and off by default; attribute names are our own
 ## Open questions / unverified
 
 - No real streams exist for any CLI (no logins in Phase 0): cached-token semantics per CLI, rate-limit event shapes, `usage_update` stability, mid-tool interrupt behavior and Windows signal delivery are unverified; normalization fixtures must be captured before the normalizer is trusted.
-- Context occupancy for Gemini is only an estimate; the 70% handoff for Gemini and any custom CLI depends on Drydock's own counter, which is not built: as built, a turn whose CLI reported no occupancy is never continued (P39).
+- Context occupancy for Gemini is only an estimate; the 70% handoff for Gemini and any custom CLI depends on Drydock's own counter, which is not built: as built, a turn whose CLI reported no occupancy is never continued (P39). Built since (P128): Drydock's own estimate (what it sent, what the runtime saw come back, the output tokens reported, a 25 % margin and 10,000 tokens for the CLI's own prompt), held to 50 % instead of 70 %. Its margins are assumptions, unmeasured against a real CLI's own figure.
 - Native-tool output inside a CLI cannot be truncated by Drydock (rule 8) and files a CLI reads itself are invisible to the manifest (rule 9, 11); only Gateway tools, Drydock-run checks and the package we assemble are enforceable. Rules 8, 9 and 11 are therefore enforced for Drydock-mediated paths only.
 - Watchdog numbers other than those in brief §7 (error-echo count, per-template caps, no-progress timer, signature depth, handoff cap, TTLs, tool-argument canonicalization details) are design assumptions to be tuned from the false-trip rate and `docs/evals.md`.
 - Brief §7 attaches "per turn" ambiguously to the hard-cap list; interpreted as per turn.
@@ -318,9 +318,10 @@ Built in `internal/pipeline/session.go` for the worker's turns of every task wor
 | The router asked for a handoff and the model changed (an escalation) | fresh session, handoff | `escalation` |
 | The model changed for another reason | fresh session, handoff | `model_change` |
 | The CLI cannot continue a stored session (`Capabilities.SessionResume` false, or `--no-session-persistence`) | fresh session with the task and the latest feedback | |
-| The previous turn reported no context occupancy | fresh session with the task and the latest feedback | |
 | The CLI compacted the session's context during the previous turn (`UsageChunk.Compactions`; OpenCode reports it over ACP) | fresh session, handoff | `context_pressure` |
-| Occupancy at or above 70 % of the model's window (`ContextUsed` / `ContextSize`, Claude: `modelUsage.contextWindow`) | fresh session, handoff | `context_pressure` |
+| The previous turn reported no context occupancy and Drydock has no estimate of it | fresh session with the task and the latest feedback | |
+| Occupancy at or above 70 % of the model's window (`ContextUsed` / `ContextSize`, Claude: `modelUsage.contextWindow`), or Drydock's own estimate at or above 50 % when the CLI reports none (P128, section "As built: occupancy estimate, two corrections, the outgoing agent, criteria by check") | fresh session, handoff | `context_pressure` |
+| The session was corrected twice (P128) | fresh session, handoff | `corrections` |
 | Otherwise | **the same session continues** (`--resume <session>`, with the session's running usage totals as the baseline so each turn records only its own usage) | |
 
 A turn is never cut: the decision uses what the previous turn reported when it ended. A continued session that the CLI can no longer resume (it ends before its session starts, `rt.ErrNotStarted` or `TurnResult.Started` false) is replaced in the same node execution by a fresh session with a handoff (`resume_failed`).
@@ -329,7 +330,7 @@ A turn is never cut: the decision uses what the previous turn reported when it e
 
 **Where the decision is recorded**: the work node's output (`session`: action, trigger, reason, occupancy, threshold, previous session, models, handoff id), the turn's context manifest (the `previous session transcript` entry says continued or not and why; a `handoff:<id>` entry when one was given), an `agent.session` event per work turn, and for a handoff a `handoffs` row with `handoff.created`.
 
-**Differences from the design above**: the handoff is synthesized by Drydock rather than requested from the agent and verified (no extra paid turn; the agent's own `handoff` tool can still write one, and since P119 one it wrote during the previous turn is checked and used, section "As built: package ceiling, file ranges and verified handoffs"); the switch happens at the start of the next turn rather than "when idle" inside the same turn; continuation is per run (a new run of a task starts a fresh session); a CLI that reports no occupancy (Gemini over ACP) is never continued, since Drydock's own estimate is not built. Below the threshold the session is continued even after corrections; the best-practices advice to restart a session after two corrections (`claude-best-practices.md` s2) is not applied.
+**Differences from the design above**: the handoff is synthesized by Drydock rather than requested from the agent and verified (no extra paid turn; the agent's own `handoff` tool can still write one, and since P119 one it wrote during the previous turn is checked and used, section "As built: package ceiling, file ranges and verified handoffs"); the switch happens at the start of the next turn rather than "when idle" inside the same turn; continuation is per run (a new run of a task starts a fresh session); a CLI that reports no occupancy (Gemini over ACP) is never continued, since Drydock's own estimate is not built. Below the threshold the session is continued even after corrections; the best-practices advice to restart a session after two corrections (`claude-best-practices.md` s2) is not applied. **Built since** (decision P128): Drydock's own occupancy estimate for a CLI that reports none, held to 50 %, and a fresh session after two corrections.
 
 ## As built: OpenCode's compaction, sub-agents and resumed cost (2026-10-15, decision P53 a)
 
@@ -609,8 +610,10 @@ of a task whose criteria have ids is asked to name the id of a criterion it find
 | context pressure (occupancy at or above 70 %, or the CLI compacted), an escalation, a model change | yes, when the agent's CLI can continue a stored session, its turns have the `handoff` tool (the gateway attached and the project lets agents act), and the outgoing session has at least 4,000 tokens of its window left (`HandoffTurnRoom`; otherwise `over_budget`) |
 | the previous attempt was cut off (a crash) | no: Drydock writes the handoff of a crash (section 3) |
 | the watchdog stopped the session and a person let the work go on | no: the watchdog's stage 2 is Drydock's |
-| another agent takes the task over | no: Drydock does not start the outgoing agent again |
+| another agent takes the task over | no: Drydock does not start the outgoing agent again (since P128: yes, the outgoing agent, under the same conditions; next section) |
 | the session could not be resumed | no |
+
+Since P128 no agent is asked when the handoff it left during its own turn already passes Drydock's checks (nothing is missing).
 
 The turn resumes the outgoing session (`--resume`, the model it ran on, its usage baseline) read-only, with a prompt that asks
 only for a handoff written with the tool (the criteria too when the task has any) and says nothing may be changed. It has its
@@ -679,4 +682,71 @@ CLI answering the handoff turn (only the stand-in; for a CLI other than Claude, 
 tool through is not known, and a refused call means no handoff and Drydock's), whether the turn pays for itself (no eval run),
 the token budget's reading of a CLI's usage other than Claude Code's, Windows. **Not built:** a review finding for a criterion
 written without an id (the reviewer cannot name it), a check that confirms a criterion other than through test names carrying its
-id, asking an outgoing agent of another CLI or agent after a takeover.
+id, asking an outgoing agent of another CLI or agent after a takeover. **Built since** (decision P128, next section): all three.
+
+## As built: occupancy estimate, two corrections, the outgoing agent, criteria by check (2026-10-30, decision P128)
+
+On the owner's word "ok keep going", answering the "Not built" lines of P39 (5), P119 and P125 and two lines of
+`claude-best-practices.md` s2 and `model-routing.md` s6 (the `allowed_warning` downshift is described there, "As built: a
+subscription's warning downshifts premium use").
+
+**Drydock's own occupancy estimate (rule 5).** A CLI that reports no occupancy (a custom CLI, Antigravity, an ACP agent that
+sends no `usage_update`) was never continued. Now, after a work turn whose CLI reported none, `pipeline.EstimateOccupancy`
+writes an estimate into the work node's output (`contextEstimate`): what Drydock sent into the session over all its continued
+turns (each turn's package, chars/4, with the instruction files the CLI reads, counted again each turn, which errs high), plus
+what came back, the larger of what the runtime saw (`TurnResult.SeenBytes`: the complete messages, tool calls and tool results
+as their chunks encode them, chars/4) and the output tokens the CLI reported; that sum gets a margin of 25 % (`EstimateMarginPct`:
+chars/4 undercounts code, which is nearer 3 characters a token) and 10,000 tokens for the CLI's own system prompt and tool
+definitions (`EstimateCLIOverhead`; Claude Code's are about 15,000, a smaller CLI's less). The window is the model's context
+length in the provider catalog (on the agent's provider, else the smallest any provider lists; `Core.modelWindow`), else 128,000
+tokens (`DefaultEstimateWindow`, a window every current coding model meets). The next turn continues the session only while the
+estimate is below **50 %** (`EstimatedHandoffPct`), not 70 %: what neither figure sees (a file the CLI read outside its stream,
+reasoning it keeps) has 20 points before the 70 % a reported figure is held to, so an estimate 40 % under the real occupancy
+still hands off before the real one reaches 70 %. A decision taken on an estimate has `estimated: true` and threshold 50 in the
+work node's output, says "Drydock's estimate: the CLI reports no occupancy, so an estimate is held to 50%, not 70%" in its reason
+(and so in the manifest's `previous session transcript` line), and the `agent.session` event carries `estimated`. A reported
+figure always wins over an estimate. **Not verified:** the margins against a real CLI's own figure (no real CLI without
+occupancy ran here; the tests use the stand-in with its context window left out, `fakeagent.Script.NoOccupancy`).
+
+**A fresh session after two corrections (`claude-best-practices.md` s2).** A correction is a work turn that runs because its
+previous work was sent back: a failing check, a reviewer's REVISE or a person's Request changes in its inbox (`pipeline.Corrected`;
+guidance from the lead or a person, a merge conflict and a watchdog notice are not). Each work output counts its session's
+corrections (`corrections`: carried over while the session continues, from 0 in a new session, the turn's own included). When the
+previous turn's session has taken `MaxSessionCorrections` = 2, the next work turn starts a fresh session with a handoff, reason
+`corrections` (recorded in the decision, the `handoffs` row, the manifest and the `agent.session` event's `corrections`); the
+outgoing session is asked for its handoff as for context pressure. Context pressure is checked first, so a session over both
+is replaced for that. So a session takes at most two corrections; the fresh one counts its own from the feedback it starts with.
+
+**The outgoing agent asked after a takeover (rule 6).** When another agent takes the task over (`agent_change`), the bounded
+read-only turn of P125 now runs on the **outgoing** agent: its own work config (`Deps.AgentConfig` with the task as it was
+assigned to it), resuming its session on the model it ran on, with the same budget (4,000 new tokens, 2 minutes), before the new
+agent's fresh session starts; the conditions are the same (its CLI can resume, its turns have the `handoff` tool, its session has
+room), plus one: an outgoing agent that no longer runs the CLI its session was on is not asked. `HandoffRequest.agent` names it.
+What it writes is checked as before, and on any failure the new agent gets Drydock's handoff. For every trigger, an agent whose
+own handoff from its turn already passes Drydock's checks is not asked (`not_asked`, "nothing is missing to ask for").
+**Not verified:** a real outgoing agent of another CLI answering (only the stand-in).
+
+**A review finding for a criterion without an id, and criteria confirmed by a named check (P125's criteria).** A criterion may
+name one of the project's checks in its text, `[check: lint]` or `(check: e2e)` (`pipeline.CriterionCheck`): the newest result
+of that check with a verdict confirms it met or shows it not met (`source` check, `by` the check, `check` on the status), beside
+the test-name trace, and the newest fact counts as before. Only a check kind can (build, test, lint, typecheck, secrets, deps,
+e2e, preview, ci): other evidence, an approval say, never confirms, and a skipped run says nothing. After each review the review
+step records Drydock's findings about how the criteria are written (`pipeline.AcceptanceFindings`), once per task, as
+`review_finding` evidence without a verdict and a `task.review_finding` event, beside the review's own verdict, which they never
+change: a criterion without an id (severity low, the scale of the security scan's findings: no test, review or handoff can name
+it; the finding suggests the next free id), and a criterion that names a check the project does not run (medium: the checks
+Verify detects, secrets and deps when switched on, e2e and preview when set up, and any kind the task already has a result of;
+the criterion stays open, never a silent pass). The reviewer is still asked to name the ids of the criteria that have one.
+
+**Tests.** `internal/pipeline/p128_test.go` with the scripted Claude stand-in: the review step's two findings and the lint-named
+criterion confirmed by Verify's lint (`TestTheReviewStepFindsCriteriaWithoutAnIDOrWithAnUnknownCheck`), what a named check
+confirms, shows not met or never says (`TestACriterionANamedCheckConfirms`), the outgoing agent asked after a takeover and its
+handoff seeding the new agent (`TestTheOutgoingAgentIsAskedForAHandoffWhenAnotherAgentTakesOver`), not asked when its own
+handoff passes, asked and not answering (`TestAnOutgoingAgentIsAskedOnlyWhenItsHandoffIsMissing`), the estimate's arithmetic and
+thresholds (`TestDrydocksOccupancyEstimate`), a session continued on the estimate end to end and handed off with a small window
+(`TestASessionTheCLIReportsNoOccupancyForContinuesOnDrydocksEstimate`), two corrections then a fresh session
+(`TestASessionCorrectedTwiceRestartsWithAHandoff`, `TestWhatCountsAsACorrection`); `p125_test.go`'s table now asks after a
+takeover; `internal/agents/runtime` (`SeenBytes`); `internal/core/p128_test.go` (the catalog window); the UI's `tasks.test.ts`
+(the task page lists a finding in its evidence as "Review finding", without a result). No migration (00166 and 00167 were not
+needed), no new RPC method, no new dependency. **Not built:** a finding shown beside its criterion on the task page, and the check
+a criterion names shown there.
