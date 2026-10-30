@@ -33,11 +33,12 @@ type Launch struct {
 	// then not used).
 	Model  Model
 	Models []Model
-	// Drafts are the draft models of speculative decoding, by the id of the model each drafts for (--model-draft with
-	// --spec-type draft-simple, or draft-eagle3 for an EAGLE-3 draft).
+	// Drafts are the draft files of speculative decoding, by the id of the model each drafts for (--model-draft with
+	// --spec-type draft-simple, or the type of a file that only drafts).
 	Drafts map[string]Model
-	// SpecTypes is the kind of speculative decoding of a model, by its id, when it is not draft-simple (decision P120):
-	// SpecEagle3 for an EAGLE-3 draft in Drafts, SpecMTP for a model that drafts with its own MTP heads (no draft file).
+	// SpecTypes is the kind of speculative decoding of a model, by its id, when it is not draft-simple (decisions P120 and
+	// P129): SpecEagle3, SpecDFlash or SpecDSpark for such a draft in Drafts, SpecMTP for a file of MTP heads in Drafts or, with
+	// no draft, for a model that drafts with its own MTP heads.
 	SpecTypes map[string]string
 	// RouterMode runs the router even for one model: a router that kept one model loaded after the others were unloaded stays
 	// one, so another can be loaded beside it again without a restart (decision P120).
@@ -210,28 +211,51 @@ func (s *Server) addLine(l string) {
 
 // The kinds of speculative decoding Drydock runs (llama-server --spec-type), named on every start: llama.cpp infers none from
 // a plain draft model's header, and the TurboQuant build infers none at all (its common/arg.cpp at b10298-2.0.0 has no
-// inference from the draft's header). Both builds Drydock installs have the three (decision P120).
+// inference from the draft's header). Both builds Drydock installs have all five (decisions P120 and P129: the types in their
+// common/speculative.cpp, the examples in their docs/speculative.md).
 const (
 	// SpecSimple is a smaller model of the same family drafting (--model-draft).
 	SpecSimple = "draft-simple"
 	// SpecEagle3 is an EAGLE-3 draft (--model-draft): a one-layer model trained for one target, reading its hidden states.
 	SpecEagle3 = "draft-eagle3"
-	// SpecMTP is the model's own multi-token prediction (MTP, NextN) heads drafting: no draft file.
+	// SpecMTP is multi-token prediction (MTP, NextN) heads drafting: the model's own (no draft file), or a file of heads alone
+	// (--model-draft: the TurboQuant build's --mtp-head is another name for it, and the official build has only --model-draft).
 	SpecMTP = "draft-mtp"
+	// SpecDFlash is a DFlash draft (--model-draft): a small block-diffusion model trained for one target that drafts a whole
+	// block of tokens in one pass. SpecDSpark is a DFlash draft with a Markov head.
+	SpecDFlash = "draft-dflash"
+	SpecDSpark = "draft-dspark"
 )
 
-// spec is the kind of speculative decoding a model of the launch runs: "" for none.
-func (l Launch) spec(id string) string {
-	if d, ok := l.Drafts[id]; ok && len(d.Files) > 0 {
-		if l.SpecTypes[id] == SpecEagle3 {
-			return SpecEagle3
-		}
-		return SpecSimple
-	}
-	if l.SpecTypes[id] == SpecMTP {
+// SpecOf is the --spec-type a draft-only kind of file runs with (GGUFInfo.DraftOnly); "" for a draft model (draft-simple).
+func SpecOf(kind string) string {
+	switch kind {
+	case DraftOnlyEagle3:
+		return SpecEagle3
+	case DraftOnlyDFlash:
+		return SpecDFlash
+	case DraftOnlyDSpark:
+		return SpecDSpark
+	case DraftOnlyMTPHead:
 		return SpecMTP
 	}
 	return ""
+}
+
+// spec is the kind of speculative decoding a model of the launch runs ("" for none) and the draft file it loads for it ("" for
+// none: the model's own MTP heads).
+func (l Launch) spec(id string) (sp, draft string) {
+	if d, ok := l.Drafts[id]; ok && len(d.Files) > 0 {
+		switch t := l.SpecTypes[id]; t {
+		case SpecEagle3, SpecDFlash, SpecDSpark, SpecMTP:
+			return t, d.Files[0]
+		}
+		return SpecSimple, d.Files[0]
+	}
+	if l.SpecTypes[id] == SpecMTP {
+		return SpecMTP, ""
+	}
+	return "", ""
 }
 
 // Arguments is the command line Start uses, for tests and the page. One model: -m with its alias, its projector and its draft.
@@ -251,10 +275,11 @@ func Arguments(l Launch) []string {
 			if m.Projector != "" {
 				args = append(args, "--mmproj", m.Projector)
 			}
-			switch sp := l.spec(m.ID); sp {
-			case SpecSimple, SpecEagle3:
-				args = append(args, "--model-draft", l.Drafts[m.ID].Files[0], "--spec-type", sp)
-			case SpecMTP:
+			sp, draft := l.spec(m.ID)
+			if draft != "" {
+				args = append(args, "--model-draft", draft)
+			}
+			if sp != "" {
 				args = append(args, "--spec-type", sp)
 			}
 		}
@@ -316,13 +341,13 @@ func section(l Launch, m Model) (string, error) {
 			return "", err
 		}
 	}
-	switch sp := l.spec(m.ID); sp {
-	case SpecSimple, SpecEagle3:
-		if err := value("model-draft", l.Drafts[m.ID].Files[0]); err != nil {
+	sp, draft := l.spec(m.ID)
+	if draft != "" {
+		if err := value("model-draft", draft); err != nil {
 			return "", err
 		}
-		_ = value("spec-type", sp)
-	case SpecMTP:
+	}
+	if sp != "" {
 		_ = value("spec-type", sp)
 	}
 	_ = value("load-on-startup", "true")

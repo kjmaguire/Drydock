@@ -1063,6 +1063,35 @@ describe('Models on this PC: several models, drafts, embeddings and gated models
     expect(e.textContent).toContain('drafts for its model');
   });
 
+  it('DFlash, DSpark and MTP head drafts (decision P129): offered to their model by kind, marked, and never served or loaded', async () => {
+    const qwen = model({ id: 'q/qwen-GGUF:Q4_K_M', repo: 'q/qwen-GGUF', variant: 'Q4_K_M', sizeBytes: 5 * GiB, drafts: ['q/qwen-DFlash-GGUF:BF16', 'q/qwen-DSpark-GGUF:BF16'], draft: 'q/qwen-DSpark-GGUF:BF16' });
+    const dflash = model({ id: 'q/qwen-DFlash-GGUF:BF16', repo: 'q/qwen-DFlash-GGUF', variant: 'BF16', sizeBytes: 900 * MiB, draftKind: 'dflash' });
+    const dspark = model({ id: 'q/qwen-DSpark-GGUF:BF16', repo: 'q/qwen-DSpark-GGUF', variant: 'BF16', sizeBytes: 900 * MiB, draftKind: 'dspark' });
+    const q35 = model({ id: 'q/qwen35-GGUF:Q4_K_M', repo: 'q/qwen35-GGUF', variant: 'Q4_K_M', sizeBytes: 17 * GiB, drafts: ['q/qwen35-MTP-GGUF:Q8_0'], draft: 'q/qwen35-MTP-GGUF:Q8_0' });
+    const head = model({ id: 'q/qwen35-MTP-GGUF:Q8_0', repo: 'q/qwen35-MTP-GGUF', variant: 'Q8_0', sizeBytes: 2 * GiB, draftKind: 'mtp-head' });
+    const models = [qwen, dflash, dspark, q35, head];
+    const { r } = show({
+      localGet: async () => installed({ models, server: { state: 'running', modelId: qwen.id, models: [qwen.id], port: 9933, baseUrl: 'http://127.0.0.1:9933/v1' } }),
+    });
+    await waitFor(() => row(r, qwen.id), r);
+    expect(optionsOf(row(r, qwen.id).querySelector('[data-testid="local-draft"]') as HTMLElement).map((o) => o.label)).toEqual([
+      'No draft',
+      'DFlash: qwen-DFlash · BF16',
+      'DSpark: qwen-DSpark · BF16',
+    ]);
+    expect(row(r, qwen.id).querySelector('[data-testid="local-drafted"]')!.textContent).toBe('with DSpark');
+    expect(row(r, q35.id).querySelector('[data-testid="local-drafted"]')!.textContent).toBe('with an MTP head');
+    for (const [d, badge] of [[dflash, 'DFlash draft'], [dspark, 'DSpark draft'], [head, 'MTP head']] as const) {
+      const e = row(r, d.id);
+      expect(e.querySelector('[data-testid="local-draft-only"]')!.textContent).toBe(badge);
+      expect(e.querySelector('[data-testid="local-serve"]')).toBe(null);
+      expect(e.querySelector('[data-testid="local-load-too"]')).toBe(null);
+      expect(e.querySelector('[data-testid="local-draft"]')).toBe(null);
+      expect(e.querySelector('input[type="checkbox"]')).toBe(null);
+      expect(e.textContent).toContain('drafts for its model');
+    }
+  });
+
   it('the embedding model ranks pack searches by meaning when the person turns it on: the box sends just that setting', async () => {
     const edits: LocalSettingsEdit[] = [];
     let state = installed({ models: all, embed: { state: 'running', modelId: embed.id, port: 9934, baseUrl: 'http://127.0.0.1:9934/v1', embeddings: true } });

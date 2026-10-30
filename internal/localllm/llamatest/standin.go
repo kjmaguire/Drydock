@@ -46,9 +46,10 @@ func IsStandIn(args []string) bool { return len(args) > 1 && args[1] == Marker }
 //	--calls=FILE              append each router call (load, unload, reload, with its model) to FILE, one per line
 //
 // Like the real server it refuses a projector (--mmproj) or a draft (--model-draft) whose file is not there. Unlike it, it also
-// refuses a draft model without the --spec-type that uses it (draft-simple, or draft-eagle3 for an EAGLE-3 draft), and a
-// --spec-type draft-eagle3 without a draft model: llama.cpp would load the draft and never use it, or fail later, which a test
-// would not otherwise see. --spec-type draft-mtp without a draft uses the model's own MTP heads, as llama.cpp's does.
+// refuses a draft model without a --spec-type that uses one (draft-simple, draft-eagle3, draft-dflash, draft-dspark, or
+// draft-mtp for a file of MTP heads), and a type that needs a draft file without one: llama.cpp would load the draft and never
+// use it, or fail later, which a test would not otherwise see. --spec-type draft-mtp without a draft uses the model's own MTP
+// heads, as llama.cpp's does.
 func Args(opts ...string) []string { return append([]string{Marker}, opts...) }
 
 // model is one model the stand-in serves, with the kind of speculative decoding it runs ("" for none).
@@ -56,15 +57,18 @@ type model struct {
 	id, path, projector, draft, spec string
 }
 
-// draftSpecOK is the stand-in's check of a model's speculative decoding: a draft model needs draft-simple or draft-eagle3, an
-// EAGLE-3 type needs a draft model, and draft-mtp needs none (the model's own heads draft).
+// draftFileSpecs are the spec types that load a draft file; draft-mtp may, or may use the model's own heads.
+var draftFileSpecs = map[string]bool{"draft-simple": true, "draft-eagle3": true, "draft-dflash": true, "draft-dspark": true}
+
+// draftSpecOK is the stand-in's check of a model's speculative decoding: a draft file needs a type that uses one, a type that
+// needs a draft file has one, and draft-mtp is either (the model's own heads, or a file of heads alone).
 func draftSpecOK(m model) error {
 	switch {
-	case m.draft != "" && m.spec != "draft-simple" && m.spec != "draft-eagle3":
-		return fmt.Errorf("a draft model without --spec-type draft-simple or draft-eagle3 drafts nothing (a test double's check)")
-	case m.draft == "" && (m.spec == "draft-simple" || m.spec == "draft-eagle3"):
+	case m.draft != "" && !draftFileSpecs[m.spec] && m.spec != "draft-mtp":
+		return fmt.Errorf("a draft model without a --spec-type that uses it drafts nothing (a test double's check)")
+	case m.draft == "" && draftFileSpecs[m.spec]:
 		return fmt.Errorf("--spec-type %s needs a draft model (a test double's check)", m.spec)
-	case m.spec != "" && m.spec != "draft-simple" && m.spec != "draft-eagle3" && m.spec != "draft-mtp":
+	case m.spec != "" && !draftFileSpecs[m.spec] && m.spec != "draft-mtp":
 		return fmt.Errorf("the stand-in knows no --spec-type %s", m.spec)
 	}
 	return nil

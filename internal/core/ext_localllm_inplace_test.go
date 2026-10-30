@@ -67,10 +67,13 @@ func TestLoadTooAndUnloadLeaveTheOtherModelsLoaded(t *testing.T) {
 	if strings.Join(v.Settings.Loaded, ",") != m[0]+","+m[1]+","+m[2] || providerModels(a, provider) != m[0]+","+m[1]+","+m[2] {
 		t.Fatalf("%+v; the provider lists %s", v.Settings, providerModels(a, provider))
 	}
-	// Unload: the router drops the model (the catalog keeps a model the listing no longer has, as for every provider)
+	// Unload: the router drops the model, and so does the provider's catalog (decision P129)
 	v = localCall(a, "local.server.start", map[string]any{"modelIds": []string{m[0], m[2]}})
 	if v.Server.PID != pid || strings.Join(v.Server.Models, ",") != m[0]+","+m[2] || strings.Join(v.Settings.Loaded, ",") != m[0]+","+m[2] {
 		t.Fatalf("Unload: %+v", v.Server)
+	}
+	if providerModels(a, provider) != m[0]+","+m[2] {
+		t.Fatalf("after the Unload the provider lists %s", providerModels(a, provider))
 	}
 	if resp, err := http.Get(v.Server.BaseURL + "/models"); err != nil {
 		t.Fatal(err)

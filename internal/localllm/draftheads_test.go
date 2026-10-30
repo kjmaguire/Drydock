@@ -128,7 +128,7 @@ func TestDraftHeadsRunWithTheirSpecType(t *testing.T) {
 	srv.Stop()
 	for name, args := range map[string][]string{
 		"eagle without a draft": append(llamatest.Args(), "--spec-type", "draft-eagle3"),
-		"draft with mtp":        append(llamatest.Args(), "--model-draft", eagle.Files[0], "--spec-type", "draft-mtp"),
+		"draft with a type":     append(llamatest.Args(), "--model-draft", eagle.Files[0], "--spec-type", "ngram-simple"),
 	} {
 		if err := srv.Start(context.Background(), localllm.Launch{Program: os.Args[0], Args: args, Model: glm, Port: freePort(t), Timeout: 30 * time.Second}); err == nil {
 			t.Errorf("%s: started", name)

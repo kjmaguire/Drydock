@@ -48,6 +48,52 @@ type GGUFInfo struct {
 	NextNLayers      int  `json:"nextnLayers,omitempty"`
 	MTP              bool `json:"mtp,omitempty"`
 	TargetHiddenSize int  `json:"targetHiddenSize,omitempty"`
+	// Draft files of the kinds decision P129 added. MTPHead says the file carries MTP heads and none of the model's own layers:
+	// an MTP head shipped as a file of its own (llama.cpp's convert_hf_to_gguf.py --mtp writes the model's architecture, its
+	// block count with the MTP layers, the token embeddings, the output and the MTP blocks, and nothing of the blocks before).
+	// DSpark says a DFlash draft (architecture "dflash") carries the Markov head (the tensor markov_w1.weight, which both
+	// builds' llama-arch.cpp name and the official build's common_speculative_types_from_gguf looks for). TargetLayer is the
+	// deepest layer of its model a DFlash draft reads (the largest of dflash.target_layers, which the converter writes as the
+	// layer's index plus one).
+	MTPHead     bool `json:"mtpHead,omitempty"`
+	DSpark      bool `json:"dspark,omitempty"`
+	TargetLayer int  `json:"targetLayer,omitempty"`
+}
+
+// The kinds of files that only draft (decisions P120 and P129): each is made for one model, drafts for it with its own
+// --spec-type, and never chats.
+const (
+	DraftOnlyEagle3  = "eagle3"
+	DraftOnlyDFlash  = "dflash"
+	DraftOnlyDSpark  = "dspark"
+	DraftOnlyMTPHead = "mtp-head"
+)
+
+// DraftOnly is the kind of draft the file is when it only drafts ("" for a model that chats).
+func (i GGUFInfo) DraftOnly() string {
+	switch {
+	case i.Eagle3():
+		return DraftOnlyEagle3
+	case i.Architecture == "dflash" && i.DSpark:
+		return DraftOnlyDSpark
+	case i.Architecture == "dflash":
+		return DraftOnlyDFlash
+	case i.MTPHead:
+		return DraftOnlyMTPHead
+	}
+	return ""
+}
+
+// OwnMTP says the model carries MTP heads beside its own layers, so it can draft for itself (a file of heads alone cannot).
+func (i GGUFInfo) OwnMTP() bool { return i.MTP && !i.MTPHead }
+
+// mainLayers is the layers of the model's own context: all but the MTP layers, which llama.cpp keeps out of it (they are the
+// MTP draft context's: the layer filters of llama_model::create_memory at b11936). A file of MTP layers only counts them all.
+func mainLayers(i GGUFInfo) int {
+	if i.NextNLayers > 0 && i.NextNLayers < i.BlockCount {
+		return i.BlockCount - i.NextNLayers
+	}
+	return i.BlockCount
 }
 
 // Eagle3 says the file is an EAGLE-3 draft (general.architecture "eagle3" in llama.cpp and the TurboQuant build): a one-layer
@@ -118,28 +164,59 @@ func HasTensor(path, name string) (bool, error) {
 	return found, err
 }
 
-// findTensor reads a GGUF file's tensor list (each tensor's name, dimensions, type and offset) until it finds name.
+// findTensor reads a GGUF file's tensor list until it finds name.
 func (g ggufReader) findTensor(n uint64, name string) (bool, error) {
+	found := false
+	err := g.tensors(n, func(got string) bool {
+		found = got == name
+		return found
+	})
+	return found, err
+}
+
+// tensors reads a GGUF file's tensor list (each tensor's name, dimensions, type and offset), giving each name to visit until
+// it answers true.
+func (g ggufReader) tensors(n uint64, visit func(name string) bool) error {
 	if n > ggufMaxTensor {
-		return false, fmt.Errorf("%w: %d tensors", errNotGGUF, n)
+		return fmt.Errorf("%w: %d tensors", errNotGGUF, n)
 	}
 	for i := uint64(0); i < n; i++ {
 		got, err := g.str(ggufMaxKey)
 		if err != nil {
-			return false, err
+			return err
 		}
 		dims, err := g.u32()
 		if err != nil || dims > ggufMaxDims {
-			return false, fmt.Errorf("%w: a tensor of %d dimensions", errNotGGUF, dims)
+			return fmt.Errorf("%w: a tensor of %d dimensions", errNotGGUF, dims)
 		}
-		if got == name {
-			return true, nil
+		if visit(got) {
+			return nil
 		}
 		if err := g.skip(uint64(dims)*8 + 4 + 8); err != nil { // the dimensions, the type, the offset
-			return false, err
+			return err
 		}
 	}
-	return false, nil
+	return nil
+}
+
+// mainBlock says whether a tensor is of one of the first n blocks (its name starts "blk.<i>." with i < n).
+func mainBlock(name string, n int) bool {
+	rest, ok := strings.CutPrefix(name, "blk.")
+	if !ok {
+		return false
+	}
+	num, _, ok := strings.Cut(rest, ".")
+	if !ok || num == "" || len(num) > 6 {
+		return false
+	}
+	i := 0
+	for _, c := range num {
+		if c < '0' || c > '9' {
+			return false
+		}
+		i = i*10 + int(c-'0')
+	}
+	return i < n
 }
 
 type ggufReader struct{ r *bufio.Reader }
@@ -227,7 +304,7 @@ func clampNeg(v int64) uint64 {
 // wantedSuffixes are the keys the estimate reads, after the architecture's name.
 var wantedSuffixes = map[string]bool{".block_count": true, ".context_length": true, ".embedding_length": true, ".attention.head_count": true,
 	".attention.head_count_kv": true, ".attention.key_length": true, ".attention.value_length": true, ".attention.sliding_window": true,
-	".attention.kv_lora_rank": true, ".pooling_type": true, ".nextn_predict_layers": true, ".target_hidden_size": true}
+	".attention.kv_lora_rank": true, ".pooling_type": true, ".nextn_predict_layers": true, ".target_hidden_size": true, ".target_layers": true}
 
 // wanted says whether a key is one the estimate reads: an architecture's name (one word, no dot) and one of wantedSuffixes,
 // exactly. "a.<anything>.block_count" is not one (review 2026-10-27: such keys were kept without bound).
@@ -394,6 +471,11 @@ func parseHeader(r *bufio.Reader, find string) (GGUFInfo, bool, error) {
 	if vocab < 1<<31 {
 		info.VocabSize = int(vocab)
 	}
+	for _, l := range ints[arch+".target_layers"] {
+		if l < 1<<31 && int(l) > info.TargetLayer {
+			info.TargetLayer = int(l)
+		}
+	}
 	if find != "" {
 		found, err := g.findTensor(ntensors, find)
 		return info, found, err
@@ -401,8 +483,21 @@ func parseHeader(r *bufio.Reader, find string) (GGUFInfo, bool, error) {
 	if arch == "" {
 		return GGUFInfo{}, false, fmt.Errorf("%w: no general.architecture", errNotGGUF)
 	}
-	if t := MTPTensor(info); t != "" {
-		info.MTP, _ = g.findTensor(ntensors, t)
+	switch t := MTPTensor(info); {
+	case t != "":
+		// read on past the heads: a file of heads alone lists no tensor of the model's own blocks, wherever they would come
+		main, n := false, mainLayers(info)
+		_ = g.tensors(ntensors, func(name string) bool {
+			if name == t {
+				info.MTP = true
+			} else if !main && mainBlock(name, n) {
+				main = true
+			}
+			return info.MTP && main
+		})
+		info.MTPHead = info.MTP && !main && n < info.BlockCount
+	case arch == "dflash":
+		info.DSpark, _ = g.findTensor(ntensors, "markov_w1.weight")
 	}
 	return info, false, nil
 }
@@ -437,8 +532,28 @@ const (
 
 // EstimateKV is the KV cache of a model at contextSize tokens (0: the model's own context length) and cacheType: for every
 // layer, the heads that keep keys and values times the key and value lengths, times the tokens, times the bytes a value takes.
-// A key length the header does not give is the embedding length over the head count, as llama.cpp takes it.
+// A key length the header does not give is the embedding length over the head count, as llama.cpp takes it. The MTP layers of
+// a model that carries them are not counted: llama.cpp keeps them out of the model's own cache (EstimateMTPKV counts them).
+// A file of MTP heads alone is only ever loaded for an MTP context, so its cache is that context's.
 func EstimateKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
+	if info.MTPHead {
+		return EstimateMTPKV(info, contextSize, cacheType)
+	}
+	return estimateLayers(info, contextSize, cacheType, 0, mainLayers(info))
+}
+
+// EstimateMTPKV is the KV cache of the MTP draft context llama.cpp creates for a model drafting with MTP heads, its own or a
+// head file's (common_speculative_init_result at b11936): a context as long as the model's, with the same cache type, whose
+// cache holds the MTP layers only. Unknown, with the reason, for a header that names no MTP layers.
+func EstimateMTPKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
+	if info.NextNLayers <= 0 || info.NextNLayers >= info.BlockCount {
+		return KVCache{ContextSize: contextSize, CacheType: cacheType, Note: "The model's header names no MTP layers, so their cache is not estimated."}
+	}
+	return estimateLayers(info, contextSize, cacheType, mainLayers(info), info.BlockCount)
+}
+
+// estimateLayers is the estimate over the layers from from to to (not included).
+func estimateLayers(info GGUFInfo, contextSize int, cacheType string, from, to int) KVCache {
 	kv := KVCache{ContextSize: contextSize, CacheType: cacheType}
 	if kv.ContextSize <= 0 {
 		kv.ContextSize = info.ContextLength
@@ -473,8 +588,8 @@ func EstimateKV(info GGUFInfo, contextSize int, cacheType string) KVCache {
 		}
 		return v[len(v)-1]
 	}
-	var perToken float64 // values per token over all layers
-	for l := 0; l < info.BlockCount; l++ {
+	var perToken float64 // values per token over the layers counted
+	for l := from; l < to; l++ {
 		heads := at(info.HeadCount, l)
 		kvHeads := heads
 		if len(info.HeadCountKV) > 0 {

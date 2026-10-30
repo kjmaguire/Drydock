@@ -975,10 +975,7 @@ func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) erro
 	if err != nil {
 		l.c.logf("local models: provider: %v", err)
 	} else {
-		if _, err := l.c.Prober.Probe(ctx, provID); err != nil {
-			l.c.logf("local models: probe: %v", err)
-		}
-		_, _ = l.c.Health.CheckNow(ctx, provID)
+		l.probeProvider(ctx, provID)
 	}
 	if f := localServeProbed.Load(); f != nil {
 		(*f)()
@@ -996,6 +993,24 @@ func (l *localExt) serve(ctx context.Context, modelIDs []string, auto bool) erro
 	return nil
 }
 
+// probeProvider reads the server's listing into its provider row's catalog and checks its health. A model the listing no
+// longer has leaves the catalog (decision P129): the local server's list is Drydock's own, so a model it does not list was
+// unloaded, or left out of a start on fewer models, and the router must not choose it for a request the server would refuse.
+// A probe that fails leaves the catalog as it was (the health check marks the provider down).
+func (l *localExt) probeProvider(ctx context.Context, providerID string) {
+	res, err := l.c.Prober.Probe(ctx, providerID)
+	if err != nil {
+		l.c.logf("local models: probe: %v", err)
+	} else if res.OK {
+		if n, err := l.c.Providers.DropUnlisted(ctx, providerID, res.Models); err != nil {
+			l.c.logf("local models: the catalog: %v", err)
+		} else if n > 0 {
+			l.c.logf("local models: %d model(s) the server no longer lists left the provider's catalog", n)
+		}
+	}
+	_, _ = l.c.Health.CheckNow(ctx, providerID)
+}
+
 // changedInPlace records the models the running router keeps after a change made on it (decision P120): the settings, and the
 // provider's catalog read again, so a model loaded is routable at once and one unloaded is not offered. The key stays the one
 // the server was started with, which the provider row already holds.
@@ -1005,10 +1020,7 @@ func (l *localExt) changedInPlace(ctx context.Context, ids []string) error {
 		s.ModelID, s.Loaded = ids[0], append([]string{}, ids...)
 	}
 	if s.ProviderID != "" {
-		if _, err := l.c.Prober.Probe(ctx, s.ProviderID); err != nil {
-			l.c.logf("local models: probe: %v", err)
-		}
-		_, _ = l.c.Health.CheckNow(ctx, s.ProviderID)
+		l.probeProvider(ctx, s.ProviderID)
 	}
 	if err := l.update(ctx, func(cur *LocalSettings) error {
 		cur.ModelID, cur.Loaded = s.ModelID, s.Loaded

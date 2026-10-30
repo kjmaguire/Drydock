@@ -37,7 +37,9 @@ import {
   contextWords,
   deviceLine,
   diskLine,
+  DRAFT_KINDS,
   draftChoices,
+  draftOnly,
   draftWords,
   type FitWords,
   fitWords,
@@ -545,7 +547,8 @@ export function ThisPcDetail(
       const words = fitWords(m.fit, m.sizeBytes, { gpu: hasGpu, serving: isServed || forEmbeddings });
       // the model the server is loading: "Starting · GPU" until it is ready
       const fit = words && isServed && server.state === 'starting' ? { ...words, text: words.text.replace(/^Serving/, 'Starting') } : words;
-      const too = serverOn && !isServed && !m.embedding && !m.eagle3 ? loadToo(v, m) : undefined;
+      const only = draftOnly(m);
+      const too = serverOn && !isServed && !m.embedding && !only ? loadToo(v, m) : undefined;
       const drafts = draftChoices(m, v.models);
       const drafted = draftWords(m, v.models);
       // loading beside the models the router keeps (decision P120)
@@ -574,21 +577,21 @@ export function ThisPcDetail(
                   MTP
                 </Badge>
               ) : null}
-              {m.eagle3 ? (
-                <Badge testId="local-eagle3" title="An EAGLE-3 draft: it reads its model's hidden states to guess ahead. It drafts for that model and does not chat.">
-                  EAGLE-3 draft
+              {only ? (
+                <Badge testId={only === 'eagle3' ? 'local-eagle3' : 'local-draft-only'} title={DRAFT_KINDS[only].title}>
+                  {DRAFT_KINDS[only].badge}
                 </Badge>
               ) : null}
               {drafted ? <Badge testId="local-drafted">{drafted}</Badge> : null}
               {loadingHere ? <Badge testId="local-loading">loading</Badge> : null}
             </span>
-            {!m.embedding && !m.eagle3 && drafts.length > 1 ? (
+            {!m.embedding && !only && drafts.length > 1 ? (
               <span class="what">
                 <Select
                   size="sm"
                   testId="local-draft"
                   label={`Draft model for ${m.id}`}
-                  title="Speculative decoding: a smaller model of the same family, an EAGLE-3 draft or the model's own MTP heads guess ahead and the model checks, which is faster. Takes effect at the next start."
+                  title="Speculative decoding: a smaller model of the same family, a draft made for the model (EAGLE-3, DFlash, DSpark, MTP heads) or its own MTP heads guess ahead and the model checks, which is faster. Takes effect at the next start."
                   value={m.draft ?? ''}
                   disabled={busy}
                   options={drafts}
@@ -596,7 +599,7 @@ export function ThisPcDetail(
                 />
               </span>
             ) : null}
-            {!m.eagle3 ? (
+            {!only ? (
               <span class="what">
                 <Checkbox
                   label="Embedding model"
@@ -642,8 +645,8 @@ export function ThisPcDetail(
             ) : null}
             {!isServed && !forEmbeddings ? (
               <>
-                {m.eagle3 ? <span class="word">drafts for its model</span> : null}
-                {!m.embedding && !m.eagle3 ? (
+                {only ? <span class="word">drafts for its model</span> : null}
+                {!m.embedding && !only ? (
                   <Button
                     size="sm"
                     data-testid="local-serve"

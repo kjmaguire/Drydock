@@ -38,9 +38,13 @@ type Model struct {
 	LoadBytes uint64   `json:"loadBytes,omitempty"`
 	// Draft heads that are not models (decision P120), read from the header by the core: MTP says the model carries its own
 	// multi-token prediction heads (DraftMTP is then among Drafts), Eagle3 that it is an EAGLE-3 draft, which drafts for the
-	// model it was trained for and is never served for chat.
-	MTP    bool `json:"mtp,omitempty"`
-	Eagle3 bool `json:"eagle3,omitempty"`
+	// model it was trained for and is never served for chat. DraftKind is the kind of any file that only drafts, so (decision
+	// P129: GGUFInfo.DraftOnly): "eagle3", "dflash", "dspark" or "mtp-head". MTPKVBytes is the memory of the MTP draft context
+	// when the model drafts with MTP heads, its own or a head file's (counted in LoadBytes).
+	MTP        bool   `json:"mtp,omitempty"`
+	Eagle3     bool   `json:"eagle3,omitempty"`
+	DraftKind  string `json:"draftKind,omitempty"`
+	MTPKVBytes uint64 `json:"mtpKvBytes,omitempty"`
 }
 
 // ModelID is "owner/repo:VARIANT".

@@ -193,8 +193,12 @@ export interface LocalModel {
   mtp?: boolean;
   /** An EAGLE-3 draft: it drafts for the model it was made for, and never chats (decision P120). */
   eagle3?: boolean;
-  /** What it takes loaded: its files, its KV cache and its draft's. */
+  /** The kind of a file that only drafts (decision P129): an EAGLE-3, DFlash or DSpark draft, or an MTP head of its own. */
+  draftKind?: 'eagle3' | 'dflash' | 'dspark' | 'mtp-head';
+  /** What it takes loaded: its files, its KV cache and its draft's (with the MTP context of MTP heads). */
   loadBytes?: number;
+  /** The memory of the MTP draft context when its own MTP heads or a head file draft for it (decision P129). */
+  mtpKvBytes?: number;
 }
 
 export interface ServerState {

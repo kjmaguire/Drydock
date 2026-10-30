@@ -9,6 +9,7 @@ import {
   deviceLine,
   DRAFT_MTP,
   draftChoices,
+  draftOnly,
   draftWords,
   diskLine,
   fitWords,
@@ -316,5 +317,16 @@ describe('Models on this PC helpers', () => {
     expect(draftWords({ ...qwen, draft: eagle.id }, all)).toBe('with EAGLE-3');
     expect(draftWords({ ...qwen, draft: small.id }, all)).toBe('with a draft');
     expect(draftWords(qwen, all)).toBeUndefined();
+    // DFlash, DSpark and MTP head drafts (decision P129): named by kind, never loaded for chat
+    const dflash = m({ id: 'q/qwen-DFlash-GGUF:BF16', repo: 'q/qwen-DFlash-GGUF', variant: 'BF16', draftKind: 'dflash' });
+    const head = m({ id: 'q/qwen-MTP-GGUF:Q8_0', repo: 'q/qwen-MTP-GGUF', variant: 'Q8_0', draftKind: 'mtp-head' });
+    const more = [...all, dflash, head];
+    expect(draftChoices({ ...qwen, drafts: [dflash.id, head.id] }, more).map((c) => c.label)).toEqual(['No draft', 'DFlash: qwen-DFlash · BF16', 'MTP head: qwen-MTP · Q8_0']);
+    expect(draftWords({ ...qwen, draft: dflash.id }, more)).toBe('with DFlash');
+    expect(draftWords({ ...qwen, draft: head.id }, more)).toBe('with an MTP head');
+    expect(loadToo({ server: running }, head).why).toBe("An MTP head does not chat: choose it as its model's draft.");
+    expect(loadToo({ server: running }, m({ draftKind: 'dspark' })).why).toBe("A DSpark draft does not chat: choose it as its model's draft.");
+    expect(draftOnly(m({ eagle3: true }))).toBe('eagle3');
+    expect(draftOnly(m())).toBeUndefined();
   });
 });

@@ -24,21 +24,35 @@ const (
 )
 
 // servePlan is what serve starts: the models in the order asked, the draft of each that has one, and the kind of speculative
-// decoding of each that is not a plain draft model's (an EAGLE-3 draft, or the model's own MTP heads; decision P120).
+// decoding of each that is not a plain draft model's (a file that only drafts, or the model's own MTP heads; decisions P120 and
+// P129).
 type servePlan struct {
 	models []localllm.Model
 	drafts map[string]localllm.Model
 	specs  map[string]string
 }
 
-// heads says what a model's header says of draft heads that are not models (decision P120): whether it carries MTP heads, and
-// whether it is an EAGLE-3 draft.
-func (l *localExt) heads(m localllm.Model) (mtp, eagle3 bool) {
+// heads says what a model's header says of draft heads that are not models (decisions P120 and P129): whether it carries its
+// own MTP heads, and the kind of draft it is when it only drafts ("eagle3", "dflash", "dspark", "mtp-head"; "" for a model).
+func (l *localExt) heads(m localllm.Model) (mtp bool, kind string) {
 	info, err := l.ggufOf(m)
 	if err != nil {
-		return false, false
+		return false, ""
 	}
-	return info.MTP, info.Eagle3()
+	return info.OwnMTP(), info.DraftOnly()
+}
+
+// mtpKVOf is the memory of the MTP draft context of a model that drafts with MTP heads (decision P129): its own (m) or a head
+// file's (draft), at the model's context size and cache type; 0 when it cannot be estimated.
+func (l *localExt) mtpKVOf(m localllm.Model, contextSize int, cache string) uint64 {
+	info, err := l.ggufOf(m)
+	if err != nil {
+		return 0
+	}
+	if kv := localllm.EstimateMTPKV(info, contextSize, cache); kv.Known {
+		return kv.Bytes
+	}
+	return 0
 }
 
 // isEmbedding is a model's kind: the person's mark, else what its header says.
@@ -103,25 +117,27 @@ func (l *localExt) plan(ctx context.Context, in localllm.Installed, s LocalSetti
 		if l.isEmbedding(m) {
 			return p, fmt.Errorf("%s is an embedding model: it is served on its own, as the embedding model", id)
 		}
-		mtp, eagle3 := l.heads(m)
-		if eagle3 {
-			return p, fmt.Errorf("%s is an EAGLE-3 draft: it does not chat, it drafts for the model it was made for (choose it as that model's draft)", id)
+		mtp, kind := l.heads(m)
+		if kind != "" {
+			return p, fmt.Errorf("%s is %s: it does not chat, it drafts for the model it was made for (choose it as that model's draft)", id, localllm.DraftKindPhrase(kind))
 		}
 		p.models = append(p.models, m)
 		total += needBytes(m, l.kvOf(m, s.ContextSize, cache))
 		if did := s.Drafts[id]; did == localllm.DraftMTP {
-			// the model's own heads draft: no file, and the memory of their context is not estimated
+			// the model's own heads draft: no file, and a context of their own whose cache holds the MTP layers (decision P129)
 			if mtp {
 				p.specs[id] = localllm.SpecMTP
+				total += l.mtpKVOf(m, s.ContextSize, cache)
 			} else {
 				l.c.logf("local models: %s is served without MTP drafting (its file carries no MTP heads)", id)
 			}
 		} else if did != "" {
 			if d, err := l.m.Store.Get(did); err == nil && l.draftOK(m, d) {
 				p.drafts[id] = d
-				if _, e3 := l.heads(d); e3 {
-					p.specs[id] = localllm.SpecEagle3
+				if _, k := l.heads(d); k != "" {
+					p.specs[id] = localllm.SpecOf(k)
 				}
+				// a head file's cache is its MTP context's (localllm.EstimateKV)
 				total += needBytes(d, l.kvOf(d, s.ContextSize, cache))
 			} else {
 				l.c.logf("local models: %s is served without its draft %s (gone, or no longer one it can use)", id, did)
@@ -159,13 +175,14 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		f := localllm.FitWithKV(m.Size, &kv, v.Runtime.Devices, v.Memory)
 		m.Fit = &f
 		m.Embedding = l.isEmbedding(*m)
-		m.MTP, m.Eagle3 = l.heads(*m)
+		m.MTP, m.DraftKind = l.heads(*m)
+		m.Eagle3 = m.DraftKind == localllm.DraftOnlyEagle3
 		v.ModelsBytes += m.Size
 	}
 	for i := range v.Models {
 		m := &v.Models[i]
 		m.LoadBytes = needBytes(*m, kvs[i])
-		if m.Embedding || m.Eagle3 {
+		if m.Embedding || m.DraftKind != "" {
 			continue
 		}
 		if m.MTP {
@@ -182,8 +199,17 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 					continue
 				}
 				m.Draft = d
-				if j, ok := byID[d]; ok {
+				if d == localllm.DraftMTP {
+					// the MTP context, as long as the model's, with the model's cache type: in what it takes and in its fit
+					m.MTPKVBytes = l.mtpKVOf(*m, kvs[i].ContextSize, kvs[i].CacheType)
+					m.LoadBytes += m.MTPKVBytes
+					f := localllm.FitWithKV(m.Size+m.MTPKVBytes, m.KV, v.Runtime.Devices, v.Memory)
+					m.Fit = &f
+				} else if j, ok := byID[d]; ok {
 					m.LoadBytes += needBytes(v.Models[j], kvs[j])
+					if v.Models[j].DraftKind == localllm.DraftOnlyMTPHead && kvs[j].Known {
+						m.MTPKVBytes = kvs[j].Bytes
+					}
 				}
 			}
 		}
@@ -208,8 +234,10 @@ func (l *localExt) fillModels(v *LocalView, s LocalSettings) {
 		if kvs[i].Known {
 			v.Served.KVBytes += kvs[i].Bytes
 		}
-		if m.Draft != "" {
-			d := byID[m.Draft]
+		if m.Draft == localllm.DraftMTP {
+			// its own heads: no file, their context's cache (an MTP head file's is its draft's cache below)
+			v.Served.KVBytes += m.MTPKVBytes
+		} else if d, ok := byID[m.Draft]; ok {
 			v.Served.ModelBytes += v.Models[d].Size
 			if kvs[d].Known {
 				v.Served.KVBytes += kvs[d].Bytes
