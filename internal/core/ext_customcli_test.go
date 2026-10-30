@@ -128,7 +128,11 @@ read:
 	if err := a.callErr("connection.custom.remove", map[string]string{"id": "claude"}); err == nil || !strings.Contains(err.Error(), "built-in") {
 		t.Fatalf("a built-in CLI: %v", err)
 	}
-	a.call("agent.archive", map[string]string{"id": ag.ID}, nil)
+	// Stop returns when the session has ended; the run row is closed by the runtime a moment later, and an agent with an open run
+	// is not archived ("is running right now"). A slow runner loses that race, so the archive is asked again until it is let through.
+	a.waitFor("the agent's run to be closed so it can be archived", func() bool {
+		return a.callErr("agent.archive", map[string]string{"id": ag.ID}) == nil
+	})
 	a.call("connection.custom.remove", map[string]string{"id": "mine"}, &list)
 	if len(list.Files) != 0 {
 		t.Fatalf("after remove %+v", list)
