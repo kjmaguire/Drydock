@@ -182,8 +182,8 @@ func (c *Core) approveForTask(ctx context.Context, gate *security.PermissionGate
 	return nil
 }
 
-// AckNeedsYou marks an inbox item done for the person (a failed check, a watchdog pause, a question, a mention, an agent that
-// failed or needs attention): it leaves the inbox. A request (an approval, a review, a chat's tool request, an agent's request
+// AckNeedsYou marks an inbox item done for the person (a failed check, a watchdog pause, a question, a budget's warning or
+// limit, a mention, an agent that failed or needs attention): it leaves the inbox. A request (an approval, a review, a chat's tool request, an agent's request
 // to join) leaves it when it is answered, and a state (a task waiting, a CLI not ready) when it changes, so neither can be
 // marked done.
 func (c *Core) AckNeedsYou(ctx context.Context, key, by string) error {
@@ -198,7 +198,7 @@ func (c *Core) AckNeedsYou(ctx context.Context, key, by string) error {
 		return errors.New("a request to join leaves the inbox when you answer it: let the agent join or decline")
 	case "task", "connection":
 		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
-	case "question", "check", "watchdog", "mention", "agent":
+	case "question", "check", "watchdog", "budget", "mention", "agent":
 	default:
 		return fmt.Errorf("there is no inbox item %q", key)
 	}
