@@ -322,6 +322,11 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 		global.PreferTier = m.prefer
 		global.Applied = append(global.Applied, "budget-downshift")
 	}
+	quotaDown, quotaWarning := QuotaDownshift(level, req, pin != nil, global.PreferTier, kept)
+	if quotaDown {
+		global.PreferTier = providers.TierCheap
+		global.Applied = append(global.Applied, QuotaWarningRule)
+	}
 	if esc := ShouldEscalate(level, req.Failures, req.ChecksPassing, ""); esc.Escalate && global.EscalateTo == "" {
 		global.EscalateTo, global.Handoff = providers.TierPremium, esc.Handoff
 		global.Applied = append(global.Applied, "level:"+esc.Trigger)
@@ -377,6 +382,7 @@ func (r *RuleRouter) decide(ctx context.Context, req RouteRequest, m mode) (Rout
 	d.Facts.Level = level
 	d.Facts.FallbackFrom = m.fallbackFrom
 	d.Facts.BudgetDownshift = contains(eff.Applied, "budget-downshift") || contains(global.Applied, "budget-downshift")
+	d.Facts.QuotaWarning, d.Facts.QuotaDownshift = quotaWarning, quotaDown && c.Tier != providers.TierPremium
 	d.Facts.Tiebreak = tb
 	if tb != nil && tb.Failed == "" && !tb.DryRun {
 		d.DecidedBy = "llm"

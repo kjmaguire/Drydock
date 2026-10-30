@@ -417,6 +417,7 @@ export const EVIDENCE_LABEL: Record<string, string> = {
   test: 'Tests',
   diff: 'Diff',
   commit: 'Commit',
+  review_finding: 'Review finding',
 };
 
 export type EvidenceResult = 'pass' | 'fail' | 'skipped' | 'info';

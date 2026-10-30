@@ -320,6 +320,10 @@ type DecisionFacts struct {
 	Tiebreak *TiebreakRecord `json:",omitempty"`
 	// Stopped says why the turn this decision ran was stopped by Drydock (a wall-time ceiling), written when it happens.
 	Stopped string `json:",omitempty"`
+	// QuotaWarning is a premium candidate's subscription warning that its limit is near (Candidate.QuotaWarning), and
+	// QuotaDownshift whether it moved this turn to the cheap tier first (P128).
+	QuotaWarning   string `json:",omitempty"`
+	QuotaDownshift bool   `json:",omitempty"`
 }
 
 // RoutingDecision is the record of one routing choice (docs/model-routing.md s1).

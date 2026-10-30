@@ -86,6 +86,9 @@ type Deps struct {
 	// 0: HandoffTurnTokens and HandoffTurnTimeout.
 	HandoffTurnTokens  int
 	HandoffTurnTimeout time.Duration
+	// ContextWindow, if set, is the context length in tokens of the model a turn runs on (the provider catalog's), 0 when unknown.
+	// It sizes Drydock's own occupancy estimate for a CLI that reports none (estimate.go). Nil: DefaultEstimateWindow.
+	ContextWindow func(ctx context.Context, cfg rt.Config) int64
 }
 
 // MCPStatus is the manifest view of one turn's MCP attachment.

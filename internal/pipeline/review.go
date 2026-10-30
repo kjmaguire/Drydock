@@ -196,6 +196,8 @@ func Review(d Deps) workflow.NodeHandler {
 		if _, err := d.Tasks.AddReview(ctx, t.ID, tasks.ReviewRecord{Attempt: t.Iteration, Reviewer: cfg.AgentID, Verdict: v.Verdict, Feedback: v.Feedback, Model: cfg.Spec.Model, Commit: commit}); err != nil {
 			return workflow.NodeOutput{}, err
 		}
+		// Drydock's own findings about how the criteria are written: recorded beside the verdict, never changing it (P128)
+		d.recordAcceptanceFindings(ctx, t, evidence)
 		b, _ := json.Marshal(v)
 		if v.Verdict == "SHIP" {
 			if _, err := d.Tasks.Transition(ctx, t.ID, tasks.Verification, tasks.TransitionOpts{By: cfg.AgentID, Reason: "reviewer returned SHIP"}); err != nil {

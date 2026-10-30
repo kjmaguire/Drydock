@@ -40,6 +40,27 @@ type Candidate struct {
 	// RetentionRequired is true when the provider refused the model because the organization has no data retention enabled
 	// (providers.Registry.MarkRetentionRequired): no turn can run on it until a person clears the mark.
 	RetentionRequired bool
+	// QuotaWarning says that the subscription the model runs on warned its limit is near (Claude Code's allowed_warning; "" when
+	// it did not, or the limit reset or was reported allowed since). A warned premium candidate downshifts the turn: QuotaDownshift.
+	QuotaWarning string
+}
+
+// QuotaWarningRule is the policy id a decision lists when a subscription's warning moved it to the cheap tier first (P128).
+const QuotaWarningRule = "quota-warning-downshift"
+
+// QuotaDownshift says whether a turn prefers the cheap tier because a premium candidate's subscription warned its limit is near,
+// and that warning. The ladder's rules decide which turns allow it: no downshift on the Maximum Quality level, for a risky task,
+// for a turn pinned by a person, or when a rule already chose the tier to prefer; and a rule that requires the premium tier (the
+// premium-only classes, an escalation) still filters the cheap candidates out, so those turns stay premium. With no cheap
+// candidate the premium one runs. warning is "" when no premium candidate is warned.
+func QuotaDownshift(level Level, req RouteRequest, pinned bool, preferred providers.Tier, kept []Candidate) (downshift bool, warning string) {
+	for _, c := range kept {
+		if c.Tier == providers.TierPremium && c.QuotaWarning != "" {
+			warning = c.QuotaWarning
+			break
+		}
+	}
+	return warning != "" && !pinned && preferred == "" && level != LevelMaximumQuality && !req.Risk, warning
 }
 
 // Key identifies the candidate.
