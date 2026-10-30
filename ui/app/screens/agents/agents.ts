@@ -53,6 +53,9 @@ export function matrixFrom(h: Pick<ConnectionHistory, 'matrixAt'>, now: number):
   return h.matrixAt ? `With what the test ${agoWords(h.matrixAt, now)} saw` : 'What the adapter declares: no test yet';
 }
 
+/** A kept run's reason within the page's budget for a paragraph (the whole of it is the line's tooltip). */
+export const shortReason = (s: string, max = 160): string => (s.length > max ? `${s.slice(0, max - 3).trimEnd()}...` : s);
+
 /** One kept test in a line: "2.1.296 · 5 passed, 1 failed, 2 skipped · with the tiny prompt · 31.5 s". */
 export function runLine(r: TestRun): string {
   const counts = [plural(r.passed, 'passed', 'passed'), r.failed ? `${r.failed} failed` : '', r.skipped ? `${r.skipped} skipped` : ''].filter(Boolean).join(', ');

@@ -52,6 +52,7 @@ import {
   provTone,
   readyLine,
   runLine,
+  shortReason,
   reportMeta,
   runsText,
   signedInLine,
@@ -675,7 +676,11 @@ function AgentDetail(handle: Handle<DetailProps>) {
               <SettingRow key={run.id} testId="test-run" label={<span title={new Date(run.at).toLocaleString()}>{agoWords(run.at, p.now)}</span>}>
                 <span data-ok={String(run.ok)}>
                   <Badge tone={run.ok ? 'ok' : 'err'}>{run.ok ? 'passed' : 'did not pass'}</Badge> <span mix={muted}>{runLine(run)}</span>
-                  {run.reason ? <div mix={faint}>{run.reason}</div> : null}
+                  {run.reason ? (
+                    <div mix={faint} title={run.reason}>
+                      {shortReason(run.reason)}
+                    </div>
+                  ) : null}
                 </span>
               </SettingRow>
             ))}

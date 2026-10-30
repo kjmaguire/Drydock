@@ -25,6 +25,7 @@ import {
   provTone,
   readyLine,
   runLine,
+  shortReason,
   reportMeta,
   runsText,
   signedInLine,
@@ -251,5 +252,7 @@ describe('the card matrix and the history in words (decision P132)', () => {
     expect(matrixFrom({ matrixAt: 0 }, now)).toBe('What the adapter declares: no test yet');
     expect(runLine({ id: 1, cliVersion: '2.1.0', ok: true, prompt: true, passed: 6, failed: 0, skipped: 0, elapsedMs: 9_000, at: now })).toBe('2.1.0 · 6 passed · with the tiny prompt · 9.0 s');
     expect(runLine({ id: 2, ok: false, prompt: false, passed: 0, failed: 1, skipped: 4, elapsedMs: 0, at: now })).toBe('0 passed, 1 failed, 4 skipped');
+    expect(shortReason('T2: timeout')).toBe('T2: timeout');
+    expect(shortReason('x'.repeat(300)).length).toBe(160);
   });
 });
