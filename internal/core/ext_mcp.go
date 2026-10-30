@@ -61,7 +61,8 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	// a chat session's skills tool serves the library skills chosen for the chat (ext_chats.go, decision P60); every other run
 	// keeps the project's accepted skills
 	ws.Skills = chatSkillsTool{c: c, inner: ws.Skills}
-	ws.Sandbox = mcpSandbox{c} // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
+	ws.Sandbox = mcpSandbox{c}   // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
+	ws.Security = mcpSecurity{c} // ext_security_check.go; the role table's security_findings column (decision P131)
 	if repomap.Available() {
 		ws.RepoMap = mcpRepoMap{c} // ext_repomap.go; without CGO the tool answers mcp.RepoMapGatedMessage
 	}

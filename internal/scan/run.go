@@ -41,6 +41,9 @@ type Options struct {
 	NoGit bool
 	// Timeout per engine (default Timeout).
 	Timeout time.Duration
+	// Engines, when set, are the only engines this scan runs and reports (the `scan` check runs the code and dependency
+	// engines; the `secrets` check already reads what a task added). Empty runs all three.
+	Engines []EngineID
 	// OnChange, when set, is called after an engine changes state (started, finished, skipped, errored) with a copy of the
 	// report and that engine's id, and once more when the scan ends (engine ""). Progress counters do not call it: read
 	// Snapshot for those.
@@ -85,6 +88,19 @@ func (o *Options) env() []string {
 	return append(env[:len(env):len(env)], proc.GitConfigEnv()...)
 }
 
+// runs reports whether the scan runs the engine.
+func (o *Options) runs(id EngineID) bool {
+	if len(o.Engines) == 0 {
+		return true
+	}
+	for _, e := range o.Engines {
+		if e == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *Options) timeout() time.Duration {
 	if o.Timeout > 0 {
 		return o.Timeout
@@ -111,7 +127,9 @@ func Start(ctx context.Context, o Options) *Run {
 	r := &Run{o: o, cancel: cancel, done: make(chan struct{})}
 	r.rep = Report{ID: o.ID, ProjectID: o.ProjectID, Dir: o.Dir, Status: StatusRunning, By: o.By, StartedAt: time.Now().UnixMilli(), Findings: []Finding{}}
 	for _, e := range Engines {
-		r.rep.Engines = append(r.rep.Engines, EngineResult{ID: e.ID, Name: e.Name, Tool: e.Tool, Status: Pending})
+		if o.runs(e.ID) {
+			r.rep.Engines = append(r.rep.Engines, EngineResult{ID: e.ID, Name: e.Name, Tool: e.Tool, Status: Pending})
+		}
 	}
 	safe.Go("scan.Start", func() { r.run(cctx) })
 	return r
@@ -230,9 +248,17 @@ func (r *Run) run(ctx context.Context) {
 		v := toolVersion(ctx, r.o.Procs, r.o.env(), path, append(append([]string(nil), tool.Args...), "--version"), name)
 		r.note(id, func(e *EngineResult) { e.Version = v })
 	}
-	wg.Add(3)
-	safe.Go("scan.Run.run", func() {
-		defer wg.Done()
+	launch := func(id EngineID, name string, f func()) {
+		if !r.o.runs(id) {
+			return
+		}
+		wg.Add(1)
+		safe.Go(name, func() {
+			defer wg.Done()
+			f()
+		})
+	}
+	launch(Secrets, "scan.Run.run", func() {
 		start(Secrets)
 		r.note(Secrets, func(e *EngineResult) { e.Version = gitleaksVersion() })
 		fs, unread, err := scanSecrets(ctx, r.o.Dir, r.o.redact, func(d, t int) { r.progress(Secrets, d, t) })
@@ -248,8 +274,7 @@ func (r *Run) run(ctx context.Context) {
 			r.finish(Secrets, fs, Done, "", "")
 		}
 	})
-	safe.Go("scan.Run.run#2", func() {
-		defer wg.Done()
+	launch(Deps, "scan.Run.run#2", func() {
 		path, _, err := r.o.Paths.OSV.resolve("osv-scanner", r.o.Paths.LookPath)
 		if err != nil {
 			r.finish(Deps, nil, Skipped, "osv-scanner is not installed, so no dependency was checked. "+osvInstall, "")
@@ -260,8 +285,7 @@ func (r *Run) run(ctx context.Context) {
 		fs, st, reason := scanDeps(ctx, &r.o, path, r.o.Paths.OSV)
 		r.finish(Deps, fs, st, reason, "")
 	})
-	safe.Go("scan.Run.run#3", func() {
-		defer wg.Done()
+	launch(SAST, "scan.Run.run#3", func() {
 		path, _, err := r.o.Paths.Opengrep.resolve("opengrep", r.o.Paths.LookPath)
 		if err != nil {
 			r.finish(SAST, nil, Skipped, "Opengrep is not installed, so no code was checked. "+opengrepInstall, "")

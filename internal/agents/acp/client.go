@@ -50,6 +50,12 @@ type toolState struct {
 	// agent's requests beside its notification queue, so a request can be handled before the tool_call the agent sent ahead
 	// of it (seen with the SDK's example agent); onToolCall then treats that tool_call as the announcement it was.
 	asked, announced bool
+
+	// terminals are the terminal ids the call's content named; termsAt is how many terminals the session had made when the
+	// call was first seen; escapeSeen is set once a sandboxed session judged the call (sandbox.go)
+	terminals  []string
+	termsAt    int
+	escapeSeen bool
 }
 
 // callSum is the SHA-256 of what a tool call does, as far as Drydock was asked about it: its kind, its input and, for a kind
@@ -210,6 +216,7 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) (er
 		s.mu.Lock()
 		s.sinfo.CurrentMode = string(u.CurrentModeUpdate.CurrentModeId)
 		s.mu.Unlock()
+		s.checkMode(string(u.CurrentModeUpdate.CurrentModeId))
 	}
 	return nil
 }
@@ -252,6 +259,7 @@ func (s *Session) onToolCall(tc *acp.SessionUpdateToolCall) {
 		s.callChanged(st)
 	}
 	s.progressTool(st)
+	s.checkEscape(st)
 }
 
 // onToolCallUpdate records a tool_call_update (the session's own, or a sub-agent's from ext.go).
@@ -279,6 +287,7 @@ func (s *Session) onToolCallUpdate(tu *acp.SessionToolCallUpdate) {
 		s.callChanged(st)
 	}
 	s.progressTool(st)
+	s.checkEscape(st)
 }
 
 // callChanged handles a call the agent changed after Drydock allowed it (decision P117): an ACP agent runs an allowed call by
@@ -345,6 +354,7 @@ func (t *toolState) absorbOutput(content []acp.ToolCallContent, raw any) {
 			parts = append(parts, fmt.Sprintf("diff %s (%d bytes new)", c.Diff.Path, len(c.Diff.NewText)))
 		case c.Terminal != nil:
 			parts = append(parts, "terminal "+c.Terminal.TerminalId)
+			t.terminals = append(t.terminals, c.Terminal.TerminalId)
 		}
 	}
 	if len(parts) > 0 {
@@ -374,7 +384,7 @@ func (s *Session) toolFor(id acp.ToolCallId) *toolState {
 	defer s.mu.Unlock()
 	st, ok := s.tools[id]
 	if !ok {
-		st = &toolState{id: string(id)}
+		st = &toolState{id: string(id), termsAt: s.terms.count()}
 		s.tools[id] = st
 		s.toolOrder = append(s.toolOrder, id)
 	}

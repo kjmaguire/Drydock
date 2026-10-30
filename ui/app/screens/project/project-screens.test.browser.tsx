@@ -20,7 +20,7 @@ describe('Project settings', () => {
       licenseStatus: async () => lic(),
       appInfo: async () => ({}) as never,
       routeLevelGet: async () => ({ workspace: 'balanced', project: '', effective: 'balanced', source: 'workspace', levels: [] }),
-      checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false }),
+      checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false, scan: false }),
       projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } }),
       ...client,
     });
@@ -264,14 +264,15 @@ describe('Check settings and development flow', () => {
     const calls: [string, CheckSettings][] = [];
     const r = mount(
       <CheckSettingsPanel projectId="prj_1" />,
-      testServices({ checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false }), checksSettingsSet: async (p, x) => (calls.push([p, x]), x) }),
+      testServices({ checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false, scan: false }), checksSettingsSet: async (p, x) => (calls.push([p, x]), x) }),
     );
     const deps = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Dependency vulnerability scan'), r);
     expect(byLabel<HTMLInputElement>(r.container, 'Offline only (no database download)').disabled).toBe(true);
     await r.act(() => deps.click());
     expect(byLabel<HTMLInputElement>(r.container, 'Offline only (no database download)').disabled).toBe(false);
+    await r.act(() => byLabel<HTMLInputElement>(r.container, 'Security scan of the change').click());
     await r.act(() => byText(r.container, 'button', 'Save check settings').click());
-    await waitFor(() => expect(calls).toEqual([['prj_1', { secrets: true, deps: true, depsOffline: false }]]), r);
+    await waitFor(() => expect(calls).toEqual([['prj_1', { secrets: true, deps: true, depsOffline: false, scan: true }]]), r);
     await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toBe('Saved.'), r);
   });
 

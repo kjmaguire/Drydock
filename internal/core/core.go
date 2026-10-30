@@ -324,7 +324,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTurn:       c.postTurn,
 		MCPStatus:    c.mcpStatus,
 		WorkerChecks: c.workerChecks,
-		Sandbox:      sandboxHook{c}, // ext_sandbox.go
+		Sandbox:      sandboxHook{c},     // ext_sandbox.go
+		ScanTools:    c.scanCheckOptions, // the `scan` check (ext_security_check.go, decision P131)
 		Lead:         leadHook{c},
 		ResetWatch:   c.resetWatch,
 		ProjectBrief: c.ProjectBrief,

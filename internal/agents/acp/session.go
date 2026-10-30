@@ -77,6 +77,8 @@ type Session struct {
 	// sub-agent updates that arrived on the child-session extension notification.
 	compactions  int
 	childUpdates int
+	// sandboxMode is the mode a sandboxed session was put in (requireMode); leaving it stops the turn (sandbox.go).
+	sandboxMode string
 }
 
 var _ agents.Session = (*Session)(nil)
@@ -354,6 +356,9 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
 	}
 	s.mu.Unlock()
 	setOption("effort", si.EffortOption, s.spec.Effort, si.Efforts)
+	if m := s.spec.PermissionMode; m != "" && s.spec.Sandboxed {
+		return s.requireMode(ctx, si, m)
+	}
 	if m := s.spec.PermissionMode; m != "" {
 		switch {
 		case si.ModeOption != "":
@@ -366,6 +371,33 @@ func (s *Session) applyRequested(ctx context.Context, si SessionInfo) error {
 			s.warnSettings(fmt.Sprintf("permission mode %q was requested but this agent offers: %s", m, strings.Join(si.Modes, ", ")))
 		}
 	}
+	return nil
+}
+
+// requireMode puts a sandboxed session in the mode its CLI asks in before every command it would run itself (decision P131),
+// which Drydock then refuses: the commands go to the container through Drydock's terminal or sandbox_run instead. It is not a
+// preference that falls back to the agent's default: a CLI that does not offer the mode, or refuses it, does not start.
+func (s *Session) requireMode(ctx context.Context, si SessionInfo, m string) error {
+	var err error
+	switch {
+	case si.ModeOption != "" && (len(si.Modes) == 0 || contains(si.Modes, m)):
+		_, err = s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{ValueId: &acp.SetSessionConfigOptionValueId{
+			SessionId: s.sid, ConfigId: acp.SessionConfigId(si.ModeOption), Value: acp.SessionConfigValueId(m)}})
+	case contains(si.Modes, m):
+		_, err = s.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: s.sid, ModeId: acp.SessionModeId(m)})
+	default:
+		offered := strings.Join(si.Modes, ", ")
+		if offered == "" {
+			offered = "no modes"
+		}
+		return fmt.Errorf("this project runs commands in a sandbox, where %s must run in its %q mode (it asks before each command it would run itself); this one offers %s", s.adapter.cfg.ID, m, offered)
+	}
+	if err != nil {
+		return fmt.Errorf("this project runs commands in a sandbox, and setting %s's %q mode failed: %w", s.adapter.cfg.ID, m, err)
+	}
+	s.mu.Lock()
+	s.sinfo.CurrentMode, s.sandboxMode = m, m
+	s.mu.Unlock()
 	return nil
 }
 

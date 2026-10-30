@@ -39,6 +39,23 @@ type Workspace struct {
 	// Sandbox backs the sandbox tools: commands in the task's container (docs/sandbox.md). Only worker turns of a project whose
 	// sandbox is on are allowed them by policy.
 	Sandbox SandboxRunner
+	// Security backs security_findings (decision P131): the findings of the last security scan of the run's project. Gated by
+	// the role table's security_findings column; it reads, it never starts a scan or changes what one runs.
+	Security SecurityFindings
+}
+
+// FindingsQuery narrows security_findings: one engine (secrets, deps, sast), the least severity, a file or folder prefix, and
+// how many to return.
+type FindingsQuery struct {
+	Engine      string
+	MinSeverity string
+	Path        string
+	Limit       int
+}
+
+// SecurityFindings backs security_findings. RunInfo.ProjectID names the project; the answer is marshalled to JSON as it is.
+type SecurityFindings interface {
+	Findings(ctx context.Context, run RunInfo, q FindingsQuery) (any, error)
 }
 
 // SandboxRunner runs commands in a task's sandbox. Every result is text for the agent (exit code and output); RunInfo.TaskID
@@ -251,7 +268,8 @@ const wsSchemas = `{
 "sandbox_start":{"type":"object","required":["name","command"],"properties":{"name":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{0,30}$"},"command":{"type":"string","minLength":1,"maxLength":16000},"dir":{"type":"string","maxLength":512}}},
 "sandbox_logs":{"type":"object","required":["name"],"properties":{"name":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{0,30}$"},"max_bytes":{"type":"integer","minimum":256,"maximum":65536,"default":8000}}},
 "sandbox_stop":{"type":"object","required":["name"],"properties":{"name":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{0,30}$"}}},
-"sandbox_info":{"type":"object","properties":{}}
+"sandbox_info":{"type":"object","properties":{}},
+"security_findings":{"type":"object","properties":{"engine":{"enum":["secrets","deps","sast"]},"min_severity":{"enum":["critical","high","medium","low","info"]},"path":{"type":"string","maxLength":512},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50}}}
 }`
 
 var (
@@ -282,6 +300,7 @@ func workspaceToolDefs() []*wsTool {
 			{Name: "sandbox_logs", Description: "The end of a background command's output, and whether it is still running.", ReadOnly: true, handler: wsSandboxLogs, Budget: 70000},
 			{Name: "sandbox_stop", Description: "End a background command started with sandbox_start, and everything it started.", handler: wsSandboxStop},
 			{Name: "sandbox_info", Description: "Describe this task's sandbox: image, services and their host names, what the network allows (and what it refused recently), and how setup went.", ReadOnly: true, handler: wsSandboxInfo},
+			{Name: "security_findings", Description: "The findings of this project's last security scan: secrets left in files, vulnerable dependencies and unsafe code patterns, each with its engine, severity, rule, file and line (a dependency: the package, its advisories and the version that fixes them). Findings a person dismissed are left out. It never shows a secret or the code: read the lines with your file tools. The scan read the project's working tree, so a line may have moved in yours. Read-only: it cannot start a scan or change its rules.", ReadOnly: true, handler: wsSecurityFindings, Budget: 40000},
 		}
 		for _, d := range defs {
 			d.Schema = schemas[d.Name]
@@ -825,6 +844,21 @@ func wsSandboxStop(ctx context.Context, r *Run, a map[string]any) (string, error
 		return "", err
 	}
 	return s.Stop(ctx, r.cfg.Info, argStr(a, "name"))
+}
+
+func wsSecurityFindings(ctx context.Context, r *Run, a map[string]any) (string, error) {
+	p := r.ws().Security
+	if p == nil {
+		return "", notAvailable("security_findings", "this build has no security scan")
+	}
+	if r.cfg.Info.ProjectID == "" {
+		return "", notAvailable("security_findings", "the findings belong to a project, and this session has none")
+	}
+	v, err := p.Findings(ctx, r.cfg.Info, FindingsQuery{Engine: argStr(a, "engine"), MinSeverity: argStr(a, "min_severity"), Path: argStr(a, "path"), Limit: argInt(a, "limit", 50)})
+	if err != nil {
+		return "", err
+	}
+	return jsonText(v)
 }
 
 func wsSandboxInfo(ctx context.Context, r *Run, _ map[string]any) (string, error) {

@@ -148,7 +148,7 @@ var Tables = []Table{
 		Columns: []string{"id", "project_id", "kind", "title", "body", "status", "source", "created_at", "updated_at", "version"}, Import: importMemory},
 	{Name: "context_manifests", Where: `run_id IN ` + runIDs,
 		Columns: []string{"run_id", "node_id", "attempt", "task_id", "agent_id", "items", "total_bytes", "created_at"}},
-	{Name: "project_check_settings", Where: `project_id=@p`, Columns: []string{"project_id", "secrets_enabled", "deps_enabled", "deps_offline", "updated_at", "updated_by"}},
+	{Name: "project_check_settings", Where: `project_id=@p`, Columns: []string{"project_id", "secrets_enabled", "deps_enabled", "deps_offline", "scan_enabled", "updated_at", "updated_by"}},
 	{Name: "plans", Where: `project_id=@p`, OrderBy: `created_at, id`,
 		Columns: []string{"id", "project_id", "run_id", "goal", "requirements_sha", "planner_agent", "status", "proposal", "accepted_tasks", "error", "created_at", "decided_at", "decided_by"}},
 	{Name: "requirements", Where: `project_id=@p`, OrderBy: `created_at, id`,

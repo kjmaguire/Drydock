@@ -16,6 +16,10 @@ transports:
   acp:
     argv: [gemini, --acp]
     env: {GEMINI_CLI_TRUST_WORKSPACE: "true"}
+    # a sandboxed project (decision P131): Drydock puts the session in the default approval mode, in which Gemini CLI asks
+    # before running a shell command (its documentation; the ACP mode id is not verified, and a session that does not offer it
+    # does not start)
+    sandbox: {mode: default, why: "the default approval mode asks before shell commands (Gemini CLI documentation; not run here)"}
   headless:
     argv: [-p, -o, stream-json, --approval-mode, default, --skip-trust]
     optional:

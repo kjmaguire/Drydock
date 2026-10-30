@@ -13,6 +13,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/watchdog"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -424,6 +425,9 @@ func (c *Core) previewChecks(ctx context.Context, t tasks.Task, p Project, tpl p
 	}
 	if set.Deps {
 		add("deps")
+	}
+	if set.Scan {
+		add(scan.CheckName)
 	}
 	dev := pipeline.LoadDevSettings(ctx, c.DB, t.ProjectID)
 	switch tpl.Workflow {

@@ -157,6 +157,17 @@ type ACPTransport struct {
 	// ClientMeta is sent as clientCapabilities._meta in initialize: an agent-specific opt-in this CLI's agent reads (OpenCode:
 	// "opencode/child-session-updates"; internal/agents/acp/ext.go). Declared per manifest, never for every agent.
 	ClientMeta map[string]any `yaml:"client_meta"`
+	// Sandbox says the CLI can work in a sandboxed project (decision P131): its terminal requests go to the task's container,
+	// and in this configuration it asks before every command it would run itself, which Drydock refuses. Mode is the ACP
+	// session mode that makes it ask ("" when the transport's own flags or environment already do); Why is the source of that.
+	// Absent: a sandboxed project's turn of this CLI is a question for a person.
+	Sandbox *ACPSandbox `yaml:"sandbox"`
+}
+
+// ACPSandbox is transports.acp.sandbox.
+type ACPSandbox struct {
+	Mode string `yaml:"mode"`
+	Why  string `yaml:"why"`
 }
 
 // Headless is the prompt-and-exit contract (docs/connections.md section 9). Argv excludes the executable.
@@ -613,6 +624,14 @@ func checkACP(a *ACPTransport) []string {
 			if !knownVars[name] {
 				p = append(p, fmt.Sprintf("transports.acp.env.%s: unknown placeholder {{%s}}", k, name))
 			}
+		}
+	}
+	if sb := a.Sandbox; sb != nil {
+		if strings.TrimSpace(sb.Why) == "" {
+			p = append(p, "transports.acp.sandbox: why is required (what shows the CLI asks before every command it runs itself)")
+		}
+		if sb.Mode != strings.TrimSpace(sb.Mode) || strings.ContainsAny(sb.Mode, " \t\n") {
+			p = append(p, fmt.Sprintf("transports.acp.sandbox: bad mode %q", sb.Mode))
 		}
 	}
 	for k := range a.ClientMeta {

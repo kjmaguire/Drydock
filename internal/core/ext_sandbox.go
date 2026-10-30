@@ -255,18 +255,8 @@ func (s mcpSandbox) Run(ctx context.Context, run mcp.RunInfo, command, dir strin
 	if err != nil {
 		return "", err
 	}
-	shown := command
-	if s.c.Scanner != nil {
-		shown = s.c.Scanner.Redact(shown)
-	}
-	if len(shown) > 300 {
-		shown = shown[:300] + "..."
-	}
 	// on the task's and the agent's timeline, so the activity view and a task's log show what ran in its sandbox
-	data, _ := json.Marshal(map[string]any{"command": shown, "exitCode": res.ExitCode, "timedOut": res.TimedOut, "durationMs": res.Duration.Milliseconds(), "bytes": res.Bytes})
-	if _, err := s.c.Bus.Publish(ctx, events.Event{Type: "sandbox.command", ProjectID: t.ProjectID, TaskID: t.ID, AgentID: run.AgentID, RunID: run.RunID, Data: data}); err != nil {
-		s.c.logf("sandbox: event: %v", err)
-	}
+	s.c.recordSandboxCommand(ctx, t, run.AgentID, run.RunID, "sandbox_run", command, res)
 	return res.Format(command), nil
 }
 
