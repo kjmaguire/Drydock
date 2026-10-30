@@ -242,7 +242,9 @@ var ExcludedTables = map[string]string{
 	"integration_attachments":        "files of vendor items, which belong to a Connection",
 	"integration_webhook_deliveries": "the workspace receiver's delivery log",
 
-	"room_turn_grants": "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
+	"room_turn_grants":   "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
+	"room_join_rules":    "a person's rules that add agents to new task rooms on this machine; the person makes them again after an import (decision P130)",
+	"room_join_requests": "agents' requests to join a channel, answered or waiting for the person on this machine (decision P130)",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

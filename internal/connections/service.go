@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/manifests"
@@ -25,6 +26,38 @@ type Service struct {
 	Registry *manifests.Registry
 	mu       sync.RWMutex // guards opts: gate acknowledgements, Test results and drift change while checks read them
 	opts     Options
+	// last is the newest Connection each check computed, by key (Last): the Inbox reads it rather than starting every CLI on
+	// each of its reads (decision P130)
+	lastMu sync.Mutex
+	last   map[string]Checked
+}
+
+// Checked is a Connection as a check last computed it.
+type Checked struct {
+	Connection
+	At time.Time `json:"at"`
+}
+
+// record keeps c as the newest check of its key.
+func (s *Service) record(c Connection) {
+	s.lastMu.Lock()
+	defer s.lastMu.Unlock()
+	if s.last == nil {
+		s.last = map[string]Checked{}
+	}
+	s.last[c.Key] = Checked{Connection: c, At: time.Now()}
+}
+
+// Last returns the newest check of every Connection checked since the app started (a page that lists them, a check again, an
+// agent's start or its creation), by key. A Connection nothing checked yet is absent: nothing here starts a CLI.
+func (s *Service) Last() map[string]Checked {
+	s.lastMu.Lock()
+	defer s.lastMu.Unlock()
+	out := make(map[string]Checked, len(s.last))
+	for k, v := range s.last {
+		out[k] = v
+	}
+	return out
 }
 
 // options is a snapshot of the detection options (the maps in it are replaced, never changed in place).
@@ -43,7 +76,9 @@ func NewService(cfg Config) (*Service, error) {
 		mo.WSL = cfg.Detection.WSL // one host: the adapters start in the distros detection probed
 	}
 	mo.Detect = func(ctx context.Context, m *manifests.Manifest) (agents.Detection, error) {
-		return Detect(ctx, m, s.options())
+		c := Check(ctx, m, s.options())
+		s.record(c)
+		return c.Detection, nil
 	}
 	reg, err := manifests.NewRegistry(mo)
 	if err != nil {
@@ -68,7 +103,9 @@ func (s *Service) Check(ctx context.Context, id string) (Connection, error) {
 	if !ok {
 		return Connection{}, fmt.Errorf("no manifest for adapter %q", id)
 	}
-	return Check(ctx, m, s.options()), nil
+	c := Check(ctx, m, s.options())
+	s.record(c)
+	return c, nil
 }
 
 // Detect computes the Detection for one adapter id.

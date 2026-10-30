@@ -479,3 +479,18 @@ func (s *Service) AckNeedsYou(ctx context.Context, key string, by Author) error 
 		return err
 	})
 }
+
+// AckedKeys reports which of keys a person marked done (AckNeedsYou): the core leaves those of its own items out.
+func (s *Service) AckedKeys(ctx context.Context, keys []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, k := range keys {
+		var n int
+		if err := s.db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM room_inbox_acks WHERE item_key=?`, k).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			out[k] = true
+		}
+	}
+	return out, nil
+}
