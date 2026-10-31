@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -119,6 +120,28 @@ func NewProfile(dataDir string) (string, error) {
 		return "", err
 	}
 	return os.MkdirTemp(parent, "p-")
+}
+
+// RemoveProfile removes a viewer's profile folder, trying again for a few seconds: when the window closes, WebView2's own processes
+// are still shutting down and hold files in it, so the first attempt can fail. What is left after the last attempt is removed by
+// CleanLeftovers at the next start of the app. remove is os.RemoveAll except in a test.
+func RemoveProfile(dir string, tries int, wait time.Duration, remove func(string) error) error {
+	if remove == nil {
+		remove = os.RemoveAll
+	}
+	var err error
+	for i := 0; i < tries; i++ {
+		if err = remove(dir); err == nil {
+			if _, serr := os.Stat(dir); os.IsNotExist(serr) {
+				return nil
+			}
+		}
+		time.Sleep(wait)
+	}
+	if err == nil {
+		err = errors.New("the folder is still there")
+	}
+	return err
 }
 
 // CleanLeftovers removes the profiles a crash or a killed viewer left. Call it at start of the app: a viewer is a child of the app

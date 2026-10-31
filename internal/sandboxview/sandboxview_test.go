@@ -1,10 +1,12 @@
 package sandboxview
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOnlyTheLoopbackAddressOfAForwardCanBeShown(t *testing.T) {
@@ -101,5 +103,44 @@ func TestEachViewerGetsAFreshProfileAndLeftoversGo(t *testing.T) {
 	}
 	if err := CleanLeftovers(dir); err != nil {
 		t.Fatalf("nothing to clean is not an error: %v", err)
+	}
+}
+
+func TestAProfileHeldByTheClosingBrowserIsRemovedOnceItLetsGo(t *testing.T) {
+	dir, err := NewProfile(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	// the first two attempts fail the way Windows does while msedgewebview2.exe still has a file open
+	remove := func(p string) error {
+		attempts++
+		if attempts <= 2 {
+			return errors.New("The process cannot access the file because it is being used by another process.")
+		}
+		return os.RemoveAll(p)
+	}
+	if err := RemoveProfile(dir, 10, time.Millisecond, remove); err != nil || attempts != 3 {
+		t.Fatalf("attempts %d: %v", attempts, err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("the profile is gone")
+	}
+}
+
+func TestAProfileThatStaysHeldIsReportedAndLeftForTheNextStart(t *testing.T) {
+	data := t.TempDir()
+	dir, err := NewProfile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveProfile(dir, 3, time.Millisecond, func(string) error { return errors.New("in use") }); err == nil {
+		t.Fatal("a profile that cannot be removed is reported")
+	}
+	if err := CleanLeftovers(data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("the next start removes it")
 	}
 }

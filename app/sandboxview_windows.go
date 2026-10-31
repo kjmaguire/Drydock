@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -84,7 +85,13 @@ func MaybeRunSandboxView(args []string) (code int, ok bool) {
 		ReportStartupFailure(fmt.Errorf("sandbox app window: %w", err))
 		return 1, true
 	}
-	defer os.RemoveAll(profile)
+	// WebView2's own processes are still closing when the window is: the folder is removed once they let go (15 s at most), and
+	// the next start of the app removes what is left
+	defer func() {
+		if err := sandboxview.RemoveProfile(profile, 60, 250*time.Millisecond, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "drydock: sandbox app window: profile %s: %v\n", profile, err)
+		}
+	}()
 	wa := application.New(application.Options{
 		Name:        "Drydock sandbox app",
 		Description: "A window for the app a worker started in a sandbox.",
