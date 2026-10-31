@@ -2266,3 +2266,35 @@ Open, owner action:
   real Gemma 4 assistant file against either build (fixture GGUF headers and the labelled stand-in only) and whether it speeds
   a model up, the keys in WebView2 on Windows (that WebView2 leaves Ctrl+1 to 4, Ctrl+\` and Alt+arrows to the page), a real
   CLI's Test connection history beyond the test double's.
+- **P133. A join rule is matched again when a task names its files later (2026-10-30).** On the owner's words "when you are done
+  doing the CI, continue on to the next tasks autonomously throughout the night", from the "Not built" line of P130. A task
+  names its files twice: when a person creates it, and when a work turn finishes (the pipeline stores the files of the diff,
+  `tasks.files`). The rule matched only the first, so a security agent with a rule for `auth/` joined a task that said so at
+  creation and missed one that only touched `auth/` while it was worked. Now the pipeline tells the room after it stored the
+  files (`Deps.OnFiles`, the core's `joinRulesAgain`), and `Service.ReapplyJoinRules` matches the task's room against the rules
+  again: an archived room, a task with no room and an unknown task change nothing and are not errors. The same safe readings as
+  P130 hold: a rule never reaches a room made before it, the agent joins as an observer unless the person chose active, and a
+  rule acts **once** in a room, judged by the SYSTEM line it wrote (`join_rule` with the rule's id): calling again adds nothing
+  and an agent a person took out of the room is not brought back by the next turn (removing a member deletes its row, so the
+  line is the only record that the rule had acted). No migration. Tests: `TestAJoinRuleIsMatchedAgainWhenATaskNamesItsFilesLater`
+  (core: no files, then files, a task outside the prefix, a second call, a removed agent, an archived room; mutating the
+  once-only check fails it), `TestTheRoomIsToldWhenAWorkTurnNamedTheTasksFiles` (pipeline: the hook is called once with the
+  files already stored). **Not built:** a rule for channels, desktop notifications. **Not verified:** a real work turn on a
+  real CLI naming the files, Windows.
+- **P133 (2). A vulnerable package the base already had is not the task's (2026-10-30).** The same night's second item, from
+  `security-scan.md` section 7 ("the check does not compare a lockfile with its base"). A task that changed one line of a
+  lockfile owned every vulnerable package in it, which it cannot fix: the worker was sent back for them until the iteration limit
+  parked the task. `scan.CheckOptions.BaseFile` (the pipeline wires it to the repository at the task's merge base,
+  `Repo.ShowFileMax`, 64 MiB) gives the base's copy of each file the counted dependency findings are in; those copies are written
+  to a temporary folder (a path that is not local to it is never read) and the dependency engine runs over it with the same
+  tool, environment and redaction. A finding is the base's when the file, package and version are the same (the advisory ids are
+  left out of the key: the database can move between two runs a minute apart); another version of the package is a new finding
+  for the task, as is a file the base does not have. The comparison runs only in the judging-the-change mode and only when a
+  dependency finding would count, so a task that touches no lockfile pays nothing. If the base cannot be read or scanned the
+  comparison is not made: every finding still counts (never fewer than before) and the output says "not compared with the base".
+  Tests: `TestADependencyTheBaseAlreadyHadIsNotTheTasks` and `TestTheBaseNotBeingReadableLeavesEveryFindingCounted` (scan: the
+  stand-in osv-scanner got `--follow-tree`, which answers from the go.mod of the folder it scans; mutating the subtraction fails
+  the first), `TestAVulnerablePackageTheBaseHadIsNotTheWorkersToFix` and `TestAVulnerablePackageTheWorkerBroughtGoesBackToTheWorker`
+  (pipeline: a real git repository, the base read at the merge base, the stand-in tools; without the wiring the first never
+  passes). **Not built:** a cache of the tools' results across passes of Verify. **Not verified:** a real osv-scanner over a
+  base folder of one lockfile (the stand-in follows go.mod only), a lockfile osv-scanner reads only together with its manifest.

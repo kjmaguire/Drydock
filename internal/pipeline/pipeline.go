@@ -49,6 +49,9 @@ type Deps struct {
 	OnCheck func(ctx context.Context, t tasks.Task, r checks.Result)
 	// OnTurn is called with an agent's final text after each work or review turn (the room posts it in the task channel).
 	OnTurn func(ctx context.Context, t tasks.Task, agentID, role, text string)
+	// OnFiles is called after a work turn named the files the task touches (from its diff): the room matches the task against
+	// the project's join rules again (decision P133). May be nil.
+	OnFiles func(ctx context.Context, t tasks.Task)
 	// Context, if set, owns the generated instruction files and the per-attempt context manifest (brief section 9).
 	Context *ctxeng.Engine
 	// Scanner scans the lines a task added for secrets (the `secrets` check). Default: checks.DefaultScanner.
@@ -700,6 +703,15 @@ func (d Deps) scanSpec(ctx context.Context, repo *git.Repo, t tasks.Task, change
 	o := d.ScanTools(ctx, t.ProjectID)
 	if change {
 		o.Added = func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }
+		// a dependency finding the base already had is not the task's (decision P133)
+		o.BaseFile = func(ctx context.Context, path string) (string, bool, error) {
+			w := worktreeOf(t)
+			base, err := repo.MergeBase(ctx, w, w.Base)
+			if err != nil {
+				return "", false, err
+			}
+			return repo.ShowFileMax(ctx, base, path, 64<<20)
+		}
 	}
 	return scan.CheckSpec(t.Worktree, o)
 }
@@ -773,6 +785,9 @@ func Finalize(d Deps) workflow.NodeHandler {
 		}
 		files := changedFiles(diff)
 		_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{Files: &files})
+		if d.OnFiles != nil && len(files) > 0 {
+			d.OnFiles(ctx, t)
+		}
 		out := map[string]any{"taskId": t.ID, "commit": commit, "diff": diffPath, "files": files, "status": string(t.Status)}
 		if cur, err := d.Tasks.Get(ctx, t.ID); err == nil && cur.Reviewer != "" && cur.Reviewer != cur.Assignee && cur.Status == tasks.InProgress {
 			if nt, err := d.Tasks.Transition(ctx, t.ID, tasks.Review, tasks.TransitionOpts{By: "system", Reason: "checks passed with evidence"}); err == nil {

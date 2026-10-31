@@ -20,8 +20,9 @@ import (
 // The design text leaves choices open; each was read the safest way:
 //   - a rule reaches task rooms only (a channel is joined by asking, a DM holds exactly its two members, a group its explicit
 //     list), and only rooms created after the rule (never a room the person already set up);
-//   - "touching auth/" is the files the task names when its room is created (tasks.files): the rule never reads the
-//     worktree, and a task that names its files later is not matched;
+//   - "touching auth/" is the files the task names (tasks.files): the rule never reads the worktree. It is matched when the
+//     room is created and again when the task names its files later (the pipeline names them from the diff of a finished work
+//     turn, ReapplyJoinRules); a rule acts once in a room, so an agent a person took out is not brought back;
 //   - the agent joins as an observer (it reads the room and speaks only when mentioned) unless the person chose active, so a
 //     rule spends no turns by itself;
 //   - a request names a channel of the agent's own project it is not in; it is granted as an observer, and the agent's words
@@ -178,9 +179,24 @@ func (s *Service) JoinRules(ctx context.Context, projectID string) ([]JoinRule, 
 	return out, rows.Err()
 }
 
-// applyJoinRules adds the agents of the project's rules to a task room just created, for the rules made before it whose prefix
-// a file of the task falls under. An agent the room already has keeps its place; a rule's agent that left the project is
-// skipped. Each agent added gets one SYSTEM line saying which rule added it.
+// ReapplyJoinRules matches a task's room against the project's rules again, for a task that named its files after the room was
+// made. Rules that already acted in the room are left alone, so calling it after every change of the files is safe. A task with
+// no room, or a room that is archived, is not an error and changes nothing.
+func (s *Service) ReapplyJoinRules(ctx context.Context, taskID string) error {
+	rm, err := s.RoomByTask(ctx, taskID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil || rm.Archived {
+		return err
+	}
+	return s.applyJoinRules(ctx, rm)
+}
+
+// applyJoinRules adds the agents of the project's rules to a task room, for the rules made before the room whose prefix a file
+// of the task falls under. An agent the room already has keeps its place; a rule's agent that left the project is skipped; a
+// rule that already added its agent here (its SYSTEM line is in the room) does not act again, whether or not the agent is still
+// a member. Each agent added gets one SYSTEM line saying which rule added it.
 func (s *Service) applyJoinRules(ctx context.Context, rm Room) error {
 	if rm.Kind != KindTask || rm.TaskID == "" {
 		return nil
@@ -198,6 +214,13 @@ func (s *Service) applyJoinRules(ctx context.Context, rm Room) error {
 	created := rm.CreatedAt.UnixMilli()
 	for _, r := range rules {
 		if r.CreatedAt > created || !touches(files, r.PathPrefix) {
+			continue
+		}
+		var acted int
+		if err := s.db.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE room_id=? AND json_extract(payload,'$.event')='join_rule' AND json_extract(payload,'$.params.rule')=?`, rm.ID, r.ID).Scan(&acted); err != nil {
+			return err
+		}
+		if acted > 0 {
 			continue
 		}
 		var live int

@@ -177,8 +177,8 @@ page no longer offers; Drydock runs the same job) works like this:
 ## 7. Not built
 
 - Built in P131 (section 10): the `scan` check on a task's change, and the read-only `security_findings` tool. Not built: an
-  agent cannot start a scan or see the lines of a finding (on purpose, section 10); the check does not compare a lockfile with
-  its base, so a task that changes a lockfile owns every vulnerable package in it; the check runs the tools again for each
+  agent cannot start a scan or see the lines of a finding (on purpose, section 10); since P133 the check compares a changed
+  lockfile with its base (section 10), so a task that changes one line of it no longer owns the vulnerable packages it had; the check runs the tools again for each
   pass of Verify (no cache).
 - No Trivy, zizmor, Scorecard or SBOM engine; the SARIF reader is the seam for them.
 - The scan runs where Drydock runs (Windows); a repository inside a WSL distro is scanned through its `\\wsl$` path by the
@@ -295,8 +295,11 @@ engine is not part of it: the `secrets` check already reads every line a task ad
 build, test and lint in Verify, and it gives a verdict like them:
 
 - A finding counts when it is the task's: a code finding on a line the task added (its diff against its base, as the `secrets`
-  check reads it), a dependency finding in a manifest or lockfile the task changed (that file's vulnerable packages, all of
-  them). What was in the tree before the task is counted in the output ("3 finding(s) elsewhere in the tree are not from this
+  check reads it), a dependency finding in a manifest or lockfile the task changed, except a vulnerable package the task's base already had
+  (decision P133: the base's copy of each such file, read from git at the task's merge base, is written to a folder of its own and
+  the dependency engine runs over it; the same package at the same version in the same file there is "already vulnerable before
+  this change", counted in the output and not failing it; another version of it, or a file the task added, is the task's; when the
+  base cannot be read or scanned every finding still counts and the output says "not compared with the base"). What was in the tree before the task is counted in the output ("3 finding(s) elsewhere in the tree are not from this
   change") and does not fail it. A finding a person dismissed in the project (section 9) does not count either.
 - Any counted finding fails the check; the worker is sent back with each one's severity, file and line, kind, rule and title
   (a dependency: the version that fixes it), never a secret's value or a line of code. The person may dismiss a false positive

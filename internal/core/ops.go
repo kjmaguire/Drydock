@@ -34,6 +34,14 @@ func (c *Core) postTurn(ctx context.Context, t tasks.Task, agentID, role, text s
 	}
 }
 
+// joinRulesAgain matches a task's room against the join rules again once the task names its files (decision P133). A rule that
+// cannot be applied is reported and does not stop the work turn.
+func (c *Core) joinRulesAgain(ctx context.Context, t tasks.Task) {
+	if err := c.Room.ReapplyJoinRules(ctx, t.ID); err != nil {
+		c.logf("join rules for %s: %v", t.ID, err)
+	}
+}
+
 // CreateTask adds a BACKLOG task.
 func (c *Core) CreateTask(ctx context.Context, req tasks.CreateReq) (tasks.Task, error) {
 	if _, err := c.GetProject(ctx, req.ProjectID); err != nil {
