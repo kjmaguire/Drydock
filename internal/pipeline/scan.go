@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/kjmaguire/drydock/internal/checks"
+	"github.com/kjmaguire/drydock/internal/git"
+	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -62,8 +64,27 @@ var DefaultScans = func() *ScanRegistry {
 	r := NewScanRegistry()
 	r.Register("secrets", secretsScan)
 	r.Register("deps", depsScan)
+	r.Register(scan.CheckName, codeScan)
 	return r
 }()
+
+// scanScope carries, to the `scan` check's factory, whether its node judges the task's own change (the Full Stack SaaS
+// template's secscan: the task is a feature, and what was in the tree before it is not its finding) or the whole tree (the
+// Security template's scan and gate: its task is the findings already there).
+type scanScope struct{}
+
+func codeScan(ctx context.Context, td TemplateDeps, t tasks.Task) (checks.Spec, error) {
+	change, _ := ctx.Value(scanScope{}).(bool)
+	var repo *git.Repo
+	if change {
+		r, err := td.Repo(ctx, t.ProjectID)
+		if err != nil {
+			return checks.Spec{}, err
+		}
+		repo = r
+	}
+	return td.scanSpec(ctx, repo, t, change), nil
+}
 
 // gitEmptyTree is the well-known id of the empty tree: diffing the worktree against it lists every file as added, so the
 // added-lines secrets scanner covers the whole tree instead of one task's change.
@@ -124,7 +145,12 @@ func (td TemplateDeps) scanNode(id string, informational bool) workflow.NodeHand
 		names := inp.Scans
 		if len(names) == 0 {
 			names = DefaultScanNames
+			// the security scan joins the defaults when the project turned the `scan` check on (decision P131)
+			if checks.LoadSettings(ctx, td.Tasks.DB, t.ProjectID).Scan {
+				names = append(append([]string(nil), names...), scan.CheckName)
+			}
 		}
+		ctx = context.WithValue(ctx, scanScope{}, id == "secscan")
 		logDir := filepath.Join(td.DataDir, "runs", string(in.RunID), "checks", id)
 		var failing []checks.Result
 		var summary strings.Builder

@@ -187,7 +187,10 @@ type Core struct {
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
-	repos    map[string]*git.Repo
+	// given are the adapters Config.Adapters put in place of the built ones: a Connection check reads the installed CLI, not
+	// them, so it says nothing about what their agents start
+	given map[string]bool
+	repos map[string]*git.Repo
 	// projHooks are the extensions' parts in deleting a project (project_delete.go)
 	projHooks projectHooks
 	// taskStarts serializes starting a task's run per task (lockTaskStart): a double click or the scheduler racing the
@@ -276,8 +279,10 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	for k, v := range built {
 		c.adapters[k] = v
 	}
+	c.given = map[string]bool{}
 	for k, v := range cfg.Adapters {
 		c.adapters[k] = v
+		c.given[k] = true
 	}
 	bus := events.NewSQLBus(db, 4096)
 	c.Bus = bus
@@ -324,7 +329,8 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		OnTurn:       c.postTurn,
 		MCPStatus:    c.mcpStatus,
 		WorkerChecks: c.workerChecks,
-		Sandbox:      sandboxHook{c}, // ext_sandbox.go
+		Sandbox:      sandboxHook{c},     // ext_sandbox.go
+		ScanTools:    c.scanCheckOptions, // the `scan` check (ext_security_check.go, decision P131)
 		Lead:         leadHook{c},
 		ResetWatch:   c.resetWatch,
 		ProjectBrief: c.ProjectBrief,

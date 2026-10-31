@@ -22,6 +22,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -57,6 +58,10 @@ type Deps struct {
 	Redact func(string) string
 	// DepsBinary overrides the osv-scanner executable of the `deps` check (tests; default osv-scanner on PATH).
 	DepsBinary string
+	// ScanTools, if set, returns the security scan's tools and rules for the `scan` check (decision P131): the ones the
+	// Security page shows, with the redaction, environment and dismissed findings of the project. Nil: a project that turned
+	// the check on gets it skipped, saying this build has no security scan.
+	ScanTools func(ctx context.Context, projectID string) scan.CheckOptions
 	// MCPStatus, if set, says whether (and with which tools) the agent's turn gets the MCP gateway entry, so the context
 	// manifest can list it as included or excluded with the reason. The wiring itself is rt.Runtime.MCP, which sees every
 	// session; this is only the read side for the manifest. Nil: the manifest says MCP is not wired in this build.
@@ -664,7 +669,9 @@ func Verify(d Deps) workflow.NodeHandler {
 func (d Deps) extraChecks(ctx context.Context, repo *git.Repo, t tasks.Task) []checks.Spec {
 	x := checks.Extras{Settings: checks.LoadSettings(ctx, d.Tasks.DB, t.ProjectID), Dir: t.Worktree,
 		Diff: func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }, Scanner: d.Scanner,
-		Deps: checks.DepsOptions{Binary: d.DepsBinary}}
+		Deps: checks.DepsOptions{Binary: d.DepsBinary},
+		// a task's own change is judged: what was in the tree before it is the Security page's (and the Security template's)
+		Scan: func() checks.Spec { return d.scanSpec(ctx, repo, t, true) }}
 	if x.Settings.Secrets && x.Scanner == nil {
 		sc, err := checks.DefaultScanner()
 		if err != nil {
@@ -680,6 +687,21 @@ func (d Deps) extraChecks(ctx context.Context, repo *git.Repo, t tasks.Task) []c
 		x.Scanner = sc
 	}
 	return checks.ExtraSpecs(x)
+}
+
+// scanSpec is the `scan` check of a task (decision P131): the security scan's code and dependency engines over its
+// worktree, judging the findings on the lines the task added (change) or every finding in the tree.
+func (d Deps) scanSpec(ctx context.Context, repo *git.Repo, t tasks.Task, change bool) checks.Spec {
+	if d.ScanTools == nil {
+		return checks.Spec{Name: scan.CheckName, Argv: []string{"drydock", "security-scan"}, Dir: t.Worktree, InProcess: func(context.Context, proc.Manager, checks.Spec) (checks.Result, error) {
+			return checks.SkippedResult(scan.CheckName, "this build has no security scan"), nil
+		}}
+	}
+	o := d.ScanTools(ctx, t.ProjectID)
+	if change {
+		o.Added = func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }
+	}
+	return scan.CheckSpec(t.Worktree, o)
 }
 
 func nonEmptyStr(a, b string) string {

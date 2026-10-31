@@ -226,3 +226,24 @@ describe('budget items (P118)', () => {
     expect(needsSubtitle(item({ budgetState: 'warning' }), 'gocalc', undefined, Date.parse('2026-01-01T00:00:00Z'))).toContain('gocalc · budget');
   });
 });
+
+describe('the Inbox items of P130', () => {
+  const item = (over: Partial<NeedsYouItem>) => ({ ...base, ...over }) as NeedsYouItem;
+  it('opens each where the person acts: a mention in its room, an agent on its page, a CLI on the Agents page, a task on its page', () => {
+    expect(needsTarget(item({ key: 'mention:m1', kind: 'mention', roomId: 'r1', taskId: 't1' }))).toBe('/room/r1');
+    expect(needsTarget(item({ key: 'agent:a1:failed:5', kind: 'agent', agentId: 'a1' }))).toBe('/team/a1');
+    expect(needsTarget(item({ key: 'connection:codex', kind: 'connection', adapter: 'codex', connectionKey: 'codex' }))).toBe('/agents/codex');
+    expect(needsTarget(item({ key: 'connection:claude@wsl:Ubuntu', kind: 'connection', adapter: 'claude', connectionKey: 'claude@wsl:Ubuntu' }))).toBe(`/agents/${encodeURIComponent('claude@wsl:Ubuntu')}`);
+    expect(needsTarget(item({ key: 'task:t1', kind: 'task_waiting', taskId: 't1' }))).toBe('/task/t1');
+    expect(needsTarget(item({ key: 'join:j1', kind: 'join_request', roomId: 'r2', joinRequestId: 'j1' }))).toBe('/room/r2');
+  });
+
+  it('has a look and words for each, marks done only a mention and an agent, and says what a request to join does', () => {
+    const looks = ['task_waiting', 'mention', 'join_request', 'agent', 'connection'].map((kind) => needsLook({ kind }));
+    expect(looks).toEqual(['task', 'mention', 'join', 'agent', 'connection']);
+    expect(['mention:m1', 'agent:a1:failed:5', 'task:t1', 'connection:codex', 'join:j1'].map((key) => canAck({ key }))).toEqual([true, true, false, false, false]);
+    expect(needsHint(item({ kind: 'join_request' }))).toContain('it never joins by itself');
+    expect(needsSubtitle(item({ kind: 'join_request', agentName: 'Sec', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · request to join · asked 2 min ago');
+    expect(needsSubtitle(item({ kind: 'agent', agentName: 'Cx', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · agent · Cx · 2 min ago');
+  });
+});

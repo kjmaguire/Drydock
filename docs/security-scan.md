@@ -164,11 +164,22 @@ page no longer offers; Drydock runs the same job) works like this:
   carries no project in its report, events and history, is found by folder and across folders, refused folders, cancel), `ext_security_internal_test.go` (only a person starts a scan of either
   kind), `internal/scan` (osv-scanner's and Opengrep's arguments), and the browser tests of
   `workspace-security-screen.test.browser.tsx`, Home and the sidebar.
+- The check and the tool (P131): `internal/scan/check_test.go` (a finding on an added line fails and is named, findings
+  elsewhere do not count, a changed manifest owns its packages, the whole tree without a change, dismissed findings, skipped
+  without the tools, errored when one breaks and none judged, an unreadable diff errored, a scan of some engines);
+  `internal/pipeline/scan_check_test.go` (inside the real Verify node: the finding goes back to the worker and the next pass
+  passes; skipped without the tools; skipped in a build without the scan; the Security template judges the whole tree);
+  `internal/mcp/workspace_security_test.go` (the tool through its provider, the schema's limits) and the role table tests;
+  `internal/core/ext_security_check_test.go` (a backend agent reads the scan through the real gateway without the key, by engine,
+  without what a person dismissed; a PM is not offered it; the setting off by default and saved);
+  `project-screens.test.browser.tsx` (the toggle). All against the labelled stand-ins: no real Opengrep or osv-scanner run here.
 
 ## 7. Not built
 
-- The scan is not a workflow check node yet (the `secrets` and `deps` checks on a task's diff are; docs/brief.md 13a).
-- No MCP tool exposes the scan to agents; findings are for the person.
+- Built in P131 (section 10): the `scan` check on a task's change, and the read-only `security_findings` tool. Not built: an
+  agent cannot start a scan or see the lines of a finding (on purpose, section 10); the check does not compare a lockfile with
+  its base, so a task that changes a lockfile owns every vulnerable package in it; the check runs the tools again for each
+  pass of Verify (no cache).
 - No Trivy, zizmor, Scorecard or SBOM engine; the SARIF reader is the seam for them.
 - The scan runs where Drydock runs (Windows); a repository inside a WSL distro is scanned through its `\\wsl$` path by the
   Windows tools, which is slow and was not measured (decision P41).
@@ -272,3 +283,46 @@ vulnerabilities)"), the description the rule, engine, severity, file and line, t
 given to that agent with another agent of the team as reviewer (a reviewer-role one first, never the lead). A finding with a
 task that is not failed or cancelled gets no second one. A folder scan has no project and is refused with the reason. Only a
 person makes one.
+
+## 10. The scan as a check, and the agents' tool (decision P131)
+
+**The `scan` check.** A project turns it on in Project settings > Verification checks ("Security scan of the change";
+`checks.settings.set {scan}`, column `scan_enabled` of migration 00168, off by default, exported with the project). It runs the
+scan's Code engine (Opengrep with the built-in rules and the configured rules folder) and its Dependencies engine
+(osv-scanner) over the task's worktree, with the tools the Security page shows, the scrubbed tool environment and the app's
+redaction (`internal/scan/check.go`, `scan.CheckSpec`; the core's options in `internal/core/ext_security_check.go`). The secrets
+engine is not part of it: the `secrets` check already reads every line a task adds. Like the other extra checks it comes after
+build, test and lint in Verify, and it gives a verdict like them:
+
+- A finding counts when it is the task's: a code finding on a line the task added (its diff against its base, as the `secrets`
+  check reads it), a dependency finding in a manifest or lockfile the task changed (that file's vulnerable packages, all of
+  them). What was in the tree before the task is counted in the output ("3 finding(s) elsewhere in the tree are not from this
+  change") and does not fail it. A finding a person dismissed in the project (section 9) does not count either.
+- Any counted finding fails the check; the worker is sent back with each one's severity, file and line, kind, rule and title
+  (a dependency: the version that fixes it), never a secret's value or a line of code. The person may dismiss a false positive
+  on the Security page; the fingerprint is the same in the worktree.
+- An engine that cannot run (its tool is not installed, its rules cannot be read) is named as not checked; when neither runs the
+  check is skipped with the reasons ("Opengrep is not installed, so no code was checked; ..."), when one broke and none gave a
+  verdict it is errored. Neither is a pass. A diff that cannot be read is errored too: the check never judges the whole tree in
+  place of the change.
+- Git is not asked for the worktree's files (`NoGit`, as for a folder scan, section 8): the worktree's `.git` file is something
+  an agent could have written.
+- In the Security template the check (by name `scan` in the run's scans, or joining the default scans when the project turned it
+  on) judges the whole tree: that template's task is the findings already there. In the Full Stack SaaS template's security
+  gate it judges the change.
+- In a sandboxed project it still runs on this machine, like the `secrets` and `deps` checks: the tools read files and run none
+  of the project's code (section 8).
+
+**The agents' tool, `security_findings`.** A Workspace tool of the gateway (`internal/mcp/workspace.go`), read-only, in its own
+column of the role table (`security_findings`; no for the PM and the UX Designer rows, yes for every other role; a project may
+change the cell, a CEL rule may take it away, a task may narrow it out, docs/mcp.md section 3). It answers with the project's
+last finished scan (a running one is not read): its id, time and summary, each engine's state, and the findings that are not
+dismissed, filtered by `engine`, `min_severity` and `path` (a file or folder) and capped by `limit` (50, at most 200), each with
+its fingerprint, engine, severity, rule, title, file and lines, and for a dependency its package, version, advisories and fixed
+version. The answer is redacted as a whole like a stored report, then marked untrusted by the gateway. It cannot start a scan,
+dismiss, restore or change the rules: those stay a person's (sections 4 and 9).
+
+**No line of code in it.** The finding's lines (`security.finding.context`) are not part of the answer, on purpose: the scan
+read the project's working tree, the person's own checkout, which may hold changes the person has not committed, and that text
+would go to the agent's model provider. The agent already reads the source in its own worktree with its file tools (and
+`read_range`), and the file and line are enough to find it there; a line may have moved, which the answer says.

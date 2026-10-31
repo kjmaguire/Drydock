@@ -18,6 +18,7 @@ import { errorAttrs, Field } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { lastHumanMessageId, memberKey, MODE_TEXT } from './messages.ts';
+import { JoinRules } from './join-rules.tsx';
 import { tightList } from '../../ui/layout.tsx';
 
 const railCss = css({ display: 'grid', gap: t.s3, minWidth: '0' });
@@ -287,6 +288,8 @@ export function RoomAgentsPanel(handle: Handle<{ room: Room; agents: readonly Ag
             </Button>
           ) : null}
         </section>
+        {/* the project's join rules (P130): they add agents to new task rooms, so they are shown beside a channel's and a task room's agents */}
+        {room.kind === 'channel' || room.kind === 'task' ? <JoinRules projectId={room.projectId} agents={agents} /> : null}
         <details mix={turnsCss} data-testid="room-turns" aria-label="Recent agent turns">
           <summary>Recent agent turns{list.length ? ` (${list.length})` : ''}</summary>
           {list.length === 0 ? <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>No agent has answered in this room.</p> : null}

@@ -236,7 +236,10 @@ func SpecOf(kind string) string {
 		return SpecDFlash
 	case DraftOnlyDSpark:
 		return SpecDSpark
-	case DraftOnlyMTPHead:
+	case DraftOnlyMTPHead, DraftOnlyAssistant:
+		// a Gemma 4 assistant too (decision P132): both builds create the MTP context from the draft file when the type is
+		// draft-mtp and share the model's cache with it (common_speculative_init_result, llama_model::create_memory); the fork's
+		// "mtp" is an alias of draft-mtp since its b10018 sync, and its MTP.md's --mtp-head another name for --model-draft
 		return SpecMTP
 	}
 	return ""

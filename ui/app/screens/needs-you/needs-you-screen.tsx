@@ -8,7 +8,7 @@
 // opens with or without a project, and the sidebar's Inbox and Running counts are the same lists.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, ListTree, MessageSquare, OctagonX, Shield, Eye, Wallet, type IconNode } from 'lucide';
+import { AtSign, Bot, CircleCheck, CircleHelp, CirclePause, FileText, GitMerge, Hourglass, ListTree, MessageSquare, OctagonX, PlugZap, Shield, Eye, UserPlus, Wallet, type IconNode } from 'lucide';
 import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
@@ -62,6 +62,11 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
   watchdog: { icon: CirclePause, tone: 'warn' },
   chat: { icon: MessageSquare, tone: 'warn' },
   budget: { icon: Wallet, tone: 'warn' },
+  task: { icon: Hourglass, tone: 'warn' },
+  mention: { icon: AtSign, tone: 'accent' },
+  join: { icon: UserPlus, tone: 'accent' },
+  agent: { icon: Bot, tone: 'err' },
+  connection: { icon: PlugZap, tone: 'err' },
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
@@ -640,11 +645,20 @@ function NeedsDetail(
     const expires = d?.expiresAt || msOf(it.expiresAt);
     const answerHere = a.kind !== 'open';
     const budgetPage = it.kind === 'budget' && it.budgetState !== 'paused';
+    const join = it.kind === 'join_request' && !!it.joinRequestId;
     const openLabel = it.chatId
       ? 'Open the chat'
       : budgetPage
         ? 'Open Budgets'
-        : review
+        : it.kind === 'mention'
+          ? 'Open the room'
+          : it.kind === 'agent'
+            ? 'Open the agent'
+            : it.kind === 'connection'
+              ? 'Open on the Agents page'
+              : join
+                ? 'Open the channel'
+                : review
           ? 'Open to review'
           : a.kind === 'open' && d
             ? 'Open to decide'
@@ -815,6 +829,22 @@ function NeedsDetail(
             <Button variant="primary" data-variant="primary" disabled={busy || ro} mix={[on('click', () => approve())]} data-testid="detail-approve">
               {a.kind === 'spec' ? 'Accept spec' : 'Merge'} <kbd>A</kbd>
             </Button>
+          ) : null}
+          {join ? (
+            <>
+              <Button
+                variant="primary"
+                data-variant="primary"
+                disabled={busy || ro}
+                mix={[on('click', () => respond('let-in', async () => void (await s.client.roomAnswerJoin(it.joinRequestId!, true))))]}
+                data-testid="detail-let-in"
+              >
+                Let in
+              </Button>
+              <Button disabled={busy} mix={[on('click', () => respond('decline', async () => void (await s.client.roomAnswerJoin(it.joinRequestId!, false))))]} data-testid="detail-decline">
+                Decline
+              </Button>
+            </>
           ) : null}
           {canAck(it) ? (
             <Button disabled={acking} mix={[on('click', onDone)]} data-testid="detail-done">

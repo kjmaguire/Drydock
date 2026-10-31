@@ -39,6 +39,7 @@ func init() {
 		}
 		s.forgetChoices(ctx)
 		s.seedBundled(ctx)
+		securityRegistry.Store(c, s) // the `scan` check and the agents' security_findings tool read it (ext_security_check.go)
 		wctx, stopWatch := context.WithCancel(context.Background())
 		s.stopWatch = stopWatch
 		s.watchUpdates(wctx)
@@ -702,6 +703,7 @@ func (s *securityExt) runningScans(ctx context.Context) []RunningScan {
 
 // close cancels the scans still running and waits for them, so no tool outlives the core.
 func (s *securityExt) close() {
+	securityRegistry.Delete(s.c)
 	if s.stopWatch != nil {
 		s.stopWatch()
 	}

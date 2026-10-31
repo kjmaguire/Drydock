@@ -2117,3 +2117,152 @@ Open, owner action:
   the estimate, the clipboard in WebView2, Windows. Shown beside its criterion, a finding is one paragraph of the task page, so
   the two finding texts were shortened to keep within the density budget of 200 characters with their label (the check's name
   cut to 20; `TestAFindingBesideItsCriterionKeepsToTheDensityBudget`, found by `e2e/density.spec.ts`).
+- **P130. Rooms and the Inbox: the scheduler's `Complete`, five more Inbox items with a rule against duplicates, muting a room,
+  join rules and the request to join, `Ctrl+.` in a direct message and `Esc Esc` in a room's composer (2026-10-30).** On the
+  owner's words after P124 to P129: "ok keep going", answering the "Not built" lines of `room-protocol.md` s6 ("`Complete` (the
+  turn row records the end)", P127's "the scheduler's `Complete` call"), s9 ("items for task `WAITING_HUMAN` as such, agent
+  `NEEDS_ATTENTION`/`FAILED`, Connection problems and unread mentions ..., muting a room from the UI"), s10 ("(c) stored join
+  rules and the 'request to join' question are not built") and P129's ("`Ctrl+.` in a direct-message room", "`Esc Esc` in a
+  room's composer"). (1) **`Complete`** ([`room-protocol.md`](room-protocol.md) s6 "As built (decision P130)"):
+  `room.Complete(grant, result)` closes a grant with its turn's outcome (done, passed, empty, failed, stopped, interrupted) and
+  reply (migration 00166), publishes `room.turn_completed`, and names the message the next speakers are planned from (the reply
+  of a done or passed turn; nothing after an empty, failed, stopped or interrupted one), so the grant used, its round and what
+  follows are decided by the scheduler in one place; the responder ends every granted turn through it (`responder.turn`'s
+  `end`) and keeps writing the `room_turns` row for what the turn cost. A grant is completed once, its reply must be the agent's
+  own message in that room, one completed before its agent started is closed and can no longer start a turn, a renewal closes
+  the used grant as `renewed` and can be made once, and open grants are completed as interrupted at start. (2) **Stopping**: a
+  new method `room.stop` (`responder.Stop`) cancels the turns running in a room, which complete as `stopped`, post nothing they
+  said and one SYSTEM line ("You stopped Ada's answer."), and end their chain. (3) **Inbox items** (s9 "As built (decision
+  P130)"): `task_waiting`, `mention` (the oldest 50 unread), `join_request` from the room's tables; `agent` (presence Failed or
+  Needs Attention) and `connection` (an agent CLI an agent uses whose newest check says not ready; `connections.Service.Last`
+  keeps the newest check of each Connection, so the Inbox starts no CLI and a CLI nothing checked since start has no item) from
+  what the core holds. **The rule against duplicates**: one item per cause, the one that says most wins: a task's waiting item
+  gives way to any other item of the task, a mention to the blocking question its message already is, an agent's item to the
+  watchdog pause that put it there; one Connection item stands for every agent using the CLI. A mention and an agent's item can
+  be marked done; a task waiting, a CLI not ready and a request to join cannot. (4) **Muting** (`room.setMuted`, the room's
+  "..." menu, Room actions > Mute room): the person's member state `muted` (it existed in the core); a muted room counts only
+  messages that mention the person by name, in its unread count, its badge and the Inbox (a role mention does not), and the
+  Rooms rail shows it with a struck bell and reads ", muted" with its name. This changes P118-era behaviour ("muted rooms count
+  unread but do not notify"): `TestUnreadAndMentionCounts` now expects 0 for a muted room. (5) **Join rules and the request to
+  join** (s10, migration 00167, methods `room.joinRules`, `room.joinRule.add`, `room.joinRule.remove`, `room.answerJoin`, the
+  `room` tool's action `request_join`): the design left choices open; each was read the safest way and written down there: a
+  rule reaches only task rooms created after it, matches the files the task names when its room is created (never the
+  worktree), and adds its agent as an observer unless the person chose active; a request names a channel of the agent's own
+  project, keeps a redacted reason of at most 300 characters as data, and a person's Let in adds the agent as an observer. (6)
+  **Shortcuts**: a DM's room record carries its agent (`Room.agentId`, from the DM's name, which `CreateDM` makes of the human
+  and the agent: no migration needed), so `Ctrl+.` opens its Agent Inspector; `Esc Esc` in a room's message box stops the agent
+  answering there (the first Esc says "Press Esc again to stop <name>", the second within 1.5 s calls `room.stop`), beside a
+  Stop button shown while a turn runs (`room.turns`); both ignored inside the terminal and Monaco, like P129's. No new
+  dependency. Tests: `internal/room/p130_test.go` (Complete, renewal and interruption, muted counts, task and mention items
+  and their duplicates, join rules, requests and the DM's agent), `inbox_test.go`'s muted count,
+  `internal/agents/responder/p130_test.go` (every turn completed by the scheduler, Stop ends the turn and its chain),
+  `internal/core/p130_test.go` (agent and Connection items, muting and the DM through the core, join rules and `request_join`),
+  `ext_economics_test.go`'s list, `internal/projectio` (the new tables deleted with a project, not exported); the UI's
+  `roomClient.test.ts`, `room-agents.test.browser.tsx` (join rules), `room-screen.test.browser.tsx` (Esc Esc, Stop, Mute),
+  `needs-you.test.ts`, `needs-you-screen.test.browser.tsx` (Let in), `a11y.test.browser.tsx` (`Ctrl+.` in a DM),
+  `hubnav.test.browser.tsx` (muted), and `e2e/rooms.spec.ts`; `smoke`, `density`, `inbox`, `round2`, `round3`, `crew` and
+  `guide` pass. **Not built:** desktop (Windows toast) notifications (they need an AppUserModelID, `docs/windows-identity.md`),
+  a join rule matched again when a task names its files later, a rule for channels. **Not verified:** a real agent CLI calling
+  `request_join` through the Workspace MCP server (the core's provider is tested directly), Windows. Found by Windows CI: an adapter
+  a caller put in place of the built one (`Config.Adapters`, the e2e core's scripted claude) raises no Connection item, since the
+  check reads the installed CLI its agents never start (`TestAgentAndConnectionItemsFollowWhatTheCoreHolds`, winverify's smoke).
+- **P131. The security scan as a check and as the agents' tool, and the sandbox for other CLIs (2026-10-30).** On the owner's
+  words after P129: "ok keep going", answering the "Not built" lines of `security-scan.md` section 7 ("The scan is not a
+  workflow check node yet", "No MCP tool exposes the scan to agents; findings are for the person") and `sandbox.md` section 7
+  ("Only Claude Code agents can work in a sandboxed project ... its ACP terminal requests are not routed into the container
+  yet", "No port forwarding from the sandbox to the human's machine"). (1) **The `scan` check**
+  ([`security-scan.md`](security-scan.md) section 10): the scan's Code engine (Opengrep with the built-in rules and the rules
+  folder) and Dependencies engine (osv-scanner) over a task's worktree (`scan.CheckSpec`, a scan of some engines:
+  `scan.Options.Engines`), after build, test and lint in Verify when the project turns it on (Verification checks, "Security
+  scan of the change"; `checks.Settings.Scan`, migration 00168, off by default, exported with the project). A finding counts
+  only when it is the task's: on a line it added, or in a manifest or lockfile it changed; a dismissed one does not. Skipped
+  with the reasons without the tools, errored when one broke and none judged, never a pass; git is not asked for the worktree's
+  files. The Security template judges the whole tree (its task is what is there), by name or joining its default scans when the
+  setting is on; the SaaS template's gate judges the change. (2) **`security_findings`**, a read-only Workspace tool in a new
+  column of the role table (no for PM and UX Designer): the project's last finished scan, its findings not dismissed, filtered
+  and capped, redacted whole. It cannot start a scan, dismiss or change rules. **No line of code in it**, decided: the scan
+  read the person's own checkout, which may hold changes not committed, and that text would go to the agent's model provider;
+  the agent reads the source in its worktree, and the file and line find it. (3) **Other CLIs in a sandboxed project**
+  ([`sandbox.md`](sandbox.md) section 9): a CLI whose manifest says how it asks before every command it runs itself
+  (`transports.acp.sandbox`, with its source: Gemini CLI in `default` mode, Goose with `GOOSE_MODE=approve`, Cline) gets its ACP
+  terminal routed into the container (`agents.RunSpec.Terminals`; quoted, in its folder, only the agent's own variables,
+  `sandbox_run`'s limits, output streamed, `sandbox.command` with `via: terminal`), the manifest's mode replacing the agent's own
+  and required (the session does not start without it; leaving it stops the turn), its permission requests answered by the
+  sandbox's rules (commands refused with where to run them, reads and edits inside the worktree allowed but not into `.git`,
+  links followed), and an `execute` call it reports as ended without asking and without a terminal of the session stops the
+  turn and is recorded (`sandbox.escape`): detection after the fact, said so. Codex and OpenCode declare nothing (their
+  defaults run commands without asking) and their turns stay a question for the person, which now names the CLIs that can.
+  (4) **Port forwarding: judged and not built**: a forwarder container on the internal network publishing `127.0.0.1` only is
+  buildable, but it is not small (a relay mode of the egress binary and its image, a per-task record, a method, the task page,
+  Docker Desktop's loopback publishing on Windows unchecked) and it needs the owner's choice: an agent's page opened in the
+  person's browser at `127.0.0.1:<port>` shares the cookies of every local app on 127.0.0.1 (cookies are not separated by
+  port), so it would open in a window of Drydock's own with its own storage, or on another loopback address. Migration 00168
+  only (00169 was not needed), no new dependency, no new RPC method. Tests: `internal/scan/check_test.go`,
+  `internal/pipeline/scan_check_test.go`, `sandbox_internal_test.go`, `internal/mcp/workspace_security_test.go` and the role
+  table tests, `internal/agents/acp/sandbox_test.go`, `internal/sandbox/terminal_test.go`, `internal/core/ext_security_check_test.go`,
+  `ext_sandbox_acp_internal_test.go`, `sandbox_acp_test.go` (the whole loop with a real container engine, Docker 29.9, and the
+  scripted ACP agent as the worker), `internal/projectio`; the UI's `project-screens.test.browser.tsx` and
+  `project-sandbox.test.browser.tsx`. **Not built:** port forwarding, Codex and OpenCode in a sandboxed project, an agent starting
+  a scan or seeing a finding's lines, a lockfile compared with its base. **Not verified:** a real Opengrep or osv-scanner run of
+  the check (labelled stand-ins), Gemini CLI, Goose and Cline in a sandboxed project (the mode ids, whether each uses the
+  client's terminal, how often each runs a command without asking), Windows.
+- **P132. Shortcuts: four regions, Ctrl+\`, Ctrl+Shift+K, Alt+Up/Down and rebinding; the Agents card's conformance history and
+  capability matrix; the TurboQuant build's own MTP files (2026-10-30).** On the owner's words after P129: "ok keep going",
+  answering the "Not built" lines of `ui.md` section 14 and S19 ("`Ctrl+1`-`4` (there is no region focus model yet), ``Ctrl+` ``,
+  `Ctrl+Shift+K`, `Alt+Up/Down` and rebinding"), its Connections line ("Still not built: conformance history and the capability
+  matrix on the card") and `local-models.md` section 10 ("MTP heads of the TurboQuant build's own kinds: a Gemma 4 assistant
+  file ... and the fork's older standalone `qwen35*_mtp` files are not offered"). (1) **Regions**: the shell is four regions,
+  each marked `data-region` (`shell/regions.ts`): `Ctrl+1` the sidebar (the link of the page open), `Ctrl+2` the page (`#main`,
+  the skip link's target), `Ctrl+3` the details panel (its chosen tab, or Show details when it is closed), `Ctrl+4` the dock
+  (its chosen tab); a region the page does not have (a workspace page has no panel or dock) leaves the key alone. ``Ctrl+` ``
+  opens the dock on its terminal and puts the keyboard there, or closes the dock when it shows the terminal already;
+  `Ctrl+Shift+K` opens the Inbox; `Alt+Up` and `Alt+Down` go to the room above or below in the Rooms rail's order (team, task,
+  direct), or the chat above or below in the chat list, and leave a dropdown's arrows alone. All are ignored inside the
+  terminal and Monaco, like the others (`shortcutOf` in `lib/keys.ts`); `Ctrl+.` in a direct-message room and Esc Esc in a
+  room's composer are not this decision's. A key that changes with Shift or is a dead key on some layouts (`` ` `` on a German
+  one) is read by its place on the keyboard (`KeyboardEvent.code`), letters by the layout. (2) **Rebinding**: the fourteen
+  shortcuts with Ctrl or Alt carry an id in `KEYMAP` (palette, Inbox, sidebar, the four regions, dock, terminal, diff,
+  inspector, the two room keys, new chat); Settings > Keyboard shortcuts (`screens/settings/keyboard.tsx`) waits for the new
+  keys after Change (Esc cancels), says at once why keys cannot be used and sends nothing then: Ctrl or Alt must be held (a
+  plain key would fire while typing), the key one the map can name (a letter, digit, punctuation key, arrow, Home, End, Page
+  Up or Down, F1 to F12), nothing the window or the fields keep (`RESERVED`: reload, find, print, developer tools, close, the
+  editing keys, Ctrl+Enter), and no other shortcut on the keys, by default or bound. Save sends every binding to two new methods,
+  `keys.get` and `keys.set` (`internal/core/ext_keys.go`), which check the same and keep the ones that differ from the defaults
+  in the settings row `ui.keybindings` for the workspace, with `keys.changed` for the other windows; Reset and Reset all go back.
+  The page and the core each hold the list; `TestTheCoresShortcutsAreTheKeyboardMaps` reads `keys.ts` and fails when they part.
+  The About map, the sidebar's search, the dock's hint and New chat show the keys in use. (3) **Detect**: the line's Detect is
+  the Agents page's **Check all again**, which reads `connection.list` again and so runs the core's detection of every CLI and
+  distro afresh (built with P98); no second button was added. (4) **Conformance history**: every Test connection run is kept in
+  a new table, `connection_tests` (migration 00170; 00171 was not needed), the newest 30 of each install: the CLI version, the
+  transport, passed, failed and skipped counts, whether the tiny prompt was sent, the first failed step's reason through the
+  secret scanner, the time, and the report's capability matrix; no output of the CLI. Neither a project export nor a project's
+  deletion touches it (it is this machine's, `projectio`). A new method, `connection.history`, answers an install's runs, newest
+  first, and its **capability matrix**: what the adapter declares (its capabilities, with the provenance its manifest gives
+  each, and its permission modes), with the cells of the newest run that filled one over it (`connections.CardMatrix`). The
+  Test results tab shows "What it can do" (the capability in words, Yes or No, the evidence) and "Past tests" (when, passed or
+  not, version, counts, the prompt, the time, the reason); the session's report no longer repeats the matrix beside it. (5) **The
+  TurboQuant build's own MTP files**, read in its source at b10298-2.0.0 (`src/llama-arch.cpp`, `src/llama-model.cpp`,
+  `src/models/gemma4-assistant.cpp`, `conversion/gemma.py`, `common/arg.cpp`, `common/speculative.cpp`, `MTP.md`, `NEXTN.md`,
+  fetched through the proxy) and in the official b11936 (`src/llama-arch.cpp`, `src/llama-model.cpp`, `common/speculative.cpp`,
+  `common/arg.cpp`): a **Gemma 4 assistant** is architecture `gemma4-assistant` in both (the converter writes its blocks as MTP
+  layers and its model's hidden width as `embedding_length_out`), shares the cache of its model (both builds' `create_memory`),
+  and is run with `--model-draft <file> --spec-type draft-mtp` (the fork's `--mtp-head` and `-md` are one flag with
+  `--model-draft`, its "mtp" and "nextn" aliases of `draft-mtp` since its b10018 sync). It is offered to a Gemma 4 model whose
+  hidden state is as wide (`common_speculative_impl_draft_mtp` refuses another width) with its tokenizer, on either build, since
+  both load it; it never chats, has no Load too and keeps no cache of its own in the estimate. The fork's **older layouts** are
+  loaded by neither build at these tags: a Gemma 4 assistant converted before b10018 (`gemma4_assistant`, which the fork's
+  `llama_model_create` refuses by name: "predates the b10018 sync and is no longer supported") and a standalone Qwen 3.5 NextN
+  file (`qwen35_mtp`, `qwen35moe_mtp`: `NEXTN.md` still calls it a fallback, but no `llama-arch.cpp` names the architecture),
+  so such a file is marked "Old MTP file" ("no engine here loads it"), offered to nothing and refused for chat with that
+  reason. No new dependency; three new RPC methods (`connection.history`, `keys.get`, `keys.set`) and one event
+  (`keys.changed`). Tests: `internal/localllm/assistant132_test.go`, `internal/core/ext_localllm_p132_test.go`,
+  `ext_connhistory_test.go`, `ext_keys_test.go`, `ext_economics_test.go`'s list, `internal/connections/history_test.go`,
+  `internal/projectio` (the table decided for export, deletion and an older archive); the UI's `lib/keys.test.ts`,
+  `shell/regions.test.browser.tsx`, `a11y.test.browser.tsx`, `settings/keyboard.test.browser.tsx`, `settings-screen.test.browser.tsx`,
+  `agents.test.ts`, `agents-screen.test.browser.tsx`, `models.test.ts`, `models-screen.test.browser.tsx`, `client.test.ts`; the e2e
+  `keys.spec.ts` (new) and `wsl.spec.ts` (the history after a reload), with `smoke` and `density`.
+  **Not built:** `Ctrl+.` in a direct-message room and Esc Esc in a room's composer (P130's), a binding of a key pressed after
+  another (the chords G then I, J and K stay as they are), a binding per person rather than per workspace. **Not verified:** a
+  real Gemma 4 assistant file against either build (fixture GGUF headers and the labelled stand-in only) and whether it speeds
+  a model up, the keys in WebView2 on Windows (that WebView2 leaves Ctrl+1 to 4, Ctrl+\` and Alt+arrows to the page), a real
+  CLI's Test connection history beyond the test double's.

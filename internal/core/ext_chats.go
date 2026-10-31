@@ -43,16 +43,19 @@ func (c *Core) Chats() *chats.Service {
 	return nil
 }
 
-// NeedsYou is the inbox (room.NeedsYou) plus every chat whose CLI waits for the person to allow a tool call, so the count in
-// the top bar is everything that waits for a person. projectID "" lists all of them.
+// NeedsYou is the inbox (room.NeedsYou) plus what the core holds in memory: the agents that failed or need attention and the
+// agent CLIs that are not ready (stateItems, decision P130), and every chat whose CLI waits for the person to allow a tool call,
+// so the count in the top bar is everything that waits for a person. projectID "" lists all of them.
 func (c *Core) NeedsYou(ctx context.Context, projectID string) ([]room.NeedsYouItem, error) {
 	out, err := c.Room.NeedsYou(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 	c.addNeedsContext(ctx, out)
+	out = append(out, c.stateItems(ctx, projectID)...) // agents that failed or need attention, agent CLIs that are not ready (P130)
 	svc := c.Chats()
 	if svc == nil {
+		room.SortNeedsYou(out)
 		return out, nil
 	}
 	for _, a := range svc.Waiting(projectID) {

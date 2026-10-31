@@ -148,7 +148,7 @@ var Tables = []Table{
 		Columns: []string{"id", "project_id", "kind", "title", "body", "status", "source", "created_at", "updated_at", "version"}, Import: importMemory},
 	{Name: "context_manifests", Where: `run_id IN ` + runIDs,
 		Columns: []string{"run_id", "node_id", "attempt", "task_id", "agent_id", "items", "total_bytes", "created_at"}},
-	{Name: "project_check_settings", Where: `project_id=@p`, Columns: []string{"project_id", "secrets_enabled", "deps_enabled", "deps_offline", "updated_at", "updated_by"}},
+	{Name: "project_check_settings", Where: `project_id=@p`, Columns: []string{"project_id", "secrets_enabled", "deps_enabled", "deps_offline", "scan_enabled", "updated_at", "updated_by"}},
 	{Name: "plans", Where: `project_id=@p`, OrderBy: `created_at, id`,
 		Columns: []string{"id", "project_id", "run_id", "goal", "requirements_sha", "planner_agent", "status", "proposal", "accepted_tasks", "error", "created_at", "decided_at", "decided_by"}},
 	{Name: "requirements", Where: `project_id=@p`, OrderBy: `created_at, id`,
@@ -242,7 +242,10 @@ var ExcludedTables = map[string]string{
 	"integration_attachments":        "files of vendor items, which belong to a Connection",
 	"integration_webhook_deliveries": "the workspace receiver's delivery log",
 
-	"room_turn_grants": "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
+	"room_turn_grants":   "the room scheduler's permissions for agent turns on this machine: each is used once or expires within minutes (decision P118)",
+	"room_join_rules":    "a person's rules that add agents to new task rooms on this machine; the person makes them again after an import (decision P130)",
+	"room_join_requests": "agents' requests to join a channel, answered or waiting for the person on this machine (decision P130)",
+	"connection_tests":   "Test connection runs of the agent CLIs on this machine, not project data (decision P132)",
 }
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.

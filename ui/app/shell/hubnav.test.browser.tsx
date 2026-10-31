@@ -109,6 +109,19 @@ describe('the hubs', () => {
     expect(r.$('nav[aria-label="Rooms"][data-rooms]')).not.toBeNull();
   });
 
+  it('says a muted room is muted, after its name and once for a reader (P130)', async () => {
+    const r = mount(
+      <RoomsRail route={{ name: 'room', id: 'r1' }} />,
+      svc({ roomUnread: async () => [{ roomId: 'r2', roomName: 'task-3-subtract', kind: 'task', unread: 1, mentions: 1, muted: true, lastReadSeq: 0 }] }),
+    );
+    await waitFor(() => expect(r.$$('[data-room-muted], [data-muted="true"]')).toHaveLength(1), r);
+    const [general, task] = Array.from(r.$$('[data-testid="room-link"]')) as HTMLAnchorElement[];
+    expect(general!.getAttribute('data-muted')).toBeNull();
+    expect(task!.querySelector('.label')!.textContent).toBe('task-3-subtract, muted');
+    expect(task!.querySelector('[data-testid="room-muted"]')!.getAttribute('aria-hidden')).toBe('true');
+    expect(task!.textContent).toBe('task-3-subtract, muted1, 1 unread');
+  });
+
   it('cuts a long room name with an ellipsis inside its column instead of running past it (UI audit 2026-10-26)', async () => {
     const long = 'task-2-add-a-multiply-function-with-table-tests-and-a-name-longer-than-any-column';
     const r = mount(

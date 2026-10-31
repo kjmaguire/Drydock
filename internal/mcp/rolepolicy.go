@@ -21,6 +21,7 @@ const (
 	ColMemory       = "search_memory"
 	ColRequirements = "search_requirements"
 	ColPacks        = "search_pack"
+	ColSecurity     = "security_findings"
 	ColAct          = "act"
 	ColDocs         = "docs"
 	ColGitHub       = "github"
@@ -50,6 +51,7 @@ var RoleColumns = []RoleColumn{
 	{Key: ColMemory, Label: "Memory", Help: "search_memory: the project's accepted memory", Tools: []string{"search_memory"}},
 	{Key: ColRequirements, Label: "Requirements", Help: "search_requirements: the project's requirement documents", Tools: []string{"search_requirements"}},
 	{Key: ColPacks, Label: "Packs", Help: "search_pack: the expert packs attached for it", Tools: []string{"search_pack"}},
+	{Key: ColSecurity, Label: "Security findings", Help: "security_findings: the project's last security scan", Tools: []string{"security_findings"}},
 	{Key: ColAct, Label: "Act", Help: "task, room, handoff (a reviewer: room and handoff), while the project lets agents act", Tools: []string{"task", "room", "handoff"}},
 	{Key: ColDocs, Label: "Docs servers", Help: "documentation servers (Cloudflare docs, Microsoft Learn, Context7), and the live packs' servers"},
 	{Key: ColGitHub, Label: "GitHub", Help: "the GitHub server's read tools"},
@@ -70,9 +72,9 @@ var RoleLabels = map[string]string{
 // roleDenied lists, per role, the cells of section 3's table that are "-" (every other cell is yes). PM reads requirements,
 // memory and packs only, the UX Designer requirements, packs and files; repo_map stays on for both (P62 gives it to every role).
 var roleDenied = map[string][]string{
-	"pm":          {ColReadRange, ColSkills, ColDocs, ColGitHub, ColSentry},
+	"pm":          {ColReadRange, ColSkills, ColSecurity, ColDocs, ColGitHub, ColSentry},
 	"architect":   {ColSentry},
-	"ux designer": {ColSkills, ColMemory, ColGitHub, ColSentry},
+	"ux designer": {ColSkills, ColMemory, ColSecurity, ColGitHub, ColSentry},
 	"frontend":    {ColGitHub, ColTrackers, ColSentry},
 	"backend":     {ColGitHub, ColTrackers, ColSentry},
 	"database":    {ColGitHub, ColTrackers, ColSentry},

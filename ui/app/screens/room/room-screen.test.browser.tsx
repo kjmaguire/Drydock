@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Agent, Message, Room } from '../../api/types.ts';
 import { roomMessagesDouble } from '../../test/fakes.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { Conversation, RoomScreen } from './room-screen.tsx';
 
 afterEach(cleanup);
@@ -439,5 +439,59 @@ describe('RoomScreen', () => {
     const r = mount(<RoomScreen id="zzz" />, s);
     await waitFor(() => expect(r.container.textContent).toContain('Channel not found'), r);
     await waitFor(() => expect(q(r, '[role="alert"]')!.textContent).toContain('room not found: zzz'), r);
+  });
+});
+
+describe('Stopping and muting a room (P130)', () => {
+  const turn = (status: string) => ({ turnId: 't1', roomId: 'r', triggerId: 'm1', agentId: 'agt1', round: 1, reason: 'mention', mode: 'auto', status, contextMessages: 0, contextTokens: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, startedAt: 1 }) as never;
+  const general: Room = { ...taskRoom, kind: 'channel', name: 'general', taskId: undefined };
+
+  it('Esc Esc in the message box stops the agent answering: the first Esc says so, the second stops it', async () => {
+    const stops: string[] = [];
+    let status = 'running';
+    const s = servicesWith({ roomTurns: async () => [turn(status)], roomStop: async (id: string) => (stops.push(id), (status = 'stopped'), 1) });
+    const r = mount(<Conversation room={general} />, s);
+    await waitFor(() => expect(q(r, '[data-testid="room-stop"]')!.textContent).toContain('Stop'), r);
+    const box = byLabel<HTMLTextAreaElement>(r.container, 'Message to #general');
+    const esc = () => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await r.act(() => void esc());
+    await waitFor(() => expect(q(r, '[data-testid="room-esc-again"]')!.textContent).toBe('Press Esc again to stop Backend #1'), r);
+    expect(stops).toEqual([]);
+    await r.act(() => void esc());
+    await waitFor(() => expect(stops).toEqual(['r']), r);
+    await waitFor(() => expect(q(r, '[data-testid="room-stop"]')).toBe(null), r);
+  });
+
+  it('with nobody answering, Esc does nothing and there is no Stop', async () => {
+    const stops: string[] = [];
+    const s = servicesWith({ roomTurns: async () => [turn('done')], roomStop: async (id: string) => (stops.push(id), 0) });
+    const r = mount(<Conversation room={general} />, s);
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message to #general'), r);
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    await r.act(() => void box.dispatchEvent(ev));
+    await r.act(() => void box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    expect([ev.defaultPrevented, stops, q(r, '[data-testid="room-stop"]'), q(r, '[data-testid="room-esc-again"]')]).toEqual([false, [], null, null]);
+  });
+
+  it("mutes and unmutes the room from the room's menu", async () => {
+    const calls: unknown[] = [];
+    let muted = false;
+    const s = servicesWith({
+      roomUnread: async () => [{ roomId: 'r', roomName: 'general', kind: 'channel', unread: 0, mentions: 0, muted, lastReadSeq: 0 }],
+      roomSetMuted: async (roomId: string, m: boolean) => {
+        calls.push([roomId, m]);
+        muted = m;
+        return { roomId, roomName: 'general', kind: 'channel', unread: 0, mentions: 0, muted: m, lastReadSeq: 0 };
+      },
+    });
+    const r = mount(<Conversation room={general} />, s);
+    const menu = await waitFor(() => q<HTMLButtonElement>(r, '[data-testid="room-menu"]')!, r);
+    expect(menu.getAttribute('aria-label')).toBe('Room actions');
+    await fromMenu(r, menu, 'Mute room');
+    await waitFor(() => expect(calls).toEqual([['r', true]]), r);
+    await waitFor(() => expect(s.project.unread.data?.[0]?.muted).toBe(true), r);
+    expect(await menuItems(r, menu)).toEqual(['Unmute room']);
+    await fromMenu(r, menu, 'Unmute room');
+    await waitFor(() => expect(calls).toEqual([['r', true], ['r', false]]), r);
   });
 });

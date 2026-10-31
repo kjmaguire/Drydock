@@ -125,6 +125,9 @@ func scanRoom(sc scanner) (Room, error) {
 		return Room{}, err
 	}
 	r.Kind, r.Mode = Kind(kind), Mode(mode)
+	if r.Kind == KindDM {
+		r.AgentID = dmAgent(r.Name)
+	}
 	_ = json.Unmarshal([]byte(params), &r.ModeParams)
 	r.Archived = archived != 0
 	r.ArchivedAt, r.CreatedAt = fromMs(archivedAt), fromMs(createdAt)
@@ -387,10 +390,18 @@ func (s *Service) CreateTaskChannel(ctx context.Context, sp TaskChannelSpec) (Ro
 	for _, t := range ToolMembers {
 		add(Tool(t.Name), "tool")
 	}
-	r, _, err := s.createRoom(ctx, r, mem, sp.CreatedBy, func(tx *sql.Tx) (Room, error) {
+	r, created, err := s.createRoom(ctx, r, mem, sp.CreatedBy, func(tx *sql.Tx) (Room, error) {
 		return scanRoomErr(tx.QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE kind='task' AND task_id<>'' AND task_id=?`, sp.TaskID))
 	})
-	return r, err
+	if err != nil || !created {
+		return r, err
+	}
+	// the stored join rules a person made add their agents (room-protocol s10 (c)); a rule that cannot be applied does not undo
+	// the room
+	if err := s.applyJoinRules(ctx, r); err != nil {
+		s.report(err)
+	}
+	return r, nil
 }
 
 // ArchiveTaskChannel archives a task's room on completion, cancellation or failure; messages are kept.
@@ -420,13 +431,25 @@ func (s *Service) WatchTasks(ctx context.Context) error {
 	return nil
 }
 
+// dmAgent is the agent of a DM's name "dm:human:<name>+<agent id>" (CreateDM): a human's name and an agent id hold no "+".
+func dmAgent(name string) string {
+	if !strings.HasPrefix(name, "dm:") {
+		return ""
+	}
+	_, agent, ok := strings.Cut(name, "+")
+	if !ok || ParseAuthor(agent).Kind != AuthorAgent {
+		return ""
+	}
+	return agent
+}
+
 // CreateDM creates (or returns) the DM between one human and one agent.
 func (s *Service) CreateDM(ctx context.Context, projectID string, human, agent Author) (Room, error) {
 	if human.Kind != AuthorHuman || agent.Kind != AuthorAgent {
 		return Room{}, fmt.Errorf("%w: a DM is a human and an agent", ErrInvalid)
 	}
 	name := "dm:" + human.Key() + "+" + agent.Key()
-	r := Room{ID: ids.New("room"), ProjectID: projectID, Kind: KindDM, Name: name, Mode: ModeAuto}
+	r := Room{ID: ids.New("room"), ProjectID: projectID, Kind: KindDM, Name: name, Mode: ModeAuto, AgentID: agent.ID}
 	r, _, err := s.createRoom(ctx, r, []memberSpec{{a: human, role: "owner"}, {a: agent}}, human, func(tx *sql.Tx) (Room, error) {
 		return scanRoomErr(tx.QueryRowContext(ctx, `SELECT `+roomCols+` FROM rooms WHERE project_id=? AND kind='dm' AND name=?`, projectID, name))
 	})

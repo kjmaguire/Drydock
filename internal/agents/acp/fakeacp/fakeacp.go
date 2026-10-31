@@ -110,6 +110,10 @@ type Step struct {
 	Notify *Notify `json:"notify,omitempty"`
 	// ReportClientMeta reports the clientCapabilities._meta keys of initialize as an agent message ("clientMeta=k1,k2").
 	ReportClientMeta bool `json:"reportClientMeta,omitempty"`
+	// SwitchMode changes the session's mode by itself and says so (current_mode_update), as an agent that leaves plan mode does.
+	SwitchMode string `json:"switchMode,omitempty"`
+	// ReportTerminal reports whether initialize advertised the client's terminal ("terminal=true").
+	ReportTerminal bool `json:"reportTerminal,omitempty"`
 }
 
 // Compaction is OpenCode's compaction marker.
@@ -149,6 +153,9 @@ type Tool struct {
 	Pending   bool           `json:"pending,omitempty"` // never complete it
 	Locations []string       `json:"locations,omitempty"`
 	Meta      map[string]any `json:"meta,omitempty"`
+	// Term runs the call's command in a client terminal between the tool_call and its end, and names the terminal in the
+	// final update's content, as an agent that uses the client's terminals reports a shell call.
+	Term *TermOp `json:"term,omitempty"`
 }
 
 // UsageUpdate is a usage_update notification.
@@ -260,6 +267,7 @@ type agent struct {
 	exitCh     chan int
 	once       sync.Once
 	clientMeta map[string]any
+	terminal   bool // initialize advertised the client's terminal
 }
 
 // lockedWriter makes each Write (the SDK writes one whole message per call) atomic, so raw notifications never interleave.
@@ -319,6 +327,7 @@ func (a *agent) exit() chan int {
 func (a *agent) Initialize(_ context.Context, p acp.InitializeRequest) (acp.InitializeResponse, error) {
 	a.mu.Lock()
 	a.clientMeta = p.ClientCapabilities.Meta
+	a.terminal = p.ClientCapabilities.Terminal
 	a.mu.Unlock()
 	sc := a.script
 	caps := acp.AgentCapabilities{
@@ -550,7 +559,16 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 		case st.Think != "":
 			send(acp.SessionUpdate{AgentThoughtChunk: &acp.SessionUpdateAgentThoughtChunk{Content: acp.TextBlock(st.Think), SessionUpdate: "agent_thought_chunk"}})
 		case st.Tool != nil:
-			a.runTool(send, st.Tool)
+			a.runTool(ctx, sid, send, st.Tool)
+		case st.SwitchMode != "":
+			a.mu.Lock()
+			s.mode = st.SwitchMode
+			a.mu.Unlock()
+			send(acp.SessionUpdate{CurrentModeUpdate: &acp.SessionCurrentModeUpdate{SessionUpdate: "current_mode_update", CurrentModeId: acp.SessionModeId(st.SwitchMode)}})
+		case st.ReportTerminal:
+			a.mu.Lock()
+			say(fmt.Sprintf("terminal=%v", a.terminal))
+			a.mu.Unlock()
 		case len(st.Plan) > 0:
 			var es []acp.PlanEntry
 			for _, e := range st.Plan {
@@ -687,7 +705,7 @@ func (a *agent) finish(stop acp.StopReason, withUsage bool) acp.PromptResponse {
 	return r
 }
 
-func (a *agent) runTool(send func(acp.SessionUpdate), t *Tool) {
+func (a *agent) runTool(ctx context.Context, sid acp.SessionId, send func(acp.SessionUpdate), t *Tool) {
 	kind := acp.ToolKind(t.Kind)
 	if kind == "" {
 		kind = acp.ToolKindOther
@@ -718,6 +736,13 @@ func (a *agent) runTool(send func(acp.SessionUpdate), t *Tool) {
 		upd.Content = []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Output))}
 	}
 	upd.RawOutput = t.RawOutput
+	if t.Term != nil {
+		req := acp.CreateTerminalRequest{SessionId: sid, Command: t.Term.Command, Args: t.Term.Args}
+		if ct, err := a.conn.CreateTerminal(ctx, req); err == nil {
+			_, _ = a.conn.WaitForTerminalExit(ctx, acp.WaitForTerminalExitRequest{SessionId: sid, TerminalId: ct.TerminalId})
+			upd.Content = append(upd.Content, acp.ToolCallContent{Terminal: &acp.ToolCallContentTerminal{Type: "terminal", TerminalId: ct.TerminalId}})
+		}
+	}
 	send(acp.SessionUpdate{ToolCallUpdate: &upd})
 }
 

@@ -1,11 +1,11 @@
 // About Drydock (decision P129): the build's version, the third-party notices the build ships (THIRD_PARTY_NOTICES.md, read by
 // the core from beside the executable and shown here, not opened as a file) and the keyboard map, read-only, from the shortcuts
-// that exist (lib/keys.ts KEYMAP).
+// that exist (lib/keys.ts KEYMAP), with the keys a person bound them to (decision P132).
 
 import { css, on, type Handle } from 'remix/component';
 import { BadgeInfo } from 'lucide';
 import type { Licenses } from '../../api/shellClient.ts';
-import { KEYMAP } from '../../lib/keys.ts';
+import { KEYMAP, keysOf } from '../../lib/keys.ts';
 import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { kv, muted } from '../../ui/data.tsx';
@@ -18,7 +18,7 @@ import { Group, panel, tableWrap } from './settings-kit.tsx';
 const keysCss = css({ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', '& .then': { color: t.textMuted, fontSize: t.textSm } });
 
 /** The keys of one line of the map, each a <kbd> ("then" between keys pressed one after the other). */
-function Keys(handle: Handle<{ keys: string[] }>) {
+export function Keys(handle: Handle<{ keys: string[] }>) {
   return () => (
     <span mix={keysCss}>
       {handle.props.keys.map((k, i) =>
@@ -45,6 +45,7 @@ export function versionWords(version: string | undefined, build: string | undefi
 export function AboutDrydock(handle: Handle) {
   const s = services(handle);
   watch(handle, s.workspace);
+  watch(handle, s.ui); // the keys in use (decision P132)
   const act = action(handle);
   let open = false;
   let licenses: Licenses | undefined;
@@ -84,7 +85,7 @@ export function AboutDrydock(handle: Handle) {
               {KEYMAP.map((k) => (
                 <tr key={k.keys.join(' ') + k.where}>
                   <td>
-                    <Keys keys={k.keys} />
+                    <Keys keys={keysOf(k)} />
                   </td>
                   <td>{k.action}</td>
                   <td>{k.where}</td>
@@ -94,7 +95,7 @@ export function AboutDrydock(handle: Handle) {
           </table>
         </div>
         <p mix={muted} style={{ margin: '0' }}>
-          The shortcuts cannot be changed yet. None of them acts inside the terminal or the diff editor, which keep their own keys.
+          The keys in use: change them under Keyboard shortcuts. None acts inside the terminal or the diff editor, which keep their own keys.
         </p>
         <Dialog open={open} wide title="Third-party licenses" onClose={() => ((open = false), void handle.update())}>
           {!licenses ? (

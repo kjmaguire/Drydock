@@ -720,6 +720,15 @@ func (a *agentsDev) methods() map[string]Method {
 		}) (any, error) {
 			return a.resp.Handle(ctx, p.MessageID)
 		}),
+		// a person stops the agents answering in a room now (Esc Esc in the room's composer, decision P130)
+		"room.stop": bind(func(ctx context.Context, p struct {
+			RoomID string `json:"roomId"`
+		}) (any, error) {
+			if _, err := c.Room.GetRoom(ctx, p.RoomID); err != nil {
+				return nil, err
+			}
+			return map[string]int{"stopped": a.resp.Stop(p.RoomID)}, nil
+		}),
 
 		// PlanTeam
 		"plan.propose": bind(func(ctx context.Context, p struct {

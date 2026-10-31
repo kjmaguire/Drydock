@@ -274,6 +274,7 @@ func (s *Service) DetectWSL(ctx context.Context) []Connection {
 				func(m *manifests.Manifest, d wsl.Distro) {
 					defer wg.Done()
 					c := CheckWSL(ctx, m, d, o)
+					s.record(c)
 					mu.Lock()
 					out = append(out, c)
 					mu.Unlock()
@@ -357,7 +358,9 @@ func (s *Service) CheckWSL(ctx context.Context, id, distro string) (Connection, 
 			}
 		}
 	}
-	return CheckWSL(ctx, m, d, o), nil
+	c := CheckWSL(ctx, m, d, o)
+	s.record(c)
+	return c, nil
 }
 
 func userHome() string {

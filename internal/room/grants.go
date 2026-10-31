@@ -179,15 +179,18 @@ func (s *Service) GrantGroupTurn(ctx context.Context, gt GroupTurn) (TurnDecisio
 // used can be renewed, and only once per hop. The renewed grant carries the bound and the plan the used one was issued with,
 // so the hop sees what the first attempt saw.
 func (s *Service) RenewGrant(ctx context.Context, used TurnGrant) (TurnGrant, error) {
-	var usedAt int64
+	var usedAt, completedAt int64
 	var maxRounds int
 	var planJSON string
-	if err := s.db.Reader().QueryRowContext(ctx, `SELECT used_at, max_rounds, context_plan FROM room_turn_grants WHERE id=? AND room_id=? AND agent_id=?`, used.ID, used.RoomID, used.AgentID).
-		Scan(&usedAt, &maxRounds, &planJSON); err != nil {
+	if err := s.db.Reader().QueryRowContext(ctx, `SELECT used_at, completed_at, max_rounds, context_plan FROM room_turn_grants WHERE id=? AND room_id=? AND agent_id=?`, used.ID, used.RoomID, used.AgentID).
+		Scan(&usedAt, &completedAt, &maxRounds, &planJSON); err != nil {
 		return TurnGrant{}, fmt.Errorf("%w: %s was not issued by the scheduler", ErrGrantRefused, used.ID)
 	}
 	if usedAt == 0 {
 		return TurnGrant{}, fmt.Errorf("%w: %s has not been used, so there is nothing to renew", ErrGrantRefused, used.ID)
+	}
+	if completedAt != 0 {
+		return TurnGrant{}, fmt.Errorf("%w: the turn of %s was completed or already renewed", ErrGrantRefused, used.ID)
 	}
 	var plan *ContextPlan
 	if planJSON != "" {
@@ -204,7 +207,12 @@ func (s *Service) RenewGrant(ctx context.Context, used TurnGrant) (TurnGrant, er
 	if err != nil {
 		return TurnGrant{}, err
 	}
-	return s.issue(ctx, rm, trig, used.AgentID, used.Round, maxRounds, used.Reason, used.ID, ContextBounds{}, plan)
+	g, err := s.issue(ctx, rm, trig, used.AgentID, used.Round, maxRounds, used.Reason, used.ID, ContextBounds{}, plan)
+	if err != nil {
+		return TurnGrant{}, err
+	}
+	// the used grant's part of the turn ended: the scheduler hears the rest of it on the renewed one (Complete)
+	return g, s.closeRenewed(ctx, used.ID)
 }
 
 // issue stores a grant for agentID after trig: the agent must be a member of the room that may speak (not muted). The grant

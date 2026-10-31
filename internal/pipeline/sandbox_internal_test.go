@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/agents"
+	"github.com/kjmaguire/drydock/internal/agents/acp"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/proc"
@@ -31,6 +33,16 @@ func (f *fakeSandbox) Check(_ context.Context, _ tasks.Task, s checks.Spec) (che
 	f.checked = append(f.checked, s.Name)
 	s.Argv = append([]string{"engine", "exec"}, s.Argv...)
 	return s, nil
+}
+func (f *fakeSandbox) Terminals(t tasks.Task, _ string) agents.TerminalHost {
+	return fakeTerminals{task: t.ID}
+}
+
+// fakeTerminals is the labelled test double of the container's terminals: it names the task it was made for.
+type fakeTerminals struct{ task string }
+
+func (fakeTerminals) Run(context.Context, agents.TerminalRequest, io.Writer) (int, error) {
+	return 0, nil
 }
 
 func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
@@ -57,11 +69,36 @@ func TestASandboxedWorkerTurnHasNoShellAndGetsTheSandbox(t *testing.T) {
 		t.Fatalf("no command rules for a sandboxed worker: %v", cfg.Spec.AllowedTools)
 	}
 
-	// another CLI cannot run sandboxed yet: the human is asked rather than the commands going to this machine
-	other := rt.Config{Adapter: "gemini"}
-	q, err = d.prepareWorker(ctx, workflow.NodeInput{}, task, &other)
-	if err != nil || q == nil || q.Request == nil || !strings.Contains(q.Request.Title, "Claude Code") || other.Spec.Sandboxed {
-		t.Fatalf("other CLI: %+v %v", q, err)
+	// a CLI whose manifest names no way to make it ask first cannot run sandboxed: the human is asked rather than the commands
+	// going to this machine
+	d.Runtime = &rt.Runtime{Adapters: map[string]agents.Adapter{
+		"codex":  acp.New(acp.Config{ID: "codex", Command: "codex-acp"}),
+		"gemini": acp.New(acp.Config{ID: "gemini", Command: "gemini", Sandbox: &acp.SandboxSupport{Mode: "default"}}),
+		"goose":  acp.New(acp.Config{ID: "goose", Command: "goose", Sandbox: &acp.SandboxSupport{}}),
+	}}
+	for _, name := range []string{"codex", "unknown-cli"} {
+		other := rt.Config{Adapter: name}
+		q, err = d.prepareWorker(ctx, workflow.NodeInput{}, task, &other)
+		if err != nil || q == nil || q.Request == nil || !strings.Contains(q.Request.Title, "cannot be kept from running commands on this machine") || other.Spec.Sandboxed {
+			t.Fatalf("%s: %+v %v", name, q, err)
+		}
+	}
+	// one that can (decision P131): its terminals go to the task's container, it runs in the mode in which it asks first, and
+	// it is told how to run commands there
+	gem := rt.Config{Adapter: "gemini"}
+	if q, err := d.prepareWorker(ctx, workflow.NodeInput{}, task, &gem); q != nil || err != nil {
+		t.Fatalf("gemini: %+v %v", q, err)
+	}
+	if !gem.Spec.Sandboxed || gem.Spec.PermissionPrompts || gem.Spec.PermissionMode != "default" || gem.Spec.Terminals != (fakeTerminals{task: "task_1"}) ||
+		!strings.Contains(gem.Spec.SystemAppend, "in a terminal Drydock gives you") || !strings.Contains(gem.Spec.SystemAppend, "Sandbox image: test-image.") {
+		t.Fatalf("gemini spec %+v", gem.Spec)
+	}
+	if strings.Contains(strings.Join(gem.Spec.Env, " "), "MCP_TOOL_TIMEOUT") {
+		t.Fatal("Claude Code's variables are Claude Code's")
+	}
+	goose := rt.Config{Adapter: "goose", Spec: agents.RunSpec{PermissionMode: "auto"}}
+	if q, err := d.prepareWorker(ctx, workflow.NodeInput{}, task, &goose); q != nil || err != nil || !goose.Spec.Sandboxed || goose.Spec.PermissionMode != "" || goose.Spec.Terminals == nil {
+		t.Fatalf("goose: %+v %v %+v", q, err, goose.Spec)
 	}
 
 	// a Claude Code agent running inside WSL cannot run sandboxed (decision P41): the human is asked, nothing runs

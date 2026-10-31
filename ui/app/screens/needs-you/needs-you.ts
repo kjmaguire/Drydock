@@ -12,6 +12,11 @@ export const KIND_LABEL: Record<string, string> = {
   watchdog_pause: 'Watchdog pause',
   chat_permission: 'Chat permission',
   budget: 'Budget',
+  task_waiting: 'Task waiting',
+  mention: 'Mention',
+  join_request: 'Request to join',
+  agent: 'Agent',
+  connection: 'Agent CLI',
 };
 
 /** Where clicking an item goes. Items are derived by the core on every query; nothing here is stored. */
@@ -22,6 +27,10 @@ export function needsTarget(it: NeedsYouItem): string {
   if (it.kind === 'budget' && it.budgetState !== 'paused') return routes.budgets.href();
   // a tool call an agent wants to make: its exact arguments and the Approve button are on the project's Integrations page
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return routes.projectIntegrations.href();
+  // decision P130: a mention is read in its room (a task room too), an agent's state on its page, a CLI on the Agents page
+  if (it.kind === 'mention' && it.roomId) return routes.room.href({ id: it.roomId });
+  if (it.kind === 'agent' && it.agentId) return routes.agent.href({ id: it.agentId });
+  if (it.kind === 'connection') return routes.agents.href({ key: it.connectionKey || it.adapter || undefined });
   if (it.taskId) return routes.task.href({ id: it.taskId });
   if (it.roomId) return routes.room.href({ id: it.roomId });
   // an approval with no task is an outbound write to an integration: its exact text is on the project's Integrations page
@@ -47,6 +56,7 @@ export function needsHint(it: NeedsYouItem): string {
   if (it.kind === 'approval' && /^mcp_call:/.test(it.title)) return "An agent wants to call a tool that is not marked read-only. Open the project's Integrations page to see the exact call and approve or reject it.";
   if (it.kind === 'approval' && /^Permission request: /.test(it.title))
     return "A worker asks to use a tool its rules do not allow, and its turn waits. Open the task to see the exact tool and input; allow it once or refuse.";
+  if (it.kind === 'join_request') return 'Let it in as an observer: it reads the channel and answers only when mentioned. Or decline; it never joins by itself.';
   if (it.kind === 'chat_permission') return "A chat's agent asks to use a tool its rules do not allow, and its turn waits. Open the chat to see the exact call; allow it once or refuse. Nobody answering refuses it after 30 minutes.";
   if (it.kind === 'approval' && !it.taskId && !it.roomId) return "An outbound write to a connected service. Open the project's Integrations page to read the exact text and approve or decline.";
   return '';
@@ -83,7 +93,22 @@ export function verdictWords(v: string): string {
 // --- the Inbox (graphite, decision P97): every project's items, what runs and what was done today ---
 
 /** What an item is, for its icon tile and its words: a spec gate and a review and merge are both reviews to the core. */
-export type NeedsLook = 'approval' | 'spec' | 'merge' | 'plan' | 'review' | 'question' | 'failed_check' | 'watchdog' | 'chat' | 'budget';
+export type NeedsLook =
+  | 'approval'
+  | 'spec'
+  | 'merge'
+  | 'plan'
+  | 'review'
+  | 'question'
+  | 'failed_check'
+  | 'watchdog'
+  | 'chat'
+  | 'budget'
+  | 'task'
+  | 'mention'
+  | 'join'
+  | 'agent'
+  | 'connection';
 
 export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
   switch (it.kind) {
@@ -99,6 +124,16 @@ export function needsLook(it: Pick<NeedsYouItem, 'kind' | 'phase'>): NeedsLook {
       return 'chat';
     case 'budget':
       return 'budget';
+    case 'task_waiting':
+      return 'task';
+    case 'mention':
+      return 'mention';
+    case 'join_request':
+      return 'join';
+    case 'agent':
+      return 'agent';
+    case 'connection':
+      return 'connection';
     default:
       return 'approval';
   }
@@ -116,6 +151,11 @@ export const LOOK_WORDS: Record<NeedsLook, string> = {
   watchdog: 'watchdog pause',
   chat: 'chat permission',
   budget: 'budget',
+  task: 'task waiting',
+  mention: 'mention',
+  join: 'request to join',
+  agent: 'agent',
+  connection: 'agent CLI',
 };
 
 /** A task's key, "GOC-41": the project's key and the task's number; empty when either is unknown. */
@@ -181,7 +221,7 @@ const titleCase = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined, summary?: Pick<TaskSummary, 'template'>, now = Date.now()): string {
   const look = needsLook(it);
   const when = agoWords(msOf(it.createdAt), now);
-  const asked = look === 'approval' || look === 'question' || look === 'chat';
+  const asked = look === 'approval' || look === 'question' || look === 'chat' || look === 'join';
   const parts = [projectName, LOOK_WORDS[look]];
   if (look === 'spec' && summary?.template) parts.push(`${titleCase(summary.template)} template`);
   else if (!asked && it.agentName) parts.push(it.agentName);
@@ -191,9 +231,11 @@ export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined,
 
 /**
  * Whether an item can be marked done (needsyou.ack): a failed check, a watchdog pause, a question in a room, a budget's warning or
- * limit (it comes back if the budget fires again after a change). A request (a budget pause among them) is answered instead.
+ * limit (it comes back if the budget fires again after a change), a mention, an agent that failed or needs attention (P130). A
+ * request (a budget pause, a request to join among them) is answered instead; a task waiting or a CLI not ready goes when it
+ * changes.
  */
-export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog|budget):/.test(it.key);
+export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog|budget|mention|agent):/.test(it.key);
 
 /** The agent's latest step as a row says it after the title: "editing limiter.go". */
 export const doingWords = (doing: string | undefined): string => (doing ? doing.charAt(0).toLowerCase() + doing.slice(1) : '');

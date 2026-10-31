@@ -411,6 +411,10 @@ describe('round 2 client methods', () => {
     expect(await c.eventsHead()).toBe(77);
     expect(await c.agentGet('a')).toMatchObject({ runs: [], usage: [] });
     expect(await c.connectionTest('x')).toMatchObject({ steps: [], matrix: {} });
+    // decision P132: a null answer is an empty history, and no bindings
+    expect(await c.connectionHistory('claude', 'Ubuntu')).toEqual({ key: 'claude', runs: [], matrix: {}, matrixAt: 0 });
+    expect(await c.keysGet()).toEqual({ bindings: {} });
+    await c.keysSet({ inbox: 'Ctrl+Alt+I' });
     expect(await c.providerTest('p')).toMatchObject({ Models: [], Warnings: [] });
     expect(await c.connectionList()).toEqual([]);
     expect(await c.providerList()).toEqual([]);
@@ -434,6 +438,8 @@ describe('round 2 client methods', () => {
     expect(by('usage.list')).toEqual({ taskId: 't', agentId: '', limit: 0 });
     expect(by('connection.acknowledge')).toEqual({ gateId: 'g' });
     expect(by('connection.check')).toEqual({ adapter: 'claude', distro: 'Ubuntu' });
+    expect(by('connection.history')).toEqual({ adapter: 'claude', distro: 'Ubuntu' });
+    expect(by('keys.set')).toEqual({ bindings: { inbox: 'Ctrl+Alt+I' } });
     expect(by('provider.setEnabled')).toEqual({ id: 'p', enabled: false });
     expect(by('provider.create')).toEqual({ Name: 'n', Kind: 'direct', BaseURL: 'https://x', DataClass: 'private', Tier: 'cheap' });
     expect(by('room.thread')).toEqual({ rootId: 'm' });

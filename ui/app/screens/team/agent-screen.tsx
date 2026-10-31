@@ -335,7 +335,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   };
   const message = (a: Agent) =>
     dm.run('dm', async () => {
-      const room = await s.client.roomCreateDM(a.projectId || pid(), a.id);
+      const room = await s.project.openDM(a.projectId || pid(), a.id);
       go(routes.room.href({ id: room.id }));
     });
   return () => {

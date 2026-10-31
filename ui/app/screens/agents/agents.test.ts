@@ -7,6 +7,8 @@ import {
   agentNotice,
   agentState,
   agentSub,
+  capabilityName,
+  cardValue,
   cellText,
   checkedWords,
   connectionKey,
@@ -14,6 +16,7 @@ import {
   distroBrand,
   gatewayState,
   headerLine,
+  matrixFrom,
   matrixRows,
   needsAttention,
   netModeText,
@@ -21,6 +24,8 @@ import {
   prereqText,
   provTone,
   readyLine,
+  runLine,
+  shortReason,
   reportMeta,
   runsText,
   signedInLine,
@@ -231,5 +236,23 @@ describe('agents helpers', () => {
     expect(usedBy(codex, [a('c', { adapter: 'codex', projectId: 'p2' })], projects, [codex], (ad) => ad !== 'codex').map((x) => x.id)).toEqual(['c']);
     // the adapter's run modes decide, as in the core, not whether a WSL install was found: no WSL row listed, still not Windows
     expect(usedBy(base, [a('follows-wsl', { projectId: 'p2' })], projects, [base], wsl).map((x) => x.id)).toEqual([]);
+  });
+});
+
+describe('the card matrix and the history in words (decision P132)', () => {
+  it('names the capabilities, says yes or no, where the matrix comes from and each kept run in a line', () => {
+    expect([capabilityName('tool_call_visibility'), capabilityName('permission_modes'), capabilityName('some_new_thing')]).toEqual(['Shows its tool calls', 'Permission modes', 'some new thing']);
+    expect([cardValue({ value: true, provenance: 'observed' }), cardValue({ value: false, provenance: 'declared' }), cardValue({ value: 'default, plan', provenance: 'declared' })]).toEqual([
+      'Yes',
+      'No',
+      'default, plan',
+    ]);
+    const now = Date.parse('2026-10-30T12:00:00Z');
+    expect(matrixFrom({ matrixAt: now - 2 * 86_400_000 }, now)).toBe('With what the test 2 d ago saw');
+    expect(matrixFrom({ matrixAt: 0 }, now)).toBe('What the adapter declares: no test yet');
+    expect(runLine({ id: 1, cliVersion: '2.1.0', ok: true, prompt: true, passed: 6, failed: 0, skipped: 0, elapsedMs: 9_000, at: now })).toBe('2.1.0 · 6 passed · with the tiny prompt · 9.0 s');
+    expect(runLine({ id: 2, ok: false, prompt: false, passed: 0, failed: 1, skipped: 4, elapsedMs: 0, at: now })).toBe('0 passed, 1 failed, 4 skipped');
+    expect(shortReason('T2: timeout')).toBe('T2: timeout');
+    expect(shortReason('x'.repeat(300)).length).toBe(160);
   });
 });

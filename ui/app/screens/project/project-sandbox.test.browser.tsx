@@ -83,6 +83,7 @@ describe('Sandbox settings', () => {
     await waitFor(() => expect(calls).toEqual([['p1', true]]), r);
     await waitFor(() => expect(r.container.querySelector('[data-testid="sandbox-switch-note"]')!.textContent).toContain('Switched on by kyle'), r);
     expect(r.container.querySelector('[data-testid="sandbox-explain"]')!.textContent).toContain('no shell on this machine');
+    expect(r.container.querySelector('[data-testid="sandbox-explain"]')!.textContent).toContain('Gemini CLI, Goose and Cline');
   });
 
   it('runs the test and shows each step', async () => {

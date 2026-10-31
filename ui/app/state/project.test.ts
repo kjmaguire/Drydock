@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Client } from '../api/client.ts';
-import type { Project, Task } from '../api/types.ts';
+import type { Project, Room, Task } from '../api/types.ts';
 import { FakeTransport, ManualScheduler } from '../test/fakes.ts';
 import { EventStore } from './eventStore.ts';
 import { ProjectData } from './project.ts';
@@ -89,5 +89,29 @@ describe('the project\'s task read says how much of the project it has (M21)', (
     expect(data.taskList).toEqual([]);
     expect(data.taskTotal).toBeUndefined();
     expect(data.taskCoverage.partial).toBe(false);
+  });
+});
+
+describe('a direct message opened from a page is in the room list before it is shown (decision P130)', () => {
+  it('reads the rooms again when the DM is in the open project, so Ctrl+. and the Rooms rail know it at once', async () => {
+    const dm = { id: 'r9', projectId: 'p1', kind: 'dm', agentId: 'a1', name: 'dm' } as Room;
+    let rooms: Room[] = [];
+    const made: string[] = [];
+    const { data } = open({ roomList: async () => rooms, roomCreateDM: async (pid, aid) => (made.push(`${pid} ${aid}`), (rooms = [dm]), dm) });
+    await until(() => data.id === 'p1');
+    const r = await data.openDM('p1', 'a1');
+    expect(r.id).toBe('r9');
+    expect(made).toEqual(['p1 a1']);
+    // no room.created event came: the read after the create is what put it there
+    expect(data.roomList.find((x) => x.id === 'r9')?.agentId).toBe('a1');
+  });
+
+  it('leaves the open project\'s rooms alone for a DM in another project', async () => {
+    let reads = 0;
+    const { data } = open({ roomList: async () => (reads++, []), roomCreateDM: async () => ({ id: 'r8', projectId: 'p2', kind: 'dm' }) as Room });
+    await until(() => data.id === 'p1' && reads > 0);
+    const before = reads;
+    await data.openDM('p2', 'a7');
+    expect(reads).toBe(before);
   });
 });

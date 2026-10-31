@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -127,6 +128,38 @@ type RunSpec struct {
 	// allowed call by itself, so the adapter compares what the agent reports of the call afterwards with what was allowed (the
 	// hashes of both are given) and stops the turn on the first difference. The core records it.
 	OnCallChanged func(q ToolAsk, allowedSum, actualSum string) `json:"-"`
+
+	// Terminals, if set, runs the session's ACP terminal requests (terminal/create and the rest) instead of this machine: a
+	// sandboxed worker's go to the task's container (decision P131). An ACP adapter then offers the terminal capability for the
+	// session. Nil: terminals run here, and only when the adapter offers them.
+	Terminals TerminalHost `json:"-"`
+	// OnSandboxEscape, if set, hears of a command a sandboxed session's CLI reported running without asking and without
+	// Drydock's terminal (decision P131): it ran on this machine. The adapter has already stopped the turn; the core records it.
+	OnSandboxEscape func(q ToolAsk) `json:"-"`
+}
+
+// TerminalRequest is one ACP terminal command to run elsewhere (RunSpec.Terminals): the executable and its arguments, or a
+// command line when there are no arguments; the folder relative to the session's working folder ("/" separators, "" for the
+// folder itself); extra KEY=VALUE pairs.
+type TerminalRequest struct {
+	Command string
+	Args    []string
+	Dir     string
+	Env     []string
+}
+
+// TerminalHost runs terminal commands for a session. Run blocks until the command ends and writes its output to out as it
+// comes; it returns the exit code (-1 for a command that was stopped). Ending ctx stops the command and everything it started.
+type TerminalHost interface {
+	Run(ctx context.Context, req TerminalRequest, out io.Writer) (exitCode int, err error)
+}
+
+// SandboxCapable is implemented by an adapter whose CLI can work in a sandboxed project (decision P131): its terminal
+// requests can be routed into the task's container, and in Drydock's configuration it asks before every command it would run
+// itself (which Drydock then refuses). Mode is the session mode Drydock selects for that ("" when the manifest's own setting
+// already does it); ok is false for a CLI that has no such way.
+type SandboxCapable interface {
+	SandboxMode() (mode string, ok bool)
 }
 
 // NativeLocator is implemented by an adapter that can say, without starting anything, whether its CLI is installed on this

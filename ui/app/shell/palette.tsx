@@ -10,7 +10,7 @@ import type { Agent, Connection, Task } from '../api/types.ts';
 import { projectHasRepo } from '../api/types.ts';
 import type { AssignPreview, PreviewAgent } from '../api/controlClient.ts';
 import type { ProjectRunMode } from '../api/wslClient.ts';
-import { ownsKeys } from '../lib/keys.ts';
+import { ownsKeys, shortcutOf } from '../lib/keys.ts';
 import { taskSearchNote } from '../lib/task-total.ts';
 import type { ThemeChoice } from '../lib/theme.ts';
 import { routes } from '../routes.ts';
@@ -258,14 +258,14 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
     debounceMs: 300,
   });
 
-  // Ctrl+K toggles the menu anywhere but inside the terminal (kill to end of line) or the diff editor (a chord). G then I, T or
-  // C (within a second) goes to Inbox, Tasks or Crew, never while typing in a field.
+  // Ctrl+K (or the person's binding, decision P132) toggles the menu anywhere but inside the terminal (kill to end of line) or
+  // the diff editor (a chord). G then I, T or C (within a second) goes to Inbox, Tasks or Crew, never while typing in a field.
   let gAt = 0;
   window.addEventListener(
     'keydown',
     (e) => {
       if (ownsKeys(e.target)) return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+      if (shortcutOf(e) === 'palette') {
         e.preventDefault();
         s.ui.setPalette(!s.ui.paletteOpen);
         return;

@@ -307,6 +307,8 @@ export interface CheckSettings {
   secrets: boolean;
   deps: boolean;
   depsOffline: boolean;
+  /** the security scan's code and dependency engines on every task's change (decision P131) */
+  scan: boolean;
 }
 /** The skill delivery a project has when it never chose one (the core's skills.DefaultDelivery). */
 export const DEFAULT_SKILL_DELIVERY: 'all' | 'relevant' = 'relevant';

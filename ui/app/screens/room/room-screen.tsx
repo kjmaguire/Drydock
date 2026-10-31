@@ -3,18 +3,19 @@
 // project's room list, or from room.get so an archived task channel still opens.
 
 import { css, on, ref, type Handle } from 'remix/component';
-import { ArrowDown, ListChecks, MessageSquare, MessagesSquare } from 'lucide';
+import { ArrowDown, Bell, BellOff, ListChecks, MessageSquare, MessagesSquare } from 'lucide';
 import type { Message, Room } from '../../api/types.ts';
 import { authorName, roomLabel } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
-import { query, services, watch } from '../../state/services.tsx';
+import { action, query, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { Page, actionsEnd } from '../../ui/layout.tsx';
+import { MoreMenu } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { Composer } from './composer.tsx';
@@ -170,6 +171,24 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     when: (e) => e.type.startsWith('room.member'),
     key: () => handle.props.room.id,
   });
+  // who answers in the room now (decision P130): the composer's Stop and Esc Esc stop them
+  const turns = query(handle, {
+    load: () => s.client.roomTurns(handle.props.room.id, 10),
+    when: (e) => starts(e, 'room.turn_', 'room.message_posted', 'agent.started', 'agent.waiting'),
+    key: () => handle.props.room.id,
+    enabled: () => !handle.props.room.archived,
+  });
+  const act = action(handle);
+  const stop = () =>
+    void act.run('stop', async () => {
+      await s.client.roomStop(handle.props.room.id);
+      await turns.reload();
+    });
+  const setMuted = (muted: boolean) =>
+    void act.run('mute', async () => {
+      await s.client.roomSetMuted(handle.props.room.id, muted);
+      await s.project.unread.reload();
+    });
 
   // the rows near the view are rendered; the list stays at the bottom while the reader is there (ui/virtual-list.tsx)
   const list = new VirtualList({ onChange: () => void handle.update(), signal: handle.signal, estimate: 44 });
@@ -233,6 +252,11 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     const { rows, replies } = rowsOf(msgs);
     const label = roomLabel(room, agents);
     const mem = members.data ?? [];
+    const muted = !!s.project.unread.data?.find((u) => u.roomId === room.id)?.muted;
+    const answering = (turns.data ?? [])
+      .filter((x) => x.status === 'running')
+      .map((x) => agents.find((a) => a.id === x.agentId)?.name || x.agentId)
+      .join(' and ');
     const stick = list.stick;
     if (stick) seenSeq = feed.lastSeq;
     // the messages are in seq order: count back from the newest (older pages above are never "new")
@@ -303,8 +327,25 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             ) : null}
             <RoomMembers members={mem} agents={agents} />
             <RoomExports room={room} />
+            {room.archived ? null : (
+              <MoreMenu
+                label="Room actions"
+                testId="room-menu"
+                items={[
+                  muted
+                    ? { name: 'unmute', label: 'Unmute room', icon: Bell }
+                    : { name: 'mute', label: 'Mute room', icon: BellOff },
+                ]}
+                onSelect={(name) => setMuted(name === 'mute')}
+              />
+            )}
           </div>
         </header>
+        {act.error ? (
+          <div mix={notesCss} style={{ paddingTop: '12px' }}>
+            <ErrorNote error={act.error} what="Not done" />
+          </div>
+        ) : null}
         {feed.error ? (
           <div mix={notesCss} style={{ paddingTop: '12px' }}>
             <ErrorNote error={feed.error} what="Could not load messages" />
@@ -383,6 +424,9 @@ export function Conversation(handle: Handle<{ room: Room }>) {
           members={mem}
           rooms={s.project.roomList}
           disabled={room.archived}
+          answering={answering}
+          stopping={act.busy === 'stop'}
+          onStop={stop}
           onSent={() => {
             newAfter = undefined;
             list.toBottom();
