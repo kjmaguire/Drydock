@@ -69,7 +69,10 @@ func TestForwardingNeedsARunningSandboxAndAPerson(t *testing.T) {
 	if err := a.callErr("sandbox.forward.list", map[string]any{"taskId": "tsk_nope"}); err == nil {
 		t.Fatal("an unknown task")
 	}
-	if err := a.callErr("sandbox.forward.open", map[string]any{"taskId": r.task.ID, "port": 3000}); err == nil || !strings.Contains(err.Error(), "no running sandbox") {
+	// no sandbox, or (a machine with the docker client and Docker not running, as on CI's Windows runner) no engine to ask: either
+	// way it says so, and opens nothing
+	if err := a.callErr("sandbox.forward.open", map[string]any{"taskId": r.task.ID, "port": 3000}); err == nil ||
+		!(strings.Contains(err.Error(), "no running sandbox") || strings.Contains(err.Error(), sandbox.ErrNoEngine.Error())) {
 		t.Fatalf("%v", err)
 	}
 	ctx := context.Background()
