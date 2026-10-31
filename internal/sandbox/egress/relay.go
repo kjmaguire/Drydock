@@ -66,7 +66,7 @@ func (r *Relay) Serve(ctx context.Context, l net.Listener) error {
 }
 
 func (r *Relay) handle(ctx context.Context, in net.Conn) {
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	dt := r.DialTimeout
 	if dt <= 0 {
 		dt = 5 * time.Second
@@ -76,7 +76,7 @@ func (r *Relay) handle(ctx context.Context, in net.Conn) {
 	if err != nil {
 		return // the app is not listening (yet): the person's browser sees a refused connection
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	idle := r.IdleTimeout
 	if idle <= 0 {
 		idle = 10 * time.Minute
