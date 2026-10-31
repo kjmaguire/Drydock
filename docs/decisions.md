@@ -2192,7 +2192,7 @@ Open, owner action:
   links followed), and an `execute` call it reports as ended without asking and without a terminal of the session stops the
   turn and is recorded (`sandbox.escape`): detection after the fact, said so. Codex and OpenCode declare nothing (their
   defaults run commands without asking) and their turns stay a question for the person, which now names the CLIs that can.
-  (4) **Port forwarding: judged and not built**: a forwarder container on the internal network publishing `127.0.0.1` only is
+  (4) **Port forwarding: judged and not built here (built in P134)**: a forwarder container on the internal network publishing `127.0.0.1` only is
   buildable, but it is not small (a relay mode of the egress binary and its image, a per-task record, a method, the task page,
   Docker Desktop's loopback publishing on Windows unchecked) and it needs the owner's choice: an agent's page opened in the
   person's browser at `127.0.0.1:<port>` shares the cookies of every local app on 127.0.0.1 (cookies are not separated by
@@ -2298,3 +2298,28 @@ Open, owner action:
   (pipeline: a real git repository, the base read at the merge base, the stand-in tools; without the wiring the first never
   passes). **Not built:** a cache of the tools' results across passes of Verify. **Not verified:** a real osv-scanner over a
   base folder of one lockfile (the stand-in follows go.mod only), a lockfile osv-scanner reads only together with its manifest.
+- **P134. Port forwarding from a task's sandbox, shown in a window of Drydock's own (2026-10-31).** P131 judged this and did not
+  build it because it needed the owner's choice: an agent's page opened in the person's browser at `127.0.0.1:<port>` shares the
+  cookies of every other local app on 127.0.0.1 (cookies are not separated by port). The owner chose, on being asked which of the
+  options to take: "go with option 1", a window of Drydock's own with a storage partition of its own. **As built:** (1) a
+  forwarder container (the egress program in a new `relay` mode, `egress.Relay`; the same local image, no registry) on a bridge
+  network of the task's own, publishing `127.0.0.1` only, attached to the task's internal network, relaying to the workspace's port
+  and nothing else; it carries the task's labels and `drydock.forward=<port>`, so the engine is the record and the sandbox's
+  removal takes it (no table, no migration). (2) four methods for a person only (`sandbox.forward.list/open/close/view`), audit
+  actions `sandbox.forward.opened/closed/viewed` and task events; an agent has no way to open a port or a window; `view` takes
+  the address from the engine's record. (3) the viewer: WebView2 takes one profile folder per process and Wails 3 gives a
+  window no profile of its own, so the "storage partition of its own" is a second process of `drydock.exe` (`sandbox-view`)
+  with no service, no core and a new profile folder deleted when the window closes, accepting only `http://127.0.0.1:<port>/`
+  (`internal/sandboxview`); four at most; a child of the app's Job Object. (4) the task page's "Sandbox app" part, shown while the
+  task's sandbox runs. The browser harness has no viewer and says so; nothing falls back to a browser. No new dependency (the
+  software-versions page is unchanged). Tests: `internal/sandbox/egress/relay_test.go` (both directions, a dead target, the
+  connection limit, idle close, the environment); `internal/sandbox/forward_test.go` (**against a real engine, Docker 29.9**: an app
+  in an internal-network workspace reached from the host through the forwarder, published on loopback only, the same forward
+  returned again, stopped, removed with the sandbox, the limit of five, a missing program said); `internal/core/sandbox_forward_test.go`
+  (a real sandbox, the viewer opener as a labelled double: the person only, the address from the engine, the audit and the events);
+  `internal/sandboxview` (every address but the loopback port refused, arguments, title, a profile per viewer, leftovers); the UI's
+  `sandbox-app.test.browser.tsx` and `client.test.ts`; the release workflow's install-test opens the real window on the Windows
+  runner against a local server and checks its title, its profile folder and its removal. **Not verified:** Docker Desktop's
+  publishing of a loopback port on Windows; that WebView2 in the viewer is cut off from the app's bridge by having no service
+  (by construction, not by a test); the window's navigation away from 127.0.0.1 (a link in the page is followed; nothing of
+  Drydock's is there to reach).

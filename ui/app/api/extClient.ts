@@ -18,6 +18,8 @@ import type {
   CheckSettings,
   DecisionRow,
   DevSettings,
+  SandboxForward,
+  SandboxForwards,
   SandboxStatus,
   SandboxSwitch,
   SandboxTestStep,
@@ -152,6 +154,13 @@ export interface ExtClient {
   /** Confirms the sandbox definition with this fingerprint (the one that was shown; a human only). A stale fingerprint is refused. */
   sandboxTrust(projectId: string, fingerprint: string): Promise<SandboxSwitch>;
   sandboxTest(projectId: string): Promise<{ steps: SandboxTestStep[] }>;
+  /** The ports of the task's sandbox forwarded to this computer (decision P134). */
+  sandboxForwards(taskId: string): Promise<SandboxForwards>;
+  /** Forwards a port of the task's sandbox to 127.0.0.1 (a person only). */
+  sandboxForwardOpen(taskId: string, port: number): Promise<SandboxForward>;
+  sandboxForwardClose(taskId: string, port: number): Promise<void>;
+  /** Shows a forwarded port in Drydock's own isolated window, never in a browser (a person only). */
+  sandboxForwardView(taskId: string, port: number): Promise<void>;
   telemetryStatus(): Promise<TelemetryStatus>;
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
   telemetryPreview(limit?: number): Promise<TelemetryDocument>;
@@ -371,6 +380,13 @@ export function createExtClient(t: Transport): ExtClient {
       const r = await call<{ steps: SandboxTestStep[] | null }>('sandbox.test', { projectId });
       return { steps: r.steps ?? [] };
     },
+    sandboxForwards: async (taskId) => {
+      const r = await call<SandboxForwards>('sandbox.forward.list', { taskId });
+      return { ...r, forwards: arr(r.forwards) };
+    },
+    sandboxForwardOpen: (taskId, port) => call('sandbox.forward.open', { taskId, port }),
+    sandboxForwardClose: (taskId, port) => voidCall('sandbox.forward.close', { taskId, port }),
+    sandboxForwardView: (taskId, port) => voidCall('sandbox.forward.view', { taskId, port }),
     telemetryStatus: () => call('telemetry.status'),
     telemetryEnable: (enabled) => call('telemetry.enable', { enabled }),
     telemetryPreview: async (limit = 0) => {

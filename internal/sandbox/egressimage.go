@@ -21,6 +21,12 @@ func (m *Manager) egressImage(ctx context.Context, arch string) (string, error) 
 	if err != nil {
 		return "", err
 	}
+	return m.importEgress(ctx, p)
+}
+
+// importEgress imports the program at path p as the local image and returns its tag; an image already made from the same
+// program is reused.
+func (m *Manager) importEgress(ctx context.Context, p string) (string, error) {
 	bin, err := os.ReadFile(p)
 	if err != nil {
 		return "", fmt.Errorf("reading the egress proxy %s: %w", p, err)

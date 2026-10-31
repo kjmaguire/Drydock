@@ -491,6 +491,29 @@ func startSandbox(ctx context.Context, c *Core) (map[string]Method, func(), erro
 			steps, err := c.testSandbox(ctx, p.ProjectID)
 			return map[string]any{"steps": steps}, err
 		}),
+		"sandbox.forward.list": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+		}) (any, error) {
+			return c.SandboxForwardList(ctx, p.TaskID)
+		}),
+		"sandbox.forward.open": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+			Port   int    `json:"port"`
+		}) (any, error) {
+			return c.SandboxForwardOpen(ctx, p.TaskID, p.Port, c.Human())
+		}),
+		"sandbox.forward.close": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+			Port   int    `json:"port"`
+		}) (any, error) {
+			return map[string]any{}, c.SandboxForwardClose(ctx, p.TaskID, p.Port, c.Human())
+		}),
+		"sandbox.forward.view": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+			Port   int    `json:"port"`
+		}) (any, error) {
+			return map[string]any{}, c.SandboxForwardView(ctx, p.TaskID, p.Port, c.Human())
+		}),
 	}
 	return m, cancel, nil
 }

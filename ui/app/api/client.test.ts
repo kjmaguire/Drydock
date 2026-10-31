@@ -244,6 +244,23 @@ describe('typed client', () => {
     expect(await nothing.projectAgentConfig('p')).toEqual([]);
   });
 
+  it("lists, opens, shows and stops a task's forwarded sandbox ports (P134)", async () => {
+    const f = mock.fn(async (url: string) =>
+      json({ result: url.endsWith('list') ? { running: true, forwards: null, canView: true, max: 5 } : url.endsWith('open') ? { taskId: 't', port: 3000, hostPort: 49153, address: '127.0.0.1:49153' } : {} }),
+    );
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5 });
+    expect(await c.sandboxForwardOpen('t', 3000)).toMatchObject({ port: 3000, hostPort: 49153 });
+    await c.sandboxForwardView('t', 3000);
+    await c.sandboxForwardClose('t', 3000);
+    expect(sent(f)).toEqual([
+      ['/rpc/sandbox.forward.list', { taskId: 't' }],
+      ['/rpc/sandbox.forward.open', { taskId: 't', port: 3000 }],
+      ['/rpc/sandbox.forward.view', { taskId: 't', port: 3000 }],
+      ['/rpc/sandbox.forward.close', { taskId: 't', port: 3000 }],
+    ]);
+  });
+
   it('confirms a sandbox definition by its fingerprint and resets the license clock check (M7, M16)', async () => {
     const f = mock.fn(async (url: string) => json({ result: url.includes('license') ? { configured: true, channels: null, clockSuspect: false } : { enabled: true } }));
     const c = createClient(transport(f as unknown as typeof fetch));

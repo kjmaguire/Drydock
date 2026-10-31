@@ -22,6 +22,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/crashreport"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/sandboxview"
 	"github.com/kjmaguire/drydock/internal/uiassets"
 	"github.com/kjmaguire/drydock/internal/updatepolicy"
 )
@@ -87,6 +88,10 @@ func Run(assets fs.FS) error {
 	dir, err := DataDir()
 	if err != nil {
 		return err
+	}
+	// the profiles a killed viewer for a sandbox's app left (decision P134): none runs now, a viewer dies with the app
+	if err := sandboxview.CleanLeftovers(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: sandbox app windows: %v\n", err)
 	}
 	core.AppVersion = Version // the build's version for support bundles and project exports
 	var wa *application.App
@@ -154,7 +159,7 @@ func Run(assets fs.FS) error {
 			return fmt.Errorf("the window is not open yet")
 		}
 		return wa.Browser.OpenURL(rawURL)
-	}, Restart: func(context.Context) error {
+	}, OpenSandboxApp: openSandboxApp, Restart: func(context.Context) error {
 		// "Restart now" after a staged restore (decision P116)
 		if wa == nil {
 			return fmt.Errorf("the window is not open yet")
