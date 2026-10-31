@@ -30,6 +30,7 @@ import { TaskActivity } from './activity-panel.tsx';
 import { CriteriaList } from './criteria.tsx';
 import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
+import { SandboxApp } from './sandbox-app.tsx';
 import { DiffView } from './raw-diff.tsx';
 import { ReviewPanel } from './review-panel.tsx';
 import { SteerBox } from './steer-box.tsx';
@@ -297,6 +298,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
                   <DiffView key={task.id} taskId={task.id} diffId={newestDiffId(d.evidence)} />
                 </Part>
                 <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} />
+                <SandboxApp key={`sandbox-app-${task.id}`} taskId={task.id} />
                 <Part title="Usage">
                   <ErrorNote error={usage.error} what="Could not load usage" />
                   <UsageTable rows={usage.data ?? []} />

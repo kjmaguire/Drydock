@@ -1477,6 +1477,25 @@ export interface SandboxStatus {
    */
   changes?: string[];
 }
+/** A port of a task's sandbox forwarded to this computer's loopback address (decision P134). */
+export interface SandboxForward {
+  taskId: string;
+  /** The port of the app in the sandbox. */
+  port: number;
+  /** The port on 127.0.0.1 that reaches it. */
+  hostPort: number;
+  address: string;
+}
+export interface SandboxForwards {
+  /** False when the task has no running sandbox (it has not run a sandboxed turn yet, or it ended). */
+  running: boolean;
+  forwards: SandboxForward[];
+  /** False in a window that cannot open Drydock's viewer (the browser harness). */
+  canView: boolean;
+  max: number;
+  /** Why the sandbox could not be asked (no container engine answers). */
+  error?: string;
+}
 export interface SandboxTestStep {
   name: string;
   ok: boolean;

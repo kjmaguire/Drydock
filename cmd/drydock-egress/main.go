@@ -4,15 +4,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/sandbox/egress"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "relay" {
+		runRelay()
+		return
+	}
 	opts, err := egress.FromEnv(os.Getenv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -33,6 +41,28 @@ func main() {
 	srv := &http.Server{Addr: addr, Handler: p, ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10}
 	fmt.Fprintf(os.Stderr, "drydock-egress listening on %s, %d allowlist entries\n", addr, len(opts.Allow))
 	if err := srv.ListenAndServe(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// runRelay is the forwarder container of a published sandbox port (decision P134): it relays every connection to the one address
+// in DRYDOCK_RELAY_TARGET and does nothing else.
+func runRelay() {
+	r, listen, err := egress.RelayFromEnv(os.Getenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	l, err := net.Listen("tcp", listen)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	fmt.Fprintf(os.Stderr, "drydock-egress relay: %s -> %s\n", listen, r.Target)
+	if err := r.Serve(ctx, l); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -96,6 +96,10 @@ type Config struct {
 	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
 	// it (the browser harness) the page uses the browser's own link.
 	OpenURL func(ctx context.Context, rawURL string) error
+	// OpenSandboxApp shows a forwarded port of a task's sandbox in a window of Drydock's own, in a process of its own with a
+	// storage partition of its own (decision P134). The desktop app sets it (app/sandboxview_windows.go); without it (the browser
+	// harness) the page says the viewer is not available, and never opens the address in a browser.
+	OpenSandboxApp func(ctx context.Context, app SandboxApp) error
 	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
 	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
 	Restart func(ctx context.Context) error

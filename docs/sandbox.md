@@ -158,8 +158,8 @@ Not protected:
   OpenCode's turns still become a question for the human, since neither manifest names a way to make the CLI ask before every
   command it runs itself. The routing for the other three is unverified with the real CLIs: whether each uses the client's
   terminal, the mode ids, and how often each runs a command without asking.
-- No port forwarding from the sandbox to the human's machine, so the human cannot open the app a worker started in the sandbox
-  (judged and not built in P131, section 9).
+- Port forwarding (decision P134, section 9) is built on Linux against Docker 29.9 and the window on Windows is compiled and
+  proven only by the release workflow's install-test; the loopback publishing of Docker Desktop on Windows is unverified.
 - On Windows: a worktree checked out with CRLF line endings breaks shell scripts in a Linux container (`.gitattributes` with
   `* text=auto eol=lf` avoids it); bind mounts of Windows folders are slow for many small files (use `volumes` for
   `node_modules`). Both unverified.
@@ -185,7 +185,7 @@ Not protected:
   command through `sandbox_run`, the checks passed in the container, the change merged and the sandbox was removed.
 - `ui`: the Sandbox settings panel.
 
-## 9. Other CLIs in a sandboxed project, and port forwarding (decision P131)
+## 9. Other CLIs in a sandboxed project, and port forwarding (decisions P131 and P134)
 
 Claude Code is kept from running commands on the machine by its restricted mode. An ACP CLI has no such switch, so a CLI may
 work in a sandboxed project only when its manifest says how, in Drydock's configuration, it asks before every command it would
@@ -232,14 +232,35 @@ labelled test double, a real process on the real ACP SDK) as the worker of a san
 edit allowed, its terminal run in the container (the file it wrote in the worktree, `pwd` `/workspace`), the checks in the
 container, the sandbox removed when the task completed). Not verified: the three real CLIs, Windows.
 
-**Port forwarding: judged, not built.** Showing the person the app a worker started in the sandbox would take: a forwarder
-container (the workspace and services sit on an internal network, whose containers Docker does not publish) attached to that
-network and to a bridge network, publishing `127.0.0.1:<port>` only, relaying to the workspace's port (a relay mode of the
-egress binary, imported like the proxy image), started for a port the person asks for on the task page, listed there, labelled
-with the task so it goes with the sandbox. Two things keep it out of this round. It is not small: the relay program and its
-image, a per-task record with its lifecycle, a method, the task page's part, and Docker Desktop's handling of a published
-loopback port on Windows, which cannot be checked here. And it needs a decision of the owner's: the person's browser would run
-code an agent wrote at `http://127.0.0.1:<port>`, and cookies are not separated by port, so that page could read and set the
-cookies of every other local app on 127.0.0.1 (a local dashboard, a notebook server). Opening it only in a window of Drydock's
-own with a storage partition of its own, or on another loopback address (127.0.0.2, whose handling by Docker Desktop is
-unverified), are the choices; neither is made here.
+**Port forwarding (decision P134).** The person sees the app a worker started in the sandbox from the task page ("Sandbox app",
+shown while the task's sandbox runs): a port of the workspace is forwarded to this computer and opened in a window of Drydock's
+own. The owner chose the window of Drydock's own over the person's browser (the browser holds the cookies of every other local
+app on 127.0.0.1, cookies are not separated by port, and the page is code an agent wrote), and over another loopback address.
+
+- **The forwarder** (`internal/sandbox/forward.go`) is a container of the egress image run as `drydock-egress relay`
+  (`egress.Relay`): it listens on 8080 inside, relays every connection to `<workspace container>:<port>` and to nothing else (the
+  target is fixed when it starts; there is no way to name another host, the proxy or a service), at most 64 connections at once,
+  idle ones closed after 10 minutes, a half-closed connection still answered. It is read-only, with no capabilities, as an
+  unprivileged user, 64 MiB and 128 processes. It is created on a bridge network of its own for the task with the port
+  published on `127.0.0.1` only (`-p 127.0.0.1::8080`, the engine picks the host port) and then attached to the task's internal
+  network, which is how it reaches a workspace that has no route out. A forwarder whose published address is not loopback is not
+  listed and not shown. Up to five ports per task; asking again for a port returns the same forward.
+- **The record is the engine's.** A forwarder carries the task's labels and `drydock.forward=<port>`, so it is listed from the
+  engine (`Manager.Forwards`), survives a restart of Drydock, and goes with the sandbox: the task's end, `Remove` and the cleanup
+  at start remove it and its network with everything else of the task. Nothing is kept in the database.
+- **Methods** (a person only; an agent has no way to open a port or a window): `sandbox.forward.list` (`running`, the forwards,
+  `canView`, the limit), `sandbox.forward.open`, `sandbox.forward.close`, `sandbox.forward.view`. Opening, closing and showing
+  are in the audit log (`sandbox.forward.opened`, `.closed`, `.viewed`, by the person, with the port) and are task events.
+  `sandbox.forward.view` takes the address from the engine's record of the forward, never from the caller.
+- **The window** (`app/sandboxview_windows.go`, `internal/sandboxview`) is a second process of `drydock.exe` started as
+  `sandbox-view --url http://127.0.0.1:<port>/ --title ...`: it takes no single-instance lock, opens no core, registers no
+  service (nothing of Drydock's to call) and serves no UI. Its WebView2 profile is a new folder under
+  `%LOCALAPPDATA%\Drydock\sandbox-view` that is deleted when the window closes (and any left by a crash at the next start), so
+  what the page stores (cookies, local storage, cache) is its own and ends with it; the profile is why it is a process and not a
+  second window of the app (WebView2 takes one profile folder per process). The title ends "- Drydock isolated window". It accepts
+  only `http://127.0.0.1:<port>/` (no other host, name, scheme, credentials or path), at most four are open, and it is a child
+  of the app's Job Object so it dies with the app. A window of the browser harness has no viewer: the page says so and never
+  falls back to a browser.
+- **Limits:** the page can still navigate away from 127.0.0.1 inside that window (it is not a browser with an address bar, but
+  it does not stop a link); it holds nothing of Drydock's, and what it stores goes when it closes. A forwarder is not a security
+  boundary against the workspace itself: it relays to the workspace's own port, which is the point.
