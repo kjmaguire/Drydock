@@ -2319,7 +2319,17 @@ Open, owner action:
   (a real sandbox, the viewer opener as a labelled double: the person only, the address from the engine, the audit and the events);
   `internal/sandboxview` (every address but the loopback port refused, arguments, title, a profile per viewer, leftovers); the UI's
   `sandbox-app.test.browser.tsx` and `client.test.ts`; the release workflow's install-test opens the real window on the Windows
-  runner against a local server and checks its title, its profile folder and its removal. **Not verified:** Docker Desktop's
-  publishing of a loopback port on Windows; that WebView2 in the viewer is cut off from the app's bridge by having no service
-  (by construction, not by a test); the window's navigation away from 127.0.0.1 (a link in the page is followed; nothing of
+  runner against a local server and checks its title, its profile folder and its removal. **Review fixes, same day (a code review of the first build):** the relay's idle time is the
+  connection's, not a direction's (a page that only pushes, an event stream or a long download, was cut at the idle time);
+  `Existing` says "no sandbox" only when the engine says there is no such container (a stopped daemon is shown as that); a forwarder
+  whose `run` fails after creating its container is removed; the leftover profiles are cleaned after the single-instance gate (a
+  second launch used to delete the first instance's live profiles); the window title is made once (it was suffixed twice);
+  the app, not the viewer, makes and removes the viewer's profile folder (`sandboxview.Launcher`, with tests for the count and the
+  folders), so a slot is free when the viewer's process ends and not when WebView2 lets go of its files; the list is reused for 3 seconds
+  per task and dropped by an open or a close; the viewer's asset server answers 403 to every request (`sandboxview.ClosedAssets`),
+  which closes Wails' `/wails/runtime` (dialogs, clipboard, opening addresses, quitting) to the page. **Not verified:** Docker
+  Desktop's publishing of a loopback port on Windows; that the viewer's WebView2 has no other channel to the app (it has no
+  service and the HTTP runtime is refused; Wails 3 beta.34 gives no way to turn off the `wails:` window messages the runtime
+  injects into any page, which only move or resize this window; not tested on Windows); the window's navigation away from
+  127.0.0.1 (Wails 3 beta.34 has no navigation filter; a link in the page is followed; the window is isolated and nothing of
   Drydock's is there to reach).

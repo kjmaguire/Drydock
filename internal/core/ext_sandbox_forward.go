@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/sandbox"
@@ -51,12 +52,69 @@ func (c *Core) forwardTask(ctx context.Context, taskID string) (tasks.Task, erro
 	return c.Tasks.Get(ctx, taskID)
 }
 
+// forwardCacheTTL is how long an answer of sandbox.forward.list is reused. Listing asks the engine several times (the sandbox, its
+// containers, one port each), and the task page asks on every view and again on every sandbox event, most of them for a task that
+// has no sandbox or the same one as a moment ago.
+const forwardCacheTTL = 3 * time.Second
+
+// forwardCache holds the last good answer of the list for each task. Opening or closing a port drops that task's answer.
+type forwardCache struct {
+	mu sync.Mutex
+	m  map[string]cachedForwards
+}
+
+type cachedForwards struct {
+	at  time.Time
+	val SandboxForwards
+}
+
+func (fc *forwardCache) get(taskID string, now time.Time) (SandboxForwards, bool) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	e, ok := fc.m[taskID]
+	if !ok || now.Sub(e.at) >= forwardCacheTTL {
+		return SandboxForwards{}, false
+	}
+	return e.val, true
+}
+
+func (fc *forwardCache) put(taskID string, now time.Time, v SandboxForwards) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if fc.m == nil {
+		fc.m = map[string]cachedForwards{}
+	}
+	for k, e := range fc.m { // a task page at a time: what is old goes
+		if now.Sub(e.at) >= forwardCacheTTL {
+			delete(fc.m, k)
+		}
+	}
+	fc.m[taskID] = cachedForwards{at: now, val: v}
+}
+
+func (fc *forwardCache) drop(taskID string) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	delete(fc.m, taskID)
+}
+
 // SandboxForwardList lists the task's forwarded ports.
 func (c *Core) SandboxForwardList(ctx context.Context, taskID string) (SandboxForwards, error) {
 	out := SandboxForwards{Forwards: []sandbox.Forward{}, CanView: c.cfg.OpenSandboxApp != nil, Max: sandbox.MaxForwards}
 	if _, err := c.forwardTask(ctx, taskID); err != nil {
 		return out, err
 	}
+	if v, ok := c.fwdCache.get(taskID, time.Now()); ok {
+		return v, nil
+	}
+	v, err := c.listForwards(ctx, taskID, out)
+	if err == nil && v.Error == "" {
+		c.fwdCache.put(taskID, time.Now(), v) // an engine that did not answer is asked again at the next view
+	}
+	return v, err
+}
+
+func (c *Core) listForwards(ctx context.Context, taskID string, out SandboxForwards) (SandboxForwards, error) {
 	ectx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	m := c.sandboxes()
@@ -90,6 +148,7 @@ func (c *Core) SandboxForwardOpen(ctx context.Context, taskID string, port int, 
 	}
 	octx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	defer c.fwdCache.drop(taskID)
 	f, err := c.sandboxes().OpenForward(octx, taskID, port)
 	if err != nil {
 		return sandbox.Forward{}, err
@@ -112,6 +171,7 @@ func (c *Core) SandboxForwardClose(ctx context.Context, taskID string, port int,
 	}
 	cctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
+	defer c.fwdCache.drop(taskID)
 	if err := c.sandboxes().CloseForward(cctx, taskID, port); err != nil {
 		return err
 	}

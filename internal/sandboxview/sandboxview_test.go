@@ -2,6 +2,8 @@ package sandboxview
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,5 +144,68 @@ func TestAProfileThatStaysHeldIsReportedAndLeftForTheNextStart(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatal("the next start removes it")
+	}
+}
+
+func TestTheTitleIsMadeOnceWhateverPathItTakes(t *testing.T) {
+	args, err := Args(Request{URL: "http://127.0.0.1:49153/", Title: "Port 3000 of the task's sandbox"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _, err := Parse(append([]string{"drydock.exe"}, args...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// what the window shows is Title of what Parse returned
+	if got, want := Title(r.Title), "Port 3000 of the task's sandbox - Drydock isolated window"; got != want {
+		t.Fatalf("%q, want %q", got, want)
+	}
+	long := Title(strings.Repeat("x", 300))
+	if Title(long) != long || len([]rune(long)) > MaxTitle+len([]rune(titleSuffix)) {
+		t.Fatalf("%q", long)
+	}
+	if Title("proof") != "proof - Drydock isolated window" {
+		t.Fatalf("%q", Title("proof"))
+	}
+}
+
+func TestAProfileIsOnlyOneTheAppMade(t *testing.T) {
+	dir := t.TempDir()
+	p, err := NewProfile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidProfile(dir, p); err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	for _, bad := range []string{"", "relative", dir, filepath.Join(dir, DirName), filepath.Join(dir, DirName, "p-missing"), filepath.Join(dir, DirName, "..", "p-x"), other, filepath.Join(dir, DirName, "x-1")} {
+		if err := ValidProfile(dir, bad); err == nil {
+			t.Errorf("%q should be refused", bad)
+		}
+	}
+	// it travels in the arguments
+	args, err := Args(Request{URL: "http://127.0.0.1:8080/", Title: "t", Profile: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok, err := Parse(append([]string{"drydock.exe"}, args...))
+	if err != nil || !ok || r.Profile != p {
+		t.Fatalf("%+v %v %v", r, ok, err)
+	}
+}
+
+func TestTheViewersAssetServerAnswersNothing(t *testing.T) {
+	called := false
+	h := ClosedAssets(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
+	for _, path := range []string{"/wails/runtime", "/wails/runtime.js", "/", "/index.html", "/wails/events/payload"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "http://wails.localhost"+path, strings.NewReader(`{"object":9,"method":0}`)))
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s: %d", path, rec.Code)
+		}
+	}
+	if called {
+		t.Fatal("a request reached the handler behind it")
 	}
 }
