@@ -1,8 +1,8 @@
 // Package sandbox runs a task's commands in a container instead of on the human's machine (docs/sandbox.md). Each task gets
 // its own workspace container with the task worktree mounted at /workspace, the services the project lists (a database, a
 // cache) on a private network, and, by default, a network allowlist enforced by a small proxy container: the agent may
-// install, migrate, build, run and test freely inside, while nothing else on the machine is reachable. The engine is any
-// Docker-compatible CLI (Docker Desktop, Rancher Desktop with dockerd); Drydock talks to it only through the `docker` command.
+// install, migrate, build, run and test freely inside, while nothing else on the machine is reachable. The engine is Docker
+// (Docker Desktop on Windows), the only one supported (decision P135); Drydock talks to it only through the `docker` command.
 package sandbox
 
 import (

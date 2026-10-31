@@ -108,7 +108,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
                 </span>
               ) : (
                 <span mix={[valueCss, warnCss]} data-testid="sandbox-engine">
-                  {st.engineError}. Install Docker Desktop (or another Docker-compatible engine), start it, and use Linux containers.
+                  {st.engineError}. Install Docker Desktop, start it, and use Linux containers.
                 </span>
               )}
             </SettingRow>
