@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/kjmaguire/drydock/internal/safe"
 )
 
 // Relay forwards TCP connections from a listener to one fixed address. It is the forwarder container of a sandbox's published
@@ -33,10 +35,10 @@ func (r *Relay) Serve(ctx context.Context, l net.Listener) error {
 	}
 	slots := make(chan struct{}, max)
 	var wg sync.WaitGroup
-	go func() {
+	safe.Go("egress.Relay.Serve", func() {
 		<-ctx.Done()
 		_ = l.Close()
-	}()
+	})
 	defer wg.Wait()
 	for {
 		c, err := l.Accept()
@@ -57,11 +59,11 @@ func (r *Relay) Serve(ctx context.Context, l net.Listener) error {
 			continue
 		}
 		wg.Add(1)
-		go func() {
+		safe.Go("egress.Relay.handle", func() {
 			defer wg.Done()
 			defer func() { <-slots }()
 			r.handle(ctx, c)
-		}()
+		})
 	}
 }
 
@@ -106,17 +108,17 @@ func (r *Relay) handle(ctx context.Context, in net.Conn) {
 		}
 		done <- struct{}{}
 	}
-	go cp(out, in)
-	go cp(in, out)
+	safe.Go("egress.Relay.copy", func() { cp(out, in) })
+	safe.Go("egress.Relay.copy#2", func() { cp(in, out) })
 	stopped := make(chan struct{})
-	go func() {
+	safe.Go("egress.Relay.stop", func() {
 		select {
 		case <-ctx.Done():
 			_ = in.Close()
 			_ = out.Close()
 		case <-stopped:
 		}
-	}()
+	})
 	<-done
 	<-done
 	close(stopped)
