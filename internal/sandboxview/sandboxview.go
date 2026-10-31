@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -32,6 +33,9 @@ const MaxTitle = 80
 type Request struct {
 	URL   string
 	Title string
+	// Profile is the folder the viewer's browser profile lives in. When the app made it, the app removes it when the viewer ends
+	// (so the viewer's exit does not wait for that); when it is empty the viewer makes and removes its own.
+	Profile string
 }
 
 // Args are the arguments that start a viewer for a request. The address has been checked; a request that fails ValidURL has none.
@@ -39,7 +43,11 @@ func Args(r Request) ([]string, error) {
 	if err := ValidURL(r.URL); err != nil {
 		return nil, err
 	}
-	return []string{Arg, "--url", r.URL, "--title", Title(r.Title)}, nil
+	args := []string{Arg, "--url", r.URL, "--title", Title(r.Title)}
+	if r.Profile != "" {
+		args = append(args, "--profile", r.Profile)
+	}
+	return args, nil
 }
 
 // Parse reads a viewer's command line (os.Args). ok is false when it is not one, which is the normal start of the app; an error
@@ -51,14 +59,17 @@ func Parse(args []string) (r Request, ok bool, err error) {
 	rest := args[2:]
 	for i := 0; i < len(rest); i++ {
 		switch rest[i] {
-		case "--url", "--title":
+		case "--url", "--title", "--profile":
 			if i+1 >= len(rest) {
 				return Request{}, true, fmt.Errorf("%s needs a value", rest[i])
 			}
-			if rest[i] == "--url" {
+			switch rest[i] {
+			case "--url":
 				r.URL = rest[i+1]
-			} else {
+			case "--title":
 				r.Title = rest[i+1]
+			default:
+				r.Profile = rest[i+1]
 			}
 			i++
 		default:
@@ -68,8 +79,7 @@ func Parse(args []string) (r Request, ok bool, err error) {
 	if err := ValidURL(r.URL); err != nil {
 		return Request{}, true, err
 	}
-	r.Title = Title(r.Title)
-	return r, true, nil
+	return r, true, nil // the title is made once, by Args; Title is applied again where it is shown
 }
 
 // ValidURL accepts only http://127.0.0.1:<port>/ : the loopback address a forwarder publishes on, a port, the root path, and
@@ -93,8 +103,11 @@ func ValidURL(raw string) error {
 	return nil
 }
 
+// titleSuffix marks every window of the viewer, so the person can tell it from Drydock's own.
+const titleSuffix = " - Drydock isolated window"
+
 // Title makes a window title from text: no control characters, one line, at most MaxTitle characters, and always marked as an
-// isolated window so the person can tell it from Drydock's own.
+// isolated window so the person can tell it from Drydock's own. Applying it to a title it made gives the same title.
 func Title(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -104,13 +117,16 @@ func Title(s string) string {
 		b.WriteRune(r)
 	}
 	t := strings.Join(strings.Fields(b.String()), " ")
+	for strings.HasSuffix(t, titleSuffix) {
+		t = strings.TrimSpace(strings.TrimSuffix(t, titleSuffix))
+	}
 	if rs := []rune(t); len(rs) > MaxTitle {
 		t = string(rs[:MaxTitle-1]) + "…"
 	}
 	if t == "" {
 		t = "Sandbox app"
 	}
-	return t + " - Drydock isolated window"
+	return t + titleSuffix
 }
 
 // NewProfile makes the empty folder a viewer's browser profile lives in, under the data folder. Remove it when the viewer ends.
@@ -120,6 +136,28 @@ func NewProfile(dataDir string) (string, error) {
 		return "", err
 	}
 	return os.MkdirTemp(parent, "p-")
+}
+
+// ValidProfile accepts only a folder NewProfile could have made under dataDir: the viewer is told where its profile is, and must not
+// be made to use (or, on its own, remove) any other folder.
+func ValidProfile(dataDir, profile string) error {
+	p := filepath.Clean(profile)
+	if !filepath.IsAbs(p) || filepath.Dir(p) != filepath.Join(dataDir, DirName) || !strings.HasPrefix(filepath.Base(p), "p-") {
+		return errors.New("the profile folder is not one the app made")
+	}
+	if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+		return errors.New("the profile folder does not exist")
+	}
+	return nil
+}
+
+// ClosedAssets is the asset middleware of the viewer's window: it answers every request with 403 and never reaches the handler
+// behind it. The viewer serves nothing of its own, and Wails' runtime (dialogs, clipboard, opening addresses, quitting) is
+// reached over a request to /wails/runtime that its asset server answers; a page that sends one gets this instead.
+func ClosedAssets(http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "this window serves nothing", http.StatusForbidden)
+	})
 }
 
 // RemoveProfile removes a viewer's profile folder, trying again for a few seconds: when the window closes, WebView2's own processes

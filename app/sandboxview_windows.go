@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -25,43 +24,29 @@ import (
 // maxViewers is how many of these windows are open at once.
 const maxViewers = 4
 
-var (
-	viewersMu sync.Mutex
-	viewers   int
-)
-
 // openSandboxApp starts a viewer for the forwarded port the core named. The core took the address from the engine's record of the
-// forward; sandboxview.Args checks it once more.
-func openSandboxApp(_ context.Context, a core.SandboxApp) error {
-	args, err := sandboxview.Args(sandboxview.Request{URL: a.URL, Title: a.Title})
-	if err != nil {
-		return err
+// forward; the launcher (internal/sandboxview) checks it once more, counts the windows and removes each one's profile when its
+// process ends.
+func openSandboxApp(dir string) func(context.Context, core.SandboxApp) error {
+	exe, exeErr := os.Executable()
+	l := &sandboxview.Launcher{
+		DataDir: dir,
+		Max:     maxViewers,
+		Start: func(args []string) (sandboxview.Process, error) {
+			if exeErr != nil {
+				return nil, exeErr
+			}
+			cmd := exec.Command(exe, args...)
+			if err := cmd.Start(); err != nil {
+				return nil, err
+			}
+			return cmd, nil
+		},
+		Logf: func(format string, a ...any) { fmt.Fprintf(os.Stderr, "drydock: "+format+"\n", a...) },
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
+	return func(_ context.Context, a core.SandboxApp) error {
+		return l.Open(sandboxview.Request{URL: a.URL, Title: a.Title})
 	}
-	viewersMu.Lock()
-	if viewers >= maxViewers {
-		viewersMu.Unlock()
-		return fmt.Errorf("%d windows of sandbox apps are open: close one first", maxViewers)
-	}
-	viewers++
-	viewersMu.Unlock()
-	cmd := exec.Command(exe, args...)
-	if err := cmd.Start(); err != nil {
-		viewersMu.Lock()
-		viewers--
-		viewersMu.Unlock()
-		return err
-	}
-	go func() {
-		_ = cmd.Wait()
-		viewersMu.Lock()
-		viewers--
-		viewersMu.Unlock()
-	}()
-	return nil
 }
 
 // MaybeRunSandboxView runs the viewer when this process was started as one (`drydock.exe sandbox-view ...`) and says so. main calls
@@ -80,28 +65,37 @@ func MaybeRunSandboxView(args []string) (code int, ok bool) {
 		ReportStartupFailure(err)
 		return 1, true
 	}
-	profile, err := sandboxview.NewProfile(dir)
-	if err != nil {
-		ReportStartupFailure(fmt.Errorf("sandbox app window: %w", err))
-		return 1, true
-	}
-	// WebView2's own processes are still closing when the window is: the folder is removed once they let go (15 s at most), and
-	// the next start of the app removes what is left
-	defer func() {
-		if err := sandboxview.RemoveProfile(profile, 60, 250*time.Millisecond, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "drydock: sandbox app window: profile %s: %v\n", profile, err)
+	// the app that started this window made its profile folder and removes it when this process ends, which WebView2's own
+	// processes can take a few seconds to allow; run by hand (a test), the window makes and removes its own
+	profile := req.Profile
+	if profile != "" {
+		if err := sandboxview.ValidProfile(dir, profile); err != nil {
+			ReportStartupFailure(fmt.Errorf("sandbox app window: %w", err))
+			return 2, true
 		}
-	}()
+	} else {
+		var err error
+		if profile, err = sandboxview.NewProfile(dir); err != nil {
+			ReportStartupFailure(fmt.Errorf("sandbox app window: %w", err))
+			return 1, true
+		}
+		defer func() {
+			if err := sandboxview.RemoveProfile(profile, 60, 250*time.Millisecond, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "drydock: sandbox app window: profile %s: %v\n", profile, err)
+			}
+		}()
+	}
 	wa := application.New(application.Options{
 		Name:        "Drydock sandbox app",
 		Description: "A window for the app a worker started in a sandbox.",
-		// no service, so the page has nothing of Drydock's to call; the one asset handler answers nothing
-		Assets:  application.AssetOptions{Handler: http.NotFoundHandler()},
+		// no service, so the page has nothing of Drydock's to call, and the asset server refuses every request, Wails' own runtime
+		// (/wails/runtime: dialogs, clipboard, opening addresses, quitting) included
+		Assets:  application.AssetOptions{Handler: http.NotFoundHandler(), Middleware: sandboxview.ClosedAssets},
 		Windows: application.WindowsOptions{WebviewUserDataPath: profile},
 	})
 	wa.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:   "sandbox-app",
-		Title:  req.Title,
+		Title:  sandboxview.Title(req.Title),
 		Width:  1100,
 		Height: 760,
 		URL:    req.URL,

@@ -58,7 +58,9 @@ func (m *Manager) Existing(ctx context.Context, taskID string) (*Box, error) {
 	ws := base + "-ws"
 	out, err := m.Engine.Run(ctx, nil, "inspect", "--format", "{{.State.Running}}|{{index .Config.Labels \""+LabelTask+"\"}}|{{index .Config.Labels \""+LabelProject+"\"}}|{{index .Config.Labels \""+LabelOwner+"\"}}", ws)
 	if err != nil {
-		if errors.Is(err, ErrNoEngine) {
+		// only the engine saying there is no such container means there is no sandbox; a daemon that is stopped or a call that timed
+		// out is the engine's problem, and says so
+		if errors.Is(err, ErrNoEngine) || !strings.Contains(strings.ToLower(err.Error()), "no such") {
 			return nil, err
 		}
 		return nil, ErrNoSandbox
@@ -163,12 +165,12 @@ func (m *Manager) OpenForward(ctx context.Context, taskID string, port int) (For
 	args = append(args, "--label", LabelForward+"="+strconv.Itoa(port),
 		"--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--memory", "64m", "--pids-limit", "128", "--user", "65534:65534",
 		"-e", "DRYDOCK_RELAY_LISTEN=:"+strconv.Itoa(relayListen), "-e", "DRYDOCK_RELAY_TARGET="+net.JoinHostPort(b.Workspace, strconv.Itoa(port)), image, "relay")
-	if _, err := m.Engine.Run(ctx, nil, args...); err != nil {
-		return Forward{}, err
-	}
 	fail := func(err error) (Forward, error) {
 		_ = m.removeContainer(context.WithoutCancel(ctx), name)
 		return Forward{}, err
+	}
+	if _, err := m.Engine.Run(ctx, nil, args...); err != nil {
+		return fail(err) // "run" can create the container and then fail to start it
 	}
 	// the workspace is reached by its name on the task's internal network, which the forwarder joins after it was published
 	if _, err := m.Engine.Run(ctx, nil, "network", "connect", b.Network, name); err != nil {
