@@ -163,6 +163,7 @@ type LocalServed struct {
 func init() {
 	RegisterExtension(Extension{Name: "localmodels", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		l := &localExt{c: c, downloads: map[string]*localDownload{}}
+		l.life, l.lifeCancel = context.WithCancel(context.Background())
 		l.m = localllm.NewManager(filepath.Join(c.cfg.DataDir, "local-models"), c.Deps.PM)
 		if c.cfg.LocalModels != nil {
 			c.cfg.LocalModels(l.m)
@@ -186,7 +187,7 @@ func init() {
 		// (and deletes) the build the server would otherwise start on (audit 2026-10-27)
 		l.seedBundled(ctx, func() {
 			if wctx.Err() == nil { // not when the app is closing meanwhile
-				l.autostart(context.Background())
+				l.autostart(l.life)
 			}
 		})
 		return map[string]Method{
@@ -311,6 +312,11 @@ type localExt struct {
 	latest    string // the installed build's newest release, as the last update check read it (under mu)
 	latestFor string // the source and backend that release is of (buildKey), so a build of another one is never offered it
 	stopWatch context.CancelFunc
+	// life ends when the core closes; the background work below runs under it and close waits for it, so nothing writes to the data
+	// folder or the database after Close has returned
+	life       context.Context
+	lifeCancel context.CancelFunc
+	bg         sync.WaitGroup
 	// gguf holds each model file's header as read (under mu), kept while the file's size and time stay the same: a header
 	// with its vocabulary is megabytes, and the page reads the view often
 	gguf map[string]ggufEntry
@@ -331,8 +337,18 @@ type localDownload struct {
 	cancel context.CancelFunc
 }
 
+// spawn runs fn in the background, counted, so close can wait for it.
+func (l *localExt) spawn(name string, fn func()) {
+	l.bg.Add(1)
+	safe.Go(name, func() {
+		defer l.bg.Done()
+		fn()
+	})
+}
+
 func (l *localExt) close() {
 	localRegistry.Delete(l.c)
+	l.lifeCancel()
 	if l.stopWatch != nil {
 		l.stopWatch()
 	}
@@ -344,6 +360,17 @@ func (l *localExt) close() {
 		d.cancel()
 	}
 	l.mu.Unlock()
+	l.m.Server.Stop()
+	l.m.Embed.Stop()
+	// work still on its way (a start of the server, an install, a settings write) ends or is waited for, and a server it started
+	// meanwhile is stopped once more
+	done := make(chan struct{})
+	safe.Go("core.localExt.close.wait", func() { defer close(done); l.bg.Wait() })
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		l.c.logf("local models: background work did not end within 20 seconds of closing")
+	}
 	l.m.Server.Stop()
 	l.m.Embed.Stop()
 }
@@ -585,7 +612,7 @@ func (l *localExt) startInstall(ctx context.Context, source string, backend loca
 		l.mu.Unlock()
 		return LocalView{}, errors.New("an install is already running")
 	}
-	jctx, cancel := context.WithCancel(context.Background())
+	jctx, cancel := context.WithCancel(l.life)
 	job := &LocalJob{Kind: "install", Target: src.Name + " for " + localllm.Describe(s.Backend).Label, State: "running", Phase: "looking up the newest build", Started: time.Now().UTC()}
 	l.job = job
 	l.jobCancel = cancel
@@ -605,7 +632,7 @@ func (l *localExt) startInstall(ctx context.Context, source string, backend loca
 		return LocalView{}, err
 	}
 	l.changed("install", map[string]any{"state": "running"})
-	safe.Go("core.localExt.install", func() { l.runInstall(jctx, src, s.Backend, then) })
+	l.spawn("core.localExt.install", func() { l.runInstall(jctx, src, s.Backend, then) })
 	return l.view(ctx), nil
 }
 
@@ -655,7 +682,7 @@ func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend 
 		}
 		l.m.Server.Stop()
 		defer func() {
-			if err := l.serve(context.Background(), models, auto); err != nil {
+			if err := l.serve(l.life, models, auto); err != nil {
 				l.c.logf("local models: starting the server again after the install: %v", err)
 			}
 		}()
@@ -665,7 +692,7 @@ func (l *localExt) runInstall(ctx context.Context, src localllm.Source, backend 
 		model, auto := st.ModelID, st.Autostarted
 		l.m.Embed.Stop()
 		defer func() {
-			if err := l.serveEmbeddings(context.Background(), model, auto); err != nil {
+			if err := l.serveEmbeddings(l.life, model, auto); err != nil {
 				l.c.logf("local models: starting the embedding server again after the install: %v", err)
 			}
 		}()
@@ -771,12 +798,12 @@ func (l *localExt) download(ctx context.Context, repo, variant string, by string
 		l.mu.Unlock()
 		return LocalView{}, fmt.Errorf("%s is already downloading", id)
 	}
-	dctx, cancel := context.WithCancel(context.Background())
+	dctx, cancel := context.WithCancel(l.life)
 	d := &localDownload{job: LocalJob{Kind: "download", Target: id, State: "running", Total: int64(v.Size), Started: time.Now().UTC()}, cancel: cancel}
 	l.downloads[id] = d
 	l.mu.Unlock()
 	l.changed("download", map[string]any{"id": id, "state": "running"})
-	safe.Go("core.localExt.download", func() { l.runDownload(dctx, repo, *v, id) })
+	l.spawn("core.localExt.download", func() { l.runDownload(dctx, repo, *v, id) })
 	return l.view(ctx), nil
 }
 
@@ -1110,15 +1137,15 @@ func (l *localExt) autostart(ctx context.Context) {
 		return
 	}
 	if s.ModelID != "" || len(s.Loaded) > 0 {
-		safe.Go("core.localExt.autostart", func() {
-			if err := l.serve(context.Background(), nil, true); err != nil {
+		l.spawn("core.localExt.autostart", func() {
+			if err := l.serve(l.life, nil, true); err != nil {
 				l.c.logf("local models: autostart: %v", err)
 			}
 		})
 	}
 	if s.EmbeddingModel != "" {
-		safe.Go("core.localExt.autostart.embeddings", func() {
-			if err := l.serveEmbeddings(context.Background(), s.EmbeddingModel, true); err != nil {
+		l.spawn("core.localExt.autostart.embeddings", func() {
+			if err := l.serveEmbeddings(l.life, s.EmbeddingModel, true); err != nil {
 				l.c.logf("local models: autostart of the embedding server: %v", err)
 			}
 		})
@@ -1161,8 +1188,8 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 	l.job = job
 	l.mu.Unlock()
 	_, chosen := l.savedSettings(ctx)
-	safe.Go("core.localExt.seedBundled", func() {
-		in, did, err := l.m.Runtime.SeedFromBundle(context.Background(), dir, b)
+	l.spawn("core.localExt.seedBundled", func() {
+		in, did, err := l.m.Runtime.SeedFromBundle(l.life, dir, b)
 		l.mu.Lock()
 		job.Ended = time.Now().UTC()
 		switch {
@@ -1180,7 +1207,7 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 		if did {
 			l.c.logf("local models: %s %s (%s) installed from the download", src.Name, in.Tag, in.Backend)
 			if !chosen {
-				if err := l.update(context.Background(), func(s *LocalSettings) error {
+				if err := l.update(l.life, func(s *LocalSettings) error {
 					s.Source, s.Backend, s.CacheType = src.ID, in.Backend, src.CacheTypes[0]
 					return nil
 				}); err != nil {
@@ -1192,7 +1219,7 @@ func (l *localExt) seedBundled(ctx context.Context, then func()) {
 			l.changed("runtime", nil)
 		}
 		if err != nil {
-			l.setupMissing(context.Background(), then) // the download's copy failed its check: fetch the build instead
+			l.setupMissing(l.life, then) // the download's copy failed its check: fetch the build instead
 			return
 		}
 		then()
@@ -1257,7 +1284,7 @@ func (l *localExt) savedSettings(ctx context.Context) (LocalSettings, bool) {
 // has a newer release for its backend. A newer one is offered on the page; nothing is installed until the person presses
 // Update.
 func (l *localExt) watchUpdates(ctx context.Context) {
-	safe.Go("core.localExt.watchUpdates", func() {
+	l.spawn("core.localExt.watchUpdates", func() {
 		select {
 		case <-ctx.Done():
 			return
