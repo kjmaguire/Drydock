@@ -34,12 +34,18 @@ type env struct {
 
 func openEnv(t *testing.T, dir string) *env {
 	t.Helper()
+	return openEnvLease(t, dir, leaseTTL)
+}
+
+// openEnvLease is openEnv with a lease of its own length.
+func openEnvLease(t *testing.T, dir string, ttl time.Duration) *env {
+	t.Helper()
 	db, err := storage.OpenTemp(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bus := events.NewSQLBus(db, 4096)
-	eng := wf.New(wf.Config{DB: db, Bus: bus, DataDir: dir, LeaseTTL: leaseTTL})
+	eng := wf.New(wf.Config{DB: db, Bus: bus, DataDir: dir, LeaseTTL: ttl})
 	e := &env{dir: dir, db: db, bus: bus, eng: eng}
 	t.Cleanup(func() { eng.Close(); bus.Close(); db.Close() })
 	return e
@@ -366,8 +372,13 @@ func TestPartialSuperstep(t *testing.T) {
 
 func TestDuplicateResume(t *testing.T) {
 	dir := t.TempDir()
-	e1 := openEnv(t, dir)
-	e2 := openEnv(t, dir) // a second app instance on the same database
+	// Eight Resumes on two engines queue behind one database writer. With the short test lease, a writer stall on Windows CI
+	// (20 s timeout, main 2026-10-31) let the lease expire before the winner's driver first renewed it; a losing Resume on the
+	// other engine then took the expired lease, found the answer recorded, released it, and the winner's driver stopped on its
+	// lost lease with nothing here to recover the run (the app runs the recovery watch; launch_race_test.go covers stalls past
+	// the lease). This test is about one Resume proceeding, so its lease outlasts any stall.
+	e1 := openEnvLease(t, dir, 15*time.Second)
+	e2 := openEnvLease(t, dir, 15*time.Second) // a second app instance on the same database
 	for _, e := range []*env{e1, e2} {
 		if err := e.eng.Register(approvalGraph(dir)); err != nil {
 			t.Fatal(err)
