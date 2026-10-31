@@ -157,6 +157,45 @@ func TestRelayClosesAnIdleConnection(t *testing.T) {
 	}
 }
 
+// A connection that only one side talks on is not idle: an event stream or a long download sends nothing from the client.
+func TestRelayKeepsAConnectionOpenWhileOnlyOneDirectionIsActive(t *testing.T) {
+	push, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = push.Close() })
+	go func() {
+		for {
+			c, err := push.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				// like many servers, a client that has stopped writing is taken to have left
+				go func() { _, _ = io.Copy(io.Discard, c); _ = c.Close() }()
+				for i := 0; i < 8; i++ { // longer than the idle time in all, with gaps well inside it
+					if _, err := c.Write([]byte("tick")); err != nil {
+						return
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+			}()
+		}
+	}()
+	addr := startRelay(t, &Relay{Target: push.Addr().String(), IdleTimeout: 350 * time.Millisecond})
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	got, err := io.ReadAll(c)
+	if err != nil || string(got) != strings.Repeat("tick", 8) {
+		t.Fatalf("the stream was cut short: %q %v", got, err)
+	}
+}
+
 func TestRelayFromEnv(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	r, listen, err := RelayFromEnv(env(map[string]string{"DRYDOCK_RELAY_LISTEN": ":8080", "DRYDOCK_RELAY_TARGET": "drydock-t-ws:3000"}))

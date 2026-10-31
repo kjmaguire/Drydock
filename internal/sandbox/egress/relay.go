@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/safe"
@@ -84,18 +86,27 @@ func (r *Relay) handle(ctx context.Context, in net.Conn) {
 		idle = 10 * time.Minute
 	}
 	done := make(chan struct{}, 2)
+	// The idle time belongs to the connection, not to a direction: a page that only pushes (an event stream, a long download) is
+	// not idle because the client sends nothing. last is the time of the latest byte in either direction.
+	var last atomic.Int64
+	last.Store(time.Now().UnixNano())
+	idleFor := func() time.Duration { return time.Since(time.Unix(0, last.Load())) }
 	cp := func(dst, src net.Conn) {
 		buf := make([]byte, 32<<10)
 		for {
 			_ = src.SetReadDeadline(time.Now().Add(idle))
 			n, err := src.Read(buf)
 			if n > 0 {
+				last.Store(time.Now().UnixNano())
 				_ = dst.SetWriteDeadline(time.Now().Add(idle))
 				if _, werr := dst.Write(buf[:n]); werr != nil {
 					break
 				}
 			}
 			if err != nil {
+				if errors.Is(err, os.ErrDeadlineExceeded) && idleFor() < idle {
+					continue // this direction was quiet, the other was not
+				}
 				break
 			}
 		}

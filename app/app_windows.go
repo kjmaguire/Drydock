@@ -89,10 +89,6 @@ func Run(assets fs.FS) error {
 	if err != nil {
 		return err
 	}
-	// the profiles a killed viewer for a sandbox's app left (decision P134): none runs now, a viewer dies with the app
-	if err := sandboxview.CleanLeftovers(dir); err != nil {
-		fmt.Fprintf(os.Stderr, "drydock: sandbox app windows: %v\n", err)
-	}
 	core.AppVersion = Version // the build's version for support bundles and project exports
 	var wa *application.App
 	var window *application.WebviewWindow
@@ -121,6 +117,12 @@ func Run(assets fs.FS) error {
 		},
 	})
 	bridge.app = wa
+	// past the single-instance check (a second launch has exited by now, and must not touch the first one's windows): the profiles a
+	// killed viewer for a sandbox's app left (decision P134). A viewer is a child of the app and dies with it, so none of this
+	// instance's runs yet.
+	if err := sandboxview.CleanLeftovers(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: sandbox app windows: %v\n", err)
+	}
 	// past the single-instance check (a second launch has exited by now): what Go prints if this process dies is kept in a file
 	// of its own, and the next start makes a crash report of it (internal/crashreport); a normal exit removes the empty file
 	crash, err := crashreport.Arm(dir)
@@ -159,7 +161,7 @@ func Run(assets fs.FS) error {
 			return fmt.Errorf("the window is not open yet")
 		}
 		return wa.Browser.OpenURL(rawURL)
-	}, OpenSandboxApp: openSandboxApp, Restart: func(context.Context) error {
+	}, OpenSandboxApp: openSandboxApp(dir), Restart: func(context.Context) error {
 		// "Restart now" after a staged restore (decision P116)
 		if wa == nil {
 			return fmt.Errorf("the window is not open yet")

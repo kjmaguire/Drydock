@@ -151,6 +151,7 @@ type FolderPick struct {
 // Core is the running application.
 type Core struct {
 	cfg         Config
+	fwdCache    forwardCache // what sandbox.forward.list last asked the engine, for a few seconds
 	DB          *storage.DB
 	Bus         *events.SQLBus
 	Tasks       *tasks.Service

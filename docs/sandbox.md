@@ -254,8 +254,10 @@ app on 127.0.0.1, cookies are not separated by port, and the page is code an age
   `sandbox.forward.view` takes the address from the engine's record of the forward, never from the caller.
 - **The window** (`app/sandboxview_windows.go`, `internal/sandboxview`) is a second process of `drydock.exe` started as
   `sandbox-view --url http://127.0.0.1:<port>/ --title ...`: it takes no single-instance lock, opens no core, registers no
-  service (nothing of Drydock's to call) and serves no UI. Its WebView2 profile is a new folder under
-  `%LOCALAPPDATA%\Drydock\sandbox-view` that is deleted when the window closes (and any left by a crash at the next start), so
+  service (nothing of Drydock's to call) and serves no UI: its asset server answers 403 to every request, so the page cannot use
+  Wails' runtime (dialogs, clipboard, opening addresses) either. Its WebView2 profile is a new folder under
+  `%LOCALAPPDATA%\Drydock\sandbox-view`, made by the app (`sandboxview.Launcher`) and deleted by it when the viewer's process
+  ends (any left by a crash, at the next start of the first instance), so
   what the page stores (cookies, local storage, cache) is its own and ends with it; the profile is why it is a process and not a
   second window of the app (WebView2 takes one profile folder per process). The title ends "- Drydock isolated window". It accepts
   only `http://127.0.0.1:<port>/` (no other host, name, scheme, credentials or path), at most four are open, and it is a child
