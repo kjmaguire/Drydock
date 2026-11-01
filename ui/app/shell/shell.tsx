@@ -9,7 +9,7 @@ import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys, shellKey, shortcutOf } from '../lib/keys.ts';
 import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
-import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
+import { WorkspaceHomeScreen } from '../screens/workspace/workspace-home.tsx';
 import { query, services, watch } from '../state/services.tsx';
 import { Button } from '../ui/button.tsx';
 import { ErrorBoundary } from '../ui/error-boundary.tsx';
@@ -174,9 +174,9 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
         </Page>
       );
     } else if ((!project || ws.setupOpen) && !isWorkspaceRoute(route) && route.name !== 'project-new') {
-      // pages that do not need a project open without one: a read-only install has to reach License and Backups. The
-      // first-run wizard stays while it shows what the setup did, until the person opens the new project.
-      center = <ProjectCreateScreen first />;
+      // pages that do not need a project open without one: a read-only install has to reach License and Backups. The first
+      // run is the start screen (decision P142); it stays while a start makes the project and its first work, until it lands.
+      center = <WorkspaceHomeScreen onNavigate={handle.props.onNavigate} />;
     } else {
       center = children;
     }

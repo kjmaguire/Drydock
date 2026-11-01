@@ -61,7 +61,7 @@ describe('the sidebar', () => {
       expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
     }
     expect(r.$('[data-testid="brand"]')!.textContent).toBe('Drydock');
-    expect(r.$('[data-testid="nav-new"]')!.getAttribute('href')).toBe('/project/new');
+    expect(r.$('[data-testid="nav-new"]')!.getAttribute('href')).toBe('/home');
     expect(r.$('[data-testid="nav-new"]')!.textContent).toBe('NewCtrl N');
     expect(r.$('[data-testid="nav-new"]')!.getAttribute('aria-keyshortcuts')).toBe('Control+N');
     expect(r.$('[data-testid="nav-workspace"]')!.textContent).toBe('Home');
@@ -157,8 +157,14 @@ describe('the sidebar', () => {
     };
     const r = mount(<Sidebar route={{ name: 'tasks' }} onNavigate={(h) => went.push(h)} />, s);
     await waitFor(() => expect(r.$('[data-testid="nav-new"]')).not.toBeNull(), r);
+    // New is the start screen with the cursor in its box (decision P142)
+    const startBox = document.createElement('textarea');
+    startBox.dataset.testid = 'start-text';
+    document.body.append(startBox);
     expect(ctrlN(document.body).defaultPrevented).toBe(true);
-    expect(went).toEqual(['/project/new']);
+    expect(went).toEqual(['/home']);
+    await waitFor(() => expect(document.activeElement).toBe(startBox), r);
+    startBox.remove();
     const input = document.createElement('input');
     document.body.append(input);
     expect(ctrlN(input).defaultPrevented).toBe(false);
@@ -167,7 +173,7 @@ describe('the sidebar', () => {
     const chats = mount(<Sidebar route={{ name: 'chats' }} onNavigate={(h) => went.push(h)} />, s);
     await waitFor(() => expect(chats.$('[data-testid="nav-new"]')).not.toBeNull(), chats);
     expect(ctrlN(document.body).defaultPrevented).toBe(false);
-    expect(went).toEqual(['/project/new']);
+    expect(went).toEqual(['/home']);
   });
 
   it('Models is a section of Settings: the engine line leads to /models, and no project is open there', async () => {

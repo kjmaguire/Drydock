@@ -3,7 +3,7 @@
 // core: no visible text under 12 px (avatar initials, which are decoration and hidden from assistive tech, aside), nothing
 // wider than the window, and the details panel takes width only where it has the page's context (a room, a task, a run).
 import { expect, test, type Page } from '@playwright/test';
-import { createAgent, createProject, roomLink, projectNav, openRoom } from './helpers';
+import { createAgent, createProject, roomLink, projectItem, projectNav, openRoom } from './helpers';
 
 const ROUTES = ['/needs-you', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements', '/milestones', '/memory', '/skills', '/packs', '/integrations', '/integrations/linear', '/integrations/mslearn', '/budgets', '/evals', '/security', '/chats', '/library', '/connections', '/agents', '/agents/claude', '/github', '/models/new', '/routing', '/backups', '/data', '/support', '/license', '/settings', '/home', '/library/skills', '/security-scan', '/models', '/settings/shortcuts', '/settings/about', '/library/starters', '/my-tasks'];
 
@@ -57,7 +57,7 @@ test('every screen reads at a laptop size: text of 12 px or more, nothing wider 
   // conversation, opened by hand it stays open there, and the rooms keep their own choice
   await expect(page.getByRole('button', { name: 'Show details' })).toHaveCount(0);
   await page.getByTestId('nav-workspace').click();
-  await page.getByTestId('home-project').filter({ hasText: 'gocalc-layout' }).click();
+  await projectItem(page, 'gocalc-layout').click();
   // each measurement waits for its page and is retried until the panel settles: a click returns before the next page renders,
   // and measuring then reads the previous page's panel
   const details = () => expect.poll(async () => (await measure(page)).details);
