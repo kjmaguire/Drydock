@@ -323,8 +323,14 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     if (edit) {
       openAgentEditor(edit);
       u.searchParams.delete('edit');
-      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
     }
+    // /team?new=agent opens New agent on Describe (the Work page's crew rail "+", P141)
+    if (!all() && u.searchParams.get('new') === 'agent') {
+      newOpen = true;
+      newTab = 'describe';
+      u.searchParams.delete('new');
+    }
+    if (edit || newOpen) window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
   }
   handle.signal.addEventListener('abort', () => closeAgentEditor());
 

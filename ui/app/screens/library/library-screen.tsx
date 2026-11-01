@@ -54,24 +54,35 @@ const chips = css({
 
 // My agents: a card per agent (mockup 6): avatar and name, one line of purpose, the model and effort chip, its state
 const cardGrid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: t.s3, margin: '0', padding: '0', listStyle: 'none' });
-const cardItem = css({ position: 'relative', minWidth: '0', '& > [data-part="more"]': { position: 'absolute', top: '10px', right: '10px' } });
+// the card is the <li>: the button (select) and the "..." menu sit side by side in it, so no control lies over another
+const cardItem = css({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  alignItems: 'start',
+  minWidth: '0',
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rLg,
+  background: t.bgSurface,
+  '&:hover': { borderColor: t.borderStrong },
+  '&:has(> button[aria-pressed="true"])': { borderColor: t.accent, boxShadow: `0 0 0 1px ${t.accent}` },
+  '& > [data-part="more"]': { padding: '8px 8px 0 0' },
+});
 const cardButton = css({
   display: 'grid',
   gap: t.s2,
   width: '100%',
   minWidth: '0',
-  padding: '14px',
-  border: `1px solid ${t.border}`,
+  padding: '14px 4px 14px 14px',
+  border: 'none',
   borderRadius: t.rLg,
-  background: t.bgSurface,
+  background: 'transparent',
   color: t.text,
   textAlign: 'left',
   fontWeight: '400',
   cursor: 'pointer',
-  '&:hover': { borderColor: t.borderStrong, background: t.bgSurface },
-  '&[aria-pressed="true"]': { borderColor: t.accent, boxShadow: `0 0 0 1px ${t.accent}` },
+  '&:hover': { background: 'transparent' },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
-  '& > .head': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0', paddingRight: '34px' },
+  '& > .head': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0' },
   '& > .head > strong': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: t.textMd },
   '& > .purpose': { color: t.textMuted, fontSize: t.textMd, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& > .foot': { display: 'flex', alignItems: 'center', gap: t.s2, minWidth: '0', flexWrap: 'wrap' },

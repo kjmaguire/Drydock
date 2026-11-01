@@ -59,6 +59,14 @@ test('Work lists the tasks and chats, opens one in the centre, and shows the cre
   await expect(page.getByTestId('work-item')).toHaveCount(1);
   await page.getByLabel('Search this project').fill('');
 
+  // the crew rail's "+" opens New agent on Describe, on the Crew tab
+  await page.goto(new URL('/', page.url()).toString());
+  await crew.getByTestId('work-add-agent').click();
+  await expect(page).toHaveURL(/\/team$/);
+  await expect(page.locator('dialog[open]').getByTestId('describe-agent').getByLabel('What should this agent do?')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.goto(new URL('/', page.url()).toString());
+
   // New task is on Work's tab bar
   await tabs.getByTestId('work-new-task').click();
   await expect(page).toHaveURL(/\/tasks\/new$/);
