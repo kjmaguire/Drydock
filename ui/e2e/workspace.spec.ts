@@ -77,7 +77,7 @@ test("workspace pages name no project; a project's own settings are sections of 
   await expect(section.getByTestId('nav-project')).toHaveText('General');
   await expect(page.getByTestId('nav-project-settings')).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-settings')).not.toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Settings', exact: true })).toHaveCount(0);
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   // laid out like the workspace's Integrations page: Services, then Agent tools, each a list of compact rows
   await expect(page.getByTestId('project-app-sync').getByRole('heading', { name: 'Services', level: 2 })).toBeVisible();

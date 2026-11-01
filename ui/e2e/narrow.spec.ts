@@ -37,11 +37,12 @@ test('a half-screen window keeps the conversation readable and the panels out of
   expect(await widthOf(page, '[role="log"]')).toBeGreaterThanOrEqual(480);
   await panel.getByRole('button', { name: 'Hide details' }).click();
 
-  // the top tabs are icons, still named for a screen reader and a tooltip
-  const tasks = page.getByRole('link', { name: 'Tasks', exact: true });
-  await expect(tasks).toBeVisible();
-  expect(await tasks.getAttribute('title')).toBe('Tasks');
-  expect(await widthOf(page, '[data-testid="nav-tasks"]')).toBeLessThan(60);
+  // the folded sidebar's links are icons, still named for a screen reader and a tooltip; the project's tab bar keeps its words
+  const chats = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Chats', exact: true });
+  await expect(chats).toBeVisible();
+  expect(await chats.getAttribute('title')).toBe('Chats');
+  expect(await widthOf(page, '[data-testid="nav-chats"]')).toBeLessThan(60);
+  await expect(page.getByRole('navigation', { name: 'Project' }).getByTestId('nav-overview')).toHaveText('Work');
 
   // a laptop window under 1200 px keeps the sidebar folded too, so a list-and-detail page keeps its detail (UI audit 2026-10-26);
   // from 1200 px the sidebar opens again by itself

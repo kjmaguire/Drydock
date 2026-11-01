@@ -3,7 +3,7 @@
 // one in the centre, named in the URL so Reload and Back keep it; the crew rail; and every old address of a project page still
 // opening, with its tab marked.
 import { expect, test } from '@playwright/test';
-import { createAgent, createAndStartTask, createProject, projectItem, sidebar } from './helpers';
+import { createAgent, createAndStartTask, createProject, createProjectWithoutRepo, projectItem, sidebar } from './helpers';
 
 test('Work lists the tasks and chats, opens one in the centre, and shows the crew', async ({ page }) => {
   test.setTimeout(240_000);
@@ -65,7 +65,7 @@ test('Work lists the tasks and chats, opens one in the centre, and shows the cre
 });
 
 test("every old address of a project page still opens, under Work, Crew or the project's Settings", async ({ page }) => {
-  await createProject(page, 'work-old-urls');
+  await createProjectWithoutRepo(page, 'work-old-urls');
   const tabs = page.getByRole('navigation', { name: 'Project' });
   const cases: [string, string, RegExp][] = [
     ['/tasks', 'nav-overview', /Tasks|work-old-urls/],

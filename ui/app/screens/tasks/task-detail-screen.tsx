@@ -299,7 +299,9 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                     </Button>
                   }
                 >
-                  <DiffViewer taskId={task.id} />
+                  {/* embedded in Work (P141) the Monaco diff stays in the dock ("Open in the dock"): each Monaco diff editor leaves
+                      about 3,000 detached nodes behind when it is disposed, and Work opens one task after another */}
+                  {handle.props.embedded ? null : <DiffViewer taskId={task.id} />}
                   <DiffView key={task.id} taskId={task.id} diffId={newestDiffId(d.evidence)} />
                 </Part>
                 <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} />

@@ -86,14 +86,14 @@ const footCss = css({
   flex: 'none',
   padding: `${t.s2} ${t.s3}`,
   borderTop: `1px solid ${t.border}`,
-  '& > a': { padding: `2px ${t.s2}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
+  '& > a': { display: 'inline-flex', alignItems: 'center', minHeight: '28px', padding: `0 ${t.s2}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
   '& > a:hover': { background: t.bgHover, color: t.text },
 });
 const centreCss = css({ display: 'flex', flexDirection: 'column', minWidth: '0', minHeight: '0', overflow: 'hidden', '& > *': { flex: '1', minHeight: '0' } });
 const emptyCss = css({ display: 'grid', placeItems: 'center', alignContent: 'center', gap: t.s3, padding: t.s6, color: t.textMuted, fontSize: t.textMd, textAlign: 'center' });
 const crewCss = css({ display: 'flex', flexDirection: 'column', minHeight: '0', overflowY: 'auto', padding: `${t.s3} ${t.s3}`, borderLeft: `1px solid ${t.border}` });
 const crewHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: `0 ${t.s1} ${t.s2}`, fontSize: t.textMd, fontWeight: '600' });
-const plusCss = css({ display: 'inline-grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: t.rMd, color: t.textMuted, '&:hover': { background: t.bgHover, color: t.text } });
+const plusCss = css({ display: 'inline-grid', placeItems: 'center', width: '28px', height: '28px', borderRadius: t.rMd, color: t.textMuted, '&:hover': { background: t.bgHover, color: t.text } });
 const agentCss = css({
   display: 'grid',
   gridTemplateColumns: 'auto minmax(0, 1fr)',
@@ -114,7 +114,7 @@ const statsCss = css({
   margin: `${t.s3} 0 0`,
   padding: `${t.s3} 0 0`,
   borderTop: `1px solid ${t.border}`,
-  '& > a': { display: 'flex', justifyContent: 'space-between', gap: t.s2, padding: `4px ${t.s1}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
+  '& > a': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: t.s2, minHeight: '28px', padding: `0 ${t.s1}`, borderRadius: t.rMd, color: t.textMuted, fontSize: t.textSm, textDecoration: 'none' },
   '& > a > b': { color: t.text, fontWeight: '500', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
   '& > a:hover': { background: t.bgHover, color: t.text },
 });
@@ -179,6 +179,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
     const first = evals.data ? firstCheckText(evals.data.report) : undefined;
     const lastScan = scan.data && scan.data.status !== 'running' ? scan.data : undefined;
     const merged = mergedSince(p.taskList, Date.now() - WEEK_MS);
+    const channels = p.roomList.filter((r) => r.kind === 'channel' && !r.archived);
+    const general = channels.find((r) => r.name === 'general') ?? channels[0];
 
     return (
       <div mix={layoutCss} data-testid="work">
@@ -224,7 +226,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             <a href={routes.pulls.href()} data-testid="nav-pulls">
               Pull requests
             </a>
-            <a href={routes.rooms.href()} data-testid="nav-rooms">
+            {/* straight to the project channel when it is known: /rooms only redirects there */}
+            <a href={general ? routes.room.href({ id: general.id }) : routes.rooms.href()} data-testid="nav-rooms">
               Rooms
             </a>
           </nav>
