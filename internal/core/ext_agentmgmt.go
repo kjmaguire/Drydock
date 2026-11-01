@@ -43,7 +43,7 @@ func init() {
 				ag.TemplateID = ev.TemplateID
 				return UpdatedEverywhere{Agent: ag, Everywhere: &ev}, nil
 			}),
-			"agent.draft": bind(func(ctx context.Context, p AgentDraftRequest) (any, error) { return c.DraftAgent(ctx, p) }),
+			"agent.draft":   bind(func(ctx context.Context, p AgentDraftRequest) (any, error) { return c.DraftAgent(ctx, p) }),
 			"agent.archive": bind(func(ctx context.Context, p idParam) (any, error) { return c.ArchiveAgent(ctx, p.ID) }),
 			"claude.practices": bind(func(ctx context.Context, p struct {
 				Role string `json:"role"`

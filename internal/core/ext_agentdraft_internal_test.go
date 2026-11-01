@@ -21,10 +21,10 @@ var testEnv = draftEnv{
 
 func TestRuleDraftReadsTheDescriptionsKeywords(t *testing.T) {
 	for _, c := range []struct {
-		desc                              string
-		name, role, model, effort, mode   string
-		skills, tools                     string
-		whyHas                            string
+		desc                            string
+		name, role, model, effort, mode string
+		skills, tools                   string
+		whyHas                          string
 	}{
 		{"Reviews pull requests for security problems: secrets, SQL injection, unsafe file paths. Should never edit code, just comment. Use the best model.",
 			"Security Reviewer", "security reviewer", "opus", "high", "plan", "security-review", "", `"never edit"`},

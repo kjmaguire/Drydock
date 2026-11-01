@@ -335,7 +335,9 @@ func defaultMode(a draftAdapter) string {
 	return ""
 }
 
-func skipsApprovalsMode(m string) bool { return m == "bypassPermissions" || m == "auto" || m == "dontAsk" }
+func skipsApprovalsMode(m string) bool {
+	return m == "bypassPermissions" || m == "auto" || m == "dontAsk"
+}
 
 func keepKnown(in []string, known func(string) bool) []string {
 	out := []string{}
@@ -367,8 +369,6 @@ type draftRole struct {
 	name  string
 	role  string
 	brief string
-	// readOnly agents only comment (a reviewer of security); others edit their worktree
-	readOnly bool
 }
 
 // draftRoles is checked in order: the first whose word appears wins (security before review, lead before plan).
