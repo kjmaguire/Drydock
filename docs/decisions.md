@@ -2485,7 +2485,14 @@ Open, owner action:
   whose link is `/team?edit=<id>` for a new window), "+" goes to the Crew tab (the Crew page has no outside opener for New agent
   yet); under it Spent so far, First check, Security and Merged this week, each linking its page. (c) **The Overview page is
   removed**: its needs-you cards, crew cards, in-motion rows and rooms card are the list, the rail and Rooms; its Today and
-  Insights numbers are the rail's four lines (the counts of open tasks, working agents and items are the list itself). Not done:
+  Insights numbers are the rail's four lines (the counts of open tasks, working agents and items are the list itself). (d) The
+  start screen (P142) lands here through `lib/project-work.ts` (`/?item=task:<id>`, the same parameter), and its note of what it
+  could not do shows once as one line over the list. (e) **Two leaks found on the way** (the smoke test's memory rounds now pass
+  through Work): `/rooms` redirects with a replace navigation, and reached by a click inside a page that then unmounts it kept
+  that page's whole tree (about 800 nodes a visit), so Work's Rooms link goes straight to the project channel; and every Monaco
+  diff editor leaves about 3,000 detached nodes after its dispose (the task page's Diff part, on `/task/:id` too, before this
+  change), so the task embedded in Work leaves the Monaco diff to the dock (Open in the dock) and keeps the plain diff. The Monaco
+  leak itself is not fixed; a person opening many task pages in one session still pays it. Not done:
   the mockup's branch and pull-request chip in the tab bar (no cheap read gives "2 open PRs" for the bar), and "Checks passing"
   as one word (the rail shows the first-check rate the core measures instead). Tests: `ui/app/screens/work/work.test.ts`
   (grouping, order, lines, search, the item opened by default), `work-screen.test.browser.tsx` (the list, the centre by URL, the
