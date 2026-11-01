@@ -2,8 +2,8 @@
   "generated": "2026-10-29T07:17:57Z",
   "commit": "9e54f13",
   "summary": {
-    "current": 173,
-    "major": 3,
+    "current": 174,
+    "major": 2,
     "minor": 19,
     "patch": 18,
     "prerelease": 2,
@@ -257,12 +257,12 @@
       "group": "GitHub Actions (CI)",
       "name": "actions/download-artifact",
       "kind": "action",
-      "used": "v7",
+      "used": "v8",
       "latest": "v8.0.2",
-      "status": "major",
+      "status": "current",
       "where": ".github/workflows/release.yml",
       "role": "Hands the built release (installer, update zip, checksums) and the test variant of drydock.exe from the release workflow's build job to install-test and publish.",
-      "note": "Major tag v7, the same line as upload-artifact."
+      "note": "Major tag v8 (2026-11-01, Dependabot #13): v8 fails a download whose digest does not match instead of warning; it reads the artifacts upload-artifact v7 writes (release install-test passed on v8)."
     },
     {
       "id": "action:actions/setup-go",
