@@ -344,6 +344,8 @@ export interface Agent {
   /** Where the CLI runs: '' follows the project, 'native' on Windows, 'wsl' inside the distro `wslDistro`. */
   runMode?: string;
   wslDistro?: string;
+  /** The agent template it was made from (decision P137); absent for none. */
+  templateId?: string;
 }
 
 export interface RouteModel {
@@ -390,6 +392,13 @@ export interface AgentUpdate {
   wslDistro?: string;
   /** The person's confirmation of a change into a permission mode that lets the agent act without asking (see SetupAgent). */
   confirmSkipsApprovals?: boolean;
+  /** Also save the change to the agent's template and the other agents made from it (decision P137). */
+  everywhere?: boolean;
+}
+
+/** agent.update's answer with `everywhere`: the agent, and where the change went beyond this project. */
+export interface UpdatedAgent extends Agent {
+  everywhere?: { templateId: string; templateName: string; created: boolean; agents: number; skipped: string[] };
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */

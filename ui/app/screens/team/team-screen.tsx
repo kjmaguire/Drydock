@@ -1,13 +1,14 @@
 // Crew (graphite, decision P97): the agents as a team. The header bar says how many agents there are, how many work and how
-// many wait on the person, with Templates (the prebuilt gallery and the saved templates) and New agent (N). Then "Today": a
-// timeline from 08:00 (or the first run's hour) to now with one lane per agent, its runs and its waits on the person
-// (agent.timeline, re-read on agent.*, run.* and approval.* events, "now" moving every minute). Then a card per agent: who it is,
-// what it runs on, its state, what it is doing or did, how far its task is, its skills and rooms. A card opens the agent's page;
-// one that waits on the person opens the Inbox. The same page shows one project's crew (/team) or every project's (/crew,
-// the cards grouped by project).
+// many wait on the person, with Templates and New agent (N), one dialog with the tabs Describe (P138), Configure and From a
+// template. Then "Today": a timeline from 08:00 (or the first run's hour) to now with one lane per agent, its runs and its
+// waits on the person (agent.timeline, re-read on agent.*, run.* and approval.* events, "now" moving every minute). Then a card
+// per agent: who it is, what it runs on, its state, what it is doing or did, how far its task is, its skills and rooms, and
+// chips with its model and effort and its permissions that open the agent editor panel (decision P137; also in its "..."). A
+// card opens the agent's page; one that waits on the person opens the Inbox. The same page shows one project's crew (/team)
+// or every project's (/crew, the cards grouped by project).
 
-import { css, on, type Handle } from 'remix/component';
-import { Users } from 'lucide';
+import { css, navigate, on, type Handle } from 'remix/component';
+import { Pencil, Trash2, UserRound, Users } from 'lucide';
 import type { AgentLane, CrewExtras, CrewTimeline } from '../../api/inboxClient.ts';
 import type { AdapterInfo, Agent, Connection, PresenceState, Project, TaskSummary } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
@@ -18,15 +19,18 @@ import { query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Avatar, hueFor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
-import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { MoreMenu } from '../../ui/menu.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
-import { AddPrebuilt } from './add-prebuilt.tsx';
-import { AgentForm, FromTemplate } from './agent-forms.tsx';
+import { modelChip, permissionWords } from './agent-edit.ts';
+import { RemoveAgent } from './agent-forms.tsx';
+import { AgentPanelHost, closeAgentEditor, openAgentEditor } from './agent-panel.tsx';
+import { NewAgent, type NewAgentTab } from './new-agent.tsx';
 import { TodayTimeline, type TimelineLane } from './crew-timeline.tsx';
 import {
   CARD_WORDS,
@@ -134,11 +138,27 @@ const cardCss = css({
   '& .bar': { height: '3px', borderRadius: '2px', background: t.bgActive },
   '& .bar > div': { height: '3px', borderRadius: '2px' },
   '& .chips': { display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' },
+  // the model and permission chips and the "..." sit above the card's stretched link: each opens the agent editor panel (P137)
+  '& .edit': { position: 'relative', zIndex: '1', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' },
+  '& .edit > :last-child': { marginLeft: 'auto' },
+  '& .pill': {
+    height: '26px',
+    minHeight: '0',
+    padding: '0 10px',
+    border: `1px solid ${t.border}`,
+    borderRadius: t.rFull,
+    background: 'transparent',
+    color: t.text,
+    fontSize: t.textSm,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+  },
+  '& .pill:hover': { borderColor: t.accent, color: t.accentText },
+  '& .pill:focus-visible': { boxShadow: t.focus, outline: 'none' },
   '& .chip': { display: 'inline-flex', alignItems: 'center', gap: '4px', height: '20px', padding: '0 7px', borderRadius: t.rSm, background: t.bgActive, color: t.textMuted, fontSize: t.textXs, whiteSpace: 'nowrap' },
 });
 
 const dialogStack = css({ display: 'grid', gap: t.s4 });
-const divider = css({ height: '1px', background: t.border, margin: '0' });
 
 /** What a card needs beyond the agent itself. */
 interface CardData {
@@ -154,9 +174,11 @@ interface CardData {
 
 const MAX_CHIPS = 4;
 
-function AgentCard(handle: Handle<{ d: CardData; onOpen: (a: Agent) => void }>) {
+function AgentCard(
+  handle: Handle<{ d: CardData; onOpen: (a: Agent) => void; onEdit: (a: Agent) => void; onPage: (a: Agent) => void; onRemove: (a: Agent) => void }>,
+) {
   return () => {
-    const { d, onOpen } = handle.props;
+    const { d, onOpen, onEdit, onPage, onRemove } = handle.props;
     const a = d.agent;
     const waiting = d.state === 'waiting-on-you';
     const href = routes.agent.href({ id: a.id });
@@ -215,6 +237,41 @@ function AgentCard(handle: Handle<{ d: CardData; onOpen: (a: Agent) => void }>) 
             <div style={{ width: `${d.progress.percent}%`, background: color }} />
           </div>
         ) : null}
+        <div class="edit" data-testid="agent-settings">
+          <button
+            type="button"
+            class="pill"
+            data-testid="agent-model-chip"
+            aria-label={`${a.name}: ${modelChip(a)}. Edit`}
+            title="Change model and effort"
+            aria-haspopup="dialog"
+            mix={on('click', () => onEdit(a))}
+          >
+            {modelChip(a)}
+          </button>
+          <button
+            type="button"
+            class="pill"
+            data-testid="agent-permission-chip"
+            data-mode={a.permissionMode}
+            aria-label={`${a.name}: ${permissionWords(a.permissionMode)}. Edit`}
+            title="Change what it may do without asking"
+            aria-haspopup="dialog"
+            mix={on('click', () => onEdit(a))}
+          >
+            {permissionWords(a.permissionMode)}
+          </button>
+          <MoreMenu
+            label={`More for ${a.name}`}
+            testId="agent-card-more"
+            items={[
+              { name: 'edit', label: 'Edit agent...', icon: Pencil },
+              { name: 'open', label: 'Open its page', icon: UserRound },
+              { name: 'remove', label: `Remove ${a.name}...`, icon: Trash2, danger: true, separatorBefore: true },
+            ]}
+            onSelect={(n) => (n === 'edit' ? onEdit(a) : n === 'open' ? onPage(a) : onRemove(a))}
+          />
+        </div>
         {skipsApprovals(a.permissionMode) || (d.state !== 'working' && shown.length > 0) ? (
           <div class="chips">
             <SkipsBadge mode={a.permissionMode} />
@@ -249,12 +306,27 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   watch(handle, s.project);
   watch(handle, s.workspace);
   const clock = () => (handle.props.now ? handle.props.now() : Date.now());
+  const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href));
   const all = () => handle.props.scope === 'all';
   const scopeId = () => (all() ? '' : (s.workspace.projectId ?? ''));
   let now = clock();
   let newOpen = false;
-  let templatesOpen = false;
+  let newTab: NewAgentTab = 'describe';
+  let removing: Agent | undefined;
   let pickProject = '';
+  let savedNote = '';
+
+  // /team?edit=<agentId> opens the agent editor panel (decision P137: a link other pages can give)
+  {
+    const u = new URL(window.location.href);
+    const edit = u.searchParams.get('edit');
+    if (edit) {
+      openAgentEditor(edit);
+      u.searchParams.delete('edit');
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    }
+  }
+  handle.signal.addEventListener('abort', () => closeAgentEditor());
 
   // the workspace's agents and their presence (one project's come from the project model the shell keeps)
   const allAgents = query(handle, { load: () => s.client.agentListAll(), when: (e) => e.type.startsWith('agent.'), enabled: all });
@@ -307,8 +379,9 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
   }, MINUTE);
   handle.signal.addEventListener('abort', () => clearInterval(timer));
 
-  const openNew = () => {
+  const openNew = (tab: NewAgentTab = 'describe') => {
     newOpen = true;
+    newTab = tab;
     void handle.update();
   };
 
@@ -317,7 +390,7 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
     'keydown',
     (e) => {
       if (e.key.toLowerCase() !== 'n' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
-      if (ownsKeys(e.target) || typing(e.target) || s.ui.paletteOpen || newOpen || templatesOpen || document.querySelector('dialog[open]')) return;
+      if (ownsKeys(e.target) || typing(e.target) || s.ui.paletteOpen || newOpen || document.querySelector('dialog[open]')) return;
       e.preventDefault();
       openNew();
     },
@@ -424,7 +497,13 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
       <ul mix={cardsCss} aria-label={label}>
         {as.map((a) => (
           <li key={a.id}>
-            <AgentCard d={cardOf(a)} onOpen={onOpen} />
+            <AgentCard
+              d={cardOf(a)}
+              onOpen={onOpen}
+              onEdit={(x) => openAgentEditor(x.id)}
+              onPage={(x) => (onOpen(x), go(routes.agent.href({ id: x.id })))}
+              onRemove={(x) => ((removing = x), void handle.update())}
+            />
           </li>
         ))}
       </ul>
@@ -456,16 +535,23 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
         }
         actions={
           <>
-            <Button variant="secondary" disabled={!target} aria-haspopup="dialog" mix={on('click', () => ((templatesOpen = true), void handle.update()))}>
+            <Button variant="secondary" disabled={!target} aria-haspopup="dialog" mix={on('click', () => openNew('template'))}>
               Templates
             </Button>
-            <Button variant="primary" disabled={!target} aria-haspopup="dialog" aria-keyshortcuts="N" mix={on('click', openNew)}>
+            <Button variant="primary" disabled={!target} aria-haspopup="dialog" aria-keyshortcuts="N" mix={on('click', () => openNew())}>
               New agent <kbd mix={kbdOnAccent}>N</kbd>
             </Button>
           </>
         }
       >
         <ErrorNote error={agentsQ.error} what="Could not list agents" />
+        {savedNote && savedNote !== 'Saved.' ? (
+          <div style={{ padding: '12px 24px 0' }}>
+            <Notice tone="ok" role="status" testId="agent-saved-note">
+              {savedNote}
+            </Notice>
+          </div>
+        ) : null}
         {agentsQ.loading && !agentsQ.data ? <Loading /> : null}
         {agentsQ.data && agents.length === 0 ? (
           <div style={{ padding: '24px' }}>
@@ -502,30 +588,43 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
             <div mix={dialogStack} data-testid="new-agent">
               {projectPicker(projects, target)}
               {target ? (
-                <AgentForm
+                <NewAgent
                   key={target}
                   projectId={target}
+                  tab={newTab}
                   adapters={sortAdapters(adapters.data ?? [])}
                   onCreated={() => {
                     newOpen = false;
                     void handle.update();
                     reloadAgents();
                   }}
+                  onAdded={reloadAgents}
                 />
               ) : null}
             </div>
           ) : null}
         </Dialog>
-        <Dialog open={templatesOpen} title="Templates" label="Templates" wide onClose={() => ((templatesOpen = false), void handle.update())}>
-          {templatesOpen ? (
-            <div mix={dialogStack} data-testid="crew-templates">
-              {projectPicker(projects, target)}
-              {target ? <FromTemplate key={`t:${target}`} projectId={target} onCreated={reloadAgents} /> : null}
-              <div mix={divider} role="presentation" />
-              {target ? <AddPrebuilt key={`p:${target}`} projectId={target} onAdded={() => reloadAgents()} /> : null}
-            </div>
+        <Dialog open={!!removing} title={removing ? `Remove ${removing.name}?` : 'Remove'} onClose={() => ((removing = undefined), void handle.update())}>
+          {removing ? (
+            <RemoveAgent
+              agent={removing}
+              onDone={() => {
+                removing = undefined;
+                void handle.update();
+                reloadAgents();
+              }}
+              onCancel={() => ((removing = undefined), void handle.update())}
+            />
           ) : null}
         </Dialog>
+        <AgentPanelHost
+          agents={agents}
+          onSaved={(_, n) => {
+            savedNote = n;
+            reloadAgents();
+            void handle.update();
+          }}
+        />
       </Page>
     );
   };
