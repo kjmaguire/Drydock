@@ -38,21 +38,27 @@ export function freshRepo(): string {
 export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
 
 /**
- * Which hub holds a link that is not in the sidebar itself (Crew HQ, decision P64; P140): the sub-pages of a tab are pills under
- * it (a project's settings and its Integrations are the last pills of Overview); every workspace or app settings page is a
- * section of Settings (a section of more than one page shows them as pills); My agents, Starters, Skills and All crews are the
- * Agents library's pills; Running and My tasks are tabs of the Inbox. navTo opens the hubs in turn.
+ * Which hub holds a link that is not in the sidebar itself (Crew HQ, decision P64; P140; P141): a project's pages are its tab bar
+ * (Work is nav-overview, Crew nav-team, Settings nav-project-settings); the board, the pull requests and the rooms are links under
+ * Work's list; a project's settings, its Integrations, Activity, Budgets, Evals, Security, Plan, Milestones and Knowledge are
+ * sections of its Settings tab (a section of more than one page shows them as pills); every workspace or app settings page is a
+ * section of Settings; My agents, Starters, Skills and All crews are the Agents library's pills; Running and My tasks are tabs of
+ * the Inbox. navTo opens the hubs in turn.
  */
 const HUB_OF: Record<string, string> = {
-  'nav-plan': 'nav-tasks',
-  'nav-pulls': 'nav-tasks',
-  'nav-milestones': 'nav-tasks',
-  'nav-activity': 'nav-overview',
-  'nav-budgets': 'nav-overview',
-  'nav-evals': 'nav-overview',
-  'nav-security': 'nav-overview',
-  'nav-project': 'nav-overview',
-  'nav-project-integrations': 'nav-overview',
+  'nav-tasks': 'nav-overview',
+  'nav-pulls': 'nav-overview',
+  'nav-rooms': 'nav-overview',
+  'nav-project': 'nav-project-settings',
+  'nav-project-integrations': 'nav-project-settings',
+  'nav-knowledge': 'nav-project-settings',
+  'nav-planning': 'nav-project-settings',
+  'nav-activity': 'nav-project-settings',
+  'nav-budgets': 'nav-project-settings',
+  'nav-evals': 'nav-project-settings',
+  'nav-security': 'nav-project-settings',
+  'nav-plan': 'nav-planning',
+  'nav-milestones': 'nav-planning',
   'nav-requirements': 'nav-knowledge',
   'nav-packs': 'nav-knowledge',
   'nav-skills': 'nav-knowledge',
@@ -99,7 +105,7 @@ async function navTo(page: Page, testId: string): Promise<void> {
 }
 
 /**
- * A room's link: in the Rooms rail, or in the Overview's rooms card. Rooms are named without a "#" (an icon, then the name,
+ * A room's link, in the Rooms rail. Rooms are named without a "#" (an icon, then the name,
  * then an unread count such as ", 3 unread"), so the accessible name starts with the room name and nothing word-like follows it.
  */
 export function roomLink(page: Page, name: string): Locator {
@@ -107,13 +113,12 @@ export function roomLink(page: Page, name: string): Locator {
   return page.locator('[data-rooms]').getByRole('link', { name: new RegExp(`^${escaped}(?![\\w-])`) });
 }
 
-/** Open a room: from the Overview's rooms card or the Rooms rail when one is on the page, else through the Rooms tab. */
+/** Open a room: from the Rooms rail when it is on the page, else through Rooms under Work's list (decision P141). */
 export async function openRoom(page: Page, name: string): Promise<void> {
   const link = roomLink(page, name);
   if (!(await link.isVisible())) {
-    const tab = sidebar(page).getByTestId('nav-rooms');
-    if (await tab.isVisible()) await tab.click();
-    else await page.goto(new URL('/', page.url()).toString());
+    if (!(await page.getByTestId('nav-overview').isVisible())) await page.goto(new URL('/', page.url()).toString());
+    await navTo(page, 'nav-rooms');
   }
   await link.click();
 }
@@ -139,11 +144,12 @@ const OLD_NAV: Record<string, string> = {
 };
 
 /**
- * Open a page of a project (Crew, Tasks, Project settings...). On a workspace page the bar shows the workspace, so the
- * project is opened first: the one named (its card on Home), else the one the app remembers (its home, "/").
+ * Open a page of a project (Crew, Tasks, Project settings...). A project's pages have its tab bar (Work, Crew, Settings; decision
+ * P141); on a workspace page there is none, so the project is opened first: the one named (its card on Home), else the one the app
+ * remembers (its Work, "/").
  */
 export async function projectNav(page: Page, testId: string, project?: string): Promise<void> {
-  if (!(await sidebar(page).getByTestId('nav-overview').isVisible())) {
+  if (!(await page.getByTestId('nav-overview').isVisible())) {
     if (project) {
       if (!(await page.getByTestId('home-project').first().isVisible())) await sidebar(page).getByTestId('nav-workspace').click();
       await page.getByTestId('home-project').filter({ hasText: project }).click();
@@ -155,7 +161,7 @@ export async function projectNav(page: Page, testId: string, project?: string): 
 /** A project's line in the sidebar's Projects list (decision P140: the list is how a project is opened). */
 export const projectItem = (page: Page, name: string): Locator => sidebar(page).getByTestId('nav-project-item').filter({ has: page.getByText(name, { exact: true }) });
 
-/** Open a project from the sidebar's Projects list: its Overview, with its tabs under it. */
+/** Open a project from the sidebar's Projects list: its Work, with its tab bar (decision P141). */
 export async function switchProject(page: Page, name: string): Promise<void> {
   await projectItem(page, name).click();
   await expect(projectItem(page, name)).toHaveAttribute('aria-expanded', 'true');

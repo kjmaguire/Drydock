@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, hubOf, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, redirectLegacyHash } from './route.ts';
+import { hashToPath, hubOf, isProjectHub, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, parseWorkItem, redirectLegacyHash, workItemHref } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -77,9 +77,9 @@ describe('routes', () => {
     expect(isWorkspacePage(parseRoute('/integrations'))).toBe(true);
   });
 
-  it("puts a project's settings and Integrations in its Overview hub, and the GitHub page among the Integrations (decision P98)", () => {
-    expect(hubOf({ name: 'project' })).toBe('overview');
-    expect(hubOf({ name: 'project-integrations' })).toBe('overview');
+  it("puts a project's settings and Integrations in its Settings tab, and the GitHub page among the Integrations (decision P98)", () => {
+    expect(hubOf({ name: 'project' })).toBe('project-settings');
+    expect(hubOf({ name: 'project-integrations' })).toBe('project-settings');
     expect(routes.github.href()).toBe('/github');
     expect(parseRoute('/github')).toEqual({ name: 'github' });
     expect(parseRoute('/github/x')).toEqual({ name: 'not-found' });
@@ -204,5 +204,28 @@ describe('routes', () => {
     } finally {
       console.warn = warn;
     }
+  });
+
+  it("gives a project three tabs (decision P141): Work, Crew and Settings, every old project page in one of them", () => {
+    const tab = (p: string) => hubOf(parseRoute(p));
+    for (const p of ['/', '/tasks', '/tasks/new', '/task/t1', '/task/t1/run', '/pulls', '/rooms', '/room/r1']) expect([p, tab(p)]).toEqual([p, 'work']);
+    for (const p of ['/team', '/team/agt_1']) expect([p, tab(p)]).toEqual([p, 'crew']);
+    for (const p of ['/project', '/project/integrations', '/activity', '/budgets', '/evals', '/security', '/plan', '/milestones', '/knowledge', '/requirements', '/packs', '/skills', '/memory', '/repo-map']) {
+      expect([p, tab(p)]).toEqual([p, 'project-settings']);
+      expect(isProjectHub(tab(p))).toBe(true);
+      expect(isWorkspaceHub(tab(p))).toBe(false);
+    }
+    expect(isProjectHub(tab('/settings'))).toBe(false);
+  });
+
+  it("names Work's open item in the URL (decision P141): ?item=task:<id> or chat:<id>, anything else is none", () => {
+    expect(parseWorkItem('task:tsk_1')).toEqual({ kind: 'task', id: 'tsk_1' });
+    expect(parseWorkItem('chat:c:2')).toEqual({ kind: 'chat', id: 'c:2' });
+    for (const v of [undefined, null, '', 'task:', 'room:r1', 'tsk_1']) expect(parseWorkItem(v)).toBeUndefined();
+    const href = workItemHref({ kind: 'task', id: 'tsk 1' });
+    expect(href).toBe('/?item=task%3Atsk%201');
+    const u = new URL(href, 'http://x');
+    expect(parseRoute(u.pathname)).toEqual({ name: 'home' });
+    expect(parseWorkItem(u.searchParams.get('item'))).toEqual({ kind: 'task', id: 'tsk 1' });
   });
 });

@@ -16,9 +16,9 @@ test('the sidebar has exactly its six places, and New opens the new-project flow
   await page.setViewportSize({ width: 1366, height: 900 });
   await createProjectWithoutRepo(page, 'nav-six');
   const ids = await sidebar(page).locator('a[data-nav][data-testid]').evaluateAll((as) => as.map((a) => a.getAttribute('data-testid')));
-  // the open project's tabs are under it (the project workspace will replace them)
+  // the projects are one line each: a project's Work, Crew and Settings are its tab bar (decision P141)
   expect(ids).toEqual(['nav-new', 'nav-workspace', 'nav-needs-you', 'nav-chats', ...ids.slice(4, -2), 'nav-library', 'nav-settings']);
-  expect(ids.slice(4, -2).every((id) => id === 'nav-project-item' || ['nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge'].includes(id!))).toBe(true);
+  expect(ids.slice(4, -2).every((id) => id === 'nav-project-item')).toBe(true);
   await expect(sidebar(page).getByTestId('nav-library')).toHaveText('Agents');
   await expect(sidebar(page).getByTestId('nav-new')).toContainText('New');
   for (const gone of ['nav-running', 'nav-my-tasks', 'nav-crew', 'nav-security-scan', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-library-skills', 'nav-guide-top']) {

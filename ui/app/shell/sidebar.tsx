@@ -1,26 +1,22 @@
 // The sidebar (graphite, decision P97; six places since P140): the app's main navigation landmark, on the left of every page.
 // It folds to a 56px rail of icons (the toggle, or "[" outside a text field; a narrow window starts folded) and remembers the
 // choice. From the top: the Drydock mark with search (Ctrl+K) and the fold, New (Ctrl+N: shell/new.ts says what it opens), Home,
-// the Inbox (what waits on the person in every project; Running and My tasks are its tabs), Chats, the projects (the open one
-// shows its tabs under it), and at the foot Agents (the library), Settings (every page that configures the workspace or the app
+// the Inbox (what waits on the person in every project; Running and My tasks are its tabs), Chats, the projects (one line each: a
+// project's Work, Crew and Settings are its tab bar, decision P141), and at the foot Agents (the library), Settings (every page that configures the workspace or the app
 // is one of its sections), the local engine's state and the event stream's. Every other page is in Settings, in Agents or in
 // the command menu. The test ids are the ones the links had, so the e2e helpers find the same links (e2e/helpers.ts).
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import {
-  BookOpen,
   Bot,
-  ClipboardList,
   House,
   Inbox,
-  LayoutDashboard,
   MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Search,
   Settings,
-  Users,
   type IconNode,
 } from 'lucide';
 import type { LocalView } from '../api/localClient.ts';
@@ -136,12 +132,10 @@ const itemCss = css({
   '& > .lbl': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& svg': { flex: 'none' },
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
-  '&[aria-current="page"]': { background: t.bgActive, color: t.text },
+  '&[aria-current="page"], &[aria-current="true"]': { background: t.bgActive, color: t.text },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
   ':is([data-rail="true"]) &': { justifyContent: 'center', padding: '0', width: '36px', height: '36px', margin: '0 auto', '& > .lbl, & > .count': { display: 'none' } },
 });
-// a project's own tabs, under the open project
-const subItemCss = css({ paddingLeft: '30px', height: '28px', ':is([data-rail="true"]) &': { paddingLeft: '0' } });
 const squareCss = css({ display: 'inline-block', flex: 'none', width: '9px', height: '9px', borderRadius: '3px' });
 const countCss = css({ flex: 'none', color: t.textFaint, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' });
 // the Inbox count: amber while something waits on the person, a quiet number otherwise (the e2e suite reads it either way)
@@ -291,14 +285,6 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
     const eng = engineWords(engine.data);
     const is = (h: Hub) => hub === h;
 
-    const projectTabs: Item[] = [
-      { id: 'nav-overview', label: 'Overview', icon: LayoutDashboard, href: routes.home.href(), current: is('overview') },
-      { id: 'nav-tasks', label: 'Tasks', icon: ClipboardList, href: routes.tasks.href(), current: is('tasks') },
-      { id: 'nav-rooms', label: 'Rooms', icon: MessagesSquare, href: routes.rooms.href(), current: is('rooms') },
-      { id: 'nav-team', label: 'Crew', icon: Users, href: routes.team.href(), current: is('crew') },
-      { id: 'nav-knowledge', label: 'Knowledge', icon: BookOpen, href: routes.knowledge.href(), current: is('knowledge') },
-    ];
-
     return (
       <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar" data-region="sidebar">
         <nav aria-label="Main" mix={[navCss, on<HTMLElement, 'keydown'>('keydown', onKey)]}>
@@ -378,33 +364,21 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                 <li key={p.id}>
                   <a
                     href={routes.home.href()}
-                    mix={[itemCss, on('click', (e) => {
+                    mix={[itemCss, on('click', () => {
+                      // a project opens on Work (decision P141), also the open one from its Crew or Settings
                       if (p.id !== ws.projectId) s.workspace.selectProject(p.id);
-                      if (open) e.preventDefault();
                     })]}
                     title={p.name}
                     data-nav=""
                     data-testid="nav-project-item"
                     data-project={p.id}
-                    aria-current={open && route.name === 'home' ? 'page' : undefined}
+                    aria-current={open && route.name === 'home' ? 'page' : open ? 'true' : undefined}
                     aria-expanded={open ? 'true' : 'false'}
                   >
                     <span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} />
                     <span class="lbl">{p.name}</span>
                     {open && s.project.taskTotal ? <span class="count" mix={countCss}>{s.project.taskTotal}</span> : null}
                   </a>
-                  {open ? (
-                    <ul mix={listCss} role="list" aria-label={`${p.name} pages`}>
-                      {projectTabs.map((it) => (
-                        <li key={it.id}>
-                          <a href={it.href} mix={[itemCss, subItemCss]} data-nav="" data-testid={it.id} title={it.label} aria-current={it.current ? 'page' : undefined}>
-                            <Icon icon={it.icon} size={14} />
-                            <span class="lbl">{it.label}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
                 </li>
               );
             })}

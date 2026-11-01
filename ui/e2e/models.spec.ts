@@ -47,7 +47,7 @@ test('Models on this PC: the Models page opens it; set up the engine, find and d
   await expect(page).toHaveURL(/\/models(\?|$)/);
   await expect(link).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');
-  await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
+  await expect(page.getByTestId('nav-overview')).toHaveCount(0);
   await expect(page.getByTestId('models-page').getByRole('heading', { level: 1 })).toHaveText('Models');
   const thisPc = page.locator('[data-testid=models-row][data-key=this-pc]');
   await expect(thisPc).toHaveAttribute('aria-current', 'true');

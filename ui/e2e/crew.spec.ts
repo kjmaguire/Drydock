@@ -132,7 +132,7 @@ test("the workspace's Crew page: every project's agents grouped by project, thei
   await expect(page).toHaveURL(/\/crew$/);
   await expect(page.getByRole('navigation', { name: 'Section' }).getByTestId('nav-crew')).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-library')).toHaveAttribute('aria-current', 'page');
-  await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
+  await expect(page.getByTestId('nav-overview')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 1, name: 'All crews' })).toBeVisible();
   await expect(page.getByTestId('crew-figures')).toHaveText(/^\d+ agents · \d+ working · \d+ waiting on you$/);
 

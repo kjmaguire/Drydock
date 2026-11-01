@@ -54,6 +54,10 @@ const pageCss = css({
   '@media (min-width: 1200px)': { flexWrap: 'nowrap', overflowY: 'hidden', '& > article, & > aside': { overflowY: 'auto', minHeight: '0' } },
 });
 
+// inside a project's Work view (decision P141) the page is a column between the list and the crew: the properties go under the
+// work at any window width, and the page scrolls as one
+const embeddedCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden', background: t.bgApp });
+
 const workCss = css({
   flex: '3 1 560px',
   minWidth: '0',
@@ -165,7 +169,8 @@ function Part(handle: Handle<{ title: string; label?: string; testId?: string; a
   };
 }
 
-export function TaskDetailScreen(handle: Handle<{ id: string }>) {
+/** `embedded`: drawn in the centre of a project's Work view (decision P141) rather than as a page of its own. */
+export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean }>) {
   const s = services(handle);
   watch(handle, s.project);
   watch(handle, s.workspace);
@@ -231,7 +236,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string }>) {
         flush
         title={task.title}
         head={(titleId) => (
-          <div mix={pageCss}>
+          <div mix={handle.props.embedded ? embeddedCss : pageCss}>
             <article mix={workCss} aria-labelledby={titleId}>
               <header mix={barCss}>
                 <a class="project" href={routes.tasks.href()}>

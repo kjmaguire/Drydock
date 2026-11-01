@@ -28,7 +28,7 @@ test('Knowledge: cards with real counts, requirement coverage, the latest note, 
   await expect(mem).toHaveAttribute('data-status', 'accepted');
 
   // the hub: every card counts what is really there and links to its page
-  await sidebar(page).getByTestId('nav-knowledge').click();
+  await projectNav(page, 'nav-knowledge');
   const hub = page.getByTestId('knowledge');
   await expect(hub).toBeVisible();
   await expect(hub.getByRole('heading', { level: 1 })).toContainText('Knowledge');

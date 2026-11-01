@@ -13,9 +13,10 @@ async function integrations({ render, params }: Pick<AppContext, 'render'> & { p
 
 export const controller = createController(routes, {
   actions: {
-    async home({ render }) {
-      const { OverviewScreen } = await import('../screens/overview/overview-screen.tsx');
-      return render(<OverviewScreen />);
+    // a project's Work (decision P141): its tasks and chats, the one named in ?item= open in the centre
+    async home({ render, url }) {
+      const { WorkScreen } = await import('../screens/work/work-screen.tsx');
+      return render(<WorkScreen item={url.searchParams.get('item') ?? undefined} />);
     },
     async rooms({ render }) {
       const { RoomsScreen } = await import('../screens/rooms/rooms-screen.tsx');

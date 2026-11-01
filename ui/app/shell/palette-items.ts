@@ -54,7 +54,7 @@ const chordOf = (href: string): string[] | undefined => {
 
 export const SCREENS: [string, string, string[]?][] = [
   [routes.workspace.href(), 'Home', ['workspace', 'projects', 'start']],
-  [routes.home.href(), 'Overview', ['project', 'crew', 'today', 'dashboard']],
+  [routes.home.href(), 'Work', ['overview', 'project', 'tasks and chats', 'today', 'dashboard']],
   [routes.needsYou.href(), 'Inbox', ['needs you', 'approvals', 'running', 'done today']],
   // Running and My tasks are tabs of the Inbox (decision P140)
   [`${routes.needsYou.href()}?tab=running`, 'Running', ['inbox', 'in progress', 'working', 'scans']],
