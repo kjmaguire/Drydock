@@ -16,7 +16,7 @@ import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
 import { Avatar, presenceColor } from '../../ui/data.tsx';
-import { ErrorNote } from '../../ui/feedback.tsx';
+import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChatConversation } from '../chats/chat-conversation.tsx';
@@ -78,6 +78,7 @@ const rowCss = css({
   '&[data-group="needs"][aria-current="true"]': { background: t.warningSoft },
   '&:focus-visible': { boxShadow: `inset ${t.focus}`, outline: 'none' },
 });
+const flashCss = css({ flex: 'none', padding: `0 ${t.s3} ${t.s2}` });
 const quietCss = css({ margin: `${t.s3} ${t.s2}`, color: t.textMuted, fontSize: t.textSm });
 const footCss = css({
   display: 'flex',
@@ -137,6 +138,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
   const evals = query(handle, { load: () => s.client.evalsReport({ projectId: pid()!, sinceMs: Date.now() - WEEK_MS }), when: (e) => e.type.startsWith('task.'), debounceMs: 500, ...on_ });
   const scan = query(handle, { load: () => s.client.securityScanGet(pid()!), when: (e) => e.type.startsWith('security.'), ...on_ });
   const act = action(handle);
+  // a note the page before left (what a start from Home could not do, P142), shown once as one line
+  const flash = s.ui.takeFlash();
   let search = '';
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
 
@@ -205,6 +208,13 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
               Chat
             </Button>
           </div>
+          {flash ? (
+            <div mix={flashCss}>
+              <Notice tone={flash.tone} role="status" testId="work-flash">
+                {flash.text}
+              </Notice>
+            </div>
+          ) : null}
           <ErrorNote error={act.error ?? chats.error} what={act.error ? 'Could not start a chat' : 'Could not read the chats'} />
           <div mix={listCss} data-testid="work-list">
             {(['needs', 'running', 'earlier'] as WorkGroup[]).map((g) =>

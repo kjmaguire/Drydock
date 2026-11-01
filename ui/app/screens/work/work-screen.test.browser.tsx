@@ -150,4 +150,13 @@ describe('Work (decision P141)', () => {
     expect(went).toEqual([]);
     closeAgentEditor();
   });
+
+  it('shows once, as one line, the note a start from Home left (P142)', async () => {
+    const s = svc();
+    s.ui.flash('calculator: The GitHub repository could not be made.', 'warn');
+    const r = mount(<WorkScreen />, s);
+    await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);
+    expect(r.$('[data-testid="work-flash"]')!.textContent).toBe('calculator: The GitHub repository could not be made.');
+    expect(s.ui.takeFlash()).toBeUndefined();
+  });
 });

@@ -12,7 +12,7 @@ const at = (path: string) => {
   return u.toString();
 };
 
-test('the sidebar has exactly its six places, and New opens the new-project flow (Ctrl+N too)', async ({ page }) => {
+test('the sidebar has exactly its six places, and New opens the start screen with the cursor in its box (Ctrl+N too)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await createProjectWithoutRepo(page, 'nav-six');
   const ids = await sidebar(page).locator('a[data-nav][data-testid]').evaluateAll((as) => as.map((a) => a.getAttribute('data-testid')));
@@ -24,15 +24,20 @@ test('the sidebar has exactly its six places, and New opens the new-project flow
   for (const gone of ['nav-running', 'nav-my-tasks', 'nav-crew', 'nav-security-scan', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-library-skills', 'nav-guide-top']) {
     await expect(sidebar(page).getByTestId(gone)).toHaveCount(0);
   }
+  // New is the start screen (decision P142), the cursor in its box; the wizard is behind "More options..."
   await sidebar(page).getByTestId('nav-new').click();
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByTestId('start-text')).toBeFocused();
+  await page.getByTestId('start-more').click();
   await expect(page).toHaveURL(/\/project\/new$/);
   await expect(page.getByLabel('Project name', { exact: true })).toBeVisible();
   // Ctrl+N from another page does the same
-  await sidebar(page).getByTestId('nav-workspace').click();
-  await expect(page).toHaveURL(/\/home$/);
+  await sidebar(page).getByTestId('nav-chats').click();
+  await sidebar(page).getByTestId('nav-library').click();
   await page.locator('#main').focus();
   await page.keyboard.press('Control+KeyN');
-  await expect(page).toHaveURL(/\/project\/new$/);
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByTestId('start-text')).toBeFocused();
 });
 
 test('every page that left the sidebar opens from Settings and by its old address, inside the Settings frame', async ({ page }) => {

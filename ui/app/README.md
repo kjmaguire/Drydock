@@ -33,11 +33,13 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
-  shell/              sidebar (six places, P140; New in new.ts), a project's tab bar Work · Crew · Settings and its Settings
-                      sections (project-sections.ts, P141), hub pills and rails, the Settings sections (settings-sections.ts), details panel, dock host, license banner, the command
+  shell/              sidebar (six places, P140; New in new.ts: the start screen, P142), a project's tab bar Work · Crew · Settings
+                      and its Settings sections (project-sections.ts, P141), hub pills and rails, the Settings sections (settings-sections.ts), details panel, dock host, license banner, the command
                       menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
+  screens/workspace/  Home, the start screen (P142): the box and its chips (start-box.tsx), what Enter does (start.ts), the
+                      projects to pick up (workspace.ts); lib/project-work.ts is where a flow lands in a project
   screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
                       with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
   screens/work/       a project's Work ("/", decision P141): its tasks and chats in one list (work.ts), the open one in the centre

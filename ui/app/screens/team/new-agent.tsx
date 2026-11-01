@@ -137,12 +137,17 @@ const draftCss = css({
   },
 });
 
-/** Describe: a sentence becomes a drafted agent the person edits, then creates. */
+/**
+ * Describe: a sentence becomes a drafted agent the person edits, then creates. With `onDraft` (the start screen, decision P142:
+ * the project does not exist yet) the button is "Add to crew" and hands the draft, with the mode its box was ticked for, back
+ * instead of creating the agent.
+ */
 export function DescribeAgent(
   handle: Handle<{
     projectId: string;
     adapters: AdapterInfo[];
     onCreated: () => void;
+    onDraft?: (d: AgentDraft, confirmedMode: string) => void;
   }>,
 ) {
   const s = services(handle);
@@ -165,6 +170,11 @@ export function DescribeAgent(
   const create = async () => {
     const d = draft;
     if (!d) return;
+    if (handle.props.onDraft) {
+      handle.props.onDraft(d, confirmedMode);
+      set(() => ((draft = undefined), (text = '')));
+      return;
+    }
     const projectId = handle.props.projectId;
     const ok = await act.run('create', async () => {
       const spec = {
@@ -372,12 +382,12 @@ export function DescribeAgent(
                   variant="primary"
                   icon={UserPlus}
                   disabled={
-                    busy || ro.readOnly || !d.name.trim() || !d.role.trim() || !handle.props.projectId || needsConfirmation(d.permissionMode, confirmedMode)
+                    busy || ro.readOnly || !d.name.trim() || !d.role.trim() || (!handle.props.projectId && !handle.props.onDraft) || needsConfirmation(d.permissionMode, confirmedMode)
                   }
                   title={ro.readOnly ? ro.reason : undefined}
                   mix={on('click', () => void create())}
                 >
-                  {act.busy === 'create' ? 'Creating...' : 'Create agent'}
+                  {handle.props.onDraft ? 'Add to crew' : act.busy === 'create' ? 'Creating...' : 'Create agent'}
                 </Button>
               </div>
             </section>

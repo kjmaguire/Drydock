@@ -22,8 +22,8 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   // Home: the projects and the workspace areas; Home is the current place
   await sidebar(page).getByTestId('nav-workspace').click();
   await expect(page).toHaveURL(/\/home$/);
-  // Home greets by the time of day (Crew HQ, decision P64)
-  await expect(page.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening)$/ })).toBeVisible();
+  // Home is the start screen (decision P142); the newest project is among those to pick up
+  await expect(page.getByRole('heading', { level: 1, name: 'What do you want to build?' })).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-workspace')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toBeVisible();
   // the project's tabs leave with it; the Inbox stays
@@ -56,6 +56,7 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
 
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByTestId('home-flash')).toHaveText('ws-delete-me was deleted.');
+  if (await page.getByTestId('home-all-projects').isVisible()) await page.getByTestId('home-all-projects').click();
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toHaveCount(0);
   await expect(projectItem(page, 'ws-delete-me')).toHaveCount(0);
   // the repository is still there, files and all

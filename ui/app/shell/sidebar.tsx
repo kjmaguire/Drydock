@@ -27,7 +27,7 @@ import { query, services, watch } from '../state/services.tsx';
 import { hueFor } from '../ui/data.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
-import { isNewKey, newHref, openNew } from './new.ts';
+import { focusStart, isNewKey, newHref, openNew } from './new.ts';
 
 const asideCss = css({
   display: 'flex',
@@ -320,7 +320,7 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
           </div>
           <a
             href={newHref()}
-            mix={newCss}
+            mix={[newCss, on('click', () => void requestAnimationFrame(() => focusStart()))]}
             data-nav=""
             data-testid="nav-new"
             title={`New (${comboFor('new-chat')})`}

@@ -2494,3 +2494,43 @@ Open, owner action:
   `ui/e2e/work.spec.ts` (a started task under Needs you and open in the centre, a project chat in the list, Back and Reload, the
   crew rail opening the editor, every old address under its tab) and the specs whose navigation moved (`e2e/helpers.ts`:
   `projectNav` looks for the tab bar, `HUB_OF` maps the old ids to Work, Crew and Settings; a new project now lands on Work).
+
+- **P142. Home is the start screen (2026-11-01).** The owner: "make it really easy for me to start a project"; idea 1 and its
+  mockups (1-home-start, 1b-start-menus) are built. (a) **Home** (`/home`, and the first run, which no longer forces the wizard)
+  is a heading, one faint line, one box with chips, the "Or:" row (New folder, Clone from GitHub, Open a folder..., Just chat,
+  More options...) and "Pick up where you left off" (the three most recently active projects: colour, name, a pill "needs you",
+  "N running" or the last activity, and one line: what needs you, what a running task does, or the newest task's state; All
+  projects shows the rest). The old Home's chat card, project tiles and workspace tiles are gone (Settings and Ctrl+K reach every
+  page; Just chat starts a chat, its skills and servers are in the chat's Properties). (b) **Chips:** Where (New folder: the
+  usual code folder, `github.cloneDir`, and a slug of the description's first three words that say something, editable; Open a
+  folder... with the wizard's FolderField; Clone from GitHub... with RepoPicker; the Recent projects; More options... opens the
+  wizard), Who (Solo: the catalog's builder, `backend-engineer`, on its recommended CLI; Small team: the wizard's `suggestTeam`;
+  My agents...: saved templates; in a project its own crew or Solo; Describe a new agent...: P138's Describe, whose "Add to crew"
+  puts the draft in the new project's setup, or creates the agent in an existing project), model · effort and Permissions (Read
+  only `plan`, Asks before edits `default`, Edits freely `acceptEdits`, as P137 maps them; they start from the builder's model
+  and effort and set the builder Drydock adds, so they show only for Solo and Small team; saved agents and a project's crew keep
+  their own). The last choices are remembered per place (a project, a folder, a repository, "a new folder") in `localStorage`
+  `drydock.start`, read and written in try/catch. (c) **Enter** (Start; Shift+Enter is a new line): for a new place, one
+  `project.setup` exactly as the wizard defaults it (name from the folder or repository, brief = the description, a local
+  folder with "make a Git repository" for a new folder, local merge, no connectors, the agents' skills installed; a mode that
+  skips approvals keeps the wizard's rules, and the three chip modes never need the confirmation); then the first piece of work:
+  **a task when the project has a repository and the crew a worker and a different reviewer** (never the lead; the builder works,
+  the reviewer-role agent reviews), titled with the first sentence (cut at a word near 90 characters, within `tasks.MaxTitleLen`),
+  the whole text as its description, assigned and started; **otherwise a chat in the project** sent the description, on the
+  chips' CLI and settings (Solo, a project without a repository, or a crew without a pair: a task cannot start with one agent).
+  So Solo is always a chat, also for "just a question". A Recent project skips the setup. The box shows the steps ("Creating
+  project…", "Starting task…"), an error is one line under the box with the text kept, and a failure after the project exists
+  turns Where to that project so another try does not make a second one. Setup warnings are left as the flash of the next page
+  that reads it. (d) **Landing:** the project is selected and the page goes to its home with the item:
+  `projectWorkHref({kind, id})` in `ui/app/lib/project-work.ts` (`/?item=task:<id>`, P141's Work view) is the one place that
+  says so. Just chat makes a chat without a project (its private folder), sends the text when there is one, and opens it. (e)
+  **New / Ctrl+N** go to Home with the cursor in the box (`shell/new.ts`; on Chats the key still makes a chat); the wizard stays
+  at `/project/new`. While a start makes the project, the shell keeps the start screen on a first run (`setupOpen`), as it did
+  for the wizard. Not done: the Agents library's New agent still opens its template form (Describe makes a project agent, not a
+  template; repointing it needs more than a few lines). Tests: `ui/app/screens/workspace/start.test.ts` (names and slugs, crews,
+  what Enter does for each place and crew with a labelled test double of the client, remembered choices), `workspace.test.ts`
+  (pick up), `workspace-home.test.browser.tsx` (the box, chips, cards, Enter for a new folder and a Recent project, the error,
+  Just chat, remembered chips, Describe), `shell/shell-first-run.test.browser.tsx`, `sidebar.test.browser.tsx` (New and the
+  cursor); e2e `ui/e2e/start.spec.ts` (a new folder with Solo: a project and a chat; an opened folder with Small team: a task
+  assigned and started, then the Recent project again; Just chat; New and More options), and the specs whose Home moved
+  (`home-chat`, `workspace`, `security`, `layout`, `navigation`, `flow`; `e2e/helpers.ts` opens the wizard by its address).

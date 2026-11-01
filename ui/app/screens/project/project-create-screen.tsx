@@ -1,4 +1,4 @@
-// The new-project wizard (/project/new, and the first run when there is no project): Basics (name, brief), Repository
+// The new-project wizard (/project/new: "More options..." on the start screen, decision P142): Basics (name, brief), Repository
 // (GitHub, a local folder, or later), Connectors (MCP servers), Team (prebuilt, custom and template agents with their CLI
 // settings) and Review. Create sends one project.setup request; the core validates it before creating anything and reports
 // what failed afterwards as warnings, which the result lists before the project is opened.

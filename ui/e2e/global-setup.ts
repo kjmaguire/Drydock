@@ -16,7 +16,7 @@ const repoRoot = resolve(uiDir, '..');
 // One fresh repository for every project a spec makes with a repository. 49 was two short when the whole suite ran (the last two
 // tests, in wsl.spec.ts and xss.spec.ts, found the pool empty), the rules folder test of security.spec.ts took one more, and the density test one more, the task page's live run (task-page.spec.ts) one more, the chat performance test (chat-perf.spec.ts) one more, the specs of P117 to P123 (agent tools, routing level, diagnostics, time travel) took the pool empty again for xss.spec.ts, so four more; a
 // spec that only needs a project uses createProjectWithoutRepo (helpers.ts) and takes none.
-const REPOS = 63; // one more for the safe point restore and Run again of P124 (round11.spec.ts); two more for agent-editing (P137) and work (P141)
+const REPOS = 64; // one more for the safe point restore and Run again of P124 (round11.spec.ts), one for the start screen (start.spec.ts, P142), two for agent-editing (P137) and work (P141)
 const GREEN = 8;
 const LICENSED_REPOS = 4;
 // What each harness printed (stdout and stderr) and, when it stops, its diagnostics (-diag: every goroutine's stack and the
