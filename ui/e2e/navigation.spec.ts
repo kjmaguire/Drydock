@@ -35,7 +35,11 @@ test('the sidebar has exactly its six places, and New opens the start screen wit
   await expect(page.getByTestId('new-project-dialog')).toBeHidden();
   // Ctrl+N from another page does the same
   await sidebar(page).getByTestId('nav-chats').click();
+  await expect(page).toHaveURL(/\/chats/);
   await sidebar(page).getByTestId('nav-library').click();
+  // Chats keeps Ctrl+N for a new chat: wait until it has gone before pressing it here
+  await expect(page).toHaveURL(/\/library/);
+  await expect(page.getByRole('heading', { name: 'Chats' })).toHaveCount(0);
   await page.locator('#main').focus();
   await page.keyboard.press('Control+KeyN');
   await expect(page).toHaveURL(/\/home$/);
