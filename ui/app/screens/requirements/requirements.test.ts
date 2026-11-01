@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { criteriaLines, evidenceOutcome, fileProblem, linkedTaskIds, titleFromFile } from './requirements.ts';
+import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, linkedTaskIds, titleFromFile } from './requirements.ts';
 
 describe('Requirements helpers', () => {
   it('refuses a file over 1 MB before reading it and titles a file by its name', () => {
@@ -8,6 +8,12 @@ describe('Requirements helpers', () => {
     expect(fileProblem(1_000_000)).toBe('');
     expect(titleFromFile('checkout.md')).toBe('checkout');
     expect(titleFromFile('notes.v2.txt')).toBe('notes.v2');
+  });
+
+  it('a PDF or DOCX is read by the core, up to 32 MB', () => {
+    expect([isDocument('spec.PDF'), isDocument('spec.docx'), isDocument('spec.md'), isDocument('pdf')]).toEqual([true, true, false, false]);
+    expect(documentProblem(32 << 20)).toBe('');
+    expect(documentProblem((32 << 20) + 1)).toBe('That file is larger than 32 MB.');
   });
 
   it('criteria are one per line, trimmed', () => {

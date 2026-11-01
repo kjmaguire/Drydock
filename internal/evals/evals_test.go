@@ -490,6 +490,30 @@ func TestRoomRepliesStayOutOfTheRoutingReport(t *testing.T) {
 	}
 }
 
+// A turn Drydock stopped at its wall-time ceiling says so on its decision's outcome; the team lead's decisions and the
+// recommendation turns (P112) are not task work and get no outcome, like room replies.
+func TestAStoppedTurnsOutcomeSaysWhyAndLeadTurnsGetNone(t *testing.T) {
+	w := newWorld(t)
+	w.seed()
+	now := time.Now().UnixMilli()
+	w.exec(`INSERT INTO routing_decisions(id,ts,task_id,run_kind,decided_by,provider_id,model,request,decision,stop_reason) VALUES
+		('stopped',?,'T1','agent_task','rules','p','m','{"TaskType":"implement"}','{}','the turn ran past the 30m wall-time ceiling of the balanced level'),
+		('lead-1',?,'T1','lead','rules','p','m','{"TaskType":"lead"}','{}',''),
+		('rec-1',?,'','recommend','rules','p','m','{"TaskType":"recommendation"}','{}','')`, now-2500, now-2400, now-2300)
+	if err := evals.Record(w.ctx, w.db, "T1"); err != nil {
+		t.Fatal(err)
+	}
+	var why string
+	if err := w.db.Reader().QueryRow(`SELECT stop_reason FROM routing_outcomes WHERE decision_id='stopped'`).Scan(&why); err != nil || !strings.Contains(why, "wall-time ceiling") {
+		t.Fatalf("outcome stop reason %q %v", why, err)
+	}
+	var n int
+	w.db.Reader().QueryRow(`SELECT COUNT(*) FROM routing_outcomes WHERE decision_id IN ('lead-1','rec-1')`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d lead or recommendation decisions got the task's outcome", n)
+	}
+}
+
 // A report reads a bounded number of tasks, the newest, and says what it left out (audit 2026-10-16, L18): a task's facts take
 // about ten reads of the database, and a report of every task there ever was held a connection for minutes.
 func TestAReportReadsOnlyTheNewestTasksAndSaysWhatItLeftOut(t *testing.T) {

@@ -22,6 +22,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/core"
 	"github.com/kjmaguire/drydock/internal/crashreport"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/sandboxview"
 	"github.com/kjmaguire/drydock/internal/uiassets"
 	"github.com/kjmaguire/drydock/internal/updatepolicy"
 )
@@ -49,8 +50,12 @@ func dialogResult(path string, err error) (string, error) {
 
 // Early is the first thing main does, before the single-instance check and before the core opens. When this process is the
 // updater's helper (the same executable, started to swap the new file in once the app has closed) it does that and exits: it must
-// not open the core, which would treat the app that is still shutting down as a crashed one (audit 2026-10-16, H10).
-func Early() { updater.HandleHelperMode() }
+// not open the core, which would treat the app that is still shutting down as a crashed one (audit 2026-10-16, H10). A process
+// started by "Restart now" waits here for the old one to close (restart_windows.go).
+func Early() {
+	updater.HandleHelperMode()
+	waitForRestartedFrom()
+}
 
 // ReportStartupFailure tells the person why Drydock did not start. The executable is built for the Windows GUI subsystem and has no
 // console, so a line printed to standard error went nowhere and a failed start looked like a double-click that did nothing (audit
@@ -79,6 +84,12 @@ func Run(assets fs.FS) error {
 	// job that forbids nesting, the job cannot be made; each agent still gets a job of its own, so this is not a reason not to start.
 	if err := proc.EnterAppJob(); err != nil {
 		fmt.Fprintf(os.Stderr, "drydock: app job object: %v (agents are still contained one by one)\n", err)
+	}
+	// Drydock's application identity, before any window exists: the same as the Start menu shortcut's, so a pinned Drydock
+	// and the running one are one taskbar button (docs/windows-identity.md section 6). Without it Windows derives one from
+	// the exe's path, which still groups, so a failure is said and is not a reason not to start.
+	if err := setAppUserModelID(AppUserModelID); err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: application identity: %v\n", err)
 	}
 	dir, err := DataDir()
 	if err != nil {
@@ -112,6 +123,12 @@ func Run(assets fs.FS) error {
 		},
 	})
 	bridge.app = wa
+	// past the single-instance check (a second launch has exited by now, and must not touch the first one's windows): the profiles a
+	// killed viewer for a sandbox's app left (decision P134). A viewer is a child of the app and dies with it, so none of this
+	// instance's runs yet.
+	if err := sandboxview.CleanLeftovers(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: sandbox app windows: %v\n", err)
+	}
 	// past the single-instance check (a second launch has exited by now): what Go prints if this process dies is kept in a file
 	// of its own, and the next start makes a crash report of it (internal/crashreport); a normal exit removes the empty file
 	crash, err := crashreport.Arm(dir)
@@ -150,6 +167,19 @@ func Run(assets fs.FS) error {
 			return fmt.Errorf("the window is not open yet")
 		}
 		return wa.Browser.OpenURL(rawURL)
+	}, OpenSandboxApp: openSandboxApp(dir), Restart: func(context.Context) error {
+		// "Restart now" after a staged restore (decision P116)
+		if wa == nil {
+			return fmt.Errorf("the window is not open yet")
+		}
+		return restart(wa)
+	}, WebView2Version: func() string {
+		// for the support bundle: the WebView2 runtime the window runs on
+		if wa == nil {
+			return ""
+		}
+		v, _ := wa.Env.Info().PlatformInfo["WebView2"].(string)
+		return v
 	}})
 	if err != nil {
 		return fmt.Errorf("open Drydock: %w", err)
@@ -174,7 +204,7 @@ func Run(assets fs.FS) error {
 		Height:    860,
 		MinWidth:  1000,
 		MinHeight: 600,
-		URL:       "/",
+		URL:       StartURL,
 	})
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)

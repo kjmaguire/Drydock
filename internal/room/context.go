@@ -11,16 +11,18 @@ import (
 
 // ContextPlan says what an agent's turn may see from a room (room-protocol s11). SelectContext is the only way room
 // content reaches an agent: it picks by rule from a pool and records why each message was kept or left out.
+//
+// A turn grant carries the plan its turn is selected by (decision P127): it is stored with the grant as this JSON.
 type ContextPlan struct {
-	RoomID       string
-	AgentKey     string
-	TriggerID    string
-	TaskID       string   // the task this turn works on, "" if none
-	Roles        []string // the agent's roles in the room, for role mentions and handoffs
-	LastTurnSeq  int64    // seq of the agent's own previous message here; mentions are taken since then
-	ThreadWindow int      // K: last messages of the thread (default 12)
-	MaxMentions  int      // mention messages since the last turn (default 10)
-	MaxTokens    int      // size cap on the whole selection (default 6000, estimated)
+	RoomID       string   `json:"roomId"`
+	AgentKey     string   `json:"agentKey"`
+	TriggerID    string   `json:"triggerId"`
+	TaskID       string   `json:"taskId,omitempty"` // the task this turn works on, "" if none
+	Roles        []string `json:"roles,omitempty"`  // the agent's roles in the room, for role mentions and handoffs
+	LastTurnSeq  int64    `json:"lastTurnSeq"`      // seq of the agent's own previous message here; mentions are taken since then
+	ThreadWindow int      `json:"threadWindow"`     // K: last messages of the thread (default 12)
+	MaxMentions  int      `json:"maxMentions"`      // mention messages since the last turn (default 10)
+	MaxTokens    int      `json:"maxTokens"`        // size cap on the whole selection (default 6000, estimated)
 }
 
 func (p *ContextPlan) defaults() {
@@ -359,15 +361,26 @@ type ContextOptions struct {
 }
 
 // ContextFor loads the pool for one agent turn and selects from it. The agent must be a member of the room (the same
-// check the Workspace room tool makes). Only this room is read: never another room, never the whole history.
+// check the Workspace room tool makes). Only this room is read: never another room, never the whole history. A turn that
+// runs on a grant is selected by the plan its grant carries instead (ContextForGrant).
 func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, triggerID string, opt ContextOptions) (ContextSelection, error) {
-	room, err := s.GetRoom(ctx, roomID)
+	plan, err := s.planContext(ctx, roomID, agent, triggerID, ContextBounds{ThreadWindow: opt.ThreadWindow, MaxMentions: opt.MaxMentions, MaxTokens: opt.MaxTokens})
 	if err != nil {
 		return ContextSelection{}, err
 	}
+	return s.selectPlan(ctx, plan, opt.Digest)
+}
+
+// planContext is the context plan of an agent's turn after a message, within bounds (the defaults filled in): what the
+// scheduler writes into a grant, and what ContextFor selects by.
+func (s *Service) planContext(ctx context.Context, roomID string, agent Author, triggerID string, b ContextBounds) (ContextPlan, error) {
+	room, err := s.GetRoom(ctx, roomID)
+	if err != nil {
+		return ContextPlan{}, err
+	}
 	members, err := s.Members(ctx, roomID)
 	if err != nil {
-		return ContextSelection{}, err
+		return ContextPlan{}, err
 	}
 	var roles []string
 	isMember := false
@@ -380,15 +393,36 @@ func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, t
 		}
 	}
 	if !isMember {
-		return ContextSelection{}, fmt.Errorf("%w: %s in %s", ErrNotMember, agent.Key(), room.Name)
+		return ContextPlan{}, fmt.Errorf("%w: %s in %s", ErrNotMember, agent.Key(), room.Name)
 	}
 	trig, err := s.GetMessage(ctx, triggerID)
 	if err != nil {
-		return ContextSelection{}, err
+		return ContextPlan{}, err
 	}
 	if trig.RoomID != roomID {
-		return ContextSelection{}, fmt.Errorf("%w: trigger %s is not in room %s", ErrNotFound, triggerID, roomID)
+		return ContextPlan{}, fmt.Errorf("%w: trigger %s is not in room %s", ErrNotFound, triggerID, roomID)
 	}
+	var lastTurn int64
+	if err := s.db.Reader().QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM messages WHERE room_id=? AND author=?`, roomID, agent.Key()).Scan(&lastTurn); err != nil {
+		return ContextPlan{}, err
+	}
+	plan := ContextPlan{RoomID: roomID, AgentKey: agent.Key(), TriggerID: triggerID, TaskID: room.TaskID, Roles: roles, LastTurnSeq: lastTurn,
+		ThreadWindow: b.ThreadWindow, MaxMentions: b.MaxMentions, MaxTokens: b.MaxTokens}
+	plan.defaults()
+	return plan, nil
+}
+
+// selectPlan loads the pool a plan draws from (the trigger's thread, the plan's task statement and decisions, handoffs,
+// mentions since the plan's previous turn, corrections) and selects from it by the plan.
+func (s *Service) selectPlan(ctx context.Context, plan ContextPlan, digest DigestFunc) (ContextSelection, error) {
+	trig, err := s.GetMessage(ctx, plan.TriggerID)
+	if err != nil {
+		return ContextSelection{}, err
+	}
+	if trig.RoomID != plan.RoomID {
+		return ContextSelection{}, fmt.Errorf("%w: trigger %s is not in room %s", ErrNotFound, plan.TriggerID, plan.RoomID)
+	}
+	roomID := plan.RoomID
 	root := trig.ThreadRootID
 	if root == "" {
 		root = trig.ID
@@ -403,19 +437,15 @@ func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, t
 		pool = append(pool, ms...)
 		return err
 	}
-	var lastTurn int64
-	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM messages WHERE room_id=? AND author=?`, roomID, agent.Key()).Scan(&lastTurn); err != nil {
-		return ContextSelection{}, err
-	}
-	if room.TaskID != "" {
-		if err := add(`room_id=? AND task_id=? AND type IN ('TASK','DECISION') ORDER BY seq DESC LIMIT 100`, roomID, room.TaskID); err != nil {
+	if plan.TaskID != "" {
+		if err := add(`room_id=? AND task_id=? AND type IN ('TASK','DECISION') ORDER BY seq DESC LIMIT 100`, roomID, plan.TaskID); err != nil {
 			return ContextSelection{}, err
 		}
 	}
 	if err := add(`room_id=? AND type='HANDOFF' ORDER BY seq DESC LIMIT 20`, roomID); err != nil {
 		return ContextSelection{}, err
 	}
-	if err := add(`room_id=? AND seq>? AND mentions<>'[]' ORDER BY seq DESC LIMIT 200`, roomID, lastTurn); err != nil {
+	if err := add(`room_id=? AND seq>? AND mentions<>'[]' ORDER BY seq DESC LIMIT 200`, roomID, plan.LastTurnSeq); err != nil {
 		return ContextSelection{}, err
 	}
 	if err := add(`room_id=? AND supersedes_id<>'' ORDER BY seq DESC LIMIT 200`, roomID); err != nil {
@@ -429,9 +459,7 @@ func (s *Service) ContextFor(ctx context.Context, roomID string, agent Author, t
 			uniq = append(uniq, m)
 		}
 	}
-	plan := ContextPlan{RoomID: roomID, AgentKey: agent.Key(), TriggerID: triggerID, TaskID: room.TaskID, Roles: roles, LastTurnSeq: lastTurn,
-		ThreadWindow: opt.ThreadWindow, MaxMentions: opt.MaxMentions, MaxTokens: opt.MaxTokens}
-	return SelectContext(ctx, plan, uniq, opt.Digest)
+	return SelectContext(ctx, plan, uniq, digest)
 }
 
 // transcript loads the messages the turn counters look at: the trigger's thread, or the last top-level messages.
@@ -458,10 +486,16 @@ func (s *Service) transcript(ctx context.Context, trig Message) ([]Message, stri
 	return ms, root, err
 }
 
+// roundMsgs are the turns of a transcript for the round counters. A message derived from another's marker (a [DECISION] line
+// promoted to a DECISION) is part of the turn that wrote it, not a turn of its own: counted, it made the agent look as if it
+// had already spoken in the next round.
 func roundMsgs(ms []Message) []RoundMsg {
-	out := make([]RoundMsg, len(ms))
-	for i, m := range ms {
-		out[i] = RoundMsg{Author: m.Author, Type: m.Type, Pass: m.PayloadBool("pass")}
+	out := make([]RoundMsg, 0, len(ms))
+	for _, m := range ms {
+		if m.PayloadString("source_message_id") != "" {
+			continue
+		}
+		out = append(out, RoundMsg{Author: m.Author, Type: m.Type, Pass: m.PayloadBool("pass")})
 	}
 	return out
 }
@@ -534,6 +568,31 @@ func (s *Service) PlanTurns(ctx context.Context, messageID string) (TurnDecision
 // agents' proposed DECISION stands as the candidate or a blocking QUESTION goes to a human. It is idempotent per
 // thread and human message, so repeated calls post nothing new. thread may be "" for the room's top level.
 func (s *Service) ApplyDebateBound(ctx context.Context, roomID, thread string) (BoundResolution, bool, error) {
+	return s.EndDiscussion(ctx, roomID, thread, DiscussionEnd{Why: EndBound})
+}
+
+// Why a discussion ended (room-protocol s6 rule 7, decision P127): at its bound, after a round in which every agent passed,
+// on a turn that returned SHIP, or on a turn that stated a DECISION.
+const (
+	EndBound    = "bound"
+	EndPasses   = "passes"
+	EndShip     = "ship"
+	EndDecision = "decision"
+)
+
+// DiscussionEnd is why a discussion ended, and the agent whose turn ended it (for SHIP and a DECISION).
+type DiscussionEnd struct {
+	Why   string // EndBound (the default), EndPasses, EndShip or EndDecision
+	Agent string // the agent's name or id
+}
+
+// boundShipNoDecisionText is the question when an agent returned SHIP but nobody wrote the outcome down as a DECISION.
+const boundShipNoDecisionText = "An agent returned SHIP, but no decision was written down. Please state the decision, or give direction, to continue."
+
+// EndDiscussion is ApplyDebateBound for a discussion that ended for the reason end gives: the SYSTEM line says why, and the
+// resolution is the same (the DECISION proposed since the last human message stands as the candidate; otherwise a human is
+// asked). Its idempotency key is the bound's, so a discussion is ended once whatever ended it.
+func (s *Service) EndDiscussion(ctx context.Context, roomID, thread string, end DiscussionEnd) (BoundResolution, bool, error) {
 	var ms []Message
 	var err error
 	if thread != "" {
@@ -558,14 +617,32 @@ func (s *Service) ApplyDebateBound(ctx context.Context, roomID, thread string) (
 	res := ResolveBound(dm)
 	rounds := CountRounds(roundMsgs(ms))
 	key := fmt.Sprintf("bound:%s:%s:%d", roomID, thread, lastHuman)
-	body := fmt.Sprintf("Debate bound reached after %d rounds. ", rounds)
+	who := end.Agent
+	if who == "" {
+		who = "an agent"
+	}
+	var body string
+	switch end.Why {
+	case EndPasses:
+		body = fmt.Sprintf("The discussion ended after %d rounds: every agent passed. ", rounds)
+	case EndShip:
+		body = fmt.Sprintf("The discussion ended after %d rounds: %s returned SHIP. ", rounds, who)
+		if res.Action == BoundEscalateHuman {
+			res.Question = boundShipNoDecisionText
+		}
+	case EndDecision:
+		body = fmt.Sprintf("The discussion ended after %d rounds: %s stated a decision. ", rounds, who)
+	default:
+		end.Why = EndBound
+		body = fmt.Sprintf("Debate bound reached after %d rounds. ", rounds)
+	}
 	if res.Action == BoundAdoptDecision {
 		body += "The proposed decision " + res.DecisionID + " stands as the candidate; a human accepts, edits or rejects it. Further agent turns on this topic need a human message."
 	} else {
 		body += "No decision was proposed; a human is asked. Further agent turns on this topic need a human message."
 	}
 	p, err := s.Post(ctx, PostParams{RoomID: roomID, Type: TypeSystem, Author: System, Body: body, ThreadRootID: thread, IdempotencyKey: key,
-		Payload: map[string]any{"event": "debate_bounded", "params": map[string]any{"rounds": rounds, "action": res.Action, "decision_id": res.DecisionID}}})
+		Payload: map[string]any{"event": "debate_bounded", "params": map[string]any{"rounds": rounds, "action": res.Action, "decision_id": res.DecisionID, "ended": end.Why}}})
 	if err != nil {
 		return res, false, err
 	}
@@ -580,6 +657,6 @@ func (s *Service) ApplyDebateBound(ctx context.Context, roomID, thread string) (
 	}
 	room, _ := s.GetRoom(ctx, roomID)
 	s.flush(ctx, []pendingEvent{{typ: "room.debate_bounded", scope: events.Event{ProjectID: room.ProjectID, TaskID: room.TaskID},
-		data: map[string]any{"room": roomID, "thread": thread, "rounds": rounds, "outcome": res.Action}}})
+		data: map[string]any{"room": roomID, "thread": thread, "rounds": rounds, "outcome": res.Action, "ended": end.Why}}})
 	return res, true, nil
 }

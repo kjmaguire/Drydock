@@ -2,7 +2,8 @@
 // one project off the workspace pages). What the project reaches outside Drydock: the tool calls of its agents waiting for the
 // human's approval, the app-sync connections assigned to it (what each imports, its items, rules and outbound writes:
 // assignments.tsx), and its agent tools: the MCP servers the workspace has connected, with which of its agents may use each one
-// (ProjectServers in screens/mcp/mcp-screen.tsx; one it does not have yet is added from its row). Services and servers are
+// (ProjectServers in screens/mcp/mcp-screen.tsx; one it does not have yet is added from its row), then which tools each role's
+// agents get and the project's rules (RoleToolsPanel, role-tools.tsx; decision P115). Services and servers are
 // connected once for the workspace, on the workspace's Integrations page; this page only puts them into the project. Laid out
 // in the workspace page's rows (decision P98): Services, then Agent tools, each a list of compact rows (logo, name, what this
 // project has of it, its state in a word) with the chosen row's panel under the list.
@@ -25,6 +26,7 @@ import { Approvals, ProjectServers } from '../mcp/mcp-screen.tsx';
 import { AssignForm, AssignmentRow, head, type OpenTask } from './assignments.tsx';
 import { kindLabel, projectConnState, statusTone } from './integrations.ts';
 import { PickRows } from './pick-rows.tsx';
+import { RoleToolsPanel } from './role-tools.tsx';
 import { plural } from '../../lib/format.ts';
 
 const defaultOpen: OpenTask = (href) => void navigate(href);
@@ -175,6 +177,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
             ) : null}
           </Section>
           <ProjectServers projectId={project.id} agents={agents} />
+          <RoleToolsPanel key={`roles-${project.id}`} projectId={project.id} />
         </div>
       </Page>
     );

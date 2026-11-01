@@ -8,12 +8,14 @@
 // Choosing a row puts it in the address (/agents/<key>, replacing the entry); the controller keeps the page mounted.
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
+import { Check, CircleCheck, Copy, FlaskConical, LogIn, Minus, Plus, RefreshCw, ScrollText, ShieldAlert, Terminal, TriangleAlert, X } from 'lucide';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport, GateStatus, WSLFacts } from '../../api/types.ts';
+import type { Agent, Connection, ConnectionHistory, ConnectionReport, CustomCLIs, GateStatus, WSLFacts } from '../../api/types.ts';
+import { agoWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { TerminalHost } from '../dock/terminal-panel.tsx';
+import { AddCustomCLI, CustomCLIPanel } from './custom-cli.tsx';
 import { adapterLabel, cliName } from '../shared/cli-name.ts';
 import { supportsWSL } from '../team/run-mode.ts';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
@@ -32,6 +34,8 @@ import {
   agentGroups,
   agentNotice,
   agentState,
+  capabilityName,
+  cardValue,
   agentSub,
   cellText,
   connectionKey,
@@ -41,11 +45,14 @@ import {
   headerLine,
   isInstalled,
   isWSL,
+  matrixFrom,
   matrixRows,
   netModeText,
   prereqText,
   provTone,
   readyLine,
+  runLine,
+  shortReason,
   reportMeta,
   runsText,
   signedInLine,
@@ -127,10 +134,11 @@ function Mark(handle: Handle<{ status: 'pass' | 'fail' | 'skip' }>) {
 }
 
 /** Plain-language result of Test connection: a verdict, the steps, what is limited, and the capability matrix with provenance. */
-export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
+export function ReportView(handle: Handle<{ r: ConnectionReport; matrix?: boolean }>) {
   return () => {
     const { r } = handle.props;
-    const matrix = matrixRows(r);
+    // the card shows its own matrix beside the report (decision P132): the report's is not said twice there
+    const matrix = handle.props.matrix === false ? [] : matrixRows(r);
     return (
       <div mix={reportCss} data-testid="connection-report" data-ok={String(r.ok)}>
         <p>
@@ -196,20 +204,30 @@ export function ReportView(handle: Handle<{ r: ConnectionReport }>) {
   };
 }
 
-/** A notice the person must read and accept before the CLI is usable. Only a person can accept it: a tick, then Accept. */
+/**
+ * A notice the person must read and accept before the CLI is usable. Only a person can accept it: a tick, then Accept. A notice
+ * accepted before is owed again when what was accepted changed: a person's own CLI's manifest file changed on disk (P117).
+ */
 function Gate(handle: Handle<{ g: GateStatus; onAck: (id: string) => Promise<void> }>) {
   let checked = false;
   let busy = false;
   return () => {
     const { g, onAck } = handle.props;
+    const changed = !g.acked && !!g.changed;
     return (
-      <div mix={gateCss} data-testid="gate" data-gate={g.id} data-acked={String(g.acked)}>
+      <div mix={gateCss} data-testid="gate" data-gate={g.id} data-acked={String(g.acked)} data-changed={String(changed)}>
         <p mix={lineCss}>
           <span mix={markCss} style={{ color: g.acked ? tone.ok.fg : tone.warn.fg }}>
             <Icon icon={g.acked ? CircleCheck : ScrollText} size={15} />
           </span>
           <span>{g.text}</span>
         </p>
+        {changed ? (
+          <p data-testid="gate-changed">
+            <Badge tone="warn">changed</Badge> Its manifest file changed on disk since you accepted this. Nothing runs on it until
+            you read the file again (Install tab) and accept again.
+          </p>
+        ) : null}
         {g.acked ? (
           <div>
             <Badge tone="ok">accepted</Badge>
@@ -269,26 +287,34 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
   };
 }
 
-/** A command to copy: Drydock shows install guidance, it never runs it. */
-function CopyCommand(handle: Handle<{ text: string }>) {
-  let copied = false;
+/**
+ * A command to copy: Drydock shows install guidance, it never runs it. The window may refuse the clipboard (a page that is not
+ * focused, a WebView2 without the permission): the button then says to copy the command by hand, which stays on the page.
+ */
+export function CopyCommand(handle: Handle<{ text: string }>) {
+  let state: '' | 'copied' | 'refused' = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(handle.props.text);
-      copied = true;
-      void handle.update();
-      clearTimeout(timer);
-      timer = setTimeout(() => ((copied = false), void handle.update()), 1500);
+      state = 'copied';
     } catch {
-      /* the clipboard can be refused; the command is still there to select */
+      state = 'refused';
     }
+    void handle.update();
+    clearTimeout(timer);
+    timer = setTimeout(() => ((state = ''), void handle.update()), state === 'copied' ? 1500 : 6000);
   };
   return () => (
-    <Button size="sm" variant="ghost" icon={copied ? Check : Copy} data-testid="copy-install" mix={on('click', () => void copy())}>
-      {copied ? 'Copied' : 'Copy'}
-    </Button>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+      <Button size="sm" variant="ghost" icon={state === 'copied' ? Check : Copy} data-testid="copy-install" aria-label="Copy the command" mix={on('click', () => void copy())}>
+        {state === 'copied' ? 'Copied' : 'Copy'}
+      </Button>
+      <span role="status" mix={muted} data-testid="copy-install-status">
+        {state === 'refused' ? 'The window did not allow copying: select the command and press Ctrl+C.' : ''}
+      </span>
+    </span>
   );
 }
 
@@ -315,17 +341,29 @@ interface DetailProps {
   readOnly: boolean;
   onGateway: (enabled: boolean) => void;
   report?: ConnectionReport;
+  /** How many tests of this install ran on this page: its history is read again after each (decision P132). */
+  tested: number;
   testing: boolean;
   testError?: unknown;
   onTest: (prompt: boolean) => void;
   crew: CrewUse[];
   onOpenAgent: (a: Agent) => void;
   onChanged: () => void;
+  /** The person's own CLIs (connection.custom.list), for a custom CLI's panel. */
+  customs?: CustomCLIs;
 }
 
 /** The chosen install: its header with the actions, one notice, and the tabs. */
 function AgentDetail(handle: Handle<DetailProps>) {
   const s = services(handle);
+  // the install's conformance history and capability matrix (decision P132), read again after each test; an older core has none
+  const history = query(handle, {
+    load: () => {
+      const c = handle.props.c;
+      return orElse(() => s.client.connectionHistory(c.adapter, isWSL(c) ? c.distro : undefined), undefined as ConnectionHistory | undefined);
+    },
+    key: () => `${connectionKey(handle.props.c)}:${handle.props.tested}`,
+  });
   let tab: Tab = 'overview';
   let confirming = false;
   let prompt = false; // the only step that spends tokens: never without the person ticking it
@@ -592,16 +630,61 @@ function AgentDetail(handle: Handle<DetailProps>) {
       </div>
     );
 
+    const h = history.data;
+    const runs = h?.runs ?? [];
+    const cells = h ? matrixRows(h) : [];
     const tests = (
       <div mix={panelCss} data-testid="test-results">
         {p.testing ? <Loading label={`Testing ${p.name}...`} /> : null}
         <ErrorNote error={p.testError} what="Test connection" />
         {p.report ? (
-          <ReportView r={p.report} />
-        ) : !p.testing ? (
+          <ReportView r={p.report} matrix={cells.length === 0} />
+        ) : !p.testing && runs.length === 0 ? (
           <p mix={quietP}>
             {installed ? `No test of ${p.name} in this session yet. Test connection starts the real CLI ${where} and checks that it starts, answers and stops.` : `${p.name} is not installed.`}
           </p>
+        ) : null}
+        {cells.length > 0 && h ? (
+          <SettingsGroup title="What it can do" testId="capability-matrix" label="What it can do" actions={<span mix={faint}>{matrixFrom(h, p.now)}</span>}>
+            <table mix={tableCss} aria-label="Capability matrix">
+              <thead>
+                <tr>
+                  <th scope="col">Capability</th>
+                  <th scope="col">Value</th>
+                  <th scope="col">Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cells.map(([k, cell]) => (
+                  <tr key={k} data-cap={k}>
+                    <td>{capabilityName(k)}</td>
+                    <td>{cardValue(cell)}</td>
+                    <td>
+                      <Badge tone={provTone(cell.provenance)} title="observed: seen in a test. declared: the CLI or its adapter says so. unknown: not verified.">
+                        {cell.provenance}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SettingsGroup>
+        ) : null}
+        {runs.length > 0 ? (
+          <SettingsGroup title="Past tests" testId="test-history" label="Past tests" actions={<span mix={faint}>{runs.length === 1 ? '1 test kept' : `${runs.length} tests kept`}</span>}>
+            {runs.map((run) => (
+              <SettingRow key={run.id} testId="test-run" label={<span title={new Date(run.at).toLocaleString()}>{agoWords(run.at, p.now)}</span>}>
+                <span data-ok={String(run.ok)}>
+                  <Badge tone={run.ok ? 'ok' : 'err'}>{run.ok ? 'passed' : 'did not pass'}</Badge> <span mix={muted}>{runLine(run)}</span>
+                  {run.reason ? (
+                    <div mix={faint} title={run.reason}>
+                      {shortReason(run.reason)}
+                    </div>
+                  ) : null}
+                </span>
+              </SettingRow>
+            ))}
+          </SettingsGroup>
         ) : null}
       </div>
     );
@@ -609,6 +692,7 @@ function AgentDetail(handle: Handle<DetailProps>) {
     const prereqs = c.prereqs ?? [];
     const install = (
       <div mix={panelCss} data-testid="install-tab">
+        {c.custom && c.adapter !== 'custom' && !inWSL ? <CustomCLIPanel adapter={c.adapter} files={p.customs} readOnly={p.readOnly} onRemoved={p.onChanged} /> : null}
         <SettingsGroup title={installed ? 'Update' : 'Install'}>
           {c.installHint ? (
             <SettingRow label="Command" control={<CopyCommand text={c.installHint} />}>
@@ -766,6 +850,11 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // says so while "Used by" goes by the installs found; a re-read that fails keeps the last answer (the query does), and the
   // note says the re-read failed
   const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
+  // the person's own CLIs (decision P115): the folder, and a file that did not load with why; an older core has none
+  const customs = query(handle, { load: () => orElse(() => s.client.connectionCustomList(), { dir: '', files: [] } as CustomCLIs), when: (e) => e.type.startsWith('connection.custom') });
+  let adding = false;
+  // a CLI just added: chosen once the list has it (a list read before it was added would put the choice back on the first row)
+  let pendingKey = '';
   // whether an adapter can run in WSL, as the core decides where an agent runs (effectiveRunMode): once the adapters are known,
   // the adapter's declared run modes decide, and an adapter the core does not list cannot. Only while no answer has arrived yet
   // (the first read is on its way, or failed) does a WSL install of the CLI stand in for the answer.
@@ -803,6 +892,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
   // Test connection, per install: its report stays when another row is chosen
   const reports = new Map<string, ConnectionReport>();
   const testErrors = new Map<string, unknown>();
+  const tested = new Map<string, number>(); // tests run per install, so its history is read again
   const testing = new Set<string>();
   const runTest = async (c: Connection, prompt: boolean) => {
     const key = connectionKey(c);
@@ -812,6 +902,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     try {
       const r = isWSL(c) ? await s.client.connectionTest(c.adapter, prompt, c.distro) : await s.client.connectionTest(c.adapter, prompt);
       reports.set(key, r);
+      tested.set(key, (tested.get(key) ?? 0) + 1);
       void q.reload();
     } catch (e) {
       testErrors.set(key, e);
@@ -858,6 +949,12 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     const { installed, missing } = agentGroups(list);
     // the chosen row; until one is chosen (or when the chosen one is gone) the first that needs attention, else the first. It
     // stays chosen: accepting its notice does not move the selection to the next one that needs attention.
+    if (pendingKey && list.some((c) => connectionKey(c) === pendingKey)) {
+      const k = pendingKey;
+      pendingKey = '';
+      selected = k;
+      handle.queueTask(() => choose(k));
+    }
     if (q.data && !list.some((c) => connectionKey(c) === selected)) selected = defaultAgent(list);
     const open = list.find((c) => connectionKey(c) === selected);
     const rowOf = (c: Connection): ListItem => {
@@ -899,12 +996,14 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
           readOnly={s.workspace.license.readOnly}
           onGateway={(v) => void setGateway(open.adapter, v)}
           report={reports.get(key)}
+          tested={tested.get(key) ?? 0}
           testing={testing.has(key)}
           testError={testErrors.get(key)}
           onTest={(prompt) => void runTest(open, prompt)}
           crew={usedBy(open, crew.data ?? [], runModes.data ?? new Map(), list, canWSL).map((a) => ({ agent: a, project: projectName(a.projectId) }))}
           onOpenAgent={openAgent}
           onChanged={() => void q.reload()}
+          customs={customs.data}
         />
       );
     }
@@ -918,11 +1017,41 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
         flush
         testId="agents-page"
         actions={
-          <Button size="sm" variant="ghost" icon={RefreshCw} disabled={checkingAll || q.loading} data-testid="check-all" mix={on('click', () => void checkAll())} title="Look for every agent CLI again, on Windows and in each WSL distro">
-            {checkingAll ? 'Checking...' : 'Check all again'}
-          </Button>
+          <>
+            <Button size="sm" variant="ghost" icon={Plus} disabled={s.workspace.license.readOnly} data-testid="custom-cli-open" mix={on('click', () => ((adding = true), void handle.update()))} title="Add your own agent CLI from a manifest">
+              Add a custom CLI
+            </Button>
+            <Button size="sm" variant="ghost" icon={RefreshCw} disabled={checkingAll || q.loading} data-testid="check-all" mix={on('click', () => void checkAll())} title="Look for every agent CLI again, on Windows and in each WSL distro">
+              {checkingAll ? 'Checking...' : 'Check all again'}
+            </Button>
+          </>
         }
       >
+        <AddCustomCLI
+          open={adding}
+          dir={customs.data?.dir ?? ''}
+          taken={list.map((x) => x.adapter)}
+          onClose={() => ((adding = false), void handle.update())}
+          onAdded={(c) => {
+            adding = false;
+            pendingKey = connectionKey(c);
+            void customs.reload();
+            void q.reload();
+          }}
+        />
+        {(customs.data?.files ?? []).filter((f) => f.error).length > 0 ? (
+          <div mix={padCss} data-testid="custom-cli-broken">
+            <ErrorNote
+              error={new Error(
+                (customs.data?.files ?? [])
+                  .filter((f) => f.error)
+                  .map((f) => `${f.path}: ${f.error}`)
+                  .join('\n'),
+              )}
+              what="A custom CLI was not loaded"
+            />
+          </div>
+        ) : null}
         {q.error && !q.data ? (
           <div mix={padCss}>
             <ErrorNote error={q.error} what="Could not list the agent CLIs" />

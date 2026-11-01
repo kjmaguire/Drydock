@@ -15,6 +15,7 @@ type Citation struct {
 	Version      string    `json:"version"`
 	URL          string    `json:"url"`
 	HeadingPath  string    `json:"headingPath"`
+	Page         int       `json:"page,omitempty"` // the PDF page the passage is on; 0 when the source has no pages
 	ChunkID      int64     `json:"chunkId,omitempty"`
 	FetchedAt    time.Time `json:"fetchedAt,omitempty"`
 	ContentHash  string    `json:"contentHash"` // sha256 of the chunk (heading path + body)
@@ -33,6 +34,9 @@ type Hit struct {
 	// AllTerms is true when the chunk matched every query term (the AND pass), false for partial (OR pass) matches.
 	AllTerms bool   `json:"allTerms"`
 	Origin   string `json:"origin"`
+	// Similarity is the cosine similarity of the passage to the query by the local embedding model, when the search was ranked
+	// by meaning (SearchResult.Reranked; decision P120).
+	Similarity float64 `json:"similarity,omitempty"`
 }
 
 // SearchRequest is one retrieval. PackIDs empty means every installed pack (cross-pack search).
@@ -64,6 +68,9 @@ type SearchResult struct {
 	Confidence        string `json:"confidence"`
 	// SourceAgeDays is the age of the best indexed hit (-1 when there is none: live results have no known age).
 	SourceAgeDays int `json:"sourceAgeDays"`
+	// Reranked says the indexed passages were ranked by meaning with the embedding model on this PC (decision P120), not by
+	// BM25 alone.
+	Reranked bool `json:"reranked,omitempty"`
 }
 
 // Confidence levels. They come from code, not from a model, and are not calibrated (docs/expert-packs.md section 6).
@@ -126,9 +133,26 @@ func (s *Store) Search(ctx context.Context, req SearchRequest) (SearchResult, er
 			}
 		}
 	}
-	localHits, err := s.searchLocal(ctx, local, andQ, orQ, k)
+	// ranked by meaning (decision P120): BM25 finds a few more passages, the embedding model orders them, the first k stay;
+	// without it (off, no embedding model served, or a failure) the BM25 order is the one
+	embed := s.o.Embedder != nil && len(local) > 0 && s.o.Embedder.Available(ctx)
+	pool := k
+	if embed {
+		pool = rerankPool(k)
+	}
+	localHits, err := s.searchLocal(ctx, local, andQ, orQ, pool)
 	if err != nil {
 		return res, err
+	}
+	if embed {
+		ok, err := rerank(ctx, s.o.Embedder, req.Query, localHits)
+		if err != nil {
+			s.o.Logf("packs: ranking by meaning failed, the BM25 order stands: %v", s.o.Scanner.Redact(err.Error()))
+		}
+		res.Reranked = ok
+	}
+	if len(localHits) > k {
+		localHits = localHits[:k]
 	}
 	perPack := map[string]int{}
 	for _, h := range localHits {
@@ -340,7 +364,7 @@ func (s *Store) queryFTS(ctx context.Context, packIDs []string, match string, li
 		args = append(args, id)
 	}
 	args = append(args, limit)
-	q := `SELECT c.id, c.pack_id, c.page_id, c.heading_path, c.body, p.url, p.fetched_at, p.content_hash, c.chunk_hash, c.version_added, pk.version,
+	q := `SELECT c.id, c.pack_id, c.page_id, c.heading_path, c.page, c.body, p.url, p.fetched_at, p.content_hash, c.chunk_hash, c.version_added, pk.version,
 		bm25(pack_chunks_fts, 4.0, 1.0) AS rank, snippet(pack_chunks_fts, 1, '[', ']', '...', 24)
 		FROM pack_chunks_fts
 		JOIN pack_chunks c ON c.id = pack_chunks_fts.rowid
@@ -360,7 +384,7 @@ func (s *Store) queryFTS(ctx context.Context, packIDs []string, match string, li
 		var pageID, fetched int64
 		var rank float64
 		var curVersion string
-		if err := rows.Scan(&h.Citation.ChunkID, &h.Citation.Pack, &pageID, &h.Citation.HeadingPath, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash,
+		if err := rows.Scan(&h.Citation.ChunkID, &h.Citation.Pack, &pageID, &h.Citation.HeadingPath, &h.Citation.Page, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash,
 			&h.Citation.ContentHash, &h.Citation.VersionAdded, &curVersion, &rank, &h.Snippet); err != nil {
 			return nil, nil, err
 		}
@@ -399,9 +423,9 @@ func (s *Store) ResolveCitation(ctx context.Context, packID, version string, chu
 	var fetched int64
 	var removed *int64
 	var added int64
-	err := s.o.DB.Reader().QueryRowContext(ctx, `SELECT c.id,c.heading_path,c.body,p.url,p.fetched_at,p.content_hash,c.chunk_hash,c.version_added,c.seq_added,c.seq_removed
+	err := s.o.DB.Reader().QueryRowContext(ctx, `SELECT c.id,c.heading_path,c.page,c.body,p.url,p.fetched_at,p.content_hash,c.chunk_hash,c.version_added,c.seq_added,c.seq_removed
 		FROM pack_chunks c JOIN pack_pages p ON p.id=c.page_id WHERE c.id=? AND c.pack_id=? AND c.quarantined=0`, chunkID, packID).
-		Scan(&h.Citation.ChunkID, &h.Citation.HeadingPath, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash, &h.Citation.ContentHash, &h.Citation.VersionAdded, &added, &removed)
+		Scan(&h.Citation.ChunkID, &h.Citation.HeadingPath, &h.Citation.Page, &h.Text, &h.Citation.URL, &fetched, &h.Citation.PageHash, &h.Citation.ContentHash, &h.Citation.VersionAdded, &added, &removed)
 	if err != nil {
 		return h, fmt.Errorf("%w: chunk %d of %s", ErrNotFound, chunkID, packID)
 	}

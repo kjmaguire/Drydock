@@ -10,12 +10,31 @@ export interface ShellClient {
    * message that does not repeat the address. Resolves when the shell has handed the address over.
    */
   shellOpenExternal(url: string): Promise<void>;
+  /** Starts Drydock again and closes this window, so a staged restore is applied now (decision P116). Only the desktop window can. */
+  shellRestart(): Promise<void>;
+  /** The third-party notices the build ships (THIRD_PARTY_NOTICES.md beside the executable), for Settings > About (decision P129). */
+  appLicenses(): Promise<Licenses>;
+}
+
+/** core.Licenses: shipped with its text, or a note that says why there is none (a build from the source tree). */
+export interface Licenses {
+  shipped: boolean;
+  file: string;
+  text?: string;
+  note?: string;
 }
 
 export function createShellClient(t: Transport): ShellClient {
   return {
     shellOpenExternal: async (url) => {
       await t.call('shell.openExternal', { url });
+    },
+    shellRestart: async () => {
+      await t.call('shell.restart', {});
+    },
+    appLicenses: async () => {
+      const v = await t.call<Partial<Licenses> | null>('app.licenses', {});
+      return { shipped: !!v?.shipped, file: v?.file ?? '', text: v?.text ?? '', note: v?.note ?? '' };
     },
   };
 }

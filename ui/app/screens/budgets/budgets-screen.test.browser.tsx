@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { BudgetRow, BudgetSet } from '../../api/extTypes.ts';
 import type { Client } from '../../api/client.ts';
 import { budget, budgetStatus } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, errorOf, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { TOKENS_ERROR, TURNS_ERROR, USD_ERROR, WARN_ERROR } from './budgets.ts';
 import { BudgetsScreen } from './budgets-screen.tsx';
 
@@ -14,6 +14,7 @@ function servicesWith(client: Partial<Client>) {
     projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as never],
     licenseStatus: async () => undefined as never,
     appInfo: async () => ({}) as never,
+    budgetWorkflows: async () => ['bug', 'iterate-until-verified'],
     ...client,
   });
   s.workspace.start();
@@ -140,6 +141,41 @@ describe('BudgetsScreen', () => {
     await submit();
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toMatchObject({ limitUsd: 12.5, limitTokens: null, limitTurns: null, warnPct: 0.8 });
+  });
+
+  it('a workflow budget is chosen from the workflows the core runs and is kept to this project (P118)', async () => {
+    const calls: BudgetSet[] = [];
+    const r = mount(
+      <BudgetsScreen />,
+      servicesWith({
+        budgetList: async () => [],
+        budgetSet: async (b) => (calls.push(b), budget({ ...b, id: 'bud_9' })),
+      }),
+    );
+    await waitFor(until(() => text(r.container).includes('No budgets')), r);
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const form = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    expect(optionsOf(byLabel(form, 'Scope')).map((o) => o.value)).toEqual(['project', 'workflow', 'task', 'run', 'agent']);
+    type(byLabel(form, 'Scope'), 'workflow');
+    // the list once the workflows are read (until then the field takes a typed name)
+    const wf = await waitFor(() => {
+      const el = byLabel<HTMLElement>(form, 'Workflow (its runs in this project)');
+      optionsOf(el);
+      return el;
+    }, r);
+    expect(optionsOf(wf).map((o) => o.value)).toEqual(['bug', 'iterate-until-verified']);
+    expect(valueOf(wf)).toBe('bug');
+    type(wf, 'iterate-until-verified');
+    type(byLabel(form, 'Limit in USD'), '3');
+    await r.act(() => byText(form, 'button', 'Add budget').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ scope: 'workflow', scopeId: 'iterate-until-verified', projectId: 'prj_1', limitUsd: 3 });
+    // back to a project budget: the project's own id again, not the workflow's name
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const again = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    type(byLabel(again, 'Scope'), 'workflow');
+    type(byLabel(again, 'Scope'), 'project');
+    expect((byLabel<HTMLInputElement>(again, 'Scope id (an id, or * for every task, run or agent)')).value).toBe('prj_1');
   });
 
   it('a blank limit still means no limit on that one, and a valid value still saves (M25)', async () => {

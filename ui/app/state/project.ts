@@ -27,15 +27,17 @@ export class ProjectData extends Model {
   readonly presence: Live<PresenceState[]>;
   readonly tasks: Live<TaskPage>;
   #id: string | undefined;
+  #client: Client;
   #all: Live<unknown>[];
 
   constructor(client: Client, store: EventStore, private workspace: Workspace) {
     super();
+    this.#client = client;
     const pid = () => this.#id!;
     const mine = (e: { projectId?: string }) => !e.projectId || e.projectId === this.#id;
     this.agents = new Live(store, { load: () => client.agentList(pid()), when: (e) => starts(e, 'agent.') && mine(e) });
     this.rooms = new Live(store, { load: () => client.roomList(pid()), when: (e) => starts(e, 'room.created', 'room.archived', 'room.member', 'room.kind', 'room.mode') });
-    this.unread = new Live(store, { load: () => client.roomUnread(pid()), when: (e) => starts(e, 'room.message_posted', 'room.read_cursor', 'room.created', 'room.archived') });
+    this.unread = new Live(store, { load: () => client.roomUnread(pid()), when: (e) => starts(e, 'room.message_posted', 'room.read_cursor', 'room.created', 'room.archived', 'room.member_state_changed') });
     this.needs = new Live(store, {
       load: () => client.needsYouList(pid()),
       when: needsChanged,
@@ -83,6 +85,17 @@ export class ProjectData extends Model {
 
   get id(): string | undefined {
     return this.#id;
+  }
+
+  /**
+   * Opens the direct message with an agent (made on its first use) and, in the open project, reads the rooms again before it is
+   * shown: the Rooms rail lists it and Ctrl+. knows its agent at once, not only after its room.created event comes round
+   * (decision P130).
+   */
+  async openDM(projectId: string, agentId: string): Promise<Room> {
+    const room = await this.#client.roomCreateDM(projectId, agentId);
+    if (projectId === this.#id) await this.rooms.reload();
+    return room;
   }
 
   get agentList(): Agent[] {

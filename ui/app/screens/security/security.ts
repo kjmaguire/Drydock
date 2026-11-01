@@ -2,7 +2,7 @@
 // words of the engine tiles, a finding's place, the masked lines of the code around it, and who a task from it goes to.
 
 import type { ScanTarget } from '../../api/securityClient.ts';
-import type { DismissReason, EngineID, EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSummary, Severity } from '../../api/securityTypes.ts';
+import type { DismissReason, EngineID, EngineResult, ScanCounts, ScanFinding, ScanReport, ScanSummary, SecurityTools, Severity, ToolInfo } from '../../api/securityTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDate, formatDateTime } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
@@ -194,6 +194,23 @@ export function engineWords(id: EngineID, n: number): string {
 
 /** A tool as its own project writes its name (Opengrep with a capital; gitleaks and osv-scanner in lower case). */
 export const toolLabel = (tool: string): string => (tool === 'opengrep' ? 'Opengrep' : tool);
+
+/**
+ * What Update scanners did, one sentence per tool: OSV-Scanner and Opengrep are updated by Drydock (the newest release is
+ * installed in the background), Gitleaks is built into Drydock and updates with the app.
+ */
+export function toolsUpdateText(tools: Pick<SecurityTools, 'gitleaks' | 'osv' | 'opengrep'>): string {
+  const one = (name: string, x: ToolInfo): string => {
+    const at = x.tag || x.version;
+    if (x.job?.state === 'running') return `${name}: installing ${x.job.tag || x.latest || 'the newest release'}`;
+    if (x.job?.state === 'failed') return `${name} could not be updated${x.job.error ? `: ${x.job.error}` : ''}`;
+    if (!x.found) return `${name} is not installed`;
+    if (x.source && x.source !== 'installed') return `${name}${at ? ` ${at}` : ''} is your own copy, which Drydock leaves alone`;
+    return at ? `${name} ${at} is the newest` : `${name} is the newest`;
+  };
+  const gl = tools.gitleaks.version ? `Gitleaks ${tools.gitleaks.version}` : 'Gitleaks';
+  return `${[one('OSV-Scanner', tools.osv), one('Opengrep', tools.opengrep), `${gl} is built into Drydock and updates with the app`].join('. ')}.`;
+}
 
 /** An engine's state on its tile: "done · 0.1 s", "running · 10 of 20 files", "waiting", "skipped", "errored · 2.0 s". */
 export function engineStateText(e: EngineResult): string {

@@ -3,18 +3,64 @@
 // on it, and the plain sentences of a Test connection report.
 
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { Agent, Connection, ConnectionReport, MatrixCell, Prereq } from '../../api/types.ts';
+import type { Agent, Connection, ConnectionHistory, ConnectionReport, MatrixCell, Prereq, TestRun } from '../../api/types.ts';
 import type { ProjectRunMode } from '../../api/wslClient.ts';
 import type { Tone } from '../../ui/tokens.ts';
-import { agoWords } from '../../lib/format.ts';
+import { agoWords, plural } from '../../lib/format.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
 
 /** observed: seen during the test. declared: the CLI says so. unknown: not verified. */
 export const provTone = (p: string): Tone => (p === 'observed' ? 'ok' : p === 'declared' ? 'warn' : 'muted');
 export const stepTone = (s: string): Tone => (s === 'pass' ? 'ok' : s === 'fail' ? 'err' : 'muted');
 
-export const matrixRows = (r: Pick<ConnectionReport, 'matrix'>): [string, MatrixCell][] => Object.entries(r.matrix ?? {}).sort(([a], [b]) => a.localeCompare(b));
+export const matrixRows = (r: { matrix: ConnectionReport['matrix'] }): [string, MatrixCell][] => Object.entries(r.matrix ?? {}).sort(([a], [b]) => a.localeCompare(b));
 export const cellText = (c: MatrixCell): string => (typeof c.value === 'string' ? c.value : JSON.stringify(c.value));
+
+// --- the card's capability matrix and conformance history (decision P132) ---
+
+/** The capabilities in words (an unknown key reads as itself, its underscores as spaces). */
+const CAPABILITIES: Record<string, string> = {
+  streaming: 'Streams its answer',
+  structured_output: 'Structured output',
+  model_selection: 'Choose the model',
+  effort_control: 'Choose the effort',
+  session_resume: 'Resume a session',
+  session_resume_method: 'Resume method (session/resume)',
+  session_load: 'Load a session (session/load)',
+  session_fork: 'Fork a session',
+  session_list: 'List its sessions',
+  interrupt: 'Interrupt a turn',
+  mcp: 'MCP servers',
+  mcp_http: 'MCP over HTTP',
+  mcp_sse: 'MCP over SSE',
+  token_usage: 'Reports its tokens',
+  cost_reporting: 'Reports its cost',
+  headless: 'Runs without a window',
+  image_input: 'Reads images',
+  audio_input: 'Hears audio',
+  embedded_context: 'Takes files in the prompt',
+  tool_call_visibility: 'Shows its tool calls',
+  permission_modes: 'Permission modes',
+};
+
+export const capabilityName = (k: string): string => CAPABILITIES[k] ?? k.replace(/_/g, ' ');
+
+/** A cell's value on the card: Yes and No for a yes-or-no capability, the text of any other. */
+export const cardValue = (c: MatrixCell): string => (c.value === true ? 'Yes' : c.value === false ? 'No' : cellText(c));
+
+/** Where the card's matrix comes from: the newest test that filled it, or the adapter's word alone. */
+export function matrixFrom(h: Pick<ConnectionHistory, 'matrixAt'>, now: number): string {
+  return h.matrixAt ? `With what the test ${agoWords(h.matrixAt, now)} saw` : 'What the adapter declares: no test yet';
+}
+
+/** A kept run's reason within the page's budget for a paragraph (the whole of it is the line's tooltip). */
+export const shortReason = (s: string, max = 160): string => (s.length > max ? `${s.slice(0, max - 3).trimEnd()}...` : s);
+
+/** One kept test in a line: "2.1.296 · 5 passed, 1 failed, 2 skipped · with the tiny prompt · 31.5 s". */
+export function runLine(r: TestRun): string {
+  const counts = [plural(r.passed, 'passed', 'passed'), r.failed ? `${r.failed} failed` : '', r.skipped ? `${r.skipped} skipped` : ''].filter(Boolean).join(', ');
+  return [r.cliVersion ?? '', counts, r.prompt ? 'with the tiny prompt' : '', r.elapsedMs > 0 ? `${(r.elapsedMs / 1000).toFixed(1)} s` : ''].filter(Boolean).join(' · ');
+}
 
 /** "claude 2.1.0 via headless on windows; short form, took 31.5 s. Tokens used by the test: not reported." */
 export function reportMeta(r: ConnectionReport): string {
@@ -308,4 +354,16 @@ export function usedBy<A extends Pick<Agent, 'adapter' | 'runMode' | 'wslDistro'
     if (!isWSL(c)) return false;
     return distro ? same(distro, c.distro) : defaultDistro ? same(defaultDistro, c.distro) : true;
   });
+}
+
+/** The id rule of a person's own CLI's manifest (internal/agents/manifests: meta.id). */
+export const CUSTOM_ID = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** The Add a custom CLI dialog's check of the id before anything is sent ('' when it may be). taken are the ids listed. */
+export function customIdProblem(id: string, taken: readonly string[]): string {
+  const v = id.trim();
+  if (!v) return 'Give your CLI an id.';
+  if (!CUSTOM_ID.test(v)) return 'An id is lowercase letters, digits and dashes, starting with a letter, at most 32 characters.';
+  if (v === 'custom' || taken.includes(v)) return 'That id is taken: choose another.';
+  return '';
 }

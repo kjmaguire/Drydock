@@ -1,14 +1,15 @@
-// GitHub, one settings page (decision P98, after Apple's System Settings, Linear's account settings and Vercel's Git settings):
-// everything Drydock does with GitHub as rows and tables, reached from Integrations (All integrations leads back). On top, who gh is signed
+// GitHub, one detail on the Integrations page (decision P98, after Apple's System Settings, Linear's account settings and Vercel's Git
+// settings; inside the Integrations list since P106, so the list stays beside it): everything Drydock does with GitHub as rows and
+// tables. On top, who gh is signed
 // in as (github.status: the GitHub CLI's own login, which Drydock uses and never stores) with chips for issue sync, the MCP
 // server and the runners, or what is missing and how to fix it. Then Access: the gh sign-in, issue sync (app sync, decision
 // P42: connected here once for the workspace with the integrations screen's own ConnectForm and ServiceView, one
 // implementation) and GitHub's MCP server for agents (its connector card, decision P43, in a dialog). Then Repositories: each
 // project with its repository, the CI state of its default branch and its open pull requests (github.projectRepos). Last the
-// CI runners on this PC (ci-runners.tsx, decision P56). A workspace page: it works with no project.
+// CI runners on this PC (ci-runners.tsx, decision P56). A workspace detail: it works with no project.
 
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
-import { Blocks, ExternalLink, FolderGit2, GitPullRequest, RefreshCw } from 'lucide';
+import { ExternalLink, FolderGit2, RefreshCw } from 'lucide';
 import type { IntegrationKindInfo, IntegrationTestReport, IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import type { GitHubStatus, ProjectRepoRow, RepoCI } from '../../api/types.ts';
@@ -20,7 +21,7 @@ import { Avatar, faint, hueFor, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { actionsEnd, Page, tableCard } from '../../ui/layout.tsx';
+import { actionsEnd, tableCard } from '../../ui/layout.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
@@ -29,7 +30,7 @@ import { KINDS, serviceState, statusTone, tileState, vendors } from '../integrat
 import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 
-const innerCss = css({ display: 'grid', gap: t.s6, padding: `${t.s5} ${t.s6} 48px`, maxWidth: '1040px', width: '100%', minWidth: '0' });
+const innerCss = css({ display: 'grid', gap: t.s6, width: '100%', minWidth: '0' });
 const heroCss = css({
   display: 'flex',
   flexWrap: 'wrap',
@@ -493,6 +494,16 @@ function Repositories(handle: Handle) {
             <Button size="sm" variant="ghost" icon={RefreshCw} disabled={q.loading} data-testid="repos-refresh" mix={on('click', () => void again())}>
               {q.loading && q.data ? 'Refreshing...' : 'Refresh'}
             </Button>
+            {/* a repository of GitHub into a folder of this PC, as a new project: the wizard's Repository step clones it with gh */}
+            <a
+              href={routes.projectNew.href()}
+              mix={buttonStyle('secondary', 'sm')}
+              data-testid="repos-clone"
+              title="New project: pick a GitHub repository and the folder to clone it into, with your gh sign-in"
+            >
+              <Icon icon={FolderGit2} size={14} />
+              Clone a repository
+            </a>
           </span>
         }
         bare
@@ -568,7 +579,11 @@ function syncStateText(c: IntegrationView | undefined): string {
 }
 
 /** The GitHub settings page. */
-export function GitHubScreen(handle: Handle) {
+/**
+ * GitHub's detail on the Integrations page (/integrations/github): the sign-in, issue sync, the MCP server, repositories and CI
+ * runners. It opens in the page's list and detail, so the list stays beside it (it used to be a page of its own; /github opens it).
+ */
+export function GitHubDetail(handle: Handle) {
   const s = services(handle);
   const gh = query(handle, { load: () => s.client.githubStatus() });
   const conns = query(handle, { load: () => s.client.integrationList(), when: (e) => e.type.startsWith('integration.') });
@@ -580,47 +595,30 @@ export function GitHubScreen(handle: Handle) {
     const cards = vendors(KINDS, gallery.data ?? []).find((v) => v.key === 'github')?.cards ?? [];
     const conn = conns.data ? tileState(conns.data, 'github') : undefined;
     return (
-      <Page
-        title="GitHub"
-        icon={GitPullRequest}
-        testId="github-page"
-        // the same header as every page (the UI audit of 2026-10-26: a breadcrumb and a "Guide" link made it look like another app);
-        // the way back to Integrations is a link at the header's end
-        subtitle="Your sign-in, issue sync, the MCP server, repositories and CI runners"
-        guide="github"
-        actions={
-          <a href={routes.integrations.href()} mix={buttonStyle('ghost', 'sm')} data-testid="gh-crumb">
-            <Icon icon={Blocks} size={14} />
-            All integrations
-          </a>
-        }
-        flush
-      >
-        <div mix={innerCss}>
-          <Hero st={gh.data} loading={gh.loading} error={gh.error} onCheck={check} conn={conn} card={cards[0]} runners={runners.data?.slots.length} />
-          <div>
-            <Access
-              st={gh.data}
-              ghLoading={gh.loading}
-              onCheck={check}
-              conns={conns.data}
-              connsError={conns.error ?? kinds.error}
-              onConnsChanged={() => void conns.reload()}
-              info={(kinds.data ?? []).find((k) => k.kind === 'github')}
-              onKindsChanged={() => void kinds.reload()}
-              cards={cards}
-              galleryLoading={gallery.loading}
-              galleryError={gallery.error}
-              onGalleryChanged={() => void gallery.reload()}
-            />
-            <p mix={[noteCss, tokensCss]} data-testid="gh-tokens">
-              Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
-            </p>
-          </div>
-          <Repositories />
-          <CiRunners />
+      <div mix={innerCss} data-testid="github-page">
+        <Hero st={gh.data} loading={gh.loading} error={gh.error} onCheck={check} conn={conn} card={cards[0]} runners={runners.data?.slots.length} />
+        <div>
+          <Access
+            st={gh.data}
+            ghLoading={gh.loading}
+            onCheck={check}
+            conns={conns.data}
+            connsError={conns.error ?? kinds.error}
+            onConnsChanged={() => void conns.reload()}
+            info={(kinds.data ?? []).find((k) => k.kind === 'github')}
+            onKindsChanged={() => void kinds.reload()}
+            cards={cards}
+            galleryLoading={gallery.loading}
+            galleryError={gallery.error}
+            onGalleryChanged={() => void gallery.reload()}
+          />
+          <p mix={[noteCss, tokensCss]} data-testid="gh-tokens">
+            Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
+          </p>
         </div>
-      </Page>
+        <Repositories />
+        <CiRunners />
+      </div>
     );
   };
 }

@@ -15,6 +15,9 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	"github.com/kjmaguire/drydock/internal/agents/conformance"
 	"github.com/kjmaguire/drydock/internal/agents/fakeagent"
+	"github.com/kjmaguire/drydock/internal/agents/headless/fakeagy"
+	"github.com/kjmaguire/drydock/internal/agents/headless/fakecustom"
+	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	"github.com/kjmaguire/drydock/internal/contract"
 	"github.com/kjmaguire/drydock/internal/workflow"
 )
@@ -28,6 +31,10 @@ func TestMain(m *testing.M) {
 		os.Exit(fakeagent.Run(os.Args[1:], os.Stdin, os.Stdout))
 	case os.Getenv("DRYDOCK_FAKE_ACP") == "1":
 		os.Exit(fakeacp.Run(os.Args[1:], os.Stdin, os.Stdout))
+	case os.Getenv("DRYDOCK_FAKE_AGY") == "1": // agy, written from its documentation (headless/fakeagy)
+		os.Exit(fakeagy.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	case os.Getenv("DRYDOCK_FAKE_CUSTOM") == "1": // a person's own prompt-and-exit CLI (headless/fakecustom)
+		os.Exit(fakecustom.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 	}
 	code := m.Run()
 	if exampleDir != "" {
@@ -80,6 +87,115 @@ func TestClaudeAdapterAgainstTheRealCLI(t *testing.T) {
 		ToolPrompt: "Use the Read tool to read hello.txt in the current directory, then reply with its exact content only.", ExpectTools: true, ExpectToolArgs: true,
 		LongPrompt: "Count from 1 to 400, one number per line, no other text.",
 	})
+}
+
+// ---- Antigravity, headless (decision P115) ----------------------------------------------------------------------------
+
+// The adapter the registry builds from antigravity.yaml, against the stand-in written from agy's documentation: a real process
+// on the documented stream-json mode. No real agy was run; tool calls and resume are not declared, so their steps are skipped
+// with the reason. Interrupt ends agy's process (decision P117) and the next message starts it again.
+func TestAntigravityAdapterAgainstTheDocumentedStandIn(t *testing.T) {
+	t.Setenv("DRYDOCK_FAKE_AGY", "1")
+	t.Setenv("DRYDOCK_FAKE_AGY_SCRIPT", writeJSON(t, fakeagy.Script{
+		Rules:   []fakeagy.Rule{{Match: "long please", Steps: []fakeagy.Step{{Say: "working "}, {SleepMS: 60000}, {Say: "done"}}}},
+		Default: []fakeagy.Step{{Think: "short answer"}, {Say: "OK", Usage: &[3]int64{40, 2, 8}}},
+	}))
+	r, err := manifests.NewRegistry(manifests.Options{Exe: map[string]string{"antigravity": os.Args[0]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ad, err := r.Build("antigravity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conformance.Run(t, ad, conformance.Options{ExpectText: "OK", ExpectUsage: true, LongPrompt: "long please"})
+}
+
+// ---- a person's own CLI: the custom dialect (decision P115) --------------------------------------------------------------
+
+// customManifest is the template made a person's own, run by the generic runner against the prompt-and-exit stand-in.
+func customManifest(t *testing.T, id string) agents.Adapter {
+	t.Helper()
+	tpl, err := manifests.CustomTemplate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	y := strings.Replace(string(tpl), "id: custom,", "id: "+id+",", 1)
+	y = strings.Replace(y, "gate: {id: custom-runs-arbitrary-code-v1,", "gate: {id: custom-"+id+",", 1)
+	m, err := manifests.ParseUserCustom([]byte(y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := manifests.NewRegistry(manifests.Options{Exe: map[string]string{id: os.Args[0]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ad, err := r.AddCustom(m, func(string) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ad
+}
+
+func customScript(t *testing.T) {
+	t.Setenv("DRYDOCK_FAKE_CUSTOM", "1")
+	t.Setenv("DRYDOCK_FAKE_CUSTOM_SCRIPT", writeJSON(t, fakecustom.Script{
+		Rules: []fakecustom.Rule{
+			{Match: "tool please", Steps: []fakecustom.Step{{Say: "reading the file "}, {Tool: "read_file", Args: map[string]any{"path": "hello.txt"}, Out: "hello from file"}, {Say: "hello from file"}}},
+			{Match: "long please", Steps: []fakecustom.Step{{Say: "working "}, {SleepMS: 60000}, {Say: "done"}}},
+		},
+		Default: []fakecustom.Step{{Say: "OK"}},
+	}))
+}
+
+func TestCustomDialectJSONLinesAgainstTheStandIn(t *testing.T) {
+	customScript(t)
+	ad := customManifest(t, "mycli")
+	conformance.Run(t, ad, conformance.Options{
+		PerTurnProcess: true,
+		ExpectText:     "OK", ExpectUsage: true,
+		ToolPrompt: "tool please", ExpectTools: true, ExpectToolArgs: true,
+		LongPrompt: "long please",
+	})
+}
+
+func TestCustomDialectPlainTextAgainstTheStandIn(t *testing.T) {
+	customScript(t)
+	ad := customManifestText(t)
+	conformance.Run(t, ad, conformance.Options{
+		PerTurnProcess: true, NoSessionID: true,
+		ExpectText: "OK", ExpectNoUsage: true,
+		LongPrompt: "long please",
+	})
+}
+
+// customManifestText is a plain-text CLI: the stand-in with --text, the prompt as an argument.
+func customManifestText(t *testing.T) agents.Adapter {
+	t.Helper()
+	y := `meta: {schema: 1, id: plaincli, display_name: Plain, kind: agent_cli, custom: true, run_modes: [native]}
+binaries: {native: [plain-cli]}
+detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
+gate: {id: custom-plaincli, required: true, text: "Runs a program you chose."}
+transports:
+  primary: headless
+  headless:
+    argv: [run, --text, --prompt, "{{prompt}}"]
+    prompt: {via: arg}
+    dialect: {format: text}
+`
+	m, err := manifests.ParseUserCustom([]byte(y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := manifests.NewRegistry(manifests.Options{Exe: map[string]string{"plaincli": os.Args[0]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ad, err := r.AddCustom(m, func(string) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ad
 }
 
 // ---- generic ACP adapter ---------------------------------------------------------------------------------------------

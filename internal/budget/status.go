@@ -21,12 +21,16 @@ const (
 // ScopeIDs are the concrete ids of one place in the app (a node execution, a task view).
 type ScopeIDs struct {
 	Project, Task, Run, Agent string
+	// Workflow is the name of the workflow the run belongs to ("" outside a workflow run).
+	Workflow string
 }
 
 func (s ScopeIDs) of(sc Scope) string {
 	switch sc {
 	case ScopeProject:
 		return s.Project
+	case ScopeWorkflow:
+		return s.Workflow
 	case ScopeTask:
 		return s.Task
 	case ScopeRun:
@@ -44,16 +48,18 @@ type Target struct {
 }
 
 // Applicable lists the enabled budgets that apply to the ids: an explicit budget whose scope id equals the instance, and
-// '*' templates (restricted to the project when they name one).
+// '*' templates (restricted to the project when they name one). A workflow budget applies to the runs of its workflow, in its
+// project when it names one.
 func (s *Store) Applicable(ctx context.Context, ids ScopeIDs) ([]Target, error) {
 	var out []Target
-	for _, sc := range []Scope{ScopeProject, ScopeTask, ScopeRun, ScopeAgent} {
+	for _, sc := range []Scope{ScopeProject, ScopeWorkflow, ScopeTask, ScopeRun, ScopeAgent} {
 		id := ids.of(sc)
 		if id == "" {
 			continue
 		}
 		rows, err := s.DB.Reader().QueryContext(ctx, `SELECT `+cols+` FROM budgets WHERE enabled=1 AND scope=? AND scope_id IN (?, '*')
-			AND (scope_id<>'*' OR project_id='' OR project_id=?) ORDER BY scope_id DESC, id`, string(sc), id, ids.Project)
+			AND (scope_id<>'*' OR project_id='' OR project_id=?) AND (scope<>'workflow' OR project_id='' OR project_id=?) ORDER BY scope_id DESC, id`,
+			string(sc), id, ids.Project, ids.Project)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +69,11 @@ func (s *Store) Applicable(ctx context.Context, ids ScopeIDs) ([]Target, error) 
 				rows.Close()
 				return nil, err
 			}
-			out = append(out, Target{Budget: b, InstanceID: id})
+			inst := id
+			if sc == ScopeWorkflow {
+				inst = InstanceOf(b)
+			}
+			out = append(out, Target{Budget: b, InstanceID: inst})
 		}
 		err = rows.Err()
 		rows.Close()
@@ -90,6 +100,8 @@ type Status struct {
 	CostComplete bool   `json:"costComplete"`
 	CostLabel    string `json:"costLabel"` // "reported", "estimated", "reported + estimated" or "none"
 	Message      string `json:"message"`
+	// Held is what turns in flight hold against the budget (reserve.go), set when a reservation was refused.
+	Held *Held `json:"held,omitempty"`
 }
 
 // Evaluate computes a budget instance's status from the usage rows.
@@ -142,7 +154,7 @@ func evaluate(b Budget, instance string, sp Spend) Status {
 
 func describe(st Status) string {
 	b := st.Budget
-	what := fmt.Sprintf("%s %s", b.Scope, shortID(st.InstanceID))
+	what := scopeLabel(b, st.InstanceID)
 	var parts []string
 	if b.LimitUSD != nil {
 		s := fmt.Sprintf("$%.4f of $%.4f (%s)", st.Spend.KnownUSD(), *b.LimitUSD, st.CostLabel)
@@ -167,6 +179,14 @@ func describe(st Status) string {
 		s += p
 	}
 	return s
+}
+
+// scopeLabel names a budget instance in a sentence: its scope and a short id, or a workflow's whole name (a name, not an id).
+func scopeLabel(b Budget, instance string) string {
+	if b.Scope == ScopeWorkflow {
+		return "workflow " + b.ScopeID
+	}
+	return fmt.Sprintf("%s %s", b.Scope, shortID(instance))
 }
 
 func shortID(id string) string {

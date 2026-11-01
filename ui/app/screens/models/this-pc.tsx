@@ -20,6 +20,7 @@ import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
@@ -36,21 +37,35 @@ import {
   contextWords,
   deviceLine,
   diskLine,
+  DRAFT_KINDS,
+  draftChoices,
+  draftOnly,
+  draftOnlyWord,
+  draftWords,
   type FitWords,
   fitWords,
   gb,
   gpus,
   hostPort,
   jobFraction,
+  licenceUrl,
+  loadedIds,
+  loadLine,
+  loadToo,
+  loadTooTitle,
   localRow,
   memoryBars,
   modelName,
+  noGpuWords,
   progressText,
   runtimeLine,
+  servedName as servedLabel,
   serverTone,
   splitModelId,
   startedWords,
+  unloadTitle,
   switchChoices,
+  tokenWords,
   usedByWords,
   usedOf,
   wholeNumber,
@@ -82,6 +97,8 @@ const searchCss = css({
 // Memory and Engine side by side on a wide detail, one under the other on a narrow one
 const topCss = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: t.s5, alignItems: 'start', minWidth: '0' });
 // what a group holds besides its rows (a bar, a note, the log), inside the group's surface
+// the engine's own lines, wrapped: a driver path is long
+const noteCss = css({ margin: '0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm });
 const blockCss = css({
   display: 'grid',
   gap: t.s2,
@@ -132,6 +149,8 @@ const tableCss = css({
   '& .name': { fontWeight: '500', overflowWrap: 'anywhere' },
   '& .quant': { color: t.textFaint, fontWeight: '400' },
   '& .repo': { color: t.textFaint, fontFamily: t.mono, fontSize: t.textXs, overflowWrap: 'anywhere' },
+  '& .tags': { display: 'flex', flexWrap: 'wrap', gap: '4px' },
+  '& .tags:empty': { display: 'none' },
   '& .size': { color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs },
   '& .act': { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: t.s2, flexWrap: 'wrap' },
   '& .act > .word': { color: t.textFaint, fontSize: t.textXs },
@@ -172,6 +191,7 @@ const fitCss = css({
   whiteSpace: 'nowrap',
 });
 const numberCss = css({ width: '120px' });
+const tokenFormCss = css({ display: 'flex', alignItems: 'center', gap: t.s2, '& input': { width: '220px', maxWidth: '100%' } });
 
 
 /** The fit badge: its short words, the sentence as its tooltip. */
@@ -235,7 +255,15 @@ export function ThisPcDetail(
   // Stop has an action of its own: a start waits for the core until the model is loaded (up to 15 minutes) and holds `act` all
   // that time, and Stop has to work meanwhile (audit 2026-10-16, L44)
   const stopAct = action(handle);
-  const ids = { cache: `local-cache-${handle.id}`, context: `local-context-${handle.id}`, port: `local-port-${handle.id}` };
+  const ids = {
+    cache: `local-cache-${handle.id}`,
+    context: `local-context-${handle.id}`,
+    port: `local-port-${handle.id}`,
+    embedPort: `local-embed-port-${handle.id}`,
+    token: `local-hf-token-${handle.id}`,
+  };
+  // the Hugging Face token being typed (decision P111): sent once on Save, never kept on the page after
+  let tokenText = '';
   let showLog = false;
   let restartNeeded = false; // a cache, context or port change while the server ran
   // Stop was pressed while a start was waiting: the core answers that start with an error ("the server was stopped before
@@ -270,13 +298,16 @@ export function ThisPcDetail(
     if (v) handle.props.setView(v);
     return v;
   };
-  // Serve: the core answers when the model is loaded. A Stop pressed meanwhile ends that start, and its answer is dropped.
-  const serve = (modelId: string) => {
+  // Serve: the core answers when the model is loaded. A Stop pressed meanwhile ends that start, and its answer is dropped. Several
+  // models (Load too, Unload: decision P111) are kept loaded together by the router, which loads or unloads the one model while
+  // the others keep running (decision P120); a server of one model starts again in router mode.
+  const serve = (modelId: string) => serveSet([modelId], `serve:${modelId}`);
+  const serveSet = (modelIds: string[], label: string) => {
     cancelledStart = false;
-    return change(`serve:${modelId}`, async () => {
+    return change(label, async () => {
       let view: LocalView;
       try {
-        view = await s.client.localServerStart(modelId);
+        view = modelIds.length === 1 ? await s.client.localServerStart(modelIds[0]!) : await s.client.localServerStartMany(modelIds);
       } catch (e) {
         if (cancelledStart) return undefined; // stopped on purpose: the start was asked to end, so its error is no failure
         throw e;
@@ -388,7 +419,17 @@ export function ThisPcDetail(
           <>
             <span class="size">{job.total > 0 ? gb(job.total) : ''}</span>
             {job.state === 'failed' ? (
-              <span class="what">{job.error || 'failed'}</span>
+              <span class="what">
+                {job.error || 'failed'}
+                {job.licence ? (
+                  <>
+                    {' '}
+                    <a href={job.licence} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="local-licence">
+                      Accept the licence on Hugging Face
+                    </a>
+                  </>
+                ) : null}
+              </span>
             ) : (
               <span mix={fitCss} data-tone={job.state === 'done' ? 'ok' : 'muted'} style={{ color: tone[job.state === 'done' ? 'ok' : 'muted'].fg, background: tone[job.state === 'done' ? 'ok' : 'muted'].bg }}>
                 {job.state === 'done' ? 'downloaded' : job.state}
@@ -474,37 +515,161 @@ export function ThisPcDetail(
     const cacheNow = serverOn ? kv?.cacheType || server.cacheType || v.settings.cacheType : v.settings.cacheType;
     const ctxNow = serverOn ? kv?.contextSize || server.contextSize || 0 : v.settings.contextSize;
     const started = server.state === 'running' ? startedWords(server.startedAt, server.autostarted, handle.props.now) : '';
+    // the models the server keeps loaded (decision P111): several run the router, each its own model of the provider
+    const loaded = loadedIds(server);
+    const several = loaded.length > 1;
     const title =
-      server.state === 'running' ? `Serving ${servedName}` : server.state === 'starting' || serving ? `Starting ${servedName || 'the server'}` : server.state === 'failed' ? 'The server failed' : 'Nothing served';
-    const choices = switchChoices(v.models, serverOn ? server.modelId : undefined);
+      server.state === 'running'
+        ? several
+          ? `Serving ${loaded.length} models`
+          : `Serving ${servedName}`
+        : server.state === 'starting' || serving
+          ? several
+            ? `Starting ${loaded.length} models`
+            : `Starting ${servedName || 'the server'}`
+          : server.state === 'failed'
+            ? 'The server failed'
+            : 'Nothing served';
+    const choices = switchChoices(
+      v.models.filter((m) => !m.embedding),
+      serverOn ? server.modelId : undefined,
+    );
     const downloading = new Set(v.downloads.filter((d) => d.state === 'running').map((d) => d.target));
     const have = new Set(v.models.map((m) => m.id));
     const turbo = installedSrc ? installedSrc.cacheTypes.filter((c) => c.startsWith('turbo')) : [];
+    const embed = v.embed ?? { state: 'stopped' as const };
+    const embedOn = embed.state === 'running' || embed.state === 'starting';
+    const embedModels = v.models.filter((m) => m.embedding);
+    const token = v.hfToken ?? { set: false };
 
     const modelRow = (m: LocalModel) => {
-      const isServed = serverOn && server.modelId === m.id;
-      const words = fitWords(m.fit, m.sizeBytes, { gpu: hasGpu, serving: isServed });
+      const isServed = loaded.includes(m.id);
+      const forEmbeddings = embedOn && embed.modelId === m.id;
+      const words = fitWords(m.fit, m.sizeBytes, { gpu: hasGpu, serving: isServed || forEmbeddings });
       // the model the server is loading: "Starting · GPU" until it is ready
       const fit = words && isServed && server.state === 'starting' ? { ...words, text: words.text.replace(/^Serving/, 'Starting') } : words;
+      const only = draftOnly(m);
+      const too = serverOn && !isServed && !m.embedding && !only ? loadToo(v, m) : undefined;
+      const drafts = draftChoices(m, v.models);
+      const drafted = draftWords(m, v.models);
+      // loading beside the models the router keeps (decision P120)
+      const loadingHere = (server.loading ?? []).includes(m.id);
       return (
-        <li key={m.id} class="m" data-testid="local-model" data-id={m.id} data-served={isServed ? 'true' : undefined}>
-          {nameCell(m.repo, m.variant)}
+        <li key={m.id} class="m" data-testid="local-model" data-id={m.id} data-served={isServed || forEmbeddings ? 'true' : undefined}>
+          <div class="who">
+            <span class="name">
+              {modelName(m.repo)}
+              <span class="quant"> · {m.variant}</span>
+            </span>
+            <span class="repo">{m.repo}</span>
+            <span class="tags">
+              {m.projector ? (
+                <Badge testId="local-vision" title="Downloaded with its projector (mmproj): the model reads images too.">
+                  vision
+                </Badge>
+              ) : null}
+              {m.embedding ? (
+                <Badge testId="local-embedding" title="Makes embeddings: served on its own, under Embeddings, never for chat.">
+                  embeddings
+                </Badge>
+              ) : null}
+              {m.mtp ? (
+                <Badge testId="local-mtp" title="Carries its own multi-token prediction (MTP) heads: choose them as its draft to make it faster.">
+                  MTP
+                </Badge>
+              ) : null}
+              {only ? (
+                <Badge testId={only === 'eagle3' ? 'local-eagle3' : 'local-draft-only'} title={DRAFT_KINDS[only].title}>
+                  {DRAFT_KINDS[only].badge}
+                </Badge>
+              ) : null}
+              {drafted ? <Badge testId="local-drafted">{drafted}</Badge> : null}
+              {loadingHere ? <Badge testId="local-loading">loading</Badge> : null}
+            </span>
+            {!m.embedding && !only && drafts.length > 1 ? (
+              <span class="what">
+                <Select
+                  size="sm"
+                  testId="local-draft"
+                  label={`Draft model for ${m.id}`}
+                  title="Speculative decoding: a smaller model of the same family, a draft made for the model (EAGLE-3, DFlash, DSpark, MTP heads) or its own MTP heads guess ahead and the model checks, which is faster. Takes effect at the next start."
+                  value={m.draft ?? ''}
+                  disabled={busy}
+                  options={drafts}
+                  onChange={(d) => void change(`draft:${m.id}`, () => s.client.localModelSet(m.id, { draft: d }))}
+                />
+              </span>
+            ) : null}
+            {!only ? (
+              <span class="what">
+                <Checkbox
+                  label="Embedding model"
+                  checked={!!m.embedding}
+                  disabled={busy || isServed || forEmbeddings}
+                  onChange={(c) => void change(`kind:${m.id}`, () => s.client.localModelSet(m.id, { embedding: c }))}
+                />
+              </span>
+            ) : null}
+          </div>
           <span class="size">{gb(m.sizeBytes)}</span>
           <FitBadge fit={fit} />
           <span class="act">
-            {isServed ? (
-              <span class="word">downloaded</span>
-            ) : (
-              <>
+            {m.embedding ? (
+              forEmbeddings ? (
+                <span class="word">serving embeddings</span>
+              ) : (
                 <Button
                   size="sm"
-                  data-testid="local-serve"
-                  disabled={busy || starting || !v.runtime.installed}
+                  data-testid="local-embed-serve"
+                  disabled={busy || !v.runtime.installed}
                   title={v.runtime.installed ? undefined : 'The engine is not set up yet'}
-                  mix={on('click', () => void serve(m.id))}
+                  mix={on('click', () => void change(`embed:${m.id}`, () => s.client.localEmbeddingsStart(m.id)))}
                 >
-                  {act.busy === `serve:${m.id}` ? 'Starting…' : 'Serve'}
+                  {act.busy === `embed:${m.id}` ? 'Starting…' : 'Serve embeddings'}
                 </Button>
+              )
+            ) : isServed ? (
+              several ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-testid="local-unload"
+                  disabled={busy || starting}
+                  title={unloadTitle(server)}
+                  mix={on('click', () => void serveSet(loaded.filter((id) => id !== m.id), `serve-unload:${m.id}`))}
+                >
+                  {act.busy === `serve-unload:${m.id}` ? 'Unloading…' : 'Unload'}
+                </Button>
+              ) : (
+                <span class="word">downloaded</span>
+              )
+            ) : null}
+            {!isServed && !forEmbeddings ? (
+              <>
+                {only ? <span class="word">{draftOnlyWord(only)}</span> : null}
+                {!m.embedding && !only ? (
+                  <Button
+                    size="sm"
+                    data-testid="local-serve"
+                    disabled={busy || starting || !v.runtime.installed}
+                    title={v.runtime.installed ? undefined : 'The engine is not set up yet'}
+                    mix={on('click', () => void serve(m.id))}
+                  >
+                    {act.busy === `serve:${m.id}` ? 'Starting…' : 'Serve'}
+                  </Button>
+                ) : null}
+                {too ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    data-testid="local-load-too"
+                    disabled={busy || starting || !too.ok}
+                    title={too.ok ? loadTooTitle(server) : too.why}
+                    mix={on('click', () => void serveSet([...loaded, m.id], `serve-too:${m.id}`))}
+                  >
+                    {act.busy === `serve-too:${m.id}` ? 'Loading…' : 'Load too'}
+                  </Button>
+                ) : null}
                 <ConfirmAction
                   label="Remove"
                   yes="Yes, remove"
@@ -516,19 +681,39 @@ export function ThisPcDetail(
                   onConfirm={() => change(`remove:${m.id}`, () => s.client.localModelRemove(m.id))}
                 />
               </>
-            )}
+            ) : null}
           </span>
         </li>
       );
     };
 
-    const variantRow = (repo: string, va: Variant) => {
+    // a variant of a repository; a gated one (decision P111) downloads only with a Hugging Face token of an account that accepted
+    // the licence, which the row says plainly with the page to accept it on
+    const variantRow = (r: Repo, va: Variant) => {
+      const repo = r.id;
       const id = `${repo}:${va.name}`;
       const fit = fitWords(va.fit, va.sizeBytes, { gpu: hasGpu });
       const tooBig = va.fit?.target === 'none';
+      const notes = [...(va.notes ?? []), ...(va.projector ? ['Reads images: its projector is downloaded with it.'] : [])].join(' ');
+      const gated = !!r.gated;
       return (
-        <li key={va.name} class="m" data-testid="local-variant" data-name={va.name} data-offered={tooBig ? 'false' : undefined}>
-          {nameCell(repo, va.quant || va.name, (va.notes ?? []).join(' ') || undefined)}
+        <li key={va.name} class="m" data-testid="local-variant" data-name={va.name} data-offered={tooBig ? 'false' : undefined} data-gated={gated ? 'true' : undefined}>
+          <div class="who">
+            <span class="name">
+              {modelName(repo)}
+              <span class="quant"> · {va.quant || va.name}</span>
+            </span>
+            <span class="repo">{repo}</span>
+            {notes ? <span class="what">{notes}</span> : null}
+            {gated ? (
+              <span class="what" data-testid="local-gated-note">
+                {token.set ? 'Gated: Hugging Face shares it once your account has accepted its licence. ' : 'Gated: accept its licence on Hugging Face, then add your Hugging Face token below. '}
+                <a href={licenceUrl(repo)} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="local-licence">
+                  Accept the licence
+                </a>
+              </span>
+            ) : null}
+          </div>
           <span class="size">{gb(va.sizeBytes)}</span>
           <FitBadge fit={fit} />
           <span class="act">
@@ -540,6 +725,10 @@ export function ThisPcDetail(
               // decided by the fit the core sent, not by the badge's words: a model this PC could not load is not offered
               <span class="word" data-testid="local-not-offered" title="Too big for this PC: Drydock does not download a model it could not load.">
                 not offered
+              </span>
+            ) : gated && !token.set ? (
+              <span class="word" data-testid="local-needs-token" title="A gated model downloads only with a Hugging Face token (Server settings).">
+                needs a token
               </span>
             ) : (
               <Button size="sm" data-testid="local-download" disabled={busy} mix={on('click', () => void change(`download:${va.name}`, () => s.client.localModelDownload(repo, va.name)))}>
@@ -656,7 +845,7 @@ export function ThisPcDetail(
                   data-tone={serverTone(server.state)}
                   style={{ background: dotColor(serverTone(server.state)) }}
                 />
-                <span title={server.modelId || undefined} data-testid="local-server-title">
+                <span title={several ? loaded.join(', ') : server.modelId || undefined} data-testid="local-server-title">
                   {title}
                 </span>
               </span>
@@ -665,6 +854,23 @@ export function ThisPcDetail(
               <div mix={blockCss}>
                 <ErrorNote error={server.error} what="Server" />
               </div>
+            ) : null}
+            {serverOn && server.note ? (
+              <div mix={blockCss}>
+                <p class="note" data-testid="local-server-note">
+                  {server.note}
+                </p>
+              </div>
+            ) : null}
+            {serverOn && several ? (
+              <SettingRow label="Loaded">
+                <span mix={lineCss}>
+                  <span data-testid="local-load">{loadLine(v)}</span>
+                  <span class="note" data-testid="local-loaded">
+                    {loaded.map((id) => servedLabel(id)).join(', ')}. Each is a model of the provider; a request names the one it wants.
+                  </span>
+                </span>
+              </SettingRow>
             ) : null}
             <SettingRow label="Used by">
               <span data-testid="local-used-by">{usedByWords(v.usedBy)}</span>
@@ -722,8 +928,13 @@ export function ThisPcDetail(
               ) : (
                 <div mix={blockCss}>
                   <p class="note" data-testid="local-devices">
-                    No GPU found: runs on the CPU
+                    {noGpuWords(v.runtime.devices.adapters)}
                   </p>
+                  {v.runtime.devices.note ? (
+                    <Disclosure summary="What the engine said" testId="local-devices-note">
+                      <pre mix={[mono, noteCss]}>{v.runtime.devices.note}</pre>
+                    </Disclosure>
+                  ) : null}
                 </div>
               )
             ) : v.runtime.devices.error ? (
@@ -842,6 +1053,82 @@ export function ThisPcDetail(
           </div>
         </div>
 
+        {/* Embeddings: the embedding model's own server (decision P111), shown once there is an embedding model */}
+        {embedModels.length > 0 || embedOn ? (
+          <div data-testid="local-embeddings" data-state={embed.state}>
+            <SettingsGroup
+              title="Embeddings"
+              actions={
+                embedOn ? (
+                  <Button
+                    size="sm"
+                    data-testid="local-embed-stop"
+                    disabled={busy}
+                    mix={on('click', () => void change('embed-stop', () => s.client.localEmbeddingsStop()))}
+                  >
+                    {act.busy === 'embed-stop' ? 'Stopping…' : 'Stop'}
+                  </Button>
+                ) : undefined
+              }
+            >
+              <SettingRow
+                label="Model"
+                control={
+                  embedOn && embed.port ? (
+                    <span mix={[mono, addrCss]} data-testid="local-embed-url" title={embed.baseUrl}>
+                      {hostPort(embed.baseUrl, embed.port)}
+                    </span>
+                  ) : null
+                }
+              >
+                <span mix={titleCss}>
+                  <span
+                    mix={dotCss}
+                    role="img"
+                    aria-label={STATE_WORDS[embed.state] ?? embed.state}
+                    data-tone={serverTone(embed.state)}
+                    style={{ background: dotColor(serverTone(embed.state)) }}
+                  />
+                  <span data-testid="local-embed-title">
+                    {embed.state === 'running' && embed.modelId
+                      ? `Serving ${modelName(splitModelId(embed.modelId).repo)} for embeddings`
+                      : embed.state === 'starting'
+                        ? 'Starting the embedding model'
+                        : embed.state === 'failed'
+                          ? 'The embedding server failed'
+                          : 'No embedding model served'}
+                  </span>
+                </span>
+              </SettingRow>
+              {embed.error ? (
+                <div mix={blockCss}>
+                  <ErrorNote error={embed.error} what="Embeddings" />
+                </div>
+              ) : null}
+              <div mix={blockCss}>
+                <p class="note">
+                  An embedding model turns text into vectors (OpenAI&apos;s /v1/embeddings) and cannot chat, so it runs on a server of its own, on 127.0.0.1 only, with a key
+                  of its own. It is not one of the provider&apos;s models.
+                </p>
+              </div>
+              {/* its one use (decision P120): ranking pack searches by meaning, the person's choice */}
+              <SettingRow label="Pack search" testId="local-rank-packs">
+                <Checkbox
+                  label="Rank pack searches by meaning"
+                  description={
+                    embedOn
+                      ? 'The passages a pack search finds are put in order by how close they are to the question, with this model. The text stays on this PC.'
+                      : 'While an embedding model is served, the passages a pack search finds are put in order by how close they are to the question. Until then, by the words they share.'
+                  }
+                  checked={!!v.settings.rankPacks}
+                  disabled={busy}
+                  onChange={(c) => void setSetting({ rankPacks: c })}
+                />
+              </SettingRow>
+            </SettingsGroup>
+          </div>
+        ) : null}
+
         {/* the model table: the models on this PC, the downloads, and what the Hub offers */}
         <SettingsGroup title="Models" label="Local models" testId="local-models-card" actions={hub} bare>
           <div mix={tableCss}>
@@ -885,6 +1172,11 @@ export function ThisPcDetail(
                         <span class="name">{modelName(r.id)}</span>
                         <span class="repo">{r.id}</span>
                         <span class="count">{compactCount(r.downloads)} downloads</span>
+                        {r.gated ? (
+                          <Badge tone="warn" testId="local-gated" title="Hugging Face shares its files only with an account that accepted its licence">
+                            gated
+                          </Badge>
+                        ) : null}
                         {(r.tags ?? []).map((tag) => (
                           <Badge key={tag}>{tag}</Badge>
                         ))}
@@ -897,7 +1189,7 @@ export function ThisPcDetail(
                             No GGUF file the Hub has a checksum for.
                           </li>
                         ) : (
-                          variants.map((va) => variantRow(r.id, va))
+                          variants.map((va) => variantRow(r, va))
                         )
                       ) : (
                         <li key={`${r.id}:loading`} class="empty">
@@ -989,14 +1281,99 @@ export function ThisPcDetail(
           >
             <span mix={muted}>The server listens on 127.0.0.1 only.</span>
           </SettingRow>
+          <SettingRow
+            label={<label for={ids.embedPort}>Embeddings port</label>}
+            control={
+              <input
+                id={ids.embedPort}
+                type="number"
+                min="1024"
+                max="65535"
+                data-testid="local-embed-port"
+                value={String(v.settings.embeddingPort || 9934)}
+                disabled={busy}
+                mix={[
+                  numberCss,
+                  on('change', (e) => {
+                    const n = wholeNumber(e.currentTarget.value);
+                    if (n !== undefined && n !== v.settings.embeddingPort) void setSetting({ embeddingPort: n });
+                  }),
+                ]}
+              />
+            }
+          >
+            <span mix={muted}>The embedding model&apos;s own server, also on 127.0.0.1 only.</span>
+          </SettingRow>
           <SettingRow label="At startup" testId="local-autostart">
             <Checkbox
               label="Start the server with Drydock"
-              description="Serves the model served last time."
+              description="Serves the models served last time, and the embedding model."
               checked={v.settings.autostart}
               disabled={busy}
               onChange={(c) => void setSetting({ autostart: c })}
             />
+          </SettingRow>
+          {/* the Hugging Face token (decision P111): for gated models; kept by the core in the credential store, shown masked */}
+          <SettingRow
+            label={<label for={ids.token}>Hugging Face token</label>}
+            testId="local-hf"
+            control={
+              token.set ? (
+                <Button size="sm" variant="ghost" data-testid="local-hf-remove" disabled={busy} mix={on('click', () => void change('hf-remove', () => s.client.localHfTokenRemove()))}>
+                  {act.busy === 'hf-remove' ? 'Removing…' : 'Remove'}
+                </Button>
+              ) : (
+                <form
+                  mix={[
+                    tokenFormCss,
+                    on('submit', (e) => {
+                      e.preventDefault();
+                      const text = tokenText.trim();
+                      if (!text) return;
+                      void change('hf-set', () => s.client.localHfTokenSet(text)).then((res) => {
+                        if (res) tokenText = '';
+                        redraw();
+                      });
+                    }),
+                  ]}
+                  data-testid="local-hf-form"
+                >
+                  <input
+                    id={ids.token}
+                    type="password"
+                    autocomplete="off"
+                    spellcheck={false}
+                    placeholder="hf_…"
+                    data-testid="local-hf-input"
+                    value={tokenText}
+                    disabled={busy}
+                    mix={on('input', (e) => {
+                      tokenText = e.currentTarget.value;
+                      redraw();
+                    })}
+                  />
+                  <Button size="sm" type="submit" data-testid="local-hf-save" disabled={busy || tokenText.trim() === ''}>
+                    {act.busy === 'hf-set' ? 'Saving…' : 'Save'}
+                  </Button>
+                </form>
+              )
+            }
+          >
+            <span mix={lineCss}>
+              {token.set ? (
+                <span mix={mono} data-testid="local-hf-masked">
+                  {tokenWords(token)}
+                </span>
+              ) : null}
+              <span class="note">
+                For gated models. Kept in the Windows Credential Manager and sent only with downloads from huggingface.co. A token with read access is
+                enough:{' '}
+                <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" data-rmx-document>
+                  make one on Hugging Face
+                </a>
+                .
+              </span>
+            </span>
           </SettingRow>
         </SettingsGroup>
       </>

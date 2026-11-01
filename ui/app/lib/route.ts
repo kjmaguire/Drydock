@@ -207,6 +207,7 @@ export type Hub =
   | 'workspace-crew'
   | 'chats'
   | 'library'
+  | 'skill-library'
   | 'scan'
   | 'models'
   | 'agents'
@@ -262,7 +263,8 @@ const HUB_OF: Record<Route['name'], Hub> = {
   chats: 'chats',
   chat: 'chats',
   library: 'library',
-  'library-skills': 'library',
+  // Agent templates and Skills are two entries of the sidebar (decision P106), not one Library with pills
+  'library-skills': 'skill-library',
   'security-scan': 'scan',
   models: 'models',
   'project-new': 'project-new',
@@ -283,6 +285,7 @@ export function isWorkspaceHub(h: Hub): boolean {
     h === 'workspace-crew' ||
     h === 'chats' ||
     h === 'library' ||
+    h === 'skill-library' ||
     h === 'scan' ||
     h === 'models' ||
     h === 'agents' ||

@@ -2,13 +2,13 @@
 // gate before a pull request is merged. Only the human changes them.
 
 import { css, on, type Handle } from 'remix/component';
-import { DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
+import { CONTEXT_CEILING, DEFAULT_SKILL_DELIVERY, type CheckSettings, type DevSettings } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
-import { devBody, numOrUndef, parallelWarn } from './project.ts';
+import { ceilingOff, devBody, numOrUndef, parallelWarn } from './project.ts';
 import { SettingRow, SettingsGroup, ToggleRow, errorPad, footerCss, noteRow, subhead } from './settings-kit.tsx';
 
 const stackRow = css({ display: 'grid', gap: '6px', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}`, '& label': { fontSize: t.textMd, fontWeight: '500' }, '& textarea': { fontFamily: t.mono, fontSize: t.textSm } });
@@ -71,6 +71,7 @@ export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
             <ToggleRow label="Secrets scan of the diff" description="Looks for keys and tokens in what the agent changed." checked={c.secrets} onChange={(v) => patch({ secrets: v })} />
             <ToggleRow label="Dependency vulnerability scan" description="Checks the project's dependencies against known vulnerabilities." checked={c.deps} onChange={(v) => patch({ deps: v })} />
             <ToggleRow label="Offline only (no database download)" checked={c.depsOffline} disabled={!c.deps} onChange={(v) => patch({ depsOffline: v })} />
+            <ToggleRow label="Security scan of the change" description="Runs Opengrep and osv-scanner from the Security page on what the agent changed." checked={c.scan} onChange={(v) => patch({ scan: v })} />
             <div mix={footerCss}>
               <span class="hint" />
               {saved ? <span role="status">Saved.</span> : null}
@@ -120,6 +121,7 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const urlId = `url-${handle.id}`;
   const ciName = `ci-${handle.id}`;
   const skName = `skills-${handle.id}`;
+  const ceilId = `ceiling-${handle.id}`;
   return () => {
     if (q.data && q.data !== loaded) {
       loaded = q.data;
@@ -227,6 +229,26 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
 </p>
               </div>
             </div>
+
+            <h3 mix={subhead}>Context for each agent turn</h3>
+            <SettingRow
+              label="Most tokens an agent turn starts with"
+              for={ceilId}
+              description={`Over it, file excerpts, the repository map and memory are cut first; the task and instructions never are. The turn's context list says what was left out. Empty means ${CONTEXT_CEILING.default.toLocaleString('en')}.`}
+            >
+              <input
+                id={ceilId}
+                inputMode="numeric"
+                placeholder={String(CONTEXT_CEILING.default)}
+                value={d.contextCeiling ? String(d.contextCeiling) : ''}
+                mix={[numCss, on('input', (e) => patch({ contextCeiling: numOrUndef(e.currentTarget.value) ?? 0 }))]}
+              />
+            </SettingRow>
+            {ceilingOff(d.contextCeiling) ? (
+              <p mix={[noteRow, warnNote]} data-testid="ceiling-note">
+                {`The ceiling is between ${CONTEXT_CEILING.min.toLocaleString('en')} and ${CONTEXT_CEILING.max.toLocaleString('en')} tokens, or empty for the default.`}
+              </p>
+            ) : null}
 
             <h3 mix={subhead}>CI before merge</h3>
             <div role="radiogroup" aria-label="CI before merge" mix={choiceCss} data-testid="ci-mode">

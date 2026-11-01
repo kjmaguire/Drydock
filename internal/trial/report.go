@@ -72,6 +72,7 @@ func Report(recs []Record) string {
 			dur(float64(r.WallMs)), r.Sessions, r.Tokens.Input, r.Tokens.Output, r.Tokens.CacheRead, r.Tokens.CacheWrite,
 			strings.Join(verdicts, ", "), cell(why(r)))
 	}
+	writeB0(&b, recs)
 	b.WriteString("\nCost is Claude Code's own `total_cost_usd` (its estimate at API prices, not what a subscription costs); \"unknown\" " +
 		"counts sessions that reported none, which makes a figure a lower bound. Accepted: the hidden acceptance check passed. " +
 		"The numbers are a small sample: medians and ranges, no averages, no claim of a difference beyond these runs.\n")
@@ -334,3 +335,34 @@ func writePaired(b *strings.Builder, recs []Record) {
 		fmt.Fprintf(b, "This is a pilot: decision P34 asks for at least %d tasks with %d counted runs of each arm before any claim, so no test is computed.\n", ClaimTasks, ClaimRepeats)
 	}
 }
+
+// writeB0 adds what only the broadcast team has: how long it talked, why it stopped, and how much it broadcast.
+func writeB0(b *strings.Builder, recs []Record) {
+	rs := filter(recs, func(r Record) bool { return r.Arm == ArmB0 })
+	if len(rs) == 0 {
+		return
+	}
+	b.WriteString("\nThe broadcast team (B0), every run:\n\n| Task | # | Agents | Rounds | Stopped by | Sessions | Broadcast, all turns | Largest prompt | CLI, provider |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|---|\n")
+	for _, r := range rs {
+		fmt.Fprintf(b, "| %s | %d | %d | %d | %s | %d | %s | %s | %s |\n", r.TaskID, r.Repeat, r.Agents, r.Rounds, r.Stop, r.Sessions,
+			kib(r.BroadcastBytes), kib(r.MaxPromptBytes), b0Where(r))
+	}
+}
+
+// b0Where is the CLI a B0 run's team ran and the provider it ran on (decision P121); a record from before names neither.
+func b0Where(r Record) string {
+	cli := r.AgentCLI
+	if cli == "" {
+		cli = CLIClaude
+	}
+	if r.Provider == "" {
+		return cli + ", its own sign-in"
+	}
+	if r.CostSource == "estimated" {
+		return cli + ", " + r.Provider + " (cost estimated at its prices)"
+	}
+	return cli + ", " + r.Provider
+}
+
+func kib(n int64) string { return fmt.Sprintf("%.1f KiB", float64(n)/1024) }

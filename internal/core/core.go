@@ -96,6 +96,18 @@ type Config struct {
 	// does not open inside the app. The desktop app sets it (app/app_windows.go); the address has passed ExternalURL by then. Without
 	// it (the browser harness) the page uses the browser's own link.
 	OpenURL func(ctx context.Context, rawURL string) error
+	// OpenSandboxApp shows a forwarded port of a task's sandbox in a window of Drydock's own, in a process of its own with a
+	// storage partition of its own (decision P134). The desktop app sets it (app/sandboxview_windows.go); without it (the browser
+	// harness) the page says the viewer is not available, and never opens the address in a browser.
+	OpenSandboxApp func(ctx context.Context, app SandboxApp) error
+	// Restart starts Drydock again and quits this one: "Restart now" after a staged restore (decision P116). The desktop app sets
+	// it (app/restart_windows.go); without it (the browser harness) the page says to quit and reopen.
+	Restart func(ctx context.Context) error
+	// NoticesFile is the third-party notices the build ships (THIRD_PARTY_NOTICES.md), which Settings > About shows (decision
+	// P129). Empty: the file beside the executable, where the installer puts it (packaging/windows/drydock.nsi).
+	NoticesFile string
+	// WebView2Version is the WebView2 runtime the window runs on, for the support bundle; the desktop app sets it.
+	WebView2Version func() string
 	// DevDrives lists this computer's Dev Drives, or says why none was found, for the project folder's hint (decision P58) and
 	// the CI runners' Windows folder (decision P56). Default: runners.DevDrives on Windows (asked once, no administrator rights
 	// needed), none elsewhere; tests and the e2e harness set a labelled stand-in.
@@ -139,6 +151,7 @@ type FolderPick struct {
 // Core is the running application.
 type Core struct {
 	cfg         Config
+	fwdCache    forwardCache // what sandbox.forward.list last asked the engine, for a few seconds
 	DB          *storage.DB
 	Bus         *events.SQLBus
 	Tasks       *tasks.Service
@@ -172,10 +185,17 @@ type Core struct {
 	rm         *repomap.Mapper
 	devOnce    sync.Once // this PC's Dev Drives, asked once for the folder hint and the CI runners
 	dev        runners.DevDriveScan
+	// customMu guards customLoaded: per person's own CLI, the SHA-256 of the manifest file its adapter was built from
+	// (ext_customcli.go, decision P117)
+	customMu     sync.Mutex
+	customLoaded map[string]string
 
 	mu       sync.Mutex
 	adapters map[string]agents.Adapter
-	repos    map[string]*git.Repo
+	// given are the adapters Config.Adapters put in place of the built ones: a Connection check reads the installed CLI, not
+	// them, so it says nothing about what their agents start
+	given map[string]bool
+	repos map[string]*git.Repo
 	// projHooks are the extensions' parts in deleting a project (project_delete.go)
 	projHooks projectHooks
 	// taskStarts serializes starting a task's run per task (lockTaskStart): a double click or the scheduler racing the
@@ -185,7 +205,9 @@ type Core struct {
 	limits agentLimits
 	// methods is the registry Call dispatches through, built once after the extensions started (nil before)
 	methods atomic.Pointer[map[string]Method]
-	cancel  context.CancelFunc
+	// onCall, when set, is told the name of every method Call dispatches (the usage counters, decision P121)
+	onCall atomic.Pointer[func(name string)]
+	cancel context.CancelFunc
 }
 
 // Open creates (or reopens) the application state in cfg.DataDir and resumes interrupted runs.
@@ -262,8 +284,10 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 	for k, v := range built {
 		c.adapters[k] = v
 	}
+	c.given = map[string]bool{}
 	for k, v := range cfg.Adapters {
 		c.adapters[k] = v
+		c.given[k] = true
 	}
 	bus := events.NewSQLBus(db, 4096)
 	c.Bus = bus
@@ -293,9 +317,14 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			c.endTaskRules(ctx, t) // a person's "approve for this task" ends with the task
 		},
 	}}
-	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) }}
+	c.Context = &ctxeng.Engine{DB: db, Memory: memory.Store{DB: db}, Standing: c.briefStanding, Redact: func(s string) string { return c.Scanner.Redact(s) },
+		// the project's package ceiling (Development flow settings, P119): AGENTS.md keeps within its share of it
+		Ceiling: func(ctx context.Context, projectID string) int {
+			return pipeline.LoadDevSettings(ctx, db, projectID).PackageCeiling()
+		}}
 	c.Runtime = &rt.Runtime{PM: cfg.Procs, Bus: c.Bus, DB: db, Adapters: c.adapters, NudgeWait: 5 * time.Second, MCP: c.mcpAttach, Permissions: c.permissionAsker, Instructions: c.agentInstructions,
-		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted}
+		RunMode: c.agentRunMode, Redact: c.Scanner.Redact, RepoConfigTrusted: c.agentConfigTrusted, StartGate: c.startGate,
+		Grants: c.Room} // a turn in a room starts only on the room scheduler's grant (P118)
 	c.Deps = pipeline.Deps{
 		Tasks: c.Tasks, Runtime: c.Runtime, PM: cfg.Procs, Bus: c.Bus, Context: c.Context,
 		Repo:         c.repo,
@@ -303,9 +332,11 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		AgentConfig:  c.agentConfig,
 		OnCheck:      c.postCheck,
 		OnTurn:       c.postTurn,
+		OnFiles:      c.joinRulesAgain,
 		MCPStatus:    c.mcpStatus,
 		WorkerChecks: c.workerChecks,
-		Sandbox:      sandboxHook{c}, // ext_sandbox.go
+		Sandbox:      sandboxHook{c},     // ext_sandbox.go
+		ScanTools:    c.scanCheckOptions, // the `scan` check (ext_security_check.go, decision P131)
 		Lead:         leadHook{c},
 		ResetWatch:   c.resetWatch,
 		ProjectBrief: c.ProjectBrief,
@@ -318,6 +349,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 			return c.projectDir(p)
 		},
 	}
+	c.Deps.ContextWindow = c.modelWindow // sizes the occupancy estimate of a CLI that reports none (P128)
 	c.Engine = workflow.New(workflow.Config{DB: db, Bus: c.Bus, DataDir: cfg.DataDir, LeaseTTL: cfg.LeaseTTL, SafePoint: pipeline.SafePointHook(c.Deps), Redact: c.Scanner.Redact})
 	c.Watch = watchdog.New(watchdog.SQLStore{DB: db}, c.watchdogHooks(), watchdog.ForNode)
 	c.Engine.Use(workflow.KindAgentTask, c.Watch.Middleware())
@@ -378,6 +410,7 @@ func Open(ctx context.Context, cfg Config) (*Core, error) {
 		// the budgets did not start, so nothing limits what agents spend: no agent turn runs until they do
 		c.logf("the budget gate did not start: agent turns are refused until it does")
 		c.Engine.Use(workflow.KindAgentTask, budget.FailClosed("the budget gate did not start (see the log), so no agent turn runs"))
+		c.Engine.Use(workflow.KindGroup, budget.FailClosed("the budget gate did not start (see the log), so no group discussion runs"))
 	}
 	// the method registry is complete once the extensions have started: build it once for Call
 	m := c.Methods()
@@ -935,6 +968,23 @@ func (c *Core) agentTier(a Agent) string {
 		}
 	}
 	return "premium"
+}
+
+// modelWindow is pipeline.Deps.ContextWindow (decision P128): the context length the provider catalog gives a turn's model, on
+// the agent's own provider when it has one, else the smallest any provider lists for that model (an estimate held to the smaller
+// window errs toward a fresh session); 0 when no catalog row knows the model.
+func (c *Core) modelWindow(ctx context.Context, cfg rt.Config) int64 {
+	if cfg.Spec.Model == "" {
+		return 0
+	}
+	if a, err := c.agent(ctx, cfg.AgentID); err == nil && a.ProviderID != "" && c.Providers != nil {
+		if m, err := c.Providers.Model(ctx, a.ProviderID, cfg.Spec.Model); err == nil && m.ContextLength > 0 {
+			return int64(m.ContextLength)
+		}
+	}
+	var n sql.NullInt64
+	_ = c.DB.Reader().QueryRowContext(ctx, `SELECT MIN(context_length) FROM model_catalog WHERE model=? AND context_length>0`, cfg.Spec.Model).Scan(&n)
+	return n.Int64
 }
 
 func providerLabel(a Agent) string {

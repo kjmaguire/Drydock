@@ -69,7 +69,7 @@ Slice 1: `StaticRouter` returns the agent's configured provider/model and record
 
 ## 3. Levels
 
-Levels are project defaults and per-task overrides (brief §6). Team templates set defaults, not model locks (brief §1). **All numbers below are proposed starting values, unmeasured; they are tuned through the eval harness (brief §23).**
+Levels are project defaults and per-task overrides (brief §6). Team templates set defaults, not model locks (brief §1). As built, the most specific level applies: the task's own, then the one its template declares, then the project's, then the workspace's (decision P127, "As built: a task's own level and a template's" below). **All numbers below are proposed starting values, unmeasured; they are tuned through the eval harness (brief §23).**
 
 | Level | Intent | Worker tier order | Review policy | Effort default | Escalate after |
 |---|---|---|---|---|---|
@@ -140,7 +140,7 @@ type QuotaLedger interface {
 | OpenAI | `x-ratelimit-limit/remaining/reset-{requests,tokens}` (optional; missing or odd on some models) | `insufficient_quota` is not retryable | `Retry-After` is a minimum; add jitter |
 | Google Gemini | Nothing proactive found | Per-model RPM/RPD/TPM configured by the user or learned from the 429 body (`QuotaFailure.quotaId`, `RetryInfo.retryDelay`); per project, daily reset midnight Pacific | Body `retryDelay`, not a header; classify by `quotaId`, stop retrying per-day quotas even if `retryDelay` is short |
 | vLLM / SGLang / Ollama | Concurrency and queue only (vLLM `/metrics`, `/load`; SGLang `/metrics`, `/server_info`; Ollama `/api/ps`, 503 when queue of 512 is full) | `max_concurrent` from benchmark | none |
-| Claude Code subscription | Stream `rate_limit_event.rate_limit_info{status: allowed\|allowed_warning\|rejected, resetsAt, utilization}` (CLI >= 2.1.181); ACP bridge forwards as `_meta["_claude/rateLimit"]` (AC s1, s10) | No JSON usage command | `rejected` marks unavailable until `resetsAt` (built 2026-10-11, `internal/core/agentlimits.go`: the CLI's models, or only the family a limit names such as a weekly Opus limit, are filtered as quota-exhausted until the reset); `allowed_warning` downshifts premium use (not built) |
+| Claude Code subscription | Stream `rate_limit_event.rate_limit_info{status: allowed\|allowed_warning\|rejected, resetsAt, utilization}` (CLI >= 2.1.181); ACP bridge forwards as `_meta["_claude/rateLimit"]` (AC s1, s10) | No JSON usage command | `rejected` marks unavailable until `resetsAt` (built 2026-10-11, `internal/core/agentlimits.go`: the CLI's models, or only the family a limit names such as a weekly Opus limit, are filtered as quota-exhausted until the reset); `allowed_warning` downshifts premium use (built 2026-10-30, decision P128: the models the warned limit covers carry the warning until the reset or the next report of that limit, and the turns the ladder's rules allow try the cheap tier first; section "As built: a subscription's warning downshifts premium use") |
 | Codex subscription | `codex app-server` `account/rateLimits/read` and `account/rateLimits/updated` (primary/secondary windows with `usedPercent`, `windowDurationMins`, `resetsAt`); a side-channel client in Go; over ACP only `/status` text | | |
 | Antigravity | `agy -p "/usage"` prints plan quota and reset times (CHANGELOG, SNIPPET-ONLY on format) | | |
 | Gemini CLI, OpenCode, Goose | None programmatic (Gemini internal `retrieveUserQuota` only, via interactive `/stats`); local accounting only | Docs list static daily limits for Gemini CLI auth methods (consumer sign-in reportedly retired 2026-06-18) | |
@@ -300,7 +300,7 @@ Differences from the text above: `Reserve(ctx, provider, model) (ok, retryAt, er
 
 Attestations (decision P9): a private-class provider on plain http to a private (non-loopback) address is refused at registration unless `lan_attested` is set, and a private Gemini route needs `billing_enabled`.
 
-Not built (as of that worker's report; the probe, selection, `routing_outcomes` and agent-native candidates were built afterwards, see the next sections): the LLM tiebreak, router handling of the Anthropic retention error (classified only). The Anthropic backend drops replayed reasoning (thinking replay needs signatures). Unverified: real wire shapes for OpenRouter usage through `openai-go`, Gemini compat `/models`, SGLang/vLLM/Ollama endpoints, live provider calls (two live tests skip without keys), and Windows `go-keyring`.
+Not built (as of that worker's report; the probe, selection, `routing_outcomes` and agent-native candidates were built afterwards, see the next sections; the LLM tiebreak and the router's handling of the Anthropic retention error were built with P112, see the last section): the LLM tiebreak, router handling of the Anthropic retention error (classified only). The Anthropic backend drops replayed reasoning (thinking replay needs signatures). Unverified: real wire shapes for OpenRouter usage through `openai-go`, Gemini compat `/models`, SGLang/vLLM/Ollama endpoints, live provider calls (two live tests skip without keys), and Windows `go-keyring`.
 
 
 ## As built: probe, selection, wiring and outcomes (2026-10-08, Slice 2, Linux sandbox)
@@ -327,7 +327,7 @@ each model cheap or premium, at least one of each, at most six; stored in `agent
 of that agent the `routeTurn` middleware (internal/core/turnrouting.go, in place of the old static recorder) asks a rule router
 whose candidate source is exactly that list: on the agent's registered provider when it has one (with its health, quota and
 prices), else as agent-native routes of its CLI. The router therefore never moves a turn to another adapter or provider. The
-level is Balanced (no per-project level exists yet); the failure counters come from the run: every earlier work turn routed to
+level was Balanced (a per-project level came with P118, see the last section); the failure counters come from the run: every earlier work turn routed to
 a cheap model counts as a cheap iteration (it came back with failing checks or a revise), and REVISE verdicts given since the
 run first routed work to premium count as premium revises. With the shipped thresholds a worker runs three cheap turns and
 escalates to premium on the fourth (tested end to end). The chosen model and its tier reach the node through the context
@@ -335,7 +335,7 @@ escalates to premium on the fourth (tested end to end). The chosen model and its
 (agent-native routes record EffortApplied=false). An agent with no list, or a turn the router cannot decide, runs the
 configured model and records a static decision whose reason says which. Every decision is in the run explanation.
 
-Not built: a per-project level. (Room replies and the template role turns were routed later, decision P63: see "As built:
+Built later: a per-project level (decision P118, the last section). (Room replies and the template role turns were routed later, decision P63: see "As built:
 every turn of an agent is routed" below.)
 
 
@@ -514,5 +514,184 @@ it runs. Pipeline (`route_roles_test.go`): the pm, architect, test writer and se
 the security review record names it. Router (`turnkinds_test.go`), evals, projectio, UI unit and browser tests, and
 `ui/e2e/round3.spec.ts` (a routed agent answers in the room on haiku and the room's "Why this model?" says it was a room reply).
 
-**Not built or not verified.** The team lead's turns and the recommendation turns (P52) are not routed; real CLIs were not
-run (the fake agent stands in, D1 holds by construction: `agentSource` offers only the agent's own models on its own CLI).
+**Not built or not verified.** The team lead's turns and the recommendation turns (P52) are not routed (built later with
+P112: see the next section); real CLIs were not run (the fake agent stands in, D1 holds by construction: `agentSource` offers
+only the agent's own models on its own CLI).
+
+## As built: expert-pack consults and digest summaries are routed (2026-10-29, decision P110)
+
+CONSULT answers and the changed-pages summary of a pack refresh are the app's own calls of run kinds `consult` and
+`summarize` (`internal/packs/packmodel`): each asks the app's router (`EconomicsRouter`: the rule router over the provider
+registry, budgets filled in, every decision recorded in `routing_decisions`) at level `cheapest` and calls the chosen model
+through the app's LLM client (`EconomicsLLM`: the Wrapper's data-class guard, secret scan, quota, cache and usage). The context
+ceiling is the pack's: `public_docs` only when every pack is public and allows a trainable route and the question passes the
+trainable test (docs/expert-packs.md section 6), otherwise `private`, with manifest entries of the same class, so a private
+pack is never routed to a `trainable` provider (and the Wrapper would refuse one). Free models remain consult-only by the
+invariant. No provider registered is "no model" (the answer is the cited passages, and the page says to add a provider); any
+other refusal (a policy, a budget at its limit, every candidate unavailable) keeps the router's reason in the answer's notice.
+One attempt per question: a provider failure is not retried on `Next`. Tests: `internal/core/ext_packs_model_test.go` against
+the real rule router and a labelled test-double provider (an `llmtest` protocol fixture), `internal/packs/packmodel`.
+
+## As built: tiebreak, reservations, ceilings, the lead's turns and the retention refusal (2026-10-29, decision P112)
+
+On the owner's words, answering the list of what was not built: "Proceed with those items". The OTLP exporter and the B0 arm
+of the evaluation are another decision's (P113).
+
+**1. LLM tiebreak** (`internal/router/tiebreak.go`; the caller's half in `internal/core/routesettings.go`). After the ranking,
+when the candidates at the top cannot be told apart in any way that matters (the same tier, rule penalties and probe result,
+and blended prices within `TiebreakMargin` = 10% of the top one, or no price at all, as for an agent CLI's own models), up to
+four of them (`MaxTiebreakOptions`) go to a `router.Tiebreaker`. Differences from s7: the trigger is a tie in the ranking,
+not conflicting rules of equal priority or an ambiguity band (the router's rules merge, so conflicts do not survive to the
+ranking; ties do, and were decided by name); no tiebreak at the Cheapest level, on an explicit pin, or on a fallback hop. The
+core's Tiebreaker makes one call through the `llm.Wrapper` (data-class guard, secret scan, quota, response cache for an hour,
+`model_usage` rows with purpose `route_tiebreak` counted toward the turn's project and agent budgets) to the configured cheap
+model: the `cheap_default` of the first enabled private provider that has one (cheap tier first, `route.cheap.*`). It is told
+`TiebreakQuery` as JSON: run kind, task class and role, level, complexity, ambiguity, risk, diff size, failure counters, and
+each option's key, provider, model, tier, price, context, tool and probe facts and remaining quota. Nothing of the work: no
+prompt, task text, code, ids of the task, project or agent (the test asserts the task's title and ids never reach the
+fixture). It answers `{"choice": "<key>", "why": "..."}`; an answer that is not one of the options, a timeout (default 8 s),
+an error, no cheap model selected, or its own budget used up (default $0.25 per UTC day, at most 500 calls a day for models
+without a price) leaves the ranking's choice, and `DecisionFacts.Tiebreak` records what happened (`between`, `ranked`,
+`chose`, `by`, `why`, `failed`). A tiebreak that chose sets `DecidedBy = "llm"` and the policy `llm_tiebreak`; the reason
+says "tiebreak by <model> chose it over <ranked>", "Why this model?" has a `- Tiebreak:` line, and the task's decisions show
+"llm tiebreak". **Off by default**: `route.settings.set {tiebreak: {enabled, budgetUsd, timeoutMs}}` (Routing page,
+"Tiebreak and turn limits"). A dry run (`route.preview`, the wiring) never calls it: with the tiebreak on, it says a real
+decision would ask (`dryRun`), and the card says "tiebreak". Escalation counters count `llm` decisions like `rules` ones.
+
+**2. Pre-call reservation** (`internal/budget/reserve.go`, migration `00140_budget_reservations.sql`). Before every agent
+turn the routing middleware runs (workflow turns, room replies, the lead's and recommendation turns, routed or static; each
+fallback hop again), the turn's estimate (the decision's estimated cost when the price is known, else no dollars; its
+estimated tokens; one turn) is checked against every enabled budget of its project, task, run and agent, together with what
+the turns in flight hold, and held, in one write transaction (the database has one writer, so a second reservation reads the
+first). A turn that does not fit does not start: a workflow turn waits on the budget pause (`Enforcer.PauseRefused`; the
+message names what was spent, what is held by how many turns, and the estimate; a person raises the limit or approves one
+turn, whose reservation is then held without the check), a reply or a lead turn says why, and `budget.reservation_refused` is
+published. While the turn runs, what it has reported spending is taken off what it holds (its usage rows count it now), and
+its turn is let go at its first chunk (its `agent_runs` row counts it), so nothing is counted twice; when it ends the
+reservation is settled with its real cost, or released when it never reached the model or was cancelled. A reservation lasts
+the turn's ceiling plus ten minutes, or three hours; all still held at start are expired (`Store.ExpireStale`, the process
+that held them is gone). On a registered provider the estimate is also held on its quota windows
+(`providers.QuotaLedger.Hold`: one request slot, the tokens on token windows, the dollars on a credits window; memory only),
+settled with the turn's tokens and cost, or dropped; a window that cannot take it ends the attempt as `quota_exhausted`, which
+moves along the fallback chain. A budget's own status (Budgets page) is still what was spent; a reservation is not spend.
+Differences from s6: `Reserve` returns a reservation for budgets, the router itself still only checks quota, and an agent
+CLI's own calls are counted only through the hold (Drydock sees no response headers of a CLI's calls).
+
+**3. Wall-time ceilings** (`internal/core/turnguard.go`, migration `00141_turn_stops.sql`). A maximum wall time per level
+and, optionally, per agent (the agent's wins); none by default; 1 minute to 24 hours (`route.settings.set {ceilings: {levels,
+agents}}`, seconds). Agent turns run at Balanced today, so the Balanced ceiling is the one that applies unless the agent has
+its own. A turn past it is stopped (its context ends with the cause `errWallTime`, which the runtime turns into the CLI's
+stop); the reason ("the turn ran past the 30m wall-time ceiling of the balanced level") is written on the decision it ran on
+(`routing_decisions.stop_reason`, `Facts.Stopped`: "Why this model?" has a `- Stopped:` line, the task's decisions a
+"stopped" badge) and copied onto its routing outcome when the task ends (`routing_outcomes.stop_reason`), and
+`routing.stopped` is published. A turn that did no work before the ceiling (no tool call: a model that hung) moves along its
+fallback chain (cause `wall_time`, P53's rules otherwise); one that did work is never moved mid-turn, and a workflow turn then
+waits on an approval (gate `wall_time`: approve runs it again under the same ceiling, reject ends the run). A room reply or a
+lead turn ends with the reason. The watchdog's own 20-minute time cap still nudges first when it is shorter.
+
+**4. The team lead's and the recommendation turns** (P52). Run kinds `lead` (task class `lead`, complexity 0.5, ambiguity 0.4:
+cheap first) and `recommend` (`recommendation`, 0.3: cheap first), routed on that agent's own list through
+`core.EconomicsRouteTurn` (`pipeline.LeadDeps.Route`, `recommendTurn`), with the same budgets, reservation, ceiling, fallback
+chain and decision records; an agent without a list keeps its model (`static`). No escalation counters (each decision stands
+alone). A lead turn's decision carries the run (or nothing, for a project-wide turn such as the stand-up), a recommendation's
+the recommendation's id; both travel with the project's export and deletion (project-wide decisions are found by the
+request's project). They get no routing outcome and the routing report leaves them out, as replies: the task's outcome does not
+judge them. The rule editor and the wiring name them ("team lead", "recommendation").
+
+**5. The Anthropic retention refusal** (`internal/providers/retention.go`, migration `00142_model_retention.sql`). s8 says the
+error removes the model from the candidate set for the organization. As built: a 400 `invalid_request_error` "... must have
+data retention enabled" on one of Drydock's own calls (`llm.KindRetention`), or the same words in an agent turn's error
+(`router.CauseRetentionRequired`, checked before the "not ours" patterns since it is an invalid request about the model, not
+the work), marks the (provider, model) in `model_retention_blocks` (`agent:<adapter>` for an agent CLI's own login; the
+provider's error body is not stored, only Drydock's words). The router leaves a marked model out of every decision (hard filter
+`retention_required`, with what to do: enable retention in the provider's console, where the model then keeps prompts and
+outputs for 30 days, or pick another model). The call or turn moves to the next approved target or the next model of its
+chain, which keeps no data; with none left it ends, or routing.blocked says why, with the same advice. The Routing page lists
+the models set aside with "Try again" (`route.retention.list/clear`); a provider's marks go with it.
+
+**Tests.** Router (`tiebreak_test.go`, with a labelled test double of the Tiebreaker): a tie broken from a content-free
+description, every failure leaving the ranking's choice, no tiebreak without a tie, on a pin or at Cheapest, the 10% margin,
+the retention filter and classifier, the new run kinds. Budget (`reserve_test.go`): two reservations at once, one fits;
+settle, release, tokens and turns; expiry at start and after the TTL; progress while a turn runs. Providers
+(`hold_test.go`): holds on token and credit windows, settle and drop; retention marks. LLM: a retention refusal marks the
+model and falls back. Evals: a stopped turn's outcome, lead and recommendation decisions get none. Core (`turnguard_test.go`,
+end to end with the labelled fake agent): two routed turns that start together under a token budget only one fits in; a
+turn past its ceiling stopped with the reason on its decision, the decisions list and the event; a hung turn falling back at
+the ceiling; a retention refusal moving to the chain's next model and setting the model aside for the next task; the
+settings' checks; the tiebreak through the real Wrapper against a protocol fixture of the cheap model (llmtest), with its
+budget used up; the lead's and a recommendation's turns routed. UI: the panel, the wiring, the decisions table, and
+`e2e/round3.spec.ts` (a limit set and read back).
+
+**Not verified.** The tiebreak against a real cheap model (only the protocol fixture answered; whether a cheap model's choice
+is better than the name order is not measured), the margin and the defaults (design assumptions), a real CLI stopped at a
+ceiling on Windows (the fake agent's process is stopped the way the runtime stops any turn), the exact retention wording of
+every Claude Code version (Anthropic's API text is the one matched), and holds on a real provider's windows during a CLI's
+turn (the CLI's own calls are not seen).
+
+
+## As built: the workspace's level and a project's own (2026-10-29, decision P118)
+
+Section 3's levels were project defaults on paper; until P118 every agent turn ran at Balanced. Now the workspace has a level
+(`settings` row `route.level`, Balanced until a person chooses another on the Routing page, "Level") and a project may choose
+its own on Project settings ("Model routing level"; `route.level:<project id>`, removed with the project; a project export
+leaves it out, as it leaves out where the project's agents run). `route.level.get {projectId}` answers the workspace's level,
+the project's own ("" while it follows the workspace), the level its turns run at and where it came from;
+`route.level.set {projectId, level}` sets the workspace's (`projectId` "") or the project's ("" follows the workspace again);
+only a person may, and `routing.level_changed` is published. Every agent turn of the project (`decide` in
+`internal/core/turnrouting.go`: work, review, the template roles, room replies, the lead, recommendations), its static
+decision when the agent has no model list, and its wall-time ceiling (P112, set per level) use that level. The request and
+the decision record the level and `LevelSource` (`project` or `workspace`), and "Why this model?" says it ("- Level:
+Quality, the project's own level (its settings)."). The task-level override of section 3 and a level per template were built
+since (decision P127, next section); Custom can be stored (`custom`) but the pages offer the five ladder levels only. Tests:
+`TestAProjectsOwnLevelRoutesItsTurnsAndTheExplanationSaysSo` (`internal/core`: at Quality the worker's first turn runs on
+its premium model), `TestTheDecisionSaysWhichLevelItRanAtAndWhere` (`internal/router`), the UI's
+`project-routing-level.test.browser.tsx` and `routing-screen.test.browser.tsx`, and `e2e/routing-level.spec.ts`.
+
+## As built: a task's own level and a template's (2026-10-30, decision P127)
+
+Section 3's "per-task overrides" and "team templates set defaults". A person sets a task's own level on the task page (the
+properties panel's **Routing** row: "Follow the Security template (Quality)", "Follow the project (Cheapest)" or "Follow the
+workspace (Balanced)", then the five levels; `route.level.get {taskId}`, `route.level.set {taskId, level}`, only a person,
+`routing.level_changed` with the task; `tasks.route_level`, migration 00165, left out of a project export as the project's
+own level is). A workflow template may declare a level (`pipeline.Template.Level`): the Security template declares Quality,
+since fixing security findings is a premium-only class of brief s6's ladder; the others declare none. **Order, most specific
+first:** the task's own, the level its template declares, the project's own, the workspace's. The template sits under the task
+and over the project because a task chooses its template, and the template says what kind of work the task is, which the
+project's level (a default for all its work) does not; a person who wants another level for one task sets the task's. The
+template is the workflow the turn runs in (either variant: a name ending in `-pr` is its PR variant), else the task's template
+(a room reply in the task's room). `LevelSource` gains `task` and `template` (and `LevelTemplate` names it), stored with the
+decision; "Why this model?" says "- Level: Quality, this task's own level (set on its page)." or "- Level: Quality, the level
+the Security template declares (the task sets none of its own).", and the wall-time ceiling of a level (P112) follows the same
+level. Templates are code, not edited in the UI, so there is no template control. Tests: `TestATasksOwnLevelAndItsTemplatesRouteItsTurns`
+(`internal/core`: the Security template's level over the project's Cheapest, the task's own over it, the refusals, the events,
+a work turn on the premium model at the task's Quality and its explanation), `TestTheDecisionSaysWhichLevelItRanAtAndWhere`
+(`internal/router`), the UI's `task-level.test.browser.tsx` and `routing.test.ts`, and `e2e/routing-level.spec.ts` (a task's
+own level over the project's, kept across a reload). Not verified: a real model's choice at these levels (only the stand-in
+and the router's own tests), Windows.
+
+## As built: a subscription's warning downshifts premium use (2026-10-30, decision P128)
+
+Claude Code reports each of its account's limits mid-turn as a `rate_limit_event` (status `allowed`, `allowed_warning` or
+`rejected`, the limit's type, its reset time). Since P128 an `allowed_warning` (the limit is near) is kept per CLI and limit type
+beside the rejected limits (`internal/core/agentlimits.go`, in memory, nothing stored) until the limit's `resetsAt` passes or the
+CLI reports the same limit again (`allowed`, or `rejected`, which then blocks as before). A limit whose type names a model family
+(`seven_day_opus`) covers only that family. The agent's route candidates (`agentSource`) carry it as `Candidate.QuotaWarning`
+("Claude Code reported its seven day opus limit near (allowed_warning, resets ...)"). The shape the ACP bridge forwards in
+`_meta["_claude/rateLimit"]` is read as the info itself, which is unverified.
+
+When a premium candidate of the turn is warned, the router prefers the cheap tier for the turn (`router.QuotaDownshift`, policy
+id `quota-warning-downshift`), and the ladder's rules decide which turns allow it: not on the Maximum Quality level, not for a
+risky task, not for a turn a person pinned, not when a rule already chose the tier to prefer; and a rule that requires the premium
+tier (the premium-only classes such as architecture or a security review, an escalation after cheap turns failed) still filters
+the cheap candidates out, so those turns stay premium. Without a cheap candidate the premium one runs. At Balanced and the levels
+below it a work turn tries the cheap tier first anyway, so in practice the downshift changes the Quality level's turns. It applies
+only to an agent whose person listed the models the router may choose (an agent without a list keeps its model). "Why this
+model?" says either "- Subscription limit: ..., so premium use is downshifted: the cheap tier is tried first until the limit
+resets or is reported allowed again." or "...; no downshift for this turn (...)", from the decision record
+(`DecisionFacts.QuotaWarning`, `QuotaDownshift`).
+
+Tests: `internal/router/quotawarning_test.go` (Quality goes to the cheap model while the premium one is warned; the
+premium-only class, a risky task, an escalation, Maximum Quality and a pin stay premium with the warning shown; a warning on the
+cheap model alone changes nothing; no cheap model left), `internal/core/p128_test.go` (the warning until the reset or the next
+report, an account-wide one, the ACP shape; a warning published by a session reaching the agent's candidates on the premium
+model only). **Not verified:** a real Claude Code subscription's warning (the fixture's `rate_limit_event` lines only).

@@ -2,10 +2,16 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { LocalJob, LocalModel, LocalView } from '../../api/localClient.ts';
 import {
+  noGpuWords,
   barLabel,
   compactCount,
   contextWords,
   deviceLine,
+  DRAFT_MTP,
+  draftChoices,
+  draftOnly,
+  draftOnlyWord,
+  draftWords,
   diskLine,
   fitWords,
   gb,
@@ -13,6 +19,12 @@ import {
   gpus,
   hostPort,
   jobFraction,
+  licenceUrl,
+  loadBytesOf,
+  loadedIds,
+  loadLine,
+  loadToo,
+  loadTooTitle,
   localRow,
   memoryBar,
   memoryBars,
@@ -24,6 +36,8 @@ import {
   splitModelId,
   startedWords,
   switchChoices,
+  tokenWords,
+  unloadTitle,
   usedByWords,
   usedOf,
   wholeNumber,
@@ -34,6 +48,13 @@ const MiB = 2 ** 20;
 const job = (over: Partial<LocalJob> = {}): LocalJob => ({ kind: 'install', target: 'x', state: 'running', done: 0, total: 0, started: '', ...over });
 
 describe('Models on this PC helpers', () => {
+  it('with no GPU listed: none, or the card Windows has that the engine could not use', () => {
+    expect(noGpuWords(undefined)).toBe('No GPU found: runs on the CPU');
+    expect(noGpuWords([' '])).toBe('No GPU found: runs on the CPU');
+    expect(noGpuWords(['NVIDIA GeForce RTX 4070'])).toBe('Windows has NVIDIA GeForce RTX 4070, but the engine could not use it: models run on the CPU. An up-to-date graphics driver usually fixes this.');
+    expect(noGpuWords(['Intel(R) UHD Graphics', 'NVIDIA GeForce RTX 4070', 'AMD Radeon'])).toContain('Windows has Intel(R) UHD Graphics, NVIDIA GeForce RTX 4070 and AMD Radeon, but the engine could not use them');
+  });
+
   it('sizes: GB with one decimal, whole MB under a gigabyte, never "0.0 GB"; the bars drop a ".0"', () => {
     expect(gb(8.5 * GiB)).toBe('8.5 GB');
     expect(gb(120 * GiB)).toBe('120.0 GB');
@@ -221,5 +242,101 @@ describe('Models on this PC helpers', () => {
     expect(localRow({ supported: true, runtime: rt(), server: { state: 'failed' } })).toEqual({ text: 'Failed', tone: 'err', sub: 'Nothing served' });
     // a view of a PC that cannot run local models may carry nothing else
     expect(localRow({ supported: false } as LocalView).text).toBe('Not available');
+    // several models loaded (decision P111): the first, and how many more
+    expect(localRow({ supported: true, runtime: rt(), server: { state: 'running', modelId: 'acme/tiny-GGUF:Q4_0', models: ['acme/tiny-GGUF:Q4_0', 'a/b:Q8_0', 'c/d:F16'] } })).toEqual({
+      text: 'Serving',
+      tone: 'ok',
+      sub: 'tiny · Q4_0 and 2 more',
+    });
+  });
+
+  it('several models loaded (decision P111): which are loaded, whether one more fits, the room line, the draft choices, the token', () => {
+    const m = (over: Partial<LocalModel> = {}): LocalModel => ({ id: 'a/b:Q4', repo: 'a/b', variant: 'Q4', files: [], sizeBytes: 4 * GiB, downloadedAt: '', ...over });
+    const running = { state: 'running' as const, modelId: 'x/y:Q4', models: ['x/y:Q4', 'z/w:Q8'] };
+    expect(loadedIds(running)).toEqual(['x/y:Q4', 'z/w:Q8']);
+    expect(loadedIds({ state: 'starting', modelId: 'x/y:Q4' })).toEqual(['x/y:Q4']);
+    expect(loadedIds({ state: 'stopped', modelId: 'x/y:Q4', models: ['x/y:Q4'] })).toEqual([]);
+    expect(loadBytesOf(m({ loadBytes: 5 * GiB }))).toBe(5 * GiB);
+    expect(loadBytesOf(m({ fit: { target: 'gpu', fits: true, availableBytes: 0, needBytes: 4.5 * GiB } }))).toBe(4.5 * GiB);
+    expect(loadBytesOf(m())).toBe(4 * GiB);
+
+    const load = { max: 4, budgetBytes: 24 * GiB, loadedBytes: 18 * GiB };
+    expect(loadToo({ server: running, load }, m({ loadBytes: 5 * GiB }))).toEqual({ ok: true });
+    expect(loadToo({ server: running, load }, m({ loadBytes: 7 * GiB })).why).toBe('Does not fit beside the models loaded: it needs about 7.0 GB, and 6.0 GB of 24.0 GB is left.');
+    expect(loadToo({ server: running, load }, m({ embedding: true })).ok).toBe(false);
+    expect(loadToo({ server: running, load }, m({ id: 'z/w:Q8' })).why).toBe('Loaded already.');
+    const four = { ...running, models: ['1/1:a', '2/2:b', '3/3:c', '4/4:d'] };
+    expect(loadToo({ server: four, load: { ...load, loadedBytes: 0 } }, m()).why).toBe('At most 4 models stay loaded at once: unload one first.');
+    // nothing measured: the person decides
+    expect(loadToo({ server: running, load: { max: 4, budgetBytes: 0, loadedBytes: 0 } }, m({ loadBytes: 900 * GiB })).ok).toBe(true);
+    expect(loadToo({ server: running }, m()).ok).toBe(true);
+
+    expect(loadLine({ server: running, load })).toBe('2 of 4 models loaded · 18 of 24 GB');
+    expect(loadLine({ server: running, load: { max: 4, budgetBytes: 0, loadedBytes: 0 } })).toBe('2 of 4 models loaded');
+
+    const big = m({ id: 'q/coder:Q4', repo: 'q/coder-GGUF', drafts: ['q/small-GGUF:Q8_0'] });
+    const small = m({ id: 'q/small-GGUF:Q8_0', repo: 'q/small-GGUF', variant: 'Q8_0' });
+    expect(draftChoices(big, [big, small])).toEqual([
+      { value: '', label: 'No draft' },
+      { value: 'q/small-GGUF:Q8_0', label: 'Draft: small · Q8_0' },
+    ]);
+    expect(draftChoices(small, [big, small])).toEqual([{ value: '', label: 'No draft' }]);
+
+    expect(tokenWords({ set: true, masked: 'hf_…1234' })).toBe('hf_…1234');
+    expect(tokenWords({ set: false })).toBe('none');
+    expect(tokenWords(undefined)).toBe('none');
+    expect(licenceUrl('meta-llama/Llama-3.2-1B')).toBe('https://huggingface.co/meta-llama/Llama-3.2-1B');
+  });
+
+  it('one model in or out of the router, and draft heads that are not models (decision P120)', () => {
+    const m = (over: Partial<LocalModel> = {}): LocalModel => ({ id: 'a/b:Q4', repo: 'a/b', variant: 'Q4', files: [], sizeBytes: 4 * GiB, downloadedAt: '', ...over });
+    // Load too and Unload say whether the others keep running
+    expect(loadTooTitle({ router: true })).toBe('Load it beside the models served: they keep running while it loads');
+    expect(loadTooTitle({ router: false })).toContain('the server starts again with both');
+    expect(loadTooTitle({})).toContain('starts again');
+    expect(unloadTitle({ router: true })).toBe('Unload it: the other models keep running');
+    expect(unloadTitle({})).toBe('Start the server again without this model');
+    // an EAGLE-3 draft is never loaded for chat
+    const running = { state: 'running' as const, modelId: 'x/y:Q4', models: ['x/y:Q4'], router: true };
+    expect(loadToo({ server: running }, m({ eagle3: true }))).toEqual({ ok: false, why: "An EAGLE-3 draft does not chat: choose it as its model's draft." });
+    // the choices: its own MTP heads first, an EAGLE-3 draft named so
+    const glm = m({ id: 'z/glm-GGUF:Q4', repo: 'z/glm-GGUF', mtp: true, drafts: [DRAFT_MTP] });
+    const qwen = m({ id: 'q/qwen-GGUF:Q4', repo: 'q/qwen-GGUF', drafts: ['q/qwen-eagle3-GGUF:BF16', 'q/small-GGUF:Q8_0'] });
+    const eagle = m({ id: 'q/qwen-eagle3-GGUF:BF16', repo: 'q/qwen-eagle3-GGUF', variant: 'BF16', eagle3: true });
+    const small = m({ id: 'q/small-GGUF:Q8_0', repo: 'q/small-GGUF', variant: 'Q8_0' });
+    const all = [glm, qwen, eagle, small];
+    expect(draftChoices(glm, all)).toEqual([
+      { value: '', label: 'No draft' },
+      { value: 'mtp', label: 'Its own MTP heads' },
+    ]);
+    expect(draftChoices(qwen, all)).toEqual([
+      { value: '', label: 'No draft' },
+      { value: 'q/qwen-eagle3-GGUF:BF16', label: 'EAGLE-3: qwen-eagle3 · BF16' },
+      { value: 'q/small-GGUF:Q8_0', label: 'Draft: small · Q8_0' },
+    ]);
+    expect(draftWords({ ...glm, draft: DRAFT_MTP }, all)).toBe('with MTP');
+    expect(draftWords({ ...qwen, draft: eagle.id }, all)).toBe('with EAGLE-3');
+    expect(draftWords({ ...qwen, draft: small.id }, all)).toBe('with a draft');
+    expect(draftWords(qwen, all)).toBeUndefined();
+    // DFlash, DSpark and MTP head drafts (decision P129): named by kind, never loaded for chat
+    const dflash = m({ id: 'q/qwen-DFlash-GGUF:BF16', repo: 'q/qwen-DFlash-GGUF', variant: 'BF16', draftKind: 'dflash' });
+    const head = m({ id: 'q/qwen-MTP-GGUF:Q8_0', repo: 'q/qwen-MTP-GGUF', variant: 'Q8_0', draftKind: 'mtp-head' });
+    const more = [...all, dflash, head];
+    expect(draftChoices({ ...qwen, drafts: [dflash.id, head.id] }, more).map((c) => c.label)).toEqual(['No draft', 'DFlash: qwen-DFlash · BF16', 'MTP head: qwen-MTP · Q8_0']);
+    expect(draftWords({ ...qwen, draft: dflash.id }, more)).toBe('with DFlash');
+    expect(draftWords({ ...qwen, draft: head.id }, more)).toBe('with an MTP head');
+    expect(loadToo({ server: running }, head).why).toBe("An MTP head does not chat: choose it as its model's draft.");
+    expect(loadToo({ server: running }, m({ draftKind: 'dspark' })).why).toBe("A DSpark draft does not chat: choose it as its model's draft.");
+    // a Gemma 4 assistant and an old MTP file (decision P132): the one drafts for its model, the other for nothing
+    const assistant = m({ id: 'g/gemma-4-assistant-GGUF:Q8_0', repo: 'g/gemma-4-assistant-GGUF', variant: 'Q8_0', draftKind: 'assistant' });
+    const old = m({ id: 'g/gemma-4-assistant-old-GGUF:Q8_0', repo: 'g/gemma-4-assistant-old-GGUF', variant: 'Q8_0', draftKind: 'old-mtp' });
+    expect(draftChoices({ ...qwen, drafts: [assistant.id] }, [...more, assistant]).map((c) => c.label)).toEqual(['No draft', 'Assistant: gemma-4-assistant · Q8_0']);
+    expect(draftWords({ ...qwen, draft: assistant.id }, [...more, assistant])).toBe('with its assistant');
+    expect(loadToo({ server: running }, assistant).why).toBe("A Gemma 4 assistant does not chat: choose it as its model's draft.");
+    expect(loadToo({ server: running }, old).why).toBe('No engine Drydock installs loads an old MTP file.');
+    expect(draftOnlyWord('assistant')).toBe('drafts for its model');
+    expect(draftOnlyWord('old-mtp')).toBe('no engine here loads it');
+    expect(draftOnly(m({ eagle3: true }))).toBe('eagle3');
+    expect(draftOnly(m())).toBeUndefined();
   });
 });

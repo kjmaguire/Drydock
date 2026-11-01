@@ -89,7 +89,7 @@ func TestScanRegistryIsPluggableByName(t *testing.T) {
 	if got := strings.Join(r.Names(), ","); got != "a-first,sast" {
 		t.Fatal(got)
 	}
-	if got := strings.Join(pipeline.DefaultScans.Names(), ","); got != "deps,secrets" {
+	if got := strings.Join(pipeline.DefaultScans.Names(), ","); got != "deps,scan,secrets" {
 		t.Fatalf("default scans %s", got)
 	}
 }

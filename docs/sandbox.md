@@ -20,7 +20,8 @@ With the sandbox on, every task gets its own containers on the machine's contain
 
 The worker's CLI still runs on the human's machine, but in Claude Code's restricted mode (`--restricted`): no tool that runs
 commands or code, file tools confined to the working folder, writes to `.claude/` settings and `.git/` refused. It runs commands
-only through five tools of Drydock's MCP gateway, which run them in the workspace container. The project's checks (build, test,
+only through five tools of Drydock's MCP gateway, which run them in the workspace container. (A Gemini CLI, Goose or Cline
+worker's terminal runs in the container instead, and what its CLI would run itself is refused: section 9.) The project's checks (build, test,
 lint, typecheck, and the test-first templates' red and green checks) run in the container too, so the project's code never
 runs on the human's machine while the sandbox is on. When the task completes, fails or is cancelled, its containers, networks
 and volumes are removed.
@@ -153,9 +154,12 @@ Not protected:
 
 ## 7. Limits and not built
 
-- Only Claude Code agents can work in a sandboxed project. Another CLI's turn becomes a question for the human instead of
-  running commands on the machine (its ACP terminal requests are not routed into the container yet).
-- No port forwarding from the sandbox to the human's machine, so the human cannot open the app a worker started in the sandbox.
+- Claude Code, Gemini CLI, Goose and Cline workers can work in a sandboxed project (section 9, decision P131); Codex's and
+  OpenCode's turns still become a question for the human, since neither manifest names a way to make the CLI ask before every
+  command it runs itself. The routing for the other three is unverified with the real CLIs: whether each uses the client's
+  terminal, the mode ids, and how often each runs a command without asking.
+- Port forwarding (decision P134, section 9) is built on Linux against Docker 29.9 and the window on Windows is compiled and
+  proven only by the release workflow's install-test; the loopback publishing of Docker Desktop on Windows is unverified.
 - On Windows: a worktree checked out with CRLF line endings breaks shell scripts in a Linux container (`.gitattributes` with
   `* text=auto eol=lf` avoids it); bind mounts of Windows folders are slow for many small files (use `volumes` for
   `node_modules`). Both unverified.
@@ -180,3 +184,85 @@ Not protected:
   (`TestRealClaudeWorksInTheSandbox`, `DRYDOCK_REAL_CLAUDE=1`): the worker had no shell, ran `go test ./...` and a 130-second
   command through `sandbox_run`, the checks passed in the container, the change merged and the sandbox was removed.
 - `ui`: the Sandbox settings panel.
+
+## 9. Other CLIs in a sandboxed project, and port forwarding (decisions P131 and P134)
+
+Claude Code is kept from running commands on the machine by its restricted mode. An ACP CLI has no such switch, so a CLI may
+work in a sandboxed project only when its manifest says how, in Drydock's configuration, it asks before every command it would
+run itself (`transports.acp.sandbox`, with `why`: the source of that): Gemini CLI in its `default` approval mode, which Drydock
+selects for the session; Goose with `GOOSE_MODE=approve`, which its manifest already sets; Cline, which Drydock starts without
+`--auto-approve` or `--yolo`. All three from the CLIs' documentation or source, not run here. For such a worker turn
+(`pipeline.sandboxTurn`):
+
+- **Its terminal runs in the container.** The session offers ACP's client terminal, and `terminal/create` with the rest goes to
+  the task's sandbox (`agents.RunSpec.Terminals`, `core.sandboxTerminals`) instead of this machine: a command with its
+  arguments apart is quoted word by word, a command alone is run as a command line, in the request's folder (inside the working
+  folder, `/workspace/...`), with only the variables the agent asked for (nothing of this machine's environment), with
+  `sandbox_run`'s limits (60 minutes at most, the whole process group stopped, the network of the definition) and its full log;
+  the output is streamed into the terminal while the command runs (`ExecRequest.Output`), kept to the agent's
+  `outputByteLimit` (1 MiB by default), and killing or releasing the terminal, or the session's end, stops the command. Each is a
+  `sandbox.command` event with `via: terminal`. The gateway's sandbox tools are offered as to a Claude worker.
+- **Its mode is not a preference.** The session is put in the manifest's mode, replacing the agent's own permission mode; a CLI
+  that does not offer it, or refuses it, does not start (the turn fails with the modes it offers). A session that leaves the
+  mode (`current_mode_update`) has its turn stopped.
+- **What its CLI would run itself is refused.** The session's permission requests are answered by the sandbox's rules
+  (`core.sandboxAsker`), no person asked, as for a sandboxed Claude worker: an `execute` call is refused with where to run it
+  (the terminal or `sandbox_run`); a read or search of paths inside the worktree is allowed, an edit, delete or move there too
+  except inside `.git`; a path outside the worktree (links followed as far as the path exists, so a link made in the container
+  that names a file of this machine is outside) and every other kind of call (a fetch, a call that names no path) are refused.
+- **A command it ran anyway is caught after the fact.** An `execute` call the CLI reports as ended without having asked and
+  without a terminal of the session (named in its content, or made while it ran) ran on this machine: the turn is stopped at
+  once, the person sees why, and it is recorded (`sandbox.escape`, event and audit log, with the tool, its kind and the call's
+  id, never its input). This is detection, not prevention: that command has run. It is the guard for a CLI whose own settings
+  (the person's, outside the repository) let it run a command without asking.
+- The worker is told how to run commands in its sandbox (`pipeline.SandboxTextACP`). Reviewers are not sandboxed, as before.
+
+Codex and OpenCode have no such declaration: Codex's default mode runs commands in the working folder without asking, and
+OpenCode lets its shell run unless its configuration says otherwise (their documentation; not run here); a sandboxed project's turn of either
+is a question for the human, naming the CLIs that can work there.
+
+Tested: `internal/agents/acp` (`sandbox_test.go`: the terminals go through the host and never run here, the capability is
+offered only then, a folder outside is refused, no environment of this machine goes with them; an unasked command stops the
+turn and is recorded, a terminal's command and Drydock's sandbox tools do not, a session outside a sandbox is left alone; the
+mode is required and leaving it stops the turn), `internal/pipeline` (`sandbox_internal_test.go`: which CLIs may run sandboxed,
+the terminal host, the mode and the instructions), `internal/sandbox` (`ShellJoin`; the output streamed while a command runs,
+against a real engine), `internal/core` (`ext_sandbox_acp_internal_test.go`: the sandbox's rules for permission requests,
+links included; `sandbox_acp_test.go`: **the whole loop with a real engine** (Docker 29.9 here): the scripted ACP agent (a
+labelled test double, a real process on the real ACP SDK) as the worker of a sandboxed project, its own command refused, an
+edit allowed, its terminal run in the container (the file it wrote in the worktree, `pwd` `/workspace`), the checks in the
+container, the sandbox removed when the task completed). Not verified: the three real CLIs, Windows.
+
+**Port forwarding (decision P134).** The person sees the app a worker started in the sandbox from the task page ("Sandbox app",
+shown while the task's sandbox runs): a port of the workspace is forwarded to this computer and opened in a window of Drydock's
+own. The owner chose the window of Drydock's own over the person's browser (the browser holds the cookies of every other local
+app on 127.0.0.1, cookies are not separated by port, and the page is code an agent wrote), and over another loopback address.
+
+- **The forwarder** (`internal/sandbox/forward.go`) is a container of the egress image run as `drydock-egress relay`
+  (`egress.Relay`): it listens on 8080 inside, relays every connection to `<workspace container>:<port>` and to nothing else (the
+  target is fixed when it starts; there is no way to name another host, the proxy or a service), at most 64 connections at once,
+  idle ones closed after 10 minutes, a half-closed connection still answered. It is read-only, with no capabilities, as an
+  unprivileged user, 64 MiB and 128 processes. It is created on a bridge network of its own for the task with the port
+  published on `127.0.0.1` only (`-p 127.0.0.1::8080`, the engine picks the host port) and then attached to the task's internal
+  network, which is how it reaches a workspace that has no route out. A forwarder whose published address is not loopback is not
+  listed and not shown. Up to five ports per task; asking again for a port returns the same forward.
+- **The record is the engine's.** A forwarder carries the task's labels and `drydock.forward=<port>`, so it is listed from the
+  engine (`Manager.Forwards`), survives a restart of Drydock, and goes with the sandbox: the task's end, `Remove` and the cleanup
+  at start remove it and its network with everything else of the task. Nothing is kept in the database.
+- **Methods** (a person only; an agent has no way to open a port or a window): `sandbox.forward.list` (`running`, the forwards,
+  `canView`, the limit), `sandbox.forward.open`, `sandbox.forward.close`, `sandbox.forward.view`. Opening, closing and showing
+  are in the audit log (`sandbox.forward.opened`, `.closed`, `.viewed`, by the person, with the port) and are task events.
+  `sandbox.forward.view` takes the address from the engine's record of the forward, never from the caller.
+- **The window** (`app/sandboxview_windows.go`, `internal/sandboxview`) is a second process of `drydock.exe` started as
+  `sandbox-view --url http://127.0.0.1:<port>/ --title ...`: it takes no single-instance lock, opens no core, registers no
+  service (nothing of Drydock's to call) and serves no UI: its asset server answers 403 to every request, so the page cannot use
+  Wails' runtime (dialogs, clipboard, opening addresses) either. Its WebView2 profile is a new folder under
+  `%LOCALAPPDATA%\Drydock\sandbox-view`, made by the app (`sandboxview.Launcher`) and deleted by it when the viewer's process
+  ends (any left by a crash, at the next start of the first instance), so
+  what the page stores (cookies, local storage, cache) is its own and ends with it; the profile is why it is a process and not a
+  second window of the app (WebView2 takes one profile folder per process). The title ends "- Drydock isolated window". It accepts
+  only `http://127.0.0.1:<port>/` (no other host, name, scheme, credentials or path), at most four are open, and it is a child
+  of the app's Job Object so it dies with the app. A window of the browser harness has no viewer: the page says so and never
+  falls back to a browser.
+- **Limits:** the page can still navigate away from 127.0.0.1 inside that window (it is not a browser with an address bar, but
+  it does not stop a link); it holds nothing of Drydock's, and what it stores goes when it closes. A forwarder is not a security
+  boundary against the workspace itself: it relays to the workspace's own port, which is the point.

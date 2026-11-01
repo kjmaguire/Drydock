@@ -254,6 +254,11 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		return SendResult{}, err
 	}
 	c.Cwd, c.Status = cwd, StatusRunning
+	// the turn is claimed and will run whatever the caller does now: what is left of Send (the person's message, the snapshot,
+	// chat.turn_started) must not be lost to the caller's request being cancelled (a page reloaded or a connection dropped while
+	// chat.send was answering), or the page sees a turn it was never told started (CI 2026-10-31: "publish chat.turn_started:
+	// context canceled", the chat-perf e2e's streaming bubble never appeared)
+	ctx = context.WithoutCancel(ctx)
 	if r.replaceFrom > 0 {
 		c.SessionID = ""
 		s.removeAttachmentFiles(c.ID, dropped)
@@ -445,8 +450,10 @@ func (t *turnRun) takeThinking() string {
 type attemptOut struct {
 	runID          string
 	sessionID      string
-	sessionAtStart bool // the adapter knew the session id as soon as it started (ACP after session/new or session/load)
-	sawSession     bool // the CLI announced its session (claude system/init)
+	sessionAtStart bool   // the adapter knew the session id as soon as it started (ACP after session/new or session/load)
+	sawSession     bool   // the CLI announced its session (claude system/init)
+	cliModel       string // the model and permission mode the CLI announced its session with (SessionChunk)
+	cliMode        string
 	sawOutput      bool // text, a tool call or a denial arrived
 	started        bool // the process started
 	stop           string
@@ -660,6 +667,7 @@ func (t *turnRun) attempt(ctx context.Context, prompt, resumeID string) attemptO
 			var sc workflow.SessionChunk
 			if ch.Decode(&sc) == nil && sc.SessionID != "" {
 				o.sawSession, o.sessionID = true, sc.SessionID
+				o.cliModel, o.cliMode = clip(sc.Model, 200), clip(sc.PermissionMode, 64)
 			}
 		case workflow.ChunkUsage:
 			var u workflow.UsageChunk
@@ -816,6 +824,15 @@ func (t *turnRun) finish(ctx context.Context, o attemptOut, resumed, transcript 
 		}
 		q := `UPDATE chats SET status=?, last_error=?, session_id=?, tokens_in=tokens_in+?, tokens_out=tokens_out+?, cost_unknown_turns=cost_unknown_turns+?, updated_at=?, version=version+1`
 		args := []any{chatStatus, errMsg, session, o.in, o.out, unknown, now}
+		// what the CLI said its session runs with (decision P107)
+		if o.cliModel != "" {
+			q += `, cli_model=?`
+			args = append(args, o.cliModel)
+		}
+		if o.cliMode != "" {
+			q += `, cli_permission_mode=?`
+			args = append(args, o.cliMode)
+		}
 		// the session's running usage totals, for the turn that resumes it (Service.sessionUsage)
 		switch {
 		case session == "":

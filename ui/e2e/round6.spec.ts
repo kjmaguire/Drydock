@@ -53,7 +53,7 @@ test("your servers: connect an MCP server once; a project adds it and grants it 
   // the new server is a row under Your servers, chosen, with its detail beside the list and in the address
   const serverRow = list.getByTestId('list-group-servers').getByTestId('integration-row').filter({ hasText: 'Test server' });
   await expect(serverRow).toHaveAttribute('aria-current', 'true');
-  await expect(serverRow).toContainText('No tools yet');
+  await expect(serverRow).toContainText('Set up');
   await expect(page).toHaveURL(/\/integrations\/server-tst$/);
   await expect(page.getByTestId('integrations-note')).toContainText('Test server is connected. Press Find tools');
   const card = page.getByTestId('server-detail').filter({ hasText: 'Test server' });
@@ -76,7 +76,7 @@ test("your servers: connect an MCP server once; a project adds it and grants it 
 
   // a team member: defined once in the Library
   await workspaceNav(page, 'nav-library');
-  await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent templates' })).toBeVisible();
   await page.getByRole('button', { name: 'New agent template' }).click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('Payments dev');
@@ -199,7 +199,7 @@ test('your servers: importing servers from a file starts nothing; a program is n
   await panel.getByRole('button', { name: 'Import 1 server' }).click();
   const row = servers.getByTestId('integration-row').filter({ hasText: 'importprog' });
   await expect(row).toBeVisible();
-  await expect(row).toContainText('No tools yet');
+  await expect(row).toContainText('Set up');
   expect(asked.filter((x) => x === 'mcplib.save')).toHaveLength(2);
   expect(asked).not.toContain('mcplib.discover');
 

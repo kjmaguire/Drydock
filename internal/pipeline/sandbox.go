@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/agents"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -22,6 +23,8 @@ type SandboxHook interface {
 	Prepare(ctx context.Context, t tasks.Task) (string, error)
 	// Check rewrites a check so it runs in the task's sandbox.
 	Check(ctx context.Context, t tasks.Task, s checks.Spec) (checks.Spec, error)
+	// Terminals runs an ACP worker's terminal requests in the task's sandbox (decision P131).
+	Terminals(t tasks.Task, agentID string) agents.TerminalHost
 }
 
 // sandboxed reports whether the task's commands run in a sandbox.
@@ -49,10 +52,19 @@ func (d Deps) prepareWorker(ctx context.Context, in workflow.NodeInput, t tasks.
 }
 
 // sandboxTurn makes a turn that may change the worktree run sandboxed: no command tool on this machine, the sandbox tools and
-// instructions instead. Only Claude Code workers can run sandboxed in this build.
+// instructions instead. Claude Code runs in its restricted mode. An ACP CLI whose manifest says how it asks before every command
+// it runs itself (agents.SandboxCapable, decision P131) gets its terminal requests routed into the container, that mode, and an
+// asker that refuses what it would run here; any other CLI's turn is a question for the human.
 func (d Deps) sandboxTurn(ctx context.Context, t tasks.Task, cfg *rt.Config) error {
-	if cfg.Adapter != "claude" {
-		return fmt.Errorf("this project runs commands in a sandbox, which works with Claude Code agents in this build; this turn's agent uses %s. Assign a Claude Code agent, or turn the sandbox off in the project settings", cfg.Adapter)
+	isClaude := cfg.Adapter == "claude"
+	mode, acpOK := "", false
+	if !isClaude && d.Runtime != nil {
+		if sc, ok := d.Runtime.Adapters[cfg.Adapter].(agents.SandboxCapable); ok {
+			mode, acpOK = sc.SandboxMode()
+		}
+	}
+	if !isClaude && !acpOK {
+		return fmt.Errorf("this project runs commands in a sandbox, and %s cannot be kept from running commands on this machine (its manifest names no way to make it ask first). Assign a Claude Code, Gemini CLI, Goose or Cline agent, or turn the sandbox off in the project settings", cfg.Adapter)
 	}
 	if cfg.Spec.IsWSL() {
 		// decision P41: the sandbox's container runs the commands of an agent on Windows; one inside WSL would run its own there
@@ -63,6 +75,14 @@ func (d Deps) sandboxTurn(ctx context.Context, t tasks.Task, cfg *rt.Config) err
 		return err
 	}
 	cfg.Spec.Sandboxed = true
+	if !isClaude {
+		cfg.Spec.Terminals = d.Sandbox.Terminals(t, cfg.AgentID)
+		// the manifest's mode, not the agent's own setting (which might be one that stops asking): a mode it names is not a
+		// preference, the session does not start without it (acp requireMode); none keeps the CLI's own, the asking one
+		cfg.Spec.PermissionMode = mode
+		cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + SandboxTextACP(desc))
+		return nil
+	}
 	cfg.Spec.SystemAppend = strings.TrimSpace(cfg.Spec.SystemAppend + "\n\n" + SandboxText(desc))
 	// a build or a test suite run through sandbox_run can take long: the CLI must wait for the tool past the sandbox's own
 	// 60-minute limit, and must not move a long call to the background and end the turn before its result is in (observed with
@@ -87,6 +107,22 @@ func SandboxText(describe string) string {
 	b.WriteString("read their output with sandbox_logs and end them with sandbox_stop; sandbox_info describes the sandbox again. ")
 	b.WriteString("Edit files with your file tools as usual: the container sees your changes at once. `git` does not work in ")
 	b.WriteString("the container (Drydock records your changes when the turn ends). Run the project's tests before you finish.\n")
+	b.WriteString(strings.TrimSpace(describe))
+	return b.String()
+}
+
+// SandboxTextACP tells an ACP worker how to run commands in its sandbox: its terminal runs them in the container, and sandbox_run
+// does too; a command its CLI would run itself on this machine is refused.
+func SandboxTextACP(describe string) string {
+	var b strings.Builder
+	b.WriteString("## Commands run in this task's sandbox\n")
+	b.WriteString("Commands do not run on this machine. Run every command (installs, builds, tests, migrations, scripts) in a terminal ")
+	b.WriteString("Drydock gives you, or with the sandbox_run tool of the drydock MCP server: both run in a Linux container where your ")
+	b.WriteString("working folder is mounted at /workspace, and you may do anything there. A command your CLI would run itself is refused. ")
+	b.WriteString("Start long-running processes (a dev server, a watcher) with sandbox_start, read their output with sandbox_logs and end ")
+	b.WriteString("them with sandbox_stop; sandbox_info describes the sandbox again. Edit files with your file tools as usual: the container ")
+	b.WriteString("sees your changes at once. `git` does not work in the container (Drydock records your changes when the turn ends). ")
+	b.WriteString("Run the project's tests before you finish.\n")
 	b.WriteString(strings.TrimSpace(describe))
 	return b.String()
 }

@@ -28,6 +28,7 @@ Imported by Drydock itself:
 | github.com/charmbracelet/x/ansi | v0.11.9 | MIT | Copyright (c) 2023 Charmbracelet, Inc. | Meant for reading terminal escape codes in agent and terminal output. |
 | github.com/coder/acp-go-sdk | v0.13.5 | Apache-2.0 | Copyright 2025 Coder Technologies, Inc. | Agent Client Protocol: how Drydock talks to Codex, Gemini, OpenCode and Goose. |
 | github.com/google/jsonschema-go | v0.4.3 | MIT | Copyright (c) 2025 JSON Schema Go Project Authors | Describes the workspace tools' inputs to MCP clients as JSON Schema. |
+| github.com/ledongthuc/pdf | v0.0.0-20261020125853-5e46805f718e | BSD-3-Clause | Copyright (c) 2009 The Go Authors. All rights reserved. | Reads the text of PDF files a person gives an expert pack or a requirement, page by page (internal/docparse, decision P110). |
 | github.com/modelcontextprotocol/go-sdk | v1.8.0 | MIT and Apache-2.0 (the project is moving its code from MIT to Apache-2.0; its LICENSE holds both) | - | The official MCP SDK: the gateway agents connect to, the clients that reach the servers you add, and the stdio shim. |
 | github.com/openai/openai-go/v3 | v3.85.0 | Apache-2.0 | Copyright 2026 OpenAI | Talks to OpenAI-compatible providers (OpenRouter and similar) for Drydock's own requests. |
 | github.com/pressly/goose/v3 | v3.29.0 | MIT | - | Runs the database migrations. |

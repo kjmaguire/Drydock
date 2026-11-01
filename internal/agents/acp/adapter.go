@@ -59,7 +59,26 @@ type Config struct {
 	// RepoConfig lists the paths in the working folder that the CLI reads and acts on (the manifest's repo_config); the runtime
 	// does not start it in a folder that has any of them until a person trusted exactly those files (agents.RepoConfigReader).
 	RepoConfig []string
+	// Sandbox, when set, says the CLI can work in a sandboxed project (the manifest's transports.acp.sandbox, decision P131):
+	// in Drydock's configuration it asks before every command it would run itself, with the session mode Sandbox.Mode ("" when
+	// the manifest's environment already does it). Nil: a sandboxed project's turn of this CLI is a question for a person.
+	Sandbox *SandboxSupport
 }
+
+// SandboxSupport is how a CLI is made to ask before its own commands in a sandboxed project.
+type SandboxSupport struct {
+	Mode string
+}
+
+// SandboxMode implements agents.SandboxCapable.
+func (a *Adapter) SandboxMode() (string, bool) {
+	if a.cfg.Sandbox == nil {
+		return "", false
+	}
+	return a.cfg.Sandbox.Mode, true
+}
+
+var _ agents.SandboxCapable = (*Adapter)(nil)
 
 // Adapter implements agents.Adapter for one ACP agent.
 type Adapter struct {
@@ -210,7 +229,7 @@ func (a *Adapter) launch(ctx context.Context, pm proc.Manager, spec agents.RunSp
 	defer cancel()
 	caps := acp.ClientCapabilities{
 		Fs:       acp.FileSystemCapabilities{ReadTextFile: !a.cfg.NoFS, WriteTextFile: !a.cfg.NoFS},
-		Terminal: a.cfg.Terminal,
+		Terminal: a.cfg.Terminal || spec.Terminals != nil, // a sandboxed worker's terminals run in its container (terminal.go)
 	}
 	if len(a.cfg.ClientMeta) > 0 {
 		caps.Meta = maps.Clone(a.cfg.ClientMeta)

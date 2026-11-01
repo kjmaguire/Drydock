@@ -144,6 +144,10 @@ func TestTurnStreamsRecordsRunUsageAndEvents(t *testing.T) {
 	if res.Text != "all done" || res.StopReason != "end_turn" || res.ToolCalls != 1 || res.SessionID == "" {
 		t.Fatalf("result %+v", res)
 	}
+	// what the turn added to the session that the runtime saw (P128): both messages, the tool call and its result
+	if least := int64(len("hello from the fake agent, streaming word by word") + len("all done") + len(`{"file_path":"a.go"}`) + len("package a")); res.SeenBytes < least {
+		t.Fatalf("seen %d bytes, want at least %d", res.SeenBytes, least)
+	}
 	joined := strings.Join(seen, ",")
 	for _, k := range []string{"session", "text", "message_end", "tool_call", "tool_result", "usage", "done"} {
 		if !strings.Contains(joined, k) {

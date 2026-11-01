@@ -43,11 +43,10 @@ describe('the hubs', () => {
     const o = mount(<SubNav route={{ name: 'budgets' }} />);
     expect(Array.from(o.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-overview-home', 'nav-activity', 'nav-budgets', 'nav-evals', 'nav-security', 'nav-project', 'nav-project-integrations']);
     cleanup();
-    const l = mount(<SubNav route={{ name: 'library-skills' }} />);
-    expect(Array.from(l.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-library-home', 'nav-library-skills']);
-    expect(l.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
-    // the Library keeps the agent templates; its MCP servers moved to Integrations (decision P98)
-    expect(l.$('[data-testid="nav-library-home"]')!.textContent).toBe('Agent templates');
+    // Agent templates and Skills are entries of the sidebar (decision P106): no pills between them
+    expect(mount(<SubNav route={{ name: 'library-skills' }} />).$('nav')).toBeNull();
+    cleanup();
+    expect(mount(<SubNav route={{ name: 'library' }} />).$('nav')).toBeNull();
     cleanup();
     expect(mount(<SubNav route={{ name: 'team' }} />).$('nav')).toBeNull();
     cleanup();
@@ -108,6 +107,19 @@ describe('the hubs', () => {
     expect(task!.getAttribute('aria-current')).toBe('page');
     expect(task!.querySelector('[data-testid="unread-count"]')).toBeNull();
     expect(r.$('nav[aria-label="Rooms"][data-rooms]')).not.toBeNull();
+  });
+
+  it('says a muted room is muted, after its name and once for a reader (P130)', async () => {
+    const r = mount(
+      <RoomsRail route={{ name: 'room', id: 'r1' }} />,
+      svc({ roomUnread: async () => [{ roomId: 'r2', roomName: 'task-3-subtract', kind: 'task', unread: 1, mentions: 1, muted: true, lastReadSeq: 0 }] }),
+    );
+    await waitFor(() => expect(r.$$('[data-room-muted], [data-muted="true"]')).toHaveLength(1), r);
+    const [general, task] = Array.from(r.$$('[data-testid="room-link"]')) as HTMLAnchorElement[];
+    expect(general!.getAttribute('data-muted')).toBeNull();
+    expect(task!.querySelector('.label')!.textContent).toBe('task-3-subtract, muted');
+    expect(task!.querySelector('[data-testid="room-muted"]')!.getAttribute('aria-hidden')).toBe('true');
+    expect(task!.textContent).toBe('task-3-subtract, muted1, 1 unread');
   });
 
   it('cuts a long room name with an ellipsis inside its column instead of running past it (UI audit 2026-10-26)', async () => {

@@ -13,6 +13,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/agents"
 	"github.com/kjmaguire/drydock/internal/agents/claude"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/workflow"
@@ -237,6 +238,16 @@ func (c *Core) permissionPending(ctx context.Context, taskID string) []workflow.
 // Claude workers ask through the gateway (offerPermissionPrompts); reviewers, planners and other read-only turns, sandboxed
 // turns and chats (which ask in the chat) get nil here, so their requests stay refused.
 func (c *Core) permissionAsker(ctx context.Context, cfg *rt.Config, runID string) agents.PermissionAsker {
+	if cfg.Spec.OnCallChanged == nil {
+		cfg.Spec.OnCallChanged = c.recordCallChanged(*cfg, runID)
+	}
+	if cfg.Spec.Sandboxed && cfg.Adapter != "claude" && !cfg.Spec.ReadOnly && cfg.Spec.Cwd != "" {
+		// a sandboxed ACP worker (decision P131): its commands go to the container, what its CLI would run here is refused
+		if cfg.Spec.OnSandboxEscape == nil {
+			cfg.Spec.OnSandboxEscape = c.recordSandboxEscape(*cfg, runID)
+		}
+		return sandboxAsker(cfg.Spec.Cwd)
+	}
 	if !cfg.Spec.PermissionPrompts || cfg.Spec.ReadOnly || cfg.Spec.Sandboxed || cfg.Adapter == "claude" || cfg.Spec.Cwd == "" {
 		return nil
 	}
@@ -263,6 +274,25 @@ func (c *Core) permissionAsker(ctx context.Context, cfg *rt.Config, runID string
 		return out.Allow, out.Message
 	}
 }
+
+// recordCallChanged is RunSpec.OnCallChanged of an agent session (decision P117): an ACP agent reported a call it was allowed
+// to make as another call afterwards, and its adapter stopped the turn. The audit log and the task's events keep the tool, the
+// call's id and the hashes of the allowed and the reported call, never the input.
+func (c *Core) recordCallChanged(cfg rt.Config, runID string) func(agents.ToolAsk, string, string) {
+	return func(q agents.ToolAsk, allowed, actual string) {
+		ctx := context.Background()
+		detail := map[string]any{"tool": q.Tool, "toolCallId": q.ToolCallID, "kind": q.Kind, "allowedHash": allowed, "reportedHash": actual,
+			"adapter": cfg.Adapter, "agentRun": runID}
+		if _, err := security.NewAudit(c.DB, c.Scanner).Append(ctx, security.AuditEntry{Actor: "system", Action: EventPermissionCallChanged, Subject: runID, Detail: detail}); err != nil {
+			c.logf("audit %s: %v", EventPermissionCallChanged, err)
+		}
+		b, _ := json.Marshal(detail)
+		_, _ = c.Bus.Publish(ctx, events.Event{Type: EventPermissionCallChanged, ProjectID: cfg.ProjectID, TaskID: cfg.TaskID, AgentID: cfg.AgentID, Data: b})
+	}
+}
+
+// EventPermissionCallChanged is the event and audit action of a call an agent changed after Drydock allowed it.
+const EventPermissionCallChanged = "permission.call_changed"
 
 // acpBenignShellKeys are the fields an ACP shell call may carry besides its command without changing what runs: a call with
 // any other field (a working folder, an environment) is not read as a plain command, so a person sees it whole.

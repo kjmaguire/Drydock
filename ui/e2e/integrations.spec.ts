@@ -41,9 +41,10 @@ test("integrations: connect Linear without a project, see its fixed name and log
   await expect(card.getByLabel(/name/i)).toHaveCount(0); // nothing to rename
   // the setup: three steps, the way to connect as one choice
   await expect(card.getByTestId('setup-steps')).toContainText('Assign to a project');
-  // the agents' Linear tools (its MCP card) are in the same detail, not on a page of their own
+  // the agents' Linear tools (its MCP server) are a row of their own under Agent tools, where agent tools are looked for (P106)
   await expect(page.getByTestId('integration-sync')).toContainText('Linear');
-  await expect(page.getByTestId('integration-agents').locator('[data-testid="connector"][data-id="linear"]')).toBeVisible();
+  await expect(page.getByTestId('integration-agents')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'All integrations' }).getByTestId('list-group-tools').locator('[data-testid="integration-row"][data-key="tools-linear"]')).toContainText('Linear');
 
   // a Sign in with Linear needs an OAuth app the owner registers with Linear (the vendors' own APIs have no dynamic client
   // registration, unlike their MCP servers): choosing it shows where to register one and takes the app's public client id,
@@ -165,7 +166,9 @@ test('integrations: the list filters by a word and by state, and the address kee
   const box = list.getByTestId('list-filter');
   await expect(box).toBeFocused();
   await page.keyboard.type('notion');
-  await expect(list.getByTestId('integration-row')).toHaveCount(1);
+  // Notion's app sync and its agent tools (P106)
+  await expect(list.getByTestId('integration-row')).toHaveCount(2);
+  await expect(list.getByTestId('integration-row').first()).toHaveAttribute('data-key', 'notion');
   await page.keyboard.press('ArrowDown');
   await expect(page).toHaveURL(/\/integrations\/notion$/);
   await expect(page.locator('[data-testid=integration][data-kind=notion]')).toBeVisible();
@@ -181,9 +184,11 @@ test('integrations: the list filters by a word and by state, and the address kee
   await page.goto(new URL('/integrations/sentry', page.url()).toString());
   await expect(page.locator('[data-testid=integration][data-kind=sentry]')).toBeVisible();
   await expect(list.locator('[data-key=sentry]')).toHaveAttribute('aria-current', 'true');
-  // GitHub's row is its own page
-  await list.locator('a[href="/github"]').click();
-  await expect(page).toHaveURL(/\/github$/);
+  // GitHub's row opens its settings beside the list (decision P106)
+  await list.locator('[data-testid="integration-row"][data-key="github"]').click();
+  await expect(page).toHaveURL(/\/integrations\/github$/);
+  await expect(page.getByTestId('github-page')).toBeVisible();
+  await expect(list).toBeVisible();
 });
 
 test('integrations: OpenRouter is listed under Model providers and sets up as a provider, the form filled in for it (decision P103)', async ({ page }) => {
@@ -212,4 +217,29 @@ test('integrations: OpenRouter is listed under Model providers and sets up as a 
   } else {
     await expect(panel.getByTestId('openrouter-open')).toHaveAttribute('href', /^\/models\/.+/);
   }
+});
+
+test('integrations: Webhooks and sweeps, off by default, listens on 127.0.0.1 at the chosen port and says the person exposes it (decision P114)', async ({ page }) => {
+  await page.goto(appUrl());
+  await workspaceNav(page, 'nav-integrations');
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  const row = list.getByTestId('list-group-background').getByTestId('background-row');
+  await expect(row).toContainText('Webhooks and sweeps');
+  await row.click();
+  await expect(page).toHaveURL(/\/integrations\/background$/);
+  const panel = page.getByTestId('background-panel');
+  await expect(panel.getByTestId('webhook-expose')).toContainText('Drydock does not do that for you');
+  await expect(panel.getByTestId('webhook-state')).toHaveAttribute('data-listening', 'false');
+  await expect(panel.getByTestId('sweep-state')).toHaveAttribute('data-enabled', 'true');
+  // a port in the dynamic range, chosen by the test; then off again, so the harness's core is left as it was
+  const port = String(30000 + Math.floor(Math.random() * 20000));
+  await panel.getByLabel('Port on 127.0.0.1 (1024 to 65535)').fill(port);
+  await panel.getByRole('switch', { name: 'Receive webhooks' }).click();
+  await expect(panel.getByTestId('webhook-state')).toHaveAttribute('data-listening', 'true');
+  await expect(panel.getByTestId('webhook-state')).toContainText(`http://127.0.0.1:${port}`);
+  // an unsigned delivery is refused (401), or 404 when the harness has no Linear connection at that moment
+  const answer = await page.request.post(`http://127.0.0.1:${port}/hooks/linear`, { data: {} });
+  expect([401, 404]).toContain(answer.status());
+  await panel.getByRole('switch', { name: 'Receive webhooks' }).click();
+  await expect(panel.getByTestId('webhook-state')).toHaveAttribute('data-listening', 'false');
 });

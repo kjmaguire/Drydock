@@ -10,10 +10,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/agents/responder"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
+	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/checks"
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/pipeline"
@@ -35,6 +37,7 @@ type agentsDev struct {
 	c        *Core
 	limiter  *pipeline.Limiter
 	resp     *responder.Responder
+	discuss  atomic.Pointer[responder.Responder] // resp, once it exists: the Design Review template's discussion (P124)
 	sched    *pipeline.Scheduler
 	td       pipeline.TemplateDeps
 	pd       pipeline.PlanDeps
@@ -76,7 +79,20 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 		Dev: func(ctx context.Context, projectID string) pipeline.DevSettings {
 			return pipeline.LoadDevSettings(ctx, c.DB, projectID)
 		},
-		OnInconclusive: a.onInconclusive, Preview: a.previews.run, MaxLoops: 5, PR: c.prSource}
+		OnInconclusive: a.onInconclusive, Preview: a.previews.run, MaxLoops: 5, PR: c.prSource,
+		// the Design Review template's discussion runs on the room's responder, which is made below: a run recovered before then
+		// fails its discussion step with the reason, and Resume takes it on
+		Discuss: func(ctx context.Context, d responder.Discussion) (responder.DiscussionResult, error) {
+			r := a.discuss.Load()
+			if r == nil {
+				return responder.DiscussionResult{}, errors.New("agents cannot discuss yet: the room's responder has not started")
+			}
+			return r.Discuss(ctx, d)
+		},
+		TaskRoom: func(ctx context.Context, taskID string) (string, error) {
+			rm, err := c.Room.RoomByTask(ctx, taskID)
+			return rm.ID, err
+		}}
 	if err := pipeline.RegisterTemplates(c.Engine, a.td); err != nil {
 		return nil, nil, err
 	}
@@ -148,8 +164,8 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 		Gate: func(ctx context.Context, projectID string, ag responder.Agent) (func(), error) {
 			return a.limiter.Acquire(ctx, projectID, ag.ProviderID)
 		},
-		Budget: func(ctx context.Context, projectID, taskID string, ag responder.Agent) error {
-			return EconomicsBudgetBlock(ctx, c, projectID, taskID, ag.ID)
+		Budget: func(ctx context.Context, s responder.BudgetScope, ag responder.Agent) error {
+			return EconomicsBudgetBlockFor(ctx, c, budget.ScopeIDs{Project: s.ProjectID, Task: s.TaskID, Run: s.RunID, Workflow: s.Workflow, Agent: ag.ID})
 		},
 		Enabled: func(ctx context.Context, projectID string) bool {
 			// an agent reply is work started on the human's behalf: off while the license is expired (read-only)
@@ -164,6 +180,7 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 		},
 		Logf: c.logf,
 	}, responder.Options{})
+	a.discuss.Store(a.resp)
 	stopResp, err := a.resp.Start(ctx)
 	if err != nil {
 		cancelLoop()
@@ -702,6 +719,15 @@ func (a *agentsDev) methods() map[string]Method {
 			MessageID string `json:"messageId"`
 		}) (any, error) {
 			return a.resp.Handle(ctx, p.MessageID)
+		}),
+		// a person stops the agents answering in a room now (Esc Esc in the room's composer, decision P130)
+		"room.stop": bind(func(ctx context.Context, p struct {
+			RoomID string `json:"roomId"`
+		}) (any, error) {
+			if _, err := c.Room.GetRoom(ctx, p.RoomID); err != nil {
+				return nil, err
+			}
+			return map[string]int{"stopped": a.resp.Stop(p.RoomID)}, nil
 		}),
 
 		// PlanTeam

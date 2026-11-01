@@ -13,6 +13,7 @@ import (
 const (
 	ArmDrydock = "D"
 	ArmB1      = "B1"
+	ArmB0      = "B0" // the naive broadcast team (b0.go)
 )
 
 // Outcomes (docs/evals.md 6.2).
@@ -55,8 +56,24 @@ type Record struct {
 	CostUSD          float64 `json:"costUsd"`
 	CallsWithoutCost int     `json:"callsWithoutCost"`
 	Tokens           Tokens  `json:"tokens"`
-	// Sessions is the number of CLI processes (agent turns): 1 for B1, one per worker and reviewer turn for D.
+	// Sessions is the number of CLI processes (agent turns): 1 for B1, one per worker and reviewer turn for D, one per agent turn
+	// for B0.
 	Sessions int `json:"sessions"`
+	// B0 only (the naive broadcast team): Agents is the team's size, Rounds how many rounds of its free-for-all ran, Stop why it
+	// stopped (consensus: every agent said it was done in one round; rounds: the round limit; ceiling; wall; error).
+	// BroadcastBytes is what the harness sent the agents in all, each turn's prompt holding the whole room; MaxPromptBytes is the
+	// largest single prompt.
+	Agents         int    `json:"agents,omitempty"`
+	Rounds         int    `json:"rounds,omitempty"`
+	Stop           string `json:"stop,omitempty"`
+	BroadcastBytes int64  `json:"broadcastBytes,omitempty"`
+	MaxPromptBytes int64  `json:"maxPromptBytes,omitempty"`
+	// AgentCLI is the CLI B0's team ran (claude, or another CLI's manifest id; decision P121) and Provider the provider it ran on
+	// instead of the CLI's own sign-in ("" for none). CostSource is "estimated" when the cost was computed from the tokens at the
+	// provider's prices rather than taken from the CLI ("" means the CLI's own figure).
+	AgentCLI   string `json:"agentCli,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	CostSource string `json:"costSource,omitempty"`
 	// ModelTurns is the CLI's num_turns (B1 only; the core does not store it).
 	ModelTurns int      `json:"modelTurns,omitempty"`
 	Reviews    []Review `json:"reviews,omitempty"`

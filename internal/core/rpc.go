@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/kjmaguire/drydock/internal/connections"
 	"github.com/kjmaguire/drydock/internal/events"
@@ -73,7 +74,9 @@ func taskListLimit(n int) int {
 func (c *Core) Methods() map[string]Method {
 	base := map[string]Method{
 		"app.info": bind(func(ctx context.Context, _ struct{}) (any, error) {
-			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir}, nil
+			// the version and build the release set (-ldflags), shown in Settings > About (decision P129)
+			return map[string]any{"name": "Drydock", "user": c.cfg.User, "human": c.Human(), "dataDir": c.cfg.DataDir, "canRestart": c.cfg.Restart != nil,
+				"version": AppVersion, "build": AppBuild}, nil
 		}),
 		"project.create": bind(func(ctx context.Context, p struct{ Name, RepoPath string }) (any, error) {
 			return c.CreateProject(ctx, p.Name, p.RepoPath)
@@ -155,7 +158,10 @@ func (c *Core) Methods() map[string]Method {
 			return c.PullRequest(ctx, p.TaskID)
 		}),
 
-		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Connections.DetectAll(ctx), nil }),
+		"connection.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			c.recheckCustom(ctx, "") // a person's CLI whose manifest file changed asks for the acknowledgement again (P117)
+			return c.Connections.DetectAll(ctx), nil
+		}),
 		// connection.check checks one Connection again now, its sign-in included (a distro's probe runs afresh), without probing
 		// every CLI and distro: the card's "Check again", and its re-check when its sign-in ends.
 		"connection.check": bind(func(ctx context.Context, p struct {
@@ -166,6 +172,7 @@ func (c *Core) Methods() map[string]Method {
 			if p.Distro != "" {
 				key = connections.WSLKey(p.Adapter, p.Distro)
 			}
+			c.recheckCustom(ctx, p.Adapter)
 			return c.Connections.CheckKey(ctx, key)
 		}),
 		"connection.acknowledge": bind(func(ctx context.Context, p struct {
@@ -345,6 +352,9 @@ func (c *Core) Methods() map[string]Method {
 }
 
 // Call dispatches one method by name.
+// slowCall is how long a call may take before Call logs it.
+var slowCall = 5 * time.Second
+
 func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
 	reg := c.methods.Load()
 	if reg == nil { // a call made while the core is still opening
@@ -355,10 +365,21 @@ func (c *Core) Call(ctx context.Context, name string, params json.RawMessage) (j
 	if !ok {
 		return nil, fmt.Errorf("unknown method %q", name)
 	}
+	if f := c.onCall.Load(); f != nil {
+		(*f)(name) // a usage counter, when a person turned them on (only the method's name, never its parameters)
+	}
 	// every call from the window and from the dev transport passes here: a panic in a method is an error to its caller, not the
 	// end of the application and of every run in it (audit 2026-10-16, H9)
 	var v any
 	var err error
+	start := time.Now()
+	defer func() {
+		// a call the window waits on for seconds is said, by name and time only (never its parameters): a composer stuck on
+		// "Sending..." in CI (2026-10-29) left no trace of whether the core or the browser held the request
+		if d := time.Since(start); d >= slowCall {
+			c.logf("rpc %s took %s", name, d.Round(time.Millisecond))
+		}
+	}()
 	if perr := safe.Do("rpc "+name, func() { v, err = m(ctx, params) }); perr != nil {
 		return nil, perr
 	}

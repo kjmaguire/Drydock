@@ -28,6 +28,9 @@ type RunInfo struct {
 	Created      int64           `json:"created"`
 	Updated      int64           `json:"updated"`
 	Version      int64           `json:"version"`
+	// ParentRun is the run whose subworkflow node started this one (decision P124, migration 00162): it waits for this run to
+	// end, and cancelling it cancels this run.
+	ParentRun RunID `json:"parentRun,omitempty"`
 }
 
 // ApprovalRow is the row view of a request.
@@ -82,7 +85,9 @@ func (s *store) jsonb(b json.RawMessage) json.RawMessage {
 	return redact.JSON(b, s.redact)
 }
 
-func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint) error {
+// createRun writes a new run with its first checkpoint and, for a fork or a replay that starts at open requests, their approval
+// rows, in one transaction: a run never exists without the requests its state waits on.
+func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint, reqs ...approvalInsert) error {
 	st, err := s.stateJSON(cp)
 	if err != nil {
 		return err
@@ -90,14 +95,29 @@ func (s *store) createRun(ctx context.Context, info RunInfo, cp Checkpoint) erro
 	return s.db.WriteTx(ctx, func(tx *sql.Tx) error {
 		now := storage.Now()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO workflow_runs
-			(id,workflow,status,project_id,task_id,input,topology_hash,parent_checkpoint_id,latest_checkpoint_id,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			(id,workflow,status,project_id,task_id,input,topology_hash,parent_checkpoint_id,latest_checkpoint_id,created_at,updated_at,parent_run_id)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 			string(info.ID), info.Workflow, string(info.Status), info.ProjectID, info.TaskID, nz(info.Input), info.Topology,
-			string(info.ParentCP), string(cp.ID), now, now); err != nil {
+			string(info.ParentCP), string(cp.ID), now, now, string(info.ParentRun)); err != nil {
 			return err
 		}
-		return insertCheckpoint(ctx, tx, cp, st)
+		if err := insertCheckpoint(ctx, tx, cp, st); err != nil {
+			return err
+		}
+		return insertApprovals(ctx, tx, info.ID, reqs, now)
 	})
+}
+
+// insertApprovals writes the REQUESTED approval rows of new requests of run.
+func insertApprovals(ctx context.Context, tx *sql.Tx, run RunID, reqs []approvalInsert, now int64) error {
+	for _, a := range reqs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,phase,status,created_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)`, string(a.id), string(run), string(a.nodeID), a.taskID, a.projectID,
+			a.spec.Kind, a.spec.Title, nz(a.spec.Payload), a.spec.ActionHash, a.spec.Phase, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func nz(b json.RawMessage) []byte {
@@ -131,8 +151,8 @@ func (s *store) getRun(ctx context.Context, id RunID) (RunInfo, error) {
 	var input, result []byte
 	var status string
 	err := s.db.Reader().QueryRowContext(ctx, `SELECT id,workflow,status,project_id,task_id,input,result,topology_hash,
-		parent_checkpoint_id,latest_checkpoint_id,failed_reason,created_at,updated_at,version FROM workflow_runs WHERE id=?`, string(id)).
-		Scan(&r.ID, &r.Workflow, &status, &r.ProjectID, &r.TaskID, &input, &result, &r.Topology, &r.ParentCP, &r.LatestCP, &r.FailedReason, &r.Created, &r.Updated, &r.Version)
+		parent_checkpoint_id,latest_checkpoint_id,failed_reason,created_at,updated_at,version,parent_run_id FROM workflow_runs WHERE id=?`, string(id)).
+		Scan(&r.ID, &r.Workflow, &status, &r.ProjectID, &r.TaskID, &input, &result, &r.Topology, &r.ParentCP, &r.LatestCP, &r.FailedReason, &r.Created, &r.Updated, &r.Version, &r.ParentRun)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, fmt.Errorf("workflow: run %s not found", id)
 	}
@@ -328,14 +348,7 @@ func (s *store) commit(ctx context.Context, c stepCommit) error {
 		if err := insertCheckpoint(ctx, tx, c.cp, state); err != nil {
 			return err
 		}
-		for _, a := range c.newRequests {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO approvals(id,run_id,node_id,task_id,project_id,kind,title,payload,action_hash,phase,status,created_at)
-				VALUES(?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)`, string(a.id), string(c.cp.RunID), string(a.nodeID), a.taskID, a.projectID,
-				a.spec.Kind, a.spec.Title, nz(a.spec.Payload), a.spec.ActionHash, a.spec.Phase, now); err != nil {
-				return err
-			}
-		}
-		return nil
+		return insertApprovals(ctx, tx, c.cp.RunID, c.newRequests, now)
 	})
 }
 

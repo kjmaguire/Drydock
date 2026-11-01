@@ -313,6 +313,38 @@ func TestMarkingAnInboxItemDoneTakesItOut(t *testing.T) {
 	}
 }
 
+// A budget's warning or limit is marked done like the inbox offers it (canAck in the UI): it leaves the inbox. A budget pause is
+// a request and is answered instead.
+func TestMarkingABudgetAlertDoneTakesItOut(t *testing.T) {
+	a := open(t, "")
+	p, _ := a.setup("gocalc")
+	err := a.c.DB.WriteTx(context.Background(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO budgets(id,scope,scope_id,project_id,limit_usd,created_at,updated_at,updated_by) VALUES('bud_p','project',?,'',10,1,1,'human:kyle')`, p.ID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`INSERT INTO budget_alerts(budget_id,instance_id,level,ts) VALUES('bud_p',?,'warning',10)`, p.ID)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "budget:bud_p:" + p.ID + ":warning:10"
+	if it, ok := a.needsItem(p.ID, key); !ok || it.Kind != room.NeedsBudget {
+		t.Fatalf("the warning is not in the inbox: %+v", it)
+	}
+	var res map[string]bool
+	a.call("needsyou.ack", map[string]string{"key": key}, &res)
+	if !res["acked"] {
+		t.Fatalf("%v", res)
+	}
+	if _, ok := a.needsItem(p.ID, key); ok {
+		t.Fatal("the warning is still in the inbox")
+	}
+	if evs := a.eventsOf(core.EventNeedsYouAcked); len(evs) != 1 || evs[0]["kind"] != "budget" {
+		t.Fatalf("events %v", evs)
+	}
+}
+
 func jsonNumber(n int64) string { b, _ := json.Marshal(n); return string(b) }
 
 // agent.listAll lists every project's agents, each with its project.

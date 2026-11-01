@@ -4,6 +4,7 @@ import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts
 import type { McpGalleryCard } from '../../api/mcpClient.ts';
 import { galleryCard, libServer, pay, projServer, rev } from '../mcp/fixtures.ts';
 import {
+  agentToolVendors,
   providerRowState,
   cardsState,
   connectReply,
@@ -34,6 +35,7 @@ import {
   syncTone,
   tileState,
   toolsFact,
+  toolsKey,
   verifiedText,
   vendors,
   vendorState,
@@ -131,6 +133,14 @@ describe('integrations helpers', () => {
     expect(vs[5]!.skillRegistries).toEqual(['microsoft-skills', 'msdocs-mcp-skills']);
     expect(vs[0]!.kind).toBe(KINDS[0]);
     expect(vs[7]!.blurb).toBe('Tools for agents');
+
+    // Agent tools: every vendor with servers, a service's under a key of its own and without its app sync (decision P106)
+    const tools = agentToolVendors(vs);
+    expect(tools.map((v) => v.key)).toEqual(['tools-linear', 'tools-github', 'mslearn', 'cloudflare', 'ctx7']);
+    expect(tools.map((v) => v.cards.map((c) => c.id))).toEqual([['linear'], ['gh'], ['mslearn'], ['cfdocs', 'cfapi'], ['ctx7']]);
+    expect(tools[0]).toMatchObject({ label: 'Linear', logo: 'linear', blurb: 'Tools for agents' });
+    expect(tools.every((v) => !v.kind)).toBe(true);
+    expect(toolsKey('notion')).toBe('tools-notion');
   });
 
   it("a row's state is one word: On, Set up, or what needs the person, the most pressing first", () => {
@@ -139,36 +149,57 @@ describe('integrations helpers', () => {
     expect(serviceState(view())).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
     expect(serviceState(view({ status: 'untested' }))).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
     expect(serviceState(view({ verified: rec }))).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
-    expect(serviceState(view({ verified: { ...rec, ok: false } }))).toEqual({ text: 'Check failed', tone: 'err', bucket: 'needs' });
+    // a row that needs the person says what is wrong, for the top of its detail
+    expect(serviceState(view({ verified: { ...rec, ok: false, summary: 'issues: 403' } }))).toEqual({
+      text: 'Check failed',
+      tone: 'err',
+      bucket: 'needs',
+      problem: 'The check against your account on Oct 15, 2026 did not pass: issues: 403',
+    });
     // a connection that is not working needs the person, whatever an older check said
-    expect(serviceState(view({ status: 'unauthenticated', verified: rec }))).toEqual({ text: 'Key refused', tone: 'warn', bucket: 'needs' });
+    expect(serviceState(view({ status: 'unauthenticated', verified: rec }))).toEqual({ text: 'Key refused', tone: 'warn', bucket: 'needs', problem: 'Key refused.' });
+    expect(serviceState(view({ status: 'unauthenticated', statusDetail: ' Linear answered 401 ' })).problem).toBe('Key refused: Linear answered 401');
     expect(serviceState(view({ status: 'unreachable' })).text).toBe('Unreachable');
     expect(serviceState(view({ status: 'something new' })).text).toBe('Needs you');
     // one project's import failing is enough
     const failing = { id: 'a', integrationId: 'int_1', projectId: 'p', config: {}, enabled: true, createdBy: '', created: 0, updated: 0, version: 1, sync: { ...view().sync, state: 'forbidden' } };
-    expect(serviceState(view({ assignments: [failing] }))).toEqual({ text: 'Sync failing', tone: 'err', bucket: 'needs' });
+    expect(serviceState(view({ assignments: [failing] }))).toEqual({ text: 'Sync failing', tone: 'err', bucket: 'needs', problem: 'The last sync failed.' });
+    expect(serviceState(view({ assignments: [{ ...failing, sync: { ...failing.sync, lastError: 'project not found' } }] })).problem).toBe('The last sync failed: project not found');
 
     expect(cardsState([])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
     expect(cardsState([galleryCard({ status: 'connected' })]).text).toBe('On');
-    expect(cardsState([galleryCard({ status: 'connected' }), galleryCard({ id: 'b', status: 'needs_sign_in' })])).toEqual({ text: 'Needs sign-in', tone: 'warn', bucket: 'needs' });
-    expect(cardsState([galleryCard({ status: 'needs_sign_in' }), galleryCard({ id: 'b', status: 'error' })]).text).toBe('Error');
-    expect(cardsState([galleryCard({ status: 'needs_token' })]).text).toBe('Needs a token');
+    // a server still waiting for its sign-in or token is not a problem: having a vendor's card does not mean the person uses it
+    expect(cardsState([galleryCard({ status: 'connected' }), galleryCard({ id: 'b', status: 'needs_sign_in' })]).text).toBe('On');
+    expect(cardsState([galleryCard({ status: 'needs_sign_in' })])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    expect(cardsState([galleryCard({ status: 'needs_token' })])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    // an error is, and says which server and why
+    expect(cardsState([galleryCard({ status: 'needs_sign_in' }), galleryCard({ id: 'b', display: 'Linear', status: 'error', detail: 'token expired' })])).toEqual({
+      text: 'Could not connect',
+      tone: 'err',
+      bucket: 'needs',
+      problem: 'Linear could not connect: token expired',
+    });
 
-    // a vendor: what needs the person on either channel (app sync first), else On when either works
+    // a service's row is its app sync (its servers are its Agent tools row); a tools-only vendor's row is its servers
     const lin = { kind: KINDS[0], cards: [galleryCard({ id: 'linear', status: 'not_connected' })] };
     expect(vendorState(lin, undefined).text).toBe('Set up');
     expect(vendorState(lin, view()).text).toBe('On');
-    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'connected' })] }, undefined).text).toBe('On');
-    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'needs_token' })] }, view()).text).toBe('Needs a token');
+    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'connected' })] }, undefined).text).toBe('Set up');
+    expect(vendorState({ ...lin, cards: [galleryCard({ status: 'error' })] }, view()).text).toBe('On');
     expect(vendorState({ ...lin, cards: [galleryCard({ status: 'needs_token' })] }, view({ status: 'unauthenticated' })).text).toBe('Key refused');
     expect(vendorState({ cards: [galleryCard({ status: 'connected' })] }, undefined).text).toBe('On');
 
     // a server of your own
     const own = libServer();
     expect(ownServerState(own)).toEqual({ text: 'On', tone: 'ok', bucket: 'on' });
-    expect(ownServerState({ ...own, tools: [] })).toEqual({ text: 'No tools yet', tone: 'warn', bucket: 'needs' });
-    expect(ownServerState({ ...own, oauth: true, oauthAt: 0 }).text).toBe('Not signed in');
-    expect(ownServerState({ ...own, oauth: true, oauthAt: 0, lastError: 'refused' }).text).toBe('Could not connect');
+    expect(ownServerState({ ...own, tools: [] })).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
+    expect(ownServerState({ ...own, oauth: true, oauthAt: 0 }).text).toBe('Set up');
+    expect(ownServerState({ ...own, oauth: true, oauthAt: 0, lastError: 'refused' })).toEqual({
+      text: 'Could not connect',
+      tone: 'err',
+      bucket: 'needs',
+      problem: 'Drydock could not connect to this server: refused',
+    });
 
     // the filters count them
     const states = [serviceState(undefined), serviceState(view()), cardsState([galleryCard({ status: 'error' })]), ownServerState(own)];
@@ -269,11 +300,11 @@ describe('providerRowState (OpenRouter on the Integrations page, decision P103)'
   it('is Set up without a provider, On while one is enabled and answers, Down when every enabled one is down, Disabled when all are off', () => {
     expect(providerRowState([])).toEqual({ text: 'Set up', tone: 'none', bucket: 'setup' });
     expect(providerRowState([{ enabled: true, status: 'up' }]).bucket).toBe('on');
-    expect(providerRowState([{ enabled: true, status: 'unknown' }])).toEqual({ text: 'Not checked', tone: 'muted', bucket: 'needs' });
+    expect(providerRowState([{ enabled: true, status: 'unknown' }])).toEqual({ text: 'Not checked', tone: 'none', bucket: 'setup' });
     expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'unknown' }]).text).toBe('Not checked');
     expect(providerRowState([{ enabled: true, status: 'unknown' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
     expect(providerRowState([{ enabled: true, status: 'down' }, { enabled: true, status: 'up' }]).bucket).toBe('on');
-    expect(providerRowState([{ enabled: true, status: 'down' }])).toEqual({ text: 'Down', tone: 'err', bucket: 'needs' });
+    expect(providerRowState([{ enabled: true, status: 'down' }])).toMatchObject({ text: 'Down', tone: 'err', bucket: 'needs', problem: 'OpenRouter did not answer its last check. Its page in Models checks it again.' });
     expect(providerRowState([{ enabled: false, status: 'up' }])).toEqual({ text: 'Disabled', tone: 'muted', bucket: 'setup' });
   });
 });

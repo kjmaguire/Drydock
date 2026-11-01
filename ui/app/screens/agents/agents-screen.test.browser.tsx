@@ -3,7 +3,7 @@ import type { Handle } from 'remix/component';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { McpAdapterRow } from '../../api/mcpClient.ts';
-import type { AdapterInfo, Agent, Connection, ConnectionReport, Project } from '../../api/types.ts';
+import type { AdapterInfo, Agent, Connection, ConnectionHistory, ConnectionReport, Project, TestRun } from '../../api/types.ts';
 import { byLabel, byText, cleanup, mount, renderPlain, testServices, waitFor } from '../../test/render.tsx';
 import { setTerminalLoader, type TerminalFactory } from '../dock/widgets.ts';
 import { adapterInfo } from '../project/wizard-fixtures.ts';
@@ -283,7 +283,24 @@ describe('Agents page', () => {
     const install = await find(r, '[data-testid="install-tab"]', d);
     expect(install.querySelector('[data-testid="install-hint"]')!.textContent).toBe('irm https://claude.ai/install.ps1 | iex');
     expect(install.textContent).toContain('Drydock never runs this for you');
-    expect(install.querySelector('[data-testid="copy-install"]')).not.toBeNull();
+    // Copy puts the command on the clipboard (a test double of it), and says when the window refused it (P129)
+    const copied: string[] = [];
+    let refuse = false;
+    const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (s: string) => (refuse ? Promise.reject(new Error('denied')) : void copied.push(s)) } });
+    try {
+      const copy = install.querySelector<HTMLButtonElement>('[data-testid="copy-install"]')!;
+      expect(copy.getAttribute('aria-label')).toBe('Copy the command');
+      await r.act(() => copy.click());
+      await waitFor(() => expect(copy.textContent).toBe('Copied'), r);
+      expect(copied).toEqual(['irm https://claude.ai/install.ps1 | iex']);
+      refuse = true;
+      await r.act(() => copy.click());
+      await waitFor(() => expect(install.querySelector('[data-testid="copy-install-status"]')!.textContent).toContain('select the command and press Ctrl+C'), r);
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+      if (real) Object.defineProperty(Navigator.prototype, 'clipboard', real);
+    }
   });
 
   it('shows the notice text and only the person can accept it: checkbox first, then Accept calls connection.acknowledge', async () => {
@@ -316,6 +333,26 @@ describe('Agents page', () => {
     await waitFor(() => expect(acks).toEqual(['claude-terms']), r);
     await waitFor(() => expect(r.$('[data-testid="gate"]')!.getAttribute('data-acked')).toBe('true'), r);
     expect(r.$('[data-testid="gate"]')!.textContent).toContain('accepted');
+  });
+
+  it('says a notice is owed again because the manifest file changed on disk, until it is accepted again (P117)', async () => {
+    let acked = false;
+    const gateOf = () => ({ id: 'custom-mine', text: 'Runs a program you chose.', acked, changed: !acked });
+    const r = show({
+      connectionList: async () => [conn({ gates: [gateOf()] })],
+      connectionAcknowledge: async () => {
+        acked = true;
+      },
+    });
+    const c = await detail(r);
+    const gate = c.querySelector('[data-testid="gate"]')!;
+    expect(gate.getAttribute('data-changed')).toBe('true');
+    expect(gate.querySelector('[data-testid="gate-changed"]')!.textContent).toContain('manifest file changed on disk since you accepted this');
+    await r.act(() => byLabel(gate, 'I have read this and accept it').click());
+    await r.act(() => byText(gate, 'button', 'Accept').click());
+    await waitFor(() => expect(r.$('[data-testid="gate"]')!.getAttribute('data-acked')).toBe('true'), r);
+    expect(r.$('[data-testid="gate"]')!.getAttribute('data-changed')).toBe('false');
+    expect(r.$('[data-testid="gate-changed"]')).toBeNull();
   });
 
   it('shows the core refusal when accepting fails', async () => {
@@ -914,5 +951,58 @@ describe('Agents page', () => {
       },
     });
     await waitFor(() => expect(r3.$('[role="alert"]')!.textContent).toContain('the core is gone'), r3);
+  });
+});
+
+describe('conformance history and the capability matrix (decision P132)', () => {
+  it('Test results lists the kept runs and the matrix, read again after a test; the WSL install asks for its own', async () => {
+    const asked: string[] = [];
+    let runs: TestRun[] = [{ id: 1, cliVersion: '2.1.0', transport: 'headless', ok: false, prompt: false, passed: 1, failed: 1, skipped: 1, reason: 'T2: timeout', elapsedMs: 31_500, at: Date.now() - 3_600_000 }];
+    const r = show({
+      connectionList: async () => [ready({ key: 'claude' }), ready({ key: 'claude@Ubuntu', runMode: 'wsl', distro: 'Ubuntu' })],
+      connectionTest: async () => report({ ok: true, summary: 'All good.' }),
+      connectionHistory: async (adapter: string, distro?: string): Promise<ConnectionHistory> => {
+        asked.push(`${adapter}:${distro ?? ''}`);
+        return {
+          key: distro ? `claude@${distro}` : 'claude',
+          runs: distro ? [] : runs,
+          matrix: distro
+            ? { streaming: { value: true, provenance: 'declared' } }
+            : { streaming: { value: true, provenance: 'observed' }, permission_modes: { value: 'default, plan', provenance: 'declared' }, mcp_http: { value: false, provenance: 'observed' } },
+          matrixAt: distro ? 0 : runs[runs.length - 1]!.at,
+        };
+      },
+    });
+    const c = await detail(r, 'claude');
+    await tab(r, c, 'tests');
+    const matrix = await find(r, '[data-testid="capability-matrix"]', c);
+    const cell = (k: string) => Array.from(matrix.querySelector(`tr[data-cap="${k}"]`)!.querySelectorAll('td')).map((td) => td.textContent);
+    expect(cell('streaming')).toEqual(['Streams its answer', 'Yes', 'observed']);
+    expect(cell('permission_modes')).toEqual(['Permission modes', 'default, plan', 'declared']);
+    expect(cell('mcp_http')).toEqual(['MCP over HTTP', 'No', 'observed']);
+    expect(matrix.textContent).toContain('With what the test 1 h ago saw');
+    const past = await find(r, '[data-testid="test-history"]', c);
+    const one = past.querySelector('[data-testid="test-run"]')!;
+    expect(one.textContent).toContain('did not pass');
+    expect(one.textContent).toContain('2.1.0 · 1 passed, 1 failed, 1 skipped · 31.5 s');
+    expect(one.textContent).toContain('T2: timeout');
+    expect(c.textContent).not.toContain('in this session yet'); // the history says it was tested
+    // a test adds a run: the history is read again, and the report shows without a second matrix
+    runs = [{ id: 2, cliVersion: '2.1.0', transport: 'headless', ok: true, prompt: true, passed: 6, failed: 0, skipped: 0, reason: '', elapsedMs: 9_000, at: Date.now() }, ...runs];
+    await r.act(() => byText(c, 'button', 'Test connection').click());
+    await r.act(() => byText(r.$('[data-testid="test-confirm"]')!, 'button', 'Run the test').click());
+    await waitFor(() => expect(c.querySelectorAll('[data-testid="test-run"]').length).toBe(2), r);
+    expect(c.querySelector('[data-testid="test-run"]')!.textContent).toContain('6 passed · with the tiny prompt · 9.0 s');
+    expect(c.querySelector('[data-testid="connection-report"]')!.textContent).not.toContain('Capability matrix');
+    expect(c.querySelectorAll('table[aria-label="Capability matrix"]').length).toBe(1);
+
+    await r.act(() => row(r, 'claude@Ubuntu').click());
+    const w = await detail(r, 'claude@Ubuntu');
+    await tab(r, w, 'tests');
+    const wm = await find(r, '[data-testid="capability-matrix"]', w);
+    expect(wm.textContent).toContain('What the adapter declares: no test yet');
+    expect(w.querySelector('[data-testid="test-history"]')).toBe(null);
+    expect(w.textContent).toContain('in this session yet');
+    expect(asked).toEqual(['claude:', 'claude:', 'claude:Ubuntu']);
   });
 });

@@ -92,7 +92,7 @@ Purpose: show what an AI team costs when none of Drydock's controls exist, on th
 | **B1 single premium agent** | One premium agent, no team, same stop conditions. A lower bound on cost for tasks that do not need a team. |
 | **D(slice)** | Drydock at the slice under test with its real routing, context engine, turn-taking, handoffs, watchdog and token controls enabled as implemented. Features not built in that slice are off and the row says so. |
 
-Fairness rules: same fixture repository and start commit, same task prompt, same acceptance checks, same CLI versions (from `compat.yaml`), same pricing table date, same machine; arms interleaved in time to spread provider variance; each (task, arm) repeated at least `k` times (proposal: k = 3) because model output is nondeterministic; worktrees are fresh per run. A per-run budget ceiling prevents runaway baseline spend; hitting it is a recorded outcome (`ceiling`), not a discarded run. The baseline needs real credentials, quota and (for cheap arms) a network route to a private cheap provider, so it cannot run in the sandbox (P3) and is entered as "not measured".
+Fairness rules: same fixture repository and start commit, same task prompt, same acceptance checks, same CLI versions (from `compat.yaml`), same pricing table date, same machine; arms interleaved in time to spread provider variance; each (task, arm) repeated at least `k` times (proposal: k = 3) because model output is nondeterministic; worktrees are fresh per run. A per-run budget ceiling prevents runaway baseline spend; hitting it is a recorded outcome (`ceiling`), not a discarded run. The baseline needs real credentials, quota and (for cheap arms) a network route to a private cheap provider, so it cannot run in the sandbox (P3) and is entered as "not measured". B0 is built as an arm of the trial harness since decision P113 (section 15), with any CLI and on a cheap provider since P121; it has not been run with a real CLI.
 
 ## 6. Recording results
 
@@ -116,9 +116,9 @@ Legend: `not measured` = no run exists; `n/a (slice)` = the metric cannot be obs
 | 1A | D(1A) | not measured | not measured | not measured | not measured | n/a (no tasks) | not measured | n/a (no tasks) | not measured | n/a (static assignment) | n/a (no tasks) |
 | 1B | B1 | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a | n/a |
 | 1B | D(1B) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a (static assignment) | n/a |
-| 1C | B0 | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a | n/a |
+| 1C | B0 | not measured (arm built, P113: section 15) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a | n/a |
 | 1C | D(1C) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a (static assignment) | n/a |
-| 1D | B0 | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a | n/a |
+| 1D | B0 | not measured (arm built, P113: section 15) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a | n/a |
 | 1D | D(1D) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a (static assignment) | not measured |
 | 1E | D(1E) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | n/a (static assignment) | not measured |
 | 2 | D(2) | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured | not measured |
@@ -213,6 +213,8 @@ Built in `internal/evals` (2026-10-08, Slice 2). It reads the real database and 
 
 **11.12 `routing_outcomes`.** One row per routing decision of a task when it ends (`task.completed`, `task.failed`, `task.cancelled` on the event bus; the tasks service's `OnTerminal` hook is taken by the core), or one task-level row (`decision_id = ''`) when the task had none. Idempotent on `(task_id, decision_id)`; a cursor in `settings` replays terminal events missed while the app was down. Columns hold the same quantities as above (iterations, SHIP/REVISE counts, premium REVISE count, escalated, checks passed, watchdog trips, tokens, cost split by source with `cost_source` of none/reported/estimated/mixed/unknown, `premium_subscription_units` = premium tokens, premium turns, wall time, failure class). `mixed` is also used when some calls have no cost at all, so a lower bound is never labeled `reported`.
 
+**11.13 Token rule 15 (decision P119).** The report's `rules` section asserts that no usage row in the window carries the purpose of a job rules do (`evals.DeterministicPurposes`: `route`, `routing`, `watchdog`, `markers`, `minutes`, `inbox`, `check_summary`, `diff_stat`, `turn_schedule`, `handoff_verify`, `package_assembly`), with the project filter of 11.1; it holds when there is none, otherwise it counts the rows by purpose. This is the eval-corpus assertion `token-control.md` rule 15 proposed; this document did not define one before. The sanctioned uses (`consult`, `summarize`, `route_tiebreak` and the others of token-control section 9) are not on the list. It sees only the purpose a caller gives; the import-boundary test over the deterministic packages covers calls made under another name, and `TestNoCodeAsksAModelForADeterministicJob` checks that no product code names such a purpose.
+
 **Verified by:** `internal/evals/evals_test.go` seeds a real SQLite database with rows shaped like the app's, computes every figure above by hand in the test comments and compares; it also runs the empty-database, small-n, filter and recorder-restart cases. These tests prove the arithmetic and the n/a rules. They are not product measurements and no cost, saving or acceptance figure from them belongs in section 7.
 
 ## Open questions / unverified
@@ -236,7 +238,7 @@ Measured with `DRYDOCK_REAL_CLAUDE=1 go test ./internal/core -run TestRealClaude
 |---|---|---|---|---|---|
 | 1 | 2 (one worker turn, one review turn) | $0.0983 | 2,993 / 1,076 / 178,049 / 36,926 | 1 | yes |
 
-What this does and does not say: it is one task of trivial size, so it is not a baseline and supports no claim about savings. The review turn may not have run on haiku: at the time the reviewer ran in Claude Code's `plan` permission mode, and Claude Code answers a plan-mode session started with `--model haiku` with Sonnet (found later and measured with 2.1.296; see `RunSpec.ReadOnly` in `internal/agents/agents.go`). The `model_usage` rows of this run were not re-checked, so the $0.0983 may include a Sonnet review turn. Since 2026-10-09 the reviewer runs read-only in the default mode with every writing tool denied (`internal/core/core.go`, `agentConfig`) and keeps the configured model; the measurement has not been repeated. Most of the cost is Claude Code's own context overhead (the cached and cache-write tokens), which is why a two-turn task costs about ten cents even though the code change is one line. The cheap-tier share is 0/1 because both agents ran a subscription CLI (premium); no cheap-tier model was used, so none of the routing economics (cheap-first, escalation) has been measured yet. Neither agent had a list of models for the router, so its decisions are `static` and the routing-quality section measures configured assignments. The B1 baseline arm is built since 2026-10-10 (section 13); B0 is not. Nothing was measured on Windows.
+What this does and does not say: it is one task of trivial size, so it is not a baseline and supports no claim about savings. The review turn may not have run on haiku: at the time the reviewer ran in Claude Code's `plan` permission mode, and Claude Code answers a plan-mode session started with `--model haiku` with Sonnet (found later and measured with 2.1.296; see `RunSpec.ReadOnly` in `internal/agents/agents.go`). The `model_usage` rows of this run were not re-checked, so the $0.0983 may include a Sonnet review turn. Since 2026-10-09 the reviewer runs read-only in the default mode with every writing tool denied (`internal/core/core.go`, `agentConfig`) and keeps the configured model; the measurement has not been repeated. Most of the cost is Claude Code's own context overhead (the cached and cache-write tokens), which is why a two-turn task costs about ten cents even though the code change is one line. The cheap-tier share is 0/1 because both agents ran a subscription CLI (premium); no cheap-tier model was used, so none of the routing economics (cheap-first, escalation) has been measured yet. Neither agent had a list of models for the router, so its decisions are `static` and the routing-quality section measures configured assignments. The B1 baseline arm is built since 2026-10-10 (section 13); B0 since 2026-10-29 (section 15, not yet run with a real CLI). Nothing was measured on Windows.
 
 ## 13. Head-to-head trial: Drydock against plain Claude Code (B1)
 
@@ -511,3 +513,78 @@ through `-skills-dir` would load into every turn (repository skills without `pat
 machine under load (wall times include waiting for CPUs). The follow-up is six runs: an observation, not a rate. The
 origin rule was set after the follow-up and is covered by tests, not by another paid run. A suite whose
 tickets leave rules to the codebase's skills is what would show whether skills raise acceptance.
+
+## 15. The naive broadcast arm, B0 (built 2026-10-29, decisions P113 and P121; not measured)
+
+On the owner's words, answering the list of what was not built: "Proceed with those items". Section 5's B0 is an arm of the trial
+harness (`internal/trial/b0.go`, `drydock-trial run -arms D,B1,B0`), not part of the product, so it runs the same tasks, fixture,
+start commit, model, CLI, hidden checks, ceiling and wall-clock cap as D and B1, interleaved with them (the arms' order turns by one
+per task and repeat).
+
+**What it does.** A team with the Drydock arm's roles, a worker and a reviewer, all Claude Code on the one model the run names,
+takes turns in a free-for-all in one shared repository, with Bash allowed on this machine as for B1. Each turn is a new
+`claude -p` session whose prompt (on standard input, as one stream-json message) is the agent's role, the task and **the whole
+room in full**: every message, every tool call with its input and every tool output, nothing cut, summarized or reordered. No
+router, no cheap tier, no handoff (the full transcript crosses every session), no response cache, no watchdog, no reviewer
+verdict format. An agent ends its reply with a line `DONE` when it thinks nothing more is needed from it. The run stops when every
+agent said `DONE` in the same round (`consensus`), after `-b0-rounds` rounds (default 5, the Drydock arm's five iterations;
+`rounds`, judged by the hidden check like any finished run), at the wall-clock cap (`failed`), at the dollar ceiling (`ceiling`:
+the team's spend is checked before each turn, and each turn's `--max-budget-usd` is what is left), or when a session fails
+(`failed`, with the CLI's reason; a prompt that outgrows the model's context window ends here, which is where a broadcast team
+runs out).
+
+**What it records** (`run.json`, section 6.2, with `transcript.jsonl` holding every session's stream in turn, redacted as B1's):
+outcome and reason, cost (the sum of each session's `total_cost_usd`; a session that reported none makes it a lower bound), tokens
+by kind, sessions, model turns, tool calls by name, models used, whether a tool call named the hidden checks (then not counted),
+and the arm's own figures: `agents`, `rounds`, `stop`, `broadcastBytes` (everything sent to the agents, each prompt holding the
+room) and `maxPromptBytes`. The report adds a table of those per run.
+
+**Proven in tests, not measured.** `internal/trial/b0_test.go` runs the arm against the scripted stand-in for Claude Code (the
+`fakeagent` test double, which logs each prompt it is given): the reviewer's prompt holds the worker's words, its command, the
+command's output and the file it wrote; each prompt carries the previous one's room in full and more; consensus stops after one
+round; a team that keeps talking stops at the round limit; the ceiling stops the next turn and is recorded as `ceiling`; a failed
+session and the wall clock end the run; the costs, tokens, tool counts and broadcast bytes add up to what the stand-in reported and
+was sent; the reference solution written by the worker passes the hidden check. The stand-in's cost and tokens per turn are fixed,
+so the tests say nothing about what broadcasting costs. **No B0 row has a measured number**: running it needs a signed-in Claude
+Code and money, which this environment does not have. To measure it, on a machine with Claude Code signed in, from a commit:
+`go run ./cmd/drydock-trial run -arms D,B1,B0 -suite tally -k 3 -model haiku -ceiling-usd 2 -total-usd 150 -work <a folder outside
+the repository>`, then `go run ./cmd/drydock-trial report -trial <name>`; the 7.1 rows are then filled from the generated report.
+
+**Other CLIs and a cheap provider (built 2026-10-29, decision P121; not measured).** On the owner's word, answering the list of
+what is still not built: "Yes". The CLI and the provider are parameters of the arm (`internal/trial/b0cli.go`):
+
+- `-b0-cli <id>` runs every member of the team on that CLI: `claude` (the default, `claude -p` as above) or the id of another
+  CLI's manifest (`codex`, `gemini`, `opencode`, `goose`, `cline`, or a person's own), whose adapter the harness builds as the
+  Connections page does (`connections.NewService`, with the ACP terminal on so the team can run commands, as B1's Bash). Each
+  turn is a new session through that adapter, given the same prompt (role, task, the whole room); its normalized text, tool
+  calls, tool results and usage make up the room and the record, and its permission requests are all allowed. The run is
+  refused before it starts when the CLI is not installed. With no per-session budget flag, the dollar ceiling is checked before
+  each turn and against each usage report, which ends the turn once reached (`ceiling`); a turn that ends in error, is refused
+  or cancelled, or whose process ends early is `failed` with the CLI's reason. A CLI that reports no cost leaves
+  `callsWithoutCost` set and the cost a lower bound, as before.
+- `-b0-provider <id> -b0-provider-url <base URL> -b0-provider-key-env <variable>` runs the team on a provider instead of the CLI's
+  own sign-in. The key stays in the harness's environment and reaches only the CLI's: it is never in the record or on a command
+  line (what the CLI itself prints goes to the transcript, redacted as B1's). Claude Code is pointed at an Anthropic-compatible endpoint (`ANTHROPIC_BASE_URL`,
+  `ANTHROPIC_AUTH_TOKEN`, every model alias set to `-model` so no call goes to another model); OpenCode at an OpenAI-compatible one
+  (an inline `OPENCODE_CONFIG_CONTENT` naming the provider with `@ai-sdk/openai-compatible`, its key read from the variable,
+  and the model `<id>/<model>`). Any other CLI refuses a provider. The URL must be https (or http on this computer).
+  `-b0-price-in` and `-b0-price-out` (USD per million tokens) put each turn's cost at the provider's prices, from the tokens
+  (cached ones at the input price: an upper bound), instead of the CLI's own figure, which is at its vendor's prices; the
+  record then says `costSource: estimated`.
+- The record names the CLI (`agentCli`, and in `cli` its name and the version it reports) and the provider; the report's B0
+  table has a "CLI, provider" column.
+
+**Proven in tests, not measured.** `internal/trial/b0cli_test.go` runs a team of the scripted ACP agent (`fakeacp`, a labelled
+test double) through Drydock's real ACP adapter: the reviewer answers only when its prompt holds the worker's tool output, the
+worker writes the reference solution through the client's file system and the hidden check passes, cost and tokens add up to
+what the agent reported, the ceiling stops a turn as a usage report crosses it, a failed prompt ends the run; Claude Code's stand-in
+(`fakeagent`) on a provider gets the gateway variables and the cost at the provider's prices with the key in neither the record
+nor the arguments; OpenCode's inline configuration reaches the session (the agent reports its model and environment); and the
+refusals (a CLI that cannot take a provider, plain http elsewhere, credentials in the URL, an empty key). **No row of it is
+measured**: the variables Claude Code reads for another endpoint, OpenCode's configuration keys and every other CLI's behaviour
+as a B0 member are taken from their documentation and the manifests, not from a run. To measure, on a machine with the CLI
+installed and signed in (or the provider's key in a variable), from a commit:
+`go run ./cmd/drydock-trial run -arms D,B1,B0 -b0-cli opencode -model <model> -b0-provider <id> -b0-provider-url <https://.../v1>
+-b0-provider-key-env <VARIABLE> -b0-price-in <usd> -b0-price-out <usd> -suite tally -k 3 -ceiling-usd 2 -total-usd 50 -work <a
+folder outside the repository>` (or `-b0-cli codex`, `gemini`, ... on their own sign-in), then
+`go run ./cmd/drydock-trial report -trial <name>`.

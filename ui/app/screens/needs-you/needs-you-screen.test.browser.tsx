@@ -242,6 +242,30 @@ describe('the Inbox', () => {
     expect(s.workspace.projectId).toBe('p2');
   });
 
+  it("a budget's warning is its own item: it says what to do, opens the Budgets page, and can be marked done (P118)", async () => {
+    const warning: NeedsYouItem = {
+      key: 'budget:bud1:p2/iterate-until-verified:warning:5', kind: 'budget', severity: 2, title: 'Budget warning: the budget of the workflow iterate-until-verified passed 80%',
+      detail: 'Agents keep working. At the limit, the next agent turn waits for you: raise the limit on the Budgets page if this work should go on, or dismiss this.',
+      projectId: 'p2', budgetId: 'bud1', budgetState: 'warning', createdAt: iso(NOW - 5 * 60_000),
+    };
+    const { r, calls, s, navigated } = await open({}, [warning]);
+    const row = r.$('[data-testid="needs-item"]')!;
+    expect(row.getAttribute('data-kind')).toBe('budget');
+    expect(row.getAttribute('data-look')).toBe('budget');
+    expect(row.textContent).toContain('shop-api · budget');
+    await r.act(() => (r.$('[data-row-key^="needs:budget:"]') as HTMLButtonElement).click());
+    // what to do, once (the detail is the hint, not repeated as a description), and no Approve: nothing is answered here
+    expect(r.$('[data-testid="needs-hint"]')!.textContent).toContain('raise the limit on the Budgets page');
+    expect(r.$('[data-testid="detail-description"]')).toBeNull();
+    expect(r.$('[data-testid="detail-approve"]')).toBeNull();
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open Budgets');
+    await r.act(() => press('e'));
+    await waitFor(() => expect(calls.ack).toEqual([warning.key]), r);
+    await r.act(() => press('Enter'));
+    expect(navigated).toEqual(['/budgets']);
+    expect(s.workspace.projectId).toBe('p2');
+  });
+
   it('the Running tab lists what runs, the Done today tab the tasks completed since midnight', async () => {
     const { r, calls, s } = await open();
     await r.act(() => (r.$('[data-testid="inbox-tab-running"]') as HTMLButtonElement).click());
@@ -292,5 +316,23 @@ describe('the Inbox', () => {
     items = [failed];
     s.emit({ type: 'approval.decided', projectId: 'p1' });
     await waitFor(() => expect(r.$$('[data-testid="needs-item"]').length).toBe(1), r);
+  });
+
+  it('an agent asking to join a channel is let in or declined from the detail (P130)', async () => {
+    const join: NeedsYouItem = {
+      key: 'join:jr1', kind: 'join_request', severity: 3, title: 'Asks to join #architecture', detail: 'Why: I record security decisions', projectId: 'p1', roomId: 'r9',
+      agentId: 'a3', agentName: 'Sec', joinRequestId: 'jr1', createdAt: iso(NOW - 60_000),
+    };
+    const answers: unknown[][] = [];
+    const { r, calls } = await open({ roomAnswerJoin: async (...a) => (answers.push(a), { id: 'jr1' }) as never }, [join]);
+    await r.act(() => (r.$('[data-row-key="needs:join:jr1"]') as HTMLButtonElement).click());
+    expect(r.$('[data-testid="detail-description"]')!.textContent).toBe('Why: I record security decisions');
+    expect(r.$('[data-testid="needs-hint"]')!.textContent).toContain('Let it in as an observer');
+    expect(r.$('[data-testid="detail-open"]')!.textContent).toBe('Open the channel');
+    expect(r.$('[data-testid="detail-done"]')).toBeNull();
+    await r.act(() => press('e'));
+    expect(calls.ack).toEqual([]);
+    await r.act(() => (r.$('[data-testid="detail-let-in"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(answers).toEqual([['jr1', true]]), r);
   });
 });

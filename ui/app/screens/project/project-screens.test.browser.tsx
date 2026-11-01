@@ -19,7 +19,8 @@ describe('Project settings', () => {
       projectList: async () => [project],
       licenseStatus: async () => lic(),
       appInfo: async () => ({}) as never,
-      checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false }),
+      routeLevelGet: async () => ({ workspace: 'balanced', project: '', effective: 'balanced', source: 'workspace', levels: [] }),
+      checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false, scan: false }),
       projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true, e2e: { enabled: false }, preview: { enabled: false } }),
       ...client,
     });
@@ -263,14 +264,15 @@ describe('Check settings and development flow', () => {
     const calls: [string, CheckSettings][] = [];
     const r = mount(
       <CheckSettingsPanel projectId="prj_1" />,
-      testServices({ checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false }), checksSettingsSet: async (p, x) => (calls.push([p, x]), x) }),
+      testServices({ checksSettingsGet: async () => ({ secrets: true, deps: false, depsOffline: false, scan: false }), checksSettingsSet: async (p, x) => (calls.push([p, x]), x) }),
     );
     const deps = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Dependency vulnerability scan'), r);
     expect(byLabel<HTMLInputElement>(r.container, 'Offline only (no database download)').disabled).toBe(true);
     await r.act(() => deps.click());
     expect(byLabel<HTMLInputElement>(r.container, 'Offline only (no database download)').disabled).toBe(false);
+    await r.act(() => byLabel<HTMLInputElement>(r.container, 'Security scan of the change').click());
     await r.act(() => byText(r.container, 'button', 'Save check settings').click());
-    await waitFor(() => expect(calls).toEqual([['prj_1', { secrets: true, deps: true, depsOffline: false }]]), r);
+    await waitFor(() => expect(calls).toEqual([['prj_1', { secrets: true, deps: true, depsOffline: false, scan: true }]]), r);
     await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toBe('Saved.'), r);
   });
 
@@ -373,6 +375,22 @@ describe('Check settings and development flow', () => {
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toMatchObject({ leadStallMinutes: 30 });
+  });
+
+  it('the context ceiling: empty means the default, out of range is explained, a number is saved', async () => {
+    const calls: DevSettings[] = [];
+    const r = mountDev(async (_p, x) => (calls.push(x), x));
+    const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Most tokens an agent turn starts with'), r);
+    expect(box.value).toBe('');
+    expect(box.placeholder).toBe('20000');
+    expect(r.container.textContent).toMatch(/file excerpts, the repository map and memory are cut first; the task and instructions never are/);
+    type(box, '1000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')!.textContent).toContain('4,000 and 200,000'), r);
+    type(box, '12000');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ceiling-note"]')).toBe(null), r);
+    await r.act(() => byText(r.container, 'button', 'Save development settings').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ contextCeiling: 12000 });
   });
 
   it('notes that more than five agents at once rarely pays off, and only then', async () => {

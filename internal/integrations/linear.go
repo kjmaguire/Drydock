@@ -56,6 +56,8 @@ func (c *apiClient) graphql(ctx context.Context, query string, vars map[string]a
 		e := env.Errors[0]
 		t := strings.ToLower(e.Extensions.Type + " " + e.Extensions.Code)
 		switch {
+		case strings.HasPrefix(e.Message, "Entity not found"):
+			return &Failure{Code: CodeNotFound, Message: "Linear did not find what Drydock asked for."}
 		case strings.Contains(t, "ratelimit"):
 			f := &Failure{Code: CodeRateLimited, Cause: ErrRateLimited, Message: "Linear asked Drydock to slow down (rate limit). Drydock will wait and try again by itself."}
 			if r != nil {
@@ -156,7 +158,7 @@ const linearIssuesQuery = `query DrydockIssues($first: Int!, $after: String, $fi
     nodes {
       id identifier title description url priority createdAt updatedAt
       state { name } assignee { name displayName } labels(first: 20) { nodes { name } }
-      team { key } project { name } parent { identifier }
+      team { key } project { id name } parent { identifier }
     }
     pageInfo { hasNextPage endCursor }
   }
@@ -187,6 +189,7 @@ type linearIssue struct {
 		Key string `json:"key"`
 	} `json:"team"`
 	Project *struct {
+		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"project"`
 	Parent *struct {
@@ -255,35 +258,40 @@ func (linearAdapter) Page(ctx context.Context, a *API, q PageQuery) (Page, error
 		if i.ID == "" {
 			continue
 		}
-		ref := i.Identifier
-		if ref == "" {
-			ref = "LIN-" + shortID(i.ID)
-		}
-		it := RawItem{ExternalID: i.ID, Kind: ItemIssue, IssueRef: ref, URL: i.URL, Title: i.Title, Body: i.Description, Priority: linearPriority(i.Priority),
-			Created: millis(i.CreatedAt), Updated: millis(i.UpdatedAt), Etag: i.UpdatedAt, Meta: map[string]any{}}
-		if i.State != nil {
-			it.State = i.State.Name
-		}
-		if i.Assignee != nil {
-			it.Assignee = firstNonEmpty(i.Assignee.DisplayName, i.Assignee.Name)
-		}
-		if i.Labels != nil {
-			for _, l := range i.Labels.Nodes {
-				it.Labels = append(it.Labels, l.Name)
-			}
-		}
-		if i.Team != nil {
-			it.Meta["team"] = i.Team.Key
-		}
-		if i.Project != nil {
-			it.Meta["project"] = i.Project.Name
-		}
-		if i.Parent != nil {
-			it.Parent = i.Parent.Identifier
-		}
-		pg.Items = append(pg.Items, it)
+		pg.Items = append(pg.Items, linearRaw(i))
 	}
 	return pg, nil
+}
+
+// linearRaw reads one issue of the API's answer (a listing's node or a single issue).
+func linearRaw(i linearIssue) RawItem {
+	ref := i.Identifier
+	if ref == "" {
+		ref = "LIN-" + shortID(i.ID)
+	}
+	it := RawItem{ExternalID: i.ID, Kind: ItemIssue, IssueRef: ref, URL: i.URL, Title: i.Title, Body: i.Description, Priority: linearPriority(i.Priority),
+		Created: millis(i.CreatedAt), Updated: millis(i.UpdatedAt), Etag: i.UpdatedAt, Meta: map[string]any{}}
+	if i.State != nil {
+		it.State = i.State.Name
+	}
+	if i.Assignee != nil {
+		it.Assignee = firstNonEmpty(i.Assignee.DisplayName, i.Assignee.Name)
+	}
+	if i.Labels != nil {
+		for _, l := range i.Labels.Nodes {
+			it.Labels = append(it.Labels, l.Name)
+		}
+	}
+	if i.Team != nil {
+		it.Meta["team"] = i.Team.Key
+	}
+	if i.Project != nil {
+		it.Meta["project"] = i.Project.Name
+	}
+	if i.Parent != nil {
+		it.Parent = i.Parent.Identifier
+	}
+	return it
 }
 
 func (linearAdapter) Detail(context.Context, *API, map[string]string, string) (string, bool, error) {

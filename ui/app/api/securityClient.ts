@@ -42,6 +42,8 @@ export interface SecurityClient {
   // Folder scans (decision P61): any folder on this computer, without a project. The scan only reads files.
   /** The scan tools on this computer, as folder scans use them. */
   securityWorkspaceTools(): Promise<SecurityTools>;
+  /** Reads the newest release of OSV-Scanner and Opengrep now and installs a newer one in the background; the tools after. */
+  securityToolsUpdate(): Promise<SecurityTools>;
   /** Starts a scan of a folder by its full path. Refused for a relative path, a file, a whole drive or Drydock's data folder. */
   securityFolderScanStart(folder: string): Promise<ScanReport>;
   securityFolderScanCancel(folder: string): Promise<ScanReport>;
@@ -82,6 +84,7 @@ export function createSecurityClient(t: Transport): SecurityClient {
     securityScanList: async (projectId, limit = 10) => arr(await t.call<ScanSummary[] | null>('security.scan.list', { projectId, limit })).map(summary),
     securityScanReport: async (id) => report(await t.call<ScanReport>('security.scan.report', { id })),
     securityWorkspaceTools: () => t.call('security.tools', {}),
+    securityToolsUpdate: () => t.call('security.tools.checkUpdates', {}),
     securityFolderScanStart: async (folder) => report(await t.call<ScanReport>('security.scan.start', { folder })),
     securityFolderScanCancel: async (folder) => report(await t.call<ScanReport>('security.scan.cancel', { folder })),
     securityFolderScanGet: async (folder) => {

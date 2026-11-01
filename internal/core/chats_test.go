@@ -233,6 +233,43 @@ func TestChatCreateSendStreamsStoresAndRecordsTheSession(t *testing.T) {
 	}
 }
 
+// A chat that chose no model names the one its CLI reported (decision P107): after a turn, and for a new chat before its
+// first turn, the default the same CLI last reported; choosing a model or a mode drops what was reported until the next turn.
+func TestAChatNamesTheModelAndModeItsCLIReported(t *testing.T) {
+	e := openChats(t, fakeagent.Script{Default: []fakeagent.Step{{Say: "ok"}}}, nil)
+	c := e.create(map[string]any{})
+	if c.CLIModel != "" || c.CLIPermissionMode != "" || c.ProjectID != "" {
+		t.Fatalf("a first chat knows nothing yet: %+v", c)
+	}
+	e.send(c.ID, "hi")
+	ch := e.get(c.ID).Chat
+	if ch.CLIModel != "fake-1" || ch.CLIPermissionMode != "default" {
+		t.Fatalf("after a turn: model %q mode %q", ch.CLIModel, ch.CLIPermissionMode)
+	}
+	// the next chat that chooses no model starts with that default; one that chooses a model does not
+	if n := e.create(map[string]any{}); n.CLIModel != "fake-1" {
+		t.Fatalf("seeded %q", n.CLIModel)
+	}
+	if n := e.create(map[string]any{"model": "haiku"}); n.CLIModel != "" {
+		t.Fatalf("a chosen model is not the default: %q", n.CLIModel)
+	}
+	// choosing a model and a mode: what the CLI said before no longer holds, until the next turn reports again
+	var up chats.Chat
+	e.call("chat.update", map[string]any{"id": c.ID, "model": "sonnet", "permissionMode": "acceptEdits"}, &up)
+	if up.CLIModel != "" || up.CLIPermissionMode != "" {
+		t.Fatalf("after the change: %+v", up)
+	}
+	e.send(c.ID, "again")
+	if ch := e.get(c.ID).Chat; ch.CLIModel != "sonnet" || ch.CLIPermissionMode != "acceptEdits" {
+		t.Fatalf("after the next turn: model %q mode %q", ch.CLIModel, ch.CLIPermissionMode)
+	}
+	// back to no model: the CLI's default as last reported
+	e.call("chat.update", map[string]any{"id": c.ID, "model": ""}, &up)
+	if up.CLIModel != "fake-1" {
+		t.Fatalf("back to the default: %q", up.CLIModel)
+	}
+}
+
 // Claude Code reports a resumed session's totals including its earlier processes (contract CLAUDE-USAGE-03); the scripted
 // stand-in does the same with DRYDOCK_FAKE_STATE_DIR. Each turn of a chat must still be counted once.
 func TestAResumedChatSessionCountsEachTurnOnce(t *testing.T) {
@@ -678,6 +715,7 @@ func (p *chatsProbe) Start(ctx context.Context, pm proc.Manager, spec agents.Run
 		_ = json.Unmarshal(raw, &f)
 		ent := f.MCPServers["drydock"]
 		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		playAgentIn(pm)
 		if s, err := connectMCP(cctx, ent.Env["DRYDOCK_MCP_URL"], ent.Env["DRYDOCK_MCP_TOKEN"]); err == nil {
 			if lt, err := s.ListTools(cctx, nil); err == nil {
 				for _, tl := range lt.Tools {

@@ -6,7 +6,7 @@
 // and writes back are chosen), then what the page puts under it (the vendor's agent tools, its skills). Sync now and the … menu
 // (Reconnect, Disconnect) are in the header. The secret fields are uncontrolled: read once, cleared before the request leaves.
 
-import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
+import { css, on, ref, type Handle } from 'remix/component';
 import { Blocks, Check, Ellipsis, ExternalLink, FolderOpen, FolderPlus, KeyRound, LogIn, Minus, RefreshCw, ShieldCheck, Stethoscope, Trash2, X } from 'lucide';
 import type {
   ConnectIntegrationReq,
@@ -615,7 +615,7 @@ function SetupFlow(
             </li>
             <li>
               <Icon icon={ShieldCheck} size={13} />
-              {hasAgentTools ? `${label}'s own MCP server can be connected for agents below` : 'Nothing is written back without your approval'}
+              {hasAgentTools ? `${label}'s own MCP server for agents is under Agent tools` : 'Nothing is written back without your approval'}
             </li>
           </ul>
           <LearnMore topic="integrations" label="How Drydock keeps this safe" />
@@ -888,8 +888,8 @@ function ConnectedService(
 }
 
 /**
- * One service, as the list's detail: the setup while it is not connected, the connection's rows once it is. `children` follow
- * the service's own part (the vendor's agent tools and skills), outside it: its controls are the connection's only.
+ * One service, as the list's detail: the setup while it is not connected, the connection's rows once it is. The vendor's MCP
+ * servers and skills are its Agent tools row (vendor-detail.tsx).
  */
 export function ServiceView(
   handle: Handle<{
@@ -900,7 +900,6 @@ export function ServiceView(
     onChanged: () => void;
     onKindsChanged?: () => void;
     open: Open;
-    children?: RemixNode;
   }>,
 ) {
   // the test report outlives the switch from the setup to the connection's rows: connecting tests the credential, and says so there
@@ -910,23 +909,20 @@ export function ServiceView(
     void handle.update();
   };
   return () => {
-    const { kind, info, conn, hasAgentTools, onChanged, onKindsChanged, open, children } = handle.props;
+    const { kind, info, conn, hasAgentTools, onChanged, onKindsChanged, open } = handle.props;
     const label = info?.label ?? kind.label;
     return (
-      <>
-        <article mix={detailCss} data-testid="integration" data-kind={kind.kind} data-name={label} data-connected={String(!!conn)}>
-          {conn ? (
-            <ConnectedService key={conn.id} kind={kind} info={info} conn={conn} report={report} onReport={setReport} onChanged={onChanged} onKindsChanged={onKindsChanged} open={open} />
-          ) : (
-            <>
-              <SetupFlow kind={kind} info={info} hasAgentTools={hasAgentTools} onConnected={(r) => (setReport(r), onChanged())} onKindsChanged={onKindsChanged} />
-              {report ? <ReportView r={report} /> : null}
-              <ApiFacts label={label} info={info} />
-            </>
-          )}
-        </article>
-        {children}
-      </>
+      <article mix={detailCss} data-testid="integration" data-kind={kind.kind} data-name={label} data-connected={String(!!conn)}>
+        {conn ? (
+          <ConnectedService key={conn.id} kind={kind} info={info} conn={conn} report={report} onReport={setReport} onChanged={onChanged} onKindsChanged={onKindsChanged} open={open} />
+        ) : (
+          <>
+            <SetupFlow kind={kind} info={info} hasAgentTools={hasAgentTools} onConnected={(r) => (setReport(r), onChanged())} onKindsChanged={onKindsChanged} />
+            {report ? <ReportView r={report} /> : null}
+            <ApiFacts label={label} info={info} />
+          </>
+        )}
+      </article>
     );
   };
 }

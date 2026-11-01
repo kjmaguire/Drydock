@@ -34,6 +34,12 @@ type Script struct {
 	// assistant message, then an error result (see failTurn). An overloaded or rate-limited provider, a model that does not
 	// exist. The message is the test's; the real wording varies by version.
 	ModelErrors map[string]string `json:"modelErrors,omitempty"`
+	// ModelSteps makes every turn of a session started with --model <m> named here run these steps instead of the prompt's
+	// (a model that hangs, say, beside others that answer).
+	ModelSteps map[string][]Step `json:"modelSteps,omitempty"`
+	// NoOccupancy leaves the model's context window out of every result, so the session reports no context occupancy, as a CLI
+	// that reports none does (Drydock then estimates it; decision P128).
+	NoOccupancy bool `json:"noOccupancy,omitempty"`
 }
 
 // Rule selects steps by prompt content.
@@ -434,7 +440,18 @@ func (a *agent) runTurn(prompt string) {
 		}
 	}
 	steps := a.steps(prompt)
-	a.emit(map[string]any{"type": "system", "subtype": "init", "session_id": a.session, "model": "fake-1", "tools": []string{"Read", "Bash", "Edit"}, "cwd": mustGetwd()})
+	if ms, ok := a.script.ModelSteps[a.model]; ok && a.model != "" {
+		steps = ms
+	}
+	// as Claude Code does: the model the session runs (--model's, else its own default) and its permission mode
+	model, mode := "fake-1", a.mode
+	if a.model != "" {
+		model = a.model
+	}
+	if mode == "" {
+		mode = "default"
+	}
+	a.emit(map[string]any{"type": "system", "subtype": "init", "session_id": a.session, "model": model, "permissionMode": mode, "tools": []string{"Read", "Bash", "Edit"}, "cwd": mustGetwd()})
 	apiErr, failed := a.script.ModelErrors[a.model]
 	if failed {
 		steps = nil
@@ -629,9 +646,13 @@ loop:
 		n, total := a.turns, a.cost
 		a.saveState()
 		a.mu.Unlock()
+		mu := map[string]any{"inputTokens": 10 * n, "outputTokens": 5 * n, "cacheReadInputTokens": 100 * n, "cacheCreationInputTokens": 0, "costUSD": 0.0002 * float64(n), "contextWindow": 200000}
+		if a.script.NoOccupancy {
+			delete(mu, "contextWindow")
+		}
 		a.emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": lastText, "stop_reason": "end_turn", "session_id": a.session,
 			"permission_denials": denials, "total_cost_usd": total, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
-			"modelUsage": map[string]any{"fake-1": map[string]any{"inputTokens": 10 * n, "outputTokens": 5 * n, "cacheReadInputTokens": 100 * n, "cacheCreationInputTokens": 0, "costUSD": 0.0002 * float64(n), "contextWindow": 200000}}})
+			"modelUsage": map[string]any{"fake-1": mu}})
 	}
 	a.mu.Lock()
 	a.running = false

@@ -1013,9 +1013,25 @@ func SafePointRef(taskID string, attempt int) string {
 	return fmt.Sprintf("refs/drydock/safe/%s/%d", taskID, attempt)
 }
 
+// RunSafePointRef returns the hidden ref name for attempt n of one run of a task. Each run keeps its own refs, so a run that
+// reaches the same step and attempt as another run of the task (a restart, a fork from a checkpoint, a replay; decision P123)
+// never moves the safe point the other run's execution names.
+func RunSafePointRef(taskID, runID string, n int) string {
+	return fmt.Sprintf("refs/drydock/safe/%s/%s/%d", taskID, runID, n)
+}
+
 // SafePoint records the exact worktree state (tracked and untracked files) as a hidden commit without touching the
 // working branch or the index the agent sees: temporary index, add -A, write-tree, commit-tree, update-ref.
 func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, error) {
+	return r.safePoint(ctx, w, SafePointRef(w.TaskID, attempt), fmt.Sprintf("drydock safe point: task %s attempt %d", w.TaskID, attempt))
+}
+
+// RunSafePoint is SafePoint under the run's own ref (RunSafePointRef): what the workflow engine records before every agent turn.
+func (r *Repo) RunSafePoint(ctx context.Context, w Worktree, runID string, n int) (string, error) {
+	return r.safePoint(ctx, w, RunSafePointRef(w.TaskID, runID, n), fmt.Sprintf("drydock safe point: task %s run %s attempt %d", w.TaskID, runID, n))
+}
+
+func (r *Repo) safePoint(ctx context.Context, w Worktree, ref, msg string) (string, error) {
 	idx, cleanup, err := r.tempIndex(ctx, w)
 	if err != nil {
 		return "", err
@@ -1029,7 +1045,7 @@ func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, 
 	if err != nil {
 		return "", err
 	}
-	args := []string{"commit-tree", strings.TrimSpace(tree), "-m", fmt.Sprintf("drydock safe point: task %s attempt %d", w.TaskID, attempt)}
+	args := []string{"commit-tree", strings.TrimSpace(tree), "-m", msg}
 	if head, err := r.Head(ctx, w); err == nil {
 		args = append(args, "-p", head)
 	}
@@ -1037,7 +1053,6 @@ func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, 
 	if err != nil {
 		return "", err
 	}
-	ref := SafePointRef(w.TaskID, attempt)
 	if _, err := r.git(ctx, w.Path, nil, "update-ref", ref, strings.TrimSpace(commit)); err != nil {
 		return "", err
 	}
@@ -1047,7 +1062,101 @@ func (r *Repo) SafePoint(ctx context.Context, w Worktree, attempt int) (string, 
 // RestoreSafePoint puts the worktree's files back to the state recorded at ref. It is a human action: it first records
 // the current state as a new safe point (so the rollback itself is undoable) and returns that ref.
 func (r *Repo) RestoreSafePoint(ctx context.Context, w Worktree, ref string, undoAttempt int) (string, error) {
-	undo, err := r.SafePoint(ctx, w, undoAttempt)
+	return r.RestoreSafePointTo(ctx, w, ref, SafePointRef(w.TaskID, undoAttempt))
+}
+
+// UndoRef is the hidden ref a person's restore keeps the worktree's state under before it puts a safe point back (decision
+// P124): at is the time of the restore (Unix ms), so every restore keeps its own and none moves a run's safe point.
+func UndoRef(taskID string, at int64) string {
+	return fmt.Sprintf("refs/drydock/safe/%s/undo/%d", taskID, at)
+}
+
+// UndoPoint is the state of a task's worktree that a person's restore kept before it put files back (decision P127): restoring
+// it undoes that restore, from the run page, whenever the person wants.
+type UndoPoint struct {
+	Ref string `json:"ref"`
+	// At is when the restore was made (Unix ms, from the ref's name); Restored is the safe point that restore put back.
+	At       int64  `json:"at"`
+	Restored string `json:"restored,omitempty"`
+}
+
+// UndoPoints lists the undo points earlier restores of task taskID kept, newest first.
+func (r *Repo) UndoPoints(ctx context.Context, taskID string) ([]UndoPoint, error) {
+	prefix := "refs/drydock/safe/" + taskID + "/undo/"
+	out, err := r.git(ctx, r.Root, nil, "for-each-ref", "--format=%(refname)%00%(contents:subject)", prefix)
+	if err != nil {
+		return nil, err
+	}
+	var pts []UndoPoint
+	for _, line := range strings.Split(out, "\n") {
+		ref, subject, _ := strings.Cut(strings.TrimSpace(line), "\x00")
+		at, err := strconv.ParseInt(strings.TrimPrefix(ref, prefix), 10, 64)
+		if !strings.HasPrefix(ref, prefix) || err != nil {
+			continue
+		}
+		p := UndoPoint{Ref: ref, At: at}
+		if _, restored, ok := strings.Cut(subject, " before restoring "); ok && IsSafePointRef(taskID, restored) {
+			p.Restored = restored
+		}
+		pts = append(pts, p)
+	}
+	sort.Slice(pts, func(i, j int) bool { return pts[i].At > pts[j].At })
+	return pts, nil
+}
+
+// IsSafePointRef reports whether ref is one of task taskID's safe points (a run's, an attempt's or an undo of a restore).
+func IsSafePointRef(taskID, ref string) bool {
+	rest, ok := strings.CutPrefix(ref, "refs/drydock/safe/"+taskID+"/")
+	return ok && rest != "" && !strings.Contains(ref, "..") && !strings.ContainsAny(ref, " \t\n\\:?*[~^")
+}
+
+// FileChange is one file a restore changes, said from the worktree's side: "restored" (it comes back), "changed" (its
+// content goes back), "removed" (it did not exist at the safe point).
+type FileChange struct {
+	Path   string `json:"path"`
+	Change string `json:"change"`
+}
+
+// SafePointChanges lists the files RestoreSafePointTo(ref) would change in w: the worktree as it is now (tracked and untracked
+// files, as a safe point records them) against the state at ref, in path order.
+func (r *Repo) SafePointChanges(ctx context.Context, w Worktree, ref string) ([]FileChange, error) {
+	if _, err := r.git(ctx, w.Path, nil, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); err != nil {
+		return nil, fmt.Errorf("safe point %s does not exist", ref)
+	}
+	idx, cleanup, err := r.tempIndex(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	env := []string{"GIT_INDEX_FILE=" + idx}
+	if err := r.addAll(ctx, w.Path, env); err != nil {
+		return nil, err
+	}
+	cur, err := r.git(ctx, w.Path, env, "write-tree")
+	if err != nil {
+		return nil, err
+	}
+	out, err := r.git(ctx, w.Path, nil, "diff-tree", "-r", "-z", "--no-renames", "--name-status", strings.TrimSpace(cur), ref+"^{tree}")
+	if err != nil {
+		return nil, err
+	}
+	words := map[string]string{"A": "restored", "D": "removed", "M": "changed", "T": "changed"}
+	var changes []FileChange
+	f := strings.Split(strings.TrimRight(out, "\x00"), "\x00")
+	for i := 0; i+1 < len(f); i += 2 {
+		word, ok := words[strings.TrimSpace(f[i])]
+		if !ok {
+			word = "changed"
+		}
+		changes = append(changes, FileChange{Path: f[i+1], Change: word})
+	}
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	return changes, nil
+}
+
+// RestoreSafePointTo is RestoreSafePoint keeping the current state under undoRef.
+func (r *Repo) RestoreSafePointTo(ctx context.Context, w Worktree, ref, undoRef string) (string, error) {
+	undo, err := r.safePoint(ctx, w, undoRef, fmt.Sprintf("drydock safe point: task %s before restoring %s", w.TaskID, ref))
 	if err != nil {
 		return "", fmt.Errorf("could not record the current state before restoring: %w", err)
 	}

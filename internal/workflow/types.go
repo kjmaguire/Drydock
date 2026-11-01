@@ -27,6 +27,10 @@ const (
 	KindRequest     NodeKind = "request"
 	KindRoute       NodeKind = "route"
 	KindSubworkflow NodeKind = "subworkflow"
+	// KindGroup is a group-collaboration node (brief s4, decision P118): a bounded discussion between named agents in a room,
+	// each turn granted by the room's scheduler. Its handler comes from the package that runs room turns
+	// (responder.GroupNode); the engine treats it as any other node.
+	KindGroup NodeKind = "group"
 )
 
 // EdgeKind is how an edge delivers messages.
@@ -63,6 +67,9 @@ func (s RunStatus) Terminal() bool {
 type CheckpointKind string
 
 const (
+	// CheckpointEntry starts a driver's work: a new run's first checkpoint (its parent, for a fork or a replay, is the checkpoint
+	// it came from) and, when a person resumes a run that stopped without finishing (Continue), a copy of the run's latest
+	// checkpoint whose parent is that checkpoint of the same run.
 	CheckpointEntry         CheckpointKind = "entry"
 	CheckpointStep          CheckpointKind = "step"
 	CheckpointResponseEntry CheckpointKind = "response_entry"
@@ -100,6 +107,11 @@ type RequestSpec struct {
 	// more message, so the node that runs again sees what the human said. The watchdog's pause uses it: the human's guidance
 	// reaches the agent's next turn, and a rejection is the node's to act on.
 	DeliverAnswer bool `json:"deliverAnswer,omitempty"`
+	// Child is the nested run a subworkflow node waits on while that run waits for a person (decision P124): the parent parks
+	// with it, without an approvals row of its own. ChildRequest is the nested run's request the person answers (Pending reads it
+	// afresh, and an answer to this request goes there); the parent goes on with the nested run's result once it ends.
+	Child        RunID     `json:"child,omitempty"`
+	ChildRequest RequestID `json:"childRequest,omitempty"`
 }
 
 // NodeOutput is what a handler returns: a complete value, optionally a routing label, or a request.
@@ -219,6 +231,14 @@ var (
 	ErrNoRoute          = errors.New("workflow: the workflow does not go on from this step with that answer")
 	ErrRunTerminal      = errors.New("workflow: run is in a terminal state")
 	ErrEngineClosed     = errors.New("workflow: the engine is closed")
+	// ErrNotStopped: Continue was asked of a run that has not stopped (it waits for a person, a person paused it, or its driver
+	// is alive).
+	ErrNotStopped = errors.New("workflow: the run has not stopped")
+	// ErrNotFinished: Replay was asked of a run that has not ended.
+	ErrNotFinished = errors.New("workflow: the run has not finished")
+	// ErrNoChildRequest: an answer for a step that waits on a nested run that has no request open (it is working again, or has
+	// several open: answer the nested run's own).
+	ErrNoChildRequest = errors.New("workflow: the nested run this step waits on has no single request open")
 )
 
 // ErrWatchdogTrip is returned by a node cancelled by the watchdog.
@@ -280,6 +300,24 @@ type RunState struct {
 	LastNodes    []NodeID                     `json:"lastNodes,omitempty"` // nodes executed in the latest superstep
 	Result       json.RawMessage              `json:"result,omitempty"`
 	FailedReason string                       `json:"failedReason,omitempty"`
+	// Origin says where a run that did not start from its input came from: a fork (TimeTravel) or a replay (Replay). It is
+	// copied into every later checkpoint of the run, so a replay stays a replay across a resume or a recovery.
+	Origin *Origin `json:"origin,omitempty"`
+}
+
+// Origin kinds.
+const (
+	OriginFork   = "fork"
+	OriginReplay = "replay"
+)
+
+// Origin is where a forked or replayed run started.
+type Origin struct {
+	Kind       string       `json:"kind"`       // fork | replay
+	Run        RunID        `json:"run"`        // the run whose checkpoint it started from
+	Checkpoint CheckpointID `json:"checkpoint"` // that checkpoint
+	Step       int          `json:"step"`       // its step
+	By         string       `json:"by,omitempty"`
 }
 
 func newState(input json.RawMessage, topo string) RunState {

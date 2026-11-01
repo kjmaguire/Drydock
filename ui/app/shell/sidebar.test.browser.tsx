@@ -59,6 +59,7 @@ describe('the sidebar', () => {
       'nav-side-integrations',
       'nav-side-models',
       'nav-library',
+      'nav-library-skills',
       'nav-settings',
       'nav-guide-top',
     ]);
@@ -66,6 +67,11 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-tasks"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-needs-you"]')!.textContent).toContain('Inbox');
     expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
+    // the Library's two halves are entries of their own, each one click away (decision P106)
+    expect(r.$('[data-testid="nav-library"]')!.textContent).toBe('Agent templates');
+    expect(r.$('[data-testid="nav-library"]')!.getAttribute('href')).toBe('/library');
+    expect(r.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
+    expect(r.$('[data-testid="nav-library-skills"]')!.getAttribute('href')).toBe('/library/skills');
     // every project's crew is a workspace page, under Workspace
     expect(r.$('ul[aria-label="Workspace"] [data-testid="nav-crew"]')!.getAttribute('href')).toBe('/crew');
     // named apart from the project's own Crew and its Security pill
@@ -137,6 +143,8 @@ describe('the sidebar', () => {
       [{ name: 'routing' }, 'nav-settings'],
       [{ name: 'guide', topic: 'scan' }, 'nav-guide-top'],
       [{ name: 'workspace' }, 'nav-workspace'],
+      [{ name: 'library' }, 'nav-library'],
+      [{ name: 'library-skills' }, 'nav-library-skills'],
     ] as const) {
       const r = mount(<Sidebar route={route} />, svc());
       await waitFor(() => expect(r.$(`[data-testid="${id}"]`)?.getAttribute('aria-current')).toBe('page'), r);
@@ -189,6 +197,19 @@ describe('the sidebar', () => {
     document.body.append(input);
     await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true })));
     expect(aside.getAttribute('data-rail')).toBeNull();
+    // Ctrl+B folds and unfolds it too, also from a field (it types nothing there), never inside the terminal (P129)
+    await r.act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true })));
+    expect(aside.getAttribute('data-rail')).toBe('true');
+    await r.act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true })));
+    expect(aside.getAttribute('data-rail')).toBeNull();
+    const term = document.createElement('div');
+    term.className = 'xterm';
+    document.body.append(term);
+    const inTerm = new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true });
+    await r.act(() => term.dispatchEvent(inTerm));
+    expect(aside.getAttribute('data-rail')).toBeNull();
+    expect(inTerm.defaultPrevented).toBe(false);
+    term.remove();
     input.remove();
     // a new model reads the stored choice back
     expect(new UiModel({ media: wideWindow }).sidebarRail).toBe(false);

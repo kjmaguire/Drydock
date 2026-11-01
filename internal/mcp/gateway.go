@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,6 +67,11 @@ type Options struct {
 	BreakerOpen        time.Duration // how long it stays open (default 60 s)
 	// OnCritical is called when an upstream marked critical failed during a run; the owner pauses the run.
 	OnCritical func(run RunInfo, server string, err error)
+	// PeerOwner and PeerMember are the peer check of a run started with RunConfig.PeerCheck (decision P122, peercheck.go): the
+	// process id of a connection's client end (ErrPeerUnsupported where the platform cannot say), and whether a process is in
+	// the tree of the run's bound process. Both nil: no run is checked.
+	PeerOwner  func(client, server netip.AddrPort) (int, error)
+	PeerMember func(root, pid int) (bool, error)
 	Now        func() time.Time
 	Logger     *slog.Logger
 }
@@ -191,7 +197,7 @@ func (g *Gateway) Start() error {
 	mux.HandleFunc("/mcp/", g.serveMCP)
 	// the address is loopback and the callers are the agents' CLIs and the shim: small requests, and none that sit idle for long
 	// without being a held-open stream, so the header size is limited and an idle connection is closed (audit 2026-10-16, L24)
-	g.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, MaxHeaderBytes: 64 << 10, IdleTimeout: 5 * time.Minute}
+	g.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, MaxHeaderBytes: 64 << 10, IdleTimeout: 5 * time.Minute, ConnContext: g.connContext}
 	g.wg.Add(2)
 	safe.Go("mcp.Gateway.Start", func() { defer g.wg.Done(); _ = g.srv.Serve(ln) })
 	safe.Go("mcp.Gateway.Start#2", func() { defer g.wg.Done(); g.reaper() })
@@ -387,6 +393,9 @@ type RunConfig struct {
 	Servers []ServerSpec
 	// RunDir overrides <DataDir>/runs/<run_id>.
 	RunDir string
+	// PeerCheck answers the run's requests only from the process bound with BindPeer and the processes it started (decision
+	// P122, peercheck.go). Off for a run whose agent connects from somewhere the check cannot follow (a WSL distro).
+	PeerCheck bool
 }
 
 // Endpoint is what the Agent Runtime needs to point a CLI at the gateway. Token is a secret: it goes only into the run's
@@ -465,6 +474,9 @@ func (g *Gateway) StartRun(cfg RunConfig) (*Endpoint, error) {
 		fetchLim: newBucket(g.opts.FetchRangeBurst, g.opts.FetchRangePerSec, g.now),
 		postLim:  newBucket(g.opts.PostBurst, g.opts.PostPerSec, g.now),
 	}
+	if cfg.PeerCheck {
+		r.peer = newPeerState()
+	}
 	r.server = sdk.NewServer(&sdk.Implementation{Name: "drydock-gateway", Version: "1"}, &sdk.ServerOptions{
 		Capabilities: &sdk.ServerCapabilities{Tools: &sdk.ToolCapabilities{}},
 		Logger:       g.opts.Logger,
@@ -532,6 +544,9 @@ func (g *Gateway) serveMCP(w http.ResponseWriter, req *http.Request) {
 		g.authFailed(req, runID, run != nil)
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !g.peerOK(w, req, run) {
 		return
 	}
 	run.handler.ServeHTTP(w, req)

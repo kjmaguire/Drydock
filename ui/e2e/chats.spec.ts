@@ -9,14 +9,12 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   await workspaceNav(page, 'nav-chats');
   await expect(page.getByRole('complementary', { name: 'Chats' })).toBeVisible();
 
-  // new chat: the current project, Claude Code, reading other chats on by default
+  // New chat opens the chat at once (decision P107): no project, Claude Code, its own folder; no dialog first
   await page.getByTestId('chat-new').click();
-  const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await expect(dialog.getByLabel('Project', { exact: true })).toHaveAttribute('data-value', /prj_/);
-  await expect(dialog.getByLabel('Agent CLI', { exact: true })).toHaveAttribute('data-value', 'claude');
-  await expect(dialog.getByLabel(/Let this chat read my other chats/)).toBeChecked();
-  await dialog.getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
+  await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
+  await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code');
+  await expect(page.getByTestId('chat-place')).toHaveText('No project · runs in its own folder');
   const chatUrl = page.url();
 
   const message = page.getByLabel('Message', { exact: true });
@@ -61,7 +59,7 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   await expect(page.getByTestId('chat-denied')).toHaveCount(1); // the retry ran the tool without a new refusal
 });
 
-// The graphite Chats screen (decision P97) against the real core: Ctrl+N starts a chat, here without a project; the header says
+// The graphite Chats screen (decision P97) against the real core: Ctrl+N starts a chat, without a project (P107); the header says
 // where it runs; "Move to a project" moves it into one (chat.update projectId), the header and the list follow, the move is a
 // note in the conversation, and the chat answers in the project's folder in a new session given the conversation so far.
 test('Ctrl+N starts a chat without a project, and Move to a project moves it into one, where it answers', async ({ page }) => {
@@ -70,10 +68,6 @@ test('Ctrl+N starts a chat without a project, and Move to a project moves it int
   const list = page.getByRole('complementary', { name: 'Chats' });
   await expect(list).toBeVisible();
   await page.locator('body').press('Control+n');
-  const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await expect(dialog).toBeVisible();
-  await choose(dialog.getByLabel('Project', { exact: true }), { label: 'No project' });
-  await dialog.getByRole('button', { name: 'Start chat' }).click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
   await expect(page.getByTestId('chat-place')).toHaveText('No project · runs in its own folder');
   await expect(page.getByTestId('chip-mode')).toHaveText('Asks before commands');

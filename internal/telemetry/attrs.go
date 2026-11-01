@@ -1,11 +1,12 @@
 // Package telemetry is Drydock's local telemetry sink (decision D12, brief s10): spans and metrics are written to the local
-// SQLite database, only when the human turned telemetry on, with Drydock's own attribute names. There is no network
-// exporter and no OTLP dependency: "export" means producing a JSON document on demand that the human can read first
-// (Preview) and then save or hand to a collector themselves.
+// SQLite database, only when the human turned telemetry on, with Drydock's own attribute names. "Export" means producing a
+// JSON document on demand that the human can read first (Preview) and then save, or, since decision P113, the optional OTLP
+// exporter a person points at a collector of their own (otlp.go, written without an OTLP dependency).
 //
 // What can never be in an attribute: prompts, code, tool output, file contents, secrets. This is enforced structurally, not
 // by care: an attribute is stored only if its key is in the allowlist below AND its value has an identifier-shaped form
-// (no whitespace, bounded length, nothing the secret scanner recognizes). Free text has no way in.
+// (no whitespace, bounded length, nothing the secret scanner recognizes). Free text has no way in, and there is no exception
+// (decision P126).
 package telemetry
 
 import (
@@ -34,6 +35,11 @@ const (
 	AttrCacheWrite = "drydock.usage.cache_write_tokens"
 	AttrCheckKind  = "drydock.check.kind"
 	AttrCheckPass  = "drydock.check.passed"
+	// The LLM Wrapper's calls (decision P113): whether the response cache answered, whether a router-approved alternative did.
+	AttrLLMCacheHit = "drydock.llm.cache_hit"
+	AttrLLMFallback = "drydock.llm.fallback"
+	// AttrErrorType is OpenTelemetry's error.type: a closed class (llm.ErrorType), never an error's text.
+	AttrErrorType = "error.type"
 
 	AttrGenAIOperation     = "gen_ai.operation.name"
 	AttrGenAIProvider      = "gen_ai.provider.name"
@@ -42,6 +48,9 @@ const (
 	AttrGenAITokenType     = "gen_ai.token.type" // input | output
 	AttrGenAIInputTokens   = "gen_ai.usage.input_tokens"
 	AttrGenAIOutputTokens  = "gen_ai.usage.output_tokens"
+
+	// AttrFeature names what a usage counter counts: the method of the core the window called (decision P121).
+	AttrFeature = "drydock.feature"
 )
 
 // Metric names.
@@ -50,6 +59,9 @@ const (
 	MetricCostUSD    = "drydock.cost"              // counter, unit USD; only emitted when a cost is known
 	MetricNodeTime   = "drydock.node.duration"     // histogram, unit ms
 	MetricDropped    = "drydock.telemetry.dropped_attributes"
+	MetricLLMTime    = "drydock.llm.duration" // histogram, unit ms: one LLM Wrapper call, retries and waits included
+	// MetricFeatureUses is a usage counter (decision P121): how often one feature was used since the last point, by feature name.
+	MetricFeatureUses = "drydock.feature.uses" // counter, unit {use}
 )
 
 type valueKind int
@@ -68,6 +80,7 @@ var allowed = map[string]valueKind{
 	AttrCostUSD: kindFloat, AttrCostSource: kindIdent, AttrCacheRead: kindInt, AttrCacheWrite: kindInt, AttrCheckKind: kindIdent, AttrCheckPass: kindBool,
 	AttrGenAIOperation: kindIdent, AttrGenAIProvider: kindIdent, AttrGenAIRequestModel: kindIdent, AttrGenAIResponseModel: kindIdent,
 	AttrGenAITokenType: kindIdent, AttrGenAIInputTokens: kindInt, AttrGenAIOutputTokens: kindInt,
+	AttrLLMCacheHit: kindBool, AttrLLMFallback: kindBool, AttrErrorType: kindIdent, AttrFeature: kindIdent,
 }
 
 // Allowlist returns the attribute keys that may be stored, sorted (shown by the preview so the human sees the whole

@@ -14,8 +14,23 @@ import (
 // dies the way Drydock can, of a panic on a goroutine nothing recovers.
 func TestMain(m *testing.M) {
 	if dir := os.Getenv("DRYDOCK_CRASH_TEST"); dir != "" {
-		if _, err := crashreport.Arm(dir); err != nil {
+		a, err := crashreport.Arm(dir)
+		if err != nil {
 			panic(err)
+		}
+		// crash reports turned off for this run (decision P121), or turned off and back on
+		switch os.Getenv("DRYDOCK_CRASH_MODE") {
+		case "paused":
+			if err := crashreport.Pause(); err != nil {
+				panic(err)
+			}
+		case "resumed":
+			if err := crashreport.Pause(); err != nil {
+				panic(err)
+			}
+			if err := crashreport.Resume(a.Path()); err != nil {
+				panic(err)
+			}
 		}
 		go func() {
 			panic("token=sk-ant-api03-" + strings.Repeat("a", 90) + " while doing something")
@@ -25,10 +40,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func crashOnce(t *testing.T, dir string) {
+func crashOnce(t *testing.T, dir string) { crashWith(t, dir, "") }
+
+func crashWith(t *testing.T, dir, mode string) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	cmd.Env = append(os.Environ(), "DRYDOCK_CRASH_TEST="+dir)
+	cmd.Env = append(os.Environ(), "DRYDOCK_CRASH_TEST="+dir, "DRYDOCK_CRASH_MODE="+mode)
 	if err := cmd.Run(); err == nil {
 		t.Fatal("the crashing process exited cleanly")
 	}

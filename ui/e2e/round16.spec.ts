@@ -22,9 +22,10 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
 
   const gallery = page.getByTestId('connector-gallery');
   const list = page.getByRole('navigation', { name: 'All integrations' });
-  // the real catalog's cards are rows in their vendor's detail: logo, name and publisher, nothing connected. GitHub's row opens
-  // the GitHub page, so its detail here is opened by its address
-  await page.goto(new URL('/integrations/github', page.url()).toString());
+  // the real catalog's cards are rows in their vendor's detail: logo, name and publisher, nothing connected. GitHub's server is
+  // its row under Agent tools, apart from its app sync (decision P106)
+  await list.getByTestId('list-group-tools').locator('[data-testid="integration-row"][data-key="tools-github"]').click();
+  await expect(page).toHaveURL(/\/integrations\/tools-github$/);
   const github = gallery.locator('[data-testid="connector"][data-id="gh"]');
   await expect(github.locator('h4')).toHaveText('GitHub');
   await expect(github.locator('[data-brand="github"]')).toHaveCount(1);
@@ -45,7 +46,8 @@ test('connector cards: connect a catalog server with OAuth, see it Connected and
   await expect(card.locator('h4')).toHaveText('Hosted tracker (test double)');
   await card.getByRole('button', { name: 'Connect Hosted tracker (test double)' }).click();
   await expect(card.getByTestId('connector-status')).toHaveText('Needs sign-in');
-  await expect(trkRow).toContainText('Needs sign-in');
+  // waiting for a sign-in is not a problem in the list: the row says Set up (decision P106)
+  await expect(trkRow).toContainText('Set up');
   const link = card.getByTestId('oauth-link');
   await expect(link).toBeVisible({ timeout: 30_000 });
   const href = await link.getAttribute('href');

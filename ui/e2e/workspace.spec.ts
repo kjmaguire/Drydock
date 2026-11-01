@@ -104,7 +104,7 @@ test("workspace pages name no project; a project's own settings are pills of its
   await expect(rail.getByTestId('nav-project-integrations')).toHaveCount(0);
   await expect(rail.getByTestId('nav-github')).toHaveCount(0);
   await workspaceNav(page, 'nav-integrations');
-  await expect(page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]')).toContainText('GitHub');
+  await expect(page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-key="github"]')).toContainText('GitHub');
   await workspaceNav(page, 'nav-settings');
   await expect(rail).not.toContainText('ws-split');
 

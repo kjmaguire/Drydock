@@ -62,8 +62,33 @@ func TestEconomicsMethodsAreRegistered(t *testing.T) {
 	a := open(t, "")
 	m := a.c.Methods()
 	for _, name := range []string{"budget.list", "budget.set", "budget.delete", "budget.status", "budget.resume", "evals.report", "evals.export", "route.explain", "route.decisions",
-		"route.rules.list", "route.rules.set", "route.rules.delete", "route.preview", "route.cheap.select", "route.cheap.get", "checks.settings.get", "checks.settings.set",
-		"telemetry.status", "telemetry.enable", "telemetry.preview", "telemetry.export"} {
+		"route.rules.list", "route.rules.set", "route.rules.delete", "route.preview", "route.previews", "route.cheap.select", "route.cheap.get", "route.settings.get", "route.settings.set", "route.retention.list", "route.retention.clear", "checks.settings.get", "checks.settings.set",
+		"telemetry.status", "telemetry.enable", "telemetry.preview", "telemetry.export", "telemetry.otlp.set", "telemetry.otlp.test", "chat.importList", "chat.import",
+		"local.model.set", "local.embeddings.start", "local.embeddings.stop", "local.hfToken.set", "local.hfToken.remove",
+		// decision P114
+		"integration.webhooks.get", "integration.webhooks.set", "integration.mappings.set", "integration.autoApprove.set", "integration.sweep.set", "integration.attachments.download",
+		"integration.outbound.retry",
+		// decision P115
+		"mcp.rolePolicy.get", "mcp.rolePolicy.set", "mcp.policyRule.add", "mcp.policyRule.remove", "task.mcpTools.get", "task.mcpTools.set",
+		"connection.custom.list", "connection.custom.template", "connection.custom.add", "connection.custom.remove",
+		// decision P118
+		"route.level.get", "route.level.set", "budget.workflows",
+		// decision P123
+		"run.resume", "run.timeTravel", "run.replay",
+		// decision P121
+		"diagnostics.status", "diagnostics.set",
+		// decision P122
+		"mcplib.oauth.client",
+		// decision P125
+		"task.criterion.mark",
+		// decision P124
+		"run.restorePreview", "run.restore", "task.runAgain",
+		// decision P129
+		"app.licenses",
+		// decision P130
+		"room.stop", "room.setMuted", "room.joinRules", "room.joinRule.add", "room.joinRule.remove", "room.answerJoin",
+		// decision P132
+		"connection.history", "keys.get", "keys.set"} {
 		if m[name] == nil {
 			t.Errorf("method %s is not registered", name)
 		}
@@ -171,7 +196,9 @@ func TestBudgetPausesTheRunAndTheHumanResumesByRaisingTheLimit(t *testing.T) {
 	a.call("needsyou.list", map[string]string{"projectId": s.project.ID}, &needs)
 	found := false
 	for _, n := range needs {
-		found = found || (n.Kind == room.NeedsApproval && strings.HasPrefix(n.Title, "Budget limit reached"))
+		// a budget item of its own (P118), answered like the approval it is, saying what to do
+		found = found || (n.Kind == room.NeedsBudget && n.BudgetState == room.BudgetPaused && n.ApprovalID != "" && strings.HasPrefix(n.Title, "Budget limit reached") &&
+			strings.Contains(n.Detail, "raise the limit"))
 	}
 	if !found {
 		t.Fatalf("the pause must be in Needs you: %+v", needs)
@@ -466,6 +493,28 @@ func TestRoutingProbeSelectionPreviewAndRulesThroughTheMethods(t *testing.T) {
 	}
 	if count(c, `SELECT COUNT(*) FROM routing_decisions`) != before {
 		t.Fatal("a preview must not record a decision")
+	}
+	// route.previews: several dry runs in one call, in the order asked, none recorded (the Routing page's wiring, P108)
+	var many []struct {
+		Blocked  bool   `json:"blocked"`
+		Error    string `json:"error"`
+		Decision struct {
+			Model string `json:"Model"`
+		} `json:"decision"`
+	}
+	a.call("route.previews", map[string]any{"requests": []any{req, req}}, &many)
+	if len(many) != 2 || many[0].Decision.Model != "cheap-good" || many[1].Decision.Model != "cheap-good" || many[0].Error != "" {
+		t.Fatalf("previews %+v", many)
+	}
+	if count(c, `SELECT COUNT(*) FROM routing_decisions`) != before {
+		t.Fatal("previews must not record a decision")
+	}
+	tooMany := make([]any, 33)
+	for i := range tooMany {
+		tooMany[i] = req
+	}
+	if err := a.callErr("route.previews", map[string]any{"requests": tooMany}); err == nil || !strings.Contains(err.Error(), "at most 32") {
+		t.Fatalf("33 previews: %v", err)
 	}
 	// a private context never reaches a trainable provider, even through the preview
 	var tp providers.Provider

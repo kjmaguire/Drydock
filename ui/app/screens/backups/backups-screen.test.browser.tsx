@@ -35,6 +35,7 @@ const none = (root: ParentNode, id: string) => root.querySelector(`[data-testid=
 const btn = (root: ParentNode, name: string) => byText<HTMLButtonElement>(root, 'button', name);
 const show = (client: Partial<Client>) => {
   const s = testServices({ backupRestoreStatus: notPending, ...client });
+  if (client.appInfo) s.workspace.start(); // the shell starts it in the app
   return Object.assign(mount(<BackupsScreen />, s), { s });
 };
 const ok = (name: string): BackupVerify => ({ name, size: 2048, created: '', ok: true, schemaVersion: 30, restorableHere: true });
@@ -149,6 +150,29 @@ describe('BackupsScreen', () => {
     await r.act(() => btn(r.container, 'Cancel the staged restore').click());
     await waitFor(() => expect(cancels).toBe(1), r);
     await waitFor(() => expect(none(r.container, 'restore-pending')).toBe(true), r);
+  });
+
+  it('offers Restart now for a staged restore only where the window can restart (P116)', async () => {
+    let restarts = 0;
+    const staged = async () => ({ pending: true, backup: 'b1.db', requested: 1760000000000 });
+    const r = show({
+      appInfo: async () => ({ name: 'Drydock', user: 'kyle', human: 'human:kyle', dataDir: 'C:\\data', canRestart: true }),
+      backupList: async () => backups(),
+      backupRestoreStatus: staged,
+      shellRestart: async () => {
+        restarts++;
+      },
+    });
+    const box = await waitFor(() => tid(r.container, 'restore-pending'), r);
+    await waitFor(() => tid(r.container, 'restart-now'), r);
+    expect(box.textContent).toContain('Restart now to apply it');
+    await r.act(() => tid(r.container, 'restart-now').click());
+    await waitFor(() => expect(restarts).toBe(1), r);
+
+    const b = show({ appInfo: async () => ({ name: 'Drydock', user: 'kyle', human: 'human:kyle', dataDir: '/data' }), backupList: async () => backups(), backupRestoreStatus: staged });
+    const box2 = await waitFor(() => tid(b.container, 'restore-pending'), b);
+    expect(box2.textContent).toContain('Quit and reopen Drydock to apply it');
+    expect(none(b.container, 'restart-now')).toBe(true);
   });
 
   it('keeps restore off for a damaged backup and shows why', async () => {

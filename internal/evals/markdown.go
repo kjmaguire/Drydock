@@ -221,6 +221,24 @@ func (r Report) Markdown() string {
 	w("%s", rt.Note)
 	w("")
 
+	ru := r.Rules
+	w("## No model call for a job rules do (token rule 15)")
+	w("")
+	if ru.Holds {
+		w("Holds: no usage row in the window has a purpose of a deterministic job (%s).", strings.Join(ru.DeterministicPurposes, ", "))
+	} else {
+		w("**Does not hold**: %d usage row(s) in the window were model calls for a deterministic job.", ru.ModelCalls)
+		w("")
+		w("| Purpose | Calls |")
+		w("|---|---|")
+		for _, k := range sortedKeys(ru.ByPurpose) {
+			w("| %s | %d |", k, ru.ByPurpose[k])
+		}
+	}
+	w("")
+	w("%s", ru.Note)
+	w("")
+
 	w("## Per-task rows")
 	w("")
 	if len(r.Rows) == 0 {

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/inuse"
 	"github.com/kjmaguire/drydock/internal/storage"
 )
 
@@ -325,12 +326,12 @@ func Restore(ctx context.Context, in Info, dbPath, backupsDir string, now time.T
 	stamp := now.UTC().Format("20060102T150405Z")
 	if _, err := os.Stat(dbPath); err == nil {
 		replaced = filepath.Join(backupsDir, "replaced-"+stamp+".db")
-		if err := os.Rename(dbPath, replaced); err != nil {
+		if err := inuse.Do(func() error { return os.Rename(dbPath, replaced) }); err != nil {
 			return "", fmt.Errorf("move the current database aside: %w", err)
 		}
 		for _, sfx := range []string{"-wal", "-shm"} {
 			if _, err := os.Stat(dbPath + sfx); err == nil {
-				if err := os.Rename(dbPath+sfx, replaced+sfx); err != nil {
+				if err := inuse.Do(func() error { return os.Rename(dbPath+sfx, replaced+sfx) }); err != nil {
 					return replaced, err
 				}
 			}
@@ -357,7 +358,7 @@ func Restore(ctx context.Context, in Info, dbPath, backupsDir string, now time.T
 	if err := dst.Close(); err != nil {
 		return replaced, err
 	}
-	if err := os.Rename(tmp, dbPath); err != nil {
+	if err := inuse.Do(func() error { return os.Rename(tmp, dbPath) }); err != nil {
 		return replaced, err
 	}
 	return replaced, nil

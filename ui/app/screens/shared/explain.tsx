@@ -90,7 +90,23 @@ export function TaskDecisions(handle: Handle<{ taskId: string }>) {
                       <span mix={muted}>effort {r.effort || 'not set'}</span>
                     </td>
                     <td>
-                      {r.decidedBy === 'static' ? <Badge title="Not routed: the agent's configured assignment">static</Badge> : <Badge tone="info">{r.decidedBy}</Badge>}
+                      {r.decidedBy === 'static' ? (
+                        <Badge title="Not routed: the agent's configured assignment">static</Badge>
+                      ) : r.decidedBy === 'llm' ? (
+                        <Badge tone="info" title="The rules left a tie; the cheap model chose between the tied models">llm tiebreak</Badge>
+                      ) : (
+                        <Badge tone="info">{r.decidedBy}</Badge>
+                      )}
+                      {r.tiebreak ? (
+                        <div mix={muted} data-testid="decision-tiebreak">
+                          {r.tiebreak}
+                        </div>
+                      ) : null}
+                      {r.stopReason ? (
+                        <div data-testid="decision-stopped">
+                          <Badge tone="warn">stopped</Badge> <span mix={muted}>{r.stopReason}</span>
+                        </div>
+                      ) : null}
                     </td>
                     <td>{money(r.estCostUsd)}</td>
                     <td>{r.outcome ? `${r.outcome.outcome}${r.outcome.accepted ? ', accepted' : ''}${r.outcome.escalated ? ', escalated' : ''}` : 'pending'}</td>

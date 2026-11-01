@@ -1,6 +1,7 @@
 // Typed client for the Slice 2-5 methods (internal/core/ext_*.go). Same rules as client.ts: one function per method, Go's nil
 // slices (JSON null) become empty arrays, errors are RpcError from the transport.
 
+import { encodeBase64 } from './attachClient.ts';
 import type { Transport } from './transport.ts';
 import type {
   Recommendation,
@@ -17,6 +18,8 @@ import type {
   CheckSettings,
   DecisionRow,
   DevSettings,
+  SandboxForward,
+  SandboxForwards,
   SandboxStatus,
   SandboxSwitch,
   SandboxTestStep,
@@ -42,10 +45,19 @@ import type {
   Milestone,
   NotionPageText,
   Outbox,
+  WebhookStatus,
+  IntegrationMapping,
+  MappingField,
+  AutoApproveClass,
+  SweepSettings,
+  IntegrationAttachment,
+  AttachmentText,
   Pack,
   PackAttachment,
   PackConsult,
+  PackFile,
   PackRefreshResult,
+  PackUpload,
   PackSearchResult,
   Plan,
   PreviewInfo,
@@ -59,6 +71,10 @@ import type {
   RoomTurn,
   RouteExplain,
   RoutePreview,
+  RouteLevel,
+  RouteSettings,
+  RouteSettingsPatch,
+  RetentionBlock,
   RouteRule,
   RuleReq,
   SchedulerStatus,
@@ -76,6 +92,10 @@ import type {
   StartTemplateResult,
   TelemetryDocument,
   TelemetryExport,
+  TelemetryOtlpChange,
+  TelemetryOtlpTest,
+  DiagnosticsChange,
+  DiagnosticsStatus,
   TelemetryStatus,
   TickResult,
   ProposedTask,
@@ -92,8 +112,10 @@ export interface ExtClient {
   budgetList(projectId: string, scope?: string): Promise<BudgetRow[]>;
   budgetSet(b: BudgetSet): Promise<Budget>;
   budgetDelete(id: string): Promise<void>;
-  budgetStatus(ids: { projectId?: string; taskId?: string; runId?: string; agentId?: string }): Promise<{ statuses: BudgetStatus[]; usage: Record<string, BudgetSpend>; note: string }>;
+  budgetStatus(ids: { projectId?: string; taskId?: string; runId?: string; agentId?: string; workflow?: string }): Promise<{ statuses: BudgetStatus[]; usage: Record<string, BudgetSpend>; note: string }>;
   budgetResume(req: BudgetResumeReq): Promise<BudgetResumed>;
+  /** The workflows a workflow budget can name (P118). */
+  budgetWorkflows(): Promise<string[]>;
   // evals
   evalsReport(o?: EvalsOptions): Promise<EvalsReportResult>;
   evalsExport(o?: EvalsOptions): Promise<EvalsExportResult>;
@@ -104,9 +126,23 @@ export interface ExtClient {
   routeRulesSet(rule: RouteRule): Promise<RouteRule>;
   routeRulesDelete(id: string): Promise<void>;
   routePreview(request: Record<string, unknown>): Promise<RoutePreview>;
+  /** Several dry runs in one call, in the order asked (at most 32); a failed one is { error } in its place. */
+  routePreviews(requests: Record<string, unknown>[]): Promise<(RoutePreview | { error: string })[]>;
   routeCheapGet(providerId: string): Promise<{ selection: CheapSelection | null; selected: boolean }>;
   routeCheapSelect(providerId: string, force?: boolean): Promise<CheapSelection>;
   routeProbeStartup(enabled: boolean): Promise<{ enabled: boolean; by: string }>;
+  routeSettingsGet(): Promise<RouteSettings>;
+  routeSettingsSet(patch: RouteSettingsPatch): Promise<RouteSettings>;
+  /** The routing level (P118): the workspace's (projectId ""), or a project's own falling back to it. */
+  routeLevelGet(projectId: string): Promise<RouteLevel>;
+  /** Sets the workspace's level (projectId ""), or a project's own; a project's "" follows the workspace again. */
+  routeLevelSet(projectId: string, level: string): Promise<RouteLevel>;
+  /** A task's routing level (P127): its own, else its template's, the project's or the workspace's. */
+  routeLevelTaskGet(taskId: string): Promise<RouteLevel>;
+  /** Sets a task's own level (a person only); "" follows its template, project and workspace again. */
+  routeLevelTaskSet(taskId: string, level: string): Promise<RouteLevel>;
+  routeRetentionList(): Promise<RetentionBlock[]>;
+  routeRetentionClear(providerId: string, model: string): Promise<void>;
   // checks, dev settings, telemetry
   checksSettingsGet(projectId: string): Promise<CheckSettings>;
   checksSettingsSet(projectId: string, s: CheckSettings): Promise<CheckSettings>;
@@ -118,16 +154,35 @@ export interface ExtClient {
   /** Confirms the sandbox definition with this fingerprint (the one that was shown; a human only). A stale fingerprint is refused. */
   sandboxTrust(projectId: string, fingerprint: string): Promise<SandboxSwitch>;
   sandboxTest(projectId: string): Promise<{ steps: SandboxTestStep[] }>;
+  /** The ports of the task's sandbox forwarded to this computer (decision P134). */
+  sandboxForwards(taskId: string): Promise<SandboxForwards>;
+  /** Forwards a port of the task's sandbox to 127.0.0.1 (a person only). */
+  sandboxForwardOpen(taskId: string, port: number): Promise<SandboxForward>;
+  sandboxForwardClose(taskId: string, port: number): Promise<void>;
+  /** Shows a forwarded port in Drydock's own isolated window, never in a browser (a person only). */
+  sandboxForwardView(taskId: string, port: number): Promise<void>;
   telemetryStatus(): Promise<TelemetryStatus>;
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
   telemetryPreview(limit?: number): Promise<TelemetryDocument>;
   telemetryExport(): Promise<TelemetryExport>;
+  /** Where telemetry is sent over OTLP (decision P113); a person's change only. Header values go to the credential store. */
+  telemetryOtlpSet(change: TelemetryOtlpChange): Promise<TelemetryStatus>;
+  /** Sends one test span now to the configured endpoint (kept in the local sink like everything sent). */
+  telemetryOtlpTest(): Promise<TelemetryOtlpTest>;
+  /** The diagnostics categories: crash reports and usage counters (decision P121). */
+  diagnosticsStatus(): Promise<DiagnosticsStatus>;
+  diagnosticsSet(change: DiagnosticsChange): Promise<DiagnosticsStatus>;
   // expert packs
   packList(): Promise<Pack[]>;
   packGet(id: string): Promise<Pack>;
   packInstall(yaml: string): Promise<Pack>;
   packRemove(id: string): Promise<void>;
   packRefresh(id: string, force?: boolean): Promise<PackRefreshResult>;
+  /** Makes a pack of the person's own files (private unless said otherwise); refresh it to index them. */
+  packCreateFromFiles(p: { id: string; title: string; visibility?: string; license?: string }, files: PackUpload[]): Promise<Pack>;
+  packFiles(id: string): Promise<PackFile[]>;
+  packAddFiles(id: string, files: PackUpload[]): Promise<PackFile[]>;
+  packRemoveFile(id: string, name: string): Promise<void>;
   packSearch(packIds: string[], query: string, k?: number): Promise<PackSearchResult>;
   packConsult(packIds: string[], question: string): Promise<PackConsult>;
   packQuarantined(id: string): Promise<QuarantinedChunk[]>;
@@ -138,6 +193,8 @@ export interface ExtClient {
   // requirements and milestones
   requirementList(projectId: string, includeArchived?: boolean): Promise<Requirement[]>;
   requirementAdd(projectId: string, title: string, text: string, format?: string): Promise<Requirement>;
+  /** The text of a PDF or DOCX, as Markdown (a PDF's pages as "## Page N"), for the page to show before it is added. */
+  requirementExtract(name: string, data: Uint8Array): Promise<{ title: string; text: string }>;
   requirementUpdate(id: string, text: string, format?: string): Promise<{ requirement: Requirement; changed: boolean }>;
   requirementArchive(id: string, archived: boolean): Promise<void>;
   requirementVersions(id: string): Promise<RequirementVersion[]>;
@@ -247,6 +304,25 @@ export interface ExtClient {
   integrationOutboundDecide(req: { id?: string; approvalId?: string; approve: boolean }): Promise<Outbox>;
   integrationOutboundExecute(id: string): Promise<Outbox>;
   integrationOutboundList(filter: { integrationId?: string; status?: string; limit?: number }): Promise<Outbox[]>;
+  /** A failed write: looked for on the vendor first (a comment), else proposed again for a new approval (decision P114). */
+  integrationOutboundRetry(id: string): Promise<Outbox>;
+  integrationWebhooks(): Promise<WebhookStatus>;
+  integrationWebhooksSet(req: { enabled?: boolean; port?: number }): Promise<WebhookStatus>;
+  /** Stores (empty: removes) the secret a connection's webhooks are signed with, in the credential store. */
+  integrationWebhookSecret(integrationId: string, secret: string): Promise<WebhookStatus>;
+  integrationUseNotionToken(): Promise<WebhookStatus>;
+  integrationMappings(assignmentId: string): Promise<IntegrationMapping[]>;
+  integrationMappingsSet(assignmentId: string, scope: 'status' | 'property', mappings: IntegrationMapping[]): Promise<IntegrationMapping[]>;
+  integrationMappingFields(assignmentId: string, scope: 'status' | 'property'): Promise<MappingField[]>;
+  integrationStatusApply(itemId: string): Promise<ExternalItem>;
+  integrationAutoApprove(integrationId: string, projectId: string): Promise<AutoApproveClass[]>;
+  integrationAutoApproveSet(req: { integrationId: string; projectId: string; class: string; enabled: boolean; version: number }): Promise<AutoApproveClass>;
+  integrationSweep(): Promise<SweepSettings>;
+  integrationSweepSet(enabled: boolean): Promise<SweepSettings>;
+  integrationAttachments(itemId: string): Promise<IntegrationAttachment[]>;
+  integrationAttachmentsRefresh(itemId: string): Promise<IntegrationAttachment[]>;
+  integrationAttachmentDownload(id: string): Promise<IntegrationAttachment>;
+  integrationAttachmentText(id: string): Promise<AttachmentText>;
 }
 
 export function createExtClient(t: Transport): ExtClient {
@@ -263,6 +339,7 @@ export function createExtClient(t: Transport): ExtClient {
       return { statuses: arr(r.statuses), usage: r.usage ?? {}, note: r.note };
     },
     budgetResume: (req) => call('budget.resume', req),
+    budgetWorkflows: async () => arr((await call<{ workflows: string[] | null }>('budget.workflows')).workflows),
 
     evalsReport: (o = {}) => call('evals.report', o),
     evalsExport: (o = {}) => call('evals.export', o),
@@ -273,9 +350,24 @@ export function createExtClient(t: Transport): ExtClient {
     routeRulesSet: (rule) => call('route.rules.set', { rule }),
     routeRulesDelete: (id) => voidCall('route.rules.delete', { id }),
     routePreview: (request) => call('route.preview', { request }),
+    routePreviews: async (requests) => (await call<(RoutePreview | { error: string })[] | null>('route.previews', { requests })) ?? [],
     routeCheapGet: (providerId) => call('route.cheap.get', { providerId }),
     routeCheapSelect: (providerId, force = false) => call('route.cheap.select', { providerId, force }),
     routeProbeStartup: (enabled) => call('route.probe.startup', { enabled }),
+    routeSettingsGet: () => call('route.settings.get'),
+    routeSettingsSet: (patch) => call('route.settings.set', patch),
+    routeLevelGet: async (projectId) => {
+      const r = await call<RouteLevel>('route.level.get', { projectId });
+      return { ...r, levels: arr(r.levels) };
+    },
+    routeLevelSet: (projectId, level) => call('route.level.set', { projectId, level }),
+    routeLevelTaskGet: async (taskId) => {
+      const r = await call<RouteLevel>('route.level.get', { taskId });
+      return { ...r, levels: arr(r.levels) };
+    },
+    routeLevelTaskSet: (taskId, level) => call('route.level.set', { taskId, level }),
+    routeRetentionList: async () => arr(await call<RetentionBlock[] | null>('route.retention.list')),
+    routeRetentionClear: (providerId, model) => voidCall('route.retention.clear', { providerId, model }),
 
     checksSettingsGet: (projectId) => call('checks.settings.get', { projectId }),
     checksSettingsSet: (projectId, s) => call('checks.settings.set', { projectId, ...s }),
@@ -288,6 +380,13 @@ export function createExtClient(t: Transport): ExtClient {
       const r = await call<{ steps: SandboxTestStep[] | null }>('sandbox.test', { projectId });
       return { steps: r.steps ?? [] };
     },
+    sandboxForwards: async (taskId) => {
+      const r = await call<SandboxForwards>('sandbox.forward.list', { taskId });
+      return { ...r, forwards: arr(r.forwards) };
+    },
+    sandboxForwardOpen: (taskId, port) => call('sandbox.forward.open', { taskId, port }),
+    sandboxForwardClose: (taskId, port) => voidCall('sandbox.forward.close', { taskId, port }),
+    sandboxForwardView: (taskId, port) => voidCall('sandbox.forward.view', { taskId, port }),
     telemetryStatus: () => call('telemetry.status'),
     telemetryEnable: (enabled) => call('telemetry.enable', { enabled }),
     telemetryPreview: async (limit = 0) => {
@@ -295,12 +394,20 @@ export function createExtClient(t: Transport): ExtClient {
       return { ...d, spans: arr(d.spans), metrics: arr(d.metrics), allowlist: arr(d.allowlist) };
     },
     telemetryExport: () => call('telemetry.export'),
+    telemetryOtlpSet: (change) => call('telemetry.otlp.set', change),
+    telemetryOtlpTest: () => call('telemetry.otlp.test'),
+    diagnosticsStatus: () => call('diagnostics.status'),
+    diagnosticsSet: (change) => call('diagnostics.set', change),
 
     packList: async () => arr(await call<Pack[] | null>('pack.list')),
     packGet: (id) => call('pack.get', { id }),
     packInstall: (yaml) => call('pack.install', { yaml }),
     packRemove: (id) => voidCall('pack.remove', { id }),
     packRefresh: (id, force = false) => call('pack.refresh', { id, force }),
+    packCreateFromFiles: (p, files) => call('pack.createFromFiles', { ...p, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) }),
+    packFiles: async (id) => arr(await call<PackFile[] | null>('pack.files', { id })),
+    packAddFiles: async (id, files) => arr(await call<PackFile[] | null>('pack.addFiles', { id, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) })),
+    packRemoveFile: (id, name) => voidCall('pack.removeFile', { id, name }),
     packSearch: async (packIds, query, k = 0) => {
       const r = await call<PackSearchResult>('pack.search', { packIds, query, k });
       return { ...r, hits: arr(r.hits), searched: arr(r.searched) };
@@ -317,6 +424,7 @@ export function createExtClient(t: Transport): ExtClient {
 
     requirementList: async (projectId, includeArchived = false) => arr(await call<Requirement[] | null>('requirement.list', { projectId, includeArchived })),
     requirementAdd: (projectId, title, text, format = 'markdown') => call('requirement.add', { projectId, title, text, format, source: 'upload' }),
+    requirementExtract: (name, data) => call('requirement.extract', { name, data: encodeBase64(data) }),
     requirementUpdate: (id, text, format = 'markdown') => call('requirement.update', { id, text, format }),
     requirementArchive: (id, archived) => voidCall('requirement.archive', { id, archived }),
     requirementVersions: async (id) => arr(await call<RequirementVersion[] | null>('requirement.versions', { id })),
@@ -426,5 +534,22 @@ export function createExtClient(t: Transport): ExtClient {
     integrationOutboundDecide: (req) => call('integration.outbound.decide', req),
     integrationOutboundExecute: (id) => call('integration.outbound.execute', { id }),
     integrationOutboundList: async (f) => arr(await call<Outbox[] | null>('integration.outbound.list', f)),
+    integrationOutboundRetry: (id) => call('integration.outbound.retry', { id }),
+    integrationWebhooks: () => call('integration.webhooks.get'),
+    integrationWebhooksSet: (req) => call('integration.webhooks.set', req),
+    integrationWebhookSecret: (integrationId, secret) => call('integration.webhooks.secret', { integrationId, secret }),
+    integrationUseNotionToken: () => call('integration.webhooks.useNotionToken'),
+    integrationMappings: async (assignmentId) => arr(await call<IntegrationMapping[] | null>('integration.mappings.list', { assignmentId })),
+    integrationMappingsSet: async (assignmentId, scope, mappings) => arr(await call<IntegrationMapping[] | null>('integration.mappings.set', { assignmentId, scope, mappings })),
+    integrationMappingFields: async (assignmentId, scope) => arr(await call<MappingField[] | null>('integration.mappings.fields', { assignmentId, scope })),
+    integrationStatusApply: (itemId) => call('integration.status.apply', { itemId }),
+    integrationAutoApprove: async (integrationId, projectId) => arr(await call<AutoApproveClass[] | null>('integration.autoApprove.list', { integrationId, projectId })),
+    integrationAutoApproveSet: (req) => call('integration.autoApprove.set', req),
+    integrationSweep: () => call('integration.sweep.get'),
+    integrationSweepSet: (enabled) => call('integration.sweep.set', { enabled }),
+    integrationAttachments: async (itemId) => arr(await call<IntegrationAttachment[] | null>('integration.attachments.list', { itemId })),
+    integrationAttachmentsRefresh: async (itemId) => arr(await call<IntegrationAttachment[] | null>('integration.attachments.refresh', { itemId })),
+    integrationAttachmentDownload: (id) => call('integration.attachments.download', { id }),
+    integrationAttachmentText: (id) => call('integration.attachments.text', { id }),
   };
 }

@@ -4,7 +4,7 @@ import { afterEach, describe, it } from 'remix/test';
 import { lic } from '../test/fixtures.ts';
 import { byLabel, cleanup, mount, renderPlain, testServices, waitFor } from '../test/render.tsx';
 import { adapterInfo, CATALOG, prebuilt } from '../screens/project/wizard-fixtures.ts';
-import { ownsKeys } from '../lib/keys.ts';
+import { ESC_AGAIN_MS, escapesTwice, ownsKeys, shellKey } from '../lib/keys.ts';
 import { Dialog } from '../ui/dialog.tsx';
 import { Loading } from '../ui/feedback.tsx';
 import { Field } from '../ui/form.tsx';
@@ -78,6 +78,58 @@ describe('global shortcuts (F20)', () => {
     expect(s.ui.paletteOpen).toBe(true);
     s.ui.setPalette(false);
     host.remove();
+  });
+
+  it("Ctrl+. opens the Agent Inspector on an agent's page, elsewhere and inside the terminal it leaves the key alone (P129)", async () => {
+    const s = shellServices([{ id: 'p1', name: 'gocalc', hasRepo: true }]);
+    const r = mount(<Shell url={new URL('http://localhost/team/agt_1')}>{null}</Shell>, s);
+    await waitFor(() => expect(s.workspace.projectId).toBe('p1'), r);
+    r.root.flush();
+    const term = document.createElement('div');
+    term.className = 'xterm';
+    r.container.append(term);
+    expect(press(term, '.', { ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(s.ui.inspectId).toBe(undefined);
+    expect(press(document.body, '.', { ctrlKey: true }).defaultPrevented).toBe(true);
+    expect([s.ui.inspectId, s.ui.tab]).toEqual(['agt_1', 'inspector']);
+    term.remove();
+    cleanup();
+
+    const t = shellServices([{ id: 'p1', name: 'gocalc', hasRepo: true }]);
+    const w = mount(<Shell url={new URL('http://localhost/tasks')}>{null}</Shell>, t);
+    await waitFor(() => expect(t.workspace.projectId).toBe('p1'), w);
+    w.root.flush();
+    expect(press(document.body, '.', { ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(t.ui.inspectId).toBe(undefined);
+  });
+
+  it('Ctrl+. in a direct message opens the Agent Inspector for its agent; in a channel it leaves the key alone (P130)', async () => {
+    const s = shellServices([{ id: 'p1', name: 'gocalc', hasRepo: true }]);
+    const dm = { id: 'room_dm', projectId: 'p1', kind: 'dm', name: 'dm:human:kyle+agt_7', agentId: 'agt_7', mode: 'auto', archived: false, createdAt: '', version: 1 };
+    const general = { ...dm, id: 'room_gen', kind: 'channel', name: 'general', agentId: undefined };
+    Object.assign(s.client, { roomList: async () => [dm, general] });
+    const r = mount(<Shell url={new URL('http://localhost/room/room_dm')}>{null}</Shell>, s);
+    await waitFor(() => expect(s.project.roomList.length).toBe(2), r);
+    r.root.flush();
+    expect(press(document.body, '.', { ctrlKey: true }).defaultPrevented).toBe(true);
+    expect([s.ui.inspectId, s.ui.tab]).toEqual(['agt_7', 'inspector']);
+    cleanup();
+
+    const t = shellServices([{ id: 'p1', name: 'gocalc', hasRepo: true }]);
+    Object.assign(t.client, { roomList: async () => [dm, general] });
+    const w = mount(<Shell url={new URL('http://localhost/room/room_gen')}>{null}</Shell>, t);
+    await waitFor(() => expect(t.project.roomList.length).toBe(2), w);
+    w.root.flush();
+    expect(press(document.body, '.', { ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(t.ui.inspectId).toBe(undefined);
+  });
+
+  it('the keyboard helpers: Ctrl+B and Ctrl+. are the shell\'s, Esc Esc counts within its window (P129)', () => {
+    expect(shellKey({ key: 'b', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, target: document.body })).toBe('sidebar');
+    expect(shellKey({ key: '.', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, target: document.body })).toBe('inspect');
+    expect(shellKey({ key: 'b', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target: document.body })).toBe(undefined);
+    expect(shellKey({ key: 'B', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true, target: document.body })).toBe(undefined);
+    expect([escapesTwice(0, 1000), escapesTwice(1000, 1000 + ESC_AGAIN_MS), escapesTwice(1000, 1001 + ESC_AGAIN_MS)]).toEqual([false, true, false]);
   });
 
   it('recognises the widgets by their own roots too', () => {

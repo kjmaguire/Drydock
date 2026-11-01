@@ -3,6 +3,7 @@
 import type { AdapterInfo, Connection } from '../../api/types.ts';
 import type { Chat, ChatMcpGrant, ChatMessage, ChatSkillRef } from '../../api/chatClient.ts';
 import type { LibrarySkill } from '../../api/extTypes.ts';
+import { modelName } from '../../lib/model-name.ts';
 import type { McpLibraryServer } from '../../api/mcpClient.ts';
 import { formatUsd } from '../../lib/format.ts';
 import { adapterLabel, chatInstall, cliName, type CliInstall } from '../shared/cli-name.ts';
@@ -306,6 +307,34 @@ export function modeWords(mode: string): string {
     default:
       return `${mode} mode`;
   }
+}
+
+export { modelName };
+
+/**
+ * The effort Claude Code uses when none is chosen, by model (its documentation, 2026-10: medium for Opus, Sonnet and Haiku 5.5,
+ * xhigh for Opus 4.7, high for the others); "" for another CLI or a model not known yet. The person's own Claude Code settings
+ * (effortLevel) can change it, which Drydock does not read.
+ */
+export function defaultEffort(adapter: string, model: string): string {
+  if (adapter !== 'claude' || !model.trim()) return '';
+  const name = modelName(model);
+  if (!/\d/.test(name)) return ''; // an alias ("opus"): which model it means is the CLI's to say
+  if (/^(Opus|Sonnet|Haiku) 5\.5$/.test(name)) return 'medium';
+  if (name === 'Opus 4.7') return 'xhigh';
+  return 'high';
+}
+
+/** The chat's model in words: the one chosen, else the one its CLI reported as its default, else "default model". */
+export function chatModelText(c: Pick<Chat, 'model' | 'cliModel'>): string {
+  const m = c.model.trim() || (c.cliModel ?? '').trim();
+  return m ? modelName(m) : 'default model';
+}
+
+/** The chat's effort: the one chosen, else its CLI's default for the model ("" when not known); `chosen` says which. */
+export function chatEffort(c: Pick<Chat, 'adapter' | 'model' | 'effort' | 'cliModel'>): { text: string; chosen: boolean } {
+  if (c.effort.trim()) return { text: c.effort.trim(), chosen: true };
+  return { text: defaultEffort(c.adapter, c.model.trim() || (c.cliModel ?? '')), chosen: false };
 }
 
 /** The chat runs in its own private folder (the core's chats/<id> folder, on Windows or in a distro's home). */

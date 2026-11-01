@@ -25,6 +25,20 @@ func explain(d RoutingDecision) string {
 	if sig, ok := TurnSignals(f.RunKind); ok && sig.Why != "" {
 		fmt.Fprintf(&b, "- Turn: %s; %s.\n", sig.Label, sig.Why)
 	}
+	switch f.LevelSource {
+	case LevelFromTask:
+		fmt.Fprintf(&b, "- Level: %s, this task's own level (set on its page).\n", LevelWords(f.Level))
+	case LevelFromTemplate:
+		tpl := "its workflow template"
+		if f.LevelTemplate != "" {
+			tpl = "the " + f.LevelTemplate + " template"
+		}
+		fmt.Fprintf(&b, "- Level: %s, the level %s declares (the task sets none of its own).\n", LevelWords(f.Level), tpl)
+	case LevelFromProject:
+		fmt.Fprintf(&b, "- Level: %s, the project's own level (its settings).\n", LevelWords(f.Level))
+	case LevelFromWorkspace:
+		fmt.Fprintf(&b, "- Level: %s, the workspace's level (the project sets none of its own).\n", LevelWords(f.Level))
+	}
 	if f.TaskType != "" {
 		risk := "not risky"
 		if f.Risk {
@@ -66,6 +80,12 @@ func explain(d RoutingDecision) string {
 	default:
 		fmt.Fprintf(&b, "- Budget: %s at %.0f%%, no downshift.\n", scope, f.BudgetPctUsed*100)
 	}
+	switch {
+	case f.QuotaDownshift:
+		fmt.Fprintf(&b, "- Subscription limit: %s, so premium use is downshifted: the cheap tier is tried first until the limit resets or is reported allowed again.\n", f.QuotaWarning)
+	case f.QuotaWarning != "":
+		fmt.Fprintf(&b, "- Subscription limit: %s; no downshift for this turn (its level, its risk, a pin, a rule that keeps or requires the premium tier, or no cheaper model).\n", f.QuotaWarning)
+	}
 	chain := strings.Join(d.FallbackChain, ", then ")
 	switch {
 	case f.FallbackFrom != nil && d.FallbackHop > 0:
@@ -80,6 +100,23 @@ func explain(d RoutingDecision) string {
 	for _, a := range d.Alternatives {
 		if a.Rejected == "fallback_skipped" {
 			fmt.Fprintf(&b, "- Fallback skipped %s: %s.\n", a.Model, a.Detail)
+		}
+	}
+	if t := f.Tiebreak; t != nil {
+		switch {
+		case t.DryRun:
+			fmt.Fprintf(&b, "- Tiebreak: the ranking leaves %s within %.0f%% of each other; a real decision asks %s to choose between them (a dry run does not call it).\n",
+				strings.Join(t.Between, ", "), TiebreakMargin*100, orStr(t.By, "the cheap model"))
+		case t.Failed != "":
+			fmt.Fprintf(&b, "- Tiebreak: the ranking left %s within %.0f%% of each other; the tiebreak call failed (%s), so the ranking's choice stands.\n",
+				strings.Join(t.Between, ", "), TiebreakMargin*100, t.Failed)
+		default:
+			why := ""
+			if t.Why != "" {
+				why = ": \"" + t.Why + "\""
+			}
+			fmt.Fprintf(&b, "- Tiebreak: the ranking left %s within %.0f%% of each other; %s chose %s from a description of the turn and the candidates (no content of the work)%s.\n",
+				strings.Join(t.Between, ", "), TiebreakMargin*100, t.By, t.Chose, why)
 		}
 	}
 	if d.EscalatedFrom != nil {
@@ -118,6 +155,9 @@ func explain(d RoutingDecision) string {
 	}
 	if f.NextEscalation != "" {
 		fmt.Fprintf(&b, "- Next: %s\n", f.NextEscalation)
+	}
+	if f.Stopped != "" {
+		fmt.Fprintf(&b, "- Stopped: %s\n", f.Stopped)
 	}
 	return b.String()
 }

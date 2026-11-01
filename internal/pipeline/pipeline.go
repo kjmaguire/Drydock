@@ -22,6 +22,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/ids"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/scan"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/skills"
 	"github.com/kjmaguire/drydock/internal/tasks"
@@ -48,6 +49,9 @@ type Deps struct {
 	OnCheck func(ctx context.Context, t tasks.Task, r checks.Result)
 	// OnTurn is called with an agent's final text after each work or review turn (the room posts it in the task channel).
 	OnTurn func(ctx context.Context, t tasks.Task, agentID, role, text string)
+	// OnFiles is called after a work turn named the files the task touches (from its diff): the room matches the task against
+	// the project's join rules again (decision P133). May be nil.
+	OnFiles func(ctx context.Context, t tasks.Task)
 	// Context, if set, owns the generated instruction files and the per-attempt context manifest (brief section 9).
 	Context *ctxeng.Engine
 	// Scanner scans the lines a task added for secrets (the `secrets` check). Default: checks.DefaultScanner.
@@ -57,6 +61,10 @@ type Deps struct {
 	Redact func(string) string
 	// DepsBinary overrides the osv-scanner executable of the `deps` check (tests; default osv-scanner on PATH).
 	DepsBinary string
+	// ScanTools, if set, returns the security scan's tools and rules for the `scan` check (decision P131): the ones the
+	// Security page shows, with the redaction, environment and dismissed findings of the project. Nil: a project that turned
+	// the check on gets it skipped, saying this build has no security scan.
+	ScanTools func(ctx context.Context, projectID string) scan.CheckOptions
 	// MCPStatus, if set, says whether (and with which tools) the agent's turn gets the MCP gateway entry, so the context
 	// manifest can list it as included or excluded with the reason. The wiring itself is rt.Runtime.MCP, which sees every
 	// session; this is only the read side for the manifest. Nil: the manifest says MCP is not wired in this build.
@@ -82,6 +90,13 @@ type Deps struct {
 	// ResetWatch, if set, is called when a human continues a task past a limit and when a task moves on successfully (its
 	// checks passed and it entered review): the watchdog's trip count for the task starts again (watchdog.Watchdog.Reset).
 	ResetWatch func(ctx context.Context, taskID string)
+	// HandoffTurnTokens and HandoffTurnTimeout bound the turn that asks an outgoing session for a handoff (handoffturn.go);
+	// 0: HandoffTurnTokens and HandoffTurnTimeout.
+	HandoffTurnTokens  int
+	HandoffTurnTimeout time.Duration
+	// ContextWindow, if set, is the context length in tokens of the model a turn runs on (the provider catalog's), 0 when unknown.
+	// It sizes Drydock's own occupancy estimate for a CLI that reports none (estimate.go). Nil: DefaultEstimateWindow.
+	ContextWindow func(ctx context.Context, cfg rt.Config) int64
 }
 
 // MCPStatus is the manifest view of one turn's MCP attachment.
@@ -122,7 +137,8 @@ func SafePointHook(d Deps) func(ctx context.Context, n workflow.NodeInfo) (strin
 		if err != nil {
 			return "", err
 		}
-		return repo.SafePoint(ctx, worktreeOf(t), n.Step*100+n.Attempt)
+		// under the run's own ref: a fork or a replay of the task reaches the same step and attempt numbers (P123)
+		return repo.RunSafePoint(ctx, worktreeOf(t), string(n.RunID), n.Step*100+n.Attempt)
 	}
 }
 
@@ -203,17 +219,25 @@ func Work(d Deps) workflow.NodeHandler {
 			}
 			return *q, err
 		}
-		return d.runWorkTurn(ctx, in, t, cfg, WorkPrompt(t, in, d.promptContext(ctx, t, false)))
+		return d.runWorkTurn(ctx, in, t, cfg, WorkPieces(t, in, d.promptContext(ctx, t, in, cfg.AgentID, false)))
 	}
 }
 
 // promptContext gathers what a builder's turn carries besides the task: the brief, the accepted spec and design notes (when the
-// task went through the spec gate) and the worker's own definition of done for a task without criteria.
-func (d Deps) promptContext(ctx context.Context, t tasks.Task, withSpec bool) PromptContext {
-	pc := PromptContext{Brief: d.taskBrief(ctx, t)}
+// task went through the spec gate), the worker's own definition of done for a task without criteria, excerpts of the files the
+// task names or a failing check in in's inbox points at, and whether the turn has the handoff tool.
+func (d Deps) promptContext(ctx context.Context, t tasks.Task, in workflow.NodeInput, agentID string, withSpec bool) PromptContext {
+	pc := PromptContext{Brief: d.taskBrief(ctx, t), Files: d.fileExcerpts(ctx, t, in)}
+	if d.MCPStatus != nil {
+		if st := d.MCPStatus(ctx, t, agentID, "work"); st.Attached {
+			pc.HandoffTool = slices.Contains(st.Tools, "handoff")
+		}
+	}
 	if withSpec {
 		pc.Spec = d.acceptedSpec(ctx, t.ID)
 		pc.Design = d.designNotes(ctx, t.ID)
+	} else if DesignReviewed(in.Workflow) {
+		pc.Design = d.designNotes(ctx, t.ID) // what the design discussion agreed, or the person settled (P124)
 	}
 	if len(t.Acceptance) == 0 {
 		if ev, err := d.Tasks.Evidence(ctx, t.ID); err == nil {
@@ -288,6 +312,20 @@ func repoMapSectionBytes(agentsMD string) int {
 	return len(rest)
 }
 
+// agentsLeftOut is what the package ceiling left out of a generated AGENTS.md, as its note says ("" when nothing was).
+func agentsLeftOut(agentsMD string) string {
+	b, err := os.ReadFile(agentsMD)
+	if err != nil {
+		return ""
+	}
+	i := strings.LastIndex(string(b), "\n"+ctxeng.LeftOutPrefix)
+	if i < 0 {
+		return ""
+	}
+	line, _, _ := strings.Cut(string(b)[i+1+len(ctxeng.LeftOutPrefix):], "\n")
+	return strings.TrimSuffix(strings.TrimSpace(line), ".")
+}
+
 // mdFiles lists the .md files directly in dir, sorted by name.
 func mdFiles(dir string) []mdFile {
 	entries, err := os.ReadDir(dir)
@@ -305,11 +343,26 @@ func mdFiles(dir string) []mdFile {
 	return out
 }
 
+// rolePackage assembles a review or role turn's package under the project's ceiling (decision P125): the instruction files the
+// CLI reads, counted, and the prompt's pieces, cut in the fixed order with what the turn is for never cut. It records the
+// manifest and returns the prompt the turn sends.
+func (d Deps) rolePackage(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, role string, pieces []ctxeng.Piece) string {
+	asm := ctxeng.Assemble(d.packageCeiling(ctx, t), append(d.instructionPieces(t), pieces...))
+	d.saveManifest(ctx, in, t, agentID, asm.Text, role, nil, &asm)
+	return asm.Text
+}
+
 // saveManifest records what this attempt was given and what was deliberately left out.
-// sess is the session decision of a work turn (nil for the other turns, which always start a fresh session).
-func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string, sess *SessionDecision) {
+// sess is the session decision of a work turn (nil for the other turns, which always start a fresh session). asm is the turn's
+// package as assembled under the ceiling (a work turn's by prepareSession, a review or role turn's by rolePackage); nil measures
+// prompt as one piece that is never cut.
+func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.Task, agentID, prompt, role string, sess *SessionDecision, asm *ctxeng.Assembly) {
 	if d.Context == nil {
 		return
+	}
+	if asm == nil {
+		a := ctxeng.Assemble(d.packageCeiling(ctx, t), append(d.instructionPieces(t), ctxeng.Piece{Kind: ctxeng.KindRoleInstructions, Source: "prompt (" + role + ")", Text: prompt}))
+		asm = &a
 	}
 	var m ctxeng.Manifest
 	m.Add("prompt ("+role+")", true, len(prompt), "the task (compact on later passes) and the project brief on every pass; later passes add only the latest failure, feedback or guidance (token rule 16)", 1)
@@ -343,12 +396,18 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 	} else {
 		m.Add("mcp:drydock", false, 0, "not attached: "+st.Reason, 4)
 	}
+	leftOut := agentsLeftOut(filepath.Join(t.Worktree, "AGENTS.md"))
 	if n := repoMapSectionBytes(filepath.Join(t.Worktree, "AGENTS.md")); n > 0 {
 		m.Add("repo_map", true, n, "token-budgeted repo map in AGENTS.md (section "+ctxeng.RepoMapSectionTitle+"); a bigger or focused one through the repo_map tool (token rule 9)", 9)
+	} else if strings.Contains(leftOut, "repository map") {
+		m.Items = append(m.Items, ctxeng.Item{Source: "repo_map", Kind: ctxeng.KindRepoMap, Reason: "left out of AGENTS.md to fit the package ceiling; on demand through the repo_map tool", Priority: 9, Exclusion: ctxeng.ExclusionOverBudget})
 	} else if repoMapTool {
 		m.Add("repo_map", false, 0, "not in AGENTS.md (a small repository, or the map could not be made in time); on demand through the repo_map tool", 9)
 	} else {
 		m.Add("repo_map", false, 0, "no repo map for this turn: this build has no tree-sitter parser (built without CGO), or the agent has no MCP gateway", 9)
+	}
+	if leftOut != "" {
+		m.Items = append(m.Items, ctxeng.Item{Source: "left out of AGENTS.md", Reason: "to fit the package ceiling: " + leftOut, Priority: 8, Exclusion: ctxeng.ExclusionOverBudget})
 	}
 	m.Add("project memory", false, 0, "the newest accepted entries are in AGENTS.md up to a budget; the rest is retrieved on demand (search_memory)", 8)
 	m.Add("room history", false, 0, "no messages selected for this task channel", 7)
@@ -359,9 +418,15 @@ func (d Deps) saveManifest(ctx context.Context, in workflow.NodeInput, t tasks.T
 		m.Add("previous session transcript", true, 0, "continued session "+sess.PrevSession+" (--resume): "+sess.Reason+" (token rule 6)", 6)
 	case sess.Action == SessionHandoff:
 		m.Add("previous session transcript", false, 0, "not continued: "+sess.Reason+" (token rules 5 and 6)", 6)
-		m.Add("handoff:"+nonEmptyStr(sess.Handoff, "unsaved"), true, 0, "handoff artifact ("+sess.Trigger+") put before the prompt: the task, its criteria, what the previous session did, the diff stat, failing checks and open questions", 2)
 	default:
 		m.Add("previous session transcript", false, 0, sess.Reason+" (token rules 5 and 16)", 6)
+	}
+	// the package as assembled under the ceiling: each piece (the handoff among them), what the ceiling cut or left out and why,
+	// and the package's size against the ceiling; the counted instruction files are listed above
+	for _, it := range asm.Items {
+		if it.Source != "instruction files" && it.Source != "prompt ("+role+")" {
+			m.Items = append(m.Items, it)
+		}
 	}
 	_ = d.Context.SaveManifest(ctx, string(in.RunID), string(in.NodeID), in.Attempt, t.ID, agentID, m)
 	// the exact prompt goes next to the turn's stream on disk (never into the database) for the run explanation
@@ -381,34 +446,63 @@ func PromptPath(dataDir string, n workflow.NodeInfo) string {
 }
 
 // WorkPrompt builds the turn prompt. It contains only what the agent needs now: the project brief, the task (title,
-// description, acceptance criteria; compact on a later pass), the accepted spec and design notes when there are any, and on a
-// later pass the latest failure, review feedback or guidance. A task without acceptance criteria asks the worker to state the
-// definition of done it works to (or reminds it of the one it stated).
+// description, acceptance criteria; compact on a later pass), the accepted spec and design notes when there are any, excerpts
+// of the files the task names, and on a later pass the latest failure, review feedback or guidance. A task without acceptance
+// criteria asks the worker to state the definition of done it works to (or reminds it of the one it stated).
 func WorkPrompt(t tasks.Task, in workflow.NodeInput, pc PromptContext) string {
+	return ctxeng.Assemble(0, WorkPieces(t, in, pc)).Text
+}
+
+// WorkPieces is WorkPrompt as package pieces, so the package ceiling can cut what may be cut (the spec, design notes, file
+// excerpts, the check output and feedback) and never the task or the instructions.
+func WorkPieces(t tasks.Task, in workflow.NodeInput, pc PromptContext) []ctxeng.Piece {
 	feedback := inboxFeedback(in)
-	var sb strings.Builder
-	sb.WriteString(briefBlock(pc.Brief))
-	sb.WriteString(taskBlock(t, len(feedback) > 0))
+	var ps []ctxeng.Piece
+	add := func(kind, source, text, reason, pointer string) {
+		if text != "" {
+			ps = append(ps, ctxeng.Piece{Kind: kind, Source: source, Text: text, Reason: reason, Pointer: pointer})
+		}
+	}
+	add(ctxeng.KindProjectInstructions, "brief", briefBlock(pc.Brief), "the project brief (AGENTS.md does not carry it)", "")
+	add(ctxeng.KindTask, "task", taskBlock(t, len(feedback) > 0), "the task: title, description (compact on a later pass), acceptance criteria", "")
 	if strings.TrimSpace(pc.Spec) != "" {
-		sb.WriteString("\n" + quoted("The spec a human accepted for this task (problem, scope and non-goals)", pc.Spec))
+		ps = append(ps, quotedPiece(ctxeng.KindSpec, "spec", "the spec a human accepted", "the whole spec is in the task's spec_accept evidence",
+			"\n", "The spec a human accepted for this task (problem, scope and non-goals)", pc.Spec, ""))
 	}
 	if strings.TrimSpace(pc.Design) != "" {
-		sb.WriteString("\n" + quoted("Design notes from the architect", pc.Design))
+		ps = append(ps, quotedPiece(ctxeng.KindDesign, "design", "the architect's design notes", "the whole notes are in the task's design evidence",
+			"\n", "Design notes from the architect", pc.Design, ""))
 	}
 	if len(t.Acceptance) == 0 {
 		if strings.TrimSpace(pc.DoD) != "" {
-			sb.WriteString("\nNo acceptance criteria were given. The definition of done you stated earlier (keep to it, and start your final summary with it):\n" + pc.DoD + "\n")
+			add(ctxeng.KindRoleInstructions, "definition of done", "\nNo acceptance criteria were given. The definition of done you stated earlier (keep to it, and start your final summary with it):\n"+pc.DoD+"\n", "the worker's own definition of done", "")
 		} else {
-			sb.WriteString("\n" + dodAsk)
+			add(ctxeng.KindRoleInstructions, "definition of done", "\n"+dodAsk, "no acceptance criteria: the worker states its definition of done", "")
 		}
 	}
-	if len(feedback) == 0 {
-		sb.WriteString("\nWork in the current directory. Make the change, keep it minimal, and stop when the task is done. Do not commit.")
-		return sb.String()
+	ps = append(ps, filePieces(pc.Files)...)
+	ask := ""
+	if pc.HandoffTool {
+		ask = " " + handoffAsk
 	}
-	fmt.Fprintf(&sb, "\nYour previous attempt needs changes. Fix the following and stop. Do not commit.\n\n%s", strings.Join(feedback, "\n\n---\n\n"))
-	return sb.String()
+	if len(feedback) == 0 {
+		add(ctxeng.KindRoleInstructions, "turn instructions", "\nWork in the current directory. Make the change, keep it minimal, and stop when the task is done. Do not commit."+ask, "what to do in this turn", "")
+		return ps
+	}
+	add(ctxeng.KindRoleInstructions, "turn instructions", "\nYour previous attempt needs changes. Fix the following and stop. Do not commit."+ask+"\n\n", "what to do in this turn", "")
+	for i, f := range feedback {
+		sep := ""
+		if i > 0 {
+			sep = "\n\n---\n\n"
+		}
+		add(ctxeng.KindFeedback, fmt.Sprintf("feedback:%d", i+1), sep+f, "the latest failure, review feedback or guidance (token rule 16)", "a check's whole log is in the task's evidence")
+	}
+	return ps
 }
+
+// handoffAsk asks a worker that has the handoff tool to leave a handoff when it stops with work remaining (token rule 6): Drydock
+// verifies it before a fresh session is seeded with it, and uses its own when it fails or there is none.
+const handoffAsk = "If you stop before the task is done, first record where the work stands with the handoff tool (action create: summary, remaining, next_step, the files you changed, and each check you ran with whether it passed)."
 
 // inboxFeedback collects what a later pass must fix or follow: a failing check, a merge conflict, a watchdog notice, review
 // feedback, or guidance from a human or the team lead (rendered as readable text, never raw JSON).
@@ -578,7 +672,9 @@ func Verify(d Deps) workflow.NodeHandler {
 func (d Deps) extraChecks(ctx context.Context, repo *git.Repo, t tasks.Task) []checks.Spec {
 	x := checks.Extras{Settings: checks.LoadSettings(ctx, d.Tasks.DB, t.ProjectID), Dir: t.Worktree,
 		Diff: func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }, Scanner: d.Scanner,
-		Deps: checks.DepsOptions{Binary: d.DepsBinary}}
+		Deps: checks.DepsOptions{Binary: d.DepsBinary},
+		// a task's own change is judged: what was in the tree before it is the Security page's (and the Security template's)
+		Scan: func() checks.Spec { return d.scanSpec(ctx, repo, t, true) }}
 	if x.Settings.Secrets && x.Scanner == nil {
 		sc, err := checks.DefaultScanner()
 		if err != nil {
@@ -594,6 +690,30 @@ func (d Deps) extraChecks(ctx context.Context, repo *git.Repo, t tasks.Task) []c
 		x.Scanner = sc
 	}
 	return checks.ExtraSpecs(x)
+}
+
+// scanSpec is the `scan` check of a task (decision P131): the security scan's code and dependency engines over its
+// worktree, judging the findings on the lines the task added (change) or every finding in the tree.
+func (d Deps) scanSpec(ctx context.Context, repo *git.Repo, t tasks.Task, change bool) checks.Spec {
+	if d.ScanTools == nil {
+		return checks.Spec{Name: scan.CheckName, Argv: []string{"drydock", "security-scan"}, Dir: t.Worktree, InProcess: func(context.Context, proc.Manager, checks.Spec) (checks.Result, error) {
+			return checks.SkippedResult(scan.CheckName, "this build has no security scan"), nil
+		}}
+	}
+	o := d.ScanTools(ctx, t.ProjectID)
+	if change {
+		o.Added = func(ctx context.Context) (string, error) { return repo.Diff(ctx, worktreeOf(t), "") }
+		// a dependency finding the base already had is not the task's (decision P133)
+		o.BaseFile = func(ctx context.Context, path string) (string, bool, error) {
+			w := worktreeOf(t)
+			base, err := repo.MergeBase(ctx, w, w.Base)
+			if err != nil {
+				return "", false, err
+			}
+			return repo.ShowFileMax(ctx, base, path, 64<<20)
+		}
+	}
+	return scan.CheckSpec(t.Worktree, o)
 }
 
 func nonEmptyStr(a, b string) string {
@@ -665,6 +785,9 @@ func Finalize(d Deps) workflow.NodeHandler {
 		}
 		files := changedFiles(diff)
 		_, _ = d.Tasks.Patch(ctx, t.ID, tasks.Update{Files: &files})
+		if d.OnFiles != nil && len(files) > 0 {
+			d.OnFiles(ctx, t)
+		}
 		out := map[string]any{"taskId": t.ID, "commit": commit, "diff": diffPath, "files": files, "status": string(t.Status)}
 		if cur, err := d.Tasks.Get(ctx, t.ID); err == nil && cur.Reviewer != "" && cur.Reviewer != cur.Assignee && cur.Status == tasks.InProgress {
 			if nt, err := d.Tasks.Transition(ctx, t.ID, tasks.Review, tasks.TransitionOpts{By: "system", Reason: "checks passed with evidence"}); err == nil {

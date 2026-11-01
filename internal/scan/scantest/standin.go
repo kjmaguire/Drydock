@@ -26,6 +26,8 @@ func IsStandIn(args []string) bool { return len(args) > 2 && args[1] == Marker }
 //	--fail        exit 2 with a message on stderr (a tool that broke)
 //	--empty       report nothing found
 //	--count=FILE  append a line to FILE on every run (a test counts how often the tool was started)
+//	--follow-tree osv-scanner only: report golang.org/x/text at the version the go.mod of the scanned folder names (nothing when
+//	              it does not name it, 128 "no supported file" when there is no go.mod), as the real tool follows its tree
 func Args(name string, opts ...string) []string { return append([]string{Marker, name}, opts...) }
 
 // Main runs the stand-in named by os.Args and returns its exit code. Call it from TestMain or the harness's main when
@@ -34,7 +36,7 @@ func Main(args []string) int {
 	name := args[2]
 	rest := args[3:]
 	var sleep time.Duration
-	fail, empty := false, false
+	fail, empty, follow := false, false, false
 	for len(rest) > 0 {
 		opt := rest[0]
 		switch {
@@ -45,6 +47,8 @@ func Main(args []string) int {
 			fail = true
 		case opt == "--empty":
 			empty = true
+		case opt == "--follow-tree":
+			follow = true
 		case strings.HasPrefix(opt, "--count="):
 			if f, err := os.OpenFile(strings.TrimPrefix(opt, "--count="), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 				fmt.Fprintf(f, "%s %s\n", name, strings.Join(rest[1:], " "))
@@ -74,12 +78,50 @@ func Main(args []string) int {
 	}
 	switch name {
 	case "osv-scanner":
+		if follow {
+			return osvFollowingTheTree()
+		}
 		return osv(empty)
 	case "opengrep":
 		return opengrep(rest, empty)
 	}
 	fmt.Fprintf(os.Stderr, "no stand-in named %q\n", name)
 	return 3
+}
+
+// osvFollowingTheTree is osv for a test that needs the answer to depend on the folder: it reads ./go.mod and reports
+// golang.org/x/text at the version it names (exit 1), nothing when go.mod does not name it (exit 0), and exit 128, the real
+// tool's "no supported lockfile or manifest", when there is no go.mod.
+func osvFollowingTheTree() int {
+	b, err := os.ReadFile("go.mod")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "osv-scanner stand-in: no supported lockfile or manifest (a test double)")
+		return 128
+	}
+	version := ""
+	for _, line := range strings.Split(string(b), "\n") {
+		if f := strings.Fields(line); len(f) >= 2 {
+			for i, w := range f {
+				if w == "golang.org/x/text" && i+1 < len(f) {
+					version = strings.TrimPrefix(f[i+1], "v")
+				}
+			}
+		}
+	}
+	if version == "" {
+		fmt.Println(`{"results":[]}`)
+		return 0
+	}
+	out, _ := json.Marshal(map[string]any{"results": []any{map[string]any{
+		"source": map[string]any{"path": "go.mod", "type": "lockfile"},
+		"packages": []any{map[string]any{
+			"package": map[string]any{"name": "golang.org/x/text", "version": version, "ecosystem": "Go"},
+			"vulnerabilities": []any{map[string]any{"id": "GO-2021-0113", "affected": []any{map[string]any{"package": map[string]any{"name": "golang.org/x/text", "ecosystem": "Go"},
+				"ranges": []any{map[string]any{"type": "SEMVER", "events": []any{map[string]any{"introduced": "0"}, map[string]any{"fixed": "0.3.8"}}}}}}}},
+		}},
+	}}})
+	fmt.Println(string(out))
+	return 1
 }
 
 // osv prints the documented osv-scanner JSON (results[].packages[].vulnerabilities[], each with its OSV record's affected

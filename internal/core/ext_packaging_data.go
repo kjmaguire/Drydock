@@ -252,6 +252,9 @@ func (p *packaging) bundleInputs(ctx context.Context, r bundleReq) (supportbundl
 	c := p.c
 	in := supportbundle.Inputs{AppVersion: AppVersion, Build: AppBuild, OS: runtime.GOOS + "/" + runtime.GOARCH, OSVersion: supportbundle.OSVersion(),
 		InstallScope: InstallScope, DiskPath: c.cfg.DataDir}
+	if c.cfg.WebView2Version != nil {
+		in.WebView2 = c.cfg.WebView2Version()
+	}
 	in.SchemaVersion, _ = c.DB.SchemaVersion(ctx)
 	in.Tools = p.toolVersions(ctx)
 	for _, cn := range c.Connections.DetectAll(ctx) {
@@ -276,8 +279,9 @@ func (p *packaging) bundleInputs(ctx context.Context, r bundleReq) (supportbundl
 		}
 		in.Logs = append(in.Logs, supportbundle.LogFile{Name: filepath.Base(f), Text: string(b)})
 	}
-	// the crash reports on this machine (internal/crashreport), already redacted once and scrubbed again by the builder
-	if rs, err := crashreport.List(c.cfg.DataDir); err == nil {
+	// the crash reports on this machine (internal/crashreport), already redacted once and scrubbed again by the builder; none
+	// while a person has crash reports turned off (decision P121)
+	if rs, err := crashreport.List(c.cfg.DataDir); err == nil && c.crashReportsKept(ctx) {
 		for _, r := range rs {
 			if text, err := crashreport.Read(c.cfg.DataDir, r.Name); err == nil {
 				in.Crashes = append(in.Crashes, supportbundle.LogFile{Name: r.Name, Text: text})

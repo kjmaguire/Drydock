@@ -156,6 +156,26 @@ func (p mcpRoom) resolve(ctx context.Context, run mcp.RunInfo, channel string) (
 	return rm, nil
 }
 
+// RequestJoin asks a person to let the run's agent into a channel of its project it is not in (decision P130). The request is
+// an Inbox item; the agent joins only if the person allows it, as an observer.
+func (p mcpRoom) RequestJoin(ctx context.Context, run mcp.RunInfo, channel, reason string) (string, error) {
+	channel = strings.TrimPrefix(strings.TrimSpace(channel), "#")
+	rooms, err := p.c.Room.ListRooms(ctx, run.ProjectID, false)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range rooms {
+		if r.Name == channel && r.Kind == room.KindChannel && r.ProjectID == run.ProjectID {
+			jr, err := p.c.Room.RequestJoin(ctx, r.ID, run.AgentID, reason)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("asked to join #%s (request %s): a person decides; until then you are not a member", r.Name, jr.ID), nil
+		}
+	}
+	return "", fmt.Errorf("no channel %q in this project", channel)
+}
+
 func (p mcpRoom) Read(ctx context.Context, run mcp.RunInfo, q mcp.RoomQuery) ([]mcp.RoomMessage, error) {
 	rm, err := p.resolve(ctx, run, q.Channel)
 	if err != nil {
@@ -234,6 +254,20 @@ func (p mcpHandoffs) Create(ctx context.Context, run mcp.RunInfo, h mcp.Handoff)
 	if len(b) > maxHandoffBytes {
 		return "", fmt.Errorf("the handoff is %d bytes, over the %d byte cap: shorten the summary and lists", len(b), maxHandoffBytes)
 	}
+	// what it says about the acceptance criteria names criteria of its task (P125)
+	var acceptance []string
+	if len(h.Criteria) > 0 {
+		t, err := p.c.Tasks.Get(ctx, run.TaskID)
+		if run.TaskID == "" || err != nil {
+			return "", errors.New("criteria: this session works on no task, so it has no acceptance criteria to report on")
+		}
+		acceptance = t.Acceptance
+		for _, cr := range h.Criteria {
+			if pipeline.CriterionIndex(acceptance, cr.ID) < 0 {
+				return "", fmt.Errorf("criteria: the task has no criterion %q (it has %d; name one by its id, such as AC1, or its number)", cr.ID, len(acceptance))
+			}
+		}
+	}
 	id := ids.New("hnd")
 	err = p.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO handoffs(id,task_id,run_id,agent_id,artifact,reason,created_at) VALUES(?,?,?,?,?,?,?)`,
@@ -245,6 +279,12 @@ func (p mcpHandoffs) Create(ctx context.Context, run mcp.RunInfo, h mcp.Handoff)
 	}
 	data, _ := json.Marshal(map[string]any{"handoff": id, "bytes": len(b)})
 	_, _ = p.c.Bus.Publish(ctx, events.Event{Type: "handoff.created", ProjectID: run.ProjectID, TaskID: run.TaskID, AgentID: run.AgentID, RunID: run.RunID, Data: data})
+	// a criterion the agent says is met is recorded as its claim, with the evidence: shown on the task page, never a status
+	for _, cr := range h.Criteria {
+		if cr.Met {
+			_, _ = p.c.Tasks.MarkCriterion(ctx, run.TaskID, pipeline.CriterionIndex(acceptance, cr.ID), tasks.MarkClaimMet, run.AgentID, clipRunes(cr.Evidence, tasks.MaxMarkNote-40)+" (handoff "+id+")")
+		}
+	}
 	return id, nil
 }
 

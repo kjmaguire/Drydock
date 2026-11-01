@@ -1,6 +1,15 @@
-# Template for a user-authored CLI that meets the headless contract (docs/connections.md section 9). Copy it, give it an id and a
-# binary, and describe its JSON lines in `dialect`. Custom manifests cannot name Go parsers, cannot define an ACP transport and
-# always require the acknowledgement below: they run arbitrary code.
+# Template for your own CLI that meets the headless contract (docs/connections.md section 9, decision P115). Add a copy on the
+# Agents page ("Add a custom CLI"): give it an id, its program, the gate id custom-<id>, and describe what it prints in
+# `dialect`. Drydock keeps it in <app data>/adapters/custom/<id>.yaml and runs one process per turn: the argv below (a group in
+# `optional` only when its placeholder has a value: {{session_id}} is the id the CLI printed last turn), the prompt on stdin
+# (or `prompt: {via: arg}` and {{prompt}} in the argv), the exit code as `exit_codes` says. `dialect` is JSON lines (each event
+# found by its `type_field` value and read by field paths such as $.text) or `format: text` (every line is the answer).
+# Custom manifests cannot name Go parsers, cannot define an ACP transport and always require the acknowledgement below: they run
+# a program you chose. Changing the file on disk asks for the acknowledgement again (decision P117).
+# MCP (optional, decision P117): if your CLI reads an MCP configuration in the {"mcpServers": {...}} JSON shape, add one line
+# saying how it takes it, and Drydock's gateway can be allowed for it on the Agents page (MCP gateway):
+#   mcp: {via: arg, format: mcpServers, args: [--mcp-config, "{{mcp_config}}"]}    # a flag that names the file
+#   mcp: {via: file, format: mcpServers, file: .my-cli/mcp.json}                    # a file it reads from its working folder
 meta: {schema: 1, id: custom, display_name: Custom CLI (template), kind: agent_cli, custom: true, run_modes: [native]}
 binaries: {native: [my-cli.exe]}
 detect: {version: {argv: [--version], regex: '(\d+\.\d+\.\d+)'}}
@@ -9,6 +18,9 @@ transports:
   primary: headless
   headless:
     argv: [run, --json, --cwd, "{{cwd}}"]
+    optional:
+      session: [--session, "{{session_id}}"]
+      model: [--model, "{{model}}"]
     prompt: {via: stdin}
     exit_codes: {0: success, 1: failure}
     dialect:
@@ -16,9 +28,10 @@ transports:
       type_field: type
       map:
         assistant_text: {type: message, text: $.text}
-        tool_call: {type: tool, name: $.tool, args: $.input}
-        tool_result: {type: tool_result, id: $.id, ok: $.ok}
+        tool_call: {type: tool, id: $.id, name: $.tool, args: $.input}
+        tool_result: {type: tool_result, id: $.id, ok: $.ok, output: $.output}
         usage: {type: usage, input: $.in, output: $.out}
         result: {type: done, status: $.status}
+        session: {type: session, id: $.id, model: $.model}
 capabilities_declared: {model_selection: unknown, effort_control: unknown, session_resume: unknown, interrupt: unknown}
 terms: {notice: custom-runs-arbitrary-code-v1}

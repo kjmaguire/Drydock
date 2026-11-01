@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,5 +44,31 @@ func TestOnlyAServerThatAcceptsTheKeyIsOurs(t *testing.T) {
 	}
 	if !s.ours(ctx, hc, notJSON, "") {
 		t.Error("without a key nothing can be told apart and /health is the whole check")
+	}
+}
+
+// The server's environment keeps what a GPU driver needs to be found (a Vulkan build saw no GPU without them) and still none
+// of the app's tokens.
+func TestTheServerEnvironmentKeepsTheGPUDriversSettings(t *testing.T) {
+	for k, v := range map[string]string{
+		"DRIVERDATA": `C:\Windows\System32\Drivers\DriverData`, "SYSTEMDRIVE": "C:", "VK_ICD_FILENAMES": "x.json", "GGML_VK_VISIBLE_DEVICES": "0",
+		"CUDA_PATH_V12_8": `C:\cuda`, "GITHUB_TOKEN": "ghp_secret", "OPENAI_API_KEY": "sk-secret",
+	} {
+		t.Setenv(k, v)
+	}
+	got := map[string]bool{}
+	for _, kv := range childEnv() {
+		k, _, _ := strings.Cut(kv, "=")
+		got[strings.ToUpper(k)] = true
+	}
+	for _, want := range []string{"DRIVERDATA", "SYSTEMDRIVE", "VK_ICD_FILENAMES", "GGML_VK_VISIBLE_DEVICES", "CUDA_PATH_V12_8"} {
+		if !got[want] {
+			t.Errorf("%s is not passed on", want)
+		}
+	}
+	for _, secret := range []string{"GITHUB_TOKEN", "OPENAI_API_KEY"} {
+		if got[secret] {
+			t.Errorf("%s reached the server", secret)
+		}
 	}
 }

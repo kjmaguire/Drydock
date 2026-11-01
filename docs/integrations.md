@@ -70,7 +70,7 @@ Every outbound write is a row in `integration_outbox`, never a direct call. Flow
 | Aikido | ignore, unignore, snooze, unsnooze finding | approval | any ignore/snooze (it suppresses a security signal) |
 | GitHub | reply, resolve thread, review, create repo | approval ([`github.md`](github.md)) | release creation, force push |
 
-A project may opt a narrow, templated, low-risk class (for example "post a status comment on the linked Linear issue when a PR opens") into auto-approve with a standing, human-authored policy; the exact class and template are stored, audited (`integration.outbound.sent` with `auto: true`), and revocable. This is a **design** option for owner review; the brief only requires approval by default.
+A project may opt a narrow, templated, low-risk class (for example "post a status comment on the linked Linear issue when a PR opens") into auto-approve with a standing, human-authored policy; the exact class and template are stored, audited (`integration.outbound.sent` with `auto: true`), and revocable. This is a **design** option for owner review; the brief only requires approval by default. (Built by decision P114 as a closed list of two classes, both off by default: see "As built: webhooks, mappings, status sync".)
 
 ## 5. Per-integration design
 
@@ -129,8 +129,8 @@ Context use: the Context Engine may include an external item only through a mani
 
 - Phase 0 could not reach linear.app, developers.notion.com, docs.sentry.io or apidocs.aikido.dev; every Linear, Notion and Aikido API fact above is search-snippet level, and no integration was called with credentials. Linear's `updatedAt` filter, Notion's pagination cap and delta options, Sentry's issues endpoint path, and Aikido's payload fields and token lifetime must be checked on a networked machine (phase0 section 7, item 12).
 - Commercial resale and third-party sync terms for Linear, Notion, Sentry and Aikido are unverified; whether Aikido or Linear offer partner OAuth flows (so customers need not create their own credentials) is unknown. Aikido remains per-customer client credentials (D14).
-- Webhooks would reduce polling (Sentry recommends them) but need a public endpoint; the brief has no cloud component, so a relay is out of scope. Owner decision needed if lower latency matters.
-- Whether auto-approval classes (section 4) are acceptable is an owner call; the default is approval for every write. Interpretation to confirm: brief section 11 says outbound writes are "approval-gated by default", which this document treats as a per-project policy switch with an audited exception list.
+- Webhooks would reduce polling (Sentry recommends them) but need a public endpoint; the brief has no cloud component, so a relay is out of scope. Owner decision needed if lower latency matters. (P114: a receiver on 127.0.0.1, off by default, which the person exposes with their own tunnel; still no relay.)
+- Whether auto-approval classes (section 4) are acceptable is an owner call; the default is approval for every write. Interpretation to confirm: brief section 11 says outbound writes are "approval-gated by default", which this document treats as a per-project policy switch with an audited exception list. (P114: the owner said proceed; two classes, each off by default.)
 - Contradiction noted: brief section 14 lists Linear/Notion/Sentry servers in the shipped catalog; D14 forbids bundling Sentry's and Notion's local servers and Aikido's. This document and `mcp.md` ship only hosted entries (the user-install templates were removed in P45).
 - Rate-limit budgets, poll intervals, `max_per_day`, the overlap window and risk thresholds are design defaults awaiting measurement.
 
@@ -162,7 +162,7 @@ Every inbound string is cleaned before it is stored: invalid UTF-8, control char
 
 - No live vendor API or MCP server was called. Everything vendor-specific above is unverified. Hosted OAuth, the Notion integration-token question, Linear's `/mcp/readonly` versus read-write endpoint behaviour, rate-limit wording and the Windows `npx` resolution of the Aikido template are unverified; Windows behaviour (Credential Manager through the Vault, stdio under Job Objects) was not run, only cross-compiled and vetted.
 - UI (built since): the Integrations screen (`/integrations`, `ui/app/screens/integrations`) connects a service with a token or an OAuth sign-in (section below), and per connection offers Test connection, Sync now, Disconnect, the items with their risk score and Import as a task, the outbound writes (propose, approve or decline the exact text, execute) and the rule editor (rules start disabled and in dry-run). An outbound approval also appears in Needs you, which links to the Integrations page to read the text and decide. Since 2026-10-14 the workspace's Integrations page only connects (connect, Test, Reconnect, Disconnect); assigning a connection to a project, Sync now, the items, the outbound writes and the rules are on that project's own Integrations page (`/project/integrations`, `project-integrations-screen.tsx` and `assignments.tsx`), where the Needs-you item for an outbound write now links.
-- Not built: webhooks, REST/GraphQL clients, `integration_mappings`, `link_task` rules, auto-approve classes, comment-marker lookup before retry, the weekly automatic sweep, attachments, Notion databases as typed rows (a database row arrives as a page if the search tool returns it), two-way status sync.
+- Not built (as this section was first written): webhooks, REST/GraphQL clients, `integration_mappings`, `link_task` rules, auto-approve classes, comment-marker lookup before retry, the weekly automatic sweep, attachments, Notion databases as typed rows (a database row arrives as a page if the search tool returns it), two-way status sync. **All of these are built since** (the REST/GraphQL clients by decision P42, the rest by decision P114): see "As built: webhooks, mappings, status sync" at the end, which also lists what is still not built.
 
 ### Tests
 
@@ -522,3 +522,222 @@ address), `integrations.test.ts` (`providerRowState`), `integrations-screen.test
 the request it sends, the connected panel and the row's state, Down under Needs you) and `ui/e2e/integrations.spec.ts` against the
 real core (the row and the filled form; nothing is created there, the harness has no route to openrouter.ai), and the density test
 measures `/integrations/openrouter`.
+
+## As built: webhooks, mappings, status sync (2026-10-29, decision P114)
+
+On the owner's words, "Proceed with those items", answering the list of what was not built. Everything below runs on Linux
+against the protocol fixtures (`internal/integrations/itfixture`, `extra.go` for this decision); no vendor was called. Migrations
+00144 (`integration_mappings`, `integration_rules` rebuilt for `link_task`), 00145 (`integration_webhook_deliveries`), 00146
+(`integration_auto_approve`, `integration_outbox.auto_class` and `.marker`) and 00147 (`integration_attachments`,
+`external_items.properties_json`), each with a down migration (tested: existing rules survive, `link_task` rules are dropped on the
+way down).
+
+### The webhook receiver (`webhooks.go`)
+
+- **Off by default.** The person turns it on and chooses the port (1024 to 65535) on the workspace's Integrations page, Background >
+  Webhooks and sweeps (`/integrations/background`); `integration.webhooks.get` / `.set`. It listens on `127.0.0.1` only (a test
+  dials every other interface of the machine and is refused), with short read and header time-outs. Drydock is a desktop app behind
+  the person's router, so the page says, always and in plain words, that the services reach it only if the person exposes the port
+  themselves (their own tunnel or port forward) and that Drydock does not. Nothing in Drydock opens a tunnel or a relay.
+- **Addresses.** `POST /hooks/linear`, `/hooks/sentry`, `/hooks/notion` (one connection per vendor). Anything else is 404, any other
+  method 405. The secret each vendor signs with is pasted per connection (`integration.webhooks.secret`; Linear's signing secret,
+  Sentry's client secret) and kept in the credential store under `integrations/<id>/webhook`, registered with the scanner, never
+  returned, logged or published. Notion's one-time `{"verification_token": ...}` request is the only unsigned body the receiver keeps:
+  it is shown to the person (to paste into Notion) and becomes the secret only when they choose Use this token
+  (`integration.webhooks.useNotionToken`), because anything that reaches the port could send one.
+- **Checks, in order:** at most 1 MiB (413); the vendor is connected (404); a secret is saved and the request carries the signature
+  header (401 `refused_unsigned`); the signature matches, constant-time, over the raw body (401 `refused_signature`); the body is
+  JSON (400); the signed time is inside the window (400 `refused_stale`); the delivery id was not seen before (409 `refused_replay`);
+  the queue has room (503, 500 items). What each vendor signs and dates:
+  - Linear: `Linear-Signature` = hex HMAC-SHA256 of the raw body with the webhook's signing secret; `webhookTimestamp` (ms) in the
+    signed body within 60 s; `Linear-Delivery` as the delivery id. From the SDK source (`@linear/sdk` 100.0.0,
+    `packages/sdk/src/webhooks/client.ts`, read for this change).
+  - Sentry: `Sentry-Hook-Signature` = hex HMAC-SHA256 with the integration's client secret; `Sentry-Hook-Timestamp` (seconds) within
+    5 minutes (Sentry documents no window: a design choice); `Request-ID`; `Sentry-Hook-Resource` says which field names the issue.
+    From `getsentry/sentry-docs` `docs/integrations/integration-platform/webhooks.mdx` and `webhooks/issues.mdx`, read for this
+    change. Sentry's examples sign a re-serialized body; Drydock checks the raw body as sent, which is what a verifier has.
+  - Notion: `X-Notion-Signature: sha256=<hex HMAC-SHA256 of the raw body keyed with the verification token>`, the event's
+    `timestamp` within 5 minutes, its `id`. **Unverified**: developers.notion.com could not be reached from the build machine; this
+    is as remembered.
+- **A delivery is a hint, never data.** Only the id of the item it names is taken (Linear `Issue` `data.id`, `Comment` and
+  `Attachment` `data.issueId`; Sentry `issue`, `error`, `event_alert`, `comment`; Notion `page.*` and `comment.*`) and checked
+  against a strict pattern. The item is queued and read again through the normal adapter with the connection's credential
+  (`SyncItem`: the typed one-item calls below), then stored like a synced item: cleaned, scored, rules evaluated, the cursor not
+  moved. An item the vendor no longer has, or outside the assignment's scope (another Linear team, another Sentry project, a page
+  of another data source), is not stored, and a stored one is marked gone. A test sends a payload whose title is an injection: the
+  stored title is the one the API returned. A rate limit or an unreachable vendor keeps the item queued for the next round.
+- **Record.** Every answered delivery is a row of `integration_webhook_deliveries` (vendor, time, outcome, the queued external id;
+  never a body or a header), kept a day and capped at 1000 an hour; the page lists the latest.
+
+### Typed clients (`linear_client.go`, `notion_client.go`, `sentry_client.go`)
+
+The REST and GraphQL clients themselves exist since decision P42 (one `apiClient` per connection: the credential, the documented
+rate limit and headers, time-outs, plain-language failures, no secret in an error). P114 adds the typed calls the listing could
+not do, through the same client: Linear `DrydockIssue` (`Query.issue`), `DrydockAttachments`, `DrydockListComments`,
+`DrydockTeamStates`; Notion `GET /v1/pages/{id}`, `PATCH /v1/pages/{id}` (properties), `GET /v1/data_sources/{id}`,
+`GET /v1/comments?block_id=`; Sentry `GET .../issues/{id}/`, the latest event's id and project, and
+`GET /api/0/projects/{org}/{project}/events/{event}/attachments/` (and `{id}/?download=1`; Sentry says both need the organization's
+event-attachments feature). Written from `@linear/sdk` 100.0.0's `schema.graphql`, `@notionhq/client` 5.27.0's endpoint
+definitions and `getsentry/sentry-api-schema` `openapi-derefed.json`. A file a vendor keeps on another host (Notion's signed
+addresses) is fetched through `internal/netguard` (https, public addresses only, every hop) and never with the credential; only
+Linear's uploads host (`uploads.linear.app`) or the connection's own API host gets it. Linear's "Entity not found" error now reads
+as not found.
+
+### Mappings (`mappings.go`, `integration_mappings`)
+
+Per assignment, chosen by a person (`integration.mappings.set`, `.list`, `.fields` reads the choices from the vendor: Linear's team
+states, a Notion data source's properties and status options, Sentry's resolved and unresolved):
+
+- **status**: a vendor state and a task status, with a direction (`to_vendor`, `from_vendor`, `both`). At most one vendor state per
+  task status toward the vendor. Sentry maps only `resolved` and `unresolved`: an ignore is never written on Drydock's own.
+- **property** (Notion data sources only): which property fills `state`, `priority`, `assignee`, `labels`. Saving one forgets the
+  rows' version markers and the watermark, so the next sync reads every row again with it.
+
+### Notion data sources as typed rows
+
+A page whose parent is a data source (or, before 2025-09-03, a database) is a typed row: its properties are kept with their types
+(`external_items.properties_json`: title excluded, at most 40, every name and value cleaned, scanned and scored like any outside
+text; a secret in a property is redacted, an injection raises the item's risk). Values are what a person sees: select, status and
+multi-select names, people's names, dates, numbers as sent, checkboxes yes/no, files by name, relations as a count, `unique_id` as
+`PREFIX-12`, formulas and rollups by their type. Without a property mapping the first status property is the state and the first
+people property the assignee; a `unique_id` is the item's reference (so a `link_task` rule can find its task). Rules see the
+properties as `item.props["Name"]`. A row is still a requirements source on Import, as every Notion page is; it becomes work by a
+`link_task` rule or by the person.
+
+### Two-way status sync
+
+- **Drydock to the vendor** (`StatusSync`, every tick of the integrations loop): the task status changes recorded in the event log
+  since the last run (`task.*` events with `to`; the first run only remembers where the log is, so nothing from before is replayed)
+  are matched against the mappings of every item linked to the task; an item not already in the mapped state gets a proposal
+  through the ordinary outbox (Linear `set_state`, Notion's new `set_status` on the row's status or select property, Sentry
+  `resolve` or the new `unresolve`), proposed by `integration:status-sync` and bound to an approval of the exact call like every
+  write. It waits for a person unless they turned on the `status_sync` class (below). A later move to the same status is a new
+  proposal (the event's sequence is part of the idempotency key, not of the payload).
+- **The vendor to Drydock**: when sync sees the state of an item with a task change, `integration.status.upstream` is published, and
+  where a `from_vendor` or `both` mapping reads the vendor's state as a task status the task is not in, the item carries a
+  `statusSuggestion` and the project page shows it with "Move the task to <status>" (`integration.status.apply`, human only). It
+  never moves a task by itself: imported work waits for a person (decision P37), and the task's state machine and guards still
+  decide (a move to CANCELLED always can; most others need evidence, and the page shows the refusal).
+
+### `link_task` rules
+
+A rule's action may be `link_task`: a matching item is linked to an existing task, the one the rule names (`params.task`, checked
+to be a task of the project when the rule is saved) or else the project's task whose issue reference is the item's (`ENG-123`, a
+Notion row's unique id). Nothing is created and the task's text is untouched. Like `create_task`: rules start disabled and in dry
+run (`would_link`), risky items are never linked, `max_per_day` counts links, an item already linked is not linked again;
+`no_task` records a match without a task to link to. Notion rules may use `link_task` (not `create_task`).
+
+### Auto-approve classes (`autoapprove.go`, `integration_auto_approve`)
+
+A closed list in code, each off until a person turns it on for one connection in one project (`integration.autoApprove.list` /
+`.set`, compare-and-swap on version, human only):
+
+- `linkback_comment` (Linear, Notion): the "Drydock opened a pull request for this item: <link>" comment of `integration.linkback`
+  (its text now ends "(task <id>, sent by Drydock)"; it used to say "posted after human approval", which an auto-approved one is not);
+- `status_sync` (Linear `set_state`, Notion `set_status`, Sentry `resolve` and `unresolve`).
+
+No operation marked `neverAuto` (an Aikido ignore or snooze, a Sentry ignore) and nothing destructive or in bulk is in a class. Only
+Drydock's own templated writes name a class; a proposal from an agent, a tool or the screen never does, so the same text proposed
+by an agent waits for a person (tested). Under a class the approval is decided in the name of the person who last turned it on,
+the row records `auto_class`, and `integration.outbound.approved` / `.sent` say `auto: true` with the class.
+
+### The comment lookup before a retry
+
+Every comment proposal stores a marker: a hash of its text with whitespace collapsed (nothing is added to the person's text).
+`integration.outbound.retry` (human only, a failed write) first lists the target's comments (Linear's issue comments, Notion's
+`GET /v1/comments`) made since shortly before the proposal; when one hashes to the marker, the row is recorded as sent ("found on
+Linear: comment ...; not sent again") and nothing is posted. Otherwise, and for every other failed write, the same call is proposed
+again: a new row, the same hash and key, a new approval (the old one was spent). An identical comment someone else posted in that
+window would be taken for Drydock's: the residual risk of matching by text.
+
+### The weekly automatic sweep
+
+Following the backups' scheduler style (a setting, checked by the app's own loop, nothing while Drydock is closed): on unless the
+person turns it off (`integration.sweep.get` / `.set`, setting `integrations.sweep.enabled`). A poll that is due anyway becomes a
+full sweep when the assignment's last one was a week ago (`cursor_json.lastFullAt`, set by the first complete listing and by every
+full sweep), which marks items missing upstream gone; Sentry and Aikido, which sweep every time, need none. Full sync on a project's
+assignment does the same at any time.
+
+### Attachments (`attachments.go`, `integration_attachments`)
+
+Nothing is read by sync. On a person's action (`integration.attachments.refresh`) the item's attachments are listed from the vendor
+and their metadata stored, cleaned (Linear: the issue's attachments, mostly links to other sites, a file only when it is on
+Linear's uploads host; Notion: a typed row's files properties, Notion-hosted files downloadable, external ones links; Sentry: the
+latest event's attachments). `integration.attachments.download` (human only) fetches one, capped at 10 MiB (at most 25), and keeps
+it under `<app data>/integrations/<connection>/attachments/<item>/`, never in a repository. A text file (a text media type, or a
+text extension when the vendor gave none, and valid UTF-8) passes the secret scanner and the sanitizer and only that redacted copy
+is written; `integration.attachments.text` returns it as untrusted data, and it is the only text of an attachment anyone is given.
+Any other file is kept as it came and never offered as text. Unassigning or disconnecting removes the downloads of items that never
+became tasks. `integration.attachment.downloaded` carries ids, size and hash, never content.
+
+### UI
+
+The workspace's Integrations page has a Background group with Webhooks and sweeps (`background-panel.tsx`): the receiver's switch,
+port, state and the note about exposing it, each vendor's address and write-only secret field, Notion's verification token with Use
+this token, the latest deliveries, and the weekly sweep's switch. A project's assignment (`assignments.tsx`, `project-extras.tsx`)
+has Full sync, Mappings (status mappings with the vendor's states listed on request; a Notion data source's property fields) and
+Auto-approve (each class with its switch and what it covers); an item shows a typed row's properties, its attachments (read,
+download, show the redacted text), and the vendor's status of its task with Move the task; a rule's action may be Link to an
+existing task; a failed write has Retry. Tests: `p114.test.ts`, `p114.test.browser.tsx`, the screen's own browser tests, and
+`ui/e2e/integrations.spec.ts` (the receiver turned on at a port against the real core, an unsigned delivery refused, turned off);
+`/integrations/background` is in the density check.
+
+### Tests
+
+`go test ./internal/integrations/...`: `webhooks_test.go` (Linear, Sentry and Notion deliveries: unsigned, wrong signature,
+tampered body, stale, too large, replay, out of scope, a deleted issue, a type that names no issue, the item read from the API and
+not from the payload, the secret nowhere in the database, events, logs or status; off by default, 127.0.0.1 only, the setting
+kept across a restart, closed when turned off), `statussync_test.go` (mappings validated and human only; a task move proposes and
+waits; the class on: approved in the person's name and sent, recorded as automatic; an agent's identical comment still waits; the
+vendor's state offered and applied only by the person; `link_task` by task and by reference; the retry that finds the comment and
+the one that proposes again), `attachments_test.go` (listing and downloading only by a person, the size cap, a link never fetched,
+the redacted text, nothing secret on disk, Notion files fetched without the credential, the guarded client refusing an address on
+this computer, Sentry's binary attachment never offered as text; typed rows, property mappings, `item.props` in a rule, the status
+written to a row's property; the weekly sweep on and off), `p114_migrate_test.go`. `go test ./internal/core -run P114` drives the
+receiver over real HTTP, the mappings, the status applied to a real task, the classes and the sweep through the UI methods.
+
+### GitHub and Aikido webhooks, more attachments (decision P122)
+
+- **GitHub** (`/hooks/github`, from GitHub's "Validating webhook deliveries"): `X-Hub-Signature-256` is "sha256=" + hex
+  HMAC-SHA256 of the raw body with the webhook's secret (pasted here and in GitHub); `X-GitHub-Delivery` is the replay guard;
+  GitHub signs no time, so the `updated_at` of the issue (or of the comment, for `issue_comment`) in the signed body must be
+  within an hour (a delivery redelivered later from GitHub's page is refused as stale; it could only cause a read). `issues` and
+  `issue_comment` name `owner/repo#n`; a pull request's comment and any other event are answered and ignored, `ping` included.
+  The issue is then read with `GET /repos/{owner}/{repo}/issues/{n}` through gh or the Sign in with GitHub token (the adapter's
+  new `Fetch`: the assignment's repository, every label it filters on, not a pull request); an issue gone from GitHub is marked
+  gone. Without a tunnel of their own, the person can run GitHub's forwarder for testing, the gh extension `cli/gh-webhook`: the
+  endpoint lists `gh webhook forward --repo=<repo> --events=issues,issue_comment --url=http://127.0.0.1:<port>/hooks/github
+  --secret=<the same secret>` for each assigned repository. Drydock shows it and never runs it; its `--secret` flag is from the
+  extension's release notes.
+- **Aikido** (`/hooks/aikido`, from search-engine extracts of apidocs.aikido.dev "Verifying incoming webhooks" and help.aikido.dev
+  "Aikido webhooks"; neither page could be opened): `X-Aikido-Webhook-Signature` is an HMAC-SHA256 of the body with the signing
+  secret Aikido shows once (hex or base64: the documentation does not say, both are accepted); `dispatched_at` (an epoch time)
+  must be within 30 seconds, as Aikido says; the body is `{event_type, created_at, dispatched_at, workspace_id, payload}` with
+  `payload.issue_id`. No delivery id is documented, so the replay guard is the hash of the signed body. An `issue.*` event queues
+  one sync of the connection: Aikido's API reads findings only as one export, so a burst of deliveries is one sync.
+- **GitHub attachments**: GitHub has no attachment API; a file added to an issue is an upload linked from the body. Uploads
+  (`github.com/user-attachments/assets|files/...`, `github.com/<owner>/<repo>/files/...`, `user-images.githubusercontent.com`,
+  `private-user-images.githubusercontent.com`) are listed as downloadable, every other link as a link. A download reads the issue
+  again, finds the same upload and fetches it through the guarded client with no credential at all (a gh token is never sent to
+  a file host): a public repository's file arrives; a private one's, which GitHub serves only to a signed-in browser, is refused
+  in plain words.
+- **Aikido attachments**: the API, as far as it could be read, keeps no files on a finding. Its links (the finding's page in
+  Aikido, its references) are listed from the export and never fetched.
+- **Notion file blocks inside a page body**: `GET /v1/blocks/{id}/children` (`start_cursor` pages of 100; the children of a block
+  that has them, three levels deep, at most 25 listings; a child page is a page of its own and not read) gives the file, image,
+  pdf, video and audio blocks next to a row's files properties. A Notion-hosted file (`type: file`, a signed address that
+  expires) is downloaded from a fresh `GET /v1/blocks/{id}`, without the credential; an external one is a link. From the SDK's
+  endpoint definitions (@notionhq/client 5.27.0: blocks.children.list, blocks.retrieve).
+- Each attachment records where it was found (`integration_attachments.source`, migration 00159: issue, event, property, page
+  body, issue body, finding), and the item says so ("in the page body").
+- Tests: `p122_test.go` (fixtures in `itfixture/p122.go`) and `ui/app/screens/integrations/p122.test.browser.tsx`.
+
+### Not built, unverified
+
+- No live vendor: every shape above is a fixture written from the sources named; Notion's webhook signature and verification flow
+  least of all (from memory), Aikido's webhook (search extracts only). The live checks (`TestLive*`) do not cover webhooks,
+  attachments or writes. `gh webhook forward` was not run.
+- Not built: a relay or tunnel of Drydock's own (by design, never); importing a Notion row as a task (a row is linked by a rule);
+  a status from a service applied to a task without the person; webhooks for more than one connection per vendor; a private
+  GitHub repository's uploaded files (GitHub serves them only to a signed-in browser).
+- Windows: the receiver, the downloads and the credential store entries were cross-compiled and vetted, not run on Windows.

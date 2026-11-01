@@ -54,6 +54,9 @@ type GateStatus struct {
 	ID    string `json:"id"`
 	Text  string `json:"text"`
 	Acked bool   `json:"acked"`
+	// Changed: it was acknowledged, and what was acknowledged changed since (a person's own CLI's manifest file changed on
+	// disk, decision P117), so it is owed again.
+	Changed bool `json:"changed,omitempty"`
 }
 
 // Connection is the computed, user-visible state of one agent CLI.
@@ -107,6 +110,7 @@ type Options struct {
 	Env     []string // environment for probes; default os.Environ()
 	Compat  *manifests.Compat
 	Acked   map[string]bool        // acknowledged gate ids
+	Reasked map[string]bool        // gate ids owed again because what was acknowledged changed (decision P117)
 	Last    map[string]TestOutcome // last Test result per adapter id
 	Drift   map[string]DriftRecord // drift seen in live output since the last passing Test, per adapter id
 	Timeout time.Duration          // per probe; default 10s
@@ -176,7 +180,7 @@ func Check(ctx context.Context, m *manifests.Manifest, o Options) Connection {
 	}
 	if g := m.Gate; g != nil && g.Required {
 		acked := o.Acked[g.ID]
-		c.Gates = append(c.Gates, GateStatus{ID: g.ID, Text: strings.TrimSpace(g.Text), Acked: acked})
+		c.Gates = append(c.Gates, GateStatus{ID: g.ID, Text: strings.TrimSpace(g.Text), Acked: acked, Changed: !acked && o.Reasked[g.ID]})
 	}
 	finish := func() Connection {
 		unacked := false

@@ -363,12 +363,15 @@ func acceptOwnProject(r Row, im *ImportEnv) bool { return str(r, "id") == im.New
 // setting (the backup folder, the license) that no project archive may set.
 func acceptOwnSetting(r Row, im *ImportEnv) bool { return str(r, "key") == "devloop:"+im.NewProject }
 
-// acceptProjectBudget keeps budgets of a project, a task, a run or an agent; a global or provider budget is the importing
-// installation's own, and an archive with a one-cent global budget would stop all spending.
+// acceptProjectBudget keeps budgets of a project, a task, a run or an agent, and a workflow budget kept to the project (P118);
+// a global or provider budget, or a workflow budget over every project, is the importing installation's own, and an archive
+// with a one-cent global budget would stop all spending.
 func acceptProjectBudget(r Row, im *ImportEnv) bool {
 	switch str(r, "scope") {
 	case "project", "task", "run", "agent":
 		return true
+	case "workflow":
+		return str(r, "project_id") != ""
 	}
 	return false
 }

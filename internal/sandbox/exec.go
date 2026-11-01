@@ -28,6 +28,9 @@ type ExecRequest struct {
 	Timeout time.Duration
 	// Env adds KEY=VALUE pairs for this command only.
 	Env []string
+	// Output, if set, also receives the whole output as it comes (an ACP terminal reads it while the command runs, decision
+	// P131); the result keeps its head and tail as always.
+	Output io.Writer
 }
 
 // ExecResult is how a command ended.
@@ -109,6 +112,9 @@ func (m *Manager) exec(ctx context.Context, b *Box, r ExecRequest, kind string) 
 				logPath = ""
 			}
 		}
+	}
+	if r.Output != nil {
+		sink = io.MultiWriter(sink, r.Output)
 	}
 	// the client gets a little longer than the command, so the container-side timeout is what normally ends it
 	cctx, cancel := context.WithTimeout(ctx, timeout+30*time.Second)
@@ -311,6 +317,22 @@ func (m *Manager) CommandArgs(b *Box, argv []string, hostDir string, env []strin
 		args = append(args, "-e", kv)
 	}
 	return append(args, b.Workspace, "sh", "-c", script), nil
+}
+
+// ShellJoin makes one sh command line of a command and its arguments, each quoted to stay one word (an ACP terminal request
+// gives them apart, decision P131).
+func ShellJoin(argv []string) (string, error) {
+	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
+		return "", errors.New("sandbox: empty command")
+	}
+	quoted := make([]string, len(argv))
+	for i, a := range argv {
+		if strings.ContainsRune(a, 0) {
+			return "", errors.New("sandbox: an argument contains a NUL")
+		}
+		quoted[i] = shellQuote(a)
+	}
+	return strings.Join(quoted, " "), nil
 }
 
 // shellQuote makes s one word for sh.

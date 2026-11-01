@@ -93,6 +93,9 @@ type Step struct {
 	Block        bool         `json:"block,omitempty"` // wait for session/cancel
 	Exit         int          `json:"exit,omitempty"`  // exit the process mid-turn
 	ReportConfig bool         `json:"reportConfig,omitempty"`
+	// ReportEnv says, as an agent message, the value of each named variable of the agent's own environment ("env K=V K2="), so
+	// a test sees what the client started it with.
+	ReportEnv []string `json:"reportEnv,omitempty"`
 	// MCPCall connects to an MCP server the client attached in session/new (the way a real ACP agent would) and calls a tool,
 	// or lists the tools when Tool is empty. The outcome is reported as an agent message.
 	MCPCall     *MCPCall       `json:"mcpCall,omitempty"`
@@ -107,6 +110,10 @@ type Step struct {
 	Notify *Notify `json:"notify,omitempty"`
 	// ReportClientMeta reports the clientCapabilities._meta keys of initialize as an agent message ("clientMeta=k1,k2").
 	ReportClientMeta bool `json:"reportClientMeta,omitempty"`
+	// SwitchMode changes the session's mode by itself and says so (current_mode_update), as an agent that leaves plan mode does.
+	SwitchMode string `json:"switchMode,omitempty"`
+	// ReportTerminal reports whether initialize advertised the client's terminal ("terminal=true").
+	ReportTerminal bool `json:"reportTerminal,omitempty"`
 }
 
 // Compaction is OpenCode's compaction marker.
@@ -146,6 +153,9 @@ type Tool struct {
 	Pending   bool           `json:"pending,omitempty"` // never complete it
 	Locations []string       `json:"locations,omitempty"`
 	Meta      map[string]any `json:"meta,omitempty"`
+	// Term runs the call's command in a client terminal between the tool_call and its end, and names the terminal in the
+	// final update's content, as an agent that uses the client's terminals reports a shell call.
+	Term *TermOp `json:"term,omitempty"`
 }
 
 // UsageUpdate is a usage_update notification.
@@ -163,6 +173,14 @@ type UsageUpdate struct {
 type Perm struct {
 	Tool    Tool         `json:"tool"`
 	Options []PermOption `json:"options,omitempty"` // default: allow_once + reject_once
+	// ThenInput, when set, is what the agent then reports the call's input to be once it is allowed (a tool_call_update in
+	// progress): a call changed after its approval, as a misbehaving agent would run it (decision P117).
+	ThenInput any `json:"thenInput,omitempty"`
+	// AskInput, when set, is the input the permission request names (the SDK's example agent names another path in its
+	// request than in its tool_call); LateAnnounce sends the call's tool_call only after the answer, the order a client sees
+	// when the SDK runs the request before the notification queue reaches the tool_call sent ahead of it.
+	AskInput     any  `json:"askInput,omitempty"`
+	LateAnnounce bool `json:"lateAnnounce,omitempty"`
 }
 
 // PermOption is one offered option.
@@ -249,6 +267,7 @@ type agent struct {
 	exitCh     chan int
 	once       sync.Once
 	clientMeta map[string]any
+	terminal   bool // initialize advertised the client's terminal
 }
 
 // lockedWriter makes each Write (the SDK writes one whole message per call) atomic, so raw notifications never interleave.
@@ -308,6 +327,7 @@ func (a *agent) exit() chan int {
 func (a *agent) Initialize(_ context.Context, p acp.InitializeRequest) (acp.InitializeResponse, error) {
 	a.mu.Lock()
 	a.clientMeta = p.ClientCapabilities.Meta
+	a.terminal = p.ClientCapabilities.Terminal
 	a.mu.Unlock()
 	sc := a.script
 	caps := acp.AgentCapabilities{
@@ -539,7 +559,16 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 		case st.Think != "":
 			send(acp.SessionUpdate{AgentThoughtChunk: &acp.SessionUpdateAgentThoughtChunk{Content: acp.TextBlock(st.Think), SessionUpdate: "agent_thought_chunk"}})
 		case st.Tool != nil:
-			a.runTool(send, st.Tool)
+			a.runTool(ctx, sid, send, st.Tool)
+		case st.SwitchMode != "":
+			a.mu.Lock()
+			s.mode = st.SwitchMode
+			a.mu.Unlock()
+			send(acp.SessionUpdate{CurrentModeUpdate: &acp.SessionCurrentModeUpdate{SessionUpdate: "current_mode_update", CurrentModeId: acp.SessionModeId(st.SwitchMode)}})
+		case st.ReportTerminal:
+			a.mu.Lock()
+			say(fmt.Sprintf("terminal=%v", a.terminal))
+			a.mu.Unlock()
 		case len(st.Plan) > 0:
 			var es []acp.PlanEntry
 			for _, e := range st.Plan {
@@ -598,6 +627,12 @@ func (a *agent) Prompt(_ context.Context, p acp.PromptRequest) (acp.PromptRespon
 			servers := s.servers
 			a.mu.Unlock()
 			say(callMCP(ctx, servers, st.MCPCall))
+		case len(st.ReportEnv) > 0:
+			var kv []string
+			for _, k := range st.ReportEnv {
+				kv = append(kv, k+"="+os.Getenv(k))
+			}
+			say("env " + strings.Join(kv, " "))
 		case st.ReportConfig:
 			a.mu.Lock()
 			say(fmt.Sprintf("config model=%s mode=%s effort=%s mcp=%s cwd=%s resumed=%s", s.model, s.mode, s.effort, strings.Join(s.mcp, ","), s.cwd, s.resumed))
@@ -670,7 +705,7 @@ func (a *agent) finish(stop acp.StopReason, withUsage bool) acp.PromptResponse {
 	return r
 }
 
-func (a *agent) runTool(send func(acp.SessionUpdate), t *Tool) {
+func (a *agent) runTool(ctx context.Context, sid acp.SessionId, send func(acp.SessionUpdate), t *Tool) {
 	kind := acp.ToolKind(t.Kind)
 	if kind == "" {
 		kind = acp.ToolKindOther
@@ -701,6 +736,13 @@ func (a *agent) runTool(send func(acp.SessionUpdate), t *Tool) {
 		upd.Content = []acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Output))}
 	}
 	upd.RawOutput = t.RawOutput
+	if t.Term != nil {
+		req := acp.CreateTerminalRequest{SessionId: sid, Command: t.Term.Command, Args: t.Term.Args}
+		if ct, err := a.conn.CreateTerminal(ctx, req); err == nil {
+			_, _ = a.conn.WaitForTerminalExit(ctx, acp.WaitForTerminalExitRequest{SessionId: sid, TerminalId: ct.TerminalId})
+			upd.Content = append(upd.Content, acp.ToolCallContent{Terminal: &acp.ToolCallContentTerminal{Type: "terminal", TerminalId: ct.TerminalId}})
+		}
+	}
 	send(acp.SessionUpdate{ToolCallUpdate: &upd})
 }
 
@@ -781,7 +823,9 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 	}
 	start := acp.SessionUpdateToolCall{SessionUpdate: "tool_call", ToolCallId: acp.ToolCallId(t.ID), Title: t.Title, Kind: kind,
 		Status: acp.ToolCallStatusPending, RawInput: t.Input, Locations: locs}
-	send(acp.SessionUpdate{ToolCall: &start})
+	if !p.LateAnnounce {
+		send(acp.SessionUpdate{ToolCall: &start})
+	}
 	opts := []acp.PermissionOption{
 		{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow", OptionId: "allow"},
 		{Kind: acp.PermissionOptionKindRejectOnce, Name: "Reject", OptionId: "reject"},
@@ -792,8 +836,15 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 			opts = append(opts, acp.PermissionOption{Kind: acp.PermissionOptionKind(o.Kind), Name: o.Name, OptionId: acp.PermissionOptionId(o.ID)})
 		}
 	}
+	askInput := t.Input
+	if p.AskInput != nil {
+		askInput = p.AskInput
+	}
 	resp, err := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{SessionId: sid, Options: opts, ToolCall: acp.ToolCallUpdate{
-		ToolCallId: acp.ToolCallId(t.ID), Title: acp.Ptr(t.Title), Kind: acp.Ptr(kind), RawInput: t.Input, Locations: locs}})
+		ToolCallId: acp.ToolCallId(t.ID), Title: acp.Ptr(t.Title), Kind: acp.Ptr(kind), RawInput: askInput, Locations: locs}})
+	if p.LateAnnounce {
+		send(acp.SessionUpdate{ToolCall: &start})
+	}
 	st := acp.ToolCallStatusCompleted
 	switch {
 	case err != nil:
@@ -806,6 +857,10 @@ func (a *agent) runPerm(ctx context.Context, sid acp.SessionId, send func(acp.Se
 			if string(o.OptionId) == id && strings.HasPrefix(string(o.Kind), "reject") {
 				st = acp.ToolCallStatusFailed
 			}
+		}
+		if p.ThenInput != nil && st == acp.ToolCallStatusCompleted {
+			running := acp.ToolCallStatusInProgress
+			send(acp.SessionUpdate{ToolCallUpdate: &acp.SessionToolCallUpdate{SessionUpdate: "tool_call_update", ToolCallId: acp.ToolCallId(t.ID), Status: &running, RawInput: p.ThenInput}})
 		}
 	default:
 		say("permission: cancelled")

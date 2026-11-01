@@ -158,3 +158,33 @@ describe('Live on streaming events (P87)', () => {
     store.stop();
   });
 });
+
+describe('Live that is switched off (enabled)', () => {
+  it('reads nothing on a matching event or a reconnect while enabled() is false, before any screen asked for its data', async () => {
+    const t = new FakeTransport();
+    const store = new EventStore(t, { scheduler: new ManualScheduler(), backoff: () => 100 });
+    let taskId: string | undefined;
+    let open = false;
+    let reads = 0;
+    const live = new Live(store, {
+      load: async () => ++reads,
+      // the command menu's read of the task in context: on a page with no task, an event with no task id matches
+      when: (e) => e.taskId === taskId,
+      enabled: () => open && !!taskId,
+      debounceMs: 5,
+    }).start();
+    store.start();
+    t.current.h.onOpen();
+    t.current.h.onEvent({ ...ev(1), type: 'backup.created' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reads).toBe(0);
+    await live.reload();
+    expect(reads).toBe(0);
+    // switched on, the same event reads
+    taskId = 't1';
+    open = true;
+    t.current.h.onEvent({ ...ev(2), type: 'task.updated', taskId: 't1' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reads).toBe(1);
+  });
+});

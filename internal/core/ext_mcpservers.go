@@ -2,7 +2,10 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,22 +71,25 @@ type MCPServerInput struct {
 
 // MCPLibraryServer is a connected server as the library shows it. It never carries a secret value.
 type MCPLibraryServer struct {
-	ID            string            `json:"id"`
-	Display       string            `json:"display"`
-	Transport     string            `json:"transport"`
-	URL           string            `json:"url,omitempty"`
-	Argv          []string          `json:"argv,omitempty"`
-	Cwd           string            `json:"cwd,omitempty"`
-	Env           map[string]string `json:"env,omitempty"`
-	SecretEnv     []string          `json:"secretEnv"` // names only
-	HasToken      bool              `json:"hasToken"`
-	OAuth         bool              `json:"oauth"`                // the server uses OAuth
-	OAuthAt       int64             `json:"oauthAt,omitempty"`    // when the human last signed in (0: not signed in)
-	OAuthScope    string            `json:"oauthScope,omitempty"` // what the sign-in granted
-	Guard         bool              `json:"guard"`
-	ReadOnlyTools []string          `json:"readOnlyTools"`
-	Tools         []mcp.ToolInfo    `json:"tools"`
-	DiscoveredAt  int64             `json:"discoveredAt"`
+	ID         string            `json:"id"`
+	Display    string            `json:"display"`
+	Transport  string            `json:"transport"`
+	URL        string            `json:"url,omitempty"`
+	Argv       []string          `json:"argv,omitempty"`
+	Cwd        string            `json:"cwd,omitempty"`
+	Env        map[string]string `json:"env,omitempty"`
+	SecretEnv  []string          `json:"secretEnv"` // names only
+	HasToken   bool              `json:"hasToken"`
+	OAuth      bool              `json:"oauth"`                // the server uses OAuth
+	OAuthAt    int64             `json:"oauthAt,omitempty"`    // when the human last signed in (0: not signed in)
+	OAuthScope string            `json:"oauthScope,omitempty"` // what the sign-in granted
+	// OAuthClient is true when the human entered an OAuth client registered with the provider (decision P122): the sign-in
+	// uses it instead of registering one dynamically. Its id and secret are in the vault, never here.
+	OAuthClient   bool           `json:"oauthClient"`
+	Guard         bool           `json:"guard"`
+	ReadOnlyTools []string       `json:"readOnlyTools"`
+	Tools         []mcp.ToolInfo `json:"tools"`
+	DiscoveredAt  int64          `json:"discoveredAt"`
 	// Projects are the ids of the projects that have the server.
 	Projects  []string `json:"projects"`
 	CreatedAt int64    `json:"createdAt"`
@@ -172,6 +178,8 @@ func startMCPServers(ctx context.Context, c *Core) (map[string]Method, func(), e
 		"mcplib.oauth.status":  bind(func(ctx context.Context, p idOnly) (any, error) { return s.oauthStatus(ctx, p.ID) }),
 		"mcplib.oauth.cancel":  bind(func(ctx context.Context, p idOnly) (any, error) { s.oauthCancel(p.ID); return s.oauthStatus(ctx, p.ID) }),
 		"mcplib.oauth.signout": bind(func(ctx context.Context, p idOnly) (any, error) { return s.oauthSignOut(ctx, p.ID) }),
+		// an OAuth client the human registered with a provider that has no dynamic registration (decision P122)
+		"mcplib.oauth.client": bind(func(ctx context.Context, p OAuthClientReq) (any, error) { return s.setOAuthClient(ctx, p) }),
 		// a project's servers: put into the project, switch on or off, take out
 		"mcpserver.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
@@ -231,12 +239,13 @@ func (s *mcpServers) load(ctx context.Context, id string) (mcpRow, error) {
 	var r mcpRow
 	var argvJSON, envJSON, secretJSON, roJSON, toolsJSON, infoJSON string
 	var tok, guard int
-	var oauth int
+	var oauth, oauthClient int
 	err := s.c.DB.Reader().QueryRowContext(ctx, `SELECT id,display,transport,url,argv,cwd,env,secret_env,has_token,guard,read_only_tools,tools,discovered_at,created_at,updated_at,oauth,oauth_at,oauth_scope,
-catalog_id,server_info,account,last_error,last_error_at
+catalog_id,server_info,account,last_error,last_error_at,oauth_client
 FROM mcp_library WHERE id=?`, id).Scan(&r.ID, &r.Display, &r.Transport, &r.URL, &argvJSON, &r.Cwd, &envJSON, &secretJSON,
 		&tok, &guard, &roJSON, &toolsJSON, &r.DiscoveredAt, &r.CreatedAt, &r.UpdatedAt, &oauth, &r.OAuthAt, &r.OAuthScope,
-		&r.CatalogID, &infoJSON, &r.Account, &r.LastError, &r.LastErrorAt)
+		&r.CatalogID, &infoJSON, &r.Account, &r.LastError, &r.LastErrorAt, &oauthClient)
+	r.OAuthClient = oauthClient != 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, fmt.Errorf("there is no MCP server %q in the library", id)
 	}
@@ -472,6 +481,12 @@ func (s *mcpServers) registerSecrets(ctx context.Context) {
 			s.teachOAuthSecrets(id, st)
 		}
 	}
+	// and the secrets of registered OAuth clients (decision P122)
+	for _, id := range signedIn {
+		if cl, err := s.oauthClient(ctx, id); err == nil && cl != nil {
+			s.teachClientSecret(id, *cl)
+		}
+	}
 }
 
 // ---- library: save / delete / discover ----
@@ -639,6 +654,12 @@ func (s *mcpServers) save(ctx context.Context, in MCPServerInput) (MCPLibrarySer
 	// what the server said about itself belongs to that address, and the account to that credential
 	forgetIdentity := moved
 	forgetAccount := moved || len(putSecrets) > 0 || in.ClearBearer || (in.OAuth != nil && !*in.OAuth)
+	// a registered OAuth client belongs to the authorization server of that address (decision P122): turning OAuth off or
+	// moving the server forgets it
+	forgetClient := existing.OAuthClient && ((in.OAuth != nil && !*in.OAuth) || destChanged)
+	if forgetClient {
+		removeRefs = append(removeRefs, mcpVaultRef(r.ID, "oauth-client"))
+	}
 
 	for ref, val := range putSecrets {
 		if err := s.c.secrets.Put(ctx, ref, val); err != nil {
@@ -666,6 +687,11 @@ ON CONFLICT(id) DO UPDATE SET display=excluded.display, transport=excluded.trans
 		}
 		if forgetIdentity {
 			if _, err := tx.ExecContext(ctx, `UPDATE mcp_library SET server_info='' WHERE id=?`, r.ID); err != nil {
+				return err
+			}
+		}
+		if forgetClient {
+			if _, err := tx.ExecContext(ctx, `UPDATE mcp_library SET oauth_client=0 WHERE id=?`, r.ID); err != nil {
 				return err
 			}
 		}
@@ -727,6 +753,7 @@ func (s *mcpServers) libDelete(ctx context.Context, id string) error {
 			_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "token"))
 		}
 		_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "oauth"))
+		_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "oauth-client"))
 		for _, n := range r.SecretEnv {
 			_ = s.c.secrets.Delete(ctx, mcpVaultRef(id, "env:"+n))
 		}
@@ -1123,13 +1150,25 @@ func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool
 	// what the person reads: the short fields (where the call goes) first, the whole input up to security.MaxReviewBytes, a long
 	// value cut in the middle with the size of the gap written in; the approval binds the hash of the whole input (audit
 	// 2026-10-16, H8). An input a person cannot be shown is refused.
-	rv, err := security.ReviewInput(req.Args)
+	// the descriptor is computed from the call's own bytes (the digest too, never taken from the request on trust), once to ask and
+	// again when the approval is spent, so the approval is consumed only by the call it was granted for (decision P117)
+	describe := func() (security.ActionDescriptor, error) {
+		rv, err := security.ReviewInput(req.Args)
+		if err != nil {
+			return security.ActionDescriptor{}, err
+		}
+		sum := sha256.Sum256(req.Args)
+		return security.ActionDescriptor{
+			Kind: mcpApprovalKind, Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID, Cwd: req.Run.Worktree,
+			Tool: "mcp:" + req.Server + "/" + req.Tool, Command: rv.Text, ArgvDigest: hex.EncodeToString(sum[:]), Targets: rv.Targets, Shortened: rv.Shortened,
+		}, nil
+	}
+	action, err := describe()
 	if err != nil {
 		return false, err
 	}
-	action := security.ActionDescriptor{
-		Kind: mcpApprovalKind, Project: req.Run.ProjectID, TaskID: req.Run.TaskID, RunID: req.Run.RunID, AgentID: req.Run.AgentID, Cwd: req.Run.Worktree,
-		Tool: "mcp:" + req.Server + "/" + req.Tool, Command: rv.Text, ArgvDigest: req.ArgsHash, Targets: rv.Targets, Shortened: rv.Shortened,
+	if subtle.ConstantTimeCompare([]byte(action.ArgvDigest), []byte(req.ArgsHash)) != 1 {
+		return false, errors.New("the call's arguments are not the ones its hash was made of")
 	}
 	id, err := ap.Request(ctx, action, "An agent wants to call a tool that is not marked read-only. Approve only if you want this exact call made.")
 	if err != nil {
@@ -1148,7 +1187,11 @@ func (s *mcpServers) Approve(ctx context.Context, req mcp.ApprovalRequest) (bool
 				_, _ = ap.ExpireDue(ctx)
 			}
 		case "APPROVED":
-			if err := ap.Consume(ctx, id, action); err != nil {
+			again, err := describe()
+			if err != nil {
+				return false, err
+			}
+			if err := ap.Consume(ctx, id, again); err != nil {
 				return false, err
 			}
 			return true, nil

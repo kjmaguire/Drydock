@@ -2,6 +2,9 @@
 
 Drydock (arm **D**) against plain Claude Code (arm **B1**, "one premium agent, no team") on the same tasks, from the same start
 commit, with the same model, judged by acceptance checks neither arm ever sees. Design and results: `docs/evals.md` section 13.
+Arm **B0**, the naive broadcast team of `docs/evals.md` section 5 (a worker and a reviewer, each turn given the whole room in
+full, until both say DONE or `-b0-rounds` rounds), runs when `-arms` names it: `docs/evals.md` section 15. It has not been run
+with a real CLI yet.
 
 - `tasks/<id>.yaml`: the suite (the format of `docs/evals.md` 6.1). Unknown fields are refused.
 - `testdata/hidden/<id>/`: each task's hidden acceptance files, laid over a copy of an arm's result before the acceptance
@@ -9,7 +12,7 @@ commit, with the same model, judged by acceptance checks neither arm ever sees. 
 - `testdata/solutions/<id>/`: a reference solution per task. `drydock-trial selfcheck` (and the package's tests) prove each
   hidden check fails on the untouched fixture and passes on the reference solution.
 - `results/<date>_<trial>_<arm>_<task>_<k>/`: one directory per run: `run.json` (the record of `docs/evals.md` 6.2), `diff.patch`
-  (what the arm changed), and either `transcript.jsonl` (B1: Claude Code's own stream) or `events.json`, `usage.json` and
+  (what the arm changed), and either `transcript.jsonl` (B1: Claude Code's own stream; B0: every session's stream in turn) or `events.json`, `usage.json` and
   `evidence.json` (D: the core's events, usage rows and check evidence for the task). `results/<trial>-report.md` is the
   generated report. Nothing in a run directory is typed by hand.
 

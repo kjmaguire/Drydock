@@ -57,7 +57,6 @@ const HUB_OF: Record<string, string> = {
   'nav-skills': 'nav-knowledge',
   'nav-memory': 'nav-knowledge',
   'nav-repo-map': 'nav-knowledge',
-  'nav-library-skills': 'nav-library',
   'nav-routing': 'nav-settings',
   'nav-license': 'nav-settings',
   'nav-backups': 'nav-settings',
@@ -101,14 +100,14 @@ export async function openRoom(page: Page, name: string): Promise<void> {
  */
 export async function workspaceNav(page: Page, testId: string): Promise<void> {
   // the pages that left the Settings rail (decision P98): Agents (once Connections), Integrations (with /mcp), Models (with
-  // Providers) are the sidebar's own; GitHub is the GitHub row of Integrations
+  // Providers) are the sidebar's own; GitHub is the GitHub row of Integrations, whose detail opens beside the list (P106)
   const id = OLD_NAV[testId] ?? testId;
   if (HUB_OF[id] !== 'nav-settings' && id !== 'nav-settings' && !(await sidebar(page).getByTestId('nav-chats').isVisible())) {
     await sidebar(page).getByTestId('nav-workspace').click();
   }
   if (testId === 'nav-github') {
     await navTo(page, 'nav-side-integrations');
-    await page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]').click();
+    await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-key="github"]').click();
     await expect(page.getByTestId('github-page')).toBeVisible();
     return;
   }

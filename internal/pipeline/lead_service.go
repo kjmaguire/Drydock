@@ -63,6 +63,9 @@ type LeadDeps struct {
 	Post func(ctx context.Context, projectID, taskID, agentID, body string) (string, error)
 	// Budget refuses the lead's turn when a budget is used up (nil: no budgets).
 	Budget func(ctx context.Context, projectID, taskID, agentID string) error
+	// Route runs the lead's turn through the model router (decision P112): run applies the model it finds in its context
+	// (RoutedFrom) over the lead's configured one. Nil: the turn runs on the configured model.
+	Route func(ctx context.Context, t LeadTurn, in workflow.NodeInput, run workflow.NodeHandler) (workflow.NodeOutput, error)
 	// Redact scrubs secrets from text before it is stored, published or posted (nil: none).
 	Redact func(string) string
 	// Brief is the project brief (Deps.ProjectBrief; nil: none).
@@ -76,6 +79,11 @@ type LeadDeps struct {
 	MaxPerRun int
 	// Now is the clock (tests inject one; default time.Now).
 	Now func() time.Time
+}
+
+// LeadTurn is one turn of the team lead, as the router is asked about it.
+type LeadTurn struct {
+	ProjectID, TaskID, RunID, AgentID string
 }
 
 // Lead is the team lead service. It implements LeadSupervisor.
@@ -341,7 +349,17 @@ func (l *Lead) turn(ctx context.Context, projectID, taskID, runID string, lead L
 	tctx, cancel := context.WithTimeout(ctx, leadTurnTimeout)
 	defer cancel()
 	in := workflow.NodeInput{NodeInfo: workflow.NodeInfo{RunID: workflow.RunID(runID), ProjectID: projectID, TaskID: taskID, NodeID: "lead", Kind: workflow.KindAgentTask, Meta: map[string]string{"agent": "lead"}}}
-	out, err := l.d.Runtime.AgentTask(rt.TaskSpec{Config: cfg, Prompt: func(workflow.NodeInput) string { return prompt }})(tctx, in)
+	run := func(ctx context.Context, in workflow.NodeInput) (workflow.NodeOutput, error) {
+		c := cfg
+		applyRoute(ctx, &c) // the routed model, when the router chose one
+		return l.d.Runtime.AgentTask(rt.TaskSpec{Config: c, Prompt: func(workflow.NodeInput) string { return prompt }})(ctx, in)
+	}
+	var out workflow.NodeOutput
+	if l.d.Route != nil {
+		out, err = l.d.Route(tctx, LeadTurn{ProjectID: projectID, TaskID: taskID, RunID: runID, AgentID: lead.ID}, in, run)
+	} else {
+		out, err = run(tctx, in)
+	}
 	if err != nil {
 		return "", err
 	}

@@ -46,16 +46,19 @@ function show(client: Partial<Client>, opts: { projects?: { id: string; name: st
 }
 type R = ReturnType<typeof show>;
 const rowOf = (r: R, kind: string) => waitFor(() => must(r.$(`[data-testid="integration-row"][data-kind="${kind}"]`)) as HTMLElement, r);
-/** The state word at the end of a row. */
-const stateOf = (el: Element) => el.querySelector('[data-tone]')?.textContent ?? '';
+/** The state word at the end of a row, or "⚠ " and the problem's name where a warning sign stands in for the word. */
+const stateOf = (el: Element) => {
+  const alert = el.querySelector('[data-testid="row-alert"]');
+  return alert ? `⚠ ${alert.getAttribute('aria-label')}` : (el.querySelector('[data-tone]')?.textContent ?? '');
+};
 /** Chooses the vendor's row, so its detail (and its cards) is on the page. */
 const openVendor = async (r: R, kind: string) => {
   const row = await rowOf(r, kind);
   if (row.getAttribute('aria-current') !== 'true') await r.act(() => row.click());
   return waitFor(() => must(r.$(`[data-testid="integration-panel"][data-kind="${kind}"]`)) as HTMLElement, r);
 };
-/** GitHub's detail, by its address (its row is a link to the GitHub page). */
-const openGitHub = (r: R) => waitFor(() => must(r.$('[data-testid="integration-panel"][data-kind="github"]')) as HTMLElement, r);
+/** GitHub's agent tools, by their address (/integrations/tools-github: its MCP server, apart from its settings, decision P106). */
+const openGitHub = (r: R) => waitFor(() => must(r.$('[data-testid="integration-panel"][data-kind="tools-github"]')) as HTMLElement, r);
 const cardOf = (r: R, id: string) => waitFor(() => must(r.$(`[data-testid="connector"][data-id="${id}"]`)) as HTMLElement, r);
 
 const GH = galleryCard({
@@ -114,31 +117,37 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
     await rowOf(r, 'ctx7');
     const rows = Array.from(r.$$('[data-testid="integration-row"]')) as HTMLElement[];
     // then OpenRouter under Model providers (decision P103)
-    expect(rows.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'mslearn', 'cloudflare', 'ctx7', 'openrouter']);
-    // the integration kinds keep data-connected; the MCP-only vendors say so, under Agent tools
+    // a service's MCP server is a row of its own under Agent tools, beside the vendors that have only servers (decision P106)
+    expect(rows.map((t) => t.getAttribute('data-kind'))).toEqual(['linear', 'notion', 'sentry', 'aikido', 'github', 'tools-linear', 'tools-github', 'mslearn', 'cloudflare', 'ctx7', 'openrouter']);
+    // the integration kinds keep data-connected; the agent tools rows say so, under Agent tools
     expect(rows.slice(0, 5).map((t) => t.getAttribute('data-mcp'))).toEqual([null, null, null, null, null]);
-    expect(rows.slice(5, 8).map((t) => t.getAttribute('data-mcp'))).toEqual(['true', 'true', 'true']);
-    expect(rows[8]!.getAttribute('data-provider')).toBe('true');
-    expect(rows.slice(5, 8).every((t) => t.closest('[data-testid="list-group-tools"]'))).toBe(true);
-    expect(rows[8]!.closest('[data-testid="list-group-models"]')).not.toBeNull();
+    expect(rows.slice(5, 10).map((t) => t.getAttribute('data-mcp'))).toEqual(['true', 'true', 'true', 'true', 'true']);
+    expect(rows[10]!.getAttribute('data-provider')).toBe('true');
+    expect(rows.slice(5, 10).every((t) => t.closest('[data-testid="list-group-tools"]'))).toBe(true);
+    expect(rows[10]!.closest('[data-testid="list-group-models"]')).not.toBeNull();
     expect(rows[0]!.getAttribute('data-connected')).toBe('true');
-    // one word each: what works, what was never set up, what needs the person
-    expect(rows.map(stateOf)).toEqual(['On', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Needs sign-in', 'On', 'Set up']);
-    expect(rows[5]!.textContent).toContain('Microsoft Learn');
-    expect(rows[5]!.textContent).toContain('Tools for agents · 1 tool');
-    expect(rows[5]!.querySelector('[data-brand="microsoft"]')).not.toBeNull();
-    expect(rows[6]!.textContent).toContain('Cloudflare');
-    expect(rows[6]!.textContent).toContain('Documentation, API');
+    // one word each: what works, what was never set up; waiting for a sign-in is Set up, not a problem
+    expect(rows.map(stateOf)).toEqual(['On', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'Set up', 'On', 'Set up']);
+    expect(rows[5]!.textContent).toContain('Linear');
+    expect(rows[5]!.textContent).toContain('Tools for agents');
+    expect(rows[7]!.textContent).toContain('Microsoft Learn');
+    expect(rows[7]!.textContent).toContain('Tools for agents · 1 tool');
+    expect(rows[7]!.querySelector('[data-brand="microsoft"]')).not.toBeNull();
+    expect(rows[8]!.textContent).toContain('Cloudflare');
+    expect(rows[8]!.textContent).toContain('Documentation, API');
     // the first row's detail shows; the page has no MCP page to link to any more
     expect(r.$$('[data-testid="integration-panel"]').length).toBe(1);
     expect(r.container.querySelector('a[href="/mcp"]')).toBeNull();
   });
 
-  it('selecting Linear shows its app sync panel and its connector card together; selecting Cloudflare shows its two cards', async () => {
+  it("Linear's app sync and its connector card are two rows (P106); selecting Cloudflare shows its two cards", async () => {
     const r = show({ mcpGallery: async () => [MSLEARN, LINEAR, CFDOCS, CFAPI], integrationList: async () => [linearConn] });
-    const lin = await openVendor(r, 'linear');
-    expect(lin.querySelector('[data-testid="integration-sync"] [data-testid="integration"][data-kind="linear"]')).not.toBeNull();
-    expect(lin.querySelector('[data-testid="connection-identity"]')!.textContent).toContain('kyle');
+    const sync = await openVendor(r, 'linear');
+    expect(sync.querySelector('[data-testid="integration-sync"] [data-testid="integration"][data-kind="linear"]')).not.toBeNull();
+    expect(sync.querySelector('[data-testid="connection-identity"]')!.textContent).toContain('kyle');
+    expect(sync.querySelector('[data-testid="integration-agents"]')).toBeNull();
+    const lin = await openVendor(r, 'tools-linear');
+    expect(lin.querySelector('[data-testid="integration-sync"]')).toBeNull();
     const agents = lin.querySelector('[data-testid="integration-agents"]')!;
     expect(agents.querySelectorAll('[data-testid="connector"]').length).toBe(1);
     const card = agents.querySelector('[data-testid="connector"][data-id="linear"]') as HTMLElement;
@@ -201,6 +210,47 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
     await waitFor(() => expect(stateOf(r.$('[data-testid="integration-row"][data-kind="mslearn"]')!)).toBe('On'), r);
   });
 
+  // decision P122: GitHub's hosted server signs in only through an OAuth app the person registers (no dynamic registration)
+  it('signs in through the OAuth app the person registered, sending its id and secret once', async () => {
+    const calls: unknown[][] = [];
+    const app = { registerUrl: 'https://github.com/settings/applications/new', help: 'Use the callback http://127.0.0.1/callback.' };
+    let cards: McpGalleryCard[] = [{ ...GH, oauthApp: app }];
+    const r = show(
+      {
+        mcpGallery: async () => cards,
+        mcpConnectWithApp: async (...a: unknown[]) => {
+          calls.push(a);
+          cards = [{ ...GH, oauthApp: app, status: 'needs_sign_in', libraryId: 'gh', oauth: true, oauthClient: true }];
+          return { card: cards[0]!, oauth: { id: 'gh', state: 'waiting', url: 'https://github.com/login/oauth/authorize?client_id=Iv1.x', signedIn: false } };
+        },
+        mcpOAuthStatus: async () => ({ id: 'gh', state: 'waiting', url: 'https://github.com/login/oauth/authorize?client_id=Iv1.x', signedIn: false }),
+      },
+      { initial: 'tools-github' },
+    );
+    await openGitHub(r);
+    const gh = await cardOf(r, 'gh');
+    expect(gh.textContent).toContain('or sign in through an OAuth app you register');
+    await r.act(() => byText(gh, 'button', 'Sign in with your own app').click());
+    const form = await waitFor(() => must(gh.querySelector('[data-testid="connector-app"]')) as HTMLElement, r);
+    expect(form.textContent).toContain('Use the callback http://127.0.0.1/callback.');
+    expect(form.querySelector('a[target="_blank"]')!.getAttribute('href')).toBe('https://github.com/settings/applications/new');
+    const secret = byLabel<HTMLInputElement>(form, 'Client secret');
+    expect(secret.type).toBe('password');
+    type(byLabel<HTMLInputElement>(form, 'Client id'), 'Iv1.x');
+    type(secret, 'app-secret-123');
+    await r.act(() => (form.querySelector('button[type="submit"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([['gh', 'Iv1.x', 'app-secret-123']]), r);
+    // the card now offers the sign-in, and no token form
+    const after = await waitFor(() => {
+      const c = r.$('[data-id="gh"]') as HTMLElement;
+      if (c.dataset.status !== 'needs_sign_in') throw new Error('not yet');
+      return c;
+    }, r);
+    expect(after.querySelector('[data-testid="connector-token"]')).toBeNull();
+    expect(after.querySelector('[data-testid="connector-app"]')).toBeNull();
+    expect(after.textContent).not.toContain('app-secret-123');
+  });
+
   it('asks for a token, sends it once, and never shows it again', async () => {
     const calls: unknown[][] = [];
     let cards: McpGalleryCard[] = [GH];
@@ -213,7 +263,7 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
           return { card: cards[0]! };
         },
       },
-      { initial: 'github' },
+      { initial: 'tools-github' },
     );
     await openGitHub(r);
     const gh = await cardOf(r, 'gh');
@@ -246,7 +296,7 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
           return { card: cards[0]! };
         },
       },
-      { initial: 'github' },
+      { initial: 'tools-github' },
     );
     await openGitHub(r);
     const gh = await cardOf(r, 'gh');
@@ -268,14 +318,15 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
       },
       mcpOAuthStatus: async () => ({ id: 'linear', state: 'waiting', url: 'https://linear.app/oauth/authorize?x=1', signedIn: false }),
     });
-    await openVendor(r, 'linear');
+    await openVendor(r, 'tools-linear');
     const lin = await cardOf(r, 'linear');
     await r.act(() => byText(lin, 'button', 'Connect Linear').click());
     const link = await waitFor(() => must(r.$('[data-id="linear"] [data-testid="oauth-link"]')) as HTMLAnchorElement, r);
     expect(link.getAttribute('href')).toBe('https://linear.app/oauth/authorize?x=1');
     expect(link.getAttribute('target')).toBe('_blank');
     expect((r.$('[data-id="linear"] [data-testid="connector-status"]') as HTMLElement).textContent).toBe('Needs sign-in');
-    await waitFor(() => expect(stateOf(r.$('[data-testid="integration-row"][data-kind="linear"]')!)).toBe('Needs sign-in'), r);
+    // the row: a sign-in still to finish is Set up, not a problem (decision P106)
+    await waitFor(() => expect(stateOf(r.$('[data-testid="integration-row"][data-kind="tools-linear"]')!)).toBe('Set up'), r);
   });
 
   it('a card that needs a sign-in shows one Sign in button, not a Sign-in heading with a badge and a second button', async () => {
@@ -283,7 +334,7 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
       mcpGallery: async () => [{ ...LINEAR, status: 'needs_sign_in', libraryId: 'linear' }],
       mcpOAuthStatus: async () => ({ id: 'linear', state: 'idle', signedIn: false }),
     });
-    await openVendor(r, 'linear');
+    await openVendor(r, 'tools-linear');
     const lin = await cardOf(r, 'linear');
     const panel = await waitFor(() => must(lin.querySelector('[data-testid="oauth-panel"][data-state="idle"]')) as HTMLElement, r);
     const buttons = Array.from(panel.querySelectorAll('button'));
@@ -301,7 +352,7 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
       mcpGallery: async () => [galleryCard({ status: 'error', libraryId: 'mslearn', detail: 'could not reach Microsoft Learn: connection refused' })],
       mcpLibDiscover: (async (...a: unknown[]) => (tries.push(a), libServer())) as never,
     });
-    expect(stateOf(await rowOf(r, 'mslearn'))).toBe('Error');
+    expect(stateOf(await rowOf(r, 'mslearn'))).toBe('⚠ Could not connect');
     await openVendor(r, 'mslearn');
     const ml = await cardOf(r, 'mslearn');
     expect(ml.querySelector('[role="alert"]')!.textContent).toContain('connection refused');
@@ -367,7 +418,7 @@ describe('the Integrations page: one row per vendor, with the MCP connector card
         mcpGallery: async () => [galleryCard({ id: 'gh', display: 'GitHub', publisher: 'GitHub', brand: 'github', auth: 'bearer', integration: 'github', tools: [{ name: 'huge', description: long, readOnlyHint: true }] })],
         mcpLibList: async () => [libServer({ id: 'mine', display: 'My tracker', serverInfo: { name: 'acme', version: '1', description: long } })],
       },
-      { initial: 'github' },
+      { initial: 'tools-github' },
     );
     await openGitHub(r);
     const gh = await cardOf(r, 'gh');

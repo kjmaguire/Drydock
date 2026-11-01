@@ -1,16 +1,19 @@
 // Integrations (decisions P42, P43, P47, P59 and P98): one workspace page for everything Drydock connects to outside itself, as a
 // list and the chosen row's detail (ui/master-detail.tsx). The list is grouped: Services (app sync: Drydock's own connection to
-// Linear, Notion, Sentry, Aikido and GitHub, whose row opens its own page), Agent tools (the vendors that only have MCP servers)
-// and Your servers (the MCP servers you added yourself: a web address or a program on this PC; they used to be in the Library).
-// Each row says in a word whether it is On, needs setting up, or needs you; the filters All, On and Needs you count them. The
+// Linear, Notion, Sentry, Aikido and GitHub, whose detail is its sign-in, repositories and CI runners), Agent tools (every vendor's
+// MCP servers, a service vendor's too: decision P106) and Your servers (the MCP servers you added yourself: a web address or a
+// program on this PC; they used to be in the Library). Each row says in a word whether it is On or Set up; a row with a problem
+// shows a warning sign instead, and its detail opens with what is wrong. The filters All, On and Needs you count them. The
 // chosen row is in the address (/integrations/<key>, replaced as the choice moves) and /integrations/<key> opens it. A detail is
 // rows: a service's setup or connection (service-detail.tsx), a vendor's servers and skills (vendor-detail.tsx), one of your
 // servers (server-detail.tsx). Nothing of a single project is chosen here (P51): what a project imports, its items, rules and
 // writes back, adding a server to it and granting it to its agents are on the project's Integrations page
-// (project-integrations-screen.tsx), which the projects rows open. /mcp is an alias of this page.
+// (project-integrations-screen.tsx), which the projects rows open. /mcp is an alias of this page. Under Background,
+// Webhooks and sweeps (/integrations/background, decision P114) holds what runs for every connection: the webhook receiver
+// (off unless turned on, 127.0.0.1 only, exposed by the person themselves) and the weekly sweep (background-panel.tsx).
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { Blocks, Globe, Plug, Plus, SearchX } from 'lucide';
+import { Blocks, Globe, Plug, Plus, SearchX, Webhook } from 'lucide';
 import type { IntegrationView } from '../../api/extTypes.ts';
 import type { McpGalleryCard, McpLibraryServer } from '../../api/mcpClient.ts';
 import { routes } from '../../routes.ts';
@@ -25,7 +28,9 @@ import { t } from '../../ui/tokens.ts';
 import { AddMcpServer } from '../mcp/gallery.tsx';
 import { importedNote } from '../mcp/import.ts';
 import { serverLogo } from '../mcp/mcp-screen.tsx';
+import { GitHubDetail } from '../github/github-screen.tsx';
 import {
+  agentToolVendors,
   filterCounts,
   KINDS,
   ownServers,
@@ -48,15 +53,17 @@ import type { Open } from './service-detail.tsx';
 import { VendorPanel } from './vendor-detail.tsx';
 import { openRouterProviders, providerBrand } from '../providers/providers.ts';
 import { OpenRouterPanel } from './openrouter-panel.tsx';
-
-// the GitHub settings page shows GitHub's detail with the component this page opens (screens/github/github-screen.tsx)
-export { VendorDetail, VendorPanel } from './vendor-detail.tsx';
+import { BackgroundPanel } from './background-panel.tsx';
 
 const noteCss = css({ '&:empty': { display: 'none' } });
 const listNote = css({ margin: `${t.s3} ${t.s2} 0`, fontSize: t.textSm, '& a': { whiteSpace: 'nowrap' } });
 
+/** GitHub's row: its detail is the GitHub settings (screens/github/github-screen.tsx), not app sync alone. */
+const GITHUB = 'github';
 /** OpenRouter's row and address (/integrations/openrouter): a model provider, set up here, owned by Models (decision P103). */
 const OPENROUTER = 'openrouter';
+/** The webhook receiver and the weekly sweep (/integrations/background, decision P114): settings for every connection. */
+const BACKGROUND = 'background';
 
 /** One row with what the page needs to filter it and draw its detail. */
 interface Row {
@@ -78,6 +85,8 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
   // the model providers, for OpenRouter's row (decision P103): Models owns them, this page shows OpenRouter among the integrations
   const providers = query(handle, { load: () => s.client.providerList(), when: (e) => e.type.startsWith('provider.') });
   // the registries are read once, and only when a vendor on the page publishes some
+  // the webhook receiver's state, for its row (off unless the person turned it on)
+  const hooks = query(handle, { load: () => s.client.integrationWebhooks(), when: (e) => e.type.startsWith('integration.webhook') });
   const regs = query(handle, { load: () => s.client.skillRegistries(), enabled: () => (gallery.data ?? []).some((c) => (c.skillRegistries ?? []).length > 0) });
   let selected = handle.props.initial ?? '';
   let seenInitial = handle.props.initial;
@@ -111,6 +120,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
     const cards: McpGalleryCard[] = gallery.data ?? [];
     const servers: McpLibraryServer[] = lib.data ?? [];
     const all = vendors(KINDS, cards);
+    const toolVendors = agentToolVendors(all);
     const mine = ownServers(servers, cards);
     // the providers too (OpenRouter's row): its row and the count would say Set up until they arrive
     const loaded = !!q.data && !!gallery.data && (!!providers.data || !!providers.error);
@@ -129,9 +139,7 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           logo: v.logo,
           icon: Plug,
           sub: vendorSub(v, conn),
-          status: { text: state.text, tone: state.tone },
-          // GitHub has a page of its own: its sign-in, connection, server and CI runners
-          href: v.key === 'github' ? routes.github.href() : undefined,
+          status: { text: state.text, tone: state.tone, alert: state.bucket === 'needs' },
           testId: 'integration-row',
           data,
         },
@@ -147,14 +155,14 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           logo: serverLogo(x) || undefined,
           icon: x.transport === 'http' ? Globe : Plug,
           sub: ownServerSub(x),
-          status: { text: state.text, tone: state.tone },
+          status: { text: state.text, tone: state.tone, alert: state.bucket === 'needs' },
           testId: 'integration-row',
           data: { server: x.id },
         },
       };
     };
     const services_ = all.filter((v) => v.kind).map(vendorRow);
-    const tools = all.filter((v) => !v.kind).map(vendorRow);
+    const tools = toolVendors.map(vendorRow);
     const own = mine.map(serverRow);
     const orMine = providers.data ? openRouterProviders(providers.data) : undefined;
     const orState = orMine ? providerRowState(orMine) : PROVIDERS_UNREAD;
@@ -167,9 +175,31 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           logo: 'openrouter',
           icon: Plug,
           sub: 'Models from many vendors, one key',
-          status: { text: orState.text, tone: orState.tone },
+          status: { text: orState.text, tone: orState.tone, alert: orState.bucket === 'needs' },
           testId: 'integration-row',
           data: { kind: OPENROUTER, provider: 'true', connected: String(orState.bucket !== 'setup') },
+        },
+      },
+    ];
+    const hs = hooks.data;
+    const bgState: RowState = !hs
+      ? { text: 'Settings', tone: 'none', bucket: 'setup' }
+      : hs.listening
+        ? { text: 'Listening', tone: 'ok', bucket: 'on' }
+        : hs.enabled
+          ? { text: 'Not listening', tone: 'warn', bucket: 'needs', problem: hs.error || 'The webhook receiver is turned on but not listening.' }
+          : { text: 'Off', tone: 'none', bucket: 'setup' };
+    const bgRows: Row[] = [
+      {
+        state: bgState,
+        item: {
+          key: BACKGROUND,
+          title: 'Webhooks and sweeps',
+          icon: Webhook,
+          sub: 'Webhook receiver, weekly sweep',
+          status: { text: bgState.text, tone: bgState.tone, alert: bgState.bucket === 'needs' },
+          testId: 'background-row',
+          data: { kind: BACKGROUND },
         },
       },
     ];
@@ -187,18 +217,25 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
         items: shown(own),
         footer: <AddRow label="Add a server" onClick={() => set(() => (adding = true))} testId="add-server-row" />,
       },
+      { key: 'background', title: 'Background', note: 'every connection', items: bgRows.filter((r) => showsUnder(filter, r.state)).map((r) => r.item) },
     ];
-    // nothing chosen yet: the first row that has a detail here (not GitHub, whose row opens its page)
-    const firstKey = rows.find((r) => !r.item.href)?.item.key ?? '';
+    // nothing chosen yet: the first row
+    const firstKey = rows[0]?.item.key ?? '';
     // the row whose detail shows: the chosen one, else the first (drawn, not put in the address)
     const key = selected || firstKey;
     const serverId = serverIdOf(key);
-    const vendor = serverId || key === OPENROUTER ? undefined : all.find((v) => v.key === key);
+    const vendor = serverId || key === OPENROUTER || key === GITHUB || key === BACKGROUND ? undefined : [...all.filter((v) => v.kind), ...toolVendors].find((v) => v.key === key);
     const server = serverId ? servers.find((x) => x.id === serverId) : undefined;
+    // what is wrong with the chosen row, said first in its detail (its list row shows a warning sign)
+    const problem = [...rows, ...bgRows].find((r) => r.item.key === key)?.state;
 
     const detail =
       (q.loading && !q.data) || (gallery.loading && !gallery.data) || (serverId && lib.loading && !lib.data) ? (
         <Loading />
+      ) : key === GITHUB ? (
+        <GitHubDetail />
+      ) : key === BACKGROUND ? (
+        <BackgroundPanel />
       ) : vendor ? (
         <VendorPanel
           key={vendor.key}
@@ -212,13 +249,6 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
           onAgentsChanged={reloadServers}
           onKindsChanged={kinds.reload}
           open={open}
-          footer={
-            vendor.key === 'github' ? (
-              <>
-                Everything Drydock does with GitHub, with your gh sign-in and the CI runners, is on the <a href={routes.github.href()} data-testid="github-page-link">GitHub</a> page.
-              </>
-            ) : undefined
-          }
         />
       ) : key === OPENROUTER ? (
         <OpenRouterPanel
@@ -305,6 +335,11 @@ export function IntegrationsScreen(handle: Handle<{ initial?: string; go?: (href
               <div role="status" aria-live="polite" data-testid="integrations-note" mix={noteCss}>
                 {note ? <Notice tone="ok">{note}</Notice> : null}
               </div>
+              {problem?.bucket === 'needs' && problem.problem && loaded ? (
+                <Notice tone="warn" testId="row-problem">
+                  {problem.problem}
+                </Notice>
+              ) : null}
               {detail}
             </>
           }

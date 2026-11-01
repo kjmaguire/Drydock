@@ -15,9 +15,15 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/kjmaguire/drydock/internal/agents/headless"
 )
+
+// TemplateID is the embedded template of a person's own CLI (cli/custom.yaml): shown, never started.
+const TemplateID = "custom"
 
 // SchemaVersion is the manifest schema this loader understands.
 const SchemaVersion = 1
@@ -151,6 +157,17 @@ type ACPTransport struct {
 	// ClientMeta is sent as clientCapabilities._meta in initialize: an agent-specific opt-in this CLI's agent reads (OpenCode:
 	// "opencode/child-session-updates"; internal/agents/acp/ext.go). Declared per manifest, never for every agent.
 	ClientMeta map[string]any `yaml:"client_meta"`
+	// Sandbox says the CLI can work in a sandboxed project (decision P131): its terminal requests go to the task's container,
+	// and in this configuration it asks before every command it would run itself, which Drydock refuses. Mode is the ACP
+	// session mode that makes it ask ("" when the transport's own flags or environment already do); Why is the source of that.
+	// Absent: a sandboxed project's turn of this CLI is a question for a person.
+	Sandbox *ACPSandbox `yaml:"sandbox"`
+}
+
+// ACPSandbox is transports.acp.sandbox.
+type ACPSandbox struct {
+	Mode string `yaml:"mode"`
+	Why  string `yaml:"why"`
 }
 
 // Headless is the prompt-and-exit contract (docs/connections.md section 9). Argv excludes the executable.
@@ -191,7 +208,8 @@ func (o *OptionalArgs) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-// Dialect maps a custom CLI's JSON lines onto the normalized events.
+// Dialect maps a custom CLI's output onto the normalized events: JSON lines (format jsonl, each event found by the value of
+// type_field and read by field paths) or plain text (format text, every line is the answer).
 type Dialect struct {
 	Format    string                       `yaml:"format"`
 	TypeField string                       `yaml:"type_field"`
@@ -329,7 +347,10 @@ var (
 	placeholder = regexp.MustCompile(`\{\{\s*([a-zA-Z_.]+)\s*\}\}`)
 	knownTools  = map[string]bool{"node": true, "git": true, "gh": true, "npm": true}
 	knownVars   = map[string]bool{"model": true, "effort": true, "session_id": true, "cwd": true, "mode": true, "conservative_mode": true,
-		"mcp.config_path": true, "mcp.permission_tool": true, "resolved_binary": true, "system_append": true, "allowed_tools": true}
+		"mcp.config_path": true, "mcp.permission_tool": true, "resolved_binary": true, "system_append": true, "allowed_tools": true,
+		"prompt": true}
+	// customVars are the placeholders the generic runner of a custom CLI fills (headless.CustomConfig.Args)
+	customVars  = map[string]bool{"cwd": true, "model": true, "effort": true, "session_id": true, "prompt": true}
 	probeParses = map[string]bool{"json": true, "exit_code": true, "text_providers": true}
 	declaredKey = map[string]bool{"streaming": true, "structured_output": true, "model_selection": true, "effort_control": true, "session_resume": true,
 		"interrupt": true, "mcp": true, "token_usage": true, "cost_reporting": true, "headless": true, "permission_modes": true, "image_input": true,
@@ -480,6 +501,14 @@ func (m *Manifest) Validate() error {
 			p = append(p, checkDialect(h.Dialect)...)
 		}
 	}
+	if !m.Meta.Custom {
+		for _, argv := range m.allArgv() {
+			if slices.Contains(collectVars(argv, nil), "prompt") {
+				add("{{prompt}} is for custom manifests (built-in adapters send the prompt over their protocol)")
+				break
+			}
+		}
+	}
 	// forbidden flags must never appear in any argv
 	for _, f := range m.Auth.ForbiddenFlags {
 		for _, argv := range m.allArgv() {
@@ -523,6 +552,30 @@ func (m *Manifest) Validate() error {
 			if t.Headless.Dialect == nil {
 				add("custom manifests need transports.headless.dialect")
 			}
+			p = append(p, checkCustomHeadless(t.Headless)...)
+		}
+		for _, rm := range m.Meta.RunModes {
+			if rm != "native" {
+				add("custom manifests run natively only (meta.run_modes: [native])")
+			}
+		}
+		for _, b := range m.Binaries.Native {
+			if strings.ContainsAny(b, `/\`) && !path.IsAbs(strings.ReplaceAll(b, `\`, "/")) && !windowsAbs(b) {
+				add("binaries.native %q must be a program name found on PATH or a full path", b)
+			}
+		}
+		if len(m.Binaries.WSL) > 0 {
+			add("custom manifests have no binaries.wsl (they run natively only)")
+		}
+		if m.Provider != nil || m.Usage != nil {
+			add("custom manifests cannot carry provider_config or usage (the generic runner reads neither)")
+		}
+		if m.MCP != nil {
+			_, mp := parseCustomMCP(m.MCP)
+			p = append(p, mp...)
+		}
+		if len(m.Auth.EnvFromKeyring) > 0 || len(m.Auth.AllowedKinds) > 0 || len(m.Auth.BlockedKinds) > 0 {
+			add("custom manifests cannot read keys from the credential store or declare sign-in kinds")
 		}
 		if t.ACP != nil {
 			add("custom manifests cannot define an acp transport")
@@ -573,6 +626,14 @@ func checkACP(a *ACPTransport) []string {
 			}
 		}
 	}
+	if sb := a.Sandbox; sb != nil {
+		if strings.TrimSpace(sb.Why) == "" {
+			p = append(p, "transports.acp.sandbox: why is required (what shows the CLI asks before every command it runs itself)")
+		}
+		if sb.Mode != strings.TrimSpace(sb.Mode) || strings.ContainsAny(sb.Mode, " \t\n") {
+			p = append(p, fmt.Sprintf("transports.acp.sandbox: bad mode %q", sb.Mode))
+		}
+	}
 	for k := range a.ClientMeta {
 		// ACP reserves _meta for extensions; an agent's own keys are namespaced ("opencode/child-session-updates")
 		if !strings.Contains(k, "/") || strings.TrimSpace(k) != k {
@@ -600,24 +661,72 @@ func checkACP(a *ACPTransport) []string {
 	return p
 }
 
-func checkDialect(d *Dialect) []string {
+// checkCustomHeadless checks what the generic runner needs from a custom manifest's headless block: the prompt route, the
+// placeholders it fills, the exit codes.
+func checkCustomHeadless(h *Headless) []string {
 	var p []string
-	if d.Format != "jsonl" {
-		p = append(p, fmt.Sprintf("dialect.format must be jsonl, got %q", d.Format))
+	add := func(f string, a ...any) { p = append(p, fmt.Sprintf(f, a...)) }
+	via, err := promptVia(h.Prompt)
+	if err != nil {
+		add("transports.headless.prompt: %v", err)
 	}
-	if d.TypeField == "" {
-		p = append(p, "dialect.type_field is required")
-	}
-	allowed := map[string]bool{"assistant_text": true, "tool_call": true, "tool_result": true, "usage": true, "result": true, "error": true, "session": true}
-	for k := range d.Map {
-		if !allowed[k] {
-			p = append(p, fmt.Sprintf("dialect.map: unknown event %q", k))
+	for _, v := range collectVars(h.Argv, h.Optional) {
+		if !customVars[v] {
+			add("transports.headless: a custom manifest's argv may use {{cwd}}, {{model}}, {{effort}}, {{session_id}} and {{prompt}}, not {{%s}}", v)
 		}
 	}
-	if len(d.Map) == 0 {
-		p = append(p, "dialect.map must map at least one event")
+	inBase := slices.Contains(collectVars(h.Argv, nil), "prompt")
+	inOptional := !inBase && slices.Contains(collectVars(nil, h.Optional), "prompt")
+	switch {
+	case via == headless.PromptArg && !inBase:
+		add("transports.headless: prompt via arg needs {{prompt}} in argv (not in an optional group)")
+	case via == headless.PromptStdin && (inBase || inOptional):
+		add("transports.headless: the prompt goes on stdin, so the argv cannot hold {{prompt}}")
+	}
+	if len(h.Argv) == 0 {
+		add("transports.headless.argv is required")
+	}
+	if h.Parser != "" || h.Interrupt != nil || len(h.ProbeUnknown) > 0 || h.DeniedActions != "" {
+		add("transports.headless: a custom manifest has argv, optional, prompt, exit_codes and dialect only")
+	}
+	for code, v := range h.ExitCodes {
+		if code < 0 || code > 255 {
+			add("transports.headless.exit_codes: %d is not an exit code", code)
+		}
+		if v != "success" && v != "failure" {
+			add("transports.headless.exit_codes.%d must be success or failure, got %q", code, v)
+		}
 	}
 	return p
+}
+
+// promptVia reads transports.headless.prompt: {via: stdin} or {via: arg}.
+func promptVia(v any) (string, error) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return "", errors.New("must be {via: stdin} or {via: arg}")
+	}
+	for k := range m {
+		if k != "via" {
+			return "", fmt.Errorf("unknown key %q", k)
+		}
+	}
+	switch via, _ := m["via"].(string); via {
+	case headless.PromptStdin, headless.PromptArg:
+		return via, nil
+	default:
+		return "", fmt.Errorf("via must be stdin or arg, got %q", via)
+	}
+}
+
+func windowsAbs(b string) bool {
+	return len(b) > 3 && b[1] == ':' && (b[2] == '\\' || b[2] == '/') && (b[0]|0x20 >= 'a' && b[0]|0x20 <= 'z')
+}
+
+// checkDialect checks a declared output format strictly: the events the generic runner reads, their type values and field
+// paths (headless.ValidateDialect).
+func checkDialect(d *Dialect) []string {
+	return headless.ValidateDialect(headless.Dialect{Format: d.Format, TypeField: d.TypeField, Map: d.Map})
 }
 
 func placeholderNames(s string) []string {
@@ -664,8 +773,10 @@ func (m *Manifest) ACPEnabled() bool {
 // ID is a shorthand for Meta.ID.
 func (m *Manifest) ID() string { return m.Meta.ID }
 
-// Set is a loaded collection of manifests keyed by id.
+// Set is a loaded collection of manifests keyed by id. A person's own CLIs are added and removed while the app runs (Add,
+// Remove), so every read takes the lock.
 type Set struct {
+	mu   sync.RWMutex
 	byID map[string]*Manifest
 }
 
@@ -708,10 +819,37 @@ func Load(fsys fs.FS, dir string) (*Set, error) {
 }
 
 // Get returns the manifest with the given id.
-func (s *Set) Get(id string) (*Manifest, bool) { m, ok := s.byID[id]; return m, ok }
+func (s *Set) Get(id string) (*Manifest, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m, ok := s.byID[id]
+	return m, ok
+}
+
+// Add puts a manifest in the set; an id the set has already is refused.
+func (s *Set) Add(m *Manifest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, dup := s.byID[m.Meta.ID]; dup {
+		return fmt.Errorf("a CLI with the id %q exists already", m.Meta.ID)
+	}
+	s.byID[m.Meta.ID] = m
+	return nil
+}
+
+// Remove takes a manifest out of the set (false when it was not in it).
+func (s *Set) Remove(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.byID[id]
+	delete(s.byID, id)
+	return ok
+}
 
 // IDs lists manifest ids in sorted order.
 func (s *Set) IDs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	ids := make([]string, 0, len(s.byID))
 	for id := range s.byID {
 		ids = append(ids, id)
@@ -724,7 +862,9 @@ func (s *Set) IDs() []string {
 func (s *Set) All() []*Manifest {
 	var out []*Manifest
 	for _, id := range s.IDs() {
-		out = append(out, s.byID[id])
+		if m, ok := s.Get(id); ok {
+			out = append(out, m)
+		}
 	}
 	return out
 }

@@ -34,6 +34,14 @@ func (c *Core) postTurn(ctx context.Context, t tasks.Task, agentID, role, text s
 	}
 }
 
+// joinRulesAgain matches a task's room against the join rules again once the task names its files (decision P133). A rule that
+// cannot be applied is reported and does not stop the work turn.
+func (c *Core) joinRulesAgain(ctx context.Context, t tasks.Task) {
+	if err := c.Room.ReapplyJoinRules(ctx, t.ID); err != nil {
+		c.logf("join rules for %s: %v", t.ID, err)
+	}
+}
+
 // CreateTask adds a BACKLOG task.
 func (c *Core) CreateTask(ctx context.Context, req tasks.CreateReq) (tasks.Task, error) {
 	if _, err := c.GetProject(ctx, req.ProjectID); err != nil {
@@ -278,6 +286,9 @@ type TaskDetail struct {
 	// AcceptanceState is each acceptance criterion's state by the newest test check (pipeline.AcceptanceState): passed,
 	// failing or unknown, in the order of Task.Acceptance.
 	AcceptanceState []pipeline.CriterionState `json:"acceptanceState"`
+	// Criteria are each acceptance criterion's status (open, met, not_met, waived) with what showed it and an agent's
+	// unconfirmed claim, in the order of Task.Acceptance (pipeline.CriteriaStatus, decision P125).
+	Criteria []pipeline.CriterionStatus `json:"criteria"`
 	// Paused says a person paused the task's run (task.pause), who and when; absent otherwise.
 	Paused *TaskPause `json:"paused,omitempty"`
 }
@@ -295,6 +306,8 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	d.Evidence, _ = c.Tasks.Evidence(ctx, id)
 	d.Reviews, _ = c.Tasks.Reviews(ctx, id)
 	d.AcceptanceState = pipeline.AcceptanceState(t.Acceptance, d.Evidence)
+	marks, _ := c.Tasks.CriterionMarks(ctx, id)
+	d.Criteria = nonNilCriteria(pipeline.CriteriaStatus(t.Acceptance, d.Evidence, d.Reviews, marks))
 	if t.RunID != "" {
 		if info, err := c.Engine.Status(ctx, workflow.RunID(t.RunID)); err == nil {
 			d.Run = &info

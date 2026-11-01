@@ -3,7 +3,10 @@ package core
 import (
 	"context"
 	"errors"
+	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -73,9 +76,63 @@ func (c *Core) OpenExternal(ctx context.Context, raw, by string) error {
 	return c.cfg.OpenURL(ctx, u)
 }
 
+// Restart starts Drydock again, so that a staged restore is applied now (decision P116). Only a person may; a build with no
+// window says to quit and reopen instead.
+func (c *Core) Restart(ctx context.Context, by string) error {
+	if c.cfg.Restart == nil {
+		return errors.New("this window cannot restart Drydock: quit and reopen it")
+	}
+	if !isHuman(by) {
+		return errors.New("only a person may restart Drydock")
+	}
+	return c.cfg.Restart(ctx)
+}
+
+// maxNotices is the most of the notices file Licenses reads (it is about 31 KB): a larger file is not the one the build ships.
+const maxNotices = 1 << 20
+
+// Licenses is the third-party notices the build ships, for Settings > About (decision P129): the text of THIRD_PARTY_NOTICES.md,
+// read from where the installer put it. A build run from a source tree has none beside it, and says so.
+type Licenses struct {
+	Shipped bool   `json:"shipped"`
+	File    string `json:"file"`
+	Text    string `json:"text,omitempty"`
+	Note    string `json:"note,omitempty"`
+}
+
+// Licenses reads the third-party notices the build ships.
+func (c *Core) Licenses() Licenses {
+	file := c.cfg.NoticesFile
+	if file == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return Licenses{Note: "Drydock could not find where it is installed, so its third-party notices cannot be read."}
+		}
+		file = filepath.Join(filepath.Dir(exe), "THIRD_PARTY_NOTICES.md")
+	}
+	out := Licenses{File: file}
+	f, err := os.Open(file)
+	if err != nil {
+		out.Note = "This build has no third-party notices beside it (a build from the source tree): they are in THIRD_PARTY_NOTICES.md in the source."
+		return out
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxNotices+1))
+	switch {
+	case err != nil:
+		out.Note = "The third-party notices could not be read: " + err.Error()
+	case len(b) > maxNotices || !utf8.Valid(b):
+		out.Note = "The file beside Drydock is not its third-party notices."
+	default:
+		out.Shipped, out.Text = true, string(b)
+	}
+	return out
+}
+
 func init() {
 	RegisterExtension(Extension{Name: "shell", Start: func(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 		return map[string]Method{
+			"app.licenses": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.Licenses(), nil }),
 			"shell.openExternal": bind(func(ctx context.Context, p struct {
 				URL string `json:"url"`
 			}) (any, error) {
@@ -83,6 +140,12 @@ func init() {
 					return nil, err
 				}
 				return map[string]bool{"opened": true}, nil
+			}),
+			"shell.restart": bind(func(ctx context.Context, _ struct{}) (any, error) {
+				if err := c.Restart(ctx, c.Human()); err != nil {
+					return nil, err
+				}
+				return map[string]bool{"restarting": true}, nil
 			}),
 		}, nil, nil
 	}})

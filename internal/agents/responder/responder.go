@@ -54,9 +54,11 @@ type Deps struct {
 	// Gate takes the concurrency slots a turn needs (the project's parallel-agent limit and the provider's max_concurrent)
 	// and returns the release function. It blocks until a slot is free or ctx ends. Nil means no limit.
 	Gate func(ctx context.Context, projectID string, a Agent) (release func(), err error)
-	// Budget refuses a turn while a budget that applies to it (the project's, the agent's, the task's in a task room) is at its
-	// hard limit, with the sentence to show; nil means no budgets. A refused turn does not start and the refusal is posted.
-	Budget func(ctx context.Context, projectID, taskID string, a Agent) error
+	// Budget refuses a turn while a budget that applies to it (the project's, the agent's, the task's in a task room, and for a
+	// turn of a group discussion the run's and the workflow's that hold it) is at its hard limit, with the sentence to show; nil
+	// means no budgets. A refused turn does not start and the refusal is posted. A refusal that is a workflow.GateError (a
+	// budget.PauseError) parks a group discussion's node on the budget pause instead of failing it.
+	Budget func(ctx context.Context, s BudgetScope, a Agent) error
 	// Enabled reports whether agents answer in this project (default true).
 	Enabled func(ctx context.Context, projectID string) bool
 	// OnCost receives the cost of a turn in a task room so it counts toward the task (cost per accepted task).
@@ -74,6 +76,13 @@ type Deps struct {
 	Logf  func(format string, args ...any)
 }
 
+// BudgetScope is what a turn in a room counts toward: its project, the task of a task channel, and for a turn of a group
+// discussion the workflow run that holds it and that run's workflow (decision P124).
+type BudgetScope struct {
+	ProjectID, TaskID string
+	RunID, Workflow   string
+}
+
 // ReplyTurn is a reply turn as the model router sees it.
 type ReplyTurn struct {
 	TurnID        string // the room_turns row; the routing decisions of the turn carry it as their run id
@@ -83,6 +92,9 @@ type ReplyTurn struct {
 	TaskID        string // the task of a task channel
 	Agent         Agent
 	ContextTokens int // the selected room context, estimated
+	// RunID and Workflow are the workflow run and workflow of a turn of a group discussion (P124): its reservation is held,
+	// and the router's budget state read, against their budgets too. Empty for a reply.
+	RunID, Workflow string
 }
 
 // Routed is the model one attempt of a reply turn runs on. An empty Model is the agent's configured model.
@@ -135,7 +147,12 @@ const (
 	StatusEmpty       = "empty"
 	StatusFailed      = "failed"
 	StatusInterrupted = "interrupted"
+	// StatusStopped is a turn a person stopped (Stop, Esc Esc in the room's composer): it posts no reply and ends its chain.
+	StatusStopped = "stopped"
 )
+
+// ErrStopped is the cause of a turn a person stopped.
+var ErrStopped = errors.New("stopped by you")
 
 // TurnInfo describes one agent turn of a chain.
 type TurnInfo struct {
@@ -147,6 +164,18 @@ type TurnInfo struct {
 	Status    string `json:"status"`
 	MessageID string `json:"messageId,omitempty"`
 	Error     string `json:"error,omitempty"`
+	// Ship is a turn of a group discussion that returned SHIP (the reply was exactly that word, the review's convention), and
+	// DecisionID the DECISION a turn stated (a [DECISION] line, or a reply that was one): either ends the discussion (P127).
+	Ship       bool   `json:"ship,omitempty"`
+	DecisionID string `json:"decisionId,omitempty"`
+	cause      error  // why a failed turn failed (a budget's pause, for a group discussion)
+}
+
+// IsShip reports a reply that is exactly the word SHIP, read as the review's verdict is when it is a single word
+// (pipeline.ParseVerdict: case and a trailing full stop or exclamation mark do not matter; "SHIPPING it would be wrong" is not
+// SHIP).
+func IsShip(text string) bool {
+	return strings.ToUpper(strings.TrimRight(strings.TrimSpace(text), ".!")) == "SHIP"
 }
 
 // Outcome is what Handle did for one human message.
@@ -167,7 +196,9 @@ type Responder struct {
 	rooms   map[string]*roomState
 	queues  map[string][]string
 	running map[string]bool
-	wg      sync.WaitGroup
+	// answering are the turns running now, by room and turn id: Stop cancels them
+	answering map[string]map[string]context.CancelCauseFunc
+	wg        sync.WaitGroup
 }
 
 type roomState struct {
@@ -178,7 +209,41 @@ type roomState struct {
 // New returns a Responder.
 func New(d Deps, o Options) *Responder {
 	o.defaults()
-	return &Responder{d: d, o: o, sem: make(chan struct{}, o.MaxConcurrent), rooms: map[string]*roomState{}, queues: map[string][]string{}, running: map[string]bool{}}
+	return &Responder{d: d, o: o, sem: make(chan struct{}, o.MaxConcurrent), rooms: map[string]*roomState{}, queues: map[string][]string{}, running: map[string]bool{},
+		answering: map[string]map[string]context.CancelCauseFunc{}}
+}
+
+// Stop stops the agents answering in a room now (a person's Esc Esc in the room's composer, room.stop): each running turn is
+// cancelled and recorded as stopped, and the chain they belong to takes no further turn. It returns how many turns it
+// stopped; 0 when no agent was answering.
+func (r *Responder) Stop(roomID string) int {
+	r.state(roomID).gen.Add(1) // the chain stops before its next turn, as for a newer human message
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, cancel := range r.answering[roomID] {
+		cancel(ErrStopped)
+		n++
+	}
+	return n
+}
+
+// answeringNow registers a running turn so Stop can cancel it; the function returned removes it when the turn ends.
+func (r *Responder) answeringNow(roomID, turnID string, cancel context.CancelCauseFunc) func() {
+	r.mu.Lock()
+	if r.answering[roomID] == nil {
+		r.answering[roomID] = map[string]context.CancelCauseFunc{}
+	}
+	r.answering[roomID][turnID] = cancel
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		delete(r.answering[roomID], turnID)
+		if len(r.answering[roomID]) == 0 {
+			delete(r.answering, roomID)
+		}
+		r.mu.Unlock()
+	}
 }
 
 func (r *Responder) logf(format string, a ...any) {
@@ -282,6 +347,9 @@ func (r *Responder) markInterrupted(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
+	if _, err := r.d.Room.InterruptOpenGrants(ctx); err != nil {
+		return err
+	}
 	// the human's message would otherwise just go unanswered: say what happened, under it (no re-run: that is a new, billed turn)
 	for _, c := range cuts {
 		who := c.agent
@@ -351,7 +419,8 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			out.Stopped = "cancelled"
 			break
 		}
-		dec, err := r.d.Room.PlanTurns(ctx, m.ID)
+		// the room's scheduler plans the turns and grants each one; the runtime starts a room turn only on its grant (P118)
+		dec, grants, err := r.d.Room.GrantTurns(ctx, m.ID, r.contextBounds())
 		if err != nil {
 			return out, err
 		}
@@ -362,8 +431,7 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 			out.Bounded = true
 			continue
 		}
-		speakers := r.speakers(ctx, rm, m, dec)
-		for _, sp := range speakers {
+		for _, sp := range dec.Speakers {
 			if turns >= r.o.HardTurnCap {
 				out.Stopped = fmt.Sprintf("hard cap of %d agent turns reached", r.o.HardTurnCap)
 				queue = nil
@@ -374,7 +442,7 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 				queue = nil
 				break
 			}
-			info, reply := r.turn(ctx, rm, m, sp, dec)
+			info, reply := r.turn(ctx, rm, m, sp, dec, turnOpts{grant: grants[sp.Member]})
 			if info.Status == "" {
 				continue // already handled (duplicate delivery)
 			}
@@ -386,33 +454,6 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 		}
 	}
 	return out, nil
-}
-
-// speakers applies the room's decision, with two policies of this package: a DM always has its one agent answer, and in
-// an auto room an agent's message wakes only the members it explicitly mentions (the owner and role fallbacks are for
-// human messages; letting them chain agent to agent would spend turns nobody asked for).
-func (r *Responder) speakers(ctx context.Context, rm room.Room, m room.Message, dec room.TurnDecision) []room.Speaker {
-	sp := dec.Speakers
-	if m.Author.Kind == room.AuthorAgent && rm.Mode == room.ModeAuto {
-		var keep []room.Speaker
-		for _, s := range sp {
-			if s.Reason == room.ReasonMention {
-				keep = append(keep, s)
-			}
-		}
-		return keep
-	}
-	if len(sp) == 0 && m.Author.Kind == room.AuthorHuman && rm.Kind == room.KindDM {
-		members, err := r.d.Room.Members(ctx, rm.ID)
-		if err == nil {
-			for _, mem := range members {
-				if mem.Author.Kind == room.AuthorAgent && (mem.State == room.StateActive || mem.State == "") {
-					return []room.Speaker{{Member: mem.Author.Key(), Reason: "dm"}}
-				}
-			}
-		}
-	}
-	return sp
 }
 
 // beginTurn inserts the turn row. false means this (trigger, agent) already had a turn.
@@ -448,7 +489,16 @@ func (r *Responder) endTurn(id string, e turnEnd) {
 }
 
 // turn runs one granted turn end to end and returns the posted reply (nil when nothing was posted as a reply).
-func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, sp room.Speaker, dec room.TurnDecision) (TurnInfo, *room.Message) {
+// turnOpts is what a turn carries besides the scheduler's decision: the grant the scheduler issued for it, and for a turn of a
+// group discussion, what the prompt says about the discussion.
+type turnOpts struct {
+	grant room.TurnGrant
+	group *GroupPrompt
+	// run and workflow hold a group discussion's turn (P124): its budgets, its usage rows and its session name them
+	run, workflow string
+}
+
+func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, sp room.Speaker, dec room.TurnDecision, o turnOpts) (TurnInfo, *room.Message) {
 	info := TurnInfo{TurnID: ids.New("turn"), AgentID: sp.Member, TriggerID: trig.ID, Reason: string(sp.Reason), Round: dec.Round}
 	started, err := r.beginTurn(ctx, info.TurnID, rm, trig, sp.Member, string(sp.Reason), dec.Round)
 	if err != nil {
@@ -458,14 +508,51 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if !started {
 		return TurnInfo{}, nil
 	}
+	// a person can stop the turn from now on (Stop); the cause tells a stop from a timeout or the app closing
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	defer r.answeringNow(rm.ID, info.TurnID, stop)()
+	grant := o.grant // the grant the turn runs on: a fallback hop's renewed one replaces it
 	who := sp.Member // the agent's name once it is known; never the raw id when the name can be found
+	// end records the turn's end twice over: the turn row (what it cost) and the scheduler's Complete (the grant's outcome and
+	// what follows), and returns the message the next speakers are planned from (nil: the end wakes nobody)
+	end := func(e turnEnd) *room.Message {
+		r.endTurn(info.TurnID, e)
+		if grant.ID == "" {
+			return nil
+		}
+		c, err := r.d.Room.Complete(context.WithoutCancel(ctx), grant, room.TurnResult{Status: e.status, MessageID: e.messageID, RunID: e.runID, Error: e.errMsg})
+		if err != nil {
+			r.logf("complete turn %s: %v", info.TurnID, err)
+			return nil
+		}
+		if c.Next == "" {
+			return nil
+		}
+		m, err := r.d.Room.GetMessage(context.WithoutCancel(ctx), c.Next)
+		if err != nil {
+			return nil
+		}
+		return &m
+	}
 	fail := func(reason string, e error) (TurnInfo, *room.Message) {
+		if errors.Is(context.Cause(ctx), ErrStopped) {
+			// a person stopped the agent: no failure to report, one line saying it ended, and the chain ends with it
+			info.Status, info.Error = StatusStopped, ErrStopped.Error()
+			end(turnEnd{status: StatusStopped, errMsg: info.Error})
+			if _, perr := r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeSystem, Author: room.System, ReplyToID: trig.ID,
+				Body:    fmt.Sprintf("You stopped %s's answer.", who),
+				Payload: map[string]any{"code": "agent_turn_stopped", "turn_id": info.TurnID, "agent_id": sp.Member}}); perr != nil {
+				r.logf("post stopped turn: %v", perr)
+			}
+			return info, nil
+		}
 		msg := reason
 		if e != nil {
 			msg += ": " + e.Error()
 		}
-		info.Status, info.Error = StatusFailed, msg
-		r.endTurn(info.TurnID, turnEnd{status: StatusFailed, errMsg: msg})
+		info.Status, info.Error, info.cause = StatusFailed, msg, e
+		end(turnEnd{status: StatusFailed, errMsg: msg})
 		if len(msg) > 600 {
 			msg = msg[:600]
 		}
@@ -484,11 +571,18 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		who = agent.Name
 	}
 	if r.d.Budget != nil {
-		if err := r.d.Budget(ctx, rm.ProjectID, rm.TaskID, agent); err != nil {
+		if err := r.d.Budget(ctx, BudgetScope{ProjectID: rm.ProjectID, TaskID: rm.TaskID, RunID: o.run, Workflow: o.workflow}, agent); err != nil {
 			return fail("budget", err)
 		}
 	}
-	sel, err := r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
+	// a granted turn sees what its grant's plan says (room-protocol s6 rule 4): the scheduler decided it when it chose the
+	// speaker, and a grant whose plan was changed is refused here, before anything is selected or the agent starts
+	var sel room.ContextSelection
+	if o.grant.ID != "" {
+		sel, err = r.d.Room.ContextForGrant(ctx, o.grant, r.o.Context.Digest)
+	} else {
+		sel, err = r.d.Room.ContextFor(ctx, rm.ID, room.Agent(agent.ID), trig.ID, r.o.Context)
+	}
 	if err != nil {
 		return fail("context", err)
 	}
@@ -499,7 +593,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	if r.d.Brief != nil {
 		brief = r.d.Brief(ctx, rm.ProjectID)
 	}
-	prompt := BuildPrompt(PromptInput{Agent: agent, Room: rm, Members: members, Selection: sel, Extra: extra, Moderator: moderator, Trigger: trig, Brief: brief})
+	prompt := BuildPrompt(PromptInput{Agent: agent, Room: rm, Members: members, Selection: sel, Extra: extra, Moderator: moderator, Trigger: trig, Brief: brief, Group: o.group})
 	r.saveManifest(ctx, info.TurnID, rm, agent, sel, extra, prompt)
 
 	// admission: the global cap, then the project/provider gate (a queued agent shows Waiting)
@@ -528,7 +622,8 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		spec = r.d.Spec(agent, spec)
 		spec.PermissionMode, spec.ReadOnly = "plan", true // the application may add environment and MCP, never widen what a reply may do
 	}
-	base := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium"}
+	base := rt.Config{AgentID: agent.ID, ProjectID: rm.ProjectID, TaskID: rm.TaskID, Adapter: agent.Adapter, Spec: spec, Provider: providerLabel(agent), Tier: "premium",
+		WorkflowRun: o.run}
 	tctx, cancel := context.WithTimeoutCause(ctx, r.o.TurnTimeout, errors.New("the turn timed out"))
 	defer cancel()
 	// one attempt runs the turn on one model; a fallback hop (Route) is another attempt on a fresh session, and the last
@@ -538,6 +633,7 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		runID   string
 		ran     Routed
 		spawned bool
+		tries   int
 	)
 	attempt := func(actx context.Context, rr Routed, emit func(workflow.Chunk)) error {
 		cfg := base
@@ -548,6 +644,18 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			cfg.Tier = rr.Tier
 		}
 		ran, res, runID = rr, rt.TurnResult{}, ""
+		// the turn starts on the scheduler's grant; a fallback hop is a new session of the same turn and gets a renewed one
+		tries++
+		if tries > 1 && grant.ID != "" {
+			g, err := r.d.Room.RenewGrant(actx, grant)
+			if err != nil {
+				spawned = false
+				return err
+			}
+			grant = g
+		}
+		g := grant
+		cfg.RoomID, cfg.Grant = rm.ID, &g
 		m, err := r.d.Runtime.Spawn(actx, cfg)
 		if err != nil {
 			spawned = false
@@ -574,15 +682,15 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	}
 	if r.d.Route != nil {
 		err = r.d.Route(tctx, ReplyTurn{TurnID: info.TurnID, RoomID: rm.ID, RoomKind: string(rm.Kind), ProjectID: rm.ProjectID, TaskID: rm.TaskID, Agent: agent,
-			ContextTokens: sel.Tokens}, attempt)
+			ContextTokens: sel.Tokens, RunID: o.run, Workflow: o.workflow}, attempt)
 	} else {
 		err = attempt(tctx, Routed{}, nil)
 	}
 	if err != nil && !spawned {
 		return fail("could not start the agent", err)
 	}
-	if err != nil {
-		return fail("the turn failed", err)
+	if err != nil || errors.Is(context.Cause(ctx), ErrStopped) {
+		return fail("the turn failed", err) // a stopped turn posts nothing it said, even when the CLI returned a part of it
 	}
 	model := agent.Model
 	if ran.Model != "" {
@@ -595,13 +703,13 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 		outTok += int(u.OutputTokens)
 		cost += u.CostUSD
 	}
-	end := turnEnd{runID: runID, ctxMsgs: len(sel.Messages) + len(extra), ctxTokens: sel.Tokens, inTokens: in, outToks: outTok, cost: cost}
+	done := turnEnd{runID: runID, ctxMsgs: len(sel.Messages) + len(extra), ctxTokens: sel.Tokens, inTokens: in, outToks: outTok, cost: cost}
 	if cost > 0 && rm.TaskID != "" && r.d.OnCost != nil {
 		r.d.OnCost(ctx, rm.TaskID, cost)
 	}
 	text := strings.TrimSpace(strings.ToValidUTF8(res.Text, "�"))
 	payload := map[string]any{"turn_id": info.TurnID, "in_reply_to": trig.ID, "model": model, "read_only": true, "round": dec.Round,
-		"reason": string(sp.Reason), "context_messages": end.ctxMsgs, "context_tokens": end.ctxTokens,
+		"reason": string(sp.Reason), "context_messages": done.ctxMsgs, "context_tokens": done.ctxTokens,
 		"input_tokens": in, "output_tokens": outTok, "cost_usd": cost, "tool_calls": res.ToolCalls}
 	if ran.DecisionID != "" {
 		payload["decision_id"] = ran.DecisionID // "Why this model?" for this reply
@@ -609,8 +717,8 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	switch {
 	case text == "":
 		info.Status = StatusEmpty
-		end.status = StatusEmpty
-		r.endTurn(info.TurnID, end)
+		done.status = StatusEmpty
+		end(done)
 		_, _ = r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeError, Author: room.System, ReplyToID: trig.ID,
 			Body:    fmt.Sprintf("%s ended its turn without a reply.", agent.Name),
 			Payload: map[string]any{"code": "empty_reply", "class": "agent", "recoverable": true, "turn_id": info.TurnID, "agent_id": agent.ID}})
@@ -618,7 +726,13 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 	case strings.EqualFold(text, "PASS"):
 		payload["pass"] = true
 		text = "(passed: nothing to add)"
-		info.Status, end.status = StatusPassed, StatusPassed
+		info.Status, done.status = StatusPassed, StatusPassed
+	case o.group != nil && IsShip(text):
+		// a turn of a group discussion that returns SHIP: what is on the table is good to build on, and the discussion ends
+		payload["ship"] = true
+		text = "SHIP"
+		info.Ship = true
+		info.Status, done.status = StatusDone, StatusDone
 	default:
 		if len(text) > r.o.MaxReplyBytes {
 			cut := r.o.MaxReplyBytes
@@ -627,17 +741,36 @@ func (r *Responder) turn(ctx context.Context, rm room.Room, trig room.Message, s
 			}
 			text = text[:cut] + "\n[reply truncated by Drydock]"
 		}
-		info.Status, end.status = StatusDone, StatusDone
+		info.Status, done.status = StatusDone, StatusDone
 	}
 	posted, err := r.d.Room.Post(context.Background(), room.PostParams{RoomID: rm.ID, Type: room.TypeChat, Author: room.Agent(agent.ID), Body: text,
 		ReplyToID: trig.ID, Payload: payload, RunID: runID, IdempotencyKey: "turn:" + info.TurnID})
 	if err != nil {
 		return fail("could not post the reply", err)
 	}
-	info.MessageID, end.messageID = posted.Message.ID, posted.Message.ID
-	r.endTurn(info.TurnID, end)
-	reply := posted.Message
-	return info, &reply
+	info.MessageID, done.messageID = posted.Message.ID, posted.Message.ID
+	// the DECISION the turn stated: the reply itself when it was nothing but a [DECISION] line (stored as the DECISION, P93),
+	// else the one its [DECISION] line was promoted to
+	if posted.Message.Type == room.TypeDecision {
+		info.DecisionID = posted.Message.ID
+	}
+	for _, d := range posted.Derived {
+		if d.Type == room.TypeDecision && info.DecisionID == "" {
+			info.DecisionID = d.ID
+		}
+	}
+	if grant.ID == "" {
+		r.endTurn(info.TurnID, done)
+		reply := posted.Message
+		return info, &reply
+	}
+	// the scheduler completes the turn and says whether its reply goes on to the next speakers
+	return info, end(done)
+}
+
+// contextBounds are the bounds the scheduler writes into the context plan of each grant it issues for this responder's turns.
+func (r *Responder) contextBounds() room.ContextBounds {
+	return room.ContextBounds{ThreadWindow: r.o.Context.ThreadWindow, MaxMentions: r.o.Context.MaxMentions, MaxTokens: r.o.Context.MaxTokens}
 }
 
 func providerLabel(a Agent) string {

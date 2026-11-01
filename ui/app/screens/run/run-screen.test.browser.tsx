@@ -448,3 +448,334 @@ describe('RunScreen', () => {
     await waitFor(() => expect(node(r, 'verify')!.getAttribute('data-status')).toBe('failed'), r, 3000);
   });
 });
+
+describe('RunScreen actions and the nested view (P123)', () => {
+  const withActions = (over: Partial<RunExplanation> = {}): RunExplanation => {
+    const x = explanation();
+    x.checkpoints[0]!.next = ['prepare'];
+    x.actions = {
+      resume: false,
+      timeTravel: true,
+      replay: false,
+      resumeWhy: 'The run is waiting for you: answer it on the task page.',
+      replayWhy: 'Only a run that has ended is replayed; this one is waiting for you.',
+      supersedes: 'run_1',
+      supersedesStatus: 'WAITING_HUMAN',
+      lease: { held: false, mine: false, driving: false },
+    };
+    return { ...x, ...over };
+  };
+
+  it('time travels from the chosen checkpoint after a confirmation that says what runs again, then opens the new run', async () => {
+    const calls: unknown[][] = [];
+    const went: string[] = [];
+    const s = setup({
+      runExplain: async () => withActions(),
+      runTimeTravel: async (...a: unknown[]) => (calls.push(a), { runId: 'run_2', superseded: 'run_1', taskStatus: 'IN_PROGRESS' }),
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" onNavigate={(h) => went.push(h)} />, s);
+    await ready(r);
+    const bar = r.$('[data-testid="run-actions"]')!;
+    expect((byText(bar, 'button', 'Resume') as HTMLButtonElement).disabled).toBe(true);
+    expect((byText(bar, 'button', 'Replay from the start') as HTMLButtonElement).disabled).toBe(true);
+    expect(r.$('[data-testid="run-actions-why"]')!.textContent).toContain('answer it on the task page');
+    expect(r.$('[data-testid="run-actions-why"]')!.textContent).toContain('Only a run that has ended is replayed');
+    expect(bar.textContent).toContain('To time travel, choose a checkpoint under the graph.');
+    const graph = r.$('[data-testid="workflow-graph"]')!;
+    expect(graph.textContent).not.toContain('Time travel from here');
+    await r.act(() => (all(r, '[data-testid="wf-checkpoint"]')[0] as HTMLButtonElement).click());
+    const travel = await waitFor(() => byText(graph, 'button', 'Time travel from here') as HTMLButtonElement, r);
+    expect(travel.disabled).toBe(false);
+    expect((byText(graph, 'button', 'Replay from here') as HTMLButtonElement).disabled).toBe(true);
+    await r.act(() => travel.click());
+    const dlg = await waitFor(() => r.$('[data-testid="rerun-confirm"]')!, r);
+    expect(dlg.getAttribute('data-kind')).toBe('timeTravel');
+    expect(r.$('dialog h2')!.textContent).toBe('Time travel to step 0?');
+    const text = r.$('[data-testid="rerun-plan"]')!.textContent!;
+    expect(text).toContain('Runs first: prepare.');
+    expect(text).toContain('prepare and work (2 turns in this run)');
+    expect(text).toContain('This run (waiting for you) is stopped first');
+    expect(calls).toEqual([]);
+    await r.act(() => byText(dlg, 'button', 'Start the new run').click());
+    await waitFor(() => expect(went).toEqual(['/task/t1/run/run_2']), r);
+    expect(calls).toEqual([['t1', 'run_1', 'cp1', false]]);
+  });
+
+  it('resumes a failed run after its confirmation and reads it again; a refusal is shown in the dialog', async () => {
+    const x = withActions({
+      run: { id: 'run_1', workflow: 'iuv', status: 'FAILED', created: 1, updated: 2, failedReason: 'node work: the provider was overloaded' },
+      actions: { resume: true, timeTravel: true, replay: true, lease: { held: false, mine: false, driving: false } },
+    });
+    let reads = 0;
+    let refuse = true;
+    const resumed: unknown[][] = [];
+    const s = setup({
+      runExplain: async () => (reads++, x),
+      runResume: async (...a: unknown[]) => {
+        if (refuse) throw new Error('another Drydock is driving this run right now');
+        resumed.push(a);
+        return { runId: 'run_1', taskStatus: 'IN_PROGRESS' };
+      },
+    });
+    const went: string[] = [];
+    const r = mount(<RunScreen taskId="t1" runId="run_1" onNavigate={(h) => went.push(h)} />, s);
+    await ready(r);
+    expect(r.$('[data-testid="run-actions-why"]')).toBeNull();
+    expect(r.$('[data-testid="run-lease"]')).toBeNull();
+    await r.act(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Resume').click());
+    const dlg = await waitFor(() => r.$('[data-testid="rerun-confirm"]')!, r);
+    expect(r.$('dialog h2')!.textContent).toBe('Resume this run?');
+    expect(dlg.textContent).toContain('It stopped because: node work: the provider was overloaded');
+    expect(dlg.textContent).toContain('a step you rejected is still rejected');
+    await r.act(() => byText(dlg, 'button', 'Resume the run').click());
+    await waitFor(() => expect(dlg.querySelector('[role="alert"]')!.textContent).toContain('It did not start: another Drydock is driving this run right now'), r);
+    refuse = false;
+    const before = reads;
+    await r.act(() => byText(dlg, 'button', 'Resume the run').click());
+    await waitFor(() => expect(r.$('[data-testid="rerun-confirm"]')).toBeNull(), r);
+    expect(resumed).toEqual([['t1', 'run_1']]);
+    await waitFor(() => expect(reads).toBeGreaterThan(before), r);
+    expect(went).toEqual([]);
+  });
+
+  it('replays an ended run from the start, naming the steps that ask first, and says where a run came from', async () => {
+    const x = withActions({
+      run: { id: 'run_1', workflow: 'iuv', status: 'CANCELLED', created: 1, updated: 2 },
+      graph: { ...g, nodes: g.nodes.map((n) => (n.id === 'done' ? { ...n, meta: { effect: 'merges the branch' } } : n)) },
+      actions: { resume: false, resumeWhy: 'The run was cancelled.', timeTravel: true, replay: true, supersedes: 'run_9', supersedesStatus: 'PAUSED', lease: { held: false, mine: false, driving: false } },
+      origin: { kind: 'fork', run: 'run_0', checkpoint: 'cpX', step: 1, by: 'human:kyle' },
+    });
+    const calls: unknown[][] = [];
+    const went: string[] = [];
+    const s = setup({ runExplain: async () => x, runReplay: async (...a: unknown[]) => (calls.push(a), { runId: 'run_3', superseded: 'run_9', taskStatus: 'IN_PROGRESS' }) });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" onNavigate={(h) => went.push(h)} />, s);
+    await ready(r);
+    const origin = r.$('[data-testid="run-origin"]')!;
+    expect(origin.textContent).toContain('Time travel from step 1 of an earlier run');
+    expect(origin.querySelector('a')!.getAttribute('href')).toBe('/task/t1/run/run_0');
+    await r.act(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Replay from the start').click());
+    const dlg = await waitFor(() => r.$('[data-testid="rerun-confirm"]')!, r);
+    expect(r.$('dialog h2')!.textContent).toBe('Replay this run from step 0?');
+    expect(dlg.textContent).toContain('done (merges the branch)');
+    expect(dlg.textContent).toContain("The task's current run (paused) is stopped first");
+    await r.act(() => byText(dlg, 'button', 'Cancel').click());
+    await waitFor(() => expect(r.$('[data-testid="rerun-confirm"]')).toBeNull(), r);
+    expect(calls).toEqual([]);
+    await r.act(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Replay from the start').click());
+    await r.act(() => byText(r.$('[data-testid="rerun-confirm"]')!, 'button', 'Start the replay').click());
+    await waitFor(() => expect(went).toEqual(['/task/t1/run/run_3']), r);
+    expect(calls).toEqual([['t1', 'run_1', undefined]]);
+  });
+
+  it("opens a subworkflow node into its own nodes, with their states from the nested run, and closes it again", async () => {
+    const sub: GraphView = { name: 'inner', entry: ['draft'], nodes: [{ id: 'draft', kind: 'agent_task' }, { id: 'lint', kind: 'check' }], edges: [{ from: 'draft', to: 'lint', kind: 'direct' }] };
+    const x = withActions({
+      graph: {
+        name: 'outer',
+        entry: ['prepare'],
+        nodes: [
+          { id: 'prepare', kind: 'route' },
+          { id: 'build', kind: 'subworkflow', sub },
+          { id: 'work', kind: 'agent_task' },
+        ],
+        edges: [
+          { from: 'prepare', to: 'build', kind: 'direct' },
+          { from: 'build', to: 'work', kind: 'direct' },
+        ],
+      },
+      executions: [ex('prepare', 1), ex('build', 2, 'failed'), ex('work', 3, 'done', 1, { agentId: 'agt_w' })],
+      subruns: [{ nodeId: 'build', step: 2, attempt: 1, runId: 'run_1-build-2-1', status: 'FAILED', executions: [ex('draft', 1), ex('lint', 2, 'failed', 1, { error: 'lint failed' })], subruns: [] }],
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, setup({ runExplain: async () => x }));
+    await ready(r);
+    expect(node(r, 'build/draft')).toBeNull();
+    // the panel opens on the node the run is at: the subworkflow that failed
+    const panel = await waitFor(() => r.$('[data-testid="node-panel"][data-node="build"]')!, r);
+    const section = panel.querySelector('[data-testid="node-subworkflow"]')!;
+    expect(section.textContent).toContain('inner');
+    expect(section.textContent).toContain('run_1-build-2-1');
+    expect(section.textContent).toContain('failed');
+    await r.act(() => byText(section as HTMLElement, 'button', 'Show its nodes in the graph').click());
+    await waitFor(() => expect(node(r, 'build/lint')!.getAttribute('data-status')).toBe('failed'), r);
+    expect(node(r, 'build/draft')!.getAttribute('data-status')).toBe('done');
+    expect(node(r, 'build/draft')!.querySelector('.wf-title')!.textContent).toBe('draft');
+    expect(r.$('[data-testid="wf-cluster"][data-node="build"]')!.textContent).toContain('build');
+    expect(all(r, '[data-testid="wf-edge"]').some((e) => e.getAttribute('data-from') === 'build/lint' && e.getAttribute('data-to') === 'work')).toBe(true);
+    // a nested node has its own panel
+    await r.act(() => node(r, 'build/lint')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const lint = await waitFor(() => r.$('[data-testid="node-panel"][data-node="build/lint"]')!, r);
+    expect(lint.textContent).toContain('lint failed');
+    // as of the checkpoint before build ran, the nested nodes had not run
+    await r.act(() => (all(r, '[data-testid="wf-checkpoint"]')[0] as HTMLButtonElement).click());
+    await waitFor(() => expect(node(r, 'build/lint')!.getAttribute('data-status')).toBe('pending'), r);
+    await r.act(() => byText(r.$('[data-testid="workflow-graph"]')!, 'button', 'Show the latest').click());
+    await r.act(() => node(r, 'build')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const again = await waitFor(() => r.$('[data-testid="node-panel"][data-node="build"]')!, r);
+    await r.act(() => byText(again, 'button', 'Hide its nodes').click());
+    await waitFor(() => expect(node(r, 'build/draft')).toBeNull(), r);
+    expect(r.$('[data-testid="wf-cluster"]')).toBeNull();
+  });
+
+  it('marks a resumed checkpoint on the timeline', async () => {
+    const x = withActions();
+    x.checkpoints = [x.checkpoints[0]!, { id: 'cp3', step: 2, kind: 'entry', parent: 'cp2', created: 3, status: 'RUNNING', resumed: true, latest: true }];
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, setup({ runExplain: async () => x }));
+    await ready(r);
+    const cps = all(r, '[data-testid="wf-checkpoint"]');
+    expect(cps.map((c) => c.textContent)).toEqual(['0', '2 (resumed) (latest)']);
+    expect(cps[1]!.getAttribute('data-kind')).toBe('resumed');
+  });
+});
+
+describe("RunScreen: the worktree's files back, and an ended task run again (P124)", () => {
+  const ref = 'refs/drydock/safe/t1/run_1/201';
+  const withFiles = (over: Partial<RunExplanation> = {}): RunExplanation => {
+    const x = explanation();
+    x.checkpoints[0]!.safePoint = ref;
+    x.executions[1]!.safePoint = ref;
+    x.actions = { resume: false, timeTravel: true, replay: false, restore: true, runAgain: false, supersedes: 'run_1', supersedesStatus: 'WAITING_HUMAN', lease: { held: false, mine: false, driving: false } };
+    return { ...x, ...over };
+  };
+  const preview = { ref, allowed: true, changes: [{ path: 'calc.go', change: 'changed' }, { path: 'junk.txt', change: 'removed' }] };
+
+  it('time travels with the files put back when the box is ticked, listing the files that change first', async () => {
+    const calls: unknown[][] = [];
+    const asked: unknown[][] = [];
+    const s = setup({
+      runExplain: async () => withFiles(),
+      runRestorePreview: async (...a: unknown[]) => (asked.push(a), preview),
+      runTimeTravel: async (...a: unknown[]) => (calls.push(a), { runId: 'run_2', superseded: 'run_1', taskStatus: 'IN_PROGRESS' }),
+    });
+    const went: string[] = [];
+    const r = mount(<RunScreen taskId="t1" runId="run_1" onNavigate={(h) => went.push(h)} />, s);
+    await ready(r);
+    await r.act(() => (all(r, '[data-testid="wf-checkpoint"]')[0] as HTMLButtonElement).click());
+    await r.act(() => (byText(r.$('[data-testid="workflow-graph"]')!, 'button', 'Time travel from here') as HTMLButtonElement).click());
+    const dlg = await waitFor(() => r.$('[data-testid="rerun-confirm"]')!, r);
+    expect(r.$('[data-testid="rerun-plan"]')!.textContent).toContain("The worktree's files are not put back");
+    const box = dlg.querySelector<HTMLInputElement>('[data-testid="rerun-files"] input[type="checkbox"]')!;
+    expect(box.closest('label')!.textContent).toContain("Also put the worktree's files back to this point");
+    await r.act(() => box.click());
+    const files = await waitFor(() => r.$('[data-testid="restore-files"]')!, r);
+    expect(asked).toEqual([['t1', 'run_1', ref]]);
+    expect(files.textContent).toContain('calc.go');
+    expect(files.textContent).toContain('is removed (it did not exist then)');
+    expect(r.$('[data-testid="rerun-plan"]')!.textContent).toContain('go back to how they were at step 0 first (2 files change, listed below)');
+    await r.act(() => byText(dlg, 'button', 'Start the new run').click());
+    await waitFor(() => expect(went).toEqual(['/task/t1/run/run_2']), r);
+    expect(calls).toEqual([['t1', 'run_1', 'cp1', true]]);
+  });
+
+  it('says when a checkpoint has no safe point, and keeps the start off while the files cannot be put back', async () => {
+    const x = withFiles();
+    x.checkpoints[1]!.safePoint = undefined;
+    const s = setup({ runExplain: async () => x, runRestorePreview: async () => ({ ref, allowed: false, why: 'An agent turn is running in the task\'s worktree: wait for it to end.', changes: [] }) });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, s);
+    await ready(r);
+    await r.act(() => (all(r, '[data-testid="wf-checkpoint"]')[1] as HTMLButtonElement).click());
+    await r.act(() => (byText(r.$('[data-testid="workflow-graph"]')!, 'button', 'Time travel from here') as HTMLButtonElement).click());
+    let dlg = await waitFor(() => r.$('[data-testid="rerun-files"]')!, r);
+    expect(dlg.textContent).toContain('no agent turn ran after it, so no safe point holds them');
+    expect(dlg.querySelector('input[type="checkbox"]')).toBeNull();
+    await r.act(() => byText(r.$('[data-testid="rerun-confirm"]')!, 'button', 'Cancel').click());
+    await r.act(() => (all(r, '[data-testid="wf-checkpoint"]')[0] as HTMLButtonElement).click());
+    await r.act(() => (byText(r.$('[data-testid="workflow-graph"]')!, 'button', 'Time travel from here') as HTMLButtonElement).click());
+    dlg = await waitFor(() => r.$('[data-testid="rerun-files"]')!, r);
+    await r.act(() => dlg.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    await waitFor(() => expect(r.$('[data-testid="restore-why"]')!.textContent).toContain('An agent turn is running'), r);
+    expect((byText(r.$('[data-testid="rerun-confirm"]')!, 'button', 'Start the new run') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('puts the files back to a chosen safe point after listing them, and undoes it', async () => {
+    const restored: unknown[][] = [];
+    const s = setup({
+      runExplain: async () => withFiles(),
+      runRestorePreview: async () => preview,
+      runRestore: async (...a: unknown[]) => (restored.push(a), { ref: a[2] as string, undoRef: 'refs/drydock/safe/t1/undo/17', changed: 2 }),
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, s);
+    await ready(r);
+    await r.act(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Put files back...').click());
+    const dlg = await waitFor(() => r.$('[data-testid="restore-dialog"]')!, r);
+    expect((byText(dlg, 'button', 'Put the files back') as HTMLButtonElement).disabled).toBe(true);
+    const radio = dlg.querySelector<HTMLInputElement>('input[type="radio"]')!;
+    expect(radio.closest('label')!.textContent).toBe('Before work at step 2');
+    await r.act(() => radio.click());
+    await waitFor(() => expect(r.$('[data-testid="restore-files"]')!.textContent).toContain('calc.go'), r);
+    await r.act(() => byText(dlg, 'button', 'Put the files back').click());
+    const done = await waitFor(() => r.$('[data-testid="restore-done"]')!, r);
+    expect(done.textContent).toContain('Put back: 2 files changed. What was there before is kept as refs/drydock/safe/t1/undo/17.');
+    expect(restored).toEqual([['t1', 'run_1', ref]]);
+    await r.act(() => byText(r.$('[data-testid="restore-dialog"]')!, 'button', 'Undo the restore').click());
+    await waitFor(() => expect(r.$('[data-testid="restore-done"]')!.textContent).toContain('Undone: the files are back as they were before the restore'), r);
+    expect(restored).toEqual([
+      ['t1', 'run_1', ref],
+      ['t1', 'run_1', 'refs/drydock/safe/t1/undo/17'],
+    ]);
+  });
+
+  it('lists the undo points earlier restores kept and restores one with the same preview, after the dialog that made it closed (P127)', async () => {
+    const undo = 'refs/drydock/safe/t1/undo/1700000000000';
+    const asked: unknown[][] = [];
+    const restored: unknown[][] = [];
+    const s = setup({
+      // a run with no safe point of its own still offers the undo points of the task
+      runExplain: async () => withFiles({ executions: explanation().executions, undoPoints: [{ ref: undo, at: 1700000000000, restored: 'refs/drydock/safe/t1/run_0/101' }] }),
+      runRestorePreview: async (...a: unknown[]) => (asked.push(a), { ref: undo, allowed: true, changes: [{ path: 'calc.go', change: 'changed' }] }),
+      runRestore: async (...a: unknown[]) => (restored.push(a), { ref: undo, undoRef: 'refs/drydock/safe/t1/undo/1700000000500', changed: 1 }),
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" />, s);
+    await ready(r);
+    await r.act(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Put files back...').click());
+    const dlg = await waitFor(() => r.$('[data-testid="restore-dialog"]')!, r);
+    const list = dlg.querySelector('[data-testid="undo-points"]')!;
+    expect(list.querySelector('legend')!.textContent).toBe('Undo an earlier restore');
+    const radio = list.querySelector<HTMLInputElement>('input[type="radio"]')!;
+    expect(radio.closest('label')!.textContent).toContain('As the files were before the restore of');
+    expect(radio.closest('label')!.textContent).toContain('(to a safe point of another run)');
+    await r.act(() => radio.click());
+    await waitFor(() => expect(r.$('[data-testid="restore-files"]')!.textContent).toContain('calc.go'), r);
+    expect(asked).toEqual([['t1', 'run_1', undo]]);
+    await r.act(() => byText(dlg, 'button', 'Put the files back').click());
+    await waitFor(() => expect(r.$('[data-testid="restore-done"]')!.textContent).toContain('refs/drydock/safe/t1/undo/1700000000500'), r);
+    expect(restored).toEqual([['t1', 'run_1', undo]]);
+  });
+
+  it('runs a cancelled task again as a new task and opens it; a completed one says why not', async () => {
+    const asked: unknown[][] = [];
+    const went: string[] = [];
+    const ended = (status: string, runAgain: boolean, runAgainWhy?: string) =>
+      withFiles({
+        run: { id: 'run_1', workflow: 'iuv', status, created: 1, updated: 2 },
+        actions: { resume: false, timeTravel: false, replay: false, restore: false, restoreWhy: "The task's worktree is gone, so there is nothing to put back.", runAgain, runAgainWhy, lease: { held: false, mine: false, driving: false } },
+      });
+    const s = setup({
+      runExplain: async () => ended('CANCELLED', true),
+      taskGet: async () => ({ task: { id: 't1', seq: 3, title: 'Subtract', status: 'CANCELLED' } }) as never,
+      taskRunAgain: async (...a: unknown[]) => (asked.push(a), { taskId: 't9', seq: 9, runId: 'run_9', from: 't1' }),
+    });
+    const r = mount(<RunScreen taskId="t1" runId="run_1" onNavigate={(h) => went.push(h)} />, s);
+    await ready(r);
+    const again = await waitFor(() => byText(r.$('[data-testid="run-actions"]')!, 'button', 'Run again as a new task') as HTMLButtonElement, r);
+    expect(again.disabled).toBe(false);
+    expect((byText(r.$('[data-testid="run-actions"]')!, 'button', 'Put files back...') as HTMLButtonElement).disabled).toBe(true);
+    await r.act(() => again.click());
+    const dlg = await waitFor(() => r.$('[data-testid="run-again-confirm"]')!, r);
+    expect(r.$('dialog[open] h2')!.textContent).toBe('Run task #3 again?');
+    expect(dlg.textContent).toContain('Task #3, which was cancelled, stays as it is');
+    await r.act(() => byText(dlg, 'button', 'Run it again').click());
+    await waitFor(() => expect(went).toEqual(['/task/t9']), r);
+    expect(asked).toEqual([['t1']]);
+
+    cleanup();
+    const done = setup({
+      runExplain: async () => ended('COMPLETED', false, 'Task #3 completed and its work was merged: more work on it is a new task.'),
+      taskGet: async () => ({ task: { id: 't1', seq: 3, title: 'Subtract', status: 'COMPLETED' } }) as never,
+    });
+    const r2 = mount(<RunScreen taskId="t1" runId="run_1" />, done);
+    await ready(r2);
+    const off = await waitFor(() => byText(r2.$('[data-testid="run-actions"]')!, 'button', 'Run again as a new task') as HTMLButtonElement, r2);
+    expect(off.disabled).toBe(true);
+    expect(r2.$('[data-testid="run-actions-why"]')!.textContent).toContain('its work was merged');
+  });
+});

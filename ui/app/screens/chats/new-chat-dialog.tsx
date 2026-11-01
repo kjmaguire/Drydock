@@ -179,8 +179,8 @@ export function NewChatDialog(
                   id={id}
                   value={model}
                   models={models}
-                  emptyLabel="adapter default"
-                  placeholder="adapter default"
+                  emptyLabel="CLI default"
+                  placeholder="CLI default"
                   disabled={caps?.modelSelection === false && models.length === 0}
                   onChange={(v) => set(() => (model = v))}
                 />
@@ -192,7 +192,7 @@ export function NewChatDialog(
                   id={id}
                   value={effort}
                   disabled={efforts.length === 0}
-                  options={[{ value: '', label: 'adapter default' }, ...selectValues(efforts)]}
+                  options={[{ value: '', label: 'CLI default' }, ...selectValues(efforts)]}
                   onChange={(v) => set(() => (effort = v))}
                 />
               )}
@@ -203,7 +203,7 @@ export function NewChatDialog(
                   id={id}
                   value={modeNow}
                   disabled={modes.length === 0}
-                  options={modes.length === 0 ? [{ value: '', label: 'agent default' }] : modes.map((x) => ({ value: x, label: `${x}${skipsApprovals(x) ? ' (skips approvals)' : ''}` }))}
+                  options={modes.length === 0 ? [{ value: '', label: 'CLI default' }] : modes.map((x) => ({ value: x, label: `${x}${skipsApprovals(x) ? ' (skips approvals)' : ''}` }))}
                   onChange={(v) => set(() => (mode = v))}
                 />
               )}

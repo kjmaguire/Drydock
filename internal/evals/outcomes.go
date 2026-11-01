@@ -209,16 +209,27 @@ func Record(ctx context.Context, db *storage.DB, taskID string) error {
 	if len(decisions) == 0 {
 		decisions = []string{""}
 	}
+	// a turn Drydock stopped at its wall-time ceiling says so on its decision's outcome (P112)
+	stops := map[string]string{}
+	if sr, err := db.Reader().QueryContext(ctx, `SELECT id, stop_reason FROM routing_decisions WHERE task_id=? AND stop_reason<>''`, taskID); err == nil {
+		for sr.Next() {
+			var id, why string
+			if sr.Scan(&id, &why) == nil {
+				stops[id] = why
+			}
+		}
+		sr.Close()
+	}
 	now := storage.Now()
 	return db.WriteTx(ctx, func(tx *sql.Tx) error {
 		for _, d := range decisions {
 			_, err := tx.ExecContext(ctx, `INSERT INTO routing_outcomes(decision_id,task_id,project_id,outcome,accepted,accepted_at,accepted_by,iterations,ship_count,revise_count,
 				premium_revise_count,escalated,checks_passed,watchdog_trips,tokens_in,tokens_out,tokens_cached,cost_usd,cost_reported_usd,cost_estimated_usd,cost_unknown_rows,
-				cost_source,premium_subscription_units,premium_turns,wall_ms,failure_class,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+				cost_source,premium_subscription_units,premium_turns,wall_ms,failure_class,recorded_at,stop_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 				ON CONFLICT(task_id, decision_id) DO NOTHING`,
 				d, taskID, f.ProjectID, outcome, b2i(outcome == "accepted"), acceptedAt, f.AcceptedBy, f.Iteration, ship, revise,
 				premRevise, b2i(f.Escalated), checks, f.Trips(), f.Tokens.Input, f.Tokens.Output, f.Tokens.Cached, f.Total.Known(), f.Total.ReportedUSD, f.Total.EstimatedUSD, f.Total.UnknownRows,
-				cs, f.PremiumTokens.Total(), f.PremiumTurns, wall, class, now)
+				cs, f.PremiumTokens.Total(), f.PremiumTurns, wall, class, now, stops[d])
 			if err != nil {
 				return err
 			}

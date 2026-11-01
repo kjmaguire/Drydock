@@ -203,6 +203,7 @@ func (a *captureAdapter) Start(ctx context.Context, pm proc.Manager, spec agents
 		}
 	}
 	if a.probe && cs.URL != "" {
+		playAgentIn(pm) // the test process plays the agent (decision P122)
 		pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		s, err := connectMCP(pctx, cs.URL, cs.Tok)
 		if err != nil {
@@ -250,6 +251,19 @@ func openWith(t *testing.T, extra map[string]agents.Adapter) *app {
 		Rules:   []fakeagent.Rule{{Match: "independent reviewer", Steps: []fakeagent.Step{{Say: `{"verdict":"SHIP","feedback":""}`}}}},
 		Default: []fakeagent.Step{{Write: &fakeagent.WriteSpec{Path: "calc.go", Content: impl}}, {Say: "implemented Subtract"}},
 	})
+}
+
+// playAgent is for a test whose own process plays the agent of a run and connects to its endpoint (a go-sdk client reading the
+// run's config): the gateway's peer check (decision P122) answers only the run's processes, so the test process is bound to the
+// run, as the runtime binds an agent's process. TestPeerCheckRefusesAProcessOutsideTheAgent covers the refusal.
+func (a *app) playAgent(runID string) { a.c.MCPGateway().BindPeer(runID, os.Getpid()) }
+
+// playAgentIn is playAgent for an adapter test double that connects to the gateway from its own Start, in this process: the
+// runtime's process manager binds what it is told.
+func playAgentIn(pm proc.Manager) {
+	if b, ok := pm.(interface{ Bind(pid int) }); ok {
+		b.Bind(os.Getpid())
+	}
 }
 
 func openScripted(t *testing.T, extra map[string]agents.Adapter, sc fakeagent.Script) *app {
@@ -424,7 +438,7 @@ func TestPipelineTurnsGetOneGatewayEntryAndTheRunEndsWithTheTurn(t *testing.T) {
 		}
 		// while the session was alive: the allowlist was the read-only default (plus, for the worker outside a sandbox, the
 		// permission tool its CLI asks: ext_permprompt.go), and a tool outside it was refused
-		want := []string{"fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "skills"}
+		want := []string{"fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "security_findings", "skills"}
 		if who == "work" {
 			want = append(want, "permission_prompt")
 		}
@@ -646,6 +660,7 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 			t.Fatalf("config file of the session: %v", err)
 		}
 		url, tok := parseSingleEntry(t, raw)
+		a.playAgent(m.RunID)
 		s, err := connectMCP(context.Background(), url, tok)
 		if err != nil {
 			t.Fatal(err)
@@ -658,10 +673,10 @@ func TestRealMCPClientAgainstTheSharedGatewayOverRealData(t *testing.T) {
 	fm, fs, furl, _ := spawn(frontend, "")
 
 	// the allowlist is per agent: the pack is attached to the backend role only
-	if got := toolNames(t, bs); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_pack", "search_requirements", "skills") {
+	if got := toolNames(t, bs); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_pack", "search_requirements", "security_findings", "skills") {
 		t.Fatalf("backend tools: %v", got)
 	}
-	if got := toolNames(t, fs); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "skills") {
+	if got := toolNames(t, fs); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "security_findings", "skills") {
 		t.Fatalf("frontend tools (no pack attached): %v", got)
 	}
 
@@ -806,6 +821,7 @@ func TestActToolsOverTaskRoomAndHandoffServices(t *testing.T) {
 			t.Fatal(err)
 		}
 		url, tok := parseSingleEntry(t, raw)
+		a.playAgent(m.RunID)
 		s, err := connectMCP(context.Background(), url, tok)
 		if err != nil {
 			t.Fatal(err)
@@ -816,7 +832,7 @@ func TestActToolsOverTaskRoomAndHandoffServices(t *testing.T) {
 
 	// off by default
 	s0, _ := spawn(worker)
-	if got := toolNames(t, s0); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "skills") {
+	if got := toolNames(t, s0); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "security_findings", "skills") {
 		t.Fatalf("default tools: %v", got)
 	}
 	// a human turns them on for the project
@@ -833,11 +849,11 @@ func TestActToolsOverTaskRoomAndHandoffServices(t *testing.T) {
 	}
 
 	ws, wm := spawn(worker)
-	if got := toolNames(t, ws); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "skills", "task", "room", "handoff") {
+	if got := toolNames(t, ws); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "security_findings", "skills", "task", "room", "handoff") {
 		t.Fatalf("worker tools: %v", got)
 	}
 	rs, _ := spawn(reviewer)
-	if got := toolNames(t, rs); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "skills", "room", "handoff") {
+	if got := toolNames(t, rs); !sameSet(got, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "security_findings", "skills", "room", "handoff") {
 		t.Fatalf("a reviewer gets room and handoff, not task: %v", got)
 	}
 
@@ -1066,7 +1082,7 @@ func TestRoomReplyTurnGetsTheGatewayEntryToo(t *testing.T) {
 	if allowed := strings.Join(s.Spec.AllowedTools, ","); allowed != "mcp__drydock__*" {
 		t.Fatalf("allowed tools %v", s.Spec.AllowedTools)
 	}
-	if !sameSet(s.Tools, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "skills") {
+	if !sameSet(s.Tools, "fetch_range", "propose_memory", "read_range", "search_memory", "search_requirements", "security_findings", "skills") {
 		t.Fatalf("tools %v", s.Tools)
 	}
 	if !strings.Contains(s.ReadRange, "package gocalc") {

@@ -5,15 +5,20 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/kjmaguire/drydock/internal/agents/manifests"
 	rt "github.com/kjmaguire/drydock/internal/agents/runtime"
 	"github.com/kjmaguire/drydock/internal/chats"
 	"github.com/kjmaguire/drydock/internal/mcp"
+	"github.com/kjmaguire/drydock/internal/packs"
+	"github.com/kjmaguire/drydock/internal/peer"
 	"github.com/kjmaguire/drydock/internal/pipeline"
+	"github.com/kjmaguire/drydock/internal/proc"
 	"github.com/kjmaguire/drydock/internal/providers"
 	"github.com/kjmaguire/drydock/internal/repomap"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
@@ -56,11 +61,13 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 	// a chat session's skills tool serves the library skills chosen for the chat (ext_chats.go, decision P60); every other run
 	// keeps the project's accepted skills
 	ws.Skills = chatSkillsTool{c: c, inner: ws.Skills}
-	ws.Sandbox = mcpSandbox{c} // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
+	ws.Sandbox = mcpSandbox{c}   // ext_sandbox.go; allowed only to sandboxed worker turns (mcpAttach)
+	ws.Security = mcpSecurity{c} // ext_security_check.go; the role table's security_findings column (decision P131)
 	if repomap.Available() {
 		ws.RepoMap = mcpRepoMap{c} // ext_repomap.go; without CGO the tool answers mcp.RepoMapGatedMessage
 	}
-	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions()})
+	gw, err := mcp.New(mcp.Options{DataDir: c.cfg.DataDir, DB: c.DB, Bus: c.Bus, Proc: c.cfg.Procs, Scanner: secretadapt.MCP(c.Scanner), Workspace: ws, Credentials: lateMCP{c}, Approver: lateMCP{c}, Permissions: c.permissions(),
+		PeerOwner: peerOwner, PeerMember: proc.InTree})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -95,7 +102,7 @@ func startMCP(ctx context.Context, c *Core) (map[string]Method, func(), error) {
 			if !known {
 				return nil, fmt.Errorf("unknown adapter %q", p.Adapter)
 			}
-			if _, canTry, why := adapterMCPKind(p.Adapter); !canTry {
+			if _, canTry, why := c.adapterMCPKind(p.Adapter); !canTry {
 				return nil, fmt.Errorf("%s", why)
 			}
 			v := "0"
@@ -159,22 +166,43 @@ type mcpPlan struct {
 	Servers    []mcp.ServerSpec // the project's own MCP servers this agent was granted (ext_mcpservers.go)
 }
 
-// readTools are the Workspace tools every role gets: they only read, or propose what a person then decides. repo_map is among them in a build with the tree-sitter
-// parser (CGO); a build without it has no repo map and does not offer the tool (decisions D5, P62).
-var readTools = func() []string {
-	// propose_memory writes nothing an agent reads: a proposal waits for a person (P92)
-	t := []string{"propose_memory", "read_range", "search_memory", "search_requirements", "skills"}
-	if repomap.Available() {
-		t = append(t, "repo_map")
+// customMCP says whether adapter is a person's own CLI (decision P115) and, when its manifest has an mcp section, how its CLI
+// takes the MCP configuration (decision P117).
+func (c *Core) customMCP(adapter string) (custom bool, how *manifests.CustomMCP) {
+	if c.Connections == nil || c.Connections.Registry == nil {
+		return false, nil
 	}
-	return t
-}()
+	m, ok := c.Connections.Registry.Set.Get(adapter)
+	if !ok || !m.Meta.Custom {
+		return false, nil
+	}
+	how, _ = m.CustomMCP() // a loaded manifest validated, so an error cannot happen here; nil is "declares none" either way
+	return true, how
+}
 
-// adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the configuration can be generated but no real run has proven it, so the human may
-// choose to attach the gateway anyway (mcp.try.set). A CLI with no known mechanism (Antigravity) can never be tried.
-func adapterMCPKind(adapter string) (verified, canTry bool, why string) {
+// mcpProvider is the provider mcp.ConfigFor knows an adapter by: a person's own CLI is "custom".
+func (c *Core) mcpProvider(adapter string) string {
+	if custom, _ := c.customMCP(adapter); custom {
+		return "custom"
+	}
+	return adapter
+}
+
+// adapterMCPKind reports whether the generated configuration of an adapter is verified (and why not), plus canTry: the
+// configuration can be generated but no real run has proven it, so the human may choose to attach the gateway anyway
+// (mcp.try.set). A CLI with no known mechanism (Antigravity, a person's own CLI whose manifest has no mcp section) can never be
+// tried.
+func (c *Core) adapterMCPKind(adapter string) (verified, canTry bool, why string) {
+	if custom, how := c.customMCP(adapter); custom && how == nil {
+		return false, false, adapter + ": its manifest has no mcp section, so Drydock does not know how this CLI takes an MCP configuration"
+	}
+	return adapterMCPKind(c.mcpProvider(adapter), adapter)
+}
+
+// adapterMCPKind is Core.adapterMCPKind for a provider ConfigFor knows; adapter is the id the reason names.
+func adapterMCPKind(provider, adapter string) (verified, canTry bool, why string) {
 	probe := mcp.Endpoint{RunID: "probe", URL: "http://127.0.0.1:1/mcp/probe", Token: "probe", ShimCommand: []string{"drydock", "mcp-shim"}}
-	cfg, err := mcp.ConfigFor(adapter, probe)
+	cfg, err := mcp.ConfigFor(provider, probe)
 	switch {
 	case errors.Is(err, mcp.ErrMCPUnknown):
 		return false, false, adapter + ": per-run MCP configuration is unproven for this CLI (docs/mcp.md section 10)"
@@ -204,7 +232,7 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 	if c.MCPGateway() == nil {
 		return no("the MCP gateway is not running")
 	}
-	if ok, canTry, why := adapterMCPKind(adapter); !ok {
+	if ok, canTry, why := c.adapterMCPKind(adapter); !ok {
 		if !canTry || !c.mcpTryAllowed(ctx, adapter) {
 			return no("%s", why)
 		}
@@ -223,32 +251,56 @@ func (c *Core) planMCP(ctx context.Context, agentID, projectID, taskID, adapter,
 		}
 	}
 	pl.Info = mcp.RunInfo{ProjectID: projectID, TaskID: taskID, AgentID: agentID, Role: role, Worktree: cwd}
-	allow := append([]string(nil), readTools...)
+	// the role's row of the project's table (docs/mcp.md section 3, decision P115); the act column only while the project lets
+	// agents act (mcp.act_tools)
+	row := policyRow(role)
+	tab := c.roleTable(ctx, projectID)
+	var packAllow packs.Allowance
 	if k := c.Knowledge(); k != nil {
-		// Packs.AllowFor lists the attached packs of this project/agent/role. Only its search_pack part is applied: the live-pack
-		// docs-server tools are called by search_pack itself through a service run, never by the agent directly.
-		if al, err := k.Packs.AllowFor(ctx, projectID, agentID, role); err == nil && al.SearchPack {
-			allow = append(allow, "search_pack")
-		}
+		packAllow, _ = k.Packs.AllowFor(ctx, projectID, agentID, role)
 	}
-	if c.actToolsEnabled(ctx, projectID) {
-		if strings.EqualFold(strings.TrimSpace(role), "reviewer") {
-			allow = append(allow, "room", "handoff")
-		} else {
-			allow = append(allow, "task", "room", "handoff")
+	var allow []string
+	for _, t := range tab.WorkspaceTools(row, c.actToolsEnabled(ctx, projectID), repomap.Available()) {
+		if t == "search_pack" && !packAllow.SearchPack {
+			continue // search_pack reads only attached packs: none attached, nothing to search
 		}
+		allow = append(allow, t)
 	}
 	sort.Strings(allow)
 	pl.Policy = mcp.RunPolicy{Allow: map[string][]string{mcp.WorkspaceServerID: allow}}
 	pl.Tools = append(append([]string(nil), allow...), mcp.ToolFetchRange)
-	// servers the human added to this project and granted to this agent (deny by default: no grant, no server)
-	if specs, grants, exposed := c.mcpServersForRun(ctx, projectID, agentID); len(specs) > 0 {
-		pl.Servers = specs
-		for id, tools := range grants {
-			pl.Policy.Allow[id] = tools
+	// servers the human added to this project and granted to this agent (deny by default: no grant, no server), as far as the
+	// role's row lets it reach that kind of server
+	columns := map[string]string{}
+	if specs, grants, _ := c.mcpServersForRun(ctx, projectID, agentID); len(specs) > 0 {
+		cols := c.serverColumns(ctx, specs)
+		for _, sp := range specs {
+			if !tab.Allowed(row, cols[sp.ID]) {
+				continue
+			}
+			columns[sp.ID] = cols[sp.ID]
+			pl.Servers = append(pl.Servers, sp)
+			pl.Policy.Allow[sp.ID] = grants[sp.ID]
 		}
-		pl.Tools = append(pl.Tools, exposed...)
 	}
+	// the docs servers of the live packs attached for this agent (docs/expert-packs.md): the pack's tool of the catalog server,
+	// through the same gateway pipeline (catalog trust and cache, egress limits, untrusted marking), under the role's row
+	c.addLivePackServers(ctx, &pl, tab, row, packAllow, columns)
+	// the project's CEL rules and the task's narrowing only take tools away, on every list and call (RunPolicy.Refuse)
+	ruleSpecs, err := c.policyRules(ctx, projectID)
+	if err != nil {
+		return no("the project's tool rules could not be read: %v", err)
+	}
+	var rules *mcp.RuleSet
+	if len(ruleSpecs) > 0 {
+		if rules, err = mcp.CompileRules(ruleSpecs); err != nil {
+			return no("the project's tool rules do not compile, so no tools are given until a person fixes them: %v", err)
+		}
+	}
+	narrow, narrowed := c.taskNarrowing(ctx, taskID)
+	pl.Policy.Refuse = toolRefuser(rules, narrow, narrowed, mcp.ToolFacts{Role: row, Adapter: adapter, Task: taskID != ""}, columns)
+	pl.Tools = append(pl.Tools, exposedTools(pl.Servers, pl.Policy.Allow)...)
+	pl.Tools = keepAllowed(pl.Policy, pl.Tools)
 	pl.Attach = true
 	return pl
 }
@@ -284,7 +336,9 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		}
 		pl.Info.WSL = &p
 	}
-	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers})
+	// the peer check (decision P122) follows the agent's processes on this computer; an agent in a WSL distro connects from
+	// inside the distro, where neither the TCP table nor the job can follow it
+	ep, err := gw.StartRun(mcp.RunConfig{Info: pl.Info, DataClass: pl.DataClass, Policy: pl.Policy, Servers: pl.Servers, PeerCheck: !cfg.Spec.IsWSL()})
 	if err != nil {
 		return rt.MCPAttachment{}, err
 	}
@@ -292,7 +346,7 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		gw.EndRun(runID)
 		_ = os.Remove(ep.ConfigPath)
 	}
-	cc, err := mcp.ConfigFor(cfg.Adapter, *ep, mcp.ConfigOptions{Tools: pl.Tools})
+	cc, err := mcp.ConfigFor(c.mcpProvider(cfg.Adapter), *ep, mcp.ConfigOptions{Tools: pl.Tools})
 	if err == nil {
 		err = mcp.WriteConfig(ep.ConfigPath, cc)
 	}
@@ -300,9 +354,20 @@ func (c *Core) mcpAttach(ctx context.Context, cfg *rt.Config, runID string) (rt.
 		release()
 		return rt.MCPAttachment{}, errors.New("could not write the MCP config: " + scrubPath(err))
 	}
+	if _, how := c.customMCP(cfg.Adapter); how != nil && how.Via == manifests.CustomMCPViaFile {
+		// a person's own CLI that reads its MCP configuration from its working folder (decision P117) gets the same file there
+		removeFile, ferr := placeCustomMCPFile(ctx, cfg.Spec.Cwd, how.File, cc.JSON)
+		if ferr != nil {
+			release()
+			return rt.MCPAttachment{}, ferr
+		}
+		endRun := release
+		release = func() { removeFile(); endRun() }
+	}
 	cfg.Spec.MCPConfigPath = ep.ConfigPath
 	cfg.Spec.AllowedTools = append(append([]string(nil), cfg.Spec.AllowedTools...), cc.AllowedTools...)
-	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release}, nil
+	return rt.MCPAttachment{Attached: true, Unverified: pl.Unverified, Transport: cc.Transport, Tools: pl.Tools, Release: release,
+		BindProcess: func(pid int) { gw.BindPeer(runID, pid) }}, nil
 }
 
 // scrubPath keeps an OS error short: it names the path and the failure, never file content.
@@ -355,7 +420,7 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 	sort.Strings(names)
 	rows := make([]adapterRow, 0, len(names))
 	for _, id := range names {
-		ok, canTry, why := adapterMCPKind(id)
+		ok, canTry, why := c.adapterMCPKind(id)
 		trying := canTry && c.mcpTryAllowed(ctx, id)
 		rows = append(rows, adapterRow{Adapter: id, Attached: ok || trying, Reason: why, CanTry: canTry, Trying: trying})
 	}
@@ -365,4 +430,14 @@ func (c *Core) mcpStatusReport(ctx context.Context) map[string]any {
 		addr = gw.Addr()
 	}
 	return map[string]any{"running": gw != nil, "address": addr, "adapters": rows}
+}
+
+// peerOwner is the gateway's PeerOwner (decision P122): the process of a loopback connection's client end, or
+// mcp.ErrPeerUnsupported where this platform cannot find it.
+func peerOwner(client, server netip.AddrPort) (int, error) {
+	pid, err := peer.Owner(client, server)
+	if errors.Is(err, peer.ErrUnsupported) {
+		return 0, mcp.ErrPeerUnsupported
+	}
+	return pid, err
 }

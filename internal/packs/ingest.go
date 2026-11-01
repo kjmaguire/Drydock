@@ -38,6 +38,8 @@ type RefreshResult struct {
 	Quarantined int            `json:"quarantined"`
 	Redactions  int            `json:"redactions"`
 	Digest      *Digest        `json:"digest,omitempty"`
+	// Sources is the commit each git_docs source was read at ("sources[0]": "<commit>"); the new version records it.
+	Sources map[string]string `json:"sources,omitempty"`
 }
 
 // Digest is the changed-pages digest of one refresh. It is built from the page diffs without any model; Summary is filled
@@ -141,7 +143,8 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		MaxBytes: m.Crawl.MaxPageBytes, Timeout: m.Crawl.Timeout.D(), AllowLoopback: s.o.AllowLoopbackFetch,
 	}, s.o.FetchTransport)
 	packDir := filepath.Join(s.o.Dir, packID)
-	pages, skipped, err := s.discover(ctx, m, f, packDir)
+	commits := map[string]string{}
+	pages, skipped, err := s.discover(ctx, m, f, packDir, commits)
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("listing sources: %w", err)
 	}
@@ -171,6 +174,9 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 	}
 
 	res = RefreshResult{PackID: packID, Pages: len(pages), Skipped: skipped, Reasons: map[string]int{}}
+	if len(commits) > 0 {
+		res.Sources = commits
+	}
 	for _, r := range results {
 		switch r.status {
 		case "failed":
@@ -264,8 +270,8 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		sctx, c2 := context.WithTimeout(ctx, 60*time.Second)
 		if sum, e := s.o.Summarizer.Summarize(sctx, *digest, allowT); e == nil {
 			digest.Summary = s.o.Scanner.Redact(sum)
-		} else {
-			s.o.Logf("packs: digest summary for %s: %v", packID, e)
+		} else if !errors.Is(e, ErrNoModel) { // no model set up is the ordinary case, not a fault
+			s.o.Logf("packs: digest summary for %s: %v", packID, s.o.Scanner.Redact(e.Error()))
 		}
 		c2()
 	}
@@ -276,8 +282,9 @@ func (s *Store) Refresh(ctx context.Context, by, packID string, opt RefreshOptio
 		pageEvents = pageEvents[:0]
 		if res.NewVersion {
 			dj, _ := json.Marshal(digest)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO pack_versions(pack_id,seq,version,created_at,pages,chunks,added,changed,removed,skipped,failed,digest,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				packID, seq, version, now, len(pages), 0, res.Added, res.Changed, res.Removed, res.Skipped, res.Failed, string(dj), digest.Summary); err != nil {
+			sj, _ := json.Marshal(commits)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO pack_versions(pack_id,seq,version,created_at,pages,chunks,added,changed,removed,skipped,failed,digest,summary,sources) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				packID, seq, version, now, len(pages), 0, res.Added, res.Changed, res.Removed, res.Skipped, res.Failed, string(dj), digest.Summary, string(sj)); err != nil {
 				return err
 			}
 		}
@@ -416,14 +423,17 @@ func (s *Store) existingPages(ctx context.Context, packID string) (map[string]ex
 func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPage, co ChunkOptions, force bool, budget *sizeBudget) pageResult {
 	r := pageResult{page: p}
 	var raw, format, title string
-	if p.Local != "" {
+	switch {
+	case p.Data != nil:
+		raw, format = string(p.Data), p.Format
+	case p.Local != "":
 		b, err := os.ReadFile(p.Local)
 		if err != nil {
 			r.status, r.reason = "failed", "read error"
 			return r
 		}
 		raw, format = string(b), p.Format
-	} else {
+	default:
 		cond := Conditional{}
 		if ex.id != 0 && !force && ex.status == "active" {
 			cond = Conditional{ETag: ex.etag, LastModified: ex.lastModified}
@@ -488,6 +498,13 @@ func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPag
 		raw, title = md, t
 	case "mdx":
 		raw = StripMDX(raw)
+	case FormatPDF, FormatDOCX:
+		doc, err := readDocument(ctx, format, []byte(raw))
+		if err != nil {
+			r.status, r.reason = "failed", documentReason(err)
+			return r
+		}
+		raw, title = doc.Markdown, doc.Title
 	}
 	text, _ := Normalize(raw)
 	if strings.TrimSpace(strings.ReplaceAll(text, string(HiddenMark), "")) == "" {
@@ -502,7 +519,13 @@ func (s *Store) loadPage(ctx context.Context, f *Fetcher, p Page, ex existingPag
 	red := RedactSecrets(s.o.Scanner, text)
 	r.redact = red.Count
 	r.text = red.Text
-	pageTitle, chunks := ChunkMarkdown(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	var pageTitle string
+	var chunks []Chunk
+	if format == FormatPDF {
+		pageTitle, chunks = chunkPDF(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	} else {
+		pageTitle, chunks = ChunkMarkdown(r.text, firstNonEmpty(title, pageTitleFromURL(p.URL)), co)
+	}
 	r.text, _ = StripHidden(r.text) // the stored page never contains hidden characters (the chunks already carry their scan flags)
 	r.title = strings.TrimSpace(pageTitle)
 	if r.title == "" {
@@ -582,8 +605,8 @@ func (s *Store) diffChunks(ctx context.Context, tx *sql.Tx, packID string, pageI
 		if c.quarantined {
 			q = 1
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO pack_chunks(pack_id,page_id,ordinal,heading_path,body,token_est,chunk_hash,version_added,seq_added,risk,flags,quarantined) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-			packID, pageID, c.Ordinal, c.HeadingPath, c.Body, c.TokenEst, c.Hash, version, seq, c.risk, c.flags, q); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO pack_chunks(pack_id,page_id,ordinal,heading_path,page,body,token_est,chunk_hash,version_added,seq_added,risk,flags,quarantined) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			packID, pageID, c.Ordinal, c.HeadingPath, c.Page, c.Body, c.TokenEst, c.Hash, version, seq, c.risk, c.flags, q); err != nil {
 			return err
 		}
 	}

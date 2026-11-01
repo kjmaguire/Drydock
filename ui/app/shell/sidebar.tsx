@@ -16,7 +16,7 @@ import {
   Cpu,
   House,
   Inbox,
-  Library,
+  LayoutTemplate,
   ListTodo,
   MessagesSquare,
   PanelLeftClose,
@@ -24,11 +24,12 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   type IconNode,
 } from 'lucide';
 import type { LocalView } from '../api/localClient.ts';
-import { ownsKeys } from '../lib/keys.ts';
+import { comboFor, ownsKeys, shellKey } from '../lib/keys.ts';
 import { hubOf, isWorkspaceHub, type Hub, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { query, services, watch } from '../state/services.tsx';
@@ -223,10 +224,16 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
   handle.signal.addEventListener('abort', off);
   const engine = query(handle, { load: () => s.client.localGet(), when: (e) => e.type === 'local.changed' });
 
-  // "[" folds and unfolds the sidebar, as in Linear; never while typing or inside a widget that owns its keys
+  // "[" folds and unfolds the sidebar, as in Linear; never while typing or inside a widget that owns its keys. Ctrl+B does too
+  // (decision P129), also from a field, since it types nothing there; never inside the terminal or the editor
   window.addEventListener(
     'keydown',
     (e) => {
+      if (shellKey(e) === 'sidebar') {
+        e.preventDefault();
+        s.ui.toggleSidebar();
+        return;
+      }
       if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || ownsKeys(e.target)) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
@@ -238,7 +245,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
 
   // roving focus: the arrow keys move up and down the sidebar's links (the switcher's menu keeps its own keys)
   const onKey = (e: KeyboardEvent) => {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    if (e.altKey || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return; // Alt+arrows go to another room or chat
     const nav = e.currentTarget as HTMLElement;
     if (!(e.target instanceof HTMLElement) || !e.target.hasAttribute('data-nav')) return;
     const items = Array.from(nav.querySelectorAll<HTMLElement>('[data-nav]')).filter((n) => n.offsetParent !== null);
@@ -283,7 +290,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     ];
 
     return (
-      <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar">
+      <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar" data-region="sidebar">
         <nav aria-label="Main" mix={[navCss, on<HTMLElement, 'keydown'>('keydown', onKey)]}>
           <div mix={scrollCss}>
           <div mix={headCss}>
@@ -306,10 +313,10 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
               <Icon icon={rail ? PanelLeftOpen : PanelLeftClose} size={15} />
             </button>
           </div>
-          <button type="button" mix={[searchCss, on('click', () => s.ui.setPalette(true))]} aria-label="Search and jump (Ctrl+K)" title="Search or run a command (Ctrl+K)">
+          <button type="button" mix={[searchCss, on('click', () => s.ui.setPalette(true))]} aria-label={`Search and jump (${comboFor('palette')})`} title={`Search or run a command (${comboFor('palette')})`}>
             <Icon icon={Search} size={14} />
             <span class="lbl">Search</span>
-            <kbd>Ctrl K</kbd>
+            <kbd>{comboFor('palette').split('+').join(' ')}</kbd>
           </button>
 
           <ul mix={listCss} role="list">
@@ -403,7 +410,9 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
             {link({ id: 'nav-side-agents', label: 'Agents', icon: Bot, href: routes.agents.href(), current: is('agents') })}
             {link({ id: 'nav-side-integrations', label: 'Integrations', icon: Blocks, href: routes.integrations.href(), current: is('integrations') })}
             {link({ id: 'nav-side-models', label: 'Models', icon: Cpu, href: routes.models.href(), current: is('models') })}
-            {link({ id: 'nav-library', label: 'Library', icon: Library, href: routes.library.href(), current: is('library') })}
+            {/* the Library's two halves, each found in one click (decision P106) */}
+            {link({ id: 'nav-library', label: 'Agent templates', icon: LayoutTemplate, href: routes.library.href(), current: is('library') })}
+            {link({ id: 'nav-library-skills', label: 'Skills', icon: Sparkles, href: routes.librarySkills.href(), current: is('skill-library') })}
           </ul>
           </div>
         <div mix={footCss}>

@@ -23,11 +23,15 @@ import (
 // DefaultHub is the Hugging Face Hub.
 const DefaultHub = "https://huggingface.co"
 
-// Hub reads model repositories on the Hugging Face Hub and downloads their GGUF files. Only public repositories: Drydock
-// holds no Hugging Face token.
+// Hub reads model repositories on the Hugging Face Hub and downloads their GGUF files: public repositories, and gated ones
+// once the person gave Drydock a Hugging Face token and accepted the model's licence on the Hub (decision P111).
 type Hub struct {
 	BaseURL string // DefaultHub; a test's fixture server
 	HTTP    *http.Client
+	// Token is the person's Hugging Face token ("" when there is none). It is sent as the Authorization header of a file
+	// download from the Hub's own address and nowhere else: not with a listing, and not to the host a download is redirected
+	// to (the Hub sends the bytes from a CDN at a signed address that needs no token).
+	Token func() string
 }
 
 // Repo is a model repository on the Hub.
@@ -37,16 +41,22 @@ type Repo struct {
 	Likes     int64     `json:"likes"`
 	Updated   time.Time `json:"updated"`
 	Tags      []string  `json:"tags,omitempty"`
+	// Gated is how the Hub gates the files ("auto" or "manual": a person accepts the licence, which the authors may have to
+	// approve), "" for an open repository.
+	Gated string `json:"gated,omitempty"`
 }
 
 // Variant is one quantization of a repository's model: one GGUF file, or the shards of one split file.
 type Variant struct {
 	Name  string   `json:"name"` // "Q4_K_M", or the file's stem when it names no quantization
 	Files []File   `json:"files"`
-	Size  uint64   `json:"sizeBytes"`
+	Size  uint64   `json:"sizeBytes"` // the files and the projector
 	Quant string   `json:"quant,omitempty"`
 	Fit   *Fit     `json:"fit,omitempty"`
 	Notes []string `json:"notes,omitempty"`
+	// Projector is the repository's multimodal projector (mmproj), downloaded with the model so it can read images (decision
+	// P111); nil for a text model.
+	Projector *File `json:"projector,omitempty"`
 }
 
 // File is one GGUF file of a repository.
@@ -115,12 +125,7 @@ func (r rawRepo) repo() (Repo, bool) {
 	if id == "" || r.Private {
 		return Repo{}, false
 	}
-	if g, ok := r.Gated.(bool); ok && g {
-		return Repo{}, false // needs a sign-in Drydock does not have
-	}
-	if s, ok := r.Gated.(string); ok && s != "" && s != "false" {
-		return Repo{}, false
-	}
+	gated := gatedOf(r.Gated)
 	tags := []string{}
 	for _, t := range r.Tags {
 		if t == "gguf" || strings.HasPrefix(t, "base_model:") || strings.HasPrefix(t, "license:") || t == "conversational" || t == "text-generation" || t == "endpoints_compatible" || strings.HasPrefix(t, "region:") || strings.HasPrefix(t, "arxiv:") {
@@ -128,7 +133,64 @@ func (r rawRepo) repo() (Repo, bool) {
 		}
 		tags = append(tags, t)
 	}
-	return Repo{ID: id, Downloads: r.Downloads, Likes: r.Likes, Updated: r.LastModified, Tags: tags}, true
+	return Repo{ID: id, Downloads: r.Downloads, Likes: r.Likes, Updated: r.LastModified, Tags: tags, Gated: gated}, true
+}
+
+// gatedOf reads the Hub's gated field: false, or how the files are gated ("auto", "manual"; true is read as "auto").
+func gatedOf(v any) string {
+	switch g := v.(type) {
+	case bool:
+		if g {
+			return "auto"
+		}
+	case string:
+		if g != "" && g != "false" {
+			return g
+		}
+	}
+	return ""
+}
+
+// LicenceURL is the repository's page on the Hub, where a person accepts a gated model's licence.
+func LicenceURL(repo string) string { return DefaultHub + "/" + repo }
+
+// Info reads one repository's listing: whether it is gated (a private one is not found).
+func (h *Hub) Info(ctx context.Context, repo string) (Repo, error) {
+	if !ValidRepo(repo) {
+		return Repo{}, fmt.Errorf("%q is not a repository (owner/name)", repo)
+	}
+	var raw rawRepo
+	if err := h.getJSON(ctx, h.base()+"/api/models/"+repo, &raw); err != nil {
+		return Repo{}, err
+	}
+	if raw.ID == "" && raw.ModelID == "" {
+		raw.ID = repo
+	}
+	r, ok := raw.repo()
+	if !ok {
+		return Repo{}, fmt.Errorf("%s is not a public repository", repo)
+	}
+	return r, nil
+}
+
+// GatedError is a download the Hub refused because the repository is gated: without a token, with a token it does not accept,
+// or for an account that has not been given access (the licence not accepted yet, or not approved by the authors).
+type GatedError struct {
+	Repo     string
+	Status   int  // the Hub's answer (401 or 403); 0 when Drydock refused before asking (no token)
+	HasToken bool // a token was sent
+}
+
+func (e *GatedError) Error() string {
+	page := LicenceURL(e.Repo)
+	switch {
+	case !e.HasToken:
+		return fmt.Sprintf("%s is a gated model: Hugging Face shares its files only with an account that accepted its licence. Accept it at %s, then add a Hugging Face token on this page.", e.Repo, page)
+	case e.Status == http.StatusUnauthorized:
+		return "Hugging Face did not accept the token (HTTP 401): add a new one on this page."
+	default:
+		return fmt.Sprintf("Your Hugging Face account has no access to %s yet: accept its licence at %s (its authors may also have to approve the request).", e.Repo, page)
+	}
 }
 
 // Suggested lists ggml-org's own GGUF repositories, most downloaded first: the models llama.cpp's authors keep current.
@@ -180,8 +242,9 @@ var shard = regexp.MustCompile(`^(.*)-(\d{5})-of-(\d{5})\.gguf$`)
 // quantName finds the quantization in a file name ("Qwen3-8B-Q4_K_M.gguf" is Q4_K_M).
 var quantName = regexp.MustCompile(`(?i)(?:^|[-_.])((?:IQ|Q|TQ|MXFP|NVFP|BF|F)\d{1,2}(?:_[A-Z0-9]{1,3}){0,3})(?:[-_.]|$)`)
 
-// Variants lists the model's GGUF files, grouped by quantization, largest last. Projector files (mmproj, for vision) are
-// left out: Drydock serves text models. A file the Hub has no SHA-256 for is not offered.
+// Variants lists the model's GGUF files, grouped by quantization, largest last. A projector file (mmproj, for vision) is no
+// variant of its own: it goes with each variant, which then reads images too (decision P111). A file the Hub has no SHA-256
+// for is not offered.
 func (h *Hub) Variants(ctx context.Context, repo string) ([]Variant, error) {
 	if !ValidRepo(repo) {
 		return nil, fmt.Errorf("%q is not a repository (owner/name)", repo)
@@ -192,11 +255,22 @@ func (h *Hub) Variants(ctx context.Context, repo string) ([]Variant, error) {
 	}
 	byName := map[string]*Variant{}
 	var order []string
+	var projectors []File
 	for _, e := range tree {
-		if e.Type != "file" || !strings.HasSuffix(strings.ToLower(e.Path), ".gguf") || strings.Contains(strings.ToLower(path.Base(e.Path)), "mmproj") {
+		if e.Type != "file" || !strings.HasSuffix(strings.ToLower(e.Path), ".gguf") {
 			continue
 		}
 		if e.LFS == nil || len(e.LFS.OID) != 64 {
+			continue
+		}
+		if strings.Contains(strings.ToLower(path.Base(e.Path)), "mmproj") {
+			if strings.Trim(strings.TrimSuffix(path.Base(e.Path), ".gguf"), ".") != "" {
+				size := e.LFS.Size
+				if size == 0 {
+					size = e.Size
+				}
+				projectors = append(projectors, File{Path: e.Path, Size: size, SHA256: strings.ToLower(e.LFS.OID)})
+			}
 			continue
 		}
 		base := path.Base(e.Path)
@@ -237,11 +311,47 @@ func (h *Hub) Variants(ctx context.Context, repo string) ([]Variant, error) {
 				v.Notes = append(v.Notes, fmt.Sprintf("split into %d files, %d listed", n, len(v.Files)))
 			}
 		}
+		if p := projectorFor(projectors, path.Dir(v.Files[0].Path)); p != nil {
+			v.Projector = p
+			v.Size += p.Size
+		}
 		out = append(out, *v)
 	}
 	uniqueNames(out)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Size < out[j].Size })
 	return out, nil
+}
+
+// projectorFor picks the projector a variant in dir loads: one in the same folder before one elsewhere, and of those the 16-bit
+// one (F16, then BF16, the precision llama.cpp's own conversions use), then Q8_0, then the first by name.
+func projectorFor(ps []File, dir string) *File {
+	rank := func(p File) int {
+		n := strings.ToUpper(path.Base(p.Path))
+		r := 3
+		switch {
+		case strings.Contains(n, "BF16"):
+			r = 1
+		case strings.Contains(n, "F16"):
+			r = 0
+		case strings.Contains(n, "Q8_0"):
+			r = 2
+		}
+		if path.Dir(p.Path) != dir {
+			r += 10
+		}
+		return r
+	}
+	var best *File
+	for i := range ps {
+		if best == nil || rank(ps[i]) < rank(*best) || (rank(ps[i]) == rank(*best) && ps[i].Path < best.Path) {
+			best = &ps[i]
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	p := *best
+	return &p
 }
 
 // uniqueNames keeps every variant's name distinct, since the name is the model id's second half and the folder a download
@@ -300,7 +410,11 @@ func (h *Hub) Download(ctx context.Context, repo string, v Variant, dir string, 
 		return err
 	}
 	var done uint64
-	for _, f := range v.Files {
+	files := v.Files
+	if v.Projector != nil {
+		files = append(append([]File{}, v.Files...), *v.Projector)
+	}
+	for _, f := range files {
 		base := path.Base(f.Path)
 		if base == "" || base == "." || strings.ContainsAny(base, `/\`) {
 			return fmt.Errorf("bad file name %q", f.Path)
@@ -315,7 +429,7 @@ func (h *Hub) Download(ctx context.Context, repo string, v Variant, dir string, 
 			continue
 		}
 		start := done
-		err := h.downloadFile(ctx, h.base()+"/"+repo+"/resolve/main/"+escapePath(f.Path), f, dst, func(n uint64) {
+		err := h.downloadFile(ctx, repo, h.base()+"/"+repo+"/resolve/main/"+escapePath(f.Path), f, dst, func(n uint64) {
 			report(DownloadProgress{File: base, Done: start + n, Total: v.Size})
 		})
 		if err != nil {
@@ -335,7 +449,7 @@ func escapePath(p string) string {
 	return strings.Join(parts, "/")
 }
 
-func (h *Hub) downloadFile(ctx context.Context, u string, f File, dst string, progress func(n uint64)) error {
+func (h *Hub) downloadFile(ctx context.Context, repo, u string, f File, dst string, progress func(n uint64)) error {
 	if !h.Trusted(u) {
 		return fmt.Errorf("refusing to download from %s", u)
 	}
@@ -365,7 +479,26 @@ func (h *Hub) downloadFile(ctx context.Context, u string, f File, dst string, pr
 	if have > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
 	}
-	client := &http.Client{Transport: h.client().Transport, Timeout: 0} // a model file takes as long as it takes
+	token := ""
+	if h.Token != nil {
+		token = strings.TrimSpace(h.Token())
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	hubHost := req.URL.Host
+	client := &http.Client{Transport: h.client().Transport, Timeout: 0, // a model file takes as long as it takes
+		// the token goes to the Hub's own host only: Go keeps the header on a redirect to a subdomain (cdn-lfs.huggingface.co),
+		// so it is taken off any request that is not for the host it was given to
+		CheckRedirect: func(r *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			if r.URL.Host != hubHost || r.URL.Scheme != via[0].URL.Scheme {
+				r.Header.Del("Authorization")
+			}
+			return nil
+		}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not download %s: %w", path.Base(f.Path), err)
@@ -375,6 +508,9 @@ func (h *Hub) downloadFile(ctx context.Context, u string, f File, dst string, pr
 	case resp.StatusCode == http.StatusPartialContent && have > 0:
 	case resp.StatusCode == http.StatusOK:
 		have = 0 // the server ignored the range: start over
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		// the Hub answers 401 to a gated file without a token, and 403 to an account without access to it
+		return &GatedError{Repo: repo, Status: resp.StatusCode, HasToken: token != ""}
 	default:
 		return fmt.Errorf("could not download %s: HTTP %d", path.Base(f.Path), resp.StatusCode)
 	}

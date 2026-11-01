@@ -43,16 +43,19 @@ func (c *Core) Chats() *chats.Service {
 	return nil
 }
 
-// NeedsYou is the inbox (room.NeedsYou) plus every chat whose CLI waits for the person to allow a tool call, so the count in
-// the top bar is everything that waits for a person. projectID "" lists all of them.
+// NeedsYou is the inbox (room.NeedsYou) plus what the core holds in memory: the agents that failed or need attention and the
+// agent CLIs that are not ready (stateItems, decision P130), and every chat whose CLI waits for the person to allow a tool call,
+// so the count in the top bar is everything that waits for a person. projectID "" lists all of them.
 func (c *Core) NeedsYou(ctx context.Context, projectID string) ([]room.NeedsYouItem, error) {
 	out, err := c.Room.NeedsYou(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 	c.addNeedsContext(ctx, out)
+	out = append(out, c.stateItems(ctx, projectID)...) // agents that failed or need attention, agent CLIs that are not ready (P130)
 	svc := c.Chats()
 	if svc == nil {
+		room.SortNeedsYou(out)
 		return out, nil
 	}
 	for _, a := range svc.Waiting(projectID) {
@@ -88,6 +91,9 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		CheckSkills:    c.checkChatSkills,
 		CheckMCP:       c.checkChatMCP,
 		Instructions:   c.chatInstructions,
+		ClaudeSources:  c.claudeSources,
+		ProjectFor:     c.chatProjectFor,
+		DrydockSession: c.drydockSession,
 		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
 		Logf:           c.logf,
 	}, chats.Options{AskTTL: chatAskTTL})
@@ -176,6 +182,9 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 			}
 			return map[string]bool{"answered": true}, svc.Answer(ctx, p.ID, p.AskID, p.Allow)
 		}),
+		// the import of Claude Code's own chats (decision P109): what can be imported, and the import of the sessions chosen
+		"chat.importList":   bind(func(ctx context.Context, _ struct{}) (any, error) { return svc.ImportClaudeCodeList(ctx) }),
+		"chat.import":       bind(func(ctx context.Context, p chats.ImportReq) (any, error) { return svc.ImportClaudeCode(ctx, p) }),
 		"chat.allowTool":    bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.AllowTool(ctx, p.ID, p.Tool) }),
 		"chat.disallowTool": bind(func(ctx context.Context, p ruleParam) (any, error) { return svc.DisallowTool(ctx, p.ID, p.Tool) }),
 	}
@@ -224,7 +233,7 @@ func (c *Core) planChatMCP(ctx context.Context, cfg *rt.Config) mcpPlan {
 	if c.MCPGateway() == nil {
 		return no("the MCP gateway is not running")
 	}
-	if ok, canTry, why := adapterMCPKind(cfg.Adapter); !ok {
+	if ok, canTry, why := c.adapterMCPKind(cfg.Adapter); !ok {
 		if !canTry || !c.mcpTryAllowed(ctx, cfg.Adapter) {
 			return no("%s", why)
 		}
@@ -266,7 +275,7 @@ func (c *Core) planChatMCP(ctx context.Context, cfg *rt.Config) mcpPlan {
 // chatGateway refuses skills and MCP servers for a chat whose agent CLI cannot be given Drydock's MCP gateway: both reach the
 // chat's session only through it.
 func (c *Core) chatGateway(ctx context.Context, adapter string) error {
-	if ok, canTry, why := adapterMCPKind(adapter); !ok && (!canTry || !c.mcpTryAllowed(ctx, adapter)) {
+	if ok, canTry, why := c.adapterMCPKind(adapter); !ok && (!canTry || !c.mcpTryAllowed(ctx, adapter)) {
 		return fmt.Errorf("skills and MCP servers reach a chat only through Drydock's MCP gateway, and %s", why)
 	}
 	return nil

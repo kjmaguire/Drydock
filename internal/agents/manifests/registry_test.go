@@ -136,24 +136,34 @@ func mustCompat(t *testing.T, ids ...string) *manifests.Compat {
 	return c
 }
 
-func TestAntigravityDetectsButDoesNotStart(t *testing.T) {
+// Antigravity is built as the headless adapter of its documented stream-json mode (decision P115); with no agy installed it
+// says so at Start, and what its manifest leaves unknown does not read as a capability.
+func TestAntigravityBuildsTheDocumentedHeadlessAdapter(t *testing.T) {
 	r := newRegistry(t, manifests.Options{})
 	a, err := r.Build("antigravity")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = a.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "x", Cwd: t.TempDir()})
-	if !errors.Is(err, manifests.ErrNotImplemented) || !strings.Contains(err.Error(), "not implemented: no captured protocol fixtures") {
+	t.Setenv("PATH", t.TempDir())
+	if _, err = a.Start(context.Background(), proc.New(), agents.RunSpec{AgentID: "x", Cwd: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("err %v", err)
 	}
-	t.Setenv("PATH", t.TempDir())
 	d, err := a.Detect(context.Background())
 	if err != nil || d.Installed || d.Status != agents.StatusNotInstalled || d.InstallHint == "" || d.Adapter != "antigravity" {
 		t.Fatalf("%+v %v", d, err)
 	}
 	caps := a.Capabilities()
-	if caps.ToolCallVisibility || caps.SessionResume || caps.Interrupt {
+	if caps.ToolCallVisibility || caps.SessionResume || !caps.Headless || !caps.EffortControl {
 		t.Fatalf("unknown capabilities must not read as true: %+v", caps)
+	}
+	// interrupt is Drydock's own (it ends agy's process, decision P117), not a CLI feature the manifest has to declare
+	if !caps.Interrupt {
+		t.Fatalf("interrupt: %+v", caps)
+	}
+	type argser interface{ Args(agents.RunSpec) []string }
+	got := strings.Join(a.(argser).Args(agents.RunSpec{Effort: "high"}), " ")
+	if got != "-p --input-format stream-json --output-format stream-json --mode default --effort high" {
+		t.Fatalf("argv %q", got)
 	}
 }
 

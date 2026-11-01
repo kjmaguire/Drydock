@@ -1,32 +1,23 @@
-// The GitHub settings page (decision P98; one page since 2026-10-16, on the owner's question "a separate section in settings for
-// just github?"): reached from Integrations, with the gh sign-in on top, Access (the sign-in, issue sync, the MCP server for
+// GitHub's settings (decision P98; one place since 2026-10-16, on the owner's question "a separate section in settings for just
+// github?"; the GitHub row's detail on Integrations since P106, so the list stays beside it): the gh sign-in on top, Access (the sign-in, issue sync, the MCP server for
 // agents), the projects' repositories and the CI runners (runners.spec.ts drives them). Against the real core, whose PATH has no
 // gh (global-setup.ts), so the sign-in says so in the core's words and a repository needs gh.
 import { expect, test, type Page } from '@playwright/test';
 import { createProject, workspaceNav } from './helpers';
 
-/**
- * Opens the GitHub page the way a person does: Integrations, then its GitHub row (workspaceNav). Until the rebuilt Integrations
- * page lists GitHub in its "All integrations" navigation, the page is opened by its address.
- */
-async function openGitHub(page: Page): Promise<void> {
-  await workspaceNav(page, 'nav-integrations');
-  const row = page.getByRole('navigation', { name: 'All integrations' }).locator('a[href="/github"]');
-  if (await row.count()) await row.click();
-  else await page.goto(new URL('/github', page.url()).toString());
-  await expect(page.getByTestId('github-page')).toBeVisible();
-}
-
-test('GitHub: one settings page with the gh sign-in, access, the repositories and the CI runners, reached from Integrations', async ({ page }) => {
+/** Opens GitHub the way a person does: Integrations, then its GitHub row, whose detail opens beside the list (P106). */
+const openGitHub = (page: Page): Promise<void> => workspaceNav(page, 'nav-github');
+test('GitHub: the gh sign-in, access, the repositories and the CI runners, as the GitHub row of Integrations', async ({ page }) => {
   await createProject(page, 'gocalc-github');
 
   await openGitHub(page);
-  await expect(page).toHaveURL(/\/github$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'GitHub', exact: true })).toBeVisible();
-  // its hub is Integrations: the sidebar marks it, and the header's link leads back to it
+  await expect(page).toHaveURL(/\/integrations\/github$/);
+  // the list stays beside it, with GitHub chosen; the sidebar marks Integrations
+  const list = page.getByRole('navigation', { name: 'All integrations' });
+  await expect(list.locator('[data-testid="integration-row"][data-key="github"]')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByRole('heading', { level: 1, name: 'Integrations', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main' }).getByTestId('nav-side-integrations')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('gh-crumb')).toHaveAttribute('href', '/integrations');
-  await expect(page.getByTestId('github-page').locator('header [data-testid=learn-more][data-topic=github]')).toHaveAttribute('href', '/guide/github');
+  await expect(page.getByTestId('gh-crumb')).toHaveCount(0);
 
   // the sign-in: the harness has no gh, and the page says so with the fix; there is no sign-in button of Drydock's own
   const sign = page.getByTestId('gh-signin-state');
@@ -66,17 +57,11 @@ test('GitHub: one settings page with the gh sign-in, access, the repositories an
   await expect(page.getByTestId('agent-detail').getByTestId('cli-gateway')).toBeVisible();
   await expect(page.getByTestId('ci-runners-section')).toHaveCount(0);
 
-  // All integrations goes back to Integrations
-  await openGitHub(page);
-  await page.getByTestId('gh-crumb').click();
-  await expect(page).toHaveURL(/\/integrations$/);
-
-  // the Integrations page keeps GitHub as a row of its list, a link to this page (decision P98); its detail there points here too
-  await workspaceNav(page, 'nav-integrations');
-  await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-kind="github"]').click();
-  await expect(page).toHaveURL(/\/github$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'GitHub' })).toBeVisible();
-  await page.goto(new URL('/integrations/github', page.url()).toString());
-  await page.getByTestId('github-page-link').click();
-  await expect(page).toHaveURL(/\/github$/);
+  // the old address /github opens the same row; another row of the list is one click away
+  await page.goto(new URL('/github', page.url()).toString());
+  await expect(page).toHaveURL(/\/integrations\/github$/);
+  await expect(page.getByTestId('github-page')).toBeVisible();
+  await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-key="linear"]').click();
+  await expect(page).toHaveURL(/\/integrations\/linear$/);
+  await expect(page.getByTestId('github-page')).toHaveCount(0);
 });

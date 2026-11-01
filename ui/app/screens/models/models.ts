@@ -1,7 +1,7 @@
 // Pure helpers of Models on this PC (models-screen.tsx, decisions P65, P97): sizes, fit and state words, the memory bars'
-// arithmetic, the Serving card's lines, progress.
+// arithmetic, the Serving card's lines, progress; the models loaded together, their room and drafts (decision P111).
 
-import type { Device, Fit, LocalJob, LocalModel, LocalRuntime, LocalServerStatus, LocalUser, LocalView } from '../../api/localClient.ts';
+import type { Device, Fit, LocalJob, LocalModel, LocalRuntime, LocalServerStatus, LocalToken, LocalUser, LocalView, ServerState } from '../../api/localClient.ts';
 import { agoWords } from '../../lib/format.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -224,6 +224,17 @@ export function deviceLine(d: Device): string {
   return `${d.id}: ${d.name}, ${gb(d.freeBytes)} free of ${gb(d.totalBytes)}`;
 }
 
+/**
+ * What to say when the engine listed no GPU: that there is none, or, when Windows has a graphics card the engine did not list,
+ * that this build could not use it (the card is there; the person should not be told it is not).
+ */
+export function noGpuWords(adapters: readonly string[] | undefined): string {
+  const cards = (adapters ?? []).filter((a) => a.trim());
+  if (cards.length === 0) return 'No GPU found: runs on the CPU';
+  const names = cards.length === 1 ? cards[0] : `${cards.slice(0, -1).join(', ')} and ${cards.at(-1)}`;
+  return `Windows has ${names}, but the engine could not use ${cards.length === 1 ? 'it' : 'them'}: models run on the CPU. An up-to-date graphics driver usually fixes this.`;
+}
+
 /** The devices llama.cpp can compute on (its CPU entry, when it lists one, is not a GPU). */
 export function gpus(devices: Device[]): Device[] {
   return devices.filter((d) => d.kind !== 'CPU');
@@ -265,9 +276,165 @@ export function servedName(modelId: string): string {
 export function localRow(v: Pick<LocalView, 'supported' | 'runtime' | 'server'>): { text: string; tone: Tone | 'none'; sub: string } {
   if (!v.supported) return { text: 'Not available', tone: 'muted', sub: 'Not set up' };
   const s = v.server;
-  if (s?.state === 'running') return { text: 'Serving', tone: 'ok', sub: s.modelId ? servedName(s.modelId) : 'Serving' };
-  if (s?.state === 'starting') return { text: 'Starting', tone: 'info', sub: s.modelId ? servedName(s.modelId) : 'Starting' };
+  // several models loaded: the first, and how many more
+  const more = s ? loadedIds(s).length - 1 : 0;
+  const name = (fallback: string) => (s?.modelId ? `${servedName(s.modelId)}${more > 0 ? ` and ${more} more` : ''}` : fallback);
+  if (s?.state === 'running') return { text: 'Serving', tone: 'ok', sub: name('Serving') };
+  if (s?.state === 'starting') return { text: 'Starting', tone: 'info', sub: name('Starting') };
   if (!v.runtime?.installed) return v.runtime?.job?.state === 'running' ? { text: 'Setting up', tone: 'info', sub: 'Not set up' } : { text: 'Set up', tone: 'none', sub: 'Not set up' };
   if (s?.state === 'failed') return { text: 'Failed', tone: 'err', sub: 'Nothing served' };
   return { text: 'Stopped', tone: 'muted', sub: 'Nothing served' };
+}
+
+/** The models the server keeps loaded while it starts or runs (decision P111): its list, else its one model. */
+export function loadedIds(server: Pick<ServerState, 'state' | 'modelId' | 'models'>): string[] {
+  if (server.state !== 'running' && server.state !== 'starting') return [];
+  const list = server.models ?? [];
+  if (list.length > 0) return list;
+  return server.modelId ? [server.modelId] : [];
+}
+
+/** What a model takes loaded, as the core counted it (its files, KV cache and draft), else its fit's need, else its size. */
+export function loadBytesOf(m: LocalModel): number {
+  return m.loadBytes || m.fit?.needBytes || m.sizeBytes || 0;
+}
+
+/**
+ * Whether a model can be loaded beside the ones loaded now (the row's "Load too", decision P111), and why not: an embedding
+ * model is served on its own, at most `load.max` stay loaded, and together they must fit the memory the core measured (a budget
+ * of 0 is not measured: the person decides).
+ */
+export function loadToo(v: Pick<LocalView, 'server' | 'load'>, m: LocalModel): { ok: boolean; why?: string } {
+  const loaded = loadedIds(v.server);
+  const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
+  if (m.embedding) return { ok: false, why: 'An embedding model is served on its own, under Embeddings.' };
+  const kind = draftOnly(m);
+  if (kind === 'old-mtp') return { ok: false, why: 'No engine Drydock installs loads an old MTP file.' };
+  if (kind) return { ok: false, why: `${DRAFT_KINDS[kind].article} does not chat: choose it as its model's draft.` };
+  if (loaded.includes(m.id)) return { ok: false, why: 'Loaded already.' };
+  if (loaded.length >= load.max) return { ok: false, why: `At most ${load.max} models stay loaded at once: unload one first.` };
+  const need = loadBytesOf(m);
+  if (load.budgetBytes > 0 && load.loadedBytes + need > load.budgetBytes) {
+    const left = Math.max(0, load.budgetBytes - load.loadedBytes);
+    return { ok: false, why: `Does not fit beside the models loaded: it needs about ${gb(need)}, and ${gb(left)} of ${gb(load.budgetBytes)} is left.` };
+  }
+  return { ok: true };
+}
+
+/** "2 of 4 models loaded · 18.2 of 24 GB": the room the loaded models take (the memory part only when it was measured). */
+export function loadLine(v: Pick<LocalView, 'server' | 'load'>): string {
+  const n = loadedIds(v.server).length;
+  const load = v.load ?? { max: 4, budgetBytes: 0, loadedBytes: 0 };
+  const count = `${n} of ${load.max} models loaded`;
+  return load.budgetBytes > 0 ? `${count} · ${usedOf(load.loadedBytes, load.budgetBytes)}` : count;
+}
+
+/** The draft a model chooses when its own MTP heads draft for it (decision P120): no model is called so. */
+export const DRAFT_MTP = 'mtp';
+
+export type DraftKind = NonNullable<LocalModel['draftKind']>;
+
+/**
+ * The words for each kind of file that only drafts (decisions P120 and P129): its badge, its prefix in a draft choice, the
+ * row's word once chosen, the kind with its article, and the badge's tooltip.
+ */
+export const DRAFT_KINDS: Record<DraftKind, { badge: string; prefix: string; with: string; article: string; title: string }> = {
+  eagle3: {
+    badge: 'EAGLE-3 draft',
+    prefix: 'EAGLE-3',
+    with: 'with EAGLE-3',
+    article: 'An EAGLE-3 draft',
+    title: "An EAGLE-3 draft: it reads its model's hidden states to guess ahead. It drafts for that model and does not chat.",
+  },
+  dflash: {
+    badge: 'DFlash draft',
+    prefix: 'DFlash',
+    with: 'with DFlash',
+    article: 'A DFlash draft',
+    title: "A DFlash draft: it guesses a whole block of tokens at once from its model's hidden states. It drafts for that model and does not chat.",
+  },
+  dspark: {
+    badge: 'DSpark draft',
+    prefix: 'DSpark',
+    with: 'with DSpark',
+    article: 'A DSpark draft',
+    title: 'A DSpark draft: a DFlash draft with a head that reads the token before, so more of its guesses hold. It drafts for its model and does not chat.',
+  },
+  'mtp-head': {
+    badge: 'MTP head',
+    prefix: 'MTP head',
+    with: 'with an MTP head',
+    article: 'An MTP head',
+    title: "The multi-token prediction (MTP) heads of a model, shipped as a file of their own. They draft for that model and do not chat.",
+  },
+  assistant: {
+    badge: 'Gemma 4 assistant',
+    prefix: 'Assistant',
+    with: 'with its assistant',
+    article: 'A Gemma 4 assistant',
+    title: "Google's small drafter for a Gemma 4 model: it reads that model's cache to guess ahead. It drafts for that model and does not chat.",
+  },
+  'old-mtp': {
+    badge: 'Old MTP file',
+    prefix: 'Old MTP file',
+    with: 'with an old MTP file',
+    article: 'An old MTP file',
+    title: 'An MTP file made for an older TurboQuant build. No engine Drydock installs loads it: download a newer conversion.',
+  },
+};
+
+/** The row's word for a file that only drafts: what it is for (an old MTP file is for nothing any engine here loads). */
+export const draftOnlyWord = (kind: DraftKind): string => (kind === 'old-mtp' ? 'no engine here loads it' : 'drafts for its model');
+
+/** The kind of a file that only drafts, or undefined for a model that chats (an older core says only eagle3). */
+export function draftOnly(m: Pick<LocalModel, 'draftKind' | 'eagle3'>): DraftKind | undefined {
+  return m.draftKind ?? (m.eagle3 ? 'eagle3' : undefined);
+}
+
+/**
+ * The draft choices of a model: none, its own MTP heads when its file carries them, then each downloaded model that can draft
+ * for it, a file that only drafts named by its kind (decisions P120 and P129).
+ */
+export function draftChoices(m: LocalModel, models: readonly LocalModel[]): { value: string; label: string }[] {
+  const label = (id: string) => {
+    if (id === DRAFT_MTP) return 'Its own MTP heads';
+    const found = models.find((x) => x.id === id);
+    const name = found ? `${modelName(found.repo)} · ${found.variant}` : id;
+    const kind = found ? draftOnly(found) : undefined;
+    return `${kind ? DRAFT_KINDS[kind].prefix : 'Draft'}: ${name}`;
+  };
+  return [{ value: '', label: 'No draft' }, ...(m.drafts ?? []).map((id) => ({ value: id, label: label(id) }))];
+}
+
+/** The row's word for the draft chosen: its own MTP heads, a file that only drafts, or a draft model (undefined for none). */
+export function draftWords(m: LocalModel, models: readonly LocalModel[]): string | undefined {
+  if (!m.draft) return undefined;
+  if (m.draft === DRAFT_MTP) return 'with MTP';
+  const found = models.find((x) => x.id === m.draft);
+  const kind = found ? draftOnly(found) : undefined;
+  return kind ? DRAFT_KINDS[kind].with : 'with a draft';
+}
+
+/**
+ * What Load too and Unload do, as their tooltips (decision P120): on the router the model is loaded or unloaded while the others
+ * keep running; a server of one model has no router, so Load too starts it again with both.
+ */
+export function loadTooTitle(server: Pick<ServerState, 'router'>): string {
+  return server.router
+    ? 'Load it beside the models served: they keep running while it loads'
+    : 'Keep it loaded beside the model served: the server starts again with both, since one model alone runs without the router';
+}
+
+export function unloadTitle(server: Pick<ServerState, 'router'>): string {
+  return server.router ? 'Unload it: the other models keep running' : 'Start the server again without this model';
+}
+
+/** The token as the page shows it: "hf_…1234" as the core masked it, "none" without one. */
+export function tokenWords(tk: LocalToken | undefined): string {
+  return tk?.set ? tk.masked || 'set' : 'none';
+}
+
+/** The Hugging Face page of a repository, where a gated model's licence is accepted. */
+export function licenceUrl(repo: string): string {
+  return `https://huggingface.co/${repo}`;
 }

@@ -12,11 +12,14 @@ import (
 
 	ctxeng "github.com/kjmaguire/drydock/internal/context"
 	"github.com/kjmaguire/drydock/internal/libver"
+	"github.com/kjmaguire/drydock/internal/llm"
 	"github.com/kjmaguire/drydock/internal/mcp"
 	"github.com/kjmaguire/drydock/internal/memory"
 	"github.com/kjmaguire/drydock/internal/packs"
+	"github.com/kjmaguire/drydock/internal/packs/packmodel"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/requirements"
+	"github.com/kjmaguire/drydock/internal/router"
 	"github.com/kjmaguire/drydock/internal/security"
 	"github.com/kjmaguire/drydock/internal/security/secretadapt"
 	"github.com/kjmaguire/drydock/internal/skills"
@@ -192,9 +195,18 @@ func startKnowledge(ctx context.Context, c *Core) (map[string]Method, func(), er
 	k.Memory = memory.Store{DB: c.DB}
 	k.Audit = security.NewAudit(c.DB, c.Scanner)
 	var err error
+	// CONSULT answers and digest summaries are written by a model the router picks (run kinds consult and summarize), through
+	// the app's LLM client; both are looked up at call time because the economics extension starts on its own (decision P110)
+	models := packmodel.Models{
+		Router: func() router.ModelRouter { return EconomicsRouter(c) },
+		LLM:    func() llm.Client { return EconomicsLLM(c) },
+	}
 	k.Packs, err = packs.New(packs.Options{
 		DB: c.DB, Bus: c.Bus, Dir: filepath.Join(c.cfg.DataDir, "packs"), Scanner: c.Scanner,
 		Live: &packs.GatewayLive{GW: k.live}, Logf: c.logf,
+		Answerer: packmodel.Answerer{Models: models}, Summarizer: packmodel.Summarizer{Models: models},
+		// ranked by meaning with the embedding model on this PC, when the person turned it on (decision P120)
+		Embedder: localEmbedder{c: c},
 	})
 	if err != nil {
 		return nil, nil, err
@@ -341,6 +353,15 @@ func (k *Knowledge) wireContext() {
 
 // ---- RPC ----
 
+// uploadNames are the names and sizes of files a person gave a pack, for the audit log (never their content).
+func uploadNames(fs []packs.UploadFile) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, fmt.Sprintf("%s (%d bytes)", filepath.Base(strings.ReplaceAll(f.Name, `\`, "/")), len(f.Data)))
+	}
+	return out
+}
+
 type knowProject struct {
 	ProjectID string `json:"projectId"`
 }
@@ -367,6 +388,38 @@ func (k *Knowledge) methods() map[string]Method {
 			k.audit(ctx, "pack.install", pk.ID, map[string]any{"kind": pk.Kind, "visibility": pk.Visibility})
 		}
 		return pk, err
+	})
+	// a pack made from the person's own files (decision P110); the files come base64 encoded, as room attachments do
+	m["pack.createFromFiles"] = bind(func(ctx context.Context, p struct {
+		packs.NewFilesPack
+		Files []packs.UploadFile `json:"files"`
+	}) (any, error) {
+		pk, err := k.Packs.CreateFromFiles(ctx, h(), p.NewFilesPack, p.Files)
+		if err == nil {
+			k.audit(ctx, "pack.install", pk.ID, map[string]any{"kind": pk.Kind, "visibility": pk.Visibility, "files": uploadNames(p.Files)})
+		}
+		return pk, err
+	})
+	m["pack.files"] = bind(func(ctx context.Context, p idParam) (any, error) { return k.Packs.Files(ctx, p.ID) })
+	m["pack.addFiles"] = bind(func(ctx context.Context, p struct {
+		ID    string             `json:"id"`
+		Files []packs.UploadFile `json:"files"`
+	}) (any, error) {
+		fs, err := k.Packs.AddFiles(ctx, h(), p.ID, p.Files)
+		if err == nil {
+			k.audit(ctx, "pack.files_add", p.ID, map[string]any{"files": uploadNames(p.Files)})
+		}
+		return fs, err
+	})
+	m["pack.removeFile"] = bind(func(ctx context.Context, p struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}) (any, error) {
+		err := k.Packs.RemoveFile(ctx, h(), p.ID, p.Name)
+		if err == nil {
+			k.audit(ctx, "pack.files_remove", p.ID, map[string]any{"file": p.Name})
+		}
+		return nil, err
 	})
 	m["pack.remove"] = bind(func(ctx context.Context, p idParam) (any, error) {
 		err := k.Packs.Remove(ctx, h(), p.ID)
@@ -460,6 +513,13 @@ func (k *Knowledge) methods() map[string]Method {
 		return k.Requirements.Text(ctx, p.ID, p.Version)
 	})
 	m["requirement.versions"] = bind(func(ctx context.Context, p idParam) (any, error) { return k.Requirements.Versions(ctx, p.ID) })
+	// the text of a PDF or DOCX the person chose, for the page to show before it is added (nothing is stored)
+	m["requirement.extract"] = bind(func(ctx context.Context, p struct {
+		Name string `json:"name"`
+		Data []byte `json:"data"`
+	}) (any, error) {
+		return requirements.Extract(ctx, p.Name, p.Data)
+	})
 	m["requirement.add"] = bind(func(ctx context.Context, p requirements.AddReq) (any, error) {
 		p.By = h()
 		r, err := k.Requirements.Add(ctx, p)

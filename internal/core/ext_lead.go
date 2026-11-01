@@ -15,6 +15,7 @@ import (
 	"github.com/kjmaguire/drydock/internal/budget"
 	"github.com/kjmaguire/drydock/internal/pipeline"
 	"github.com/kjmaguire/drydock/internal/room"
+	"github.com/kjmaguire/drydock/internal/router"
 	"github.com/kjmaguire/drydock/internal/safe"
 	"github.com/kjmaguire/drydock/internal/tasks"
 	"github.com/kjmaguire/drydock/internal/watchdog"
@@ -44,6 +45,10 @@ func startLead(ctx context.Context, c *Core) (map[string]Method, func(), error) 
 		},
 		Post:   c.leadPost,
 		Budget: c.leadBudget,
+		// the lead's turns are routed on the lead's own list of models, like every other turn (P112)
+		Route: func(ctx context.Context, t pipeline.LeadTurn, in workflow.NodeInput, run workflow.NodeHandler) (workflow.NodeOutput, error) {
+			return EconomicsRouteTurn(ctx, c, DirectTurn{Kind: router.RunLead, AgentID: t.AgentID, ProjectID: t.ProjectID, TaskID: t.TaskID, RunID: t.RunID, NodeID: "lead"}, in, run)
+		},
 		Redact: c.Scanner.Redact,
 		Brief: func(ctx context.Context, projectID string) string {
 			if f := c.Deps.ProjectBrief; f != nil {

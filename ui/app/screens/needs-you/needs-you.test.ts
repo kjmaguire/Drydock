@@ -201,3 +201,49 @@ describe('verdictWords', () => {
     expect(verdictWords('NEEDS_ATTENTION')).toBe('needs attention');
   });
 });
+
+describe('budget items (P118)', () => {
+  const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ ...base, kind: 'budget', severity: 0, ...over }) as NeedsYouItem;
+
+  it('a warning or a limit opens the Budgets page and can be marked done; a pause opens its task and is answered there', () => {
+    const warning = item({ key: 'budget:bud_1:prj_1:warning:10', title: 'Budget warning: the project budget passed 80%', budgetState: 'warning', budgetId: 'bud_1' });
+    const limit = item({ key: 'budget:bud_2:t1:exceeded:12', title: 'Budget reached: the task budget is at its limit', budgetState: 'exceeded', taskId: 't1' });
+    const pause = item({ key: 'approval:req_1', title: 'Budget limit reached: task t1 budget at 120%', budgetState: 'paused', taskId: 't1', approvalId: 'req_1' });
+    expect(needsLook(warning)).toBe('budget');
+    expect(needsTarget(warning)).toBe('/budgets');
+    expect(needsTarget(limit)).toBe('/budgets');
+    expect(needsTarget(pause)).toBe('/task/t1');
+    expect(canAck(warning)).toBe(true);
+    expect(canAck(limit)).toBe(true);
+    expect(canAck(pause)).toBe(false);
+  });
+
+  it("says what to do in the core's words, with its own words when the core sent none", () => {
+    expect(needsHint(item({ budgetState: 'warning', detail: 'Agents keep working.' }))).toBe('Agents keep working.');
+    expect(needsHint(item({ budgetState: 'warning' }))).toContain('Agents keep working');
+    expect(needsHint(item({ budgetState: 'exceeded' }))).toContain('Raise the limit on the Budgets page');
+    expect(needsHint(item({ budgetState: 'paused' }))).toContain('budget stopped the next agent turn');
+    expect(needsSubtitle(item({ budgetState: 'warning' }), 'gocalc', undefined, Date.parse('2026-01-01T00:00:00Z'))).toContain('gocalc · budget');
+  });
+});
+
+describe('the Inbox items of P130', () => {
+  const item = (over: Partial<NeedsYouItem>) => ({ ...base, ...over }) as NeedsYouItem;
+  it('opens each where the person acts: a mention in its room, an agent on its page, a CLI on the Agents page, a task on its page', () => {
+    expect(needsTarget(item({ key: 'mention:m1', kind: 'mention', roomId: 'r1', taskId: 't1' }))).toBe('/room/r1');
+    expect(needsTarget(item({ key: 'agent:a1:failed:5', kind: 'agent', agentId: 'a1' }))).toBe('/team/a1');
+    expect(needsTarget(item({ key: 'connection:codex', kind: 'connection', adapter: 'codex', connectionKey: 'codex' }))).toBe('/agents/codex');
+    expect(needsTarget(item({ key: 'connection:claude@wsl:Ubuntu', kind: 'connection', adapter: 'claude', connectionKey: 'claude@wsl:Ubuntu' }))).toBe(`/agents/${encodeURIComponent('claude@wsl:Ubuntu')}`);
+    expect(needsTarget(item({ key: 'task:t1', kind: 'task_waiting', taskId: 't1' }))).toBe('/task/t1');
+    expect(needsTarget(item({ key: 'join:j1', kind: 'join_request', roomId: 'r2', joinRequestId: 'j1' }))).toBe('/room/r2');
+  });
+
+  it('has a look and words for each, marks done only a mention and an agent, and says what a request to join does', () => {
+    const looks = ['task_waiting', 'mention', 'join_request', 'agent', 'connection'].map((kind) => needsLook({ kind }));
+    expect(looks).toEqual(['task', 'mention', 'join', 'agent', 'connection']);
+    expect(['mention:m1', 'agent:a1:failed:5', 'task:t1', 'connection:codex', 'join:j1'].map((key) => canAck({ key }))).toEqual([true, true, false, false, false]);
+    expect(needsHint(item({ kind: 'join_request' }))).toContain('it never joins by itself');
+    expect(needsSubtitle(item({ kind: 'join_request', agentName: 'Sec', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · request to join · asked 2 min ago');
+    expect(needsSubtitle(item({ kind: 'agent', agentName: 'Cx', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · agent · Cx · 2 min ago');
+  });
+});

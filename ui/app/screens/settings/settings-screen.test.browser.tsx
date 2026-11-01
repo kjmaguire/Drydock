@@ -1,12 +1,15 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { TelemetryStatus } from '../../api/extTypes.ts';
+import type { TelemetryOtlpChange, TelemetryOtlpStatus, TelemetryStatus } from '../../api/extTypes.ts';
 import { byLabel, byText, cleanup, errorOf, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { KEYMAP } from '../../lib/keys.ts';
+import { versionWords } from './about.tsx';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT } from './settings.ts';
 import { SettingsScreen, UpdatesSection } from './settings-screen.tsx';
 import { TelemetryPanel } from './telemetry.tsx';
+import { otlpStatusWords } from './telemetry-otlp.tsx';
 
 afterEach(() => {
   cleanup();
@@ -37,6 +40,7 @@ const settingsClient = (over: Partial<Client> = {}): Partial<Client> => ({
   licenseStatus: async () => null as never,
   agentEnvGet: async () => ({ pass: [], kept: ['PATH'], prefixes: ['CLAUDE_'] }),
   telemetryStatus: async () => tel,
+  diagnosticsStatus: async () => ({ crashReports: { mode: 'local', kept: 0 }, usageCounters: { enabled: false, waiting: 0 }, telemetry: false, otlp: false }),
   ...over,
 });
 
@@ -53,9 +57,45 @@ describe('SettingsScreen', () => {
     tid(r.container, 'agent-env');
     tid(r.container, 'updates-section');
     await waitFor(() => tid(r.container, 'telemetry-counts'), r);
+    await waitFor(() => tid(r.container, 'diag-usage'), r); // the diagnostics categories (decision P121)
     // the event stream line follows the store
     s.emit({ type: 'x.y' });
     await waitFor(() => expect(tid(r.container, 'stream-status').textContent).toMatch(/last seq [1-9]\d*/), r);
+  });
+
+  it('About Drydock: the version, the third-party licenses the build ships, and the keyboard map (P129)', async () => {
+    const reads: string[] = [];
+    const s = testServices(
+      settingsClient({
+        appInfo: async () => ({ name: 'Drydock', user: 'kyle', human: 'human:kyle', dataDir: 'C:\\d', version: '0.4.2', build: 'abc123' }),
+        appLicenses: async () => (reads.push('x'), { shipped: true, file: 'C:\\Drydock\\THIRD_PARTY_NOTICES.md', text: '# Third-party notices\n\nThe Go modules.' }),
+      }),
+    );
+    s.workspace.start();
+    const r = mount(<SettingsScreen />, s);
+    await waitFor(() => expect(tid(r.container, 'about-version').textContent).toBe('0.4.2, build abc123'), r);
+    const rows = Array.from(tid(r.container, 'about-keymap').querySelectorAll('tbody tr'));
+    expect(rows.length).toBe(KEYMAP.length);
+    expect(rows.map((tr) => Array.from(tr.querySelectorAll('kbd')).map((k) => k.textContent).join('+')).includes('Ctrl+B')).toBe(true);
+    expect(rows.some((tr) => tr.textContent!.includes('Stop the agent that is answering'))).toBe(true);
+    await r.act(() => tid(r.container, 'about-licenses').click());
+    await waitFor(() => expect(tid(document.body, 'about-licenses-text').textContent).toContain('The Go modules.'), r);
+    expect(reads).toEqual(['x']);
+    cleanup();
+
+    // a build from the source tree has no notices beside it, and says so; a development version says what it is
+    const dev = testServices(
+      settingsClient({
+        appInfo: async () => ({ name: 'Drydock', user: 'kyle', human: 'human:kyle', dataDir: 'C:\\d', version: '0.0.0-dev' }),
+        appLicenses: async () => ({ shipped: false, file: '', note: 'This build has no third-party notices beside it.' }),
+      }),
+    );
+    dev.workspace.start();
+    const d = mount(<SettingsScreen />, dev);
+    await waitFor(() => expect(tid(d.container, 'about-version').textContent).toBe('0.0.0-dev (a build from the source)'), d);
+    await d.act(() => tid(d.container, 'about-licenses').click());
+    await waitFor(() => expect(tid(document.body, 'about-licenses-note').textContent).toBe('This build has no third-party notices beside it.'), d);
+    expect(versionWords(undefined, undefined)).toBe('unknown');
   });
 
   it('keeps the "Not built yet" list exactly', async () => {
@@ -134,7 +174,7 @@ describe('TelemetryPanel', () => {
     expect(tid(r.container, 'telemetry-status').textContent).toBe('off');
     expect(tid(r.container, 'telemetry-status').getAttribute('data-tone')).toBe('muted');
     expect(box.textContent).toContain(
-      'Local usage counts only: no prompts, code or secrets, and nothing is sent anywhere. Off unless you turn it on.',
+      'Usage counts only: no prompts, code or secrets. Kept on this computer, and sent to a collector only if you set one up. Off unless you turn it on.',
     );
     expect(box.textContent).not.toContain('Off by default');
     expect(box.textContent).toContain('this device only');
@@ -172,6 +212,102 @@ describe('TelemetryPanel', () => {
     await waitFor(() => expect(enables).toEqual([false]), r);
     await waitFor(() => btn(r.container, 'Turn telemetry on'), r);
     expect(tid(r.container, 'telemetry-status').getAttribute('data-tone')).toBe('muted');
+  });
+});
+
+const otlpOff: TelemetryOtlpStatus = {
+  enabled: false,
+  endpoint: '',
+  encoding: 'protobuf',
+  headers: [],
+  active: false,
+  queued: 0,
+  queueSize: 2048,
+  sentSpans: 0,
+  sentMetrics: 0,
+  droppedOverflow: 0,
+  droppedFailed: 0,
+  rejected: 0,
+  canKeepHeaders: true,
+};
+
+describe('OTLP export (decision P113)', () => {
+  it('sets the endpoint, keeps a header value out of view, turns sending on, and sends a test span', async () => {
+    let st: TelemetryStatus = { ...tel, enabled: true, otlp: otlpOff };
+    const changes: TelemetryOtlpChange[] = [];
+    let tests = 0;
+    const apply = (ch: TelemetryOtlpChange): TelemetryStatus => {
+      changes.push(ch);
+      const o = { ...st.otlp! };
+      if (ch.endpoint !== undefined) o.endpoint = ch.endpoint;
+      if (ch.encoding) o.encoding = ch.encoding;
+      if (ch.enabled !== undefined) o.enabled = ch.enabled;
+      if (ch.setHeaders) o.headers = [...(o.headers ?? []), ...Object.keys(ch.setHeaders)];
+      if (ch.removeHeaders) o.headers = (o.headers ?? []).filter((h) => !ch.removeHeaders!.includes(h));
+      o.active = o.enabled && !!o.endpoint && st.enabled;
+      st = { ...st, otlp: o, networkExporter: o.active };
+      return st;
+    };
+    const r = mount(
+      <TelemetryPanel />,
+      testServices({
+        telemetryStatus: async () => st,
+        telemetryOtlpSet: async (ch) => apply(ch),
+        telemetryOtlpTest: async () => (tests++, { ok: true, status: { ...st.otlp!, lastSuccessAt: Date.UTC(2026, 9, 29, 9, 30) } }),
+      }),
+    );
+    const box = await waitFor(() => tid(r.container, 'otlp'), r);
+    expect(tid(r.container, 'otlp-status').textContent).toContain('Not sending: sending is off.');
+    expect(btn(r.container, 'Send a test span').disabled).toBe(true); // nothing to send to yet
+    await r.act(() => type(byLabel(box, 'Endpoint (OTLP/HTTP)'), 'https://collector.example.com:4318'));
+    await r.act(() => type(byLabel<HTMLSelectElement>(box, 'Encoding'), 'json'));
+    await r.act(() => btn(box, 'Save endpoint').click());
+    await waitFor(() => expect(changes).toEqual([{ endpoint: 'https://collector.example.com:4318', encoding: 'json' }]), r);
+
+    await r.act(() => type(byLabel(box, 'Header name'), 'x-api-key'));
+    await r.act(() => type(byLabel(box, 'Header value'), 'secret-value-123'));
+    await r.act(() => btn(box, 'Save header').click());
+    await waitFor(() => expect(changes[1]).toEqual({ setHeaders: { 'x-api-key': 'secret-value-123' } }), r);
+    await waitFor(() => expect(tid(r.container, 'otlp-headers').textContent).toContain('x-api-key'), r);
+    expect(tid(r.container, 'otlp-headers').textContent).toContain('value saved');
+    expect(box.textContent).not.toContain('secret-value-123');
+    expect(byLabel(box, 'Header value').value).toBe('');
+
+    await r.act(() => byLabel<HTMLButtonElement>(box, 'Send to a collector').click());
+    await waitFor(() => expect(changes[2]).toEqual({ enabled: true, endpoint: 'https://collector.example.com:4318', encoding: 'json' }), r);
+    await waitFor(() => expect(tid(r.container, 'otlp-status').getAttribute('data-active')).toBe('true'), r);
+    expect(tid(r.container, 'otlp-status').textContent).toContain('Sending: 0 spans and 0 metrics sent');
+
+    await r.act(() => btn(box, 'Send a test span').click());
+    expect((await waitFor(() => tid(r.container, 'otlp-test'), r)).textContent).toContain('The collector accepted the test span');
+    expect(tests).toBe(1);
+
+    await r.act(() => btn(box, 'Remove the x-api-key header').click());
+    await waitFor(() => expect(changes[3]).toEqual({ removeHeaders: ['x-api-key'] }), r);
+  });
+
+  it('shows a failed test and the last error, and never claims to send while telemetry is off', async () => {
+    const otlp: TelemetryOtlpStatus = { ...otlpOff, enabled: true, endpoint: 'http://127.0.0.1:4318', lastError: 'the collector answered 401 Unauthorized', lastErrorAt: 1 };
+    const r = mount(
+      <TelemetryPanel />,
+      testServices({
+        telemetryStatus: async () => ({ ...tel, otlp }),
+        telemetryOtlpTest: async () => ({ ok: false, error: 'the collector answered 401 Unauthorized', status: otlp }),
+      }),
+    );
+    await waitFor(() => tid(r.container, 'otlp-status'), r);
+    expect(tid(r.container, 'otlp-status').textContent).toContain('Not sending: telemetry is off, so nothing is recorded or sent.');
+    expect(tid(r.container, 'otlp-last-error').textContent).toBe('the collector answered 401 Unauthorized');
+    await r.act(() => btn(r.container, 'Send a test span').click());
+    expect((await waitFor(() => tid(r.container, 'otlp-test'), r)).textContent).toContain('The test span was not accepted: the collector answered 401 Unauthorized');
+  });
+
+  it('words the status line from the counts', () => {
+    const on = { ...otlpOff, enabled: true, endpoint: 'https://c', active: true, sentSpans: 12, sentMetrics: 40, queued: 3, droppedOverflow: 1, droppedFailed: 2, rejected: 0 };
+    expect(otlpStatusWords(on, true)).toBe(
+      'Sending: 12 spans and 40 metrics sent since Drydock started; 3 waiting; 3 dropped (1 queue full, 2 not accepted, 0 rejected by the collector).',
+    );
+    expect(otlpStatusWords({ ...on, endpoint: '' }, true)).toBe('Not sending: there is no endpoint.');
   });
 });
 

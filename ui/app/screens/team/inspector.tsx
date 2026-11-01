@@ -112,7 +112,7 @@ export function AgentInspector(handle: Handle<{ agentId: string | undefined; onN
 
   const message = (agentId: string, projectId: string) =>
     act.run('dm', async () => {
-      const room = await s.client.roomCreateDM(projectId || s.workspace.projectId || '', agentId);
+      const room = await s.project.openDM(projectId || s.workspace.projectId || '', agentId);
       const href = routes.room.href({ id: room.id });
       if (handle.props.onNavigate) handle.props.onNavigate(href);
       else void navigate(href);

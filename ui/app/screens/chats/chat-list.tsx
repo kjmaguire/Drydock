@@ -2,15 +2,15 @@
 // highlighted), "All chats" (off: the current project's chats only), then the chats, pinned first. Each row shows the title and
 // a faint line: the project (when the chat is in one), the CLI (named as the Connections page names it: "Claude Code WSL") and
 // when it was last active, or that a turn is running; its actions menu pins, renames, forks, archives or deletes (with a
-// confirmation).
+// confirmation). The import button beside New opens "Import from Claude Code" (chat-import.tsx, decision P109).
 
 import { css, navigate, on, ref, type Handle } from 'remix/component';
-import { Archive, ArchiveRestore, Ellipsis, GitFork, Pencil, Pin, PinOff, Search, Trash2 } from 'lucide';
+import { Archive, ArchiveRestore, Ellipsis, GitFork, Import, Pencil, Pin, PinOff, Search, Trash2 } from 'lucide';
 import type { ChatHit, ChatListItem } from '../../api/chatClient.ts';
 import type { Connection } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -18,8 +18,9 @@ import { Field, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ownsKeys } from '../../lib/keys.ts';
+import { comboFor, shortcutOf } from '../../lib/keys.ts';
 import { chatCliText, chatRowLine, chatTitle, listWhen, snippetParts } from './chats.ts';
+import { ImportClaudeDialog } from './chat-import.tsx';
 
 const colCss = css({
   display: 'flex',
@@ -129,9 +130,12 @@ const DEBOUNCE_MS = 250;
 // in a narrow window (ui.ts NARROW_RAILS) the list is either the whole screen (no chat open) or a drawer over the open chat
 const fullCss = css({ width: '100%', borderRight: '0' });
 
-/** A key press that opens the new chat dialog: Ctrl+N, not while typing in a field, inside a widget with its own keys or a dialog. */
+/**
+ * A key press that opens the new chat dialog: Ctrl+N (or the person's binding, decision P132), not while typing in a field, inside
+ * a widget with its own keys or a dialog.
+ */
 export function isNewChatKey(e: KeyboardEvent): boolean {
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.repeat || e.defaultPrevented || e.key.toLowerCase() !== 'n' || ownsKeys(e.target)) return false;
+  if (e.repeat || e.defaultPrevented || shortcutOf(e) !== 'new-chat') return false;
   const el = e.target as HTMLElement | null;
   return !(el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.closest?.('dialog, [role="menu"], [role="listbox"]')));
 }
@@ -146,7 +150,8 @@ export function ChatList(
   // each dialog has its own action: its error shows (and is cleared) with the dialog, never in the list
   const renameAct = action(handle);
   const deleteAct = action(handle);
-  let all = false;
+  // every chat by default: a chat need not belong to a project (decision P107); the project's pill narrows the list to it
+  let all = true;
   let archived = false;
   let typed = '';
   let q = '';
@@ -155,6 +160,8 @@ export function ChatList(
   let renaming: ChatListItem | undefined;
   let renameText = '';
   let deleting: ChatListItem | undefined;
+  let importing = false;
+  const openImport = () => ((importing = true), void handle.update());
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : navigate(href));
 
   const scope = () => (all || !handle.props.projectId ? '' : handle.props.projectId);
@@ -312,9 +319,10 @@ export function ChatList(
       <aside mix={[colCss, handle.props.layout === 'full' ? fullCss : handle.props.layout === 'drawer' ? drawerCss : undefined]} aria-label="Chats" data-layout={handle.props.layout ?? 'column'}>
         <div mix={headCss}>
           <h1>Chats</h1>
-          <Button size="sm" variant="secondary" mix={[on('click', () => onNew())]} data-testid="chat-new" aria-label="New chat" aria-keyshortcuts="Control+N" title="New chat (Ctrl+N)">
+          <IconButton icon={Import} size={15} label="Import from Claude Code" mix={[on('click', openImport)]} data-testid="chat-import-open-dialog" />
+          <Button size="sm" variant="secondary" mix={[on('click', () => onNew())]} data-testid="chat-new" aria-label="New chat" aria-keyshortcuts={comboFor('new-chat').replace('Ctrl', 'Control')} title={`New chat (${comboFor('new-chat')})`}>
             New
-            <kbd aria-hidden="true">Ctrl+N</kbd>
+            <kbd aria-hidden="true">{comboFor('new-chat')}</kbd>
           </Button>
         </div>
         <div mix={toolsCss}>
@@ -368,6 +376,13 @@ export function ChatList(
                   <Button size="sm" mix={[on('click', () => onNew())]}>
                     Start a chat
                   </Button>
+                  {!archived ? (
+                    <p style={{ margin: '12px 0 0' }}>
+                      <Button size="sm" variant="link" mix={[on('click', openImport)]} data-testid="chat-import-empty">
+                        Import from Claude Code
+                      </Button>
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {pinned.length ? (
@@ -389,6 +404,15 @@ export function ChatList(
             </>
           )}
         </div>
+        <ImportClaudeDialog
+          open={importing}
+          onClose={() => {
+            importing = false;
+            void chats.reload();
+            void handle.update();
+          }}
+          onNavigate={handle.props.onNavigate}
+        />
         <Dialog open={!!renaming} onClose={() => ((renaming = undefined), void handle.update())} title="Rename chat">
           <form
             style={{ display: 'grid', gap: '16px' }}

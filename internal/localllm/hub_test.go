@@ -21,8 +21,9 @@ func bytesOf(n int, seed byte) []byte {
 	return b
 }
 
-// The Hub's GGUF repositories are listed (ggml-org's first, gated ones never), and a repository's files are grouped into
-// variants by quantization, a split model into one variant of several files, projector files left out.
+// The Hub's GGUF repositories are listed (ggml-org's first, a gated one marked so), and a repository's files are grouped into
+// variants by quantization, a split model into one variant of several files, the projector file (mmproj) going with each
+// variant rather than being one (decision P111).
 func TestTheHubIsReadIntoVariants(t *testing.T) {
 	fx := llamatest.NewHub(t)
 	fx.AddModel("ggml-org/gpt-oss-20b-GGUF", 900000, []string{"reasoning"}, map[string][]byte{"gpt-oss-20b-mxfp4.gguf": bytesOf(3000, 1), "README.md": []byte("x")})
@@ -33,7 +34,7 @@ func TestTheHubIsReadIntoVariants(t *testing.T) {
 		"BF16/Qwen3-Coder-30B-A3B-Instruct-BF16-00002-of-00002.gguf": bytesOf(5000, 5),
 		"mmproj-F16.gguf": bytesOf(100, 6),
 	})
-	fx.AddGated("meta-llama/Llama-3.3-70B-Instruct-GGUF")
+	fx.AddGated("meta-llama/Llama-3.3-70B-Instruct-GGUF", "hf_x", nil)
 	hub := &localllm.Hub{BaseURL: fx.URL}
 	ctx := context.Background()
 	sug, err := hub.Suggested(ctx)
@@ -47,15 +48,26 @@ func TestTheHubIsReadIntoVariants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 2 || found[0].ID != "ggml-org/gpt-oss-20b-GGUF" || found[1].ID != "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF" {
-		t.Fatalf("gated offered or order wrong: %+v", found)
+	if len(found) != 3 || found[0].ID != "ggml-org/gpt-oss-20b-GGUF" || found[1].ID != "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF" || found[0].Gated != "" {
+		t.Fatalf("order wrong: %+v", found)
+	}
+	if found[2].ID != "meta-llama/Llama-3.3-70B-Instruct-GGUF" || found[2].Gated != "auto" {
+		t.Fatalf("a gated repository is listed and marked: %+v", found[2])
+	}
+	if info, err := hub.Info(ctx, "meta-llama/Llama-3.3-70B-Instruct-GGUF"); err != nil || info.Gated != "auto" {
+		t.Fatalf("%+v %v", info, err)
 	}
 	vs, err := hub.Variants(ctx, "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(vs) != 3 || vs[0].Name != "Q4_K_M" || vs[0].Size != 4000 || vs[1].Name != "Q8_0" || vs[2].Name != "BF16" || len(vs[2].Files) != 2 || vs[2].Size != 10000 {
+	if len(vs) != 3 || vs[0].Name != "Q4_K_M" || vs[0].Size != 4100 || vs[1].Name != "Q8_0" || vs[2].Name != "BF16" || len(vs[2].Files) != 2 || vs[2].Size != 10100 {
 		t.Fatalf("%+v", vs)
+	}
+	for _, v := range vs {
+		if v.Projector == nil || v.Projector.Path != "mmproj-F16.gguf" || v.Projector.Size != 100 || len(v.Projector.SHA256) != 64 {
+			t.Fatalf("the projector goes with %s: %+v", v.Name, v.Projector)
+		}
 	}
 	if vs[0].Files[0].SHA256 == "" || vs[2].Notes != nil {
 		t.Fatalf("%+v", vs)

@@ -244,6 +244,23 @@ describe('typed client', () => {
     expect(await nothing.projectAgentConfig('p')).toEqual([]);
   });
 
+  it("lists, opens, shows and stops a task's forwarded sandbox ports (P134)", async () => {
+    const f = mock.fn(async (url: string) =>
+      json({ result: url.endsWith('list') ? { running: true, forwards: null, canView: true, max: 5 } : url.endsWith('open') ? { taskId: 't', port: 3000, hostPort: 49153, address: '127.0.0.1:49153' } : {} }),
+    );
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5 });
+    expect(await c.sandboxForwardOpen('t', 3000)).toMatchObject({ port: 3000, hostPort: 49153 });
+    await c.sandboxForwardView('t', 3000);
+    await c.sandboxForwardClose('t', 3000);
+    expect(sent(f)).toEqual([
+      ['/rpc/sandbox.forward.list', { taskId: 't' }],
+      ['/rpc/sandbox.forward.open', { taskId: 't', port: 3000 }],
+      ['/rpc/sandbox.forward.view', { taskId: 't', port: 3000 }],
+      ['/rpc/sandbox.forward.close', { taskId: 't', port: 3000 }],
+    ]);
+  });
+
   it('confirms a sandbox definition by its fingerprint and resets the license clock check (M7, M16)', async () => {
     const f = mock.fn(async (url: string) => json({ result: url.includes('license') ? { configured: true, channels: null, clockSuspect: false } : { enabled: true } }));
     const c = createClient(transport(f as unknown as typeof fetch));
@@ -411,6 +428,10 @@ describe('round 2 client methods', () => {
     expect(await c.eventsHead()).toBe(77);
     expect(await c.agentGet('a')).toMatchObject({ runs: [], usage: [] });
     expect(await c.connectionTest('x')).toMatchObject({ steps: [], matrix: {} });
+    // decision P132: a null answer is an empty history, and no bindings
+    expect(await c.connectionHistory('claude', 'Ubuntu')).toEqual({ key: 'claude', runs: [], matrix: {}, matrixAt: 0 });
+    expect(await c.keysGet()).toEqual({ bindings: {} });
+    await c.keysSet({ inbox: 'Ctrl+Alt+I' });
     expect(await c.providerTest('p')).toMatchObject({ Models: [], Warnings: [] });
     expect(await c.connectionList()).toEqual([]);
     expect(await c.providerList()).toEqual([]);
@@ -434,6 +455,8 @@ describe('round 2 client methods', () => {
     expect(by('usage.list')).toEqual({ taskId: 't', agentId: '', limit: 0 });
     expect(by('connection.acknowledge')).toEqual({ gateId: 'g' });
     expect(by('connection.check')).toEqual({ adapter: 'claude', distro: 'Ubuntu' });
+    expect(by('connection.history')).toEqual({ adapter: 'claude', distro: 'Ubuntu' });
+    expect(by('keys.set')).toEqual({ bindings: { inbox: 'Ctrl+Alt+I' } });
     expect(by('provider.setEnabled')).toEqual({ id: 'p', enabled: false });
     expect(by('provider.create')).toEqual({ Name: 'n', Kind: 'direct', BaseURL: 'https://x', DataClass: 'private', Tier: 'cheap' });
     expect(by('room.thread')).toEqual({ rootId: 'm' });
@@ -551,6 +574,18 @@ describe('task control client methods', () => {
       ['task.list', { projectId: 'p1', statuses: [] }],
       ['task.count', { projectId: '', statuses: [], assignee: 'human:kyle' }],
       ['task.assign', { id: 't1', assignee: 'human:kyle', reviewer: '' }],
+    ]);
+  });
+
+  it("sends a person's word on a criterion with the names the core decodes and normalizes a null answer (P125)", async () => {
+    const f = mock.fn(async () => json({ result: null }));
+    const c = createClient(transport(f as unknown as typeof fetch));
+    expect(await c.taskCriterionMark('t1', 1, 'waived', 'out of scope')).toEqual([]);
+    await c.taskCriterionMark('t1', 0, 'met');
+    const sent = f.mock.calls.map((x) => x.arguments as unknown as [string, RequestInit]).map(([u, init]) => [u.replace('/rpc/', ''), JSON.parse(init.body as string)]);
+    expect(sent).toEqual([
+      ['task.criterion.mark', { taskId: 't1', index: 1, mark: 'waived', note: 'out of scope' }],
+      ['task.criterion.mark', { taskId: 't1', index: 0, mark: 'met', note: '' }],
     ]);
   });
 });

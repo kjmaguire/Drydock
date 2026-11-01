@@ -155,7 +155,7 @@ test('smoke: every page opens on the real core without an error, a failed call o
 
   // moving around without reloading (how the app is used): the sidebar's pages twice over, then the heap, the DOM and the
   // listeners against what they were after the first round; a page that leaves a subscription or a timer behind grows them
-  const nav = ['nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', 'nav-needs-you', 'nav-chats', 'nav-library', 'nav-crew', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-security-scan', 'nav-settings'];
+  const nav = ['nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', 'nav-needs-you', 'nav-chats', 'nav-library', 'nav-library-skills', 'nav-crew', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-security-scan', 'nav-settings'];
   await page.goto(appUrl());
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');

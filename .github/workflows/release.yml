@@ -273,6 +273,11 @@ jobs:
             if (Test-Path $k) { throw "the installer wrote under HKLM" }
           }
           if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk")) { throw "no Start menu shortcut for this user" }
+          # the shortcut carries the app's own AppUserModelID (app/appid.go), so a pinned Drydock and the running one are one button
+          $lnk = Get-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk"
+          $aumid = (New-Object -ComObject Shell.Application).Namespace($lnk.DirectoryName).ParseName($lnk.Name).ExtendedProperty('System.AppUserModel.ID')
+          if ($aumid -ne 'Drydock.Drydock') { throw "the Start menu shortcut's AppUserModelID is '$aumid', not Drydock.Drydock" }
+          "Start menu shortcut AppUserModelID: $aumid" | Tee-Object -Append "$env:OUT/install.txt"
           $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($env:INSTALLER))
           if ($text -notmatch 'requestedExecutionLevel level="asInvoker"') { throw "the installer's manifest does not run as invoker" }
           if (Test-Path "$env:LOCALAPPDATA\Drydock") { throw "the installer wrote into the data folder" }
@@ -307,6 +312,36 @@ jobs:
           $null = $p.CloseMainWindow()
           if (-not $p.WaitForExit(30000)) { throw "drydock.exe did not exit within 30 s of its window closing" }
           if (-not (Test-Path "$env:LOCALAPPDATA\Drydock")) { throw "no data folder at $env:LOCALAPPDATA\Drydock" }
+      - name: A sandbox app opens in a window of its own, with a profile of its own that goes when it closes (decision P134)
+        run: |
+          $www = "$env:RUNNER_TEMP\viewer-www"
+          New-Item -ItemType Directory -Force $www | Out-Null
+          Set-Content "$www\index.html" '<!doctype html><title>proof</title><h1>sandbox app proof</h1>'
+          $srv = Start-Process python -ArgumentList '-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory', $www -PassThru -RedirectStandardError "$env:OUT\viewer-server.log" -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+          try {
+            # the address is the only thing it will show: anything else is refused before a window opens
+            $bad = Start-Process -FilePath "$env:INSTDIR\drydock.exe" -ArgumentList 'sandbox-view', '--url', 'http://example.com/' -PassThru
+            # (the refusal is a message box on a desktop session; it is closed so that the step goes on)
+            Start-Sleep -Seconds 5
+            if (-not $bad.HasExited) { $null = $bad.CloseMainWindow(); Start-Sleep -Seconds 2; if (-not $bad.HasExited) { $bad.Kill() } }
+            if (Test-Path "$env:LOCALAPPDATA\Drydock\sandbox-view") { if (@(Get-ChildItem "$env:LOCALAPPDATA\Drydock\sandbox-view").Count -ne 0) { throw "a refused address still made a profile" } }
+            $v = Start-Process -FilePath "$env:INSTDIR\drydock.exe" -ArgumentList 'sandbox-view', '--url', 'http://127.0.0.1:8765/', '--title', 'proof' -PassThru
+            $r = & packaging/windows/ci/window-check.ps1 -ProcessId $v.Id -Names 'sandbox app proof' -Screenshot "$env:OUT\sandbox-app-window.png"
+            $r | Tee-Object -Append "$env:OUT/sandbox-view.txt"
+            if (($r -join ' ') -notmatch "window 'proof - Drydock isolated window'") { throw "the window is not marked as an isolated window: $r" }
+            $profiles = @(Get-ChildItem "$env:LOCALAPPDATA\Drydock\sandbox-view" -Directory)
+            if ($profiles.Count -ne 1) { throw "$($profiles.Count) profiles while one viewer runs" }
+            if (-not (Test-Path "$($profiles[0].FullName)\EBWebView")) { throw "the viewer's WebView2 did not use its own profile folder" }
+            if (@(Get-Process drydock -ErrorAction SilentlyContinue).Count -ne 1) { throw "the viewer is not a process of its own, or the app is still running" }
+            $null = $v.CloseMainWindow()
+            if (-not $v.WaitForExit(30000)) { throw "the viewer did not exit within 30 s of its window closing" }
+            if (Test-Path $profiles[0].FullName) { throw "the viewer's profile was left behind: $($profiles[0].FullName)" }
+            if (-not (Select-String -Path "$env:OUT\viewer-server.log" -Pattern 'GET / HTTP' -Quiet)) { throw "the page was never fetched from the forwarded address" }
+            "the window opened the page at 127.0.0.1, was marked as isolated, used a profile folder of its own, and removed it on close" | Tee-Object -Append "$env:OUT/sandbox-view.txt"
+          } finally {
+            if (-not $srv.HasExited) { $srv.Kill() }
+          }
       - name: A repository for the project test (a real git repository on NTFS)
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

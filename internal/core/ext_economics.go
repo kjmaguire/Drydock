@@ -57,6 +57,7 @@ type economics struct {
 	src         *router.RegistrySource
 	prober      *probe.Prober
 	sink        *telemetry.Sink
+	otlp        *telemetry.Exporter // nil when the sink did not start
 	outcomes    *evals.Outcomes
 }
 
@@ -96,19 +97,33 @@ func EconomicsRouter(c *Core) router.ModelRouter {
 // returns an error when the budgets did not start: no turn runs without them. Workflow turns are gated by the budget middleware
 // instead, where a human can resume one turn.
 func EconomicsBudgetBlock(ctx context.Context, c *Core, projectID, taskID, agentID string) error {
+	return EconomicsBudgetBlockFor(ctx, c, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+}
+
+// EconomicsBudgetBlockFor is EconomicsBudgetBlock over every scope a turn counts toward: a turn of a group discussion also
+// counts toward the run and the workflow that hold it (decision P124). A refusal is a *budget.PauseError, which parks the
+// discussion's node on the budget pause; a turn a person approved over the limit (budget.ApprovedOverLimit) is not refused.
+func EconomicsBudgetBlockFor(ctx context.Context, c *Core, ids budget.ScopeIDs) error {
 	store := c.budgets.Load()
 	if store == nil {
 		// no budget store means the economics extension did not start: fail closed, as the workflow gate does
 		return errors.New("the budgets did not start, so the turn does not start (see the log)")
 	}
-	sts, err := store.StatusFor(ctx, budget.ScopeIDs{Project: projectID, Task: taskID, Agent: agentID})
+	sts, err := store.StatusFor(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("budgets could not be read, so the turn does not start: %w", err) // fail closed, as the middleware does
 	}
+	if budget.ApprovedOverLimit(ctx) {
+		return nil
+	}
+	var over []budget.Status
 	for _, st := range sts {
 		if st.State == budget.StateExceeded {
-			return fmt.Errorf("the %s, so agents do not answer until it is raised on the Budgets page", st.Message)
+			over = append(over, st)
 		}
+	}
+	if len(over) > 0 {
+		return &budget.PauseError{Over: over, Text: fmt.Sprintf("the %s, so agents do not answer until it is raised on the Budgets page", over[0].Message)}
 	}
 	return nil
 }
@@ -130,10 +145,16 @@ func (b budgetRouter) Explain(d router.RoutingDecision) string { return b.e.live
 
 // fillBudget sets the request's budget state from the budget store unless the caller supplied one.
 func (e *economics) fillBudget(ctx context.Context, req *router.RouteRequest) error {
+	return e.fillBudgetRun(ctx, req, req.RunID)
+}
+
+// fillBudgetRun is fillBudget with the run whose budgets count the turn named: a group discussion's turn is routed under its
+// own turn id but counts toward the workflow run that holds it (decision P124).
+func (e *economics) fillBudgetRun(ctx context.Context, req *router.RouteRequest, run string) error {
 	if req.Budget.Scope != "" {
 		return nil
 	}
-	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: req.RunID, Agent: req.AgentID})
+	sum, err := e.budgets.SummaryFor(ctx, budget.ScopeIDs{Project: req.ProjectID, Task: req.TaskID, Run: run, Agent: req.AgentID, Workflow: req.Workflow})
 	if err != nil {
 		return err
 	}
@@ -152,6 +173,12 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	e.budgets = &budget.Store{DB: c.DB}
 	e.enforcer = &budget.Enforcer{Store: e.budgets, Bus: c.Bus, Consume: c.Engine.MarkConsumed, Notify: e.budgetNotice}
 	c.budgets.Store(e.budgets)
+	// a reservation still held belongs to a turn of the process before this one (a crash, a forced quit): it holds nothing now
+	if n, err := e.budgets.ExpireStale(ctx); err != nil {
+		c.logf("budget reservations: %v", err)
+	} else if n > 0 {
+		c.logf("budget reservations: %d held by turns of the last run expired", n)
+	}
 
 	// --- telemetry (off until a human turns it on) ---
 	sink, terr := telemetry.New(ctx, c.DB, telemetry.Options{Redact: c.Scanner.Redact})
@@ -167,8 +194,29 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		mws = append([]workflow.Middleware{sink.Middleware()}, mws...)
 		c.Engine.Use(workflow.KindCheck, sink.Middleware())
 		c.Engine.Observe(sink.Observer())
+		// the OTLP exporter (decision P113): off until a person gives an endpoint and turns it on; header values in the vault
+		x, err := telemetry.NewExporter(ctx, sink, telemetry.ExporterOptions{Secrets: c.secrets,
+			Known: func(name, value string) {
+				if c.Scanner != nil {
+					_ = c.Scanner.RegisterSecret(otlpSecretName(name), value) // a value too short to scan for is still never logged
+				}
+			},
+			Forget: func(name string) {
+				if c.Scanner != nil {
+					c.Scanner.UnregisterSecret(otlpSecretName(name))
+				}
+			}})
+		if err != nil {
+			c.logf("telemetry: the OTLP exporter did not start: %v", err)
+		} else {
+			e.otlp = x // started once everything else has
+		}
 	}
 	c.Engine.Use(workflow.KindAgentTask, mws...)
+	// a group discussion's node (P124): no turn of it starts while a budget it counts toward (its run's and its workflow's
+	// included) is at its limit, warnings and crossings are announced after it, and a person's answer to its budget pause is
+	// read here (an approval lets one more turn through); each turn is also checked and reserved as a reply is
+	c.Engine.Use(workflow.KindGroup, e.enforcer.Middleware())
 	c.budgetGate.Store(true)
 
 	// --- LLM wrapper, quota ledger, router ---
@@ -176,8 +224,12 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	e.ledger.StartPolling(ctx)
 	e.uptime = providers.NewEndpointUptime(c.Providers, providers.UptimeOptions{})
 	var err error
+	var tracer llm.CallTracer // the Wrapper's own calls are recorded like node executions (P113); never a typed nil
+	if e.sink != nil {
+		tracer = e.sink
+	}
 	e.wrapper, err = llm.NewWrapper(llm.Options{Registry: c.Providers, DB: c.DB, Factory: backends.Factory, Scanner: secretadapt.LLM(c.Scanner),
-		Ledger: e.ledger, Monitor: c.Health, Uptime: e.uptime, Bus: c.Bus})
+		Ledger: e.ledger, Monitor: c.Health, Uptime: e.uptime, Bus: c.Bus, Tracer: tracer})
 	if err != nil {
 		return nil, nil, fmt.Errorf("llm wrapper: %w", err)
 	}
@@ -194,16 +246,16 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	} else if len(up) > 0 {
 		c.logf("routing rules: brought the shipped rules %v up to date (their conditions were not edited)", up)
 	}
-	src := &router.RegistrySource{Catalog: c.Providers, Avail: c.Health, Quota: e.ledger}
+	src := &router.RegistrySource{Catalog: c.Providers, Avail: c.Health, Quota: e.ledger, Retention: c.Providers}
 	e.src = src
 	e.rec = &router.Recorder{DB: c.DB, Bus: c.Bus}
-	if e.live, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Recorder: e.rec}); err != nil {
+	if e.live, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Recorder: e.rec, Tiebreaker: tiebreaker{e}}); err != nil {
 		return nil, nil, err
 	}
-	if e.agentRouter, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: agentSource{e}, Store: e.rules, Recorder: e.rec}); err != nil {
+	if e.agentRouter, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: agentSource{e}, Store: e.rules, Recorder: e.rec, Tiebreaker: tiebreaker{e}}); err != nil {
 		return nil, nil, err
 	}
-	if e.dry, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules}); err != nil {
+	if e.dry, err = router.NewRuleRouter(router.RuleOptions{Engine: eng, Source: src, Store: e.rules, Tiebreaker: dryTiebreaker{e}}); err != nil {
 		return nil, nil, err
 	}
 	e.prober = &probe.Prober{Client: e.wrapper, Registry: c.Providers, DB: c.DB, Bus: c.Bus}
@@ -222,10 +274,16 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 		safe.Go("core.startEconomics#2", func() { e.startupProbe(ctx) })
 	}
 
+	if e.otlp != nil {
+		e.otlp.Start()
+	}
 	econMu.Lock()
 	econByCore[c] = e
 	econMu.Unlock()
 	closeFn := func() {
+		if e.otlp != nil {
+			e.otlp.Close()
+		}
 		e.outcomes.Stop()
 		e.ledger.StopPolling()
 		econMu.Lock()
@@ -247,6 +305,13 @@ func (e *economics) setting(ctx context.Context, key string) (string, error) {
 func (e *economics) putSetting(ctx context.Context, key, value string) error {
 	return e.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
+		return err
+	})
+}
+
+func (e *economics) deleteSetting(ctx context.Context, key string) error {
+	return e.c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key=?`, key)
 		return err
 	})
 }
@@ -320,8 +385,8 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 			tier = p.Tier
 		}
 	}
-	level := router.LevelBalanced
-	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level,
+	level, from, tpl := e.levelFor(ctx, s.projectID, s.taskID, s.workflow)
+	req := router.RouteRequest{RunKind: s.kind, TaskID: s.taskID, RunID: s.runID, NodeID: s.nodeID, Attempt: s.attempt, Role: router.Role(a.Role), Level: level, LevelSource: from, LevelTemplate: tpl,
 		ProjectID: s.projectID, AgentID: a.ID, Workflow: s.workflow, ContextCeiling: router.ContextPrivate, ContextTokens: s.contextTokens}
 	if sig, ok := router.TurnSignals(s.kind); ok {
 		req.TaskType, req.Complexity, req.Ambiguity = sig.TaskType, sig.Complexity, sig.Ambiguity
@@ -329,7 +394,7 @@ func (e *economics) saveStatic(ctx context.Context, s turnSubject, reason string
 	d := router.RoutingDecision{ID: ids.New("dec"), Agent: router.AgentRef{Adapter: a.Adapter, Instance: a.ID}, Provider: router.ProviderID(provider), Model: a.Model,
 		Effort: router.Effort(a.Effort), TeamSize: 1, Confidence: 1, DecidedBy: "static", Created: time.Now().UTC(),
 		Reason: reason,
-		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
+		Facts: router.DecisionFacts{TaskID: s.taskID, Level: level, LevelSource: from, LevelTemplate: tpl, RunKind: s.kind, TaskType: req.TaskType, Attempt: s.attempt, ContextCeiling: router.ContextPrivate, Tier: tier,
 			DataClass: providers.DataPrivate, QuotaRemainingPct: -1}}
 	if err := e.rec.Save(ctx, req, d); err != nil {
 		e.c.logf("record decision: %v", err)
@@ -397,8 +462,13 @@ func (e *economics) methods() map[string]Method {
 			TaskID    string `json:"taskId"`
 			RunID     string `json:"runId"`
 			AgentID   string `json:"agentId"`
+			Workflow  string `json:"workflow"`
 		}) (any, error) {
-			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID})
+			return e.budgetStatus(ctx, budget.ScopeIDs{Project: p.ProjectID, Task: p.TaskID, Run: p.RunID, Agent: p.AgentID, Workflow: p.Workflow})
+		}),
+		// the workflows a workflow budget can name (P118): every workflow this core runs, by name
+		"budget.workflows": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return map[string]any{"workflows": c.Engine.Workflows()}, nil
 		}),
 		"budget.resume": bind(func(ctx context.Context, p budgetResume) (any, error) { return e.budgetResume(ctx, p) }),
 
@@ -460,10 +530,65 @@ func (e *economics) methods() map[string]Method {
 			}
 			return nil, err
 		}),
+		// the tiebreak and the wall-time ceilings (P112): what the Routing page shows and a person changes
+		"route.settings.get": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return e.routeSettings(ctx), nil
+		}),
+		"route.settings.set": bind(func(ctx context.Context, p routeSettingsPatch) (any, error) {
+			return e.setRouteSettings(ctx, p)
+		}),
+		// the routing level (P118): the workspace's, and a project's own that falls back to it; with taskId, a task's own that
+		// falls back to its template's, then the project's (P127)
+		"route.level.get": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			TaskID    string `json:"taskId"`
+		}) (any, error) {
+			return e.routeLevel(ctx, p.ProjectID, p.TaskID)
+		}),
+		"route.level.set": bind(func(ctx context.Context, p struct {
+			ProjectID string `json:"projectId"`
+			TaskID    string `json:"taskId"`
+			Level     string `json:"level"`
+		}) (any, error) {
+			return e.setRouteLevel(ctx, p.ProjectID, p.TaskID, p.Level, human())
+		}),
+		// models a provider refused for want of data retention (P112): listed on the Routing page, cleared by a person
+		"route.retention.list": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			return c.Providers.RetentionBlocks(ctx)
+		}),
+		"route.retention.clear": bind(func(ctx context.Context, p struct {
+			ProviderID string `json:"providerId"`
+			Model      string `json:"model"`
+		}) (any, error) {
+			ok, err := c.Providers.ClearRetentionBlock(ctx, p.ProviderID, p.Model)
+			if err == nil && !ok {
+				return nil, fmt.Errorf("%s/%s is not set aside", p.ProviderID, p.Model)
+			}
+			return map[string]bool{"cleared": ok}, err
+		}),
 		"route.preview": bind(func(ctx context.Context, p struct {
 			Request router.RouteRequest `json:"request"`
 		}) (any, error) {
 			return e.routePreview(ctx, p.Request)
+		}),
+		// several dry runs in one call (the Routing page's wiring, decision P108): each answer in the order asked, a failure as
+		// {"error": ...} in its place, at most maxPreviews
+		"route.previews": bind(func(ctx context.Context, p struct {
+			Requests []router.RouteRequest `json:"requests"`
+		}) (any, error) {
+			if len(p.Requests) > maxPreviews {
+				return nil, fmt.Errorf("at most %d previews in one call, got %d", maxPreviews, len(p.Requests))
+			}
+			out := make([]any, len(p.Requests))
+			for i, r := range p.Requests {
+				v, err := e.routePreview(ctx, r)
+				if err != nil {
+					out[i] = map[string]string{"error": err.Error()}
+					continue
+				}
+				out[i] = v
+			}
+			return out, nil
 		}),
 		"route.cheap.select": bind(func(ctx context.Context, p struct {
 			ProviderID string `json:"providerId"`
@@ -531,8 +656,27 @@ func (e *economics) methods() map[string]Method {
 			}
 			return map[string]any{"path": path, "spans": len(doc.Spans), "metrics": len(doc.Metrics), "document": doc}, nil
 		}),
+		// OTLP export (decision P113): where telemetry is sent, by a person only; header values go to the credential store
+		"telemetry.otlp.set": bind(func(ctx context.Context, p telemetry.OTLPChange) (any, error) {
+			if e.otlp == nil {
+				return nil, errors.New("the telemetry exporter did not start (see the log)")
+			}
+			if _, err := e.otlp.Configure(ctx, p, human()); err != nil {
+				return nil, err
+			}
+			return e.sink.Status(ctx)
+		}),
+		"telemetry.otlp.test": bind(func(ctx context.Context, _ struct{}) (any, error) {
+			if e.otlp == nil {
+				return nil, errors.New("the telemetry exporter did not start (see the log)")
+			}
+			return e.otlp.SendTest(ctx, human())
+		}),
 	}
 }
+
+// otlpSecretName is the name under which the secret scanner knows an OTLP header's value.
+func otlpSecretName(header string) string { return "otlp-header-" + strings.ToLower(header) }
 
 // --- budget methods ---
 
@@ -550,7 +694,7 @@ func (e *economics) budgetList(ctx context.Context, projectID string, scope budg
 	for _, b := range bs {
 		r := budgetRow{Budget: b}
 		if b.ScopeID != budget.Any {
-			st, err := budget.Evaluate(ctx, e.c.DB, b, b.ScopeID)
+			st, err := budget.Evaluate(ctx, e.c.DB, b, budget.InstanceOf(b))
 			if err != nil {
 				return nil, err
 			}
@@ -567,8 +711,12 @@ func (e *economics) budgetStatus(ctx context.Context, ids budget.ScopeIDs) (any,
 		return nil, err
 	}
 	usage := map[string]budget.Spend{}
-	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
-		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
+	wf := "" // a workflow's spend is counted in the project asked about
+	if ids.Workflow != "" {
+		wf = budget.InstanceOf(budget.Budget{Scope: budget.ScopeWorkflow, ScopeID: ids.Workflow, ProjectID: ids.Project})
+	}
+	for _, sc := range []budget.Scope{budget.ScopeProject, budget.ScopeWorkflow, budget.ScopeTask, budget.ScopeRun, budget.ScopeAgent} {
+		id := map[budget.Scope]string{budget.ScopeProject: ids.Project, budget.ScopeWorkflow: wf, budget.ScopeTask: ids.Task, budget.ScopeRun: ids.Run, budget.ScopeAgent: ids.Agent}[sc]
 		if id == "" {
 			continue
 		}
@@ -700,7 +848,10 @@ type decisionRow struct {
 	DecidedBy     string   `json:"decidedBy"`
 	EstCostUSD    *float64 `json:"estCostUsd"` // nil = price unknown, never zero
 	EscalatedFrom string   `json:"escalatedFrom,omitempty"`
-	Outcome       *struct {
+	// StopReason says why Drydock stopped the turn (a wall-time ceiling); Tiebreak what an LLM tiebreak did (P112).
+	StopReason string `json:"stopReason,omitempty"`
+	Tiebreak   string `json:"tiebreak,omitempty"`
+	Outcome    *struct {
 		Outcome    string  `json:"outcome"`
 		Accepted   bool    `json:"accepted"`
 		Escalated  bool    `json:"escalated"`
@@ -712,6 +863,8 @@ type decisionRow struct {
 
 func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisionRow, error) {
 	rows, err := e.c.DB.Reader().QueryContext(ctx, `SELECT d.id,d.ts,d.run_id,d.node_id,d.attempt,d.run_kind,d.level,d.agent,d.provider_id,d.model,d.effort,d.decided_by,d.est_cost_usd,d.escalated_from,
+		d.stop_reason, COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.chose'),''), COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.ranked'),''),
+		COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.failed'),''), COALESCE(json_extract(d.decision,'$.Facts.Tiebreak.by'),''),
 		o.outcome,o.accepted,o.escalated,o.iterations,o.cost_usd,o.cost_source
 		FROM routing_decisions d LEFT JOIN routing_outcomes o ON o.decision_id=d.id WHERE d.task_id=? ORDER BY d.ts, d.id`, taskID)
 	if err != nil {
@@ -726,9 +879,18 @@ func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisi
 		var acc, esc, it sql.NullInt64
 		var cost sql.NullFloat64
 		var cs sql.NullString
+		var chose, ranked, failed, by string
 		if err := rows.Scan(&r.ID, &r.TS, &r.RunID, &r.NodeID, &r.Attempt, &r.RunKind, &r.Level, &r.Agent, &r.Provider, &r.Model, &r.Effort, &r.DecidedBy, &est, &r.EscalatedFrom,
-			&oc, &acc, &esc, &it, &cost, &cs); err != nil {
+			&r.StopReason, &chose, &ranked, &failed, &by, &oc, &acc, &esc, &it, &cost, &cs); err != nil {
 			return nil, err
+		}
+		switch {
+		case failed != "":
+			r.Tiebreak = "tiebreak failed (" + failed + "): the ranking's choice stands"
+		case chose != "" && chose != ranked:
+			r.Tiebreak = "tiebreak by " + by + " chose " + chose + " over " + ranked
+		case chose != "":
+			r.Tiebreak = "tiebreak by " + by + " kept " + chose
 		}
 		if est.Valid {
 			v := est.Float64
@@ -751,6 +913,9 @@ func (e *economics) routeDecisions(ctx context.Context, taskID string) ([]decisi
 
 // routePreview dry-runs the router: the same rules, candidates, quotas and budget state as a real decision, but nothing is
 // recorded, no event is published and no quota slot is taken. A budget at its hard limit is read from the budget store.
+// maxPreviews bounds route.previews: the wiring asks fourteen.
+const maxPreviews = 32
+
 func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (any, error) {
 	if sig, ok := router.TurnSignals(req.RunKind); ok && req.TaskType == "" {
 		// an agent turn kind is previewed with the signals a real turn of that kind gives the router (P63)
@@ -767,5 +932,17 @@ func (e *economics) routePreview(ctx context.Context, req router.RouteRequest) (
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"blocked": false, "decision": d, "explain": e.dry.Explain(d), "budget": req.Budget, "recorded": false}, nil
+	out := map[string]any{"blocked": false, "decision": d, "explain": e.dry.Explain(d), "budget": req.Budget, "recorded": false}
+	// the wall-time ceiling a turn of this level would run under (an agent's own is not known to a preview)
+	if sec := e.ceilingSettings(ctx).Levels[string(orLevel(req.Level))]; sec > 0 && router.IsAgentTurn(req.RunKind) {
+		out["ceilingSeconds"] = sec
+	}
+	return out, nil
+}
+
+func orLevel(l router.Level) router.Level {
+	if l == "" {
+		return router.LevelBalanced
+	}
+	return l
 }

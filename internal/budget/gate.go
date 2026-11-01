@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/storage"
@@ -101,12 +102,47 @@ func ApprovedOverLimit(ctx context.Context) bool {
 	return v
 }
 
+// WithoutApproval is ctx without a human's approval of one turn over a limit: a node that runs several turns (a group
+// discussion, decision P124) lets the approval through for its next turn only, then checks the budgets again.
+func WithoutApproval(ctx context.Context) context.Context {
+	if !ApprovedOverLimit(ctx) {
+		return ctx
+	}
+	return context.WithValue(ctx, approvedTurnKey{}, false)
+}
+
+// PauseError is an agent turn a budget at its limit stopped before it started, where the turn is not a node of its own: a
+// turn of a group discussion (decision P124), which is checked as a room reply is (the budgets of its project, task and
+// agent, and those of the run and the workflow that hold the discussion). As a workflow.GateError it parks the node on the
+// same budget pause as an agent turn's: approved, the node runs again and its next turn goes through (the Enforcer on the
+// node reads the approval); rejected, the run ends. Text is what a room reply says when the same budget refuses it.
+type PauseError struct {
+	Over []Status
+	Text string
+}
+
+func (e *PauseError) Error() string { return e.Text }
+
+// Gate implements workflow.GateError with the budget pause's payload (pausePayload's fields; the engine adds "gate", "node"
+// and "step").
+func (e *PauseError) Gate() (string, string, map[string]any) {
+	over := append([]Status(nil), e.Over...)
+	sort.SliceStable(over, func(i, j int) bool { return over[i].Pct > over[j].Pct })
+	what := e.Text
+	if len(over) > 0 && over[0].Message != "" {
+		what = over[0].Message
+	}
+	msg := fmt.Sprintf("Budget limit reached: %s. The next turn of the discussion did not start. Raise the limit or approve one more turn to continue.", what)
+	return PauseGate, "Budget limit reached: " + what, map[string]any{"message": msg, "exceeded": over,
+		"resume": "budget.resume (raise the limit and/or approve), or run.respond on this request; only a human can answer"}
+}
+
 // scopeIDs names the project, task, run and agent a turn belongs to. The agent of a work or review turn is the task's assignee or
 // reviewer; the agent of a turn of a template role (spec, tests, design, security review) is the one the run pinned for the role
 // at its start, and the planner's is the one the plan names. A per-agent budget used to apply only to work and review turns: a
 // role or planner turn of an agent over its limit ran (audit 2026-10-16, M4).
 func (e *Enforcer) scopeIDs(ctx context.Context, in workflow.NodeInput) ScopeIDs {
-	ids := ScopeIDs{Project: in.ProjectID, Task: in.TaskID, Run: string(in.RunID)}
+	ids := ScopeIDs{Project: in.ProjectID, Task: in.TaskID, Run: string(in.RunID), Workflow: in.Workflow}
 	role := in.Meta["agent"]
 	switch role {
 	case "", "work", "review":
@@ -164,6 +200,22 @@ func (e *Enforcer) PauseBlocked(ctx context.Context, in workflow.NodeInput, reas
 		return workflow.NodeOutput{}, fmt.Errorf("budget: the agent turn did not start: %s", reason)
 	}
 	return e.pause(ctx, in, ids, over), nil
+}
+
+// PauseRefused parks the run on the budget pause for a turn whose reservation did not fit (reserve.go): its estimate, with
+// what the turns in flight hold, would take a budget past its limit. A human answers it as any budget pause: raise the limit,
+// or approve this one turn (its reservation is then held without the check).
+func (e *Enforcer) PauseRefused(ctx context.Context, in workflow.NodeInput, r *RefusedError) workflow.NodeOutput {
+	ids := e.scopeIDs(ctx, in)
+	over := r.Over
+	if len(over) == 0 {
+		over = []Status{{Message: r.Message}}
+	}
+	why := strings.TrimPrefix(r.Message, refusedPrefix)
+	for i := range over {
+		over[i].Message = why // the reason names spent, held and estimated: the pause says it, not only the spend
+	}
+	return e.pause(ctx, in, ids, over)
 }
 
 // priorDecision reads the human's answer to this node's budget pause. It returns true when an approved, human-decided

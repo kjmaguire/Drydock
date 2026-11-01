@@ -161,6 +161,27 @@ test('Models on this PC: the Models page opens it; set up the engine, find and d
   await expect(qwen.getByTestId('local-fit')).toHaveText('Serving · GPU');
   await expect(tiny.getByTestId('local-serve')).toBeEnabled();
 
+  // Load too keeps a second model loaded beside it (decision P111): the server, of one model, starts again as the router with
+  // both; then Unload takes one off on the running router, and Load too loads it beside the other again, which keeps running
+  // (decision P120: the router's own load and unload, which the log shows)
+  await expect(tiny.getByTestId('local-load-too')).toHaveAttribute('title', /the server starts again with both/);
+  await tiny.getByTestId('local-load-too').click();
+  await expect(server.getByTestId('local-server-title')).toHaveText('Serving 2 models', { timeout: 60_000 });
+  await expect(server).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
+  await expect(server.getByTestId('local-load')).toContainText('2 of 4 models loaded');
+  await expect(tiny.getByTestId('local-fit')).toHaveText('Serving · GPU');
+  await expect(tiny.getByTestId('local-unload')).toHaveAttribute('title', 'Unload it: the other models keep running');
+  await tiny.getByTestId('local-unload').click();
+  await expect(server.getByTestId('local-server-title')).toHaveText('Serving Qwen3-Coder-30B-A3B-Instruct', { timeout: 60_000 });
+  await expect(server).toHaveAttribute('data-state', 'running', { timeout: 60_000 });
+  await expect(server.getByTestId('local-log-lines')).toContainText('drydock: unloaded acme/tiny-GGUF:Q4_0 (the others stay loaded)');
+  await expect(tiny.getByTestId('local-load-too')).toBeEnabled();
+  await expect(tiny.getByTestId('local-load-too')).toHaveAttribute('title', 'Load it beside the models served: they keep running while it loads');
+  await tiny.getByTestId('local-load-too').click();
+  await expect(server.getByTestId('local-server-title')).toHaveText('Serving 2 models', { timeout: 60_000 });
+  await expect(server.getByTestId('local-log-lines')).toContainText('drydock: loading acme/tiny-GGUF:Q4_0 beside the models loaded');
+  await expect(server.getByTestId('local-server-note')).toHaveCount(0);
+
   // Stop: the server is stopped, nothing is served
   await server.getByTestId('local-server-stop').click();
   await expect(server).toHaveAttribute('data-state', 'stopped', { timeout: 60_000 });

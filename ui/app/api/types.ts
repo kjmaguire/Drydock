@@ -19,6 +19,11 @@ export interface AppInfo {
   user: string;
   human: string;
   dataDir: string;
+  /** Whether this window can restart Drydock ("Restart now" after a staged restore, decision P116); false in a browser. */
+  canRestart?: boolean;
+  /** The build's version and build id, as the release set them (decision P129); "0.0.0-dev" for a build from the source tree. Absent from older cores. */
+  version?: string;
+  build?: string;
 }
 
 export type ProjectMode = 'local_merge' | 'pr_flow';
@@ -613,8 +618,29 @@ export interface TaskDetail {
   allowRules?: TaskAllowRule[];
   /** Each acceptance criterion's state by the newest test check, in the order of task.acceptance. Absent from older cores. */
   acceptanceState?: CriterionState[];
+  /** Each acceptance criterion's own status with what showed it (pipeline.CriteriaStatus, P125), in the order of task.acceptance. Absent from older cores. */
+  criteria?: CriterionStatus[];
   /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
   paused?: TaskPause;
+}
+
+/**
+ * pipeline.CriterionStatus (decision P125): open, met, not_met or waived. A check result (source "check", by its kind) confirms
+ * met or shows not met; a review (source "review", by the reviewer's agent id) only shows not met; a person (source "person", by
+ * "human:<name>") confirms, says not met or waives. evidence is what showed it, at when (Unix ms). claim is an agent's claim that
+ * the criterion is met, which nothing has confirmed: it never makes the criterion met.
+ */
+export interface CriterionStatus {
+  index: number;
+  id: string;
+  status: 'open' | 'met' | 'not_met' | 'waived' | string;
+  /** The check the criterion names to confirm it (`[check: lint]` or `(check: lint)`, P128): the newest result of that kind decides. */
+  check?: string;
+  source?: 'check' | 'review' | 'person' | string;
+  by?: string;
+  evidence?: string;
+  at?: number;
+  claim?: { by: string; evidence: string; at: number };
 }
 
 /** core.TaskPause: who paused a task's run (a "human:<name>" identity), and when (Unix ms). */
@@ -724,6 +750,8 @@ export interface Room {
   mode: string;
   modeParams?: { order?: string[]; moderator?: string; max_rounds?: number; max_parallel?: number };
   taskId?: string;
+  /** A direct message's agent (decision P130): Ctrl+. in the DM opens its Agent Inspector. */
+  agentId?: string;
   archived: boolean;
   createdBy?: string;
   createdAt: string;
@@ -795,7 +823,20 @@ export interface Unread {
   lastReadSeq: number;
 }
 
-export type NeedsKind = 'approval' | 'review' | 'question' | 'failed_check' | 'watchdog_pause' | 'chat_permission';
+export type NeedsKind =
+  | 'approval'
+  | 'review'
+  | 'question'
+  | 'failed_check'
+  | 'watchdog_pause'
+  | 'chat_permission'
+  | 'budget'
+  // decision P130
+  | 'task_waiting'
+  | 'mention'
+  | 'join_request'
+  | 'agent'
+  | 'connection';
 
 export interface NeedsYouItem {
   key: string;
@@ -822,6 +863,14 @@ export interface NeedsYouItem {
   agentName?: string;
   /** When an approval lapses unanswered (RFC 3339, like createdAt). */
   expiresAt?: string;
+  /** A budget item's budget and where it stands (kind budget, P118); a paused one carries the pause's approvalId. */
+  budgetId?: string;
+  budgetState?: 'warning' | 'exceeded' | 'paused' | string;
+  /** An agent's request to join a channel (kind join_request, P130): room.answerJoin answers it. */
+  joinRequestId?: string;
+  /** An agent CLI that is not ready (kind connection, P130): the Agents page opens on adapter. */
+  adapter?: string;
+  connectionKey?: string;
 }
 
 export interface NeedsContext {
@@ -948,6 +997,8 @@ export interface GateStatus {
   id: string;
   text: string;
   acked: boolean;
+  /** It was accepted, and what was accepted changed since: a person's own CLI's manifest file changed on disk (decision P117). */
+  changed?: boolean;
 }
 
 /** connections.Connection embeds agents.Detection, so the Detection fields are at the top level. */
@@ -975,6 +1026,12 @@ export interface Connection extends Detection {
   account?: string;
   /** The adapter of a custom manifest (a CLI you described, not a vendor's): listed after the vendors' CLIs. */
   custom?: boolean;
+}
+
+/** connection.custom.list (decision P115): where a person's own CLIs are kept, and every manifest file there. */
+export interface CustomCLIs {
+  dir: string;
+  files: { id: string; path: string; error?: string }[];
 }
 
 /** connections.WSLFacts: the distro behind a WSL Connection. */
@@ -1031,6 +1088,33 @@ export interface ConnectionReport {
   key?: string;
   runMode?: string;
   distro?: string;
+}
+
+/** One kept Test connection run (core.TestRun, decision P132): its steps counted, never the CLI's output. */
+export interface TestRun {
+  id: number;
+  cliVersion?: string;
+  transport?: string;
+  ok: boolean;
+  /** The run also sent the tiny prompt. */
+  prompt: boolean;
+  passed: number;
+  failed: number;
+  skipped: number;
+  /** The first failed step's reason, redacted. */
+  reason?: string;
+  elapsedMs: number;
+  /** Unix milliseconds. */
+  at: number;
+}
+
+/** connection.history (decision P132): an install's runs, newest first, and its capability matrix. */
+export interface ConnectionHistory {
+  key: string;
+  runs: TestRun[];
+  matrix: Record<string, MatrixCell>;
+  /** When the run whose cells the matrix shows ran; 0 when none did (the adapter's declarations only). */
+  matrixAt: number;
 }
 
 // --- providers (internal/providers) ---

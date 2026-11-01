@@ -5,7 +5,7 @@
 // end of the row: they are the project's, so they are found inside the project, not behind the gear.
 
 import { css, type Handle, type RemixNode } from 'remix/component';
-import { Settings2 } from 'lucide';
+import { BellOff, Settings2 } from 'lucide';
 import type { Room } from '../api/types.ts';
 import { roomLabel } from '../lib/format.ts';
 import { hubOf, type Route } from '../lib/route.ts';
@@ -83,10 +83,6 @@ const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
     { label: 'Memory', href: routes.memory.href(), testId: 'nav-memory', on: ['memory'] },
     { label: 'Repo map', href: routes.repoMap.href(), testId: 'nav-repo-map', on: ['repo-map'] },
   ],
-  library: [
-    { label: 'Agent templates', href: routes.library.href(), testId: 'nav-library-home', on: ['library'] },
-    { label: 'Skills', href: routes.librarySkills.href(), testId: 'nav-library-skills', on: ['library-skills'] },
-  ],
 };
 
 /** The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. */
@@ -161,6 +157,7 @@ const itemCss = css({
   '&[data-unread="true"]': { color: t.text, fontWeight: '600' },
   '&:focus-visible': { boxShadow: `inset ${t.focus}`, outline: 'none' },
 });
+const mutedCss = css({ flex: 'none', color: t.textFaint, lineHeight: '0' });
 // the unread count is a quiet number, read once ("general, 3 unread")
 const countCss = css({ minWidth: '18px', height: '18px', padding: '0 5px', borderRadius: t.rFull, background: t.accent, color: t.onAccent, fontSize: t.textXs, fontWeight: '700', lineHeight: '18px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' });
 
@@ -224,14 +221,24 @@ export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
     const { room: r, current } = handle.props;
     const p = s.project;
     const agents = p.agentList;
-    const n = (p.unread.data ?? []).find((u) => u.roomId === r.id)?.unread ?? 0;
+    const u = (p.unread.data ?? []).find((x) => x.roomId === r.id);
+    const n = u?.unread ?? 0;
+    // a muted room (decision P130) counts only the messages that name the person, and says it is muted
+    const muted = !!u?.muted;
     // a direct message shows the agent, a task room its writer (both as dots); a channel its icon
-    const agentId = r.kind === 'dm' ? r.name.slice(r.name.lastIndexOf('+') + 1) : r.kind === 'task' ? (p.taskList.find((x) => x.id === r.taskId)?.assignee ?? '') : '';
+    const agentId = r.kind === 'dm' ? r.agentId || r.name.slice(r.name.lastIndexOf('+') + 1) : r.kind === 'task' ? (p.taskList.find((x) => x.id === r.taskId)?.assignee ?? '') : '';
     const agent = agentId ? agents.find((a) => a.id === agentId) : undefined;
     const label = roomLabel(r, agents);
     return (
       <li>
-        <a href={routes.room.href({ id: r.id })} mix={itemCss} data-testid="room-link" aria-current={current ? 'page' : undefined} data-unread={n > 0 ? 'true' : undefined}>
+        <a
+          href={routes.room.href({ id: r.id })}
+          mix={itemCss}
+          data-testid="room-link"
+          aria-current={current ? 'page' : undefined}
+          data-unread={n > 0 ? 'true' : undefined}
+          data-muted={muted ? 'true' : undefined}
+        >
           {r.kind === 'dm' || (r.kind === 'task' && agent) ? (
             <Avatar id={agentId} name={agent?.name ?? label} size={24} kind="agent" status={presenceColor(p.presence.data?.find((x) => x.agentId === agentId))} />
           ) : (
@@ -239,7 +246,16 @@ export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
               <Icon icon={roomIcon(r.kind)} size={14} />
             </span>
           )}
-          <span class="label">{label}</span>
+          {/* "muted" is read with the name; the icon is only drawn */}
+          <span class="label">
+            {label}
+            {muted ? <span class="sr-only">, muted</span> : null}
+          </span>
+          {muted ? (
+            <span mix={mutedCss} title="Muted: only messages that name you count" data-testid="room-muted" aria-hidden="true">
+              <Icon icon={BellOff} size={13} />
+            </span>
+          ) : null}
           {n > 0 ? (
             <span mix={countCss} title={`${n} unread`} data-testid="unread-count">
               <span aria-hidden="true">{n}</span>

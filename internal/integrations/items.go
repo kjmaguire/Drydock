@@ -11,6 +11,7 @@ func (s *Service) Items(ctx context.Context, f ItemFilter) ([]Item, error) {
 	for i := range items {
 		items[i].Warnings = riskWarnings(items[i].RiskFlags)
 	}
+	s.suggestStatus(ctx, items)
 	return items, nil
 }
 

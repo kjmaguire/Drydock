@@ -36,6 +36,8 @@ export interface McpLibraryServer {
   /** When the human last signed in (0 or absent: not signed in). */
   oauthAt?: number;
   oauthScope?: string;
+  /** An OAuth client the human registered with the provider is set (decision P122); its id and secret stay in the vault. */
+  oauthClient?: boolean;
   guard: boolean;
   readOnlyTools: string[];
   tools: McpToolInfo[];
@@ -89,6 +91,11 @@ export interface McpGalleryCard {
   authOptional: boolean;
   secretEnv?: string;
   tokenHelp?: string;
+  /** The server can also sign in through an OAuth app the person registers with the provider (no dynamic registration, decision P122). */
+  oauthApp?: { registerUrl: string; help?: string };
+  /** The connected server signs in with OAuth; oauthClient: through a client the person registered. */
+  oauth?: boolean;
+  oauthClient?: boolean;
   template: boolean;
   license: string;
   licenseNotes?: string;
@@ -191,6 +198,65 @@ const arr = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 const lib = <T extends McpLibraryServer>(s: T): T => ({ ...s, secretEnv: arr(s.secretEnv), readOnlyTools: arr(s.readOnlyTools), tools: arr(s.tools), projects: arr(s.projects) });
 const server = (s: McpServer): McpServer => ({ ...lib(s), agents: arr(s.agents).map((a) => ({ ...a, tools: arr(a.tools) })) });
 
+/** One column of the per-role tool table (docs/mcp.md section 3, decision P115). */
+export interface RoleColumn {
+  key: string;
+  label: string;
+  help: string;
+  /** The Workspace tools of the column (none for a kind of server). */
+  tools?: string[];
+}
+
+export interface RolePolicyCell {
+  allowed: boolean;
+  /** The table's own value. */
+  default: boolean;
+  /** A person set this cell for the project. */
+  changed: boolean;
+}
+
+export interface RolePolicyRow {
+  role: string;
+  label: string;
+  cells: Record<string, RolePolicyCell>;
+}
+
+/** A project's CEL rule: a tool its expression is true for is taken from the project's runs. */
+export interface PolicyRule {
+  id: string;
+  name: string;
+  expr: string;
+}
+
+/** mcp.rolePolicy.get: the project's table, its rules, and the switches some columns depend on. */
+export interface RolePolicyView {
+  projectId: string;
+  columns: RoleColumn[];
+  rows: RolePolicyRow[];
+  rules: PolicyRule[];
+  /** The project lets agents act (task, room, handoff); without it the Act column gives nothing. */
+  actTools: boolean;
+  /** This build has the repo map's parser. */
+  repoMap: boolean;
+}
+
+/** One tool (or a whole server, "<id>__*") a task can keep. */
+export interface TaskToolChoice {
+  name: string;
+  label: string;
+  group: 'workspace' | 'server';
+}
+
+/** task.mcpTools.get: what a task can narrow its agents' tools to, and what it narrowed to (null: it does not narrow). */
+export interface TaskToolsView {
+  taskId: string;
+  choices: TaskToolChoice[];
+  narrowed: string[] | null;
+  agentId?: string;
+  /** What the task's agent gets now, with the narrowing. */
+  agentTools: string[];
+}
+
 export interface McpClient {
   /** The library: servers connected once for the whole workspace. */
   mcpLibList(): Promise<McpLibraryServer[]>;
@@ -223,7 +289,32 @@ export interface McpClient {
   mcpGallery(): Promise<McpGalleryCard[]>;
   /** Connects a catalog server: the token (or a template's secret) goes to the credential store and is never returned. */
   mcpConnect(catalogId: string, token?: string): Promise<McpConnectResult>;
+  /** Connects a catalog server to sign in through the OAuth app the person registered (decision P122). */
+  mcpConnectWithApp(catalogId: string, clientId: string, clientSecret: string): Promise<McpConnectResult>;
+  /** Sets (or, with an empty id, removes) the registered OAuth client of a library server; it signs the server out. */
+  mcpOAuthClient(id: string, clientId: string, clientSecret: string): Promise<McpLibraryServer>;
+  /** The project's per-role tool table (decision P115). */
+  mcpRolePolicyGet(projectId: string): Promise<RolePolicyView>;
+  /** Sets one cell; null puts it back to the table's default. */
+  mcpRolePolicySet(projectId: string, role: string, column: string, allowed: boolean | null): Promise<RolePolicyView>;
+  /** Adds a CEL rule that takes tools away; one that does not compile is refused with the reason. */
+  mcpPolicyRuleAdd(projectId: string, name: string, expr: string): Promise<RolePolicyView>;
+  mcpPolicyRuleRemove(projectId: string, id: string): Promise<RolePolicyView>;
+  /** Whether the project lets agents act (task, room, handoff). */
+  mcpActToolsGet(projectId: string): Promise<boolean>;
+  mcpActToolsSet(projectId: string, enabled: boolean): Promise<boolean>;
+  taskMcpToolsGet(taskId: string): Promise<TaskToolsView>;
+  /** Narrows the task's agents' tools to these names (globs); null stops narrowing. */
+  taskMcpToolsSet(taskId: string, tools: string[] | null): Promise<TaskToolsView>;
 }
+
+const policy = (v: RolePolicyView): RolePolicyView => ({
+  ...v,
+  columns: arr(v.columns).map((c) => ({ ...c, tools: arr(c.tools) })),
+  rows: arr(v.rows).map((r) => ({ ...r, cells: r.cells ?? {} })),
+  rules: arr(v.rules),
+});
+const taskTools = (v: TaskToolsView): TaskToolsView => ({ ...v, choices: arr(v.choices), narrowed: v.narrowed ?? null, agentTools: arr(v.agentTools) });
 
 const card = (c: McpGalleryCard): McpGalleryCard => ({ ...c, readOnlyTools: arr(c.readOnlyTools), tools: arr(c.tools), projects: arr(c.projects), skillRegistries: arr(c.skillRegistries), command: c.command ? arr(c.command) : undefined });
 
@@ -247,6 +338,7 @@ export function createMcpClient(t: Transport): McpClient {
     mcpOAuthStatus: (id) => t.call('mcplib.oauth.status', { id }),
     mcpOAuthCancel: (id) => t.call('mcplib.oauth.cancel', { id }),
     mcpOAuthSignOut: (id) => t.call('mcplib.oauth.signout', { id }),
+    mcpOAuthClient: async (id, clientId, clientSecret) => lib(await t.call<McpLibraryServer>('mcplib.oauth.client', { id, clientId, clientSecret })),
     mcpStatus: async () => {
       const s = await t.call<McpStatus>('mcp.status');
       return { ...s, adapters: arr(s.adapters) };
@@ -264,5 +356,17 @@ export function createMcpClient(t: Transport): McpClient {
       const r = await t.call<McpConnectResult>('mcplib.connect', token ? { catalogId, token } : { catalogId });
       return { ...r, card: card(r.card) };
     },
+    mcpConnectWithApp: async (catalogId, clientId, clientSecret) => {
+      const r = await t.call<McpConnectResult>('mcplib.connect', { catalogId, clientId, clientSecret });
+      return { ...r, card: card(r.card) };
+    },
+    mcpRolePolicyGet: async (projectId) => policy(await t.call<RolePolicyView>('mcp.rolePolicy.get', { projectId })),
+    mcpRolePolicySet: async (projectId, role, column, allowed) => policy(await t.call<RolePolicyView>('mcp.rolePolicy.set', { projectId, role, column, allowed })),
+    mcpPolicyRuleAdd: async (projectId, name, expr) => policy(await t.call<RolePolicyView>('mcp.policyRule.add', { projectId, name, expr })),
+    mcpPolicyRuleRemove: async (projectId, id) => policy(await t.call<RolePolicyView>('mcp.policyRule.remove', { projectId, id })),
+    mcpActToolsGet: async (projectId) => (await t.call<{ enabled: boolean }>('mcp.actTools.get', { projectId })).enabled === true,
+    mcpActToolsSet: async (projectId, enabled) => (await t.call<{ enabled: boolean }>('mcp.actTools.set', { projectId, enabled })).enabled === true,
+    taskMcpToolsGet: async (taskId) => taskTools(await t.call<TaskToolsView>('task.mcpTools.get', { taskId })),
+    taskMcpToolsSet: async (taskId, tools) => taskTools(await t.call<TaskToolsView>('task.mcpTools.set', { taskId, tools })),
   };
 }

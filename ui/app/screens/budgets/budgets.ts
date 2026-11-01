@@ -17,6 +17,20 @@ export function stateTone(state: BudgetStatus['state']): Tone {
   return state === 'exceeded' ? 'err' : state === 'warning' ? 'warn' : 'ok';
 }
 
+/** The scopes a budget can limit, in the order the form lists them (the workflow scope: P118). */
+export const BUDGET_SCOPES = ['project', 'workflow', 'task', 'run', 'agent'];
+
+/**
+ * The scope id when the form's scope changes: a workflow budget starts on the first workflow the core runs, and leaving the
+ * workflow scope gives the project's own id back to a project budget (a workflow's name is no project, task, run or agent id).
+ */
+export function scopeIdAfter(from: string, to: string, scopeId: string, projectId: string, workflows: readonly string[]): string {
+  if (to === from) return scopeId;
+  if (to === 'workflow') return workflows[0] ?? '';
+  if (from === 'workflow') return to === 'project' ? projectId : '';
+  return scopeId;
+}
+
 export interface BudgetFormValues {
   scope: string;
   scopeId: string;
@@ -92,7 +106,8 @@ export function parseBudgetForm(v: BudgetFormValues, projectId: string, initial?
       version: initial?.version,
       scope: v.scope,
       scopeId,
-      projectId: scopeId === '*' ? projectId : undefined,
+      // a "*" ceiling and a workflow budget belong to the project they are made in (a workflow runs in every project)
+      projectId: scopeId === '*' || v.scope === 'workflow' ? projectId : undefined,
       limitUsd: limits.usd ?? null,
       limitTokens: limits.tokens ?? null,
       limitTurns: limits.turns ?? null,
