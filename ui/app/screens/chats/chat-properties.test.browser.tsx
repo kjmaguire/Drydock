@@ -137,7 +137,15 @@ function setup(client: Partial<Client>, props: { id?: string; newChat?: boolean 
   return { s, r };
 }
 
+/** The chat's ⋯ panel (P139): its CLI, where it runs, its skills and servers, Allowed tools, Properties, Fork, Move. */
+async function openMore(r: R) {
+  const more = await waitFor(() => must$(r, '[data-testid="chat-more"]'), r);
+  if (more.getAttribute('aria-expanded') !== 'true') await r.act(() => more.click());
+  return waitFor(() => must$(r, '[data-testid="chat-more-panel"] [data-testid="chat-place"]'), r);
+}
+
 async function openProperties(r: R) {
+  await openMore(r);
   const btn = await waitFor(() => byText(r.container, 'button', 'Properties'), r);
   await r.act(() => btn.click());
   return waitFor(() => openDialogWith('chat-properties-form'), r);
@@ -190,6 +198,7 @@ describe('Chat properties (decision P60)', () => {
       },
       { id: 'chat_a' },
     );
+    await openMore(r);
     await waitFor(() => expect(must$(r, '[data-testid="chip-skills"]').textContent).toBe('1 skill'), r);
     expect(must$(r, '[data-testid="chip-mcp"]').textContent).toBe('1 MCP server');
     const dlg = await openProperties(r);
@@ -212,8 +221,9 @@ describe('Chat properties (decision P60)', () => {
         { serverId: 'docs', tools: [] },
       ],
     });
-    await waitFor(() => expect(must$(r, '[data-testid="chip-mcp"]').textContent).toBe('2 MCP servers'), r);
     await waitFor(() => expect(doc$$('dialog[open]').filter((d) => d.querySelector('[data-testid="chat-properties-form"]'))).toHaveLength(0), r);
+    await openMore(r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-mcp"]').textContent).toBe('2 MCP servers'), r);
   });
 
   it('a new folder warns that a new session starts, and the core refusal shows in the dialog', async () => {

@@ -115,6 +115,7 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   // New chat opens a chat with no project at once (decision P107); its agent CLI is chosen in the chat's Properties
   await page.getByTestId('chat-new').click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
+  await page.getByTestId('chat-more').click();
   await page.getByRole('button', { name: 'Properties' }).click();
   const dialog = page.getByRole('dialog', { name: 'Chat properties' });
   // the distro's install is its own choice, named as on the Agents page
@@ -133,6 +134,7 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   // the header (graphite, P97): the folder as the distro names it (a Linux path, its middle cut when long: the stand-in's home is
   // a temporary folder), and where the chat runs in words
   await expect(page.getByTestId('chat-folder')).toHaveText(new RegExp(`^[~/][^\\\\]*/chats/${chatId}$`));
+  await page.getByTestId('chat-more').click();
   await expect(page.getByTestId('chat-place')).toHaveText('No project · runs inside the distro');
   // the private folder inside the distro, named the Windows way
   await page.getByRole('button', { name: 'Properties' }).click();

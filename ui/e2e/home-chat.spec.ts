@@ -50,6 +50,8 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   await expect(log).toContainText("Use the project's Wrangler version; never guess flags.");
   await expect(log).toContainText('echo: hello from home');
   await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
+  // the chat's skills and servers are in its ⋯ panel (decision P139)
+  await page.getByTestId('chat-more').click();
   await expect(page.getByTestId('chip-skills')).toHaveText('1 skill');
   await expect(page.getByTestId('chip-mcp')).toHaveText('1 MCP server');
 
@@ -62,7 +64,10 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   await props.locator('[data-testid=chat-mcp-option][data-server=chatmcp] input').uncheck();
   await props.getByRole('button', { name: 'Save' }).click();
   await expect(props).toBeHidden();
+  await page.getByTestId('chat-more').click();
+  await expect(page.getByTestId('chip-skills')).toHaveText('1 skill');
   await expect(page.getByTestId('chip-mcp')).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await expect(log).toContainText('No MCP servers for this chat from the next message.');
 
   const message = page.getByLabel('Message', { exact: true });
@@ -72,7 +77,8 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   // the skill still reaches the session; the server no longer does
   const last = page.getByTestId('chat-message').last();
   await expect(last).toContainText('failed', { timeout: 30_000 });
-  // in both turns the skills tool's card holds what it returned (P84) and the stand-in quotes it
+  // in both turns the skills tool's card holds what it returned (P84) and the stand-in quotes it: Ctrl+O shows every call (P139)
+  await page.locator('body').press('Control+o');
   await expect(page.locator('[data-testid=chat-message][data-role=tool]').filter({ hasText: 'never guess flags' })).toHaveCount(2);
   await expect(page.locator('[data-testid=chat-message][data-role=assistant]').filter({ hasText: 'never guess flags' })).toHaveCount(2);
   await expect(page.getByTestId('chat-status')).toHaveText('Session kept');

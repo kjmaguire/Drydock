@@ -193,11 +193,13 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 
 // checkAdapterGates refuses an adapter whose Connection has a gate the human has not acknowledged (as CreateAgent does).
 func (c *Core) checkAdapterGates(ctx context.Context, adapter string) error {
-	conn, err := c.Connections.Check(ctx, adapter)
+	// only the gates: the CLI is not started here (a full Check probes its version and sign-in, seconds on Windows, and up to
+	// its timeouts for a CLI that hangs; P139)
+	gs, err := c.Connections.Gates(adapter)
 	if err != nil {
 		return nil // an adapter without a manifest (a test agent) has no gates
 	}
-	for _, g := range conn.Gates {
+	for _, g := range gs {
 		if !g.Acked {
 			return fmt.Errorf("%s needs your acknowledgement first (%s): %s", adapter, g.ID, g.Text)
 		}

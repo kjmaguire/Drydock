@@ -89,6 +89,7 @@ export const KEYMAP: readonly KeyLine[] = [
   { id: 'new-chat', keys: ['Ctrl', 'N'], action: 'Start a new chat', where: 'Chats' },
   { keys: ['Enter'], action: 'Send the message (Shift+Enter: a new line)', where: "A chat's message box" },
   { keys: ['Esc', 'Esc'], action: 'Stop the agent that is answering', where: "A chat's or a room's message box" },
+  { keys: ['Ctrl', 'O'], action: 'Show every tool call, or fold them again (kept for you)', where: 'A chat' },
   { keys: ['Ctrl', 'Enter'], action: 'Send the message', where: "A room's message box, a thread, a chat" },
   { keys: ['@', '#', '/'], action: 'Suggest agents, tasks and commands', where: "A room's message box" },
   { keys: ['/'], action: 'Search the list', where: 'Agents, Integrations, Models' },

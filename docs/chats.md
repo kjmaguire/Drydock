@@ -28,6 +28,24 @@ the others; the person's own `effortLevel` setting can differ, which Drydock doe
 CLI's reported permission mode is kept too (`cliPermissionMode`). Choosing a model, a CLI or a mode drops what was reported
 until the next turn reports again.
 
+**The calm chat (decision P139).** A conversation reads as text with quiet lines between it (`ui/app/screens/chats/chat-groups.ts`,
+its rules unit-tested): the tool calls between two pieces of the agent's text are one line ("Read 2 files, edited 1 file, ran 1
+command · 2.2 s", the reasoning before them on it as "Thought for 6 s"), opened to the tool cards; a failed call opens its line
+and its card by itself, and a line still running names its current step ("Running npm test"). The file edits of one turn
+(everything after one of the person's messages, up to the next) are one card, "Changed N files +A −D", after the turn's last
+row; Review changes opens the files' diffs (from the edit calls' own inputs: the chat has no worktree diff). After the agent's
+final answer, when its last sentence is an offer ("Want me to ...?") or a question, up to three replies are offered (Yes with
+the offer, Not now, Explain more; Yes, No, Explain more; You decide, Explain more), worked out on the page from the words, never
+by a model; a click sends the reply. Ctrl+O opens every line (verbose), kept per viewer in the browser's storage. The header is
+the title, the folder (or the project) and ⋯ (the CLI with its state, where the chat runs, its skills and MCP servers, Allowed
+tools, Properties, Fork, Move to a project); a CLI that is missing, not signed in or whose last turn failed is one warning chip
+there, which opens Properties to pick another. The composer's chips are the agent CLI, the model and effort, the permission
+mode, then attach, Stop and Send. A new chat is the composer with the cursor in it. `ChatConversation`
+(`ui/app/screens/chats/chat-conversation.tsx`, `<ChatConversation chatId=... onNavigate?=... />`) is one chat without the
+list, for a page that embeds a chat. New chat no longer waits on the CLI: `chat.create` and `chat.update` check only whether the
+CLI's notice is acknowledged (`connections.Service.Gates`), without starting it (P139: the full check started the CLI for its
+version and sign-in, seconds on Windows and up to its timeouts for one that hangs, and New chat sat on "Starting...").
+
 ## 1. Objects
 
 `Chat`:

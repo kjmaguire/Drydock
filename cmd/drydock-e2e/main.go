@@ -178,6 +178,17 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 			// Bash call in the default permission mode, and runs it after the human allowed the suggested rule and pressed Retry
 			// (the retry text comes from the UI). It is a TEST DOUBLE, never presented as Claude.
 			{Match: "drydock-e2e chat", Steps: []fakeagent.Step{{Say: "Hello from the scripted chat stand-in (a test double). I read: drydock-e2e chat."}}},
+			// The calm chat (ui/e2e/chats.spec.ts, decision P139): a run of tool calls (two reads, a command, an edit) that the
+			// page folds into one line and one "Changed 1 file" card, then an answer that ends with an offer (the suggested
+			// replies); "calm fail" makes a command that fails, whose line opens by itself. The edit is reported, not made.
+			{Match: "drydock-e2e calm fail", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"go vet ./..."}`), Result: "vet: calc.go:3: unreachable code", IsError: true}, {Say: "go vet failed."}}},
+			{Match: "drydock-e2e calm", Steps: []fakeagent.Step{
+				{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc.go"}`), Result: "package gocalc"},
+				{Tool: "Read", Input: json.RawMessage(`{"file_path":"calc_test.go"}`), Result: "package gocalc"},
+				{Tool: "Bash", Input: json.RawMessage(`{"command":"go test ./..."}`), Result: "ok  \tgocalc\t0.003s"},
+				{Tool: "Edit", Input: json.RawMessage(`{"file_path":"calc.go","old_string":"return 0","new_string":"return a - b"}`), Result: "The file was updated."},
+				{Say: "Subtract now returns a - b. Want me to add a test for it?"},
+			}},
 			// A routed room reply (ui/e2e/round3.spec.ts, decision P63): the reply that carries the marker text.
 			{Match: "drydock-e2e routed reply", Steps: []fakeagent.Step{{Say: "Answered by the scripted room stand-in (a test double)."}}},
 			{Match: "drydock-e2e touch", Steps: []fakeagent.Step{{Tool: "Bash", Input: json.RawMessage(`{"command":"touch chat_probe.txt"}`), Ask: true, Result: ""}, {Say: "I was not allowed to run that."}}},

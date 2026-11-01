@@ -2355,3 +2355,31 @@ Open, owner action:
   never appearing). After the claim, Send uses a context the caller's cancellation does not reach. Test:
   `internal/chats/send_cancel_test.go` (it fails without the change, naming `chat.turn_started`). Whether this was the only
   cause of that e2e failure is not proven: the run's trace could not be read from this environment.
+
+- **P139. The calm chat (2026-11-01).** The owner approved the "simple UI" ideas ("simplifying how much text there is,
+  simplifying chat"); idea 3 and its mockup are built. (a) **Bursts:** consecutive tool calls between two pieces of the agent's
+  text are one line ("Read 2 files, edited 1 file, ran 1 command · 2.2 s"; reasoning before them folds into it as "Thought for
+  6 s", measured from the end of the row before, and nothing under a second is timed), opened to today's tool cards; a failed
+  call opens its line and its card by itself; a running line names its current step. Grouping is a pure function of the
+  message list, worked out again only when the feed replaces its list, so long histories and streaming cost no more (the
+  chat-perf budgets hold; 300 calls are one row). (b) **Changes:** the file edits of one turn (from one of the person's messages
+  to the next) roll up into one "Changed N files +A −D" card after the turn's last row, its Review changes a dialog of the diffs
+  made from the edit calls' inputs (Edit, MultiEdit, Write, ACP old/new text). A chat has no worktree, so the dock's Diff (a
+  task's) is not it. (c) **Header:** title, the folder chip (the project's name for a project chat, the folder in its tooltip),
+  one warning chip when the CLI is missing, not signed in or the last turn failed (it opens Properties to pick another CLI), and
+  ⋯: the CLI and its state, where the chat runs, its skills and servers, Allowed tools (a second view of the same panel),
+  Properties, Fork, Move to a project. The state's words stay in the header for screen readers (`chat-status`). (d)
+  **Composer:** chips for the agent CLI (Properties), model · effort and permission mode (today's popovers), attach files and
+  chats, Stop, Send (an accent button). (e) **Suggested replies:** after the final answer, when its last sentence is an offer or a
+  question, up to three chips derived on the page from the words (no model call); "Make it a task" is left out: a chat has no
+  path to create a task today. (f) **Empty states** are the composer with the cursor in it, and one line with New chat. (g)
+  **Ctrl+O** toggles verbose, kept per viewer in `localStorage` (read and written in try/catch). (h) `ChatConversation` renders
+  one chat without the list, for the project Work view to embed. (i) **"Starting..." fixed:** `chat.create` (and a CLI change in
+  `chat.update`) checked the CLI's notice with a full `Connections.Check`, which starts the CLI for its version and sign-in
+  (prerequisites, version and auth probes, each up to its timeout): seconds on Windows, and as long as the timeouts for a CLI
+  that hangs, so New chat sat on "Starting...". It now reads only the gates (`connections.Service.Gates`, no process started); a
+  refusal shows one line with "Choose another agent" (the new chat dialog). Tests: `ui/app/screens/chats/chat-groups.test.ts`
+  (grouping, changes, replies, verbose), `chats-screen.test.browser.tsx` ("The calm chat (P139)", ChatConversation),
+  `internal/connections/detect_test.go` `TestGatesStartNoCLI` (a hanging CLI: answered at once), e2e `ui/e2e/chats.spec.ts` (the
+  calm chat against the real core: the line, its cards, the changes card and its review, Ctrl+O across a reload, the replies, a
+  failed call open), and the chat specs moved to ⋯ (`chats`, `home-chat`, `knowledge`, `wsl`). Not verified: on Windows.
