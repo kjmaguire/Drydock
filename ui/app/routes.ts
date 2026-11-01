@@ -45,7 +45,10 @@ export const routes = route({
   crew: get('/crew'),
   chats: get('/chats'),
   chat: get('/chats/:id'),
+  // Agents (decision P140): one library with the tabs My agents (/library, the agent templates), Starters (the prebuilt
+  // agents) and Skills
   library: get('/library'),
+  libraryStarters: get('/library/starters'),
   librarySkills: get('/library/skills'),
   // everything Drydock connects to, once for the whole workspace (decision P98): services, agent tools, your own MCP servers;
   // /integrations/<key> opens one of them
@@ -67,7 +70,11 @@ export const routes = route({
   data: get('/data'),
   support: get('/support'),
   license: get('/license'),
+  // one Settings (decision P140): General is /settings; every other section keeps the address it had as a page of its own
+  // (shell/settings-sections.ts), and the two sections that never had one live under /settings
   settings: get('/settings'),
+  settingsShortcuts: get('/settings/shortcuts'),
+  settingsAbout: get('/settings/about'),
   // the Guide: explanations the pages leave out; one topic per path (the UI audit of 2026-10-19)
   guide: get('/guide(/:topic)'),
 });

@@ -59,10 +59,10 @@ describe('command palette items', () => {
     expect(items.find((i) => i.label === 'Integrations')!.href).toBe('/integrations');
     expect(filterItems(items, 'project integrations')[0]!.label).toBe('Project integrations');
     expect(filterItems(items, 'approvals').map((i) => i.label)).toContain('Project integrations');
-    // the Library keeps the agent templates; the MCP servers you add are on Integrations (decision P98)
-    expect(items.find((i) => i.label === 'Agent templates')!.href).toBe('/library');
+    // the Agents library keeps the agent templates as My agents (decision P140); the MCP servers you add are on Integrations (P98)
+    expect(items.find((i) => i.label === 'My agents')!.href).toBe('/library');
     expect(items.map((i) => i.label)).not.toContain('Library: agents and MCP servers');
-    expect(filterItems(items, 'templates')[0]!.label).toBe('Agent templates');
+    expect(filterItems(items, 'templates')[0]!.label).toBe('My agents');
   });
 
   it('offers the GitHub settings page, found by "gh" and by what it holds', () => {
@@ -72,12 +72,12 @@ describe('command palette items', () => {
     expect(filterItems(items, 'runners').map((i) => i.label)).toContain('GitHub');
   });
 
-  it('offers Models, Agents and Integrations, the sidebar\'s own pages, found by what they hold (decision P98)', () => {
+  it('offers Models, Agent CLIs and Integrations, sections of Settings, found by what they hold (decisions P98, P140)', () => {
     const items = buildItems(rooms, tasks, agents);
     const models = items.find((i) => i.label === 'Models')!;
     expect(models).toMatchObject({ group: 'Navigate', href: '/models', what: 'Goes to Models.' });
-    // a workspace page, not a settings page: not listed by ">"
-    expect(models.scope).toBe(undefined);
+    // a section of Settings: listed by ">"
+    expect(models.scope).toBe('>');
     expect(filterItems(items, 'models on this pc')[0]!.href).toBe('/models');
     expect(filterItems(items, 'local models')[0]!.href).toBe('/models');
     expect(filterItems(items, 'gguf')[0]!.href).toBe('/models');
@@ -88,9 +88,24 @@ describe('command palette items', () => {
     // the agent CLIs, found by their old page's name too
     expect(filterItems(items, 'connections')[0]!.href).toBe('/agents');
     expect(filterItems(items, 'claude code')[0]!.href).toBe('/agents');
-    expect(items.find((i) => i.label === 'Agents')!.scope).toBe(undefined);
-    expect(items.find((i) => i.label === 'Integrations')!.scope).toBe(undefined);
+    expect(items.find((i) => i.label === 'Agent CLIs')!.scope).toBe('>');
+    expect(items.find((i) => i.label === 'Integrations')!.scope).toBe('>');
     expect(items.some((i) => i.label === 'Connections' || i.label === 'Providers')).toBe(false);
+  });
+
+  it('reaches every page that left the sidebar (decision P140): the Settings sections, the Agents tabs, All crews, Running, My tasks, the Guide', () => {
+    const items = buildItems(rooms, tasks, agents);
+    const hrefs = items.map((i) => i.href);
+    for (const href of [
+      '/agents', '/models', '/routing', '/integrations', '/github', '/security-scan', '/backups', '/data', '/settings', '/settings/shortcuts',
+      '/settings/about', '/support', '/license', '/guide', '/library', '/library/starters', '/library/skills', '/crew', '/needs-you?tab=running', '/my-tasks',
+    ]) {
+      expect([href, hrefs.includes(href)]).toEqual([href, true]);
+    }
+    expect(filterItems(items, 'security scan').map((i) => i.href)).toContain('/security-scan');
+    expect(filterItems(items, 'models')[0]!.href).toBe('/models');
+    expect(filterItems(items, 'all crews')[0]!.href).toBe('/crew');
+    expect(filterItems(items, 'shortcuts')[0]!.href).toBe('/settings/shortcuts');
   });
 
   it('matches letters in order as a last resort and drops non-matches', () => {

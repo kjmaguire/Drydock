@@ -36,15 +36,14 @@ function svc(over: Partial<Client> = {}) {
 const links = (r: { $$: (s: string) => NodeListOf<Element> }) => Array.from(r.$$('nav[aria-label="Main"] a[data-testid]')).map((e) => e.getAttribute('data-testid'));
 
 describe('the sidebar', () => {
-  it("on a project's page: the mark, the switcher, search, Inbox with its count, Running, My tasks, Chats, the projects with the open one's tabs, the workspace's pages", async () => {
+  it("on a project's page: six places (decision P140): New, Home, Inbox with its count, Chats, the projects with the open one's tabs, then Agents and Settings", async () => {
     const r = mount(<Sidebar route={{ name: 'tasks' }} />, svc());
     await waitFor(() => expect(r.$('[data-testid="nav-overview"]')).not.toBeNull(), r);
     expect(r.$('nav[aria-label="Main"]')).not.toBeNull();
     expect(links(r)).toEqual([
+      'nav-new',
       'nav-workspace',
       'nav-needs-you',
-      'nav-running',
-      'nav-my-tasks',
       'nav-chats',
       'nav-project-item',
       'nav-overview',
@@ -53,35 +52,28 @@ describe('the sidebar', () => {
       'nav-team',
       'nav-knowledge',
       'nav-project-item',
-      'nav-crew',
-      'nav-security-scan',
-      'nav-side-agents',
-      'nav-side-integrations',
-      'nav-side-models',
       'nav-library',
-      'nav-library-skills',
       'nav-settings',
-      'nav-guide-top',
     ]);
+    // gone from the sidebar: Running and My tasks (tabs of the Inbox), All crews, Security scan, the agent CLIs, Integrations, Models,
+    // Skills (Settings or the Agents library), the Guide (Settings > Help & about and the command menu)
+    for (const id of ['nav-running', 'nav-my-tasks', 'nav-crew', 'nav-security-scan', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-library-skills', 'nav-guide-top']) {
+      expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
+    }
+    expect(r.$('[data-testid="brand"]')!.textContent).toBe('Drydock');
+    expect(r.$('[data-testid="nav-new"]')!.getAttribute('href')).toBe('/project/new');
+    expect(r.$('[data-testid="nav-new"]')!.textContent).toBe('NewCtrl N');
+    expect(r.$('[data-testid="nav-new"]')!.getAttribute('aria-keyshortcuts')).toBe('Control+N');
+    expect(r.$('[data-testid="nav-workspace"]')!.textContent).toBe('Home');
+    expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
     expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you');
     expect(r.$('[data-testid="nav-tasks"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-needs-you"]')!.textContent).toContain('Inbox');
     expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
-    // the Library's two halves are entries of their own, each one click away (decision P106)
-    expect(r.$('[data-testid="nav-library"]')!.textContent).toBe('Agent templates');
+    expect(r.$('[data-testid="nav-library"]')!.textContent).toBe('Agents');
     expect(r.$('[data-testid="nav-library"]')!.getAttribute('href')).toBe('/library');
-    expect(r.$('[data-testid="nav-library-skills"]')!.textContent).toBe('Skills');
-    expect(r.$('[data-testid="nav-library-skills"]')!.getAttribute('href')).toBe('/library/skills');
-    // every project's crew is a workspace page, under Workspace
-    expect(r.$('ul[aria-label="Workspace"] [data-testid="nav-crew"]')!.getAttribute('href')).toBe('/crew');
-    // named apart from the project's own Crew and its Security pill
-    expect(r.$('[data-testid="nav-crew"]')!.textContent).toBe('All crews');
-    expect(r.$('[data-testid="nav-security-scan"]')!.textContent).toBe('Security scan');
-    // the search box says one word the narrow sidebar does not cut; its title says the rest
-    expect(r.$('button[aria-label="Search and jump (Ctrl+K)"] .lbl')!.textContent).toBe('Search');
-    expect(r.$('[data-testid="nav-settings"]')).not.toBeNull();
-    expect(r.$('[data-testid="nav-guide-top"]')).not.toBeNull();
-    expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('gocalc');
+    expect(r.$('ul[aria-label="App"] [data-testid="nav-settings"]')!.getAttribute('href')).toBe('/settings');
+    // search stays one click away, beside the name
     expect(r.$('button[aria-label="Search and jump (Ctrl+K)"]')).not.toBeNull();
     expect(r.$('[data-testid="stream"]')).not.toBeNull();
     // the open project is the one whose tabs show; the other is one line
@@ -91,36 +83,27 @@ describe('the sidebar', () => {
     expect(r.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it("counts every project's items that need you and what runs; the Inbox, Running and My tasks are the workspace's pages", async () => {
+  it("counts every project's items that need you; the Inbox is current on its tabs and on My tasks", async () => {
     const s = svc({
       // a project's own list is not the count: the workspace's (no project) is
       needsYouList: async (pid: string) => (pid === '' ? [{ key: 'a' }, { key: 'b' }, { key: 'c' }] : [{ key: 'a' }]) as never,
-      taskSummaries: async () => ({ summaries: [{ taskId: 't1', status: 'IN_PROGRESS' }, { taskId: 't2', status: 'REVIEW' }, { taskId: 't3', status: 'WAITING_HUMAN' }, { taskId: 't4', status: 'COMPLETED' }] as never, total: 4, partial: false }),
-      securityScanRunning: async () => [{ id: 's1', name: 'shop-api', engines: [] }] as never,
     });
     const r = mount(<Sidebar route={{ name: 'needs-you' }} />, s);
     await waitFor(() => expect(r.$('[data-testid="needs-count"]')!.textContent).toBe('3'), r);
     expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('3 items need you');
     expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-label')).toBe('Inbox: 3 items need you');
-    await waitFor(() => expect(r.$('[data-testid="running-count"]')!.textContent).toBe('3'), r);
-    expect(r.$('[data-testid="nav-running"]')!.getAttribute('href')).toBe('/needs-you?tab=running');
-    expect(r.$('[data-testid="nav-running"]')!.getAttribute('aria-label')).toBe('Running: 3 tasks and scans run');
-    expect(r.$('[data-testid="nav-my-tasks"]')!.getAttribute('href')).toBe('/my-tasks');
     // the Inbox is the workspace's page: no project is open in the sidebar
     expect(r.$('[data-testid="nav-overview"]')).toBeNull();
     expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-running"]')!.getAttribute('aria-current')).toBeNull();
-    // its Running tab lights Running instead
     await r.act(() => s.ui.setInboxTab('running'));
-    expect(r.$('[data-testid="nav-running"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBeNull();
+    expect(r.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page');
     cleanup();
     const mine = mount(<Sidebar route={{ name: 'my-tasks' }} />, svc());
-    await waitFor(() => expect(mine.$('[data-testid="nav-my-tasks"]')!.getAttribute('aria-current')).toBe('page'), mine);
+    await waitFor(() => expect(mine.$('[data-testid="nav-needs-you"]')!.getAttribute('aria-current')).toBe('page'), mine);
     expect(mine.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('marks the page current: a tab of the project, Chats, the workspace Crew, Security, Agents, Integrations, Models, Settings, the Guide', async () => {
+  it('marks the page current: a tab of the project, Chats, Home, New, Agents for the library and every crew, Settings for every section', async () => {
     for (const [route, id] of [
       [{ name: 'task', id: 't1' }, 'nav-tasks'],
       [{ name: 'pulls' }, 'nav-tasks'],
@@ -129,22 +112,26 @@ describe('the sidebar', () => {
       [{ name: 'agent', id: 'agt1' }, 'nav-team'],
       [{ name: 'project' }, 'nav-overview'],
       [{ name: 'chat', id: 'c1' }, 'nav-chats'],
-      [{ name: 'crew' }, 'nav-crew'],
-      [{ name: 'security-scan' }, 'nav-security-scan'],
-      // the sidebar's own pages (decision P98); the old addresses mark where they now lead, GitHub is one of the integrations
-      [{ name: 'agents' }, 'nav-side-agents'],
-      [{ name: 'agents', key: 'claude' }, 'nav-side-agents'],
-      [{ name: 'connections' }, 'nav-side-agents'],
-      [{ name: 'integrations', key: 'linear' }, 'nav-side-integrations'],
-      [{ name: 'github' }, 'nav-side-integrations'],
-      [{ name: 'mcp' }, 'nav-side-integrations'],
-      [{ name: 'models' }, 'nav-side-models'],
-      [{ name: 'providers' }, 'nav-side-models'],
-      [{ name: 'routing' }, 'nav-settings'],
-      [{ name: 'guide', topic: 'scan' }, 'nav-guide-top'],
       [{ name: 'workspace' }, 'nav-workspace'],
+      [{ name: 'project-new' }, 'nav-new'],
       [{ name: 'library' }, 'nav-library'],
-      [{ name: 'library-skills' }, 'nav-library-skills'],
+      [{ name: 'library-starters' }, 'nav-library'],
+      [{ name: 'library-skills' }, 'nav-library'],
+      [{ name: 'crew' }, 'nav-library'],
+      // every page that left the sidebar is a section of Settings, under its old address
+      [{ name: 'security-scan' }, 'nav-settings'],
+      [{ name: 'agents' }, 'nav-settings'],
+      [{ name: 'agents', key: 'claude' }, 'nav-settings'],
+      [{ name: 'connections' }, 'nav-settings'],
+      [{ name: 'integrations', key: 'linear' }, 'nav-settings'],
+      [{ name: 'github' }, 'nav-settings'],
+      [{ name: 'mcp' }, 'nav-settings'],
+      [{ name: 'models' }, 'nav-settings'],
+      [{ name: 'providers' }, 'nav-settings'],
+      [{ name: 'routing' }, 'nav-settings'],
+      [{ name: 'settings-shortcuts' }, 'nav-settings'],
+      [{ name: 'settings-about' }, 'nav-settings'],
+      [{ name: 'license' }, 'nav-settings'],
     ] as const) {
       const r = mount(<Sidebar route={route} />, svc());
       await waitFor(() => expect(r.$(`[data-testid="${id}"]`)?.getAttribute('aria-current')).toBe('page'), r);
@@ -153,15 +140,37 @@ describe('the sidebar', () => {
     }
   });
 
-  it("on a workspace page the projects are lines and no project's tabs show; the switcher says Home", async () => {
+  it('on a workspace page the projects are lines and no project\'s tabs show', async () => {
     const r = mount(<Sidebar route={{ name: 'library' }} />, svc());
     await waitFor(() => expect(r.$$('[data-testid="nav-project-item"]')).toHaveLength(2), r);
     expect(r.$('[data-testid="nav-overview"]')).toBeNull();
     expect(r.$('[data-testid="nav-chats"]')).not.toBeNull();
-    expect(r.$('button[aria-label="Switch project"]')!.textContent).toContain('Home');
   });
 
-  it('Models is a workspace page of its own: its link and the engine card lead to /models, and no project is open there', async () => {
+  it('Ctrl+N goes to New everywhere but Chats (whose screen makes a new chat), and never from a field', async () => {
+    const went: string[] = [];
+    const s = svc();
+    const ctrlN = (target: EventTarget) => {
+      const e = new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true, cancelable: true });
+      target.dispatchEvent(e);
+      return e;
+    };
+    const r = mount(<Sidebar route={{ name: 'tasks' }} onNavigate={(h) => went.push(h)} />, s);
+    await waitFor(() => expect(r.$('[data-testid="nav-new"]')).not.toBeNull(), r);
+    expect(ctrlN(document.body).defaultPrevented).toBe(true);
+    expect(went).toEqual(['/project/new']);
+    const input = document.createElement('input');
+    document.body.append(input);
+    expect(ctrlN(input).defaultPrevented).toBe(false);
+    input.remove();
+    cleanup();
+    const chats = mount(<Sidebar route={{ name: 'chats' }} onNavigate={(h) => went.push(h)} />, s);
+    await waitFor(() => expect(chats.$('[data-testid="nav-new"]')).not.toBeNull(), chats);
+    expect(ctrlN(document.body).defaultPrevented).toBe(false);
+    expect(went).toEqual(['/project/new']);
+  });
+
+  it('Models is a section of Settings: the engine line leads to /models, and no project is open there', async () => {
     const v = {
       supported: true,
       runtime: { installed: true, sourceName: 'TurboQuant build', tag: 'b10298-2.0.0', backend: 'vulkan' },
@@ -171,9 +180,7 @@ describe('the sidebar', () => {
     const r = mount(<Sidebar route={{ name: 'models' }} />, svc({ localGet: async () => v }));
     await waitFor(() => expect(r.$$('[data-testid="nav-project-item"]')).toHaveLength(2), r);
     expect(r.$('[data-testid="nav-overview"]')).toBeNull();
-    expect(r.$('[data-testid="nav-side-models"]')!.getAttribute('href')).toBe('/models');
-    expect(r.$('[data-testid="nav-side-models"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-settings"]')!.getAttribute('aria-current')).toBeNull();
+    expect(r.$('[data-testid="nav-settings"]')!.getAttribute('aria-current')).toBe('page');
     await waitFor(() => expect(r.$('[data-testid="engine-card"]')?.getAttribute('href')).toBe('/models'), r);
   });
 
@@ -242,6 +249,7 @@ describe('the sidebar', () => {
     expect(engineWords(undefined)).toBeUndefined();
     const r = mount(<Sidebar route={{ name: 'home' }} />, svc({ localGet: async () => v }));
     await waitFor(() => expect(r.$('[data-testid="engine-card"]')?.textContent).toContain('Local engine running'), r);
-    expect(r.$('[data-testid="engine-card"]')!.textContent).toContain('TurboQuant build b10298 · Vulkan');
+    // one quiet line: the build is in its title
+    expect(r.$('[data-testid="engine-card"]')!.getAttribute('title')).toBe('Local engine running: TurboQuant build b10298 · Vulkan');
   });
 });

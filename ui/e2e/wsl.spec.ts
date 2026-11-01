@@ -12,7 +12,7 @@ test('Agents: Claude Code inside a WSL distro is its own row with its own sign-i
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-conn');
   await workspaceNav(page, 'nav-connections');
-  await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent CLIs' })).toBeVisible();
   // a row of its own in the list, "Claude Code WSL" without the distro (the detail's Runs fact names it); the row opens its
   // detail beside the list and puts it in the address
   const row = page.locator(`[data-testid=agent-row][data-key="claude@wsl:${distro()}"]`);

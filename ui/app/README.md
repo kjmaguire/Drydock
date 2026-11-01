@@ -33,7 +33,7 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
-  shell/              sidebar (with the project switcher), hub pills and rails, details panel, dock host, license banner, the command
+  shell/              sidebar (six places, P140; New in new.ts), hub pills and rails, the Settings sections (settings-sections.ts), details panel, dock host, license banner, the command
                       menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
@@ -48,7 +48,7 @@ app/
                       window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
                       hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
                       page), Skills & tools, Memory and History); the inspector stays in the details panel
-  screens/agents/     Agents (/agents, /agents/<key>; decision P98, once Connections): the agent CLIs as a MasterDetail list (Installed,
+  screens/agents/     Agent CLIs (/agents, /agents/<key>; decision P98, once Connections; a section of Settings, P140): the agent CLIs as a MasterDetail list (Installed,
                       Not installed), the chosen one's header (Test connection, Sign in, Check again), one notice and the tabs
                       Overview (notices to accept, facts, the distro, the MCP gateway switch, Used by), Test results, Install and
                       update (helpers in agents.ts)

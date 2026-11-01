@@ -76,8 +76,8 @@ test("your servers: connect an MCP server once; a project adds it and grants it 
 
   // a team member: defined once in the Library
   await workspaceNav(page, 'nav-library');
-  await expect(page.getByRole('heading', { level: 1, name: 'Agent templates' })).toBeVisible();
-  await page.getByRole('button', { name: 'New agent template' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'My agents' })).toBeVisible();
+  await page.getByTestId('library-new-agent').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('Payments dev');
   await tf.getByLabel('Role').fill('backend');

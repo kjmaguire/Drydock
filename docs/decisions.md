@@ -2383,3 +2383,30 @@ Open, owner action:
   `internal/connections/detect_test.go` `TestGatesStartNoCLI` (a hanging CLI: answered at once), e2e `ui/e2e/chats.spec.ts` (the
   calm chat against the real core: the line, its cards, the changes card and its review, Ctrl+O across a reload, the replies, a
   failed call open), and the chat specs moved to ⋯ (`chats`, `home-chat`, `knowledge`, `wsl`). Not verified: on Windows.
+
+- **P140. Six places in the sidebar: one Settings and one Agents library (2026-11-01).** The owner approved the "simple UI"
+  ideas 6 and 7 ("merging windows together, simplifying how much text there is"). (a) **Sidebar:** the Drydock name with search
+  and the fold, **New** (Ctrl+N; on Chats the key keeps making a new chat), **Home**, **Inbox** (with its count), **Chats**, the
+  **Projects** (the open one keeps its tabs under it for now), and at the foot **Agents** and **Settings** with the engine and
+  the event stream as one quiet line each. Running and My tasks became tabs of the Inbox (Running, and Mine); All crews, Security
+  scan, the agent CLIs, Integrations, Models, Agent templates, Skills and the Guide left the sidebar. The project switcher left
+  too: the Projects list opens a project, New starts one. What New opens is said in one place (`ui/app/shell/new.ts`, today
+  `/project/new`), so the coming start screen takes it over there. (b) **One Settings:** ten sections (General, Agent CLIs,
+  Models, Routing & budgets, Integrations, GitHub, Security scan, Backups & data, Shortcuts, Help & about) in a registry
+  (`ui/app/shell/settings-sections.ts`) that the Settings rail, its search, the section pills and the tests read. The existing
+  screens are rendered inside the frame, unchanged but for their titles and an intro line (the page Agents is titled **Agent
+  CLIs**, so only the library is called Agents); every old address opens its screen with its section marked (`/models`,
+  `/agents/claude`, `/integrations/linear`, `/connections`, `/providers`, `/mcp`, `/github`, `/data`...), and two sections got
+  addresses of their own (`/settings/shortcuts`, `/settings/about`). `/github` is now GitHub's own section instead of a redirect
+  to `/integrations/github`, which still shows it as an Integrations row. (c) **One Agents library:** `/library` is My agents
+  (the agent templates, as cards: avatar, name, one line of purpose, the model and effort chip, a ⋯ menu with Edit and Delete),
+  `/library/starters` the prebuilt agents read-only (Use opens the agent form filled from the starter and saves a new agent of
+  mine; the servers it names that are not in the library are left for Integrations), `/library/skills` the skill library, and
+  All crews (`/crew`) a pill set apart. "New agent" goes through one function of the library screen (`openNewAgent`), so the
+  Describe flow can take it over. (d) The command menu reaches every page that left the sidebar (Running, My tasks, All crews,
+  Starter agents, Keyboard shortcuts, Help and about, Agent CLIs, Models, Security scan...). Not done: "in N projects" on an
+  agent card (an agent does not record the template it came from; counting by name would guess). Tests:
+  `ui/app/shell/settings-sections.test.ts` (the registry, the route map, the search), `sidebar.test.browser.tsx`,
+  `hubnav.test.browser.tsx`, `palette-items.test.ts`, `lib/route.test.ts`, `screens/library/*`, `screens/settings/*`; e2e
+  `ui/e2e/navigation.spec.ts` (the sidebar's six places, every moved page from Settings and by its old address, the search,
+  the Agents tabs, Ctrl+K to Models and Security scan) and the specs whose navigation moved (`e2e/helpers.ts` opens a hub's hub).

@@ -62,42 +62,61 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
 
 ```
 +-------------+--------------------------------------------------------------------+
-| Sidebar     | Page top bar: title, subtitle | the page's tabs and filters | actions |
-| switcher    | Hub pills (Tasks: Board Plan Pull requests Milestones; ...)        |
-| search      +-----------+-----------------------------------------+--------------+
+| Drydock  Q [| Page top bar: title, subtitle | the page's tabs and filters | actions |
+| + New CtrlN | Hub pills (Tasks: Board Plan Pull requests Milestones; ...)        |
+| Home        +-----------+-----------------------------------------+--------------+
 | Inbox  3    | Rail      | Center: a page (the Inbox, the board,   | Right column |
-| Running     | (Rooms or | a task, Crew, Settings...) or a         | (beside a    |
-| My tasks    | Settings) | conversation (messages + composer)      | conversation)|
-| Chats       |           +-----------------------------------------+--------------+
-| Projects    |           | Bottom dock: Terminal | Diff | Logs | Activity           |
-|  Overview.. +-----------+----------------------------------------------------------+
-| Workspace   |
+| Chats       | (Rooms or | a task, Crew, a Settings section...) or | (beside a    |
+| PROJECTS    | Settings) | a conversation (messages + composer)    | conversation)|
+|  calculator |           +-----------------------------------------+--------------+
+|   Overview..|           | Bottom dock: Terminal | Diff | Logs | Activity           |
+|             +-----------+----------------------------------------------------------+
+| Agents      |
 | Settings    |
-| engine      |
+| engine, live|
 +-------------+
 ```
 
-- **Sidebar (`ui/app/shell/sidebar.tsx`, the "Main" navigation landmark; 248 px, folded a 56 px rail):** the workspace
-  switcher (a menu: Home, the projects as radio items, New project, App settings), search (Ctrl+K, its box says Search), **Inbox** (`/needs-you`,
-  with the count of what needs you across every project), **Running** (the Inbox's Running tab), **My tasks**, **Chats**,
-  then **Projects**: the open project shows its tabs **Overview** (`/`), **Tasks**, **Rooms**, **Crew** (`/team`),
-  **Knowledge** nested under it, the others are one line that opens them; then **Workspace**: **All crews** (`/crew`, every
-  project's agents) and **Security scan**, named apart from the project's Crew and its Security pill (UI audit 2026-10-26),
-  Agents, Integrations, Models and the Library (decision P98); at the foot Settings, the Guide, the local engine's state and build, and
-  the event stream's state. On a workspace page no project's tabs show and the switcher says Home. The arrow keys, Home and
-  End move through the links; "[" (never while typing) or the fold button folds it to the rail, whose icons keep the labels
-  as their names; the choice is kept, and a window under 1200 px starts folded (a phone-sized one with a 44 px rail).
+- **Sidebar (`ui/app/shell/sidebar.tsx`, the "Main" navigation landmark; 248 px, folded a 56 px rail; six places since decision
+  P140):** the Drydock mark and name with search (Ctrl+K) and the fold button; **New** (`nav-new`, Ctrl+N everywhere but Chats,
+  where the key makes a new chat; `shell/new.ts` is the one place that says what New opens: today the new-project flow
+  `/project/new`); **Home** (`/home`, `nav-workspace`); **Inbox** (`/needs-you`, with the count of what needs you across every
+  project; Running and Mine, once the My tasks page, are its tabs, and `/needs-you?tab=running` and `/my-tasks` open them);
+  **Chats**; then **Projects**: the open project shows its tabs **Overview** (`/`), **Tasks**, **Rooms**, **Crew** (`/team`),
+  **Knowledge** nested under it, the others are one line that opens them; at the foot **Agents** (`/library`, `nav-library`)
+  and **Settings** (`/settings`), then one quiet line for the local engine (its build in the title) and the event stream's
+  state. Every page that left the sidebar is a section of Settings, a pill of Agents, a tab of the Inbox or in the command menu
+  (Ctrl+K), which lists each of them. On a workspace page no project's tabs show. The arrow keys, Home and End move through the
+  links; "[" (never while typing) or the fold button folds it to the rail, whose icons keep the labels as their names; the
+  choice is kept, and a window under 1200 px starts folded (a phone-sized one with a 44 px rail). The project switcher
+  (`shell/project-switcher.tsx`) is no longer in the sidebar; the Projects list is the way into a project.
 - **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a tab with sub-pages shows them as pills under the
   bar: Tasks (Board, Plan, Pull requests, Milestones), Knowledge (Overview, Requirements, Expert packs, Skills, Memory, Repo
   map), Overview (Overview, Activity, Budgets, Evals report, Security, then set apart at the end of the row after a gap and a
   hairline: **Project settings** with a gear icon, `nav-project`, and the project's **Integrations**, `nav-project-integrations`),
-  Library (Agent templates, Skills). The project's settings are pills of its Overview (2026-10-16, on the owner's
-  request: "keep the settings for the app only"): a person finds them inside the project, the Overview tab is current on them
-  (`hubOf`), and nothing of one project is behind the gear.
+  **Agents** (the hub's name, then My agents `/library`, Starters `/library/starters`, Skills `/library/skills`, and set apart
+  **All crews** `/crew`; decision P140), and a Settings section of more than one screen (Backups & data: Backups, Export and
+  import; Help & about: About, Support bundle, License, Guide). The project's settings are pills of its Overview (2026-10-16, on
+  the owner's request: "keep the settings for the app only"): a person finds them inside the project, the Overview tab is
+  current on them (`hubOf`), and nothing of one project is in Settings.
+- **One Settings (decision P140; `ui/app/shell/settings-sections.ts`):** `/settings` is one page: the Settings rail on the left
+  ("Settings", a search box, the sections) and the section's screen beside it. The sections, in order: **General**
+  (`/settings`: theme, what agents inherit, telemetry, diagnostics, updates, not built yet), **Agent CLIs** (`/agents(/:key)`,
+  `/connections`), **Models** (`/models(/:key)`, `/providers`), **Routing & budgets** (`/routing`; budgets are per project, a
+  pill of its Overview), **Integrations** (`/integrations(/:key)`, `/mcp`), **GitHub** (`/github`; still also the GitHub row of
+  Integrations), **Security scan** (`/security-scan`), **Backups & data** (`/backups`, `/data`), **Shortcuts**
+  (`/settings/shortcuts`: the keys a person changes and the keyboard map) and **Help & about** (`/settings/about`: the session,
+  the version and the licenses; `/support`, `/license`, and a pill to the Guide, which stays its own page at `/guide`). Every old
+  address opens its screen inside the frame, with its section marked; the screens are the same components as before (reused,
+  not rewritten), each starting with its title and rows. The search keeps the sections whose title or rows match and lists the
+  rows it found as links. The section links keep the test ids the old links had (`nav-side-agents`, `nav-side-models`,
+  `nav-side-integrations`, `nav-security-scan`, `nav-routing`, `nav-settings-about` for General). To add a section: an entry in
+  `SETTINGS_SECTIONS` (title, address, the route names it holds, test id, rows), its route in `routes.ts` with the hub
+  `settings` in `lib/route.ts`, and its action in `actions/controller.tsx`.
 - **Rails:** on the Rooms tab, the project's channels, task rooms and direct messages (the "Rooms" navigation; a room is
-  named without "#"); behind the gear, Routing and the settings pages of the app (Agents, Integrations with GitHub, and Models are the sidebar's own
-  list-and-detail pages since decision P98) (Settings and About, License, Backups, Export and import, Support bundle), two groups and nothing
-  else. Only entries whose feature exists are rendered; section 4 lists what is absent per slice.
+  named without "#"); on every Settings section the Settings rail above. A window under 900 px shows a rail as a drawer opened
+  from a bar over the page ("Rooms", "Settings sections"). Only entries whose feature exists are rendered; section 4 lists what
+  is absent per slice.
 - **Center:** either a conversation (a message list paged newest-first and windowed: only the rows near the view are in the DOM; section 6.4; everyone's messages are left-aligned rows, the person's own faintly tinted, tools post under a tool tile, the agents' turn-taking and members are the details panel's Room tab, opened by the mode chip in the room's header; decision P93) with the composer (mentions, slash commands, `[DECISION] [TODO] [STATUS] [RESULT]` markers, attachments), or a page (Overview with its Insights card, the Tasks board or list, a task with its step bar and decision card, the Crew and an agent's page, the Knowledge hub, Workflow, Pull Requests, Agents, Integrations, Models, Settings). One center view at a time; back/forward history is kept per window.
 - **Repository configuration banner (built 2026-10-11, `ui/app/shell/repo-config-banner.tsx`):** above every screen of a project whose repository's own git configuration, hooks or `info/attributes` changed since a person last trusted them (`project.gitConfig` answers `trusted: false`; docs/security.md s3), a warning region named "Repository git configuration changed" says so in plain words, lists the changed items (config keys, `hooks/<file>`, `info/attributes`; names only, never values) and offers **Trust this configuration**. Only that click trusts, and it sends the fingerprint of the state on screen (`project.trustGitConfig`); a configuration that changed again since is refused by the core, and the banner then shows the newer items to review again. The status is re-read on `security.repo_config_trusted` (also published when a run's approval trusted it), approval and request events, a reopened stream and window focus (a change made in a terminal publishes no event). Not shown for a project without a repository; read-only turns the button off.
 - **Right column (resizable, collapsible):** tabs Thread, Task details, Agent Inspector. Selecting an agent presence dot, a card author or a task opens the matching tab. It never shows a feature that is not built.

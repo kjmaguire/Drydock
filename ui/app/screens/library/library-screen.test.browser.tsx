@@ -17,7 +17,7 @@ function rec<R>(calls: Calls, result: (...args: unknown[]) => R) {
   };
 }
 
-function show(client: Partial<Client> = {}) {
+function show(client: Partial<Client> = {}, tab: 'mine' | 'starters' = 'mine') {
   const s = testServices({
     licenseStatus: async () => devLicense,
     appInfo: async () => ({}) as never,
@@ -36,7 +36,7 @@ function show(client: Partial<Client> = {}) {
     ...client,
   });
   s.workspace.start();
-  const r = mount(<LibraryScreen />, s);
+  const r = mount(<LibraryScreen tab={tab} onNavigate={() => {}} />, s);
   return r;
 }
 type R = ReturnType<typeof show>;
@@ -53,22 +53,33 @@ async function pick(r: R, kind: 'lib-template'): Promise<HTMLElement> {
   await r.act(() => tile.click());
   return one(r, `[data-testid="${kind}"]`);
 }
-describe('Library page', () => {
-  it('shows the templates as tiles: what each is and its state, and no panel until one is clicked; the MCP servers are in Integrations', async () => {
+describe('Agents > My agents (decision P140)', () => {
+  it('shows my agents as cards: avatar, name, one line of purpose, the model chip and the state; no panel until one is clicked; the MCP servers are in Integrations', async () => {
     const r = show({
       mcpLibList: async () => [libServer({ projects: [] }), libServer({ id: 'web', display: 'Web thing', transport: 'http', projects: ['prj_1', 'prj_2'] })],
-      agentTemplateList: async () => [tpl(), tpl({ id: 'tpl_2', name: 'Lonely', role: '', adapter: 'codex', mcpServers: ['gone'] })],
+      agentTemplateList: async () => [tpl(), tpl({ id: 'tpl_2', name: 'Lonely', role: '', adapter: 'codex', model: '', mcpServers: ['gone'] })],
     });
 
     const tplTiles = await waitFor(() => {
-      const l = r.$$('ul[aria-label="Agent templates"] [data-testid="lib-template-tile"]');
+      const l = r.$$('ul[aria-label="My agents"] [data-testid="lib-template-tile"]');
       if (l.length !== 2) throw new Error('not yet');
       return Array.from(l) as HTMLElement[];
     }, r);
-    expect(tplTiles[0]!.textContent).toBe('Payments devbackend, on claudeGets 1 server');
-    expect(tplTiles[0]!.querySelector('[data-brand="claude"]')).not.toBeNull();
-    expect(tplTiles[1]!.textContent).toBe('LonelyTeam member on codex1 server not connected');
+    const purpose = (el: HTMLElement) => el.querySelector('[data-testid="lib-template-purpose"]')!.textContent;
+    const chip = (el: HTMLElement) => el.querySelector('[data-testid="lib-template-model"]')!.textContent;
+    expect(tplTiles[0]!.querySelector('strong')!.textContent).toBe('Payments dev');
+    expect(tplTiles[0]!.querySelector('[data-letters]')).not.toBeNull();
+    expect(purpose(tplTiles[0]!)).toBe('Own the payments service.');
+    expect(chip(tplTiles[0]!)).toBe('sonnet · high');
+    expect(tplTiles[0]!.textContent).toContain('Gets 1 server');
+    expect(purpose(tplTiles[1]!)).toBe('Own the payments service.');
+    // no model set: the chip names the agent CLI
+    expect(chip(tplTiles[1]!)).toBe('codex');
+    expect(tplTiles[1]!.textContent).toContain('1 server not connected');
     expect(tplTiles[1]!.querySelector('small[data-tone="warn"]')).not.toBeNull();
+    // each card has its ⋯ menu (Edit, Delete) beside the card's button, never inside it
+    expect(r.$$('[data-testid="lib-template-more"]').length).toBe(2);
+    expect(tplTiles[0]!.querySelector('[data-testid="lib-template-more"]')).toBeNull();
 
     // nothing is open until a tile is clicked
     expect(r.$('[data-testid="lib-template"]')).toBeNull();
@@ -78,7 +89,7 @@ describe('Library page', () => {
     expect(r.container.textContent).not.toContain('Web thing');
     expect(() => byText(r.container, 'button', 'Connect an MCP server')).toThrow();
     expect(r.$('[data-testid="library-servers-link"]')!.getAttribute('href')).toBe('/integrations');
-    expect(r.$('header')!.textContent).toContain('2 templates');
+    expect(r.$('header')!.textContent).toContain('2 agents');
   });
 
   it('clicking a template tile opens its panel below the grid, another tile switches it, the same tile closes it', async () => {
@@ -92,7 +103,7 @@ describe('Library page', () => {
     const panel = await one(r, '[data-testid="lib-template"]');
     expect(panel.getAttribute('data-template')).toBe('Payments dev');
     expect(tiles[0]!.getAttribute('aria-pressed')).toBe('true');
-    const grid = r.$('ul[aria-label="Agent templates"]')!;
+    const grid = r.$('ul[aria-label="My agents"]')!;
     expect(grid.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await r.act(() => tiles[1]!.click());
     await waitFor(() => expect(r.$('[data-testid="lib-template"]')!.getAttribute('data-template')).toBe('Second'), r);
@@ -104,7 +115,7 @@ describe('Library page', () => {
   it('marks a template whose permission mode skips approvals with the red badge on its tile and in its panel, and no other template (M1)', async () => {
     const r = show({ agentTemplateList: async () => [tpl({ permissionMode: 'bypassPermissions' }), tpl({ id: 'tpl_2', name: 'Careful', permissionMode: 'plan' })] });
     const tiles = await waitFor(() => {
-      const l = r.$$('ul[aria-label="Agent templates"] [data-testid="lib-template-tile"]');
+      const l = r.$$('ul[aria-label="My agents"] [data-testid="lib-template-tile"]');
       if (l.length !== 2) throw new Error('not yet');
       return Array.from(l) as HTMLElement[];
     }, r);
@@ -123,10 +134,13 @@ describe('Library page', () => {
   it('says so in one line when there are no templates', async () => {
     const r = show({ mcpLibList: async () => [], agentTemplateList: async () => [] });
     const empty = await one(r, '[data-testid="lib-template-empty"]');
-    expect(empty.textContent).toContain('No templates yet.');
-    // the page the link opens is called Crew in the sidebar, not Team
-    expect(empty.querySelector('a')!.textContent).toBe('Crew');
-    expect(r.$('ul[aria-label="Agent templates"]')).toBeNull();
+    expect(empty.textContent).toContain('No agents of your own yet.');
+    // a starter, or an agent of a project's Crew (named Crew, not Team)
+    expect(Array.from(empty.querySelectorAll('a')).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['starter', '/library/starters'],
+      ['Crew', '/team'],
+    ]);
+    expect(r.$('ul[aria-label="My agents"]')).toBeNull();
     expect(r.$('[data-testid="lib-mcp-empty"]')).toBeNull();
   });
 
@@ -138,7 +152,7 @@ describe('Library page', () => {
     expect(tp.querySelector('[data-testid="lib-template-where"] a')!.textContent).toBe('Crew');
     // the server it gives, by its name
     expect(tp.querySelector('ul[aria-label="MCP servers it gets"]')!.textContent).toContain('Test server');
-    expect(r.$('h1')!.textContent).toContain('Agent templates');
+    expect(r.$('h1')!.textContent).toContain('My agents');
   });
 
   it('carries nothing of a single project: no project names, no agents, no put-in-project controls', async () => {
@@ -168,20 +182,50 @@ describe('Library page', () => {
 
   it('has no skills section of its own and no second link to them: the Skills pill under Library is the way (UI review P1-8)', async () => {
     const r = show();
-    await one(r, '[data-testid="lib-template-empty"], [aria-label="Agent templates"]');
+    await one(r, '[data-testid="lib-template-empty"], [aria-label="My agents"]');
     expect(r.$('[data-testid="library-skills"]')).toBeNull();
     expect(r.$('a[href="/library/skills"]')).toBeNull();
   });
 
-  it('shows the prebuilt agents as a read-only section next to the templates', async () => {
-    const r = show({ agentCatalogList: async () => CATALOG });
+  it('Starters: the prebuilt agents, read-only; Use opens the agent form filled from the starter and saves it as my agent', async () => {
+    const saved: Calls = [];
+    const went: string[] = [];
+    const s = testServices({
+      licenseStatus: async () => devLicense,
+      appInfo: async () => ({}) as never,
+      projectList: async () => projects,
+      adapterList: async () => [claude],
+      mcpLibList: async () => [libServer({ projects: [] })],
+      agentTemplateList: async () => [],
+      agentCatalogList: async () => CATALOG,
+      agentTemplateSkillChoices: async () => [],
+      claudePractices: async () => ({ role: '', text: '' }) as never,
+      agentTemplateSave: rec(saved, (x) => ({ ...tpl(), ...(x as object), id: 'tpl_new' })) as never,
+    });
+    s.workspace.start();
+    const r = mount(<LibraryScreen tab="starters" onNavigate={(h) => went.push(h)} />, s);
     const sec = await one(r, '[data-testid="library-prebuilt"]');
     await waitFor(() => expect(sec.querySelectorAll('[data-testid="prebuilt"]').length).toBe(CATALOG.length), r);
+    expect(r.$('h1')!.textContent).toContain('Starters');
     expect(sec.textContent).toContain('Cloudflare Engineer');
-    // read-only: nothing adds an agent here; every card can still be opened to see what it comes with (decision P43)
+    // read-only: nothing adds an agent to a project here; every card can still be opened to see what it comes with (decision P43)
     const names = Array.from(sec.querySelectorAll('[data-testid="prebuilt"] button')).map((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').trim());
     expect(names.filter((n) => n.startsWith('Add')).length).toBe(0);
     expect(names).toContain('What Cloudflare Engineer comes with');
+    const first = CATALOG[0]!;
+    await r.act(() => sec.querySelector<HTMLButtonElement>(`button[aria-label="Use ${first.name}"]`)!.click());
+    const tf = await one(r, '[data-testid="template-form"]');
+    expect(r.$('dialog[open]')!.textContent).toContain(`Save ${first.name} as my agent`);
+    expect((byLabel(tf, 'Template name') as HTMLInputElement).value).toBe(first.name);
+    expect((byLabel(tf, 'Role') as HTMLInputElement).value).toBe(first.role);
+    r.root.flush();
+    await r.act(() => byText(tf, 'button', 'Create template').click());
+    await waitFor(() => expect(saved.length).toBe(1), r);
+    // a new one: no id is sent, so the starter never overwrites an agent of mine
+    expect((saved[0]![0] as { id?: string }).id).toBe(undefined);
+    expect((saved[0]![0] as { name: string }).name).toBe(first.name);
+    await waitFor(() => expect(went).toEqual(['/library']), r);
+    expect(note(r)).toBe(`${first.name} is one of your agents now.`);
   });
 
   it('opens the panel of a template just made: the next step is there', async () => {
@@ -190,8 +234,8 @@ describe('Library page', () => {
       agentTemplateList: async () => tpls,
       agentTemplateSave: async () => ((tpls = [tpl()]), tpls[0]!),
     } as never);
-    await waitFor(() => expect(r.container.textContent).toContain('No templates yet.'), r);
-    await r.act(() => byText(r.container, 'button', 'New agent template').click());
+    await waitFor(() => expect(r.container.textContent).toContain('No agents of your own yet.'), r);
+    await r.act(() => byText(r.container, 'button', 'New agent').click());
     const tf = await one(r, '[data-testid="template-form"]');
     type(byLabel(tf, 'Template name'), 'Payments dev');
     type(byLabel(tf, 'Role'), 'backend');
@@ -199,25 +243,44 @@ describe('Library page', () => {
     await r.act(() => byText(tf, 'button', 'Create template').click());
     const tp = await one(r, '[data-testid="lib-template"]');
     expect(tp.getAttribute('data-template')).toBe('Payments dev');
-    expect(note(r)).toBe('The template Payments dev was saved.');
+    expect(note(r)).toBe('Payments dev is one of your agents now.');
   });
 
-  it('deleting a template needs a confirmation; agents made from it stay', async () => {
+  it('deleting an agent needs a confirmation; agents made from it stay', async () => {
     const deletes: Calls = [];
     const r = show({ agentTemplateDelete: rec(deletes, () => undefined) as never });
     const card = await pick(r, 'lib-template');
     await r.act(() => byText(card, 'button', 'Delete').click());
     expect(deletes).toEqual([]);
-    expect(card.textContent).toContain('Agents already made from it stay.');
-    await r.act(() => byText(card, 'button', 'Yes, delete').click());
+    const confirm = await one(r, '[data-testid="lib-template-delete"]');
+    expect(r.$('dialog[open]')!.textContent).toContain('Delete Payments dev?');
+    expect(confirm.textContent).toContain('Agents already made from it stay in their projects.');
+    await r.act(() => byText(confirm, 'button', 'Yes, delete').click());
     await waitFor(() => expect(deletes).toEqual([['tpl_1']]), r);
+    await waitFor(() => expect(note(r)).toBe('The agent Payments dev was deleted. Agents already made from it stay.'), r);
   });
 
-  it('opens the template form for a new template (the form itself belongs to the team screen)', async () => {
+  it("the card's ⋯ menu opens Edit with the agent's own form", async () => {
+    const r = show();
+    const more = await one(r, '[data-testid="lib-template-more"]');
+    expect(more.getAttribute('aria-label')).toBe('More for Payments dev');
+    await r.act(() => more.click());
+    const edit = await waitFor(() => {
+      const it = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((m) => m.textContent === 'Edit');
+      if (!it) throw new Error('no menu');
+      return it;
+    }, r);
+    await r.act(() => edit.click());
+    const tf = await one(r, '[data-testid="template-form"]');
+    expect((byLabel(tf, 'Template name') as HTMLInputElement).value).toBe('Payments dev');
+    expect(byText(tf, 'button', 'Save template')).not.toBeNull();
+  });
+
+  it('New agent opens the agent form (the form itself belongs to the team screen)', async () => {
     const r = show({ agentTemplateList: async () => [] });
-    await waitFor(() => expect(r.container.textContent).toContain('No templates yet.'), r);
+    await waitFor(() => expect(r.container.textContent).toContain('No agents of your own yet.'), r);
     expect(r.$('dialog[open]')).toBeNull();
-    await r.act(() => byText(r.container, 'button', 'New agent template').click());
-    await waitFor(() => expect(r.$('dialog[open]')!.textContent).toContain('New agent template'), r);
+    await r.act(() => byText(r.container, 'button', 'New agent').click());
+    await waitFor(() => expect(r.$('dialog[open] [data-testid="template-form"]')).not.toBeNull(), r);
   });
 });

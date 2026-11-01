@@ -106,8 +106,8 @@ function writeJSON(key: string, v: unknown): void {
   }
 }
 
-/** The Inbox's tabs. */
-export type InboxTab = 'needs' | 'running' | 'done';
+/** The Inbox's tabs; Mine is the person's own tasks (once the My tasks page, decision P140). */
+export type InboxTab = 'needs' | 'running' | 'done' | 'mine';
 
 /** A one-time note one page leaves for the next. */
 export interface Flash {

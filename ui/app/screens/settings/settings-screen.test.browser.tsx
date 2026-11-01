@@ -45,22 +45,46 @@ const settingsClient = (over: Partial<Client> = {}): Partial<Client> => ({
 });
 
 describe('SettingsScreen', () => {
-  it('renders every section with no project, and says who and where this session is', async () => {
+  it('General: the theme, what agents inherit, telemetry, diagnostics and updates, with no project (decision P140)', async () => {
     const s = testServices(settingsClient());
     s.workspace.start();
     const r = mount(<SettingsScreen />, s);
-    expect(r.$('h1')!.textContent).toContain('Settings and about');
-    await waitFor(() => expect(r.container.textContent).toContain('human:kyle'), r);
-    expect(r.container.textContent).toContain('C:\\Users\\kyle\\AppData\\Local\\Drydock');
-    expect(r.container.textContent).toContain('fake');
-    expect(tid(r.container, 'stream-status').textContent).toContain('last seq');
+    expect(r.$('h1')!.textContent).toContain('General');
+    tid(r.container, 'theme-system');
     tid(r.container, 'agent-env');
     tid(r.container, 'updates-section');
     await waitFor(() => tid(r.container, 'telemetry-counts'), r);
     await waitFor(() => tid(r.container, 'diag-usage'), r); // the diagnostics categories (decision P121)
+    // the session, the version and the keys are their own sections
+    expect(r.$('[data-testid="stream-status"]')).toBeNull();
+    expect(r.$('[data-testid="about-section"]')).toBeNull();
+    expect(r.$('[data-testid="about-keymap"]')).toBeNull();
+  });
+
+  it('About (Help & about): says who and where this session is, and the version, without the keyboard map', async () => {
+    const s = testServices(settingsClient());
+    s.workspace.start();
+    const r = mount(<SettingsScreen part="about" />, s);
+    expect(r.$('h1')!.textContent).toContain('About');
+    await waitFor(() => expect(r.container.textContent).toContain('human:kyle'), r);
+    expect(r.container.textContent).toContain('C:\\Users\\kyle\\AppData\\Local\\Drydock');
+    expect(r.container.textContent).toContain('fake');
+    expect(tid(r.container, 'stream-status').textContent).toContain('last seq');
+    tid(r.container, 'about-section');
+    expect(r.$('[data-testid="about-keymap"]')).toBeNull();
     // the event stream line follows the store
     s.emit({ type: 'x.y' });
     await waitFor(() => expect(tid(r.container, 'stream-status').textContent).toMatch(/last seq [1-9]\d*/), r);
+  });
+
+  it('Shortcuts: the keys a person changes and the keyboard map', async () => {
+    const s = testServices(settingsClient());
+    s.workspace.start();
+    const r = mount(<SettingsScreen part="shortcuts" />, s);
+    expect(r.$('h1')!.textContent).toContain('Shortcuts');
+    await waitFor(() => expect(r.$('[data-testid="keys-row"][data-id="inbox"]')).not.toBeNull(), r);
+    expect(r.$$('[data-testid="about-keymap"] tbody tr').length).toBe(KEYMAP.length);
+    expect(r.$('[data-testid="agent-env"]')).toBeNull();
   });
 
   it('About Drydock: the version, the third-party licenses the build ships, and the keyboard map (P129)', async () => {
@@ -72,9 +96,10 @@ describe('SettingsScreen', () => {
       }),
     );
     s.workspace.start();
-    const r = mount(<SettingsScreen />, s);
+    const r = mount(<SettingsScreen part="about" />, s);
     await waitFor(() => expect(tid(r.container, 'about-version').textContent).toBe('0.4.2, build abc123'), r);
-    const rows = Array.from(tid(r.container, 'about-keymap').querySelectorAll('tbody tr'));
+    const keys = mount(<SettingsScreen part="shortcuts" />, s);
+    const rows = Array.from(tid(keys.container, 'about-keymap').querySelectorAll('tbody tr'));
     expect(rows.length).toBe(KEYMAP.length);
     expect(rows.map((tr) => Array.from(tr.querySelectorAll('kbd')).map((k) => k.textContent).join('+')).includes('Ctrl+B')).toBe(true);
     expect(rows.some((tr) => tr.textContent!.includes('Stop the agent that is answering'))).toBe(true);
@@ -91,7 +116,7 @@ describe('SettingsScreen', () => {
       }),
     );
     dev.workspace.start();
-    const d = mount(<SettingsScreen />, dev);
+    const d = mount(<SettingsScreen part="about" />, dev);
     await waitFor(() => expect(tid(d.container, 'about-version').textContent).toBe('0.0.0-dev (a build from the source)'), d);
     await d.act(() => tid(d.container, 'about-licenses').click());
     await waitFor(() => expect(tid(document.body, 'about-licenses-note').textContent).toBe('This build has no third-party notices beside it.'), d);

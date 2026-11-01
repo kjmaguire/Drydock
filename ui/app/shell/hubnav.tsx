@@ -1,11 +1,12 @@
-// What a hub shows beside the sidebar (graphite, decision P97; first drawn for Crew HQ, P64): a row of pills for a hub's sub-pages (Overview, Tasks,
-// Knowledge, Library), the Settings rail (the workspace's and the app's settings pages, grouped), and the Rooms rail (the
-// project's channels, task rooms and direct messages). Every page the old sidebar linked is reached from one of these, with
-// the same test id. A project's own settings (Project settings, its Integrations) are pills of its Overview, set apart at the
-// end of the row: they are the project's, so they are found inside the project, not behind the gear.
+// What a hub shows beside the sidebar (graphite, decision P97; first drawn for Crew HQ, P64): a row of pills for a hub's sub-pages
+// (Overview, Tasks, Knowledge, the Agents library, a Settings section of more than one screen), the Settings rail (decision
+// P140: "Settings", a search box and the sections of shell/settings-sections.ts) and the Rooms rail (the project's channels,
+// task rooms and direct messages). Every page the old sidebar linked is reached from one of these, with the same test id. A
+// project's own settings (Project settings, its Integrations) are pills of its Overview, set apart at the end of the row: they
+// are the project's, so they are found inside the project, not in Settings.
 
-import { css, type Handle, type RemixNode } from 'remix/component';
-import { BellOff, Settings2 } from 'lucide';
+import { css, on, type Handle, type RemixNode } from 'remix/component';
+import { BellOff, Search, Settings2 } from 'lucide';
 import type { Room } from '../api/types.ts';
 import { roomLabel } from '../lib/format.ts';
 import { hubOf, type Route } from '../lib/route.ts';
@@ -15,6 +16,7 @@ import { Avatar, presenceColor } from '../ui/data.tsx';
 import { Icon, roomIcon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
 import { tightList } from '../ui/layout.tsx';
+import { searchSettings, sectionOf } from './settings-sections.ts';
 
 const subCss = css({
   display: 'flex',
@@ -58,7 +60,18 @@ interface Pill {
   icon?: typeof Settings2;
 }
 
+// the hub's name, before its pills, where the hub is a page of its own rather than a tab of a project (Agents)
+const TITLE_CSS = css({ flex: 'none', margin: `0 ${t.s3} 0 0`, fontSize: t.textLg, fontWeight: '600', color: t.text });
+
 const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
+  // one Agents library (decision P140): the person's own agents (the templates), the prebuilt starters, the skills; every
+  // project's crew is set apart at the end
+  library: [
+    { label: 'My agents', href: routes.library.href(), testId: 'nav-library-mine', on: ['library'] },
+    { label: 'Starters', href: routes.libraryStarters.href(), testId: 'nav-library-starters', on: ['library-starters'] },
+    { label: 'Skills', href: routes.librarySkills.href(), testId: 'nav-library-skills', on: ['library-skills'] },
+    { label: 'All crews', href: routes.crew.href(), testId: 'nav-crew', on: ['crew'], trailing: true },
+  ],
   overview: [
     { label: 'Overview', href: routes.home.href(), testId: 'nav-overview-home', on: ['home'] },
     { label: 'Activity', href: routes.activity.href(), testId: 'nav-activity', on: ['activity'] },
@@ -85,12 +98,26 @@ const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
   ],
 };
 
-/** The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. */
+const HUB_TITLES: Partial<Record<ReturnType<typeof hubOf>, string>> = { library: 'Agents' };
+
+/** A Settings section's screens as pills, when it has more than one (Backups & data, Help & about). */
+function settingsPills(route: Route): Pill[] | undefined {
+  const sec = sectionOf(route);
+  if (!sec || sec.pages.length < 2) return undefined;
+  return sec.pages.map((p) => ({ label: p.label, href: p.href, testId: p.testId, on: [...p.on] }));
+}
+
+/**
+ * The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. In
+ * Settings, the pills are the screens of the section open, when it has more than one.
+ */
 export function SubNav(handle: Handle<{ route: Route }>) {
   return () => {
     const { route } = handle.props;
-    const pills = PILLS[hubOf(route)];
+    const hub = hubOf(route);
+    const pills = hub === 'settings' ? settingsPills(route) : PILLS[hub];
     if (!pills) return null;
+    const title = HUB_TITLES[hub];
     const first = pills.findIndex((p) => p.trailing);
     const pill = (p: Pill) => (
       <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
@@ -100,6 +127,7 @@ export function SubNav(handle: Handle<{ route: Route }>) {
     );
     return (
       <nav aria-label="Section" mix={subCss}>
+        {title ? <span mix={TITLE_CSS}>{title}</span> : null}
         {(first < 0 ? pills : pills.slice(0, first)).map(pill)}
         {first >= 0 ? (
           <>
@@ -170,41 +198,99 @@ function Group(handle: Handle<{ title: string; children?: RemixNode }>) {
   );
 }
 
-function RailLink(handle: Handle<{ href: string; current: boolean; testId: string; label: string }>) {
-  return () => {
-    const { href, current, testId, label } = handle.props;
-    return (
-      <li>
-        <a href={href} mix={itemCss} data-testid={testId} aria-current={current ? 'page' : undefined}>
-          <span class="label">{label}</span>
-        </a>
-      </li>
-    );
-  };
-}
+const searchBox = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  height: '32px',
+  margin: `0 0 ${t.s3}`,
+  padding: `0 ${t.s2}`,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: t.bgSurface,
+  color: t.textFaint,
+  '&:focus-within': { borderColor: t.accent, boxShadow: t.focus },
+  '& > input': { flex: '1', minWidth: '0', height: '30px', padding: '0', border: '0', background: 'transparent', color: t.text, fontSize: t.textMd, outline: 'none', boxShadow: 'none' },
+});
+const railTitle = css({ margin: `0 ${t.s2} ${t.s3}`, fontSize: t.textLg, fontWeight: '600' });
+const hitRows = css({ listStyle: 'none', margin: `0 0 ${t.s1}`, padding: '0' });
+const hitRow = css({
+  display: 'block',
+  padding: `3px ${t.s2} 3px ${t.s5}`,
+  borderRadius: t.rMd,
+  color: t.textFaint,
+  fontSize: t.textSm,
+  textDecoration: 'none',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
+});
+const noHit = css({ margin: `${t.s2}`, color: t.textMuted, fontSize: t.textSm });
 
 /**
- * The Settings rail: the workspace's pages and the app's. Nothing of one project is here: Project settings and a project's
- * Integrations are pills of the project's Overview.
+ * The Settings frame's left list (decision P140): "Settings", a search box that keeps the sections whose title or rows match
+ * (and lists the rows it found under each), then the sections (shell/settings-sections.ts). Every section keeps its old test
+ * id (nav-side-agents is Agent CLIs, nav-settings-about is General). Nothing of one project is here: Project settings and a
+ * project's Integrations are pills of the project's Overview.
  */
 export function SettingsRail(handle: Handle<{ route: Route }>) {
+  let q = '';
   return () => {
     const { route } = handle.props;
-    const at = (...names: Route['name'][]) => names.includes(route.name);
+    const current = sectionOf(route);
+    const hits = searchSettings(q);
     return (
       <nav aria-label="Settings" mix={[railCss, settingsRailCss]}>
-        <Group title="Workspace">
-          {/* Agents, Integrations (GitHub among them) and Models are the sidebar's own pages (decision P98) */}
-          <RailLink href={routes.routing.href()} current={at('routing')} testId="nav-routing" label="Routing" />
-        </Group>
-        <Group title="App">
-          <RailLink href={routes.settings.href()} current={at('settings')} testId="nav-settings-about" label="Settings and about" />
-          <RailLink href={routes.license.href()} current={at('license')} testId="nav-license" label="License" />
-          <RailLink href={routes.backups.href()} current={at('backups')} testId="nav-backups" label="Backups" />
-          <RailLink href={routes.data.href()} current={at('data')} testId="nav-data" label="Export and import" />
-          <RailLink href={routes.support.href()} current={at('support')} testId="nav-support" label="Support bundle" />
-          <RailLink href={routes.guide.href()} current={at('guide')} testId="nav-guide" label="Guide" />
-        </Group>
+        <h2 mix={railTitle}>Settings</h2>
+        <label mix={searchBox}>
+          <Icon icon={Search} size={14} />
+          <input
+            type="search"
+            value={q}
+            placeholder="Search settings"
+            aria-label="Search settings"
+            data-testid="settings-search"
+            mix={[
+              on('input', (e) => {
+                q = (e.currentTarget as HTMLInputElement).value;
+                void handle.update();
+              }),
+              on('keydown', (e) => {
+                if (e.key === 'Escape' && q) {
+                  e.stopPropagation();
+                  q = '';
+                  void handle.update();
+                }
+              }),
+            ]}
+          />
+        </label>
+        {hits.length === 0 ? (
+          <p mix={noHit} data-testid="settings-no-match">
+            No setting matches "{q}".
+          </p>
+        ) : null}
+        <ul mix={listCss} aria-label="Sections">
+          {hits.map(({ section, rows }) => (
+            <li key={section.id} data-section={section.id}>
+              <a href={section.href} mix={itemCss} data-testid={section.testId} aria-current={current?.id === section.id ? 'page' : undefined}>
+                <span class="label">{section.title}</span>
+              </a>
+              {rows.length ? (
+                <ul mix={hitRows} aria-label={`${section.title}: what matches`}>
+                  {rows.map((row) => (
+                    <li key={row}>
+                      <a href={section.pages.find((p) => p.label === row)?.href ?? section.href} mix={hitRow} data-testid="settings-hit">
+                        {row}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       </nav>
     );
   };

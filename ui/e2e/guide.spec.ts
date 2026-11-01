@@ -1,13 +1,13 @@
 // The Guide (decision P75), in the real app: reached from the top bar, searchable, linked from the pages with "Learn more", found by
 // the command palette, and the old /mcp address opens Integrations.
 import { expect, test } from '@playwright/test';
-import { appUrl, createProjectWithoutRepo } from './helpers';
+import { appUrl, createProjectWithoutRepo, workspaceNav } from './helpers';
 
 test('the Guide: a button in the top bar, a search, a topic, Learn more from a page, the palette, and /mcp opening Integrations', async ({ page }) => {
   await createProjectWithoutRepo(page, 'gocalc-guide');
 
-  // the top bar's button opens the Guide: sections on the left, every section's topics in the body
-  await page.getByTestId('nav-guide-top').click();
+  // Settings > Help & about opens the Guide (decision P140): sections on the left, every section's topics in the body
+  await workspaceNav(page, 'nav-guide');
   await expect(page).toHaveURL(/\/guide$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Guide' })).toBeVisible();
   const topics = page.getByRole('navigation', { name: 'Guide topics' });

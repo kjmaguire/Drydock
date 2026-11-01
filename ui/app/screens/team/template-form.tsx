@@ -24,6 +24,8 @@ import { PURPOSE_HELP, sortAdapters } from './team.ts';
 
 export interface TemplateFormProps {
   initial?: AgentTemplate;
+  /** The fields a new template starts with (a starter from Agents > Starters); unlike `initial`, saving makes a new one. */
+  draft?: Partial<AgentTemplate>;
   adapters: readonly AdapterInfo[];
   servers: readonly McpLibraryServer[];
   onDone: (saved: AgentTemplate) => void;
@@ -62,7 +64,7 @@ export function TemplateForm(handle: Handle<TemplateFormProps>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
-  const init = handle.props.initial;
+  const init: Partial<AgentTemplate> | undefined = handle.props.initial ?? handle.props.draft;
   let name = init?.name ?? '';
   let role = init?.role ?? '';
   let purpose = init?.purpose ?? '';

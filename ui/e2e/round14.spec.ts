@@ -71,7 +71,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
 
   // a template carries a registry skill (one a prebuilt agent comes with) and keeps it when it is edited
   await workspaceNav(page, 'nav-library');
-  await page.getByRole('button', { name: 'New agent template' }).click();
+  await page.getByTestId('library-new-agent').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('UI dev');
   await tf.getByLabel('Role').fill('frontend');

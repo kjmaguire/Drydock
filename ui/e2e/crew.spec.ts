@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createAgent, createAndStartTask, createProject, createProjectWithoutRepo, projectNav, sidebar, switchProject, workspaceNav } from './helpers';
+import { createAgent, createAndStartTask, createProject, createProjectWithoutRepo, projectItem, projectNav, sidebar, switchProject, workspaceNav } from './helpers';
 
 // The Crew pages (graphite, decision P97) against the real Go core: a project's crew (the header's figures, Today's timeline,
 // a card per agent, New agent with N), an agent's own page, and the workspace's Crew page with every project's agents.
@@ -127,10 +127,11 @@ test("the workspace's Crew page: every project's agents grouped by project, thei
   await createProjectWithoutRepo(page, 'crew-ws-beta');
   await createAgent(page, 'Bruno', 'reviewer');
 
-  // the Workspace group of the sidebar has Crew; it is a workspace page (the projects are lines, no project's tabs show)
+  // All crews is a pill of the Agents library (decision P140); it is a workspace page (the projects are lines, no project's tabs show)
   await workspaceNav(page, 'nav-crew');
   await expect(page).toHaveURL(/\/crew$/);
-  await expect(sidebar(page).getByTestId('nav-crew')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Section' }).getByTestId('nav-crew')).toHaveAttribute('aria-current', 'page');
+  await expect(sidebar(page).getByTestId('nav-library')).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 1, name: 'All crews' })).toBeVisible();
   await expect(page.getByTestId('crew-figures')).toHaveText(/^\d+ agents · \d+ working · \d+ waiting on you$/);
@@ -158,7 +159,7 @@ test("the workspace's Crew page: every project's agents grouped by project, thei
   // the beta project is open (it was made last); a card of alpha opens alpha and the agent's page
   await alpha.getByTestId('agent-link').click();
   await expect(page.getByRole('heading', { level: 1, name: 'Alma' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Switch project' })).toContainText('crew-ws-alpha');
+  await expect(projectItem(page, 'crew-ws-alpha')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('navigation', { name: 'Crew' }).getByTestId('crew-link')).toHaveCount(1);
 
   // a reload of /crew opens the same page (the Go side serves index.html for it)

@@ -104,7 +104,7 @@ describe('the Inbox', () => {
     expect(r.$('h1')!.textContent).toBe('Inbox');
     expect(r.$('[role="tablist"]')!.getAttribute('aria-label')).toBe('Filter');
     const tabs = Array.from(r.$$('[role="tab"]')).map((x) => x.textContent);
-    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((x) => x.textContent)).toEqual(['Needs you 3', 'Running 2', 'Done today 1']), r);
+    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((x) => x.textContent)).toEqual(['Needs you 3', 'Running 2', 'Done today 1', 'Mine']), r);
     expect(tabs[0]).toContain('Needs you');
     const rows = Array.from(r.$$('[data-testid="needs-item"]'));
     expect(rows.map((x) => x.getAttribute('data-look'))).toEqual(['approval', 'spec', 'failed_check']);
@@ -280,6 +280,20 @@ describe('the Inbox', () => {
     expect(r.$('[data-testid="done-item"] .title')!.textContent).toBe('GOC-38Cover the empty case');
     expect(r.$('[data-testid="done-item"] .sub')!.textContent).toBe('gocalc · done 1 h ago');
     expect(calls.taskList[0]).toEqual(['', ['COMPLETED'], { completedSince: startOfToday() }]);
+  });
+
+  it('the Mine tab is My tasks (decision P140): the tasks assigned to the person in every project, each a link to its task', async () => {
+    const { s, calls } = servicesWith();
+    const r = mount(<NeedsYouScreen tab="mine" />, s);
+    await waitFor(() => expect(s.ui.inboxTab).toBe('mine'), r);
+    await waitFor(() => expect(r.$$('[data-testid="my-task"]').length).toBe(1), r);
+    expect(r.$('[data-testid="inbox-tab-mine"]')!.getAttribute('aria-selected')).toBe('true');
+    expect(r.$('#inbox-mine')!.textContent).toBe('My tasks');
+    expect(r.$('[data-testid="my-task"] a')!.getAttribute('href')).toBe('/task/t9');
+    expect(calls.taskList.some((a) => JSON.stringify(a) === JSON.stringify(['', [], { assignee: 'human:kyle' }]))).toBe(true);
+    // nothing of the other tabs, and the detail says what a row does
+    expect(r.$$('[data-testid="needs-item"]').length).toBe(0);
+    expect(r.$('[data-testid="inbox-detail"]')!.textContent).toBe('Open a task to see it.');
   });
 
   it('opens on the tab its address names', async () => {

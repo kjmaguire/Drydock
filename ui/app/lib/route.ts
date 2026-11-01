@@ -45,6 +45,7 @@ export type WorkspaceRouteName =
   | 'my-tasks'
   | 'crew'
   | 'library'
+  | 'library-starters'
   | 'library-skills'
   | 'integrations'
   | 'agents'
@@ -58,7 +59,9 @@ export type WorkspaceRouteName =
   | 'data'
   | 'support'
   | 'license'
-  | 'settings';
+  | 'settings'
+  | 'settings-shortcuts'
+  | 'settings-about';
 
 /** Screens about the whole workspace, not one project. They open even when no project exists yet. */
 export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
@@ -68,6 +71,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'my-tasks',
   'crew',
   'library',
+  'library-starters',
   'library-skills',
   'integrations',
   'agents',
@@ -83,12 +87,14 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'support',
   'license',
   'settings',
+  'settings-shortcuts',
+  'settings-about',
 ];
 
 // screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
 const SIMPLE = new Set<string>([
   'pulls', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map', 'rooms', 'knowledge',
-  ...WORKSPACE_ROUTES.filter((n) => n !== 'workspace' && n !== 'library-skills' && n !== 'needs-you'),
+  ...WORKSPACE_ROUTES.filter((n) => !['workspace', 'library-starters', 'library-skills', 'settings-shortcuts', 'settings-about', 'needs-you'].includes(n)),
 ]);
 
 export function isWorkspaceRoute(r: Route): boolean {
@@ -142,7 +148,12 @@ export function parseRoute(pathname: string): Route {
       return b && parts.length === 2 ? { name: a, key: b } : { name: 'not-found' };
     case 'library':
       if (parts.length === 1) return { name: 'library' };
-      return b === 'skills' && parts.length === 2 ? { name: 'library-skills' } : { name: 'not-found' };
+      if (parts.length !== 2) return { name: 'not-found' };
+      return b === 'skills' ? { name: 'library-skills' } : b === 'starters' ? { name: 'library-starters' } : { name: 'not-found' };
+    case 'settings':
+      if (parts.length === 1) return { name: 'settings' };
+      if (parts.length !== 2) return { name: 'not-found' };
+      return b === 'shortcuts' ? { name: 'settings-shortcuts' } : b === 'about' ? { name: 'settings-about' } : { name: 'not-found' };
     case 'team':
       if (parts.length === 1) return { name: 'team' };
       return b && parts.length === 2 ? { name: 'agent', id: b } : { name: 'not-found' };
@@ -204,20 +215,14 @@ export type Hub =
   | 'settings'
   | 'home'
   | 'inbox'
-  | 'workspace-crew'
   | 'chats'
   | 'library'
-  | 'skill-library'
-  | 'scan'
-  | 'models'
-  | 'agents'
-  | 'integrations'
   | 'project-new'
   | 'none';
 
 const HUB_OF: Record<Route['name'], Hub> = {
   home: 'overview',
-  // the workspace's Inbox and the person's own tasks: every project's, no pills
+  // the workspace's Inbox; My tasks is its Mine tab (decision P140)
   'needs-you': 'inbox',
   'my-tasks': 'inbox',
   activity: 'overview',
@@ -244,31 +249,34 @@ const HUB_OF: Record<Route['name'], Hub> = {
   // a project's settings and integrations are the project's own (its Overview hub), not the app's
   project: 'overview',
   'project-integrations': 'overview',
-  // the sidebar's own pages (decision P98): each lays out its own list, so none shows the Settings rail; GitHub is one of the
-  // integrations (its row opens its page) and the old addresses belong where they now lead
-  integrations: 'integrations',
-  mcp: 'integrations',
-  github: 'integrations',
-  agents: 'agents',
-  connections: 'agents',
-  providers: 'models',
+  // one Settings (decision P140): every page that configures the workspace or the app is a section of it, under its old address
+  // (shell/settings-sections.ts); the old aliases belong where they lead
+  agents: 'settings',
+  connections: 'settings',
+  integrations: 'settings',
+  mcp: 'settings',
+  github: 'settings',
+  models: 'settings',
+  providers: 'settings',
   routing: 'settings',
+  'security-scan': 'settings',
   license: 'settings',
   backups: 'settings',
   data: 'settings',
   support: 'settings',
   settings: 'settings',
+  'settings-shortcuts': 'settings',
+  'settings-about': 'settings',
   workspace: 'home',
-  crew: 'workspace-crew',
   chats: 'chats',
   chat: 'chats',
+  // one Agents library (decision P140): My agents, Starters, Skills, and every project's crew
   library: 'library',
-  // Agent templates and Skills are two entries of the sidebar (decision P106), not one Library with pills
-  'library-skills': 'skill-library',
-  'security-scan': 'scan',
-  models: 'models',
+  'library-starters': 'library',
+  'library-skills': 'library',
+  crew: 'library',
   'project-new': 'project-new',
-  // the Guide is the "?" button's own help surface, not a page inside the Settings rail (UI review P1-8)
+  // the Guide is the help surface of its own (Settings > Help & about links it), not a page inside the Settings frame
   guide: 'none',
   'not-found': 'none',
 };
@@ -279,17 +287,5 @@ export function hubOf(r: Route): Hub {
 
 /** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
 export function isWorkspaceHub(h: Hub): boolean {
-  return (
-    h === 'home' ||
-    h === 'inbox' ||
-    h === 'workspace-crew' ||
-    h === 'chats' ||
-    h === 'library' ||
-    h === 'skill-library' ||
-    h === 'scan' ||
-    h === 'models' ||
-    h === 'agents' ||
-    h === 'integrations' ||
-    h === 'project-new'
-  );
+  return h === 'home' || h === 'inbox' || h === 'chats' || h === 'library' || h === 'settings' || h === 'project-new';
 }

@@ -1010,7 +1010,7 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
 
     return (
       <Page
-        title="Agents"
+        title="Agent CLIs"
         icon={Terminal}
         subtitle={q.data ? readyLine(list) : 'The agent CLIs your crew runs on'}
         guide="connect-cli"
