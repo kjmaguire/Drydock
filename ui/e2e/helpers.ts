@@ -140,14 +140,12 @@ const OLD_NAV: Record<string, string> = {
 
 /**
  * Open a page of a project (Crew, Tasks, Project settings...). On a workspace page the bar shows the workspace, so the
- * project is opened first: the one named (its card on Home), else the one the app remembers (its home, "/").
+ * project is opened first: the one named (its line in the sidebar's Projects list), else the one the app remembers (its home, "/").
  */
 export async function projectNav(page: Page, testId: string, project?: string): Promise<void> {
   if (!(await sidebar(page).getByTestId('nav-overview').isVisible())) {
-    if (project) {
-      if (!(await page.getByTestId('home-project').first().isVisible())) await sidebar(page).getByTestId('nav-workspace').click();
-      await page.getByTestId('home-project').filter({ hasText: project }).click();
-    } else await page.goto(new URL('/', page.url()).toString());
+    if (project) await projectItem(page, project).click();
+    else await page.goto(new URL('/', page.url()).toString());
   }
   await navTo(page, testId);
 }
@@ -161,12 +159,15 @@ export async function switchProject(page: Page, name: string): Promise<void> {
   await expect(projectItem(page, name)).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The new-project wizard: the first run shows it directly; later runs open it from the sidebar's New (decision P140). */
+/**
+ * The new-project wizard, opened by its address (/project/new): the first run and New show the start screen (decision P142),
+ * whose "More options..." leads here. The page is loaded first when the browser is not on the app yet.
+ */
 export async function showNewProjectForm(page: Page): Promise<void> {
   const field = page.getByLabel('Project name', { exact: true });
-  const create = sidebar(page).getByTestId('nav-new');
-  await field.or(create).first().waitFor();
-  if (!(await field.isVisible())) await create.click();
+  if (await field.isVisible()) return;
+  await sidebar(page).waitFor();
+  await page.goto(new URL('/project/new', page.url()).toString());
   await expect(field).toBeVisible();
 }
 

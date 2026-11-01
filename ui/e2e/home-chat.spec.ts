@@ -1,4 +1,4 @@
-// A chat from Home, without a project, with a skill from the workspace skill library and an MCP server from the workspace MCP
+// A chat from Home (Just chat, decision P142), without a project, with a skill from the workspace skill library and an MCP server from the workspace MCP
 // library (decision P60, on the owner's request 2026-10-15). Against the real core. The agent CLI is the harness's scripted
 // stand-in (cmd/drydock-e2e, a TEST DOUBLE that speaks Claude Code's stream-json): for a message carrying "drydock-e2e props"
 // it reads the wrangler skill through the gateway's skills tool and calls the granted server's echo tool, and says what each
@@ -13,7 +13,7 @@ test.afterEach(async ({ request }) => {
   await request.post(`${url.origin}/rpc/mcplib.delete`, { headers: { 'X-Drydock-Token': url.searchParams.get('token') ?? '' }, data: { id: 'chatmcp' } });
 });
 
-test('Home starts a chat without a project; its skill and MCP server reach the session; Properties take the server away', async ({ page }) => {
+test('Just chat on Home starts a chat without a project; its skill and MCP server reach the session; Properties take the server away', async ({ page }) => {
   const url = appUrl();
   const origin = new URL(url).origin;
   const token = new URL(url).searchParams.get('token') ?? '';
@@ -28,20 +28,25 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   await page.goto(url);
   await sidebar(page).getByTestId('nav-workspace').click();
   await expect(page).toHaveURL(/\/home$/);
-  const home = page.getByTestId('home-chat');
-  await expect(home).toBeVisible();
-  await home.getByLabel('Message to Claude Code').fill('drydock-e2e props: read the wrangler skill, then echo');
+  // Just chat (decision P142): a chat without a project, opened at once; the box is empty, so nothing is sent yet
+  await page.getByTestId('or-chat').click();
+  await expect(page).toHaveURL(/\/chats\/chat_/);
 
-  // Options: the new chat dialog without a project, Claude Code, a private folder, one skill and one server
-  await home.getByRole('button', { name: 'Options...' }).click();
-  const dialog = page.getByRole('dialog', { name: 'New chat' });
-  await expect(dialog.getByLabel('Project', { exact: true })).toHaveAttribute('data-value', '');
-  await expect(dialog.getByLabel('Agent CLI', { exact: true })).toHaveAttribute('data-value', 'claude');
-  await expect(dialog.getByLabel('Folder', { exact: true })).toHaveValue('');
-  await dialog.getByLabel('Filter skills').fill('wrangler');
-  await dialog.locator('[data-testid=chat-skill-option][data-name=wrangler] input').check();
-  await dialog.locator('[data-testid=chat-mcp-option][data-server=chatmcp] input').check();
-  await dialog.getByRole('button', { name: 'Start chat' }).click();
+  // Properties: Claude Code, a private folder, one skill and one server
+  await page.getByTestId('chat-more').click();
+  await page.getByRole('button', { name: 'Properties' }).click();
+  const setup = page.getByRole('dialog', { name: 'Chat properties' });
+  await expect(setup.getByLabel('Agent CLI', { exact: true })).toHaveAttribute('data-value', 'claude');
+  // a chat without a project runs in a private folder Drydock makes for it
+  await expect(setup.getByLabel('Folder', { exact: true })).toHaveValue(/chats/);
+  await setup.getByLabel('Filter skills').fill('wrangler');
+  await setup.locator('[data-testid=chat-skill-option][data-name=wrangler] input').check();
+  await setup.locator('[data-testid=chat-mcp-option][data-server=chatmcp] input').check();
+  await setup.getByRole('button', { name: 'Save' }).click();
+  await expect(setup).toBeHidden();
+  const first = page.getByLabel('Message', { exact: true });
+  await first.fill('drydock-e2e props: read the wrangler skill, then echo');
+  await first.press('Enter');
 
   // the chat opens with the message sent; the stand-in read the skill's text and the server answered through the gateway
   await expect(page).toHaveURL(/\/chats\/chat_/);
@@ -83,7 +88,7 @@ test('Home starts a chat without a project; its skill and MCP server reach the s
   await expect(page.locator('[data-testid=chat-message][data-role=assistant]').filter({ hasText: 'never guess flags' })).toHaveCount(2);
   await expect(page.getByTestId('chat-status')).toHaveText('Session kept');
 
-  // back on Home, the chat is among the latest chats without a project
-  await sidebar(page).getByTestId('nav-workspace').click();
-  await expect(page.getByTestId('home-chat-recent').filter({ hasText: 'drydock-e2e props' }).first()).toBeVisible();
+  // the chat is in the Chats list
+  await sidebar(page).getByTestId('nav-chats').click();
+  await expect(page.getByText('drydock-e2e props').first()).toBeVisible();
 });

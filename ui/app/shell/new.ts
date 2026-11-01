@@ -1,17 +1,30 @@
-// The sidebar's New button and its key (decision P140): one place says what "new" opens, so the start screen can take it over
-// by changing this file alone. Today it is the new-project flow (/project/new).
+// The sidebar's New button and its key (decisions P140, P142): one place says what "new" opens. It is the start screen, Home,
+// with the cursor in its box; the five-step wizard (/project/new) stays behind its "More options...". On Chats the key keeps
+// making a new chat (the Chats screen handles it there).
 
 import { shortcutOf } from '../lib/keys.ts';
 import { routes } from '../routes.ts';
 
 /** Where New goes. */
 export function newHref(): string {
-  return routes.projectNew.href();
+  return routes.workspace.href();
 }
 
-/** Opens what New makes, through the router's navigate (or a test's). */
+/** Puts the cursor in the start box once it is on the page (tried for about half a second while the page renders). */
+export function focusStart(tries = 30): void {
+  const el = typeof document === 'undefined' ? null : document.querySelector<HTMLTextAreaElement>('[data-testid="start-text"]');
+  if (el) {
+    el.focus();
+    return;
+  }
+  if (tries > 0 && typeof requestAnimationFrame === 'function') requestAnimationFrame(() => focusStart(tries - 1));
+}
+
+/** Opens what New makes, through the router's navigate (or a test's), and puts the cursor in its box. */
 export function openNew(go: (href: string) => unknown): void {
-  void go(newHref());
+  void Promise.resolve(go(newHref()))
+    .catch(() => undefined)
+    .then(() => focusStart());
 }
 
 /**

@@ -1,36 +1,43 @@
-// The plain text of the workspace Home: where a project lives and what needs you in it.
+// The plain text of the workspace Home (decision P142): the projects to pick up, the most recently active first.
 
-import { projectHasRepo, type Agent, type NeedsYouItem, type Project } from '../../api/types.ts';
-import type { TileTone } from '../../ui/tiles.tsx';
+import type { NeedsYouItem, Project, TaskSummary } from '../../api/types.ts';
 
-/** Where a project's work happens: its repository's folder, or that it has none yet. */
-export function projectWhere(p: Project): string {
-  return projectHasRepo(p) ? p.repoPath : 'No repository yet';
-}
-
-/** The project tile's state line: how many items need the human there (undefined while it loads, null when it could not be read). */
-export function needsText(n: number | null | undefined): { text: string; tone: TileTone } {
-  if (n === undefined) return { text: 'Checking what needs you…', tone: '' };
-  if (n === null) return { text: 'Could not check what needs you', tone: '' };
-  if (n === 0) return { text: 'Nothing needs you', tone: '' };
-  return { text: `${n} ${n === 1 ? 'item needs' : 'items need'} you`, tone: 'warn' };
+/** A project's card under "Pick up where you left off": what runs, whether it needs you, and one line of what is happening. */
+export interface PickUp {
+  project: Project;
+  running: number;
+  needs: number;
+  /** When something last happened (a task's update, else the project's creation), ms since the epoch. */
+  last: number;
+  /** One line: the oldest item that needs you, what a running task does, or the newest task's state. */
+  line: string;
 }
 
 /**
- * What needs the person in each project, from the one list of the whole workspace (needsyou.list of every project, which the
- * sidebar's count already reads): undefined while it loads, null for every project when it could not be read. One read
- * whatever the number of projects; one a project made Home ask 65 times with 64 projects (review 2026-10-27).
+ * The projects to pick up, the most recently active first (decision P142), from the workspace's own reads: every project's task
+ * summaries (task.summaries with no project) and the items that need the person.
  */
-export function needsByProject(items: readonly Pick<NeedsYouItem, 'projectId'>[] | undefined, failed: boolean, projects: readonly Pick<Project, 'id'>[]): Record<string, number | null | undefined> {
-  const out: Record<string, number | null | undefined> = {};
-  for (const p of projects) out[p.id] = items ? 0 : failed ? null : undefined;
-  for (const it of items ?? []) if (it.projectId && out[it.projectId] !== undefined) out[it.projectId] = (out[it.projectId] ?? 0) + 1;
-  return out;
-}
-
-/** Each project's crew, from the one list of every agent (agent.listAll). */
-export function crewsByProject(agents: readonly Pick<Agent, 'id' | 'name' | 'projectId'>[]): Record<string, { id: string; name: string }[]> {
-  const out: Record<string, { id: string; name: string }[]> = {};
-  for (const a of agents) (out[a.projectId] ??= []).push({ id: a.id, name: a.name });
-  return out;
+export function pickUp(
+  projects: readonly Project[],
+  summaries: readonly Pick<TaskSummary, 'projectId' | 'status' | 'title' | 'updatedAt' | 'doing'>[],
+  needs: readonly Pick<NeedsYouItem, 'projectId' | 'title'>[],
+  running: readonly string[],
+): PickUp[] {
+  return projects
+    .map((p) => {
+      const mine = summaries.filter((x) => x.projectId === p.id).sort((a, b) => b.updatedAt - a.updatedAt);
+      const run = mine.filter((x) => running.includes(x.status));
+      const need = needs.filter((n) => n.projectId === p.id);
+      const created = p.created > 1e12 ? p.created : p.created * 1000;
+      const last = Math.max(created, mine[0]?.updatedAt ?? 0);
+      const line = need[0]
+        ? need[0].title
+        : run[0]
+          ? `${run[0].title}${run[0].doing ? `: ${run[0].doing}` : ''}`
+          : mine[0]
+            ? `Last: ${mine[0].title} (${mine[0].status.toLowerCase().replace(/_/g, ' ')})`
+            : 'Nothing started yet.';
+      return { project: p, running: run.length, needs: need.length, last, line };
+    })
+    .sort((a, b) => b.last - a.last);
 }
