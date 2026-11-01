@@ -21,7 +21,7 @@ import { Avatar, faint, hueFor, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
-import { actionsEnd, tableCard } from '../../ui/layout.tsx';
+import { actionsEnd, Page, tableCard } from '../../ui/layout.tsx';
 import { safeHref } from '../../ui/markdown.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
@@ -621,4 +621,13 @@ export function GitHubDetail(handle: Handle) {
       </div>
     );
   };
+}
+
+/** Settings > GitHub (/github, decision P140): the same detail as Integrations' GitHub row, as a section of its own. */
+export function GitHubScreen(_handle: Handle) {
+  return () => (
+    <Page title="GitHub" icon={FolderGit2} testId="github-section">
+      <GitHubDetail />
+    </Page>
+  );
 }

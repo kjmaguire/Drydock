@@ -250,7 +250,7 @@ describe('the command menu over a task (the graphite mockup)', () => {
     expect(labels().every((l) => /Tess/.test(l!))).toBe(true);
     await r.act(() => type(input, '> theme'));
     // the settings page that holds the theme, and the three themes
-    await waitFor(() => expect([...labels()].sort()).toEqual(['Settings and about', 'Theme: dark', 'Theme: follow the system', 'Theme: light']), r);
+    await waitFor(() => expect([...labels()].sort()).toEqual(['Settings', 'Theme: dark', 'Theme: follow the system', 'Theme: light']), r);
     await r.act(() => type(input, '> crew'));
     await waitFor(() => expect(labels()).toEqual([]), r);
   });

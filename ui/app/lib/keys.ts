@@ -86,7 +86,7 @@ export const KEYMAP: readonly KeyLine[] = [
   { id: 'inspect', keys: ['Ctrl', '.'], action: 'Open the Agent Inspector for the agent', where: "An agent's page, a direct message" },
   { id: 'room-prev', keys: ['Alt', 'Up'], action: 'Go to the room or chat above', where: 'A room, a chat' },
   { id: 'room-next', keys: ['Alt', 'Down'], action: 'Go to the room or chat below', where: 'A room, a chat' },
-  { id: 'new-chat', keys: ['Ctrl', 'N'], action: 'Start a new chat', where: 'Chats' },
+  { id: 'new-chat', keys: ['Ctrl', 'N'], action: 'New: start something new (on Chats, a new chat)', where: 'Everywhere, not while typing' },
   { keys: ['Enter'], action: 'Send the message (Shift+Enter: a new line)', where: "A chat's message box" },
   { keys: ['Esc', 'Esc'], action: 'Stop the agent that is answering', where: "A chat's or a room's message box" },
   { keys: ['Ctrl', 'Enter'], action: 'Send the message', where: "A room's message box, a thread, a chat" },

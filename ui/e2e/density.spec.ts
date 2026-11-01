@@ -15,7 +15,7 @@ const ROUTES = [
   '/', '/needs-you', '/rooms', '/tasks', '/tasks/new', '/pulls', '/team', '/crew', '/activity', '/project', '/project/integrations', '/plan', '/requirements',
   '/milestones', '/memory', '/skills', '/packs', '/integrations', '/integrations/linear', '/integrations/mslearn', '/integrations/openrouter', '/integrations/background', '/budgets', '/evals', '/security', '/repo-map', '/knowledge', '/home', '/chats',
   '/library', '/library/skills', '/connections', '/agents', '/agents/claude', '/github', '/security-scan', '/models', '/models/new', '/routing', '/backups', '/data', '/support', '/license',
-  '/settings', '/guide', '/guide/scan',
+  '/settings', '/settings/shortcuts', '/settings/about', '/library/starters', '/my-tasks', '/guide', '/guide/scan',
 ];
 
 /** What a page may break, and why. A text is matched by its start. */

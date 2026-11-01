@@ -191,7 +191,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
     const fullRail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;
     const narrow = s.ui.narrowRails;
     const rail = fullRail && narrow && !s.ui.drawerOpen ? null : fullRail;
-    const railName = hub === 'rooms' ? 'rooms' : 'settings pages';
+    const railName = hub === 'rooms' ? 'rooms' : 'settings sections';
 
     return (
       <div mix={rootCss}>
@@ -201,7 +201,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
             Skip to content
           </a>
         </nav>
-        <Sidebar route={route} />
+        <Sidebar route={route} onNavigate={handle.props.onNavigate} />
         <div mix={columnCss}>
         <LicenseBanner />
         <TermsNotice />
@@ -213,7 +213,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
             {fullRail && narrow ? (
               <div mix={drawerBar}>
                 <Button size="sm" variant="ghost" icon={PanelLeftOpen} aria-expanded={s.ui.drawerOpen ? 'true' : 'false'} mix={[on('click', () => s.ui.setDrawer(!s.ui.drawerOpen))]}>
-                  {hub === 'rooms' ? 'Rooms' : 'Settings pages'}
+                  {hub === 'rooms' ? 'Rooms' : 'Settings sections'}
                 </Button>
               </div>
             ) : null}

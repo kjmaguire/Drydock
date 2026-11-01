@@ -5,26 +5,26 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createProject, freshRepo, projectNav, projectSwitcher, roomLink, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, projectItem, projectNav, roomLink, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
 
 test('Home holds the workspace, a project shows only itself, and deleting a project leaves its repository', async ({ page }) => {
   const repo = freshRepo();
   await createProject(page, 'ws-delete-me', repo);
 
-  // a project page (graphite sidebar, P97): the Inbox, the Drydock mark as the way home, the open project's tabs under it, the
-  // workspace's pages and Settings on every page
+  // a project page (graphite sidebar, P97; six places, P140): Home, the Inbox, the open project's tabs under it, Agents and
+  // Settings on every page
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-workspace')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-overview')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-library')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-settings')).toBeVisible();
 
-  // Home: the projects and the workspace areas; the switcher says Home
+  // Home: the projects and the workspace areas; Home is the current place
   await sidebar(page).getByTestId('nav-workspace').click();
   await expect(page).toHaveURL(/\/home$/);
-  // Home greets by the time of day (Crew HQ, decision P64); the switcher says where you are
+  // Home greets by the time of day (Crew HQ, decision P64)
   await expect(page.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening)$/ })).toBeVisible();
-  await expect(projectSwitcher(page)).toContainText('Home');
+  await expect(sidebar(page).getByTestId('nav-workspace')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toBeVisible();
   // the project's tabs leave with it; the Inbox stays
   await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
@@ -40,7 +40,7 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   // back into the project from its card on Home
   await projectNav(page, 'nav-overview', 'ws-delete-me');
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
-  await expect(projectSwitcher(page)).toContainText('ws-delete-me');
+  await expect(projectItem(page, 'ws-delete-me')).toHaveAttribute('aria-expanded', 'true');
 
   // delete it from Project settings (behind the gear): the name must be typed
   await projectNav(page, 'nav-project');
@@ -57,9 +57,7 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByTestId('home-flash')).toHaveText('ws-delete-me was deleted.');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toHaveCount(0);
-  await projectSwitcher(page).click();
-  await expect(page.getByRole('menuitemradio', { name: 'ws-delete-me', exact: true })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await expect(projectItem(page, 'ws-delete-me')).toHaveCount(0);
   // the repository is still there, files and all
   expect(existsSync(join(repo, 'calc.go'))).toBe(true);
   expect(existsSync(join(repo, '.git'))).toBe(true);
@@ -96,13 +94,14 @@ test("workspace pages name no project; a project's own settings are pills of its
   }
   await expect(page.getByTestId('cli-gateway')).toHaveCount(0);
 
-  // behind the gear: the workspace's pages and the app's, nothing of this project; GitHub is a row of Integrations (decision P98)
+  // Settings: the workspace's sections and the app's, nothing of this project (decision P140); GitHub is a section and still a
+  // row of Integrations (decision P98)
   await workspaceNav(page, 'nav-settings');
   const rail = page.getByRole('navigation', { name: 'Settings' });
-  await expect(rail.getByRole('heading')).toHaveText(['Workspace', 'App']);
+  await expect(rail.getByRole('heading')).toHaveText(['Settings']);
   await expect(rail.getByTestId('nav-project')).toHaveCount(0);
   await expect(rail.getByTestId('nav-project-integrations')).toHaveCount(0);
-  await expect(rail.getByTestId('nav-github')).toHaveCount(0);
+  await expect(rail.getByTestId('nav-github')).toHaveAttribute('href', '/github');
   await workspaceNav(page, 'nav-integrations');
   await expect(page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-key="github"]')).toContainText('GitHub');
   await workspaceNav(page, 'nav-settings');
@@ -110,7 +109,7 @@ test("workspace pages name no project; a project's own settings are pills of its
 
   // Agents: the agent CLIs as a list, the chosen one's detail with the MCP gateway's setting for it (which CLIs receive MCP servers)
   await workspaceNav(page, 'nav-connections');
-  await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent CLIs' })).toBeVisible();
   const list = page.getByRole('navigation', { name: 'Agent CLIs' }).or(page.getByText('No agent CLIs found'));
   await expect(list.first()).toBeVisible();
   if (await page.getByRole('navigation', { name: 'Agent CLIs' }).isVisible()) {

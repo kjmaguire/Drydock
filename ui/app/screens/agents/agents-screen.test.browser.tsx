@@ -147,7 +147,7 @@ describe('Agents page', () => {
       ],
     });
     const list = await rows(r, 7);
-    expect(r.$('h1')!.textContent).toBe('Agents');
+    expect(r.$('h1')!.textContent).toBe('Agent CLIs');
     expect(r.container.textContent).toContain('The agent CLIs your crew runs on · 2 of 6 ready');
     expect(r.$('nav[aria-label="Agent CLIs"]')).not.toBeNull();
     const heads = Array.from(r.$$('nav[aria-label="Agent CLIs"] h2')).map((h) => h.textContent);

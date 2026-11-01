@@ -134,7 +134,8 @@ test('Add MCP server opens the server form, with Import from a file beside it; t
 
 test('prebuilt agents: opening one shows its skills with what they do, where they come from and their license, and its MCP servers by name', async ({ page }) => {
   await createProject(page, 'prebuilt-details');
-  await workspaceNav(page, 'nav-library');
+  // the Starters tab of Agents (decision P140)
+  await workspaceNav(page, 'nav-library-starters');
   const lib = page.getByTestId('library-prebuilt');
   const ui = lib.locator('[data-testid="prebuilt"][data-id="ui-engineer"]');
   // the badges are readable: the server by its full name, the skills listed on the badge

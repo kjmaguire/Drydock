@@ -43,10 +43,28 @@ describe('the hubs', () => {
     const o = mount(<SubNav route={{ name: 'budgets' }} />);
     expect(Array.from(o.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-overview-home', 'nav-activity', 'nav-budgets', 'nav-evals', 'nav-security', 'nav-project', 'nav-project-integrations']);
     cleanup();
-    // Agent templates and Skills are entries of the sidebar (decision P106): no pills between them
-    expect(mount(<SubNav route={{ name: 'library-skills' }} />).$('nav')).toBeNull();
+    // one Agents library (decision P140): its title, My agents, Starters, Skills, then every project's crew set apart
+    for (const name of ['library', 'library-starters', 'library-skills', 'crew'] as const) {
+      const l = mount(<SubNav route={{ name }} />);
+      expect(Array.from(l.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-library-mine', 'nav-library-starters', 'nav-library-skills', 'nav-crew']);
+      expect(l.$('nav')!.textContent).toBe('AgentsMy agentsStartersSkillsAll crews');
+      expect(l.$$('[aria-current="page"]')).toHaveLength(1);
+      cleanup();
+    }
+    expect(mount(<SubNav route={{ name: 'library-starters' }} />).$('[data-testid="nav-library-starters"]')!.getAttribute('aria-current')).toBe('page');
     cleanup();
-    expect(mount(<SubNav route={{ name: 'library' }} />).$('nav')).toBeNull();
+    // a Settings section of more than one screen shows them as pills; a section of one shows none
+    const b = mount(<SubNav route={{ name: 'data' }} />);
+    expect(Array.from(b.$$('a')).map((a) => [a.getAttribute('data-testid'), a.getAttribute('href')])).toEqual([
+      ['nav-backups-page', '/backups'],
+      ['nav-data', '/data'],
+    ]);
+    expect(b.$('[data-testid="nav-data"]')!.getAttribute('aria-current')).toBe('page');
+    cleanup();
+    const h = mount(<SubNav route={{ name: 'license' }} />);
+    expect(Array.from(h.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-about', 'nav-support', 'nav-license', 'nav-guide']);
+    cleanup();
+    expect(mount(<SubNav route={{ name: 'models' }} />).$('nav')).toBeNull();
     cleanup();
     expect(mount(<SubNav route={{ name: 'team' }} />).$('nav')).toBeNull();
     cleanup();
@@ -78,18 +96,40 @@ describe('the hubs', () => {
     expect(i.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it("the Settings rail lists Routing and the app's pages, marking the current one, and nothing of one project; Agents, Integrations and Models are the sidebar's own (decision P98)", async () => {
-    const r = mount(<SettingsRail route={{ name: 'routing' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-routing"]')).not.toBeNull(), r);
-    const links = Array.from(r.$$('nav[aria-label="Settings"] a')).map((a) => a.getAttribute('data-testid'));
-    expect(links).toEqual(['nav-routing', 'nav-settings-about', 'nav-license', 'nav-backups', 'nav-data', 'nav-support', 'nav-guide']);
-    expect(r.$('[data-testid="nav-routing"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-routing"]')!.getAttribute('href')).toBe('/routing');
-    // the project's pages moved to the project's Overview: no "This project" group, even with a project open
+  it('the Settings rail (decision P140): "Settings", a search box, then the ten sections with their old test ids, the current one marked; nothing of one project', async () => {
+    const r = mount(<SettingsRail route={{ name: 'agents', key: 'claude' }} />, svc());
+    await waitFor(() => expect(r.$('[data-testid="nav-side-agents"]')).not.toBeNull(), r);
+    const sections = () => Array.from(r.$$('ul[aria-label="Sections"] > li > a')).map((a) => a.textContent);
+    expect(r.$('h2')!.textContent).toBe('Settings');
+    expect(sections()).toEqual(['General', 'Agent CLIs', 'Models', 'Routing & budgets', 'Integrations', 'GitHub', 'Security scan', 'Backups & data', 'Shortcuts', 'Help & about']);
+    expect(r.$('[data-testid="nav-side-agents"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$('[data-testid="nav-side-agents"]')!.getAttribute('href')).toBe('/agents');
+    expect(r.$$('[aria-current="page"]')).toHaveLength(1);
     expect(r.$('[data-testid="nav-project"]')).toBeNull();
     expect(r.$('[data-testid="nav-project-integrations"]')).toBeNull();
-    expect(Array.from(r.$$('h2')).map((h) => h.textContent)).toEqual(['Workspace', 'App']);
-    for (const gone of ['/integrations', '/connections', '/agents', '/github', '/providers', '/models', '/mcp']) expect(r.container.querySelector(`a[href="${gone}"]`)).toBeNull();
+    // the search keeps the sections that match and names the rows it found; Esc clears it
+    const box = r.$('[data-testid="settings-search"]') as HTMLInputElement;
+    expect(box.getAttribute('aria-label')).toBe('Search settings');
+    await r.act(() => {
+      box.value = 'theme';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(sections()).toEqual(['General']);
+    expect(Array.from(r.$$('[data-testid="settings-hit"]')).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([['Theme', '/settings']]);
+    await r.act(() => {
+      box.value = 'export';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(sections()).toEqual(['Backups & data']);
+    expect(Array.from(r.$$('[data-testid="settings-hit"]')).map((a) => a.getAttribute('href'))).toEqual(['/backups', '/data']);
+    await r.act(() => {
+      box.value = 'qqq';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(sections()).toEqual([]);
+    expect(r.$('[data-testid="settings-no-match"]')!.textContent).toBe('No setting matches "qqq".');
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    expect(sections()).toHaveLength(10);
   });
 
   it('the Rooms rail names rooms without a "#": an icon, the name, then a quiet unread count read once', async () => {

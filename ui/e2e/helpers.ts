@@ -38,9 +38,10 @@ export function freshRepo(): string {
 export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
 
 /**
- * Which hub holds a link that is not in the top bar itself (Crew HQ, decision P64): the sub-pages of a tab are pills under
- * it (a project's settings and its Integrations are the last pills of Overview), and every workspace or app settings page is in
- * the Settings rail behind the gear.
+ * Which hub holds a link that is not in the sidebar itself (Crew HQ, decision P64; P140): the sub-pages of a tab are pills under
+ * it (a project's settings and its Integrations are the last pills of Overview); every workspace or app settings page is a
+ * section of Settings (a section of more than one page shows them as pills); My agents, Starters, Skills and All crews are the
+ * Agents library's pills; Running and My tasks are tabs of the Inbox. navTo opens the hubs in turn.
  */
 const HUB_OF: Record<string, string> = {
   'nav-plan': 'nav-tasks',
@@ -57,19 +58,42 @@ const HUB_OF: Record<string, string> = {
   'nav-skills': 'nav-knowledge',
   'nav-memory': 'nav-knowledge',
   'nav-repo-map': 'nav-knowledge',
+  // the sections of Settings (decision P140)
+  'nav-settings-about': 'nav-settings',
+  'nav-side-agents': 'nav-settings',
+  'nav-side-models': 'nav-settings',
   'nav-routing': 'nav-settings',
-  'nav-license': 'nav-settings',
+  'nav-side-integrations': 'nav-settings',
+  'nav-github': 'nav-settings',
+  'nav-security-scan': 'nav-settings',
   'nav-backups': 'nav-settings',
-  'nav-data': 'nav-settings',
-  'nav-support': 'nav-settings',
+  'nav-shortcuts': 'nav-settings',
+  'nav-help': 'nav-settings',
+  // the pages of a section
+  'nav-backups-page': 'nav-backups',
+  'nav-data': 'nav-backups',
+  'nav-about': 'nav-help',
+  'nav-support': 'nav-help',
+  'nav-license': 'nav-help',
+  'nav-guide': 'nav-help',
+  // the Agents library's pills
+  'nav-library-mine': 'nav-library',
+  'nav-library-starters': 'nav-library',
+  'nav-library-skills': 'nav-library',
+  'nav-crew': 'nav-library',
+  // the Inbox's tabs
+  'inbox-tab-needs': 'nav-needs-you',
+  'inbox-tab-running': 'nav-needs-you',
+  'inbox-tab-done': 'nav-needs-you',
+  'inbox-tab-mine': 'nav-needs-you',
 };
 
-/** Click a navigation link by test id: the tab or pill itself, or its hub first when the link is not on the page yet. */
+/** Click a navigation link by test id: the tab or pill itself, or its hub first (and the hub's hub) when it is not on the page. */
 async function navTo(page: Page, testId: string): Promise<void> {
   const link = page.getByTestId(testId);
   if (!(await link.isVisible())) {
     const hub = HUB_OF[testId];
-    if (hub) await page.getByTestId(hub).click();
+    if (hub) await navTo(page, hub);
   }
   await link.click();
 }
@@ -95,31 +119,23 @@ export async function openRoom(page: Page, name: string): Promise<void> {
 }
 
 /**
- * Open a workspace page (Library, Integrations, Connections, Settings...). A settings page is behind the gear on any page;
- * the others are tabs (or pills) of the workspace bar, which a project's page reaches through the Drydock mark (Home).
+ * Open a workspace page (Agents, Settings and its sections, the Inbox's tabs...) from any page: every one is in the sidebar's
+ * foot (Agents, Settings), a section or pill under them, or a tab of the Inbox (decision P140). An old test id names where its
+ * page went.
  */
 export async function workspaceNav(page: Page, testId: string): Promise<void> {
-  // the pages that left the Settings rail (decision P98): Agents (once Connections), Integrations (with /mcp), Models (with
-  // Providers) are the sidebar's own; GitHub is the GitHub row of Integrations, whose detail opens beside the list (P106)
-  const id = OLD_NAV[testId] ?? testId;
-  if (HUB_OF[id] !== 'nav-settings' && id !== 'nav-settings' && !(await sidebar(page).getByTestId('nav-chats').isVisible())) {
-    await sidebar(page).getByTestId('nav-workspace').click();
-  }
-  if (testId === 'nav-github') {
-    await navTo(page, 'nav-side-integrations');
-    await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-key="github"]').click();
-    await expect(page.getByTestId('github-page')).toBeVisible();
-    return;
-  }
-  await navTo(page, id);
+  await navTo(page, OLD_NAV[testId] ?? testId);
 }
 
+/** The test ids of pages that moved (decisions P98, P140), and where they are now. */
 const OLD_NAV: Record<string, string> = {
   'nav-connections': 'nav-side-agents',
   'nav-integrations': 'nav-side-integrations',
   'nav-mcp': 'nav-side-integrations',
   'nav-providers': 'nav-side-models',
-  'nav-github': 'nav-side-integrations',
+  'nav-running': 'inbox-tab-running',
+  'nav-my-tasks': 'inbox-tab-mine',
+  'nav-guide-top': 'nav-guide',
 };
 
 /**
@@ -136,31 +152,21 @@ export async function projectNav(page: Page, testId: string, project?: string): 
   await navTo(page, testId);
 }
 
-/** The project switcher at the top of the sidebar: opens the menu of Home, the projects, "New project…" and "App settings". */
-export const projectSwitcher = (page: Page): Locator => page.getByRole('button', { name: 'Switch project' });
+/** A project's line in the sidebar's Projects list (decision P140: the list is how a project is opened). */
+export const projectItem = (page: Page, name: string): Locator => sidebar(page).getByTestId('nav-project-item').filter({ has: page.getByText(name, { exact: true }) });
 
-/** Switch to a project through the switcher's menu (exact name: "gocalc-approve" must not match a button "Approve"). */
+/** Open a project from the sidebar's Projects list: its Overview, with its tabs under it. */
 export async function switchProject(page: Page, name: string): Promise<void> {
-  await projectSwitcher(page).click();
-  await page.getByRole('menuitemradio', { name, exact: true }).click();
-  await expect(projectSwitcher(page)).toContainText(name);
+  await projectItem(page, name).click();
+  await expect(projectItem(page, name)).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The new-project wizard: the first run shows it directly; later runs open it from the switcher's "New project…". */
+/** The new-project wizard: the first run shows it directly; later runs open it from the sidebar's New (decision P140). */
 export async function showNewProjectForm(page: Page): Promise<void> {
   const field = page.getByLabel('Project name', { exact: true });
-  await field.or(projectSwitcher(page)).first().waitFor();
-  if (!(await field.isVisible())) {
-    await projectSwitcher(page).click();
-    // by the keyboard, as a person can: with many projects "New project…" is far down the menu's scroll, and on the
-    // Windows runner a click did not scroll it into view (End is App settings, the last item; New project… is above it)
-    const item = page.getByRole('menuitem', { name: 'New project…', exact: true });
-    await expect(page.getByRole('menu', { name: 'Projects' })).toBeVisible();
-    await page.keyboard.press('End');
-    await page.keyboard.press('ArrowUp');
-    await expect(item).toHaveAttribute('data-highlighted', 'true');
-    await page.keyboard.press('Enter');
-  }
+  const create = sidebar(page).getByTestId('nav-new');
+  await field.or(create).first().waitFor();
+  if (!(await field.isVisible())) await create.click();
   await expect(field).toBeVisible();
 }
 
