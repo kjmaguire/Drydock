@@ -39,11 +39,13 @@ app/
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
   screens/workspace/  Home, the start screen (P142): the box and its chips (start-box.tsx), what Enter does (start.ts), the
-                      projects to pick up (workspace.ts); lib/project-work.ts is where a flow lands in a project
+                      projects to pick up (workspace.ts), New project (new-project.tsx, P143: a name and where the code lives,
+                      nothing started; /home?new=project, shell/new.ts newProjectHref); lib/project-work.ts is where a flow lands
   screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
                       with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
   screens/work/       a project's Work ("/", decision P141): its tasks and chats in one list (work.ts), the open one in the centre
-                      (?item=task:<id>|chat:<id>), the crew rail (edit-agent.ts opens an agent's editor); overview/overview.ts keeps
+                      (?item=task:<id>|chat:<id>), the crew rail (edit-agent.ts opens an agent's editor; repo-sync-line.tsx is
+                      where the folder stands against its remote, with Sync now, P143); overview/overview.ts keeps
                       the Insights helpers it reads
   screens/tasks/      the project board (Board / List / Timeline of task.summaries; tasks.ts: columns, cards, checks bar, filters,
                       timeline), the task page with its step bar (steps.ts), the review panel

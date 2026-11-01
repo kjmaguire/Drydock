@@ -166,6 +166,36 @@ export interface CloneResult {
   defaultBranch: string;
 }
 
+/** What Sync now did (internal/git/sync.go SyncOutcome). */
+export type SyncOutcome = 'updated' | 'up_to_date' | 'ahead' | 'local_changes' | 'diverged' | 'other_branch' | 'no_remote_branch';
+
+/** A project's folder against its origin remote (repo.syncState, repo.sync; internal/core/ext_reposync.go, P143). */
+export interface RepoSync {
+  projectId: string;
+  /** "origin", or "" when there is nothing to sync with (no repository, no origin remote). */
+  remote: string;
+  /** The remote is on github.com. */
+  github: boolean;
+  branch: string;
+  /** The branch checked out in the project's folder. */
+  current: string;
+  /** False while the remote's copy of the branch is not known. */
+  tracked: boolean;
+  ahead: number;
+  behind: number;
+  /** When the remote was last fetched since the app started (ms); 0: not checked yet. */
+  checkedAt: number;
+  checking: boolean;
+  outcome?: SyncOutcome | '';
+  /** Why the last fetch failed (scrubbed). */
+  error?: string;
+}
+
+export interface RepoSyncSettings {
+  /** The background fetch: on opening a project and every 15 minutes. */
+  auto: boolean;
+}
+
 // ---- project.setup (internal/core/project_setup.go) ----
 
 export type SetupRepoKind = 'none' | 'local' | 'github';

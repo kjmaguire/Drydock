@@ -216,6 +216,49 @@ export function startSetup(where: Where, text: string, team: TeamMember[], draft
   return req;
 }
 
+// ---- New project (decision P143): a project with no work started ----
+
+/** A folder name from a project's name: its words, lower-case, joined with "-" ("Pay Portal" -> pay-portal). */
+export function nameSlug(name: string): string {
+  return words(name).join('-').slice(0, 40).replace(/-+$/, '') || 'new-project';
+}
+
+/** The new folder for a project's name: the usual code folder (github.cloneDir) and the name's slug. */
+export function newProjectFolder(baseDir: string, name: string): string {
+  return baseDir.trim() ? cloneTarget(baseDir, { name: nameSlug(name) }) : '';
+}
+
+/** The name New project offers until the person types one: the folder's or the repository's ("" for a new folder). */
+export function defaultProjectName(where: Where): string {
+  if (where.kind === 'new') return '';
+  return projectName(where, '');
+}
+
+/** What keeps New project's Create off, in words; undefined when it can create. */
+export function newProjectProblem(where: Where, name: string): string | undefined {
+  if (!name.trim()) return 'Name the project.';
+  if (where.kind === 'new' && !where.path.trim()) return 'Choose the new folder.';
+  if (where.kind === 'folder' && !where.path.trim()) return 'Choose a folder.';
+  if (where.kind === 'clone' && (!where.repo || !where.cloneDir.trim())) return 'Choose a repository to clone.';
+  return undefined;
+}
+
+/**
+ * New project's project.setup: the start box's defaults (P142: the wizard's defaults through buildSetup, Solo's builder on its
+ * recommended CLI with its model and effort, no brief, no connectors, local merge, the agents' skills installed) with the name
+ * the person gave, and nothing started.
+ */
+export function newProjectSetup(o: { where: Where; name: string; catalog: readonly PrebuiltAgent[]; fallbackAdapter?: string }): SetupRequest | { problem: string } {
+  const problem = newProjectProblem(o.where, o.name);
+  if (problem) return { problem };
+  const solo: Crew = { kind: 'solo', templates: [], drafted: [] };
+  const team = crewMembers(solo, o.catalog, [], defaultTuning(o.catalog), builderAdapter(o.catalog, o.fallbackAdapter));
+  const st = { ...startWizard(o.where, '', team), name: o.name.trim() };
+  const p = stepProblem(st, 'Team');
+  if (p) return { problem: p };
+  return buildSetup(st);
+}
+
 /** What keeps Enter from starting, in words; undefined when it can start. */
 export function startProblem(where: Where, text: string, team: readonly TeamMember[]): string | undefined {
   if (!text.trim()) return 'Describe what you want to build.';

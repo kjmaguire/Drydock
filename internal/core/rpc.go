@@ -133,7 +133,7 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.GitHubRepos(ctx, p.Owner, p.Query)
 		}),
-		"github.cloneDir": bind(func(ctx context.Context, _ struct{}) (any, error) { return DefaultCloneDir(), nil }),
+		"github.cloneDir": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubCloneDir(ctx), nil }),
 		"github.clone": bind(func(ctx context.Context, p struct {
 			Repo string `json:"repo"`
 			Dir  string `json:"dir"`

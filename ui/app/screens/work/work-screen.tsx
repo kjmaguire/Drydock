@@ -4,7 +4,8 @@
 // own page (TaskDetailScreen, embedded) or the chat (ChatConversation); with none named, the first that needs you, else the first
 // running, else one line and New task. On the right the crew: each agent with its model and effort and its state (a click opens
 // its editor in place, P137, through edit-agent.ts), "+" for a new one, then the project's spend, its first-check rate, its security findings and what
-// merged this week (the old Overview's Insights). Every number is the core's; nothing is decided on this page but in the item.
+// merged this week (the old Overview's Insights), and where the folder stands against its remote with Sync now (P143,
+// repo-sync-line.tsx). Every number is the core's; nothing is decided on this page but in the item.
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { Plus, Search } from 'lucide';
@@ -25,6 +26,7 @@ import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
 import { AgentPanelHost } from '../team/agent-panel.tsx';
 import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
+import { RepoSyncLine } from './repo-sync-line.tsx';
 import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, workRows, type WorkGroup, type WorkRow } from './work.ts';
 
 const layoutCss = css({
@@ -307,6 +309,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             <a href={routes.tasks.href()} data-testid="work-merged">
               Merged this week <b>{merged}</b>
             </a>
+            {s.workspace.project?.hasRepo && pid() ? <RepoSyncLine key={pid()} projectId={pid()!} /> : null}
           </div>
         </aside>
         <AgentPanelHost agents={agents} />

@@ -10,10 +10,14 @@ import {
   crewKinds,
   crewLabel,
   crewMembers,
+  defaultProjectName,
   defaultTuning,
   firstWork,
   folderName,
+  nameSlug,
   newFolderPath,
+  newProjectFolder,
+  newProjectSetup,
   pickPair,
   planStart,
   projectName,
@@ -316,5 +320,42 @@ describe('remembered choices (P142)', () => {
     expect(whereKey({ kind: 'folder', path: ' /src/a ', init: false })).toBe('folder:/src/a');
     expect(whereKey({ kind: 'clone', repo: 'a/b', cloneDir: '' })).toBe('clone:a/b');
     expect(whereKey({ kind: 'project', projectId: 'p1' })).toBe('project:p1');
+  });
+});
+
+describe('New project (P143): a project with nothing started', () => {
+  it("names the new folder after the project and the project after an opened folder or a repository", () => {
+    expect(nameSlug('Pay Portal')).toBe('pay-portal');
+    expect(nameSlug('  Café CLI!! ')).toBe('cafe-cli');
+    expect(nameSlug('')).toBe('new-project');
+    expect(newProjectFolder('C:\\Users\\me\\source\\repos', 'My App')).toBe('C:\\Users\\me\\source\\repos\\my-app');
+    expect(newProjectFolder('/home/me/src/', 'x')).toBe('/home/me/src/x');
+    expect(newProjectFolder('', 'x')).toBe('');
+    expect(defaultProjectName({ kind: 'new', path: '/home/me/src/x' })).toBe('');
+    expect(defaultProjectName({ kind: 'folder', path: 'D:\\src\\gocalc\\', init: false })).toBe('gocalc');
+    expect(defaultProjectName({ kind: 'clone', repo: 'acme/pay', cloneDir: '/src' })).toBe('pay');
+  });
+
+  it("one project.setup with the start box's defaults and the given name: Solo's builder, no brief, nothing else", () => {
+    const req = newProjectSetup({ where: { kind: 'new', path: '/home/me/src/pay-portal' }, name: ' Pay Portal ', catalog: CATALOG }) as SetupRequest;
+    expect(req.name).toBe('Pay Portal');
+    expect(req.brief).toBe('');
+    expect(req.repo).toEqual({ kind: 'local', path: '/home/me/src/pay-portal', init: true });
+    expect(req.mode).toBe('local_merge');
+    expect(req.libraryServers).toEqual([]);
+    expect(req.catalogServers).toEqual([]);
+    expect(req.agents.map((a) => a.prebuilt)).toEqual(['backend-engineer']);
+    expect(req.agents[0]!.permissionMode).toBe('acceptEdits');
+    const clone = newProjectSetup({ where: { kind: 'clone', repo: 'acme/pay', cloneDir: '/src' }, name: 'pay', catalog: CATALOG }) as SetupRequest;
+    expect(clone.repo).toEqual({ kind: 'github', github: 'acme/pay', cloneDir: '/src' });
+    const folder = newProjectSetup({ where: { kind: 'folder', path: '/src/gocalc', init: false }, name: 'gocalc', catalog: CATALOG }) as SetupRequest;
+    expect(folder.repo).toEqual({ kind: 'local', path: '/src/gocalc' });
+  });
+
+  it('says what is missing', () => {
+    expect(newProjectSetup({ where: { kind: 'new', path: '/x' }, name: ' ', catalog: CATALOG })).toEqual({ problem: 'Name the project.' });
+    expect(newProjectSetup({ where: { kind: 'new', path: '' }, name: 'x', catalog: CATALOG })).toEqual({ problem: 'Choose the new folder.' });
+    expect(newProjectSetup({ where: { kind: 'folder', path: '', init: false }, name: 'x', catalog: CATALOG })).toEqual({ problem: 'Choose a folder.' });
+    expect(newProjectSetup({ where: { kind: 'clone', repo: '', cloneDir: '/src' }, name: 'x', catalog: CATALOG })).toEqual({ problem: 'Choose a repository to clone.' });
   });
 });

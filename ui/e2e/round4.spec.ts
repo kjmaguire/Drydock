@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
+import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, openNewProject, readZip, switchProject, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -284,12 +284,16 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await expect(banner).toHaveAttribute('data-state', 'none');
   await expect(banner).toHaveAttribute('data-configured', 'true');
   await expect(banner).toContainText('No valid license');
-  await showNewProjectForm(page);
-  await expect(page.getByTestId('readonly-note')).toContainText('read-only');
-  await wizardToReview(page, { repo: licensedRepo() });
-  const create = page.getByRole('button', { name: 'Create project' });
+  await openNewProject(page);
+  const dialog = page.getByTestId('new-project-dialog');
+  await expect(dialog.getByTestId('readonly-note')).toContainText('read-only');
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await dialog.getByLabel('Folder', { exact: true }).fill(licensedRepo());
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository');
+  const create = dialog.getByTestId('new-project-create');
   await expect(create).toBeDisabled();
   await expect(create).toHaveAttribute('title', /No valid license/);
+  await page.keyboard.press('Escape');
 
   // the core refuses it too, and its words are what the page shows as the reason
   const refused = await page.request.post(`${new URL(url).origin}/rpc/project.create`, { headers: { 'X-Drydock-Token': token }, data: { name: 'x', repoPath: licensedRepo() } });
@@ -323,10 +327,13 @@ test('licensed test harness: no license is read-only and says why; expired is re
   expect(await page.content()).not.toContain(active.slice(0, 40));
 
   await page.goto(url);
-  await showNewProjectForm(page);
-  await wizardToReview(page, { name: 'pkg-licensed', repo: licensedRepo() });
-  await expect(page.getByRole('button', { name: 'Create project' })).toBeEnabled();
-  await wizardCreate(page);
+  await openNewProject(page);
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await dialog.getByLabel('Folder', { exact: true }).fill(licensedRepo());
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository');
+  await dialog.getByLabel('Project name', { exact: true }).fill('pkg-licensed');
+  await expect(create).toBeEnabled();
+  await create.click();
   await expect(page.getByTestId('work')).toBeVisible();
   await createAgent(page, 'lic-worker', 'backend');
 

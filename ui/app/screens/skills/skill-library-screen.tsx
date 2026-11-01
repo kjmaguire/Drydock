@@ -7,6 +7,7 @@ import { css, navigate, on, type Handle } from 'remix/component';
 import { ArrowRight, BookOpen, Cpu, GitBranch, RefreshCw } from 'lucide';
 import type { LibrarySkill } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
+import { newProjectHref } from '../../shell/new.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
@@ -91,7 +92,7 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
       <Page title="Skills" icon={Cpu} wide testId="skill-library" subtitle="From the registries you enabled; add them to a project there" guide="skills">
         {s.workspace.projects.data && projects.length === 0 ? (
           <Notice tone="info" testId="skill-library-no-project">
-            Skills are added to a project. <a href={routes.projectNew.href()}>Create a project</a> first; you can browse the registries meanwhile.
+            Skills are added to a project. <a href={newProjectHref()}>Create a project</a> first; you can browse the registries meanwhile.
           </Notice>
         ) : null}
         <Section title="Registries" testId="library-skills">

@@ -13,6 +13,7 @@ import { Blocks, FolderPlus, Plug, ShieldAlert } from 'lucide';
 import type { IntegrationKindInfo, IntegrationView } from '../../api/extTypes.ts';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
+import { newProjectHref } from '../../shell/new.ts';
 import { query, services, watch } from '../../state/services.tsx';
 import { BrandLogo } from '../../ui/brand-logo.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -101,7 +102,7 @@ export function ProjectIntegrationsScreen(handle: Handle<{ openTask?: OpenTask }
         <Page title="Integrations" icon={Blocks} testId="project-integrations">
           {s.workspace.projects.data ? (
             <p mix={muted} data-testid="no-project">
-              Integrations are put into a project. <a href={routes.projectNew.href()}>Create a project</a> first; services and servers are connected on the{' '}
+              Integrations are put into a project. <a href={newProjectHref()}>Create a project</a> first; services and servers are connected on the{' '}
               <a href={routes.integrations.href()}>Integrations</a> page.
             </p>
           ) : (

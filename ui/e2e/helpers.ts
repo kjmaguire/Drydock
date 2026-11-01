@@ -165,51 +165,39 @@ export async function switchProject(page: Page, name: string): Promise<void> {
   await expect(projectItem(page, name)).toHaveAttribute('aria-expanded', 'true');
 }
 
+/** A call of the core's RPC with the harness's token (what the page itself sends), for a spec's setup. */
+export async function rpc<T = unknown>(page: Page, method: string, data: unknown = {}): Promise<T> {
+  const url = new URL(appUrl());
+  const r = await page.request.post(`${url.origin}/rpc/${method}`, { headers: { 'X-Drydock-Token': url.searchParams.get('token') ?? '' }, data });
+  if (!r.ok()) throw new Error(`${method}: ${await r.text()}`);
+  return ((await r.json()) as { result: T }).result;
+}
+
 /**
- * The new-project wizard, opened by its address (/project/new): the first run and New show the start screen (decision P142),
- * whose "More options..." leads here. The page is loaded first when the browser is not on the app yet.
+ * Home's New project dialog (decision P143), opened from its button; the page is loaded first when the browser is not on the
+ * app yet. The old wizard's address (/project/new) opens the same dialog.
  */
-export async function showNewProjectForm(page: Page): Promise<void> {
-  const field = page.getByLabel('Project name', { exact: true });
-  if (await field.isVisible()) return;
+export async function openNewProject(page: Page): Promise<void> {
+  const dialog = page.getByTestId('new-project-dialog');
+  if (await dialog.isVisible()) return;
+  if (!page.url().startsWith('http')) await page.goto(appUrl()); // a page already on an app (the licensed harness's too) stays on it
   await sidebar(page).waitFor();
-  await page.goto(new URL('/project/new', page.url()).toString());
-  await expect(field).toBeVisible();
-}
-
-/** The wizard's Next button. */
-export async function wizardNext(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  if (!(await page.getByTestId('home-new-project').isVisible())) await page.goto(new URL('/home', page.url()).toString());
+  await page.getByTestId('home-new-project').click();
+  await expect(dialog).toBeVisible();
 }
 
 /**
- * Walk the open wizard to its Review step: Basics (the name, when given), Repository (a local folder, or Later), no
- * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Crew page).
+ * Makes a project through the core, as the old wizard did with its defaults (project.setup: a local repository or none, no
+ * connectors, local merge) and no agents (specs add their own on the Crew page), then opens it on its Work. Specs that are about
+ * making a project use the New project dialog itself (start.spec.ts, workspace.spec.ts).
  */
-export async function wizardToReview(page: Page, opts: { name?: string; repo?: string; later?: boolean }): Promise<void> {
-  if (opts.name) await page.getByLabel('Project name', { exact: true }).fill(opts.name);
-  await wizardNext(page);
-  const source = page.getByRole('radiogroup', { name: 'Repository source' });
-  if (opts.later) {
-    await source.getByRole('radio', { name: 'Later' }).check();
-  } else {
-    await source.getByRole('radio', { name: 'Local folder' }).check();
-    await page.getByLabel('Repository path').fill(opts.repo ?? freshRepo());
-  }
-  await wizardNext(page); // Connectors
-  await wizardNext(page); // Team
-  await expect(page.getByTestId('team-list')).toHaveAttribute('data-ready', 'true');
-  const removeAll = page.getByRole('button', { name: 'Remove all', exact: true });
-  if (await removeAll.isVisible()) await removeAll.click();
-  await expect(page.getByTestId('team-member')).toHaveCount(0);
-  await wizardNext(page); // Review
-  await expect(page.locator('form[data-step="Review"]')).toBeVisible();
-}
-
-/** Create from the Review step and open the new project. */
-export async function wizardCreate(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: 'Open project' }).click();
+async function setupProject(page: Page, req: { name: string; brief?: string; repo: { kind: 'local'; path: string } | { kind: 'none' } }): Promise<void> {
+  await rpc(page, 'project.setup', { name: req.name, brief: req.brief ?? '', repo: req.repo, mode: 'local_merge', libraryServers: [], catalogServers: [], agents: [], installSkills: true });
+  await page.goto(appUrl());
+  await switchProject(page, req.name);
+  // the new project opens on its Work (decision P141)
+  await expect(page.getByTestId('work')).toBeVisible();
 }
 
 /** A fresh repository whose baseline tests pass and that carries a repository skill (.aet/skills/go-style). */
@@ -221,28 +209,18 @@ export function freshGreenRepo(): string {
 /** A folder with one Markdown page, for an expert pack of type local_dir. */
 export const docsDir = (): string => process.env.DRYDOCK_E2E_DOCS ?? '';
 
-/** Open the app with the token, create a project for a fresh repo (or the one given), and return its name. */
+/** Open the app with the token, create a project for a fresh repo (or the one given), and open it. */
 export async function createProject(page: Page, name: string, repo?: string): Promise<void> {
-  await page.goto(appUrl());
-  await showNewProjectForm(page);
-  await wizardToReview(page, { name, repo: repo ?? freshRepo() });
-  await wizardCreate(page);
-  // the new project opens on its Work (decision P141)
-  await expect(page.getByTestId('work')).toBeVisible();
+  await setupProject(page, { name, repo: { kind: 'local', path: repo ?? freshRepo() } });
 }
 
 /**
- * Open the app and create a project with no repository (the wizard's "Later"). It takes none of the harness's fresh repositories
- * (REPOS in global-setup.ts is a fixed pool), so a spec that only needs a project to stand in, to reach the shell and its pages
- * or to hold tasks that the core makes, does not use one up.
+ * Open the app and create a project with no repository (a repository is attached later in Project settings). It takes none of the
+ * harness's fresh repositories (REPOS in global-setup.ts is a fixed pool), so a spec that only needs a project to stand in, to
+ * reach the shell and its pages or to hold tasks that the core makes, does not use one up.
  */
-export async function createProjectWithoutRepo(page: Page, name: string): Promise<void> {
-  await page.goto(appUrl());
-  await showNewProjectForm(page);
-  await wizardToReview(page, { name, later: true });
-  await wizardCreate(page);
-  // the new project opens on its Work (decision P141)
-  await expect(page.getByTestId('work')).toBeVisible();
+export async function createProjectWithoutRepo(page: Page, name: string, brief = ''): Promise<void> {
+  await setupProject(page, { name, brief, repo: { kind: 'none' } });
 }
 
 /**

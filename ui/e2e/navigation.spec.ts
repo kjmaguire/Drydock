@@ -24,13 +24,15 @@ test('the sidebar has exactly its six places, and New opens the start screen wit
   for (const gone of ['nav-running', 'nav-my-tasks', 'nav-crew', 'nav-security-scan', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-library-skills', 'nav-guide-top']) {
     await expect(sidebar(page).getByTestId(gone)).toHaveCount(0);
   }
-  // New is the start screen (decision P142), the cursor in its box; the wizard is behind "More options..."
+  // New is the start screen (decision P142), the cursor in its box; New project is the button beside its heading (P143)
   await sidebar(page).getByTestId('nav-new').click();
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByTestId('start-text')).toBeFocused();
-  await page.getByTestId('start-more').click();
-  await expect(page).toHaveURL(/\/project\/new$/);
-  await expect(page.getByLabel('Project name', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('start-more')).toHaveCount(0);
+  await page.getByTestId('home-new-project').click();
+  await expect(page.getByTestId('new-project-dialog').getByLabel('Project name', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('new-project-dialog')).toBeHidden();
   // Ctrl+N from another page does the same
   await sidebar(page).getByTestId('nav-chats').click();
   await sidebar(page).getByTestId('nav-library').click();

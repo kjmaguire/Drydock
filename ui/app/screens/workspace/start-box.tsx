@@ -1,6 +1,7 @@
 // The start screen's box (decision P142): one description, a row of chips under it (Where, Who, model · effort, permissions),
 // Start (Enter), the progress in the box and one line of error under it; then the "Or:" row (New folder, Clone from GitHub,
-// Open a folder..., Just chat). What Enter does is start.ts; this file only holds the choices and shows them.
+// Open a folder..., Just chat). What Enter does is start.ts; this file only holds the choices and shows them. A project without
+// work yet is Home's New project (P143); the box has no way to the old wizard any more.
 
 import { css, navigate, on, ref, type Handle, type MixInput, type RemixNode } from 'remix/component';
 import { ArrowDownToLine, Check, ChevronDown, CornerDownLeft, FolderOpen, FolderPlus, MessagesSquare, Plus, Users } from 'lucide';
@@ -118,7 +119,6 @@ const orCss = css({
     textDecoration: 'none',
   },
   '& button:hover, & a:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
-  '& a.quiet': { border: '0', marginLeft: 'auto' },
 });
 const menuCss = css({
   display: 'grid',
@@ -344,10 +344,6 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
             ))}
           </>
         ) : null}
-        <hr />
-        <a class="item" href={routes.projectNew.href()} data-testid="where-more">
-          <span class="grow sub">More options…</span>
-        </a>
       </div>
     );
   };
@@ -543,9 +539,6 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
           <button type="button" data-testid="or-chat" disabled={busy} mix={on('click', () => void justChat())}>
             <Icon icon={MessagesSquare} size={13} /> Just chat
           </button>
-          <a class="quiet" href={routes.projectNew.href()} data-testid="start-more">
-            More options…
-          </a>
         </div>
 
         <Dialog open={dialog === 'folder'} title="Open a folder" onClose={() => set(() => (dialog = ''))} testId="start-folder-dialog">

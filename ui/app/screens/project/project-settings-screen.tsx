@@ -6,6 +6,7 @@ import { css, navigate, on, type Handle } from 'remix/component';
 import { FolderGit2, Settings2, Trash2 } from 'lucide';
 import { projectHasRepo, type MergeStrategy, type Project, type ProjectMode } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
+import { newProjectHref } from '../../shell/new.ts';
 import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
@@ -188,7 +189,7 @@ export function ProjectSettingsScreen(handle: Handle) {
         <Page title="Project settings" icon={Settings2}>
           <Empty title="No project selected" icon={FolderGit2}>
             <p>
-              <a href={routes.projectNew.href()}>Create a project</a> to change its settings.
+              <a href={newProjectHref()}>Create a project</a> to change its settings.
             </p>
           </Empty>
         </Page>

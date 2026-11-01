@@ -159,4 +159,37 @@ describe('Work (decision P141)', () => {
     expect(r.$('[data-testid="work-flash"]')!.textContent).toBe('calculator: The GitHub repository could not be made.');
     expect(s.ui.takeFlash()).toBeUndefined();
   });
+
+  it('says where the folder stands against GitHub in one line, and Sync now updates it (P143)', async () => {
+    const synced: string[] = [];
+    const state = { projectId: 'prj_1', remote: 'origin', github: true, branch: 'main', current: 'main', tracked: true, ahead: 0, behind: 2, checkedAt: now, checking: false };
+    const s = svc({
+      repoSyncState: async () => state,
+      repoSync: async (id) => (synced.push(id), { ...state, behind: 1, outcome: 'local_changes' }),
+    });
+    const r = mount(<WorkScreen />, s);
+    const line = await waitFor(() => {
+      const el = r.$('[data-testid="repo-sync-state"]');
+      if (!el) throw new Error('no sync line');
+      return el;
+    }, r);
+    expect(line.textContent).toBe('2 behind');
+    expect(r.$('[data-testid="repo-sync"]')!.closest('[data-testid="work-stats"]')).not.toBeNull();
+    await r.act(() => (r.$('[data-testid="repo-sync-now"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$('[data-testid="repo-sync-why"]')!.textContent).toBe('Not updated: the folder has local changes.'), r);
+    expect(synced).toEqual(['prj_1']);
+    expect(r.$('[data-testid="repo-sync-state"]')!.textContent).toBe('1 behind');
+    // a repo.synced event reads it again
+    state.behind = 0;
+    await r.act(() => s.emit({ type: 'repo.synced', projectId: 'prj_1' }));
+    await waitFor(() => expect(r.$('[data-testid="repo-sync-state"]')!.textContent).toBe('Up to date with GitHub'), r);
+  });
+
+  it('shows no sync line for a repository without a remote', async () => {
+    const s = svc({ repoSyncState: async () => ({ projectId: 'prj_1', remote: '', github: false, branch: '', current: '', tracked: false, ahead: 0, behind: 0, checkedAt: 0, checking: false }) });
+    const r = mount(<WorkScreen />, s);
+    await waitFor(() => expect(r.$$('[data-testid="work-item"]')).toHaveLength(4), r);
+    await new Promise((res) => setTimeout(res, 50));
+    expect(r.$('[data-testid="repo-sync"]')).toBeNull();
+  });
 });

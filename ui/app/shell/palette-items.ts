@@ -10,6 +10,7 @@ import { hubOf, parseRoute } from '../lib/route.ts';
 import { topicPath } from '../screens/guide/model.ts';
 import { GUIDE_TOPICS } from '../screens/guide/topics.ts';
 import { routes } from '../routes.ts';
+import { newProjectHref } from './new.ts';
 
 export type Group = 'Assign' | 'Actions' | 'Go to' | 'Navigate' | 'Chats' | 'Tasks' | 'Agents';
 /** The groups of the menu with nothing typed and no task in context (the order they are listed in). */
@@ -253,7 +254,7 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
     act('act:activity', 'Show model and token activity', 'dock:activity', 'Opens the dock on the model calls and their tokens.'),
     act('act:dock', 'Toggle the dock', 'dock:toggle', 'Shows or hides the dock under the page.', { hint: 'Ctrl+J' }),
     act('act:details', 'Toggle the details panel', 'details:toggle', 'Shows or hides the details panel beside the page.'),
-    { id: 'act:project', group: 'Actions', label: 'Add a project', href: routes.projectNew.href(), scope: '>', what: 'Opens the form for a new project.' },
+    { id: 'act:project', group: 'Actions', label: 'New project', href: newProjectHref(), scope: '>', what: 'Opens New project on Home: a name and where its code lives.' },
     act('act:theme-system', 'Theme: follow the system', 'theme:system', 'Follows the light or dark setting of Windows.'),
     act('act:theme-dark', 'Theme: dark', 'theme:dark', 'Switches Drydock to the dark theme.'),
     act('act:theme-light', 'Theme: light', 'theme:light', 'Switches Drydock to the light theme.'),

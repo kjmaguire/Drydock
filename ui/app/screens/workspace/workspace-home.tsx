@@ -1,19 +1,24 @@
-// Home (/home, and the first run; decision P142): the start screen. "What do you want to build?", one box with its chips
-// (start-box.tsx), the "Or:" row, then "Pick up where you left off": the most recently active projects as cards, each with what
-// runs, whether it needs you and one line of what is happening. Opening a card selects that project and opens it.
+// Home (/home, and the first run; decision P142): the start screen. "What do you want to build?" with New project at its right
+// (P143: a dialog, new-project.tsx, that makes a project and starts nothing; /home?new=project opens it, which is where the old
+// wizard's address and Ctrl+K's New project lead), one box with its chips (start-box.tsx), the "Or:" row, then "Pick up where you
+// left off": the most recently active projects as cards, each with what runs, whether it needs you and one line of what is
+// happening. Opening a card selects that project and opens it.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { ArrowRight } from 'lucide';
+import { ArrowRight, Plus } from 'lucide';
 import type { Project } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
 import { services, watch } from '../../state/services.tsx';
 import { hueFor } from '../../ui/data.tsx';
+import type { NewProjectWhere } from '../../shell/new.ts';
+import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { relTime } from '../chats/chats.ts';
+import { NewProjectDialog } from './new-project.tsx';
 import { StartBox } from './start-box.tsx';
 import { pickUp, type PickUp } from './workspace.ts';
 
@@ -23,6 +28,8 @@ const wrapCss = css({
   width: '100%',
   maxWidth: '840px',
   margin: `clamp(16px, 9vh, 96px) auto ${t.s8}`,
+  '& .top': { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s3 },
+  '& .top button': { marginLeft: 'auto' },
   '& h1': { margin: '0', fontSize: t.text2xl, fontWeight: '600', letterSpacing: '-0.01em' },
   '& .lead': { margin: '-8px 0 0', color: t.textMuted, fontSize: t.textMd },
 });
@@ -107,8 +114,27 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
   // a note the previous page left (a project was deleted, what a start could not do)
   const flash = s.ui.takeFlash();
   let all = false;
+  let newOpen = false;
+  let newWhere: NewProjectWhere | undefined;
+
+  /** /home?new=project[&where=new|folder|clone] opens New project (P143); the parameters are taken off the address. */
+  const fromAddress = () => {
+    try {
+      const u = new URL(window.location.href);
+      if (u.searchParams.get('new') !== 'project') return;
+      const w = u.searchParams.get('where');
+      newWhere = w === 'new' || w === 'folder' || w === 'clone' ? w : undefined;
+      newOpen = true;
+      u.searchParams.delete('new');
+      u.searchParams.delete('where');
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    } catch {
+      /* no address to read (a test) */
+    }
+  };
 
   return () => {
+    fromAddress();
     const ws = s.workspace;
     const projects: Project[] = ws.projectList;
     const items = pickUp(projects, ws.summaries.data?.summaries ?? [], ws.needs.data ?? [], RUNNING_STATUSES);
@@ -119,7 +145,12 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
         testId="workspace-home"
         head={(id) => (
           <div mix={wrapCss}>
-            <h1 id={id}>What do you want to build?</h1>
+            <div class="top">
+              <h1 id={id}>What do you want to build?</h1>
+              <Button variant="primary" size="sm" icon={Plus} aria-haspopup="dialog" data-testid="home-new-project" mix={on('click', () => ((newWhere = undefined), (newOpen = true), void handle.update()))}>
+                New project
+              </Button>
+            </div>
             <p class="lead">Describe it; change the place or the crew below.</p>
             {flash ? (
               <Notice tone={flash.tone} role="status" testId="home-flash">
@@ -145,6 +176,7 @@ export function WorkspaceHomeScreen(handle: Handle<{ onNavigate?: (href: string)
                 </ul>
               </section>
             ) : null}
+            <NewProjectDialog open={newOpen} where={newWhere} onClose={() => ((newOpen = false), void handle.update())} onNavigate={handle.props.onNavigate} />
           </div>
         )}
       />

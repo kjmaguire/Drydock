@@ -1,7 +1,7 @@
 // Home is the start screen (decision P142): one box, chips for where and who, Enter makes the project (when the place is new),
 // its crew and the first piece of work, then lands in the project on it. Against the real core; the agent CLI is the harness's
 // scripted stand-in (cmd/drydock-e2e, a TEST DOUBLE that speaks Claude Code's stream-json).
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -104,14 +104,75 @@ test('Just chat: a chat without a project, sent what was typed', async ({ page }
   await expect(page.getByTestId('chat-log')).toContainText('What is a monad, in one line?');
 });
 
-test('New and Ctrl+N open the start screen; the wizard is behind More options', async ({ page }) => {
+test('New and Ctrl+N open the start screen; it has no way to the old wizard (P143)', async ({ page }) => {
   await page.goto(appUrl());
   await sidebar(page).getByTestId('nav-chats').click();
   await sidebar(page).getByTestId('nav-new').click();
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByTestId('start-text')).toBeFocused();
+  await expect(page.getByTestId('start-more')).toHaveCount(0);
   await page.getByTestId('start-where').click();
-  await page.getByTestId('where-more').click();
-  await expect(page).toHaveURL(/\/project\/new$/);
-  await expect(page.getByLabel('Project name', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('where-new')).toBeVisible();
+  await expect(page.getByTestId('where-more')).toHaveCount(0);
+});
+
+// New project (decision P143): a button beside Home's heading opens a small dialog, a name and where the code lives. Create makes
+// the project with the start box's defaults and starts nothing; the person lands on its Work.
+test('New project: a name and a new folder make a project with nothing started, and it opens on Work', async ({ page }) => {
+  const parent = realpathSync.native(mkdtempSync(join(tmpdir(), 'drydock-e2e-new-')));
+  const folder = join(parent, 'pay-portal');
+  try {
+    await home(page);
+    await page.getByTestId('home-new-project').click();
+    const dialog = page.getByTestId('new-project-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('radiogroup', { name: 'Where its code lives' }).getByRole('radio', { name: 'New folder' })).toHaveAttribute('aria-checked', 'true');
+    await dialog.getByLabel('Project name', { exact: true }).fill('Pay Portal');
+    // the new folder follows the name, in the usual code folder; it can be changed
+    await expect(dialog.getByTestId('new-project-folder')).toHaveValue(/[\\/]pay-portal$/);
+    await dialog.getByTestId('new-project-folder').fill(folder);
+    await dialog.getByTestId('new-project-create').click();
+    await expect(page.getByTestId('work')).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(projectItem(page, 'Pay Portal')).toHaveAttribute('aria-expanded', 'true');
+    expect(existsSync(join(folder, '.git'))).toBe(true);
+    // nothing started: no task, no chat; the crew is Solo's builder
+    const project = (await rpc<{ id: string; name: string }[]>(page, 'project.list', {})).find((p) => p.name === 'Pay Portal')!;
+    expect((await rpc<unknown[] | null>(page, 'task.list', { projectId: project.id })) ?? []).toHaveLength(0);
+    expect((await rpc<unknown[] | null>(page, 'chat.list', { projectId: project.id })) ?? []).toHaveLength(0);
+    await expect(page.getByTestId('work-agent')).toHaveCount(1);
+    await expect(page.getByTestId('work-empty')).toBeVisible();
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('New project: Open a folder names the project after it; the old wizard address and Ctrl+K open the same dialog', async ({ page }) => {
+  const repo = freshRepo();
+  const name = repo.split(/[\\/]/).pop()!;
+  await page.goto(appUrl());
+  await sidebar(page).waitFor();
+  // the five-step wizard's address keeps working: it opens New project on Home
+  await page.goto(new URL('/project/new', page.url()).toString());
+  await expect(page).toHaveURL(/\/home$/);
+  const dialog = page.getByTestId('new-project-dialog');
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  // Ctrl+K: New project
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Control+k');
+  const menu = page.getByRole('dialog', { name: 'Command menu' });
+  await menu.getByRole('combobox', { name: 'Command' }).fill('>New project');
+  await menu.getByRole('listbox', { name: 'Commands' }).getByRole('option', { name: /New project/ }).first().click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await dialog.getByLabel('Folder', { exact: true }).fill(repo);
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository');
+  await expect(dialog.getByLabel('Project name', { exact: true })).toHaveValue(name);
+  // a typed name wins (the harness's repositories share one folder name)
+  await dialog.getByLabel('Project name', { exact: true }).fill('opened-folder');
+  await dialog.getByTestId('new-project-create').click();
+  await expect(page.getByTestId('work')).toBeVisible();
+  await expect(projectItem(page, 'opened-folder')).toHaveAttribute('aria-expanded', 'true');
 });

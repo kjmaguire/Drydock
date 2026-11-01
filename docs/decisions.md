@@ -2541,3 +2541,58 @@ Open, owner action:
   cursor); e2e `ui/e2e/start.spec.ts` (a new folder with Solo: a project and a chat; an opened folder with Small team: a task
   assigned and started, then the Recent project again; Just chat; New and More options), and the specs whose Home moved
   (`home-chat`, `workspace`, `security`, `layout`, `navigation`, `flow`; `e2e/helpers.ts` opens the wizard by its address).
+
+- **P143. New project on Home; a GitHub repository cloned where the person chooses and kept in step (2026-11-01).** The owner:
+  "on the main page there isn't a post of saying new project. when clicking on more options on the front page it brings you to a
+  new project which I don't think was intended ... when linking a github project, id like for us to sync it to the directory of our
+  choice, as well." (a) **New project** is a primary button at the right of Home's heading (`home-new-project`). It opens a small
+  dialog (`ui/app/screens/workspace/new-project.tsx`, the kit `Dialog`): **Project name**, and **Where its code lives** as one
+  segmented choice, New folder (the usual code folder and the name's slug, editable) / Open a folder (the folder field, P58) / Clone
+  from GitHub (the repository picker). The name follows the folder or repository until the person types one. **Create project** is
+  one `project.setup` with the start box's defaults (`newProjectSetup` in `start.ts`: the wizard's defaults through `buildSetup`,
+  Solo's builder as the crew, no brief, no connectors, local merge, the agents' skills installed) and starts no work; the person
+  lands on the project's Work (`projectWorkHref()`). No new RPC makes projects. (b) **The wizard is gone.** Both "More options..."
+  links of the start box (`start-more`, `where-more`) are removed; `/project/new` redirects to `/home?new=project` (Home opens the
+  dialog and takes the parameter off the address), and `newProjectHref()` in `shell/new.ts` is the one place that builds it (Ctrl+K's
+  "New project", the project switcher's "New project…", and the "Create a project" links of Skills, Project settings,
+  Integrations and GitHub). `project-create-screen.tsx`, `team-builder.tsx` (used by nothing else) and the wizard's browser test
+  are deleted; `wizard.ts` stays (the start box, the folder field and the picker use its helpers). The brief, connectors and crew
+  the wizard asked for are the project's Settings and Crew afterwards. The sidebar's New stays the start screen (P142), whose
+  heading now has New project beside it. The e2e helpers make a spec's stand-in project through `project.setup` with the
+  harness's token (what the wizard sent, with no agents) and open it from the sidebar (`createProject`,
+  `createProjectWithoutRepo`); the specs about making a project use the dialog. (c) **Clone into a chosen folder:** the repository
+  picker's **Clone into** has **Choose folder…** (`screens/shared/choose-folder.tsx`, `fs.pickFolder`, where the window has a folder
+  dialog), the full target path stays shown under it, and the core remembers the folder of the last clone that worked (setting
+  `github.lastCloneDir`, written by `GitHubClone`; `github.cloneDir` returns it, else `~/source/repos`), so the next clone (and
+  the start box's new folders, which use the same folder) starts there. (d) **Keeping it in sync** (`internal/git/sync.go`,
+  `internal/core/ext_reposync.go`): for a project whose repository has an `origin` remote (cloned by Drydock or attached; GitHub or
+  another host, named "origin" in the words then), Work's crew rail ends with one line: "Up to date with GitHub", "3 behind · 1
+  ahead", "Not checked yet", "Checking GitHub…" or "Could not reach GitHub", and **Sync now**. Sync now (`repo.sync`) is `git fetch`
+  of origin with the refspec on the command line (`+refs/heads/*:refs/remotes/origin/*`, so only remote-tracking branches move,
+  whatever the repository configures; `--no-recurse-submodules`, `--no-write-fetch-head`), then `git merge --ff-only` of the
+  project's default branch in the project's folder only when that branch is checked out, has no commits of its own and the tree has
+  no local changes (untracked files count, as for a task's merge), under the same lock as a task's merge into that folder; otherwise
+  nothing changes and one line says why (local changes / diverged / another branch checked out / nothing new, your commits stay
+  local). Nothing merges, rebases, resets, forces or pushes, and task worktrees and `drydock/*` branches are never touched (a test
+  says so). The background check fetches only: when a project is opened (`repo.syncState` with its last check over two minutes
+  old) and every 15 minutes for every project with a remote while the app runs; Settings > GitHub > Project folders > **Check for
+  new commits** turns it off (`repo.syncSettings.get/set`, setting `reposync.auto`). The fetch goes through `internal/git`'s
+  runner: the person's login environment is kept for a call that talks to a remote (`talksToARemote`), every call is hardened
+  (`proc.Harden`, no hooks, the repository's trusted-configuration guard), a fetch has a two-minute limit, and its error is scrubbed
+  (`Scanner.Redact`, and a login in a URL is cut) before it is kept in memory or shown; `repo.synced` carries counts and the outcome
+  only, never the remote's address or a path, and nothing about a sync is written to the database or the log. **Not gated by the
+  license:** read-only stops new projects and agent work; a sync is the person's own folder brought up to date with what they can
+  already read, as `git pull --ff-only` would, and starts no work. Not done: a real GitHub fetch is not exercised here (the tests
+  use local bare repositories; the clone e2e still has no gh in the harness, so the picker's Choose folder is covered by unit tests
+  only); the state of the last check is kept in memory, so after a restart a project says "Not checked yet" until its first check.
+  Tests: `internal/git/sync_test.go` (a clean fast-forward that a fetch alone does not make, local changes and an untracked file
+  refused, diverged and ahead refused, another branch refused, task branches and worktrees untouched, no remote, names that look
+  like options refused), `internal/core/reposync_test.go` (Sync now refusing then fast-forwarding with its event, the check on
+  opening only fetching, no remote or no repository, a failed fetch hiding the login, the remembered clone folder); UI
+  `screens/work/repo-sync.test.ts`, `work-screen.test.browser.tsx` (the line, Sync now, the event, no line without a remote),
+  `screens/workspace/start.test.ts` (names, folders, `newProjectSetup`), `new-project.test.browser.tsx` (the button, a new folder
+  creating with nothing started, a folder naming the project, `?new=project&where=clone`, an error, Cancel, read-only),
+  `repo-picker.test.browser.tsx` (Choose folder and the target path); e2e `ui/e2e/start.spec.ts` (New project with a new folder and
+  with an opened folder, `/project/new` and Ctrl+K open it, no "More options"), `ui/e2e/reposync.spec.ts` (a local bare remote:
+  "Up to date with origin" on opening, a pushed commit with a local edit gives "1 behind" and the reason, then Sync now brings it
+  in), and the specs that used the wizard (`workspace`, `flow`, `round4`, `round13`, `navigation`).

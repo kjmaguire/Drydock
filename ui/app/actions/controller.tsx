@@ -4,6 +4,7 @@
 import { createController } from 'remix/router';
 import type { AppContext } from '../router.tsx';
 import { routes } from '../routes.ts';
+import { newProjectHref } from '../shell/new.ts';
 
 /** The Integrations page, or one integration on it (/integrations/<key>). */
 async function integrations({ render, params }: Pick<AppContext, 'render'> & { params: { key?: string } }) {
@@ -83,9 +84,10 @@ export const controller = createController(routes, {
       const { ProjectIntegrationsScreen } = await import('../screens/integrations/project-integrations-screen.tsx');
       return render(<ProjectIntegrationsScreen />);
     },
+    // an old address: the five-step wizard became Home's New project dialog (decision P143)
     async projectNew({ render }) {
-      const { ProjectCreateScreen } = await import('../screens/project/project-create-screen.tsx');
-      return render(<ProjectCreateScreen />);
+      const { Redirect } = await import('../shell/redirect.tsx');
+      return render(<Redirect to={newProjectHref()} />);
     },
     async plan({ render }) {
       const { PlanScreen } = await import('../screens/plan/plan-screen.tsx');

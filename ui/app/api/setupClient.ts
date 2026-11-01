@@ -14,6 +14,8 @@ import type {
   PrebuiltApplyReq,
   Project,
   ProjectRepos,
+  RepoSync,
+  RepoSyncSettings,
   SetupRequest,
   SetupResult,
 } from './types.ts';
@@ -30,7 +32,7 @@ export interface SetupClient {
   /** The signed-in account first, then its organizations. */
   githubOwners(): Promise<string[]>;
   githubRepos(owner?: string, query?: string): Promise<GitHubRepo[]>;
-  /** Where repositories are cloned unless the human picks another folder. */
+  /** Where a clone starts: the folder the person last cloned into, else the usual one (~/source/repos; P143). */
   githubCloneDir(): Promise<string>;
   githubClone(repo: string, dir: string): Promise<CloneResult>;
   /**
@@ -38,6 +40,15 @@ export interface SetupClient {
    * Repositories table). Answers are kept a minute; `refresh` asks GitHub again. A failure is the row's, not the call's.
    */
   githubProjectRepos(refresh?: boolean): Promise<ProjectRepos>;
+  /**
+   * Where the project's folder stands against its origin remote, from the last fetch (P143). Reading it when the last check is old
+   * (and the background check is on) starts a fetch-only check: `checking` is true and a repo.synced event follows.
+   */
+  repoSyncState(projectId: string): Promise<RepoSync>;
+  /** Sync now: fetch, then fast-forward the checked-out default branch when nothing else changes (outcome says what it did). */
+  repoSync(projectId: string): Promise<RepoSync>;
+  repoSyncSettings(): Promise<RepoSyncSettings>;
+  repoSyncSettingsSet(p: Partial<RepoSyncSettings>): Promise<RepoSyncSettings>;
   mcpCatalog(): Promise<McpCatalogEntry[]>;
   mcpAddFromCatalog(catalogId: string): Promise<McpCatalogAdded>;
   agentCatalogList(projectId?: string): Promise<PrebuiltAgent[]>;
@@ -75,6 +86,10 @@ export function createSetupClient(t: Transport): SetupClient {
       const r = await t.call<ProjectRepos>('github.projectRepos', { refresh });
       return { ghInstalled: !!r?.ghInstalled, rows: arr(r?.rows).map((x) => ({ ...x, openPullRequests: Number(x.openPullRequests) || 0 })) };
     },
+    repoSyncState: (projectId) => t.call('repo.syncState', { projectId }),
+    repoSync: (projectId) => t.call('repo.sync', { projectId }),
+    repoSyncSettings: () => t.call('repo.syncSettings.get', {}),
+    repoSyncSettingsSet: (p) => t.call('repo.syncSettings.set', p),
     mcpCatalog: async () => arr(await t.call<McpCatalogEntry[] | null>('mcplib.catalog', {})).map((e) => ({ ...e, readOnlyTools: arr(e.readOnlyTools), recommendedRoles: arr(e.recommendedRoles) })),
     mcpAddFromCatalog: (catalogId) => t.call('mcplib.addFromCatalog', { catalogId }),
     agentCatalogList: async (projectId) => arr(await t.call<PrebuiltAgent[] | null>('agentcatalog.list', projectId ? { projectId } : {})).map(prebuilt),

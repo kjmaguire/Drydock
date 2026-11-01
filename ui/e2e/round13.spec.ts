@@ -1,28 +1,24 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, freshRepo, showNewProjectForm, wizardCreate, wizardNext, wizardToReview, projectItem, projectNav } from './helpers';
+import { appUrl, createProjectWithoutRepo, freshRepo, openNewProject, projectItem, projectNav } from './helpers';
 
-// A project without a repository: made with the wizard's "Later", opened, given a repository from Project settings, then
-// used. The harness has no gh, so the wizard's GitHub choice explains that instead of listing repositories.
-test('wizard: a project with no repository opens, gets a repository from settings, and then takes a task', async ({ page }) => {
+// A project without a repository (made through the core: New project always gives one a folder), opened, given a repository from
+// Project settings, then used. The harness has no gh, so New project's Clone from GitHub explains that instead of listing
+// repositories.
+test('a project with no repository opens, gets a repository from settings, and then takes a task', async ({ page }) => {
   await page.goto(appUrl());
-  await showNewProjectForm(page);
+  await openNewProject(page);
 
   // GitHub is explained, in the core's words, when gh is not installed
-  await page.getByLabel('Project name', { exact: true }).fill('later-project');
-  await page.getByLabel('Brief').fill('A calculator library. Keep changes small and tested.');
-  await wizardNext(page);
-  await page.getByRole('radiogroup', { name: 'Repository source' }).getByRole('radio', { name: 'GitHub' }).check();
-  const gh = page.getByTestId('github-unavailable');
+  const dialog = page.getByTestId('new-project-dialog');
+  await dialog.getByRole('radio', { name: 'Clone from GitHub' }).click();
+  const gh = dialog.getByTestId('github-unavailable');
   await expect(gh).toContainText('GitHub CLI (gh) is not installed');
-  await expect(gh).toContainText('Choose Local folder or Later instead.');
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(gh).toContainText('Choose New folder or Open a folder instead.');
+  await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
+  await page.keyboard.press('Escape');
 
-  // Later: no repository
-  await wizardToReview(page, { later: true });
-  const summary = page.getByRole('definition').filter({ hasText: 'None yet' });
-  await expect(summary).toContainText('attach one later in Project settings');
-  await wizardCreate(page);
-  await expect(page.getByTestId('work')).toBeVisible();
+  // no repository
+  await createProjectWithoutRepo(page, 'later-project', 'A calculator library. Keep changes small and tested.');
   await expect(projectItem(page, 'later-project')).toHaveAttribute('aria-expanded', 'true');
 
   // nothing that needs a repository pretends to work

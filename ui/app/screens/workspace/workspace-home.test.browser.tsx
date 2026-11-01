@@ -74,7 +74,8 @@ describe('Home is the start screen (P142)', () => {
     await r.act(() => type(box(r), 'A small Go CLI that converts CSV to JSON'));
     await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: go-cli-converts'), r);
     expect(Array.from(r.$$('[data-testid="start-or"] button')).map((b) => b.textContent!.trim())).toEqual(['New folder', 'Clone from GitHub', 'Open a folder…', 'Just chat']);
-    expect(r.$('[data-testid="start-more"]')!.getAttribute('href')).toBe('/project/new');
+    // no way to the old wizard any more: a project without work is New project (P143)
+    expect(r.$('[data-testid="start-more"]')).toBe(null);
   });
 
   it('picks up the three most recently active projects, with what runs or needs you; All projects shows the rest', async () => {

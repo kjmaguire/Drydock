@@ -1,6 +1,8 @@
 // Pick a GitHub repository through the user's own `gh` (its sign-in stays with gh; Drydock stores nothing of it): the account and its organizations,
-// a search box, the repositories as a list of radio buttons, and the folder to clone into. When gh is missing or not signed
-// in, it says so in the core's words. Used by the new-project wizard and by Project settings (attach a repository).
+// a search box, the repositories as a list of radio buttons, and the folder to clone into: typed, or chosen with the window's
+// folder dialog (Choose folder…), prefilled with the folder the person last cloned into (github.cloneDir, decision P143), and the
+// full path the clone makes shown under it. When gh is missing or not signed in, it says so in the core's words. Used by Home's
+// New project dialog and the start box's Clone from GitHub, and by Project settings (attach a repository).
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { Lock, Search } from 'lucide';
@@ -12,6 +14,7 @@ import { Field } from '../../ui/form.tsx';
 import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
 import { cloneTarget, pushedAgo } from './wizard.ts';
 
 const wrapCss = css({ display: 'grid', gap: t.s3, minWidth: '0' });
@@ -152,7 +155,12 @@ export function RepoPicker(
           </div>
         ) : null}
         <Field label="Clone into" hint={target ? <span>Clones to <span mix={targetCss} data-testid="clone-target">{target}</span></span> : 'The folder the repository is cloned into (a new subfolder named after it).'}>
-          {(id) => <input id={id} value={cloneDir} spellcheck={false} autocomplete="off" placeholder="C:\Users\you\source\repos" mix={on('input', (e) => onCloneDir(e.currentTarget.value))} />}
+          {(id) => (
+            <div mix={folderRow}>
+              <input id={id} value={cloneDir} spellcheck={false} autocomplete="off" placeholder="C:\Users\you\source\repos" mix={on('input', (e) => onCloneDir(e.currentTarget.value))} />
+              <ChooseFolder title="Choose the folder to clone into" onPick={onCloneDir} testId="clone-choose" />
+            </div>
+          )}
         </Field>
       </div>
     );

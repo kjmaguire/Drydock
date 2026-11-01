@@ -1,6 +1,7 @@
 // The sidebar's New button and its key (decisions P140, P142): one place says what "new" opens. It is the start screen, Home,
-// with the cursor in its box; the five-step wizard (/project/new) stays behind its "More options...". On Chats the key keeps
-// making a new chat (the Chats screen handles it there).
+// with the cursor in its box. On Chats the key keeps making a new chat (the Chats screen handles it there). A new project without
+// any work yet is Home's New project dialog (P143): newProjectHref() opens Home with it open, and the old wizard's address
+// (/project/new) redirects there.
 
 import { shortcutOf } from '../lib/keys.ts';
 import { routes } from '../routes.ts';
@@ -8,6 +9,14 @@ import { routes } from '../routes.ts';
 /** Where New goes. */
 export function newHref(): string {
   return routes.workspace.href();
+}
+
+/** Where its code lives, as New project's segmented choice offers it. */
+export type NewProjectWhere = 'new' | 'folder' | 'clone';
+
+/** Home with the New project dialog open (on a choice of where the code lives, when given). */
+export function newProjectHref(where?: NewProjectWhere): string {
+  return `${routes.workspace.href()}?new=project${where ? `&where=${where}` : ''}`;
 }
 
 /** Puts the cursor in the start box once it is on the page (tried for about half a second while the page renders). */

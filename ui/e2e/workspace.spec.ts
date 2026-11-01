@@ -5,7 +5,7 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createProject, freshRepo, projectItem, projectNav, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, openNewProject, projectItem, projectNav, sidebar, workspaceNav } from './helpers';
 
 test('Home holds the workspace, a project shows only itself, and deleting a project leaves its repository', async ({ page }) => {
   const repo = freshRepo();
@@ -120,32 +120,25 @@ test("workspace pages name no project; a project's own settings are sections of 
   }
 });
 
-// Decision P58: a project from scratch. "Choose folder..." opens the window's folder dialog (the harness's labelled stand-in
-// "chooses" a folder that does not exist yet), the field says what is there and recommends a Dev Drive (the stand-in reports
-// D:), and with "Create a Git repository here" ticked Drydock makes the folder, the repository (branch main) and its first
-// commit, and the project works in it.
+// Decision P58: a project from scratch, in New project's Open a folder (P143). "Choose folder..." opens the window's folder
+// dialog (the harness's labelled stand-in "chooses" a folder that does not exist yet), the field says what is there and
+// recommends a Dev Drive (the stand-in reports D:), and with "Create a Git repository here" ticked Drydock makes the folder, the
+// repository (branch main) and its first commit, and the project works in it.
 test('a project from scratch: Choose folder..., and Drydock makes the Git repository', async ({ page }) => {
   await page.goto(appUrl());
-  await showNewProjectForm(page);
-  await page.getByLabel('Project name', { exact: true }).fill('ws-from-scratch');
-  await wizardNext(page);
-  await page.getByRole('radiogroup', { name: 'Repository source' }).getByRole('radio', { name: 'Local folder' }).check();
-  await expect(page.getByTestId('folder-hint')).toContainText('Dev Drive D: found.');
-  await page.getByTestId('folder-choose').click();
-  const field = page.getByLabel('Repository path');
+  await openNewProject(page);
+  const dialog = page.getByTestId('new-project-dialog');
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await expect(dialog.getByTestId('folder-hint')).toContainText('Dev Drive D: found.');
+  await dialog.getByTestId('folder-choose').click();
+  const field = dialog.getByLabel('Folder', { exact: true });
   await expect(field).toHaveValue(/Fresh Project \d+$/);
   const folder = await field.inputValue();
-  await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
-  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
-  await page.getByLabel(/^Create a Git repository here/).check();
-  await wizardNext(page); // Connectors
-  await wizardNext(page); // Team
-  await expect(page.getByTestId('team-list')).toHaveAttribute('data-ready', 'true');
-  const removeAll = page.getByRole('button', { name: 'Remove all', exact: true });
-  if (await removeAll.isVisible()) await removeAll.click();
-  await wizardNext(page); // Review
-  await expect(page.getByTestId('review-init')).toContainText('new Git repository here');
-  await wizardCreate(page);
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
+  await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
+  await dialog.getByLabel('Project name', { exact: true }).fill('ws-from-scratch');
+  await dialog.getByLabel(/^Create a Git repository here/).check();
+  await dialog.getByTestId('new-project-create').click();
   await expect(page.getByTestId('work')).toBeVisible();
   expect(existsSync(join(folder, '.git'))).toBe(true);
   // the project works in it: Project settings show no attach form
