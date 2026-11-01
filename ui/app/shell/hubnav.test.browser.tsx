@@ -4,6 +4,7 @@ import type { Client } from '../api/client.ts';
 import type { Room } from '../api/types.ts';
 import { cleanup, mount, testServices, waitFor } from '../test/render.tsx';
 import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
+import { PROJECT_SECTIONS } from './project-sections.ts';
 
 afterEach(cleanup);
 
@@ -28,21 +29,7 @@ function svc(over: Partial<Client> = {}) {
 }
 
 describe('the hubs', () => {
-  it('Tasks, Knowledge, Overview and Library show their pages as pills with the old test ids; Crew and Rooms have none', () => {
-    const r = mount(<SubNav route={{ name: 'pulls' }} />);
-    const pills = Array.from(r.$$('nav[aria-label="Section"] a')).map((a) => a.getAttribute('data-testid'));
-    expect(pills).toEqual(['nav-tasks-board', 'nav-plan', 'nav-pulls', 'nav-milestones']);
-    expect(r.$('[data-testid="nav-pulls"]')!.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-tasks-board"]')!.getAttribute('aria-current')).toBeNull();
-    cleanup();
-    const k = mount(<SubNav route={{ name: 'repo-map' }} />);
-    expect(Array.from(k.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-knowledge-home', 'nav-requirements', 'nav-packs', 'nav-skills', 'nav-memory', 'nav-repo-map']);
-    expect(k.$('[data-testid="nav-repo-map"]')!.getAttribute('aria-current')).toBe('page');
-    expect(k.$('[data-testid="nav-repo-map"]')!.textContent).toBe('Repo map');
-    cleanup();
-    const o = mount(<SubNav route={{ name: 'budgets' }} />);
-    expect(Array.from(o.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-overview-home', 'nav-activity', 'nav-budgets', 'nav-evals', 'nav-security', 'nav-project', 'nav-project-integrations']);
-    cleanup();
+  it('the Agents library and a Settings section of more than one screen show their pages as pills with the old test ids', () => {
     // one Agents library (decision P140): its title, My agents, Starters, Skills, then every project's crew set apart
     for (const name of ['library', 'library-starters', 'library-skills', 'crew'] as const) {
       const l = mount(<SubNav route={{ name }} />);
@@ -66,34 +53,74 @@ describe('the hubs', () => {
     cleanup();
     expect(mount(<SubNav route={{ name: 'models' }} />).$('nav')).toBeNull();
     cleanup();
-    expect(mount(<SubNav route={{ name: 'team' }} />).$('nav')).toBeNull();
-    cleanup();
     expect(mount(<SubNav route={{ name: 'needs-you' }} />).$('nav')).toBeNull();
-    cleanup();
-    expect(mount(<SubNav route={{ name: 'room', id: 'r1' }} />).$('nav')).toBeNull();
   });
 
-  it("a project's own settings are the last pills of its Overview, set apart after a gap: Project settings (with a gear) and Integrations", () => {
-    const r = mount(<SubNav route={{ name: 'project' }} />);
-    const nav = r.$('nav[aria-label="Section"]')!;
-    const ps = r.$('[data-testid="nav-project"]')!;
-    expect(ps.getAttribute('href')).toBe('/project');
-    expect(ps.textContent).toBe('Project settings');
-    expect(ps.querySelector('svg')).not.toBeNull();
-    expect(ps.getAttribute('aria-current')).toBe('page');
-    expect(r.$('[data-testid="nav-overview-home"]')!.getAttribute('aria-current')).toBeNull();
-    const pi = r.$('[data-testid="nav-project-integrations"]')!;
-    expect(pi.getAttribute('href')).toBe('/project/integrations');
-    expect(pi.textContent).toBe('Integrations');
-    // the gap and the hairline sit between Security and Project settings, and are decoration
-    const kids = Array.from(nav.children);
-    const sec = kids.indexOf(r.$('[data-testid="nav-security"]')!);
-    expect(kids.slice(sec + 1, sec + 3).every((k) => k.tagName === 'SPAN' && k.getAttribute('aria-hidden') === 'true')).toBe(true);
-    expect(kids[sec + 3]).toBe(ps);
+  it("a project's pages have one tab bar (decision P141): its name, Work, Crew and Settings with the old test ids, New task on Work", async () => {
+    const tabs = (r: ReturnType<typeof mount>) => Array.from(r.$$('nav[aria-label="Project"] > a')).map((a) => [a.getAttribute('data-testid'), a.textContent, a.getAttribute('href'), a.getAttribute('aria-current')]);
+    const w = mount(<SubNav route={{ name: 'home' }} />, svc());
+    await waitFor(() => expect(w.$('[data-testid="project-name"]')!.textContent).toBe('gocalc'), w);
+    expect(tabs(w)).toEqual([
+      ['nav-overview', 'Work', '/', 'page'],
+      ['nav-team', 'Crew', '/team', null],
+      ['nav-project-settings', 'Settings', '/project', null],
+    ]);
+    expect(w.$('[data-testid="work-new-task"]')!.getAttribute('href')).toBe('/tasks/new');
+    // Work has no pills
+    expect(w.$('nav[aria-label="Section"]')).toBeNull();
     cleanup();
-    const i = mount(<SubNav route={{ name: 'project-integrations' }} />);
-    expect(i.$('[data-testid="nav-project-integrations"]')!.getAttribute('aria-current')).toBe('page');
-    expect(i.$$('[aria-current="page"]')).toHaveLength(1);
+    // the board, a task, the pull requests and the rooms are Work's; the tab bar's New task is on Work's own page only
+    for (const route of [{ name: 'tasks' }, { name: 'task', id: 't1' }, { name: 'pulls' }, { name: 'room', id: 'r1' }] as const) {
+      const r = mount(<SubNav route={route} />, svc());
+      expect(r.$('[data-testid="nav-overview"]')!.getAttribute('aria-current')).toBe('page');
+      expect(r.$('[data-testid="work-new-task"]')).toBeNull();
+      expect(r.$('nav[aria-label="Section"]')).toBeNull();
+      cleanup();
+    }
+    const c = mount(<SubNav route={{ name: 'agent', id: 'agt1' }} />, svc());
+    expect(c.$('[data-testid="nav-team"]')!.getAttribute('aria-current')).toBe('page');
+    expect(c.$$('[aria-current="page"]')).toHaveLength(1);
+    cleanup();
+    // Settings: the pages that left the old tabs; a section of more than one page shows its pills (Knowledge, Plan & milestones)
+    const k = mount(<SubNav route={{ name: 'repo-map' }} />, svc());
+    expect(k.$('[data-testid="nav-project-settings"]')!.getAttribute('aria-current')).toBe('page');
+    expect(Array.from(k.$$('nav[aria-label="Section"] a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-knowledge-home', 'nav-requirements', 'nav-packs', 'nav-skills', 'nav-memory', 'nav-repo-map']);
+    expect(k.$('[data-testid="nav-repo-map"]')!.getAttribute('aria-current')).toBe('page');
+    cleanup();
+    const m = mount(<SubNav route={{ name: 'milestones' }} />, svc());
+    expect(Array.from(m.$$('nav[aria-label="Section"] a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-plan', 'nav-milestones']);
+    cleanup();
+    for (const name of ['project', 'project-integrations', 'budgets', 'activity', 'evals', 'security'] as const) {
+      const r = mount(<SubNav route={{ name }} />, svc());
+      expect([name, r.$('[data-testid="nav-project-settings"]')!.getAttribute('aria-current')]).toEqual([name, 'page']);
+      expect(r.$('nav[aria-label="Section"]')).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("the project's Settings rail: its sections with the old test ids, the current one marked, and a search", async () => {
+    const r = mount(<SettingsRail route={{ name: 'packs' }} sections={PROJECT_SECTIONS} title="Project settings" />, svc());
+    const sections = () => Array.from(r.$$('ul[aria-label="Sections"] > li > a')).map((a) => [a.getAttribute('data-testid'), a.textContent]);
+    expect(r.$('nav[aria-label="Project settings"] h2')!.textContent).toBe('Project settings');
+    expect(sections()).toEqual([
+      ['nav-project', 'General'],
+      ['nav-project-integrations', 'Integrations'],
+      ['nav-knowledge', 'Knowledge'],
+      ['nav-planning', 'Plan & milestones'],
+      ['nav-activity', 'Activity'],
+      ['nav-budgets', 'Budgets'],
+      ['nav-evals', 'Evals report'],
+      ['nav-security', 'Security'],
+    ]);
+    expect(r.$('[data-testid="nav-knowledge"]')!.getAttribute('aria-current')).toBe('page');
+    expect(r.$$('[aria-current="page"]')).toHaveLength(1);
+    const box = r.$('[data-testid="settings-search"]') as HTMLInputElement;
+    expect(box.getAttribute('aria-label')).toBe('Search project settings');
+    await r.act(() => {
+      box.value = 'milestones';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(sections()).toEqual([['nav-planning', 'Plan & milestones']]);
   });
 
   it('the Settings rail (decision P140): "Settings", a search box, then the ten sections with their old test ids, the current one marked; nothing of one project', async () => {

@@ -126,8 +126,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 ];
 
 /** The section a route belongs to (an old address names the section that now holds its screen), if any. */
-export function sectionOf(route: Pick<Route, 'name'>): SettingsSection | undefined {
-  return SETTINGS_SECTIONS.find((s) => s.pages.some((p) => p.on.includes(route.name)));
+export function sectionOf(route: Pick<Route, 'name'>, sections: readonly SettingsSection[] = SETTINGS_SECTIONS): SettingsSection | undefined {
+  return sections.find((s) => s.pages.some((p) => p.on.includes(route.name)));
 }
 
 /** A section the search found, with the rows of it that matched (none when the title matched alone). */

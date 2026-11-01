@@ -2460,6 +2460,48 @@ Open, owner action:
   `ui/e2e/navigation.spec.ts` (the sidebar's six places, every moved page from Settings and by its old address, the search,
   the Agents tabs, Ctrl+K to Models and Security scan) and the specs whose navigation moved (`e2e/helpers.ts` opens a hub's hub).
 
+- **P141. A project is one workspace: Work · Crew · Settings (2026-11-01).** The owner approved the "simple UI" idea 2 ("merging
+  windows together, simplifying how much text there is"). (a) **One tab bar:** a project's pages have one bar, the project's name
+  then **Work** (`/`), **Crew** (`/team`) and **Settings** (`/project`), with New task on Work. It replaces the project's five
+  sidebar sub-items (Overview, Tasks, Rooms, Crew, Knowledge) and the Overview's pills (Activity, Budgets, Evals report, Security,
+  Project settings, Integrations); the sidebar's projects are one line each and open Work. `hubOf` gives each route its tab:
+  Work holds the board, a task (and its runs), new task, the pull requests and the rooms (rooms are conversations, so they stay
+  beside the work, with the Rooms rail, rather than in Settings); Crew holds `/team` and an agent's page, unchanged; Settings
+  holds the project's settings and Integrations and every page that left, as sections of a rail drawn by the workspace Settings'
+  own `SettingsRail` from a second registry (`ui/app/shell/project-sections.ts`: General, Integrations, Knowledge with its five
+  pages as pills, Plan & milestones, Activity, Budgets, Evals report, Security). Every old address keeps working and marks its
+  tab; the old test ids live on (`nav-overview` is Work, `nav-team` Crew, `nav-tasks`, `nav-pulls`, `nav-rooms` are links under
+  Work's list, `nav-project`, `nav-knowledge`, `nav-budgets`... are rail sections). (b) **Work** (`screens/work/`): the left
+  column is "Search this project", New chat (a chat of this project, opened in place) and one list of the project's tasks and
+  chats, grouped Needs you (an Inbox item names it, by urgency; or the task waits for a person), Running (newest first; a task not
+  yet started is there with a hollow dot, since it is open work) and Earlier, one line under each title ("Ready to merge · +42
+  −3", "Ada · 4 min", "Merged · yesterday", "Chat · Tue"), all from reads the app already had (`task.list`, `needsyou.list`,
+  `chat.list` with the project). The centre is the open item, named in the URL as `/?item=task:<id>` or `/?item=chat:<id>` (so
+  Reload, Back and a link from another page, such as the coming start screen, open it): a task's own page embedded (the same
+  `TaskDetailScreen`, its properties under the work; `/task/:id` still opens it alone) or the chat (`ChatConversation`, P139);
+  with nothing named, the first that needs you, else the first running, else one line and Describe a task. The open task is the
+  page's task for the shell (dock, details panel, Ctrl+K). The right column is the crew: avatar with its state, name, "Model ·
+  effort"; a click opens P137's editor in place (`openAgentEditor`; the one place that says so is `screens/work/edit-agent.ts`,
+  whose link is `/team?edit=<id>` for a new window), "+" goes to the Crew tab (the Crew page has no outside opener for New agent
+  yet); under it Spent so far, First check, Security and Merged this week, each linking its page. (c) **The Overview page is
+  removed**: its needs-you cards, crew cards, in-motion rows and rooms card are the list, the rail and Rooms; its Today and
+  Insights numbers are the rail's four lines (the counts of open tasks, working agents and items are the list itself). (d) The
+  start screen (P142) lands here through `lib/project-work.ts` (`/?item=task:<id>`, the same parameter), and its note of what it
+  could not do shows once as one line over the list. (e) **Two leaks found on the way** (the smoke test's memory rounds now pass
+  through Work): `/rooms` redirects with a replace navigation, and reached by a click inside a page that then unmounts it kept
+  that page's whole tree (about 800 nodes a visit), so Work's Rooms link goes straight to the project channel; and every Monaco
+  diff editor leaves about 3,000 detached nodes after its dispose (the task page's Diff part, on `/task/:id` too, before this
+  change), so the task embedded in Work leaves the Monaco diff to the dock (Open in the dock) and keeps the plain diff. The Monaco
+  leak itself is not fixed; a person opening many task pages in one session still pays it. Not done:
+  the mockup's branch and pull-request chip in the tab bar (no cheap read gives "2 open PRs" for the bar), and "Checks passing"
+  as one word (the rail shows the first-check rate the core measures instead). Tests: `ui/app/screens/work/work.test.ts`
+  (grouping, order, lines, search, the item opened by default), `work-screen.test.browser.tsx` (the list, the centre by URL, the
+  crew rail and its editor, the stats, New chat, the empty state), `lib/route.test.ts` (the tabs of every route, `?item=`),
+  `shell/hubnav.test.browser.tsx` (the tab bar, the project Settings rail and pills), `sidebar.test.browser.tsx`; e2e
+  `ui/e2e/work.spec.ts` (a started task under Needs you and open in the centre, a project chat in the list, Back and Reload, the
+  crew rail opening the editor, every old address under its tab) and the specs whose navigation moved (`e2e/helpers.ts`:
+  `projectNav` looks for the tab bar, `HUB_OF` maps the old ids to Work, Crew and Settings; a new project now lands on Work).
+
 - **P142. Home is the start screen (2026-11-01).** The owner: "make it really easy for me to start a project"; idea 1 and its
   mockups (1-home-start, 1b-start-menus) are built. (a) **Home** (`/home`, and the first run, which no longer forces the wizard)
   is a heading, one faint line, one box with chips, the "Or:" row (New folder, Clone from GitHub, Open a folder..., Just chat,

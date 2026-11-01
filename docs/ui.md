@@ -82,28 +82,48 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
   where the key makes a new chat; `shell/new.ts` is the one place that says what New opens: the start screen, Home, with the
   cursor in its box, decision P142; the wizard `/project/new` is its "More options..."); **Home** (`/home`, `nav-workspace`); **Inbox** (`/needs-you`, with the count of what needs you across every
   project; Running and Mine, once the My tasks page, are its tabs, and `/needs-you?tab=running` and `/my-tasks` open them);
-  **Chats**; then **Projects**: the open project shows its tabs **Overview** (`/`), **Tasks**, **Rooms**, **Crew** (`/team`),
-  **Knowledge** nested under it, the others are one line that opens them; at the foot **Agents** (`/library`, `nav-library`)
+  **Chats**; then **Projects**, one line each (decision P141: a click opens the project's **Work**, `/`; the open one is marked
+  and shows its task count; its Work, Crew and Settings are the project's tab bar, not sub-items); at the foot **Agents** (`/library`, `nav-library`)
   and **Settings** (`/settings`), then one quiet line for the local engine (its build in the title) and the event stream's
   state. Every page that left the sidebar is a section of Settings, a pill of Agents, a tab of the Inbox or in the command menu
-  (Ctrl+K), which lists each of them. On a workspace page no project's tabs show. The arrow keys, Home and End move through the
+  (Ctrl+K), which lists each of them. On a workspace page no project is marked open. The arrow keys, Home and End move through the
   links; "[" (never while typing) or the fold button folds it to the rail, whose icons keep the labels as their names; the
   choice is kept, and a window under 1200 px starts folded (a phone-sized one with a 44 px rail). The project switcher
   (`shell/project-switcher.tsx`) is no longer in the sidebar; the Projects list is the way into a project.
-- **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a tab with sub-pages shows them as pills under the
-  bar: Tasks (Board, Plan, Pull requests, Milestones), Knowledge (Overview, Requirements, Expert packs, Skills, Memory, Repo
-  map), Overview (Overview, Activity, Budgets, Evals report, Security, then set apart at the end of the row after a gap and a
-  hairline: **Project settings** with a gear icon, `nav-project`, and the project's **Integrations**, `nav-project-integrations`),
-  **Agents** (the hub's name, then My agents `/library`, Starters `/library/starters`, Skills `/library/skills`, and set apart
-  **All crews** `/crew`; decision P140), and a Settings section of more than one screen (Backups & data: Backups, Export and
-  import; Help & about: About, Support bundle, License, Guide). The project's settings are pills of its Overview (2026-10-16, on
-  the owner's request: "keep the settings for the app only"): a person finds them inside the project, the Overview tab is
-  current on them (`hubOf`), and nothing of one project is in Settings.
+- **A project is one workspace (decision P141).** A project's pages have one tab bar (`ProjectTabs` in `ui/app/shell/hubnav.tsx`,
+  the "Project" navigation): the project's colour and name, **Work** (`/`, `nav-overview`), **Crew** (`/team`, `nav-team`) and
+  **Settings** (`/project`, `nav-project-settings`), and on Work's own page **New task** (`work-new-task`). `hubOf` (`lib/route.ts`)
+  says which tab a route is under: Work holds `/`, the board `/tasks`, `/tasks/new`, a task `/task/:id` (and its runs), the pull
+  requests `/pulls` and the rooms `/rooms`, `/room/:id` (with the Rooms rail beside them, as before); Crew holds `/team` and an
+  agent's page; Settings holds the project's own settings and Integrations and every page that left the old tabs, as sections in a
+  rail like the workspace Settings' (`shell/project-sections.ts`: **General** `/project` `nav-project`, **Integrations**
+  `/project/integrations`, **Knowledge** `/knowledge` `nav-knowledge` with the pills Overview, Requirements, Expert packs, Skills,
+  Memory, Repo map, **Plan & milestones** `/plan`, `/milestones`, **Activity**, **Budgets**, **Evals report**, **Security**; the
+  rail's search is the same as Settings'). Every old address opens its page with its tab marked.
+- **Work (`ui/app/screens/work/work-screen.tsx`, helpers in `work.ts`):** the left column is "Search this project", a New chat
+  button (a chat in this project, made at once and opened) and one list of the project's tasks (`task.list`) and chats
+  (`chat.list` for the project) grouped **Needs you** (a task or chat with an Inbox item, by urgency, or a task waiting for a
+  person), **Running** (newest first; a task not started yet has a hollow dot) and **Earlier** (merged, failed, cancelled, idle
+  chats), each row a status dot, the title and one faint line ("Ready to merge · +42 −3", "Ada · 4 min", "Merged · yesterday",
+  "Chat · Tue"); under it Board, Pull requests and Rooms (`nav-tasks`, `nav-pulls`, `nav-rooms`). The centre is the item open,
+  named in the URL (`/?item=task:<id>` or `chat:<id>`, `parseWorkItem`/`workItemHref` in `lib/route.ts`), so Reload and Back keep
+  it: a task's own page (`TaskDetailScreen` with `embedded`: the properties go under the work) or the chat (`ChatConversation`,
+  P139); with none named, the first that needs you, else the first running, else one line and Describe a task. The shell treats
+  the open task as the page's task (the dock, the details panel, Ctrl+K's chip). The right column is the crew: each agent's
+  avatar with its state, name and "Model · effort"; a click opens the agent editor in place (P137's panel; the one place that says
+  how is `screens/work/edit-agent.ts`), "+" goes to the Crew tab; then Spent so far, First check, Security and Merged this week,
+  each a link to its page (the old Overview's Insights). The Overview page (greeting, crew cards, Today's numbers) is gone: what
+  it showed is in the list and the rail.
+- **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a hub with sub-pages shows them as pills under the
+  bar: **Agents** (the hub's name, then My agents `/library`, Starters `/library/starters`, Skills `/library/skills`, and set apart
+  **All crews** `/crew`; decision P140), a Settings section of more than one screen (Backups & data: Backups, Export and
+  import; Help & about: About, Support bundle, License, Guide) and a project Settings section of more than one page (Knowledge;
+  Plan & milestones). Nothing of one project is in the workspace's Settings.
 - **One Settings (decision P140; `ui/app/shell/settings-sections.ts`):** `/settings` is one page: the Settings rail on the left
   ("Settings", a search box, the sections) and the section's screen beside it. The sections, in order: **General**
   (`/settings`: theme, what agents inherit, telemetry, diagnostics, updates, not built yet), **Agent CLIs** (`/agents(/:key)`,
   `/connections`), **Models** (`/models(/:key)`, `/providers`), **Routing & budgets** (`/routing`; budgets are per project, a
-  pill of its Overview), **Integrations** (`/integrations(/:key)`, `/mcp`), **GitHub** (`/github`; still also the GitHub row of
+  section of its Settings tab), **Integrations** (`/integrations(/:key)`, `/mcp`), **GitHub** (`/github`; still also the GitHub row of
   Integrations), **Security scan** (`/security-scan`), **Backups & data** (`/backups`, `/data`), **Shortcuts**
   (`/settings/shortcuts`: the keys a person changes and the keyboard map) and **Help & about** (`/settings/about`: the session,
   the version and the licenses; `/support`, `/license`, and a pill to the Guide, which stays its own page at `/guide`). Every old
@@ -117,7 +137,7 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
   named without "#"); on every Settings section the Settings rail above. A window under 900 px shows a rail as a drawer opened
   from a bar over the page ("Rooms", "Settings sections"). Only entries whose feature exists are rendered; section 4 lists what
   is absent per slice.
-- **Center:** either a conversation (a message list paged newest-first and windowed: only the rows near the view are in the DOM; section 6.4; everyone's messages are left-aligned rows, the person's own faintly tinted, tools post under a tool tile, the agents' turn-taking and members are the details panel's Room tab, opened by the mode chip in the room's header; decision P93) with the composer (mentions, slash commands, `[DECISION] [TODO] [STATUS] [RESULT]` markers, attachments), or a page (Overview with its Insights card, the Tasks board or list, a task with its step bar and decision card, the Crew and an agent's page, the Knowledge hub, Workflow, Pull Requests, Agents, Integrations, Models, Settings). One center view at a time; back/forward history is kept per window.
+- **Center:** either a conversation (a message list paged newest-first and windowed: only the rows near the view are in the DOM; section 6.4; everyone's messages are left-aligned rows, the person's own faintly tinted, tools post under a tool tile, the agents' turn-taking and members are the details panel's Room tab, opened by the mode chip in the room's header; decision P93) with the composer (mentions, slash commands, `[DECISION] [TODO] [STATUS] [RESULT]` markers, attachments), or a page (a project's Work with its list and crew rail, the Tasks board or list, a task with its step bar and decision card, the Crew and an agent's page, the Knowledge hub, Workflow, Pull Requests, Agents, Integrations, Models, Settings). One center view at a time; back/forward history is kept per window.
 - **Repository configuration banner (built 2026-10-11, `ui/app/shell/repo-config-banner.tsx`):** above every screen of a project whose repository's own git configuration, hooks or `info/attributes` changed since a person last trusted them (`project.gitConfig` answers `trusted: false`; docs/security.md s3), a warning region named "Repository git configuration changed" says so in plain words, lists the changed items (config keys, `hooks/<file>`, `info/attributes`; names only, never values) and offers **Trust this configuration**. Only that click trusts, and it sends the fingerprint of the state on screen (`project.trustGitConfig`); a configuration that changed again since is refused by the core, and the banner then shows the newer items to review again. The status is re-read on `security.repo_config_trusted` (also published when a run's approval trusted it), approval and request events, a reopened stream and window focus (a change made in a terminal publishes no event). Not shown for a project without a repository; read-only turns the button off.
 - **Right column (resizable, collapsible):** tabs Thread, Task details, Agent Inspector. Selecting an agent presence dot, a card author or a task opens the matching tab. It never shows a feature that is not built.
 - **Bottom dock (resizable, collapsible):** Terminal (xterm.js, one tab per terminal), Diff (Monaco diff for the selected task), Logs (agent raw output and process stderr), Activity (model and token activity: per-run usage rows, source badges). The dock keeps its tab state per project.

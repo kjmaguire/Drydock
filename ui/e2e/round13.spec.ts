@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { appUrl, freshRepo, roomLink, showNewProjectForm, wizardCreate, wizardNext, wizardToReview, projectItem, projectNav } from './helpers';
+import { appUrl, freshRepo, showNewProjectForm, wizardCreate, wizardNext, wizardToReview, projectItem, projectNav } from './helpers';
 
 // A project without a repository: made with the wizard's "Later", opened, given a repository from Project settings, then
 // used. The harness has no gh, so the wizard's GitHub choice explains that instead of listing repositories.
@@ -22,7 +22,7 @@ test('wizard: a project with no repository opens, gets a repository from setting
   const summary = page.getByRole('definition').filter({ hasText: 'None yet' });
   await expect(summary).toContainText('attach one later in Project settings');
   await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await expect(page.getByTestId('work')).toBeVisible();
   await expect(projectItem(page, 'later-project')).toHaveAttribute('aria-expanded', 'true');
 
   // nothing that needs a repository pretends to work

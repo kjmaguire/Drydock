@@ -5,17 +5,17 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createProject, freshRepo, projectItem, projectNav, roomLink, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, projectItem, projectNav, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
 
 test('Home holds the workspace, a project shows only itself, and deleting a project leaves its repository', async ({ page }) => {
   const repo = freshRepo();
   await createProject(page, 'ws-delete-me', repo);
 
-  // a project page (graphite sidebar, P97; six places, P140): Home, the Inbox, the open project's tabs under it, Agents and
-  // Settings on every page
+  // a project page (graphite sidebar, P97; six places, P140): Home, the Inbox, Agents and Settings on every page; the project's
+  // tab bar (Work, Crew, Settings; P141) over the page
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-workspace')).toBeVisible();
-  await expect(sidebar(page).getByTestId('nav-overview')).toBeVisible();
+  await expect(page.getByTestId('nav-overview')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-library')).toBeVisible();
   await expect(sidebar(page).getByTestId('nav-settings')).toBeVisible();
 
@@ -27,7 +27,7 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   await expect(sidebar(page).getByTestId('nav-workspace')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('home-project').filter({ hasText: 'ws-delete-me' })).toBeVisible();
   // the project's tabs leave with it; the Inbox stays
-  await expect(sidebar(page).getByTestId('nav-overview')).toHaveCount(0);
+  await expect(page.getByTestId('nav-overview')).toHaveCount(0);
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Details' })).toHaveCount(0);
 
@@ -64,21 +64,21 @@ test('Home holds the workspace, a project shows only itself, and deleting a proj
   expect(existsSync(join(repo, '.git'))).toBe(true);
 });
 
-test("workspace pages name no project; a project's own settings are pills of its Overview, not behind the gear; the agent CLIs and their MCP gateway switch are on Agents", async ({ page }) => {
+test("workspace pages name no project; a project's own settings are sections of its Settings tab, not the workspace's Settings; the agent CLIs and their MCP gateway switch are on Agents", async ({ page }) => {
   await createProject(page, 'ws-split');
   await createAgent(page, 'Split agent', 'backend');
 
-  // the project's Integrations page is a pill of the project's Overview (with Project settings beside it), the Overview tab is
-  // current, the project's bar stays, and no Settings rail is on the page
+  // the project's Integrations page is a section of the project's Settings tab (decision P141, General beside it), that tab is
+  // current, and the workspace's Settings rail is not on the page
   await projectNav(page, 'nav-project-integrations');
   await expect(page).toHaveURL(/\/project\/integrations$/);
   await expect(page.getByTestId('project-integrations')).toContainText('ws-split');
-  const section = page.getByRole('navigation', { name: 'Section' });
+  const section = page.getByRole('navigation', { name: 'Project settings' });
   await expect(section.getByTestId('nav-project-integrations')).toHaveAttribute('aria-current', 'page');
-  await expect(section.getByTestId('nav-project')).toHaveText('Project settings');
-  await expect(sidebar(page).getByTestId('nav-overview')).toHaveAttribute('aria-current', 'page');
+  await expect(section.getByTestId('nav-project')).toHaveText('General');
+  await expect(page.getByTestId('nav-project-settings')).toHaveAttribute('aria-current', 'page');
   await expect(sidebar(page).getByTestId('nav-settings')).not.toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('navigation', { name: 'Settings' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Settings', exact: true })).toHaveCount(0);
   await expect(sidebar(page).getByTestId('nav-needs-you')).toBeVisible();
   // laid out like the workspace's Integrations page: Services, then Agent tools, each a list of compact rows
   await expect(page.getByTestId('project-app-sync').getByRole('heading', { name: 'Services', level: 2 })).toBeVisible();
@@ -146,7 +146,7 @@ test('a project from scratch: Choose folder..., and Drydock makes the Git reposi
   await wizardNext(page); // Review
   await expect(page.getByTestId('review-init')).toContainText('new Git repository here');
   await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await expect(page.getByTestId('work')).toBeVisible();
   expect(existsSync(join(folder, '.git'))).toBe(true);
   // the project works in it: Project settings show no attach form
   await projectNav(page, 'nav-project');

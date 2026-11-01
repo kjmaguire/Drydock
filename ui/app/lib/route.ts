@@ -202,16 +202,14 @@ export function redirectLegacyHash(loc: Pick<Location, 'hash' | 'search'>, histo
 }
 
 /**
- * The hub a screen belongs to (Crew HQ, decision P64): one of the five tabs of a project, the gear (settings), or a
- * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills. The gear
- * holds the workspace's and the app's pages only; Project settings and the project's Integrations are pills of its Overview.
+ * The hub a screen belongs to: one of a project's three tabs (decision P141: Work, Crew, Settings), or a workspace place (P140:
+ * Home, Inbox, Chats, the Agents library, Settings). The project's tab bar marks the hub's tab current; the project's Settings
+ * tab and the workspace's Settings show their sections in a rail, and a section of more than one page shows them as pills.
  */
 export type Hub =
-  | 'overview'
-  | 'tasks'
-  | 'rooms'
+  | 'work'
   | 'crew'
-  | 'knowledge'
+  | 'project-settings'
   | 'settings'
   | 'home'
   | 'inbox'
@@ -221,34 +219,37 @@ export type Hub =
   | 'none';
 
 const HUB_OF: Record<Route['name'], Hub> = {
-  home: 'overview',
+  // Work (decision P141): the project's tasks and chats in one list beside the one open; the board, a task's own page, the pull
+  // requests and the rooms are reached from it and keep their addresses
+  home: 'work',
+  tasks: 'work',
+  'task-new': 'work',
+  task: 'work',
+  run: 'work',
+  pulls: 'work',
+  room: 'work',
+  rooms: 'work',
   // the workspace's Inbox; My tasks is its Mine tab (decision P140)
   'needs-you': 'inbox',
   'my-tasks': 'inbox',
-  activity: 'overview',
-  budgets: 'overview',
-  evals: 'overview',
-  security: 'overview',
-  tasks: 'tasks',
-  'task-new': 'tasks',
-  task: 'tasks',
-  run: 'tasks',
-  pulls: 'tasks',
-  plan: 'tasks',
-  milestones: 'tasks',
-  room: 'rooms',
-  rooms: 'rooms',
   team: 'crew',
   agent: 'crew',
-  knowledge: 'knowledge',
-  requirements: 'knowledge',
-  packs: 'knowledge',
-  skills: 'knowledge',
-  memory: 'knowledge',
-  'repo-map': 'knowledge',
-  // a project's settings and integrations are the project's own (its Overview hub), not the app's
-  project: 'overview',
-  'project-integrations': 'overview',
+  // the project's Settings tab (decision P141): its own settings and integrations, and the pages that left the project's tabs, as
+  // sections (shell/project-sections.ts)
+  project: 'project-settings',
+  'project-integrations': 'project-settings',
+  activity: 'project-settings',
+  budgets: 'project-settings',
+  evals: 'project-settings',
+  security: 'project-settings',
+  plan: 'project-settings',
+  milestones: 'project-settings',
+  knowledge: 'project-settings',
+  requirements: 'project-settings',
+  packs: 'project-settings',
+  skills: 'project-settings',
+  memory: 'project-settings',
+  'repo-map': 'project-settings',
   // one Settings (decision P140): every page that configures the workspace or the app is a section of it, under its old address
   // (shell/settings-sections.ts); the old aliases belong where they lead
   agents: 'settings',
@@ -285,7 +286,32 @@ export function hubOf(r: Route): Hub {
   return HUB_OF[r.name];
 }
 
+/** The project's three tabs (decision P141). */
+export function isProjectHub(h: Hub): boolean {
+  return h === 'work' || h === 'crew' || h === 'project-settings';
+}
+
 /** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
 export function isWorkspaceHub(h: Hub): boolean {
   return h === 'home' || h === 'inbox' || h === 'chats' || h === 'library' || h === 'settings' || h === 'project-new';
+}
+
+/** The item a project's Work view shows in its centre (decision P141): a task or a chat, named in the URL as ?item=task:<id>. */
+export interface WorkItemRef {
+  kind: 'task' | 'chat';
+  id: string;
+}
+
+/** The ?item= value of Work ("task:tsk_1", "chat:chat_2"), or undefined for none or a value that names neither. */
+export function parseWorkItem(v: string | null | undefined): WorkItemRef | undefined {
+  const m = /^(task|chat):(.+)$/.exec(v ?? '');
+  return m ? { kind: m[1] as WorkItemRef['kind'], id: m[2]! } : undefined;
+}
+
+/** The value of ?item= for an item ("task:tsk_1"). */
+export const workItemKey = (r: WorkItemRef): string => `${r.kind}:${r.id}`;
+
+/** Work with one item open: "/?item=task%3Atsk_1". Reload and Back keep it. */
+export function workItemHref(r: WorkItemRef): string {
+  return `/?item=${encodeURIComponent(workItemKey(r))}`;
 }

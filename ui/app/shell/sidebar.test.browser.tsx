@@ -36,9 +36,9 @@ function svc(over: Partial<Client> = {}) {
 const links = (r: { $$: (s: string) => NodeListOf<Element> }) => Array.from(r.$$('nav[aria-label="Main"] a[data-testid]')).map((e) => e.getAttribute('data-testid'));
 
 describe('the sidebar', () => {
-  it("on a project's page: six places (decision P140): New, Home, Inbox with its count, Chats, the projects with the open one's tabs, then Agents and Settings", async () => {
+  it("on a project's page: six places (decision P140): New, Home, Inbox with its count, Chats, the projects (one line each, P141), then Agents and Settings", async () => {
     const r = mount(<Sidebar route={{ name: 'tasks' }} />, svc());
-    await waitFor(() => expect(r.$('[data-testid="nav-overview"]')).not.toBeNull(), r);
+    await waitFor(() => expect(r.$('[data-testid="nav-project-item"]')?.getAttribute('aria-expanded')).toBe('true'), r);
     expect(r.$('nav[aria-label="Main"]')).not.toBeNull();
     expect(links(r)).toEqual([
       'nav-new',
@@ -46,18 +46,14 @@ describe('the sidebar', () => {
       'nav-needs-you',
       'nav-chats',
       'nav-project-item',
-      'nav-overview',
-      'nav-tasks',
-      'nav-rooms',
-      'nav-team',
-      'nav-knowledge',
       'nav-project-item',
       'nav-library',
       'nav-settings',
     ]);
     // gone from the sidebar: Running and My tasks (tabs of the Inbox), All crews, Security scan, the agent CLIs, Integrations, Models,
     // Skills (Settings or the Agents library), the Guide (Settings > Help & about and the command menu)
-    for (const id of ['nav-running', 'nav-my-tasks', 'nav-crew', 'nav-security-scan', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-library-skills', 'nav-guide-top']) {
+    // and the project's old tabs: Work, Crew and Settings are the project's tab bar (decision P141)
+    for (const id of ['nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', 'nav-running', 'nav-my-tasks', 'nav-crew', 'nav-security-scan', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-library-skills', 'nav-guide-top']) {
       expect([id, r.$(`[data-testid="${id}"]`)]).toEqual([id, null]);
     }
     expect(r.$('[data-testid="brand"]')!.textContent).toBe('Drydock');
@@ -67,20 +63,21 @@ describe('the sidebar', () => {
     expect(r.$('[data-testid="nav-workspace"]')!.textContent).toBe('Home');
     expect(r.$('[data-testid="nav-workspace"]')!.getAttribute('href')).toBe('/home');
     expect(r.$('[data-testid="needs-count"]')!.getAttribute('aria-label')).toBe('0 items need you');
-    expect(r.$('[data-testid="nav-tasks"]')!.getAttribute('aria-current')).toBe('page');
     expect(r.$('[data-testid="nav-needs-you"]')!.textContent).toContain('Inbox');
-    expect(r.$('[data-testid="nav-team"]')!.textContent).toBe('Crew');
     expect(r.$('[data-testid="nav-library"]')!.textContent).toBe('Agents');
     expect(r.$('[data-testid="nav-library"]')!.getAttribute('href')).toBe('/library');
     expect(r.$('ul[aria-label="App"] [data-testid="nav-settings"]')!.getAttribute('href')).toBe('/settings');
     // search stays one click away, beside the name
     expect(r.$('button[aria-label="Search and jump (Ctrl+K)"]')).not.toBeNull();
     expect(r.$('[data-testid="stream"]')).not.toBeNull();
-    // the open project is the one whose tabs show; the other is one line
+    // the open project is marked (its Work is "/"); the other is one line
     const items = r.$$('[data-testid="nav-project-item"]');
     expect(items[0]!.getAttribute('aria-expanded')).toBe('true');
+    expect(items[0]!.getAttribute('aria-current')).toBe('true');
+    expect(items[0]!.getAttribute('href')).toBe('/');
     expect(items[1]!.getAttribute('aria-expanded')).toBe('false');
-    expect(r.$$('[aria-current="page"]')).toHaveLength(1);
+    expect(items[1]!.getAttribute('aria-current')).toBeNull();
+    expect(r.$$('[aria-current="page"]')).toHaveLength(0);
   });
 
   it("counts every project's items that need you; the Inbox is current on its tabs and on My tasks", async () => {
@@ -103,14 +100,18 @@ describe('the sidebar', () => {
     expect(mine.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('marks the page current: a tab of the project, Chats, Home, New, Agents for the library and every crew, Settings for every section', async () => {
+  it('marks the open project on every page of it, its Work as the page itself (decision P141)', async () => {
+    for (const route of [{ name: 'task', id: 't1' }, { name: 'pulls' }, { name: 'repo-map' }, { name: 'room', id: 'r1' }, { name: 'agent', id: 'agt1' }, { name: 'project' }, { name: 'home' }] as const) {
+      const r = mount(<Sidebar route={route} />, svc());
+      await waitFor(() => expect(r.$('[data-testid="nav-project-item"]')?.getAttribute('aria-expanded')).toBe('true'), r);
+      expect([route.name, r.$('[data-testid="nav-project-item"]')!.getAttribute('aria-current')]).toEqual([route.name, route.name === 'home' ? 'page' : 'true']);
+      expect(r.$$('[aria-current="page"]').length).toBe(route.name === 'home' ? 1 : 0);
+      cleanup();
+    }
+  });
+
+  it('marks the page current: Chats, Home, New, Agents for the library and every crew, Settings for every section', async () => {
     for (const [route, id] of [
-      [{ name: 'task', id: 't1' }, 'nav-tasks'],
-      [{ name: 'pulls' }, 'nav-tasks'],
-      [{ name: 'repo-map' }, 'nav-knowledge'],
-      [{ name: 'room', id: 'r1' }, 'nav-rooms'],
-      [{ name: 'agent', id: 'agt1' }, 'nav-team'],
-      [{ name: 'project' }, 'nav-overview'],
       [{ name: 'chat', id: 'c1' }, 'nav-chats'],
       [{ name: 'workspace' }, 'nav-workspace'],
       [{ name: 'project-new' }, 'nav-new'],
@@ -193,7 +194,7 @@ describe('the sidebar', () => {
   it('folds to the rail with its button or "[" and remembers it; a text field keeps the key', async () => {
     const s = svc();
     const r = mount(<Sidebar route={{ name: 'home' }} />, s);
-    await waitFor(() => expect(r.$('[data-testid="nav-overview"]')).not.toBeNull(), r);
+    await waitFor(() => expect(r.$('[data-testid="nav-project-item"]')?.getAttribute('aria-expanded')).toBe('true'), r);
     const aside = r.$('[data-testid="sidebar"]')!;
     expect(aside.getAttribute('data-rail')).toBeNull();
     const fold = r.$('[data-testid="sidebar-fold"]') as HTMLButtonElement;

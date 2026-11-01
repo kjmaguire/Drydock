@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, roomLink, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
+import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, readZip, showNewProjectForm, switchProject, wizardCreate, wizardToReview, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -153,7 +153,7 @@ test('export a project, preview what is in it, import it into a second project; 
   // the second project exists, is separate, and opens
   // projects are chosen in the switcher at the top of the sidebar (a menu of radio items)
   await switchProject(page, 'pkg-export-copy');
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await expect(page.getByTestId('work')).toBeVisible();
   await openRoom(page, 'general');
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();
   await expect(page.getByTestId('message').filter({ hasText: 'Nothing from the file is trusted yet' })).toBeVisible();
@@ -327,7 +327,7 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await wizardToReview(page, { name: 'pkg-licensed', repo: licensedRepo() });
   await expect(page.getByRole('button', { name: 'Create project' })).toBeEnabled();
   await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await expect(page.getByTestId('work')).toBeVisible();
   await createAgent(page, 'lic-worker', 'backend');
 
   // an older token cannot replace the installed license: the core says so and the page shows its words

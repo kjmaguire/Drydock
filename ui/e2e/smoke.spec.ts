@@ -157,7 +157,7 @@ test('smoke: every page opens on the real core without an error, a failed call o
   // listeners against what they were after the first round; a page that leaves a subscription or a timer behind grows them
   // (a workspace page shows the projects as lines: the round opens the project first; the Agents library's pills and the
   // Settings sections follow their hub's link, decision P140)
-  const nav = ['nav-project-item', 'nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge', 'nav-needs-you', 'nav-chats', 'nav-library', 'nav-library-starters', 'nav-library-skills', 'nav-crew', 'nav-settings', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-security-scan'];
+  const nav = ['nav-project-item', 'nav-overview', 'nav-rooms', 'nav-overview', 'nav-tasks', 'nav-team', 'nav-project-settings', 'nav-knowledge', 'nav-needs-you', 'nav-chats', 'nav-library', 'nav-library-starters', 'nav-library-skills', 'nav-crew', 'nav-settings', 'nav-side-agents', 'nav-side-integrations', 'nav-side-models', 'nav-security-scan'];
   await page.goto(appUrl());
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
