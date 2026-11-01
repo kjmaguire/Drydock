@@ -288,14 +288,40 @@ export async function optionsOf(control: Locator, value?: string): Promise<Locat
  * page, the dialog and reaching its first field is one step that is retried as a whole.
  */
 export async function openNewAgent(page: Page, nav = true): Promise<void> {
-  const form = page.locator('dialog[open]').getByTestId('agent-form');
+  const dialog = page.locator('dialog[open]');
+  const form = dialog.getByTestId('agent-form');
   await expect(async () => {
     if (!(await form.isVisible())) {
-      if (nav) await projectNav(page, 'nav-team');
-      await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+      if (!(await dialog.getByTestId('new-agent-configure').isVisible())) {
+        if (nav) await projectNav(page, 'nav-team');
+        await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+      }
+      // New agent opens on Describe (decision P138); the full form is the Configure tab
+      await dialog.getByTestId('new-agent-configure').click({ timeout: 5_000 });
     }
     await expect(form.getByLabel('Agent name')).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
+}
+
+/** Opens New agent on its Describe tab (decision P138). */
+export async function openDescribeAgent(page: Page, nav = true): Promise<void> {
+  const box = page.locator('dialog[open]').getByTestId('describe-agent');
+  await expect(async () => {
+    if (!(await box.isVisible())) {
+      if (nav) await projectNav(page, 'nav-team');
+      await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+    }
+    await expect(box.getByLabel('What should this agent do?')).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
+}
+
+/** Opens the agent editor panel from the model chip of an agent's Crew card (decision P137). */
+export async function openAgentPanel(page: Page, name: string, nav = true): Promise<Locator> {
+  if (nav) await projectNav(page, 'nav-team');
+  await page.locator(`[data-testid="agent"][data-name="${name}"]`).getByTestId('agent-model-chip').click();
+  const panel = page.locator('dialog[open]').getByTestId('agent-editor');
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
 /** On an agent's own page, opens the Inspector from the "..." menu beside Message and Edit. */

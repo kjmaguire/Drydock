@@ -142,7 +142,7 @@ const cardCss = css({
   '& .edit': { position: 'relative', zIndex: '1', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' },
   '& .edit > :last-child': { marginLeft: 'auto' },
   '& .pill': {
-    height: '26px',
+    height: '28px',
     minHeight: '0',
     padding: '0 10px',
     border: `1px solid ${t.border}`,
