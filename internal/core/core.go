@@ -952,6 +952,9 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 // starts from it, so a turn's checks (the sandbox+WSL refusal) see the run mode the runtime will start the CLI in.
 func (c *Core) agentRunSpec(ctx context.Context, a Agent) agents.RunSpec {
 	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
+	// an agent a person made "Read only" (mode plan, decision P137) runs read-only: the adapter then gives Claude Code its
+	// default mode with the writing tools denied, never its own plan mode (CLAUDE-PLAN-01)
+	spec.ReadOnly = a.PermissionMode == "plan"
 	spec.RunMode, spec.WSLDistro, spec.RunModeWhy = c.runPlacement(ctx, a)
 	return spec
 }

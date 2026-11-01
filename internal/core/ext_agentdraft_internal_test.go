@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/kjmaguire/drydock/internal/agents"
 )
 
 // the environment the drafts are checked against: Claude Code installed (as the claude adapter lists itself), a project
@@ -76,7 +78,7 @@ func TestModelDraftIsCheckedAgainstWhatIsInstalled(t *testing.T) {
 	d := draftWith(ctx, double("```json\n"+`{"name":"Security Reviewer","role":"Security Reviewer","adapter":"claude","model":"opus","effort":"high","permissionMode":"plan",
 		"purpose":"You review diffs for security problems.","skills":["security-review","nonesuch"],"tools":["github","jira"],"why":"Read only, because you said never edit."}`+"\n```", nil),
 		"Reviews PRs for security, never edits, best model", testEnv)
-	if d.Source != "model" || d.Name != "Security Reviewer" || d.Role != "security reviewer" || d.Model != "opus" || d.Effort != "high" || d.PermissionMode != "plan" ||
+	if d.Source != "model" || d.Name != "Security Reviewer" || d.Role != "security reviewer" || d.Model != "opus" || d.Effort != "high" || d.PermissionMode != "plan" || !d.ReadOnly ||
 		strings.Join(d.Skills, ",") != "security-review" || strings.Join(d.Tools, ",") != "github" || d.Why == "" {
 		t.Fatalf("model draft %+v", d)
 	}
@@ -86,7 +88,7 @@ func TestModelDraftIsCheckedAgainstWhatIsInstalled(t *testing.T) {
 
 	// values the CLI does not accept are dropped; a mode that skips approvals is never drafted
 	d = draftWith(ctx, double(`{"name":"Fixer","role":"backend","adapter":"claude","model":"--evil","effort":"ultra","permissionMode":"bypassPermissions","purpose":"x"}`, nil), "fix", testEnv)
-	if d.Source != "model" || d.Model != "" || d.Effort != "" || d.PermissionMode != "acceptEdits" {
+	if d.Source != "model" || d.Model != "" || d.Effort != "" || d.PermissionMode != "acceptEdits" || d.ReadOnly {
 		t.Fatalf("clamped %+v", d)
 	}
 
@@ -102,5 +104,22 @@ func TestModelDraftIsCheckedAgainstWhatIsInstalled(t *testing.T) {
 		if d.Source != "rules" || d.Name != "Tester" || d.Model != "haiku" {
 			t.Errorf("%s: %+v", name, d)
 		}
+	}
+}
+
+// A "Read only" agent (mode plan: the edit panel's Read only, a draft that never edits) runs read-only, so the Claude adapter
+// gives it the default mode with the writing tools denied instead of Claude Code's own plan mode (CLAUDE-PLAN-01).
+func TestAReadOnlyAgentRunsReadOnly(t *testing.T) {
+	ctx := context.Background()
+	c := &Core{}
+	if s := c.agentRunSpec(ctx, Agent{ID: "a1", Role: "reviewer", PermissionMode: "plan", RunMode: agents.RunModeNative}); !s.ReadOnly || s.PermissionMode != "plan" {
+		t.Fatalf("plan agent spec %+v", s)
+	}
+	if s := c.agentRunSpec(ctx, Agent{ID: "a2", Role: "backend", PermissionMode: "acceptEdits", RunMode: agents.RunModeNative}); s.ReadOnly {
+		t.Fatalf("an editing agent is not read-only: %+v", s)
+	}
+	d := ruleDraft("Reviews code and never edits it, just comment", testEnv)
+	if d.PermissionMode != "plan" || !d.ReadOnly {
+		t.Fatalf("rules draft %+v", d)
 	}
 }

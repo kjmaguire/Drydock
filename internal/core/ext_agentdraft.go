@@ -33,15 +33,18 @@ type AgentDraftRequest struct {
 
 // AgentDraft is a drafted agent, not saved.
 type AgentDraft struct {
-	Name           string   `json:"name"`
-	Role           string   `json:"role"`
-	Adapter        string   `json:"adapter"`
-	Model          string   `json:"model"`
-	Effort         string   `json:"effort"`
-	PermissionMode string   `json:"permissionMode"`
-	Purpose        string   `json:"purpose"`
-	Skills         []string `json:"skills"`
-	Tools          []string `json:"tools"`
+	Name           string `json:"name"`
+	Role           string `json:"role"`
+	Adapter        string `json:"adapter"`
+	Model          string `json:"model"`
+	Effort         string `json:"effort"`
+	PermissionMode string `json:"permissionMode"`
+	// ReadOnly is true when the draft only reads and comments (its mode is plan): Drydock runs such an agent read-only
+	// (agentRunSpec), so Claude Code gets its default mode with the writing tools denied, never its own plan mode.
+	ReadOnly bool     `json:"readOnly"`
+	Purpose  string   `json:"purpose"`
+	Skills   []string `json:"skills"`
+	Tools    []string `json:"tools"`
 	// Why says, in one line, why the draft chose its permission mode, model and effort.
 	Why string `json:"why"`
 	// Source is "model" (a model wrote it) or "rules" (the offline drafter did).
@@ -305,6 +308,7 @@ func clampDraft(d AgentDraft, env draftEnv) (AgentDraft, error) {
 	if skipsApprovalsMode(d.PermissionMode) {
 		d.PermissionMode = defaultMode(a)
 	}
+	d.ReadOnly = d.PermissionMode == "plan"
 	d.Purpose = strings.TrimSpace(strings.ReplaceAll(d.Purpose, "\x00", ""))
 	d.Purpose = truncRunes(d.Purpose, MaxPurposeRunes)
 	d.Why = oneLine(d.Why, 300)
@@ -432,7 +436,7 @@ func ruleDraft(desc string, env draftEnv) AgentDraft {
 	// permission mode
 	d.PermissionMode = defaultMode(a)
 	if w := firstWord(low, readOnlyWords); w != "" && (len(a.Modes) == 0 || slices.Contains(a.Modes, "plan")) {
-		d.PermissionMode = "plan"
+		d.PermissionMode, d.ReadOnly = "plan", true
 		why = append(why, fmt.Sprintf("Read only, because you said %q.", w))
 	}
 
