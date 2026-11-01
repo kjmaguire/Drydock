@@ -29,9 +29,21 @@ func init() {
 				// AddSkills and RemoveSkills give the agent project skills or take them away (Skills page: who gets each).
 				AddSkills    []string `json:"addSkills"`
 				RemoveSkills []string `json:"removeSkills"`
+				// Everywhere also saves the change to the agent's template and the other agents made from it (decision P137).
+				Everywhere bool `json:"everywhere"`
 			}) (any, error) {
-				return c.updateAgentWithSkills(ctx, p.AgentUpdate, p.AddSkills, p.RemoveSkills)
+				ag, err := c.updateAgentWithSkills(ctx, p.AgentUpdate, p.AddSkills, p.RemoveSkills)
+				if err != nil || !p.Everywhere {
+					return ag, err
+				}
+				ev, err := c.updateEverywhere(ctx, p.AgentUpdate, ag)
+				if err != nil {
+					return nil, fmt.Errorf("%s was changed in this project, but %w", ag.Name, err)
+				}
+				ag.TemplateID = ev.TemplateID
+				return UpdatedEverywhere{Agent: ag, Everywhere: &ev}, nil
 			}),
+			"agent.draft": bind(func(ctx context.Context, p AgentDraftRequest) (any, error) { return c.DraftAgent(ctx, p) }),
 			"agent.archive": bind(func(ctx context.Context, p idParam) (any, error) { return c.ArchiveAgent(ctx, p.ID) }),
 			"claude.practices": bind(func(ctx context.Context, p struct {
 				Role string `json:"role"`
@@ -454,4 +466,107 @@ func (c *Core) checkPermissionMode(adapter, mode string) error {
 		}
 	}
 	return fmt.Errorf("%s accepts these permission modes: %s (got %q)", adapter, strings.Join(modes, ", "), mode)
+}
+
+// UpdatedEverywhere is agent.update's answer with everywhere set: the agent (its fields at the top level, as without it) and
+// what was saved beyond this project.
+type UpdatedEverywhere struct {
+	Agent
+	Everywhere *EverywhereResult `json:"everywhere,omitempty"`
+}
+
+// EverywhereResult says where an "Everywhere" change went: the template (made now when the agent had none) and how many other
+// agents made from it took the change; Skipped names an agent that refused it and why.
+type EverywhereResult struct {
+	TemplateID   string   `json:"templateId"`
+	TemplateName string   `json:"templateName"`
+	Created      bool     `json:"created"`
+	Agents       int      `json:"agents"`
+	Skipped      []string `json:"skipped"`
+}
+
+// linkTemplate records the template an agent was made from (decision P137).
+func (c *Core) linkTemplate(ctx context.Context, agentID, templateID string) error {
+	return c.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE agents SET template_id=? WHERE id=?`, templateID, agentID)
+		return err
+	})
+}
+
+// updateEverywhere is the editor's "Everywhere" (decision P137), after the agent itself was changed. The fields the update set
+// among instructions, model, effort and permission mode are saved to the agent's template, and to every other agent made from
+// that template, in any project. An agent without a template (or whose template was deleted) is linked to the template of its
+// name and CLI when there is one, else saved as a new template, which every later "Everywhere" then updates. Agents are never
+// linked live: a template change reaches the others only through this call.
+func (c *Core) updateEverywhere(ctx context.Context, u AgentUpdate, ag Agent) (EverywhereResult, error) {
+	t := &agentTemplates{c: c}
+	res := EverywhereResult{Skipped: []string{}}
+	var tpl AgentTemplate
+	found := false
+	if ag.TemplateID != "" {
+		if x, err := t.get(ctx, ag.TemplateID); err == nil {
+			tpl, found = x, true
+		}
+	}
+	if !found {
+		all, err := t.list(ctx)
+		if err != nil {
+			return res, err
+		}
+		for _, x := range all {
+			if x.Name == ag.Name && x.Adapter == ag.Adapter {
+				tpl, found = x, true
+				break
+			}
+		}
+	}
+	if !found {
+		spec, err := t.specOf(ctx, ag)
+		if err != nil {
+			return res, err
+		}
+		spec.ConfirmSkipsApprovals = u.ConfirmSkipsApprovals
+		if tpl, err = t.save(ctx, spec); err != nil {
+			return res, fmt.Errorf("saving it as a template failed: %w", err)
+		}
+		res.Created = true
+	} else {
+		apply := func(dst *string, src *string) {
+			if src != nil {
+				*dst = strings.TrimSpace(*src)
+			}
+		}
+		apply(&tpl.Purpose, u.Purpose)
+		apply(&tpl.Model, u.Model)
+		apply(&tpl.Effort, u.Effort)
+		apply(&tpl.PermissionMode, u.PermissionMode)
+		tpl.Skills = nil // kept as they are
+		tpl.ConfirmSkipsApprovals = u.ConfirmSkipsApprovals
+		var err error
+		if tpl, err = t.save(ctx, tpl); err != nil {
+			return res, fmt.Errorf("the template %s was not changed: %w", tpl.Name, err)
+		}
+	}
+	res.TemplateID, res.TemplateName = tpl.ID, tpl.Name
+	if ag.TemplateID != tpl.ID {
+		if err := c.linkTemplate(ctx, ag.ID, tpl.ID); err != nil {
+			return res, err
+		}
+	}
+	if res.Created {
+		return res, nil
+	}
+	others, err := c.agentsWhere(ctx, `template_id=? AND id<>? AND archived_at=0 ORDER BY project_id, created_at, id`, tpl.ID, ag.ID)
+	if err != nil {
+		return res, err
+	}
+	for _, o := range others {
+		su := AgentUpdate{ID: o.ID, Purpose: u.Purpose, Model: u.Model, Effort: u.Effort, PermissionMode: u.PermissionMode, ConfirmSkipsApprovals: u.ConfirmSkipsApprovals}
+		if _, err := c.UpdateAgent(ctx, su); err != nil {
+			res.Skipped = append(res.Skipped, o.Name+": "+err.Error())
+			continue
+		}
+		res.Agents++
+	}
+	return res, nil
 }

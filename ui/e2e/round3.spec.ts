@@ -375,12 +375,13 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await openAgentPage(page, 'Rita');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
+  await editor.getByText('More settings').click();
   await editor.getByLabel("Let the router choose this agent's model for each turn").check();
   await choose(editor.getByLabel('Routed model 1', { exact: true }), 'haiku');
   await choose(editor.getByLabel('Tier of routed model 1', { exact: true }), 'cheap');
   await choose(editor.getByLabel('Routed model 2', { exact: true }), 'opus');
   await choose(editor.getByLabel('Tier of routed model 2', { exact: true }), 'premium');
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   await projectNav(page, 'nav-project');
   await page.getByLabel('Agents answer in channels and direct messages').check();
