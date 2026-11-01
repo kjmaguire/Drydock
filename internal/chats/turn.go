@@ -254,6 +254,11 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		return SendResult{}, err
 	}
 	c.Cwd, c.Status = cwd, StatusRunning
+	// the turn is claimed and will run whatever the caller does now: what is left of Send (the person's message, the snapshot,
+	// chat.turn_started) must not be lost to the caller's request being cancelled (a page reloaded or a connection dropped while
+	// chat.send was answering), or the page sees a turn it was never told started (CI 2026-10-31: "publish chat.turn_started:
+	// context canceled", the chat-perf e2e's streaming bubble never appeared)
+	ctx = context.WithoutCancel(ctx)
 	if r.replaceFrom > 0 {
 		c.SessionID = ""
 		s.removeAttachmentFiles(c.ID, dropped)

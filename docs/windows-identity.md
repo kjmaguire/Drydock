@@ -121,10 +121,16 @@ section 3).
 
 **The installer (D8).** The per-user NSIS installer that `wails3 package` builds installs without administrator rights and
 creates the Start menu shortcut; it is what the Start menu, search and a pinned taskbar button point at, so it is signed
-too. Wails' template (`project.nsi.tmpl`) creates the shortcut without an AppUserModelID, and Drydock sets none for its
-process, so Windows derives one from the exe's path and the shortcut and the running window group together. If Drydock later
-sets an explicit AppUserModelID (for toast notifications or jump lists), the shortcut must carry the same one
-(`System.AppUserModel.ID`), or a pinned Drydock and a running one show as two taskbar buttons. **Not built yet.**
+too. **The application identity (P136):** Drydock's AppUserModelID is `Drydock.Drydock` (`app/appid.go`; it must never change
+once released). The app sets it on its process before the first window (`SetCurrentProcessExplicitAppUserModelID`,
+`app/appid_windows.go`), and the installer writes the same value as the Start menu shortcut's `System.AppUserModel.ID`
+(`packaging/windows/drydock.nsi`, macro `SetShortcutAppID`: the shell's IShellLinkW, IPersistFile and IPropertyStore through
+NSIS's System plug-in, since NSIS has no command for it). The two must match, or a pinned Drydock and a running one show as
+two taskbar buttons; a Linux test keeps them equal, a Windows test reads the process's ID back, and the release workflow's
+install-test reads the installed shortcut's ID. A sandbox app's window (`sandbox-view`, P134) sets none, so it keeps a
+taskbar button of its own. The ID is what Windows desktop notifications and a jump list need; neither is built yet. **Not
+verified:** a pinned shortcut grouping with the running window on a real taskbar (the CI checks read the IDs, not the
+taskbar); a shortcut a person pinned from an older install, before the ID, may show as its own button until it is pinned again.
 
 **Mark of the Web.** A file downloaded by a browser carries a `Zone.Identifier` stream (the Mark of the Web), and
 Explorer's own zip extraction copies it to every file it unpacks; that mark is what makes SmartScreen and Smart App Control
