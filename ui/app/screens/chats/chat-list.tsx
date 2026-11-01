@@ -374,7 +374,7 @@ export function ChatList(
                 <div mix={emptyCss}>
                   <p>{archived ? 'No chats here.' : projectId && !all ? 'No chats in this project yet.' : 'No chats yet.'}</p>
                   <Button size="sm" mix={[on('click', () => onNew())]}>
-                    Start a chat
+                    New chat
                   </Button>
                   {!archived ? (
                     <p style={{ margin: '12px 0 0' }}>

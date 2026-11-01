@@ -389,3 +389,16 @@ export function ruleWords(rule: string): string {
   const w = m ? m[1]!.trim() : rule;
   return w.length > 40 ? `${w.slice(0, 39)}…` : w;
 }
+
+/**
+ * The one warning the chat's header shows about its CLI (decision P139), or '' when all is well: the CLI on this PC is missing,
+ * of a version that cannot run or not signed in, or the last turn failed. A chat in WSL is not judged by the Windows install.
+ */
+export function cliWarning(c: Pick<Chat, 'adapter' | 'wslDistro' | 'status'>, adapter: AdapterInfo | undefined): string {
+  if (adapter && !c.wslDistro) {
+    const why = adapterUnavailable(adapter);
+    if (why) return `${adapterLabel(c.adapter)} ${why}`;
+    if (adapter.detection.status === 'unauthenticated') return `${adapterLabel(c.adapter)} not signed in`;
+  }
+  return c.status === 'error' ? 'Last turn failed' : '';
+}

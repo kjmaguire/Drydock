@@ -488,3 +488,42 @@ func TestDetectAllChecksTheCLIsSideBySide(t *testing.T) {
 		t.Fatalf("%d hanging CLIs took %s: checked one after another (each times out after %s)", hung, took, timeout)
 	}
 }
+
+// chat.create asks only whether a gate is owed (P139): Gates reads the manifest and the acknowledgements and starts no CLI, so
+// it answers at once even when the CLI hangs (a full Check would wait for its probes to time out).
+func TestGatesStartNoCLI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hanging CLI below is a shell script")
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh here to write a hanging CLI")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "agy"), []byte("#!"+sh+"\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+filepath.Dir(sh))
+	svc, err := connections.NewService(connections.Config{Detection: connections.Options{Timeout: 3 * time.Second}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	began := time.Now()
+	g, err := svc.Gates("antigravity")
+	if took := time.Since(began); took > time.Second {
+		t.Fatalf("Gates took %s: it started the CLI", took)
+	}
+	if err != nil || len(g) != 1 || g[0].ID != "antigravity-third-party-v1" || g[0].Acked {
+		t.Fatalf("gates %+v, %v", g, err)
+	}
+	svc.Acknowledge("antigravity-third-party-v1")
+	if g, _ = svc.Gates("antigravity"); !g[0].Acked {
+		t.Fatalf("after acknowledging: %+v", g)
+	}
+	if g, err = svc.Gates("claude"); err != nil || len(g) != 0 {
+		t.Fatalf("claude has no gate: %+v, %v", g, err)
+	}
+	if _, err = svc.Gates("nope"); err == nil {
+		t.Fatal("an unknown adapter must be an error")
+	}
+}

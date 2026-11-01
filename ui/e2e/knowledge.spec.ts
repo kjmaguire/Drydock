@@ -66,6 +66,7 @@ test('Knowledge: cards with real counts, requirement coverage, the latest note, 
   await expect(log).toContainText('drydock-e2e chat: where do we round currency?');
   await expect(log.getByText('Hello from the scripted chat stand-in')).toBeVisible();
   // in the project's folder, not the private folder a chat without a project gets
+  await page.getByTestId('chat-more').click();
   await page.getByRole('button', { name: 'Properties' }).click();
   await expect(page.getByTestId('chat-cwd')).toBeVisible();
   await expect(page.getByTestId('chat-cwd')).not.toHaveAttribute('title', /[\\/]chats[\\/]/);

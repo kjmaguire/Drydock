@@ -1,11 +1,12 @@
-// The chat composer (graphite, decision P97): one box with the message field (Enter sends, Shift+Enter is a new line, Ctrl+Enter
-// sends too) and a row of small buttons under it: the chat's own controls (the model, the approval mode and "Move to a
-// project", given by the conversation), attach files, attach chats (a picker of other chats; their history is given to the
-// agent for this one message, shown as removable chips), then Stop while a turn runs and "↵ send". A send while a turn runs is
-// not possible (the core refuses it too: one turn at a time).
+// The chat composer (graphite P97, calm chat P139): one box with the message field (Enter sends, Shift+Enter is a new line,
+// Ctrl+Enter sends too) and a row of chips under it: the chat's own controls (the agent CLI, the model and effort, the approval
+// mode, given by the conversation), then attach files, attach chats (a picker of other chats; their history is given to the
+// agent for this one message, shown as removable chips), Stop while a turn runs and Send. A send while a turn runs is not
+// possible (the core refuses it too: one turn at a time). A new chat puts the cursor in the box; a faint hint line may sit
+// under it (Ctrl+O).
 
 import { css, on, ref, type Handle, type RemixNode } from 'remix/component';
-import { FileText, MessagesSquare, Paperclip, Square, X } from 'lucide';
+import { ArrowUp, FileText, MessagesSquare, Paperclip, Square, X } from 'lucide';
 import type { Chat, ChatListItem } from '../../api/chatClient.ts';
 import { query, services } from '../../state/services.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -17,6 +18,7 @@ import { checkFiles, formatSize, MAX_FILES } from '../room/messages.ts';
 import { adapterLabel, agentWord, chatTitle, MAX_ATTACH, relTime } from './chats.ts';
 
 const wrapCss = css({ flex: 'none', width: 'calc(100% - 48px)', maxWidth: '812px', margin: `0 auto 20px`, boxSizing: 'border-box' });
+const hintLine = css({ margin: '6px 0 -8px', textAlign: 'center', color: t.textFaint, fontSize: t.textXs });
 const boxCss = css({
   display: 'grid',
   gap: '8px',
@@ -54,13 +56,14 @@ export const smallBtn = css({
   maxWidth: '100%',
   padding: '0 10px',
   border: `1px solid ${t.border}`,
-  borderRadius: t.rMd,
+  borderRadius: t.rFull,
   background: t.bgRaised,
   color: t.textMuted,
   fontSize: t.textXs,
   fontWeight: '500',
   whiteSpace: 'nowrap',
   '& > span': { overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& > svg': { flex: 'none' },
   '&:hover': { background: t.bgHover, color: t.text },
   '&[aria-expanded="true"]': { background: t.bgActive, color: t.text },
   '&:disabled': { opacity: '0.5', pointerEvents: 'none' },
@@ -84,21 +87,20 @@ const stopCss = css({
   fontWeight: '600',
   '&:hover': { background: t.dangerSoft, color: t.danger, borderColor: 'transparent' },
 });
-// "↵ send" is the send button itself: its name stays "Send" for readers
+// Send: the accent square with an arrow (its name is "Send" for readers)
 const sendCss = css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '4px',
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: '34px',
   height: '28px',
   minHeight: '0',
-  padding: '0 6px',
+  padding: '0',
   border: '0',
   borderRadius: t.rMd,
-  background: 'transparent',
-  color: t.textMuted,
-  fontSize: t.textXs,
-  '&:hover': { background: t.bgHover, color: t.text },
-  '&:disabled': { color: t.textFaint, opacity: '1', background: 'transparent' },
+  background: t.accent,
+  color: t.onAccent,
+  '&:hover': { background: t.accentHover },
+  '&:disabled': { background: t.bgActive, color: t.textFaint, opacity: '1' },
 });
 /** A file read in the composer, waiting to be sent. */
 export interface ComposerFile {
@@ -175,8 +177,10 @@ export function ChatComposer(
     stopping: boolean;
     /** No message yet: the field asks for the first one rather than a reply. */
     empty?: boolean;
-    /** The chat's own controls at the start of the row (the model, the approval mode, Move to a project). */
+    /** The chat's own controls at the start of the row (the agent CLI, the model and effort, the approval mode). */
     controls?: RemixNode;
+    /** A faint line under the box ("Ctrl O shows every tool call"); none when empty. */
+    hint?: string;
     onSend: (text: string, attach: string[], files: ComposerFile[]) => Promise<boolean>;
     onStop: () => void;
   }>,
@@ -305,7 +309,7 @@ export function ChatComposer(
   };
 
   return () => {
-    const { chat, running, disabled, disabledReason, sending, stopping, empty, controls, onStop } = handle.props;
+    const { chat, running, disabled, disabledReason, sending, stopping, empty, controls, hint, onStop } = handle.props;
     const list: ChatListItem[] = (others.data ?? []).filter((c) => c.id !== chat.id);
     const titleOf = (id: string) => {
       const c = list.find((x) => x.id === id);
@@ -386,7 +390,11 @@ export function ChatComposer(
             placeholder={disabled ? disabledReason || 'This chat cannot take messages.' : running ? `${who} is answering... (Stop to interrupt)` : empty ? `Message ${who}` : `Reply to ${who}`}
             disabled={disabled}
             mix={[
-              ref((n) => (area = n as HTMLTextAreaElement)),
+              ref((n) => {
+                area = n as HTMLTextAreaElement;
+                // a new chat is just this box, with the cursor in it (P139)
+                if (handle.props.empty && !handle.props.disabled) queueMicrotask(() => area?.focus());
+              }),
               on('input', (e) => {
                 text = (e.currentTarget as HTMLTextAreaElement).value;
                 fit();
@@ -502,12 +510,17 @@ export function ChatComposer(
               aria-label={sending ? 'Sending...' : 'Send'}
               aria-keyshortcuts="Enter"
               title={running ? 'Wait for the answer, or stop it' : 'Send (Enter); Shift+Enter starts a new line'}
+              data-testid="chat-send"
             >
-              <kbd aria-hidden="true">↵</kbd>
-              <span aria-hidden="true">send</span>
+              <Icon icon={ArrowUp} size={15} />
             </button>
           </div>
         </div>
+        {hint ? (
+          <p mix={hintLine} data-testid="chat-verbose-hint">
+            {hint}
+          </p>
+        ) : null}
       </form>
     );
   };
