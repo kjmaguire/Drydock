@@ -13,7 +13,6 @@
 import { chromium, expect, test, type Browser, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createProject } from '../e2e/helpers';
 
 const out = process.env.DRYDOCK_OUT ?? 'installed-out';
 const results: Record<string, unknown> = {};
@@ -84,11 +83,20 @@ test('the first start says the agents run as the person, under their own terms, 
   await expect(page.getByTestId('terms-notice')).toHaveCount(0);
 });
 
-test('a project on a real Windows repository: the wizard, the core and git on NTFS', async () => {
+test('a project on a real Windows repository: New project, the core and git on NTFS', async () => {
   const repo = process.env.DRYDOCK_REPO;
   test.skip(!repo, 'DRYDOCK_REPO is not set');
   const t0 = Date.now();
-  await createProject(page, 'windows-proof', repo);
+  // the person's way in (decision P143): Home's New project, Open a folder, Create project
+  await page.goto(new URL('/home', page.url()).toString());
+  await page.getByTestId('home-new-project').click();
+  const dialog = page.getByTestId('new-project-dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+  await dialog.getByLabel('Folder', { exact: true }).fill(repo!);
+  await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'repository', { timeout: 30_000 });
+  await dialog.getByLabel('Project name', { exact: true }).fill('windows-proof');
+  await dialog.getByTestId('new-project-create').click();
   results.createProjectMs = Date.now() - t0;
   // a new project opens on its Work page (decision P141), with the core's list of its tasks and chats
   await expect(page.getByTestId('work')).toBeVisible();
