@@ -6507,7 +6507,7 @@
       "status": "current",
       "latestDate": "2026-10-20",
       "where": "docs/decisions.md section 2",
-      "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker Desktop or another Docker-compatible engine you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
+      "role": "The container engine of the per-task sandbox (decision P30, docs/sandbox.md): Docker (Docker Desktop on Windows), the only supported engine (P135), which you install; Drydock runs only the docker command and never bundles an engine. The egress proxy image it starts is built from this repository (cmd/drydock-egress) and imported locally, not pulled.",
       "note": "Version shown is the Docker Engine and CLI the sandbox is tested with on Linux: 29.9.2 on the development host since 2026-10-21 (decision P81, from Docker's apt repository), where its daemon ran the sandbox tests as CI's sandbox job runs them (DRYDOCK_REQUIRE_DOCKER=1: 24 passed, none skipped); CI's ubuntu-latest image carries its own engine. Drydock uses only long-standing docker commands (network create --internal, import, run, exec, inspect), so any current release should work; Docker Desktop on Windows is unverified."
     },
     {

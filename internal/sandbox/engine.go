@@ -16,7 +16,7 @@ import (
 // Engine runs the container engine's command-line client. Every container, network and volume Drydock creates carries the
 // label LabelOwner=drydock, so cleanup never touches anything else on the machine.
 type Engine struct {
-	// Bin is the client executable: "docker" unless DRYDOCK_CONTAINER_CLI names another Docker-compatible client.
+	// Bin is the client executable: "docker" unless DRYDOCK_CONTAINER_CLI names its path (the tests point it at a stand-in).
 	Bin string
 }
 

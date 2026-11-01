@@ -28,9 +28,9 @@ and volumes are removed.
 
 ## 2. Turning it on
 
-1. Install a Docker-compatible container engine (Docker Desktop, or Rancher Desktop with dockerd) and use Linux containers.
-   Drydock talks to it only through the `docker` command (`DRYDOCK_CONTAINER_CLI` names another compatible client; Podman is
-   untested).
+1. Install Docker (Docker Desktop on Windows) and use Linux containers. Docker is the only engine Drydock supports (P135);
+   Drydock talks to it only through the `docker` command (`DRYDOCK_CONTAINER_CLI` names the client's path when it is not on
+   the PATH; the tests point it at a stand-in).
 2. Commit a definition at `.drydock/sandbox.json` on the project's **default branch** (section 3). Drydock reads it from that
    branch only, never from a task worktree, so a change an agent makes to it takes effect only after a human merged it. A
    merged change still does not run until you confirm it: switching the sandbox on records the definition you saw, and a task
@@ -167,7 +167,7 @@ Not protected:
   repository's folder on the human's machine, which is not mounted. Drydock makes the commits; the agent sees its changes with
   the file tools. Measured: `go build` of a main package still works (Go 1.27 skips version stamping when Git cannot answer).
 - The proxy does not let through other ports (SSH Git remotes, databases on the internet).
-- Podman and Rancher Desktop's containerd mode are untested.
+- Docker is the only supported engine (P135): Podman and Rancher Desktop are not supported and not tested.
 
 ## 8. Tested
 

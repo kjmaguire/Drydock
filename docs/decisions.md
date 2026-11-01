@@ -41,7 +41,7 @@ Date: 2026-10-08. Evidence: [`phase0.md`](phase0.md) and its appendices. Section
 | Telemetry | OpenTelemetry Go v1.47.0, optional | D12. |
 | Dev tasks and notices | go-task v3.54.0; `google/go-licenses/v2` v2.0.1 | |
 | Git hosting | `gh` v2.103.0 as a user-installed Connection | `gh` is not bundled. |
-| Per-task sandbox | A Docker-compatible container engine you install, driven only through the `docker` command (tested with Docker Engine 29.9.2 on Linux; 29.8.2 when P30 was decided); egress proxy built from `cmd/drydock-egress` | P30. No engine is bundled and no image of Drydock's is pulled from a registry. |
+| Per-task sandbox | Docker (Docker Desktop on Windows), the only supported engine (P135), which you install, driven only through the `docker` command (tested with Docker Engine 29.9.2 on Linux; 29.8.2 when P30 was decided); egress proxy built from `cmd/drydock-egress` | P30. No engine is bundled and no image of Drydock's is pulled from a registry. |
 
 ## 3. Process decisions
 
@@ -2333,6 +2333,14 @@ Open, owner action:
   injects into any page, which only move or resize this window; not tested on Windows); the window's navigation away from
   127.0.0.1 (Wails 3 beta.34 has no navigation filter; a link in the page is followed; the window is isolated and nothing of
   Drydock's is there to reach).
+
+- **P135. Docker is the only container engine (2026-10-31).** The owner: "skip Podman and Rancher Desktop altogether, we will
+  stick with Docker". The sandbox (P30) and its port forwarding (P134) support Docker only, Docker Desktop on Windows, still
+  driven through the `docker` command. Podman and Rancher Desktop are not supported, not tested and not offered: the docs and the
+  project's sandbox page name Docker Desktop alone. `DRYDOCK_CONTAINER_CLI` stays, as the path of the `docker` client when it is not
+  on the PATH and as the tests' hook for a stand-in client. The WSL probe still leaves out the `rancher-desktop*` and
+  `podman-machine*` distros, so a person who has one installed does not see it offered as a place to run an agent. Tests: none
+  changed behaviour; `ui/app/screens/project/project-sandbox.test.browser.tsx` still covers the page's engine message.
 
 - **P136. Drydock's Windows application identity, and a started chat turn always announced (2026-10-31).** The owner: "do the
   publish fix now and do what you can for the windows app identity". (a) **AppUserModelID** `Drydock.Drydock`: the app sets it
