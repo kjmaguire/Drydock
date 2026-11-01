@@ -68,9 +68,25 @@ func (e *Engine) Run(ctx context.Context, stdin io.Reader, args ...string) (stri
 		if len(args) > 0 {
 			name = args[0]
 		}
+		if daemonUnreachable(msg) {
+			// the client is installed but Docker is not running (Docker Desktop not started): say that, not the client's wording
+			return out.String(), fmt.Errorf("%w: %s %s: %s", ErrNoEngine, e.Bin, name, msg)
+		}
 		return out.String(), fmt.Errorf("%s %s: %s", e.Bin, name, msg)
 	}
 	return out.String(), nil
+}
+
+// daemonUnreachable reports whether the client's error text says it could not reach Docker itself: Docker Desktop not started
+// on Windows (the named pipe is missing), the daemon stopped on Linux.
+func daemonUnreachable(msg string) bool {
+	m := strings.ToLower(msg)
+	for _, s := range []string{"cannot connect to the docker daemon", "failed to connect to the docker api", "error during connect", "is the docker daemon running"} {
+		if strings.Contains(m, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // Info is what the engine reports about itself.

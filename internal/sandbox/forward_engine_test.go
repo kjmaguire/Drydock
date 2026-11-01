@@ -41,8 +41,27 @@ esac`)
 	}
 	t.Setenv("FAKE_MODE", "down")
 	_, err := m.Existing(ctx, "t1")
-	if err == nil || errors.Is(err, ErrNoSandbox) || !strings.Contains(err.Error(), "Cannot connect") {
-		t.Fatalf("a stopped daemon is not 'no sandbox': %v", err)
+	if err == nil || errors.Is(err, ErrNoSandbox) || !errors.Is(err, ErrNoEngine) || !strings.Contains(err.Error(), "Cannot connect") {
+		t.Fatalf("a stopped daemon is no engine, not 'no sandbox': %v", err)
+	}
+}
+
+// The client's words for "Docker is not running", on Windows (Docker Desktop not started: no named pipe) and on Linux, are
+// recognised; an ordinary engine error is not taken for one.
+func TestADaemonThatIsNotRunningIsRecognised(t *testing.T) {
+	for _, msg := range []string{
+		"failed to connect to the docker API at npipe:////./pipe/docker_engine; check if the path is correct and if the daemon is running: open //./pipe/docker_engine: The system cannot find the file specified.",
+		"error during connect: this error may indicate that the docker daemon is not running",
+		"Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+	} {
+		if !daemonUnreachable(msg) {
+			t.Errorf("not recognised: %s", msg)
+		}
+	}
+	for _, msg := range []string{"Error: No such object: x", "port is already allocated", "permission denied"} {
+		if daemonUnreachable(msg) {
+			t.Errorf("taken for a stopped daemon: %s", msg)
+		}
 	}
 }
 
