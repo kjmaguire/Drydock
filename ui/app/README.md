@@ -47,7 +47,9 @@ app/
                       project): the header's figures, Templates and New agent (N) as dialogs, Today's timeline (crew-timeline.tsx; its
                       window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
                       hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
-                      page), Skills & tools, Memory and History); the inspector stays in the details panel
+                      page), Skills & tools, Memory and History); the inspector stays in the details panel; the agent editor
+                      panel (agent-panel.tsx, P137: openAgentEditor(id) on a page with one <AgentPanelHost />, or /team?edit=<id>;
+                      helpers in agent-edit.ts) and New agent's tabs Describe | Configure | From a template (new-agent.tsx, P138)
   screens/agents/     Agent CLIs (/agents, /agents/<key>; decision P98, once Connections; a section of Settings, P140): the agent CLIs as a MasterDetail list (Installed,
                       Not installed), the chosen one's header (Test connection, Sign in, Check again), one notice and the tabs
                       Overview (notices to accept, facts, the distro, the MCP gateway switch, Used by), Test results, Install and

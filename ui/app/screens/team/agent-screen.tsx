@@ -1,5 +1,5 @@
 // An agent's page (Crew HQ, decision P64), /team/:id: the crew list on the left (each a link to its page), then a hero (the
-// big dot, the name, the purpose, chips with what it is on, its CLI and model, effort, where it runs and whether it is held
+// big dot, the name, the purpose (two lines, then Show all), chips with what it is on, its CLI and model, effort, where it runs and whether it is held
 // in) and four tabs. Overview: what it is doing right now (its task, how far along, its activity), numbers counted from the
 // task list, its skills with switches, its MCP tools, what the crew remembers. Skills & tools, Memory and History go deeper.
 // Everything is a projection of what the core reports; nothing is estimated and nothing is invented.
@@ -13,7 +13,7 @@ import { formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
-import { Avatar, Badge, StatusChip, hueFor, muted, presenceColor } from '../../ui/data.tsx';
+import { Avatar, StatusChip, hueFor, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -28,7 +28,8 @@ import { TaskDecisions } from '../shared/explain.tsx';
 import { SkipsBadge } from '../shared/skip-approvals.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
-import { AgentEditor, RemoveAgent } from './agent-forms.tsx';
+import { RemoveAgent } from './agent-forms.tsx';
+import { AgentPanelHost, openAgentEditor } from './agent-panel.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { Run } from './inspector.tsx';
 import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runStatusWords, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
@@ -98,6 +99,9 @@ const heroCss = css({
   '& .who': { flex: '1', minWidth: '0' },
   '& h1': { fontSize: t.textTitle, fontWeight: '700', letterSpacing: '-0.03em', lineHeight: '1.15', overflowWrap: 'anywhere' },
   '& .purpose': { marginTop: '4px', color: t.textMuted, fontSize: t.textMd, lineHeight: '1.5', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' },
+  // the instructions are two lines until "Show all" (decision P137: the whole text was a wall above the tabs)
+  '& .purpose[data-clamped="true"]': { display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+  '& .show-all': { justifySelf: 'start', marginTop: '2px', padding: '0', minHeight: '0', border: '0', background: 'transparent', color: t.accentText, fontSize: t.textSm, cursor: 'pointer' },
   '& .none': { marginTop: '4px', color: t.textFaint, fontSize: t.textMd, fontStyle: 'italic' },
   '& .chips': { display: 'flex', flexWrap: 'wrap', gap: t.s2, marginTop: t.s3 },
   '& .acts': { display: 'flex', flexDirection: 'column', gap: t.s2, flex: 'none' },
@@ -315,7 +319,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   // two actions, so a failed direct message and a failed skill switch each say what they were
   const dm = action(handle);
   let tab: TabName = 'overview';
-  let editing = false;
+  let purposeOpen = false;
   let removing = false;
   const pid = () => s.workspace.projectId ?? '';
 
@@ -623,9 +627,16 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                     <div class="who">
                       <h1 id={titleId}>{a.name}</h1>
                       {a.purpose ? (
-                        <p class="purpose" data-testid="agent-page-purpose">
-                          {a.purpose}
-                        </p>
+                        <>
+                          <p class="purpose" data-testid="agent-page-purpose" data-clamped={purposeOpen || !longPurpose(a.purpose) ? undefined : 'true'}>
+                            {a.purpose}
+                          </p>
+                          {longPurpose(a.purpose) ? (
+                            <button type="button" class="show-all" aria-expanded={purposeOpen ? 'true' : 'false'} mix={on('click', () => ((purposeOpen = !purposeOpen), void handle.update()))}>
+                              {purposeOpen ? 'Show less' : 'Show all'}
+                            </button>
+                          ) : null}
+                        </>
                       ) : (
                         <p class="none">No standing instructions. Edit the agent to give it a purpose.</p>
                       )}
@@ -673,7 +684,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       <Button variant="primary" icon={MessageSquare} disabled={dm.busy === 'dm'} mix={on('click', () => void message(a))}>
                         Message {a.name}
                       </Button>
-                      <Button variant="secondary" icon={Pencil} aria-haspopup="dialog" aria-expanded={editing} mix={on('click', () => ((editing = true), void handle.update()))}>
+                      <Button variant="secondary" icon={Pencil} aria-haspopup="dialog" mix={on('click', () => openAgentEditor(a.id))}>
                         Edit
                       </Button>
                       {/* the two a person uses every time stay buttons; the rest is in "..." (UI audit 2026-10-26: five stacked
@@ -727,20 +738,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
                       />
                     ) : null}
                   </Dialog>
-                  <Dialog open={editing} title={`Edit ${a.name}`} label={`Edit ${a.name}`} wide onClose={() => ((editing = false), void handle.update())}>
-                    {editing ? (
-                      <EditWithAdapter
-                        agent={a}
-                        onDone={() => {
-                          editing = false;
-                          void handle.update();
-                          s.project.agents.reload();
-                          detail.reload();
-                        }}
-                        onCancel={() => ((editing = false), void handle.update())}
-                      />
-                    ) : null}
-                  </Dialog>
+                  <AgentPanelHost agents={agents} onSaved={() => detail.reload()} />
                 </>
               )}
             </div>
@@ -751,18 +749,5 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
   };
 }
 
-/** The agent editor with its adapter's capabilities (model aliases, effort levels) read on demand. */
-function EditWithAdapter(handle: Handle<{ agent: Agent; onDone: () => void; onCancel: () => void }>) {
-  const s = services(handle);
-  const adapters = query(handle, { load: () => s.client.adapterList() });
-  return () => {
-    const { agent, onDone, onCancel } = handle.props;
-    return (
-      <div>
-        {adapters.loading && !adapters.data ? <p mix={muted}>Reading the adapter's capabilities...</p> : null}
-        <AgentEditor key={agent.id} agent={agent} adapter={(adapters.data ?? []).find((x) => x.id === agent.adapter)} onDone={onDone} onCancel={onCancel} />
-        {adapters.error ? <Badge tone="warn">adapter capabilities not read</Badge> : null}
-      </div>
-    );
-  };
-}
+/** Instructions longer than about two lines of the hero get "Show all". */
+const longPurpose = (p: string): boolean => p.length > 180 || p.split('\n').length > 2;

@@ -3,7 +3,7 @@
 import type { Agent, SkillRef, SkippedItem } from './types.ts';
 import type { Transport } from './transport.ts';
 
-/** A team member defined once in the workspace. Applying it makes an ordinary agent in a project; there is no link afterwards. */
+/** A team member defined once in the workspace. Applying it makes an ordinary agent in a project that records the template (`templateId`) but does not follow it; only the editor's "Everywhere" carries a change back (decision P137). */
 export interface AgentTemplate {
   id: string;
   name: string;
@@ -22,6 +22,22 @@ export interface AgentTemplate {
   practices?: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+/** agent.draft's answer (decision P138): a drafted agent, not saved. `source` says whether a model or the offline rules wrote it. */
+export interface AgentDraft {
+  name: string;
+  role: string;
+  adapter: string;
+  model: string;
+  effort: string;
+  permissionMode: string;
+  purpose: string;
+  skills: string[];
+  /** Library MCP server ids. */
+  tools: string[];
+  why: string;
+  source: 'model' | 'rules';
 }
 
 /** A registry skill a template can carry: one a prebuilt agent comes with, or one imported into a project here. */
@@ -92,6 +108,8 @@ export interface LibraryClient {
   /** The registry skills a template can carry. */
   agentTemplateSkillChoices(): Promise<SkillChoice[]>;
   claudePractices(role: string): Promise<ClaudePractices>;
+  /** Drafts an agent from a description; nothing is saved (decision P138). */
+  agentDraft(description: string, projectId?: string): Promise<AgentDraft>;
   agentEnvGet(): Promise<AgentEnv>;
   /** Names only. A value is refused. */
   agentEnvSet(names: string[]): Promise<AgentEnv>;
@@ -111,6 +129,10 @@ export function createLibraryClient(t: Transport): LibraryClient {
     },
     agentTemplateSkillChoices: async () => arr(await t.call<SkillChoice[] | null>('agenttemplate.skillChoices')).map((c) => ({ ...c, from: arr(c.from) })),
     claudePractices: (role) => t.call('claude.practices', { role }),
+    agentDraft: async (description, projectId) => {
+      const d = await t.call<AgentDraft>('agent.draft', { description, ...(projectId ? { projectId } : {}) });
+      return { ...d, skills: arr(d.skills), tools: arr(d.tools) };
+    },
     agentEnvGet: async () => {
       const r = await t.call<AgentEnv>('agentenv.get');
       return { pass: arr(r.pass), kept: arr(r.kept), prefixes: arr(r.prefixes) };

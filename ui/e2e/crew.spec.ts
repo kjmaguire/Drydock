@@ -54,7 +54,8 @@ test("the Crew page: the figures, a lane and a card per agent, New agent on N, a
   // N opens New agent outside a text field; Escape closes it
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('n');
-  await expect(page.locator('dialog[open]').getByTestId('agent-form')).toBeVisible();
+  // it opens on Describe (decision P138)
+  await expect(page.locator('dialog[open]').getByTestId('describe-agent')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('dialog[open]')).toHaveCount(0);
 
@@ -153,7 +154,7 @@ test("the workspace's Crew page: every project's agents grouped by project, thei
   await page.getByRole('button', { name: /^New agent/ }).click();
   const dialog = page.locator('dialog[open]');
   await expect(dialog.getByLabel('Project', { exact: true })).toBeVisible();
-  await expect(dialog.getByTestId('agent-form')).toBeVisible();
+  await expect(dialog.getByTestId('describe-agent')).toBeVisible();
   await page.keyboard.press('Escape');
 
   // the beta project is open (it was made last); a card of alpha opens alpha and the agent's page

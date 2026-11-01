@@ -42,6 +42,7 @@ import type {
   UsageRow,
   AgentSpec,
   AgentUpdate,
+  UpdatedAgent,
   AppInfo,
   DrydockEvent,
   GitConfigStatus,
@@ -106,7 +107,7 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   githubPullRequest(taskId: string): Promise<PRState>;
   adapterList(): Promise<AdapterInfo[]>;
   agentCreate(spec: AgentSpec): Promise<Agent>;
-  agentUpdate(u: AgentUpdate): Promise<Agent>;
+  agentUpdate(u: AgentUpdate): Promise<UpdatedAgent>;
   /** Removes an agent from the team; its history stays. Refused while it owns unfinished tasks. */
   agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;

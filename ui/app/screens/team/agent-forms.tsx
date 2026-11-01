@@ -1,14 +1,14 @@
-// The team page's forms: add an agent (from a saved template or from scratch), edit one in place, remove one.
+// The team page's forms: add an agent (from a saved template or from scratch) and remove one. Editing is the panel in
+// agent-panel.tsx (decision P137).
 
 import { css, on, type Handle } from 'remix/component';
-import { BookmarkPlus, LayoutTemplate, UserPlus } from 'lucide';
-import type { AdapterInfo, Agent, AgentSpec, AgentUpdate, RouteModel } from '../../api/types.ts';
-import { confirmationFor, isNeedsConfirmation, needsConfirmation, splitConfirmation } from '../../lib/permission.ts';
+import { LayoutTemplate, UserPlus } from 'lucide';
+import type { AdapterInfo, Agent, AgentSpec } from '../../api/types.ts';
+import { confirmationFor, needsConfirmation, splitConfirmation } from '../../lib/permission.ts';
 import { routes as appRoutes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
-import { muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -16,11 +16,12 @@ import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 import { SkipApprovals } from '../shared/skip-approvals.tsx';
 import { noSkillChanges, type SkillChanges } from '../skills/skills.ts';
-import { ClaudePracticesPanel, ModelEffortFields, RouteModelsField, claudePractices } from './fields.tsx';
+import { modeList, permissionOptions } from './agent-edit.ts';
+import { ClaudePracticesPanel, ModelEffortFields, claudePractices } from './fields.tsx';
 import { RunModeField } from './run-mode-field.tsx';
 import { supportsWSL } from './run-mode.ts';
 import { SkillsField } from './skills-field.tsx';
-import { PURPOSE_HELP, ROLE_SUGGESTIONS, adapterOption, appliedNote, routesForUpdate } from './team.ts';
+import { PURPOSE_HELP, ROLE_SUGGESTIONS, adapterOption, appliedNote } from './team.ts';
 
 const full = css({ gridColumn: '1 / -1' });
 
@@ -49,6 +50,9 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
   let practices = true;
   let runMode = '';
   let wslDistro = '';
+  let mode = '';
+  // the mode the "acts without asking" box is ticked for (lib/permission.ts)
+  let confirmedMode = '';
   let skills: SkillChanges = noSkillChanges();
   const set = (f: () => void) => {
     f();
@@ -70,9 +74,14 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
       role: role.trim(),
       purpose: purpose.trim(),
       adapter: adapterId,
-      model: a?.capabilities?.modelSelection === true ? model.trim() : '',
-      effort: a?.capabilities?.effortControl === true ? effort.trim() : '',
+      // capabilities that were read and do not verify the control: nothing is sent; unknown ones (not read yet): what was typed
+      model: a?.capabilities === undefined || a.capabilities.modelSelection === true ? model.trim() : '',
+      effort: a?.capabilities === undefined || a.capabilities.effortControl === true ? effort.trim() : '',
     };
+    if (mode) {
+      spec.permissionMode = mode;
+      Object.assign(spec, confirmationFor(mode, confirmedMode));
+    }
     if (adapterId === 'claude') spec.practices = practices;
     if (skills.add.length > 0) spec.skills = skills.add;
     if (supportsWSL(a?.capabilities) && runMode) {
@@ -84,7 +93,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
       return true;
     });
     if (!ok) return;
-    name = role = purpose = model = effort = runMode = wslDistro = '';
+    name = role = purpose = model = effort = runMode = wslDistro = mode = confirmedMode = '';
     skills = noSkillChanges();
     void handle.update();
     handle.props.onCreated();
@@ -96,6 +105,8 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
     const a = chosen();
     const adapterId = a?.id ?? '';
     const info = pr.info;
+    const modes = modeList(adapterId, a?.capabilities);
+    const { confirm: refusal, other: failure } = splitConfirmation(act.error);
     return (
       <form
         mix={[formGrid, on('submit', (e) => (e.preventDefault(), void submit()))]}
@@ -103,7 +114,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
         data-testid="agent-form"
       >
         <div mix={full}>
-          <ErrorNote error={act.error} what="Agent not created" />
+          <ErrorNote error={failure} what="Agent not created" />
           <ReadOnlyNote />
         </div>
         <Field label="Agent name">
@@ -126,17 +137,26 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
               options={adapters.map((x) => ({ value: x.id, label: adapterOption(x) }))}
               placeholder="Choose an agent CLI"
               // another adapter starts the model and effort over (the Select is quiet when the same one is chosen again)
-              onChange={(v) => set(() => ((adapter = v), (model = ''), (effort = '')))}
+              onChange={(v) => set(() => ((adapter = v), (model = ''), (effort = ''), (mode = ''), (confirmedMode = '')))}
             />
           )}
         </Field>
         <ModelEffortFields
           caps={a?.capabilities}
+          adapter={adapterId}
           model={model}
           effort={effort}
           onModel={(v) => set(() => (model = v))}
           onEffort={(v) => set(() => (effort = v))}
         />
+        {modes.length > 0 ? (
+          <Field label="Permission mode">
+            {(id) => (
+              <Select id={id} label="Permission mode" value={mode} options={permissionOptions(modes)} onChange={(v) => set(() => (mode = v))} />
+            )}
+          </Field>
+        ) : null}
+        <SkipApprovals mode={mode} confirmed={confirmedMode} onConfirm={(m) => set(() => (confirmedMode = m))} who="this agent" error={refusal} />
         <RunModeField caps={a?.capabilities} runMode={runMode} wslDistro={wslDistro} onChange={(m, d) => set(() => ((runMode = m), (wslDistro = d)))} />
         <div mix={full}>
           <Field label="Purpose (optional)">
@@ -152,7 +172,7 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
             type="submit"
             variant="primary"
             icon={UserPlus}
-            disabled={!!act.busy || ro.readOnly || !name.trim() || !role.trim() || !adapterId}
+            disabled={!!act.busy || ro.readOnly || !name.trim() || !role.trim() || !adapterId || needsConfirmation(mode, confirmedMode)}
             title={ro.readOnly ? ro.reason : undefined}
           >
             Create agent
@@ -255,149 +275,6 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
           </Notice>
         ) : null}
       </section>
-    );
-  };
-}
-
-const removeBtn = css({ marginLeft: 'auto', color: t.danger, '&:hover': { color: t.danger, background: t.dangerSoft } });
-const removeRow = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, gridColumn: '1 / -1', fontSize: t.textMd });
-
-/** Edit an agent in place. The adapter is fixed; a changed model, effort or purpose applies to the agent's next session. */
-export function AgentEditor(handle: Handle<{ agent: Agent; adapter: AdapterInfo | undefined; onDone: () => void; onCancel: () => void }>) {
-  const s = services(handle);
-  watch(handle, s.workspace);
-  const act = action(handle);
-  const roleList = `roles-${handle.id}`;
-  const a0 = handle.props.agent;
-  let name = a0.name;
-  let role = a0.role;
-  let purpose = a0.purpose ?? '';
-  let model = a0.model;
-  let effort = a0.effort;
-  let practices = a0.practices !== false;
-  let routes: RouteModel[] = a0.routeModels ?? [];
-  let runMode = a0.runMode ?? '';
-  let wslDistro = a0.wslDistro ?? '';
-  let skills: SkillChanges = noSkillChanges();
-  let confirmRemove = false;
-  let savedAs = '';
-  const set = (f: () => void) => {
-    f();
-    void handle.update();
-  };
-  // an existing agent keeps its model and effort: the recommendation is shown, not applied over them
-  const pr = claudePractices(handle, { adapter: () => handle.props.agent.adapter, role: () => role });
-
-  const finish = async (label: string, fn: () => Promise<unknown>) => {
-    const ok = await act.run(label, async () => {
-      await fn();
-      return true;
-    });
-    if (ok) handle.props.onDone();
-  };
-
-  const save = () => {
-    const agent = handle.props.agent;
-    const u: AgentUpdate = { id: agent.id, name: name.trim(), role: role.trim(), purpose: purpose.trim(), model: model.trim(), effort: effort.trim() };
-    if (agent.adapter === 'claude') u.practices = practices;
-    const rm = routesForUpdate(routes, agent.routeModels);
-    if (rm) u.routeModels = rm;
-    if (skills.add.length > 0) u.addSkills = skills.add;
-    if (skills.remove.length > 0) u.removeSkills = skills.remove;
-    if (supportsWSL(handle.props.adapter?.capabilities) && (runMode !== (agent.runMode ?? '') || wslDistro !== (agent.wslDistro ?? ''))) {
-      u.runMode = runMode;
-      u.wslDistro = runMode === 'wsl' ? wslDistro : '';
-    }
-    return finish('save', () => s.client.agentUpdate(u));
-  };
-
-  const saveTemplate = async () => {
-    const tpl = await act.run('template', () => s.client.agentTemplateFromAgent(handle.props.agent.id));
-    if (tpl) set(() => (savedAs = tpl.name));
-  };
-
-  return () => {
-    const { agent, adapter, onCancel } = handle.props;
-    const ro = s.workspace.license;
-    const busy = !!act.busy;
-    const info = pr.info;
-    return (
-      <form mix={[formGrid, on('submit', (e) => (e.preventDefault(), void save()))]} aria-label={`Edit ${agent.name}`} data-testid="agent-editor">
-        <div mix={full} style={{ display: 'grid', gap: '8px' }}>
-          {isNeedsConfirmation(act.error) ? (
-            <Notice tone="warn" role="alert" testId="template-needs-confirmation" title="This agent cannot be saved as a template from here.">
-              {act.error?.message} Make the template in the <a href={appRoutes.library.href()}>Library</a>, where you can confirm the permission mode.
-            </Notice>
-          ) : (
-            <ErrorNote error={act.error} what="Agent not changed" />
-          )}
-          {savedAs ? (
-            <Notice tone="ok" role="status" testId="saved-as-template">
-              Saved as the template {savedAs}. Find it in the <a href={appRoutes.library.href()}>Library</a>.
-            </Notice>
-          ) : null}
-          <ReadOnlyNote />
-          <p mix={muted} style={{ margin: '0', fontSize: 'var(--text-sm)' }}>
-            Adapter <code>{agent.adapter}</code> cannot change: add a new agent to use a different CLI. Changes apply from the agent's next session.
-          </p>
-        </div>
-        <Field label="Agent name">
-          {(id) => <input id={id} value={name} required autocomplete="off" mix={on('input', (e) => set(() => (name = e.currentTarget.value)))} />}
-        </Field>
-        <Field label="Role">
-          {(id) => (
-            <>
-              <input id={id} value={role} list={roleList} required autocomplete="off" mix={on('input', (e) => set(() => (role = e.currentTarget.value)))} />
-              <RoleSuggestions id={roleList} />
-            </>
-          )}
-        </Field>
-        <ModelEffortFields
-          caps={adapter?.capabilities}
-          model={model}
-          effort={effort}
-          onModel={(v) => set(() => (model = v))}
-          onEffort={(v) => set(() => (effort = v))}
-        />
-        <RunModeField caps={adapter?.capabilities} runMode={runMode} wslDistro={wslDistro} onChange={(m, d) => set(() => ((runMode = m), (wslDistro = d)))} />
-        <div mix={full}>
-          <Field label="Purpose">
-            {(id) => (
-              <textarea id={id} value={purpose} rows={4} maxLength={4000} placeholder={PURPOSE_HELP} mix={on('input', (e) => set(() => (purpose = e.currentTarget.value)))} />
-            )}
-          </Field>
-        </div>
-        <ClaudePracticesPanel info={info} on={practices} onChange={(v) => set(() => (practices = v))} />
-        <RouteModelsField routes={routes} onRoutes={(r) => set(() => (routes = r))} suggestions={adapter?.capabilities?.models ?? []} />
-        <SkillsField projectId={agent.projectId} agentId={agent.id} role={role} changes={skills} onChange={(c) => set(() => (skills = c))} />
-        <div mix={formActions}>
-          <Button type="submit" variant="primary" disabled={busy || ro.readOnly || !name.trim() || !role.trim()} title={ro.readOnly ? ro.reason : undefined}>
-            {act.busy === 'save' ? 'Saving...' : 'Save changes'}
-          </Button>
-          <Button disabled={busy} mix={on('click', () => onCancel())}>
-            Cancel
-          </Button>
-          <Button variant="ghost" icon={BookmarkPlus} disabled={busy} mix={on('click', () => void saveTemplate())}>
-            Save as a template
-          </Button>
-          {confirmRemove ? null : (
-            <Button variant="ghost" disabled={busy} mix={[on('click', () => set(() => (confirmRemove = true))), removeBtn]}>
-              Remove from team
-            </Button>
-          )}
-        </div>
-        {confirmRemove ? (
-          <div mix={removeRow} role="group" aria-label="Confirm removal">
-            <span>Remove {agent.name} from the team? Its history stays.</span>
-            <Button variant="danger" disabled={busy} mix={on('click', () => void finish('remove', () => s.client.agentArchive(agent.id)))}>
-              {act.busy === 'remove' ? 'Removing...' : 'Yes, remove'}
-            </Button>
-            <Button disabled={busy} mix={on('click', () => set(() => (confirmRemove = false)))}>
-              Keep
-            </Button>
-          </div>
-        ) : null}
-      </form>
     );
   };
 }

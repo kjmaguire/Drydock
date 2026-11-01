@@ -2356,6 +2356,55 @@ Open, owner action:
   `internal/chats/send_cancel_test.go` (it fails without the change, naming `chat.turn_started`). Whether this was the only
   cause of that e2e failure is not proven: the run's trace could not be read from this environment.
 
+- **P137. An agent is edited in place, in a side panel; agents remember their template (2026-11-01).** The owner: "the ability to
+  edit existing agents when we add it to a project. As we don't seem to be able to change the agents when added like what effort
+  and model etc." The causes: Edit existed only on the agent's own page; its model and effort fields were disabled until the
+  adapter's capabilities had loaded and stayed disabled when the read failed; the editor and the add form had no permission mode.
+  (a) **The panel** (`ui/app/screens/team/agent-panel.tsx`, a `Dialog` with `side`) opens from the Crew card's model chip,
+  permission chip and "..." menu, the agent page's Edit (the old dialog is gone), `openAgentEditor(agentId)` on any page that
+  renders one `<AgentPanelHost />`, and `/team?edit=<agentId>`. It has Runs on (shown, not changed: another CLI is a new agent),
+  Model, Effort (segmented), Permissions (segmented: Read only = `plan`, Asks before edits = `default`, Edits freely =
+  `acceptEdits`; any other mode the CLI lists under "Other...", the skip-approvals confirmation as before), Skills and tools
+  (chips; project skills through `agent.update`, library MCP servers through `mcpserver.grant`), Instructions, This project |
+  Everywhere, and "More settings" (name, role, where it runs, best practices, routing, Save as a template, Remove). A save sends
+  only the fields that changed and says "Applies from its next turn". Model and effort are never disabled: while the
+  capabilities load, or when they cannot be read, the claude adapter's known lists are offered (`agent-edit.ts` `KNOWN_CAPS`), and
+  another CLI takes typed text; the same holds in the add form (`ModelEffortFields`), which also gained a permission mode. The
+  agent page's hero shows two lines of the instructions with "Show all". (b) **The template link:** `agents.template_id`
+  (migration 00171) is set by `agenttemplate.apply` (and so by `project.setup`, which applies templates through it) and by
+  `agenttemplate.fromAgent`; deleting a template clears it; it is not exported (templates belong to the workspace). (c)
+  **Everywhere** is `agent.update` with `everywhere: true` (one call, so the person confirms one save): the agent is changed, then
+  the fields the call set among instructions, model, effort and permission mode are saved to its template and to every other
+  agent made from that template, in any project (an agent that refuses the change is named in the answer; the others
+  still take it). An agent without a template, or whose template was deleted, is linked to the template of its
+  name and CLI when one exists, else saved as a new template (`fromAgent`'s spec) and linked; later "Everywhere" saves then
+  update it. Agents still do not follow their template on their own: only an Everywhere save carries a change. This is the
+  simplest behaviour that makes the switch mean what it says without silently changing other projects. Tests:
+  `internal/core/ext_agentdraft_test.go` (TestEverywhereSavesTheChangeToTheTemplateAndItsOtherAgents),
+  `internal/projectio` (the older-schema import), `ui/app/screens/team/agent-edit.test.ts`, `agent-panel.test.browser.tsx`, the
+  ported editor tests in `team-screen.test.browser.tsx` and `run-mode.test.browser.tsx`, `ui/e2e/agent-editing.spec.ts` (model,
+  effort and permission from the Crew card, kept after a reload; Everywhere saves a template), and `round3`, `round5`, `round14`.
+
+- **P138. Describe a new agent (2026-11-01).** New agent is one dialog with the tabs Describe (the default), Configure (the form)
+  and From a template (saved templates and the prebuilt gallery; the header's Templates opens it). Describe takes one sentence
+  (or a starter: Builder, Reviewer, Tester, Docs writer, Team lead, Planner), calls **`agent.draft`** `{description,
+  projectId?}` and shows the drafted agent as fields (name, CLI, model, effort, permissions, skills and tools, instructions)
+  with a one-line "why"; Create agent calls `agent.create` (and `mcpserver.grant` for its tools). Nothing is saved before that.
+  The core drafts through the app's own one-shot model path (the economics router picks the cheapest model for a `classify`
+  run, the LLM client calls it, as the expert packs' answers and summaries do) with a JSON-only prompt that lists what is
+  installed; the answer is clamped: the CLI must be one this PC has (the installed ones, Claude Code first; every registered one
+  when none is installed), a model, effort or permission mode the CLI does not list is dropped, a mode that skips approvals is
+  never drafted, skills must be accepted skills of the project and tools library MCP servers. With no model reachable, or an
+  answer that is not a usable draft, a **rules-based drafter** writes it from keywords (security, review, lead, plan, test, docs,
+  frontend, backend give the role and its Claude preset; "never edit", "read only", "just comment" give `plan`; "best model",
+  "hardest" the strongest model at high effort; "cheap", "fast" the smallest at low effort), so the feature works offline. The
+  description is never logged or put in an event, and the model call is not cached (`NoCache`); the created agent's
+  instructions are recorded as any agent's are. Tests: `internal/core/ext_agentdraft_internal_test.go` (a table of
+  descriptions for the rules; the model path with a labelled test double for the model call: a good answer, clamping, and the
+  fallbacks), `ext_agentdraft_test.go` (the RPC without a model, nothing saved, no event carries the description),
+  `ui/app/screens/team/agent-draft.test.ts`, `agent-panel.test.browser.tsx` (Describe, draft, edit, create) and
+  `ui/e2e/agent-editing.spec.ts` (a sentence drafted by the rules and created; a starter chip).
+
 - **P139. The calm chat (2026-11-01).** The owner approved the "simple UI" ideas ("simplifying how much text there is,
   simplifying chat"); idea 3 and its mockup are built. (a) **Bursts:** consecutive tool calls between two pieces of the agent's
   text are one line ("Read 2 files, edited 1 file, ran 1 command · 2.2 s"; reasoning before them folds into it as "Thought for
