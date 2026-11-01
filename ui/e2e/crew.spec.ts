@@ -42,10 +42,10 @@ test("the Crew page: the figures, a lane and a card per agent, New agent on N, a
   await expect(timeline.getByTestId('crew-lane')).toHaveCount(2);
   await expect(timeline.getByTestId('crew-axis')).toContainText('now');
   await expect(timeline.getByTestId('crew-legend')).toHaveText('working nowfinished runfailed runwaiting on you');
-  // a card per agent: its dot, its CLI and model, its state and its line; the whole card is its name's link
+  // a card per agent: its dot, its CLI and role (the model is its chip), its state and its line; the whole card is its name's link
   const card = page.getByTestId('agent').filter({ hasText: 'Ada' });
   await expect(card.locator('[data-dot="true"]')).toBeVisible();
-  await expect(card.getByTestId('agent-runs')).toHaveText(/^Claude Code · (default model|sonnet)$/);
+  await expect(card.getByTestId('agent-runs')).toHaveText('Claude Code · backend');
   await expect(card.getByTestId('agent-runs')).toHaveAttribute('title', 'Role: backend');
   await expect(card.getByTestId('presence')).toHaveText(/^(stopped|idle|working)$/);
   await expect(card.getByTestId('agent-doing')).toBeVisible();

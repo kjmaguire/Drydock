@@ -87,7 +87,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(tel.getByTestId('telemetry-status')).toHaveAttribute('data-tone', 'ok');
   await tel.getByRole('button', { name: 'Turn telemetry off' }).click();
   await expect(tel.getByRole('button', { name: 'Turn telemetry on' })).toBeVisible();
-  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core
+  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core. It is a
+  // step further until an endpoint is set (decision P144)
+  const more = tel.getByTestId('otlp-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
   const otlp = tel.getByTestId('otlp');
   await expect(otlp.getByTestId('otlp-status')).toContainText('Not sending: sending is off.');
   await expect(otlp.getByRole('button', { name: 'Send a test span' })).toBeDisabled();

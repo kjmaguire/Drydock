@@ -201,7 +201,8 @@ function AgentCard(
               </a>
             )}
             <span class="sub" data-testid="agent-runs" title={[a.role ? `Role: ${a.role}` : '', runsWhereTitle(a) ?? ''].filter(Boolean).join('. ') || undefined}>
-              {d.runtime} · {a.model || 'default model'}
+              {/* the CLI and the role: the model and effort are the chip below (decision P144: it was said twice) */}
+              {a.role ? `${d.runtime} · ${a.role}` : d.runtime}
             </span>
           </div>
           <span class="state" data-state={d.state} data-testid="presence">

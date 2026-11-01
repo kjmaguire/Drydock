@@ -24,6 +24,8 @@ test('a chat keeps its history across a reload, continues its session, and a ref
   await expect(page).toHaveURL(/\/chats\/chat_/);
   await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
   await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code');
+  // the header names its private folder in words, not by the core's data path (decision P144)
+  await expect(page.getByTestId('chat-folder')).toHaveText('Own folder');
   await openMore(page);
   await expect(page.getByTestId('chat-place')).toHaveText('No project · runs in its own folder');
   await closeMore(page);

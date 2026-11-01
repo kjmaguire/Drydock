@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../api/client.ts';
 import type { Room } from '../api/types.ts';
 import { cleanup, mount, testServices, waitFor } from '../test/render.tsx';
-import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
+import { RoomsRail, SectionPills, SettingsRail, SubNav } from './hubnav.tsx';
 import { PROJECT_SECTIONS } from './project-sections.ts';
 
 afterEach(cleanup);
@@ -40,18 +40,25 @@ describe('the hubs', () => {
     }
     expect(mount(<SubNav route={{ name: 'library-starters' }} />).$('[data-testid="nav-library-starters"]')!.getAttribute('aria-current')).toBe('page');
     cleanup();
-    // a Settings section of more than one screen shows them as pills; a section of one shows none
-    const b = mount(<SubNav route={{ name: 'data' }} />);
+    // a Settings section of more than one screen shows them as pills beside the rail (decision P144: SectionPills, not over the
+    // rail, where they pushed it down a row); a section of one shows none
+    expect(mount(<SubNav route={{ name: 'data' }} />).$('nav')).toBeNull();
+    cleanup();
+    const b = mount(<SectionPills route={{ name: 'data' }} />);
     expect(Array.from(b.$$('a')).map((a) => [a.getAttribute('data-testid'), a.getAttribute('href')])).toEqual([
       ['nav-backups-page', '/backups'],
       ['nav-data', '/data'],
     ]);
     expect(b.$('[data-testid="nav-data"]')!.getAttribute('aria-current')).toBe('page');
     cleanup();
-    const h = mount(<SubNav route={{ name: 'license' }} />);
+    const h = mount(<SectionPills route={{ name: 'license' }} />);
     expect(Array.from(h.$$('a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-about', 'nav-support', 'nav-license', 'nav-guide']);
     cleanup();
     expect(mount(<SubNav route={{ name: 'models' }} />).$('nav')).toBeNull();
+    cleanup();
+    expect(mount(<SectionPills route={{ name: 'models' }} />).$('nav')).toBeNull();
+    cleanup();
+    expect(mount(<SectionPills route={{ name: 'library' }} />).$('nav')).toBeNull();
     cleanup();
     expect(mount(<SubNav route={{ name: 'needs-you' }} />).$('nav')).toBeNull();
   });
@@ -84,16 +91,22 @@ describe('the hubs', () => {
     // Settings: the pages that left the old tabs; a section of more than one page shows its pills (Knowledge, Plan & milestones)
     const k = mount(<SubNav route={{ name: 'repo-map' }} />, svc());
     expect(k.$('[data-testid="nav-project-settings"]')!.getAttribute('aria-current')).toBe('page');
-    expect(Array.from(k.$$('nav[aria-label="Section"] a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-knowledge-home', 'nav-requirements', 'nav-packs', 'nav-skills', 'nav-memory', 'nav-repo-map']);
-    expect(k.$('[data-testid="nav-repo-map"]')!.getAttribute('aria-current')).toBe('page');
+    // the section's pills are beside the rail, not in the tab bar's row (decision P144)
+    expect(k.$('nav[aria-label="Section"]')).toBeNull();
     cleanup();
-    const m = mount(<SubNav route={{ name: 'milestones' }} />, svc());
+    const kp = mount(<SectionPills route={{ name: 'repo-map' }} />, svc());
+    expect(Array.from(kp.$$('nav[aria-label="Section"] a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-knowledge-home', 'nav-requirements', 'nav-packs', 'nav-skills', 'nav-memory', 'nav-repo-map']);
+    expect(kp.$('[data-testid="nav-repo-map"]')!.getAttribute('aria-current')).toBe('page');
+    cleanup();
+    const m = mount(<SectionPills route={{ name: 'milestones' }} />, svc());
     expect(Array.from(m.$$('nav[aria-label="Section"] a')).map((a) => a.getAttribute('data-testid'))).toEqual(['nav-plan', 'nav-milestones']);
     cleanup();
     for (const name of ['project', 'project-integrations', 'budgets', 'activity', 'evals', 'security'] as const) {
       const r = mount(<SubNav route={{ name }} />, svc());
       expect([name, r.$('[data-testid="nav-project-settings"]')!.getAttribute('aria-current')]).toEqual([name, 'page']);
       expect(r.$('nav[aria-label="Section"]')).toBeNull();
+      cleanup();
+      expect([name, mount(<SectionPills route={{ name }} />, svc()).$('nav')]).toEqual([name, null]);
       cleanup();
     }
   });

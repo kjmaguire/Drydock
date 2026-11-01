@@ -194,3 +194,18 @@ test('Ctrl+K reaches Models and Security scan, which left the sidebar', async ({
     await expect(sidebar(page).getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');
   }
 });
+
+test("a Settings section's pills sit beside the rail, so the rail stays in place on every section (decision P144)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(at('/settings'));
+  await expect(rail(page)).toBeVisible();
+  const top = (await rail(page).boundingBox())!.y;
+  for (const path of ['/backups', '/settings/about']) {
+    await page.goto(at(path));
+    const pills = page.getByTestId('section-pills');
+    await expect(pills).toBeVisible();
+    const box = (await rail(page).boundingBox())!;
+    expect([path, box.y]).toEqual([path, top]);
+    expect((await pills.boundingBox())!.x).toBeGreaterThanOrEqual(box.x + box.width - 1);
+  }
+});

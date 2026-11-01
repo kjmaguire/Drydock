@@ -828,7 +828,7 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     await waitFor(() => expect(a.getAttribute('data-state')).toBe('working'), r);
     expect(a.querySelector('[data-dot="true"]')).not.toBeNull();
     expect(a.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_1');
-    expect(a.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · sonnet');
+    expect(a.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · backend');
     expect(a.querySelector('[data-testid="presence"]')!.textContent).toBe('working');
     await waitFor(() => expect(a.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Running go test ./... on GOC-43 Fix the limiter. Next in its queue: GOC-44.'), r);
     expect(Array.from(a.querySelectorAll('[data-testid="agent-task"]')).map((k) => k.textContent)).toEqual(['GOC-43', 'GOC-44']);
@@ -841,7 +841,9 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     const b = await waitAgent(r, 'Bo');
     await waitFor(() => expect(b.getAttribute('data-state')).toBe('waiting-on-you'), r);
     expect(b.querySelector('[data-testid="presence"]')!.textContent).toBe('waiting on you');
-    expect(b.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · opus');
+    expect(b.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · backend');
+    // the model is said once, on its chip (decision P144)
+    expect(b.querySelector('[data-testid="agent-model-chip"]')!.textContent).toContain('opus');
     await waitFor(() => expect(b.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Approve the plan on GOC-41. Open the Inbox to decide.'), r);
     expect(b.querySelector('[data-testid="agent-inbox"]')!.getAttribute('href')).toBe('/needs-you');
     expect(b.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_2');
@@ -881,10 +883,10 @@ describe('Crew (graphite): the header, Today and the cards', () => {
       [wsl, loc],
     );
     const w = await waitAgent(r, 'Linux');
-    expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · default model');
+    expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · backend');
     expect(w.querySelector('[data-testid="agent-runs"]')!.getAttribute('title')).toBe('Role: backend. Runs inside the WSL distro Ubuntu');
     const l = await waitAgent(r, 'Local helper');
-    await waitFor(() => expect(l.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Models on this PC · gpt-oss-20b'), r);
+    await waitFor(() => expect(l.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Models on this PC · backend'), r);
     await waitFor(() => expect(l.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Editing format.go.'), r);
   });
 

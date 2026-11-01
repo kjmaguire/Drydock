@@ -33,7 +33,9 @@ const layoutCss = css({
   height: '100%',
   minHeight: '0',
   background: t.bgApp,
-  '@media (max-width: 1180px)': { gridTemplateColumns: '264px minmax(0, 1fr)', '& > aside[data-crew]': { display: 'none' } },
+  // the crew rail leaves under 1180 px (crewCss hides itself: a rule here would lose to its later layer, and the rail then
+  // wrapped under the list and squeezed the centre to half its height; decision P144); the Crew tab has the crew
+  '@media (max-width: 1180px)': { gridTemplateColumns: '264px minmax(0, 1fr)' },
   '@media (max-width: 760px)': { gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 40%) minmax(0, 1fr)' },
 });
 const leftCss = css({ display: 'flex', flexDirection: 'column', minHeight: '0', borderRight: `1px solid ${t.border}`, background: t.bgSidebar });
@@ -92,7 +94,15 @@ const footCss = css({
 });
 const centreCss = css({ display: 'flex', flexDirection: 'column', minWidth: '0', minHeight: '0', overflow: 'hidden', '& > *': { flex: '1', minHeight: '0' } });
 const emptyCss = css({ display: 'grid', placeItems: 'center', alignContent: 'center', gap: t.s3, padding: t.s6, color: t.textMuted, fontSize: t.textMd, textAlign: 'center' });
-const crewCss = css({ display: 'flex', flexDirection: 'column', minHeight: '0', overflowY: 'auto', padding: `${t.s3} ${t.s3}`, borderLeft: `1px solid ${t.border}` });
+const crewCss = css({
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: '0',
+  overflowY: 'auto',
+  padding: `${t.s3} ${t.s3}`,
+  borderLeft: `1px solid ${t.border}`,
+  '@media (max-width: 1180px)': { display: 'none' },
+});
 const crewHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: `0 ${t.s1} ${t.s2}`, fontSize: t.textMd, fontWeight: '600' });
 const plusCss = css({ display: 'inline-grid', placeItems: 'center', width: '28px', height: '28px', borderRadius: t.rMd, color: t.textMuted, '&:hover': { background: t.bgHover, color: t.text } });
 const agentCss = css({

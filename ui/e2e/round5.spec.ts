@@ -25,7 +25,8 @@ test('team: create an agent with purpose, model and effort; refused values say w
 
   const row = page.getByTestId('agent').filter({ hasText: 'Pay' });
   await expect(row).toBeVisible();
-  await expect(row.getByTestId('agent-runs')).toHaveText('Claude Code · sonnet');
+  await expect(row.getByTestId('agent-runs')).toHaveText('Claude Code · backend');
+  await expect(row.getByTestId('agent-model-chip')).toHaveText('sonnet · high');
   // not on a task yet: the card's line is the first sentence of its purpose
   await expect(row.getByTestId('agent-doing')).toHaveText('Own the payments service.');
 
@@ -58,7 +59,7 @@ test('team: create an agent with purpose, model and effort; refused values say w
 
   // removal needs a confirmation and the agent leaves the team
   await projectNav(page, 'nav-team');
-  await expect(row.getByTestId('agent-runs')).toHaveText('Claude Code · opus');
+  await expect(row.getByTestId('agent-model-chip')).toHaveText('opus · max');
   await openAgentPage(page, 'Pay');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByTestId('agent-editor').getByText('More settings').click();

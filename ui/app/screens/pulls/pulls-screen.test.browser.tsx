@@ -156,6 +156,9 @@ describe('PullsScreen', () => {
     const r = mount(<PullsScreen />, svc({ githubIssues }));
     await waitFor(() => expect(r.container.textContent).toContain('No task has a pull request'), r);
     expect(r.$('h1')!.textContent).toContain('Pull requests');
+    // one explanation, with the way to turn pull requests on (decision P144)
+    expect(r.container.textContent).not.toContain('A finished task is pushed');
+    expect(r.$('[data-testid="pulls-empty-line"] a')!.getAttribute('href')).toBe('/project');
     await loadable(r);
     await r.act(() => type(byLabel(r.container, 'Labels (comma separated, optional)'), ' bug '));
     await r.act(() => byText(r.container, 'button', 'Load open issues').click());

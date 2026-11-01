@@ -36,7 +36,7 @@ import { MoveChatDialog } from './chat-move.tsx';
 import type { ComposerFile } from './chat-composer.tsx';
 import { ThinkingFold } from './chat-thinking.tsx';
 import { ChatApprovals, ChatPropertiesDialog } from './chat-properties.tsx';
-import { adapterLabel, chatCliText, chatEffort, chatModelText, chatPlaceWords, chatTitle, chatWhere, cliWarning, folderText, modeWords, modelName, propsChips, RETRY_TEXT, startsGroup } from './chats.ts';
+import { adapterLabel, chatCliText, chatEffort, chatModelText, chatPlaceWords, chatTitle, chatWhere, cliWarning, folderChipText, folderText, modeWords, modelName, propsChips, RETRY_TEXT, startsGroup } from './chats.ts';
 
 const screenCss = css({ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', minWidth: '0', flex: '1', background: t.bgApp });
 const barCss = css({ flexWrap: 'nowrap', gap: '10px', padding: `${t.s2} ${t.s6}`, '& h1': { flex: '0 1 auto', maxWidth: '50%' } });
@@ -682,7 +682,7 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
           </h1>
           <span mix={headChip} data-testid="chat-folder" title={chat.cwd} data-project={projectName ? 'true' : undefined}>
             <Icon icon={Folder} size={12} />
-            <span class="txt">{projectName ?? folderText(chat)}</span>
+            <span class="txt">{folderChipText(chat, projectName)}</span>
           </span>
           {warning ? (
             <button type="button" mix={[headChip, warnChip, on('click', openProps)]} title={chat.status === 'error' && chat.lastError ? chat.lastError : 'Open Properties to pick another agent CLI'} data-testid="chat-cli-warning">

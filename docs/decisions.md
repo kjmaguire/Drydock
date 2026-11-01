@@ -2541,3 +2541,42 @@ Open, owner action:
   cursor); e2e `ui/e2e/start.spec.ts` (a new folder with Solo: a project and a chat; an opened folder with Small team: a task
   assigned and started, then the Recent project again; Just chat; New and More options), and the specs whose Home moved
   (`home-chat`, `workspace`, `security`, `layout`, `navigation`, `flow`; `e2e/helpers.ts` opens the wizard by its address).
+
+- **P144. Said once, a step further, and the layout that held (2026-11-01).** The owner: "do another full review of the app, find
+  other ways to simplify it while keeping our good engineering of everything." Every route was opened against the real core
+  with a seeded workspace (two projects, two agents, a task waiting for approval, a project chat and a chat of its own) at
+  1440 x 900 and 1100 x 800, dark; no console error or failed request was seen. What was clearly better was built; what changes
+  how a whole area works is left as proposals. Nothing was removed: each change moves, folds or rewords. (a) **Two layout
+  defects.** Work's crew rail was meant to leave under 1180 px, but the rule sat in the grid's `css()` and lost to the rail's own,
+  later layer (README "Component rules"): at 1100 px the rail wrapped under the list and squeezed the open task to half the
+  height. The rail now hides itself (`crewCss`). A Settings section of more than one screen (Backups & data, Help & about; a
+  project's Knowledge, Plan & milestones) drew its pills over the rail, pushing the rail down a row on those sections only; the
+  pills are now `SectionPills`, drawn over the page beside the rail, and `SubNav` keeps the tab bar and the Agents library's
+  pills. (b) **Said twice, now once.** The Inbox's Needs you tab listed a task waiting for its approval twice, as its item and
+  under Running (the core counts it running); the Running group there leaves out a task with an item (`runningBesideNeeds`), and
+  disappears when nothing else runs; the Running tab and its count are unchanged. A Crew card said the model in its line
+  ("Claude Code · sonnet") and on its chip ("sonnet · medium"): the line is now the CLI and the role. The board's title repeated
+  the project's name under the tab bar that names it: it is "Tasks". Pull requests explained itself in the section's line and
+  again in the empty state: once now, with a link to Project settings where pull requests are turned on. (c) **Plain words.** A
+  chat without a project showed the core's data path in its header chip (`/…/data/chats/chat_e5b…`): "Own folder", the path in
+  the tooltip. The decision card's "Request kind: review" line is gone (the title says what is asked; the kind stays as
+  `data-kind`). The board's scheduler line ("up to 2 tasks in parallel; 0 runs executing, 0 agent slots in use (peak 1). Change
+  these under Project settings.") is "manual up to 2 tasks at once, 0 running now · Change", the agent slots in its tooltip. (d)
+  **A step further, with good defaults.** Settings > General shows the agents' environment and telemetry as before, but the box
+  of extra variables is "Pass more variables to agents" and sending to a collector is "Send to your own collector", each closed
+  until it is used (a variable passed; an endpoint set or sending on), then open by itself. A project's Agent tools by role
+  shows "Let agents act" and puts the 11-column table and its rules behind "Change what each role may use", open by itself once
+  a cell or a rule differs from Drydock's (`customized`), so a change is never out of sight. The safety switches and every
+  control are where they were, one click further. (e) Not built, proposed to the owner with mockups: project Settings from
+  eight sections to four (Budgets, Evals report and Security as one Insights section; the raw event log to Help & about; Plan
+  as "Plan a goal" on Work), the task page as one column with the properties under Details, the Inbox's Mine and Done today as
+  a filter and a section, Routing's empty wiring, the Agents library's second heading. Tests:
+  `ui/app/shell/hubnav.test.browser.tsx` (SectionPills, SubNav without them), `screens/needs-you/needs-you.test.ts` and
+  `needs-you-screen.test.browser.tsx` (the Running group beside the items), `screens/chats/chats.test.ts` and
+  `chats-screen.test.browser.tsx` (`folderChipText`), `screens/team/team-screen.test.browser.tsx` and
+  `run-mode.test.browser.tsx` (the card's line, the chip), `screens/tasks/task-list-screen.test.browser.tsx` (the title, the
+  scheduler line), `review-panel.test.browser.tsx`, `screens/pulls/pulls-screen.test.browser.tsx`,
+  `screens/integrations/role-tools.test.ts` and `role-tools.test.browser.tsx` (`customized`, the disclosure),
+  `screens/settings/settings-screen.test.browser.tsx` (both disclosures); e2e `narrow.spec.ts` (Work at 1100 px: no crew rail,
+  the centre's full height; the Backups pills beside the rail), `chats.spec.ts`, `crew.spec.ts`, `round5.spec.ts`,
+  `board.spec.ts`, `agent-tools.spec.ts`, `diagnostics.spec.ts`, `round3.spec.ts`, `round7.spec.ts`, `wsl.spec.ts`.

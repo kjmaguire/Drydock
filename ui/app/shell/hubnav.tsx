@@ -84,25 +84,50 @@ function settingsPills(route: Route, sections: readonly SettingsSection[] = SETT
   return sec.pages.map((p) => ({ label: p.label, href: p.href, testId: p.testId, on: [...p.on] }));
 }
 
+/** A pill: a link to one of the hub's pages, marked when the route is one of its pages. */
+function pillLink(p: Pill, route: Route): RemixNode {
+  return (
+    <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
+      {p.icon ? <Icon icon={p.icon} size={14} /> : null}
+      {p.label}
+    </a>
+  );
+}
+
 /**
- * The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. In
- * Settings, the pills are the screens of the section open, when it has more than one.
+ * The screens of the open Settings section as pills, when it has more than one (Backups & data, Help & about; a project's
+ * Knowledge, Plan & milestones). The shell draws them over the page, beside the Settings rail, so the rail stays in the same
+ * place on every section (decision P144; above the rail, they pushed it down a row on those sections only).
+ */
+export function SectionPills(handle: Handle<{ route: Route }>) {
+  return () => {
+    const { route } = handle.props;
+    const hub = hubOf(route);
+    const pills = hub === 'settings' ? settingsPills(route) : hub === 'project-settings' ? settingsPills(route, PROJECT_SECTIONS) : undefined;
+    if (!pills) return null;
+    return (
+      <nav aria-label="Section" mix={subCss} data-testid="section-pills">
+        {pills.map((p) => pillLink(p, route))}
+      </nav>
+    );
+  };
+}
+
+/**
+ * What goes over the page and its rail: a project's tab bar, and the pills of a hub without a rail (the Agents library), or
+ * nothing when the hub has one page. The trailing pills come after a gap and a hairline. A Settings section's pills are
+ * SectionPills, beside the rail.
  */
 export function SubNav(handle: Handle<{ route: Route }>) {
   return () => {
     const { route } = handle.props;
     const hub = hubOf(route);
     const tabs = isProjectHub(hub) ? <ProjectTabs route={route} /> : null;
-    const pills = hub === 'settings' ? settingsPills(route) : hub === 'project-settings' ? settingsPills(route, PROJECT_SECTIONS) : PILLS[hub];
+    const pills = PILLS[hub];
     if (!pills) return tabs;
     const title = HUB_TITLES[hub];
     const first = pills.findIndex((p) => p.trailing);
-    const pill = (p: Pill) => (
-      <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
-        {p.icon ? <Icon icon={p.icon} size={14} /> : null}
-        {p.label}
-      </a>
-    );
+    const pill = (p: Pill) => pillLink(p, route);
     return (
       <>
       {tabs}

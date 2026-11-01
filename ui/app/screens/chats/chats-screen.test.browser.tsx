@@ -1510,7 +1510,8 @@ describe('The graphite Chats screen (P97)', () => {
     const { r } = conv(wsl, [msg(1, 'user', 'hi')], { connectionList: async () => [conn('Ubuntu')] });
     await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toBe('Claude Code WSL'), r);
     const header = must$(r, '[data-testid="chat-view"] > header');
-    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('~/.drydock/chats/chat_a');
+    // its private folder is "Own folder", the path in the tooltip (decision P144)
+    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('Own folder');
     expect(must$(r, '[data-testid="chat-folder"]').getAttribute('title')).toBe(wsl.cwd);
     // the state's words are for readers in the header; ⋯ shows the CLI with its dot (green: a session is kept) and where it runs
     const status = must$(r, '[data-testid="chat-status"]');
