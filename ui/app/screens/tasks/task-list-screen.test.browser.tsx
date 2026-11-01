@@ -134,7 +134,7 @@ describe('TaskListScreen: the board', () => {
   it('has the bar of the mockup: the project, Board / List / Timeline, the filters, the crew line and New task (C)', async () => {
     const { r, taskSummaries } = board();
     await shown(r, 8);
-    expect(r.$('h1')!.textContent).toContain('gocalc');
+    expect(r.$('h1')!.textContent).toBe('Tasks');
     const tabs = Array.from(r.$$('[role="tab"]')).map((x) => [x.textContent, x.getAttribute('data-testid'), x.getAttribute('aria-selected')]);
     expect(tabs).toEqual([
       ['Board', 'task-view-board', 'true'],
@@ -497,7 +497,10 @@ describe('Scheduler', () => {
     const schedulerTick = recorder(() => ({ promoted: ['t1'], started: ['t1'], skipped: [{ taskId: 't2', reason: 'the worker is busy' }], active: 1, capacity: 1, max: 2 }));
     const r = mount(<SchedulerPanel projectId="prj_1" />, svc({ schedulerStatus: async () => status, schedulerTick }));
     await waitFor(() => expect(r.$('[data-testid="scheduler"]')!.textContent).toContain('manual'), r);
-    expect(r.$('[data-testid="scheduler"]')!.textContent).toContain('up to 2 tasks in parallel');
+    // one plain line with a link to change it (decision P144); the agent slots are its tooltip
+    expect(r.$('[data-testid="scheduler-facts"]')!.textContent).toBe('manual up to 2 tasks at once, 0 running now · Change');
+    expect(r.$('[data-testid="scheduler-change"]')!.getAttribute('href')).toBe('/project');
+    expect(r.$('[data-testid="scheduler-facts"]')!.getAttribute('title')).toContain('in use (peak');
     await r.act(() => byText(r.container, 'button', 'Start ready tasks now').click());
     await waitFor(() => expect(r.$('[data-testid="tick-result"]')).toBeTruthy(), r);
     const out = r.$('[data-testid="tick-result"]')!;

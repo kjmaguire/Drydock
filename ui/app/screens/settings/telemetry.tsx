@@ -10,6 +10,7 @@ import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, kv, muted } from '../../ui/data.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { t } from '../../ui/tokens.ts';
 import { Done, Group, panel, Row } from './settings-kit.tsx';
 import { OtlpExport } from './telemetry-otlp.tsx';
@@ -102,7 +103,12 @@ export function TelemetryPanel(handle: Handle) {
             </div>
           </div>
         ) : null}
-        {st?.otlp ? <OtlpExport status={st.otlp} telemetryOn={st.enabled} onChanged={(next) => q.set(next)} /> : null}
+        {/* sending to a collector is a step further (decision P144): closed until an endpoint is set or sending is on */}
+        {st?.otlp ? (
+          <Disclosure summary="Send to your own collector" open={st.otlp.enabled || !!st.otlp.endpoint} testId="otlp-more">
+            <OtlpExport status={st.otlp} telemetryOn={st.enabled} onChanged={(next) => q.set(next)} />
+          </Disclosure>
+        ) : null}
         {exported ? (
           <Done testId="telemetry-exported">
             <span>

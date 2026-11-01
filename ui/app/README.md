@@ -139,15 +139,16 @@ sizes are only 12, 12.5, 13, 15, 18 and 22 px (`t.text*`; `e2e/density.spec.ts` 
 The shell is the sidebar, the page (with the hub's pills, and a rail on Rooms and Settings), and the details panel beside a
 conversation:
 
-- **Sidebar** (`shell/sidebar.tsx`, landmark "Main"; the arrow keys, Home and End move through its links): the workspace
-  switcher ("Switch project", the kit `Menu`), search (Ctrl+K), **Inbox** (`/needs-you`, the count of what needs you in every
-  project), **Running**, **My tasks**, **Chats**, the projects (one line each; a project's pages have its tab bar
-  **Work, Crew, Settings**, decision P141), the workspace's **Security**, **Agents**, **Integrations**, **Models** and
-  **Library** (decision P98), then **Settings**, the **Guide**, the local engine's state and the event stream. "[" (never while typing) or its
+- **Sidebar** (`shell/sidebar.tsx`, landmark "Main"; the arrow keys, Home and End move through its links): the Drydock
+  name with search (Ctrl+K) and the fold, **New** (Ctrl+N: the start screen, P142), **Home**, **Inbox** (`/needs-you`, the count
+  of what needs you in every project; Running and Mine are its tabs), **Chats**, the projects (one line each; a project's pages
+  have its tab bar **Work, Crew, Settings**, decision P141), and at the foot **Agents** (the library) and **Settings** (every
+  workspace page is one of its sections, P140), the local engine's state and the event stream. "[" (never while typing) or its
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
   (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.
 - **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
-  "Rooms", `data-rooms`); the Settings rail lists Routing and the app's pages (landmark "Settings"). The old test ids live on:
+  "Rooms", `data-rooms`); the Settings rail lists the sections (landmark "Settings"; a project's is "Project settings"), and a
+  section of more than one screen has its pills over the page beside it (`SectionPills`, P144). The old test ids live on:
   `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is
   not on the page.
 - **Rooms are named without "#"**: a small lucide icon (`roomIcon(kind)` in `ui/icon.tsx`), then the name; a direct

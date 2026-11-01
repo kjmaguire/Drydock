@@ -135,7 +135,7 @@ describe('where an agent runs', () => {
     const pay = agent({ runMode: 'wsl', wslDistro: 'Ubuntu' });
     const page = show([pay]);
     const card = await waitFor(() => page.$('[data-testid="agent"][data-name="Pay"]') ?? (() => { throw new Error('no card'); })(), page);
-    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · default model');
+    expect(card.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · backend');
     cleanup();
     const calls: Record<string, unknown>[] = [];
     const update = async (u: AgentUpdate) => (calls.push(u as unknown as Record<string, unknown>), { ...agent(), ...u } as Agent);

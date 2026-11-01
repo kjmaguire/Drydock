@@ -135,10 +135,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     return (
       <div mix={cardCss} data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
         <h3>{visible(p.spec.title)}</h3>
+        {/* the request's kind (review, question, approval) is its data-kind, not a line: the title says what is asked (P144) */}
         <div class="meta">
-          <span>
-            Request kind: <code>{p.spec.kind}</code>
-          </span>
           {info.branch ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', minWidth: '0', maxWidth: '100%', overflowWrap: 'anywhere' }}>
               <Icon icon={GitBranch} size={13} />

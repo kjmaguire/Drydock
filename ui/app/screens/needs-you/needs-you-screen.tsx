@@ -41,6 +41,7 @@ import {
   needsRowTitle,
   needsSubtitle,
   needsTarget,
+  runningBesideNeeds,
   scanProgress,
   shortHash,
   startOfToday,
@@ -323,12 +324,15 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     const doneList = done.data ?? [];
 
     const needsRows: Row[] = needs.map((item) => ({ key: `needs:${item.key}`, type: 'needs', item }));
-    const runRows: Row[] = [
-      ...runningTasks.map((summary): Row => ({ key: `task:${summary.taskId}`, type: 'task', summary })),
+    const runRowsOf = (tasks: readonly TaskSummary[]): Row[] => [
+      ...tasks.map((summary): Row => ({ key: `task:${summary.taskId}`, type: 'task', summary })),
       ...scans.map((scan): Row => ({ key: `scan:${scan.id}`, type: 'scan', scan })),
     ];
+    const runRows = runRowsOf(runningTasks);
+    // under the items on Needs you, a task is not listed again when it already has an item there (decision P144)
+    const runRowsHere = active === 'needs' ? runRowsOf(runningBesideNeeds(runningTasks, needs)) : runRows;
     const doneRows: Row[] = doneList.map((task) => ({ key: `done:${task.id}`, type: 'done', task }));
-    rows = active === 'needs' ? [...needsRows, ...runRows] : active === 'running' ? runRows : active === 'done' ? doneRows : [];
+    rows = active === 'needs' ? [...needsRows, ...runRowsHere] : active === 'running' ? runRows : active === 'done' ? doneRows : [];
     // the selection stays on its item; when the item leaves (it was answered), the one now in its place is selected
     const at = rows.findIndex((r) => r.key === selected);
     if (at >= 0) lastIndex = at;
@@ -462,9 +466,9 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
         </h2>
         <ErrorNote error={ws.summaries.error} what="Could not load the running tasks" />
         {ws.summaries.data && running === 0 ? <p mix={emptyCss}>No agent is working on a task and no scan runs.</p> : null}
-        {running ? (
+        {runRowsHere.length ? (
           <ul mix={listCss} aria-label="Running now">
-            {runRows.map((r) => runRow(r as Extract<Row, { type: 'task' | 'scan' }>))}
+            {runRowsHere.map((r) => runRow(r as Extract<Row, { type: 'task' | 'scan' }>))}
           </ul>
         ) : null}
       </section>
@@ -502,7 +506,8 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
               {active === 'needs' ? (
                 <>
                   {needsSection}
-                  {runningSection}
+                  {/* every running task already has its item above: no second, empty-looking Running group */}
+                  {running > 0 && runRowsHere.length === 0 ? null : runningSection}
                 </>
               ) : active === 'running' ? (
                 runningSection

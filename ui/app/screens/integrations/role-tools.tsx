@@ -14,7 +14,8 @@ import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, Switch } from '../../ui/form.tsx';
 import { Section, tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { cellLabel, changedColumns, columnNote, nextCell, ruleProblem, RULE_VARIABLES } from './role-tools.ts';
+import { Disclosure } from '../../ui/disclosure.tsx';
+import { cellLabel, changedColumns, columnNote, customized, nextCell, ruleProblem, RULE_VARIABLES } from './role-tools.ts';
 
 const tableCss = css({
   width: '100%',
@@ -100,7 +101,7 @@ export function RoleToolsPanel(handle: Handle<{ projectId: string }>) {
         label="Agent tools by role"
         testId="role-tools"
         title="Agent tools by role"
-        description="Which tools each role's agents get here, and which kinds of servers they may reach once a server is granted to them above. Every role may propose memory; you decide what is kept."
+        description="Which tools each role's agents get in this project. Drydock's defaults fit most projects."
       >
         <ErrorNote error={q.error} what="Could not load the table" />
         <ErrorNote error={act.error} what="Not changed" />
@@ -118,6 +119,13 @@ export function RoleToolsPanel(handle: Handle<{ projectId: string }>) {
               disabled={ro || !!act.busy}
               onChange={(yes) => void setAct(yes)}
             />
+            {/* the table and the rules are a step further (decision P144): closed while they are Drydock's defaults, open by
+                themselves once a cell or a rule of this project differs, so a change is never out of sight */}
+            <Disclosure summary="Change what each role may use" open={customized(v)} testId="role-tools-more">
+            <p mix={muted}>
+              A row per role, a column per tool or kind of server it may reach once a server is granted to it above. Every role may
+              propose memory; you decide what is kept.
+            </p>
             <div mix={tableCard}>
               <table mix={tableCss} data-testid="role-table">
                 <thead>
@@ -237,6 +245,7 @@ export function RoleToolsPanel(handle: Handle<{ projectId: string }>) {
                 ))}
               </ul>
             </div>
+            </Disclosure>
           </>
         )}
       </Section>

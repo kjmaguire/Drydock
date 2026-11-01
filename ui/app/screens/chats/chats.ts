@@ -365,6 +365,16 @@ export function folderText(c: Pick<Chat, 'cwd' | 'wslDistro'>, max = 48): string
   return shortPath(p, max);
 }
 
+/**
+ * The header's folder chip (decision P139): the project's name for a project chat; "Own folder" for a chat in its private
+ * folder, whose path (the core's data folder, chats/<id>) says nothing to the person (decision P144); else the folder chosen,
+ * as its CLI sees it. The full path is the chip's tooltip either way.
+ */
+export function folderChipText(c: Pick<Chat, 'id' | 'cwd' | 'wslDistro'>, projectName?: string): string {
+  if (projectName) return projectName;
+  return inOwnFolder(c) ? 'Own folder' : folderText(c);
+}
+
 /** The command a waiting request would run, or '' when it is not a shell command. */
 export function askCommandOf(a: { input?: unknown }): string {
   const f = a.input && typeof a.input === 'object' && !Array.isArray(a.input) ? (a.input as Record<string, unknown>) : {};

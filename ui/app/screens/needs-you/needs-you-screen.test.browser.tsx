@@ -282,6 +282,28 @@ describe('the Inbox', () => {
     expect(calls.taskList[0]).toEqual(['', ['COMPLETED'], { completedSince: startOfToday() }]);
   });
 
+  it('a running task that already has an item is not listed again under it on Needs you; the Running tab keeps it (P144)', async () => {
+    // the rate limit task (t4) runs and waits for a review at once
+    const review: NeedsYouItem = { key: 'approval:apr9', kind: 'review', severity: 2, title: 'Review and merge: Rate limit the checkout API', projectId: 'p2', taskId: 't4', taskSeq: 12, approvalId: 'apr9', createdAt: iso(NOW) };
+    const { s } = servicesWith({}, [review]);
+    const r = mount(<NeedsYouScreen />, s);
+    await waitFor(() => expect(r.$$('[data-testid="needs-item"]').length).toBe(1), r);
+    await waitFor(() => expect(r.$('[data-testid="running-scan"]')).toBeTruthy(), r);
+    // the scan still runs under it; the task is its item only
+    expect(r.$$('[data-testid="running-item"]').length).toBe(0);
+    expect(Array.from(r.$$('[data-row-key]')).map((x) => x.getAttribute('data-row-key'))).toEqual(['needs:approval:apr9', 'scan:scan1']);
+    await r.act(() => (r.$('[data-testid="inbox-tab-running"]') as HTMLButtonElement).click());
+    expect(r.$$('[data-testid="running-item"]').length).toBe(1);
+    expect(r.$('[data-testid="inbox-tab-running"] [data-testid="tab-count"]')!.textContent).toBe('2');
+    cleanup();
+    // when every running thing has its item, the Needs you tab shows no Running group at all
+    const { s: s2 } = servicesWith({ securityScanRunning: async () => [] }, [review]);
+    const r2 = mount(<NeedsYouScreen />, s2);
+    await waitFor(() => expect(r2.$$('[data-testid="needs-item"]').length).toBe(1), r2);
+    await waitFor(() => expect(s2.workspace.runningCount).toBe(1), r2);
+    expect(r2.$('[data-testid="inbox-running"]')).toBeNull();
+  });
+
   it('the Mine tab is My tasks (decision P140): the tasks assigned to the person in every project, each a link to its task', async () => {
     const { s, calls } = servicesWith();
     const r = mount(<NeedsYouScreen tab="mine" />, s);

@@ -12,6 +12,8 @@ test("a project's tools by role: a changed cell is kept and put back, rules are 
   await projectNav(page, 'nav-project-integrations');
   const panel = page.getByTestId('role-tools');
   await expect(panel).toBeVisible();
+  // the table is a step further while it is Drydock's (decision P144); a changed cell keeps it open after a reload
+  await panel.getByText('Change what each role may use').click();
   const cell = panel.getByLabel('PM: Read files', { exact: true });
   await expect(cell).not.toBeChecked();
   await expect(panel.getByLabel('Backend: Read files', { exact: true })).toBeChecked();

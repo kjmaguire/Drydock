@@ -40,6 +40,9 @@ test('diagnostics: each category is its own stored switch, and sending can take 
   // compression and what was recorded before: telemetry on, a collector on this computer that nobody runs
   if ((await tel.getByTestId('telemetry-status').textContent()) !== 'on') await tel.getByRole('button', { name: 'Turn telemetry on' }).click();
   await expect(tel.getByTestId('telemetry-status')).toHaveText('on');
+  // sending to a collector is a step further until an endpoint is set (decision P144)
+  const more = tel.getByTestId('otlp-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
   const otlp = tel.getByTestId('otlp');
   await otlp.getByLabel('Endpoint (OTLP/HTTP)').fill('http://127.0.0.1:9');
   await otlp.getByRole('button', { name: 'Save endpoint' }).click();

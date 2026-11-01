@@ -282,12 +282,16 @@ describe('OTLP export (decision P113)', () => {
       }),
     );
     const box = await waitFor(() => tid(r.container, 'otlp'), r);
+    // a step further while no endpoint is set (decision P144)
+    const more = tid(r.container, 'otlp-more') as HTMLDetailsElement;
+    expect([more.open, more.querySelector('summary')!.textContent]).toEqual([false, 'Send to your own collector']);
     expect(tid(r.container, 'otlp-status').textContent).toContain('Not sending: sending is off.');
     expect(btn(r.container, 'Send a test span').disabled).toBe(true); // nothing to send to yet
     await r.act(() => type(byLabel(box, 'Endpoint (OTLP/HTTP)'), 'https://collector.example.com:4318'));
     await r.act(() => type(byLabel<HTMLSelectElement>(box, 'Encoding'), 'json'));
     await r.act(() => btn(box, 'Save endpoint').click());
     await waitFor(() => expect(changes).toEqual([{ endpoint: 'https://collector.example.com:4318', encoding: 'json' }]), r);
+    await waitFor(() => expect((tid(r.container, 'otlp-more') as HTMLDetailsElement).open).toBe(true), r);
 
     await r.act(() => type(byLabel(box, 'Header name'), 'x-api-key'));
     await r.act(() => type(byLabel(box, 'Header value'), 'secret-value-123'));
@@ -359,7 +363,9 @@ describe('AgentEnvSection', () => {
     const { r, calls, box } = envSection();
     await waitFor(() => expect(box.value).toBe('AWS_PROFILE'), r);
     expect(tid(r.container, 'agent-env').textContent).toContain('Agent programs start with a trimmed environment');
-    expect(r.container.querySelector('details')!.textContent).toContain('PATH, HOME');
+    expect(r.container.querySelectorAll('details')[1]!.textContent).toContain('PATH, HOME');
+    // the box opens by itself when a variable is passed already (decision P144: a step further while none is)
+    await waitFor(() => expect((tid(r.container, 'agent-env-more') as HTMLDetailsElement).open).toBe(true), r);
     await r.act(() => type(box, 'AWS_PROFILE\n\n CLAUDE_CODE_USE_BEDROCK '));
     await r.act(() => btn(r.container, 'Save').click());
     await waitFor(() => expect(calls).toEqual([['AWS_PROFILE', 'CLAUDE_CODE_USE_BEDROCK']]), r);

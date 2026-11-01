@@ -28,6 +28,8 @@ describe('Review panel', () => {
     const card = r.$('[data-testid="pending-request"]')!;
     expect(card.getAttribute('data-request-id')).toBe('req-42');
     expect(card.getAttribute('data-kind')).toBe('review');
+    // the kind is an attribute, not a line of jargon (decision P144)
+    expect(card.textContent).not.toContain('Request kind');
     expect(card.textContent).toContain('drydock/t1');
     expect(card.textContent).toContain('calc.go');
     await r.act(() => byText(r.container, 'button', 'Approve').click());

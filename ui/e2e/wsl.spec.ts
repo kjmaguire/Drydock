@@ -131,9 +131,10 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   const chatId = page.url().split('/').pop() ?? '';
   await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code WSL');
   await expect(page.getByTestId('chip-adapter')).toHaveAttribute('title', `Runs inside the WSL distro ${distro()}`);
-  // the header (graphite, P97): the folder as the distro names it (a Linux path, its middle cut when long: the stand-in's home is
-  // a temporary folder), and where the chat runs in words
-  await expect(page.getByTestId('chat-folder')).toHaveText(new RegExp(`^[~/][^\\\\]*/chats/${chatId}$`));
+  // the header (graphite, P97): its private folder is "Own folder" with the path in the tooltip (decision P144), and where the
+  // chat runs in words
+  await expect(page.getByTestId('chat-folder')).toHaveText('Own folder');
+  await expect(page.getByTestId('chat-folder')).toHaveAttribute('title', new RegExp(`chats[\\\\/]${chatId}$`));
   await page.getByTestId('chat-more').click();
   await expect(page.getByTestId('chat-place')).toHaveText('No project · runs inside the distro');
   // the private folder inside the distro, named the Windows way

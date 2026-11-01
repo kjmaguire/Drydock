@@ -49,6 +49,15 @@ test('a half-screen window keeps the conversation readable and the panels out of
   const sidebar = page.getByTestId('sidebar');
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect(sidebar).toHaveAttribute('data-rail', 'true');
+  // Work at 1100 px (decision P144): the crew rail leaves (the Crew tab has it) and the centre keeps the page's height; before,
+  // the rail wrapped under the list and squeezed the open item to half of it
+  await page.goto(new URL('/', page.url()).toString());
+  await expect(page.getByTestId('work')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Crew' })).toBeHidden();
+  const work = (await page.getByTestId('work').boundingBox())!;
+  const centre = (await page.getByTestId('work-centre').boundingBox())!;
+  expect(centre.height).toBeGreaterThanOrEqual(work.height - 2);
+  await noSidewaysScroll(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(sidebar).not.toHaveAttribute('data-rail', 'true');
 });

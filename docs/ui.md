@@ -113,15 +113,21 @@ Aikido say in one visible sentence why there is no Sign in button (`integration-
   avatar with its state, name and "Model · effort"; a click opens the agent editor in place (P137's panel; the one place that says
   how is `screens/work/edit-agent.ts`), "+" goes to the Crew tab; then Spent so far, First check, Security and Merged this week,
   each a link to its page (the old Overview's Insights). The Overview page (greeting, crew cards, Today's numbers) is gone: what
-  it showed is in the list and the rail.
+  it showed is in the list and the rail. Under 1180 px the crew rail leaves (the Crew tab has the crew) and the centre keeps the
+  full height (decision P144: the rule hiding it lost to the rail's own later cascade layer, so the rail wrapped under the list).
+  The board (`/tasks`) is titled **Tasks**: the project's name and colour are the tab bar's. Its scheduler line is one sentence
+  ("manual up to 2 tasks at once, 0 running now · Change", the agent slots in its tooltip).
 - **Hub pills (`ui/app/shell/hubnav.tsx`, the "Section" navigation):** a hub with sub-pages shows them as pills under the
   bar: **Agents** (the hub's name, then My agents `/library`, Starters `/library/starters`, Skills `/library/skills`, and set apart
   **All crews** `/crew`; decision P140), a Settings section of more than one screen (Backups & data: Backups, Export and
   import; Help & about: About, Support bundle, License, Guide) and a project Settings section of more than one page (Knowledge;
-  Plan & milestones). Nothing of one project is in the workspace's Settings.
+  Plan & milestones). Nothing of one project is in the workspace's Settings. A Settings section's pills (`SectionPills`) are drawn
+  over the page, beside the rail, not above it, so the rail stays in the same place on every section (decision P144).
 - **One Settings (decision P140; `ui/app/shell/settings-sections.ts`):** `/settings` is one page: the Settings rail on the left
   ("Settings", a search box, the sections) and the section's screen beside it. The sections, in order: **General**
-  (`/settings`: theme, what agents inherit, telemetry, diagnostics, updates, not built yet), **Agent CLIs** (`/agents(/:key)`,
+  (`/settings`: theme, what agents inherit, telemetry, diagnostics, updates, not built yet; since P144 the box of extra variables
+  for agents is "Pass more variables to agents", closed while none is passed, and sending telemetry to a collector is "Send to
+  your own collector", closed until an endpoint is set or sending is on), **Agent CLIs** (`/agents(/:key)`,
   `/connections`), **Models** (`/models(/:key)`, `/providers`), **Routing & budgets** (`/routing`; budgets are per project, a
   section of its Settings tab), **Integrations** (`/integrations(/:key)`, `/mcp`), **GitHub** (`/github`; still also the GitHub row of
   Integrations), **Security scan** (`/security-scan`), **Backups & data** (`/backups`, `/data`), **Shortcuts**
@@ -423,13 +429,23 @@ main."). Opening the project (`repo.syncState` when its last check is over two m
 only, so the count stays fresh; Settings > GitHub > Project folders > **Check for new commits** turns that off. `repo.synced`
 re-reads the line.
 
+**Said once (as built, decision P144).** A second review of every screen took out what was shown twice and folded what few
+people change: the Inbox's Needs you tab lists under its items only the running tasks that have no item there (a task waiting
+for its approval was in both groups; the Running tab and its count keep every task); a Crew card's line under the name is the CLI
+and the role ("Claude Code · backend"; the model and effort are the chip under it); a task's decision card no longer prints
+"Request kind: review" (the kind is its `data-kind`); Pull requests explains itself once (the section's line while there are
+some, the empty state's, with a link to Project settings, while there are none); a project's **Agent tools by role** shows the
+"Let agents act" switch and, behind "Change what each role may use", the table and the rules, open by themselves once a cell or
+a rule of the project differs from Drydock's (`customized` in `screens/integrations/role-tools.ts`).
+
 **The calm chat (as built, decision P139).** A chat's conversation folds what a person rarely reads: a run of tool calls between
 two pieces of the agent's text is one quiet line with its counts and time (`chat-burst.tsx` `BurstLine`, opened to the tool
 cards; a failed call opens it by itself, a running one names its step), a turn's edits are one "Changed N files +A −D" card with
 Review changes (a dialog of the diffs), and the replies an offer invites are chips under the final answer
 (`chat-groups.ts`: grouping, the changes, the replies; the rows are worked out again only when the feed's list is a new one, so
 the stream and typing cost nothing more). Ctrl+O (verbose, kept per viewer in `localStorage` `drydock.chat.verbose`) opens every
-line; the composer says so in one faint line. The header is the title, the folder or project chip, one warning chip when the CLI
+line; the composer says so in one faint line. The header is the title, the folder or project chip ("Own folder" for a chat in
+its private folder, the path in the tooltip; decision P144), one warning chip when the CLI
 is in a bad state, and ⋯ (a popover: the CLI with its state, where the chat runs, skills and MCP servers, Allowed tools as a
 second view of the same panel, Properties, Fork, Move to a project). The composer's chips: agent CLI (opens Properties), model ·
 effort (chat settings), permission mode, then attach files, attach chats, Stop and Send. No explanatory paragraphs: an empty chat

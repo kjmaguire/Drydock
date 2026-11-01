@@ -19,7 +19,7 @@ import { Page } from '../ui/layout.tsx';
 import { t } from '../ui/tokens.ts';
 import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
-import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
+import { RoomsRail, SectionPills, SettingsRail, SubNav } from './hubnav.tsx';
 import { LicenseBanner } from './license-banner.tsx';
 import { PROJECT_SECTIONS } from './project-sections.ts';
 import { TermsNotice } from './terms-notice.tsx';
@@ -229,6 +229,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
                 </Button>
               </div>
             ) : null}
+            {hub === 'settings' || (project && hub === 'project-settings') ? <SectionPills route={route} /> : null}
             {dmError ? (
               <div style={{ padding: '8px 16px' }}>
                 <ErrorNote error={dmError} what="Could not open the direct message" />

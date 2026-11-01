@@ -17,6 +17,7 @@ import {
   needsRowTitle,
   needsSubtitle,
   needsTarget,
+  runningBesideNeeds,
   scanProgress,
   shortHash,
   startOfToday,
@@ -245,5 +246,14 @@ describe('the Inbox items of P130', () => {
     expect(needsHint(item({ kind: 'join_request' }))).toContain('it never joins by itself');
     expect(needsSubtitle(item({ kind: 'join_request', agentName: 'Sec', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · request to join · asked 2 min ago');
     expect(needsSubtitle(item({ kind: 'agent', agentName: 'Cx', createdAt: new Date(Date.now() - 120_000).toISOString() }), 'gocalc')).toBe('gocalc · agent · Cx · 2 min ago');
+  });
+});
+
+describe('the Running group under Needs you (decision P144)', () => {
+  it('leaves out a running task that has an item of its own; an item of no task changes nothing', () => {
+    const running = [{ taskId: 't1' }, { taskId: 't2' }, { taskId: 't3' }];
+    expect(runningBesideNeeds(running, [{ taskId: 't2' }, { taskId: undefined }, { taskId: 't9' }])).toEqual([{ taskId: 't1' }, { taskId: 't3' }]);
+    expect(runningBesideNeeds(running, [])).toEqual(running);
+    expect(runningBesideNeeds([], [{ taskId: 't1' }])).toEqual([]);
   });
 });
