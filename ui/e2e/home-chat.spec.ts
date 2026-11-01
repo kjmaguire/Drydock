@@ -37,7 +37,8 @@ test('Just chat on Home starts a chat without a project; its skill and MCP serve
   await page.getByRole('button', { name: 'Properties' }).click();
   const setup = page.getByRole('dialog', { name: 'Chat properties' });
   await expect(setup.getByLabel('Agent CLI', { exact: true })).toHaveAttribute('data-value', 'claude');
-  await expect(setup.getByLabel('Folder', { exact: true })).toHaveValue('');
+  // a chat without a project runs in a private folder Drydock makes for it
+  await expect(setup.getByLabel('Folder', { exact: true })).toHaveValue(/chats/);
   await setup.getByLabel('Filter skills').fill('wrangler');
   await setup.locator('[data-testid=chat-skill-option][data-name=wrangler] input').check();
   await setup.locator('[data-testid=chat-mcp-option][data-server=chatmcp] input').check();

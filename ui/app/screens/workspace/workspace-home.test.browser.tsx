@@ -68,7 +68,7 @@ describe('Home is the start screen (P142)', () => {
     expect(r.$('h1')!.textContent).toBe('What do you want to build?');
     expect(r.$$('[data-testid="workspace-home"] p').length).toBe(1);
     await waitFor(() => expect(chipText(r, 'start-model')).toBe('sonnet · medium'), r);
-    expect(chipText(r, 'start-where')).toBe('New folder: new-project');
+    await waitFor(() => expect(chipText(r, 'start-where')).toBe('New folder: new-project'), r);
     expect(chipText(r, 'start-who')).toBe('Solo · Claude Code');
     expect(chipText(r, 'start-permission')).toBe('Edits freely');
     await r.act(() => type(box(r), 'A small Go CLI that converts CSV to JSON'));

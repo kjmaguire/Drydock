@@ -88,7 +88,7 @@ const chipCss = css({
   color: t.text,
   fontSize: t.textSm,
   '& .n': { fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  '& .d': { color: t.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& .d': { color: t.textMuted, fontWeight: '400' },
   '& svg': { flex: 'none', color: t.textMuted },
   '&:hover:not(:disabled)': { background: t.bgHover },
   '&[aria-expanded="true"]': { borderColor: t.accent },
@@ -158,8 +158,10 @@ function chip(mix: MixInput<HTMLElement>, expanded: boolean, testId: string, lab
   return (
     <button type="button" mix={[chipCss, mix]} data-testid={testId} aria-haspopup="dialog" aria-expanded={expanded ? 'true' : 'false'} aria-label={`${label}: ${name}${detail ? ` ${detail}` : ''}`} disabled={disabled}>
       {icon ? <Icon icon={icon} size={13} /> : null}
-      <span class="n">{name}</span>
-      {detail ? <span class="d">· {detail}</span> : null}
+      <span class="n">
+        {name}
+        {detail ? <span class="d"> · {detail}</span> : null}
+      </span>
       <Icon icon={ChevronDown} size={12} />
     </button>
   );
