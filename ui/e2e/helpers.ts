@@ -226,7 +226,8 @@ export async function createProject(page: Page, name: string, repo?: string): Pr
   await showNewProjectForm(page);
   await wizardToReview(page, { name, repo: repo ?? freshRepo() });
   await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  // the new project opens on its Work (decision P141)
+  await expect(page.getByTestId('work')).toBeVisible();
 }
 
 /**
@@ -239,7 +240,8 @@ export async function createProjectWithoutRepo(page: Page, name: string): Promis
   await showNewProjectForm(page);
   await wizardToReview(page, { name, later: true });
   await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  // the new project opens on its Work (decision P141)
+  await expect(page.getByTestId('work')).toBeVisible();
 }
 
 /**

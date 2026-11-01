@@ -3,7 +3,7 @@
 // pull requests and the rooms. In the centre the item open (?item=task:<id> or chat:<id>, so Reload and Back keep it): a task's
 // own page (TaskDetailScreen, embedded) or the chat (ChatConversation); with none named, the first that needs you, else the first
 // running, else one line and New task. On the right the crew: each agent with its model and effort and its state (a click opens
-// its editor, edit-agent.ts), "+" for a new one, then the project's spend, its first-check rate, its security findings and what
+// its editor in place, P137, through edit-agent.ts), "+" for a new one, then the project's spend, its first-check rate, its security findings and what
 // merged this week (the old Overview's Insights). Every number is the core's; nothing is decided on this page but in the item.
 
 import { css, navigate, on, type Handle } from 'remix/component';
@@ -23,7 +23,8 @@ import { ChatConversation } from '../chats/chat-conversation.tsx';
 import { WEEK_MS, firstCheckText, mergedSince, spendLine } from '../overview/overview.ts';
 import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
-import { editAgentHref, newAgentHref } from './edit-agent.ts';
+import { AgentPanelHost } from '../team/agent-panel.tsx';
+import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
 import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, workRows, type WorkGroup, type WorkRow } from './work.ts';
 
 const layoutCss = css({
@@ -255,7 +256,22 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
           {agents.map((a) => {
             const pr = presenceFor(a.id, presence);
             return (
-              <a key={a.id} href={editAgentHref(a.id)} mix={agentCss} data-testid="work-agent" data-name={a.name} title={`Edit ${a.name}`}>
+              <a
+                key={a.id}
+                href={editAgentHref(a.id)}
+                mix={[
+                  agentCss,
+                  on('click', (e) => {
+                    // a plain click edits in place; a modified one keeps the link's own way (a new window)
+                    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+                    e.preventDefault();
+                    editAgent(a.id);
+                  }),
+                ]}
+                data-testid="work-agent"
+                data-name={a.name}
+                title={`Edit ${a.name}`}
+              >
                 <Avatar id={a.id} name={a.name} size={28} kind="agent" status={presenceColor(pr)} />
                 <span class="name">
                   {a.name}
@@ -280,6 +296,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             </a>
           </div>
         </aside>
+        <AgentPanelHost agents={agents} />
       </div>
     );
   };

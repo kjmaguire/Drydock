@@ -33,13 +33,16 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
-  shell/              sidebar (six places, P140; New in new.ts), hub pills and rails, the Settings sections (settings-sections.ts), details panel, dock host, license banner, the command
+  shell/              sidebar (six places, P140; New in new.ts), a project's tab bar Work · Crew · Settings and its Settings
+                      sections (project-sections.ts, P141), hub pills and rails, the Settings sections (settings-sections.ts), details panel, dock host, license banner, the command
                       menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
   screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
                       with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
-  screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
+  screens/work/       a project's Work ("/", decision P141): its tasks and chats in one list (work.ts), the open one in the centre
+                      (?item=task:<id>|chat:<id>), the crew rail (edit-agent.ts opens an agent's editor); overview/overview.ts keeps
+                      the Insights helpers it reads
   screens/tasks/      the project board (Board / List / Timeline of task.summaries; tasks.ts: columns, cards, checks bar, filters,
                       timeline), the task page with its step bar (steps.ts), the review panel
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
@@ -134,8 +137,8 @@ conversation:
 
 - **Sidebar** (`shell/sidebar.tsx`, landmark "Main"; the arrow keys, Home and End move through its links): the workspace
   switcher ("Switch project", the kit `Menu`), search (Ctrl+K), **Inbox** (`/needs-you`, the count of what needs you in every
-  project), **Running**, **My tasks**, **Chats**, the projects (the open one shows its tabs **Overview, Tasks, Rooms, Crew,
-  Knowledge** under it; another is one line), the workspace's **Security**, **Agents**, **Integrations**, **Models** and
+  project), **Running**, **My tasks**, **Chats**, the projects (one line each; a project's pages have its tab bar
+  **Work, Crew, Settings**, decision P141), the workspace's **Security**, **Agents**, **Integrations**, **Models** and
   **Library** (decision P98), then **Settings**, the **Guide**, the local engine's state and the event stream. "[" (never while typing) or its
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
   (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.

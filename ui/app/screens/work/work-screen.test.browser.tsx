@@ -4,6 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { Task } from '../../api/types.ts';
 import { budgetStatus } from '../../test/fixtures.ts';
 import { cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { closeAgentEditor } from '../team/agent-panel.tsx';
 import { WorkScreen } from './work-screen.tsx';
 
 afterEach(cleanup);
@@ -137,5 +138,16 @@ describe('Work (decision P141)', () => {
     await r.act(() => (r.$('[data-testid="work-new-chat"]') as HTMLButtonElement).click());
     await waitFor(() => expect(went).toEqual(['/?item=chat%3Ac2']), r);
     expect(made).toEqual([{ projectId: 'prj_1' }]);
+  });
+
+  it("a click on a crew agent opens its editor in place (P137's panel), not the Crew page", async () => {
+    const went: string[] = [];
+    const r = mount(<WorkScreen onNavigate={(h) => went.push(h)} />, svc({ adapterList: never }));
+    await waitFor(() => expect(r.$$('[data-testid="work-agent"]')).toHaveLength(2), r);
+    expect(r.$('[data-testid="agent-editor"]')).toBeNull();
+    await r.act(() => (r.$('[data-testid="work-agent"][data-name="Backend Engineer"]') as HTMLAnchorElement).click());
+    await waitFor(() => expect(r.$('[data-testid="agent-editor"]')!.getAttribute('aria-label')).toBe('Edit Backend Engineer'), r);
+    expect(went).toEqual([]);
+    closeAgentEditor();
   });
 });

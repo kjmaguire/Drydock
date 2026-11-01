@@ -5,7 +5,7 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { appUrl, createAgent, createProject, freshRepo, projectItem, projectNav, roomLink, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
+import { appUrl, createAgent, createProject, freshRepo, projectItem, projectNav, showNewProjectForm, sidebar, wizardCreate, wizardNext, workspaceNav } from './helpers';
 
 test('Home holds the workspace, a project shows only itself, and deleting a project leaves its repository', async ({ page }) => {
   const repo = freshRepo();
@@ -145,7 +145,7 @@ test('a project from scratch: Choose folder..., and Drydock makes the Git reposi
   await wizardNext(page); // Review
   await expect(page.getByTestId('review-init')).toContainText('new Git repository here');
   await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await expect(page.getByTestId('work')).toBeVisible();
   expect(existsSync(join(folder, '.git'))).toBe(true);
   // the project works in it: Project settings show no attach form
   await projectNav(page, 'nav-project');
