@@ -15,7 +15,7 @@ const at = (path: string) => {
 test('the sidebar has exactly its six places, and New opens the new-project flow (Ctrl+N too)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await createProjectWithoutRepo(page, 'nav-six');
-  const ids = await sidebar(page).locator('a[data-testid]').evaluateAll((as) => as.map((a) => a.getAttribute('data-testid')));
+  const ids = await sidebar(page).locator('a[data-nav][data-testid]').evaluateAll((as) => as.map((a) => a.getAttribute('data-testid')));
   // the open project's tabs are under it (the project workspace will replace them)
   expect(ids).toEqual(['nav-new', 'nav-workspace', 'nav-needs-you', 'nav-chats', ...ids.slice(4, -2), 'nav-library', 'nav-settings']);
   expect(ids.slice(4, -2).every((id) => id === 'nav-project-item' || ['nav-overview', 'nav-tasks', 'nav-rooms', 'nav-team', 'nav-knowledge'].includes(id!))).toBe(true);
@@ -183,7 +183,7 @@ test('Ctrl+K reaches Models and Security scan, which left the sidebar', async ({
   ] as const) {
     await page.locator('#main').focus();
     await page.keyboard.press('Control+k');
-    await page.getByRole('combobox').fill(query);
+    await page.getByRole('combobox', { name: 'Command' }).fill(query);
     await page.getByRole('option', { name }).first().click();
     await expect(page).toHaveURL(url);
     await expect(sidebar(page).getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');
