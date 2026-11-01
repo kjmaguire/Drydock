@@ -34,6 +34,8 @@ SetCompressor /SOLID lzma
 !define APP "Drydock"
 !define PUBLISHER "Drydock"
 !define EXE "drydock.exe"
+; Drydock's AppUserModelID: the app sets the same one on its process (app/appid.go; a test keeps them equal). Never change it.
+!define APPID "Drydock.Drydock"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Drydock"
 ; the Evergreen WebView2 runtime's client id (Microsoft Learn, "Detect if a WebView2 Runtime is already installed")
 !define WEBVIEW2_GUID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -106,6 +108,73 @@ Function CloseRunningApp
     FileClose $0
 FunctionEnd
 
+;; SetShortcutAppID <shortcut>: writes System.AppUserModel.ID = APPID on a shortcut, so the pinned or Start menu Drydock and
+;; the running one are one taskbar button (docs/windows-identity.md section 6). NSIS has no command for it; this is the
+;; shell's own COM interfaces through the System plug-in: IShellLinkW, its IPersistFile (Load the .lnk, Save it) and its
+;; IPropertyStore (SetValue PKEY_AppUserModel_ID as a VT_LPWSTR, Commit). A failure is shown in the details and does not stop
+;; the install (Windows then derives an ID from the exe's path); the release workflow's install-test reads the ID back.
+!macro SetShortcutAppID LNK
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  Push $5
+  Push $6
+  StrCpy $1 0
+  StrCpy $2 0
+  StrCpy $3 0
+  ; CLSID_ShellLink, CLSCTX_INPROC_SERVER, IID_IShellLinkW
+  System::Call 'ole32::CoCreateInstance(g "{00021401-0000-0000-C000-000000000046}", p 0, i 1, g "{000214F9-0000-0000-C000-000000000046}", *p .r1) i .r0'
+  ${If} $0 = 0
+    ; IUnknown::QueryInterface(IID_IPersistFile), then IPersistFile::Load(path, STGM_READWRITE)
+    System::Call '$1->0(g "{0000010b-0000-0000-C000-000000000046}", *p .r2) i .r0'
+  ${EndIf}
+  ${If} $0 = 0
+    System::Call '$2->5(w "${LNK}", i 2) i .r0'
+  ${EndIf}
+  ${If} $0 = 0
+    ; IUnknown::QueryInterface(IID_IPropertyStore)
+    System::Call '$1->0(g "{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}", *p .r3) i .r0'
+  ${EndIf}
+  ${If} $0 = 0
+    ; PKEY_AppUserModel_ID = {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5; a PROPVARIANT of VT_LPWSTR (31) pointing at the ID
+    System::Call '*(g "{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}", i 5) p .r4'
+    System::Call '*(&w128 "${APPID}") p .r5'
+    System::Call '*(&i2 31, &i2 0, &i2 0, &i2 0, p r5, p 0) p .r6'
+    ; IPropertyStore::SetValue, then Commit, then IPersistFile::Save(NULL, TRUE)
+    System::Call '$3->6(p r4, p r6) i .r0'
+    ${If} $0 = 0
+      System::Call '$3->7() i .r0'
+    ${EndIf}
+    ${If} $0 = 0
+      System::Call '$2->6(p 0, i 1) i .r0'
+    ${EndIf}
+    System::Free $4
+    System::Free $5
+    System::Free $6
+  ${EndIf}
+  ${If} $3 <> 0
+    System::Call '$3->2()'
+  ${EndIf}
+  ${If} $2 <> 0
+    System::Call '$2->2()'
+  ${EndIf}
+  ${If} $1 <> 0
+    System::Call '$1->2()'
+  ${EndIf}
+  ${If} $0 <> 0
+    DetailPrint "The shortcut's application identity could not be written (HRESULT $0); Windows will derive one."
+  ${EndIf}
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+!macroend
+
 Function .onInit
   Call CheckWebView2
 FunctionEnd
@@ -130,6 +199,7 @@ Section "Drydock" SecMain
   ; per user: the current user's Start menu, never All Users
   SetShellVarContext current
   CreateShortCut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${EXE}" "" "$INSTDIR\${EXE}" 0
+  !insertmacro SetShortcutAppID "$SMPROGRAMS\${APP}.lnk"
 
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP}"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"

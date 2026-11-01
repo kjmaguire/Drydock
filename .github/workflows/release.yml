@@ -273,6 +273,11 @@ jobs:
             if (Test-Path $k) { throw "the installer wrote under HKLM" }
           }
           if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk")) { throw "no Start menu shortcut for this user" }
+          # the shortcut carries the app's own AppUserModelID (app/appid.go), so a pinned Drydock and the running one are one button
+          $lnk = Get-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Drydock.lnk"
+          $aumid = (New-Object -ComObject Shell.Application).Namespace($lnk.DirectoryName).ParseName($lnk.Name).ExtendedProperty('System.AppUserModel.ID')
+          if ($aumid -ne 'Drydock.Drydock') { throw "the Start menu shortcut's AppUserModelID is '$aumid', not Drydock.Drydock" }
+          "Start menu shortcut AppUserModelID: $aumid" | Tee-Object -Append "$env:OUT/install.txt"
           $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($env:INSTALLER))
           if ($text -notmatch 'requestedExecutionLevel level="asInvoker"') { throw "the installer's manifest does not run as invoker" }
           if (Test-Path "$env:LOCALAPPDATA\Drydock") { throw "the installer wrote into the data folder" }

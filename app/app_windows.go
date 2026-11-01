@@ -85,6 +85,12 @@ func Run(assets fs.FS) error {
 	if err := proc.EnterAppJob(); err != nil {
 		fmt.Fprintf(os.Stderr, "drydock: app job object: %v (agents are still contained one by one)\n", err)
 	}
+	// Drydock's application identity, before any window exists: the same as the Start menu shortcut's, so a pinned Drydock
+	// and the running one are one taskbar button (docs/windows-identity.md section 6). Without it Windows derives one from
+	// the exe's path, which still groups, so a failure is said and is not a reason not to start.
+	if err := setAppUserModelID(AppUserModelID); err != nil {
+		fmt.Fprintf(os.Stderr, "drydock: application identity: %v\n", err)
+	}
 	dir, err := DataDir()
 	if err != nil {
 		return err

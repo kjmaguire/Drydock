@@ -2333,3 +2333,17 @@ Open, owner action:
   injects into any page, which only move or resize this window; not tested on Windows); the window's navigation away from
   127.0.0.1 (Wails 3 beta.34 has no navigation filter; a link in the page is followed; the window is isolated and nothing of
   Drydock's is there to reach).
+
+- **P136. Drydock's Windows application identity, and a started chat turn always announced (2026-10-31).** The owner: "do the
+  publish fix now and do what you can for the windows app identity". (a) **AppUserModelID** `Drydock.Drydock`: the app sets it
+  on its process before any window, and the per-user installer writes it on the Start menu shortcut, so the pinned and the
+  running Drydock are one taskbar button and Windows notifications and jump lists can be built on it later
+  (docs/windows-identity.md section 6). The sandbox app window keeps its own. Tests: `app/appid_test.go` (the installer's
+  `APPID` equals the app's), `app/appid_windows_test.go` (the process carries it, on the Windows runner), the release
+  workflow's install-test (the installed shortcut carries it). Not verified: the taskbar grouping itself. (b) **Chat events
+  after a cancelled request:** `chats.Send` published the person's message, the running chat and `chat.turn_started` with the
+  caller's request context; a request cancelled after the turn was claimed left the turn running and the page never told it
+  started (CI on main, 2026-10-31: `publish chat.turn_started: context canceled`, with the chat-perf e2e's streaming bubble
+  never appearing). After the claim, Send uses a context the caller's cancellation does not reach. Test:
+  `internal/chats/send_cancel_test.go` (it fails without the change, naming `chat.turn_started`). Whether this was the only
+  cause of that e2e failure is not proven: the run's trace could not be read from this environment.
