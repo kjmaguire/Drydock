@@ -6,17 +6,17 @@ import { choose, createAgent, createProject, openAgentPanel, openDescribeAgent, 
 
 test('the Crew card opens the agent editor panel; model, effort and permission persist after a reload', async ({ page }) => {
   await createProject(page, 'edit-in-place');
-  await createAgent(page, 'Ada', 'backend');
-  const card = page.locator('[data-testid="agent"][data-name="Ada"]');
+  await createAgent(page, 'Zed', 'backend');
+  const card = page.locator('[data-testid="agent"][data-name="Zed"]');
   await expect(card.getByTestId('agent-permission-chip')).toHaveText('Edits freely');
 
-  const panel = await openAgentPanel(page, 'Ada');
+  const panel = await openAgentPanel(page, 'Zed');
   await expect(panel.getByTestId('agent-runs-on')).toHaveText('Claude Code');
   await expect(panel).toContainText('Applies from its next turn');
   await choose(panel.getByLabel('Model', { exact: true }), 'opus');
   await panel.getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'high', exact: true }).click();
   await panel.getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio', { name: 'Read only' }).click();
-  await expect(panel.getByTestId('scope-note')).toContainText('opus · high is used for Ada in edit-in-place only');
+  await expect(panel.getByTestId('scope-note')).toContainText('opus · high is used for Zed in edit-in-place only');
   await panel.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await expect(card.getByTestId('agent-model-chip')).toHaveText('opus · high');
@@ -25,15 +25,16 @@ test('the Crew card opens the agent editor panel; model, effort and permission p
   await projectNav(page, 'nav-team');
   await expect(card.getByTestId('agent-model-chip')).toHaveText('opus · high');
   await expect(card.getByTestId('agent-permission-chip')).toHaveText('Read only');
-  const again = await openAgentPanel(page, 'Ada', false);
+  const again = await openAgentPanel(page, 'Zed', false);
   await expect(again.getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'high', exact: true })).toHaveAttribute('aria-checked', 'true');
   await expect(again.getByRole('radiogroup', { name: 'Permissions' }).getByRole('radio', { name: 'Read only' })).toHaveAttribute('aria-checked', 'true');
 
-  // Everywhere: an agent without a template is saved as one
+  // Everywhere: an agent without a template is saved as one (named to sort after the templates other specs choose first: the
+  // workspace's templates are shared by the whole run)
   await again.getByRole('radiogroup', { name: 'Save for' }).getByRole('radio', { name: 'Everywhere' }).click();
-  await expect(again.getByTestId('scope-note')).toContainText('Also saves Ada as a template');
+  await expect(again.getByTestId('scope-note')).toContainText('Also saves Zed as a template');
   await again.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByTestId('agent-saved-note')).toHaveText('Saved as the template Ada.');
+  await expect(page.getByTestId('agent-saved-note')).toHaveText('Saved as the template Zed.');
 });
 
 test('a sentence drafts an agent (offline rules), the person adjusts it and creates it', async ({ page }) => {
