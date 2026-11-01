@@ -13,7 +13,7 @@
 import { chromium, expect, test, type Browser, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createProject, roomLink } from '../e2e/helpers';
+import { createProject } from '../e2e/helpers';
 
 const out = process.env.DRYDOCK_OUT ?? 'installed-out';
 const results: Record<string, unknown> = {};
@@ -90,7 +90,8 @@ test('a project on a real Windows repository: the wizard, the core and git on NT
   const t0 = Date.now();
   await createProject(page, 'windows-proof', repo);
   results.createProjectMs = Date.now() - t0;
-  await expect(roomLink(page, 'general')).toBeVisible();
+  // a new project opens on its Work page (decision P141), with the core's list of its tasks and chats
+  await expect(page.getByTestId('work')).toBeVisible();
   await expect(page.getByTestId('region-error')).toHaveCount(0);
   await page.screenshot({ path: join(out, '02-project.png') });
 });
