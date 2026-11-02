@@ -419,7 +419,7 @@ folder or repository until one is typed. **Create project** sends one `project.s
 Work. The start box has no "More options..." any more. **Cloning:** the repository picker's **Clone into** has **Choose folder…**
 (the window's folder dialog, `fs.pickFolder`, where the window has one) beside the typed path, the full path the clone makes under
 it, and starts in the folder the person last cloned into (`github.cloneDir` returns it once a clone has worked; `~/source/repos`
-before). **Sync:** for a project whose repository has an `origin` remote, Work's crew rail ends with one line (`repo-sync`,
+before). **Sync:** for a project whose repository has an `origin` remote, Work's list ends with one line (under the list, so a narrow window keeps it) (`repo-sync`,
 `screens/work/repo-sync-line.tsx`, words in `repo-sync.ts`): "Up to date with GitHub", "3 behind · 1 ahead", "Not checked yet",
 "Checking GitHub…" or "Could not reach GitHub" (a remote elsewhere is named "origin"), with **Sync now** (a refresh icon). Sync now
 is `repo.sync`: a fetch, then a fast-forward of the checked-out default branch only when the folder has no local changes, that
@@ -427,7 +427,10 @@ branch is the one checked out and it has no commits of its own; otherwise nothin
 the folder has local changes.", "...both sides have new commits. Drydock does not merge them.", "...experiment is checked out, not
 main."). Opening the project (`repo.syncState` when its last check is over two minutes old) and every 15 minutes the core fetches
 only, so the count stays fresh; Settings > GitHub > Project folders > **Check for new commits** turns that off. `repo.synced`
-re-reads the line.
+re-reads the line. The line says which step failed ("Could not reach GitHub", "Could not update the folder", "Git settings
+changed: review them first" while the project's banner holds a changed git configuration); Sync now leaves the folder alone while
+a chat of the project is mid-turn; a fetch forgets the last Sync now's reason; the fetch keeps a single-branch clone's own refspec;
+New project's New folder starts in the usual code folder (`github.cloneDir` with `default`), not the last clone's.
 
 **Said once (as built, decision P144).** A second review of every screen took out what was shown twice and folded what few
 people change: the Inbox's Needs you tab lists under its items only the running tasks that have no item there (a task waiting

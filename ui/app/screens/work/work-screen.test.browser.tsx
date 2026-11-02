@@ -174,7 +174,9 @@ describe('Work (decision P141)', () => {
       return el;
     }, r);
     expect(line.textContent).toBe('2 behind');
-    expect(r.$('[data-testid="repo-sync"]')!.closest('[data-testid="work-stats"]')).not.toBeNull();
+    // under the list, which every width keeps: not in the crew rail, which leaves under 1180 px
+    expect(r.$('[data-testid="repo-sync"]')!.closest('aside[data-crew]')).toBeNull();
+    expect(r.$('[data-testid="repo-sync"]')!.closest('section')!.querySelector('[data-testid="work-list"]')).not.toBeNull();
     await r.act(() => (r.$('[data-testid="repo-sync-now"]') as HTMLButtonElement).click());
     await waitFor(() => expect(r.$('[data-testid="repo-sync-why"]')!.textContent).toBe('Not updated: the folder has local changes.'), r);
     expect(synced).toEqual(['prj_1']);

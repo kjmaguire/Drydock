@@ -33,7 +33,8 @@ export interface SetupClient {
   githubOwners(): Promise<string[]>;
   githubRepos(owner?: string, query?: string): Promise<GitHubRepo[]>;
   /** Where a clone starts: the folder the person last cloned into, else the usual one (~/source/repos; P143). */
-  githubCloneDir(): Promise<string>;
+  /** The folder a clone starts in (the last one cloned into); with `usual`, the usual code folder for a new project's folder. */
+  githubCloneDir(usual?: boolean): Promise<string>;
   githubClone(repo: string, dir: string): Promise<CloneResult>;
   /**
    * Every project with its repository, the CI state of its default branch and its open pull requests (the GitHub page's
@@ -80,7 +81,7 @@ export function createSetupClient(t: Transport): SetupClient {
     githubStatus: () => t.call('github.status', {}),
     githubOwners: async () => arr(await t.call<string[] | null>('github.owners', {})),
     githubRepos: async (owner = '', query = '') => arr(await t.call<GitHubRepo[] | null>('github.repos', { owner, query })),
-    githubCloneDir: async () => (await t.call<string | null>('github.cloneDir', {})) ?? '',
+    githubCloneDir: async (usual) => (await t.call<string | null>('github.cloneDir', usual ? { default: true } : {})) ?? '',
     githubClone: (repo, dir) => t.call('github.clone', { repo, dir }),
     githubProjectRepos: async (refresh = false) => {
       const r = await t.call<ProjectRepos>('github.projectRepos', { refresh });

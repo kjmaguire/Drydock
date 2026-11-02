@@ -68,7 +68,7 @@ func checkSyncArgs(remote, branch string) error {
 
 // Fetch brings the remote's branches into refs/remotes/<remote>/* (the person's own login reaches the remote: a call that
 // talks to a remote keeps the environment that says how). Local branches, worktrees and files are not changed: the refspec is
-// given on the command line, so a configured one that writes local branches is not used.
+// given on the command line, so a configured one that writes local branches is not used (fetchSpecs).
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	if err := checkRemote(remote); err != nil {
 		return err
@@ -76,8 +76,31 @@ func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	if _, err := r.RemoteURL(ctx, remote); err != nil {
 		return err
 	}
-	_, err := r.git(ctx, r.Root, nil, "fetch", "--quiet", "--no-recurse-submodules", "--no-write-fetch-head", remote, "+refs/heads/*:refs/remotes/"+remote+"/*")
+	args := append([]string{"fetch", "--quiet", "--no-recurse-submodules", "--no-write-fetch-head", remote}, r.fetchSpecs(ctx, remote)...)
+	_, err := r.git(ctx, r.Root, nil, args...)
 	return err
+}
+
+// fetchSpecs is what Fetch asks for: the remote's configured refspecs (a single-branch clone fetches its one branch) when every
+// one of them writes only under refs/remotes/<remote>/; else, or with none configured, all its branches there.
+func (r *Repo) fetchSpecs(ctx context.Context, remote string) []string {
+	all := []string{"+refs/heads/*:refs/remotes/" + remote + "/*"}
+	out, err := r.git(ctx, r.Root, nil, "config", "--get-all", "remote."+remote+".fetch")
+	if err != nil {
+		return all
+	}
+	var specs []string
+	for _, s := range strings.Fields(out) {
+		_, dst, ok := strings.Cut(strings.TrimPrefix(s, "+"), ":")
+		if !ok || strings.HasPrefix(s, "^") || !strings.HasPrefix(dst, "refs/remotes/"+remote+"/") || strings.Contains(dst, "..") {
+			return all
+		}
+		specs = append(specs, s)
+	}
+	if len(specs) == 0 {
+		return all
+	}
+	return specs
 }
 
 // RemoteState reads where branch stands against remote's copy of it, from the refs the last fetch left (no network).
@@ -135,9 +158,10 @@ func (r *Repo) FastForward(ctx context.Context, remote, branch string) (SyncOutc
 		return SyncDirty, st, nil
 	}
 	if _, err := r.git(ctx, r.Root, nil, "merge", "--ff-only", "--quiet", "refs/remotes/"+remote+"/"+branch); err != nil {
-		// --ff-only changes nothing when it cannot fast-forward (an untracked file in the way, for one)
+		// --ff-only changes nothing when it cannot fast-forward: an untracked file in the way, or a tracked file changed since
+		// the status check (an agent in the folder, for one) are local changes
 		var ge *gitError
-		if errors.As(err, &ge) && strings.Contains(ge.stderr, "untracked working tree files would be overwritten") {
+		if errors.As(err, &ge) && strings.Contains(ge.stderr, "would be overwritten") {
 			return SyncDirty, st, nil
 		}
 		return "", st, err

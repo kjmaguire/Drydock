@@ -224,3 +224,34 @@ func TestSyncWithoutARemote(t *testing.T) {
 		t.Fatal("an option was taken as a branch")
 	}
 }
+
+// A single-branch clone fetches its one branch; a configured refspec that would write anywhere but the remote's own
+// tracking branches is not used.
+func TestFetchKeepsTheConfiguredRefspec(t *testing.T) {
+	ctx := context.Background()
+	f := newSyncFixture(t)
+	run(t, f.upstream, "branch", "side")
+	run(t, f.upstream, "push", "-q", "origin", "side")
+	run(t, f.local.Root, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main")
+	local, err := Open(ctx, f.local.Root) // the person's own change of the configuration, trusted as it opens
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := local.fetchSpecs(ctx, "origin"); len(got) != 1 || got[0] != "+refs/heads/main:refs/remotes/origin/main" {
+		t.Fatalf("specs %v", got)
+	}
+	if err := local.Fetch(ctx, "origin"); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := local.git(ctx, local.Root, nil, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/side"); strings.TrimSpace(out) != "" {
+		t.Fatal("a single-branch clone fetched another branch")
+	}
+	run(t, f.local.Root, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/heads/*")
+	local, err = Open(ctx, f.local.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := local.fetchSpecs(ctx, "origin"); len(got) != 1 || got[0] != "+refs/heads/*:refs/remotes/origin/*" {
+		t.Fatalf("a refspec writing local branches was used: %v", got)
+	}
+}

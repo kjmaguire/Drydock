@@ -36,6 +36,11 @@ test('Work says how far behind its remote the folder is; Sync now leaves local c
     // opening the project checks the remote (a fetch only)
     const state = page.getByTestId('repo-sync-state');
     await expect(state).toHaveText('Up to date with origin', { timeout: 20_000 });
+    // a narrow window keeps the line and Sync now (the crew rail leaves under 1180 px; the line is under the list)
+    const size = page.viewportSize();
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await expect(page.getByTestId('repo-sync-now')).toBeVisible();
+    if (size) await page.setViewportSize(size);
 
     // someone pushes a commit; the person has an edit of their own in the folder
     writeFileSync(join(upstream, 'NEWS.md'), 'news\n');

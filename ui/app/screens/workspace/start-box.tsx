@@ -192,7 +192,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
 
   const catalog = query(handle, { load: () => s.client.agentCatalogList() });
   const adapters = query(handle, { load: () => s.client.adapterList(), when: (e) => e.type.startsWith('connection.') || e.type.startsWith('adapter.') });
-  const baseDir = query(handle, { load: () => s.client.githubCloneDir().catch(() => '') });
+  const baseDir = query(handle, { load: () => s.client.githubCloneDir(true).catch(() => '') });
   const templates = query(handle, { enabled: () => dialog === 'mine' || crew.kind === 'mine', load: () => s.client.agentTemplateList(), when: (e) => e.type.startsWith('agenttemplate.') });
   const projectId = () => (where.kind === 'project' ? where.projectId : '');
   const crewOf = query(handle, {

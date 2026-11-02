@@ -133,7 +133,15 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return c.GitHubRepos(ctx, p.Owner, p.Query)
 		}),
-		"github.cloneDir": bind(func(ctx context.Context, _ struct{}) (any, error) { return c.GitHubCloneDir(ctx), nil }),
+		"github.cloneDir": bind(func(ctx context.Context, p struct {
+			// Default asks for the usual code folder (a new project's folder), not the folder last cloned into
+			Default bool `json:"default"`
+		}) (any, error) {
+			if p.Default {
+				return DefaultCloneDir(), nil
+			}
+			return c.GitHubCloneDir(ctx), nil
+		}),
 		"github.clone": bind(func(ctx context.Context, p struct {
 			Repo string `json:"repo"`
 			Dir  string `json:"dir"`

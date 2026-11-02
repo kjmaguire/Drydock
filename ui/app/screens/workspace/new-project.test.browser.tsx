@@ -28,7 +28,8 @@ function show(client: Partial<Client> = {}) {
     securityScanRunning: async () => [],
     agentCatalogList: async () => CATALOG,
     adapterList: async () => [adapterInfo('claude', true, ['opus', 'sonnet', 'haiku'])],
-    githubCloneDir: async () => '/home/me/source/repos',
+    // the usual code folder when asked for it; the last clone went elsewhere (a new folder must not follow it)
+    githubCloneDir: async (usual?: boolean) => (usual ? '/home/me/source/repos' : '/d/scratch'),
     agentTemplateList: async () => [],
     agentList: async () => [],
     projectSetup: async (req) => (setups.push(req), { project: project('p9', req.name), agents: [], warnings: [] }),

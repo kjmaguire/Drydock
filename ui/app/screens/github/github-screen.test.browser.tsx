@@ -422,3 +422,33 @@ describe('words', () => {
 function slot(repo: string, kind: 'windows' | 'linux', state: 'idle' | 'paused' | 'busy', job?: string): RunnersView['slots'][number] {
   return { key: `${repo}:${kind}`, repo, kind, enabled: state !== 'paused', state, job, jobs: 0, since: '' };
 }
+
+describe('Project folders: the check for new commits (decision P143)', () => {
+  it('shows the setting, turns it off with the core, and says when the core refuses', async () => {
+    const calls: boolean[] = [];
+    let fail = false;
+    const r = show({
+      repoSyncSettings: async () => ({ auto: true }),
+      repoSyncSettingsSet: async ({ auto }) => {
+        calls.push(!!auto);
+        if (fail) throw new Error('the database is read-only');
+        return { auto: !!auto };
+      },
+    });
+    const row = await find(r, '[data-testid="gh-folder-sync"] [data-testid="folder-sync-auto"]');
+    const sw = await waitFor(() => {
+      const b = row.querySelector('button[role="switch"]') as HTMLButtonElement | null;
+      if (!b) throw new Error('no switch');
+      return b;
+    }, r);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(row.textContent).toContain('files change only with Sync now');
+    await r.act(() => sw.click());
+    await waitFor(() => expect(sw.getAttribute('aria-checked')).toBe('false'), r);
+    expect(calls).toEqual([false]);
+    fail = true;
+    await r.act(() => sw.click());
+    await waitFor(() => expect(row.textContent).toContain('Could not change the check'), r);
+    expect(calls).toEqual([false, true]);
+  });
+});

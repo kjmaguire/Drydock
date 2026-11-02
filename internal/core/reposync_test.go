@@ -214,3 +214,64 @@ func TestGitHubCloneRemembersTheFolder(t *testing.T) {
 		t.Fatalf("after a clone into %q: %q", parent, dir)
 	}
 }
+
+// Sync now leaves the folder alone while a chat of the project is mid-turn; a failed update is said as such, not as an
+// unreachable remote; and a fresh fetch forgets the last Sync now's reason.
+func TestRepoSyncNowWaitsForAChatAndNamesAFailedUpdate(t *testing.T) {
+	a := open(t, "")
+	upstream, _, folder := syncWorld(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "busy", "repoPath": folder}, &p)
+	var set core.RepoSyncSettings
+	a.call("repo.syncSettings.set", map[string]any{"auto": false}, &set)
+	pushUpstream(t, upstream, "THREE.md")
+	before := gitRun(t, folder, "rev-parse", "HEAD")
+
+	if _, err := a.c.DB.Writer().Exec(`INSERT INTO chats(id,project_id,adapter,status,created_at,updated_at) VALUES('chat_busy',?,'claude','running',0,0)`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	var st core.RepoSync
+	st = core.RepoSync{} // omitempty fields are absent when empty: decode into a fresh value
+	a.call("repo.sync", map[string]any{"projectId": p.ID}, &st)
+	if st.Outcome != "agent_busy" || st.Behind != 1 || st.Error != "" {
+		t.Fatalf("a chat at work: %+v", st)
+	}
+	if gitRun(t, folder, "rev-parse", "HEAD") != before {
+		t.Fatal("the folder moved under a working chat")
+	}
+	if _, err := a.c.DB.Writer().Exec(`UPDATE chats SET status='idle' WHERE id='chat_busy'`); err != nil {
+		t.Fatal(err)
+	}
+
+	// git cannot update the folder (its index is locked): the fetch worked, the update failed
+	lock := filepath.Join(folder, ".git", "index.lock")
+	if err := os.WriteFile(lock, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st = core.RepoSync{} // omitempty fields are absent when empty: decode into a fresh value
+	a.call("repo.sync", map[string]any{"projectId": p.ID}, &st)
+	if st.Error == "" || st.ErrorKind != "update" || st.CheckedAt == 0 {
+		t.Fatalf("a locked folder: %+v", st)
+	}
+	if st.Outcome != "" {
+		t.Fatalf("the fetch kept the last Sync now's reason: %+v", st)
+	}
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	st = core.RepoSync{} // omitempty fields are absent when empty: decode into a fresh value
+	a.call("repo.sync", map[string]any{"projectId": p.ID}, &st)
+	if st.Outcome != "updated" || st.Error != "" || st.ErrorKind != "" {
+		t.Fatalf("after the lock: %+v", st)
+	}
+}
+
+// New project's folder starts in the usual code folder, not where the last clone went.
+func TestGitHubCloneDirDefaultIsTheUsualFolder(t *testing.T) {
+	a := open(t, "")
+	var dir string
+	a.call("github.cloneDir", map[string]any{"default": true}, &dir)
+	if dir != core.DefaultCloneDir() {
+		t.Fatalf("default: %q, want %q", dir, core.DefaultCloneDir())
+	}
+}

@@ -167,7 +167,7 @@ export interface CloneResult {
 }
 
 /** What Sync now did (internal/git/sync.go SyncOutcome). */
-export type SyncOutcome = 'updated' | 'up_to_date' | 'ahead' | 'local_changes' | 'diverged' | 'other_branch' | 'no_remote_branch';
+export type SyncOutcome = 'updated' | 'up_to_date' | 'ahead' | 'local_changes' | 'diverged' | 'other_branch' | 'no_remote_branch' | 'agent_busy';
 
 /** A project's folder against its origin remote (repo.syncState, repo.sync; internal/core/ext_reposync.go, P143). */
 export interface RepoSync {
@@ -187,8 +187,10 @@ export interface RepoSync {
   checkedAt: number;
   checking: boolean;
   outcome?: SyncOutcome | '';
-  /** Why the last fetch failed (scrubbed). */
+  /** Why the last fetch or Sync now failed (scrubbed). */
   error?: string;
+  /** Which step failed: reaching the remote, updating the folder, or the git configuration awaiting a person's trust. */
+  errorKind?: 'fetch' | 'update' | 'config' | '';
 }
 
 export interface RepoSyncSettings {

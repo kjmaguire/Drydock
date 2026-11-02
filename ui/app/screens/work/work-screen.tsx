@@ -4,8 +4,8 @@
 // own page (TaskDetailScreen, embedded) or the chat (ChatConversation); with none named, the first that needs you, else the first
 // running, else one line and New task. On the right the crew: each agent with its model and effort and its state (a click opens
 // its editor in place, P137, through edit-agent.ts), "+" for a new one, then the project's spend, its first-check rate, its security findings and what
-// merged this week (the old Overview's Insights), and where the folder stands against its remote with Sync now (P143,
-// repo-sync-line.tsx). Every number is the core's; nothing is decided on this page but in the item.
+// merged this week (the old Overview's Insights). Under the list: where the folder stands against its remote with Sync now
+// (P143, repo-sync-line.tsx), kept at every width. Every number is the core's; nothing is decided on this page but in the item.
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { Plus, Search } from 'lucide';
@@ -84,6 +84,7 @@ const rowCss = css({
 });
 const flashCss = css({ flex: 'none', padding: `0 ${t.s3} ${t.s2}` });
 const quietCss = css({ margin: `${t.s3} ${t.s2}`, color: t.textMuted, fontSize: t.textSm });
+const syncFootCss = css({ flex: 'none', padding: `${t.s1} ${t.s2}`, borderTop: `1px solid ${t.border}` });
 const footCss = css({
   display: 'flex',
   flexWrap: 'wrap',
@@ -241,6 +242,12 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             )}
             {rows.length === 0 ? <p mix={quietCss}>No tasks or chats yet.</p> : shown.length === 0 ? <p mix={quietCss}>Nothing matches "{search}".</p> : null}
           </div>
+          {/* the sync line sits under the list, which every width keeps (the crew rail leaves under 1180 px) */}
+          {s.workspace.project?.hasRepo && pid() ? (
+            <div mix={syncFootCss}>
+              <RepoSyncLine key={pid()} projectId={pid()!} />
+            </div>
+          ) : null}
           <nav mix={footCss} aria-label="More of this project">
             <a href={routes.tasks.href()} data-testid="nav-tasks">
               Board
@@ -319,7 +326,6 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             <a href={routes.tasks.href()} data-testid="work-merged">
               Merged this week <b>{merged}</b>
             </a>
-            {s.workspace.project?.hasRepo && pid() ? <RepoSyncLine key={pid()} projectId={pid()!} /> : null}
           </div>
         </aside>
         <AgentPanelHost agents={agents} />

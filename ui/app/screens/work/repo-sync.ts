@@ -21,7 +21,10 @@ export const showsSync = (st: RepoSync | undefined): st is RepoSync => !!st && !
 export function syncLine(st: RepoSync): SyncLine {
   const r = remoteWord(st);
   const why = syncWhy(st);
-  if (st.error) return { text: `Could not reach ${r}`, tone: 'bad', why };
+  if (st.error) {
+    const text = st.errorKind === 'update' ? 'Could not update the folder' : st.errorKind === 'config' ? 'Git settings changed: review them first' : `Could not reach ${r}`;
+    return { text, tone: 'bad', why };
+  }
   if (!st.checkedAt) return { text: st.checking ? `Checking ${r}…` : 'Not checked yet', tone: 'quiet', why };
   if (!st.tracked) return { text: `${r} has no ${st.branch || 'default branch'}`, tone: 'quiet', why };
   if (!st.ahead && !st.behind) return { text: `Up to date with ${r}`, tone: 'ok', why };
@@ -40,6 +43,8 @@ export function syncWhy(st: Pick<RepoSync, 'outcome' | 'branch' | 'current' | 'b
       return `Not updated: ${st.current || 'another branch'} is checked out, not ${st.branch}.`;
     case 'ahead':
       return 'Nothing new to bring in. Your commits stay local.';
+    case 'agent_busy':
+      return 'Not updated: a chat is working in this folder. Try again when it finishes.';
     default:
       return undefined;
   }

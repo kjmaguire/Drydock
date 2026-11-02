@@ -57,7 +57,7 @@ export function NewProjectDialog(handle: Handle<{ open: boolean; where?: NewProj
 
   const catalog = query(handle, { enabled: () => handle.props.open, load: () => s.client.agentCatalogList() });
   const adapters = query(handle, { enabled: () => handle.props.open, load: () => s.client.adapterList() });
-  const baseDir = query(handle, { enabled: () => handle.props.open, load: () => s.client.githubCloneDir().catch(() => '') });
+  const baseDir = query(handle, { enabled: () => handle.props.open, load: () => s.client.githubCloneDir(true).catch(() => '') });
 
   const set = (f: () => void) => (f(), void handle.update());
 

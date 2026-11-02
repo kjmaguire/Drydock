@@ -55,8 +55,11 @@ type RepoSync struct {
 	// Outcome is what the last Sync now did (git.SyncOutcome: updated, up_to_date, ahead, local_changes, diverged,
 	// other_branch, no_remote_branch); "" after a background check alone.
 	Outcome string `json:"outcome,omitempty"`
-	// Error is why the last fetch failed, scrubbed; "" when it worked.
+	// Error is why the last fetch or Sync now failed, scrubbed; "" when it worked.
 	Error string `json:"error,omitempty"`
+	// ErrorKind says which step Error is from: "fetch" (reaching the remote), "update" (the fast-forward of the folder) or
+	// "config" (the repository's git configuration changed since a person trusted it: the project's banner reviews it).
+	ErrorKind string `json:"errorKind,omitempty"`
 }
 
 // RepoSyncSettings is repo.syncSettings.get / set.
@@ -70,7 +73,12 @@ type repoSyncMem struct {
 	checking  bool
 	outcome   string
 	err       string
+	errKind   string
 }
+
+// syncAgentBusy is Sync now's outcome while a chat of the project is mid-turn: the folder is left alone so the files do not change
+// under an agent working in it.
+const syncAgentBusy = "agent_busy"
 
 type repoSyncer struct {
 	c   *Core
@@ -180,7 +188,19 @@ func (y *repoSyncer) state(ctx context.Context, projectID string) (RepoSync, err
 	st.Branch, st.Current, st.Tracked, st.Ahead, st.Behind = rs.Branch, rs.Current, rs.Tracked, rs.Ahead, rs.Behind
 	y.mu.Lock()
 	m := y.memOf(projectID)
-	st.CheckedAt, st.Checking, st.Outcome, st.Error = m.checkedAt, m.checking, m.outcome, m.err
+	kind := m.errKind
+	y.mu.Unlock()
+	if kind == "config" { // a refusal by the configuration guard lasts only until a person trusts the configuration
+		if changed, _, err := repo.ConfigStatus(ctx); err == nil && len(changed) == 0 {
+			y.mu.Lock()
+			if m.errKind == "config" {
+				m.err, m.errKind = "", ""
+			}
+			y.mu.Unlock()
+		}
+	}
+	y.mu.Lock()
+	st.CheckedAt, st.Checking, st.Outcome, st.Error, st.ErrorKind = m.checkedAt, m.checking, m.outcome, m.err, m.errKind
 	y.mu.Unlock()
 	return st, nil
 }
@@ -192,7 +212,8 @@ func (y *repoSyncer) lock(projectID string) func() {
 	return mu.Unlock
 }
 
-// fetch fetches the project's remote and records when (or why it failed). outcome is kept as the last Sync now's.
+// fetch fetches the project's remote and records when (or why it failed). A fetch that works clears the last Sync now's outcome:
+// its reason was about the remote as it stood then.
 func (y *repoSyncer) fetch(ctx context.Context, projectID string) error {
 	y.mu.Lock()
 	y.memOf(projectID).checking = true
@@ -210,9 +231,13 @@ func (y *repoSyncer) fetch(ctx context.Context, projectID string) error {
 	m := y.memOf(projectID)
 	m.checking = false
 	if ferr != nil {
-		m.err = y.scrub(ferr)
+		m.err, m.errKind = y.scrub(ferr), "fetch"
+		var cc *git.ConfigChangedError
+		if errors.As(ferr, &cc) {
+			m.errKind = "config"
+		}
 	} else {
-		m.err = ""
+		m.err, m.errKind, m.outcome = "", "", ""
 		m.checkedAt = time.Now().UnixMilli()
 	}
 	y.mu.Unlock()
@@ -280,11 +305,27 @@ func (y *repoSyncer) syncNow(ctx context.Context, projectID string) (RepoSync, e
 			unlock()
 			return st, err
 		}
+		if busy, err := y.chatBusy(ctx, projectID); err != nil || busy {
+			unlock()
+			if err != nil {
+				return st, err
+			}
+			y.mu.Lock()
+			y.memOf(projectID).outcome = syncAgentBusy
+			y.mu.Unlock()
+			y.announce(ctx, projectID)
+			return y.state(ctx, projectID)
+		}
 		out, _, err := repo.FastForward(ctx, syncRemote, st.Branch)
 		if err != nil {
 			unlock()
 			y.mu.Lock()
-			y.memOf(projectID).err = y.scrub(err)
+			m := y.memOf(projectID)
+			m.err, m.errKind = y.scrub(err), "update"
+			var cc *git.ConfigChangedError
+			if errors.As(err, &cc) {
+				m.errKind = "config"
+			}
 			y.mu.Unlock()
 			y.announce(ctx, projectID)
 			return y.state(ctx, projectID)
@@ -297,6 +338,13 @@ func (y *repoSyncer) syncNow(ctx context.Context, projectID string) (RepoSync, e
 	unlock()
 	y.announce(ctx, projectID)
 	return y.state(ctx, projectID)
+}
+
+// chatBusy reports whether a chat of the project is mid-turn: a project chat works in the project's folder.
+func (y *repoSyncer) chatBusy(ctx context.Context, projectID string) (bool, error) {
+	var n int
+	err := y.c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM chats WHERE project_id=? AND status='running'`, projectID).Scan(&n)
+	return n > 0, err
 }
 
 // loop is the background check: every project with a remote is fetched (never changed) each period while it is on.
@@ -332,7 +380,11 @@ func (y *repoSyncer) checkAll(ctx context.Context) {
 		if !p.HasRepo || !y.due(p.ID, repoSyncEvery-time.Minute) {
 			continue
 		}
-		if st, err := y.state(ctx, p.ID); err != nil || st.Remote == "" {
+		repo, err := y.c.repo(ctx, p.ID)
+		if err != nil {
+			continue
+		}
+		if _, err := repo.RemoteURL(ctx, syncRemote); err != nil { // no origin: nothing to check
 			continue
 		}
 		func() {

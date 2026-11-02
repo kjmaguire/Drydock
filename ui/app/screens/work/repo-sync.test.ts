@@ -28,6 +28,13 @@ describe('the sync line (P143)', () => {
     expect(syncLine(st({ github: false, error: 'git fetch: could not read' }))).toEqual({ text: 'Could not reach origin', tone: 'bad', why: undefined });
   });
 
+  it('a failed update and a git configuration awaiting trust are not said as an unreachable remote', () => {
+    expect(syncLine(st({ error: 'fetch failed', errorKind: 'fetch' })).text).toBe('Could not reach GitHub');
+    expect(syncLine(st({ error: 'index.lock exists', errorKind: 'update' }))).toEqual({ text: 'Could not update the folder', tone: 'bad', why: undefined });
+    expect(syncLine(st({ error: 'configuration changed', errorKind: 'config' })).text).toBe('Git settings changed: review them first');
+    expect(syncWhy(st({ outcome: 'agent_busy' }))).toBe('Not updated: a chat is working in this folder. Try again when it finishes.');
+  });
+
   it('after Sync now left the files alone, says why in one line', () => {
     expect(syncWhy(st({ outcome: 'local_changes' }))).toBe('Not updated: the folder has local changes.');
     expect(syncWhy(st({ outcome: 'diverged' }))).toBe('Not updated: both sides have new commits. Drydock does not merge them.');
