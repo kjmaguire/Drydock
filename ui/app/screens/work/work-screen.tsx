@@ -26,6 +26,7 @@ import { findingsText } from '../security/security.ts';
 import { TaskDetailScreen } from '../tasks/task-detail-screen.tsx';
 import { AgentPanelHost } from '../team/agent-panel.tsx';
 import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
+import { RecommendLine } from './recommend-line.tsx';
 import { RepoSyncLine } from './repo-sync-line.tsx';
 import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, workRows, type WorkGroup, type WorkRow } from './work.ts';
 
@@ -242,6 +243,8 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             )}
             {rows.length === 0 ? <p mix={quietCss}>No tasks or chats yet.</p> : shown.length === 0 ? <p mix={quietCss}>Nothing matches "{search}".</p> : null}
           </div>
+          {/* recommendations waiting for the person: one line, to the Skills page where each is applied or dismissed */}
+          {pid() ? <RecommendLine key={`rec:${pid()}`} projectId={pid()!} /> : null}
           {/* the sync line sits under the list, which every width keeps (the crew rail leaves under 1180 px) */}
           {s.workspace.project?.hasRepo && pid() ? (
             <div mix={syncFootCss}>

@@ -217,7 +217,7 @@ func (c *Core) recommendAdvisor(ctx context.Context, projectID, agentID string) 
 		}
 	}
 	for _, a := range active {
-		if (agentID != "" && a.ID == agentID) || (agentID == "" && a.Role == pipeline.RoleLead) {
+		if (agentID != "" && a.ID == agentID) || (agentID == "" && pipeline.IsLeadRole(a.Role)) {
 			return a, active, nil
 		}
 	}

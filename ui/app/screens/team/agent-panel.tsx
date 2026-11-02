@@ -374,6 +374,7 @@ export function AgentEditor(handle: Handle<AgentPanelProps>) {
             onSkills={(c) => set(() => (skills = c))}
             tools={tools}
             onTools={(c) => set(() => (tools = c))}
+            adapter={agent.adapter}
           />
         </div>
 

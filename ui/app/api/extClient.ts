@@ -54,6 +54,7 @@ import type {
   AttachmentText,
   Pack,
   PackAttachment,
+  PackTemplate,
   PackConsult,
   PackFile,
   PackRefreshResult,
@@ -176,6 +177,8 @@ export interface ExtClient {
   packList(): Promise<Pack[]>;
   packGet(id: string): Promise<Pack>;
   packInstall(yaml: string): Promise<Pack>;
+  /** The ready manifests the core ships (Cloudflare, Microsoft Learn). */
+  packTemplates(): Promise<PackTemplate[]>;
   packRemove(id: string): Promise<void>;
   packRefresh(id: string, force?: boolean): Promise<PackRefreshResult>;
   /** Makes a pack of the person's own files (private unless said otherwise); refresh it to index them. */
@@ -190,6 +193,8 @@ export interface ExtClient {
   packAttach(projectId: string, packId: string, agentId?: string, role?: string): Promise<void>;
   packDetach(projectId: string, packId: string, agentId?: string, role?: string): Promise<void>;
   packAttachments(projectId: string): Promise<PackAttachment[]>;
+  /** Attaches a pack to the project for the roles its manifest names (every role when it names none). */
+  packAttachDefaults(projectId: string, packId: string): Promise<void>;
   // requirements and milestones
   requirementList(projectId: string, includeArchived?: boolean): Promise<Requirement[]>;
   requirementAdd(projectId: string, title: string, text: string, format?: string): Promise<Requirement>;
@@ -402,6 +407,7 @@ export function createExtClient(t: Transport): ExtClient {
     packList: async () => arr(await call<Pack[] | null>('pack.list')),
     packGet: (id) => call('pack.get', { id }),
     packInstall: (yaml) => call('pack.install', { yaml }),
+    packTemplates: async () => arr(await call<PackTemplate[] | null>('pack.templates')),
     packRemove: (id) => voidCall('pack.remove', { id }),
     packRefresh: (id, force = false) => call('pack.refresh', { id, force }),
     packCreateFromFiles: (p, files) => call('pack.createFromFiles', { ...p, files: files.map((f) => ({ name: f.name, data: encodeBase64(f.data) })) }),
@@ -421,6 +427,7 @@ export function createExtClient(t: Transport): ExtClient {
     packAttach: (projectId, packId, agentId = '', role = '') => voidCall('pack.attach', { projectId, packId, agentId, role }),
     packDetach: (projectId, packId, agentId = '', role = '') => voidCall('pack.detach', { projectId, packId, agentId, role }),
     packAttachments: async (projectId) => arr(await call<PackAttachment[] | null>('pack.attachments', { projectId })),
+    packAttachDefaults: (projectId, packId) => voidCall('pack.attachDefaults', { projectId, packId }),
 
     requirementList: async (projectId, includeArchived = false) => arr(await call<Requirement[] | null>('requirement.list', { projectId, includeArchived })),
     requirementAdd: (projectId, title, text, format = 'markdown') => call('requirement.add', { projectId, title, text, format, source: 'upload' }),

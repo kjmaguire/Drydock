@@ -4,6 +4,7 @@ import type { LibrarySkill, Skill, SkillCoverage, SkillLibraryAddAll, SkillRegis
 import { formatDateTime } from '../../lib/format.ts';
 import type { TileTone } from '../../ui/tiles.tsx';
 import type { Tone } from '../../ui/tokens.ts';
+import { isLeadRole } from '../../shell/palette-items.ts';
 
 export const skillTone = (s: string): Tone => (s === 'accepted' ? 'ok' : s === 'offered' ? 'warn' : s === 'blocked' ? 'err' : 'muted');
 
@@ -156,6 +157,18 @@ export const reaches = (s: Audience, agentId: string): boolean => agentId !== ''
 
 /** Whether a skill names the agent's role among its own: such an agent is the one it suggests, never one that gets it by role. */
 export const suggestsRole = (s: Pick<Skill, 'roles'>, role: string): boolean => (s.roles ?? []).length > 0 && rolesMatch(s.roles, role);
+
+/**
+ * The agents a set of skills is suggested for, ticked before the person changes anything: those whose role a skill names (as the
+ * core's giveByRoles gives them), else one agent (the first that is not the lead), so Add never waits for a tick. The boxes stay
+ * visible and editable (P76): this only shows the default the core would apply.
+ */
+export function suggestedAgents(skills: readonly Pick<Skill, 'roles'>[], agents: readonly { id: string; role: string }[]): string[] {
+  const named = agents.filter((a) => skills.some((k) => suggestsRole(k, a.role))).map((a) => a.id);
+  if (named.length > 0 || skills.length === 0) return named;
+  const one = agents.find((a) => !isLeadRole(a.role)) ?? agents[0];
+  return one ? [one.id] : [];
+}
 
 /** The skill with only the agents still on the team (a removed agent keeps its rows but gets nothing); unchanged while the team
  * list is empty (not loaded yet). */

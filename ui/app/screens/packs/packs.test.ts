@@ -2,6 +2,8 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Pack } from '../../api/extTypes.ts';
 import {
+  attachChoices,
+  attachTarget,
   attachedText,
   checkPackFiles,
   fileSize,
@@ -9,7 +11,9 @@ import {
   hasOwnFiles,
   packIdFromTitle,
   packIds,
+  refreshLine,
   refreshText,
+  templatesToInstall,
   searchHeadline,
   validPackId,
   zeroTime,
@@ -139,5 +143,38 @@ describe('Pack helpers', () => {
         sourceAgeDays: 0,
       }),
     ).toBe('2 hits in no pack');
+  });
+});
+
+describe('installing and attaching packs without YAML or typed roles', () => {
+  it('says a scheduled pack refreshes by itself, and a manual one only when refreshed', () => {
+    const when = (iso: string) => `at ${iso}`;
+    expect(refreshLine({ kind: 'hybrid', lastSuccessAt: '2026-10-01', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('Refreshes by itself · last at 2026-10-01');
+    expect(refreshLine({ kind: 'indexed', lastSuccessAt: '0001-01-01T00:00:00Z', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('Refreshes by itself · last never');
+    expect(refreshLine({ kind: 'indexed', lastSuccessAt: '2026-10-01', manifest: { refresh: { mode: 'manual' } } }, when)).toBe('When you refresh it · last at 2026-10-01');
+    expect(refreshLine({ kind: 'live', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('When you refresh it · last never');
+  });
+
+  it('offers only the ready manifests not installed yet', () => {
+    expect(templatesToInstall([{ id: 'cloudflare' }, { id: 'msdocs' }], [{ id: 'cloudflare' }]).map((x) => x.id)).toEqual(['msdocs']);
+  });
+
+  it("attaches to every role, a crew role or one agent, chosen from the crew instead of typed", () => {
+    const crew = [
+      { id: 'a1', name: 'Ada', role: 'Backend' },
+      { id: 'a2', name: 'Bob', role: 'backend' },
+      { id: 'a3', name: 'Cy', role: 'devops' },
+    ];
+    expect(attachChoices(crew)).toEqual([
+      { value: '', label: 'All roles' },
+      { value: 'role:backend', label: 'Role: backend' },
+      { value: 'role:devops', label: 'Role: devops' },
+      { value: 'agent:a1', label: 'Agent: Ada' },
+      { value: 'agent:a2', label: 'Agent: Bob' },
+      { value: 'agent:a3', label: 'Agent: Cy' },
+    ]);
+    expect(attachTarget('')).toEqual({ agentId: '', role: '' });
+    expect(attachTarget('role:backend')).toEqual({ agentId: '', role: 'backend' });
+    expect(attachTarget('agent:a2')).toEqual({ agentId: 'a2', role: '' });
   });
 });

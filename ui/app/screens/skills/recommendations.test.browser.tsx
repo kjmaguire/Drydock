@@ -97,7 +97,10 @@ describe('Recommendations', () => {
     expect(items[0]!.textContent).toContain('It deploys Workers.');
     expect(items[1]!.querySelector('.what')!.textContent).toBe('Assign Linear to this project');
     expect(items[1]!.querySelector('[data-testid="recommend-apply"]')).toBeNull();
-    expect(items[1]!.textContent).toContain("Integrations page");
+    // an integration is assigned on Integrations: a link there, not words to follow
+    expect(items[1]!.querySelector('a')!.getAttribute('href')).toBe('/project/integrations');
+    // one applicable item: no Apply all
+    expect(r.$('[data-testid="recommend-apply-all"]')).toBeNull();
     expect(r.$('[data-testid="recommend-latest"]')!.textContent).toContain('1 suggestion was left out');
     expect(r.$('[data-testid="recommend-latest"]')!.textContent).toContain('$0.012');
 
@@ -109,6 +112,34 @@ describe('Recommendations', () => {
     await r.act(() => (r.$('[data-testid="recommend-item"][data-kind="integration"] [data-testid="recommend-dismiss"]') as HTMLButtonElement).click());
     await waitFor(() => expect(dismissed).toEqual([['rec_1', 'r2']]), r);
     await waitFor(() => expect(r.$('[data-testid="recommend-latest"]')!.textContent).toContain('Every recommendation was applied or dismissed.'), r);
+  });
+
+  it('Apply all applies every applicable open item with one click, one after the other, and leaves the integration open', async () => {
+    const applied: unknown[][] = [];
+    const three = done({
+      items: [
+        { id: 'r1', kind: 'skill', action: 'add', name: 'wrangler', label: 'wrangler', registryId: 'cloudflare-skills', agents: ['agt_dev'], reason: 'a', status: 'open' },
+        { id: 'r2', kind: 'integration', action: 'add', name: 'linear', label: 'Linear', agents: [], reason: 'b', status: 'open' },
+        { id: 'r3', kind: 'mcp', action: 'give', name: 'cfdocs', label: 'Cloudflare docs', agents: ['agt_dev'], reason: 'c', status: 'open' },
+      ],
+    });
+    let list = { auto: true, runs: [three] };
+    const { r, changed } = show({
+      recommendList: async () => list,
+      recommendApply: async (id: string, itemId: string) => {
+        applied.push([id, itemId]);
+        const d = { ...list.runs[0]!, items: list.runs[0]!.items.map((x) => (x.id === itemId ? { ...x, status: 'applied' } : x)) };
+        list = { auto: true, runs: [d] };
+        return d;
+      },
+    });
+    const all = await waitFor(() => (r.$('[data-testid="recommend-apply-all"]') as HTMLButtonElement) ?? (() => { throw new Error('no Apply all yet'); })(), r);
+    expect(all.textContent).toBe('Apply all 2');
+    await r.act(() => all.click());
+    await waitFor(() => expect(applied).toEqual([['rec_1', 'r1'], ['rec_1', 'r3']]), r);
+    await waitFor(() => expect(r.$('[data-testid="recommend-item"][data-kind="integration"]')!.getAttribute('data-status')).toBe('open'), r);
+    await waitFor(() => expect(r.$('[data-testid="recommend-apply-all"]')).toBeNull(), r);
+    expect(changed.length).toBe(1);
   });
 
   it('offers the skills picked in the Library: ask which to use (with the picks), or add them all for the agents ticked (never the whole team)', async () => {
@@ -141,10 +172,13 @@ describe('Recommendations', () => {
       picks,
     );
     const box2 = await waitFor(() => two.r.$('[data-testid="skill-picks"]') as HTMLElement, two.r);
-    // nothing is added until agents are ticked
+    // picks that name no role come ticked for one agent that is not the lead (the core's own default), shown and changeable
+    const boxes = Array.from(box2.querySelectorAll('[data-testid="picks-for"] input') as NodeListOf<HTMLInputElement>);
+    expect(boxes.map((x) => x.checked)).toEqual([true, false]); // Backend #1, Lead
+    // unticking every box is the person's choice: Add waits for a tick
+    await two.r.act(() => boxes[0]!.click());
     expect((byText(box2, 'button', 'Tick the agents to add them for') as HTMLButtonElement).disabled).toBe(true);
-    const dev = box2.querySelector('[data-testid="picks-for"] input') as HTMLInputElement; // the first agent: Backend #1
-    await two.r.act(() => dev.click());
+    await two.r.act(() => boxes[0]!.click());
     await two.r.act(() => byText(box2, 'button', 'Add all 2 for them').click());
     await waitFor(
       () =>

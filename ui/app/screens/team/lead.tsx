@@ -8,15 +8,17 @@ import type { LeadIntervention, StandupResult } from '../../api/leadClient.ts';
 import type { Agent } from '../../api/types.ts';
 import { agentName, formatDateTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
+import { findLead } from '../../shell/palette-items.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
 
-/** The project's team lead: the first agent whose role is "lead". */
+/** The project's team lead: the first agent whose role names the lead ("lead", "team lead", "manager", ...), as the core's
+ *  pipeline.FindLead decides it. */
 export function leadOf(agents: readonly Agent[]): Agent | undefined {
-  return agents.find((a) => a.role.trim().toLowerCase() === 'lead');
+  return findLead(agents);
 }
 
 export const TRIGGER_LABEL: Record<string, string> = {

@@ -42,6 +42,8 @@ import {
   skillBrand,
   skillTone,
   sortUsage,
+  suggestedAgents,
+  suggestsRole,
   syncChanges,
   usageTokens,
 } from './skills.ts';
@@ -332,8 +334,14 @@ function AddFromLibrary(
   const act = action(handle);
   let registry = '';
   let picked = new Set<string>();
-  // the agents the skills are added for: each agent is a specialist, so a skill goes to the ones that need it, never to all
-  let forAgents: string[] = [];
+  // the agents the skills are added for: each agent is a specialist, so a skill goes to the ones that need it, never to all.
+  // Until the person ticks a box (undefined) the boxes show the core's own default: the agents whose role the skills name, else
+  // one agent (suggestedAgents); a tick makes the choice theirs (P76).
+  let forAgents: string[] | undefined;
+  const forThem = (ls: readonly LibrarySkill[]): string[] => {
+    const agents = handle.props.agents;
+    return forAgents ? forAgents.filter((id) => agents.some((a) => a.id === id)) : suggestedAgents(ls, agents);
+  };
   let added: { names: string[]; project: string; who: string } | undefined;
   const set = (f: () => void) => {
     f();
@@ -341,7 +349,7 @@ function AddFromLibrary(
   };
   const addMany = async (ls: readonly LibrarySkill[]) => {
     const { projectId, projectName, onAdded, agents } = handle.props;
-    const to = forAgents.filter((id) => agents.some((a) => a.id === id));
+    const to = forThem(ls);
     if (to.length === 0) return;
     const done: string[] = [];
     await act.run('add', async () => {
@@ -356,6 +364,7 @@ function AddFromLibrary(
       set(() => {
         added = { names: done, project: projectName, who };
         picked = new Set();
+        forAgents = undefined;
       });
       onAdded(done.length === 1 ? done[0]! : '');
     }
@@ -366,13 +375,14 @@ function AddFromLibrary(
   };
   return () => {
     const { skills, projectName, statuses, agents } = handle.props;
-    const to = forAgents.filter((id) => agents.some((a) => a.id === id));
     const all = notInProject(lib.data ?? [], skills);
     const groups = libraryGroups(all);
     const chosen = groups.some((g) => g.registryId === registry) ? registry : '';
     const shown = chosen ? all.filter((l) => l.registryId === chosen) : all;
     const library = lib.data ?? [];
     const pickedSkills = all.filter((l) => picked.has(pickKey(l)));
+    const to = forThem(pickedSkills);
+    const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
     const have = new Set(skills.map((k) => k.name));
     return (
       <Section
@@ -419,6 +429,13 @@ function AddFromLibrary(
             <fieldset mix={forCss} data-testid="library-for-agents">
               <legend>For</legend>
               {agents.length === 0 ? <span class="note">Add an agent to the crew first: skills are given to agents.</span> : null}
+              {agents.length > 0 && !forAgents && pickedSkills.length > 0 ? (
+                <span class="note" data-testid="library-for-suggested">
+                  {pickedSkills.some((k) => agents.some((a) => suggestsRole(k, a.role)))
+                    ? 'Ticked for the roles the skills name. Change it if you like.'
+                    : 'No skill names a role here, so one agent is ticked. Change it if you like.'}
+                </span>
+              ) : null}
               {agents.map((a) => (
                 <Checkbox
                   key={a.id}
@@ -471,8 +488,8 @@ function AddFromLibrary(
                   variant="primary"
                   size="sm"
                   icon={Plus}
-                  disabled={act.busy !== '' || to.length === 0}
-                  title={to.length === 0 ? 'Choose the agents it is for above' : undefined}
+                  disabled={act.busy !== '' || forThem([l]).length === 0}
+                  title={forThem([l]).length > 0 ? `For ${inWords(forThem([l]).map(nameOf))}` : 'Add an agent to the crew first'}
                   data-testid="library-add"
                   mix={on('click', () => void addMany([l]))}
                 >

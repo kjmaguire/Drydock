@@ -255,6 +255,52 @@ describe("an agent's page", () => {
     await waitFor(() => expect(choices()).toEqual(['library:wrangler']), r);
   });
 
+  it('gives and takes MCP servers in place: "+ Add" with the library servers it lacks, an X per row, no detour to Integrations', async () => {
+    const grants: unknown[][] = [];
+    let list: McpServer[] = [];
+    const { r } = show('agt_1', {
+      mcpServerList: async () => list,
+      mcpLibList: async () => [server({ id: 'github', display: 'GitHub' }), server({ id: 'linear', display: 'Linear' })],
+      mcpServerGrant: async (...a: unknown[]) => {
+        grants.push(a);
+        list = a[3] ? [server({ id: String(a[1]), display: 'GitHub', agents: [{ agentId: 'agt_1', tools: [] }] })] : [];
+        return list[0] ?? server({});
+      },
+    });
+    await hero(r);
+    // none granted: one line with the button, and no sentence sending the person elsewhere
+    const empty = await waitFor(() => r.$('[data-testid="agent-tools-empty"]') ?? (() => { throw new Error('no empty line yet'); })(), r);
+    expect(empty.textContent).toContain('No MCP server is granted to Ada.');
+    expect(empty.textContent).not.toContain('Grants are made');
+    const add = await waitFor(() => (empty.querySelector('[data-testid="agent-tool-add"]') as HTMLElement) ?? (() => { throw new Error('no Add yet'); })(), r);
+    expect(await menuItems(r, add)).toEqual(['GitHub', 'Linear']);
+    await fromMenu(r, add, 'GitHub');
+    await waitFor(() => expect(grants).toEqual([['prj_1', 'github', 'agt_1', true]]), r);
+    await waitFor(() => expect(r.$$('[data-testid="agent-tool"]').length).toBe(1), r);
+    // the X takes it away again
+    const x = r.$('[data-testid="agent-tool"] [data-testid="agent-tool-remove"]') as HTMLButtonElement;
+    expect(x.getAttribute('aria-label')).toBe('Take GitHub away from Ada');
+    await r.act(() => x.click());
+    await waitFor(() => expect(grants[1]).toEqual(['prj_1', 'github', 'agt_1', false]), r);
+    await waitFor(() => expect(r.$('[data-testid="agent-tools-empty"]')).not.toBeNull(), r);
+  });
+
+  it("an agent on a CLI whose MCP gateway is off is told so under its servers; one without servers, or verified, is not", async () => {
+    const off = { running: true, address: '', adapters: [{ adapter: 'claude', attached: false, canTry: true, trying: false }] };
+    const { r } = show('agt_1', { mcpStatus: async () => off });
+    await hero(r);
+    await waitFor(() => expect(r.$$('[data-testid="gateway-line"]').length).toBe(1), r);
+    expect(r.$('[data-testid="gateway-line"]')!.textContent).toContain('Claude Code gets MCP servers only once you allow the gateway');
+    cleanup();
+    const verified = show('agt_1', { mcpStatus: async () => ({ ...off, adapters: [{ adapter: 'claude', attached: true, canTry: false, trying: false }] }) });
+    await waitFor(() => expect(verified.r.$$('[data-testid="agent-tool"]').length).toBe(1), verified.r);
+    expect(verified.r.$('[data-testid="gateway-line"]')).toBeNull();
+    cleanup();
+    const none = show('agt_1', { mcpStatus: async () => off, mcpServerList: async () => [] });
+    await waitFor(() => expect(none.r.$('[data-testid="agent-tools-empty"]')).not.toBeNull(), none.r);
+    expect(none.r.$('[data-testid="gateway-line"]')).toBeNull();
+  });
+
   it('the tabs: Skills & tools in full, Memory, and History with its tasks, runs and usage', async () => {
     const { r } = show('agt_1');
     await hero(r);

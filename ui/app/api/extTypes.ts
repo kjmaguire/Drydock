@@ -478,7 +478,13 @@ export interface Pack {
   manifestDrift?: boolean;
   nextRefreshAt?: string;
   attribution?: string;
-  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[] } | null;
+  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[]; refresh?: { mode?: string } } | null;
+}
+/** A ready pack manifest the core ships (pack.templates): installed as is, then refreshed and attached to the roles it names. */
+export interface PackTemplate {
+  id: string;
+  manifest: { title: string; kind: string; visibility: string; attach?: { roles?: string[] | null } } | null;
+  yaml: string;
 }
 /** One of a pack's own files (a pack made from files keeps them in packs/<id>/files). */
 export interface PackFile {
@@ -765,6 +771,8 @@ export interface LibrarySkill {
 export interface SkillPick {
   registryId: string;
   name: string;
+  /** The roles the skill names (the Library's), kept in the UI to tick the agents it suggests; never sent to the core. */
+  roles?: string[] | null;
 }
 /** One recommendation (decision P52): give, add or stop using a skill, give an MCP server, or assign an integration. */
 export interface RecommendItem {

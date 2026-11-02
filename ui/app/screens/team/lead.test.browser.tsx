@@ -59,6 +59,12 @@ describe('the team lead', () => {
     expect(leadOf([ada])).toBeUndefined();
   });
 
+  it('is the lead under any of its names, as the core decides it', () => {
+    expect(leadOf([ada, agent({ id: 't', role: 'Team lead' })])?.id).toBe('t');
+    expect(leadOf([ada, agent({ id: 'm', role: 'engineering-manager' })])?.id).toBe('m');
+    expect(leadOf([ada, agent({ id: 'n', role: 'Leading frontend' })])).toBeUndefined();
+  });
+
   it('runs a stand-up: busy while it runs, then says it posted in general with a link', async () => {
     let release!: () => void;
     const calls: string[] = [];

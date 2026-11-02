@@ -32,6 +32,7 @@ import {
   skillTone,
   sortUsage,
   syncChanges,
+  suggestedAgents,
   toggleSkill,
   usageTokens,
 } from './skills.ts';
@@ -89,6 +90,20 @@ const usage = (over: Partial<SkillUsage>): SkillUsage => ({
 });
 
 describe('Skills helpers', () => {
+  it('ticks the agents whose role a skill names, else one agent that is not the lead, never everyone', () => {
+    const team = [
+      { id: 'lead', role: 'team lead' },
+      { id: 'be', role: 'backend' },
+      { id: 'fe', role: 'Frontend' },
+      { id: 'qa', role: 'tester' },
+    ];
+    expect(suggestedAgents([{ roles: ['frontend'] }, { roles: ['tester'] }], team)).toEqual(['fe', 'qa']);
+    expect(suggestedAgents([{ roles: null }], team)).toEqual(['be']);
+    expect(suggestedAgents([{ roles: ['docs'] }], [{ id: 'lead', role: 'lead' }])).toEqual(['lead']);
+    expect(suggestedAgents([], team)).toEqual([]);
+    expect(suggestedAgents([{ roles: [] }], [])).toEqual([]);
+  });
+
   it('reports a scan with counts and the problems verbatim', () => {
     expect(
       scanText({
