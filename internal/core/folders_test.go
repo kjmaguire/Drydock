@@ -221,6 +221,54 @@ func TestPickFolderUsesTheWindowsDialogAndSaysWhenThereIsNone(t *testing.T) {
 	}
 }
 
+// Import a project's "Choose file..." (X59): the window's own file dialog (Config.PickFile), asked for a project archive with its
+// filter; a kind Drydock does not read is refused, an agent may not open it, and without a dialog it says to type the path.
+func TestPickFileOpensTheWindowsFileDialogForAProjectArchive(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "gocalc.drydock-project.zip")
+	var asked core.FilePick
+	calls := 0
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		// TEST DOUBLE: the file dialog
+		PickFile: func(_ context.Context, p core.FilePick) (string, error) {
+			asked = p
+			calls++
+			return " " + want + " ", nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var got map[string]string
+	a.call("fs.pickFile", map[string]string{"kind": "project-archive"}, &got)
+	if got["path"] != want || asked.FilterPattern != "*.drydock-project.zip" || asked.Title == "" {
+		t.Fatalf("%v %+v", got, asked)
+	}
+	var h core.FolderHints
+	a.call("fs.folderHints", struct{}{}, &h)
+	if !h.CanPickFile || h.CanPick {
+		t.Fatalf("%+v", h)
+	}
+	if err := a.callErr("fs.pickFile", map[string]string{"kind": "anything"}); err == nil || !strings.Contains(err.Error(), "no file dialog") {
+		t.Fatalf("an unknown kind: %v", err)
+	}
+	if _, err := c.PickFile(context.Background(), "project-archive", "agent:agt_1"); err == nil {
+		t.Fatal("an agent opened the file dialog")
+	}
+	if calls != 1 {
+		t.Fatalf("the dialog opened %d times", calls)
+	}
+	b := open(t, "")
+	if err := b.callErr("fs.pickFile", map[string]string{"kind": "project-archive"}); err == nil || !strings.Contains(err.Error(), "type the file's full path") {
+		t.Fatalf("without a dialog: %v", err)
+	}
+	b.call("fs.folderHints", struct{}{}, &h)
+	if h.CanPickFile {
+		t.Fatalf("%+v", h)
+	}
+}
+
 // New folder starts where the person keeps code (B4): the parent of the last new project's folder, else a Dev Drive's src
 // folder (a trusted one first, on Windows; codeDirFrom's own test covers the rule anywhere), else DefaultCloneDir.
 func TestNewFolderStartsWhereCodeIsKept(t *testing.T) {

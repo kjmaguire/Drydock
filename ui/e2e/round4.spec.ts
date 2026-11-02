@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, openNewProject, readZip, switchProject, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
+import { choose, appUrl, createAgent, createProject, freshRepo, licensedRepo, licensedUrl, licenseTokens, openNewProject, readZip, workspaceNav, projectNav, openRoom, openNewAgent } from './helpers';
 
 // Round 4: license, backups, project export and import, support bundle, updates. Real Go core. The default harness is a build
 // with NO license keys; the `-licensed` harness is a TEST HARNESS MODE with a throwaway key (see cmd/drydock-e2e/main.go).
@@ -134,25 +134,26 @@ test('export a project, preview what is in it, import it into a second project; 
   const zip = readZip(path);
   expect(Object.keys(zip)).toContain('manifest.json');
 
-  // import it as a NEW project, linked to a different repository
-  await page.getByLabel(/Archive path/).fill(path);
-  await page.getByRole('button', { name: 'Preview the import' }).click();
+  // import it as a NEW project, linked to a different repository: the file dialog (the harness's stand-in chooses the newest
+  // export) fills the path and previews it at once (X59)
+  await page.getByTestId('import-choose-file').click();
+  await expect(page.getByLabel(/Archive path/)).toHaveValue(path);
   const untrusted = page.getByTestId('import-untrusted');
   await expect(untrusted).toContainText('Memory entries proposed');
   await expect(untrusted).toContainText('Skills offered');
   await expect(untrusted).toContainText('Providers that come without keys');
   await expect(untrusted).toContainText('Runs not resumed (cancelled)');
   await expect(untrusted).toContainText('Approvals cancelled');
-  await expect(page.getByRole('button', { name: 'Import as a new project' })).toBeDisabled();
+  // the repository is optional: it can be attached later in the project's settings
+  await expect(page.getByRole('button', { name: 'Import as a new project' })).toBeEnabled();
   await page.getByLabel(/Local repository to link/).fill(freshRepo());
   await page.getByLabel(/New project name/).fill('pkg-export-copy');
   await page.getByRole('button', { name: 'Import as a new project' }).click();
   await expect(page.getByTestId('import-result-name')).toHaveText('pkg-export-copy');
   await expect(page.getByTestId('import-result')).toContainText('It came in untrusted');
 
-  // the second project exists, is separate, and opens
-  // projects are chosen in the switcher at the top of the sidebar (a menu of radio items)
-  await switchProject(page, 'pkg-export-copy');
+  // the second project exists, is separate, and opens from the result
+  await page.getByTestId('import-open-project').click();
   await expect(page.getByTestId('work')).toBeVisible();
   await openRoom(page, 'general');
   await expect(page.getByTestId('message').filter({ hasText: 'Imported "pkg-export-copy" as a new project' })).toBeVisible();
@@ -174,7 +175,7 @@ test('support bundle: preview lists files and the scrub report, a planted secret
 
   await workspaceNav(page, 'nav-support');
   await expect(page.getByTestId('bundle-never-uploaded')).toContainText('never uploads');
-  await page.getByRole('button', { name: 'Preview the bundle' }).click();
+  // the page previews by itself when it opens (X57)
   const preview = page.getByTestId('bundle-preview');
   await expect(preview).toContainText('Nothing has been written yet');
   await expect(page.getByTestId('bundle-file').first()).toBeVisible();
@@ -203,7 +204,6 @@ test('support bundle: preview lists files and the scrub report, a planted secret
 
   // including a run is opt-in; an unknown run is refused by the core before anything is written
   await page.getByLabel(/Include one run/).fill('run_does_not_exist');
-  await page.getByRole('button', { name: 'Preview the bundle' }).click();
   await expect(page.getByRole('alert')).toContainText('there is no run');
   expect(readFileSync(path).length).toBeGreaterThan(0);
 });
@@ -220,8 +220,7 @@ test('support bundle: a file already at the destination is not written over unti
     support.pathname = '/support';
     await page.goto(support.toString());
     await expect(page.getByRole('heading', { level: 1, name: 'Support bundle' })).toBeVisible();
-    await page.getByRole('button', { name: 'Preview the bundle' }).click();
-    await expect(page.getByTestId('bundle-preview')).toBeVisible();
+    await expect(page.getByTestId('bundle-preview')).toHaveAttribute('data-fresh', 'true');
     await page.getByLabel(/^Save to/).fill(dest);
 
     // nothing is there yet: the bundle is written, and the page shows what is in it and its own scrub report
@@ -380,7 +379,6 @@ test('licensed test harness: no license is read-only and says why; expired is re
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await expect(page.getByTestId('export-result')).toBeVisible();
   await workspaceNav(page, 'nav-support');
-  await page.getByRole('button', { name: 'Preview the bundle' }).click();
   await expect(page.getByTestId('bundle-preview')).toBeVisible();
 
   // 5. importing a license turns it back on without a restart

@@ -8,7 +8,15 @@ import { Button } from '../../ui/button.tsx';
 import { Badge, mono, muted } from '../../ui/data.tsx';
 import { tableCard } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { routes } from '../../routes.ts';
 import { compact } from './run-model.ts';
+
+/** The Activity page narrowed to one run (X55): Activity takes ?run= and ?task= and remembers them as its scope. */
+export const activityOfRun = (runId: string, taskId?: string): string => {
+  const q = new URLSearchParams({ run: runId });
+  if (taskId) q.set('task', taskId);
+  return `${routes.activity.href()}?${q.toString()}`;
+};
 
 const rowSel = css({ '& tr[aria-current="true"] td': { background: t.accentSoft } });
 const wrapCode = css({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: t.textSm });
@@ -129,7 +137,7 @@ const payloadCss = css({
  * The run's events as an inspector (P91): filtered by any words of the type, the agent or the payload, each row opening to its
  * payload as stored (redacted by the core, cut past 16 KB), with a Copy of the event as JSON.
  */
-export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agent[] }>) {
+export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agent[]; taskId?: string }>) {
   let filter = '';
   const open = new Set<number>();
   let copied = -1;
@@ -152,7 +160,12 @@ export function Events(handle: Handle<{ x: RunExplanation; agents: readonly Agen
     const shown = x.events.filter((e) => eventMatches(e, e.agentId ? agentName(e.agentId, agents) : '', filter));
     return (
       <div style={{ display: 'grid', gap: '8px' }}>
-        {x.eventsTruncated ? <p mix={muted}>Only the latest {x.events.length} events are listed; the Activity page has all of them.</p> : null}
+        {x.eventsTruncated ? (
+          <p mix={muted} data-testid="run-events-truncated">
+            Only the latest {x.events.length} events are listed.{' '}
+            {x.run ? <a href={activityOfRun(x.run.id, handle.props.taskId)}>Show this run's events on the Activity page</a> : 'The Activity page has the rest.'}
+          </p>
+        ) : null}
         <input
           type="search"
           aria-label="Filter events"

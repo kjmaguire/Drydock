@@ -6,7 +6,15 @@ import { byText, cleanup, mount, testServices, type, waitFor } from '../../test/
 import { CHAT_TEXT_MAX, tryInChat } from './turns.tsx';
 import { RunScreen } from './run-screen.tsx';
 
-afterEach(cleanup);
+// the chosen tab is remembered (X55): every test starts on Turns
+afterEach(() => {
+  cleanup();
+  try {
+    localStorage.removeItem('drydock.run.tab');
+  } catch {
+    /* none kept */
+  }
+});
 
 const g: GraphView = {
   name: 'iuv',
@@ -90,6 +98,22 @@ async function ready(r: R) {
 }
 
 describe('RunScreen', () => {
+  it('remembers the chosen tab, and links a cut event list to the Activity page narrowed to this run (X55)', async () => {
+    const s = setup({ runExplain: async () => ({ ...explanation(), eventsTruncated: true }) });
+    const r = mount(<RunScreen taskId="t1" />, s);
+    await ready(r);
+    expect(tab(r, /Turns/).getAttribute('aria-selected')).toBe('true');
+    await r.act(() => tab(r, /Events/).click());
+    const note = await waitFor(() => r.$('[data-testid="run-events-truncated"]')!, r);
+    expect(note.textContent).toContain('Only the latest 3 events are listed.');
+    expect(note.querySelector('a')!.getAttribute('href')).toBe('/activity?run=run_1&task=t1');
+    cleanup();
+    const r2 = mount(<RunScreen taskId="t1" />, setup());
+    await ready(r2);
+    expect(tab(r2, /Events/).getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(r2.$('[data-testid="run-event"]')).toBeTruthy(), r2);
+  });
+
   it('explains each turn: manifest, the exact prompt, why this model, usage; and lists checkpoints, MCP calls and events', async () => {
     const calls: unknown[][] = [];
     const s = setup({

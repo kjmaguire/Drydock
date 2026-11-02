@@ -12,6 +12,8 @@ export interface DevDrive {
 /** core.FolderHints: whether the window has a folder dialog, whether this is Windows, the Dev Drives found, and why none was. */
 export interface FolderHints {
   canPick: boolean;
+  /** The window also has a file dialog (fs.pickFile). */
+  canPickFile?: boolean;
   windows: boolean;
   devDrives: DevDrive[];
   /** Why devDrives is empty on Windows: a clause after "No Dev Drive was found: ". */
@@ -50,6 +52,8 @@ export interface FolderClient {
   /** The window's folder dialog, opened at dir (or the deepest part of it that exists; empty: the person's code folder). */
   fsPickFolder(title?: string, dir?: string): Promise<string>;
   fsFolderHints(): Promise<FolderHints>;
+  /** Opens the window's file dialog for one kind of file Drydock reads ("" when the person cancelled). Only a person may. */
+  fsPickFile(kind: 'project-archive'): Promise<string>;
   repoCheck(path: string): Promise<RepoFolder>;
   /** Makes the folder (when missing) a Git repository on main with a first commit. Only a person may. */
   repoInit(path: string): Promise<RepoInit>;
@@ -58,10 +62,12 @@ export interface FolderClient {
 export function createFolderClient(t: Transport): FolderClient {
   return {
     fsPickFolder: async (title = '', dir = '') => (await t.call<{ path?: string } | null>('fs.pickFolder', { title, dir }))?.path ?? '',
+    fsPickFile: async (kind) => (await t.call<{ path?: string } | null>('fs.pickFile', { kind }))?.path ?? '',
     fsFolderHints: async () => {
       const h = await t.call<FolderHints | null>('fs.folderHints', {});
       return {
         canPick: h?.canPick === true,
+        canPickFile: h?.canPickFile === true,
         windows: h?.windows === true,
         devDrives: Array.isArray(h?.devDrives) ? h.devDrives : [],
         ...(typeof h?.devDriveReason === 'string' && h.devDriveReason ? { devDriveReason: h.devDriveReason } : {}),

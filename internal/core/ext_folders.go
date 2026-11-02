@@ -35,6 +35,16 @@ func init() {
 				}
 				return map[string]string{"path": path}, nil
 			}),
+			"fs.pickFile": bind(func(ctx context.Context, p struct {
+				// Kind names what is chosen; it sets the dialog's title and filter (only the kinds in fileKinds)
+				Kind string `json:"kind"`
+			}) (any, error) {
+				path, err := c.PickFile(ctx, p.Kind, c.Human())
+				if err != nil {
+					return nil, err
+				}
+				return map[string]string{"path": path}, nil
+			}),
 			"fs.folderHints": bind(func(ctx context.Context, _ struct{}) (any, error) { return x.hints(ctx), nil }),
 			"repo.check": bind(func(ctx context.Context, p struct {
 				Path string `json:"path"`
@@ -57,7 +67,9 @@ type foldersExt struct {
 // FolderHints is what the project folder's field says beside the path: whether the window has a folder dialog, whether this
 // is Windows (where a Dev Drive is recommended), the Dev Drives found, and when none was found on Windows, why.
 type FolderHints struct {
-	CanPick        bool            `json:"canPick"`
+	CanPick bool `json:"canPick"`
+	// CanPickFile says the window also has a file dialog (fs.pickFile).
+	CanPickFile    bool            `json:"canPickFile"`
 	Windows        bool            `json:"windows"`
 	DevDrives      []runners.Drive `json:"devDrives"`
 	DevDriveReason string          `json:"devDriveReason,omitempty"`
@@ -65,7 +77,7 @@ type FolderHints struct {
 
 func (x *foldersExt) hints(ctx context.Context) FolderHints {
 	dev := x.c.devDrives(ctx)
-	h := FolderHints{CanPick: x.c.cfg.PickFolder != nil, Windows: runtime.GOOS == "windows", DevDrives: dev.Drives, DevDriveReason: dev.Reason}
+	h := FolderHints{CanPick: x.c.cfg.PickFolder != nil, CanPickFile: x.c.cfg.PickFile != nil, Windows: runtime.GOOS == "windows", DevDrives: dev.Drives, DevDriveReason: dev.Reason}
 	if h.DevDrives == nil {
 		h.DevDrives = []runners.Drive{}
 	}
@@ -114,6 +126,33 @@ func (c *Core) PickFolder(ctx context.Context, title, dir, by string) (string, e
 	path, err := c.cfg.PickFolder(ctx, FolderPick{Title: title, Dir: existingFolder(dir)})
 	if err != nil {
 		return "", fmt.Errorf("the folder dialog: %w", err)
+	}
+	return strings.TrimSpace(path), nil
+}
+
+// fileKinds are the files a page may ask the window's file dialog for: the dialog's title and its filter. A kind not here is
+// refused, so the dialog only ever offers what a page of Drydock reads.
+var fileKinds = map[string]FilePick{
+	"project-archive": {Title: "Choose a project archive", FilterName: "Drydock project archives", FilterPattern: "*.drydock-project.zip"},
+}
+
+// PickFile opens the window's file dialog for one of fileKinds and returns the file the person chose ("" when they cancelled).
+// Only a person may; without a dialog it says to type the path. Choosing a file reads nothing: the page then asks for what it
+// needs (an import's preview).
+func (c *Core) PickFile(ctx context.Context, kind, by string) (string, error) {
+	pick, ok := fileKinds[kind]
+	if !ok {
+		return "", fmt.Errorf("there is no file dialog for %q", kind)
+	}
+	if c.cfg.PickFile == nil {
+		return "", errors.New("this window cannot open a file dialog: type the file's full path instead")
+	}
+	if !isHuman(by) {
+		return "", errors.New("only a person may choose a file")
+	}
+	path, err := c.cfg.PickFile(ctx, pick)
+	if err != nil {
+		return "", fmt.Errorf("the file dialog: %w", err)
 	}
 	return strings.TrimSpace(path), nil
 }

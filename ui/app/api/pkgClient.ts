@@ -48,6 +48,8 @@ export interface PkgClient {
   /** The crash reports on this machine, newest first. */
   crashList(): Promise<{ reports: CrashReport[] }>;
   crashDelete(name: string): Promise<{ deleted: boolean }>;
+  /** One crash report's text, secrets already redacted by the core. Shown as text, never as markup. */
+  crashRead(name: string): Promise<{ name: string; text: string }>;
   /** The notices a person acknowledges once (D1: Claude Code runs as you, under your own terms). */
   noticeStatus(): Promise<{ notices: NoticeState[] }>;
   noticeAcknowledge(id: string, version: number): Promise<NoticeState>;
@@ -95,6 +97,7 @@ export function createPkgClient(t: Transport): PkgClient {
       return { reports: arr(r.reports) };
     },
     crashDelete: (name) => call('crash.delete', { name }),
+    crashRead: (name) => call('crash.read', { name }),
     noticeStatus: async () => {
       const r = await call<{ notices: NoticeState[] | null }>('notice.status', {});
       return { notices: arr(r.notices) };
