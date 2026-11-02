@@ -1,5 +1,6 @@
-// Support bundle: a local zip of scrubbed diagnostics for a bug report. Preview first (the file list and the scrub report,
-// names and counts only), then create it on this computer. Including one run is opt-in behind an acknowledgement. Drydock
+// Support bundle: a local zip of scrubbed diagnostics for a bug report. The preview (the file list and the scrub report, names
+// and counts only) is made when the page opens and again shortly after a choice changes (a preview builds the whole bundle in
+// memory, so it waits for the typing to stop); the bundle is then created on this computer. Including one run is opt-in behind an acknowledgement. Drydock
 // never uploads a bundle. Works in every license state and with no project.
 //
 // Creating never writes over a file by itself (audit 2026-10-16, L39): when a file is already at the destination the core writes
@@ -14,6 +15,7 @@ import { action, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { faint, mono } from '../../ui/data.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Checkbox, errorAttrs, Field, formActions } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
@@ -141,6 +143,9 @@ function FileTable(handle: Handle<{ files: BundleFile[] | null; label?: string; 
   );
 }
 
+/** How long the page waits after a choice changes before it previews again. */
+export const PREVIEW_DELAY_MS = 600;
+
 export function SupportScreen(handle: Handle) {
   const s = services(handle);
   const act = action(handle);
@@ -166,26 +171,69 @@ export function SupportScreen(handle: Handle) {
   // the person is told under the events field and the keyboard goes to it
   const refuseEvents = (error: string) => {
     eventsError = error;
+    previewError = undefined;
     act.clear();
     handle.queueTask(() => root?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
   };
   // the question goes away with the button that answered it: the keyboard goes back to the button that asked it
   const focusCreate = () => handle.queueTask(() => root?.querySelector<HTMLElement>('[data-testid="bundle-create"]')?.focus());
 
-  const runPreview = async () => {
+  /**
+   * Only the newest preview asked for is shown: an older one that answers late is dropped, with its error. Previews can overlap
+   * (one starts while an earlier one still runs), so they keep their own busy and error, set and cleared only by the newest.
+   */
+  let asked = 0;
+  /** The number of the preview still running (0: none). */
+  let previewing = 0;
+  let previewError: Error | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  handle.signal.addEventListener('abort', () => clearTimeout(timer));
+  // `auto`: made by the page itself (on opening, after a change); a bad events field is then said under it without taking the keyboard
+  const runPreview = async (auto = false) => {
+    clearTimeout(timer);
     const o = bundleOpts(events, run);
-    if (!o.ok) return refuseEvents(o.error);
+    if (!o.ok) {
+      if (!auto) return refuseEvents(o.error);
+      eventsError = o.error;
+      return void handle.update();
+    }
     eventsError = undefined;
     const key = bundleKey(events, run);
     created = undefined;
     forget();
     ack = false;
-    const r = await act.run('preview', () => s.client.supportbundlePreview(o.opts));
+    const n = ++asked;
+    previewing = n;
+    previewError = undefined;
+    act.clear();
+    let r: BundlePreview | undefined;
+    let err: Error | undefined;
+    try {
+      r = await s.client.supportbundlePreview(o.opts);
+    } catch (e) {
+      err = e instanceof Error ? e : new Error(String(e));
+    }
+    if (n !== asked || handle.signal.aborted) return;
+    previewing = 0;
+    previewError = err;
     if (r) preview = { ...r, key, opts: o.opts };
     void handle.update();
   };
+  const later = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void runPreview(true), PREVIEW_DELAY_MS);
+  };
+  // the preview is there when the page opens
+  handle.queueTask(() => void runPreview(true));
+  /** Report this (a crash report): the bundle carries every report, so the keyboard goes to Create, or to the build when there is none yet. */
+  const toBundle = () => {
+    const target = root?.querySelector<HTMLElement>('[data-testid="bundle-create"]') ?? root?.querySelector<HTMLElement>('[data-testid="bundle-build-body"]');
+    target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    target?.focus();
+  };
   const runCreate = async (opts: BundleOpts, overwrite = false) => {
     created = undefined;
+    previewError = undefined;
     forget();
     // overwrite goes only with the answer "Yes, replace it": the first request never carries it
     const r = await act.run('create', () =>
@@ -203,7 +251,7 @@ export function SupportScreen(handle: Handle) {
     const includeRun = run.trim() || undefined;
     const shown = preview;
     const fresh = shown?.key === bundleKey(events, run);
-    const busy = act.busy !== '';
+    const busy = act.busy !== '' || previewing !== 0;
     return (
       <Page title="Support bundle" icon={LifeBuoy} subtitle="A zip of scrubbed diagnostics for a bug report" guide="support-bundle">
         <div mix={[settingsColumn, ref((n: Element) => (root = n as HTMLElement))]}>
@@ -215,27 +263,16 @@ export function SupportScreen(handle: Handle) {
             </span>
           </p>
 
-          <CrashReports />
+          <CrashReports onReport={toBundle} />
 
           <Group
             title="Build a bundle"
             icon={FileSearch}
-            description="Preview first: nothing is written until you create the bundle, and you see every file and what was scrubbed."
+            testId="bundle-build"
+            description="The preview below is made for these choices: nothing is written until you create the bundle, and you see every file and what was scrubbed."
           >
-            <div mix={panelPad}>
+            <div mix={panelPad} tabIndex={-1} data-testid="bundle-build-body">
               <div mix={formCss}>
-                <Field label="Recent events to list (empty for the default of 500, at most 5000)" error={eventsError}>
-                  {(id) => (
-                    <input
-                      id={id}
-                      inputMode="numeric"
-                      value={events}
-                      placeholder="500"
-                      {...errorAttrs(id, eventsError)}
-                      mix={on('input', (e) => ((events = e.currentTarget.value), (eventsError = undefined), (ack = false), forget(), void handle.update()))}
-                    />
-                  )}
-                </Field>
                 <Field label="Include one run (optional; a run id). Adds that run's events with payloads and its raw output.">
                   {(id) => (
                     <input
@@ -243,18 +280,32 @@ export function SupportScreen(handle: Handle) {
                       value={run}
                       spellcheck={false}
                       placeholder="run_..."
-                      mix={[mono, on('input', (e) => ((run = e.currentTarget.value), (ack = false), forget(), void handle.update()))]}
+                      mix={[mono, on('input', (e) => ((run = e.currentTarget.value), (ack = false), forget(), later(), void handle.update()))]}
                     />
                   )}
                 </Field>
+                <Disclosure summary="More options" open={events !== '' || !!eventsError} testId="bundle-more">
+                  <Field label="Recent events to list (empty for the default of 500, at most 5000)" error={eventsError}>
+                    {(id) => (
+                      <input
+                        id={id}
+                        inputMode="numeric"
+                        value={events}
+                        placeholder="500"
+                        {...errorAttrs(id, eventsError)}
+                        mix={on('input', (e) => ((events = e.currentTarget.value), (eventsError = undefined), (ack = false), forget(), later(), void handle.update()))}
+                      />
+                    )}
+                  </Field>
+                </Disclosure>
                 <div mix={formActions}>
-                  <Button variant={shown && fresh ? 'secondary' : 'primary'} icon={FileSearch} disabled={busy} mix={on('click', () => void runPreview())}>
-                    {act.busy === 'preview' ? 'Building the preview...' : 'Preview the bundle'}
+                  <Button icon={FileSearch} disabled={busy} mix={on('click', () => void runPreview())}>
+                    {previewing !== 0 ? 'Building the preview...' : 'Preview again'}
                   </Button>
                 </div>
               </div>
             </div>
-            <ErrorNote error={act.error} what="Support bundle" />
+            <ErrorNote error={previewError ?? act.error} what="Support bundle" />
           </Group>
 
           {shown ? (

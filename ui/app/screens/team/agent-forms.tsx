@@ -10,6 +10,7 @@ import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Select } from '../../ui/select.tsx';
@@ -24,6 +25,23 @@ import { SkillsField } from './skills-field.tsx';
 import { PURPOSE_HELP, ROLE_SUGGESTIONS, adapterOption, appliedNote } from './team.ts';
 
 const full = css({ gridColumn: '1 / -1' });
+const roleChips = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '6px',
+  marginTop: '6px',
+  '& button': {
+    height: '26px',
+    minHeight: '0',
+    padding: '0 10px',
+    border: `1px solid ${t.border}`,
+    borderRadius: t.rFull,
+    background: t.bgSurface,
+    color: t.textMuted,
+    fontSize: t.textSm,
+  },
+  '& button[aria-pressed="true"]': { borderColor: t.accent, color: t.text },
+});
 
 function RoleSuggestions(handle: Handle<{ id: string }>) {
   return () => (
@@ -59,6 +77,9 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
     void handle.update();
   };
   const chosen = () => handle.props.adapters.find((a) => a.id === (adapter || handle.props.adapters[0]?.id));
+  // something under More settings differs from what the core would do by itself (model and effort follow the role)
+  const customised = (refusal: unknown) =>
+    !!refusal || !!purpose.trim() || !!mode || !!runMode || !practices || skills.add.length > 0 || skills.remove.length > 0;
   const pr = claudePractices(handle, {
     adapter: () => chosen()?.id ?? '',
     role: () => role,
@@ -125,22 +146,37 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
             <>
               <input id={id} value={role} list={roleList} required autocomplete="off" mix={on('input', (e) => set(() => (role = e.currentTarget.value)))} />
               <RoleSuggestions id={roleList} />
+              <div mix={roleChips} role="group" aria-label="Roles" data-testid="role-chips">
+                {ROLE_SUGGESTIONS.map((r) => (
+                  <button key={r} type="button" aria-pressed={role.trim().toLowerCase() === r ? 'true' : 'false'} mix={on('click', () => set(() => (role = r)))}>
+                    {r}
+                  </button>
+                ))}
+              </div>
             </>
           )}
         </Field>
-        <Field label="Adapter">
-          {(id) => (
-            <Select
-              id={id}
-              label="Adapter"
-              value={adapterId}
-              options={adapters.map((x) => ({ value: x.id, label: adapterOption(x) }))}
-              placeholder="Choose an agent CLI"
-              // another adapter starts the model and effort over (the Select is quiet when the same one is chosen again)
-              onChange={(v) => set(() => ((adapter = v), (model = ''), (effort = ''), (mode = ''), (confirmedMode = '')))}
-            />
-          )}
-        </Field>
+        {/* one agent CLI: it is the one, nothing to choose */}
+        {adapters.length === 1 ? null : (
+          <Field label="Adapter">
+            {(id) => (
+              <Select
+                id={id}
+                label="Adapter"
+                value={adapterId}
+                options={adapters.map((x) => ({ value: x.id, label: adapterOption(x) }))}
+                placeholder="Choose an agent CLI"
+                // another adapter starts the model and effort over (the Select is quiet when the same one is chosen again)
+                onChange={(v) => set(() => ((adapter = v), (model = ''), (effort = ''), (mode = ''), (confirmedMode = '')))}
+              />
+            )}
+          </Field>
+        )}
+        <div mix={full}>
+          {/* the rest has defaults the core applies (the role sets model and effort; the mode, run mode and practices have
+              their defaults): folded, and open when something in it was changed or needs an answer */}
+          <Disclosure summary="More settings" open={customised(refusal)} testId="agent-form-more">
+            <div mix={formGrid}>
         <ModelEffortFields
           caps={a?.capabilities}
           adapter={adapterId}
@@ -167,6 +203,9 @@ export function AgentForm(handle: Handle<{ projectId: string; adapters: AdapterI
         </div>
         <SkillsField projectId={handle.props.projectId} role={role} changes={skills} onChange={(c) => set(() => (skills = c))} />
         <ClaudePracticesPanel info={info} on={practices} onChange={(v) => set(() => (practices = v))} />
+            </div>
+          </Disclosure>
+        </div>
         <div mix={formActions}>
           <Button
             type="submit"
@@ -200,7 +239,6 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
   const q = query(handle, { load: () => s.client.agentTemplateList(), when: (e) => e.type.startsWith('agenttemplate.') });
   const act = action(handle);
   let pick = '';
-  let name = '';
   let note = '';
   // the mode the "acts without asking" box is ticked for, when the chosen template has such a mode (lib/permission.ts)
   let confirmedMode = '';
@@ -209,13 +247,12 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
     if (needsConfirmation(mode, confirmedMode)) return;
     note = '';
     const confirm = confirmationFor(mode, confirmedMode).confirmSkipsApprovals;
-    const title = name.trim() || undefined;
+    // the agent takes the template's name; the core numbers a second copy so the two can be told apart
     const projectId = handle.props.projectId;
     // the confirmation travels only when the mode needs it (and was ticked for): other applies are the call they always were
-    const r = await act.run('apply', () => (confirm ? s.client.agentTemplateApply(templateId, projectId, title, true) : s.client.agentTemplateApply(templateId, projectId, title)));
+    const r = await act.run('apply', () => (confirm ? s.client.agentTemplateApply(templateId, projectId, undefined, true) : s.client.agentTemplateApply(templateId, projectId, undefined)));
     if (!r) return;
     note = appliedNote(r);
-    name = '';
     confirmedMode = '';
     void handle.update();
     handle.props.onCreated();
@@ -251,11 +288,6 @@ export function FromTemplate(handle: Handle<{ projectId: string; onCreated: () =
                 options={templates.map((x) => ({ value: x.id, label: `${x.name} (${x.role}, ${x.adapter})` }))}
                 onChange={(v) => ((pick = v), (confirmedMode = ''), void handle.update())}
               />
-            )}
-          </Field>
-          <Field label="Name (optional)">
-            {(id) => (
-              <input id={id} value={name} placeholder="the template's name" autocomplete="off" mix={on('input', (e) => ((name = e.currentTarget.value), void handle.update()))} />
             )}
           </Field>
           <Button

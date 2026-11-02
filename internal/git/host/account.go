@@ -100,6 +100,30 @@ func ListRepos(ctx context.Context, api API, owner, query string) ([]RepoSummary
 
 var fullNameRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$`)
 
+// FullNameOf turns what a person typed for a GitHub repository into owner/name: an owner/name as it is, or a github.com
+// address (https://github.com/owner/name, github.com/owner/name, git@github.com:owner/name.git, with or without ".git" or a
+// trailing slash). Anything else comes back trimmed and unchanged, for ValidFullName to refuse.
+func FullNameOf(s string) string {
+	s = strings.TrimSpace(s)
+	rest := s
+	lower := strings.ToLower(s)
+	for _, pre := range []string{"https://github.com/", "http://github.com/", "https://www.github.com/", "www.github.com/", "github.com/", "git@github.com:", "ssh://git@github.com/"} {
+		if strings.HasPrefix(lower, pre) {
+			rest = s[len(pre):]
+			break
+		}
+	}
+	if rest == s {
+		return s
+	}
+	rest = strings.SplitN(strings.SplitN(rest, "?", 2)[0], "#", 2)[0]
+	parts := strings.Split(strings.Trim(rest, "/"), "/")
+	if len(parts) < 2 {
+		return s
+	}
+	return parts[0] + "/" + strings.TrimSuffix(parts[1], ".git")
+}
+
 // ValidFullName reports whether s is an owner/name a clone may be asked for (no URL, no path tricks).
 func ValidFullName(s string) bool {
 	if !fullNameRe.MatchString(s) {

@@ -8,6 +8,7 @@ import { byLabel, byText, cleanup, mount, renderPlain, testServices, waitFor } f
 import { setTerminalLoader, type TerminalFactory } from '../dock/widgets.ts';
 import { adapterInfo } from '../project/wizard-fixtures.ts';
 import { AgentsScreen, ReportView } from './agents-screen.tsx';
+import { focusRereadGap, FOCUS_REREAD_MS } from '../../lib/focus.ts';
 
 interface TestTerminal {
   output: string;
@@ -223,6 +224,27 @@ describe('Agents page', () => {
     await waitFor(() => expect(r2.$('[data-testid="agent-detail"]')?.getAttribute('data-key')).toBe('claude'), r2);
     // the row the address named is gone: the default is drawn, and a narrow window keeps the list rather than open it
     expect(r2.$('[data-testid="agents"]')!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('reads the CLIs again when the window gets focus back, once a minute at most (F11)', async () => {
+    let reads = 0;
+    let signedIn = false;
+    const s = testServices({ connectionList: async () => (reads++, [signedIn ? ready({ key: 'claude' }) : conn({ key: 'claude' })]), mcpStatus: async () => ({ running: true, address: '', adapters: [] }), adapterList: async () => [] });
+    const r = mount(<AgentsScreen onNavigate={() => {}} />, s);
+    await waitFor(() => expect(reads).toBe(1), r);
+    // focus soon after the first read starts none (the read probes every CLI)
+    window.dispatchEvent(new Event('focus'));
+    await r.act(() => {});
+    expect(reads).toBe(1);
+    // a sign-in done in another window: the next focus once the minute is up reads again
+    signedIn = true;
+    focusRereadGap.ms = 0;
+    try {
+      window.dispatchEvent(new Event('focus'));
+      await waitFor(() => expect(reads).toBe(2), r);
+    } finally {
+      focusRereadGap.ms = FOCUS_REREAD_MS;
+    }
   });
 
   it('the detail: the header with its state and one line, the actions, one notice, and three tabs', async () => {

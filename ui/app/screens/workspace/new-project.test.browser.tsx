@@ -107,6 +107,31 @@ describe('New project on Home (P143)', () => {
     expect(setups[0]!.repo).toEqual({ kind: 'local', path: '/src/gocalc' });
   });
 
+  it('Open a folder: a tick made for a missing folder does not carry over to a folder with files typed next (B6)', async () => {
+    const { r, setups } = show({
+      repoCheck: async (path: string) =>
+        (path.endsWith('new')
+          ? { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet.' }
+          : { path, state: 'folder', entries: 2, canInit: true, message: 'This folder is not a Git repository.' }) as never,
+    });
+    await waitFor(() => expect($(r, '[data-testid="home-new-project"]')).not.toBeNull(), r);
+    await r.act(() => $(r, '[data-testid="home-new-project"]')!.click());
+    await r.act(() => where(r, 'folder').click());
+    const field = await waitFor(() => {
+      const f = r.$('[data-testid="folder-field"] input') as HTMLInputElement | null;
+      if (!f) throw new Error('no folder field');
+      return f;
+    }, r);
+    await r.act(() => type(field, '/src/new'));
+    await waitFor(() => expect($<HTMLInputElement>(r, '[data-testid="folder-init"] input')!.checked).toBe(true), r, 3000);
+    // the path becomes a folder with files, and Create is pressed before its check answers: no repository is made there
+    await r.act(() => type(field, '/src/app'));
+    expect(r.$('[data-testid="folder-init"]')).toBeNull();
+    await r.act(() => create(r).click());
+    await waitFor(() => expect(setups).toHaveLength(1), r);
+    expect(setups[0]!.repo).toEqual({ kind: 'local', path: '/src/app' });
+  });
+
   it('/home?new=project&where=clone opens it on Clone from GitHub (the old wizard address leads here)', async () => {
     window.history.replaceState(window.history.state, '', '/home?new=project&where=clone');
     const { r } = show({ githubStatus: async () => ({ installed: false, loggedIn: false, login: '', error: 'the GitHub CLI (gh) is not installed' }) });

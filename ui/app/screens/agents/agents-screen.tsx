@@ -30,6 +30,7 @@ import { Page } from '../../ui/layout.tsx';
 import { DetailHeader, FactGrid, MasterDetail, SettingRow, SettingsGroup, type ListItem } from '../../ui/master-detail.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone } from '../../ui/tokens.ts';
+import { rereadOnFocus } from '../../lib/focus.ts';
 import {
   agentGroups,
   agentNotice,
@@ -879,6 +880,10 @@ export function AgentsScreen(handle: Handle<{ initial?: string; onNavigate?: (hr
     checkingAll = false;
     void handle.update();
   };
+
+  // a CLI installed or signed in in another window publishes no event: read again when the window gets focus back, at most
+  // once a minute (the read probes every CLI) and not while a read is on its way
+  rereadOnFocus({ reload: () => q.reload(), busy: () => q.loading || checkingAll, signal: handle.signal });
 
   let selected = handle.props.initial ?? '';
   let lastInitial = handle.props.initial;

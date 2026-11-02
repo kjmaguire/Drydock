@@ -88,7 +88,7 @@ const detailCss = css({
   padding: `0 ${t.s3} ${t.s3} calc(${t.s3} + 16px + ${t.s3})`,
   fontSize: t.textMd,
   '& p': { margin: '0' },
-  '& .actions': { display: 'flex', gap: t.s2, flexWrap: 'wrap' },
+  '& .actions': { display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap', '& small': { color: t.textMuted, fontSize: t.textSm } },
 });
 
 // A project skill's row: the whole row is one button (the app stylesheet centres a button's content and forbids wrapping, so

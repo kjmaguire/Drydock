@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { RecommendItem, Recommendation } from '../../api/extTypes.ts';
-import { forWhom, itemText, openItems, triggerText } from './recommend.ts';
+import { canApply, forWhom, itemText, openItems, recommendsText, triggerText, waitingRecommendations } from './recommend.ts';
 
 const names = new Map([
   ['agt_1', 'Backend #1'],
@@ -10,6 +10,21 @@ const names = new Map([
 const item = (over: Partial<RecommendItem>): RecommendItem => ({ id: 'r1', kind: 'skill', action: 'add', name: 'wrangler', label: 'wrangler', agents: [], reason: 'why', status: 'open', ...over });
 
 describe('recommendation text', () => {
+  it('applies with one click only what can be applied here, and counts what waits for the line on Work', () => {
+    expect(canApply(item({}))).toBe(true);
+    expect(canApply(item({ status: 'applied' }))).toBe(false);
+    expect(canApply(item({ kind: 'integration', action: 'add' }))).toBe(false);
+    expect(canApply(item({ action: 'team' }))).toBe(false);
+    const run = (over: Partial<Recommendation>): Recommendation => ({ id: 'rec', projectId: 'p', agentId: 'agt_2', trigger: 'manual', status: 'done', candidates: [], summary: '', items: [], dropped: [], costUsd: 0, createdAt: 1, ...over });
+    const three = run({ items: [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c', kind: 'integration' }), item({ id: 'd', status: 'dismissed' })] });
+    expect(waitingRecommendations([three], names)).toEqual({ who: 'Lead', count: 3 });
+    expect(recommendsText({ who: 'Lead', count: 3 })).toBe('Lead recommends 3 changes');
+    expect(recommendsText({ who: 'Lead', count: 1 })).toBe('Lead recommends 1 change');
+    expect(waitingRecommendations([run({ status: 'running' }), three], names)).toBeUndefined();
+    expect(waitingRecommendations([run({ items: [item({ status: 'applied' })] })], names)).toBeUndefined();
+    expect(waitingRecommendations([], names)).toBeUndefined();
+  });
+
   it('names the agents (a skill item always names them, P76)', () => {
     expect(forWhom([], names)).toBe('nobody named');
     expect(forWhom(['agt_1', 'agt_2'], names)).toBe('Backend #1, Lead');

@@ -55,6 +55,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
 
   // routing
   await workspaceNav(page, 'nav-routing');
+  // the rules, the preview and the limits are folded (effort review F8)
+  await page.getByTestId('routing-rules-fold').locator('summary').click();
+  await page.getByTestId('routing-preview-fold').locator('summary').click();
+  await page.getByTestId('routing-limits-fold').locator('summary').click();
   await expect(page.getByTestId('route-rule').first()).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');
@@ -134,13 +138,15 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   // expert pack from a local directory
   await projectNav(page, 'nav-packs');
   const dir = docsDir().replace(/\\/g, '/');
+  // a pasted manifest is behind "Paste a manifest..." (ready packs are installed with one click above it)
+  await page.getByTestId('pack-paste').locator('summary').click();
   await page.getByLabel('Pack manifest (YAML)').fill(`schema: 1\nid: e2edocs\ntitle: E2E docs\nkind: indexed\nvisibility: private\nsources:\n  - {type: local_dir, path: "${dir}"}\nattach: {instructions: "Go concurrency notes."}\n`);
   await page.getByRole('button', { name: 'Install pack' }).click();
   const pack = page.locator('[data-testid=pack][data-pack=e2edocs]');
   await expect(pack).toBeVisible();
   await pack.getByRole('button', { name: 'Refresh now' }).click();
   await expect(pack.getByRole('status')).toContainText('pages');
-  await pack.getByLabel('Role for e2edocs').fill('backend');
+  await choose(pack.getByLabel('Attach e2edocs for'), 'role:backend');
   await pack.getByRole('button', { name: 'Attach to this project' }).click();
   await expect(pack).toContainText(/backend/i);
   await page.getByLabel('Search packs').fill('goroutine channel');
@@ -214,10 +220,10 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   const wranglerInLibrary = page.locator('[data-testid=library-skill-tile][data-name=wrangler]');
   await expect(wranglerInLibrary).toBeVisible();
   await wranglerInLibrary.locator('button.what').click();
-  // a skill is given to agents, never the whole team (P76): Add waits until the agents it is for are ticked
+  // a skill is given to agents, never the whole team (P76): Add says who before the click (the agent of the role it names,
+  // else one agent, as the core would choose)
   const add = wranglerInLibrary.getByTestId('library-skill-tile-detail').getByRole('button', { name: 'Add to gocalc-know' });
-  await expect(add).toBeDisabled();
-  await page.getByTestId('library-for-agents').getByLabel('Dana (backend)').check();
+  await expect(add).toHaveAttribute('title', 'For Dana');
   await add.click();
   await expect(page.getByTestId('skill-added')).toContainText('wrangler was added to gocalc-know and is accepted ✓');
   await expect(page.getByTestId('skill-added')).toContainText('For Dana');
@@ -418,19 +424,20 @@ test('room modes, the scheduler and previews report what the core says', async (
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   const panel = page.getByTestId('room-agents');
+  // choosing a mode applies it (X14), and the order the core uses is said in words
   await choose(panel.getByLabel('Mode', { exact: true }), 'sequential');
   await expect(panel.getByTestId('mode-text')).toContainText('one turn each per round');
-  await panel.getByRole('button', { name: 'Add Dana' }).click();
-  await panel.getByRole('button', { name: 'Save mode' }).click();
   await expect(panel).toContainText('Current mode: sequential');
+  await expect(panel.getByTestId('speaking-order')).toContainText('Order: Dana (the order they joined)');
+  await expect(page.getByTestId('room-mode')).toHaveText('Agents take turns');
   await page.reload();
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
-  // moderator mode needs a moderator: the core refuses and says so
+  // a moderator room starts with the lead, or with you when there is none: the core accepts it
   await choose(page.getByTestId('room-agents').getByLabel('Mode', { exact: true }), 'moderator');
-  await page.getByTestId('room-agents').getByRole('button', { name: 'Save mode' }).click();
-  await expect(page.getByRole('alert')).toContainText('moderator');
+  await expect(page.getByTestId('room-agents')).toContainText('Current mode: moderator');
+  await expect(page.getByTestId('room-mode')).toHaveText('You pick who answers');
 
   await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('scheduler')).toContainText('manual');

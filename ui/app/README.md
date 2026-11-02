@@ -115,7 +115,8 @@ export function Thing(handle: Handle<{ id: string }>) {
 - Imports use explicit extensions (`./x.ts`, `./y.tsx`), as Node ESM and the Remix repo do.
 - Dropdowns are the kit's `Select` (`ui/select.tsx`), never a native `<select>`: WebView2 draws the native popup itself,
   in the system style and where the OS puts it. Two free-text fields keep a native suggestion list (`<input list>`): the
-  agent's role and an integration setting's choices; they take typed text first. `Select` is controlled (`value` + `onChange`, the
+  agent's role and an integration setting typed by hand ("Typed value...", or when its list cannot be read); they take typed text
+  first. `Select` is controlled (`value` + `onChange`, the
   options as `{ value, label, hint?, disabled? }`); a model name goes through `screens/shared/model-field.tsx` (the
   adapter's aliases as a list, "Another model..." for a typed full name). In tests, `choose(control, value)` from
   `test/render.tsx` picks an option (`type()` does the same on a dropdown), `optionsOf()` and `valueOf()` read it back; in
@@ -147,7 +148,8 @@ conversation:
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
   (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.
 - **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
-  "Rooms", `data-rooms`); the Settings rail lists the sections (landmark "Settings"; a project's is "Project settings"), and a
+  "Rooms", `data-rooms`; every crew agent under Direct messages, a click starting a conversation that does not exist yet; a row's
+  bell mutes it); the Settings rail lists the sections (landmark "Settings"; a project's is "Project settings"), and a
   section of more than one screen has its pills over the page beside it (`SectionPills`, P144). The old test ids live on:
   `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is
   not on the page.

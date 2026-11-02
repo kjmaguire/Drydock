@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Project } from '../../api/types.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
-import { pickUp } from './workspace.ts';
+import { pickPill, pickUp } from './workspace.ts';
 
 const p = (id: string, created: number) => ({ id, name: id, repoPath: '', created }) as Project;
 
@@ -30,5 +30,14 @@ describe('Pick up where you left off (P142)', () => {
   it('reads a creation time in seconds or milliseconds', () => {
     expect(pickUp([p('s', 1_700_000_000)], [], [], RUNNING_STATUSES)[0]!.last).toBe(1_700_000_000_000);
     expect(pickUp([p('ms', 1_700_000_000_000)], [], [], RUNNING_STATUSES)[0]!.last).toBe(1_700_000_000_000);
+  });
+});
+
+describe('the pill a project carries (B9)', () => {
+  it('says needs you, then how many run, then when something last happened', () => {
+    const now = Date.parse('2026-11-02T12:00:00Z');
+    expect(pickPill({ needs: 1, running: 2, last: now }, now)).toEqual({ tone: 'warn', text: 'needs you' });
+    expect(pickPill({ needs: 0, running: 2, last: now }, now)).toEqual({ tone: 'run', text: '2 running' });
+    expect(pickPill({ needs: 0, running: 0, last: now - 2 * 86_400_000 }, now)).toEqual({ tone: '', text: '2d' });
   });
 });

@@ -15,8 +15,10 @@ type Unread struct {
 	RoomID   string `json:"roomId"`
 	RoomName string `json:"roomName"`
 	Kind     Kind   `json:"kind"`
-	Unread   int    `json:"unread"`   // messages from others with seq > last_read_seq
-	Mentions int    `json:"mentions"` // messages that mention the member with seq > last_mention_read_seq
+	// Unread counts messages from others with seq > last_read_seq. A SYSTEM line (a join, a notice) is not conversation and
+	// does not count, except in the project's #alerts channel, where a notice may have no other signal.
+	Unread   int `json:"unread"`
+	Mentions int `json:"mentions"` // messages that mention the member with seq > last_mention_read_seq
 	// Muted is a room the member muted (decision P130): its messages raise neither count nor an Inbox item, except a message
 	// that mentions the member by name (not a role it holds), which still counts in both.
 	Muted    bool  `json:"muted"`
@@ -38,6 +40,7 @@ func (s *Service) UnreadCounts(ctx context.Context, member Author, projectID str
 	rows, err := s.db.Reader().QueryContext(ctx, `
 SELECT r.id, r.name, r.kind, m.state, m.last_read_seq,
   (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_read_seq AND x.author <> m.member_id
+     AND (x.type <> 'SYSTEM' OR (r.kind = 'channel' AND r.name = 'alerts'))
      AND (m.state <> 'muted' OR (`+directMention+`)) LIMIT `+fmt.Sprint(UnreadCap)+`)),
   (SELECT COUNT(*) FROM (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.seq > m.last_mention_read_seq AND x.author <> m.member_id
      AND x.mentions <> '[]'

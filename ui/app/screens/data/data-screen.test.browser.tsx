@@ -60,11 +60,11 @@ const none = (root: ParentNode, id: string) => root.querySelector(`[data-testid=
 const btn = (root: ParentNode, name: string) => byText<HTMLButtonElement>(root, 'button', name);
 const noButton = (root: ParentNode, name: string) => !Array.from(root.querySelectorAll('button')).some((b) => (b.textContent ?? '').trim() === name);
 
-function show(client: Partial<Client>, projects: Project[] = [proj('prj_1', 'Alpha')]) {
+function show(client: Partial<Client>, projects: Project[] = [proj('prj_1', 'Alpha')], onNavigate?: (href: string) => void) {
   let list = projects;
   const s = testServices({ projectList: async () => list, ...client });
   s.workspace.start();
-  const r = mount(<DataScreen />, s);
+  const r = mount(<DataScreen onNavigate={onNavigate} />, s);
   return Object.assign(r, {
     s,
     setProjects(p: Project[]) {
@@ -209,7 +209,8 @@ describe('DataScreen', () => {
     expect(u.textContent).toContain('OpenRouter');
     expect(u.textContent).toContain('Runs not resumed (cancelled): 1');
     expect(u.textContent).toContain('Approvals cancelled: 2');
-    expect(btn(r.container, 'Import as a new project').disabled).toBe(true);
+    // the repository is optional (the core links none, to attach later): the import does not wait for one (X59)
+    expect(btn(r.container, 'Import as a new project').disabled).toBe(false);
     await r.act(() => type(byLabel(r.container, /Local repository to link/), 'C:\\src\\repo'));
     await r.act(() => type(byLabel(r.container, /New project name/), 'Copy'));
     await r.act(() => btn(r.container, 'Import as a new project').click());
@@ -265,5 +266,63 @@ describe('DataScreen', () => {
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('is not a Git repository'), r);
     // the preview stays so the path can be fixed
     expect(none(r.container, 'import-preview')).toBe(false);
+  });
+
+  it('chooses the archive in the window\'s file dialog and previews it, imports with no repository, and opens the new project (X59)', async () => {
+    const picks: string[] = [];
+    const previews: string[] = [];
+    const imports: unknown[] = [];
+    const went: string[] = [];
+    const preview: ImportPreview = { manifest: manifest(), appSchema: 30, needsMigration: false, counts: { tasks: 3 }, pending: pending() };
+    const r = show(
+      {
+        fsFolderHints: async () => ({ canPick: false, canPickFile: true, windows: true, devDrives: [] }),
+        fsPickFile: async (kind) => (picks.push(kind), 'C:\\Users\\you\\gocalc.drydock-project.zip'),
+        projectImportPreview: async (p) => (previews.push(p), preview),
+        projectImport: async (req) => (imports.push(req), imported()),
+      },
+      undefined,
+      (href) => went.push(href),
+    );
+    const choose = await waitFor(() => tid(r.container, 'import-choose-file'), r);
+    await r.act(() => choose.click());
+    await waitFor(() => tid(r.container, 'import-preview'), r);
+    expect(picks).toEqual(['project-archive']);
+    expect(previews).toEqual(['C:\\Users\\you\\gocalc.drydock-project.zip']);
+    expect(byLabel<HTMLInputElement>(r.container, /Archive path/).value).toBe('C:\\Users\\you\\gocalc.drydock-project.zip');
+    // the folder dialog is not offered where the window has none
+    expect(none(r.container, 'import-choose-repo')).toBe(true);
+    await r.act(() => btn(r.container, 'Import as a new project').click());
+    await waitFor(() => tid(r.container, 'import-result'), r);
+    expect(imports).toEqual([{ path: 'C:\\Users\\you\\gocalc.drydock-project.zip', repoPath: '', name: undefined }]);
+    // the switcher the page used to point at is gone: the button opens the project
+    expect(tid(r.container, 'import-result').textContent).not.toContain('switcher');
+    const chosen: string[] = [];
+    r.s.workspace.selectProject = (id: string) => void chosen.push(id);
+    await r.act(() => tid(r.container, 'import-open-project').click());
+    expect(chosen).toEqual(['prj_new']);
+    expect(went).toEqual(['/']);
+  });
+
+  it('cancelling the file dialog changes nothing; the repository can be chosen in the folder dialog (X59)', async () => {
+    const previews: string[] = [];
+    const preview: ImportPreview = { manifest: manifest(), appSchema: 30, needsMigration: false, counts: {}, pending: pending() };
+    const r = show({
+      fsFolderHints: async () => ({ canPick: true, canPickFile: true, windows: true, devDrives: [] }),
+      fsPickFile: async () => '',
+      fsPickFolder: async () => 'C:\\src\\gocalc',
+      projectImportPreview: async (p) => (previews.push(p), preview),
+    });
+    await r.act(() => type(byLabel(r.container, /Archive path/), 'C:\\a.drydock-project.zip'));
+    await r.act(() => btn(r.container, 'Preview the import').click());
+    await waitFor(() => tid(r.container, 'import-preview'), r);
+    await r.act(() => tid(r.container, 'import-choose-file').click());
+    await r.act(() => undefined);
+    expect(byLabel<HTMLInputElement>(r.container, /Archive path/).value).toBe('C:\\a.drydock-project.zip');
+    expect(previews.length).toBe(1);
+    expect(none(r.container, 'import-preview')).toBe(false);
+    const pickRepo = await waitFor(() => tid(r.container, 'import-choose-repo'), r);
+    await r.act(() => pickRepo.click());
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, /Local repository to link/).value).toBe('C:\\src\\gocalc'), r);
   });
 });

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -185,12 +186,28 @@ func TestPickFolderUsesTheWindowsDialogAndSaysWhenThereIsNone(t *testing.T) {
 	if got["path"] != want || asked.Title != "Choose the project's folder" {
 		t.Fatalf("%v %+v", got, asked)
 	}
+	// the dialog opens at the folder in the field, or the deepest part of it that exists (B5)
+	field := filepath.Join(realTemp(t), "code")
+	if err := os.MkdirAll(field, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a.call("fs.pickFolder", map[string]string{"title": "x", "dir": filepath.Join(field, "not", "yet")}, &got)
+	if asked.Dir != field {
+		t.Fatalf("opened at %q, want %q", asked.Dir, field)
+	}
+	// an empty field opens at the person's code folder (the parent of the last new project's folder)
+	var res core.SetupResult
+	a.call("project.setup", core.SetupRequest{Name: "Fresh", Repo: core.SetupRepo{Kind: "local", Path: filepath.Join(field, "fresh"), Init: true}}, &res)
+	a.call("fs.pickFolder", map[string]string{"title": "x"}, &got)
+	if asked.Dir != field {
+		t.Fatalf("an empty field opened at %q, want %q", asked.Dir, field)
+	}
 	var h core.FolderHints
 	a.call("fs.folderHints", struct{}{}, &h)
 	if !h.CanPick || len(h.DevDrives) != 1 || h.DevDrives[0].Letter != "D:" {
 		t.Fatalf("%+v", h)
 	}
-	if _, err := c.PickFolder(context.Background(), "", "agent:agt_1"); err == nil {
+	if _, err := c.PickFolder(context.Background(), "", "", "agent:agt_1"); err == nil {
 		t.Fatal("an agent opened the folder dialog")
 	}
 
@@ -201,5 +218,98 @@ func TestPickFolderUsesTheWindowsDialogAndSaysWhenThereIsNone(t *testing.T) {
 	b.call("fs.folderHints", struct{}{}, &h)
 	if h.CanPick || h.DevDrives == nil {
 		t.Fatalf("%+v", h)
+	}
+}
+
+// Import a project's "Choose file..." (X59): the window's own file dialog (Config.PickFile), asked for a project archive with its
+// filter; a kind Drydock does not read is refused, an agent may not open it, and without a dialog it says to type the path.
+func TestPickFileOpensTheWindowsFileDialogForAProjectArchive(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "gocalc.drydock-project.zip")
+	var asked core.FilePick
+	calls := 0
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		// TEST DOUBLE: the file dialog
+		PickFile: func(_ context.Context, p core.FilePick) (string, error) {
+			asked = p
+			calls++
+			return " " + want + " ", nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var got map[string]string
+	a.call("fs.pickFile", map[string]string{"kind": "project-archive"}, &got)
+	if got["path"] != want || asked.FilterPattern != "*.drydock-project.zip" || asked.Title == "" {
+		t.Fatalf("%v %+v", got, asked)
+	}
+	var h core.FolderHints
+	a.call("fs.folderHints", struct{}{}, &h)
+	if !h.CanPickFile || h.CanPick {
+		t.Fatalf("%+v", h)
+	}
+	if err := a.callErr("fs.pickFile", map[string]string{"kind": "anything"}); err == nil || !strings.Contains(err.Error(), "no file dialog") {
+		t.Fatalf("an unknown kind: %v", err)
+	}
+	if _, err := c.PickFile(context.Background(), "project-archive", "agent:agt_1"); err == nil {
+		t.Fatal("an agent opened the file dialog")
+	}
+	if calls != 1 {
+		t.Fatalf("the dialog opened %d times", calls)
+	}
+	b := open(t, "")
+	if err := b.callErr("fs.pickFile", map[string]string{"kind": "project-archive"}); err == nil || !strings.Contains(err.Error(), "type the file's full path") {
+		t.Fatalf("without a dialog: %v", err)
+	}
+	b.call("fs.folderHints", struct{}{}, &h)
+	if h.CanPickFile {
+		t.Fatalf("%+v", h)
+	}
+}
+
+// New folder starts where the person keeps code (B4): the parent of the last new project's folder, else a Dev Drive's src
+// folder (a trusted one first, on Windows; codeDirFrom's own test covers the rule anywhere), else DefaultCloneDir.
+func TestNewFolderStartsWhereCodeIsKept(t *testing.T) {
+	c, err := core.Open(context.Background(), core.Config{DataDir: filepath.Join(t.TempDir(), "data"), User: "kyle", LeaseTTL: 3 * time.Second,
+		// TEST DOUBLE: two Dev Drives, the trusted one second
+		DevDrives: func(context.Context) runners.DevDriveScan {
+			return runners.DevDriveScan{Drives: []runners.Drive{{Letter: "E:"}, {Letter: "D:", Trusted: true}}}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	a := &app{t: t, c: c}
+	var dir string
+	a.call("github.cloneDir", map[string]bool{"default": true}, &dir)
+	want := core.DefaultCloneDir() // a drive letter is no folder off Windows
+	if runtime.GOOS == "windows" {
+		want = `D:\src`
+	}
+	if dir != want {
+		t.Fatalf("with a Dev Drive: %q, want %q", dir, want)
+	}
+	code := filepath.Join(realTemp(t), "work")
+	var res core.SetupResult
+	a.call("project.setup", core.SetupRequest{Name: "Pay", Repo: core.SetupRepo{Kind: "local", Path: filepath.Join(code, "pay"), Init: true}}, &res)
+	a.call("github.cloneDir", map[string]bool{"default": true}, &dir)
+	if dir != code {
+		t.Fatalf("after a new project in %s: %q", code, dir)
+	}
+	// an existing repository opened as it is says nothing about where new folders go
+	repo := newRepo(t)
+	a.call("project.setup", core.SetupRequest{Repo: core.SetupRepo{Kind: "local", Path: repo}}, &res)
+	a.call("github.cloneDir", map[string]bool{"default": true}, &dir)
+	if dir != code {
+		t.Fatalf("an opened repository moved the code folder: %q", dir)
+	}
+
+	b := open(t, "")
+	b.call("github.cloneDir", map[string]bool{"default": true}, &dir)
+	if dir != core.DefaultCloneDir() {
+		t.Fatalf("without a Dev Drive or a project: %q", dir)
 	}
 }

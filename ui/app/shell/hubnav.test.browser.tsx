@@ -218,4 +218,55 @@ describe('the hubs', () => {
     expect(label.textContent).toBe(long);
     expect(label.scrollWidth > label.clientWidth).toBe(true);
   });
+
+  it('a room row mutes and unmutes with one click on its bell (X111)', async () => {
+    const calls: unknown[] = [];
+    let muted = false;
+    const s = svc({
+      roomUnread: async () => [{ roomId: 'r1', roomName: 'general', kind: 'channel', unread: 0, mentions: 0, muted, lastReadSeq: 0 }],
+      roomSetMuted: async (roomId: string, m: boolean) => {
+        calls.push([roomId, m]);
+        muted = m;
+        return { roomId, roomName: 'general', kind: 'channel', unread: 0, mentions: 0, muted: m, lastReadSeq: 0 };
+      },
+    });
+    const r = mount(<RoomsRail route={{ name: 'room', id: 'r1' }} />, s);
+    await waitFor(() => expect(r.$$('[data-testid="room-bell"]')).toHaveLength(2), r);
+    const bell = () => r.$$('[data-testid="room-bell"]')[0] as HTMLButtonElement;
+    expect(bell().getAttribute('aria-label')).toBe('Mute general');
+    // the bell is beside the link, not inside it
+    expect(bell().closest('a')).toBeNull();
+    await r.act(() => bell().click());
+    await waitFor(() => expect(calls).toEqual([['r1', true]]), r);
+    await waitFor(() => expect(bell().getAttribute('aria-label')).toBe('Unmute general'), r);
+  });
+
+  it('lists every crew agent under Direct messages; a row without a conversation starts it and opens it (X112)', async () => {
+    const created: unknown[][] = [];
+    const s = svc({
+      agentList: async () => [
+        { id: 'agt1', projectId: 'p', name: 'Backend #1', adapter: 'claude', role: 'backend', model: '', effort: '', providerId: '', permissionMode: '', status: '' },
+        { id: 'agt2', projectId: 'p', name: 'Reviewer', adapter: 'claude', role: 'reviewer', model: '', effort: '', providerId: '', permissionMode: '', status: '' },
+      ],
+      roomList: async () => [room({}), room({ id: 'd1', kind: 'dm', name: 'dm:human:kyle+agt1', agentId: 'agt1' })],
+      roomCreateDM: async (projectId: string, agentId: string) => (created.push([projectId, agentId]), room({ id: 'd2', kind: 'dm', name: `dm:human:kyle+${agentId}`, agentId })),
+    });
+    const went: string[] = [];
+    const r = mount(<RoomsRail route={{ name: 'room', id: 'r1' }} onNavigate={(h) => void went.push(h)} />, s);
+    await waitFor(() => expect(r.$$('[data-testid="dm-start"]')).toHaveLength(1), r);
+    expect(Array.from(r.$$('h2')).map((h) => h.textContent)).toContain('Direct messages');
+    // the agent with a conversation is its link; the other is a row that starts one
+    expect(r.$$('[data-testid="room-link"]')).toHaveLength(2);
+    const start = r.$('[data-testid="dm-start"]') as HTMLButtonElement;
+    expect(start.textContent).toContain('Reviewer');
+    await r.act(() => start.click());
+    await waitFor(() => expect(created).toEqual([['p', 'agt2']]), r);
+    await waitFor(() => expect(went).toEqual(['/room/d2']), r);
+  });
+
+  it('shows Direct messages with no conversation yet, one row per agent (X112)', async () => {
+    const r = mount(<RoomsRail route={{ name: 'room', id: 'r1' }} />, svc());
+    await waitFor(() => expect(r.$$('[data-testid="dm-start"]')).toHaveLength(1), r);
+    expect(Array.from(r.$$('h2')).map((h) => h.textContent)).toContain('Direct messages');
+  });
 });

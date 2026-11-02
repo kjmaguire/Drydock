@@ -9,6 +9,7 @@ import { Check, Lightbulb, Plug, Sparkles, X } from 'lucide';
 import type { RecommendItem, SkillPick } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { routes } from '../../routes.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
@@ -18,7 +19,9 @@ import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { itemText, openItems, triggerText } from './recommend.ts';
+import { findLead } from '../../shell/palette-items.ts';
+import { canApply, itemText, openItems, triggerText } from './recommend.ts';
+import { addTargets, addedForText, suggestedAgents } from './skills.ts';
 
 const askCss = css({
   display: 'flex',
@@ -78,42 +81,61 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
   };
   const advisor = (): Agent | undefined => {
     const team = handle.props.agents;
-    return team.find((a) => a.id === chosen) ?? team.find((a) => a.role === 'lead') ?? team[0];
+    return team.find((a) => a.id === chosen) ?? findLead(team) ?? team[0];
   };
   const ask = async (withPicks: boolean) => {
     const a = advisor();
-    const r = await act.run('ask', () => s.client.recommendStart(handle.props.projectId, a?.id, withPicks ? [...handle.props.picks] : []));
+    const r = await act.run('ask', () => s.client.recommendStart(handle.props.projectId, a?.id, withPicks ? handle.props.picks.map((p) => ({ registryId: p.registryId, name: p.name })) : []));
     if (r) {
       if (withPicks) handle.props.onPicksDone();
       recs.reload();
     }
   };
-  // the picks go to the agents ticked for them: each agent is a specialist, so nothing is added for everyone (P76)
-  let pickFor: string[] = [];
+  // the picks go to the agents ticked for them: each agent is a specialist, so nothing is added for everyone (P76). Until the
+  // person ticks a box (undefined) the boxes show the core's own default: the agents whose role the picks name, else one agent,
+  // and each pick is added only for its own suggestion (addTargets); once a box is ticked every pick goes to the ticked agents.
+  let pickFor: string[] | undefined;
+  const ticked = (): string[] | undefined => pickFor?.filter((id) => handle.props.agents.some((x) => x.id === id));
+  const withRoles = () => handle.props.picks.map((p) => ({ ...p, roles: p.roles ?? null }));
+  const pickedFor = (): string[] => ticked() ?? suggestedAgents(withRoles(), handle.props.agents);
   const addPicks = async () => {
-    const { projectId, picks, onPicksDone, onChanged, agents } = handle.props;
-    const to = pickFor.filter((id) => agents.some((x) => x.id === id));
-    if (to.length === 0) return;
-    const done: string[] = [];
+    const { projectId, onPicksDone, onChanged, agents } = handle.props;
+    const plan = addTargets(withRoles(), ticked(), agents).filter((p) => p.to.length > 0);
+    if (plan.length === 0) return;
+    const done: { name: string; to: string[] }[] = [];
     const ok = await act.run('addPicks', async () => {
-      for (const p of picks) {
+      for (const { skill: p, to } of plan) {
         await s.client.skillLibraryAdd(projectId, p.registryId, p.name, 'agents', to);
-        done.push(p.name);
+        done.push({ name: p.name, to });
       }
       return true;
     });
     if (done.length > 0) {
-      const who = to.map((id) => agents.find((x) => x.id === id)?.name ?? id).join(', ');
-      set(() => (added = `${done.join(', ')} ${done.length === 1 ? 'was' : 'were'} added to ${handle.props.projectName} for ${who}.`));
+      const who = addedForText(done, (id) => agents.find((x) => x.id === id)?.name ?? id);
+      const names = done.map((d) => d.name);
+      set(() => (added = `${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} added to ${handle.props.projectName}. ${who}`));
       onChanged();
     }
-    if (ok) onPicksDone();
+    if (ok) {
+      pickFor = undefined;
+      onPicksDone();
+    }
   };
   const apply = async (id: string, itemId: string) => {
     if (await act.run(`apply-${itemId}`, () => s.client.recommendApply(id, itemId))) {
       recs.reload();
       handle.props.onChanged();
     }
+  };
+  // Apply all: the same apply as each row's button, one after the other, from the person's one click; it stops at the first
+  // refusal, which is shown, and the rest stay open
+  const applyAll = async (id: string, itemIds: readonly string[]) => {
+    await act.run('applyAll', async () => {
+      for (const itemId of itemIds) await s.client.recommendApply(id, itemId);
+      return true;
+    });
+    recs.reload();
+    handle.props.onChanged();
   };
   const dismiss = async (id: string, itemId: string) => {
     if (await act.run(`dismiss-${itemId}`, () => s.client.recommendDismiss(id, itemId))) recs.reload();
@@ -124,6 +146,7 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
 
   return () => {
     const { agents, picks, projectName } = handle.props;
+    const forPicks = pickedFor();
     const names = new Map(agents.map((a) => [a.id, a.name] as const));
     const a = advisor();
     const runs = recs.data?.runs ?? [];
@@ -142,7 +165,9 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
           {it.status === 'open' ? (
             <>
               {it.kind === 'integration' ? (
-                <span class="why">Assign it on this project's Integrations page, where you choose what it syncs.</span>
+                <span class="why">
+                  Assign it on <a href={routes.projectIntegrations.href()}>Integrations</a>, where you choose what it syncs.
+                </span>
               ) : (
                 <Button size="sm" variant="primary" icon={Check} disabled={act.busy !== ''} data-testid="recommend-apply" mix={on('click', () => void apply(rid, it.id))}>
                   {act.busy === `apply-${it.id}` ? 'Applying...' : 'Apply'}
@@ -179,8 +204,8 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
                 <Checkbox
                   key={x.id}
                   label={`${x.name} (${x.role})`}
-                  checked={pickFor.includes(x.id)}
-                  onChange={(v) => set(() => (pickFor = v ? [...pickFor.filter((id) => id !== x.id), x.id] : pickFor.filter((id) => id !== x.id)))}
+                  checked={forPicks.includes(x.id)}
+                  onChange={(v) => set(() => (pickFor = v ? [...forPicks.filter((id) => id !== x.id), x.id] : forPicks.filter((id) => id !== x.id)))}
                 />
               ))}
             </div>
@@ -192,11 +217,11 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
               ) : null}
               <Button
                 size="sm"
-                disabled={act.busy !== '' || pickFor.length === 0}
+                disabled={act.busy !== '' || forPicks.length === 0}
                 data-testid="picks-add"
                 mix={on('click', () => void addPicks())}
               >
-                {act.busy === 'addPicks' ? 'Adding...' : pickFor.length === 0 ? 'Tick the agents to add them for' : `Add ${picks.length === 1 ? 'it' : `all ${picks.length}`} for them`}
+                {act.busy === 'addPicks' ? 'Adding...' : forPicks.length === 0 ? 'Tick the agents to add them for' : `Add ${picks.length === 1 ? 'it' : `all ${picks.length}`} for them`}
               </Button>
               <Button size="sm" variant="ghost" mix={on('click', () => handle.props.onPicksDone())}>
                 Forget the picks
@@ -237,6 +262,20 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
               {latest.costUsd > 0 ? ` · $${latest.costUsd.toFixed(3)}` : ''}
             </p>
             {latest.summary ? <p data-testid="recommend-summary">{latest.summary}</p> : null}
+            {latest.items.filter(canApply).length > 1 ? (
+              <div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Check}
+                  disabled={act.busy !== ''}
+                  data-testid="recommend-apply-all"
+                  mix={on('click', () => void applyAll(latest.id, latest.items.filter(canApply).map((it) => it.id)))}
+                >
+                  {act.busy === 'applyAll' ? 'Applying...' : `Apply all ${latest.items.filter(canApply).length}`}
+                </Button>
+              </div>
+            ) : null}
             {latest.items.length === 0 ? <p mix={metaCss}>Nothing to change.</p> : <ul mix={listCss}>{latest.items.map((it) => item(latest.id, it))}</ul>}
             {openItems(latest).length === 0 && latest.items.length > 0 ? <p mix={metaCss}>Every recommendation was applied or dismissed.</p> : null}
             {latest.dropped.length > 0 ? (

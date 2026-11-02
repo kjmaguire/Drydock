@@ -265,6 +265,9 @@ export interface RouteSettings {
   /** the workspace's level: the level of every project that sets none of its own (P118) */
   level: string;
   agents: { id: string; name: string; project: string }[];
+  /** the startup probe's switch (route.probe.startup) and who last set it ("human:kyle"; absent when nobody has: off by default) */
+  probeStartup?: boolean;
+  probeStartupBy?: string;
 }
 /** route.level.get (P118): the workspace's routing level, a project's own ("" when it follows the workspace) and the result. */
 export interface RouteLevel {
@@ -478,7 +481,13 @@ export interface Pack {
   manifestDrift?: boolean;
   nextRefreshAt?: string;
   attribution?: string;
-  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[] } | null;
+  manifest?: { license?: { content?: string; attribution?: string }; sources?: { type: string; url?: string; path?: string; ref?: string }[]; refresh?: { mode?: string } } | null;
+}
+/** A ready pack manifest the core ships (pack.templates): installed as is, then refreshed and attached to the roles it names. */
+export interface PackTemplate {
+  id: string;
+  manifest: { title: string; kind: string; visibility: string; attach?: { roles?: string[] | null } } | null;
+  yaml: string;
 }
 /** One of a pack's own files (a pack made from files keeps them in packs/<id>/files). */
 export interface PackFile {
@@ -765,6 +774,8 @@ export interface LibrarySkill {
 export interface SkillPick {
   registryId: string;
   name: string;
+  /** The roles the skill names (the Library's), kept in the UI to tick the agents it suggests; never sent to the core. */
+  roles?: string[] | null;
 }
 /** One recommendation (decision P52): give, add or stop using a skill, give an MCP server, or assign an integration. */
 export interface RecommendItem {

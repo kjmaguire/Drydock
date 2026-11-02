@@ -85,6 +85,33 @@ async function edit(r: ReturnType<typeof show>) {
 }
 
 describe('ProviderPane', () => {
+  it('offers "Probe and select now" on a cheap private provider with no cheap model selected, only on a click (F8)', async () => {
+    const selects: string[] = [];
+    const r = show({
+      providerDetail: async () => detail(),
+      routeCheapGet: async () => ({ selection: null, selected: false }),
+      routeCheapSelect: async (id) => (selects.push(id), { providerId: id, default: 'm/a', fallback: 'm/b', message: '' }),
+    });
+    const offer = await waitFor(() => need(r, '[data-testid="cheap-offer"]'), r);
+    expect(offer.textContent).toContain('it can cost a little');
+    expect(selects).toEqual([]);
+    await r.act(() => byText(offer, 'button', 'Probe and select now').click());
+    await waitFor(() => expect(need(r, '[data-testid="cheap-offer-done"]').textContent).toContain('default m/a, fallback m/b'), r);
+    expect(selects).toEqual(['prov_1']);
+    cleanup();
+    // already selected, or a provider the selection does not serve: no offer
+    const done = show({ providerDetail: async () => detail(), routeCheapGet: async () => ({ selection: { providerId: 'prov_1', default: 'a', fallback: '', message: '' }, selected: true }) });
+    await waitFor(() => need(done, '[data-testid="price-row"]'), done);
+    await done.act(() => {});
+    expect(done.$('[data-testid="cheap-offer"]')).toBeNull();
+    cleanup();
+    let asked = 0;
+    const trainable = show({ providerDetail: async () => detail(), routeCheapGet: async () => (asked++, { selection: null, selected: false }) }, provider({ dataClass: 'trainable' }));
+    await waitFor(() => need(trainable, '[data-testid="price-row"]'), trainable);
+    expect(trainable.$('[data-testid="cheap-offer"]')).toBeNull();
+    expect(asked).toBe(0);
+  });
+
   it('the head and the settings rows; the key is never shown; a zero time is "never"', async () => {
     const r = show({ providerDetail: async () => detail() });
     await waitFor(() => need(r, '[data-testid="price-row"]'), r);

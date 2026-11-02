@@ -37,3 +37,108 @@ export function typeTone(type: string): Tone {
   if (type.startsWith('agent.') || type.startsWith('room.')) return 'accent';
   return 'muted';
 }
+
+/** The families the Activity chips show (decision: the families of typeTone, named for the person). */
+export type Family = 'errors' | 'waiting' | 'agents' | 'tasks' | 'other';
+
+export const FAMILIES: readonly { id: Family; label: string }[] = [
+  { id: 'errors', label: 'Errors' },
+  { id: 'waiting', label: 'Waiting on you' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'tasks', label: 'Tasks and runs' },
+  { id: 'other', label: 'Everything else' },
+];
+
+/** The one family an event type belongs to: an error first, then what waits on the person, then its area. */
+export function typeFamily(type: string): Family {
+  const tone = typeTone(type);
+  if (tone === 'err') return 'errors';
+  if (tone === 'warn' || /(requested|waiting|needs_attention|asked)/.test(type)) return 'waiting';
+  if (/^(agent|room|lead|chat|presence)\./.test(type)) return 'agents';
+  if (/^(task|workflow|run|handoff|review|checkpoint)\./.test(type)) return 'tasks';
+  return 'other';
+}
+
+/** What a scope link or the run page narrows the log to: one task, run or agent. */
+export interface Scope {
+  taskId?: string;
+  runId?: string;
+  agentId?: string;
+}
+
+/** The Activity page's filter, remembered per project (an empty `families` shows every family). */
+export interface ActivityFilter {
+  families: Family[];
+  text: string;
+  thisProject: boolean;
+  scope: Scope;
+}
+
+export const defaultFilter = (): ActivityFilter => ({ families: [], text: '', thisProject: true, scope: {} });
+
+const FILTER_KEY = 'drydock.activity.filter.';
+
+/** The filter as kept for a project (or the workspace when there is none); anything unreadable is the default. */
+export function readFilter(projectId: string | undefined, storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): ActivityFilter {
+  const f = defaultFilter();
+  try {
+    const raw = storage?.getItem(FILTER_KEY + (projectId ?? ''));
+    if (!raw) return f;
+    const v = JSON.parse(raw) as Partial<ActivityFilter>;
+    const ids = new Set(FAMILIES.map((x) => x.id));
+    if (Array.isArray(v.families)) f.families = v.families.filter((x): x is Family => ids.has(x as Family));
+    if (typeof v.text === 'string') f.text = v.text.slice(0, 200);
+    if (typeof v.thisProject === 'boolean') f.thisProject = v.thisProject;
+    if (v.scope && typeof v.scope === 'object') {
+      for (const k of ['taskId', 'runId', 'agentId'] as const) {
+        const id = (v.scope as Scope)[k];
+        if (typeof id === 'string' && id) f.scope[k] = id.slice(0, 100);
+      }
+    }
+  } catch {
+    /* a convenience only */
+  }
+  return f;
+}
+
+export function writeFilter(projectId: string | undefined, f: ActivityFilter, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try {
+    storage?.setItem(FILTER_KEY + (projectId ?? ''), JSON.stringify(f));
+  } catch {
+    /* a convenience only */
+  }
+}
+
+/** Whether the event is in the scope. A run decides alone (its task only names it); a task or an agent must match. */
+export function inScope(e: Pick<DrydockEvent, 'taskId' | 'runId' | 'agentId'>, scope: Scope): boolean {
+  if (scope.agentId && e.agentId !== scope.agentId) return false;
+  if (scope.runId) return e.runId === scope.runId;
+  return !scope.taskId || e.taskId === scope.taskId;
+}
+
+/** The rows for the page's filter: selectRows with the chosen families and scope as well. */
+export function filterRows<E extends Pick<DrydockEvent, 'type' | 'projectId' | 'taskId' | 'runId' | 'agentId'>>(events: readonly E[], f: ActivityFilter, projectId: string | undefined, limit?: number): E[] {
+  const fams = new Set(f.families);
+  const scoped = events.filter((e) => inScope(e, f.scope) && (fams.size === 0 || fams.has(typeFamily(e.type))));
+  return selectRows(scoped, { filter: f.text, projectId: f.thisProject ? projectId : undefined, limit });
+}
+
+/** Two lists of rows ascending by seq as one, ascending, each seq once (the first list's row wins). */
+export function mergeRows<E extends { seq: number }>(a: readonly E[], b: readonly E[]): E[] {
+  const out: E[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    const x = a[i];
+    const y = b[j];
+    if (y === undefined || (x !== undefined && x.seq <= y.seq)) {
+      if (y !== undefined && x!.seq === y.seq) j++;
+      out.push(x!);
+      i++;
+    } else {
+      out.push(y);
+      j++;
+    }
+  }
+  return out;
+}

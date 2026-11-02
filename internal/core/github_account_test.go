@@ -81,6 +81,12 @@ func TestGitHubListAndCloneIntoAProject(t *testing.T) {
 	if _, err := c.Call(ctx, "github.clone", mustJSON(map[string]any{"repo": "acme/gocalc", "dir": parent})); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("cloning over a non-empty folder must be refused: %v", err)
 	}
+	// a repository typed as its address (W9) is cloned as owner/name
+	var byURL core.CloneResult
+	a.call("github.clone", map[string]any{"repo": "https://github.com/acme/gocalc.git", "dir": filepath.Join(base, "typed")}, &byURL)
+	if byURL.Path != filepath.Join(base, "typed", "gocalc") {
+		t.Fatalf("clone by address %+v", byURL)
+	}
 	var p core.Project
 	a.call("project.create", map[string]any{"repoPath": cl.Path}, &p)
 	if p.Name != "gocalc" || !p.HasRepo {

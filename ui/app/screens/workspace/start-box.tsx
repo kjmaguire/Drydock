@@ -22,8 +22,10 @@ import { Segmented } from '../../ui/segmented.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
-import { cloneTarget, folderProblem, currentCheck } from '../project/wizard.ts';
+import { cloneTarget, folderProblem, currentCheck, initChosen } from '../project/wizard.ts';
 import { DescribeAgent } from '../team/new-agent.tsx';
+import { pickPill, pickUp } from './workspace.ts';
+import { RUNNING_STATUSES } from '../../state/workspace.ts';
 import { effortList, modelList, PERMISSION_SEGMENTS } from '../team/agent-edit.ts';
 import {
   browserStore,
@@ -32,10 +34,12 @@ import {
   crewKinds,
   crewLabel,
   defaultTuning,
+  keepDraft,
   newFolderPath,
   permissionLabel,
   planStart,
   recall,
+  recallDraft,
   remember,
   runJustChat,
   runStart,
@@ -174,7 +178,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
   const store = browserStore();
   const go = (href: string) => (handle.props.onNavigate ? handle.props.onNavigate(href) : void navigate(href).catch(() => {}));
 
-  let text = '';
+  let text = recallDraft(store); // a description left unsent here before (B10)
   let where: Where = { kind: 'new', path: '' };
   /** The new folder as the person typed it; undefined: it follows the description. */
   let newPath: string | undefined;
@@ -262,6 +266,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
     remember(store, [whereKey(w), `project:${out.project.id}`], { crew: crew.kind === 'project' ? 'project' : crew.kind, templates: crew.templates, model: tu.model, effort: tu.effort, permission: tu.permission });
     if (out.warnings.length) s.ui.flash(`${out.project.name}: ${out.warnings.join(' ')}`, 'warn');
     text = '';
+    keepDraft(store, '');
     newPath = undefined;
     s.workspace.selectProject(out.project.id);
     s.workspace.projects.reload();
@@ -278,6 +283,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
     progress = '';
     if (!id) return set(() => (error = act.error?.message ?? 'Could not start the chat.'));
     text = '';
+    keepDraft(store, '');
     go(routes.chat.href({ id }));
   };
 
@@ -291,7 +297,9 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
   // ---- the menus ----
 
   const whereMenu = () => {
-    const recent = [...s.workspace.projectList].sort((a, b) => b.created - a.created).slice(0, 6);
+    // the most recently active first, as "Pick up where you left off" has them, with the same pill (B9)
+    const ws = s.workspace;
+    const recent = pickUp(ws.projectList, ws.summaries.data?.summaries ?? [], ws.needs.data ?? [], RUNNING_STATUSES).slice(0, 6);
     const w = effectiveWhere();
     return (
       <div mix={menuCss}>
@@ -327,7 +335,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
           <>
             <hr />
             <h3>Recent</h3>
-            {recent.map((p) => (
+            {recent.map(({ project: p, ...it }) => (
               <button
                 key={p.id}
                 type="button"
@@ -338,7 +346,12 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
                 mix={on('click', () => choose({ kind: 'project', projectId: p.id }))}
               >
                 <span class="dot" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} aria-hidden="true" />
-                <span class="grow">{p.name}</span>
+                <span class="grow">
+                  <span>{p.name}</span>
+                  <span class="sub" data-testid="where-recent-state">
+                    {pickPill(it).text}
+                  </span>
+                </span>
                 {p.repoPath ? <span class="path">{p.repoPath}</span> : null}
               </button>
             ))}
@@ -487,7 +500,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
                 box = n as HTMLTextAreaElement;
                 requestAnimationFrame(() => box?.focus());
               }),
-              on('input', (e) => set(() => ((text = e.currentTarget.value), (error = '')))),
+              on('input', (e) => set(() => ((text = e.currentTarget.value), (error = ''), keepDraft(store, text)))),
               on('keydown', (e) => {
                 const k = e as KeyboardEvent;
                 if (k.key === 'Enter' && !k.shiftKey && !k.isComposing && !k.ctrlKey && !k.altKey && !k.metaKey) {
@@ -564,7 +577,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
                   title={fp}
                   mix={on('click', () => {
                     dialog = '';
-                    choose({ kind: 'folder', path: folder.path.trim().replace(/^"+|"+$/g, ''), init: folder.init });
+                    choose({ kind: 'folder', path: folder.path.trim().replace(/^"+|"+$/g, ''), init: initChosen({ localPath: folder.path, localCheck: folder.check }, folder.init) });
                   })}
                 >
                   Use this folder

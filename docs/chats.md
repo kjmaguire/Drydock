@@ -226,7 +226,10 @@ well, with the chat id as `agentId`.
    (when it started) is kept, so the next message continues it. The CLI is killed before it saves the partial answer to its own
    session (observed with claude 2.1.296), so when the next turn resumes that session Drydock puts a note in front of the new
    message: the text the person saw of the stopped answer (its last 4,000 characters, quoted line by line), or that the answer
-   was stopped before any text (`stoppedNote` in `internal/chats/turn.go`). A turn has 30 minutes.
+   was stopped before any text (`stoppedNote` in `internal/chats/turn.go`). A turn has 30 minutes. In the conversation the stop's
+   note offers Continue (it sends "Continue."), and the error a failed turn ends with offers Try again (`chat.resend` of the
+   person's last message); the UI shows the turn's first seconds from `chat.turn_started`, the runtime's `agent.started` for the
+   chat and `chat.tool` (docs/ui.md, "Chats quick wins").
 
 ## 5. The `chats` workspace tool
 

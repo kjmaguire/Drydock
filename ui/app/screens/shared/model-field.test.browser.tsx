@@ -72,6 +72,34 @@ describe('ModelField', () => {
     expect(valueOf(model())).toBe('');
   });
 
+  it('says whether a value was picked from the list or typed; a field typed in stays a field, cleared or spelling an alias', () => {
+    const picks: [string, boolean][] = [];
+    const r = renderPlain(<ModelField label="Model" value="claude-x-2025" models={MODELS} emptyLabel="adapter default" onChange={(v, picked) => picks.push([v, picked])} />);
+    const field = () => byLabel<HTMLElement>(r.container, 'Model');
+    // the parent keeps the value it was given here: the field still holds what the person typed
+    type(field() as HTMLInputElement, '');
+    r.root.flush();
+    type(field() as HTMLInputElement, 'opus');
+    r.root.flush();
+    expect(picks).toEqual([
+      ['', false],
+      ['opus', false],
+    ]);
+    cleanup();
+    const t = show('claude-x-2025');
+    type(t.model() as HTMLInputElement, '');
+    t.r.root.flush();
+    expect(t.model().tagName).toBe('INPUT'); // not back to the list while typing
+    type(t.model() as HTMLInputElement, 'opus');
+    t.r.root.flush();
+    expect(t.model().tagName).toBe('INPUT');
+    cleanup();
+    const l: [string, boolean][] = [];
+    const lr = renderPlain(<ModelField label="Model" value="" models={MODELS} emptyLabel="adapter default" onChange={(v, picked) => l.push([v, picked])} />);
+    choose(byLabel<HTMLElement>(lr.container, 'Model'), 'haiku');
+    expect(l).toEqual([['haiku', true]]);
+  });
+
   it('a saved full name that is no alias shows as text from the start; no aliases at all means a plain text field', () => {
     const a = show('claude-opus-4-1');
     expect((a.model() as HTMLInputElement).tagName).toBe('INPUT');

@@ -5,14 +5,14 @@
 // Everything is a projection of what the core reports; nothing is estimated and nothing is invented.
 
 import { css, navigate, on, type Handle } from 'remix/component';
-import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, UserX } from 'lucide';
+import { MessageSquare, Pencil, Plug, Plus, ScanSearch, ShieldAlert, ShieldCheck, Sparkles, Trash2, Users, UserX, X } from 'lucide';
 import type { MemoryEntry, Skill } from '../../api/extTypes.ts';
 import type { McpServer } from '../../api/mcpClient.ts';
 import type { Agent, PresenceState, Task } from '../../api/types.ts';
 import { formatDateTime, formatUsd, isStopped, presenceFor, presenceWords } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 import { Avatar, StatusChip, hueFor, presenceColor } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
@@ -30,10 +30,11 @@ import { TaskTotalNotice } from '../shared/task-total.tsx';
 import { UsageTable } from '../shared/usage.tsx';
 import { RemoveAgent } from './agent-forms.tsx';
 import { AgentPanelHost, openAgentEditor } from './agent-panel.tsx';
+import { GatewayLine } from './skill-chips.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 import { Run } from './inspector.tsx';
 import { TASK_STEPS, adapterName, agentStats, currentTask, doing, minutesText, runStatusWords, runsWhere, runsWhereTitle, spentLabel, stepIndex } from './team.ts';
-import { MoreMenu } from '../../ui/menu.tsx';
+import { Menu, MoreMenu, type MenuItem } from '../../ui/menu.tsx';
 
 const layoutCss = css({
   display: 'grid',
@@ -235,9 +236,9 @@ export function skillsOf(all: readonly Skill[], agent: Pick<Agent, 'id' | 'role'
 /** The project's MCP servers this agent is granted. */
 export const serversOf = (servers: readonly McpServer[], agentId: string): McpServer[] => servers.filter((sv) => sv.agents.some((x) => x.agentId === agentId));
 
-function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: string; full?: boolean }>) {
+function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: string; agentName: string; full?: boolean; busy?: boolean; onRemove?: (serverId: string) => void }>) {
   return () => {
-    const { servers, agentId, full } = handle.props;
+    const { servers, agentId, agentName, full, busy, onRemove } = handle.props;
     return (
       <ul mix={rowsCss} aria-label="MCP servers">
         {servers.map((sv) => {
@@ -257,6 +258,9 @@ function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: strin
                 </small>
               </span>
               <em>{sv.enabled ? 'on' : 'off in this project'}</em>
+              {onRemove ? (
+                <IconButton icon={X} label={`Take ${sv.display || sv.id} away from ${agentName}`} disabled={busy} data-testid="agent-tool-remove" mix={on('click', () => onRemove(sv.id))} />
+              ) : null}
             </li>
           );
         })}
@@ -264,6 +268,56 @@ function ToolRows(handle: Handle<{ servers: readonly McpServer[]; agentId: strin
     );
   };
 }
+
+/**
+ * An agent's MCP servers, granted and taken away in place (mcpserver.grant, as the editor panel's "+ Add" does): the rows, each
+ * with an X, and "+ Add" with the library's servers it does not have yet. Every call still asks for approval as before.
+ */
+function AgentTools(handle: Handle<{ projectId: string; agent: Agent; granted: readonly McpServer[]; full?: boolean; onChanged: () => void }>) {
+  const s = services(handle);
+  // a read that fails (an older core, no MCP library) leaves only the rows
+  const lib = query(handle, { load: () => s.client.mcpLibList().catch(() => []), when: (e) => e.type.startsWith('mcp'), key: () => handle.props.projectId });
+  const act = action(handle);
+  const grant = async (serverId: string, on: boolean) => {
+    const { projectId, agent, onChanged } = handle.props;
+    if (await act.run(`grant-${serverId}`, () => s.client.mcpServerGrant(projectId, serverId, agent.id, on))) onChanged();
+  };
+  return () => {
+    const { agent, granted, full } = handle.props;
+    const have = new Set(granted.map((sv) => sv.id));
+    const items: MenuItem[] = (lib.data ?? []).filter((x) => !have.has(x.id)).map((x) => ({ name: x.id, label: x.display || x.id }));
+    const add =
+      items.length > 0 ? (
+        <Menu
+          label="Give an MCP server"
+          items={items}
+          onSelect={(id) => void grant(id, true)}
+          trigger={(mix) => (
+            <Button size="sm" variant="ghost" icon={Plus} disabled={act.busy !== ''} data-testid="agent-tool-add" mix={mix}>
+              Add
+            </Button>
+          )}
+        />
+      ) : null;
+    return (
+      <>
+        <ErrorNote error={act.error} what="MCP server" />
+        {granted.length === 0 ? (
+          <p class="quiet" mix={toolsEmptyCss} data-testid="agent-tools-empty">
+            No MCP server is granted to {agent.name}. {add}
+          </p>
+        ) : (
+          <>
+            <ToolRows servers={granted} agentId={agent.id} agentName={agent.name} full={full} busy={act.busy !== ''} onRemove={(id) => void grant(id, false)} />
+            {add ? <div>{add}</div> : null}
+          </>
+        )}
+        <GatewayLine adapter={agent.adapter} hasServers={granted.length > 0} />
+      </>
+    );
+  };
+}
+const toolsEmptyCss = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: t.s2 });
 
 function MemoryNotes(handle: Handle<{ entries: readonly MemoryEntry[]; limit?: number }>) {
   return () => {
@@ -466,12 +520,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
               Tools <span>MCP</span>
             </h2>
             <ErrorNote error={servers.error} what="MCP servers" />
-            {servers.data && tools.length === 0 ? (
-              <p class="quiet">
-                No MCP server is granted to {a.name}. Grants are made on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
-              </p>
-            ) : null}
-            <ToolRows servers={tools} agentId={a.id} />
+            {servers.data ? <AgentTools projectId={a.projectId || pid()} agent={a} granted={tools} onChanged={() => servers.reload()} /> : null}
           </section>
           <section mix={panelCss} aria-label="Remembers">
             <h2>
@@ -495,7 +544,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
           <section mix={[panelCss, leadCss]} aria-label="Team lead" data-testid="agent-lead">
             <h2>Team lead</h2>
             <p class="quiet">{a.name} supervises the team: it steps in when a task loops, stalls or trips the watchdog, and can post a stand-up.</p>
-            <RunStandup projectId={pid()} lead={lead} size="sm" />
+            <RunStandup projectId={pid()} lead={lead} size="sm" schedule />
             <Interventions projectId={pid()} limit={20} />
           </section>
         ) : null}
@@ -527,12 +576,11 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
             Tools <span>MCP</span>
           </h2>
           <p class="quiet">
-            The MCP servers this agent may call, with the tools it was granted. Grants and approvals live on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
+            The MCP servers this agent may call, with the tools it was granted. Each call is approved on the project's <a href={routes.projectIntegrations.href()}>Integrations</a> page.
           </p>
           <ErrorNote error={servers.error} what="MCP servers" />
           {servers.loading && !servers.data ? <Loading /> : null}
-          {servers.data && tools.length === 0 ? <p class="quiet">No MCP server is granted to {a.name}.</p> : null}
-          <ToolRows servers={tools} agentId={a.id} full />
+          {servers.data ? <AgentTools projectId={a.projectId || pid()} agent={a} granted={tools} full onChanged={() => servers.reload()} /> : null}
         </section>
       </div>
     ) : null;

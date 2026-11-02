@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { choose, createProject, freshGreenRepo, openAgentPage, openNewAgent, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, freshGreenRepo, openAgentPage, openMoreSettings, openNewAgent, workspaceNav, projectNav } from './helpers';
 
 /** Open a project skill's panel from its row on the Skills page (one-line rows; the panel opens inside the row). */
 async function openSkill(page: Page, name: string) {
@@ -29,6 +29,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await form.getByLabel('Agent name').fill('Ada');
   await form.getByLabel('Role', { exact: true }).fill('frontend');
   await choose(form.getByLabel('Adapter', { exact: true }), 'claude');
+  await openMoreSettings(page);
   const box = form.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
   await expect(form.getByTestId('agent-skills')).toContainText('Not given to another agent.');
   await box.check();
@@ -38,6 +39,7 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await openNewAgent(page, false);
   await form.getByLabel('Agent name').fill('Bob');
   await form.getByLabel('Role', { exact: true }).fill('backend');
+  await openMoreSettings(page);
   await expect(form.getByTestId('agent-skills')).toContainText('Suggested for backend. Also given to Ada.');
   await expect(box).not.toBeChecked();
   await expect(box).toBeEnabled();

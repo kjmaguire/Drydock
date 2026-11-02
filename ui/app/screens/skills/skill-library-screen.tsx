@@ -60,7 +60,7 @@ export function SkillLibraryScreen(handle: Handle<{ onNavigate?: (href: string) 
     if (!pid || ls.length === 0) return;
     s.ui.handSkillPicks(
       pid,
-      ls.map((l) => ({ registryId: l.registryId, name: l.name })),
+      ls.map((l) => ({ registryId: l.registryId, name: l.name, roles: l.roles })),
     );
     s.workspace.selectProject(pid);
     const href = routes.skills.href();

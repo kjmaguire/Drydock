@@ -146,6 +146,9 @@ type FilePick struct {
 // FolderPick is what a folder dialog asks for.
 type FolderPick struct {
 	Title string
+	// Dir is the folder the dialog opens at: the deepest folder that exists of the one in the field, else of the person's code
+	// folder ("" lets the system choose).
+	Dir string
 }
 
 // Core is the running application.

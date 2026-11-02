@@ -12,15 +12,17 @@ async function fromMenu(trigger: Locator, item: Locator): Promise<void> {
   }).toPass({ timeout: 20_000 });
 }
 
-test('a room is muted and unmuted from its menu, and the Rooms rail says it is muted', async ({ page }) => {
+test('a room is muted and unmuted with one click on its bell, and the Rooms rail says it is muted', async ({ page }) => {
   await createProjectWithoutRepo(page, 'mute-rooms');
   await openRoom(page, 'general');
   await expect(page.getByLabel('Messages in general')).toBeVisible();
-  const menu = page.getByTestId('room-menu');
-  await fromMenu(menu, page.getByRole('menuitem', { name: 'Mute room' }));
+  const bell = page.getByTestId('room-mute');
+  await expect(bell).toHaveAccessibleName('Mute room');
+  await bell.click();
   await expect(roomLink(page, 'general')).toHaveAttribute('data-muted', 'true');
   await expect(roomLink(page, 'general')).toHaveAccessibleName(/^general ?, muted/);
-  await fromMenu(menu, page.getByRole('menuitem', { name: 'Unmute room' }));
+  await expect(bell).toHaveAccessibleName('Unmute room');
+  await bell.click();
   await expect(roomLink(page, 'general')).not.toHaveAttribute('data-muted', 'true');
 });
 

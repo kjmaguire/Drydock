@@ -6,11 +6,13 @@ import { css, on, type Handle } from 'remix/component';
 import { Plus, X } from 'lucide';
 import type { McpLibraryServer, McpServer } from '../../api/mcpClient.ts';
 import type { Skill } from '../../api/extTypes.ts';
-import { query, services } from '../../state/services.tsx';
+import { gatewayState } from '../agents/agents.ts';
+import { action, query, services } from '../../state/services.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { isGiven, toggleSkill, type SkillChanges } from '../skills/skills.ts';
+import { adapterName } from './team.ts';
 
 /** The servers granted and taken away in the panel (ids). */
 export type ToolChanges = SkillChanges;
@@ -72,6 +74,8 @@ export function SkillToolChips(
     onSkills: (c: SkillChanges) => void;
     tools: ToolChanges;
     onTools: (c: ToolChanges) => void;
+    /** The agent's CLI: its MCP gateway, when off, is asked for under the chips. */
+    adapter?: string;
   }>,
 ) {
   const s = services(handle);
@@ -93,7 +97,7 @@ export function SkillToolChips(
     key: () => handle.props.projectId,
   });
   return () => {
-    const { agentId, skills, onSkills, tools, onTools } = handle.props;
+    const { agentId, skills, onSkills, tools, onTools, adapter } = handle.props;
     const accepted: Skill[] = (skillsQ.data ?? []).filter((k) => k.status === 'accepted');
     const hadSkill = (k: Skill) => (k.agents ?? []).includes(agentId);
     const lib = toolsQ.data?.lib ?? [];
@@ -163,7 +167,57 @@ export function SkillToolChips(
             )}
           />
         ) : null}
+        {adapter && myTools.length > 0 ? (
+          <div style={{ flexBasis: '100%' }}>
+            <GatewayLine adapter={adapter} hasServers />
+          </div>
+        ) : null}
       </div>
+    );
+  };
+}
+
+const gatewayCss = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '6px',
+  margin: '6px 0 0',
+  color: t.textMuted,
+  fontSize: t.textSm,
+  '& button': { padding: '0', border: '0', background: 'transparent', color: t.accentText, fontSize: t.textSm, minHeight: '0' },
+});
+
+/**
+ * Under an agent's MCP servers, when its CLI's MCP gateway is off (decision P20: allowed by the person, never by default): the
+ * servers will not reach it until the person allows the gateway, said where the need appears, with Allow (mcp.try.set) beside
+ * it. Nothing shows when the gateway is verified, allowed, not available, or not reported, or when the agent has no server.
+ */
+export function GatewayLine(handle: Handle<{ adapter: string; hasServers: boolean }>) {
+  const s = services(handle);
+  // a read that fails (an older core) shows nothing: the Agent CLIs page still has the switch
+  const st = query(handle, { load: () => s.client.mcpStatus().catch(() => undefined), when: (e) => e.type.startsWith('mcp.') });
+  const act = action(handle);
+  return () => {
+    const { adapter, hasServers } = handle.props;
+    const row = st.data?.adapters.find((r) => r.adapter === adapter);
+    if (!hasServers || !row || gatewayState(row).kind !== 'off') return null;
+    return (
+      <p mix={gatewayCss} data-testid="gateway-line">
+        <span>{adapterName(adapter)} gets MCP servers only once you allow the gateway (not verified by a real run).</span>
+        <button
+          type="button"
+          data-testid="gateway-allow"
+          disabled={act.busy !== ''}
+          mix={on('click', async () => {
+            const next = await act.run('allow', () => s.client.mcpTrySet(adapter, true));
+            if (next) st.set(next);
+          })}
+        >
+          {act.busy === 'allow' ? 'Allowing...' : 'Allow'}
+        </button>
+        {act.error ? <span role="alert">{act.error.message}</span> : null}
+      </p>
     );
   };
 }

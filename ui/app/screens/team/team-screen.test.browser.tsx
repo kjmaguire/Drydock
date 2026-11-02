@@ -154,6 +154,54 @@ describe('Team: purpose, model and effort', () => {
     await waitFor(() => expect(listed()).toBeGreaterThan(before), r);
   });
 
+  it('Configure asks name, role (chips) and CLI; the rest folds under More settings, which opens once something in it is changed', async () => {
+    const calls: unknown[] = [];
+    const { r } = show([], { agentCreate: async (spec) => (calls.push(spec), { ...agent(), ...spec } as Agent) });
+    await openNew(r);
+    const more = must(r.container.querySelector<HTMLDetailsElement>('dialog[open] [data-testid="agent-form-more"]'), 'no More settings');
+    expect(more.open).toBe(false);
+    for (const label of ['Model', 'Effort', 'Purpose (optional)']) expect(more.contains(byLabel(r.container, label))).toBe(true);
+    expect(more.contains(byLabel(r.container, 'Agent name'))).toBe(false);
+    expect(more.contains(byLabel(r.container, 'Adapter'))).toBe(false);
+    // a role chip fills the role
+    const chips = must(r.container.querySelector<HTMLElement>('[data-testid="role-chips"]'), 'no role chips');
+    await r.act(() => byText(chips, 'button', 'reviewer').click());
+    expect(byLabel<HTMLInputElement>(r.container, 'Role').value).toBe('reviewer');
+    expect(byText(chips, 'button', 'reviewer').getAttribute('aria-pressed')).toBe('true');
+    // name and role are enough: the core sets the rest
+    type(byLabel(r.container, 'Agent name'), 'Rev');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Create agent').click());
+    await waitFor(() => expect((calls[0] as { name: string; role: string }).role).toBe('reviewer'), r);
+    // a purpose typed under More settings keeps it open
+    await openNew(r);
+    const more2 = must(r.container.querySelector<HTMLDetailsElement>('dialog[open] [data-testid="agent-form-more"]'), 'no More settings');
+    type(byLabel<HTMLTextAreaElement>(r.container, 'Purpose (optional)'), 'Own payments.');
+    r.root.flush();
+    await waitFor(() => expect(more2.open).toBe(true), r);
+  });
+
+  it('with one agent CLI there is no CLI to choose', async () => {
+    const calls: unknown[] = [];
+    const { r } = show([], { adapterList: async () => [claude], agentCreate: async (spec) => (calls.push(spec), { ...agent(), ...spec } as Agent) });
+    const btn = await waitFor(() => {
+      const b = byText<HTMLButtonElement>(r.container, 'button', /^New agent/);
+      if (b.disabled) throw new Error('no project yet');
+      return b;
+    }, r);
+    await r.act(() => btn.click());
+    const tab = await waitFor(() => must(r.container.querySelector<HTMLElement>('dialog[open] [data-testid="new-agent-configure"]'), 'no tabs'), r);
+    await r.act(() => tab.click());
+    await waitFor(() => must(r.container.querySelector('dialog[open] [data-testid="agent-form"]'), 'no form'), r);
+    type(byLabel(r.container, 'Agent name'), 'Solo');
+    type(byLabel(r.container, 'Role'), 'backend');
+    r.root.flush();
+    expect(() => byLabel(r.container, 'Adapter')).toThrow();
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create agent').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Create agent').click());
+    await waitFor(() => expect((calls[0] as { adapter: string }).adapter).toBe('claude'), r);
+  });
+
   it('keeps effort free text for an adapter that does not list its levels', async () => {
     const { r } = show([]);
     await openNew(r);
@@ -257,12 +305,13 @@ describe('Team: templates', () => {
       agentTemplateApply: async (...a) => (calls.push(a), { agent: agent({ name: 'Payments dev' }), granted: ['docs'], skipped: [], skills: noSkills }),
     });
     await openTemplates(r);
-    const name = await waitFor(() => byLabel(r.container, 'Name (optional)'), r);
-    type(name, ' Billing ');
-    r.root.flush();
+    await waitFor(() => byText(r.container, 'button', 'Add to this team'), r);
+    // no name to type: the agent takes the template's, and the core numbers a second copy
+    expect(r.container.querySelector('dialog[open] input[placeholder="the template\'s name"]')).toBeNull();
+    expect(() => byLabel(r.container, 'Name (optional)')).toThrow();
     const before = listed();
     await r.act(() => byText(r.container, 'button', 'Add to this team').click());
-    await waitFor(() => expect(calls).toEqual([['tpl_1', 'prj_1', 'Billing']]), r);
+    await waitFor(() => expect(calls).toEqual([['tpl_1', 'prj_1', undefined]]), r);
     await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toContain('Payments dev joined the team, with docs'), r);
     await waitFor(() => expect(listed()).toBeGreaterThan(before), r);
   });

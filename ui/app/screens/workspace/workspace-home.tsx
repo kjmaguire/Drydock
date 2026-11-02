@@ -17,10 +17,9 @@ import { ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { relTime } from '../chats/chats.ts';
 import { NewProjectDialog } from './new-project.tsx';
 import { StartBox } from './start-box.tsx';
-import { pickUp, type PickUp } from './workspace.ts';
+import { pickPill, pickUp, type PickUp } from './workspace.ts';
 
 const wrapCss = css({
   display: 'grid',
@@ -85,8 +84,8 @@ function PickCard(handle: Handle<{ item: PickUp; onNavigate?: (href: string) => 
     else void navigate(routes.home.href());
   };
   return () => {
-    const { project: p, running, needs, last, line } = handle.props.item;
-    const pill = needs > 0 ? { tone: 'warn', text: 'needs you' } : running > 0 ? { tone: 'run', text: `${running} running` } : { tone: '', text: relTime(last) };
+    const { project: p, line } = handle.props.item;
+    const pill = pickPill(handle.props.item);
     return (
       <li>
         <a href={routes.home.href()} mix={[cardCss, on<HTMLAnchorElement, 'click'>('click', open)]} data-testid="home-project" data-project={p.id} aria-label={`Open ${p.name}`}>

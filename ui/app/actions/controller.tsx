@@ -72,9 +72,10 @@ export const controller = createController(routes, {
       const { AgentScreen } = await import('../screens/team/agent-screen.tsx');
       return render(<AgentScreen key={params.id} id={params.id} />);
     },
-    async activity({ render }) {
+    async activity({ render, url }) {
       const { ActivityScreen } = await import('../screens/activity/activity-screen.tsx');
-      return render(<ActivityScreen />);
+      const q = url.searchParams;
+      return render(<ActivityScreen key={url.search} task={q.get('task') ?? undefined} run={q.get('run') ?? undefined} agent={q.get('agent') ?? undefined} />);
     },
     async project({ render }) {
       const { ProjectSettingsScreen } = await import('../screens/project/project-settings-screen.tsx');

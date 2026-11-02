@@ -12,7 +12,9 @@ import {
   crewMembers,
   defaultProjectName,
   defaultTuning,
+  DRAFT_KEY,
   firstWork,
+  keepDraft,
   folderName,
   nameSlug,
   newFolderPath,
@@ -22,6 +24,7 @@ import {
   planStart,
   projectName,
   recall,
+  recallDraft,
   remember,
   runJustChat,
   runStart,
@@ -357,5 +360,25 @@ describe('New project (P143): a project with nothing started', () => {
     expect(newProjectSetup({ where: { kind: 'new', path: '' }, name: 'x', catalog: CATALOG })).toEqual({ problem: 'Choose the new folder.' });
     expect(newProjectSetup({ where: { kind: 'folder', path: '', init: false }, name: 'x', catalog: CATALOG })).toEqual({ problem: 'Choose a folder.' });
     expect(newProjectSetup({ where: { kind: 'clone', repo: '', cloneDir: '/src' }, name: 'x', catalog: CATALOG })).toEqual({ problem: 'Choose a repository to clone.' });
+  });
+});
+
+describe('the unsent description (B10)', () => {
+  it('is kept per viewer and forgotten when empty, sent or too long', () => {
+    const m = new Map<string, string>();
+    const store = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    expect(recallDraft(store)).toBe('');
+    keepDraft(store, 'A pricing page');
+    expect(recallDraft(store)).toBe('A pricing page');
+    expect(m.get(DRAFT_KEY)).toBe('A pricing page');
+    keepDraft(store, '  ');
+    expect(m.has(DRAFT_KEY)).toBe(false);
+    keepDraft(store, 'x'.repeat(20_001));
+    expect(recallDraft(store)).toBe('');
+    // a browser that keeps nothing, or throws, is not an error
+    const throwing = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); }, removeItem: () => { throw new Error('blocked'); } };
+    expect(recallDraft(throwing)).toBe('');
+    keepDraft(throwing, 'x');
+    expect(recallDraft(undefined)).toBe('');
   });
 });

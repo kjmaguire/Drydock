@@ -270,7 +270,7 @@ func startEconomics(ctx context.Context, c *Core) (map[string]Method, func(), er
 	safe.Go("core.startEconomics", func() { e.relayInconclusiveChecks(ctx) })
 
 	// --- opt-in startup probe (it spends a few synthetic requests, so it is the user's switch) ---
-	if v, _ := e.setting(ctx, "route.probe.startup"); v == "1" {
+	if v, _ := e.setting(ctx, settingProbeStartup); v == "1" {
 		safe.Go("core.startEconomics#2", func() { e.startupProbe(ctx) })
 	}
 
@@ -612,7 +612,15 @@ func (e *economics) methods() map[string]Method {
 			if p.Enabled {
 				v = "1"
 			}
-			return map[string]any{"enabled": p.Enabled, "by": human()}, e.putSetting(ctx, "route.probe.startup", v)
+			if err := e.putSetting(ctx, settingProbeStartup, v); err != nil {
+				return nil, err
+			}
+			// who set it, so the Routing page can say so beside the switch
+			if err := e.putSetting(ctx, settingProbeStartupBy, human()); err != nil {
+				return nil, err
+			}
+			e.c.publish(ctx, "routing.settings_changed", "", map[string]any{"probeStartup": p.Enabled})
+			return map[string]any{"enabled": p.Enabled, "by": human()}, nil
 		}),
 
 		// verification checks beyond build/test/lint

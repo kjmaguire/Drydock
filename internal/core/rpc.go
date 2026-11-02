@@ -134,11 +134,11 @@ func (c *Core) Methods() map[string]Method {
 			return c.GitHubRepos(ctx, p.Owner, p.Query)
 		}),
 		"github.cloneDir": bind(func(ctx context.Context, p struct {
-			// Default asks for the usual code folder (a new project's folder), not the folder last cloned into
+			// Default asks for the usual code folder (a new project's folder: CodeDir), not the folder last cloned into
 			Default bool `json:"default"`
 		}) (any, error) {
 			if p.Default {
-				return DefaultCloneDir(), nil
+				return c.CodeDir(ctx), nil
 			}
 			return c.GitHubCloneDir(ctx), nil
 		}),

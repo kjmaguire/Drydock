@@ -1,6 +1,7 @@
 // The plain text of the workspace Home (decision P142): the projects to pick up, the most recently active first.
 
 import type { NeedsYouItem, Project, TaskSummary } from '../../api/types.ts';
+import { relTime } from '../chats/chats.ts';
 
 /** A project's card under "Pick up where you left off": what runs, whether it needs you, and one line of what is happening. */
 export interface PickUp {
@@ -40,4 +41,11 @@ export function pickUp(
       return { project: p, running: run.length, needs: need.length, last, line };
     })
     .sort((a, b) => b.last - a.last);
+}
+
+/** A project's pill: "needs you", "N running" or when something last happened; the cards and the Where menu's Recent say it alike. */
+export function pickPill(item: Pick<PickUp, 'needs' | 'running' | 'last'>, now = Date.now()): { tone: '' | 'warn' | 'run'; text: string } {
+  if (item.needs > 0) return { tone: 'warn', text: 'needs you' };
+  if (item.running > 0) return { tone: 'run', text: `${item.running} running` };
+  return { tone: '', text: relTime(item.last, now) };
 }

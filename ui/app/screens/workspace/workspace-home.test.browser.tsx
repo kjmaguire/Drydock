@@ -6,13 +6,14 @@ import type { AgentDraft } from '../../api/libraryClient.ts';
 import type { Project, SetupRequest, TaskSummary } from '../../api/types.ts';
 import { byText, cleanup, drain, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { adapterInfo, CATALOG } from '../project/wizard-fixtures.ts';
-import { START_KEY } from './start.ts';
+import { DRAFT_KEY, START_KEY } from './start.ts';
 import { WorkspaceHomeScreen } from './workspace-home.tsx';
 
 afterEach(() => {
   cleanup();
   try {
     localStorage.removeItem(START_KEY);
+    localStorage.removeItem(DRAFT_KEY);
   } catch {
     /* nothing kept */
   }
@@ -199,6 +200,66 @@ describe('Home is the start screen (P142)', () => {
     await waitFor(() => expect(navigated).toEqual(['/chats/c1']), r);
     expect(chats).toEqual([{ adapter: 'claude', model: 'sonnet', effort: 'medium', permissionMode: 'acceptEdits' }]);
     expect(sent).toEqual(['What is a monad?']);
+  });
+
+  it('the Where menu lists Recent as Pick up does: the most recently active first, with the same pill (B9)', async () => {
+    // billing-api was made last, but calculator and marketing-site were active since
+    const { r } = show({
+      projectList: async () => [project('p1', 'calculator'), project('p2', 'marketing-site'), project('p3', 'billing-api', { created: now - 3 * DAY }), project('p4', 'old-thing', { created: now - 90 * DAY })],
+    });
+    await waitFor(() => expect(cards(r)).toHaveLength(3), r);
+    await waitFor(() => expect(cards(r)[1]!.querySelector('[data-testid="home-project-state"]')!.textContent).toBe('needs you'), r);
+    await r.act(() => click(r, '[data-testid="start-where"]'));
+    await waitFor(() => expect(r.$$('[data-testid="where-recent"]').length).toBe(4), r);
+    const rows = Array.from(r.$$('[data-testid="where-recent"]')) as HTMLElement[];
+    expect(rows.map((b) => b.dataset.project)).toEqual(cards(r).map((c) => c.dataset.project).concat(['p4']));
+    expect(rows.slice(0, 3).map((b) => b.querySelector('[data-testid="where-recent-state"]')!.textContent)).toEqual(['2 running', 'needs you', '2d']);
+  });
+
+  it('keeps an unsent description when Home is left, and forgets it once sent (B10)', async () => {
+    const first = show({
+      chatCreate: async () => ({ id: 'c1' }) as never,
+      chatSend: async () => ({ turnId: 't', version: 1 }),
+    });
+    await waitFor(() => expect(box(first.r)).not.toBeNull(), first.r);
+    await first.r.act(() => type(box(first.r), 'A pricing page with three tiers'));
+    cleanup(); // Home is left (a card, Settings)
+    const again = show({
+      chatCreate: async () => ({ id: 'c1' }) as never,
+      chatSend: async () => ({ turnId: 't', version: 1 }),
+    });
+    await waitFor(() => expect(box(again.r)?.value).toBe('A pricing page with three tiers'), again.r);
+    await waitFor(() => expect(chipText(again.r, 'start-model')).toBe('sonnet · medium'), again.r);
+    await again.r.act(() => byText(again.r.container, 'button', 'Just chat').click());
+    await waitFor(() => expect(again.navigated).toEqual(['/chats/c1']), again.r);
+    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+    cleanup();
+    const third = show();
+    await waitFor(() => expect(box(third.r)).not.toBeNull(), third.r);
+    expect(box(third.r).value).toBe('');
+  });
+
+  it('Open a folder keeps an untick when the dialog is opened again on the same folder (B6)', async () => {
+    let checks = 0;
+    const { r } = show({
+      repoCheck: async (path: string) => (checks++, { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet.' }) as never,
+    });
+    await waitFor(() => expect(r.$('[data-testid="or-folder"]')).not.toBeNull(), r);
+    await r.act(() => click(r, '[data-testid="or-folder"]'));
+    const field = await waitFor(() => r.$('[data-testid="start-folder-dialog"] [data-testid="folder-field"] input') as HTMLInputElement, r);
+    await r.act(() => type(field, '/src/new'));
+    const tick = () => r.$('[data-testid="folder-init"] input') as HTMLInputElement;
+    await waitFor(() => expect(tick().checked).toBe(true), r, 3000);
+    await r.act(() => tick().click());
+    expect(tick().checked).toBe(false);
+    await r.act(() => byText(r.$('[data-testid="start-folder-dialog"]')!, 'button', 'Cancel').click());
+    await r.act(() => click(r, '[data-testid="or-folder"]'));
+    // the folder is checked again; the person's untick stands
+    await waitFor(() => expect(checks).toBe(2), r, 3000);
+    await drain();
+    r.root.flush();
+    expect(tick().checked).toBe(false);
+    expect((r.$('[data-testid="folder-use"]') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('remembers the chips per place and chooses them again', async () => {

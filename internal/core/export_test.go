@@ -154,3 +154,14 @@ func (c *Core) TestRoomTurnRunning(projectID string, running bool) error {
 	_, err := c.DB.Writer().Exec(`INSERT INTO room_turns(id,room_id,project_id,trigger_id,agent_id,status,started_at) VALUES('rturn_test','room_test',?,'msg_test','agent_test','running',1)`, projectID)
 	return err
 }
+
+// TestRunScheduledStandups runs the stand-up schedule's check at now; run nil starts the real team lead's scheduled stand-up.
+func (c *Core) TestRunScheduledStandups(ctx context.Context, now time.Time, run func(ctx context.Context, projectID string) error) {
+	if run == nil {
+		run = func(ctx context.Context, projectID string) error {
+			_, err := c.lead.Load().ScheduledStandup(ctx, projectID)
+			return err
+		}
+	}
+	c.runScheduledStandups(ctx, now, run)
+}

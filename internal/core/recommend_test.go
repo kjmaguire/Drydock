@@ -184,6 +184,22 @@ func TestRecommendationsNeedAnAdvisorAndRunOneAtATime(t *testing.T) {
 	}
 }
 
+// An agent whose role is a synonym of the lead ("team lead", "Manager") is the advisor when none is named, as everywhere else.
+func TestATeamLeadByAnotherNameAnswersRecommendations(t *testing.T) {
+	a := open(t, "")
+	p := gitProject(t, a, "synonym")
+	var dev, lead core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Backend #1", Adapter: "claude", Role: "backend", Model: "fake-1"}, &dev)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Team lead", Adapter: "claude", Role: "Team Lead", Model: "fake-1"}, &lead)
+	recommendScript(t, `{"summary": "Nothing to add yet.", "recommendations": []}`)
+	var r core.Recommendation
+	a.call("recommend.start", map[string]any{"projectId": p.ID}, &r)
+	if r.AgentID != lead.ID {
+		t.Fatalf("the advisor is %q, want the team lead %q", r.AgentID, lead.ID)
+	}
+	a.recommendDone(p.ID, r.ID)
+}
+
 // The project asks again by itself as it evolves: after five completed tasks since the last turn, not twice within a day,
 // never when the person switched it off; the lead's new recommendations are announced in #general.
 func TestTheProjectAsksForRecommendationsAgainAsItEvolves(t *testing.T) {

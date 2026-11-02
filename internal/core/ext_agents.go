@@ -171,6 +171,9 @@ func startAgentsDev(ctx context.Context, c *Core) (map[string]Method, func(), er
 			// an agent reply is work started on the human's behalf: off while the license is expired (read-only)
 			return c.RequireLicensed(ctx, "room_reply") == nil && pipeline.LoadDevSettings(ctx, c.DB, projectID).Respond
 		},
+		RepliesOn: func(ctx context.Context, projectID string) bool {
+			return pipeline.LoadDevSettings(ctx, c.DB, projectID).Respond
+		},
 		OnCost: func(ctx context.Context, taskID string, usd float64) {
 			_, _ = c.Tasks.Patch(ctx, taskID, tasks.Update{AddCost: usd})
 		},
@@ -861,7 +864,10 @@ func (a *agentsDev) methods() map[string]Method {
 			if err := pipeline.SaveDevSettings(ctx, c.DB, p.ProjectID, p.Settings, c.Human()); err != nil {
 				return nil, err
 			}
-			return pipeline.LoadDevSettings(ctx, c.DB, p.ProjectID), nil
+			saved := pipeline.LoadDevSettings(ctx, c.DB, p.ProjectID)
+			// a room's "agents do not answer here" notice follows the switch without a reload
+			c.publish(ctx, "project.dev_settings", p.ProjectID, map[string]any{"respond": saved.Respond})
+			return saved, nil
 		}),
 
 		// the e2e and preview checks, on demand

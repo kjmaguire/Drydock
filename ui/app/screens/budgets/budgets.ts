@@ -1,6 +1,7 @@
 // Pure helpers for the Budgets screen: limit text, the request a form sends, and the tone of a state.
 
 import type { Budget, BudgetSet, BudgetStatus } from '../../api/extTypes.ts';
+import type { Agent, Task } from '../../api/types.ts';
 import { numberText, parseDollars, parsePercent, parseWhole } from '../../lib/limits.ts';
 import type { Tone } from '../../ui/tokens.ts';
 
@@ -29,6 +30,33 @@ export function scopeIdAfter(from: string, to: string, scopeId: string, projectI
   if (to === 'workflow') return workflows[0] ?? '';
   if (from === 'workflow') return to === 'project' ? projectId : '';
   return scopeId;
+}
+
+/** The target option that shows the typed id field. */
+export const ANOTHER_ID = '__another__';
+const CLOSED_TASK = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
+
+/**
+ * The targets a task, run or agent budget can be picked from by name (effort review F13): an agent of the crew; "every task" then
+ * the unfinished tasks; a run only as "every run" (a run's id is not known before it starts). "Another id..." types one.
+ * Undefined for a scope that has no list (project, workflow).
+ */
+export function scopeTargets(scope: string, agents: readonly Agent[], tasks: readonly Task[]): { value: string; label: string; hint?: string }[] | undefined {
+  const another = { value: ANOTHER_ID, label: 'Another id...' };
+  switch (scope) {
+    case 'agent':
+      return [{ value: '*', label: 'Every agent' }, ...agents.map((a) => ({ value: a.id, label: a.name, hint: a.role || undefined })), another];
+    case 'task':
+      return [
+        { value: '*', label: 'Every task' },
+        ...tasks.filter((t) => !CLOSED_TASK.has(String(t.status))).map((t) => ({ value: t.id, label: t.title })),
+        another,
+      ];
+    case 'run':
+      return [{ value: '*', label: 'Every run' }, another];
+    default:
+      return undefined;
+  }
 }
 
 export interface BudgetFormValues {

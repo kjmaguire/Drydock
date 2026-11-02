@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { choose, createAgent, createProject, inspectAgent, openAgentPage, openNewAgent, projectNav } from './helpers';
+import { choose, createAgent, createProject, inspectAgent, openAgentPage, openMoreSettings, openNewAgent, projectNav } from './helpers';
 
 // Round 5: team management against the real Go core: purpose, model and effort at creation, editing, and removal.
 
@@ -9,6 +9,8 @@ test('team: create an agent with purpose, model and effort; refused values say w
 
   await page.getByLabel('Agent name').fill('Pay');
   await page.getByLabel('Role', { exact: true }).fill('backend');
+  // model, effort, purpose and the practices are under More settings, folded while nothing there was changed
+  await openMoreSettings(page);
   await page.getByLabel(/Purpose/).fill('Own the payments service. Never touch the UI.');
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
   // Claude best practices: on by default, with the recommendation for the role and the exact text that is added

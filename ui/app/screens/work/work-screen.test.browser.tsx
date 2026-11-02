@@ -57,6 +57,19 @@ const rows = (r: ReturnType<typeof mount>) =>
   Array.from(r.$$('[data-testid="work-item"]')).map((a) => [a.getAttribute('data-group'), a.querySelector('.title')!.textContent, a.querySelector('.line')!.textContent]);
 
 describe('Work (decision P141)', () => {
+  it('says when the lead has recommendations waiting, with Review to the Skills page; nothing when none wait', async () => {
+    const item = (id: string, status = 'open') => ({ id, kind: 'skill', action: 'give', name: 'wrangler', label: 'wrangler', agents: ['agt2'], reason: 'why', status });
+    const run = { id: 'rec1', projectId: 'prj_1', agentId: 'agt1', trigger: 'evolution', status: 'done', candidates: [], summary: '', items: [item('a'), item('b'), item('c'), item('d', 'applied')], dropped: [], costUsd: 0, createdAt: 1 };
+    const r = mount(<WorkScreen />, svc({ recommendList: async () => ({ auto: true, runs: [run] }) }));
+    const line = await waitFor(() => r.$('[data-testid="recommend-line"]') ?? (() => { throw new Error('no line yet'); })(), r);
+    expect(line.textContent).toContain('Team Lead recommends 3 changes');
+    expect(line.querySelector('[data-testid="recommend-line-review"]')!.getAttribute('href')).toBe('/skills');
+    cleanup();
+    const none = mount(<WorkScreen />, svc({ recommendList: async () => ({ auto: true, runs: [{ ...run, items: [item('a', 'dismissed')] }] }) }));
+    await waitFor(() => expect(none.$$('[data-testid="work-item"]').length).toBeGreaterThan(0), none);
+    expect(none.$('[data-testid="recommend-line"]')).toBeNull();
+  });
+
   it("lists the project's tasks and chats as Needs you, Running and Earlier, opens the one that needs you, and shows the crew", async () => {
     const s = svc();
     const r = mount(<WorkScreen />, s);

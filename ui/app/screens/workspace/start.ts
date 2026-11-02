@@ -531,3 +531,33 @@ export function browserStore(): Store | undefined {
     return undefined;
   }
 }
+
+// ---- the unsent description (B10) ----
+
+/** Where the start box keeps a description not yet sent, for this viewer only: leaving Home and coming back finds it. */
+export const DRAFT_KEY = 'drydock.start.draft';
+/** A description longer than this is not kept (a convenience, not a store). */
+const DRAFT_MAX = 20_000;
+
+/** The description left unsent, or "". */
+export function recallDraft(store: Pick<Storage, 'getItem'> | undefined): string {
+  try {
+    const v = store?.getItem(DRAFT_KEY);
+    return typeof v === 'string' ? v : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Keeps the unsent description; an empty one (or a sent one: keepDraft(store, '')) is forgotten. */
+export function keepDraft(store: (Pick<Storage, 'setItem'> & Partial<Pick<Storage, 'removeItem'>>) | undefined, text: string): void {
+  try {
+    if (!text.trim() || text.length > DRAFT_MAX) {
+      if (store?.removeItem) store.removeItem(DRAFT_KEY);
+      else store?.setItem(DRAFT_KEY, '');
+    }
+    else store?.setItem(DRAFT_KEY, text);
+  } catch {
+    /* a convenience only */
+  }
+}

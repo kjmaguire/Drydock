@@ -390,6 +390,11 @@ func run(uiDir, fixture string, nRepos, nGreen, port int, licensed, stdinStop bo
 		}
 	}
 	pickFile := func(_ context.Context, p core.FilePick) (string, error) {
+		// TEST DOUBLE of the file dialog for Import a project: it "chooses" the newest archive the harness's core exported
+		// ("" as if cancelled when there is none); the desktop app opens Windows' own dialog
+		if p.FilterPattern == "*.drydock-project.zip" {
+			return newestExport(filepath.Join(root, "data", "exports")), nil
+		}
 		name := "osv-scanner"
 		if strings.Contains(p.Title, "Opengrep") {
 			name = "opengrep"
@@ -663,4 +668,22 @@ func copyTree(src, dst string) error {
 		_, err = io.Copy(out, in)
 		return err
 	})
+}
+
+// newestExport is the newest .drydock-project.zip in dir ("" when there is none): the file dialog stand-in's choice.
+func newestExport(dir string) string {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	best, bestAt := "", time.Time{}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".drydock-project.zip") {
+			continue
+		}
+		if st, err := e.Info(); err == nil && st.ModTime().After(bestAt) {
+			best, bestAt = filepath.Join(dir, e.Name()), st.ModTime()
+		}
+	}
+	return best
 }

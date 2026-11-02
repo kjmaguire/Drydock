@@ -19,7 +19,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Menu, type MenuItem } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { comboFor, shortcutOf } from '../../lib/keys.ts';
-import { chatCliText, chatRowLine, chatTitle, listWhen, snippetParts } from './chats.ts';
+import { chatCliText, chatRowLine, chatTitle, listWhen, readChatFilter, snippetParts, writeChatFilter } from './chats.ts';
 import { ImportClaudeDialog } from './chat-import.tsx';
 
 const colCss = css({
@@ -151,8 +151,9 @@ export function ChatList(
   const renameAct = action(handle);
   const deleteAct = action(handle);
   // every chat by default: a chat need not belong to a project (decision P107); the project's pill narrows the list to it
-  let all = true;
-  let archived = false;
+  // the filter is kept per viewer (D7): coming back to Chats shows the list as it was left
+  let { all, archived } = readChatFilter();
+  const keepFilter = () => writeChatFilter({ all, archived });
   let typed = '';
   let q = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -333,14 +334,14 @@ export function ChatList(
           </label>
           <div mix={filterRow} role="group" aria-label="Filter chats">
             {projectId ? (
-              <button type="button" mix={[pillCss, on('click', () => ((all = false), void handle.update()))]} aria-pressed={!all ? 'true' : 'false'} title={`Only the chats of ${scopeName || 'this project'}`}>
+              <button type="button" mix={[pillCss, on('click', () => ((all = false), keepFilter(), void handle.update()))]} aria-pressed={!all ? 'true' : 'false'} title={`Only the chats of ${scopeName || 'this project'}`}>
                 {scopeName || 'This project'}
               </button>
             ) : null}
-            <button type="button" mix={[pillCss, on('click', () => ((all = true), void handle.update()))]} aria-pressed={all || !projectId ? 'true' : 'false'}>
+            <button type="button" mix={[pillCss, on('click', () => ((all = true), keepFilter(), void handle.update()))]} aria-pressed={all || !projectId ? 'true' : 'false'}>
               All chats
             </button>
-            <button type="button" mix={[pillCss, on('click', () => ((archived = !archived), void handle.update()))]} aria-pressed={archived ? 'true' : 'false'} style={{ marginLeft: 'auto' }}>
+            <button type="button" mix={[pillCss, on('click', () => ((archived = !archived), keepFilter(), void handle.update()))]} aria-pressed={archived ? 'true' : 'false'} style={{ marginLeft: 'auto' }}>
               Archived
             </button>
           </div>

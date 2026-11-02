@@ -16,6 +16,11 @@ import { OTHER_MODEL } from '../shared/model-field.tsx';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 
 afterEach(cleanup);
+// what /chats comes back to (D7) is kept per viewer: each test starts without it
+afterEach(() => {
+  localStorage.removeItem('drydock.chat.last');
+  localStorage.removeItem('drydock.chat.filter');
+});
 
 // --- plain data fixtures (no behavior) ---
 
@@ -355,7 +360,8 @@ describe('Chats list', () => {
     await waitFor(() => expect(updates).toEqual([{ id: 'c1', title: 'Release notes' }]), r);
     await waitFor(() => expect(rowTitles(r)).toEqual(['Release notes']), r); // no chat.updated was sent
     await pickMenu(r, 'Release notes', 'Fork');
-    await waitFor(() => expect(navigated).toEqual(['/chats/c9']), r);
+    // /chats opened the only chat first (D7), then the fork
+    await waitFor(() => expect(navigated).toEqual(['/chats/c1', '/chats/c9']), r);
     expect(forks).toEqual([['c1', undefined]]);
     await waitFor(() => expect(rowTitles(r)).toEqual(['Release notes (fork)', 'Release notes']), r);
   });
@@ -959,9 +965,12 @@ describe('Conversation', () => {
     await waitFor(() => expect(byText(r.container, 'button', 'Allowed tools (1)')).toBeDefined(), r);
   });
 
-  it('changes the settings from the model button, a mode that skips approvals only once confirmed', async () => {
+  it('changes the settings from the model button: each choice is saved as it is picked, a mode that skips approvals only once confirmed (D3)', async () => {
     const updates: unknown[] = [];
-    const { r } = conv(chat(), [], { chatUpdate: async (u) => (updates.push(u), chat({ ...u, skipsApprovals: u.permissionMode === 'bypassPermissions' } as Partial<Chat>)) });
+    let cur = chat();
+    const { r } = conv(chat(), [], {
+      chatUpdate: async (u) => (updates.push(u), (cur = chat({ ...cur, ...u, version: cur.version + 1, skipsApprovals: (u.permissionMode ?? cur.permissionMode) === 'bypassPermissions' } as Partial<Chat>))),
+    });
     const btn = await waitFor(() => must$(r, '[data-testid="chat-settings-open"]'), r);
     expect(btn.closest('[data-testid="chat-composer"]')).not.toBeNull(); // in the composer's row
     expect(btn.getAttribute('aria-label')).toBe('Model Sonnet, high effort: chat settings');
@@ -974,16 +983,49 @@ describe('Conversation', () => {
       return p;
     }, r);
     await waitFor(() => expect(valueOf(byLabel(pop, 'Permission mode'))).toBe('default'), r);
+    expect(pop.textContent).not.toContain('Save'); // no Save step
+    // a model from the list is saved as it is picked, and the popover says so
     type(byLabel(pop, 'Model'), 'opus');
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', model: 'opus' }]), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chat-settings-saved"]').textContent).toBe('Saved · applies from the next message'), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-model"]').textContent).toBe('Opus'), r);
+    type(byLabel<HTMLElement>(pop, 'Effort'), 'low');
+    await waitFor(() => expect(updates.at(-1)).toEqual({ id: 'chat_a', effort: 'low' }), r);
+    // a mode that skips approvals waits for the confirmation and "Use this mode"
     type(byLabel<HTMLElement>(pop, 'Permission mode'), 'bypassPermissions');
     await waitFor(() => expect(pop.querySelector('[data-testid="skip-approvals-warning"]')).not.toBeNull(), r);
-    // Save waits for the confirmation (lib/permission.ts)
-    expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(pop, 'button', 'Use this mode').disabled).toBe(true);
+    expect(updates).toHaveLength(2);
     await r.act(() => byLabel(pop, 'I understand this agent will act without asking me first').click());
-    await waitFor(() => expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(false), r);
-    await r.act(() => byText(pop, 'button', 'Save').click());
-    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', model: 'opus', effort: 'high', permissionMode: 'bypassPermissions', readHistory: true }]), r);
+    await waitFor(() => expect(byText<HTMLButtonElement>(pop, 'button', 'Use this mode').disabled).toBe(false), r);
+    await r.act(() => byText(pop, 'button', 'Use this mode').click());
+    await waitFor(() => expect(updates.at(-1)).toEqual({ id: 'chat_a', permissionMode: 'bypassPermissions' }), r);
     await waitFor(() => expect($(r, '[data-testid="chip-mode"]')!.getAttribute('data-warn')).toBe('true'), r);
+    await waitFor(() => expect(pop.querySelector('[data-testid="skip-approvals"]')).toBeNull(), r);
+    await r.act(() => must(pop.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'history box').click());
+    await waitFor(() => expect(updates.at(-1)).toEqual({ id: 'chat_a', readHistory: false }), r);
+  });
+
+  it('a model typed in the settings is saved only with "Use this model": clearing the field or spelling an alias saves nothing (D3)', async () => {
+    const updates: unknown[] = [];
+    let cur = chat({ model: 'claude-x-2025' });
+    const { r } = conv(cur, [], { chatUpdate: async (u) => (updates.push(u), (cur = chat({ ...cur, ...u, version: cur.version + 1 } as Partial<Chat>))) });
+    await r.act(async () => (await waitFor(() => must$(r, '[data-testid="chat-settings-open"]'), r)).click());
+    const pop = await waitFor(() => {
+      const p = must$(r, '[data-testid="chat-settings"]');
+      if (!p.querySelector('form')) throw new Error('closed');
+      return p;
+    }, r);
+    const field = () => must(pop.querySelector<HTMLInputElement>('[data-testid="model-typed"]'), 'typed model field');
+    await r.act(() => type(field(), ''));
+    await r.act(() => type(field(), 'opus'));
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(updates).toEqual([]);
+    expect(field().disabled).toBe(false);
+    expect(pop.querySelector('[data-testid="chat-settings-saved"]')?.textContent ?? '').not.toContain('Saved');
+    await r.act(() => type(field(), 'opus-something'));
+    await r.act(() => byText(pop, 'button', 'Use this model').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', model: 'opus-something' }]), r);
   });
 
   it('the settings popover takes the focus on its model field when it opens and Escape closes it', async () => {
@@ -1502,7 +1544,8 @@ describe('The graphite Chats screen (P97)', () => {
     let e: KeyboardEvent | undefined;
     await r.act(() => void (e = press(document.body, 'n', { ctrlKey: true })));
     expect(e!.defaultPrevented).toBe(true);
-    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
+    // /chats opened the only chat first (D7), then the new one
+    await waitFor(() => expect(navigated).toEqual(['/chats/c1', '/chats/c_new']), r);
   });
 
   it('the header says the CLI with its state, the folder as the CLI sees it and where the chat runs, from its fields', async () => {
@@ -1532,24 +1575,35 @@ describe('The graphite Chats screen (P97)', () => {
     expect(must$(r, '[data-testid="chat-more-panel"] .cli').getAttribute('data-state')).toBe('running');
   });
 
-  it('the approval mode button says the mode in words and changes it, a mode that skips approvals only once confirmed', async () => {
+  it('the approval mode button lists the modes in words, one click each; a mode that skips approvals waits behind Other… and its confirmation (D3)', async () => {
     const updates: unknown[] = [];
     const { r } = conv(chat(), [msg(1, 'user', 'hi')], { chatUpdate: async (u) => (updates.push(u), chat({ ...u, skipsApprovals: u.permissionMode === 'bypassPermissions' } as Partial<Chat>)) });
     const mode = await waitFor(() => must$(r, '[data-testid="chip-mode"]'), r);
     expect([mode.tagName, mode.textContent, mode.getAttribute('data-warn')]).toEqual(['BUTTON', 'Asks before commands', null]);
-    await r.act(() => mode.click());
-    const pop = await waitFor(() => {
-      const p = must$(r, '[data-testid="chat-mode-settings"]');
-      if (!p.querySelector('form')) throw new Error('closed');
-      return p;
-    }, r);
-    type(byLabel<HTMLElement>(pop, 'Permission mode'), 'bypassPermissions');
-    await waitFor(() => expect(pop.querySelector('[data-testid="skip-approvals-warning"]')).not.toBeNull(), r);
-    expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(true);
-    await r.act(() => byLabel(pop, 'I understand this agent will act without asking me first').click());
-    await waitFor(() => expect(byText<HTMLButtonElement>(pop, 'button', 'Save').disabled).toBe(false), r);
-    await r.act(() => byText(pop, 'button', 'Save').click());
-    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', permissionMode: 'bypassPermissions' }]), r);
+    const openList = async () => {
+      await r.act(() => must$(r, '[data-testid="chip-mode"]').click());
+      return waitFor(() => must$(r, '[data-testid="chat-mode-settings"] [data-testid="chat-mode-list"]'), r);
+    };
+    let list = await openList();
+    const names = () => Array.from(list.querySelectorAll('[role="group"] button')).map((b) => b.textContent!.replace('✓', '').trim());
+    expect(names()).toEqual(['Asks before commands', 'Edits files, asks before commands', 'Plans only, changes nothing', 'Other…']);
+    expect(list.querySelector('[data-mode="default"]')!.getAttribute('aria-pressed')).toBe('true');
+    // one click applies it and closes the list
+    await r.act(() => must(list.querySelector<HTMLElement>('[data-mode="acceptEdits"]'), 'acceptEdits').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', permissionMode: 'acceptEdits' }]), r);
+    await waitFor(() => expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Edits files, asks before commands'), r);
+    await waitFor(() => expect($(r, '[data-testid="chat-mode-list"]')).toBeNull(), r);
+    // the skip modes are behind Other…, and apply only once confirmed
+    list = await openList();
+    await r.act(() => must$(r, '[data-testid="chat-mode-other"]').click());
+    await r.act(() => must(list.querySelector<HTMLElement>('[data-mode="bypassPermissions"]'), 'bypass').click());
+    await waitFor(() => expect(list.querySelector('[data-testid="skip-approvals-warning"]')).not.toBeNull(), r);
+    expect(updates).toHaveLength(1);
+    expect(byText<HTMLButtonElement>(list, 'button', 'Use this mode').disabled).toBe(true);
+    await r.act(() => byLabel(list, 'I understand this agent will act without asking me first').click());
+    await waitFor(() => expect(byText<HTMLButtonElement>(list, 'button', 'Use this mode').disabled).toBe(false), r);
+    await r.act(() => byText(list, 'button', 'Use this mode').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', permissionMode: 'acceptEdits' }, { id: 'chat_a', permissionMode: 'bypassPermissions' }]), r);
     await waitFor(() => expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Never asks, skips approvals'), r);
     expect(must$(r, '[data-testid="chip-mode"]').getAttribute('data-warn')).toBe('true');
   });
@@ -1760,5 +1814,229 @@ describe('ChatConversation (P139)', () => {
     const r = mount(<ChatConversation chatId="chat_a" />, s);
     await waitFor(() => expect(messages(r)).toHaveLength(1), r);
     expect([$(r, '[data-testid="chat-row"]'), $(r, '[data-testid="chat-composer"]') !== null, must$(r, '[data-testid="chat-title"]').textContent]).toEqual([null, true, 'Where does Multiply go?']);
+  });
+});
+
+describe('Next steps, the first seconds of a turn, coming back to Chats (B3)', () => {
+  function conv(c: Chat, msgs: ChatMessage[], client: Partial<Client> = {}) {
+    return setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: msgs, hasMore: false }), ...client }, { id: c.id });
+  }
+  const clearKeys = () => {
+    localStorage.removeItem('drydock.chat.last');
+    localStorage.removeItem('drydock.chat.filter');
+  };
+  afterEach(clearKeys);
+
+  it('a failed turn offers Try again on its error and on the header chip, each sending the message again (D4)', async () => {
+    const resent: unknown[] = [];
+    const { r, s } = conv(chat({ status: 'error', lastError: 'the CLI exited with code 1' }), [msg(1, 'user', 'hi'), msg(2, 'error', 'the CLI exited with code 1')], {
+      chatResend: async (id, seq, text) => (resent.push([id, seq, text]), { turnId: `turn_r${resent.length}`, version: 5 }),
+    });
+    await waitFor(() => expect(messages(r)).toHaveLength(2), r);
+    const again = must(messages(r)[1]!.querySelector<HTMLButtonElement>('[data-testid="chat-next-step"]'), 'Try again');
+    expect(again.textContent).toBe('Try again');
+    await r.act(() => again.click());
+    await waitFor(() => expect(resent).toEqual([['chat_a', 1, undefined]]), r);
+    s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_r1', status: 'error' } });
+    // the header's "Last turn failed" is Try again too
+    const chip = await waitFor(() => must$(r, '[data-testid="chat-cli-warning"]'), r);
+    expect([chip.textContent, chip.getAttribute('data-action')]).toEqual(['Last turn failed', 'retry']);
+    expect(chip.getAttribute('title')).toBe('Try again: the CLI exited with code 1');
+    await r.act(() => chip.click());
+    await waitFor(() => expect(resent).toEqual([['chat_a', 1, undefined], ['chat_a', 1, undefined]]), r);
+  });
+
+  it("the header chip's Try again sends once: a second click while the resend is answered does nothing (D4)", async () => {
+    const resent: unknown[] = [];
+    let answer: () => void = () => {};
+    const { r } = conv(chat({ status: 'error', lastError: 'the CLI exited with code 1' }), [msg(1, 'user', 'hi'), msg(2, 'error', 'the CLI exited with code 1')], {
+      chatResend: (id, seq, text) => (resent.push([id, seq, text]), new Promise((ok) => (answer = () => ok({ turnId: 'turn_r1', version: 5 })))),
+    });
+    const chip = await waitFor(() => must(r.container.querySelector<HTMLButtonElement>('[data-testid="chat-cli-warning"]'), 'chip'), r);
+    expect(chip.getAttribute('data-action')).toBe('retry');
+    await r.act(() => chip.click());
+    await waitFor(() => expect(chip.disabled).toBe(true), r);
+    await r.act(() => chip.click());
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(resent).toEqual([['chat_a', 1, undefined]]);
+    expect(doc$$('dialog[open]')).toHaveLength(0); // nor Properties
+    await r.act(() => answer());
+  });
+
+  it('an error that is not the end of a failed turn offers nothing (D4)', async () => {
+    const { r } = conv(chat(), [msg(1, 'user', 'hi'), msg(2, 'error', 'a warning'), msg(3, 'assistant', 'done anyway')]);
+    await waitFor(() => expect(messages(r)).toHaveLength(3), r);
+    expect($(r, '[data-testid="chat-next-step"]')).toBeNull();
+  });
+
+  it('a turn the person stopped offers Continue (D4)', async () => {
+    const sent: unknown[] = [];
+    const { r } = conv(chat(), [msg(1, 'user', 'long job'), msg(2, 'assistant', 'partial'), msg(3, 'system', 'Stopped by you.')], {
+      chatSend: async (id, text, attach) => (sent.push([id, text, attach]), { turnId: 't2', version: 2 }),
+    });
+    await waitFor(() => expect(messages(r)).toHaveLength(3), r);
+    const go = must(messages(r)[2]!.querySelector<HTMLButtonElement>('[data-testid="chat-next-step"]'), 'Continue');
+    expect(go.textContent).toBe('Continue');
+    await r.act(() => go.click());
+    await waitFor(() => expect(sent).toEqual([['chat_a', 'Continue.', []]]), r);
+  });
+
+  it('a send refused because the folder is gone offers Choose folder… and Use its own folder (D4)', async () => {
+    const updates: unknown[] = [];
+    const home = chat({ projectId: '', cwd: 'D:\\gone' });
+    const { r } = conv(home, [msg(1, 'user', 'hi')], {
+      chatSend: async () => Promise.reject(new Error("this chat's folder cannot be used any more: D:\\gone does not exist")),
+      chatUpdate: async (u) => (updates.push(u), chat({ ...home, cwd: 'C:\\Users\\kyle\\.drydock\\chats\\chat_a', version: 2 })),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
+    type(box, 'try this');
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    const fix = await waitFor(() => must$(r, '[data-testid="chat-folder-fix"]'), r);
+    expect(box.value).toBe('try this'); // the message waits in the box
+    await r.act(() => byText(fix, 'button', 'Use its own folder').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', cwd: '' }]), r);
+    await waitFor(() => expect($(r, '[data-testid="chat-folder-fix"]')).toBeNull(), r);
+    // Choose folder… opens the chat's properties, where the folder is
+    type(box, 'again');
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    const fix2 = await waitFor(() => must$(r, '[data-testid="chat-folder-fix"]'), r);
+    await r.act(() => byText(fix2, 'button', 'Choose folder…').click());
+    await waitFor(() => dialogWith('Chat properties'), r);
+  });
+
+  it('the first seconds of a turn say what is happening: starting the CLI, thinking, the step; a slow start offers Stop (D12)', async () => {
+    const stopped: string[] = [];
+    const { r, s } = conv(chat(), [msg(1, 'user', 'earlier')], {
+      chatSend: async () => ({ turnId: 'turn_2', version: 2 }),
+      chatStop: async (id) => (stopped.push(id), { stopped: true }),
+    });
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
+    type(box, 'go');
+    await r.act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+    s.emit({ type: 'chat.turn_started', data: { chatId: 'chat_a', turnId: 'turn_2', attach: [] } });
+    const phase = () => must$(r, '[data-testid="chat-phase"]');
+    await waitFor(() => expect(phase().textContent).toContain('Starting Claude Code…'), r);
+    // past 20 s still starting: how long, and Stop
+    const real = Date.now;
+    try {
+      Date.now = () => real() + 24_500;
+      await waitFor(() => expect(phase().textContent).toMatch(/Still starting \(\d+ s\)/), r);
+      // the live region keeps the steady words; the ticking seconds sit outside it, hidden from screen readers
+      expect(must(phase().querySelector('[role="status"]'), 'status').textContent).toBe('Still starting');
+      expect(must(phase().querySelector('[role="status"] + [aria-hidden="true"]'), 'seconds').textContent).toMatch(/^ \(\d+ s\)$/);
+      await r.act(() => must$(r, '[data-testid="chat-phase-stop"]').click());
+      await waitFor(() => expect(stopped).toEqual(['chat_a']), r);
+    } finally {
+      Date.now = real;
+    }
+    // the runtime says the CLI is up (agent.started with the chat id): thinking, then the step
+    s.emit({ type: 'agent.started', agentId: 'chat_a', data: { adapter: 'claude' } });
+    await waitFor(() => expect(phase().textContent).toContain('Thinking…'), r);
+    expect($(r, '[data-testid="chat-phase-stop"]')).toBeNull();
+    s.emit({ type: 'chat.tool', data: { chatId: 'chat_a', turnId: 'turn_2', name: 'Read', summary: 'Read: calc.go', messageId: 'm9' } });
+    await waitFor(() => expect(phase().textContent).toContain('Using Read…'), r);
+  });
+
+  it('coming back to Chats opens the chat that was open, else the newest one; it remembers the one opened (D7)', async () => {
+    const list = [item({ id: 'c_old', title: 'Old', updatedAt: Date.now() - 900_000 }), item({ id: 'c_new', title: 'New', updatedAt: Date.now() - 1000 })];
+    localStorage.setItem('drydock.chat.last', 'c_old');
+    let run = setup({ chatList: async () => list });
+    await waitFor(() => expect(run.navigated).toEqual(['/chats/c_old']), run.r);
+    expect($(run.r, '[data-testid="chats-empty-new"]')).toBeNull();
+    cleanup();
+    localStorage.setItem('drydock.chat.last', 'c_deleted');
+    run = setup({ chatList: async () => list });
+    await waitFor(() => expect(run.navigated).toEqual(['/chats/c_new']), run.r);
+    cleanup();
+    // a chat opened is the one to come back to
+    run = setup({ chatList: async () => list, chatGet: async () => ({ chat: chat({ id: 'c_new' }), messages: [], hasMore: false }) }, { id: 'c_new' });
+    await waitFor(() => expect(localStorage.getItem('drydock.chat.last')).toBe('c_new'), run.r);
+  });
+
+  /** The screen as the router keeps it: one instance for /chats and /chats/:id, its id following each navigation. */
+  function routed(client: Partial<Client>) {
+    const s = testServices({
+      projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
+      licenseStatus: async () => lic(),
+      appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
+      adapterList: async () => [claude],
+      skillLibraryList: async () => [],
+      mcpLibList: async () => [],
+      mcpApprovalList: async () => [],
+      chatAsks: async () => [],
+      ...client,
+    });
+    s.workspace.start();
+    const navigated: string[] = [];
+    const nav = new EventTarget();
+    let id: string | undefined;
+    const go = (h: string) => {
+      navigated.push(h);
+      id = h.split('/')[2] || undefined;
+      nav.dispatchEvent(new Event('change'));
+    };
+    function Router(handle: Handle) {
+      watch(handle, nav);
+      return () => <ChatsScreen key="chats" id={id} onNavigate={go} />;
+    }
+    const r = mount(<Router />, s);
+    return { s, r, navigated, go };
+  }
+
+  it('coming back to /chats in the same screen reads the last chat and the list again, never a deleted chat (D7)', async () => {
+    let list = [item({ id: 'c1', title: 'One', updatedAt: Date.now() - 900_000 }), item({ id: 'c5', title: 'Five', updatedAt: Date.now() - 600_000 }), item({ id: 'c3', title: 'Three', updatedAt: Date.now() - 1000 })];
+    localStorage.setItem('drydock.chat.last', 'c1');
+    const deleted: string[] = [];
+    const { r, navigated, go } = routed({
+      chatList: async () => list,
+      chatGet: async (id) => ({ chat: chat({ id }), messages: [], hasMore: false }),
+      chatDelete: async (id) => {
+        deleted.push(id);
+        list = list.filter((c) => c.id !== id);
+      },
+    });
+    await waitFor(() => expect(navigated).toEqual(['/chats/c1']), r);
+    // the person opens Five, then Chats in the sidebar: back to Five, the chat they were in
+    await r.act(() => go('/chats/c5'));
+    await waitFor(() => expect(localStorage.getItem('drydock.chat.last')).toBe('c5'), r);
+    await r.act(() => go('/chats'));
+    await waitFor(() => expect(navigated.at(-1)).toBe('/chats/c5'), r);
+    // they delete Five from its row: /chats opens the newest remaining chat, not the first visit's
+    await waitFor(() => expect(rowTitles(r)).toContain('Five'), r);
+    await pickMenu(r, 'Five', 'Delete…');
+    const dlg = await waitFor(() => dialogWith('Delete chat'), r);
+    await r.act(() => byText(dlg, 'button', 'Delete chat').click());
+    await waitFor(() => expect(navigated.at(-1)).toBe('/chats/c3'), r);
+    expect(deleted).toEqual(['c5']);
+    expect(navigated).toEqual(['/chats/c1', '/chats/c5', '/chats', '/chats/c5', '/chats', '/chats/c3']);
+  });
+
+  it('a new chat asked for while /chats reads the list opens the new chat, not the last one (D7)', async () => {
+    let made: (c: Chat) => void = () => {};
+    let listed = false;
+    const { r, navigated } = setup(
+      {
+        chatList: async () => ((listed = true), [item({ id: 'c1', title: 'One' })]),
+        chatCreate: () => new Promise<Chat>((ok) => (made = ok)),
+      },
+      { newChat: true },
+    );
+    // the list answers while the new chat is still being made
+    await waitFor(() => expect(listed).toBe(true), r);
+    await new Promise((ok) => setTimeout(ok, 30));
+    await r.act(() => made(chat({ id: 'c_new' })));
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(navigated).toEqual(['/chats/c_new']);
+  });
+
+  it("the list's filter is kept for the next visit (D7)", async () => {
+    let run = setup({ chatList: async () => [] });
+    const archived = await waitFor(() => byText(run.r.container, 'button', 'Archived'), run.r);
+    expect(archived.getAttribute('aria-pressed')).toBe('false');
+    await run.r.act(() => archived.click());
+    cleanup();
+    run = setup({ chatList: async () => [] });
+    await waitFor(() => expect(byText(run.r.container, 'button', 'Archived').getAttribute('aria-pressed')).toBe('true'), run.r);
   });
 });

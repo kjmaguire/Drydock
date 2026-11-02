@@ -98,6 +98,31 @@ describe('the agent editor panel (P137)', () => {
     await waitFor(() => expect(panel(r)).toBeNull(), r);
   });
 
+  it("asks for the CLI's MCP gateway under its servers when it is off, with Allow; nothing when it is verified", async () => {
+    const tries: unknown[][] = [];
+    const srv = { id: 'github', display: 'GitHub', transport: 'http', secretEnv: [], hasToken: true, tools: [] };
+    let gw = { running: true, address: '', adapters: [{ adapter: 'claude', attached: false, canTry: true, trying: false }] };
+    const s = svc([agent()], {
+      mcpLibList: async () => [srv] as never,
+      mcpServerList: async () => [{ ...srv, projectId: 'prj_1', enabled: true, agents: [{ agentId: 'agt_1', tools: [] }] }] as never,
+      mcpStatus: async () => gw as never,
+      mcpTrySet: async (...a: unknown[]) => {
+        tries.push(a);
+        gw = { ...gw, adapters: [{ adapter: 'claude', attached: true, canTry: true, trying: true }] };
+        return gw as never;
+      },
+    });
+    const r = mount(<TeamScreen now={() => Date.now()} />, s);
+    const chip = await waitFor(() => must(r.$('[data-testid="agent"] [data-testid="agent-model-chip"]') as HTMLElement | null, 'no chip'), r);
+    await r.act(() => chip.click());
+    const ed = await waitFor(() => must(panel(r), 'no panel'), r);
+    const line = await waitFor(() => must(ed.querySelector<HTMLElement>('[data-testid="gateway-line"]'), 'no gateway line'), r);
+    expect(line.textContent).toContain('Claude Code gets MCP servers only once you allow the gateway (not verified by a real run).');
+    await r.act(() => must(line.querySelector<HTMLButtonElement>('[data-testid="gateway-allow"]'), 'no Allow').click());
+    await waitFor(() => expect(tries).toEqual([['claude', true]]), r);
+    await waitFor(() => expect(ed.querySelector('[data-testid="gateway-line"]')).toBeNull(), r);
+  });
+
   it('Everywhere also saves to the template, and a mode that skips approvals needs the box first', async () => {
     const calls: AgentUpdate[] = [];
     const a = agent({ templateId: 'tpl_1' });

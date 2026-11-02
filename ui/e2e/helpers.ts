@@ -330,6 +330,14 @@ export async function openAgentPage(page: Page, name: string): Promise<void> {
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
 }
 
+/** Opens "More settings" of New agent > Configure (model, effort, permissions, where it runs, purpose, skills, practices), which
+ *  starts folded while nothing in it was changed. */
+export async function openMoreSettings(page: Page): Promise<void> {
+  const more = page.locator('dialog[open]').getByTestId('agent-form-more');
+  if ((await more.getAttribute('open')) === null) await more.locator(':scope > summary').click();
+  await expect(more).toHaveAttribute('open', '');
+}
+
 export async function createAgent(page: Page, name: string, role: string): Promise<void> {
   await openNewAgent(page);
   await page.getByLabel('Agent name').fill(name);

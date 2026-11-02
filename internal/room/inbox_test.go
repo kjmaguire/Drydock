@@ -390,3 +390,35 @@ func TestAnApprovalItemCarriesItsPhaseTaskNumberAgentAndExpiry(t *testing.T) {
 		t.Fatalf("odd %+v", o)
 	}
 }
+
+// X111: a SYSTEM line is not conversation, so it does not make a room unread; in #alerts, where a notice may be the only
+// signal, it still counts.
+func TestSystemLinesCountAsUnreadOnlyInAlerts(t *testing.T) {
+	e := newEnv(t)
+	dev := e.channel("dev")
+	alerts := e.channel("alerts")
+	sam := Human("sam")
+	e.join(dev, sam, "")
+	e.join(alerts, sam, "")
+	for _, r := range []Room{dev, alerts} {
+		e.post(PostParams{RoomID: r.ID, Type: TypeSystem, Author: System, Body: "a notice"})
+	}
+	us, err := e.svc.UnreadCounts(e.ctx, sam, e.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, u := range us {
+		got[u.RoomName] = u.Unread
+	}
+	if got["dev"] != 0 || got["alerts"] != 1 {
+		t.Fatalf("unread %v: want dev 0 (system line) and alerts 1", got)
+	}
+	e.say(dev, kyle, "hello")
+	us, _ = e.svc.UnreadCounts(e.ctx, sam, e.project)
+	for _, u := range us {
+		if u.RoomName == "dev" && u.Unread != 1 {
+			t.Fatalf("a person's message still counts: %+v", u)
+		}
+	}
+}

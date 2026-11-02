@@ -412,3 +412,83 @@ export function cliWarning(c: Pick<Chat, 'adapter' | 'wslDistro' | 'status'>, ad
   }
   return c.status === 'error' ? 'Last turn failed' : '';
 }
+
+/** The note a turn the person stopped ends with (chats.StoppedNote). */
+export const STOPPED_NOTE = 'Stopped by you.';
+
+/** The message Continue sends after a turn the person stopped (the core quotes what was shown up to the stop). */
+export const CONTINUE_TEXT = 'Continue.';
+
+/** Whether this error is the core's refusal of a chat whose folder is gone (chats.Send: "this chat's folder cannot be used any more"). */
+export const isFolderRefusal = (e: Error | undefined): boolean => !!e && /folder cannot be used any more/i.test(e.message);
+
+/**
+ * What the first seconds of a turn say before any text arrives (D12): the CLI starting, then thinking, then the step it is on.
+ * `phase` is undefined when the view did not see the turn start (opened mid-turn). After `slowMs` still starting says how long.
+ */
+export function turnPhaseText(who: string, phase: { since: number; cli: boolean; step: string } | undefined, now: number, slowMs = 20_000): { text: string; slow: boolean; seconds?: number } {
+  if (!phase) return { text: 'Working…', slow: false };
+  if (!phase.cli) {
+    const ms = now - phase.since;
+    // the seconds are shown beside the words, not in them: the words are what a screen reader announces
+    return ms >= slowMs ? { text: 'Still starting', slow: true, seconds: Math.floor(ms / 1000) } : { text: `Starting ${who}…`, slow: false };
+  }
+  return { text: phase.step ? `Using ${phase.step}…` : 'Thinking…', slow: false };
+}
+
+// --- what a viewer comes back to (D7): the last chat open and the list's filter, per viewer, wide layout only ---
+
+export const LAST_CHAT_KEY = 'drydock.chat.last';
+export const CHAT_FILTER_KEY = 'drydock.chat.filter';
+
+/** The chat the viewer last had open ('' when none, or storage refuses). */
+export function readLastChat(store: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): string {
+  try {
+    return store?.getItem(LAST_CHAT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function writeLastChat(id: string, store: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try {
+    store?.setItem(LAST_CHAT_KEY, id);
+  } catch {
+    // kept for this view only
+  }
+}
+
+/** The chat /chats opens: the last one open while it is still listed, else the most recently active, else none. */
+export function chatToReopen(list: readonly { id: string; updatedAt: number }[], last: string): string {
+  if (last && list.some((c) => c.id === last)) return last;
+  let best: { id: string; updatedAt: number } | undefined;
+  for (const c of list) if (!best || c.updatedAt > best.updatedAt) best = c;
+  return best?.id ?? '';
+}
+
+export interface ChatFilter {
+  /** Every chat (true), or only the current project's. */
+  all: boolean;
+  archived: boolean;
+}
+
+export function readChatFilter(store: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): ChatFilter {
+  try {
+    const v = JSON.parse(store?.getItem(CHAT_FILTER_KEY) ?? 'null') as unknown;
+    if (v && typeof v === 'object') {
+      const f = v as Record<string, unknown>;
+      return { all: f.all !== false, archived: f.archived === true };
+    }
+  } catch {
+    // a missing, refused or damaged value: the defaults
+  }
+  return { all: true, archived: false };
+}
+
+export function writeChatFilter(f: ChatFilter, store: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage): void {
+  try {
+    store?.setItem(CHAT_FILTER_KEY, JSON.stringify({ all: f.all, archived: f.archived }));
+  } catch {
+    // kept for this view only
+  }
+}

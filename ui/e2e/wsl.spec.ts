@@ -4,7 +4,7 @@
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { choose, createProject, openNewAgent, optionsOf, workspaceNav, projectNav } from './helpers';
+import { choose, createProject, openMoreSettings, openNewAgent, optionsOf, workspaceNav, projectNav } from './helpers';
 
 const distro = (): string => process.env.DRYDOCK_E2E_WSL ?? '';
 
@@ -162,6 +162,7 @@ test('Team: a Claude Code agent is made to run inside the WSL distro and its car
   await page.getByLabel('Agent name').fill('Linux worker');
   await page.getByLabel('Role', { exact: true }).fill('backend');
   await choose(page.getByLabel('Adapter', { exact: true }), 'claude');
+  await openMoreSettings(page);
   const runs = page.getByLabel('Runs', { exact: true });
   await expect(await optionsOf(runs)).toHaveCount(3);
   await choose(runs, `wsl:${distro()}`);

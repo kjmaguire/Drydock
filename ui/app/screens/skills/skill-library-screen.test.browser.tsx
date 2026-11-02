@@ -134,9 +134,10 @@ describe('Library > Skills', () => {
     expect(went).toEqual(['/skills']);
     expect(s.workspace.projectId).toBe('prj_2');
     expect(s.ui.takeSkillPicks('prj_1')).toEqual([]);
+    // each pick carries the roles it names, so its agents can be ticked there (the core is sent only registry and name)
     expect(s.ui.takeSkillPicks('prj_2')).toEqual([
-      { registryId: 'anthropic-skills', name: 'algorithmic-art' },
-      { registryId: 'anthropic-skills', name: 'docx' },
+      { registryId: 'anthropic-skills', name: 'algorithmic-art', roles: [] },
+      { registryId: 'anthropic-skills', name: 'docx', roles: [] },
     ]);
     expect(s.ui.takeSkillPicks('prj_2')).toEqual([]); // once
   });

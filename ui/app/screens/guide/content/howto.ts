@@ -171,7 +171,7 @@ export const HOWTO: readonly Topic[] = [
       { p: 'A support bundle is a zip of diagnostics for a bug report: versions, connection states, settings, recent logs, event types and a scrub report. Secrets are redacted and your name, computer name and folders are replaced. Event payloads are dropped (only event types and ids are listed).' },
       {
         ol: [
-          'Open [Support bundle](/support) and press **Preview the bundle**. Nothing is written yet; you see every file and what was scrubbed.',
+          'Open [Support bundle](/support). The preview is made for you; nothing is written yet, and you see every file and what was scrubbed.',
           'Check the file list and the report. Scrubbing reduces but does not eliminate leakage.',
           'Press **Create the bundle**. It is written on this computer and has not been uploaded anywhere. You send it yourself.',
         ],
