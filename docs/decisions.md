@@ -2634,3 +2634,51 @@ Open, owner action:
   `screens/settings/settings-screen.test.browser.tsx` (both disclosures); e2e `narrow.spec.ts` (Work at 1100 px: no crew rail,
   the centre's full height; the Backups pills beside the rail), `chats.spec.ts`, `crew.spec.ts`, `round5.spec.ts`,
   `board.spec.ts`, `agent-tools.spec.ts`, `diagnostics.spec.ts`, `round3.spec.ts`, `round7.spec.ts`, `wsl.spec.ts`.
+- **P145. The effort review's quick wins: fewer steps for the person, the rules kept (2026-11-02).** The owner read the "Drydock
+  Effort Review" (a full review of where the person does more than they should: 74 quick wins, 56 bigger changes, 9 owner
+  decisions) and said "Build the quick wins". The quick wins were built in 13 batches; each batch was reviewed and its findings
+  fixed. The bigger changes and the owner decisions were not touched, nor were the P144-e proposals. Every change keeps the
+  rules: a grant "for the rest of this task" is the person's visible click, scoped to the task, the agent and the exact input,
+  listed on the task page with Stop allowing (security.md s5); nothing starts paid work without a click, except an opt-in switch
+  the person sets (the team lead's scheduled stand-up, off by default, weekdays from a chosen hour, only while tasks are active);
+  merge stays a human action. (a) **Task page and Inbox.** Allow for the rest of this task first where the core allows it (C5);
+  a failed or cancelled task says why it stopped with Run again, its cost confirmed (C6, the run page's lines); budget raise
+  chips and a Resume that names the new limit (C12); a turn cut off by Drydock stopping gets its own panel with the crash report
+  of that moment (X513); a crew of one is offered the Code Reviewer, or the suggested team, in one click (E1, P142 kept); Request
+  changes starts from the criteria not met (C9) and criteria written without ids are numbered AC1... by the core (W2); several
+  Inbox items marked done at once (C13, a request or a state refuses the whole call); the Inbox tab, its selection and the
+  board's filters remembered (C14); a per-project amber count in the sidebar (G9); the window title names the page and project
+  (G3). (b) **Dock.** Live diff while the agent works (X21), the file, Live/Recorded and log source remembered per task (X22),
+  Logs opens on the running stream or the newest failed check (X23) with All / Failed (X25), an agent's stream named by its
+  agent (X210); O and Open the worktree reuse the task's open shell (X27), Ctrl+` opens a terminal (G6), other projects' shells
+  fold away (X213), Diff and Logs with no task in context use the one running task (X29); the command menu's Recent group (G10);
+  the window opens where it was left (G8, setting `ui.window`, clamped to a monitor's work area). (c) **Plans and knowledge.**
+  Accept and start (X47) and the tasks nobody on the crew can take named before Accept (X46); a task's own criteria linked to a
+  requirement (X42); a milestone filled in one go (X49), closed when done or closed anyway after a confirmation (X410);
+  requirements without a typed title and new versions from a file (X41); repo map focus and budget remembered (X412); Knowledge
+  links open the requirement (X414); the CI question's "this repository has no CI, remember it", a person's answer only (H13).
+  (d) **Sandbox and preview.** A sandboxed task hides the preview the core refuses (X33); one Open the app (X32, each step
+  audited); the preview's setting linked and its default said (X310); the WSL agents named before the switch with a fix (X312);
+  a Docker Desktop link, Check again and a re-read on focus (A7). (e) **Agents, skills, packs.** Library skills pre-tick the
+  agents whose role they name (E3); a "team lead" by any name is the lead (E7); MCP servers granted on the agent page (E8) and
+  the gateway asked there (A10); Configure asks name, role and CLI, the rest under More settings (E13); Recommendations' Apply
+  all and a line on Work (E14); packs installed from the templates and attached by role (E11). (f) **Rooms and chats.** Replies
+  off said once with Turn on (X13); mute as a bell, and system lines no longer unread outside #alerts (X111); Invite as one
+  button per agent (X15); turn-taking applied on change with its defaults in words (X14); a DM without the room's forms (X16);
+  every agent under Direct messages (X112); the stand-up schedule (H11); a failed or stopped turn's next step on its row (D4);
+  the first seconds of a turn named (D12); Chats reopens the last chat (D7); model, effort and mode applied as picked, the
+  approval-skipping modes still behind their box (D3). (g) **Projects and data.** The new folder where code is kept (B4,
+  setting `project.codeDir`, a Dev Drive's src next); one "recent" (B9); an empty or missing folder gets its repository without
+  a tick (B6); the folder dialog opens at the field's folder (B5); Home keeps an unsent description (B10); Clone takes a typed
+  owner/name or address (W9); Activity chips, scope links and whole payloads (X51, X52, X54), the run page's link to its events
+  and its tab remembered (X55); crash reports read in place (X510); Import with a file dialog (X59, `fs.pickFile`, a person
+  only); the support bundle previews itself (X57). (h) **Settings.** CLIs and GitHub re-read on focus, at most once a minute
+  (F11); Add runner picks from the projects' repositories, public ones refused (F5); a backup's check kept beside it and Restore
+  verifies first (F7); the startup probe as a switch with who set it (F8); a service's choices listed on open (F10); budget
+  targets by name (F13); provider presets per vendor (A8, defaults to check, every field editable). Not built, each for a stated
+  reason: C6's Report this (no report flow to reuse); X25's per-attempt headings (evidence and streams do not carry the attempt
+  the item assumed); X55's Load earlier events (needs a run filter on `events.replay`, a bigger change); F10's re-verify in the
+  weekly sweep (Verify is the person's own action, P59; changing that is a decision); A8's key from the environment
+  (`security/env.go` never reads secret variables). No migration and no new dependency. Tests: each item's Go or UI test next
+  to the code it changed (named in the batch commits `A1`-`A7`, `B1`-`B6` and their review fixes), with the e2e specs whose
+  strings or flows changed updated.
