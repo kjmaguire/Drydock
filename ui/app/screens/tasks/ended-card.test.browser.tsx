@@ -1,5 +1,6 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
+import { expiredLicense } from '../../test/fixtures.ts';
 import { byText, cleanup, mount, waitFor } from '../../test/render.tsx';
 import { EndedCard } from './ended-card.tsx';
 import { detail, recorder, svc, task } from './testing.ts';
@@ -25,6 +26,18 @@ describe('A failed or cancelled task on its page', () => {
     await r.act(() => byText(r.container, 'button', 'Run it again').click());
     await waitFor(() => expect(taskRunAgain.calls).toEqual([['t1']]), r);
     await waitFor(() => expect(went).toEqual(['/task/t9']), r);
+  });
+
+  it('a read-only licence turns Run again off and says why, before any confirmation', async () => {
+    const taskRunAgain = recorder(() => ({ taskId: 't9', seq: 9, runId: 'run-9', from: 't1' }));
+    const d = detail({ task: task({ seq: 4, status: 'FAILED' }), run: run('gave up'), runAgain: true });
+    const r = mount(<EndedCard detail={d} />, svc({ taskRunAgain }, { license: expiredLicense }));
+    const button = () => byText<HTMLButtonElement>(r.container, 'button', 'Run again as a new task');
+    await waitFor(() => expect(button().disabled).toBe(true), r);
+    expect(button().title).toContain('read-only');
+    await r.act(() => button().click());
+    expect(r.$('[data-testid="run-again-confirm"]')).toBeNull();
+    expect(taskRunAgain.calls).toEqual([]);
   });
 
   it('says why it cannot run again instead of offering the button', () => {

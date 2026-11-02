@@ -5,7 +5,7 @@
 import { css, navigate, on, type Handle } from 'remix/component';
 import { CopyPlus } from 'lucide';
 import { routes } from '../../routes.ts';
-import { action, services } from '../../state/services.tsx';
+import { action, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { ErrorNote } from '../../ui/feedback.tsx';
@@ -20,6 +20,7 @@ export function RunAgainButton(
   handle: Handle<{ taskId: string; seq: number; status: string; disabled?: boolean; title?: string; variant?: 'primary' | 'secondary'; onNavigate?: (href: string) => void }>,
 ) {
   const s = services(handle);
+  watch(handle, s.workspace);
   const act = action(handle);
   let asking = false;
   const set = (v: boolean) => {
@@ -37,7 +38,11 @@ export function RunAgainButton(
     else void navigate(href);
   };
   return () => {
-    const { seq, status, disabled, title, variant = 'primary' } = handle.props;
+    const { seq, status, variant = 'primary' } = handle.props;
+    // task.runAgain needs a licence that is not read-only: the button says so instead of failing after the confirmation
+    const ro = s.workspace.license;
+    const disabled = handle.props.disabled || ro.readOnly;
+    const title = handle.props.title ?? (ro.readOnly ? ro.reason : undefined);
     return (
       <>
         <Button variant={variant} icon={CopyPlus} disabled={disabled} title={title} data-testid="run-again" mix={on('click', () => set(true))}>
@@ -53,7 +58,7 @@ export function RunAgainButton(
               </ul>
               <ErrorNote error={act.error} what="It did not start" />
               <div mix={formActions}>
-                <Button variant="primary" disabled={!!act.busy} mix={on('click', () => void runAgain())}>
+                <Button variant="primary" disabled={!!act.busy || ro.readOnly} title={ro.readOnly ? ro.reason : undefined} mix={on('click', () => void runAgain())}>
                   {act.busy === 'again' ? 'Starting...' : 'Run it again'}
                 </Button>
                 <Button mix={on('click', () => set(false))}>Cancel</Button>

@@ -140,7 +140,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     const busy = sending || ro.readOnly;
     return (
       <div mix={cardCss} data-testid="pending-request" data-request-id={p.id} data-kind={p.spec.kind}>
-        <h3>{visible(p.spec.title)}</h3>
+        {/* an interrupted turn's engine title ("Approve to run it again ... or reject") does not match its panel's answers: a short question instead */}
+        <h3>{interrupted ? `Run the ${interrupted.node ? visible(interrupted.node) + ' ' : ''}step again?` : visible(p.spec.title)}</h3>
         {/* the request's kind (review, question, approval) is its data-kind, not a line: the title says what is asked (P144) */}
         <div class="meta">
           {info.branch ? (

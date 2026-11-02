@@ -740,6 +740,9 @@ describe('A turn cut off by Drydock stopping (gate "interrupted", X513)', () => 
       const r = mount(<ReviewPanel detail={cut(payload)} onChanged={() => undefined} />, svc({ runRespond }));
       const panel = r.$('[data-testid="interrupted-gate"]')!;
       expect(panel.textContent).toContain('The code step was cut off 2 times because Drydock stopped while it ran.');
+      // the engine's title ("Approve to run it again ... or reject") is not shown above buttons that say something else
+      expect(r.$('[data-testid="pending-request"] h3')!.textContent).toBe('Run the code step again?');
+      expect(r.container.textContent).not.toContain('Approve to run it again');
       expect(r.$('[data-testid="interrupted-crash"]')!.textContent).toContain('fatal error: concurrent map writes');
       expect(r.$('[data-testid="interrupted-crash"] a')!.getAttribute('href')).toBe('/support');
       expect(buttons(r.container)).toEqual(['Run the step again (paid for again)', 'Stop the run']);

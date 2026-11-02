@@ -38,18 +38,43 @@ export function raisedLimit(kind: LimitKind, limit: number, factor: number): str
   return String(Math.max(Math.floor(limit) + 1, Math.ceil(limit * factor)));
 }
 
-/** The limits the paused budgets have, each with the field it raises. */
-export function pausedLimits(exceeded: BudgetStatus[]): { key: string; kind: LimitKind; limit: number; what: string }[] {
-  const out: { key: string; kind: LimitKind; limit: number; what: string }[] = [];
-  for (const x of exceeded) {
-    const b = x.budget;
+const KIND_WORD: Record<LimitKind, string> = { usd: 'USD', tokens: 'token', turns: 'turn' };
+const limitOf = (b: BudgetStatus['budget'], k: LimitKind) => (k === 'usd' ? b.limitUsd : k === 'tokens' ? b.limitTokens : b.limitTurns);
+const pctOf = (x: BudgetStatus, k: LimitKind) => (k === 'usd' ? x.pctUsd : k === 'tokens' ? x.pctTokens : x.pctTurns);
+/** Whether this limit is one that paused the run: used up, or the budget's binding limit when it is over. */
+const ranOut = (x: BudgetStatus, k: LimitKind) => (pctOf(x, k) ?? 0) >= 1 || (x.binding === k && x.pct >= 1);
+
+export interface PausedLimit {
+  key: string;
+  kind: LimitKind;
+  limit: number;
+  what: string;
+  /** How many paused budgets have a limit of this kind: budget.resume sets the new value on every one of them. */
+  shared: number;
+}
+
+/**
+ * The limits that paused the run, one per kind (USD, tokens, turns), each with the field it raises. A kind is listed only when a
+ * paused budget ran out of it. budget.resume writes the one new value to every paused budget with a limit of that kind, so when more
+ * than one has such a limit no raise is offered (a raise of one would change the others too): shared says how many.
+ */
+export function pausedLimits(exceeded: BudgetStatus[]): PausedLimit[] {
+  const out: PausedLimit[] = [];
+  for (const kind of ['usd', 'tokens', 'turns'] as const) {
+    const hit = exceeded.filter((x) => limitOf(x.budget, kind) && ranOut(x, kind));
+    if (hit.length === 0) continue;
+    const shared = exceeded.filter((x) => limitOf(x.budget, kind)).length;
+    const b = hit[0]!.budget;
+    const limit = limitOf(b, kind)!;
     const name = `${b.scope}${b.scopeId && b.scopeId !== '*' ? '' : ' (each)'}`;
-    if (b.limitUsd) out.push({ key: `${b.id}:usd`, kind: 'usd', limit: b.limitUsd, what: `${name}: ${dollars(b.limitUsd)} limit` });
-    if (b.limitTokens) out.push({ key: `${b.id}:tokens`, kind: 'tokens', limit: b.limitTokens, what: `${name}: ${b.limitTokens.toLocaleString('en-US')}-token limit` });
-    if (b.limitTurns) out.push({ key: `${b.id}:turns`, kind: 'turns', limit: b.limitTurns, what: `${name}: ${plural(b.limitTurns, 'turn')} limit` });
+    const amount = kind === 'usd' ? `${dollars(limit)} limit` : kind === 'tokens' ? `${limit.toLocaleString('en-US')}-token limit` : `${limit}-turn limit`;
+    out.push({ key: kind, kind, limit, what: `${name}: ${amount}`, shared });
   }
   return out;
 }
+
+/** What a shared limit's row says instead of chips: the one new value goes to every paused budget with that kind of limit. */
+export const sharedNote = (l: PausedLimit) => `A new ${KIND_WORD[l.kind]} limit is set on all ${l.shared} paused budgets that have one.`;
 
 const dollars = (v: number) => (Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`);
 
@@ -77,7 +102,7 @@ export function BudgetPausePanel(handle: Handle<{ payload: BudgetPausePayload; r
   let errors: LimitErrors = {};
   // one limit paused the run: +50% of it is chosen to start with (the person still presses Resume)
   const only = pausedLimits(handle.props.payload.exceeded ?? []);
-  if (only.length === 1) {
+  if (only.length === 1 && only[0]!.shared === 1) {
     const v = raisedLimit(only[0]!.kind, only[0]!.limit, 1.5);
     if (only[0]!.kind === 'usd') usd = v;
     else if (only[0]!.kind === 'tokens') tokens = v;
@@ -152,19 +177,25 @@ export function BudgetPausePanel(handle: Handle<{ payload: BudgetPausePayload; r
         <ErrorNote error={act.error} what="Not sent" />
         <fieldset>
           <legend>Raise the limit (optional; only a limit the budget already has can be raised)</legend>
-          {raisable.map((l) => (
-            <div key={l.key} mix={chipsCss} role="group" aria-label={`Raise the ${l.what}`} data-testid="budget-raise">
-              <span>{l.what}</span>
-              {RAISES.map((x) => {
-                const v = raisedLimit(l.kind, l.limit, x.factor);
-                return (
-                  <Button key={x.label} size="sm" variant={fieldOf(l.kind) === v ? 'secondary' : 'ghost'} aria-pressed={fieldOf(l.kind) === v ? 'true' : 'false'} mix={on('click', () => setField(l.kind, v))}>
-                    {x.label}
-                  </Button>
-                );
-              })}
-            </div>
-          ))}
+          {raisable.map((l) =>
+            l.shared > 1 ? (
+              <p key={l.key} mix={muted} data-testid="budget-raise-shared">
+                {sharedNote(l)}
+              </p>
+            ) : (
+              <div key={l.key} mix={chipsCss} role="group" aria-label={`Raise the ${l.what}`} data-testid="budget-raise">
+                <span>{l.what}</span>
+                {RAISES.map((x) => {
+                  const v = raisedLimit(l.kind, l.limit, x.factor);
+                  return (
+                    <Button key={x.label} size="sm" variant={fieldOf(l.kind) === v ? 'secondary' : 'ghost'} aria-pressed={fieldOf(l.kind) === v ? 'true' : 'false'} mix={on('click', () => setField(l.kind, v))}>
+                      {x.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            ),
+          )}
           <div mix={limits}>
             {field('New USD limit', 'usd', () => usd, (v) => (usd = v), 'decimal')}
             {field('New token limit', 'tokens', () => tokens, (v) => (tokens = v), 'numeric')}
