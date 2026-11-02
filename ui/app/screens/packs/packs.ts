@@ -81,8 +81,10 @@ export function fileSize(n: number): string {
 }
 
 /** How a pack is refreshed, in words: a scheduled pack refreshes by itself while Drydock is open (packs/schedule.go); a manual
- *  one only when Refresh now is clicked. `when` formats the last successful refresh. */
+ *  one only when Refresh now is clicked; a live pack is asked live and never refreshed (packs.ErrNotIndexed). `when` formats the
+ *  last successful refresh. */
 export function refreshLine(p: Pick<Pack, 'kind' | 'lastSuccessAt' | 'manifest'>, when: (iso: string) => string): string {
+  if (p.kind === 'live') return 'Asked live, never stored';
   const last = zeroTime(p.lastSuccessAt) ? 'never' : when(p.lastSuccessAt!);
   return p.manifest?.refresh?.mode === 'scheduled' && p.kind !== 'live' ? `Refreshes by itself · last ${last}` : `When you refresh it · last ${last}`;
 }

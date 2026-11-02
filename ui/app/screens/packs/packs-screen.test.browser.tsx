@@ -150,6 +150,37 @@ describe('PacksScreen', () => {
     expect(line.textContent).toContain('Refreshes by itself · last');
   });
 
+  it('installs a live ready pack without refreshing it (the core refuses that), shows no error, and its card offers no refresh', async () => {
+    const calls: string[] = [];
+    let list: Pack[] = [];
+    const tpl = { id: 'msdocs', manifest: { title: 'Microsoft Learn', kind: 'live', visibility: 'public', attach: { roles: [] } }, yaml: 'schema: 1\nid: msdocs' };
+    const r = mount(
+      <PacksScreen />,
+      servicesWith({
+        packList: async () => list,
+        packTemplates: async () => [tpl],
+        packInstall: async (y) => {
+          calls.push(`install ${y.split('\n')[1]}`);
+          list = [pack({ id: 'msdocs', title: 'Microsoft Learn', kind: 'live', manifest: { refresh: { mode: 'manual' } } })];
+          return list[0]!;
+        },
+        packAttachDefaults: async (p, id) => void calls.push(`attach ${p} ${id}`),
+        packRefresh: async (id) => {
+          calls.push(`refresh ${id}`);
+          throw new Error('packs: a live pack has nothing to refresh');
+        },
+      }),
+    );
+    const row = await waitFor(() => need(r.$('[data-testid="pack-template"]')), r);
+    await r.act(() => (row.querySelector('[data-testid="pack-template-install"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual(['install id: msdocs', 'attach prj_1 msdocs']), r);
+    const card = await waitFor(() => need(r.$('[data-testid="pack"][data-pack="msdocs"]')), r);
+    expect(card.querySelector('[data-testid="pack-refresh-line"]')!.textContent).toBe('Asked live, never stored');
+    expect(Array.from(card.querySelectorAll('button')).some((b) => b.textContent === 'Refresh now')).toBe(false);
+    expect(r.container.textContent).not.toContain('nothing to refresh');
+    await waitFor(() => expect(r.$$('[data-testid="pack-template"]').length).toBe(0), r);
+  });
+
   it('quarantined passages are released only by the button, and attach goes to this project', async () => {
     const released: number[] = [];
     const attached: unknown[][] = [];

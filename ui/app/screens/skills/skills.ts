@@ -159,15 +159,41 @@ export const reaches = (s: Audience, agentId: string): boolean => agentId !== ''
 export const suggestsRole = (s: Pick<Skill, 'roles'>, role: string): boolean => (s.roles ?? []).length > 0 && rolesMatch(s.roles, role);
 
 /**
- * The agents a set of skills is suggested for, ticked before the person changes anything: those whose role a skill names (as the
- * core's giveByRoles gives them), else one agent (the first that is not the lead), so Add never waits for a tick. The boxes stay
- * visible and editable (P76): this only shows the default the core would apply.
+ * The agents a set of skills is suggested for, ticked before the person changes anything: for each skill, those whose role it
+ * names (as the core's giveByRoles gives them), else one agent (the first that is not the lead), so Add never waits for a tick.
+ * Each skill keeps its own suggestion when it is added (addTargets): the boxes show them all together. They stay visible and
+ * editable (P76): this only shows the default the core would apply.
  */
 export function suggestedAgents(skills: readonly Pick<Skill, 'roles'>[], agents: readonly { id: string; role: string }[]): string[] {
-  const named = agents.filter((a) => skills.some((k) => suggestsRole(k, a.role))).map((a) => a.id);
-  if (named.length > 0 || skills.length === 0) return named;
-  const one = agents.find((a) => !isLeadRole(a.role)) ?? agents[0];
-  return one ? [one.id] : [];
+  const own = (k: Pick<Skill, 'roles'>): string[] => {
+    const named = agents.filter((a) => suggestsRole(k, a.role)).map((a) => a.id);
+    if (named.length > 0) return named;
+    const one = agents.find((a) => !isLeadRole(a.role)) ?? agents[0];
+    return one ? [one.id] : [];
+  };
+  const ids = new Set(skills.flatMap(own));
+  return agents.filter((a) => ids.has(a.id)).map((a) => a.id);
+}
+
+/**
+ * The agents each skill is added for. Once the person has ticked the boxes (chosen), every skill goes to those agents; until then
+ * each skill goes only to its own suggestion, never to the agents another picked skill names (each agent is a specialist, P76).
+ */
+export function addTargets<T extends Pick<Skill, 'roles'>>(
+  skills: readonly T[],
+  chosen: readonly string[] | undefined,
+  agents: readonly { id: string; role: string }[],
+): { skill: T; to: string[] }[] {
+  return skills.map((skill) => ({ skill, to: chosen ? [...chosen] : suggestedAgents([skill], agents) }));
+}
+
+/** Who the skills were added for, in words: "For Ada." when they all went to the same agents, else "pdf for Ada; docx for Quinn." */
+export function addedForText(done: readonly { name: string; to: readonly string[] }[], nameOf: (id: string) => string): string {
+  const who = (to: readonly string[]) => inWords(to.map(nameOf));
+  const first = done[0];
+  if (!first) return '';
+  if (done.every((d) => who(d.to) === who(first.to))) return `For ${who(first.to)}.`;
+  return `${done.map((d) => `${d.name} for ${who(d.to)}`).join('; ')}.`;
 }
 
 /** The skill with only the agents still on the team (a removed agent keeps its rows but gets nothing); unchanged while the team

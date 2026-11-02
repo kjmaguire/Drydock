@@ -188,9 +188,48 @@ describe('Recommendations', () => {
         ]),
       two.r,
     );
-    await waitFor(() => expect(two.r.$('[data-testid="picks-added"]')!.textContent).toBe('wrangler, durable-objects were added to gocalc for Backend #1.'), two.r);
+    await waitFor(() => expect(two.r.$('[data-testid="picks-added"]')!.textContent).toBe('wrangler, durable-objects were added to gocalc. For Backend #1.'), two.r);
     expect(two.changed.length).toBe(1);
     expect(two.picksDone()).toBe(1);
+  });
+
+  it('adds each pick only for the agents of its own roles until a box is ticked, then every pick for the ticked agents', async () => {
+    const picks = [
+      { registryId: 'cloudflare-skills', name: 'wrangler', roles: ['backend'] },
+      { registryId: 'cloudflare-skills', name: 'planning', roles: ['lead'] },
+    ];
+    const added: unknown[][] = [];
+    const { r } = show({ recommendList: async () => ({ auto: true, runs: [] }), skillLibraryAdd: async (...a: unknown[]) => (added.push(a), {} as never) }, picks);
+    const box = await waitFor(() => r.$('[data-testid="skill-picks"]') as HTMLElement, r);
+    const boxes = Array.from(box.querySelectorAll('[data-testid="picks-for"] input') as NodeListOf<HTMLInputElement>);
+    expect(boxes.map((x) => x.checked)).toEqual([true, true]); // Backend #1, Lead: each for its own pick
+    await r.act(() => byText(box, 'button', 'Add all 2 for them').click());
+    // the backend skill never reaches the lead, nor the lead's skill the backend agent
+    await waitFor(
+      () =>
+        expect(added).toEqual([
+          ['prj_1', 'cloudflare-skills', 'wrangler', 'agents', ['agt_dev']],
+          ['prj_1', 'cloudflare-skills', 'planning', 'agents', ['agt_lead']],
+        ]),
+      r,
+    );
+    await waitFor(() => expect(r.$('[data-testid="picks-added"]')!.textContent).toBe('wrangler, planning were added to gocalc. wrangler for Backend #1; planning for Lead.'), r);
+    cleanup();
+
+    // a tick makes the choice the person's: both picks go to the ticked agents
+    const added2: unknown[][] = [];
+    const two = show({ recommendList: async () => ({ auto: true, runs: [] }), skillLibraryAdd: async (...a: unknown[]) => (added2.push(a), {} as never) }, picks);
+    const box2 = await waitFor(() => two.r.$('[data-testid="skill-picks"]') as HTMLElement, two.r);
+    await two.r.act(() => (box2.querySelectorAll('[data-testid="picks-for"] input')[1] as HTMLInputElement).click()); // untick Lead
+    await two.r.act(() => byText(box2, 'button', 'Add all 2 for them').click());
+    await waitFor(
+      () =>
+        expect(added2).toEqual([
+          ['prj_1', 'cloudflare-skills', 'wrangler', 'agents', ['agt_dev']],
+          ['prj_1', 'cloudflare-skills', 'planning', 'agents', ['agt_dev']],
+        ]),
+      two.r,
+    );
   });
 
   it('says why a turn failed, and switches asking-again-by-itself off', async () => {

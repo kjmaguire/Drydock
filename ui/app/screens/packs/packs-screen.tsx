@@ -413,18 +413,20 @@ function PackCard(
           <Badge tone={p.visibility === 'private' ? 'ok' : 'warn'}>{p.visibility}</Badge>
           <Badge tone={p.status === 'ready' ? 'ok' : 'muted'}>{p.status}</Badge>
           <span mix={spacer} />
-          <Button
-            size="sm"
-            icon={RefreshCw}
-            disabled={busy}
-            mix={on('click', async () => {
-              const r = await act.run('refresh', () => s.client.packRefresh(p.id, true));
-              if (r) set(() => (refreshed = refreshText(r)));
-              onChanged();
-            })}
-          >
-            {act.busy === 'refresh' ? 'Refreshing...' : 'Refresh now'}
-          </Button>
+          {p.kind === 'live' ? null : (
+            <Button
+              size="sm"
+              icon={RefreshCw}
+              disabled={busy}
+              mix={on('click', async () => {
+                const r = await act.run('refresh', () => s.client.packRefresh(p.id, true));
+                if (r) set(() => (refreshed = refreshText(r)));
+                onChanged();
+              })}
+            >
+              {act.busy === 'refresh' ? 'Refreshing...' : 'Refresh now'}
+            </Button>
+          )}
         </header>
         <dl mix={statsCss}>
           <div>
@@ -787,7 +789,8 @@ export function PacksScreen(handle: Handle) {
     await act.run(`tpl-${tpl.id}`, async () => {
       await s.client.packInstall(tpl.yaml);
       if (projectId) await s.client.packAttachDefaults(projectId, tpl.id);
-      await s.client.packRefresh(tpl.id, true);
+      // a live pack is asked live and stores nothing: the core refuses to refresh it (packs.ErrNotIndexed), so it is not fetched
+      if (tpl.manifest?.kind !== 'live') await s.client.packRefresh(tpl.id, true);
       return true;
     });
     reload();
@@ -911,7 +914,7 @@ export function PacksScreen(handle: Handle) {
           <FilesPackForm onMade={reload} />
         </Section>
 
-        <Section title="Install a pack" description="A ready pack is installed, fetched and attached to the roles it is for in this project. Change who gets it on its card.">
+        <Section title="Install a pack" description="A ready pack is installed, fetched (unless it is asked live) and attached to the roles it is for in this project. Change who gets it on its card.">
           {templatesToInstall(templates.data ?? [], list).length > 0 ? (
             <ul mix={tplListCss} aria-label="Ready packs" data-testid="pack-templates">
               {templatesToInstall(templates.data ?? [], list).map((tpl) => (

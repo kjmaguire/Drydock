@@ -147,12 +147,14 @@ describe('Pack helpers', () => {
 });
 
 describe('installing and attaching packs without YAML or typed roles', () => {
-  it('says a scheduled pack refreshes by itself, and a manual one only when refreshed', () => {
+  it('says a scheduled pack refreshes by itself, a manual one only when refreshed, and a live one is never stored', () => {
     const when = (iso: string) => `at ${iso}`;
     expect(refreshLine({ kind: 'hybrid', lastSuccessAt: '2026-10-01', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('Refreshes by itself · last at 2026-10-01');
     expect(refreshLine({ kind: 'indexed', lastSuccessAt: '0001-01-01T00:00:00Z', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('Refreshes by itself · last never');
     expect(refreshLine({ kind: 'indexed', lastSuccessAt: '2026-10-01', manifest: { refresh: { mode: 'manual' } } }, when)).toBe('When you refresh it · last at 2026-10-01');
-    expect(refreshLine({ kind: 'live', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('When you refresh it · last never');
+    // a live pack is never refreshed (the core refuses it): the card says so instead of describing a refresh
+    expect(refreshLine({ kind: 'live', manifest: { refresh: { mode: 'scheduled' } } }, when)).toBe('Asked live, never stored');
+    expect(refreshLine({ kind: 'live', manifest: { refresh: { mode: 'manual' } } }, when)).toBe('Asked live, never stored');
   });
 
   it('offers only the ready manifests not installed yet', () => {

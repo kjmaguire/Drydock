@@ -21,7 +21,7 @@ import { Section } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { findLead } from '../../shell/palette-items.ts';
 import { canApply, itemText, openItems, triggerText } from './recommend.ts';
-import { suggestedAgents } from './skills.ts';
+import { addTargets, addedForText, suggestedAgents } from './skills.ts';
 
 const askCss = css({
   display: 'flex',
@@ -92,27 +92,28 @@ export function Recommendations(handle: Handle<RecommendationsProps>) {
     }
   };
   // the picks go to the agents ticked for them: each agent is a specialist, so nothing is added for everyone (P76). Until the
-  // person ticks a box (undefined) the boxes show the core's own default: the agents whose role the picks name, else one agent.
+  // person ticks a box (undefined) the boxes show the core's own default: the agents whose role the picks name, else one agent,
+  // and each pick is added only for its own suggestion (addTargets); once a box is ticked every pick goes to the ticked agents.
   let pickFor: string[] | undefined;
-  const pickedFor = (): string[] => {
-    const { picks, agents } = handle.props;
-    return pickFor ? pickFor.filter((id) => agents.some((x) => x.id === id)) : suggestedAgents(picks.map((p) => ({ roles: p.roles ?? null })), agents);
-  };
+  const ticked = (): string[] | undefined => pickFor?.filter((id) => handle.props.agents.some((x) => x.id === id));
+  const withRoles = () => handle.props.picks.map((p) => ({ ...p, roles: p.roles ?? null }));
+  const pickedFor = (): string[] => ticked() ?? suggestedAgents(withRoles(), handle.props.agents);
   const addPicks = async () => {
-    const { projectId, picks, onPicksDone, onChanged, agents } = handle.props;
-    const to = pickedFor();
-    if (to.length === 0) return;
-    const done: string[] = [];
+    const { projectId, onPicksDone, onChanged, agents } = handle.props;
+    const plan = addTargets(withRoles(), ticked(), agents).filter((p) => p.to.length > 0);
+    if (plan.length === 0) return;
+    const done: { name: string; to: string[] }[] = [];
     const ok = await act.run('addPicks', async () => {
-      for (const p of picks) {
+      for (const { skill: p, to } of plan) {
         await s.client.skillLibraryAdd(projectId, p.registryId, p.name, 'agents', to);
-        done.push(p.name);
+        done.push({ name: p.name, to });
       }
       return true;
     });
     if (done.length > 0) {
-      const who = to.map((id) => agents.find((x) => x.id === id)?.name ?? id).join(', ');
-      set(() => (added = `${done.join(', ')} ${done.length === 1 ? 'was' : 'were'} added to ${handle.props.projectName} for ${who}.`));
+      const who = addedForText(done, (id) => agents.find((x) => x.id === id)?.name ?? id);
+      const names = done.map((d) => d.name);
+      set(() => (added = `${names.join(', ')} ${names.length === 1 ? 'was' : 'were'} added to ${handle.props.projectName}. ${who}`));
       onChanged();
     }
     if (ok) {

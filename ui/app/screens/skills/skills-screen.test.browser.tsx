@@ -336,6 +336,9 @@ describe('SkillsScreen', () => {
     const addW = byText(w, 'button', 'Add to gocalc') as HTMLButtonElement;
     expect(addW.disabled).toBe(false);
     expect(addW.title).toBe('For Ada');
+    // who it is for is shown next to the button, not only in its hover title, and the For boxes say whose Add it is
+    expect(w.querySelector('[data-testid="library-add-for"]')!.textContent).toBe('For Ada');
+    expect(r.$('[data-testid="library-for-suggested"]')!.textContent).toContain("Each skill's Add goes to the agents named on it");
     expect(r.$('[data-testid="library-add-all"]')).toBeNull();
     await r.act(() => byText(w, 'button', 'Add to gocalc').click());
     await waitFor(() => expect(added).toEqual([['prj_1', 'cloudflare-skills', 'wrangler', 'agents', ['agt_a']]]), r);
@@ -381,21 +384,57 @@ describe('SkillsScreen', () => {
     await pick('pdf');
     await waitFor(() => expect(ticked()).toEqual(['Ada (backend)']), r);
     expect(r.$('[data-testid="library-for-suggested"]')!.textContent).toContain('one agent is ticked');
-    // a skill naming the qa role: the boxes move to the agent of that role, shown ticked and changeable
+    // a skill naming the qa role: its agent is ticked too, each skill for its own (pdf for Ada, docx for Quinn)
     await pick('docx');
-    await waitFor(() => expect(ticked()).toEqual(['Quinn (qa)']), r);
-    expect(r.$('[data-testid="library-for-suggested"]')!.textContent).toContain('Ticked for the roles the skills name');
+    await waitFor(() => expect(ticked()).toEqual(['Ada (backend)', 'Quinn (qa)']), r);
+    expect(r.$('[data-testid="library-for-suggested"]')!.textContent).toContain('each skill goes only to the agents of its own roles');
     await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Add 2 skills to gocalc'), r);
-    // unticking the last box is the person's choice: Add waits for a tick
+    // a tile's own Add follows the boxes once they show something: xlsx (no role) says it is for the ticked agents
+    await r.act(() => (r.$('[data-testid="library-skill-tile"][data-name="xlsx"] button.what') as HTMLButtonElement).click());
+    const xlsx = await one(r, '[data-testid="library-skill-tile"][data-name="xlsx"] [data-testid="library-skill-tile-detail"]');
+    expect(xlsx.querySelector('[data-testid="library-add-for"]')!.textContent).toBe('For Ada and Quinn');
+    // unticking every box is the person's choice: Add waits for a tick, and the tile says so (the crew has agents)
+    await r.act(() => byLabel<HTMLInputElement>(r.$('[data-testid="library-for-agents"]')!, /^Ada/).click());
     await r.act(() => byLabel<HTMLInputElement>(r.$('[data-testid="library-for-agents"]')!, /^Quinn/).click());
     await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Choose the agents first'), r);
+    const xAdd = xlsx.querySelector('[data-testid="library-add"]') as HTMLButtonElement;
+    expect(xAdd.disabled).toBe(true);
+    expect(xAdd.title).toBe('Tick the agents it is for above');
+    // a tick makes the choice theirs: every picked skill goes to the ticked agents
     await r.act(() => byLabel<HTMLInputElement>(r.$('[data-testid="library-for-agents"]')!, /^Quinn/).click());
     await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Add 2 skills to gocalc'), r);
+    expect(xlsx.querySelector('[data-testid="library-add-for"]')!.textContent).toBe('For Quinn');
     await r.act(() => (r.$('[data-testid="library-add-picked"]') as HTMLButtonElement).click());
     await waitFor(() => expect(added.map((a) => [a[2], a[4]])).toEqual([['pdf', ['agt_q']], ['docx', ['agt_q']]]), r);
     const note = await one(r, '[data-testid="skill-added"]');
     expect(note.textContent).toContain('2 skills were added to gocalc and are accepted ✓: pdf, docx For Quinn.');
     await waitFor(() => expect(Array.from(r.$$('[data-testid="library-skill-tile"]')).map((x) => x.getAttribute('data-name'))).toEqual(['xlsx']), r);
+  });
+
+  it('picked skills naming different roles are each added only for the agents of their own roles until a box is ticked', async () => {
+    const added: unknown[][] = [];
+    const r = mount(
+      <SkillsScreen />,
+      withTeam({
+        skillList: async () => [],
+        skillLibraryList: async () => [lib({ roles: ['backend'] }), lib({ id: 'l-docx', name: 'docx', description: 'Documents', roles: ['qa'] })],
+        skillLibraryAdd: async (...a: unknown[]) => (added.push(a), skill({ id: `n-${String(a[2])}`, name: String(a[2]), status: 'accepted' })),
+      }),
+    );
+    await waitFor(() => expect(r.$$('[data-testid="library-skill-tile"]').length).toBe(2), r);
+    for (const name of ['pdf', 'docx']) {
+      const box = r.$(`[data-testid="library-skill-tile"][data-name="${name}"] input[type="checkbox"]`) as HTMLInputElement;
+      await r.act(() => {
+        box.checked = true;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+    await waitFor(() => expect(r.$('[data-testid="library-add-picked"]')!.textContent).toBe('Add 2 skills to gocalc'), r);
+    await r.act(() => (r.$('[data-testid="library-add-picked"]') as HTMLButtonElement).click());
+    // the backend skill never reaches Quinn, nor the qa skill Ada
+    await waitFor(() => expect(added.map((a) => [a[2], a[4]])).toEqual([['pdf', ['agt_a']], ['docx', ['agt_q']]]), r);
+    const note = await one(r, '[data-testid="skill-added"]');
+    expect(note.textContent).toContain('pdf for Ada; docx for Quinn.');
   });
 
   it('an empty Library says it is filling and offers Sync now; a full one in the project says everything is in', async () => {
