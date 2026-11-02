@@ -144,6 +144,10 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await field.fill(process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo');
     await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
     await expect(dialog.getByTestId('folder-check')).toContainText('does not exist yet');
+    // nothing is there: the box comes ticked (B6); unticked, Create waits for it
+    await expect(dialog.getByLabel(/^Create a Git repository here/)).toBeChecked();
+    await expect(dialog.getByTestId('new-project-create')).toBeEnabled();
+    await dialog.getByLabel(/^Create a Git repository here/).uncheck();
     await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
     await expect(dialog.getByText('tick "Create a Git repository here"')).toBeVisible();
     // a relative path is refused with the core's reason

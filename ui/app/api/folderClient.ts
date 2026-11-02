@@ -47,7 +47,8 @@ export interface RepoInit {
 
 export interface FolderClient {
   /** Opens the window's folder dialog; '' when the person cancelled. Refused where the window has none. */
-  fsPickFolder(title?: string): Promise<string>;
+  /** The window's folder dialog, opened at dir (or the deepest part of it that exists; empty: the person's code folder). */
+  fsPickFolder(title?: string, dir?: string): Promise<string>;
   fsFolderHints(): Promise<FolderHints>;
   repoCheck(path: string): Promise<RepoFolder>;
   /** Makes the folder (when missing) a Git repository on main with a first commit. Only a person may. */
@@ -56,7 +57,7 @@ export interface FolderClient {
 
 export function createFolderClient(t: Transport): FolderClient {
   return {
-    fsPickFolder: async (title = '') => (await t.call<{ path?: string } | null>('fs.pickFolder', { title }))?.path ?? '',
+    fsPickFolder: async (title = '', dir = '') => (await t.call<{ path?: string } | null>('fs.pickFolder', { title, dir }))?.path ?? '',
     fsFolderHints: async () => {
       const h = await t.call<FolderHints | null>('fs.folderHints', {});
       return {

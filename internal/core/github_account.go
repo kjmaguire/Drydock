@@ -8,12 +8,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/kjmaguire/drydock/internal/git/host"
 	"github.com/kjmaguire/drydock/internal/proc"
+	"github.com/kjmaguire/drydock/internal/runners"
 )
 
 // GitHubStatus says whether the GitHub integration (the user's own `gh`, signed in) can be used.
@@ -185,6 +187,52 @@ func DefaultCloneDir() string {
 	return filepath.Join(home, "source", "repos")
 }
 
+// settingCodeDir is the folder the person's last new local project was made in (the parent of its folder): New folder starts
+// there next time.
+const settingCodeDir = "project.codeDir"
+
+// CodeDir is where a new project's folder goes unless the person types another: the parent of the last one made in Drydock,
+// while it is a full path, else (on Windows) the first Dev Drive's src folder ("D:\\src", a trusted one first), else
+// DefaultCloneDir.
+func (c *Core) CodeDir(ctx context.Context) string {
+	var v string
+	_ = c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingCodeDir).Scan(&v)
+	return codeDirFrom(v, c.devDrives(ctx).Drives, runtime.GOOS == "windows", DefaultCloneDir())
+}
+
+// codeDirFrom is CodeDir's rule: the saved folder while it is a full path, else on Windows a Dev Drive's src folder (a trusted
+// drive first), else fallback. A drive letter is no folder anywhere else, so off Windows the drives are not used.
+func codeDirFrom(saved string, drives []runners.Drive, windows bool, fallback string) string {
+	if saved != "" && filepath.IsAbs(saved) {
+		return saved
+	}
+	if windows {
+		for _, trusted := range []bool{true, false} {
+			for _, d := range drives {
+				if d.Trusted == trusted && d.Letter != "" {
+					return strings.TrimRight(d.Letter, `\/`) + `\src`
+				}
+			}
+		}
+	}
+	return fallback
+}
+
+// rememberCodeDir keeps the parent of a new project's folder as the next New folder's starting place.
+func (c *Core) rememberCodeDir(ctx context.Context, folder string) {
+	folder = cleanFolderArg(folder)
+	if folder == "" || !filepath.IsAbs(folder) {
+		return
+	}
+	parent := filepath.Dir(filepath.Clean(folder))
+	if parent == folder {
+		return
+	}
+	if err := c.setSetting(ctx, settingCodeDir, parent); err != nil {
+		c.logf("remembering the code folder: %v", err)
+	}
+}
+
 // settingCloneDir is the folder the person last cloned a repository into (decision P143): the next clone starts there.
 const settingCloneDir = "github.lastCloneDir"
 
@@ -204,7 +252,7 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 	if err := c.RequireLicensed(ctx, "create_project"); err != nil {
 		return CloneResult{}, err
 	}
-	fullName = strings.TrimSpace(fullName)
+	fullName = host.FullNameOf(fullName)
 	if !host.ValidFullName(fullName) {
 		return CloneResult{}, fmt.Errorf("%q is not a GitHub repository name (owner/name)", fullName)
 	}

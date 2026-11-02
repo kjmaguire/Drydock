@@ -58,6 +58,35 @@ const signedIn = {
 };
 
 describe("the GitHub repository picker", () => {
+  it("takes a typed repository and offers Try again when GitHub refuses the list (W9)", async () => {
+    let owners = 0;
+    const { r, state } = setup({
+      ...signedIn,
+      githubOwners: async () => {
+        owners++;
+        if (owners === 1) throw new Error("HTTP 403: Resource not accessible by integration");
+        return ["kyle"];
+      },
+      githubRepos: async () => [repo("kyle/pay")],
+      githubCloneDir: async () => "D:\\src",
+    });
+    await waitFor(() => expect(r.container.textContent).toContain("HTTP 403"), r);
+    // the list cannot be read: a repository can still be typed, as its address
+    const field = byLabel<HTMLInputElement>(r.container, "Repository (owner/name or URL)");
+    type(field, "https://github.com/acme/billing-api.git");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("acme/billing-api");
+    await waitFor(() => expect(r.$('[data-testid="clone-target"]')!.textContent).toBe("D:\\src\\billing-api"), r);
+    type(field, "not a repository");
+    r.root.flush();
+    expect(r.container.textContent).toContain("Type it as owner/name, or paste its github.com address.");
+    // Try again reads the list again
+    await r.act(() => (r.$('[data-testid="repos-retry"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
+    expect(r.$('[data-testid="repos-retry"]')).toBeNull();
+    expect(owners).toBe(2);
+  });
+
   it("explains, in the core words, when gh is not installed", async () => {
     const { r } = setup({
       githubStatus: async () => ({
@@ -170,6 +199,7 @@ describe("the GitHub repository picker", () => {
 
   it("chooses the clone folder with the window folder dialog and shows the full path it makes (P143)", async () => {
     const asked: string[] = [];
+    const dirs: string[] = [];
     const { r, state } = setup({
       ...signedIn,
       githubOwners: async () => ["kyle"],
@@ -180,7 +210,7 @@ describe("the GitHub repository picker", () => {
         windows: true,
         devDrives: [],
       }),
-      fsPickFolder: async (title: string) => (asked.push(title), "D:\\code"),
+      fsPickFolder: async (title: string, dir?: string) => (asked.push(title), dirs.push(dir ?? ""), "D:\\code"),
     });
     await waitFor(
       () => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1),
@@ -198,6 +228,8 @@ describe("the GitHub repository picker", () => {
     await r.act(() => choose.click());
     await waitFor(() => expect(state.dir).toBe("D:\\code"), r);
     expect(asked).toEqual(["Choose the folder to clone into"]);
+    // the dialog opened at the clone folder in the field (B5)
+    expect(dirs).toEqual(["C:\\Users\\kyle\\source\\repos"]);
     await waitFor(
       () =>
         expect(byLabel<HTMLInputElement>(r.container, "Clone into").value).toBe(

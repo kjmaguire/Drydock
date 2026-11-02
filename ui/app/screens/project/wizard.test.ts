@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AdapterInfo } from '../../api/types.ts';
 import type { RepoFolder } from '../../api/folderClient.ts';
-import { adapterChoices, authNote, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, memberFromPrebuilt, memberMode, pushedAgo, stepProblem, suggestTeam, uniqueName, type TeamMember } from './wizard.ts';
+import { adapterChoices, authNote, autoInit, typedRepo, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, memberFromPrebuilt, memberMode, pushedAgo, stepProblem, suggestTeam, uniqueName, type TeamMember } from './wizard.ts';
 import { prebuilt } from './wizard-fixtures.ts';
 
 const adapter = (id: string, installed: boolean): AdapterInfo => ({ id, detection: { adapter: id, installed, status: installed ? 'ready' : 'not_installed' }, capabilities: {} as never });
@@ -157,20 +157,38 @@ describe('new-project wizard rules', () => {
     // a check of an earlier text does not count
     s.localPath = 'D:\\Other';
     expect(currentCheck(s)).toBeUndefined();
-    expect(folderProblem(check('folder'), false)).toContain('is not a Git repository');
+    expect(folderProblem(check('folder'), false)).toContain('This folder is empty');
+    expect(folderProblem({ ...check('folder'), entries: 3 }, false)).toContain('is not a Git repository: press "Create a Git repository here"');
     expect(folderProblem(check('no_branch', 'commit once'), true)).toBe('commit once');
   });
 
-  it('recommends a Dev Drive on Windows and names the ones found', () => {
+  it('makes the repository without asking only where nothing of the person\'s is (B6)', () => {
+    const c = (state: RepoFolder['state'], entries = 0): RepoFolder => ({ path: 'D:\\x', state, entries, canInit: state === 'folder' || state === 'missing', message: '' });
+    expect(autoInit(c('missing'))).toBe(true);
+    expect(autoInit(c('folder'))).toBe(true);
+    expect(autoInit(c('folder', 2))).toBe(false);
+    expect(autoInit(c('repository'))).toBe(false);
+    expect(autoInit(c('inside'))).toBe(false);
+    expect(autoInit(undefined)).toBe(false);
+  });
+
+  it('reads a typed repository as owner/name or its github.com address (W9)', () => {
+    expect(typedRepo('acme/pay')).toBe('acme/pay');
+    expect(typedRepo(' https://github.com/acme/pay.git ')).toBe('acme/pay');
+    expect(typedRepo('github.com/acme/pay/tree/main')).toBe('acme/pay');
+    expect(typedRepo('git@github.com:acme/pay.git')).toBe('acme/pay');
+    for (const bad of ['acme', 'https://evil.example/acme/pay', 'acme/..', 'acme/pay.git', 'a b/c', '']) expect(typedRepo(bad)).toBeUndefined();
+  });
+
+  it('recommends a Dev Drive in one line, only while the folder is not on one (B4)', () => {
     expect(folderHint(undefined)).not.toContain('Dev Drive');
     expect(folderHint({ canPick: false, windows: false, devDrives: [] })).not.toContain('Dev Drive');
-    expect(folderHint({ canPick: true, windows: true, devDrives: [] })).toContain('No Dev Drive was found on this PC.');
-    expect(folderHint({ canPick: true, windows: true, devDrives: [], devDriveReason: 'no fixed drive on this PC uses ReFS, and a Dev Drive always does' })).toContain(
-      'No Dev Drive was found on this PC: no fixed drive on this PC uses ReFS, and a Dev Drive always does.',
-    );
-    const h = folderHint({ canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] });
-    expect(h).toContain('Windows Dev Drive is recommended');
-    expect(h).toContain('Dev Drive D: found.');
+    expect(folderHint({ canPick: true, windows: true, devDrives: [] })).toContain('Projects build faster on a Windows Dev Drive; none was found on this PC.');
+    const d = { canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] };
+    expect(folderHint(d)).toContain('Projects build faster on Dev Drive D:.');
+    expect(folderHint(d, 'C:\\Users\\k\\source\\repos\\app')).toContain('Dev Drive D:');
+    expect(folderHint(d, 'd:\\src\\app')).not.toContain('Dev Drive');
+    expect(folderHint(d, '"D:\\src\\app"')).toBe('A folder with a Git repository, or a new folder: Drydock can make the repository.');
   });
 
   it('formats the clone target, the pushed date and the connector sign-in note', () => {

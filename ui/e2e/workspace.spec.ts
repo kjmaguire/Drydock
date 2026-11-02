@@ -122,22 +122,21 @@ test("workspace pages name no project; a project's own settings are sections of 
 
 // Decision P58: a project from scratch, in New project's Open a folder (P143). "Choose folder..." opens the window's folder
 // dialog (the harness's labelled stand-in "chooses" a folder that does not exist yet), the field says what is there and
-// recommends a Dev Drive (the stand-in reports D:), and with "Create a Git repository here" ticked Drydock makes the folder, the
-// repository (branch main) and its first commit, and the project works in it.
+// recommends a Dev Drive (the stand-in reports D:), "Create a Git repository here" comes ticked for a folder that does not exist
+// yet (B6), and Drydock makes the folder, the repository (branch main) and its first commit, and the project works in it.
 test('a project from scratch: Choose folder..., and Drydock makes the Git repository', async ({ page }) => {
   await page.goto(appUrl());
   await openNewProject(page);
   const dialog = page.getByTestId('new-project-dialog');
   await dialog.getByRole('radio', { name: 'Open a folder' }).click();
-  await expect(dialog.getByTestId('folder-hint')).toContainText('Dev Drive D: found.');
+  await expect(dialog.getByTestId('folder-hint')).toContainText('Projects build faster on Dev Drive D:.');
   await dialog.getByTestId('folder-choose').click();
   const field = dialog.getByLabel('Folder', { exact: true });
   await expect(field).toHaveValue(/Fresh Project \d+$/);
   const folder = await field.inputValue();
   await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
-  await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
+  await expect(dialog.getByLabel(/^Create a Git repository here/)).toBeChecked();
   await dialog.getByLabel('Project name', { exact: true }).fill('ws-from-scratch');
-  await dialog.getByLabel(/^Create a Git repository here/).check();
   await dialog.getByTestId('new-project-create').click();
   await expect(page.getByTestId('work')).toBeVisible();
   expect(existsSync(join(folder, '.git'))).toBe(true);

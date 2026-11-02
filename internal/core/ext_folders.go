@@ -26,8 +26,10 @@ func init() {
 		return map[string]Method{
 			"fs.pickFolder": bind(func(ctx context.Context, p struct {
 				Title string `json:"title"`
+				// Dir is the folder in the field: the dialog opens there, or at the deepest part of it that exists
+				Dir string `json:"dir"`
 			}) (any, error) {
-				path, err := c.PickFolder(ctx, p.Title, c.Human())
+				path, err := c.PickFolder(ctx, p.Title, p.Dir, c.Human())
 				if err != nil {
 					return nil, err
 				}
@@ -87,9 +89,11 @@ func (c *Core) devDrives(ctx context.Context) runners.DevDriveScan {
 // isHuman reports whether by names a person ("human:<name>").
 func isHuman(by string) bool { return strings.HasPrefix(by, "human:") && len(by) > len("human:") }
 
-// PickFolder opens the window's folder dialog and returns the folder the person chose ("" when they cancelled). Only a person
-// may; without a dialog (the browser harness without its stand-in, a build without a window) it says to type the path.
-func (c *Core) PickFolder(ctx context.Context, title, by string) (string, error) {
+// PickFolder opens the window's folder dialog and returns the folder the person chose ("" when they cancelled). It opens at
+// dir (the folder in the field) or, when that is empty, at the person's code folder (CodeDir), going up to the deepest part
+// that exists. Only a person may; without a dialog (the browser harness without its stand-in, a build without a window) it
+// says to type the path.
+func (c *Core) PickFolder(ctx context.Context, title, dir, by string) (string, error) {
 	if c.cfg.PickFolder == nil {
 		return "", errors.New("this window cannot open a folder dialog: type the folder's full path instead")
 	}
@@ -103,11 +107,33 @@ func (c *Core) PickFolder(ctx context.Context, title, by string) (string, error)
 	if len(title) > 200 {
 		title = title[:200]
 	}
-	path, err := c.cfg.PickFolder(ctx, FolderPick{Title: title})
+	dir = cleanFolderArg(dir)
+	if dir == "" {
+		dir = c.CodeDir(ctx)
+	}
+	path, err := c.cfg.PickFolder(ctx, FolderPick{Title: title, Dir: existingFolder(dir)})
 	if err != nil {
 		return "", fmt.Errorf("the folder dialog: %w", err)
 	}
 	return strings.TrimSpace(path), nil
+}
+
+// existingFolder is the deepest folder of path that exists ("" when path is not a full path or nothing of it exists).
+func existingFolder(path string) string {
+	if path == "" || strings.ContainsAny(path, "\x00\r\n") || !filepath.IsAbs(path) {
+		return ""
+	}
+	p := filepath.Clean(path)
+	for {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p
+		}
+		up := filepath.Dir(p)
+		if up == p {
+			return ""
+		}
+		p = up
+	}
 }
 
 // Repository folder states (RepoFolder.State).

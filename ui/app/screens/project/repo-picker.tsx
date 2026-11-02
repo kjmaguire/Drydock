@@ -1,13 +1,16 @@
 // Pick a GitHub repository through the user's own `gh` (its sign-in stays with gh; Drydock stores nothing of it): the account and its organizations,
 // a search box, the repositories as a list of radio buttons, and the folder to clone into: typed, or chosen with the window's
 // folder dialog (Choose folder…), prefilled with the folder the person last cloned into (github.cloneDir, decision P143), and the
-// full path the clone makes shown under it. When gh is missing or not signed in, it says so in the core's words. Used by Home's
+// full path the clone makes shown under it. A repository can also be typed (owner/name or its address, W9), so a list GitHub will
+// not give (an organization that refuses the listing) is no dead end, and a list that failed has Try again. When gh is missing
+// or not signed in, it says so in the core's words. Used by Home's
 // New project dialog and the start box's Clone from GitHub, and by Project settings (attach a repository).
 
 import { css, on, type Handle, type RemixNode } from 'remix/component';
 import { Lock, Search } from 'lucide';
 import type { GitHubRepo } from '../../api/types.ts';
 import { query, services } from '../../state/services.tsx';
+import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
@@ -15,7 +18,7 @@ import { Select, selectValues } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ChooseFolder, folderRow } from '../shared/choose-folder.tsx';
-import { cloneTarget, pushedAgo } from './wizard.ts';
+import { cloneTarget, pushedAgo, typedRepo } from './wizard.ts';
 
 const wrapCss = css({ display: 'grid', gap: t.s3, minWidth: '0' });
 const barCss = css({
@@ -64,6 +67,8 @@ export function RepoPicker(
   let searched = '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   let askedDir = false;
+  let typed = ''; // a repository typed as owner/name or its address
+
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const listId = `repos-${handle.id}`;
 
@@ -107,11 +112,30 @@ export function RepoPicker(
     const current = owner || ownerList[0] || '';
     const list = repos.data ?? [];
     const target = cloneTarget(cloneDir, selected);
+    const typedName = typedRepo(typed);
+    const onTyped = (v: string) => {
+      typed = v;
+      const full = typedRepo(v);
+      if (full) {
+        const [o, n] = full.split('/') as [string, string];
+        onSelect(list.find((r) => r.fullName.toLowerCase() === full.toLowerCase()) ?? { fullName: full, owner: o, name: n, description: '', private: false, archived: false, fork: false, defaultBranch: '', htmlUrl: '', pushedAt: '' });
+      }
+      void handle.update();
+    };
+    const listError = owners.error ?? repos.error;
     return (
       <div mix={wrapCss} data-testid="repo-picker">
         <p style={{ margin: '0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
           Signed in to GitHub as <strong>{st.login}</strong>.
         </p>
+        <Field
+          label="Repository (owner/name or URL)"
+          hint={typed.trim() && !typedName ? 'Type it as owner/name, or paste its github.com address.' : typedName ? `Clones ${typedName}.` : 'Or choose one from the list below.'}
+        >
+          {(id) => (
+            <input id={id} value={typed} placeholder="acme/billing-api" autocomplete="off" spellcheck={false} data-testid="repo-typed" mix={on('input', (e) => onTyped(e.currentTarget.value))} />
+          )}
+        </Field>
         <div mix={barCss}>
           <Field label="Owner">
             {(id) => (
@@ -127,7 +151,14 @@ export function RepoPicker(
             )}
           </Field>
         </div>
-        <ErrorNote error={owners.error ?? repos.error} what="Could not list GitHub repositories" />
+        <ErrorNote error={listError} what="Could not list GitHub repositories" />
+        {listError ? (
+          <div>
+            <Button type="button" variant="secondary" size="sm" data-testid="repos-retry" mix={on('click', () => void (owners.error ? owners.reload() : repos.reload()))}>
+              Try again
+            </Button>
+          </div>
+        ) : null}
         {repos.loading && list.length === 0 ? <Loading label="Loading repositories..." /> : null}
         {!repos.loading && repos.data && list.length === 0 ? (
           <Empty title="No repositories" icon={Search}>
@@ -138,7 +169,7 @@ export function RepoPicker(
           <div mix={listCss} role="radiogroup" aria-label="Repositories">
             {list.map((r) => (
               <label key={r.fullName} mix={itemCss} data-testid="gh-repo" data-repo={r.fullName}>
-                <input type="radio" name={listId} checked={selected?.fullName === r.fullName} mix={on('change', () => onSelect(r))} aria-label={r.fullName} />
+                <input type="radio" name={listId} checked={selected?.fullName === r.fullName} mix={on('change', () => ((typed = ''), onSelect(r)))} aria-label={r.fullName} />
                 <span style={{ display: 'grid', gap: '2px', minWidth: '0' }}>
                   <span class="top">
                     <span class="n">{r.fullName}</span>
@@ -161,7 +192,7 @@ export function RepoPicker(
           {(id) => (
             <div mix={folderRow}>
               <input id={id} value={cloneDir} spellcheck={false} autocomplete="off" placeholder="C:\Users\you\source\repos" mix={on('input', (e) => onCloneDir(e.currentTarget.value))} />
-              <ChooseFolder title="Choose the folder to clone into" onPick={onCloneDir} testId="clone-choose" />
+              <ChooseFolder title="Choose the folder to clone into" dir={cloneDir} onPick={onCloneDir} testId="clone-choose" />
             </div>
           )}
         </Field>

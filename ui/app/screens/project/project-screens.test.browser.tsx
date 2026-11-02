@@ -86,10 +86,62 @@ describe('Project settings', () => {
     await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
     const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
     expect(attach.disabled).toBe(true);
-    await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+    await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
     expect(attach.disabled).toBe(false);
     await r.act(() => attach.click());
     await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']), r);
+  });
+
+  it('ticks "Create a Git repository here" itself for a folder that does not exist yet, and offers a button for one with files (B6)', async () => {
+    const calls: string[] = [];
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => [bare],
+      repoCheck: async (path) =>
+        path.endsWith('new')
+          ? { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet.' }
+          : { path, state: 'folder', entries: 2, canInit: true, message: 'This folder is not a Git repository.' },
+      repoInit: async (path) => (calls.push(`init:${path}`), { path, branch: 'main', createdFolder: true, files: 0 }),
+      projectAttachRepo: async (id, path) => (calls.push(`attach:${id}:${path}`), { ...project, hasRepo: true }),
+    });
+    await waitFor(() => byLabel(r.container, 'Repository path'), r);
+    // a folder with files: nothing is ticked; the choice is a button in the status line
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
+    expect(r.$('[data-testid="folder-init"]')).toBeNull();
+    expect(r.$('[data-testid="folder-check"] [data-testid="folder-init-button"]')).not.toBeNull();
+    // a folder that does not exist yet: the box comes ticked and Attach is ready
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\new');
+    await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('missing'), r);
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, /^Create a Git repository here/).checked).toBe(true), r);
+    expect(r.$('[data-testid="folder-init-button"]')).toBeNull();
+    const attach = byText<HTMLButtonElement>(r.container, 'button', 'Attach repository');
+    expect(attach.disabled).toBe(false);
+    // back to the folder with files: the tick does not carry over
+    type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
+    await waitFor(() => expect(r.$('[data-testid="folder-init-button"]')).not.toBeNull(), r);
+    expect(attach.disabled).toBe(true);
+    await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
+    expect(byLabel<HTMLInputElement>(r.container, /^Create a Git repository here/).checked).toBe(true);
+    await r.act(() => attach.click());
+    await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app']), r);
+  });
+
+  it('opens the folder dialog at the folder in the field, and the hint drops the Dev Drive line on a Dev Drive (B4, B5)', async () => {
+    const asked: string[] = [];
+    const bare: Project = { ...project, repoPath: '', hasRepo: false, defaultBranch: '' };
+    const r = settings({
+      projectList: async () => [bare],
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [{ letter: 'D:', trusted: true }] }),
+      fsPickFolder: async (_title, dir) => (asked.push(dir ?? ''), ''),
+      repoCheck: async (path) => ({ path, state: 'repository', branch: 'main', entries: 0, canInit: false, message: 'A Git repository on the branch main.' }),
+    });
+    await waitFor(() => byLabel(r.container, 'Repository path'), r);
+    await waitFor(() => expect(r.$('[data-testid="folder-hint"]')!.textContent).toContain('Projects build faster on Dev Drive D:.'), r);
+    type(byLabel(r.container, 'Repository path'), 'D:\\src\\pay');
+    await waitFor(() => expect(r.$('[data-testid="folder-hint"]')!.textContent).not.toContain('Dev Drive'), r);
+    await r.act(() => (r.$('[data-testid="folder-choose"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(asked).toEqual(['D:\\src\\pay']), r);
   });
 
   it('attaches a GitHub repository by cloning it with gh first', async () => {
@@ -140,7 +192,7 @@ describe('Project settings', () => {
       await waitFor(() => byLabel(r.container, 'Repository path'), r);
       type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
       await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
-      await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+      await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
       expect(hint(r)).toBe('Makes the Git repository, then attaches it.');
       await r.act(() => byText(r.container, 'button', 'Attach repository').click());
       await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('the core could not read the folder just now'), r);
@@ -162,13 +214,16 @@ describe('Project settings', () => {
       await waitFor(() => byLabel(r.container, 'Repository path'), r);
       type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\app');
       await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.getAttribute('data-state')).toBe('folder'), r);
-      await r.act(() => byLabel(r.container, /^Create a Git repository here/).click());
+      await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
       await r.act(() => byText(r.container, 'button', 'Attach repository').click());
       await waitFor(() => expect(r.$('[role="alert"]')).not.toBeNull(), r);
       expect(hint(r)).toContain('already made in D:\\Projects\\app');
       // another folder: nothing is remembered about the first one
       type(byLabel(r.container, 'Repository path'), 'D:\\Projects\\other');
       await waitFor(() => expect(r.$('[data-testid="folder-check"]')!.textContent).toContain('Drydock can make one here'), r);
+      // a folder with files in it asks again (B6): the earlier choice does not carry over
+      await waitFor(() => expect(r.$('[data-testid="folder-init-button"]')).not.toBeNull(), r);
+      await r.act(() => byText(r.container, 'button', 'Create a Git repository here').click());
       await waitFor(() => expect(hint(r)).toBe('Makes the Git repository, then attaches it.'), r);
       await r.act(() => byText(r.container, 'button', 'Attach repository').click());
       await waitFor(() => expect(calls).toEqual(['init:D:\\Projects\\app', 'attach:p1:D:\\Projects\\app', 'init:D:\\Projects\\other', 'attach:p1:D:\\Projects\\other']), r);

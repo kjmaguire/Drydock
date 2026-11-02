@@ -14,8 +14,11 @@ export const folderRow = css({ display: 'flex', gap: '8px', alignItems: 'center'
 
 const noHints: FolderHints = { canPick: false, windows: false, devDrives: [] };
 
-/** `compact` draws it as an icon button named "Choose folder…" (inside a path field, as the Security scan's header has it). */
-export function ChooseFolder(handle: Handle<{ title: string; onPick: (path: string) => void; disabled?: boolean; testId?: string; compact?: boolean }>) {
+/**
+ * `compact` draws it as an icon button named "Choose folder…" (inside a path field, as the Security scan's header has it). `dir`
+ * is the folder in the field: the dialog opens there (empty: at the person's code folder).
+ */
+export function ChooseFolder(handle: Handle<{ title: string; onPick: (path: string) => void; dir?: string; disabled?: boolean; testId?: string; compact?: boolean }>) {
   const s = services(handle);
   const act = action(handle);
   const hints = query(handle, {
@@ -28,7 +31,7 @@ export function ChooseFolder(handle: Handle<{ title: string; onPick: (path: stri
     },
   });
   const pick = async () => {
-    const path = await act.run('pick', () => s.client.fsPickFolder(handle.props.title));
+    const path = await act.run('pick', () => s.client.fsPickFolder(handle.props.title, handle.props.dir?.trim() ?? ''));
     if (path) handle.props.onPick(path);
     void handle.update();
   };

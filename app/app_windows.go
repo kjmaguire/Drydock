@@ -156,6 +156,9 @@ func Run(assets fs.FS) error {
 			return "", fmt.Errorf("the window is not open yet")
 		}
 		d := wa.Dialog.OpenFile().SetTitle(p.Title).CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true)
+		if p.Dir != "" {
+			d = d.SetDirectory(p.Dir) // the folder in the field, or the person's code folder (the core found the part that exists)
+		}
 		if window != nil {
 			d = d.AttachToWindow(window)
 		}

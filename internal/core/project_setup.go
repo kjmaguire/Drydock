@@ -123,6 +123,9 @@ func (c *Core) SetupProject(ctx context.Context, r SetupRequest) (SetupResult, e
 		return res, err
 	}
 	res.Project = p
+	if r.Repo.Kind == "local" && r.Repo.Init {
+		c.rememberCodeDir(ctx, repoPath)
+	}
 	warn := func(format string, a ...any) { res.Warnings = append(res.Warnings, fmt.Sprintf(format, a...)) }
 	if strings.TrimSpace(r.Brief) != "" {
 		if p2, err := c.SetBrief(ctx, p.ID, r.Brief); err != nil {
