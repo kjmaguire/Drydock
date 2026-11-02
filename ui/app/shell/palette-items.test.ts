@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AssignPreview } from '../api/controlClient.ts';
-import { PER_GROUP, RECENT_KEY, RECENT_MAX, arrange, buildItems, contextItems, filterItems, isLeadRole, parseQuery, previewBlock, previewSteps, previewWait, pushRecent, readRecent, recordRecent, score, taskKey, type TaskContext } from './palette-items.ts';
+import { PER_GROUP, RECENT_KEY, RECENT_MAX, arrange, buildItems, contextItems, filterItems, isLeadRole, keepsRecent, parseQuery, previewBlock, previewSteps, previewWait, pushRecent, readRecent, recordRecent, score, taskKey, type TaskContext } from './palette-items.ts';
 
 const rooms = [
   { id: 'r1', projectId: 'p', name: 'general', kind: 'channel', archived: false },
@@ -341,6 +341,32 @@ describe('Recent (G10)', () => {
     expect(score(items.find((i) => i.id === 'act:theme-light')!, 'zzz', new Set(['act:theme-light']))).toBe(0);
     // an exact name still wins over a recent partial match
     expect(filterItems(items, 'crew', 60, ['screen:/crew'])[0]!.label).toBe('Crew');
+  });
+
+  it('keeps runs of the options about a task out of Recent, but not a Go to over a task', () => {
+    const team = [
+      { id: 'b1', name: 'Builder', role: 'backend' },
+      { id: 'lead1', name: 'Tess', role: 'lead' },
+    ] as never[];
+    const ctx: TaskContext = {
+      task: { id: 't44', seq: 44, title: 'Support hex input', description: '', projectId: 'p1' },
+      projectName: 'gocalc',
+      hasRepo: true,
+      human: 'human:kyle',
+      localIds: new Set(),
+      runtime: () => 'Claude Code',
+      askCli: 'Claude Code',
+    };
+    const over = buildItems(rooms, tasks, team, [], { context: ctx });
+    const ops = over.filter((i) => i.op);
+    expect(ops.map((i) => i.id)).toEqual(['assign:b1', 'split', 'assign:me', 'scan', 'ask']);
+    expect(ops.some(keepsRecent)).toBe(false);
+    const goTo = over.filter((i) => i.group === 'Go to');
+    expect(goTo.length > 0 && goTo.every(keepsRecent)).toBe(true);
+    // every Go to is offered without a task too, so Recent can list it on the board
+    const board = new Set(buildItems(rooms, tasks, team).map((i) => i.id));
+    expect(goTo.every((i) => board.has(i.id))).toBe(true);
+    expect(items.filter((i) => !i.op).every(keepsRecent)).toBe(true);
   });
 
   it('remembers runs in the browser, and reads nothing from what does not parse', () => {

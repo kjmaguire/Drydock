@@ -385,7 +385,7 @@ buttons always start one. **Asking for the Terminal tab** (clicking it, Ctrl+`, 
 terminal in the task's worktree, else the project's repository, when none of the project's is running (G6, `UiModel.showTerminal`);
 the dock reopening on the tab it was left on starts nothing, and a failed open shows its error once and is not retried. Each shell
 carries the project (and, in a worktree, the task) it opened for (`projectId`, `taskId`); the panel shows the current project's and
-folds the others, and a Connection's sign-in, under **Other projects (N)** (X213). **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
+folds the others under **Other projects (N)**, or under **Other terminals (N)** when a Connection's sign-in is among them (X213). **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
 shell (pwsh when installed), the job assignment race for children started in the first instant.
 
 The Logs tab (`ui/app/screens/dock/logs-panel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the

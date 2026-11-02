@@ -29,6 +29,7 @@ import {
   buildItems,
   filterItems,
   isChatsPath,
+  keepsRecent,
   previewBlock,
   previewSteps,
   previewWait,
@@ -342,7 +343,7 @@ export function CommandPalette(handle: Handle<{ onMessage: (agentId: string) => 
   };
 
   const run = (it: PaletteItem, andOpen = false) => {
-    recordRecent(it.id);
+    if (keepsRecent(it)) recordRecent(it.id);
     if (it.op) {
       void runOp(it, andOpen);
       return;

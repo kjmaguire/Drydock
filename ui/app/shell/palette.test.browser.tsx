@@ -391,6 +391,27 @@ describe('Recent and Open a terminal (G10, G6)', () => {
     expect(labels().filter((l) => l === 'Open a terminal').length).toBe(1);
   });
 
+  it('keeps what was done to the task out of Recent, and keeps a Go to (G10 review)', async () => {
+    const stored = () => {
+      try {
+        return (JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as { id: string }[]).map((e) => e.id);
+      } catch {
+        return [];
+      }
+    };
+    const { s, r, input, calls, highlight } = await withTask();
+    await highlight('Ask the team lead to split it');
+    await r.act(() => key(input, 'Enter'));
+    await waitFor(() => expect(has(calls, ['split', 't44'])).toBe(true), r);
+    await waitFor(() => expect(s.ui.paletteOpen).toBe(false), r);
+    expect(stored()).toEqual([]);
+    s.ui.setPalette(true);
+    await highlight('Crew');
+    await r.act(() => key(input, 'Enter'));
+    await waitFor(() => expect(s.ui.paletteOpen).toBe(false), r);
+    expect(stored()).toEqual(['screen:/team']);
+  });
+
   it('leaves out Open a terminal on a page without the dock', async () => {
     const s = testServices({ chatList: async () => [] });
     const r = mount(<CommandPalette onMessage={() => {}} dock={false} />, s);

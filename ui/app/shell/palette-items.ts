@@ -85,6 +85,15 @@ export function recordRecent(id: string, at = Date.now()): void {
   }
 }
 
+/**
+ * Whether running it is kept for Recent: not the options done to the task in context (Assign, Split, Scan, Ask). Those are listed
+ * only over a task, where Recent is not shown, so they would only push out what Recent can list. A Go to over a task is kept: it is
+ * the same screen option as the board's.
+ */
+export function keepsRecent(it: PaletteItem): boolean {
+  return !it.op;
+}
+
 /** G then a letter goes to a screen, from anywhere but a text field (palette.tsx listens for it). */
 export const GO_CHORDS: Record<string, string> = { i: routes.needsYou.href(), t: routes.tasks.href(), c: routes.team.href() };
 const chordOf = (href: string): string[] | undefined => {
