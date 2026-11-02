@@ -41,12 +41,18 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
   /** Whether the person typed in the port field: until then it holds the port forwarded last, so opening it again is one click. */
   let typed = false;
   let portError: string | undefined;
+  /** The port this panel last forwarded or opened: the core lists forwards sorted by port, so the list's last is not necessarily it. */
+  let lastPort: number | undefined;
   const set = (f: () => void) => {
     f();
     void handle.update();
   };
-  /** The port in the field: what the person typed, or the port forwarded last. */
-  const shownPort = (v: { forwards: { port: number }[] }) => (typed ? port : v.forwards.length > 0 ? String(v.forwards[v.forwards.length - 1]!.port) : '');
+  /** The port in the field: what the person typed, or the port forwarded last here while it is still forwarded, else the list's last. */
+  const shownPort = (v: { forwards: { port: number }[] }) => {
+    if (typed) return port;
+    if (lastPort !== undefined && v.forwards.some((f) => f.port === lastPort)) return String(lastPort);
+    return v.forwards.length > 0 ? String(v.forwards[v.forwards.length - 1]!.port) : '';
+  };
   /** With a viewer, "Open the app" forwards and opens in one call; without one, only forwarding is possible here. */
   const forward = async (value: string, show: boolean) => {
     const n = Number(value);
@@ -56,8 +62,9 @@ export function SandboxApp(handle: Handle<{ taskId: string }>) {
     }
     set(() => (portError = undefined));
     const taskId = handle.props.taskId;
-    if (await act.run('open', () => (show ? s.client.sandboxForwardShow(taskId, n) : s.client.sandboxForwardOpen(taskId, n)))) {
-      set(() => ((port = ''), (typed = false)));
+    const f = await act.run('open', () => (show ? s.client.sandboxForwardShow(taskId, n) : s.client.sandboxForwardOpen(taskId, n)));
+    if (f) {
+      set(() => ((port = ''), (typed = false), (lastPort = f.port)));
       q.reload();
     }
   };

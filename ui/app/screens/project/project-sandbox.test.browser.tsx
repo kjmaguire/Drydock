@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { SandboxStatus } from '../../api/extTypes.ts';
 import { byLabel, byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
-import { SandboxPanel, sandboxReady, sandboxSummary } from './project-sandbox.tsx';
+import { SandboxPanel, sandboxReady, sandboxSummary, sandboxTestable } from './project-sandbox.tsx';
 
 afterEach(cleanup);
 
@@ -116,6 +116,8 @@ describe('Sandbox settings', () => {
     const note = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-wsl"]')), r);
     expect(note.textContent).toContain('Ada, Ben run in WSL');
     expect(byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task").disabled).toBe(true);
+    // the definition can still be tried before the agents move: only the switch waits for them
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Test the sandbox').disabled).toBe(false);
     // a chip per agent opens its editor
     expect(r.container.querySelector('a[data-testid="sandbox-wsl-agent-agt_2"]')!.getAttribute('href')).toBe('/team?edit=agt_2');
     await r.act(() => need(r.container.querySelector<HTMLButtonElement>('[data-testid="sandbox-wsl-native"]')).click());
@@ -125,6 +127,7 @@ describe('Sandbox settings', () => {
     expect(r.container.querySelector('[data-testid="sandbox-wsl-native"]')).toBe(null);
     expect(sandboxReady(current)).toBe(false);
     expect(sandboxReady({ ...current, wslAgents: [] })).toBe(true);
+    expect(sandboxTestable(current)).toBe(true);
   });
 
   it('switches on through the core and then says who did it', async () => {

@@ -7,11 +7,11 @@ import { SandboxApp } from './sandbox-app.tsx';
 
 afterEach(cleanup);
 
-/** The core's forwarding as a labelled test double: what is forwarded is kept and listed, the way sandbox.forward.* does. */
+/** The core's forwarding as a labelled test double: what is forwarded is kept and listed sorted by port, the way sandbox.forward.* does. */
 function double(opts: { running?: boolean; canView?: boolean; max?: number } = {}) {
   const forwards: SandboxForward[] = [];
   const calls: string[] = [];
-  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards], canView: opts.canView ?? true, max: opts.max ?? 5 });
+  const view = (): SandboxForwards => ({ running: opts.running ?? true, forwards: [...forwards].sort((a, b) => a.port - b.port), canView: opts.canView ?? true, max: opts.max ?? 5 });
   const client: Partial<Client> = {
     sandboxForwards: async () => view(),
     sandboxForwardOpen: async (taskId, port) => {
@@ -69,6 +69,32 @@ describe("A task's sandbox app (P134)", () => {
     expect(byLabel<HTMLInputElement>(r.container, 'Port in the sandbox').value).toBe('3000');
     await r.act(() => add().click());
     await waitFor(() => expect(calls).toEqual(['show 3000', 'show 3000']), r);
+  });
+
+  it('keeps the port opened last in the field, not the highest one forwarded (X32)', async () => {
+    const { client, calls } = double();
+    const r = mount(<SandboxApp taskId="t1" />, testServices(client));
+    await waitFor(() => expect(r.$('[data-testid="sandbox-app"]')).not.toBe(null), r);
+    const add = () => r.$('[data-testid="sandbox-forward-add"]') as HTMLButtonElement;
+    const type = (v: string) =>
+      r.act(() => {
+        const input = byLabel<HTMLInputElement>(r.container, 'Port in the sandbox');
+        input.value = v;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    await type('8080');
+    await r.act(() => add().click());
+    await waitFor(() => expect(r.$('[data-testid="sandbox-forwards"] summary')!.textContent).toBe('Forwarded ports (1)'), r);
+    await type('3000');
+    await r.act(() => add().click());
+    await waitFor(() => expect(r.$('[data-testid="sandbox-forwards"] summary')!.textContent).toBe('Forwarded ports (2)'), r);
+    // the core lists 3000 before 8080; the field still holds 3000, the one just opened
+    expect(byLabel<HTMLInputElement>(r.container, 'Port in the sandbox').value).toBe('3000');
+    await r.act(() => add().click());
+    await waitFor(() => expect(calls).toEqual(['show 8080', 'show 3000', 'show 3000']), r);
+    // once it is stopped, the field falls back to what is still forwarded
+    await r.act(() => (r.$('[data-testid="sandbox-forward-stop-3000"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Port in the sandbox').value).toBe('8080'), r);
   });
 
   it('forwards a port, opens it in the Drydock window and stops it', async () => {

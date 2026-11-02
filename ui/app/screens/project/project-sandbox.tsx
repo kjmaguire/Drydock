@@ -56,9 +56,14 @@ export function sandboxSummary(st: SandboxStatus): string {
   return parts.join('; ');
 }
 
+/** Whether the sandbox can be tried now: an engine, a definition without errors. Agents in WSL do not matter for a test run. */
+export function sandboxTestable(st: SandboxStatus): boolean {
+  return !!st.engine && st.found && !st.configError && !st.egressError;
+}
+
 /** Whether the switch may be turned on now (it can always be turned off): an agent in WSL keeps it off until it runs on Windows. */
 export function sandboxReady(st: SandboxStatus): boolean {
-  return !!st.engine && st.found && !st.configError && !st.egressError && (st.wslAgents ?? []).length === 0;
+  return sandboxTestable(st) && (st.wslAgents ?? []).length === 0;
 }
 
 /** Where Docker Desktop is downloaded; opened in the person's browser (lib/external-links.ts hands it to the shell). */
@@ -232,7 +237,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
               Code, Gemini CLI, Goose and Cline workers can.
             </p>
             <div mix={actionsCss}>
-              <Button size="sm" disabled={act.busy === 'test' || !sandboxReady(st)} mix={on('click', () => void test())}>
+              <Button size="sm" disabled={act.busy === 'test' || !sandboxTestable(st)} mix={on('click', () => void test())}>
                 {act.busy === 'test' ? 'Testing...' : 'Test the sandbox'}
               </Button>
               <span mix={css({ color: t.textMuted, fontSize: t.textSm })}>Starts it once without the setup commands, runs a command, and removes it.</span>
