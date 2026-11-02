@@ -122,3 +122,23 @@ export function filterRows<E extends Pick<DrydockEvent, 'type' | 'projectId' | '
   const scoped = events.filter((e) => inScope(e, f.scope) && (fams.size === 0 || fams.has(typeFamily(e.type))));
   return selectRows(scoped, { filter: f.text, projectId: f.thisProject ? projectId : undefined, limit });
 }
+
+/** Two lists of rows ascending by seq as one, ascending, each seq once (the first list's row wins). */
+export function mergeRows<E extends { seq: number }>(a: readonly E[], b: readonly E[]): E[] {
+  const out: E[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    const x = a[i];
+    const y = b[j];
+    if (y === undefined || (x !== undefined && x.seq <= y.seq)) {
+      if (y !== undefined && x!.seq === y.seq) j++;
+      out.push(x!);
+      i++;
+    } else {
+      out.push(y);
+      j++;
+    }
+  }
+  return out;
+}

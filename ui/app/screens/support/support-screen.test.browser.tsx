@@ -154,6 +154,29 @@ describe('SupportScreen', () => {
     await waitFor(() => expect(r.container.querySelector('[role="alert"]')!.textContent).toContain('there is no run run_x'), r);
   });
 
+  it('a superseded preview that fails late leaves no error, and Preview again stays busy until the newest preview answers (X57 review)', async () => {
+    const waiting = new Map<string, { ok: (p: BundlePreview) => void; no: (e: Error) => void }>();
+    const r = show({
+      supportbundlePreview: (o) => {
+        if (!o.includeRun) return Promise.resolve(bundlePreview());
+        return new Promise<BundlePreview>((ok, no) => waiting.set(o.includeRun!, { ok, no }));
+      },
+    });
+    await previewed(r);
+    await r.act(() => type(byLabel(r.container, /Include one run/), 'run_ab'));
+    await waitFor(() => expect(waiting.has('run_ab')).toBe(true), r);
+    await r.act(() => type(byLabel(r.container, /Include one run/), 'run_abc'));
+    await waitFor(() => expect(waiting.has('run_abc')).toBe(true), r);
+    // the older preview fails after the newer one started: nothing of it is shown, and the page is still busy
+    await r.act(() => waiting.get('run_ab')!.no(new Error('there is no run run_ab')));
+    expect(r.container.textContent).not.toContain('there is no run run_ab');
+    expect(btn(r.container, 'Building the preview...').disabled).toBe(true);
+    await r.act(() => waiting.get('run_abc')!.ok(bundlePreview({ includesRun: 'run_abc' })));
+    await previewed(r);
+    expect(r.container.textContent).not.toContain('there is no run run_ab');
+    expect(btn(r.container, 'Preview again').disabled).toBe(false);
+  });
+
   it('shows what was written: the files in the bundle, its own scrub report with the files left out, and nothing about a replaced file when none was', async () => {
     const r = show({ supportbundlePreview: async () => bundlePreview(), supportbundleCreate: async () => bundleWritten() });
     await previewed(r);

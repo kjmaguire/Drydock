@@ -1,12 +1,14 @@
 // Activity: the event log as the core persisted it, newest first, filtered by family chips, a type prefix, one task, run or
 // agent, and (by default) to this project. The filter is remembered per project (localStorage, a convenience only); the run
-// page links here with ?run=<id>&task=<id>, which sets the scope and is remembered the same way. The stream starts at the head,
-// so older events are loaded here on demand (the most recent ~1000 sequence numbers); a cut payload is fetched whole from the
-// core (events.replay of that one seq) when the person asks.
+// page links here with ?run=<id>&task=<id>, which sets the scope (once, for the project open when the page is) and is remembered
+// the same way. The stream starts at the head, so older events are loaded here on demand (the most recent ~1000 sequence
+// numbers); a task or run scope also reads that task's events from the core (events.replay by task, page by page), since a run
+// from yesterday is long gone from the recent ones. A cut payload is fetched whole from the core (events.replay of that one seq)
+// when the person asks.
 
 import { css, on, type Handle } from 'remix/component';
 import { Activity, Copy, ListFilter, X } from 'lucide';
-import type { ConnectionState, EventRow } from '../../state/eventStore.ts';
+import { rowOf, type ConnectionState, type EventRow } from '../../state/eventStore.ts';
 import { formatTime } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
 import { services, watch } from '../../state/services.tsx';
@@ -18,10 +20,17 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page, tableCard } from '../../ui/layout.tsx';
 import { MoreMenu, type MenuItem } from '../../ui/menu.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
-import { FAMILIES, filterRows, readFilter, typeTone, writeFilter, type ActivityFilter, type Family, type Scope } from './activity.ts';
+import { FAMILIES, filterRows, mergeRows, readFilter, typeTone, writeFilter, type ActivityFilter, type Family, type Scope } from './activity.ts';
 
 /** An id's start, so a column of them stays readable; the full id is its tooltip. */
 const shortId = (id: string): string => (id.length > 14 ? `${id.slice(0, 11)}…` : id);
+
+/** At most this many rows are listed (the newest that match). */
+const ROW_LIMIT = 500;
+/** A scope's task is read from the core in pages of this many events, at most this many pages; the newest SCOPE_KEEP that match are kept. */
+const SCOPE_PAGE = 1000;
+const SCOPE_PAGES = 20;
+const SCOPE_KEEP = 5000;
 
 const STATUS_TONE: Record<ConnectionState, Tone> = { open: 'ok', connecting: 'info', reconnecting: 'warn', idle: 'muted', stopped: 'err' };
 
@@ -80,6 +89,8 @@ const tableCss = css({
   '& tr.detail p': { margin: `${t.s2} 0 0`, color: t.textMuted, display: 'flex', alignItems: 'center', gap: t.s2, flexWrap: 'wrap' },
 });
 
+const noteCss = css({ margin: '0', color: t.textMuted, fontSize: t.textSm });
+
 const dot = css({ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', flex: 'none' });
 
 /** `task`, `run` and `agent` come from the address (/activity?run=<id>&task=<id>): they set the scope, which is then remembered. */
@@ -95,8 +106,18 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
   /** The payloads fetched whole for cut rows (by seq), and the one being fetched. */
   const whole = new Map<number, string>();
   let fetching = -1;
-  let fetchError: Error | undefined;
+  /** A failed fetch is said under its own row only. */
+  const fetchErrors = new Map<number, Error>();
   let copied = -1;
+  /** The scope from the address is applied once, to the project open when the page is: never to a project chosen later. */
+  let urlUsed = false;
+  /** The scoped task's events (only its run's, when a run is scoped) as read from the core for the scope `scopeKey`. */
+  let scopeKey = '';
+  let scopeRows: EventRow[] = [];
+  let scopeLoading = false;
+  let scopeError: Error | undefined;
+  /** The task has more events than the page reads, or the run more than it keeps: what is listed is not all of them. */
+  let scopePartial = false;
 
   const fromUrl = (): Scope | undefined => {
     const { task, run, agent } = handle.props;
@@ -112,11 +133,56 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
     if (filterFor === pid) return;
     filterFor = pid;
     f = readFilter(pid);
+    if (urlUsed || pid === undefined) return;
+    urlUsed = true;
     const sc = fromUrl();
     if (sc) {
       f = { ...f, scope: sc };
       writeFilter(pid, f);
     }
+  };
+  /** Read the scoped task's events from the core (oldest first, page by page) when the scope changed. */
+  const loadScope = () => {
+    const sc = f.scope;
+    const key = sc.taskId ? `${sc.taskId}/${sc.runId ?? ''}` : '';
+    if (key === scopeKey) return;
+    scopeKey = key;
+    scopeRows = [];
+    scopeError = undefined;
+    scopePartial = false;
+    scopeLoading = !!key;
+    if (!key) return;
+    const taskId = sc.taskId!;
+    const runId = sc.runId;
+    void (async () => {
+      const kept: EventRow[] = [];
+      let partial = false;
+      try {
+        let after = 0;
+        for (let page = 1; ; page++) {
+          const evs = await s.client.eventsReplay(after, { taskId, limit: SCOPE_PAGE });
+          if (handle.signal.aborted || scopeKey !== key) return;
+          for (const e of evs) if (typeof e.seq === 'number' && (!runId || e.runId === runId)) kept.push(rowOf(e));
+          if (kept.length > SCOPE_KEEP) {
+            kept.splice(0, kept.length - SCOPE_KEEP);
+            partial = true;
+          }
+          if (evs.length < SCOPE_PAGE) break;
+          after = evs[evs.length - 1]!.seq;
+          if (page >= SCOPE_PAGES) {
+            partial = true;
+            break;
+          }
+        }
+        scopeRows = kept;
+        scopePartial = partial;
+      } catch (e) {
+        if (handle.signal.aborted || scopeKey !== key) return;
+        scopeError = e instanceof Error ? e : new Error(String(e));
+      }
+      scopeLoading = false;
+      void handle.update();
+    })();
   };
   const change = (next: Partial<ActivityFilter>) => {
     f = { ...f, ...next };
@@ -127,7 +193,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
 
   const showWhole = async (seq: number) => {
     fetching = seq;
-    fetchError = undefined;
+    fetchErrors.delete(seq);
     void handle.update();
     try {
       const [e] = await s.client.eventsReplay(seq - 1, { limit: 1 });
@@ -135,7 +201,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
       if (!e || e.seq !== seq) throw new Error(`the core no longer has event ${seq}`);
       whole.set(seq, JSON.stringify(e.data ?? null, null, 2));
     } catch (err) {
-      fetchError = err instanceof Error ? err : new Error(String(err));
+      fetchErrors.set(seq, err instanceof Error ? err : new Error(String(err)));
     }
     fetching = -1;
     if (!handle.signal.aborted) void handle.update();
@@ -221,9 +287,13 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
 
   return () => {
     sync();
+    loadScope();
     const snap = s.store.getSnapshot();
-    const rows = filterRows(snap.events, f, s.workspace.projectId);
+    const held = scopeRows.length > 0 ? mergeRows(snap.events, scopeRows) : snap.events;
+    const rows = filterRows(held, f, s.workspace.projectId, ROW_LIMIT);
     const scoped = scopeText(f.scope);
+    /** The scope's task was read from the core (not only the recent events the page holds). */
+    const readForScope = !!f.scope.taskId;
     return (
       <Page
         title="Activity"
@@ -237,6 +307,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
         }
       >
         <ErrorNote error={historyError} what="Could not load earlier events" />
+        <ErrorNote error={scopeError} what={`Could not load the events of ${scoped}`} />
         <div mix={toolbarCss}>
           <div class="filter">
             <label for={`filter-${handle.id}`}>Filter by type prefix</label>
@@ -277,9 +348,32 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
             </span>
           ) : null}
         </div>
+        {scoped && scopeLoading ? (
+          <p mix={noteCss} data-testid="activity-scope-loading">
+            Loading the events of {scoped}...
+          </p>
+        ) : null}
+        {scoped && scopePartial && !scopeLoading ? (
+          <p mix={noteCss} data-testid="activity-scope-partial">
+            {f.scope.runId ? 'This run' : 'This task'} has more events than this page reads, so not all of them are listed.
+          </p>
+        ) : null}
+        {rows.length >= ROW_LIMIT ? (
+          <p mix={noteCss} data-testid="activity-row-limit">
+            Only the latest {ROW_LIMIT} matching events are listed.
+          </p>
+        ) : null}
         {rows.length === 0 ? (
           <Empty title="No matching events" icon={Activity}>
-            <p>Events appear here as the core records them. Clear the filter to see everything.</p>
+            {!scoped ? (
+              <p>Events appear here as the core records them. Clear the filter to see everything.</p>
+            ) : scopeLoading ? (
+              <p>Still reading the events of {scoped} from the core.</p>
+            ) : readForScope && !scopeError ? (
+              <p data-testid="activity-scope-empty">None of the events the core has for {scoped} match the filter.</p>
+            ) : (
+              <p data-testid="activity-scope-empty">This page holds only recent events, and none of them are in this scope. Clear the scope to see everything.</p>
+            )}
           </Empty>
         ) : (
           <div mix={[tableCard, tableCss]}>
@@ -336,7 +430,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
                             <p>
                               Cut here; the core has the rest.
                               <Button size="sm" disabled={fetching !== -1} mix={on('click', () => void showWhole(e.seq))}>
-                                {fetching === e.seq ? 'Loading...' : 'Show all'}
+                                {fetching === e.seq ? 'Loading...' : 'Show whole payload'}
                               </Button>
                             </p>
                           ) : null}
@@ -347,7 +441,7 @@ export function ActivityScreen(handle: Handle<{ task?: string; run?: string; age
                               </Button>
                             </p>
                           ) : null}
-                          {fetchError && e.cut && !whole.has(e.seq) ? <ErrorNote error={fetchError} what="Could not load the whole payload" /> : null}
+                          {e.cut && !whole.has(e.seq) ? <ErrorNote error={fetchErrors.get(e.seq)} what="Could not load the whole payload" /> : null}
                         </td>
                       </tr>
                     ) : null,

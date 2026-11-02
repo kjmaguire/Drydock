@@ -206,11 +206,82 @@ describe('ActivityScreen', () => {
     await r.act(() => (r.$('[data-type="task.diff"] td.data button') as HTMLButtonElement).click());
     const detail = await waitFor(() => r.$('[data-testid="event-detail"]')!, r);
     expect(detail.querySelector('pre')!.textContent!.length).toBeLessThan(2200);
-    const showAll = Array.from(detail.querySelectorAll('button')).find((b) => b.textContent === 'Show all') as HTMLButtonElement;
+    const showAll = Array.from(detail.querySelectorAll('button')).find((b) => b.textContent === 'Show whole payload') as HTMLButtonElement;
     await r.act(() => showAll.click());
     await waitFor(() => expect(r.$('[data-testid="event-detail"] pre')!.textContent).toBe(JSON.stringify(big, null, 2)), r);
     expect(asked.at(-1)).toEqual([6, { limit: 1 }]);
     expect(r.$('[data-testid="event-detail"]')!.textContent).not.toContain('Cut here');
     expect(Array.from(r.$$('[data-testid="event-detail"] button')).map((b) => b.textContent)).toContain('Copy as JSON');
+  });
+
+  it('says a failed whole payload under its own row only, and its button is not named like the chip that clears the families (X54 review)', async () => {
+    forget();
+    const big = { diff: 'z'.repeat(5000) };
+    const s = setup({
+      eventsReplay: async (_after, opts) => {
+        if (opts?.limit === 1) throw new Error('the core is busy');
+        return [ev(7, 'task.diff', { projectId: 'p1', data: big }), ev(9, 'task.diff', { projectId: 'p1', data: big })];
+      },
+    });
+    const r = mount(<ActivityScreen />, s);
+    await waitFor(() => expect(types(r.container)).toEqual(['task.diff', 'task.diff']), r);
+    for (const b of Array.from(r.$$('td.data button')) as HTMLButtonElement[]) await r.act(() => b.click());
+    await waitFor(() => expect(r.$$('[data-testid="event-detail"]')).toHaveLength(2), r);
+    const detailOf = (seq: number) => Array.from(r.$$('[data-testid="event-row"]')).find((x) => x.querySelector('td.seq')!.textContent === String(seq))!.nextElementSibling as HTMLElement;
+    const whole7 = Array.from(detailOf(7).querySelectorAll('button')).find((b) => b.textContent === 'Show whole payload') as HTMLButtonElement;
+    await r.act(() => whole7.click());
+    await waitFor(() => expect(detailOf(7).textContent).toContain('the core is busy'), r);
+    expect(detailOf(9).textContent).not.toContain('the core is busy');
+    expect(detailOf(9).querySelector('[role="alert"]')).toBe(null);
+    // with a family chip pressed there is one Show all (the chip) and the payload buttons are named for the payload
+    await r.act(() => (Array.from(r.$$('[data-testid="activity-chips"] button.chip')).find((b) => b.textContent === 'Tasks and runs') as HTMLButtonElement).click());
+    expect(Array.from(r.$$('button')).filter((b) => b.textContent === 'Show all')).toHaveLength(1);
+  });
+
+  it('reads a scoped run from the core when it is older than the recent events the page holds, and says so when it has none (X55 review)', async () => {
+    forget();
+    const asked: [number, unknown][] = [];
+    // the latest events of the workspace are another task's; the run's events are older, in the second page of its task
+    const page1 = Array.from({ length: 1000 }, (_, i) => ev(i + 1, 'agent.output', { projectId: 'p1', taskId: 't1', runId: 'r0' }));
+    const page2 = [ev(1001, 'agent.started', { projectId: 'p1', taskId: 't1', runId: 'r1' }), ev(1002, 'agent.completed', { projectId: 'p1', taskId: 't1', runId: 'r1' })];
+    const s = setup({
+      eventsReplay: async (after, opts) => {
+        asked.push([after, opts]);
+        if (opts?.taskId === 't1') return after === 0 ? page1 : after === 1000 ? page2 : [];
+        if (opts?.taskId) return [];
+        return [ev(9000, 'task.created', { projectId: 'p1', taskId: 't9' })];
+      },
+    });
+    const r = mount(<ActivityScreen run="r1" task="t1" />, s);
+    await waitFor(() => expect(types(r.container)).toEqual(['agent.completed', 'agent.started']), r);
+    expect(asked.filter(([, o]) => (o as { taskId?: string }).taskId)).toEqual([
+      [0, { taskId: 't1', limit: 1000 }],
+      [1000, { taskId: 't1', limit: 1000 }],
+    ]);
+    // the store's ring is not filled with them: they are the page's own
+    expect(s.store.getSnapshot().events.some((e) => e.runId === 'r1')).toBe(false);
+    cleanup();
+
+    // a run the core has nothing of: the page says so, not that events will appear
+    forget();
+    const s2 = setup({ eventsReplay: async (_a, opts) => (opts?.taskId ? [] : [ev(9000, 'task.created', { projectId: 'p1', taskId: 't9' })]) });
+    const r2 = mount(<ActivityScreen run="r7" task="t7" />, s2);
+    await waitFor(() => expect(r2.$('[data-testid="activity-scope-empty"]')?.textContent ?? '').toContain('None of the events the core has for run r7'), r2);
+    expect(r2.container.textContent).not.toContain('Events appear here as the core records them');
+  });
+
+  it('applies the scope from the address to the project open then, not to a project chosen later (X51 review)', async () => {
+    forget();
+    const s = setup({
+      projectList: async () => [{ id: 'p1', name: 'gocalc' } as Project, { id: 'p2', name: 'other' } as Project],
+      eventsReplay: async () => [ev(1, 'agent.started', { projectId: 'p1', taskId: 't1', runId: 'r1' }), ev(2, 'task.created', { projectId: 'p2', taskId: 't2' })],
+    });
+    const r = mount(<ActivityScreen run="r1" task="t1" />, s);
+    await waitFor(() => expect(r.$('[data-testid="activity-scope"]')!.textContent).toContain('run r1'), r);
+    await r.act(() => s.workspace.selectProject('p2'));
+    await waitFor(() => expect(types(r.container)).toEqual(['task.created']), r);
+    expect(r.$('[data-testid="activity-scope"]')).toBe(null);
+    expect(JSON.parse(localStorage.getItem('drydock.activity.filter.p2') ?? '{}').scope ?? {}).toEqual({});
+    expect(JSON.parse(localStorage.getItem('drydock.activity.filter.p1')!).scope).toEqual({ taskId: 't1', runId: 'r1' });
   });
 });

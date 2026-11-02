@@ -171,14 +171,21 @@ export function SupportScreen(handle: Handle) {
   // the person is told under the events field and the keyboard goes to it
   const refuseEvents = (error: string) => {
     eventsError = error;
+    previewError = undefined;
     act.clear();
     handle.queueTask(() => root?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
   };
   // the question goes away with the button that answered it: the keyboard goes back to the button that asked it
   const focusCreate = () => handle.queueTask(() => root?.querySelector<HTMLElement>('[data-testid="bundle-create"]')?.focus());
 
-  /** Only the newest preview asked for is shown: an older one that answers late is dropped. */
+  /**
+   * Only the newest preview asked for is shown: an older one that answers late is dropped, with its error. Previews can overlap
+   * (one starts while an earlier one still runs), so they keep their own busy and error, set and cleared only by the newest.
+   */
   let asked = 0;
+  /** The number of the preview still running (0: none). */
+  let previewing = 0;
+  let previewError: Error | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   // `auto`: made by the page itself (on opening, after a change); a bad events field is then said under it without taking the keyboard
@@ -196,8 +203,19 @@ export function SupportScreen(handle: Handle) {
     forget();
     ack = false;
     const n = ++asked;
-    const r = await act.run('preview', () => s.client.supportbundlePreview(o.opts));
+    previewing = n;
+    previewError = undefined;
+    act.clear();
+    let r: BundlePreview | undefined;
+    let err: Error | undefined;
+    try {
+      r = await s.client.supportbundlePreview(o.opts);
+    } catch (e) {
+      err = e instanceof Error ? e : new Error(String(e));
+    }
     if (n !== asked || handle.signal.aborted) return;
+    previewing = 0;
+    previewError = err;
     if (r) preview = { ...r, key, opts: o.opts };
     void handle.update();
   };
@@ -215,6 +233,7 @@ export function SupportScreen(handle: Handle) {
   };
   const runCreate = async (opts: BundleOpts, overwrite = false) => {
     created = undefined;
+    previewError = undefined;
     forget();
     // overwrite goes only with the answer "Yes, replace it": the first request never carries it
     const r = await act.run('create', () =>
@@ -232,7 +251,7 @@ export function SupportScreen(handle: Handle) {
     const includeRun = run.trim() || undefined;
     const shown = preview;
     const fresh = shown?.key === bundleKey(events, run);
-    const busy = act.busy !== '';
+    const busy = act.busy !== '' || previewing !== 0;
     return (
       <Page title="Support bundle" icon={LifeBuoy} subtitle="A zip of scrubbed diagnostics for a bug report" guide="support-bundle">
         <div mix={[settingsColumn, ref((n: Element) => (root = n as HTMLElement))]}>
@@ -281,12 +300,12 @@ export function SupportScreen(handle: Handle) {
                 </Disclosure>
                 <div mix={formActions}>
                   <Button icon={FileSearch} disabled={busy} mix={on('click', () => void runPreview())}>
-                    {act.busy === 'preview' ? 'Building the preview...' : 'Preview again'}
+                    {previewing !== 0 ? 'Building the preview...' : 'Preview again'}
                   </Button>
                 </div>
               </div>
             </div>
-            <ErrorNote error={act.error} what="Support bundle" />
+            <ErrorNote error={previewError ?? act.error} what="Support bundle" />
           </Group>
 
           {shown ? (

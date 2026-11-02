@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { DrydockEvent } from '../../api/types.ts';
-import { defaultFilter, filterRows, inScope, matchesFilter, readFilter, selectRows, typeFamily, typeTone, writeFilter } from './activity.ts';
+import { defaultFilter, filterRows, inScope, matchesFilter, mergeRows, readFilter, selectRows, typeFamily, typeTone, writeFilter } from './activity.ts';
 
 const ev = (seq: number, type: string, extra: Partial<DrydockEvent> = {}): DrydockEvent => ({ seq, time: '2026-01-01T00:00:00Z', type, ...extra });
 
@@ -72,5 +72,13 @@ describe('activity helpers', () => {
     expect(filterRows(events, { ...f, families: ['errors', 'waiting'] }, undefined).map((e) => e.seq)).toEqual([4, 2]);
     expect(filterRows(events, { ...f, scope: { taskId: 't1' } }, undefined).map((e) => e.seq)).toEqual([4, 3, 1]);
     expect(filterRows(events, { ...f, scope: { taskId: 't1' }, text: 'agent.*' }, undefined).map((e) => e.seq)).toEqual([3]);
+  });
+
+  it('merges two ascending row lists into one, each seq once (X55 review)', () => {
+    const a = [{ seq: 1, k: 'a' }, { seq: 4, k: 'a' }, { seq: 9, k: 'a' }];
+    const b = [{ seq: 2, k: 'b' }, { seq: 4, k: 'b' }, { seq: 12, k: 'b' }];
+    expect(mergeRows(a, b).map((x) => `${x.seq}${x.k}`)).toEqual(['1a', '2b', '4a', '9a', '12b']);
+    expect(mergeRows([], b)).toEqual(b);
+    expect(mergeRows(a, [])).toEqual(a);
   });
 });
