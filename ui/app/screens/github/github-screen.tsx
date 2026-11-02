@@ -31,6 +31,7 @@ import { ConnectorCard } from '../mcp/gallery.tsx';
 import { chipCss, CiRunners, sentence } from './ci-runners.tsx';
 import { newProjectHref } from '../../shell/new.ts';
 import { Switch } from '../../ui/form.tsx';
+import { rereadOnFocus } from '../../lib/focus.ts';
 
 const innerCss = css({ display: 'grid', gap: t.s6, width: '100%', minWidth: '0' });
 const heroCss = css({
@@ -499,7 +500,7 @@ function FolderSync(handle: Handle) {
  * cell drawn from the row's state (the core says what each row is). A repository opens on github.com (the system browser); Open
  * goes to the project's Pull requests when it has a GitHub repository, else to its Overview. Refresh asks GitHub again.
  */
-function Repositories(handle: Handle) {
+function Repositories(handle: Handle<{ onRunCI?: (repo: string) => void }>) {
   const s = services(handle);
   let refresh = false;
   const q = query(handle, {
@@ -582,6 +583,17 @@ function Repositories(handle: Handle) {
                       <td data-testid="repo-ci">{ciCell(r)}</td>
                       <td data-testid="repo-prs">{r.state === 'github' ? (r.openPullRequests > 0 ? `${r.openPullRequests} open` : 'None open') : <span mix={faint}>—</span>}</td>
                       <td data-part="open">
+                        {gh && r.repo && r.private === true && handle.props.onRunCI ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            data-testid="repo-run-ci"
+                            aria-label={`Run the CI of ${r.repo} on this PC`}
+                            mix={on('click', () => handle.props.onRunCI?.(r.repo!))}
+                          >
+                            Run its CI on this PC
+                          </Button>
+                        ) : null}
                         <a
                           href={gh ? routes.pulls.href() : routes.home.href()}
                           mix={[buttonStyle('ghost', 'sm'), on('click', () => s.workspace.selectProject(r.projectId))]}
@@ -624,6 +636,15 @@ export function GitHubDetail(handle: Handle) {
   const gallery = query(handle, { load: () => s.client.mcpGallery(), when: (e) => e.type.startsWith('mcp.server') });
   const runners = query(handle, { load: () => s.client.runnersGet(), when: (e) => e.type === 'runners.changed', debounceMs: 150 });
   const check = () => void gh.reload();
+  // a Repositories row's "Run its CI on this PC": Add a runner opens with that repository chosen
+  let runRequest: { repo: string; n: number } | undefined;
+  const runCI = (repo: string) => {
+    runRequest = { repo, n: (runRequest?.n ?? 0) + 1 };
+    void handle.update();
+  };
+  // a gh sign-in or install done in a terminal publishes no event: read the status again when the window gets focus back, at
+  // most once a minute and not while a check is on its way
+  rereadOnFocus({ reload: () => gh.reload(), busy: () => gh.loading, signal: handle.signal });
   return () => {
     const cards = vendors(KINDS, gallery.data ?? []).find((v) => v.key === 'github')?.cards ?? [];
     const conn = conns.data ? tileState(conns.data, 'github') : undefined;
@@ -649,9 +670,9 @@ export function GitHubDetail(handle: Handle) {
             Issue sync by device code and the MCP server keep their own token in the Windows credential store, never shown.
           </p>
         </div>
-        <Repositories />
+        <Repositories onRunCI={runCI} />
         <FolderSync />
-        <CiRunners />
+        <CiRunners request={runRequest} />
       </div>
     );
   };

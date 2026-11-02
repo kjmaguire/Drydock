@@ -265,6 +265,9 @@ export interface RouteSettings {
   /** the workspace's level: the level of every project that sets none of its own (P118) */
   level: string;
   agents: { id: string; name: string; project: string }[];
+  /** the startup probe's switch (route.probe.startup) and who last set it ("human:kyle"; absent when nobody has: off by default) */
+  probeStartup?: boolean;
+  probeStartupBy?: string;
 }
 /** route.level.get (P118): the workspace's routing level, a project's own ("" when it follows the workspace) and the result. */
 export interface RouteLevel {

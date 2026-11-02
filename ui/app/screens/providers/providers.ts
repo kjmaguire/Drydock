@@ -170,6 +170,70 @@ export const openRouterForm = (): ProviderFormValues => ({ ...emptyProviderForm(
 export const openRouterProviders = <P extends Pick<Provider, 'baseUrl' | 'flavor'>>(list: readonly P[]): P[] => list.filter((p) => providerBrand(p) === 'openrouter');
 
 /**
+ * The vendors "Add a provider" offers as chips (effort review A8): pick one and paste the key. Each fills the name, the kind, the
+ * vendor's API address, the data class and the tier; they stay editable under "Change". The data class is a default to check,
+ * not an attestation: a vendor whose terms let it train on what it is sent starts as trainable, and Google AI Studio starts as
+ * trainable because it is private only for a billing-enabled project, which the person attests (P9). "Your own server" fills
+ * the kind and leaves the address to type; "Other" is the blank form.
+ */
+export interface ProviderPreset {
+  id: string;
+  label: string;
+  /** Empty: the address is typed (your own server, other). */
+  values: Partial<ProviderFormValues>;
+}
+
+export const PROVIDER_PRESETS: ProviderPreset[] = [
+  { id: 'openrouter', label: 'OpenRouter', values: { name: 'OpenRouter', kind: 'aggregator', baseUrl: OPENROUTER_BASE, dataClass: 'private', tier: 'cheap' } },
+  { id: 'anthropic', label: 'Anthropic', values: { name: 'Anthropic', kind: 'direct', baseUrl: 'https://api.anthropic.com/v1', dataClass: 'private', tier: 'premium' } },
+  { id: 'openai', label: 'OpenAI', values: { name: 'OpenAI', kind: 'direct', baseUrl: 'https://api.openai.com/v1', dataClass: 'private', tier: 'premium' } },
+  {
+    id: 'gemini',
+    label: 'Google AI Studio',
+    values: { name: 'Google AI Studio', kind: 'direct', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', dataClass: 'trainable', tier: 'free' },
+  },
+  { id: 'groq', label: 'Groq', values: { name: 'Groq', kind: 'direct', baseUrl: 'https://api.groq.com/openai/v1', dataClass: 'private', tier: 'cheap' } },
+  { id: 'mistral', label: 'Mistral', values: { name: 'Mistral', kind: 'direct', baseUrl: 'https://api.mistral.ai/v1', dataClass: 'private', tier: 'cheap' } },
+  { id: 'deepseek', label: 'DeepSeek', values: { name: 'DeepSeek', kind: 'direct', baseUrl: 'https://api.deepseek.com', dataClass: 'trainable', tier: 'cheap' } },
+  { id: 'host', label: 'Your own server', values: { kind: 'host', baseUrl: '', dataClass: 'private', tier: 'free' } },
+  { id: 'other', label: 'Other', values: {} },
+];
+
+const hostname = (url: string): string => {
+  try {
+    return new URL(url.trim()).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+/** The vendor preset whose API address is on the typed URL's host, or undefined (a typed known URL fills the rest from it). */
+export function presetForUrl(url: string): ProviderPreset | undefined {
+  const h = hostname(url);
+  if (!h) return undefined;
+  return PROVIDER_PRESETS.find((p) => p.values.baseUrl && hostname(p.values.baseUrl) === h);
+}
+
+/** The form after a preset is picked: its values over a fresh form; the key is never part of it. */
+export function applyPreset(v: ProviderFormValues, preset: ProviderPreset): ProviderFormValues {
+  return { ...v, ...emptyProviderForm(), ...preset.values, att: {} };
+}
+
+const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/;
+
+/**
+ * The attestations the address needs (P9): billing for a Google AI Studio address, plain http on the private network for an http
+ * address that is not this PC. The form shows only these, and sends only these.
+ */
+export function attestationsFor(url: string): string[] {
+  const h = hostname(url);
+  const out: string[] = [];
+  if (h === 'generativelanguage.googleapis.com') out.push('billing_enabled');
+  if (h && /^http:\/\//i.test(url.trim()) && !LOOPBACK.test(h)) out.push('lan_attested');
+  return out;
+}
+
+/**
  * provider.create takes the exported Go field names. Only attestations that are true are sent; the key is sent only when
  * one was typed. The key is passed in (read from the input at submit time), never kept in the form values.
  */

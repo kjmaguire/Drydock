@@ -1415,7 +1415,8 @@ describe('Models (the page: Models on this PC and the providers)', () => {
     expect(add().disabled).toBe(true);
     type(byLabel(r.container, 'Provider name'), 'My Host');
     type(byLabel<HTMLElement>(r.container, 'Kind'), 'host');
-    type(byLabel(r.container, 'Base URL'), 'http://192.168.1.5:8000/v1');
+    // the plain-http attestation is asked for once the address needs it (A8): the form draws it after the address is typed
+    await r.act(() => type(byLabel(r.container, 'Base URL'), 'http://192.168.1.5:8000/v1'));
     const key = byLabel(r.container, /API key/);
     expect(key.type).toBe('password');
     type(key, 'sk-secret-123');
@@ -1438,7 +1439,8 @@ describe('Models (the page: Models on this PC and the providers)', () => {
     await waitFor(() => need(r, 'form[aria-label="Add a provider"]'), r);
     expect(byLabel(r.container, 'Provider name').value).toBe('');
     expect(byLabel(r.container, /API key/).value).toBe('');
-    expect(byLabel<HTMLInputElement>(r.container, /accept plain http/).checked).toBe(false);
+    // the address is empty again, so no attestation is asked for (A8: only what the address needs)
+    expect(r.$('[data-testid="provider-attestations"]')).toBeNull();
   });
 
   it('shows the core\'s validation error verbatim and still does not keep the key', async () => {

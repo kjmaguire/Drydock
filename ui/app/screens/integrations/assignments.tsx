@@ -496,9 +496,14 @@ function Rules(handle: Handle<{ conn: IntegrationView; projectId: string }>) {
   };
 }
 
+/** The option of a setting's list that shows the typed field. */
+export const TYPED_VALUE = '__typed__';
+
 /**
  * Assign a connection to this project, or change the assignment's settings: what part of the service the project imports.
- * Choices are read from the service on request.
+ * The choices of each setting the service lists are read when the form opens (effort review F10), in order, so a setting that
+ * depends on an earlier one (a Sentry project on its organization) is read with it; a list that cannot be read keeps the typed
+ * field with "List from <service>". Picking a value reads the later settings' lists again.
  */
 export function AssignForm(
   handle: Handle<{ conn: IntegrationView; info?: IntegrationKindInfo; projectId: string; projectName: string; existing?: IntegrationAssignment; onDone: () => void; onCancel: () => void }>,
@@ -507,6 +512,27 @@ export function AssignForm(
   const act = action(handle);
   let cfg: Record<string, string> = { ...(handle.props.existing?.config ?? {}) };
   const choices: Record<string, IntegrationChoice[]> = {};
+  const typed = new Set<string>(); // settings the person chose to type
+  const reading = new Set<string>(); // lists being read
+  let gen = 0; // a newer pass of reads replaces an older one
+  const listed = () => (handle.props.info?.settings ?? []).filter((st) => st.choices);
+  /** Reads the lists of the settings after index `from` (all of them on open), one after another. */
+  const readLists = async (from: number) => {
+    const g = ++gen;
+    for (const st of listed().slice(from)) {
+      if (handle.signal.aborted || g !== gen) return;
+      reading.add(st.key);
+      void handle.update();
+      try {
+        choices[st.key] = await s.client.integrationChoices(handle.props.conn.id, st.key, cfg);
+      } catch {
+        delete choices[st.key]; // the typed field stays, with List from <service> to try again
+      }
+      reading.delete(st.key);
+      void handle.update();
+    }
+  };
+  handle.queueTask(() => void readLists(0));
   return () => {
     const { conn, info, projectId, projectName, existing, onDone, onCancel } = handle.props;
     const label = info?.label ?? kindLabel(conn.kind);
@@ -525,49 +551,75 @@ export function AssignForm(
         {settings.map((st) => {
           const listId = `choices-${handle.id}-${st.key}`;
           const opts = choices[st.key];
+          const value = cfg[st.key] ?? '';
+          // a list read: picked from it, unless the person types, or the value held is not on it
+          const picking = !!opts && opts.length > 0 && !typed.has(st.key) && (value === '' || opts.some((o) => o.value === value));
           return (
             <Field key={st.key} label={`${st.label}${st.required ? '' : ' (optional)'}`} hint={st.hint}>
-              {(id) => (
-                <div mix={toolbar}>
-                  <input
+              {(id) =>
+                picking ? (
+                  <Select
                     id={id}
-                    value={cfg[st.key] ?? ''}
-                    spellcheck={false}
-                    list={opts ? listId : undefined}
-                    style={{ flex: '1', minWidth: '0' }}
-                    mix={on('input', (e) => ((cfg = { ...cfg, [st.key]: e.currentTarget.value }), void handle.update()))}
+                    value={value}
+                    placeholder={`Choose a ${st.label.toLowerCase()}...`}
+                    testId={`assign-choice-${st.key}`}
+                    options={[
+                      ...(st.required ? [] : [{ value: '', label: 'Not set' }]),
+                      ...opts!.map((o) => ({ value: o.value, label: o.label || o.value })),
+                      { value: TYPED_VALUE, label: 'Typed value...' },
+                    ]}
+                    onChange={(v) => {
+                      if (v === TYPED_VALUE) typed.add(st.key);
+                      else {
+                        cfg = { ...cfg, [st.key]: v };
+                        // a later setting may depend on this one: read its list again
+                        void readLists(listed().findIndex((x) => x.key === st.key) + 1);
+                      }
+                      void handle.update();
+                    }}
                   />
-                  {opts ? (
-                    <datalist id={listId}>
-                      {opts.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </datalist>
-                  ) : null}
-                  {st.choices ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={act.busy !== ''}
-                      title={`Read the ${st.label.toLowerCase()} choices from ${label}`}
-                      aria-label={`List the ${st.label} choices from ${label}`}
-                      mix={[
-                        on('click', async () => {
-                          const r = await act.run(`choices-${st.key}`, () => s.client.integrationChoices(conn.id, st.key, cfg));
-                          if (r) {
-                            choices[st.key] = r;
-                            void handle.update();
-                          }
-                        }),
-                      ]}
-                    >
-                      {act.busy === `choices-${st.key}` ? 'Loading...' : `List from ${label}`}
-                    </Button>
-                  ) : null}
-                </div>
-              )}
+                ) : (
+                  <div mix={toolbar}>
+                    <input
+                      id={id}
+                      value={value}
+                      spellcheck={false}
+                      list={opts ? listId : undefined}
+                      style={{ flex: '1', minWidth: '0' }}
+                      mix={on('input', (e) => ((cfg = { ...cfg, [st.key]: e.currentTarget.value }), void handle.update()))}
+                    />
+                    {opts ? (
+                      <datalist id={listId}>
+                        {opts.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </datalist>
+                    ) : null}
+                    {st.choices && !opts ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={act.busy !== '' || reading.has(st.key)}
+                        title={`Read the ${st.label.toLowerCase()} choices from ${label}`}
+                        aria-label={`List the ${st.label} choices from ${label}`}
+                        mix={[
+                          on('click', async () => {
+                            const r = await act.run(`choices-${st.key}`, () => s.client.integrationChoices(conn.id, st.key, cfg));
+                            if (r) {
+                              choices[st.key] = r;
+                              void handle.update();
+                            }
+                          }),
+                        ]}
+                      >
+                        {act.busy === `choices-${st.key}` || reading.has(st.key) ? 'Loading...' : `List from ${label}`}
+                      </Button>
+                    ) : null}
+                  </div>
+                )
+              }
             </Field>
           );
         })}

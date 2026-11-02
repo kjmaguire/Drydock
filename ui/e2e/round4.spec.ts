@@ -51,8 +51,9 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
   const name = (await row.getAttribute('data-name'))!;
   await expect(page.getByTestId('backup-last-success')).not.toHaveText('none yet');
 
-  // restore needs a successful verify first
-  await expect(page.getByRole('button', { name: `Restore ${name}` })).toBeDisabled();
+  // the backup Drydock just made shows its own check without a click, and Restore is open (it checks the backup again first)
+  await expect(row.getByTestId('backup-verified')).toHaveAttribute('data-stored', 'true');
+  await expect(page.getByRole('button', { name: `Restore ${name}` })).toBeEnabled();
   await page.getByRole('button', { name: `Verify ${name}` }).click();
   const verified = page.getByTestId('verify-result').filter({ hasText: name });
   await expect(verified).toHaveAttribute('data-ok', 'true');
@@ -62,6 +63,7 @@ test('backups: back up now, list, verify, stage a restore, see it pending after 
   try {
     await page.getByRole('button', { name: `Restore ${name}` }).click();
     const confirm = page.getByTestId('restore-confirm');
+    await expect(confirm.getByTestId('verify-result')).toHaveAttribute('data-ok', 'true');
     await expect(confirm).toContainText('staged, not applied now');
     await expect(confirm).toContainText('Nothing is destroyed');
     // declining stages nothing

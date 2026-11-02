@@ -3,8 +3,8 @@ import { afterEach, describe, it } from 'remix/test';
 import type { BudgetRow, BudgetSet } from '../../api/extTypes.ts';
 import type { Client } from '../../api/client.ts';
 import { budget, budgetStatus } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { TOKENS_ERROR, TURNS_ERROR, USD_ERROR, WARN_ERROR } from './budgets.ts';
+import { byLabel, byText, choose, cleanup, errorOf, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { ANOTHER_ID, TOKENS_ERROR, TURNS_ERROR, USD_ERROR, WARN_ERROR } from './budgets.ts';
 import { BudgetsScreen } from './budgets-screen.tsx';
 
 afterEach(cleanup);
@@ -176,6 +176,55 @@ describe('BudgetsScreen', () => {
     type(byLabel(again, 'Scope'), 'workflow');
     type(byLabel(again, 'Scope'), 'project');
     expect((byLabel<HTMLInputElement>(again, 'Scope id (an id, or * for every task, run or agent)')).value).toBe('prj_1');
+  });
+
+  it('a task, run or agent budget picks its target by name: the crew, the unfinished tasks, every run; another id is typed (F13)', async () => {
+    const calls: BudgetSet[] = [];
+    const s = servicesWith({
+      budgetList: async () => [],
+      budgetSet: async (b) => (calls.push(b), budget({ ...b, id: 'bud_9' })),
+      agentList: async () => [{ id: 'agt_1', name: 'Backend #1', role: 'backend' } as never],
+      taskList: async () => [{ id: 'tsk_1', title: 'Fix login', status: 'IN_PROGRESS' } as never, { id: 'tsk_2', title: 'Old work', status: 'COMPLETED' } as never],
+    });
+    s.workspace.selectProject('prj_1');
+    const r = mount(<BudgetsScreen />, s);
+    await waitFor(until(() => text(r.container).includes('No budgets')), r);
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const form = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    type(byLabel(form, 'Scope'), 'agent');
+    const agent = await waitFor(() => {
+      const el = need(r, '[data-testid="budget-target"]');
+      if (optionsOf(el).length < 3) throw new Error('the crew is not read yet');
+      return el;
+    }, r);
+    expect(optionsOf(agent).map((o) => o.value)).toEqual(['*', 'agt_1', ANOTHER_ID]);
+    expect(valueOf(agent)).toBe('*');
+    expect(form.textContent).not.toContain('Scope id');
+    choose(agent, 'agt_1');
+    type(byLabel(form, 'Limit in USD'), '2');
+    await r.act(() => byText(form, 'button', 'Add budget').click());
+    await waitFor(() => expect(calls[0]).toMatchObject({ scope: 'agent', scopeId: 'agt_1', limitUsd: 2 }), r);
+
+    // a task: every task first, then the unfinished ones only
+    await r.act(() => byText(r.container, 'button', 'Add budget').click());
+    const f2 = await waitFor(() => need(r, 'form[aria-label="New budget"]'), r);
+    type(byLabel(f2, 'Scope'), 'task');
+    const task = await waitFor(() => {
+      const el = f2.querySelector('[data-testid="budget-target"]') as HTMLElement | null;
+      if (!el || optionsOf(el).length < 3) throw new Error('the tasks are not read yet');
+      return el;
+    }, r);
+    expect(optionsOf(task).map((o) => [o.value, o.label])).toEqual([['*', 'Every task'], ['tsk_1', 'Fix login'], [ANOTHER_ID, 'Another id...']]);
+    // a run is "every run" only; Another id... types one
+    type(byLabel(f2, 'Scope'), 'run');
+    const run = await waitFor(() => f2.querySelector('[data-testid="budget-target"]') as HTMLElement, r);
+    expect(optionsOf(run).map((o) => o.value)).toEqual(['*', ANOTHER_ID]);
+    await r.act(() => choose(run, ANOTHER_ID));
+    const typed = await waitFor(() => byLabel<HTMLInputElement>(f2, 'Scope id (an id, or * for every task, run or agent)'), r);
+    type(typed, 'run_42');
+    type(byLabel(f2, 'Limit in turns'), '5');
+    await r.act(() => byText(f2, 'button', 'Add budget').click());
+    await waitFor(() => expect(calls[1]).toMatchObject({ scope: 'run', scopeId: 'run_42', limitTurns: 5 }), r);
   });
 
   it('a blank limit still means no limit on that one, and a valid value still saves (M25)', async () => {

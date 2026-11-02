@@ -18,6 +18,7 @@ import { Callout, Done, Group, panel, panelPad, plainList, settingsColumn, table
 import {
   canRestore,
   currentVerifications,
+  restoreBlocked,
   fingerprint,
   formFrom,
   madeMessage,
@@ -83,39 +84,60 @@ function VerifyResult(handle: Handle<{ v: BackupVerify }>) {
   };
 }
 
-/** The confirmation step of a restore: what it does, that it is staged, and that nothing is destroyed. */
-function RestoreConfirm(handle: Handle<{ b: BackupInfo; onStaged: (r: RestoreStaged) => void; onCancel: () => void }>) {
+/**
+ * The confirmation step of a restore. It checks the backup first (backup.verify: hash, integrity, schema; effort review F7),
+ * shows the result, and offers Stage only for a backup this Drydock can restore. Staging checks it once more in the core.
+ */
+function RestoreConfirm(handle: Handle<{ b: BackupInfo; onStaged: (r: RestoreStaged) => void; onCancel: () => void; onVerified: (v: BackupVerify) => void }>) {
   const s = services(handle);
   const act = action(handle);
+  const check = action(handle);
+  let v: BackupVerify | undefined;
+  handle.queueTask(async () => {
+    const r = await check.run('verify', () => s.client.backupVerify(handle.props.b.name));
+    if (r) {
+      v = r;
+      handle.props.onVerified(r);
+    }
+    void handle.update();
+  });
   return () => {
     const { b, onStaged, onCancel } = handle.props;
+    const ok = canRestore(v);
     return (
       <div data-testid="restore-confirm" style={{ display: 'grid', gap: t.s4 }}>
-        <ul mix={confirmList}>
-          <li>
-            Restoring <strong>replaces everything</strong> in Drydock with the contents of this backup.
-          </li>
-          <li>
-            It is <strong>staged, not applied now</strong>. Nothing changes until you quit and reopen Drydock; running agents stop when you quit.
-          </li>
-          <li>
-            Nothing is destroyed: the database it replaces is kept as <code>replaced-&lt;time&gt;.db</code> in the backup folder.
-          </li>
-          <li>You can cancel the staged restore any time before you reopen Drydock.</li>
-        </ul>
+        {check.busy ? <Loading label={`Checking ${b.name}`} /> : null}
+        <ErrorNote error={check.error} what="Could not check this backup" />
+        {v ? <VerifyResult v={v} /> : null}
+        {ok ? (
+          <ul mix={confirmList}>
+            <li>
+              Restoring <strong>replaces everything</strong> in Drydock with the contents of this backup.
+            </li>
+            <li>
+              It is <strong>staged, not applied now</strong>. Nothing changes until you quit and reopen Drydock; running agents stop when you quit.
+            </li>
+            <li>
+              Nothing is destroyed: the database it replaces is kept as <code>replaced-&lt;time&gt;.db</code> in the backup folder.
+            </li>
+            <li>You can cancel the staged restore any time before you reopen Drydock.</li>
+          </ul>
+        ) : null}
         <ErrorNote error={act.error} what="Not staged" />
         <div mix={formActions}>
-          <Button
-            variant="danger"
-            icon={RotateCcw}
-            disabled={act.busy !== ''}
-            mix={on('click', async () => {
-              const r = await act.run('restore', () => s.client.backupRestore(b.name, true));
-              if (r) onStaged(r);
-            })}
-          >
-            Stage this restore for the next start
-          </Button>
+          {ok ? (
+            <Button
+              variant="danger"
+              icon={RotateCcw}
+              disabled={act.busy !== ''}
+              mix={on('click', async () => {
+                const r = await act.run('restore', () => s.client.backupRestore(b.name, true));
+                if (r) onStaged(r);
+              })}
+            >
+              Stage this restore for the next start
+            </Button>
+          ) : null}
           <Button mix={on('click', () => onCancel())}>Do not restore</Button>
         </div>
       </div>
@@ -348,7 +370,7 @@ export function BackupsScreen(handle: Handle) {
             title="Backups"
             icon={ShieldCheck}
             stacked
-            description="Every backup in the folder. Verify one before restoring it; a restore is staged and applied the next time Drydock starts."
+            description="Every backup in the folder. Backups Drydock makes are checked as they are made; a restore is staged and applied the next time Drydock starts."
           >
             {l && backups.length === 0 ? (
               <Empty title="No backups in this folder yet" icon={DatabaseBackup}>
@@ -373,12 +395,17 @@ export function BackupsScreen(handle: Handle) {
                     {backups.map((b) => {
                       const v = verified[b.name];
                       const ok = canRestore(v);
+                      const stored = !!verified[b.name]?.stored;
                       return (
                         <tr key={b.name} data-testid="backup-row" data-name={b.name}>
                           <td>
                             <span mix={nameCell}>
                               <code>{b.name}</code> {b.keep ? <Badge tone="info">kept</Badge> : null}
-                              {v ? <Badge tone={ok ? 'ok' : 'err'}>{v.ok ? (ok ? 'verified' : 'newer version') : 'damaged'}</Badge> : null}
+                              {v ? (
+                                <span title={stored ? 'Checked when Drydock made it. Restore checks it again first.' : undefined} data-testid="backup-verified" data-stored={String(stored)}>
+                                  <Badge tone={ok ? 'ok' : 'err'}>{v.ok ? (ok ? 'verified' : 'newer version') : 'damaged'}</Badge>
+                                </span>
+                              ) : null}
                             </span>
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>{formatDateTime(b.created)}</td>
@@ -391,8 +418,8 @@ export function BackupsScreen(handle: Handle) {
                               </Button>
                               <Button
                                 size="sm"
-                                disabled={busy || !ok || !!pending?.pending}
-                                title={restoreTitle(pending, ok)}
+                                disabled={busy || !!restoreBlocked(pending, v)}
+                                title={restoreTitle(pending, v)}
                                 aria-label={`Restore ${b.name}`}
                                 mix={on('click', () => ((confirming = b.name), void handle.update()))}
                               >
@@ -407,10 +434,12 @@ export function BackupsScreen(handle: Handle) {
                 </table>
               </div>
             ) : null}
-            {Object.values(verified).map((v) => (
-              <VerifyResult key={v.name} v={v} />
-            ))}
-            <p mix={faint}>Restore is enabled only after you verify the backup in this page.</p>
+            {Object.values(verified)
+              .filter((v) => !v.stored)
+              .map((v) => (
+                <VerifyResult key={v.name} v={v} />
+              ))}
+            <p mix={faint}>Restore checks the backup first and stages it only when it is whole and this Drydock can restore it.</p>
           </Group>
 
           {l && l.replaced && l.replaced.length > 0 ? (
@@ -442,6 +471,10 @@ export function BackupsScreen(handle: Handle) {
             <RestoreConfirm
               b={confirmB}
               onCancel={() => ((confirming = ''), void handle.update())}
+              onVerified={(v) => {
+                checked = { ...checked, [confirmB.name]: { v, fp: fingerprint(confirmB) } };
+                void handle.update();
+              }}
               onStaged={(r) => {
                 staged = r;
                 confirming = '';

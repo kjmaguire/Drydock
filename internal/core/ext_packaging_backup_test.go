@@ -80,6 +80,10 @@ func TestBackupNowListVerifyAndTamperDetection(t *testing.T) {
 	if len(list) != 1 || list[0].Label != "manual" || list[0].Name != res.Backup.Name || !strings.HasPrefix(dir, a.dataDir()) {
 		t.Fatalf("list %v in %s", list, dir)
 	}
+	// the check backup.now ran is listed with it (F7), so the page shows it verified without a click
+	if vv := list[0].Verified; vv == nil || vv.SchemaVersion < 80 || !vv.RestorableHere {
+		t.Fatalf("the backup's own check is not listed: %+v", vv)
+	}
 	var v struct {
 		OK             bool  `json:"ok"`
 		SchemaVersion  int64 `json:"schemaVersion"`

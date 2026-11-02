@@ -32,6 +32,8 @@ export interface BackupInfo {
   created: string;
   label: string;
   keep: boolean;
+  /** The check Drydock ran when it made this backup (absent for an older one, or one changed since). */
+  verified?: { schemaVersion: number; at: string; restorableHere: boolean };
 }
 export interface BackupSettings {
   enabled: boolean;

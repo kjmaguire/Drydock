@@ -1,17 +1,19 @@
 // Model routing (a workspace screen): what the router chooses now, wired (wiring-diagram.tsx, decision P108), the rules the
 // router evaluates, a dry-run preview of a decision, the tiebreak and the wall-time limits of a turn (turn-limits-panel.tsx,
-// decision P112), and the cheap model selection with its opt-in startup probe. Nothing here is decided without a button press by the human.
+// decision P112), and the cheap model selection with its opt-in startup probe (its real state as a switch, effort review F8). The
+// rules, the preview and the limits are folded (the P144 pattern). Nothing here is decided without a button press by the human.
 
 import { css, on, type Handle } from 'remix/component';
 import { FlaskConical, Route as RouteIcon, TriangleAlert } from 'lucide';
-import type { CheapSelection, RoutePreview } from '../../api/extTypes.ts';
+import type { CheapSelection, RoutePreview, RouteSettings } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, faint, muted } from '../../ui/data.tsx';
 import { ErrorNote, Notice } from '../../ui/feedback.tsx';
-import { Field } from '../../ui/form.tsx';
+import { Field, Switch } from '../../ui/form.tsx';
 import { Select, selectOptions } from '../../ui/select.tsx';
+import { Disclosure } from '../../ui/disclosure.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { card, Page, Section } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
@@ -190,29 +192,39 @@ const warnCss = css({
   '& .msg': { display: 'flex', gap: t.s2, alignItems: 'flex-start' },
   '& .msg svg': { color: t.warning, marginTop: '2px' },
 });
-const subHead = css({ fontSize: t.textMd, fontWeight: '600', marginTop: t.s2 });
+
+/** Who set the startup probe, in words: "human:kyle" reads "kyle". */
+export function setterName(by: string | undefined): string {
+  return (by ?? '').replace(/^human:/, '').trim();
+}
 
 export function CheapModelPanel(handle: Handle) {
   const s = services(handle);
   const providers = query(handle, { load: () => s.client.providerList(), when: (e) => e.type.startsWith('provider.') });
+  // the startup probe's real state, from the core (effort review F8)
+  const settings = query(handle, { load: () => s.client.routeSettingsGet(), when: (e) => e.type === 'routing.settings_changed' });
   const act = action(handle);
   const startup = action(handle);
   let out: Record<string, CheapSelection> = {};
-  let startupOn = false;
-  let confirm = false;
+  let confirm = false; // turning it on: the cost warning is showing
   const redraw = () => void handle.update();
 
   const setStartup = async (on_: boolean) => {
     const r = await startup.run(on_ ? 'on' : 'off', () => s.client.routeProbeStartup(on_));
     if (r) {
-      startupOn = on_;
       confirm = false;
-      redraw();
+      const cur = settings.data;
+      if (cur) settings.set({ ...cur, probeStartup: r.enabled, probeStartupBy: r.by });
+      void settings.reload();
     }
+    redraw();
   };
 
   return () => {
     const cheap = cheapProviders(providers.data ?? []);
+    const st = settings.data;
+    const probeOn = !!st?.probeStartup;
+    const who = setterName(st?.probeStartupBy);
     return (
       <Section
         title="Cheap model selection"
@@ -251,21 +263,28 @@ export function CheapModelPanel(handle: Handle) {
             ))}
           </ul>
         ) : null}
-        <h3 mix={subHead}>Probe at startup</h3>
-        <ErrorNote error={startup.error} />
-        {!confirm ? (
-          <div>
-            <Button
-              mix={on('click', () => {
-                confirm = true;
+        <ErrorNote error={startup.error ?? settings.error} what="Startup probe" />
+        <div data-testid="startup-probe" data-on={st ? String(probeOn) : undefined}>
+          <Switch
+            label="Probe at startup"
+            checked={probeOn || confirm}
+            disabled={!st || startup.busy !== ''}
+            onChange={(v) => {
+              if (v) {
+                confirm = true; // the cost is said first; nothing is changed until Turn on
                 redraw();
-              })}
-            >
-              Change the startup probe...
-            </Button>
-          </div>
-        ) : (
-          <div mix={warnCss}>
+              } else if (confirm) {
+                confirm = false;
+                redraw();
+              } else void setStartup(false);
+            }}
+          />
+          <p role="status" mix={faint} data-testid="startup-probe-state">
+            {!st ? 'Reading...' : probeOn ? `On${who ? `, turned on by ${who}` : ''}.` : who ? `Off, turned off by ${who}.` : 'Off (the default).'}
+          </p>
+        </div>
+        {confirm ? (
+          <div mix={warnCss} data-testid="startup-probe-confirm">
             <p class="msg">
               <Icon icon={TriangleAlert} size={15} />
               <span>
@@ -275,9 +294,6 @@ export function CheapModelPanel(handle: Handle) {
             <div class="row">
               <Button variant="primary" disabled={startup.busy !== ''} mix={on('click', () => void setStartup(true))}>
                 Turn on
-              </Button>
-              <Button disabled={startup.busy !== ''} mix={on('click', () => void setStartup(false))}>
-                Turn off
               </Button>
               <Button
                 variant="ghost"
@@ -290,24 +306,40 @@ export function CheapModelPanel(handle: Handle) {
               </Button>
             </div>
           </div>
-        )}
-        <p role="status" mix={faint}>
-          {startupOn ? 'Startup probe: on (set in this session).' : 'Startup probe: the core does not report its current value; set it here.'}
-        </p>
+        ) : null}
       </Section>
     );
   };
 }
 
-export function RoutingScreen(_handle: Handle) {
+/**
+ * Whether the tiebreak or a turn limit is set: their fold then opens by itself, so a setting in force is never out of sight
+ * (the P144 pattern, effort review F8).
+ */
+export function limitsInUse(st: RouteSettings | undefined): boolean {
+  if (!st) return false;
+  const any = (m: Record<string, number> | undefined) => Object.values(m ?? {}).some((v) => v > 0);
+  return !!st.tiebreak?.enabled || any(st.ceilings?.levels) || any(st.ceilings?.agents);
+}
+
+export function RoutingScreen(handle: Handle) {
+  const s = services(handle);
+  const settings = query(handle, { load: () => s.client.routeSettingsGet(), when: (e) => e.type === 'routing.settings_changed' });
   return () => (
     <Page title="Routing" icon={RouteIcon} subtitle="Which model answers each turn" guide="routing-rules">
       <WiringDiagram />
       <WorkspaceLevelPanel />
-      <RulesPanel />
-      <PreviewPanel />
-      <TurnLimitsPanel />
       <CheapModelPanel />
+      {/* the power controls, one click away: each fold keeps what the person opened or closed */}
+      <Disclosure summary="Rules" testId="routing-rules-fold" wide>
+        <RulesPanel />
+      </Disclosure>
+      <Disclosure summary="Preview a decision" testId="routing-preview-fold" wide>
+        <PreviewPanel />
+      </Disclosure>
+      <Disclosure summary="Tiebreak and turn limits" open={limitsInUse(settings.data)} testId="routing-limits-fold" wide>
+        <TurnLimitsPanel />
+      </Disclosure>
     </Page>
   );
 }

@@ -55,6 +55,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
 
   // routing
   await workspaceNav(page, 'nav-routing');
+  // the rules, the preview and the limits are folded (effort review F8)
+  await page.getByTestId('routing-rules-fold').locator('summary').click();
+  await page.getByTestId('routing-preview-fold').locator('summary').click();
+  await page.getByTestId('routing-limits-fold').locator('summary').click();
   await expect(page.getByTestId('route-rule').first()).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByTestId('route-preview')).toContainText('Recorded: no');

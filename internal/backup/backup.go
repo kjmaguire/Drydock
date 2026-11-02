@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,7 +31,29 @@ type Info struct {
 	Created time.Time `json:"created"`
 	Label   string    `json:"label"` // scheduled | pre-update-<old>-to-<new> | manual
 	Keep    bool      `json:"keep"`  // exempt from pruning
+	// Verified is the check Drydock ran when it made this backup (integrity check, hash and schema), kept beside it in a
+	// .verified sidecar; nil for a backup made before this was kept, or one whose hash no longer matches what was checked.
+	// Restore checks the file again either way.
+	Verified *Verified `json:"verified,omitempty"`
 }
+
+// Verified is the stored result of the check Create ran on a backup (effort review F7).
+type Verified struct {
+	SchemaVersion int64     `json:"schemaVersion"`
+	At            time.Time `json:"at"`
+	// RestorableHere is worked out when listing: whether this version of Drydock can restore that schema.
+	RestorableHere bool `json:"restorableHere"`
+}
+
+// verifiedFile is what the .verified sidecar holds: the check's result and the hash it was made against.
+type verifiedFile struct {
+	SHA256        string    `json:"sha256"`
+	SchemaVersion int64     `json:"schemaVersion"`
+	At            time.Time `json:"at"`
+}
+
+// sidecars are the files next to a backup that belong to it, removed with it.
+var sidecars = []string{".sha256", ".keep", ".verified"}
 
 // Create writes a verified snapshot of db into dir. label is part of the file name. A pre-update backup is exempt from
 // pruning until Release is called on it (after the update proved healthy).
@@ -54,6 +77,7 @@ func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Tim
 			if renamed {
 				_ = os.Remove(final)
 				_ = os.Remove(final + ".sha256")
+				_ = os.Remove(final + ".verified")
 			}
 		}
 	}()
@@ -84,6 +108,13 @@ func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Tim
 		return Info{}, err
 	}
 	info = Info{Path: final, Name: name, Size: size, SHA256: sum, Created: now.UTC(), Label: label}
+	// the snapshot passed its integrity check above and its hash is recorded: keep that result, with its schema, so the list
+	// shows it as verified without a click. A failure here only leaves the backup unmarked (Verify still works on it).
+	if v, verr := storage.FileSchemaVersion(ctx, final); verr == nil {
+		if b, merr := json.Marshal(verifiedFile{SHA256: sum, SchemaVersion: v, At: now.UTC()}); merr == nil && writeAtomic(final+".verified", b) == nil {
+			info.Verified = &Verified{SchemaVersion: v, At: now.UTC(), RestorableHere: v <= storage.LatestVersion()}
+		}
+	}
 	if strings.HasPrefix(label, "pre-update") {
 		info.Keep = true
 		_ = writeAtomic(final+".keep", nil)
@@ -234,10 +265,28 @@ func List(dir string) ([]Info, error) {
 		}
 		_, kerr := os.Stat(in.Path + ".keep")
 		in.Keep = kerr == nil
+		in.Verified = readVerified(in)
 		out = append(out, in)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
 	return out, nil
+}
+
+// readVerified reads the stored check of a backup: only when it was made against the hash the sidecar records now and the file
+// still has the size it was listed with (a file changed since then is not shown as verified).
+func readVerified(in Info) *Verified {
+	if in.SHA256 == "" {
+		return nil
+	}
+	b, err := os.ReadFile(in.Path + ".verified")
+	if err != nil {
+		return nil
+	}
+	var f verifiedFile
+	if json.Unmarshal(b, &f) != nil || f.SHA256 != in.SHA256 || f.SchemaVersion <= 0 {
+		return nil
+	}
+	return &Verified{SchemaVersion: f.SchemaVersion, At: f.At, RestorableHere: f.SchemaVersion <= storage.LatestVersion()}
 }
 
 // Verify checks a backup against its recorded hash and runs the integrity check.
@@ -303,7 +352,7 @@ func Prune(dir string, daily, weekly int, now time.Time) ([]string, error) {
 		if keep[b.Name] {
 			continue
 		}
-		for _, suffix := range []string{"", ".sha256", ".keep"} {
+		for _, suffix := range append([]string{""}, sidecars...) {
 			if err := os.Remove(b.Path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return removed, err
 			}

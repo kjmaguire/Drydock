@@ -3,6 +3,7 @@
 // the models it offers with editable prices, its quota windows, OpenRouter's key limits and, for OpenRouter, the endpoints its
 // calls skip for poor recent uptime (decision P53 c). The API key is write-only here: it can be replaced, never read back or shown.
 
+import { CheapProbeOffer } from '../routing/cheap-offer.tsx';
 import { css, on, ref, type Handle } from 'remix/component';
 import { Cloud, Network, Server } from 'lucide';
 import type { EndpointUptimeView, ProviderEdit } from '../../api/providerClient.ts';
@@ -430,6 +431,7 @@ export function ProviderPane(handle: Handle<{ p: Provider; onChanged: () => void
           }
         />
         <ErrorNote error={act.error ?? q.error} what="Provider" />
+        <CheapProbeOffer p={p} />
 
         {editing && d ? (
           <SettingsGroup title="Edit" testId="provider-edit">

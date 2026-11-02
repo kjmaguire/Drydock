@@ -3,6 +3,10 @@ import { describe, it } from 'remix/test';
 import type { ProbeResult, ProviderModel } from '../../api/types.ts';
 import {
   OPENROUTER_BASE,
+  PROVIDER_PRESETS,
+  applyPreset,
+  attestationsFor,
+  presetForUrl,
   openRouterForm,
   openRouterProviders,
   avoidedEndpointText,
@@ -175,5 +179,31 @@ describe('OpenRouter (decision P103)', () => {
       { id: 'd', baseUrl: 'https://notopenrouter.ai/v1', flavor: '' },
     ];
     expect(openRouterProviders(list).map((p) => p.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('vendor presets (A8)', () => {
+  it('a preset fills the name, kind, address, data class and tier; Google AI Studio starts trainable', () => {
+    const or = PROVIDER_PRESETS.find((p) => p.id === 'openrouter')!;
+    expect(applyPreset({ ...emptyProviderForm(), name: 'typed', att: { lan_attested: true } }, or)).toEqual({ ...emptyProviderForm(), name: 'OpenRouter', kind: 'aggregator', baseUrl: OPENROUTER_BASE, dataClass: 'private', tier: 'cheap', att: {} });
+    const g = PROVIDER_PRESETS.find((p) => p.id === 'gemini')!;
+    expect(applyPreset(emptyProviderForm(), g).dataClass).toBe('trainable');
+    expect(PROVIDER_PRESETS.map((p) => p.label)).toEqual(['OpenRouter', 'Anthropic', 'OpenAI', 'Google AI Studio', 'Groq', 'Mistral', 'DeepSeek', 'Your own server', 'Other']);
+  });
+
+  it('a typed address of a known vendor finds its preset; anything else finds none', () => {
+    expect(presetForUrl('https://api.anthropic.com/v1/')?.id).toBe('anthropic');
+    expect(presetForUrl(' https://api.groq.com/openai/v1')?.id).toBe('groq');
+    expect(presetForUrl('https://example.com/v1')).toBe(undefined);
+    expect(presetForUrl('not a url')).toBe(undefined);
+  });
+
+  it('asks only for the attestations the address needs (P9)', () => {
+    expect(attestationsFor('https://generativelanguage.googleapis.com/v1beta/openai')).toEqual(['billing_enabled']);
+    expect(attestationsFor('http://192.168.1.5:8000/v1')).toEqual(['lan_attested']);
+    expect(attestationsFor('http://localhost:11434/v1')).toEqual([]);
+    expect(attestationsFor('http://127.0.0.1:8080/v1')).toEqual([]);
+    expect(attestationsFor('https://api.openai.com/v1')).toEqual([]);
+    expect(attestationsFor('')).toEqual([]);
   });
 });

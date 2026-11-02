@@ -115,7 +115,8 @@ export function Thing(handle: Handle<{ id: string }>) {
 - Imports use explicit extensions (`./x.ts`, `./y.tsx`), as Node ESM and the Remix repo do.
 - Dropdowns are the kit's `Select` (`ui/select.tsx`), never a native `<select>`: WebView2 draws the native popup itself,
   in the system style and where the OS puts it. Two free-text fields keep a native suggestion list (`<input list>`): the
-  agent's role and an integration setting's choices; they take typed text first. `Select` is controlled (`value` + `onChange`, the
+  agent's role and an integration setting typed by hand ("Typed value...", or when its list cannot be read); they take typed text
+  first. `Select` is controlled (`value` + `onChange`, the
   options as `{ value, label, hint?, disabled? }`); a model name goes through `screens/shared/model-field.tsx` (the
   adapter's aliases as a list, "Another model..." for a typed full name). In tests, `choose(control, value)` from
   `test/render.tsx` picks an option (`type()` does the same on a dropdown), `optionsOf()` and `valueOf()` read it back; in

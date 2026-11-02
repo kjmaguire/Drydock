@@ -10,6 +10,7 @@
 import { css, on, ref, type Handle } from 'remix/component';
 import { Ellipsis, Lock, Plus } from 'lucide';
 import type { RunnerKindName, RunnerSlot, RunnerState } from '../../api/runnersClient.ts';
+import type { ProjectRepoRow } from '../../api/types.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { faint, mono, muted } from '../../ui/data.tsx';
@@ -21,6 +22,7 @@ import { tableCard } from '../../ui/layout.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
 import { SettingRow, SettingsGroup, StatusWord } from '../../ui/master-detail.tsx';
 import { Menu } from '../../ui/menu.tsx';
+import { Select, type SelectOption } from '../../ui/select.tsx';
 import { t, type Tone } from '../../ui/tokens.ts';
 import { ChooseFolder } from '../shared/choose-folder.tsx';
 
@@ -146,12 +148,43 @@ function RemoveQuestion(handle: Handle<{ question: string; yesName: string; keep
   };
 }
 
-export function CiRunners(handle: Handle) {
+/** The repository choice that shows the typed field. */
+export const OTHER_REPO = '__other__';
+
+/**
+ * The Add a runner choices (effort review F5): the projects' GitHub repositories (github.projectRepos), each with whether it is
+ * private; a public one is listed but cannot be picked, since the core refuses it. "Another repository..." takes a typed one.
+ */
+export function runnerRepoOptions(rows: ProjectRepoRow[]): SelectOption[] {
+  const seen = new Set<string>();
+  const out: SelectOption[] = [];
+  for (const r of rows) {
+    if (r.state !== 'github' || !r.repo || seen.has(r.repo)) continue;
+    seen.add(r.repo);
+    out.push({
+      value: r.repo,
+      label: r.repo,
+      hint: r.private === true ? 'private' : r.private === false ? 'public: refused' : undefined,
+      disabled: r.private === false,
+    });
+  }
+  return out;
+}
+
+/**
+ * The CI runners section. `request` opens Add a runner with that repository chosen (a Repositories row's "Run its CI on this PC");
+ * a new `n` opens it again.
+ */
+export function CiRunners(handle: Handle<{ request?: { repo: string; n: number } }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const v = query(handle, { load: () => s.client.runnersGet(), when: (e) => e.type === 'runners.changed', debounceMs: 150 });
   const act = action(handle);
   let adding = false; // the add dialog is open
+  // the projects' repositories, read while the dialog is open; a failed read leaves the typed field
+  const projectRepos = query(handle, { load: () => s.client.githubProjectRepos(false), enabled: () => adding });
+  let picked = ''; // the chosen repository, or OTHER_REPO for a typed one
+  let seenRequest = 0;
   let repo = '';
   let kind: RunnerKindName | '' = '';
   let accept = false;
@@ -168,9 +201,11 @@ export function CiRunners(handle: Handle) {
   };
   const add = async () => {
     if (!kind) return;
-    const r = await act.run('add', () => s.client.runnersAdd(repo.trim(), kind as RunnerKindName, accept));
+    const name = chosenRepo().trim();
+    const r = await act.run('add', () => s.client.runnersAdd(name, kind as RunnerKindName, accept));
     if (r) {
       repo = '';
+      picked = '';
       accept = false;
       adding = false;
       v.set(r);
@@ -215,6 +250,10 @@ export function CiRunners(handle: Handle) {
     void handle.update();
     void setRoot(path);
   };
+  const repoOptions = (): SelectOption[] => runnerRepoOptions(projectRepos.data?.rows ?? []);
+  // the typed field shows for "Another repository...", and when there is no repository to pick from (none, or the read failed)
+  const typing = () => picked === OTHER_REPO || repoOptions().length === 0;
+  const chosenRepo = () => (typing() ? repo : picked);
   const close = () => {
     adding = false;
     if (act.error) act.clear();
@@ -222,6 +261,14 @@ export function CiRunners(handle: Handle) {
   };
 
   return () => {
+    const req = handle.props.request;
+    if (req && req.n !== seenRequest) {
+      seenRequest = req.n;
+      adding = true;
+      picked = req.repo;
+      repo = req.repo; // the typed field's, when there is no list to pick from
+      if (act.error) act.clear();
+    }
     const { readOnly } = s.workspace.license;
     const data = v.data;
     const busy = readOnly || act.busy !== '';
@@ -233,7 +280,7 @@ export function CiRunners(handle: Handle) {
     if (!kind && avail.length === 1) kind = avail[0]!.kind;
     const full = slots.length >= (data?.max ?? 8);
     const canOpen = !!data && avail.length > 0 && !full && !readOnly;
-    const canAdd = !busy && repo.trim() !== '' && kind !== '' && (kind !== 'windows' || accept) && !full;
+    const canAdd = !busy && chosenRepo().trim() !== '' && kind !== '' && (kind !== 'windows' || accept) && !full;
     const winOn = slots.some((x) => x.kind === 'windows' && x.enabled);
     const rootTyped = root ?? '';
     const rootSource =
@@ -434,19 +481,35 @@ export function CiRunners(handle: Handle) {
               data-testid="runner-add"
             >
               <ErrorNote error={act.error} what="Not added" />
-              <input
-                type="text"
-                aria-label="Repository"
-                data-testid="runner-repo"
-                spellcheck={false}
-                placeholder="owner/name, or the repository's GitHub address"
-                value={repo}
-                disabled={busy}
-                mix={on('input', (e) => {
-                  repo = e.currentTarget.value;
-                  void handle.update();
-                })}
-              />
+              {repoOptions().length > 0 ? (
+                <Select
+                  label="Repository"
+                  testId="runner-repo-pick"
+                  value={picked}
+                  placeholder="Choose a repository..."
+                  disabled={busy}
+                  options={[...repoOptions(), { value: OTHER_REPO, label: 'Another repository...' }]}
+                  onChange={(v) => {
+                    picked = v;
+                    void handle.update();
+                  }}
+                />
+              ) : null}
+              {typing() ? (
+                <input
+                  type="text"
+                  aria-label="Repository"
+                  data-testid="runner-repo"
+                  spellcheck={false}
+                  placeholder="owner/name, or the repository's GitHub address"
+                  value={repo}
+                  disabled={busy}
+                  mix={on('input', (e) => {
+                    repo = e.currentTarget.value;
+                    void handle.update();
+                  })}
+                />
+              ) : null}
               <fieldset>
                 <legend>Jobs run on</legend>
                 {kinds.map((k) => (

@@ -2,9 +2,9 @@ import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Outbox } from '../../api/extTypes.ts';
-import { byLabel, byText, cleanup, mount, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, mount, optionsOf, renderPlain, testServices, type, waitFor } from '../../test/render.tsx';
 import { pay, rev } from '../mcp/fixtures.ts';
-import { RiskBadge } from './assignments.tsx';
+import { RiskBadge, TYPED_VALUE } from './assignments.tsx';
 import { asg, conn, item, kinds, project, project2 } from './fixtures.ts';
 import { ProjectIntegrationsScreen } from './project-integrations-screen.tsx';
 
@@ -106,7 +106,7 @@ describe("a project's Integrations page: app sync", () => {
     expect(none.querySelector('a')!.getAttribute('href')).toBe('/integrations');
   });
 
-  it('assigning: the scope is chosen for this project; choices are read from the service on request', async () => {
+  it('assigning: the scope is chosen for this project; choices are read from the service when the form opens (F10)', async () => {
     const assigns: Calls = [];
     const choices: Calls = [];
     const r = show({
@@ -122,13 +122,50 @@ describe("a project's Integrations page: app sync", () => {
     await r.act(() => byText(card, 'button', 'Assign to gocalc').click());
     const form = await find(r, '[data-testid="assign-form"]');
     expect(form.getAttribute('aria-label')).toBe('Assign Linear to gocalc');
-    expect(form.querySelector('[role="combobox"]')).toBeNull(); // no other project to choose from
-    await r.act(() => byText(form, 'button', 'List the Team choices from Linear').click());
-    await waitFor(() => expect(form.querySelectorAll('datalist option').length).toBe(2), r);
+    // no button to press: the team list is read on open and offered as a list, with a typed value as the way out
+    const team = await waitFor(() => {
+      const el = form.querySelector('[data-testid="assign-choice-team"]') as HTMLElement | null;
+      if (!el) throw new Error('the team list is not read yet');
+      return el;
+    }, r);
     expect(choices[0]!.slice(0, 2)).toEqual(['int_1', 'team']);
-    await r.act(() => type(byLabel(form, 'Team (optional)'), 'ENG'));
+    expect(optionsOf(team).map((o) => o.value)).toEqual(['', 'ENG', 'OPS', TYPED_VALUE]);
+    expect(form.querySelector('button[aria-label="List the Team choices from Linear"]')).toBeNull();
+    await r.act(() => choose(team, 'ENG'));
     await r.act(() => byText(form, 'button', 'Assign').click());
     await waitFor(() => expect(assigns).toEqual([[{ integrationId: 'int_1', projectId: 'prj_1', config: { team: 'ENG' }, version: undefined }]]), r);
+  });
+
+  it('a list that cannot be read keeps the typed field and List from the service; "Typed value..." types one (F10)', async () => {
+    const assigns: Calls = [];
+    let fail = true;
+    const r = show({
+      integrationList: async () => [conn({ assignments: [] })],
+      integrationChoices: (async () => {
+        if (fail) throw new Error('Linear did not answer');
+        return [{ value: 'ENG', label: 'ENG · Engineering' }];
+      }) as never,
+      integrationAssign: rec(assigns, () => asg()) as never,
+    });
+    const card = await open(r, 'linear');
+    await waitFor(() => expect(card.textContent).toContain('Not assigned to gocalc.'), r);
+    await r.act(() => byText(card, 'button', 'Assign to gocalc').click());
+    const form = await find(r, '[data-testid="assign-form"]');
+    const list = await waitFor(() => {
+      const b = byText<HTMLButtonElement>(form, 'button', 'List the Team choices from Linear');
+      if (b.disabled) throw new Error('still reading');
+      return b;
+    }, r);
+    expect(form.querySelector('[data-testid="assign-choice-team"]')).toBeNull();
+    expect(form.querySelector('[role="alert"]')).toBeNull(); // the read on open fails quietly
+    fail = false;
+    await r.act(() => list.click());
+    const team = await waitFor(() => form.querySelector('[data-testid="assign-choice-team"]') as HTMLElement, r);
+    await r.act(() => choose(team, TYPED_VALUE));
+    const typedField = await waitFor(() => byLabel<HTMLInputElement>(form, 'Team (optional)'), r);
+    await r.act(() => type(typedField, 'XYZ'));
+    await r.act(() => byText(form, 'button', 'Assign').click());
+    await waitFor(() => expect(assigns).toEqual([[{ integrationId: 'int_1', projectId: 'prj_1', config: { team: 'XYZ' }, version: undefined }]]), r);
   });
 
   it('an assignment syncs, edits its scope with its version, and unassigns after asking', async () => {

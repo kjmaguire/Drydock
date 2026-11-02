@@ -114,6 +114,8 @@ describe('RoutingScreen', () => {
     const calls: RouteRule[] = [];
     const r = mountWith({ routeRulesList: async () => [rule], routeRulesSet: async (x) => (calls.push(x), x) });
     const row = await waitFor(() => need(r, '[data-testid="route-rule"]'), r);
+    // the rules are folded (F8): the person opens them first
+    await r.act(() => need(r, '[data-testid="routing-rules-fold"] > summary').click());
     await pick(r, row, 'Edit');
     const ed = await waitFor(() => need(r, '[data-testid="rule-editor"]'), r);
     const priority = () => byLabel<HTMLInputElement>(ed, /^Priority/);
@@ -266,16 +268,46 @@ describe('RoutingScreen', () => {
     expect(out.textContent).toContain('Rule r1 applied');
   });
 
-  it('the startup probe warns about cost and is only changed by a button', async () => {
+  it('the startup probe is a switch showing the core\'s state and who set it; turning it on warns about cost first (F8)', async () => {
     const calls: boolean[] = [];
-    const r = mountWith({ routeProbeStartup: async (enabled) => (calls.push(enabled), { enabled, by: 'human:kyle' }) });
-    await waitFor(() => byText(r.container, 'button', 'Change the startup probe...'), r);
-    await r.act(() => byText(r.container, 'button', 'Change the startup probe...').click());
+    let st = noSettings();
+    const r = mountWith({
+      routeSettingsGet: async () => st,
+      routeProbeStartup: async (enabled) => (calls.push(enabled), (st = { ...st, probeStartup: enabled, probeStartupBy: 'human:kyle' }), { enabled, by: 'human:kyle' }),
+    });
+    const box = await waitFor(() => need(r, '[data-testid="startup-probe"][data-on]'), r);
+    expect(box.getAttribute('data-on')).toBe('false');
+    expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('Off (the default).');
+    const sw = box.querySelector('button') as HTMLButtonElement;
+    await r.act(() => sw.click());
     await waitFor(has(r, 'every time Drydock starts. That can cost a little.'), r);
     expect(calls.length).toBe(0);
     await r.act(() => byText(r.container, 'button', 'Turn on').click());
     await waitFor(() => expect(calls).toEqual([true]), r);
-    await waitFor(has(r, 'Startup probe: on (set in this session).'), r);
+    await waitFor(() => expect(need(r, '[data-testid="startup-probe"]').getAttribute('data-on')).toBe('true'), r);
+    expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('On, turned on by kyle.');
+    expect(r.$('[data-testid="startup-probe-confirm"]')).toBeNull();
+    // turning it off needs no warning
+    await r.act(() => (need(r, '[data-testid="startup-probe"] button') as HTMLButtonElement).click());
+    await waitFor(() => expect(calls).toEqual([true, false]), r);
+    await waitFor(() => expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('Off, turned off by kyle.'), r);
+  });
+
+  it('a startup probe turned on earlier shows as on when the page opens (F8)', async () => {
+    const r = mountWith({ routeSettingsGet: async () => ({ ...noSettings(), probeStartup: true, probeStartupBy: 'human:sam' }) });
+    await waitFor(() => expect(need(r, '[data-testid="startup-probe"]').getAttribute('data-on')).toBe('true'), r);
+    expect(need(r, '[data-testid="startup-probe-state"]').textContent).toBe('On, turned on by sam.');
+  });
+
+  it('folds the rules, the preview and the limits; the limits open by themselves when one is set (F8)', async () => {
+    const r = mountWith({});
+    const rules = await waitFor(() => need(r, '[data-testid="routing-rules-fold"]'), r);
+    expect((rules as HTMLDetailsElement).open).toBe(false);
+    expect((need(r, '[data-testid="routing-preview-fold"]') as HTMLDetailsElement).open).toBe(false);
+    expect((need(r, '[data-testid="routing-limits-fold"]') as HTMLDetailsElement).open).toBe(false);
+    cleanup();
+    const set = mountWith({ routeSettingsGet: async () => ({ ...noSettings(), ceilings: { levels: { balanced: 2700 }, agents: {} } }) });
+    await waitFor(() => expect((need(set, '[data-testid="routing-limits-fold"]') as HTMLDetailsElement).open).toBe(true), set);
   });
 
   it('cheap selection lists cheap private providers, shows the stored choice and probes on a button', async () => {

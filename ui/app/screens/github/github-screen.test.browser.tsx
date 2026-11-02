@@ -7,6 +7,7 @@ import { byText, cleanup, mount, testServices, waitFor } from '../../test/render
 import { conn, kinds } from '../integrations/fixtures.ts';
 import { galleryCard, projServer } from '../mcp/fixtures.ts';
 import { GitHubDetail, signInState, syncChip } from './github-screen.tsx';
+import { focusRereadGap, FOCUS_REREAD_MS } from '../../lib/focus.ts';
 
 afterEach(cleanup);
 
@@ -278,6 +279,27 @@ describe('GitHub on the Integrations page', () => {
     expect(line(u, '[data-testid="gh-state"]')).toContain('GitHub did not answer');
   });
 
+  it('reads github.status again when the window gets focus back, once a minute at most (F11)', async () => {
+    let reads = 0;
+    let signedIn = false;
+    const r = show({ githubStatus: async () => (reads++, signedIn ? { installed: true, loggedIn: true, login: 'kyle' } : { installed: true, loggedIn: false, login: '' }) });
+    await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('not signed in'), r);
+    await r.act(() => {});
+    const before = reads;
+    window.dispatchEvent(new Event('focus'));
+    await r.act(() => {});
+    expect(reads).toBe(before);
+    signedIn = true;
+    focusRereadGap.ms = 0;
+    try {
+      window.dispatchEvent(new Event('focus'));
+      await waitFor(() => expect(reads).toBe(before + 1), r);
+      await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('kyle'), r);
+    } finally {
+      focusRereadGap.ms = FOCUS_REREAD_MS;
+    }
+  });
+
   it('says it is checking gh, and the error when github.status fails', async () => {
     const r = show({ githubStatus: () => new Promise(() => {}) });
     await waitFor(() => expect(text(r, '[data-testid="gh-signin-state"]')).toContain('Checking gh'), r);
@@ -288,6 +310,26 @@ describe('GitHub on the Integrations page', () => {
 });
 
 describe('the Repositories table', () => {
+  it('a private repository\'s "Run its CI on this PC" opens Add a runner with it chosen (F5)', async () => {
+    const r = show({
+      githubProjectRepos: async () =>
+        repos([
+          row({ projectId: 'prj_1', state: 'github', repo: 'kyle/gocalc', private: true }),
+          row({ projectId: 'prj_2', project: 'site', state: 'github', repo: 'kyle/site', private: false }),
+        ]),
+    });
+    await waitFor(() => expect(r.$$('[data-testid="repo-row"]').length).toBe(2), r);
+    // a public repository is refused by the runners, so its row offers nothing
+    expect(r.$$('[data-testid="repo-run-ci"]').length).toBe(1);
+    await r.act(() => (r.$('[data-testid="repo-run-ci"]') as HTMLButtonElement).click());
+    const pick = await waitFor(() => {
+      const el = r.$('dialog[open] [data-testid="runner-repo-pick"]') as HTMLElement | null;
+      if (!el) throw new Error('the dialog is not open with the list');
+      return el;
+    }, r);
+    expect(pick.getAttribute('data-value')).toBe('kyle/gocalc');
+  });
+
   const all = (): ProjectRepoRow[] => [
     row({ projectId: 'prj_1', project: 'gocalc', state: 'github', repo: 'kyle/gocalc', url: 'https://github.com/kyle/gocalc', defaultBranch: 'main', ci: 'passing', openPullRequests: 2, checkedAt: 1 }),
     row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', defaultBranch: 'trunk', ci: 'failing', openPullRequests: 1 }),
