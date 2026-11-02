@@ -161,6 +161,18 @@ export function pickLogSource(logs: readonly LogSource[]): LogSource | undefined
   return newest(failed) ?? newest(logs);
 }
 
+/**
+ * The log the Logs tab shows while the person has not picked one, given the one it shows now (`shown`, kept only in memory). It
+ * stays on that log while it is listed and moves only when another source starts running: a stream that stops does not hand the
+ * view to an older failed check (X23).
+ */
+export function autoLogSource(logs: readonly LogSource[], shown: string | undefined): LogSource | undefined {
+  const pick = pickLogSource(logs);
+  const current = shown === undefined ? undefined : logs.find((l) => l.id === shown);
+  if (!current) return pick;
+  return pick && pick.running && pick.id !== current.id ? pick : current;
+}
+
 /** The Logs list's filter: every log, or only the failed checks. */
 export type LogFilter = 'all' | 'failed';
 

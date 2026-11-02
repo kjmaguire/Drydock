@@ -385,6 +385,28 @@ describe('the logs panel', () => {
     await waitFor(() => expect(text(other.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), other);
   });
 
+  it('stays on the stream it opened when the stream stops, not moving to an older failed check (X23)', async () => {
+    let running = true;
+    const s = testServices({
+      logsList: async () => [
+        { id: 'ev:1', kind: 'check', title: 'test', size: 10, passed: false, created: 1 },
+        { id: 'nx:r|work|2|1', kind: 'agent', title: 'work (step 2)', size: 10, created: 2, running },
+      ],
+      logsRead: async (_t, id) => ({ text: `tail of ${id}\n`, start: 0, next: 10, size: 10 }),
+    });
+    const r = mount(<LogsPanel taskId="t1" />, s);
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
+    const pre = r.$('[data-testid="log-text"]');
+    running = false;
+    s.emit({ type: 'task.updated', taskId: 't1' });
+    await waitFor(() => expect(r.$('ul[aria-label="Logs"]')!.textContent).not.toContain('running'), r);
+    await drain();
+    r.root.flush();
+    expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1');
+    // the same view, not remounted on it
+    expect(r.$('[data-testid="log-text"]')).toBe(pre);
+  });
+
   it('shows every log or only the failed checks (X25)', async () => {
     const r = mount(
       <LogsPanel taskId="t1" />,

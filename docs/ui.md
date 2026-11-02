@@ -381,7 +381,8 @@ shell (pwsh when installed), the job assignment race for children started in the
 The Logs tab (`ui/app/screens/dock/logs-panel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the
 `stream.jsonl` of each node execution that streamed something) through `logs.list`. It opens on the log that matters until the person
 picks one: a stream still being written, else the newest failed check no later run of the same check passed, else the newest log
-(`pickLogSource`, X23). All and Failed filter the list (X25). An agent stream is named by its agent, "Ada · work (step 2)" with the
+(`pickLogSource`, X23). Once open, it stays on that log when a list reload would pick another, for example when the stream it shows
+stops, and moves by itself only when another source starts running (`autoLogSource`). All and Failed filter the list (X25). An agent stream is named by its agent, "Ada · work (step 2)" with the
 agent's avatar, from the turn's context manifest (`LogSource.agentId`, X210). The tab reads them by byte range through
 `logs.read` (the tail first, earlier output on request, new output followed while running). The log is one `<pre>` holding at most 5,000 lines in memory (not virtualized); it is a named, focusable `role="log"` with `aria-live="off"`, because its text is replaced on every poll and would otherwise be read out whole each time. An agent stream is rendered as
 readable lines (text as it streamed, `[tool]`, `[result]`, `[usage]`, `[error]`); a log is named by an id Drydock gave it, never

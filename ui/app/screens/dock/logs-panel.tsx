@@ -1,6 +1,7 @@
 // A task's check logs and agent streams (docs/ui.md 2, the Logs tab). Read by range: the tail first, then whatever is
 // appended while the source is written; earlier output on request. It opens on the log that matters (pickLogSource: the running
-// stream, else the newest failed check) until the person picks one, which is remembered per task (X22, X23); the list shows
+// stream, else the newest failed check) and stays there, moving only when another source starts running (autoLogSource), until
+// the person picks one, which is remembered per task (X22, X23); the list shows
 // every log or only the failed checks (X25), and an agent stream is named by its agent (X210).
 
 import { css, on, ref, type Handle } from 'remix/component';
@@ -15,7 +16,7 @@ import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { t } from '../../ui/tokens.ts';
-import { filterLogs, LOG_CHUNK, LogBuffer, pickLogSource, type LogFilter } from './dock-format.ts';
+import { autoLogSource, filterLogs, LOG_CHUNK, LogBuffer, type LogFilter } from './dock-format.ts';
 import { errorSlot, pane, paneHead, panel, segmented, sideList, split, toolbar } from './dock-ui.tsx';
 
 const itemTop = css({ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '0' });
@@ -54,6 +55,8 @@ export function LogsPanel(handle: Handle<{ taskId: string }>) {
   watch(handle, s.project);
   let selected = s.ui.dockView(handle.props.taskId).log;
   let filter: LogFilter = 'all';
+  // what the tab chose by itself (not remembered): it stays there until another source starts running
+  let auto: string | undefined;
   const list = query<LogSource[]>(handle, {
     load: () => s.client.logsList(handle.props.taskId),
     when: (e) => e.taskId === handle.props.taskId,
@@ -66,7 +69,8 @@ export function LogsPanel(handle: Handle<{ taskId: string }>) {
     if (list.loading && !list.data) return <Loading label="Loading logs..." />;
     const all = list.data ?? [];
     const logs = filterLogs(all, filter);
-    const current = logs.find((l) => l.id === selected) ?? pickLogSource(logs);
+    const current = logs.find((l) => l.id === selected) ?? autoLogSource(logs, auto);
+    if (current && current.id !== selected) auto = current.id;
     const agents = s.project.agentList;
     const agentName = (id: string) => agents.find((a) => a.id === id)?.name;
     const failed = all.filter((l) => l.passed === false).length;

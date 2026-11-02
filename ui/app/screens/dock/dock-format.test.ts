@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { createDockClient, decodeBase64, type LogSource } from '../../api/dockClient.ts';
 import { FakeTransport } from '../../test/fakes.ts';
-import { diffAriaLabels, diffTotals, filterLogs, formatSize, LogBuffer, pickLogSource, orderedWriter, parseColor, splitPath, TERMINAL_READ_RETRIES, terminalReadRetry, toHex, withAlpha } from './dock-format.ts';
+import { diffAriaLabels, diffTotals, autoLogSource, filterLogs, formatSize, LogBuffer, pickLogSource, orderedWriter, parseColor, splitPath, TERMINAL_READ_RETRIES, terminalReadRetry, toHex, withAlpha } from './dock-format.ts';
 
 describe('the dock client', () => {
   it('decodes terminal output from base64 and turns null lists into empty ones', async () => {
@@ -173,6 +173,20 @@ describe('the log the Logs tab opens on (X23) and its filter (X25)', () => {
 
   it('takes the later of two logs created at once, as the list orders them', () => {
     expect(pickLogSource([log('ev:1', 4), log('nx:w', 4, { kind: 'agent' })])?.id).toBe('nx:w');
+  });
+
+  it('stays on the log it shows when its stream stops, and moves only to a source that starts running', () => {
+    const failed = log('ev:1', 1, { passed: false });
+    const work = log('nx:work', 2, { kind: 'agent', title: 'work (step 2)', running: true });
+    expect(autoLogSource([failed, work], undefined)?.id).toBe('nx:work');
+    const stopped = { ...work, running: false };
+    expect(pickLogSource([failed, stopped])?.id).toBe('ev:1');
+    expect(autoLogSource([failed, stopped], 'nx:work')?.id).toBe('nx:work');
+    const review = log('nx:review', 3, { kind: 'agent', title: 'review (step 3)', running: true });
+    expect(autoLogSource([failed, stopped, review], 'nx:work')?.id).toBe('nx:review');
+    // the shown log no longer listed (another filter): the pick
+    expect(autoLogSource([failed], 'nx:work')?.id).toBe('ev:1');
+    expect(autoLogSource([], 'nx:work')).toBeUndefined();
   });
 
   it('shows every log, or only the failed checks', () => {
