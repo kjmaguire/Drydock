@@ -1,11 +1,11 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
-import type { Plan, ProposedTask } from '../../api/extTypes.ts';
+import type { DevSettings, Milestone, Plan, ProposedTask, TickResult } from '../../api/extTypes.ts';
 import type { Agent } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
-import { PlanReview, PlanScreen } from './plan-screen.tsx';
+import { AfterAccept, PlanReview, PlanScreen } from './plan-screen.tsx';
 
 afterEach(cleanup);
 
@@ -52,7 +52,7 @@ describe('PlanReview', () => {
     const calls: [string, string[], Record<string, ProposedTask>][] = [];
     let done = 0;
     const s = testServices({
-      planAccept: async (id, accept, edits) => (calls.push([id, accept ?? [], edits ?? {}]), {}),
+      planAccept: async (id, accept, edits) => (calls.push([id, accept ?? [], edits ?? {}]), plan({ status: 'ACCEPTED' })),
     });
     const p = plan({
       proposal: {
@@ -150,6 +150,100 @@ describe('PlanReview', () => {
     }, r);
     expect(accept.title).toContain('read-only');
     expect(r.$('[data-testid="readonly-note"]')).not.toBe(null);
+  });
+});
+
+describe('PlanReview: who can take each task (X46)', () => {
+  const qa = { ...pt('q'), title: 'Task q', role: 'qa' };
+  const withCrew = (over: Partial<Plan> = {}) =>
+    plan({ proposal: { tasks: [pt('a'), pt('b', ['a']), qa], notes: '' }, assignable: { a: true, b: true, q: false }, crewRoles: ['backend', 'reviewer'], ...over });
+
+  it('names a task nobody on the crew can take, with Add one and Change role, and Accept counts them', async () => {
+    const r = mount(<PlanReview plan={withCrew({ plannedBy: 'Priya' })} onDone={() => undefined} />, testServices());
+    r.root.flush();
+    expect(r.$('[data-testid="plan-by"]')!.textContent).toBe('Planned by Priya');
+    const warn = r.$$('[data-testid="plan-task-nobody"]');
+    expect(warn.length).toBe(1);
+    expect(warn[0]!.closest('[data-testid="plan-task"]')!.getAttribute('data-key')).toBe('q');
+    expect(warn[0]!.textContent).toContain('No qa agent on the crew');
+    expect(byText(r.container, 'a', 'Add one').getAttribute('href')).toBe('/team?new=agent');
+    byText(r.container, 'button', 'Accept 3 tasks · 1 has nobody');
+    // clearing the task takes it out of the count
+    await r.act(() => box(r.container, 'Create Task q').click());
+    byText(r.container, 'button', 'Accept 2 tasks');
+    await r.act(() => box(r.container, 'Create Task q').click());
+    // Change role opens the editor with the crew's roles; choosing one someone has clears the warning
+    await r.act(() => byText(r.container, 'button', 'Change the role of Task q').click());
+    type(byLabel<HTMLElement>(r.container, 'Role'), 'backend');
+    await r.act(() => byText(r.container, 'button', 'Keep my edits').click());
+    expect(r.$$('[data-testid="plan-task-nobody"]').length).toBe(0);
+    byText(r.container, 'button', 'Accept 3 tasks');
+  });
+
+  it('claims nothing when the core did not say who can take the tasks', () => {
+    const r = mount(<PlanReview plan={plan()} onDone={() => undefined} />, testServices());
+    r.root.flush();
+    expect(r.$('[data-testid="plan-task-nobody"]')).toBe(null);
+    byText(r.container, 'button', 'Accept 4 tasks');
+  });
+});
+
+describe('Accept and start (X47)', () => {
+  const dev = { maxParallel: 2, autoSchedule: false, respond: true } as DevSettings;
+  const accepted = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b' } });
+
+  it('Accept and start sends start and hands the scheduler pass back', async () => {
+    const calls: (boolean | undefined)[] = [];
+    let answer: Plan | undefined;
+    const tick: TickResult = { promoted: [], started: ['task_a'], skipped: [], active: 1, capacity: 2, max: 2 };
+    const s = testServices({ planAccept: async (_id, _a, _e, start) => (calls.push(start), { ...accepted, start: tick }) });
+    const r = mount(<PlanReview plan={plan()} onDone={(a) => (answer = a)} />, s);
+    await r.act(() => byText(r.container, 'button', 'Accept and start').click());
+    await waitFor(() => expect(answer?.start?.started).toEqual(['task_a']), r);
+    expect(calls).toEqual([true]);
+  });
+
+  it('the accepted card starts the ready tasks now, says what waits, and switches automatic starts only on a click', async () => {
+    const ticks: string[] = [];
+    const saved: DevSettings[] = [];
+    const s = servicesWith({
+      projectdevGet: async () => dev,
+      projectdevSet: async (_p, d) => (saved.push(d), d),
+      schedulerTick: async (p) => (ticks.push(p), { promoted: ['task_a'], started: ['task_a'], skipped: [{ taskId: 'task_b', reason: 'no worker or reviewer assigned' }], active: 1, capacity: 1, max: 2 }),
+    });
+    const r = mount(<PlanReview plan={accepted} onDone={() => undefined} />, s);
+    const startBtn = await waitFor(() => byText<HTMLButtonElement>(r.container, 'button', 'Start now (up to 2 at once)'), r);
+    expect(saved).toEqual([]);
+    const sw = byLabel<HTMLElement>(r.container, 'Start the rest as each one finishes');
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    await r.act(() => startBtn.click());
+    const st = await waitFor(() => must(r.$('[data-testid="plan-started"]')), r);
+    expect(ticks).toEqual(['prj_1']);
+    expect(st.textContent).toContain('Started 1 task. 1 task waits:');
+    expect(st.textContent).toContain('Task b');
+    expect(st.textContent).toContain('no worker or reviewer assigned');
+    await r.act(() => sw.click());
+    await waitFor(() => expect(saved.map((d) => d.autoSchedule)).toEqual([true]), r);
+    expect(saved[0]!.maxParallel).toBe(2);
+  });
+
+  it('shows the pass of an Accept and start without another click', () => {
+    const r = mount(<AfterAccept plan={accepted} started={{ promoted: [], started: ['task_a', 'task_b'], skipped: [], active: 2, capacity: 2, max: 2 }} />, testServices({ projectdevGet: async () => dev }));
+    r.root.flush();
+    expect(r.$('[data-testid="plan-started"]')!.textContent).toContain('Started 2 tasks.');
+  });
+
+  it('creates a milestone from the plan with its created tasks (X49)', async () => {
+    const made: unknown[][] = [];
+    const s = testServices({
+      projectdevGet: async () => dev,
+      milestoneCreate: async (...args) => (made.push(args), { id: 'ms_1', title: 'Add arithmetic', taskIds: ['task_a', 'task_b'] } as Milestone),
+    });
+    const r = mount(<AfterAccept plan={accepted} />, s);
+    await r.act(() => byText(r.container, 'button', 'Create a milestone from this plan').click());
+    await waitFor(() => must(r.$('[data-testid="plan-milestone"]')), r);
+    expect(made).toEqual([['prj_1', 'Add arithmetic', undefined, undefined, ['task_a', 'task_b']]]);
+    expect(r.$('[data-testid="plan-milestone"]')!.textContent).toContain('created with 2 tasks');
   });
 });
 

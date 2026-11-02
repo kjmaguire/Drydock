@@ -129,13 +129,53 @@ describe('RequirementsScreen', () => {
     type(byLabel<HTMLElement>(r.container, 'Task to link'), 't1');
     type(byLabel<HTMLTextAreaElement>(r.container, /^Criteria \(one per line/), 'Given a cart, when paid, then an order exists');
     r.root.flush();
-    await r.act(() => byText(r.container, 'button', 'Link').click());
+    // a task without criteria of its own opens the box for other criteria at once
+    expect((r.$('[data-testid="req-other-criteria"]') as HTMLDetailsElement).open).toBe(true);
+    await r.act(() => byText(r.container, 'button', 'Link 1 criterion of #1').click());
     await waitFor(() => expect(linked).toEqual([['req_1', 't1', ['Given a cart, when paid, then an order exists']]]), r);
     type(byLabel(r.container, 'Title'), 'Search');
     type(byLabel<HTMLTextAreaElement>(r.container, 'Text'), 'Search must be fast');
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Add requirement').click());
     await waitFor(() => expect(added).toEqual([['prj_1', 'Search', 'Search must be fast']]), r);
+  });
+
+  it("links a task's own acceptance criteria in one click; a line the core would refuse is said before the click (X42)", async () => {
+    const linked: unknown[][] = [];
+    const t2 = {
+      ...task,
+      id: 't2',
+      seq: 12,
+      title: 'Pay',
+      acceptance: ['AC1: Given a cart, when paid, then an order exists', 'AC2: Given an order, when shipped, then mail goes out', 'Looks nice'],
+    } as Task;
+    const r = mount(<RequirementsScreen />, servicesWith({ taskList: async () => [task, t2], requirementLink: async (...a) => (linked.push(a), []) }));
+    const row = await waitFor(() => need(r.$('[data-testid="requirement"]')), r);
+    await r.act(() => byText(row, 'button', 'Open').click());
+    const detail = await waitFor(() => need(r.$('[data-testid="requirement-detail"]')), r);
+    expect(detail.textContent).not.toContain('must appear in this requirement');
+    await waitFor(() => byText(r.container, '[role="option"]', '#12 Pay'), r);
+    type(byLabel<HTMLElement>(r.container, 'Task to link'), 't2');
+    r.root.flush();
+    const own = need(r.$('[data-testid="req-own-criteria"]'));
+    const boxes = Array.from(own.querySelectorAll<HTMLInputElement>('input[type=checkbox]'));
+    expect(boxes.map((b) => [b.checked, b.disabled])).toEqual([[true, false], [true, false], [false, true]]);
+    expect(own.textContent).toContain('cannot be linked');
+    expect((r.$('[data-testid="req-other-criteria"]') as HTMLDetailsElement).open).toBe(false);
+    byText(r.container, 'button', 'Link 2 criteria of #12');
+    await r.act(() => boxes[1]!.click());
+    // a typed line that is not Given/When/Then turns Link off and says which
+    await r.act(() => {
+      (r.$('[data-testid="req-other-criteria"]') as HTMLDetailsElement).open = true;
+    });
+    type(byLabel<HTMLTextAreaElement>(r.container, /^Criteria \(one per line/), 'Make it fast');
+    r.root.flush();
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Link 2 criteria of #12').disabled).toBe(true);
+    expect(detail.textContent).toContain('not written as Given, when, then: "Make it fast"');
+    type(byLabel<HTMLTextAreaElement>(r.container, /^Criteria \(one per line/), '');
+    r.root.flush();
+    await r.act(() => byText(r.container, 'button', 'Link 1 criterion of #12').click());
+    await waitFor(() => expect(linked).toEqual([['req_1', 't2', ['AC1: Given a cart, when paid, then an order exists']]]), r);
   });
 
   it('says the task choice for linking criteria holds only the newest tasks while the project has more (M21)', async () => {

@@ -534,6 +534,30 @@ func (a *agentsDev) proposePlan(ctx context.Context, projectID, goal, requiremen
 	return map[string]any{"planId": pi.PlanID, "runId": id, "plannerAgentId": plannerID}, nil
 }
 
+// planView is a stored plan as the Plan screen reads it: per proposed task whether anyone on the crew has its role (what the
+// create step's Assign needs), the crew's plan roles (to judge a role the person edits), and the planner's name. Start is the
+// scheduler pass of an "Accept and start".
+type planView struct {
+	pipeline.Plan
+	Assignable map[string]bool      `json:"assignable"`
+	CrewRoles  []string             `json:"crewRoles"`
+	PlannedBy  string               `json:"plannedBy,omitempty"`
+	Start      *pipeline.TickResult `json:"start,omitempty"`
+}
+
+func planViewOf(p pipeline.Plan, team []pipeline.TeamMember) planView {
+	v := planView{Plan: p, Assignable: map[string]bool{}, CrewRoles: pipeline.CrewPlanRoles(team)}
+	if p.Proposal != nil {
+		v.Assignable = pipeline.PlanAssignable(*p.Proposal, team)
+	}
+	for _, m := range team {
+		if m.ID == p.Planner {
+			v.PlannedBy = m.Name
+		}
+	}
+	return v
+}
+
 // answerPlan answers the plan's review request as the human.
 func (a *agentsDev) answerPlan(ctx context.Context, planID, decision string, data any) (pipeline.Plan, error) {
 	p, err := pipeline.GetPlan(ctx, a.c.DB, planID)
@@ -742,19 +766,49 @@ func (a *agentsDev) methods() map[string]Method {
 		"plan.get": bind(func(ctx context.Context, p struct {
 			PlanID string `json:"planId"`
 		}) (any, error) {
-			return pipeline.GetPlan(ctx, c.DB, p.PlanID)
+			pl, err := pipeline.GetPlan(ctx, c.DB, p.PlanID)
+			if err != nil {
+				return nil, err
+			}
+			team, _ := a.team(ctx, pl.ProjectID)
+			return planViewOf(pl, team), nil
 		}),
 		"plan.list": bind(func(ctx context.Context, p struct {
 			ProjectID string `json:"projectId"`
 		}) (any, error) {
-			return pipeline.ListPlans(ctx, c.DB, p.ProjectID)
+			pls, err := pipeline.ListPlans(ctx, c.DB, p.ProjectID)
+			if err != nil {
+				return nil, err
+			}
+			team, _ := a.team(ctx, p.ProjectID)
+			out := make([]planView, len(pls))
+			for i, pl := range pls {
+				out[i] = planViewOf(pl, team)
+			}
+			return out, nil
 		}),
+		// start: the person's "Accept and start" click; once the tasks exist the scheduler is asked once to start the ready ones
+		// within the project's limits (it starts nothing that is not ready, assigned and free to run)
 		"plan.accept": bind(func(ctx context.Context, p struct {
 			PlanID string                           `json:"planId"`
 			Accept []string                         `json:"accept"`
 			Edits  map[string]pipeline.ProposedTask `json:"edits"`
+			Start  bool                             `json:"start"`
 		}) (any, error) {
-			return a.answerPlan(ctx, p.PlanID, "approved", pipeline.PlanAcceptData{Accept: p.Accept, Edits: p.Edits})
+			pl, err := a.answerPlan(ctx, p.PlanID, "approved", pipeline.PlanAcceptData{Accept: p.Accept, Edits: p.Edits})
+			if err != nil {
+				return nil, err
+			}
+			team, _ := a.team(ctx, pl.ProjectID)
+			v := planViewOf(pl, team)
+			if p.Start && pl.Status == "ACCEPTED" {
+				tick, err := a.sched.Tick(ctx, pl.ProjectID)
+				if err != nil {
+					return nil, err
+				}
+				v.Start = &tick
+			}
+			return v, nil
 		}),
 		"plan.reject": bind(func(ctx context.Context, p struct {
 			PlanID string `json:"planId"`

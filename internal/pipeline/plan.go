@@ -467,6 +467,35 @@ type PlanTaskView struct {
 	Assignable bool `json:"assignable"` // the team has an agent for the role
 }
 
+// CrewPlanRoles are the plan roles the team has an agent for, each once, in PlanRoles order. A planned task whose role is not
+// among them is created without a worker (the Assign step finds nobody to give it to).
+func CrewPlanRoles(team []TeamMember) []string {
+	have := map[string]bool{}
+	for _, m := range team {
+		have[NormalizePlanRole(m.Role)] = true
+	}
+	out := []string{}
+	for _, r := range PlanRoles {
+		if have[r] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// PlanAssignable tells, per task key of a proposal, whether the team has an agent for the task's role.
+func PlanAssignable(p Proposal, team []TeamMember) map[string]bool {
+	roles := map[string]bool{}
+	for _, r := range CrewPlanRoles(team) {
+		roles[r] = true
+	}
+	out := make(map[string]bool, len(p.Tasks))
+	for _, t := range p.Tasks {
+		out[t.Key] = roles[t.Role]
+	}
+	return out
+}
+
 // PlanResult is what the create node reports.
 type PlanResult struct {
 	Created    map[string]string `json:"created"` // key -> task id
@@ -615,14 +644,10 @@ func (pd PlanDeps) planReview() workflow.NodeHandler {
 		if pd.Team != nil {
 			team, _ = pd.Team(ctx, pi.ProjectID)
 		}
+		can := PlanAssignable(p, team)
 		views := make([]PlanTaskView, len(p.Tasks))
 		for i, t := range p.Tasks {
-			views[i] = PlanTaskView{ProposedTask: t}
-			for _, m := range team {
-				if NormalizePlanRole(m.Role) == t.Role {
-					views[i].Assignable = true
-				}
-			}
+			views[i] = PlanTaskView{ProposedTask: t, Assignable: can[t.Key]}
 		}
 		payload, _ := json.Marshal(PlanReviewPayload{Phase: "plan", PlanID: pi.PlanID, Goal: pi.Goal, Tasks: views, Notes: p.Notes, Order: TopoOrder(p),
 			Note: "Approve to create the tasks in BACKLOG (all of them, or only data.accept = a list of keys that is closed under dependsOn). data.edits may change title, description, role, template, priority or acceptance of a task. Reject to discard the plan."})

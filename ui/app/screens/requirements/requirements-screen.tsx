@@ -21,7 +21,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, linkedTaskIds, titleFromFile } from './requirements.ts';
+import { documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, linkCriteria, linkedTaskIds, linkLabel, titleFromFile } from './requirements.ts';
 
 // --- trace ---
 
@@ -213,6 +213,17 @@ const twoCol = css({
   alignItems: 'start',
 });
 const subForm = css({ display: 'grid', gap: t.s3 });
+const ownCss = css({
+  display: 'grid',
+  gap: t.s2,
+  margin: '0',
+  padding: '0',
+  listStyle: 'none',
+  fontSize: t.textMd,
+  '& label': { display: 'flex', alignItems: 'flex-start', gap: t.s2 },
+  '& input': { marginTop: '3px', flex: 'none' },
+});
+const summaryCss = css({ cursor: 'pointer', width: 'fit-content', color: t.textMuted, fontSize: t.textSm, fontWeight: '500', marginBottom: t.s2 });
 
 /** Which passage a button speaks of, for its accessible name: the heading it sits under (the document's own words, so hidden characters are written out and a long chain is cut). */
 function passageName(headingPath: string): string {
@@ -251,6 +262,15 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
   let newText = '';
   let taskId = '';
   let criteria = '';
+  // the chosen task's criteria the person keeps ticked (by index); the box for other criteria opens when the task has none
+  let ticked = new Set<number>();
+  let otherOpen = false;
+  const choose = (v: string) => {
+    taskId = v;
+    const crit = handle.props.tasks.find((x) => x.id === v)?.acceptance ?? [];
+    ticked = new Set(crit.map((c, i) => (isGWT(c) ? i : -1)).filter((i) => i >= 0));
+    otherOpen = !!v && crit.length === 0;
+  };
   const set = (fn: () => void) => {
     fn();
     void handle.update();
@@ -267,6 +287,10 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     const { r, tasks } = handle.props;
     const busy = act.busy !== '';
     const linkList = links.data ?? [];
+    const chosen = tasks.find((x) => x.id === taskId);
+    const own = chosen?.acceptance ?? [];
+    const plan = linkCriteria(own, ticked, criteria);
+    const canLink = !busy && !!chosen && plan.criteria.length > 0 && plan.refused.length === 0;
     return (
       <section mix={detailCss} aria-label={`Requirement ${r.title}`} data-testid="requirement-detail">
         <header>
@@ -336,8 +360,8 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                 subForm,
                 on('submit', async (e) => {
                   e.preventDefault();
-                  if (busy || !taskId || !criteria.trim()) return;
-                  const x = await act.run('link', () => s.client.requirementLink(r.id, taskId, criteriaLines(criteria)));
+                  if (!canLink) return;
+                  const x = await act.run('link', () => s.client.requirementLink(r.id, taskId, plan.criteria));
                   if (x) {
                     criteria = '';
                     done();
@@ -352,17 +376,61 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                     label="Task to link"
                     value={taskId}
                     options={[{ value: '', label: 'Choose a task' }, ...tasks.map((tk) => ({ value: tk.id, label: `#${tk.seq} ${tk.title}` }))]}
-                    onChange={(v) => set(() => (taskId = v))}
+                    onChange={(v) => set(() => choose(v))}
                   />
                 )}
               </Field>
               <TaskTotalNotice>Older tasks cannot be chosen here.</TaskTotalNotice>
-              <Field label="Criteria (one per line; they must appear in this requirement)">
-                {(fid) => <textarea id={fid} rows={3} value={criteria} mix={on('input', (e) => set(() => (criteria = e.currentTarget.value)))} />}
-              </Field>
+              {chosen && own.length > 0 ? (
+                <ul mix={ownCss} aria-label={`Acceptance criteria of #${chosen.seq}`} data-testid="req-own-criteria">
+                  {own.map((c, i) => {
+                    const ok = isGWT(c);
+                    return (
+                      <li key={i}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={ok && ticked.has(i)}
+                            disabled={!ok}
+                            mix={on('change', (e) =>
+                              set(() => {
+                                ticked = new Set(ticked);
+                                if (e.currentTarget.checked) ticked.add(i);
+                                else ticked.delete(i);
+                              }),
+                            )}
+                          />
+                          <span>{c}</span>
+                        </label>
+                        {ok ? null : <span mix={faint}>Not written as Given, when, then, so it cannot be linked.</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : chosen ? (
+                <p mix={faint}>#{chosen.seq} has no acceptance criteria yet. Write them below.</p>
+              ) : null}
+              <details
+                open={otherOpen}
+                data-testid="req-other-criteria"
+                mix={on('toggle', (e) => {
+                  const o = (e.currentTarget as HTMLDetailsElement).open;
+                  if (o !== otherOpen) set(() => (otherOpen = o));
+                })}
+              >
+                <summary mix={summaryCss}>Write other criteria…</summary>
+                <Field label="Criteria (one per line, each with Given, when and then)">
+                  {(fid) => <textarea id={fid} rows={3} value={criteria} mix={on('input', (e) => set(() => (criteria = e.currentTarget.value)))} />}
+                </Field>
+              </details>
+              {plan.refused.length > 0 ? (
+                <Notice tone="warn">
+                  {plan.refused.length === 1 ? 'This line is' : 'These lines are'} not written as Given, when, then: {plan.refused.map((c) => `"${clip(c, 60)}"`).join(', ')}
+                </Notice>
+              ) : null}
               <div mix={formActions}>
-                <Button type="submit" icon={Link2} disabled={busy || !taskId || !criteria.trim()}>
-                  Link
+                <Button type="submit" icon={Link2} disabled={!canLink}>
+                  {linkLabel(plan.criteria.length, chosen?.seq)}
                 </Button>
               </div>
             </form>

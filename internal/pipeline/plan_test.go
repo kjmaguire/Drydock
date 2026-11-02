@@ -292,3 +292,22 @@ func TestProposedFilesAreValidatedAndKept(t *testing.T) {
 		t.Fatalf("files = %q", got)
 	}
 }
+
+// The Plan screen says before Accept which tasks nobody on the crew can take: the same role match the Assign step makes.
+func TestPlanAssignableFollowsTheCrewRoles(t *testing.T) {
+	p, problems := pipeline.ParseProposal(planJSON(nil))
+	if len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	team := []pipeline.TeamMember{{ID: "a1", Name: "Dana", Role: "Back end"}, {ID: "a2", Name: "Rex", Role: "reviewer"}, {ID: "a3", Name: "Lee", Role: "team lead"}}
+	can := pipeline.PlanAssignable(p, team)
+	if !can["mul"] || !can["div"] || can["docs"] || len(can) != 3 {
+		t.Fatalf("assignable %v", can)
+	}
+	if got := strings.Join(pipeline.CrewPlanRoles(team), ","); got != "backend,reviewer" {
+		t.Fatalf("crew roles %q", got)
+	}
+	if got := pipeline.CrewPlanRoles(nil); got == nil || len(got) != 0 {
+		t.Fatalf("an empty crew has no roles, as an empty list: %#v", got)
+	}
+}

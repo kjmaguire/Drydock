@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Plan, ProposedTask } from '../../api/extTypes.ts';
-import { closure, deselect, editsFor, lines, newestFirst, stepStates, toggle } from './plan.ts';
+import { acceptLabel, assignable, closure, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle } from './plan.ts';
 
 const pt = (key: string, deps: string[] = []): ProposedTask => ({
   key,
@@ -61,5 +61,31 @@ describe('PlanTeam flow', () => {
 
   it('lists the newest plan first', () => {
     expect(newestFirst([plan('A', 1), plan('B', 3), plan('C', 2)]).map((p) => p.createdAt)).toEqual([3, 2, 1]);
+  });
+});
+
+describe('who can take a task, and the words around starting', () => {
+  const p = (over: Partial<Plan> = {}): Plan =>
+    ({ id: 'p', projectId: 'x', runId: 'r', goal: 'g', status: 'PROPOSED', plannerAgent: '', createdAt: 1, proposal: { tasks: [pt('a'), { ...pt('q'), role: 'qa' }] }, ...over }) as Plan;
+
+  it('uses the core answer for the planner role and the crew roles for an edited one', () => {
+    const plan = p({ assignable: { a: true, q: false }, crewRoles: ['backend'] });
+    expect(assignable(plan, pt('a'))).toBe(true);
+    expect(assignable(plan, { ...pt('q'), role: 'qa' })).toBe(false);
+    expect(assignable(plan, { ...pt('q'), role: 'backend' })).toBe(true);
+    expect(assignable(p(), pt('a'))).toBe(undefined);
+    expect(nobodyCount(plan, new Set(['a', 'q']), {})).toBe(1);
+    expect(nobodyCount(plan, new Set(['a', 'q']), { q: { ...pt('q'), role: 'backend' } })).toBe(0);
+  });
+
+  it('says it in words', () => {
+    expect(acceptLabel(1, 0)).toBe('Accept 1 task');
+    expect(acceptLabel(5, 2)).toBe('Accept 5 tasks · 2 have nobody');
+    expect(acceptLabel(5, 1)).toBe('Accept 5 tasks · 1 has nobody');
+    expect(startedText({ promoted: [], started: [], skipped: null, active: 0, capacity: 0, max: 1 })).toBe('Nothing started.');
+    expect(startedText({ promoted: [], started: ['a'], skipped: [{ taskId: 'b', reason: 'x' }, { taskId: 'c', reason: 'y' }], active: 1, capacity: 0, max: 1 })).toBe('Started 1 task. 2 tasks wait:');
+    expect(milestoneTitle('First line\nmore')).toBe('First line');
+    expect(new TextEncoder().encode(milestoneTitle('é'.repeat(150))).length).toBeLessThanOrEqual(200);
+    expect(milestoneTitle('  ')).toBe('Plan');
   });
 });

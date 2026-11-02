@@ -927,6 +927,14 @@ export interface Plan {
   createdAt: number;
   decidedAt?: number;
   decidedBy?: string;
+  /** Per proposed task key: whether an agent on the crew has its role (the create step assigns nobody otherwise). Absent from older cores. */
+  assignable?: Record<string, boolean> | null;
+  /** The plan roles the crew has an agent for, to judge a role the person edits. Absent from older cores. */
+  crewRoles?: string[] | null;
+  /** The planner agent's name. */
+  plannedBy?: string;
+  /** plan.accept with start: the scheduler pass that followed. */
+  start?: TickResult | null;
 }
 export interface SchedulerStatus {
   settings: DevSettings;

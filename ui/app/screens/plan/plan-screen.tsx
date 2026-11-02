@@ -3,21 +3,23 @@
 // outside text: it is rendered inert through the Markdown component and decides nothing.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, CircleCheck, CircleX, GitBranch, ListChecks, Pencil, Sparkles, Target, X } from 'lucide';
-import type { Plan, ProposedTask } from '../../api/extTypes.ts';
+import { Check, CircleCheck, CircleX, Flag, GitBranch, ListChecks, Pencil, Play, Sparkles, Target, UserX, X } from 'lucide';
+import type { DevSettings, Milestone, Plan, ProposedTask, TickResult } from '../../api/extTypes.ts';
 import { routes } from '../../routes.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
 import { Empty, ErrorNote } from '../../ui/feedback.tsx';
-import { Field, formActions, formGrid } from '../../ui/form.tsx';
+import { Field, Switch, formActions, formGrid } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, row } from '../../ui/layout.tsx';
 import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
-import { editsFor, lines, newestFirst, planTone, stageText, STEPS, stepStates, toggle, type StepState } from './plan.ts';
+import { plural } from '../../lib/format.ts';
+import { newAgentHref } from '../work/edit-agent.ts';
+import { acceptLabel, assignable, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, planTone, stageText, startedText, STEPS, stepStates, toggle, type StepState } from './plan.ts';
 
 // --- stepper ---
 
@@ -139,6 +141,8 @@ function Stepper(handle: Handle<{ plan: Plan | undefined }>) {
 function TaskEditor(
   handle: Handle<{
     task: ProposedTask;
+    /** The plan roles the crew has an agent for (from the core); without them the role is typed. */
+    crewRoles?: string[] | null;
     onSave: (t: ProposedTask) => void;
     onCancel: () => void;
   }>,
@@ -154,7 +158,15 @@ function TaskEditor(
     <div mix={editorCss} data-testid="plan-task-editor">
       <div mix={formGrid}>
         <Field label="Title">{(id) => <input id={id} value={title} mix={input((v) => (title = v))} />}</Field>
-        <Field label="Role">{(id) => <input id={id} value={role} mix={input((v) => (role = v))} />}</Field>
+        <Field label="Role">
+          {(id) => {
+            const roles = handle.props.crewRoles;
+            if (!roles) return <input id={id} value={role} mix={input((v) => (role = v))} />;
+            const options: { value: string; label: string; hint?: string }[] = roles.map((r) => ({ value: r, label: r }));
+            if (!roles.includes(t0.role)) options.push({ value: t0.role, label: t0.role, hint: 'nobody on the crew' });
+            return <Select id={id} label="Role" value={role} options={options} onChange={(v) => ((role = v), void handle.update())} />;
+          }}
+        </Field>
       </div>
       <Field label="Description">{(id) => <textarea id={id} rows={3} value={desc} mix={input((v) => (desc = v))} />}</Field>
       <Field label="Acceptance criteria (one per line)">{(id) => <textarea id={id} rows={3} value={acc} mix={input((v) => (acc = v))} />}</Field>
@@ -260,6 +272,7 @@ const taskCss = css({
     fontSize: t.textSm,
   },
   '& .meta': { display: 'flex', alignItems: 'center', gap: t.s2 },
+  '& .nobody': { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', color: t.warning, fontSize: t.textSm, margin: '0' },
   '& .body': { display: 'grid', gap: t.s2, minWidth: '0' },
 });
 const criteriaCss = css({
@@ -293,7 +306,7 @@ const createdLink = css({
 });
 
 /** A proposed plan: the task graph, a dependency-closed selection, edits, and Accept / Reject. All text is the planner's (untrusted). */
-export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
+export function PlanReview(handle: Handle<{ plan: Plan; onDone: (answer?: Plan) => void; started?: TickResult }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -301,11 +314,12 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
   let edits: Record<string, ProposedTask> = {};
   let editing: string | undefined;
 
-  const decide = async (what: 'accept' | 'reject') => {
+  const decide = async (what: 'accept' | 'start' | 'reject') => {
     const { plan, onDone } = handle.props;
-    if (what === 'accept') await act.run('accept', () => s.client.planAccept(plan.id, [...selected], editsFor(selected, edits)));
-    else await act.run('reject', () => s.client.planReject(plan.id));
-    if (!act.error) onDone();
+    let answer: Plan | undefined;
+    if (what === 'reject') await act.run('reject', () => s.client.planReject(plan.id));
+    else answer = await act.run(what, () => s.client.planAccept(plan.id, [...selected], editsFor(selected, edits), what === 'start'));
+    if (!act.error) onDone(answer);
   };
 
   return () => {
@@ -315,6 +329,7 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
     const proposed = plan.status === 'PROPOSED';
     const created = plan.createdTasks ?? {};
     const editedCount = Object.keys(editsFor(selected, edits)).length;
+    const nobody = nobodyCount(plan, selected, edits);
     return (
       <article mix={planCard} data-testid="plan" data-status={plan.status} aria-label={`Plan: ${plan.goal}`}>
         <header mix={planHead}>
@@ -331,6 +346,11 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
           <Badge tone={planTone(plan.status)}>{plan.status.toLowerCase()}</Badge>
         </header>
         <div mix={planBody}>
+          {plan.plannedBy ? (
+            <p mix={muted} style={{ fontSize: 'var(--text-sm)' }} data-testid="plan-by">
+              Planned by {plan.plannedBy}
+            </p>
+          ) : null}
           {plan.error ? <ErrorNote error={plan.error} what="The planner failed" /> : null}
           {plan.proposal?.notes ? (
             <div mix={notesCss}>
@@ -400,6 +420,27 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
                         <span>Depends on none</span>
                       )}
                     </div>
+                    {proposed && assignable(plan, tk) === false ? (
+                      <p class="nobody" data-testid="plan-task-nobody">
+                        <Icon icon={UserX} size={13} />
+                        <span>No {tk.role} agent on the crew</span> ·{' '}
+                        <a href={newAgentHref()} data-testid="plan-add-agent">
+                          Add one
+                        </a>{' '}
+                        ·{' '}
+                        <Button
+                          variant="link"
+                          size="sm"
+                          aria-label={`Change the role of ${tk.title}`}
+                          mix={on('click', () => {
+                            editing = tk.key;
+                            void handle.update();
+                          })}
+                        >
+                          Change role
+                        </Button>
+                      </p>
+                    ) : null}
                     {proposed && editing !== tk.key ? (
                       <div>
                         <Button
@@ -419,6 +460,7 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
                       <TaskEditor
                         key={`edit-${tk.key}`}
                         task={tk}
+                        crewRoles={plan.crewRoles}
                         onSave={(x) => {
                           edits = { ...edits, [tk.key]: x };
                           editing = undefined;
@@ -467,7 +509,15 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
                 title={ro.readOnly ? ro.reason : undefined}
                 mix={on('click', () => void decide('accept'))}
               >
-                Accept {selected.size} task{selected.size === 1 ? '' : 's'}
+                {acceptLabel(selected.size, nobody)}
+              </Button>
+              <Button
+                icon={Play}
+                disabled={act.busy !== '' || ro.readOnly || selected.size === 0}
+                title={ro.readOnly ? ro.reason : 'Create the tasks, then start the ready ones within the project limit'}
+                mix={on('click', () => void decide('start'))}
+              >
+                {act.busy === 'start' ? 'Starting...' : 'Accept and start'}
               </Button>
               <Button disabled={act.busy !== ''} mix={on('click', () => void decide('reject'))}>
                 Reject plan
@@ -475,9 +525,109 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: () => void }>) {
             </div>
           </div>
         ) : null}
+        {plan.status === 'ACCEPTED' && Object.keys(created).length > 0 ? <AfterAccept plan={plan} started={handle.props.started} /> : null}
       </article>
     );
   };
+}
+
+// --- after an accept: start the work, follow it in a milestone ---
+
+const afterCss = css({
+  display: 'grid',
+  gap: t.s3,
+  padding: t.s4,
+  background: t.bgApp,
+  borderTop: `1px solid ${t.border}`,
+  '& .tick': { display: 'grid', gap: t.s1, fontSize: t.textSm },
+  '& .tick ul': { margin: '0', paddingLeft: '18px' },
+});
+
+/**
+ * The accepted card's next steps: start the ready tasks now (one scheduler pass, the person's click), let the scheduler start the
+ * rest as each one finishes (the project's own automatic scheduling switch, shown as it is and changed only here by the person),
+ * and gather the plan's tasks in a milestone.
+ */
+export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult }>) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  const act = action(handle);
+  const dev = query(handle, { load: () => s.client.projectdevGet(handle.props.plan.projectId), key: () => handle.props.plan.projectId });
+  let tick: TickResult | undefined = handle.props.started;
+  let milestone: Milestone | undefined;
+
+  const start = async () => {
+    const r = await act.run('tick', () => s.client.schedulerTick(handle.props.plan.projectId));
+    if (r) (tick = r), void handle.update();
+  };
+  const setAuto = async (cur: DevSettings, on_: boolean) => {
+    const r = await act.run('auto', () => s.client.projectdevSet(handle.props.plan.projectId, { ...cur, autoSchedule: on_ }));
+    if (r) dev.set(r);
+  };
+  const toMilestone = async () => {
+    const { plan } = handle.props;
+    const r = await act.run('milestone', () => s.client.milestoneCreate(plan.projectId, milestoneTitle(plan.goal), undefined, undefined, Object.values(plan.createdTasks ?? {})));
+    if (r) (milestone = r), void handle.update();
+  };
+
+  return () => {
+    const ro = s.workspace.license;
+    const d = dev.data;
+    const busy = act.busy !== '';
+    const max = d?.maxParallel ?? 0;
+    return (
+      <div mix={afterCss} data-testid="plan-after">
+        <ErrorNote error={act.error ?? dev.error} />
+        <div mix={row}>
+          <Button
+            variant="primary"
+            icon={Play}
+            disabled={busy || ro.readOnly}
+            title={ro.readOnly ? ro.reason : undefined}
+            mix={on('click', () => void start())}
+          >
+            {max > 0 ? `Start now (up to ${max} at once)` : 'Start now'}
+          </Button>
+          <Button icon={Flag} disabled={busy || ro.readOnly || !!milestone} mix={on('click', () => void toMilestone())}>
+            Create a milestone from this plan
+          </Button>
+        </div>
+        {d ? (
+          <Switch
+            label="Start the rest as each one finishes"
+            checked={d.autoSchedule}
+            disabled={busy || ro.readOnly}
+            onChange={(v) => void setAuto(d, v)}
+          />
+        ) : null}
+        {tick ? (
+          <div class="tick" role="status" data-testid="plan-started">
+            <p>{startedText(tick)}</p>
+            {(tick.skipped ?? []).length > 0 ? (
+              <ul>
+                {(tick.skipped ?? []).map((sk) => (
+                  <li key={sk.taskId}>
+                    <a href={routes.task.href({ id: sk.taskId })}>{taskName(handle.props.plan, sk.taskId)}</a> <span mix={muted}>{sk.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+        {milestone ? (
+          <p role="status" data-testid="plan-milestone">
+            Milestone &quot;{milestone.title}&quot; created with {plural((milestone.taskIds ?? []).length, 'task')}. <a href={routes.milestones.href()}>Open milestones</a>
+          </p>
+        ) : null}
+      </div>
+    );
+  };
+}
+
+/** The planned task's title for a created task id, else the id. */
+function taskName(plan: Plan, id: string): string {
+  const key = Object.entries(plan.createdTasks ?? {}).find(([, v]) => v === id)?.[0];
+  return (plan.proposal?.tasks ?? []).find((x) => x.key === key)?.title ?? id;
 }
 
 // --- the screen ---
@@ -526,6 +676,12 @@ export function PlanScreen(handle: Handle) {
   let reqs = '';
   let planner = '';
   let sel: string | undefined;
+  // the scheduler pass of the last "Accept and start", shown on that plan's accepted card
+  let started: { planId: string; tick: TickResult } | undefined;
+  const onDone = (answer?: Plan) => {
+    if (answer?.start) started = { planId: answer.id, tick: answer.start };
+    q.reload();
+  };
 
   const propose = async () => {
     const projectId = pid();
@@ -578,7 +734,7 @@ export function PlanScreen(handle: Handle) {
                     <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
                   </div>
                 ) : (
-                  <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
+                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} />
                 )
               ) : q.data ? (
                 <div mix={card}>
@@ -702,7 +858,7 @@ export function PlanScreen(handle: Handle) {
                     <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
                   </div>
                 ) : (
-                  <PlanReview key={current.id + current.status} plan={current} onDone={() => q.reload()} />
+                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} />
                 )
               ) : q.data ? (
                 <div mix={card}>

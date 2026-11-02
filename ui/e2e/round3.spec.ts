@@ -172,7 +172,7 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await page.getByTestId('requirement').filter({ hasText: 'Checkout' }).getByRole('button', { name: 'Open' }).click();
   await choose(page.getByLabel('Task to link'), { label: '#1 Build checkout' });
   await page.getByLabel(/^Criteria \(one per line/).fill('Given a paid cart, when the order is placed, then an order record exists');
-  await page.getByRole('button', { name: 'Link' }).click();
+  await page.getByRole('button', { name: 'Link 1 criterion of #1' }).click();
   await expect(page.getByTestId('req-link')).toContainText('Given a paid cart');
   await expect(page.getByTestId('trace-task')).toContainText('Build checkout');
   await expect(page.getByTestId('trace-task')).toContainText('no test evidence');
@@ -184,8 +184,9 @@ test('knowledge: an expert pack from a local folder is searched with citations; 
   await page.getByRole('button', { name: 'Create milestone' }).click();
   const ms = page.locator('[data-testid=milestone][data-title=Beta]');
   await expect(ms).toBeVisible();
-  await choose(ms.getByLabel('Add a task to Beta'), { label: '#1 Build checkout' });
-  await ms.getByRole('button', { name: 'Add', exact: true }).click();
+  await ms.getByRole('button', { name: 'Add tasks…' }).click();
+  await ms.getByLabel('#1 Build checkout').check();
+  await ms.getByRole('button', { name: 'Add 1 task' }).click();
   await expect(ms).toContainText('0 of 1 completed');
 
   // skills: repository skills are offered, never applied; the human opens the skill's row and accepts in the panel that opens
@@ -322,14 +323,19 @@ test('PlanTeam: the planner proposes a task graph, a dependency-closed subset is
   const plan = page.getByTestId('plan');
   await expect(plan).toBeVisible({ timeout: 90_000 });
   await expect(plan.getByTestId('plan-task')).toHaveCount(2);
+  // the crew is only the pm: nobody can take the backend tasks, and the review says so before Accept
+  await expect(plan.getByTestId('plan-task-nobody')).toHaveCount(2);
   // Divide depends on Multiply: clearing Multiply clears Divide too
   await plan.getByLabel('Create Add Multiply').uncheck();
   await expect(plan.getByLabel('Create Add Divide')).not.toBeChecked();
   await plan.getByLabel('Create Add Divide').check(); // brings Multiply back
   await expect(plan.getByLabel('Create Add Multiply')).toBeChecked();
   await plan.getByLabel('Create Add Divide').uncheck();
-  await plan.getByRole('button', { name: 'Accept 1 task' }).click();
+  await plan.getByRole('button', { name: 'Accept 1 task · 1 has nobody' }).click();
   await expect(page.getByTestId('plan')).toHaveAttribute('data-status', 'ACCEPTED', { timeout: 60_000 });
+  // the accepted card starts the ready tasks: nobody is assigned, so the scheduler says why nothing started
+  await page.getByTestId('plan-after').getByRole('button', { name: /^Start now/ }).click();
+  await expect(page.getByTestId('plan-started')).toContainText('Nothing started.');
   await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('task-row').filter({ hasText: 'Add Multiply' })).toHaveCount(1);
   await expect(page.getByTestId('task-row').filter({ hasText: 'Add Divide' })).toHaveCount(0);

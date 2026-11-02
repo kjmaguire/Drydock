@@ -38,3 +38,29 @@ export function evidenceOutcome(e: Pick<TraceEvidence, 'passed'>): {
 
 /** The distinct tasks among a requirement's links, in first-seen order. */
 export const linkedTaskIds = (links: readonly { taskId: string }[]): string[] => Array.from(new Set(links.map((l) => l.taskId)));
+
+// the core's test for a criterion it links (internal/requirements/trace.go, gwt): Given, then when, then then, in that order
+const GWT = /\bgiven\b[\s\S]+\bwhen\b[\s\S]+\bthen\b[\s\S]+/i;
+
+/** Whether the core takes a line as a Given/When/Then criterion. */
+export const isGWT = (c: string): boolean => GWT.test(c.trim());
+
+/**
+ * What a Link sends: the task's criteria the person kept ticked, then the lines they wrote, each once. Lines the core would refuse
+ * (not Given/When/Then) are named apart, so the button can say so before the click.
+ */
+export function linkCriteria(taskCriteria: readonly string[], ticked: ReadonlySet<number>, other: string): { criteria: string[]; refused: string[] } {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (c: string) => {
+    const k = c.trim().toLowerCase().split(/\s+/).join(' ');
+    if (!seen.has(k)) seen.add(k), out.push(c.trim());
+  };
+  taskCriteria.forEach((c, i) => ticked.has(i) && add(c));
+  const typed = criteriaLines(other);
+  typed.forEach(add);
+  return { criteria: out, refused: typed.filter((c) => !isGWT(c)) };
+}
+
+/** The Link button: "Link 3 criteria of #12". */
+export const linkLabel = (n: number, seq?: number): string => (seq === undefined || n === 0 ? 'Link' : `Link ${n} ${n === 1 ? 'criterion' : 'criteria'} of #${seq}`);

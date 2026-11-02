@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { dueISO, progressText, segments, zeroTime } from './milestones.ts';
+import { dueISO, matchesFilter, progressText, segments, taskGroups, zeroTime } from './milestones.ts';
 
 const p = {
   total: 4,
@@ -31,5 +31,26 @@ describe('Milestone helpers', () => {
       { key: 'inProgress', pct: 25 },
     ]);
     expect(segments({ ...p, total: 0 })).toEqual([]);
+  });
+});
+
+describe('adding many tasks (X49)', () => {
+  it('filters by number, title or label', () => {
+    const x = { seq: 12, title: 'Add Divide', labels: ['math'] };
+    expect([matchesFilter(x, ''), matchesFilter(x, '#12'), matchesFilter(x, 'divide'), matchesFilter(x, 'MATH'), matchesFilter(x, '1'), matchesFilter(x, 'ui')]).toEqual([true, true, true, true, false, false]);
+  });
+
+  it('offers an accepted plan and each label, over the tasks that can still be added', () => {
+    const free = [{ id: 'a', labels: ['ui'] }, { id: 'b' }, { id: 'c', labels: ['api', 'ui'] }];
+    const plans: { id: string; goal: string; status: string; createdTasks: Record<string, string> }[] = [
+      { id: 'p1', goal: 'G', status: 'ACCEPTED', createdTasks: { x: 'a', y: 'z' } },
+      { id: 'p2', goal: 'H', status: 'PROPOSED', createdTasks: { x: 'b' } },
+      { id: 'p3', goal: 'I', status: 'ACCEPTED', createdTasks: { x: 'gone' } },
+    ];
+    expect(taskGroups(free, plans)).toEqual([
+      { key: 'plan:p1', label: 'All tasks of the plan "G"', ids: ['a'] },
+      { key: 'label:api', label: 'All tasks labelled api', ids: ['c'] },
+      { key: 'label:ui', label: 'All tasks labelled ui', ids: ['a', 'c'] },
+    ]);
   });
 });

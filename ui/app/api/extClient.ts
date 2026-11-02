@@ -267,7 +267,7 @@ export interface ExtClient {
   planPropose(projectId: string, goal: string, requirements?: string, plannerAgentId?: string): Promise<{ planId: string; runId: string; plannerAgentId: string }>;
   planGet(planId: string): Promise<Plan>;
   planList(projectId: string): Promise<Plan[]>;
-  planAccept(planId: string, accept?: string[], edits?: Record<string, ProposedTask>): Promise<unknown>;
+  planAccept(planId: string, accept?: string[], edits?: Record<string, ProposedTask>, start?: boolean): Promise<Plan>;
   planReject(planId: string): Promise<unknown>;
   schedulerStatus(projectId: string): Promise<SchedulerStatus>;
   schedulerTick(projectId: string): Promise<TickResult>;
@@ -500,7 +500,7 @@ export function createExtClient(t: Transport): ExtClient {
     planPropose: (projectId, goal, requirements = '', plannerAgentId = '') => call('plan.propose', { projectId, goal, requirements, plannerAgentId }),
     planGet: (planId) => call('plan.get', { planId }),
     planList: async (projectId) => arr(await call<Plan[] | null>('plan.list', { projectId })),
-    planAccept: (planId, accept, edits) => call('plan.accept', { planId, accept, edits }),
+    planAccept: (planId, accept, edits, start) => call('plan.accept', { planId, accept, edits, start: start === true }),
     planReject: (planId) => call('plan.reject', { planId }),
     schedulerStatus: (projectId) => call('scheduler.status', { projectId }),
     schedulerTick: (projectId) => call('scheduler.tick', { projectId }),
