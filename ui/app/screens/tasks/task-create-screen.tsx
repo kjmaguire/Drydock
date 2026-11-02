@@ -76,7 +76,7 @@ export function TaskCreateScreen(handle: Handle<{ onCreated?: (task: Task) => vo
             <Field label="Description" hint="Markdown. What to change and why; the worker reads this.">
               {(id) => <textarea id={id} rows={7} value={description} mix={on('input', (e) => set(() => (description = e.currentTarget.value)))} />}
             </Field>
-            <Field label="Acceptance criteria" hint="One per line, Given / When / Then.">
+            <Field label="Acceptance criteria" hint="One per line, Given / When / Then. Numbered for you (AC1, AC2...).">
               {(id) => (
                 <textarea
                   id={id}

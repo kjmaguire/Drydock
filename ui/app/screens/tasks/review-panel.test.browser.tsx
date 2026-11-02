@@ -94,16 +94,39 @@ describe('Review panel', () => {
     expect(card.textContent).not.toMatch(/[\u202E\u200B\u2066]/);
   });
 
-  it('Request changes needs feedback and sends decision rejected with it', async () => {
+  it('Request changes with no criteria starts empty and sends back without comment', async () => {
     const runRespond = recorder(() => undefined);
     const r = mount(<ReviewPanel detail={detail()} onChanged={() => undefined} />, svc({ runRespond }));
     await r.act(() => byText(r.container, 'button', 'Request changes').click());
-    const send = byText<HTMLButtonElement>(r.container, 'button', 'Send feedback');
-    expect(send.disabled).toBe(true);
+    expect(byLabel<HTMLTextAreaElement>(r.container, 'Feedback for the worker').value).toBe('');
+    expect(r.$('[data-testid="changes-criteria"]')).toBeNull();
+    // an empty send is allowed: the core tells the worker it was sent back without comment
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Send back without comment').disabled).toBe(false);
     await r.act(() => type(byLabel<HTMLTextAreaElement>(r.container, 'Feedback for the worker'), 'add a doc comment'));
-    expect(byText<HTMLButtonElement>(r.container, 'button', 'Send feedback').disabled).toBe(false);
-    await r.act(() => byText(r.container, 'button', 'Send feedback').click());
+    await r.act(() => byText(r.container, 'button', 'Send back with these points').click());
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback: 'add a doc comment' }]]), r);
+  });
+
+  it('Request changes starts from the criteria not met or still open, and their chips add a line once', async () => {
+    const runRespond = recorder(() => undefined);
+    const criteria = [
+      { index: 0, id: 'AC1', text: 'AC1: Given a, when b, then c', status: 'met' as const, why: '', claim: '', personal: false, check: '', findings: [] },
+      { index: 1, id: 'AC2', text: 'AC2: Given d, when e, then f', status: 'open' as const, why: '', claim: '', personal: false, check: '', findings: [] },
+      { index: 2, id: 'AC3', text: 'AC3: Given g, when h, then i', status: 'not_met' as const, why: '', claim: '', personal: false, check: '', findings: [] },
+    ];
+    const r = mount(<ReviewPanel detail={detail()} criteria={criteria} onChanged={() => undefined} />, svc({ runRespond }));
+    await r.act(() => byText(r.container, 'button', 'Request changes').click());
+    const box = () => byLabel<HTMLTextAreaElement>(r.container, 'Feedback for the worker');
+    expect(box().value).toBe('- Not met: AC3: Given g, when h, then i\n- Not confirmed yet: AC2: Given d, when e, then f');
+    const chips = () => Array.from(r.$('[data-testid="changes-criteria"]')!.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(chips()).toEqual(['AC2', 'AC3']);
+    await r.act(() => type(box(), ''));
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Send back without comment').disabled).toBe(false);
+    await r.act(() => byText(r.$('[data-testid="changes-criteria"]')!, 'button', 'AC3').click());
+    await r.act(() => byText(r.$('[data-testid="changes-criteria"]')!, 'button', 'AC3').click());
+    expect(box().value).toBe('- Not met: AC3: Given g, when h, then i');
+    await r.act(() => byText(r.container, 'button', 'Send back with these points').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-42', 'rejected', { feedback: '- Not met: AC3: Given g, when h, then i' }]]), r);
   });
 
   it('a question gets a free-text answer with decision answered', async () => {

@@ -76,3 +76,33 @@ func TestACriterionNoteIsRedacted(t *testing.T) {
 		t.Fatalf("%+v %v", m, err)
 	}
 }
+
+// Criteria written without ids are numbered by the app when the task is made or its criteria are changed, as a spec numbers its
+// own, so the review never asks the person to number them; a list the person numbered in part is kept as written.
+func TestCriteriaWrittenWithoutIDsAreNumbered(t *testing.T) {
+	s, _ := newSvc(t)
+	ctx := context.Background()
+	tk, err := s.Create(ctx, CreateReq{ProjectID: "p1", Title: "t", Acceptance: []string{"Given a, when b, then c", " Given d, when e, then f"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"AC1: Given a, when b, then c", "AC2: Given d, when e, then f"}; strings.Join(tk.Acceptance, "|") != strings.Join(want, "|") {
+		t.Fatalf("create: %q", tk.Acceptance)
+	}
+	plain := []string{"Given x, when y, then z", "", "Given u, when v, then w"}
+	tk, err = s.Patch(ctx, tk.ID, Update{Acceptance: &plain})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"AC1: Given x, when y, then z", "", "AC2: Given u, when v, then w"}; strings.Join(tk.Acceptance, "|") != strings.Join(want, "|") {
+		t.Fatalf("patch: %q", tk.Acceptance)
+	}
+	mixed := []string{"AC3 Given x, when y, then z", "Given u, when v, then w"}
+	tk, err = s.Patch(ctx, tk.ID, Update{Acceptance: &mixed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(tk.Acceptance, "|") != strings.Join(mixed, "|") {
+		t.Fatalf("a list numbered in part is the person's: %q", tk.Acceptance)
+	}
+}

@@ -138,6 +138,17 @@ const itemCss = css({
 });
 const squareCss = css({ display: 'inline-block', flex: 'none', width: '9px', height: '9px', borderRadius: '3px' });
 const countCss = css({ flex: 'none', color: t.textFaint, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' });
+// a project's own amber count over the end of its line: a link of its own to its first item in the Inbox
+const projectNeedsCss = css({
+  position: 'absolute',
+  top: '6px',
+  right: '10px',
+  textDecoration: 'none',
+  '&:hover': { textDecoration: 'none', filter: 'brightness(1.1)' },
+  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  // on the rail, a small badge on the project's square
+  ':is([data-rail="true"]) &': { top: '1px', right: '6px' },
+});
 // the Inbox count: amber while something waits on the person, a quiet number otherwise (the e2e suite reads it either way)
 const needsCss = css({
   flex: 'none',
@@ -279,6 +290,7 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
     const workspace = workspaceView(route, !!project);
     // the Inbox counts every project's (decision P97); Running and My tasks are its tabs (P140)
     const needs = ws.needsCount;
+    const perProject = ws.needsPerProject;
     const inbox = route.name === 'needs-you' || route.name === 'my-tasks';
     const status = s.store.getSnapshot().status;
     const live = status === 'open';
@@ -337,7 +349,7 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
             <li style={{ position: 'relative' }}>
               <a
                 href={routes.needsYou.href()}
-                mix={[itemCss, on('click', () => s.ui.setInboxTab('needs'))]}
+                mix={itemCss}
                 data-nav=""
                 data-testid="nav-needs-you"
                 aria-label={`Inbox: ${needs} ${needs === 1 ? 'item needs' : 'items need'} you`}
@@ -360,8 +372,9 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
           <ul mix={listCss} role="list" aria-label="Projects">
             {ws.projectList.map((p) => {
               const open = !workspace && p.id === project?.id;
+              const waiting = perProject.get(p.id) ?? [];
               return (
-                <li key={p.id}>
+                <li key={p.id} style={{ position: 'relative' }}>
                   <a
                     href={routes.home.href()}
                     mix={[itemCss, on('click', () => {
@@ -374,11 +387,25 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                     data-project={p.id}
                     aria-current={open && route.name === 'home' ? 'page' : open ? 'true' : undefined}
                     aria-expanded={open ? 'true' : 'false'}
+                    style={waiting.length ? { paddingRight: '44px' } : undefined}
                   >
                     <span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} />
                     <span class="lbl">{p.name}</span>
                     {open && s.project.taskTotal ? <span class="count" mix={countCss}>{s.project.taskTotal}</span> : null}
                   </a>
+                  {/* which project needs you: its count opens the Inbox on its first item */}
+                  {waiting.length ? (
+                    <a
+                      href={`${routes.needsYou.href()}?item=${encodeURIComponent(`needs:${waiting[0]!.key}`)}`}
+                      mix={[needsCss, projectNeedsCss]}
+                      data-testid="nav-project-needs"
+                      data-project={p.id}
+                      aria-label={`${p.name}: ${waiting.length} ${waiting.length === 1 ? 'item needs' : 'items need'} you`}
+                      title={`${waiting.length} ${waiting.length === 1 ? 'item needs' : 'items need'} you in ${p.name}`}
+                    >
+                      {waiting.length}
+                    </a>
+                  ) : null}
                 </li>
               );
             })}

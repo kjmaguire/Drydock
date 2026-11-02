@@ -106,7 +106,7 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
 
     await panel.getByRole('button', { name: 'Request changes' }).click();
     await panel.getByLabel('Feedback for the worker').fill('please add a doc comment to Subtract');
-    await panel.getByRole('button', { name: 'Send feedback' }).click();
+    await panel.getByRole('button', { name: 'Send back with these points' }).click();
 
     // the worker is sent back and a NEW review request (new id) is raised after the rework
     await expect(async () => {

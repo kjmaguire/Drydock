@@ -14,6 +14,18 @@ import { Model } from './services.tsx';
 /** The statuses of a task an agent works on now: the Inbox's Running tab and the sidebar's Running count. */
 export const RUNNING_STATUSES: readonly string[] = ['CLAIMED', 'IN_PROGRESS', 'REVIEW', 'VERIFICATION'];
 
+/** What needs the person, per project (items of no project are left out): the sidebar's amber count on each project's line. */
+export function needsByProject(items: readonly NeedsYouItem[] | undefined): Map<string, NeedsYouItem[]> {
+  const out = new Map<string, NeedsYouItem[]>();
+  for (const it of items ?? []) {
+    if (!it.projectId) continue;
+    const list = out.get(it.projectId);
+    if (list) list.push(it);
+    else out.set(it.projectId, [it]);
+  }
+  return out;
+}
+
 /** The events after which the open tasks' summaries (their step, the agent's doing line) may have changed. */
 export const summariesChanged = (e: DrydockEvent): boolean => starts(e, 'task.', 'run.', 'room.presence_changed', 'workflow.', 'evidence.', 'review.');
 
@@ -67,6 +79,11 @@ export class Workspace extends Model {
   start(signal?: AbortSignal): this {
     for (const l of [this.projects, this.licenseLive, this.info, this.needs, this.summaries, this.scans] as Live<unknown>[]) l.start(signal).reload();
     return this;
+  }
+
+  /** What needs the person in each project (needsByProject of the workspace's list). */
+  get needsPerProject(): Map<string, NeedsYouItem[]> {
+    return needsByProject(this.needs.data);
   }
 
   /** How many items need the person in every project. */

@@ -1,18 +1,19 @@
 import { expect } from 'remix/assert';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
-import { parseDetails, parseDock, UiModel, wideWindow } from './ui.ts';
+import { parseDetails, parseDock, parseInboxTab, UiModel, wideWindow } from './ui.ts';
 
 // What is in localStorage can be anything (audit 2026-10-16, L43): an older version's shape, another tool's, a hand edit. A
 // value that is not what the UI expects is its default, and nothing else is trusted.
 
 const DOCK = 'drydock.dock';
 const DETAILS = 'drydock.details';
+const INBOX = 'drydock.inbox';
 const keep: Record<string, string | null> = {};
 beforeEach(() => {
-  for (const k of [DOCK, DETAILS]) keep[k] = localStorage.getItem(k);
+  for (const k of [DOCK, DETAILS, INBOX]) keep[k] = localStorage.getItem(k);
 });
 afterEach(() => {
-  for (const k of [DOCK, DETAILS]) {
+  for (const k of [DOCK, DETAILS, INBOX]) {
     if (keep[k] === null) localStorage.removeItem(k);
     else localStorage.setItem(k, keep[k]!);
   }
@@ -123,5 +124,21 @@ describe('a narrow window (P85)', () => {
   it('is never narrow in a wide window', () => {
     const ui = new UiModel({ media: wideWindow });
     expect([ui.narrowDetails, ui.narrowRails]).toEqual([false, false]);
+  });
+});
+
+describe('the Inbox tab is remembered (drydock.inbox)', () => {
+  it('opens on the tab it was left on; a stored value that is not a tab is Needs you', () => {
+    const a = new UiModel({ media: wideWindow });
+    a.setInboxTab('done');
+    expect(new UiModel({ media: wideWindow }).inboxTab).toBe('done');
+    // a test's model (persist: false) neither reads nor writes it
+    const quiet = new UiModel({ persist: false, media: wideWindow });
+    expect(quiet.inboxTab).toBe('needs');
+    quiet.setInboxTab('mine');
+    expect(new UiModel({ media: wideWindow }).inboxTab).toBe('done');
+    for (const raw of ['nope', 7, null, undefined, {}]) expect(parseInboxTab(raw)).toBe('needs');
+    localStorage.setItem(INBOX, 'not json');
+    expect(new UiModel({ media: wideWindow }).inboxTab).toBe('needs');
   });
 });

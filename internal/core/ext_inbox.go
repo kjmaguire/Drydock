@@ -31,9 +31,21 @@ func init() {
 				}
 				return map[string]bool{"removed": true}, nil
 			}),
+			// one item (key) or several at once (keys: "Mark N done"); several are refused whole when any of them cannot be marked done
 			"needsyou.ack": bind(func(ctx context.Context, p struct {
-				Key string `json:"key"`
+				Key  string   `json:"key"`
+				Keys []string `json:"keys"`
 			}) (any, error) {
+				if len(p.Keys) > 0 {
+					if p.Key != "" {
+						return nil, errors.New("mark one item (key) or several (keys), not both")
+					}
+					done, err := c.AckNeedsYouMany(ctx, p.Keys, c.Human())
+					if err != nil {
+						return nil, err
+					}
+					return map[string]any{"acked": true, "done": done}, nil
+				}
 				if err := c.AckNeedsYou(ctx, p.Key, c.Human()); err != nil {
 					return nil, err
 				}
@@ -190,17 +202,8 @@ func (c *Core) AckNeedsYou(ctx context.Context, key, by string) error {
 	if !isPerson(by) {
 		return errors.New("only a person may mark an inbox item done")
 	}
-	kind, _, _ := strings.Cut(key, ":")
-	switch kind {
-	case "approval", "chat-ask":
-		return errors.New("a request leaves the inbox when you answer it: approve or deny it instead")
-	case "join":
-		return errors.New("a request to join leaves the inbox when you answer it: let the agent join or decline")
-	case "task", "connection":
-		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
-	case "question", "check", "watchdog", "budget", "mention", "agent":
-	default:
-		return fmt.Errorf("there is no inbox item %q", key)
+	if err := ackable(key); err != nil {
+		return err
 	}
 	items, err := c.NeedsYou(ctx, "")
 	if err != nil {
@@ -215,10 +218,72 @@ func (c *Core) AckNeedsYou(ctx context.Context, key, by string) error {
 	if item == nil {
 		return fmt.Errorf("%s is not in the inbox (it was answered or marked done)", key)
 	}
-	if err := c.Room.AckNeedsYou(ctx, key, room.Human(strings.TrimPrefix(by, "human:"))); err != nil {
+	return c.ackItem(ctx, *item, by)
+}
+
+// MaxAckKeys bounds how many inbox items one "Mark N done" marks.
+const MaxAckKeys = 200
+
+// AckNeedsYouMany marks several inbox items done at once, with the same refusals as one: a request or a state among them refuses
+// the whole call and nothing is marked (a request is never answered in bulk). An item that already left the inbox is skipped.
+// It returns how many were marked done.
+func (c *Core) AckNeedsYouMany(ctx context.Context, keys []string, by string) (int, error) {
+	if !isPerson(by) {
+		return 0, errors.New("only a person may mark an inbox item done")
+	}
+	if len(keys) > MaxAckKeys {
+		return 0, fmt.Errorf("at most %d items at once, not %d", MaxAckKeys, len(keys))
+	}
+	for _, k := range keys {
+		if err := ackable(k); err != nil {
+			return 0, fmt.Errorf("%s: %w", k, err)
+		}
+	}
+	items, err := c.NeedsYou(ctx, "")
+	if err != nil {
+		return 0, err
+	}
+	byKey := make(map[string]room.NeedsYouItem, len(items))
+	for _, it := range items {
+		byKey[it.Key] = it
+	}
+	done := 0
+	for _, k := range keys {
+		it, ok := byKey[k]
+		if !ok {
+			continue
+		}
+		delete(byKey, k) // a key named twice is marked once
+		if err := c.ackItem(ctx, it, by); err != nil {
+			return done, err
+		}
+		done++
+	}
+	return done, nil
+}
+
+// ackable says why an item of this key's kind cannot be marked done (nil when it can).
+func ackable(key string) error {
+	kind, _, _ := strings.Cut(key, ":")
+	switch kind {
+	case "approval", "chat-ask":
+		return errors.New("a request leaves the inbox when you answer it: approve or deny it instead")
+	case "join":
+		return errors.New("a request to join leaves the inbox when you answer it: let the agent join or decline")
+	case "task", "connection":
+		return errors.New("this leaves the inbox when what it says changes: open it to act on it")
+	case "question", "check", "watchdog", "budget", "mention", "agent":
+		return nil
+	default:
+		return fmt.Errorf("there is no inbox item %q", key)
+	}
+}
+
+func (c *Core) ackItem(ctx context.Context, item room.NeedsYouItem, by string) error {
+	if err := c.Room.AckNeedsYou(ctx, item.Key, room.Human(strings.TrimPrefix(by, "human:"))); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(map[string]any{"key": key, "kind": string(item.Kind), "by": by})
+	b, _ := json.Marshal(map[string]any{"key": item.Key, "kind": string(item.Kind), "by": by})
 	_, _ = c.Bus.Publish(ctx, events.Event{Type: EventNeedsYouAcked, ProjectID: item.ProjectID, TaskID: item.TaskID, Data: b})
 	return nil
 }

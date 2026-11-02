@@ -6,6 +6,8 @@ import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import { summariesChanged } from '../../state/workspace.ts';
 import {
   answerOf,
+  inboxAddress,
+  tabOfItem,
   canAck,
   clock,
   doingWords,
@@ -255,5 +257,21 @@ describe('the Running group under Needs you (decision P144)', () => {
     expect(runningBesideNeeds(running, [{ taskId: 't2' }, { taskId: undefined }, { taskId: 't9' }])).toEqual([{ taskId: 't1' }, { taskId: 't3' }]);
     expect(runningBesideNeeds(running, [])).toEqual(running);
     expect(runningBesideNeeds([], [{ taskId: 't1' }])).toEqual([]);
+  });
+});
+
+describe("the Inbox's address", () => {
+  it('carries the selected row (?item=) and drops a ?tab= (the tab is remembered)', () => {
+    expect(inboxAddress('/needs-you', '?tab=running', 'task:t4')).toBe('/needs-you?item=task%3At4');
+    expect(inboxAddress('/needs-you', '?item=needs%3Acheck%3Am1', undefined)).toBe('/needs-you');
+    expect(inboxAddress('/needs-you', '', 'needs:approval:apr1')).toBe('/needs-you?item=needs%3Aapproval%3Aapr1');
+  });
+
+  it("an ?item= opens the tab it is on, unless the tab left open shows it", () => {
+    expect(tabOfItem('needs:check:m1', 'done')).toBe('needs');
+    expect(tabOfItem('done:t9', 'needs')).toBe('done');
+    expect(tabOfItem('task:t4', 'needs')).toBe(undefined);
+    expect(tabOfItem('task:t4', 'mine')).toBe('running');
+    expect(tabOfItem(undefined, 'mine')).toBe(undefined);
   });
 });

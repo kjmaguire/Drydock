@@ -9,6 +9,7 @@ import { PanelLeftOpen, PlugZap } from 'lucide';
 import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys, shellKey, shortcutOf } from '../lib/keys.ts';
 import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, parseWorkItem, type Route } from '../lib/route.ts';
+import { windowTitle } from '../lib/window-title.ts';
 import { routes } from '../routes.ts';
 import { WorkspaceHomeScreen } from '../screens/workspace/workspace-home.tsx';
 import { query, services, watch } from '../state/services.tsx';
@@ -162,7 +163,8 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
     const needs = ws.needsCount;
     handle.queueTask(() => {
       s.ui.setProject(project?.id); // the dock keeps its state per project
-      document.title = needs > 0 ? `(${needs}) Drydock` : 'Drydock';
+      // the page's fixed name and the project's, never a task's or a chat's title
+      document.title = windowTitle(route, project?.name, needs);
     });
 
     let center: RemixNode;

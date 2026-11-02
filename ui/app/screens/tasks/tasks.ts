@@ -227,6 +227,37 @@ export interface BoardFilter {
   needsMe?: boolean;
 }
 
+/** A project's board as the person left it: its filters and the timeline's range (kept per project in drydock.tasks.board). */
+export interface BoardPrefs {
+  filter: BoardFilter;
+  range: 'today' | 'week';
+}
+
+/** How many projects' boards are remembered; the oldest written is let go first. */
+export const BOARD_PREFS_MAX = 50;
+
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** The project's remembered board out of what is stored (anything else, or nothing, is the plain board: no filter, today). */
+export function boardPrefsOf(raw: unknown, projectId: string): BoardPrefs {
+  const v = isRec(raw) && isRec(raw[projectId]) ? raw[projectId] : {};
+  const f = isRec(v.filter) ? v.filter : {};
+  const filter: BoardFilter = {};
+  if (typeof f.agent === 'string' && f.agent && f.agent.length <= 128) filter.agent = f.agent;
+  if (typeof f.label === 'string' && f.label && f.label.length <= TASK_LABEL_LEN) filter.label = f.label;
+  if (f.needsMe === true) filter.needsMe = true;
+  return { filter, range: v.range === 'week' ? 'week' : 'today' };
+}
+
+/** What is stored once the project's board is kept: the other projects' kept as they are (well-formed ones only), at most BOARD_PREFS_MAX. */
+export function withBoardPrefs(raw: unknown, projectId: string, prefs: BoardPrefs): Record<string, BoardPrefs> {
+  const out: Record<string, BoardPrefs> = {};
+  const others = isRec(raw) ? Object.keys(raw).filter((k) => k !== projectId) : [];
+  for (const k of others.slice(Math.max(0, others.length - (BOARD_PREFS_MAX - 1)))) out[k] = boardPrefsOf(raw, k);
+  out[projectId] = boardPrefsOf({ [projectId]: prefs }, projectId);
+  return out;
+}
+
 /** The task waits for the person: a request of its run, or an item in Needs you (`asked`: the ids of those tasks). */
 export const needsMe = (s: Pick<TaskSummary, 'taskId' | 'pendingCount'>, asked?: ReadonlySet<string>): boolean => s.pendingCount > 0 || !!asked?.has(s.taskId);
 

@@ -100,6 +100,28 @@ describe('the sidebar', () => {
     expect(mine.$$('[aria-current="page"]')).toHaveLength(1);
   });
 
+  it("shows which project needs you: an amber count on its line, a link to its first item in the Inbox", async () => {
+    const s = svc({
+      needsYouList: async (pid: string) =>
+        (pid === ''
+          ? [
+              { key: 'check:m1', projectId: 'q' },
+              { key: 'approval:a2', projectId: 'q' },
+              { key: 'connection:codex' },
+            ]
+          : []) as never,
+    });
+    const r = mount(<Sidebar route={{ name: 'workspace' }} />, s);
+    await waitFor(() => expect(r.$$('[data-testid="nav-project-needs"]').length).toBe(1), r);
+    const pill = r.$('[data-testid="nav-project-needs"]') as HTMLAnchorElement;
+    expect(pill.getAttribute('data-project')).toBe('q');
+    expect(pill.textContent).toBe('2');
+    expect(pill.getAttribute('aria-label')).toBe('shop-api: 2 items need you');
+    expect(pill.getAttribute('href')).toBe('/needs-you?item=needs%3Acheck%3Am1');
+    // the Inbox counts every one, the one of no project too
+    expect(r.$('[data-testid="needs-count"]')!.textContent).toBe('3');
+  });
+
   it('marks the open project on every page of it, its Work as the page itself (decision P141)', async () => {
     for (const route of [{ name: 'task', id: 't1' }, { name: 'pulls' }, { name: 'repo-map' }, { name: 'room', id: 'r1' }, { name: 'agent', id: 'agt1' }, { name: 'project' }, { name: 'home' }] as const) {
       const r = mount(<Sidebar route={route} />, svc());

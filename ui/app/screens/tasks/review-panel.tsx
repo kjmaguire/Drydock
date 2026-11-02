@@ -30,6 +30,7 @@ import { PermissionPromptPanel, permissionPayload } from '../shared/permission-p
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
 import { budgetPayload, criterionLine, editedCriteria, newestDiffStat, payloadOf, type PayloadDiff, specPayload } from './tasks.ts';
+import { changeLine, changesDraft, type CriterionRow } from './task-page.ts';
 import { plural } from '../../lib/format.ts';
 
 // The decide card (graphite, decision P97): on the task page it sits above the Activity while a request waits, a card in the
@@ -61,10 +62,13 @@ const cardCss = css({
   '& summary': { cursor: 'pointer', fontSize: t.textSm, color: t.textMuted },
 });
 
-/** The pending requests of the task's run. Renders nothing when nothing is pending. */
-export function ReviewPanel(handle: Handle<{ detail: TaskDetail; onChanged: () => void }>) {
+/**
+ * The pending requests of the task's run. Renders nothing when nothing is pending. `criteria` are the task page's criteria rows:
+ * Request changes starts from the ones not met or still open.
+ */
+export function ReviewPanel(handle: Handle<{ detail: TaskDetail; criteria?: readonly CriterionRow[]; onChanged: () => void }>) {
   return () => {
-    const { detail, onChanged } = handle.props;
+    const { detail, criteria = [], onChanged } = handle.props;
     if (detail.pending.length === 0) return null;
     // the task's newest patch: what the Diff section shows and what Approve merges (L36), not the one the request was raised on
     const diff = newestDiffStat(detail.evidence);
@@ -75,7 +79,7 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; onChanged: () =
           Needs your decision
         </h2>
         {detail.pending.map((p) => (
-          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} onChanged={onChanged} />
+          <PendingCard key={p.id} p={p} runId={detail.run?.id} diff={diff} criteria={criteria} onChanged={onChanged} />
         ))}
       </section>
     );
@@ -83,8 +87,11 @@ export function ReviewPanel(handle: Handle<{ detail: TaskDetail; onChanged: () =
 }
 
 const textareaCss = css({ width: '100%', resize: 'vertical' });
+const chipsCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, fontSize: t.textSm });
 
-function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefined; diff: PayloadDiff | undefined; onChanged: () => void }>) {
+function PendingCard(
+  handle: Handle<{ p: PendingRequest; runId: string | undefined; diff: PayloadDiff | undefined; criteria: readonly CriterionRow[]; onChanged: () => void }>,
+) {
   const s = services(handle);
   watch(handle, s.workspace);
   let mode: 'idle' | 'changes' = 'idle';
@@ -121,9 +128,14 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     text = v;
     void handle.update();
   };
+  // a criterion's line added to the feedback (once), from its chip
+  const addLine = (line: string) => {
+    if (!line || text.split('\n').includes(line)) return;
+    setText(text.trim() ? `${text.replace(/\s+$/, '')}\n${line}` : line);
+  };
 
   return () => {
-    const { p, runId, diff, onChanged } = handle.props;
+    const { p, runId, diff, criteria, onChanged } = handle.props;
     const info = payloadOf(p);
     const spec = specPayload(p);
     const budget = budgetPayload(p);
@@ -251,6 +263,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
                 disabled={sending}
                 mix={on('click', () => {
                   mode = 'changes';
+                  // start from the criteria still to meet, so the person edits instead of retyping them
+                  if (!text.trim()) text = changesDraft(criteria);
                   void handle.update();
                 })}
               >
@@ -260,11 +274,24 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
           ) : (
             <>
               <Field label="Feedback for the worker">
-                {(id) => <textarea id={id} rows={3} value={text} disabled={sending} mix={[textareaCss, on('input', (e) => setText(e.currentTarget.value))]} />}
+                {(id) => <textarea id={id} rows={4} value={text} disabled={sending} mix={[textareaCss, on('input', (e) => setText(e.currentTarget.value))]} />}
               </Field>
+              {criteria.some((c) => changeLine(c)) ? (
+                <div mix={chipsCss} data-testid="changes-criteria">
+                  <span mix={muted}>Add a criterion:</span>
+                  {criteria
+                    .filter((c) => changeLine(c))
+                    .map((c) => (
+                      <Button key={c.index} size="sm" variant="ghost" disabled={sending} title={c.text} mix={on('click', () => addLine(changeLine(c)))}>
+                        {c.id || `Criterion ${c.index + 1}`}
+                      </Button>
+                    ))}
+                </div>
+              ) : null}
               <div mix={formActions}>
-                <Button variant="primary" disabled={sending || !text.trim()} mix={on('click', () => void respond('rejected', { feedback: text.trim() }))}>
-                  Send feedback
+                {/* an empty send is allowed: the core tells the worker it was sent back without comment */}
+                <Button variant="primary" disabled={sending} mix={on('click', () => void respond('rejected', { feedback: text.trim() }))}>
+                  {text.trim() ? 'Send back with these points' : 'Send back without comment'}
                 </Button>
                 <Button
                   disabled={sending}

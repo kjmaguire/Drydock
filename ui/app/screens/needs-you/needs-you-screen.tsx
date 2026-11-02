@@ -42,7 +42,9 @@ import {
   needsRowTitle,
   needsSubtitle,
   needsTarget,
+  inboxAddress,
   runningBesideNeeds,
+  tabOfItem,
   scanProgress,
   shortHash,
   startOfToday,
@@ -92,6 +94,8 @@ const listSide = css({
 const hintCss = css({ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', color: t.textFaint, fontSize: t.textXs });
 const scrollCss = css({ flex: '1', minHeight: '0', overflowY: 'auto', paddingBottom: t.s3, '@container (max-width: 820px)': { overflowY: 'visible' } });
 const groupCss = css({ margin: '0', padding: `${t.s3} 20px 6px`, color: t.textFaint, fontSize: t.textXs, fontWeight: '500' });
+// the Needs you heading with Mark N done at its end
+const groupRowCss = css({ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: t.s2, paddingRight: '12px' });
 const listCss = css({ display: 'grid', margin: '0', padding: '0', listStyle: 'none' });
 const rowCss = css({
   display: 'flex',
@@ -110,6 +114,8 @@ const rowCss = css({
   justifyContent: 'flex-start',
   '&:hover': { background: t.bgHover, color: t.text },
   '&[aria-current="true"]': { background: t.bgActive, boxShadow: `inset 2px 0 0 ${t.accent}` },
+  // a row Shift+J/K added to the items to mark done together
+  '&[data-picked="true"]': { background: t.bgActive },
   '&:focus-visible': { outline: 'none', boxShadow: `inset 0 0 0 2px ${t.accent}` },
   '& .text': { display: 'flex', flexDirection: 'column', gap: '2px', flex: '1', minWidth: '0' },
   '& .title': { fontWeight: '500', overflowWrap: 'anywhere' },
@@ -201,7 +207,15 @@ type Row =
   | { key: string; type: 'done'; task: Task };
 
 
-export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening goes (tests); default the router's navigate. */ onNavigate?: (href: string) => void }>) {
+export function NeedsYouScreen(
+  handle: Handle<{
+    tab?: string;
+    /** The ?item= row key ("needs:<key>", "task:<id>", "scan:<id>", "done:<id>"): the row selected when the page opens. */
+    item?: string;
+    /** Where opening goes (tests); default the router's navigate. */
+    onNavigate?: (href: string) => void;
+  }>,
+) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.ui);
@@ -213,6 +227,13 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
   const ack = action(handle);
   let selected: string | undefined;
   let lastIndex = 0;
+  // the rows Shift+J/K picked to mark done together (row keys); a plain move or click clears them
+  let picked = new Set<string>();
+  // the ?item= of the address, once applied (null: not yet), and the item last written into the address
+  let propItem: string | undefined | null = null;
+  let written: string | undefined;
+  // the address's item until its row is listed (its list may still be loading, its tab not yet shown)
+  let wanted: string | undefined;
   // the address's tab, once it has been applied (null: not yet, so the first render applies it, ?tab= or none)
   let propTab: string | undefined | null = null;
   let now = Date.now();
@@ -237,6 +258,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     const next = tabOf(name) ?? 'needs';
     if (next === tab()) return;
     selected = undefined;
+    picked = new Set();
     s.ui.setInboxTab(next);
   };
 
@@ -265,7 +287,11 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     if (handle.props.onNavigate) handle.props.onNavigate(href);
     else void navigate(href);
   };
-  const selectRow = (key: string) => {
+  const selectRow = (key: string, extend = false) => {
+    if (extend) {
+      if (selected) picked.add(selected);
+      picked.add(key);
+    } else picked = new Set();
     selected = key;
     void handle.update();
   };
@@ -278,6 +304,21 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
       await s.workspace.needs.reload();
     });
   };
+  /** The items Mark N done marks: the picked ones that can be marked done, else every one shown that can. */
+  const bulkItems = (): NeedsYouItem[] => {
+    const all = rows.flatMap((r) => (r.type === 'needs' && canAck(r.item) ? [r] : []));
+    const chosen = all.filter((r) => picked.has(r.key));
+    return (chosen.length ? chosen : all).map((r) => (r as Extract<Row, { type: 'needs' }>).item);
+  };
+  const markMany = (items: NeedsYouItem[]) => {
+    if (!items.length || ack.busy) return;
+    void ack.run('ack', async () => {
+      await s.client.needsYouAckMany(items.map((it) => it.key));
+      picked = new Set();
+      await s.workspace.needs.reload();
+    });
+  };
+  const pickedAckable = (): NeedsYouItem[] => rows.flatMap((r) => (r.type === 'needs' && picked.has(r.key) && canAck(r.item) ? [r.item] : []));
 
   window.addEventListener(
     'keydown',
@@ -289,8 +330,16 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
         e.preventDefault();
         const i = rows.findIndex((r) => r.key === selected);
         const n = i < 0 ? 0 : k === 'j' ? Math.min(rows.length - 1, i + 1) : Math.max(0, i - 1);
-        selectRow(rows[n]!.key);
+        // Shift+J/K extends the selection: the rows passed are marked done together (E, or Mark N done)
+        selectRow(rows[n]!.key, e.shiftKey);
         handle.queueTask(() => document.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(rows[n]!.key)}"]`)?.scrollIntoView({ block: 'nearest' }));
+      } else if (k === 'Escape' && picked.size) {
+        e.preventDefault();
+        picked = new Set();
+        void handle.update();
+      } else if (k === 'e' && pickedAckable().length) {
+        e.preventDefault();
+        markMany(pickedAckable());
       } else if (k === 'e') {
         const r = current();
         if (r?.type !== 'needs' || !canAck(r.item)) return;
@@ -312,10 +361,18 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
   return () => {
     const ws = s.workspace;
     // the sidebar's Running link and a link with ?tab= choose the tab when the address changes
-    if (handle.props.tab !== propTab) {
+    // without one, the Inbox opens on the tab it was left on (remembered), or the one its ?item= is on
+    if (handle.props.tab !== propTab || handle.props.item !== propItem) {
       propTab = handle.props.tab;
-      const want = tabOf(propTab) ?? 'needs';
-      if (want !== tab()) handle.queueTask(() => s.ui.setInboxTab(want));
+      if (handle.props.item !== propItem) {
+        propItem = handle.props.item;
+        if (propItem) {
+          wanted = propItem;
+          picked = new Set();
+        }
+      }
+      const want = tabOf(propTab) ?? tabOfItem(propItem ?? undefined, tab());
+      if (want && want !== tab()) handle.queueTask(() => s.ui.setInboxTab(want));
     }
     const active = tab();
     const needs = ws.needs.data ?? [];
@@ -333,12 +390,33 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     const runRowsHere = active === 'needs' ? runRowsOf(runningBesideNeeds(runningTasks, needs)) : runRows;
     const doneRows: Row[] = doneList.map((task) => ({ key: `done:${task.id}`, type: 'done', task }));
     rows = active === 'needs' ? [...needsRows, ...runRowsHere] : active === 'running' ? runRows : active === 'done' ? doneRows : [];
+    // the address's item is selected once its row is listed; it is let go when its list has loaded without it
+    if (wanted) {
+      const target = tabOfItem(wanted, active);
+      const shown = !target || target === active;
+      const loaded = active === 'needs' ? !!ws.needs.data && !!ws.summaries.data : active === 'running' ? !!ws.summaries.data : active === 'done' ? !!done.data : true;
+      if (shown && rows.some((r) => r.key === wanted)) {
+        selected = wanted;
+        wanted = undefined;
+      } else if (shown && loaded) wanted = undefined;
+    }
     // the selection stays on its item; when the item leaves (it was answered), the one now in its place is selected
     const at = rows.findIndex((r) => r.key === selected);
     if (at >= 0) lastIndex = at;
     else if (rows.length) selected = rows[Math.min(lastIndex, rows.length - 1)]!.key;
     else selected = undefined;
+    for (const k of picked) if (!rows.some((r) => r.key === k)) picked.delete(k);
     const sel = current();
+    // the selection goes into the address (?item=), so Reload and Back come back to it
+    if (!wanted && selected !== written && (ws.needs.data || active !== 'needs')) {
+      written = selected;
+      handle.queueTask(() => {
+        if (location.pathname !== routes.needsYou.href()) return;
+        const href = inboxAddress(location.pathname, location.search, written);
+        if (href !== location.pathname + location.search) window.history.replaceState(window.history.state, '', href);
+      });
+    }
+    const bulk = active === 'needs' ? bulkItems() : [];
 
     const running = runRows.length;
     const items = [
@@ -359,7 +437,13 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
       const isSel = r.key === selected;
       return (
         <li key={r.key} data-testid="needs-item" data-kind={it.kind} data-look={look} data-project={it.projectId}>
-          <button type="button" mix={[rowCss, on('click', () => selectRow(r.key))]} data-row-key={r.key} aria-current={isSel ? 'true' : undefined}>
+          <button
+            type="button"
+            mix={[rowCss, on('click', (e) => selectRow(r.key, e.shiftKey))]}
+            data-row-key={r.key}
+            aria-current={isSel ? 'true' : undefined}
+            data-picked={picked.has(r.key) && picked.size > 1 ? 'true' : undefined}
+          >
             <span mix={tileCss} aria-hidden="true" style={{ background: tone[v.tone].bg, color: tone[v.tone].fg }}>
               <Icon icon={v.icon} size={13} />
             </span>
@@ -446,9 +530,17 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
 
     const needsSection = (
       <section aria-labelledby="inbox-needs" data-testid="inbox-needs">
-        <h2 id="inbox-needs" mix={groupCss}>
-          Needs you
-        </h2>
+        <div mix={groupRowCss}>
+          <h2 id="inbox-needs" mix={groupCss}>
+            Needs you
+          </h2>
+          {/* several notices at once (a failed check, a pause, a question...); a request is never answered in bulk */}
+          {bulk.length > 1 ? (
+            <Button size="sm" variant="ghost" data-testid="mark-many" disabled={!!ack.busy} mix={on('click', () => markMany(bulk))}>
+              {ack.busy === 'ack' ? 'Marking...' : `Mark ${bulk.length} done`}
+            </Button>
+          ) : null}
+        </div>
         <ErrorNote error={ws.needs.error} what="Could not load what needs you" />
         {ws.needs.loading && !ws.needs.data ? <Loading /> : null}
         {ws.needs.data && needs.length === 0 ? <p mix={emptyCss}>Nothing is waiting for you. Approvals, spec gates, reviews and questions from every project appear here.</p> : null}

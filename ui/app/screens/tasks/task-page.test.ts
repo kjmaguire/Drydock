@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { TASK_LABELS_MAX } from '../../api/types.ts';
-import { addLabel, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
+import { addLabel, changeLine, changesDraft, checkMark, checkName, criteriaRows, criteriaWithState, criterionWhy, findingsByCriterion, personName, runMs, runNumber, statusDot, statusPill, statusWords, testRuns } from './task-page.ts';
 
 describe('the status pill of the task page', () => {
   it('says Building while the agent works, Running checks while a check runs, and which run it is on', () => {
@@ -129,5 +129,19 @@ describe('a label a person types', () => {
     expect(addLabel(['parser'], 'PARSER')).toEqual({ error: 'The task already has the label parser.' });
     expect(addLabel([], 'x'.repeat(25))).toEqual({ error: 'A label is at most 24 characters.' });
     expect(addLabel(Array.from({ length: TASK_LABELS_MAX }, (_, i) => `l${i}`), 'more')).toEqual({ error: 'A task has at most 8 labels.' });
+  });
+});
+
+describe('what Request changes starts from', () => {
+  it('a line per criterion not met, then per one still open; met and waived ones are left out', () => {
+    const rows = [
+      { text: 'AC1: a', status: 'open' as const },
+      { text: 'AC2: b', status: 'met' as const },
+      { text: 'AC3: c', status: 'not_met' as const },
+      { text: 'AC4: d', status: 'waived' as const },
+    ];
+    expect(changesDraft(rows)).toBe('- Not met: AC3: c\n- Not confirmed yet: AC1: a');
+    expect(changeLine(rows[1]!)).toBe('');
+    expect(changesDraft([])).toBe('');
   });
 });

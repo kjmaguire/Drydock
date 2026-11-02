@@ -12,6 +12,7 @@ afterEach(() => {
   cleanup();
   try {
     localStorage.removeItem('drydock.tasks.view');
+    localStorage.removeItem('drydock.tasks.board');
   } catch {
     /* ignore */
   }
@@ -338,6 +339,24 @@ describe('TaskListScreen: the board', () => {
     expect(r.$('[data-testid="filter-needs-me"]')!.getAttribute('aria-pressed')).toBe('true');
     await r.act(() => (r.$('[data-testid="filter-needs-me"]') as HTMLElement).click());
     await shown(r, 8);
+  });
+
+  it("comes back with the project's filters and timeline range as they were left; another project's board is its own", async () => {
+    // another project's remembered board is not this one's
+    localStorage.setItem('drydock.tasks.board', JSON.stringify({ prj_2: { filter: { label: 'docs' }, range: 'week' } }));
+    const first = board();
+    await shown(first.r, 8);
+    expect(first.r.$('[data-testid="filter-label"]')!.getAttribute('data-on')).toBe(null);
+    await first.r.act(() => (first.r.$('[data-testid="filter-needs-me"]') as HTMLElement).click());
+    await waitFor(() => expect(cards(first.r).map((c) => c.getAttribute('data-task-id'))).toEqual(['gate', 'merge']), first.r);
+    await first.r.act(() => (first.r.$('[data-testid="task-view-timeline"]') as HTMLElement).click());
+    await waitFor(() => first.r.$('[data-testid="timeline-week"]')!, first.r);
+    await first.r.act(() => (first.r.$('[data-testid="timeline-week"]') as HTMLElement).click());
+    cleanup();
+    const again = board();
+    await waitFor(() => expect(again.r.$('[data-testid="timeline-week"]')!.getAttribute('aria-pressed')).toBe('true'), again.r);
+    expect(again.r.$('[data-testid="filter-needs-me"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(JSON.parse(localStorage.getItem('drydock.tasks.board')!).prj_2).toEqual({ filter: { label: 'docs' }, range: 'week' });
   });
 
   it('Needs me also takes a task whose run asks through Needs you, without a request of its own', async () => {

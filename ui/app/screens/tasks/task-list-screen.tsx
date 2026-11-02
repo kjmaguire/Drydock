@@ -57,6 +57,8 @@ import {
   verdictLine,
   type BoardColumn,
   type BoardFilter,
+  boardPrefsOf,
+  withBoardPrefs,
   type TimelineRange,
 } from './tasks.ts';
 
@@ -80,6 +82,26 @@ function readView(): View {
 function writeView(v: View): void {
   try {
     localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* a convenience only */
+  }
+}
+
+// each project's board as the person left it: its filters and the timeline's range (a convenience: unreadable storage is the plain board)
+const BOARD_KEY = 'drydock.tasks.board';
+
+function readBoardStore(): unknown {
+  try {
+    const text = localStorage.getItem(BOARD_KEY);
+    return text ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeBoard(projectId: string, filter: BoardFilter, range: TimelineRange): void {
+  try {
+    localStorage.setItem(BOARD_KEY, JSON.stringify(withBoardPrefs(readBoardStore(), projectId, { filter, range })));
   } catch {
     /* a convenience only */
   }
@@ -753,6 +775,16 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   let view: View = readView();
   let filter: BoardFilter = {};
   let range: TimelineRange = 'today';
+  // the project whose remembered filters and range are applied (each project's board comes back as it was left)
+  let prefsFor: string | undefined;
+  const loadPrefs = () => {
+    if (prefsFor === pid()) return;
+    prefsFor = pid();
+    ({ filter, range } = prefsFor ? boardPrefsOf(readBoardStore(), prefsFor) : { filter: {}, range: 'today' as TimelineRange });
+  };
+  const keepPrefs = () => {
+    if (pid()) writeBoard(pid(), filter, range);
+  };
   const merging = new Set<string>(); // the cards whose merge is on its way: each card merges by itself
   let labelsFor: TaskSummary | undefined;
   const mergeAct = action(handle);
@@ -800,6 +832,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
 
   const setFilter = (f: Partial<BoardFilter>) => {
     filter = { ...filter, ...f };
+    keepPrefs();
     void handle.update();
   };
 
@@ -818,7 +851,10 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   };
 
   return () => {
+    loadPrefs();
     const agents = s.project.agentList;
+    // a remembered agent that left the project filters nothing out (its chip could not say who it is)
+    if (filter.agent && agents.length && !agents.some((a) => a.id === filter.agent)) filter = { ...filter, agent: undefined };
     const presence = s.project.presence.data;
     const data = summaries.data;
     const all = data?.summaries ?? [];
@@ -983,6 +1019,7 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
               range={range}
               onRange={(r) => {
                 range = r;
+                keepPrefs();
                 void handle.update();
               }}
             />

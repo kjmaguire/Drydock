@@ -28,6 +28,14 @@ describe('inShell', () => {
     expect(r.$('[data-testid="region-error"]')).toBeNull();
   });
 
+  it("names the page in the window title, never more than the page's fixed name and the project's", async () => {
+    const r = renderPlain(inShell(services([{ id: 'p1', name: 'gocalc' }]), <p data-testid="content">the page</p>, new URL('http://localhost/tasks')));
+    await waitFor(() => expect(document.title).toBe('Tasks · gocalc · Drydock'), r);
+    cleanup();
+    const ws = renderPlain(inShell(services([{ id: 'p1', name: 'gocalc' }]), <p data-testid="content">the page</p>, new URL('http://localhost/settings')));
+    await waitFor(() => expect(document.title).toBe('Settings · Drydock'), ws);
+  });
+
   it('shows the error, with Try again and Reload, when the shell itself throws on a malformed answer of the core', async () => {
     const real = console.error;
     console.error = () => {}; // the guard reports the error here as well; the panel is what is checked

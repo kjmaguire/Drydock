@@ -293,3 +293,25 @@ export function answerOf(d: ApprovalDetail): Answer {
   if (d.kind === 'approval') return { kind: 'approval', runId: d.runId };
   return { kind: 'open' };
 }
+
+/**
+ * The Inbox's address with the selected row in it (?item=<row key>), so Reload and Back come back to it. The tab is not in it:
+ * the tab is remembered (drydock.inbox), and a ?tab= left from a link would bring back the tab the person left.
+ */
+export function inboxAddress(path: string, search: string, item: string | undefined): string {
+  const q = new URLSearchParams(search);
+  q.delete('tab');
+  if (item) q.set('item', item);
+  else q.delete('item');
+  const s = q.toString();
+  return s ? `${path}?${s}` : path;
+}
+
+/** The tab an ?item= row key is on when the address names no tab: undefined when the tab the person left can show it. */
+export function tabOfItem(item: string | undefined, current: 'needs' | 'running' | 'done' | 'mine'): 'needs' | 'running' | 'done' | undefined {
+  if (!item) return undefined;
+  if (item.startsWith('needs:')) return 'needs';
+  if (item.startsWith('done:')) return 'done';
+  if (item.startsWith('task:') || item.startsWith('scan:')) return current === 'needs' || current === 'running' ? undefined : 'running';
+  return undefined;
+}

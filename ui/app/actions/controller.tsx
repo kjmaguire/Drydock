@@ -33,7 +33,7 @@ export const controller = createController(routes, {
     },
     async needsYou({ render, url }) {
       const { NeedsYouScreen } = await import('../screens/needs-you/needs-you-screen.tsx');
-      return render(<NeedsYouScreen tab={url.searchParams.get('tab') ?? undefined} />);
+      return render(<NeedsYouScreen tab={url.searchParams.get('tab') ?? undefined} item={url.searchParams.get('item') ?? undefined} />);
     },
     // My tasks is the Inbox's Mine tab (decision P140); its address opens the Inbox on that tab
     async myTasks({ render }) {

@@ -326,10 +326,52 @@ describe('the Inbox', () => {
     expect(r.$$('[data-testid="needs-item"]').length).toBe(0);
     expect(r.$('[data-testid="inbox-tab-running"]')!.getAttribute('aria-selected')).toBe('true');
     cleanup();
-    // the address without a tab is Needs you, whatever tab was open last
+    // the address without a tab opens where the Inbox was left (the tab is remembered)
     const again = mount(<NeedsYouScreen />, s);
-    await waitFor(() => expect(s.ui.inboxTab).toBe('needs'), again);
-    await waitFor(() => expect(again.$$('[data-testid="needs-item"]').length).toBe(3), again);
+    await waitFor(() => expect(again.$$('[data-testid="running-item"]').length).toBe(1), again);
+    expect(s.ui.inboxTab).toBe('running');
+    expect(again.$$('[data-testid="needs-item"]').length).toBe(0);
+  });
+
+  it("selects the row its address names (?item=), on that row's tab, so Reload and Back come back to it", async () => {
+    const { s } = servicesWith();
+    s.ui.setInboxTab('done');
+    const r = mount(<NeedsYouScreen item="needs:check:m1" />, s);
+    await waitFor(() => expect(s.ui.inboxTab).toBe('needs'), r);
+    await waitFor(() => expect(selectedKey(r)).toBe('needs:check:m1'), r);
+    expect(r.$('[data-testid="inbox-detail"]')!.textContent).toContain('Tests failed');
+    cleanup();
+    // an item no longer listed selects the first row, as the Inbox does without one
+    const { s: s2 } = servicesWith();
+    const gone = mount(<NeedsYouScreen item="needs:check:gone" />, s2);
+    await waitFor(() => expect(gone.$$('[data-testid="needs-item"]').length).toBe(3), gone);
+    await waitFor(() => expect(selectedKey(gone)).toBe('needs:approval:apr1'), gone);
+  });
+
+  it('marks several items done at once: Mark N done for those shown, Shift+J/K picks some, a request is never among them', async () => {
+    const check2: NeedsYouItem = { key: 'watchdog:9', kind: 'watchdog_pause', severity: 1, title: 'Paused: no progress', projectId: 'p1', taskId: 't1', taskSeq: 41, createdAt: iso(NOW - 30 * 60_000) };
+    const mention: NeedsYouItem = { key: 'mention:5', kind: 'mention', severity: 3, title: 'Dana mentioned you', projectId: 'p1', createdAt: iso(NOW - 40 * 60_000) };
+    const many: string[][] = [];
+    const items = [permission, failed, check2, mention];
+    const { r } = await open({ needsYouAckMany: async (keys) => (many.push(keys), keys.length) }, items);
+    // the request (permission) is answered, never marked done: three of four
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done');
+    // Shift+J from the first row picks it and the next; only the one that can be marked done counts
+    expect(selectedKey(r)).toBe('needs:approval:apr1');
+    await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', shiftKey: true, bubbles: true, cancelable: true })));
+    await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', shiftKey: true, bubbles: true, cancelable: true })));
+    expect(Array.from(r.$$('[data-picked="true"]')).map((x) => x.getAttribute('data-row-key'))).toEqual(['needs:approval:apr1', 'needs:check:m1', 'needs:watchdog:9']);
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 2 done');
+    // Escape lets the picked rows go
+    await r.act(() => press('Escape'));
+    expect(r.$$('[data-picked="true"]').length).toBe(0);
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done');
+    await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', shiftKey: true, bubbles: true, cancelable: true })));
+    await r.act(() => press('e'));
+    await waitFor(() => expect(many).toEqual([['check:m1', 'watchdog:9']]), r);
+    await waitFor(() => expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done'), r);
+    await r.act(() => (r.$('[data-testid="mark-many"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(many[1]).toEqual(['check:m1', 'watchdog:9', 'mention:5']), r);
   });
 
   it('says plainly when nothing waits and nothing runs, with or without a project', async () => {

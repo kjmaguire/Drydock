@@ -278,7 +278,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                 </div>
                 {task.blockedReason ? <BlockedNote task={task} onChanged={reload} /> : null}
                 <EndedCard detail={d} />
-                <ReviewPanel detail={d} onChanged={reload} />
+                <ReviewPanel detail={d} criteria={criteria} onChanged={reload} />
                 <AllowRules rules={d.allowRules ?? []} onChanged={reload} />
                 <TaskControls key={task.id} detail={d} onChanged={reload} />
                 <TaskActivity taskId={task.id} agents={agents} />

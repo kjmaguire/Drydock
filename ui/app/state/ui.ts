@@ -25,6 +25,7 @@ interface DockState {
 const DOCK_KEY = 'drydock.dock';
 const DETAILS_KEY = 'drydock.details';
 const SIDEBAR_KEY = 'drydock.sidebar';
+const INBOX_KEY = 'drydock.inbox';
 
 const DOCK_TABS: readonly DockTab[] = ['terminal', 'diff', 'logs', 'activity'];
 const DOCK_DEFAULT: DockState = { open: false, tab: 'diff', height: 280 };
@@ -109,6 +110,11 @@ function writeJSON(key: string, v: unknown): void {
 /** The Inbox's tabs; Mine is the person's own tasks (once the My tasks page, decision P140). */
 export type InboxTab = 'needs' | 'running' | 'done' | 'mine';
 
+/** The Inbox tab as stored (drydock.inbox); anything else is Needs you. */
+export function parseInboxTab(raw: unknown): InboxTab {
+  return raw === 'running' || raw === 'done' || raw === 'mine' ? raw : 'needs';
+}
+
 /** A one-time note one page leaves for the next. */
 export interface Flash {
   text: string;
@@ -134,8 +140,9 @@ export class UiModel extends Model {
   /** A rail or the chat list shown as a drawer in a narrow window (closed again by a navigation). */
   drawerOpen = false;
   paletteOpen = false;
-  /** The Inbox's tab (Needs you, Running, Done today): the sidebar's Inbox or Running is current with it. */
+  /** The Inbox's tab (Needs you, Running, Done today, Mine): remembered (drydock.inbox), so the Inbox opens where it was left. */
   inboxTab: InboxTab = 'needs';
+  #persist: boolean;
   theme: ThemeChoice = 'system';
   #newChat = false;
   #dock: Record<string, DockState> = {};
@@ -155,7 +162,9 @@ export class UiModel extends Model {
     };
     this.#narrowDetails?.addEventListener('change', redraw);
     this.#narrowRails?.addEventListener('change', redraw);
-    if (opts.persist !== false) {
+    this.#persist = opts.persist !== false;
+    if (this.#persist) {
+      this.inboxTab = readStored(INBOX_KEY, parseInboxTab);
       this.theme = loadTheme();
       this.#sidebar = readStored(SIDEBAR_KEY, parseSidebar);
       this.#dock = readStored(DOCK_KEY, parseDock);
@@ -247,6 +256,7 @@ export class UiModel extends Model {
   setInboxTab(tab: InboxTab): void {
     if (this.inboxTab === tab) return;
     this.inboxTab = tab;
+    if (this.#persist) writeJSON(INBOX_KEY, tab);
     this.changed();
   }
 

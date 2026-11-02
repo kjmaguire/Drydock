@@ -140,6 +140,19 @@ export function criteriaRows(
   });
 }
 
+/** A criterion still to meet as a line of "Request changes" feedback; '' for one that is met or waived. */
+export function changeLine(row: Pick<CriterionRow, 'text' | 'status'>): string {
+  const text = row.text.trim();
+  if (!text) return '';
+  return row.status === 'not_met' ? `- Not met: ${text}` : row.status === 'open' ? `- Not confirmed yet: ${text}` : '';
+}
+
+/** What "Request changes" starts from: a line per criterion not met (first), then per one still open. */
+export function changesDraft(rows: readonly Pick<CriterionRow, 'text' | 'status'>[]): string {
+  const order = [...rows].filter((r) => r.status === 'not_met').concat(rows.filter((r) => r.status === 'open'));
+  return order.map(changeLine).filter(Boolean).join('\n');
+}
+
 const sentence = (s: string | undefined): string => {
   const v = (s ?? '').trim();
   return !v ? '' : /[.!?]$/.test(v) ? v : `${v}.`;
