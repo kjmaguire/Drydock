@@ -14,6 +14,7 @@ import { t } from '../../ui/tokens.ts';
 import { ChatList, isNewChatKey } from './chat-list.tsx';
 import { ChatView } from './chat-view.tsx';
 import { NewChatDialog } from './new-chat-dialog.tsx';
+import { chatToReopen, readLastChat, writeLastChat } from './chats.ts';
 
 const screenCss = css({ position: 'relative', display: 'flex', height: '100%', minHeight: '0', minWidth: '0', background: t.bgApp });
 const scrimCss = css({ position: 'absolute', inset: '0', zIndex: '29', border: '0', borderRadius: '0', padding: '0', minHeight: '0', background: 'color-mix(in srgb, black 25%, transparent)', cursor: 'default' });
@@ -30,6 +31,21 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
   // the first is being made would make two)
   let starting = false;
   let startError: Error | undefined;
+  // coming back to Chats (D7): /chats opens the chat the viewer last had open while it is still listed, else the most recently
+  // active one; the wide layout only (a narrow window shows the list first). Read once each time /chats is reached.
+  let reopened = false;
+  let lastWritten = '';
+  const reopen = query(handle, {
+    enabled: () => !handle.props.id && !s.ui.narrowRails,
+    key: () => handle.props.id ?? '',
+    load: async () => {
+      try {
+        return chatToReopen(await s.client.chatList({ projectId: '', includeArchived: false }), readLastChat());
+      } catch {
+        return '';
+      }
+    },
+  });
   // a chat that could not be made (its CLI refused: a notice to accept, a licence) can be started with another agent CLI
   let chooseOpen = false;
   const open = async () => {
@@ -63,6 +79,18 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
   return () => {
     const { id, onNavigate } = handle.props;
     if (s.ui.takeNewChat()) handle.queueTask(() => void open());
+    if (id) {
+      reopened = false;
+      if (id !== lastWritten) writeLastChat((lastWritten = id));
+    }
+    const target = !id && !s.ui.narrowRails && !reopen.loading ? (reopen.data ?? '') : '';
+    if (target && !reopened && !starting) {
+      reopened = true;
+      const href = routes.chat.href({ id: target });
+      handle.queueTask(() => (onNavigate ? onNavigate(href) : void navigate(href, { history: 'replace' }).catch(() => {})));
+    }
+    // while /chats works out which chat to open, the centre stays blank rather than flash the empty state
+    const deciding = !id && !s.ui.narrowRails && (reopen.loading || !!target);
     const ws = s.workspace;
     // a narrow window (a Windows half-screen) shows the list or the chat, and the list over the chat when asked for
     const narrow = s.ui.narrowRails;
@@ -78,7 +106,7 @@ export function ChatsScreen(handle: Handle<{ id?: string; onNavigate?: (href: st
         ) : null}
         {id ? (
           <ChatView key={id} id={id} adapters={adapters.data ?? []} onNavigate={onNavigate} onShowList={narrow ? () => s.ui.setDrawer(true) : undefined} />
-        ) : narrow ? null : (
+        ) : narrow || deciding ? null : (
           <div mix={emptyCss}>
             <p>Talk to an agent CLI directly.</p>
             <Button variant="primary" icon={Plus} disabled={starting} title="New chat (Ctrl+N)" mix={[on('click', () => void open())]} data-testid="chats-empty-new">

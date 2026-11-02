@@ -44,6 +44,13 @@ import {
   startsGroup,
   toolInputText,
   wslUnavailable,
+  chatToReopen,
+  isFolderRefusal,
+  readChatFilter,
+  readLastChat,
+  turnPhaseText,
+  writeChatFilter,
+  writeLastChat,
 } from './chats.ts';
 
 const adapter = (id: string, status: string, installed = status !== 'not_installed', version = ''): AdapterInfo => ({
@@ -644,6 +651,71 @@ describe('ChatFeed', () => {
     expect(f.messages).toEqual([]);
     expect(f.hasMore).toBe(false);
     expect(f.error).toBeUndefined();
+  });
+});
+
+describe('Batch B3: next steps, first seconds, coming back', () => {
+  const mem = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), m };
+  };
+  const refusing = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+
+  it('names the first seconds of a turn: starting the CLI, then thinking, then the step; slow starts say how long (D12)', () => {
+    expect(turnPhaseText('Claude Code', undefined, 0)).toEqual({ text: 'Working…', slow: false });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 5000)).toEqual({ text: 'Starting Claude Code…', slow: false });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 25_500)).toEqual({ text: 'Still starting (24 s)', slow: true });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: true, step: '' }, 60_000)).toEqual({ text: 'Thinking…', slow: false });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: true, step: 'Read' }, 60_000)).toEqual({ text: 'Using Read…', slow: false });
+  });
+
+  it("knows the core's refusal of a chat whose folder is gone (D4)", () => {
+    expect(isFolderRefusal(new Error("this chat's folder cannot be used any more: C:\\gone does not exist"))).toBe(true);
+    expect(isFolderRefusal(new Error('the message is empty'))).toBe(false);
+    expect(isFolderRefusal(undefined)).toBe(false);
+  });
+
+  it('reopens the last chat while it is listed, else the most recently active one, else none (D7)', () => {
+    const list = [{ id: 'a', updatedAt: 5 }, { id: 'b', updatedAt: 9 }, { id: 'c', updatedAt: 1 }];
+    expect(chatToReopen(list, 'c')).toBe('c');
+    expect(chatToReopen(list, 'gone')).toBe('b');
+    expect(chatToReopen(list, '')).toBe('b');
+    expect(chatToReopen([], 'a')).toBe('');
+  });
+
+  it('keeps the last chat and the list filter per viewer, and survives storage that refuses (D7)', () => {
+    const st = mem();
+    expect(readLastChat(st)).toBe('');
+    writeLastChat('chat_x', st);
+    expect(readLastChat(st)).toBe('chat_x');
+    expect(readChatFilter(st)).toEqual({ all: true, archived: false });
+    writeChatFilter({ all: false, archived: true }, st);
+    expect(readChatFilter(st)).toEqual({ all: false, archived: true });
+    st.m.set('drydock.chat.filter', '{not json');
+    expect(readChatFilter(st)).toEqual({ all: true, archived: false });
+    expect(readLastChat(refusing)).toBe('');
+    expect(readChatFilter(refusing)).toEqual({ all: true, archived: false });
+    writeLastChat('x', refusing);
+    writeChatFilter({ all: true, archived: false }, refusing);
+  });
+
+  it("the feed follows a turn's first seconds: started here, the CLI up (agent.started for this chat), a step; ends with the turn (D12)", async () => {
+    const store = new EventStore(new FakeTransport());
+    const f = new ChatFeed({ chatGet: async () => ({ chat: chat(), messages: [], hasMore: false }), chatMessages: async () => ({ messages: [], hasMore: false }) }, store, 'c1').start();
+    await new Promise((r) => setTimeout(r, 0));
+    let seq = 1;
+    const emit = (type: string, extra: Partial<Parameters<typeof ev>[2]>) => store.ingest(ev(++seq, type, extra));
+    expect(f.phase).toBeUndefined();
+    emit('chat.turn_started', { data: { chatId: 'c1', turnId: 't1', attach: [] } });
+    expect(f.phase?.cli).toBe(false);
+    emit('agent.started', { agentId: 'other', data: {} });
+    expect(f.phase?.cli).toBe(false);
+    emit('agent.started', { agentId: 'c1', data: { adapter: 'claude' } });
+    expect([f.phase?.cli, f.phase?.step]).toEqual([true, '']);
+    emit('chat.tool', { data: { chatId: 'c1', turnId: 't1', name: 'Bash', summary: 'Bash: ls', messageId: 'm9' } });
+    expect(f.phase?.step).toBe('Bash');
+    emit('chat.turn', { data: { chatId: 'c1', turnId: 't1', status: 'done' } });
+    expect(f.phase).toBeUndefined();
   });
 });
 
