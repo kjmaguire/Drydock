@@ -342,6 +342,22 @@ export interface PrebuiltApplyReq {
   confirmSkipsApprovals?: boolean;
 }
 
+/** agentcatalog.applyMany: several catalog agents into one project; an entry without an adapter takes the catalog's preferred CLI. */
+export interface PrebuiltApplyManyReq {
+  projectId: string;
+  items: { id: string; name?: string; adapter?: string; model?: string; effort?: string }[];
+  installSkills: boolean;
+  connectMcp: boolean;
+  confirmSkipsApprovals?: boolean;
+}
+
+/** One entry's outcome in applyMany: applied, or its error. */
+export interface PrebuiltApplyManyResult {
+  id: string;
+  applied?: PrebuiltApplied;
+  error?: string;
+}
+
 export interface SkippedItem {
   id?: string;
   name?: string;
@@ -663,6 +679,9 @@ export interface TaskDetail {
   criteria?: CriterionStatus[];
   /** A person paused the task's run (taskPause); absent otherwise. The run's status is then PAUSED. */
   paused?: TaskPause;
+  /** A failed or cancelled task can be run again as a new task (taskRunAgain), runAgainWhy why not; absent before it ended. */
+  runAgain?: boolean;
+  runAgainWhy?: string;
 }
 
 /**

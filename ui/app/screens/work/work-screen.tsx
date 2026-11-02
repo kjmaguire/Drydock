@@ -28,6 +28,7 @@ import { AgentPanelHost } from '../team/agent-panel.tsx';
 import { editAgent, editAgentHref, newAgentHref } from './edit-agent.ts';
 import { RepoSyncLine } from './repo-sync-line.tsx';
 import { GROUP_TITLE, filterWork, groupWork, modelEffort, openItem, workRows, type WorkGroup, type WorkRow } from './work.ts';
+import { AddReviewerNote } from '../shared/add-reviewer.tsx';
 
 const layoutCss = css({
   display: 'grid',
@@ -285,6 +286,7 @@ export function WorkScreen(handle: Handle<WorkScreenProps>) {
             </a>
           </div>
           {agents.length === 0 ? <p mix={quietCss}>No agents yet.</p> : null}
+          <AddReviewerNote projectId={pid() ?? ''} agents={agents} />
           {agents.map((a) => {
             const pr = presenceFor(a.id, presence);
             return (

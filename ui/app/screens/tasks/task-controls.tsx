@@ -14,6 +14,7 @@ import { ErrorNote } from '../../ui/feedback.tsx';
 import { Field } from '../../ui/form.tsx';
 import { Select, type SelectOption } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
+import { addCodeReviewer, aloneInCrew } from '../shared/add-reviewer.tsx';
 import { isRunActive, isTerminal } from './tasks.ts';
 
 const boxCss = css({
@@ -32,6 +33,8 @@ const boxCss = css({
 });
 
 const option = (a: Agent): SelectOption => ({ value: a.id, label: `${a.name} (${a.role})` });
+/** The Reviewer option that adds the catalog's Code Reviewer when the crew has no other agent to review (E1). */
+const ADD_REVIEWER = '__add-code-reviewer';
 
 export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () => void }>) {
   const s = services(handle);
@@ -88,7 +91,25 @@ export function TaskControls(handle: Handle<{ detail: TaskDetail; onChanged: () 
             </Field>
             <Field label="Reviewer">
               {(id) => (
-                <Select id={id} label="Reviewer" value={r} options={[{ value: '', label: 'Choose a reviewer' }, ...agents.map(option)]} onChange={(v) => set(() => (reviewer = v))} />
+                <Select
+                  id={id}
+                  label="Reviewer"
+                  value={r}
+                  options={[
+                    { value: '', label: 'Choose a reviewer' },
+                    ...(aloneInCrew(agents) ? [{ value: ADD_REVIEWER, label: 'Add Code Reviewer', hint: 'from the catalog' }] : []),
+                    ...agents.map(option),
+                  ]}
+                  onChange={(v) =>
+                    v === ADD_REVIEWER
+                      ? void act.run('reviewer', async () => {
+                          const added = await addCodeReviewer(s, task.projectId, aloneInCrew(agents));
+                          set(() => (reviewer = added.id));
+                          return added;
+                        })
+                      : set(() => (reviewer = v))
+                  }
+                />
               )}
             </Field>
             <Field label="Template">

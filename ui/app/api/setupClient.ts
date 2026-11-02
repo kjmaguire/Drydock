@@ -11,6 +11,8 @@ import type {
   McpCatalogEntry,
   PrebuiltAgent,
   PrebuiltApplied,
+  PrebuiltApplyManyReq,
+  PrebuiltApplyManyResult,
   PrebuiltApplyReq,
   Project,
   ProjectRepos,
@@ -56,6 +58,8 @@ export interface SetupClient {
   mcpAddFromCatalog(catalogId: string): Promise<McpCatalogAdded>;
   agentCatalogList(projectId?: string): Promise<PrebuiltAgent[]>;
   agentCatalogApply(req: PrebuiltApplyReq): Promise<PrebuiltApplied>;
+  /** Several catalog agents into one project in one call (agentcatalog.applyMany): each entry's outcome, applied or its error. */
+  agentCatalogApplyMany(req: PrebuiltApplyManyReq): Promise<PrebuiltApplyManyResult[]>;
 }
 
 const prebuilt = (e: PrebuiltAgent): PrebuiltAgent => ({
@@ -96,6 +100,7 @@ export function createSetupClient(t: Transport): SetupClient {
     mcpCatalog: async () => arr(await t.call<McpCatalogEntry[] | null>('mcplib.catalog', {})).map((e) => ({ ...e, readOnlyTools: arr(e.readOnlyTools), recommendedRoles: arr(e.recommendedRoles) })),
     mcpAddFromCatalog: (catalogId) => t.call('mcplib.addFromCatalog', { catalogId }),
     agentCatalogList: async (projectId) => arr(await t.call<PrebuiltAgent[] | null>('agentcatalog.list', projectId ? { projectId } : {})).map(prebuilt),
+    agentCatalogApplyMany: async (req) => arr(await t.call<PrebuiltApplyManyResult[] | null>('agentcatalog.applyMany', req)),
     agentCatalogApply: async (req) => {
       const r = await t.call<PrebuiltApplied>('agentcatalog.apply', req);
       return {

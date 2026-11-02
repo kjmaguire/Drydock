@@ -5,7 +5,7 @@ import type { Evidence, PendingRequest, TaskDetail } from '../../api/types.ts';
 import { expiredLicense } from '../../test/fixtures.ts';
 import { byLabel, byText, cleanup, mount, type, waitFor } from '../../test/render.tsx';
 import { verdictGate } from './merge-gate.tsx';
-import { ReviewPanel, SpecGate } from './review-panel.tsx';
+import { AllowRules, ReviewPanel, SpecGate } from './review-panel.tsx';
 import { detail as baseDetail, recorder, svc, task } from './testing.ts';
 
 afterEach(cleanup);
@@ -627,6 +627,26 @@ describe('Permission request', () => {
     await waitFor(() => expect(json.calls).toEqual([['run-7', 'apr_1', 'approved', { input: { file_path: 'b.txt', content: 'y' } }]]), w);
   });
 
+  it('offers Allow for the rest of this task first where the core allows it, and answers through the task rule (P97)', async () => {
+    const runRespond = recorder(() => undefined);
+    const runApproveForTask = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(<ReviewPanel detail={permission({ ...bash, approveForTask: true })} onChanged={() => changed++} />, svc({ runRespond, runApproveForTask }));
+    expect(buttons(r.container)).toEqual(['Allow for the rest of this task', 'Allow once', 'Refuse']);
+    expect(byText(r.container, 'button', 'Allow for the rest of this task').getAttribute('data-variant')).toBe('primary');
+    expect(r.$('[data-testid="permission-prompt"]')!.textContent).toContain('until the task ends; any other call still asks you');
+    await r.act(() => byText(r.container, 'button', 'Allow for the rest of this task').click());
+    await waitFor(() => expect(runApproveForTask.calls).toEqual([['run-7', 'apr_1']]), r);
+    expect(runRespond.calls).toEqual([]);
+    await waitFor(() => expect(changed).toBe(1), r);
+    cleanup();
+
+    // what is asked every time is offered once only, with the core's reason
+    const once = mount(<ReviewPanel detail={permission({ ...bash, approveForTask: false, approveForTaskNote: 'it deletes files, which is asked every time' })} onChanged={() => undefined} />, svc());
+    expect(buttons(once.container)).toEqual(['Allow once', 'Refuse']);
+    expect(once.$('[data-testid="permission-prompt-once-note"]')!.textContent).toBe('This call can only be allowed once: it deletes files, which is asked every time.');
+  });
+
   it('read-only allows refusing, not allowing', async () => {
     const r = mount(<ReviewPanel detail={permission(bash)} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
@@ -681,5 +701,59 @@ describe('Spec gate', () => {
     const r = mount(<SpecGate payload={{ ...payload, criteria: [{ id: 'AC-1', given: 'a', when: 'b', then: 'c' }] }} busy={false} readOnly onRespond={async () => undefined} />);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Accept spec').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Reject with feedback').disabled).toBe(false);
+  });
+});
+
+describe('Calls allowed for the rest of the task (P97)', () => {
+  const rule = { id: 'par_1', projectId: 'p1', taskId: 't1', agentId: 'agt_1', tool: 'claude:Bash', summary: 'npm install left-pad', approvalId: 'apr_1', createdBy: 'human:kyle', createdAt: 0 };
+
+  it('lists each rule with Stop allowing, which removes that rule', async () => {
+    const approvalRuleRemove = recorder(() => undefined);
+    let changed = 0;
+    const r = mount(<AllowRules rules={[rule, { ...rule, id: 'par_2', summary: 'go test ./...' }]} onChanged={() => changed++} />, svc({ approvalRuleRemove }));
+    const rows = Array.from(r.container.querySelectorAll('[data-testid="allow-rule"]'));
+    expect(rows.map((x) => x.querySelector('code')!.textContent)).toEqual(['npm install left-pad', 'go test ./...']);
+    await r.act(() => (rows[1]!.querySelector('button') as HTMLButtonElement).click());
+    await waitFor(() => expect(approvalRuleRemove.calls).toEqual([['par_2']]), r);
+    await waitFor(() => expect(changed).toBe(1), r);
+  });
+
+  it('renders nothing without rules', () => {
+    const r = mount(<AllowRules rules={[]} onChanged={() => undefined} />, svc());
+    expect(r.$('[data-testid="allow-rules"]')).toBeNull();
+  });
+});
+
+describe('A turn cut off by Drydock stopping (gate "interrupted", X513)', () => {
+  const cut = (payload: Record<string, unknown>) =>
+    detail({
+      pending: [{ id: 'req-9', nodeId: 'code', step: 3, spec: { kind: 'approval', title: 'The code turn was cut off 2 times because Drydock stopped while it ran. Approve to run it again (it is paid for again) or reject to stop the run.', payload } }],
+    });
+
+  it('says what was cut off and shows the crash report of that moment, with two plain answers bound to the request', async () => {
+    for (const [label, decision] of [
+      ['Run the step again (paid for again)', 'approved'],
+      ['Stop the run', 'rejected'],
+    ] as const) {
+      const runRespond = recorder(() => undefined);
+      const payload = { gate: 'interrupted', node: 'code', step: 3, interruptions: 2, crashReport: { name: 'crash-1.txt', time: Date.UTC(2026, 10, 2, 10, 15), summary: 'fatal error: concurrent map writes' } };
+      const r = mount(<ReviewPanel detail={cut(payload)} onChanged={() => undefined} />, svc({ runRespond }));
+      const panel = r.$('[data-testid="interrupted-gate"]')!;
+      expect(panel.textContent).toContain('The code step was cut off 2 times because Drydock stopped while it ran.');
+      expect(r.$('[data-testid="interrupted-crash"]')!.textContent).toContain('fatal error: concurrent map writes');
+      expect(r.$('[data-testid="interrupted-crash"] a')!.getAttribute('href')).toBe('/support');
+      expect(buttons(r.container)).toEqual(['Run the step again (paid for again)', 'Stop the run']);
+      await r.act(() => byText(r.container, 'button', label).click());
+      await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'req-9', decision, undefined]]), r);
+      cleanup();
+    }
+  });
+
+  it('says when no crash report was kept, and read-only allows stopping only', async () => {
+    const r = mount(<ReviewPanel detail={cut({ gate: 'interrupted', node: 'code', step: 3, interruptions: 2 })} onChanged={() => undefined} />, svc({}, { license: expiredLicense }));
+    expect(r.$('[data-testid="interrupted-crash"]')).toBeNull();
+    expect(r.$('[data-testid="interrupted-gate"]')!.textContent).toContain('No crash report was kept for this run');
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Run the step again (paid for again)').disabled).toBe(true), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop the run').disabled).toBe(false);
   });
 });

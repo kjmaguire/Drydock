@@ -28,11 +28,12 @@ import { UsageTable } from '../shared/usage.tsx';
 import { Interventions, leadOf } from '../team/lead.tsx';
 import { TaskActivity } from './activity-panel.tsx';
 import { CriteriaList } from './criteria.tsx';
+import { EndedCard } from './ended-card.tsx';
 import { EvidenceList, ReviewList } from './evidence.tsx';
 import { PreviewControls } from './preview-controls.tsx';
 import { SandboxApp } from './sandbox-app.tsx';
 import { DiffView } from './raw-diff.tsx';
-import { ReviewPanel } from './review-panel.tsx';
+import { AllowRules, ReviewPanel } from './review-panel.tsx';
 import { SteerBox } from './steer-box.tsx';
 import { TaskControls } from './task-controls.tsx';
 import { criteriaRows, statusDot, statusPill } from './task-page.ts';
@@ -276,7 +277,9 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   {criteria.length ? <CriteriaList taskId={task.id} rows={criteria} onChanged={(cs) => detail.set({ ...d, criteria: cs })} /> : null}
                 </div>
                 {task.blockedReason ? <BlockedNote task={task} onChanged={reload} /> : null}
+                <EndedCard detail={d} />
                 <ReviewPanel detail={d} onChanged={reload} />
+                <AllowRules rules={d.allowRules ?? []} onChanged={reload} />
                 <TaskControls key={task.id} detail={d} onChanged={reload} />
                 <TaskActivity taskId={task.id} agents={agents} />
                 <Part title="Evidence">

@@ -291,6 +291,10 @@ type TaskDetail struct {
 	Criteria []pipeline.CriterionStatus `json:"criteria"`
 	// Paused says a person paused the task's run (task.pause), who and when; absent otherwise.
 	Paused *TaskPause `json:"paused,omitempty"`
+	// RunAgain says a failed or cancelled task can be run again as a new task (task.runAgain, P124), RunAgainWhy why not; both
+	// are absent while the task has not failed or been cancelled, so the task page offers it where the failure is shown.
+	RunAgain    bool   `json:"runAgain,omitempty"`
+	RunAgainWhy string `json:"runAgainWhy,omitempty"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -300,6 +304,10 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 		return TaskDetail{}, err
 	}
 	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}}
+	if t.Status == tasks.Failed || t.Status == tasks.Cancelled {
+		d.RunAgainWhy = runAgainRefusal(t)
+		d.RunAgain = d.RunAgainWhy == ""
+	}
 	if rules, err := c.TaskRules(ctx, id); err == nil {
 		d.AllowRules = rules
 	}
@@ -315,7 +323,7 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 			// a finished, failed or cancelled run waits for nobody: its last checkpoint may still list a request, which can no
 			// longer be answered ("run is in a terminal state")
 			if p, err := c.Engine.Pending(ctx, info.ID); err == nil && p != nil && !info.Status.Terminal() {
-				d.Pending = p
+				d.Pending = c.withInterruptedCrash(ctx, p, info.Created)
 			}
 			// a worker's permission requests wait in its live turn, not in the run's checkpoint (ext_permprompt.go)
 			if !info.Status.Terminal() {

@@ -52,6 +52,7 @@ import {
   type LinePart,
 } from './crew.ts';
 import { crewFigures, runsWhereTitle, sortAdapters } from './team.ts';
+import { AddReviewerNote, AddSuggestedTeam, aloneInCrew } from '../shared/add-reviewer.tsx';
 
 /** A task's identifier: "GOC-41" with the project's key, "#41" without one (an older core). */
 const keyText = (seq: number, projectKey?: string): string => (projectKey ? `${projectKey}-${seq}` : `#${seq}`);
@@ -564,11 +565,17 @@ export function CrewScreen(handle: Handle<{ scope: Scope; now?: () => number; on
           <div style={{ padding: '24px' }}>
             <Empty title="No agents yet" icon={Users}>
               <p>{isAll ? 'No project has an agent yet.' : 'No agents yet.'} A task needs a worker and a different agent as reviewer.</p>
+              {isAll ? null : <AddSuggestedTeam projectId={target} />}
             </Empty>
           </div>
         ) : null}
         {agents.length > 0 ? (
           <>
+            {isAll || !aloneInCrew(agents) ? null : (
+              <div style={{ padding: '12px 24px 0' }}>
+                <AddReviewerNote projectId={target} agents={agents} />
+              </div>
+            )}
             <ErrorNote error={timeline.error} what="Could not read today's runs" />
             <TodayTimeline lanes={lanes} window={w} now={now} keyOf={(lane, seq) => keyText(seq, projectOf(lane.projectId)?.key)} />
             <section mix={agentsCss} aria-label="Agents">

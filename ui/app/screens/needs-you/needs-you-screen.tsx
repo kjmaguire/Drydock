@@ -27,6 +27,7 @@ import { headerCss } from '../../ui/layout.tsx';
 import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
+import { RunAgainButton } from '../shared/run-again.tsx';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
 import { MyTasksList } from './my-tasks-screen.tsx';
 import {
@@ -258,10 +259,9 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
   const projectOf = (r: Row): string | undefined =>
     r.type === 'needs' ? r.item.projectId : r.type === 'task' ? r.summary.projectId : r.type === 'done' ? r.task.projectId : r.scan.projectId;
   /** Opens the row's page, in its own project (a task page and a project's Integrations page are of the open project). */
-  const open = (r: Row) => {
-    const pid = projectOf(r);
+  const open = (r: Row) => go(hrefOf(r), projectOf(r));
+  const go = (href: string, pid: string | undefined) => {
     if (pid && pid !== s.workspace.projectId) s.workspace.selectProject(pid);
-    const href = hrefOf(r);
     if (handle.props.onNavigate) handle.props.onNavigate(href);
     else void navigate(href);
   };
@@ -549,6 +549,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
                 projectName={project(sel.item.projectId)?.name}
                 now={now}
                 onOpen={() => open(sel)}
+                onGo={(href) => go(href, sel.item.projectId)}
                 onDone={() => markDone(sel.item)}
                 onAnswer={(kind) => onAnswer(sel.key, kind)}
                 acking={ack.busy === 'ack'}
@@ -581,6 +582,8 @@ function NeedsDetail(
     projectName: string | undefined;
     now: number;
     onOpen: () => void;
+    /** Opens another page of the item's project (the new task a Run again made). */
+    onGo: (href: string) => void;
     onDone: () => void;
     /** Says what this request's detail can answer here, once it is read. */
     onAnswer?: (kind: Answer['kind']) => void;
@@ -862,6 +865,10 @@ function NeedsDetail(
                 Decline
               </Button>
             </>
+          ) : null}
+          {it.kind === 'agent' && it.taskId && summary && (summary.status === 'FAILED' || summary.status === 'CANCELLED') ? (
+            // the agent failed its task: run the work again from here, with the run page's confirmation (paid work again)
+            <RunAgainButton taskId={it.taskId} seq={summary.seq} status={summary.status} variant="secondary" disabled={ro} onNavigate={handle.props.onGo} />
           ) : null}
           {canAck(it) ? (
             <Button disabled={acking} mix={[on('click', onDone)]} data-testid="detail-done">

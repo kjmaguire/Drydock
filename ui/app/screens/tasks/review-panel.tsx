@@ -4,14 +4,15 @@
 // gate Check CI again / Merge without CI this time / Stop and its merge gate Check again / Stop, a blocking gate none of whose
 // checks could judge (gate verdict) the checks that did not run with Check again / Go on without a result this time / Stop (the last
 // two asked twice), a changed repository git
-// configuration (gate repo_config_changed) its changed items with Trust and continue / Stop the run, a worker's permission
-// request (gate permission_prompt) the tool and its exact input with Allow once / Refuse, anything else Approve / Reject. Read-only (license) turns off approving and answering; refusing
+// configuration (gate repo_config_changed) its changed items with Trust and continue / Stop the run, a turn cut off by Drydock
+// stopping (gate interrupted) what was cut off and the crash report of that moment with Run the step again / Stop the run, a worker's permission
+// request (gate permission_prompt) the tool and its exact input with Allow for the rest of this task (where the core allows it) / Allow once / Refuse, anything else Approve / Reject. Read-only (license) turns off approving and answering; refusing
 // work (reject, request changes, send the spec back) stays available.
 
 import { css, on, type Handle } from 'remix/component';
 import { FileDiff, GitBranch, Hand } from 'lucide';
 import type { SpecReviewPayload } from '../../api/extTypes.ts';
-import type { PendingRequest, TaskDetail } from '../../api/types.ts';
+import type { PendingRequest, TaskAllowRule, TaskDetail } from '../../api/types.ts';
 import { visible } from '../../lib/visible.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { services, watch } from '../../state/services.tsx';
@@ -24,6 +25,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { BudgetPausePanel } from '../shared/budget-pause.tsx';
 import { LimitPanel, limitPayload, WatchdogPanel, watchdogPayload } from '../shared/escalation.tsx';
+import { InterruptedPanel, interruptedPayload } from '../shared/interrupted.tsx';
 import { PermissionPromptPanel, permissionPayload } from '../shared/permission-prompt.tsx';
 import { RepoConfigGatePanel, repoConfigPayload } from '../shared/repo-config.tsx';
 import { CIGatePanel, ciGatePayload, MergeGatePanel, mergeGatePayload, VerdictGatePanel, verdictGate } from './merge-gate.tsx';
@@ -90,7 +92,10 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
   let state: 'idle' | 'sending' | 'sent' = 'idle';
   let error: Error | undefined;
 
-  const respond = async (decision: string, data?: unknown) => {
+  const respond = (decision: string, data?: unknown) => send((runId, id) => s.client.runRespond(runId, id, decision, data));
+  // "Allow for the rest of this task" (P97): the core stores the rule, then approves this call
+  const allowForTask = () => send((runId, id) => s.client.runApproveForTask(runId, id));
+  const send = async (call: (runId: string, requestId: string) => Promise<unknown>) => {
     const { p, runId, onChanged } = handle.props;
     if (!runId) {
       error = new Error('This task has no run to answer.');
@@ -101,7 +106,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     error = undefined;
     void handle.update();
     try {
-      await s.client.runRespond(runId, p.id, decision, data);
+      await call(runId, p.id);
       // The answer is accepted; the request disappears when the core's events say so (it is not assumed here).
       state = 'sent';
       onChanged();
@@ -129,6 +134,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
     const verdict = verdictGate(p);
     const repoConfig = repoConfigPayload(p);
     const permission = permissionPayload(p);
+    const interrupted = interruptedPayload(p);
     const ro = s.workspace.license;
     const sending = state !== 'idle';
     const busy = sending || ro.readOnly;
@@ -204,7 +210,7 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
         ) : null}
 
         {permission ? (
-          <PermissionPromptPanel payload={permission} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+          <PermissionPromptPanel payload={permission} busy={sending} readOnly={ro.readOnly} onRespond={respond} onAllowForTask={allowForTask} />
         ) : budget ? (
           <BudgetPausePanel payload={budget} runId={runId} requestId={p.id} onDone={onChanged} />
         ) : limit ? (
@@ -217,6 +223,8 @@ function PendingCard(handle: Handle<{ p: PendingRequest; runId: string | undefin
           <MergeGatePanel payload={mergeGate} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : verdict ? (
           <VerdictGatePanel payload={verdict} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
+        ) : interrupted ? (
+          <InterruptedPanel payload={interrupted} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : repoConfig ? (
           <RepoConfigGatePanel payload={repoConfig} busy={sending} readOnly={ro.readOnly} onRespond={respond} />
         ) : spec ? (
@@ -367,6 +375,52 @@ export function SpecGate(handle: Handle<{ payload: SpecReviewPayload; busy: bool
         )}
         {edited ? <Badge tone="info">criteria edited</Badge> : null}
       </div>
+    );
+  };
+}
+
+/**
+ * The calls the person allowed for the rest of this task (P97), each with Stop allowing: the next such call asks again. They end
+ * with the task by themselves. Renders nothing when there are none.
+ */
+export function AllowRules(handle: Handle<{ rules: TaskAllowRule[]; onChanged: () => void }>) {
+  const s = services(handle);
+  let busy = '';
+  let error: Error | undefined;
+  const stop = async (id: string) => {
+    busy = id;
+    error = undefined;
+    void handle.update();
+    try {
+      await s.client.approvalRuleRemove(id);
+      handle.props.onChanged();
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e));
+    }
+    busy = '';
+    void handle.update();
+  };
+  return () => {
+    const { rules } = handle.props;
+    if (rules.length === 0) return null;
+    return (
+      <section mix={cardCss} aria-label="Allowed for the rest of this task" data-testid="allow-rules">
+        <h3>Allowed for the rest of this task</h3>
+        <p mix={muted} style={{ margin: '0' }}>
+          These calls run without asking you until the task ends. Any other call still asks.
+        </p>
+        <ErrorNote error={error} what="Not stopped" />
+        <ul style={{ display: 'grid', gap: '6px', margin: '0', padding: '0', listStyle: 'none' }}>
+          {rules.map((r) => (
+            <li key={r.id} data-testid="allow-rule" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0' }}>
+              <code style={{ flex: '1', minWidth: '0', overflowWrap: 'anywhere' }}>{visible(r.summary)}</code>
+              <Button size="sm" disabled={busy !== ''} mix={on('click', () => void stop(r.id))}>
+                {busy === r.id ? 'Stopping...' : 'Stop allowing'}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </section>
     );
   };
 }

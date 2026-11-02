@@ -372,3 +372,34 @@ describe('the Inbox', () => {
     await waitFor(() => expect(answers).toEqual([['jr1', true]]), r);
   });
 });
+
+describe('an agent that failed its task (C6)', () => {
+  const agentFailed: NeedsYouItem = {
+    key: 'agent:a1:failed:1', kind: 'agent', severity: 1, title: 'Failed: the worker gave up', projectId: 'p1', agentId: 'a1', agentName: 'Free hand', taskId: 't5', taskSeq: 43, createdAt: iso(NOW - 60_000),
+  };
+  const withEnded = (status: string) => ({
+    taskSummaries: async () => {
+      const all = [...summaries, summary({ taskId: 't5', seq: 43, title: 'Fetch the feed', status })];
+      return { summaries: all, total: all.length, partial: false };
+    },
+  });
+
+  it('runs the task again as a new task from the item, after the confirmation', async () => {
+    const again: string[] = [];
+    const { r, navigated } = await open({ ...withEnded('FAILED'), taskRunAgain: async (id) => (again.push(id), { taskId: 't10', seq: 44, runId: 'run10', from: id }) }, [agentFailed]);
+    await waitFor(() => expect(r.$('[data-testid="run-again"]')).toBeTruthy(), r);
+    await r.act(() => (r.$('[data-testid="run-again"]') as HTMLButtonElement).click());
+    expect(again).toEqual([]);
+    expect(r.$('[data-testid="run-again-confirm"]')!.textContent).toContain('Task #43, which failed, stays as it is');
+    const yes = Array.from(r.$$('[data-testid="run-again-confirm"] button')).find((b) => b.textContent === 'Run it again') as HTMLButtonElement;
+    await r.act(() => yes.click());
+    await waitFor(() => expect(again).toEqual(['t5']), r);
+    await waitFor(() => expect(navigated).toEqual(['/task/t10']), r);
+  });
+
+  it('offers nothing to run again while the task has not ended', async () => {
+    const { r } = await open(withEnded('IN_PROGRESS'), [agentFailed]);
+    await waitFor(() => expect(r.$('[data-testid="detail-done"]')).toBeTruthy(), r);
+    expect(r.$('[data-testid="run-again"]')).toBeNull();
+  });
+});
