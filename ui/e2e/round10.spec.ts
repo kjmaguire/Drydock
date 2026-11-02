@@ -32,10 +32,11 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
   await expect(logs.getByTestId('log-text')).toContainText('implemented Subtract');
   await expect(logs.getByTestId('log-text')).not.toContainText('"kind"');
 
-  // a real shell in the task's worktree
+  // a real shell in the task's worktree: asking for the tab opens one (G6)
   await page.getByRole('tab', { name: 'Terminal' }).click();
   const term = page.getByTestId('terminal-panel');
-  await term.getByRole('button', { name: 'New terminal in the task' }).click();
+  await expect(term.getByRole('tab', { selected: true })).toBeVisible({ timeout: 30_000 });
+  await expect(term.getByRole('tab')).toHaveCount(1);
   const xterm = term.getByTestId('xterm');
   await expect(xterm.locator('.xterm-rows')).toBeVisible();
   await xterm.click();

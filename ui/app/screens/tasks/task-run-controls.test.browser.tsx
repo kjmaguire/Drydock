@@ -179,12 +179,12 @@ describe('Open the worktree (O)', () => {
     expect(button.disabled).toBe(false);
     await r.act(() => button.click());
     expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
-    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1' });
+    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1', reuse: true });
     // O on the page
     s.ui.setDock({ open: false, tab: 'logs' });
     await r.act(() => key(document.body, 'o'));
     expect(s.ui.dock.tab).toBe('terminal');
-    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1' });
+    expect(s.ui.takeTerminalAsk()).toEqual({ taskId: 't1', reuse: true });
     // never while typing in the steer box, nor with a modifier
     s.ui.setDock({ open: false, tab: 'logs' });
     await r.act(() => key(steerInput(r.container), 'o'));

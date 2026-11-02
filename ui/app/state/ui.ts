@@ -10,6 +10,17 @@ import { Model } from './services.tsx';
 
 export type DetailsTab = 'agents' | 'room' | 'task' | 'thread' | 'inspector';
 export type DockTab = 'terminal' | 'diff' | 'logs' | 'activity';
+
+/**
+ * What the terminal panel is asked to do: open a terminal in a task's worktree or a project's repository (reuse: bring up the
+ * shell already running there), or, with ensure, open one in the dock's own task or project when none of the project's runs.
+ */
+export interface TerminalAsk {
+  taskId?: string;
+  projectId?: string;
+  reuse?: boolean;
+  ensure?: boolean;
+}
 /**
  * The kind of page the details panel sits beside: a room or a run ('conversation'), or any other page (the task page has its own
  * properties panel, graphite P97, so the details panel starts closed beside it).
@@ -391,19 +402,30 @@ export class UiModel extends Model {
     this.setDock({ open: true, tab });
   }
 
-  #terminalAsk: { taskId?: string; projectId?: string } | undefined;
+  #terminalAsk: TerminalAsk | undefined;
 
   /**
-   * Open a new terminal in the dock, in a task's worktree or the project's repository (the task page's "Open the worktree"):
-   * the dock's terminal panel opens it as its own "New terminal" button does (takeTerminalAsk).
+   * Bring up a terminal in the dock, in a task's worktree or the project's repository (the task page's "Open the worktree", O):
+   * the shell already running in that folder when there is one (X27), else a new one, opened by the dock's terminal panel
+   * (takeTerminalAsk).
    */
   openTerminal(where: { taskId?: string; projectId?: string }): void {
-    this.#terminalAsk = { ...where };
+    this.#terminalAsk = { ...where, reuse: true };
     this.openDock('terminal');
   }
 
-  /** The terminal asked for by openTerminal, once: the terminal panel takes it. */
-  takeTerminalAsk(): { taskId?: string; projectId?: string } | undefined {
+  /**
+   * The person asked for the Terminal tab (its tab, Ctrl+`, the command menu's "Open a terminal"): the panel opens a terminal in
+   * the task's worktree, else the project's repository, when none of the project's is running (G6). The dock reopening on the
+   * tab it was left on asks nothing, so no shell starts without the person's ask.
+   */
+  showTerminal(): void {
+    this.#terminalAsk = { ensure: true };
+    this.openDock('terminal');
+  }
+
+  /** The terminal asked for by openTerminal or showTerminal, once: the terminal panel takes it. */
+  takeTerminalAsk(): TerminalAsk | undefined {
     const w = this.#terminalAsk;
     this.#terminalAsk = undefined;
     return w;
@@ -413,10 +435,11 @@ export class UiModel extends Model {
     this.setDock({ open: !this.dock.open });
   }
 
-  /** Ctrl+` (decision P132): the dock opens on its terminal, or closes when it shows the terminal already. */
+  /** Ctrl+` (decision P132): the dock opens on its terminal (showTerminal), or closes when it shows the terminal already. */
   toggleTerminal(): void {
     const d = this.dock;
-    this.setDock(d.open && d.tab === 'terminal' ? { open: false } : { open: true, tab: 'terminal' });
+    if (d.open && d.tab === 'terminal') this.setDock({ open: false });
+    else this.showTerminal();
   }
 
   /** The person's key bindings (decision P132), applied to lib/keys.ts; the change redraws what shows a shortcut's keys. */

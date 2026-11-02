@@ -1,13 +1,24 @@
 import { expect } from 'remix/assert';
-import { afterEach, describe, it } from 'remix/test';
+import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { Client } from '../api/client.ts';
 import type { AssignPreview } from '../api/controlClient.ts';
 import { lic } from '../test/fixtures.ts';
 import { cleanup, mount, testServices, type, waitFor } from '../test/render.tsx';
 import { adapterInfo } from '../screens/project/wizard-fixtures.ts';
+import { RECENT_KEY } from './palette-items.ts';
 import { CommandPalette } from './palette.tsx';
 
 afterEach(cleanup);
+// what the menu remembers lives in the page's storage: every test starts with nothing run
+const forgetRecent = () => {
+  try {
+    localStorage.removeItem(RECENT_KEY);
+  } catch {
+    // no storage: nothing to forget
+  }
+};
+beforeEach(forgetRecent);
+afterEach(forgetRecent);
 
 function press(down: Element, clickTarget: Element) {
   down.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
@@ -360,6 +371,33 @@ describe('the command menu over a task (the graphite mockup)', () => {
     const { r, labels } = await withTask({ agentList: async () => [team[0], team[1], { ...team[0], id: 'b2', name: 'Bea' }] as never });
     await waitFor(() => expect(labels()).toContain('Assign to Bea'), r);
     expect(labels()).not.toContain('Ask the team lead to split it');
+  });
+});
+
+describe('Recent and Open a terminal (G10, G6)', () => {
+  it('Open a terminal asks for a terminal, not only the tab, and what was run comes first next time', async () => {
+    const { s, r, input, groups, labels, highlight } = await withTask({}, {});
+    await r.act(() => type(input, 'open a terminal'));
+    await waitFor(() => expect(labels()[0]).toBe('Open a terminal'), r);
+    await highlight('Open a terminal');
+    await r.act(() => key(input, 'Enter'));
+    expect(s.ui.paletteOpen).toBe(false);
+    expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
+    expect(s.ui.takeTerminalAsk()).toEqual({ ensure: true });
+    // opened again with nothing typed: Recent first, holding it once
+    await r.act(() => s.ui.setPalette(true));
+    await waitFor(() => expect(groups()[0]).toBe('Recent'), r);
+    expect(labels()[0]).toBe('Open a terminal');
+    expect(labels().filter((l) => l === 'Open a terminal').length).toBe(1);
+  });
+
+  it('leaves out Open a terminal on a page without the dock', async () => {
+    const s = testServices({ chatList: async () => [] });
+    const r = mount(<CommandPalette onMessage={() => {}} dock={false} />, s);
+    s.ui.setPalette(true);
+    const dlg = await waitFor(() => openDialog(r.container), r);
+    await r.act(() => type(dlg.querySelector('input')!, '> terminal'));
+    await waitFor(() => expect(dlg.textContent).toContain('Nothing matches'), r);
   });
 });
 

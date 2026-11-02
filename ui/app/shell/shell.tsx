@@ -258,7 +258,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
           ) : null}
         </div>
         </div>
-        <CommandPalette onMessage={(id) => void openDM(id)} taskId={inProject ? taskContext : undefined} />
+        <CommandPalette onMessage={(id) => void openDM(id)} taskId={inProject ? taskContext : undefined} dock={inProject} />
       </div>
     );
   };

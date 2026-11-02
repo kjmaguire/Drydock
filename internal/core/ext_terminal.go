@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,12 +30,20 @@ func init() {
 				TaskID    string `json:"taskId"`
 				Cols      int    `json:"cols"`
 				Rows      int    `json:"rows"`
+				// Reuse brings up the newest shell still running in the same folder instead of starting another (the task page's
+				// "Open the worktree", X27); the dock's "New terminal" buttons leave it off and always start one.
+				Reuse bool `json:"reuse"`
 			}) (any, error) {
-				dir, title, err := c.terminalDir(ctx, p.ProjectID, p.TaskID)
+				dir, title, owner, err := c.terminalDir(ctx, p.ProjectID, p.TaskID)
 				if err != nil {
 					return nil, err
 				}
-				return m.Open(dir, title, p.Cols, p.Rows)
+				if p.Reuse {
+					if in, ok := runningShellIn(m.List(), dir); ok {
+						return in, nil
+					}
+				}
+				return m.OpenFor(owner, dir, title, p.Cols, p.Rows)
 			}),
 			"terminal.read": bind(func(ctx context.Context, p struct {
 				ID     string `json:"id"`
@@ -144,27 +154,47 @@ func init() {
 }
 
 // terminalDir is a task's worktree while it exists, else its project's repository (or, before one is attached, the project's
-// private workspace folder).
-func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, title string, err error) {
+// private workspace folder), with the project (and the task, for its worktree) the shell belongs to.
+func (c *Core) terminalDir(ctx context.Context, projectID, taskID string) (dir, title string, owner terminal.Owner, err error) {
 	if taskID != "" {
 		t, err := c.Tasks.Get(ctx, taskID)
 		if err != nil {
-			return "", "", err
+			return "", "", owner, err
 		}
 		if worktreeExists(t) {
-			return t.Worktree, "task #" + strconv.Itoa(t.Seq), nil
+			return t.Worktree, "task #" + strconv.Itoa(t.Seq), terminal.Owner{ProjectID: t.ProjectID, TaskID: t.ID}, nil
 		}
 		projectID = t.ProjectID
 	}
 	if projectID == "" {
-		return "", "", errors.New("terminal: name a project or a task")
+		return "", "", owner, errors.New("terminal: name a project or a task")
 	}
 	p, err := c.GetProject(ctx, projectID)
 	if err != nil {
-		return "", "", err
+		return "", "", owner, err
 	}
 	dir, err = c.projectDir(p)
-	return dir, p.Name, err
+	return dir, p.Name, terminal.Owner{ProjectID: p.ID}, err
+}
+
+// runningShellIn is the newest shell (one terminal.open started, not a sign-in) still running in dir, from a list oldest first.
+func runningShellIn(list []terminal.Info, dir string) (terminal.Info, bool) {
+	for i := len(list) - 1; i >= 0; i-- {
+		in := list[i]
+		if !in.Exited && in.ProjectID != "" && sameDir(in.Cwd, dir) {
+			return in, true
+		}
+	}
+	return terminal.Info{}, false
+}
+
+// sameDir compares two folders as the file system does: case-insensitively on Windows.
+func sameDir(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // runningSignIn is the terminal of key's sign-in while its program runs (keys compare as Windows compares distro names).

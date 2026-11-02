@@ -598,7 +598,7 @@ describe('the logs panel', () => {
 });
 
 describe('the terminal panel', () => {
-  const info = (id: string, title: string): TerminalInfo => ({ id, title, cwd: '/x', shell: 'sh', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0 });
+  const info = (id: string, title: string, projectId = 'p1'): TerminalInfo => ({ id, title, cwd: '/x', shell: 'sh', cols: 100, rows: 24, startedAt: '', exited: false, exitCode: 0, projectId });
 
   it('opens a terminal in the task or the repository and closes it', async () => {
     let open: TerminalInfo[] = [];
@@ -639,14 +639,17 @@ describe('the terminal panel', () => {
     expect(terminals[1]!.disposed).toBe(true);
   });
 
-  it("opens the terminal another page asks for (the task page's Open the worktree), once, also when the panel is already open", async () => {
+  it("brings up the terminal another page asks for (the task page's Open the worktree), once, reusing the open one (X27)", async () => {
     let open: TerminalInfo[] = [];
-    const opens: { taskId?: string; projectId?: string }[] = [];
+    const opens: { taskId?: string; projectId?: string; reuse?: boolean }[] = [];
     const s = testServices({
       terminalList: async () => open,
+      // the core's reuse: the shell already running for the same ask
       terminalOpen: async (where) => {
         opens.push(where);
-        const t = info(`term_${open.length + 1}`, `worktree ${open.length + 1}`);
+        const same = where.reuse ? open.find((t) => t.title === (where.taskId ? 'worktree' : 'repo')) : undefined;
+        if (same) return same;
+        const t = info(`term_${open.length + 1}`, where.taskId ? 'worktree' : 'repo');
         open = [...open, t];
         return t;
       },
@@ -657,14 +660,87 @@ describe('the terminal panel', () => {
     s.ui.openTerminal({ taskId: 't1' });
     expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
     const r = mount(<TerminalPanel projectId="p1" taskId="t1" />, s);
-    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('worktree 1'), r);
-    expect(opens).toEqual([{ taskId: 't1' }]);
-    // asked while it is open: a second terminal, chosen
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('worktree'), r);
+    expect(opens).toEqual([{ taskId: 't1', reuse: true }]);
+    // the person opens a repository terminal, then presses O again: the worktree's shell comes back, no second one starts
+    await r.act(() => byText(r.container, 'button', 'New terminal in the repository').click());
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('repo'), r);
     await r.act(() => s.ui.openTerminal({ taskId: 't1' }));
-    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('worktree 2'), r);
-    expect(opens).toEqual([{ taskId: 't1' }, { taskId: 't1' }]);
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('worktree'), r);
+    expect(opens).toEqual([{ taskId: 't1', reuse: true }, { projectId: 'p1' }, { taskId: 't1', reuse: true }]);
+    expect(Array.from(r.$$('[role="tab"]')).map((e) => e.textContent)).toEqual(['worktree', 'repo']);
     // the ask is taken once
     expect(s.ui.takeTerminalAsk()).toBe(undefined);
+  });
+
+  it('opens a terminal when the person asks for the tab and none of the project runs, once, and not on its own (G6)', async () => {
+    let open: TerminalInfo[] = [];
+    const opens: { taskId?: string; projectId?: string; reuse?: boolean }[] = [];
+    let fail = false;
+    const s = testServices({
+      terminalList: async () => open,
+      terminalOpen: async (where) => {
+        opens.push(where);
+        if (fail) throw new Error('no shell');
+        const t = info(`term_${open.length + 1}`, where.taskId ? 'task #3' : 'gocalc');
+        open = [...open, t];
+        return t;
+      },
+      terminalRead: () => new Promise<TerminalChunk>(() => {}),
+      terminalResize: async () => {},
+    });
+    // the dock reopened on the tab it was left on: nothing asked, nothing started
+    s.ui.setDock({ open: true, tab: 'terminal' });
+    let r = mount(<TerminalPanel projectId="p1" taskId="t1" />, s);
+    await waitFor(() => has(r.container, /No terminal is open/), r);
+    await drain();
+    await drain();
+    expect(opens).toEqual([]);
+    r.cleanup();
+    // Ctrl+` (or the tab, or the command menu): a terminal in the task's worktree
+    s.ui.setDock({ open: false });
+    s.ui.toggleTerminal();
+    expect(s.ui.dock).toEqual({ ...s.ui.dock, open: true, tab: 'terminal' });
+    r = mount(<TerminalPanel projectId="p1" taskId="t1" />, s);
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('task #3'), r);
+    expect(opens).toEqual([{ taskId: 't1', reuse: true }]);
+    r.cleanup();
+    // asked again with one of the project's running: it is shown, nothing new starts
+    s.ui.showTerminal();
+    r = mount(<TerminalPanel projectId="p1" taskId={undefined} />, s);
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('task #3'), r);
+    await drain();
+    await drain();
+    expect(opens.length).toBe(1);
+    r.cleanup();
+    // without a task, in the project's repository; a failure shows and is not tried again
+    open = [{ ...info('term_9', 'other'), projectId: 'p2' }];
+    fail = true;
+    s.ui.showTerminal();
+    r = mount(<TerminalPanel projectId="p1" taskId={undefined} />, s);
+    await waitFor(() => has(r.$('[role="alert"]')!, 'Terminal: no shell'), r);
+    await drain();
+    await drain();
+    expect(opens.slice(1)).toEqual([{ projectId: 'p1', reuse: true }]);
+  });
+
+  it("shows this project's terminals and folds the others under one button (X213)", async () => {
+    const s = testServices({
+      terminalList: async () => [info('term_1', 'gocalc'), info('term_2', 'webshop', 'p2'), info('term_3', 'task #4'), { ...info('term_4', 'Sign in: claude'), projectId: undefined }],
+      terminalRead: () => new Promise<TerminalChunk>(() => {}),
+      terminalResize: async () => {},
+    });
+    const r = mount(<TerminalPanel projectId="p1" taskId={undefined} />, s);
+    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((e) => e.textContent)).toEqual(['gocalc', 'task #4']), r);
+    // the last of this project's is current, not another project's newer one
+    expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('task #4');
+    const fold = byText<HTMLButtonElement>(r.container, 'button', 'Other terminals (2)');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    await r.act(() => fold.click());
+    await waitFor(() => expect(Array.from(r.$$('[role="tab"]')).map((e) => e.textContent)).toEqual(['gocalc', 'task #4', 'webshop', 'Sign in: claude']), r);
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    await r.act(() => byText(r.container, '[role="tab"]', 'webshop').click());
+    await waitFor(() => expect(r.$('[role="tab"][aria-selected="true"]')?.textContent).toBe('webshop'), r);
   });
 
   it('streams output into the terminal, sends keystrokes and the size, and marks an exited shell', async () => {

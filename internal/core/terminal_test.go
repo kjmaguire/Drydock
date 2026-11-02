@@ -77,3 +77,40 @@ func TestSignInRefusesWhatIsNotThere(t *testing.T) {
 		t.Fatalf("a terminal opened: %+v", list)
 	}
 }
+
+// X27, X213: "Open the worktree" (reuse) brings up the shell already running in that folder instead of starting another; the
+// dock's New terminal (no reuse) always starts one, and a closed shell is not reused. Each shell names its project.
+func TestTerminalOpenReusesTheRunningShell(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	a := open(t, "")
+	p, _ := a.setup("gocalc")
+	var first, again, fresh, after terminal.Info
+	a.call("terminal.open", map[string]any{"projectId": p.ID, "reuse": true}, &first)
+	if first.ProjectID != p.ID || first.TaskID != "" {
+		t.Fatalf("opened %+v, want it marked as the project's", first)
+	}
+	a.call("terminal.open", map[string]any{"projectId": p.ID, "reuse": true}, &again)
+	if again.ID != first.ID {
+		t.Fatalf("reuse started another shell: %s, then %s", first.ID, again.ID)
+	}
+	a.call("terminal.open", map[string]any{"projectId": p.ID}, &fresh)
+	if fresh.ID == first.ID {
+		t.Fatal("a New terminal reused the open one")
+	}
+	// the newest running shell in the folder is the one brought up
+	a.call("terminal.open", map[string]any{"projectId": p.ID, "reuse": true}, &again)
+	if again.ID != fresh.ID {
+		t.Fatalf("reuse brought up %s, want the newest %s", again.ID, fresh.ID)
+	}
+	a.call("terminal.close", map[string]string{"id": fresh.ID}, nil)
+	a.call("terminal.close", map[string]string{"id": first.ID}, nil)
+	a.call("terminal.open", map[string]any{"projectId": p.ID, "reuse": true}, &after)
+	if after.ID == first.ID || after.ID == fresh.ID {
+		t.Fatalf("reused a closed shell: %+v", after)
+	}
+	var list []terminal.Info
+	a.call("terminal.list", nil, &list)
+	if len(list) != 1 || list[0].ProjectID != p.ID {
+		t.Fatalf("list %+v", list)
+	}
+}

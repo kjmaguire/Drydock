@@ -342,7 +342,11 @@ Opened with `Ctrl+K`. Groups: Navigate (rooms, DMs, tasks, screens), Agents (foc
 every screen), Chats (New chat, recent chats), Tasks (create, open, a task's workflow), Agents (inspect, message), Actions
 (terminal, diff, logs, activity, toggle the dock, toggle the details panel, add a project, theme). It holds no destructive
 command at all (no approve, merge, stop, delete), so it cannot bypass an approval. The match is our own prefix and word ranking
-over the loaded lists (tasks capped at 200); no server-side search yet.
+over the loaded lists (tasks capped at 200); no server-side search yet. **Recent (G10):** what the person runs from the menu is
+remembered in this browser (`drydock.palette.recent`: ids with when, newest first, at most 8); with nothing typed and no task in
+context, Recent comes first with those options (an id no longer offered is dropped, and an option under Recent is not repeated in
+its own group), and while typing a recent option ranks a little higher than an equal match. **Open a terminal** opens a terminal,
+not only the tab (G6, below), and is left out on workspace pages, which have no dock.
 
 **Composer (brief 21; As built 2026-10-09).** `ui/app/screens/room/composer.tsx` with the pure helpers in `ui/app/lib/composer.ts`.
 Typing `@` lists the room's members (and roles), `@role:` the roles, `#` the project's channels and task channels, `/` at the
@@ -375,7 +379,13 @@ it on the ordinary call path; a reader that falls behind is told how many bytes 
 log or the database. There is no flow-control acknowledgement: the UI long-polls by offset and the ring drops what a slow reader missed. A failed poll is retried with backoff (250 ms doubling to 5 s, twelve tries, about 45 s) with a note in the terminal; only "no such terminal" or the retries running out end it. Closing a terminal ends its process tree: on Windows the shell is put in its own kill-on-close Job Object
 right after it starts (`proc.AttachTree`; D7), on Linux the session is killed. The human's terminal inherits Drydock's full
 environment (it is the human's shell, not an agent's). `ui/app/screens/dock/xterm-view.ts` (xterm.js 6 + fit addon, lazy chunk) writes
-output straight into xterm. Up to 8 terminals at once. **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
+output straight into xterm. Up to 8 terminals at once. **The task page's Open the worktree (O)** asks `terminal.open` with
+`reuse: true`: the newest shell still running in that folder is brought up instead of another one (X27); the dock's **New terminal**
+buttons always start one. **Asking for the Terminal tab** (clicking it, Ctrl+`, the command menu's Open a terminal) opens a
+terminal in the task's worktree, else the project's repository, when none of the project's is running (G6, `UiModel.showTerminal`);
+the dock reopening on the tab it was left on starts nothing, and a failed open shows its error once and is not retried. Each shell
+carries the project (and, in a worktree, the task) it opened for (`projectId`, `taskId`); the panel shows the current project's and
+folds the others, and a Connection's sign-in, under **Other projects (N)** (X213). **Unverified on Windows:** ConPTY behaviour, PowerShell as the default
 shell (pwsh when installed), the job assignment race for children started in the first instant.
 
 The Logs tab (`ui/app/screens/dock/logs-panel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the
@@ -388,7 +398,9 @@ agent's avatar, from the turn's context manifest (`LogSource.agentId`, X210). Th
 readable lines (text as it streamed, `[tool]`, `[result]`, `[usage]`, `[error]`); a log is named by an id Drydock gave it, never
 by a path. The dock's open state, tab and height are kept per project, and with them, per task, what the Diff and Logs tabs
 showed (the file, a Live or Recorded the person clicked, the log they picked; `UiModel.dockView`, the 30 most recent tasks), so
-closing the dock or switching tabs loses nothing (X22); Ctrl+J toggles it and Ctrl+Shift+D opens the Diff tab (neither fires while focus is in the terminal or the diff editor, where Ctrl+J and Ctrl+K are the widget's own keys). The resize handle is a focusable `separator` with its range and value (Arrow Up and Down resize by 40 px).
+closing the dock or switching tabs loses nothing (X22); Without a task in context (the board, Pull requests, Rooms, Crew, Settings) the Diff and Logs tabs show the project's one running
+task at once under a faint line naming it, offer the running tasks in a one-line pick when there are several, and keep "Open a task
+(or its channel) to see its diff." when none runs (X29). Ctrl+J toggles it and Ctrl+Shift+D opens the Diff tab (neither fires while focus is in the terminal or the diff editor, where Ctrl+J and Ctrl+K are the widget's own keys). The resize handle is a focusable `separator` with its range and value (Arrow Up and Down resize by 40 px).
 
 ### 6.6 Other components
 Markdown renderer (sanitized, incremental for streaming), code block with copy, presence dot, usage badge (`reported`/`estimated`/`not reported`), approval card, toast and OS notification bridge (Wails ships a notifications service in `pkg/services/notifications`; behavior on Windows unverified), empty-state panel, error boundary per region, resizable splitter.
@@ -575,6 +587,13 @@ Fields, grouped. Anything the adapter cannot report is `not reported`.
 - **Large payloads:** the `http.Handler` mount can serve range reads of raw output, diffs and artifacts (`GET .../raw/<run>/<node>/<attempt>?offset=&len=`) so big bodies do not travel through events. Seen in source, not exercised (**unverified**); the same channel must apply the output-truncation rule: long tool output is fetched by range, never preloaded (brief 7).
 - **Event replay after reconnect (brief 10, 24):** every persisted event has a monotonic `seq`. Protocol (**proposal**): (1) the UI keeps `lastSeq` per window; (2) on startup, window reload, or focus after sleep, it subscribes first and buffers live events, then calls `EventService.Replay(afterSeq=lastSeq, limit)` repeatedly until it returns the head; (3) buffered live events with `seq <= lastSeq` are dropped, others applied in order; (4) every live envelope carries `seq` and `prev_seq` (the previous published seq), and a mismatch triggers another Replay instead of assuming gaplessness (the brief promises monotonic, not contiguous, sequence numbers); (5) the first launch reads a snapshot (current projections via services) at a known `seq` and replays from there. The UI never renders an event it has already applied. Acceptance for 1A: kill the UI process or reload the window mid-stream and the transcript is identical afterward; restart the app and the UI catches up from the log.
 - Wails emit latency under streaming load and `ServiceStartup` ordering under crash restart are **unverified** on Windows (phase0 section 7, item 3). Single-instance support exists for Windows (`single_instance_windows.go`); Drydock must enable it because SQLite has a single writer and `run_leases` assume one engine instance.
+- **The window's place (G8, as built 2026-11-02).** The main window opens where and how big the person left it: `app/window_windows.go`
+  keeps its bounds (device-independent pixels, as it last stood un-maximised) and whether it was maximised as the core setting
+  `ui.window` (`core.WindowPlacement`), written a second after the last move or resize and when the window closes. The next start
+  passes the size and position to the window's options; once it is shown the placement is put on a monitor that exists now
+  (`fitWindow` in `app/window_place.go`: the monitor it overlaps most, else the main one, no larger than its work area) and the
+  window is maximised when it was. Nothing kept: centred at 1360 by 860 as before. Tests: `TestFitWindow` (app, pure) and
+  `TestWindowPlacementIsKept` (core). **Unverified on Windows:** the events and a second launch on real monitors.
 
 ## 12. Theming (dark and light)
 

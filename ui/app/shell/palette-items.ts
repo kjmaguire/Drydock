@@ -12,9 +12,9 @@ import { GUIDE_TOPICS } from '../screens/guide/topics.ts';
 import { routes } from '../routes.ts';
 import { newProjectHref } from './new.ts';
 
-export type Group = 'Assign' | 'Actions' | 'Go to' | 'Navigate' | 'Chats' | 'Tasks' | 'Agents';
-/** The groups of the menu with nothing typed and no task in context (the order they are listed in). */
-export const GROUPS: Group[] = ['Navigate', 'Chats', 'Tasks', 'Agents', 'Actions'];
+export type Group = 'Recent' | 'Assign' | 'Actions' | 'Go to' | 'Navigate' | 'Chats' | 'Tasks' | 'Agents';
+/** The groups of the menu with nothing typed and no task in context (the order they are listed in): what the person ran last first. */
+export const GROUPS: Group[] = ['Recent', 'Navigate', 'Chats', 'Tasks', 'Agents', 'Actions'];
 /** The groups with nothing typed and a task in context: what can be done with it, then where to go. */
 export const CONTEXT_GROUPS: Group[] = ['Assign', 'Actions', 'Go to'];
 
@@ -44,6 +44,45 @@ export interface PaletteItem {
   agent?: { id: string; name: string };
   /** What running it does, in one line (the "What happens" panel). */
   what?: string;
+  /** Under Recent: the group it belongs to otherwise (its icon is that group's). */
+  from?: Group;
+}
+
+/** Where the command menu keeps what the person ran (G10): ids with when, newest first. */
+export const RECENT_KEY = 'drydock.palette.recent';
+/** How many options Recent remembers and lists. */
+export const RECENT_MAX = 8;
+/** What a recent option adds to its match while typing: it wins over an equal match, not over a better one. */
+const RECENT_BOOST = 100;
+
+export interface RecentRun {
+  id: string;
+  at: number;
+}
+
+/** The list with id run now: first, once, at most RECENT_MAX. */
+export function pushRecent(list: readonly RecentRun[], id: string, at: number): RecentRun[] {
+  return [{ id, at }, ...list.filter((r) => r.id !== id)].slice(0, RECENT_MAX);
+}
+
+/** What the person ran, newest first; nothing when it is not kept (a private window, storage blocked) or does not read. */
+export function readRecent(): RecentRun[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    if (!Array.isArray(v)) return [];
+    return v.filter((r): r is RecentRun => !!r && typeof r.id === 'string' && typeof r.at === 'number').slice(0, RECENT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+/** Remember that the person ran id (best effort: the menu works the same without it). */
+export function recordRecent(id: string, at = Date.now()): void {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(pushRecent(readRecent(), id, at)));
+  } catch {
+    // storage blocked: nothing is remembered
+  }
 }
 
 /** G then a letter goes to a screen, from anywhere but a text field (palette.tsx listens for it). */
@@ -152,6 +191,8 @@ export interface TaskContext {
 export interface BuildOptions {
   projectKey?: string;
   context?: TaskContext;
+  /** The page has the dock (a project's pages): false leaves out "Open a terminal", which needs it (G6). */
+  dock?: boolean;
 }
 
 /** The options about the task in context: Assign, then Actions. */
@@ -218,7 +259,7 @@ export function contextItems(agents: readonly Agent[], c: TaskContext, projectKe
 
 export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agents: readonly Agent[], chats: readonly ChatListItem[] = [], opts: BuildOptions = {}): PaletteItem[] {
   const out: PaletteItem[] = [];
-  const { projectKey, context } = opts;
+  const { projectKey, context, dock = true } = opts;
   if (context) out.push(...contextItems(agents, context, projectKey));
   for (const r of rooms.filter((r) => !r.archived)) {
     const dm = r.kind === 'dm';
@@ -248,7 +289,7 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
   }
   const act = (id: string, label: string, action: string, what: string, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, group: 'Actions', label, action, scope: '>', what, ...extra });
   out.push(
-    act('act:terminal', 'Open a terminal', 'dock:terminal', 'Opens a terminal in the dock, in the project folder.', { keywords: ['shell', 'console'] }),
+    ...(dock ? [act('act:terminal', 'Open a terminal', 'dock:terminal', "Opens a terminal in the dock, in the task's worktree or the project folder, unless one is open there.", { keywords: ['shell', 'console'] })] : []),
     act('act:diff', 'Show the diff of the current task', 'dock:diff', "Opens the dock on the task's changes.", { hint: 'Ctrl+Shift+D' }),
     act('act:logs', 'Show the logs of the current task', 'dock:logs', "Opens the dock on the task's logs."),
     act('act:activity', 'Show model and token activity', 'dock:activity', 'Opens the dock on the model calls and their tokens.'),
@@ -274,7 +315,7 @@ export function parseQuery(query: string): { scope?: Scope; text: string } {
  * Rank an item for a query: 0 = no match. Exact label beats a prefix, a prefix beats the start of a word, a word start
  * beats a substring, and a substring beats letters in order. Keywords count a little less than the label.
  */
-export function score(item: PaletteItem, query: string): number {
+export function score(item: PaletteItem, query: string, recent: ReadonlySet<string> = new Set()): number {
   const q = query.trim().toLowerCase();
   if (!q) return 1;
   const one = (text: string): number => {
@@ -291,7 +332,7 @@ export function score(item: PaletteItem, query: string): number {
   };
   let best = one(item.label);
   for (const k of item.keywords ?? []) best = Math.max(best, one(k) * 0.8);
-  return best;
+  return best > 0 && recent.has(item.id) ? best + RECENT_BOOST : best;
 }
 
 /** How many options of each group the menu lists before anything is typed (without a task in context). */
@@ -299,24 +340,37 @@ export const PER_GROUP = 12;
 
 /**
  * The matching items, best first. A prefix keeps only its kind (">" settings pages and actions, "#" tasks, "@" agents). With
- * nothing typed: the options about the task in context when there is one, else the first PER_GROUP of each group.
+ * nothing typed: the options about the task in context when there is one, else what the person ran last (Recent, newest first;
+ * an id no longer offered is dropped), then the first PER_GROUP of each group without those. Typing, a recent option ranks a
+ * little higher (G10).
  */
-export function filterItems(items: PaletteItem[], query: string, limit = 60): PaletteItem[] {
+export function filterItems(items: PaletteItem[], query: string, limit = 60, recent: readonly string[] = []): PaletteItem[] {
   const { scope, text } = parseQuery(query);
   const pool = scope ? items.filter((i) => i.scope === scope) : items;
   if (!text) {
     if (scope) return pool.slice(0, limit);
     if (pool.some((i) => i.context)) return pool.filter((i) => i.context).slice(0, limit);
+    const recents = recent
+      .slice(0, RECENT_MAX)
+      .map((id) => pool.find((i) => i.id === id))
+      .filter((i): i is PaletteItem => !!i)
+      .map((i): PaletteItem => ({ ...i, group: 'Recent', from: i.group }));
+    const taken = new Set(recents.map((i) => i.id));
     // a few of each group, so every group is in reach before anything is typed
     const per = new Map<Group, number>();
-    return pool.filter((i) => {
-      const n = per.get(i.group) ?? 0;
-      per.set(i.group, n + 1);
-      return n < PER_GROUP;
-    });
+    return [
+      ...recents,
+      ...pool.filter((i) => {
+        if (taken.has(i.id)) return false;
+        const n = per.get(i.group) ?? 0;
+        per.set(i.group, n + 1);
+        return n < PER_GROUP;
+      }),
+    ];
   }
+  const boost = new Set(recent);
   return pool
-    .map((it, i) => ({ it, s: score(it, text), i }))
+    .map((it, i) => ({ it, s: score(it, text, boost), i }))
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .slice(0, limit)

@@ -32,6 +32,8 @@ export interface WorkRow {
 export const GROUP_TITLE: Record<WorkGroup, string> = { needs: 'Needs you', running: 'Running', earlier: 'Earlier' };
 
 const RUNNING = new Set(['CLAIMED', 'IN_PROGRESS', 'REVIEW', 'VERIFICATION']);
+/** A task an agent works on now (claimed, in progress, in review or verification): Work's Running rows, the dock's pick (X29). */
+export const isRunningStatus = (status: string): boolean => RUNNING.has(status);
 const DONE_WORDS: Record<string, string> = { COMPLETED: 'Merged', FAILED: 'Failed', CANCELLED: 'Cancelled' };
 
 export type WorkChat = Pick<Chat, 'id' | 'title' | 'status' | 'updatedAt' | 'createdAt'>;

@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AssignPreview } from '../api/controlClient.ts';
-import { PER_GROUP, arrange, buildItems, contextItems, filterItems, isLeadRole, parseQuery, previewBlock, previewSteps, previewWait, score, taskKey, type TaskContext } from './palette-items.ts';
+import { PER_GROUP, RECENT_KEY, RECENT_MAX, arrange, buildItems, contextItems, filterItems, isLeadRole, parseQuery, previewBlock, previewSteps, previewWait, pushRecent, readRecent, recordRecent, score, taskKey, type TaskContext } from './palette-items.ts';
 
 const rooms = [
   { id: 'r1', projectId: 'p', name: 'general', kind: 'channel', archived: false },
@@ -302,5 +302,70 @@ describe('what an assignment does', () => {
     const me = previewSteps({ ...base, person: true, agent: undefined });
     expect(me[0]!.text).toBe('No agent works on it: it is yours on the board');
     expect(previewWait({ ...base, person: true })).toBe('');
+  });
+});
+
+describe('Recent (G10)', () => {
+  const items = buildItems(rooms, tasks, agents);
+
+  it('keeps what was run newest first, once, at most RECENT_MAX', () => {
+    let list = pushRecent([], 'a', 1);
+    list = pushRecent(list, 'b', 2);
+    list = pushRecent(list, 'a', 3);
+    expect(list).toEqual([
+      { id: 'a', at: 3 },
+      { id: 'b', at: 2 },
+    ]);
+    for (let i = 0; i < 20; i++) list = pushRecent(list, `x${i}`, 10 + i);
+    expect(list.length).toBe(RECENT_MAX);
+    expect(list[0]!.id).toBe('x19');
+  });
+
+  it('lists what was run first with nothing typed, drops an id no longer offered, and leaves it out of its own group', () => {
+    const shown = filterItems(items, '', 60, ['task:t1', 'gone:x', 'act:theme-dark']);
+    const groups = arrange(shown, '');
+    expect(groups[0]!.group).toBe('Recent');
+    expect(groups[0]!.items.map((i) => [i.id, i.from])).toEqual([
+      ['task:t1', 'Tasks'],
+      ['act:theme-dark', 'Actions'],
+    ]);
+    expect(shown.filter((i) => i.id === 'task:t1').length).toBe(1);
+    expect(groups.find((g) => g.group === 'Actions')!.items.some((i) => i.id === 'act:theme-dark')).toBe(false);
+    // nothing run yet: no Recent group
+    expect(arrange(filterItems(items, ''), '')[0]!.group).toBe('Navigate');
+  });
+
+  it('ranks a recent option above an equal match while typing, not above a better one', () => {
+    expect(filterItems(items, 'theme:')[0]!.id).toBe('act:theme-dark');
+    expect(filterItems(items, 'theme:', 60, ['act:theme-system'])[0]!.id).toBe('act:theme-system');
+    expect(score(items.find((i) => i.id === 'act:theme-light')!, 'zzz', new Set(['act:theme-light']))).toBe(0);
+    // an exact name still wins over a recent partial match
+    expect(filterItems(items, 'crew', 60, ['screen:/crew'])[0]!.label).toBe('Crew');
+  });
+
+  it('remembers runs in the browser, and reads nothing from what does not parse', () => {
+    const store = new Map<string, string>();
+    const g = globalThis as { localStorage?: Storage };
+    const before = g.localStorage;
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) } as Storage;
+    try {
+      recordRecent('task:t1', 5);
+      recordRecent('act:dock', 6);
+      expect(readRecent()).toEqual([
+        { id: 'act:dock', at: 6 },
+        { id: 'task:t1', at: 5 },
+      ]);
+      store.set(RECENT_KEY, '{not json');
+      expect(readRecent()).toEqual([]);
+    } finally {
+      g.localStorage = before;
+    }
+  });
+});
+
+describe('the dock\'s options (G6)', () => {
+  it('leave out Open a terminal on a page without the dock', () => {
+    expect(buildItems(rooms, tasks, agents).some((i) => i.id === 'act:terminal')).toBe(true);
+    expect(buildItems(rooms, tasks, agents, [], { dock: false }).some((i) => i.id === 'act:terminal')).toBe(false);
   });
 });

@@ -197,15 +197,18 @@ func Run(assets fs.FS) error {
 	if err := bridge.configureUpdater(wa, "stable", false); err != nil {
 		fmt.Fprintf(os.Stderr, "drydock: updates: %v\n", err)
 	}
-	window = wa.Window.NewWithOptions(application.WebviewWindowOptions{
+	// where and how big the person left the window (G8; window_windows.go), else centred at its default size
+	opts, kept := placeWindow(c, application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "Drydock",
-		Width:     1360,
-		Height:    860,
-		MinWidth:  1000,
-		MinHeight: 600,
+		Width:     defaultWindowW,
+		Height:    defaultWindowH,
+		MinWidth:  minWindowW,
+		MinHeight: minWindowH,
 		URL:       StartURL,
 	})
+	window = wa.Window.NewWithOptions(opts)
+	keepWindowPlacement(wa, c, window, kept)
 	// the title bar's and the taskbar's icons at the window's DPI, from the executable's icon group (icon_windows.go)
 	attachWindowIcons(window)
 	return wa.Run()
