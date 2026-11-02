@@ -81,6 +81,33 @@ describe('the GitHub repository picker', () => {
     await waitFor(() => expect(r.$('[data-testid="clone-target"]')!.textContent).toBe('C:\\Users\\kyle\\source\\repos\\pay'), r);
   });
 
+  it('chooses the clone folder with the window folder dialog and shows the full path it makes (P143)', async () => {
+    const asked: string[] = [];
+    const { r, state } = setup({
+      ...signedIn,
+      githubOwners: async () => ['kyle'],
+      githubRepos: async () => [repo('kyle/pay')],
+      githubCloneDir: async () => 'C:\\Users\\kyle\\source\\repos',
+      fsFolderHints: async () => ({ canPick: true, windows: true, devDrives: [] }),
+      fsPickFolder: async (title: string) => (asked.push(title), 'D:\\code'),
+    });
+    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
+    await r.act(() => byLabel<HTMLInputElement>(r.container, 'kyle/pay').click());
+    const choose = await waitFor(() => { const b = r.$('[data-testid="clone-choose"]') as HTMLButtonElement | null; if (!b) throw new Error('no Choose folder yet'); return b; }, r);
+    expect(choose.textContent).toContain('Choose folder');
+    await r.act(() => choose.click());
+    await waitFor(() => expect(state.dir).toBe('D:\\code'), r);
+    expect(asked).toEqual(['Choose the folder to clone into']);
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Clone into').value).toBe('D:\\code'), r);
+    expect(r.$('[data-testid="clone-target"]')!.textContent).toBe('D:\\code\\pay');
+  });
+
+  it('has no Choose folder where the window has no folder dialog', async () => {
+    const { r } = setup({ ...signedIn, githubOwners: async () => ['kyle'], githubRepos: async () => [], githubCloneDir: async () => '/home/kyle/src', fsFolderHints: async () => ({ canPick: false, windows: false, devDrives: [] }) });
+    await waitFor(() => expect(byLabel<HTMLInputElement>(r.container, 'Clone into').value).toBe('/home/kyle/src'), r);
+    expect(r.$('[data-testid="clone-choose"]')).toBe(null);
+  });
+
   it('searches after a pause and switches owner', async () => {
     const calls: [string, string][] = [];
     const { r } = setup({

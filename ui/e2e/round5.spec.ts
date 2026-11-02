@@ -25,7 +25,8 @@ test('team: create an agent with purpose, model and effort; refused values say w
 
   const row = page.getByTestId('agent').filter({ hasText: 'Pay' });
   await expect(row).toBeVisible();
-  await expect(row.getByTestId('agent-runs')).toHaveText('Claude Code · sonnet');
+  await expect(row.getByTestId('agent-runs')).toHaveText('Claude Code · backend');
+  await expect(row.getByTestId('agent-model-chip')).toHaveText('sonnet · high');
   // not on a task yet: the card's line is the first sentence of its purpose
   await expect(row.getByTestId('agent-doing')).toHaveText('Own the payments service.');
 
@@ -38,15 +39,15 @@ test('team: create an agent with purpose, model and effort; refused values say w
   // "Another model..." turns the list into a text field for a full model name
   await choose(editor.getByLabel('Model', { exact: true }), '__other__');
   await editor.getByLabel('Model', { exact: true }).fill('-x');
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(editor.getByRole('alert')).toContainText('does not start with');
 
   // a valid edit is stored and shown
   await editor.getByRole('button', { name: 'Choose from the list instead' }).click();
   await choose(editor.getByLabel('Model', { exact: true }), 'opus');
-  await choose(editor.getByLabel('Effort', { exact: true }), 'max');
-  await editor.getByRole('textbox', { name: /^Purpose/ }).fill('Billing only.');
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await editor.getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'max' }).click();
+  await editor.getByRole('textbox', { name: 'Instructions' }).fill('Billing only.');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   await expect(chips.filter({ hasText: 'Claude Code · opus' })).toBeVisible();
   await expect(chips.filter({ hasText: 'effort: max' })).toBeVisible();
@@ -58,9 +59,10 @@ test('team: create an agent with purpose, model and effort; refused values say w
 
   // removal needs a confirmation and the agent leaves the team
   await projectNav(page, 'nav-team');
-  await expect(row.getByTestId('agent-runs')).toHaveText('Claude Code · opus');
+  await expect(row.getByTestId('agent-model-chip')).toHaveText('opus · max');
   await openAgentPage(page, 'Pay');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByTestId('agent-editor').getByText('More settings').click();
   await page.getByTestId('agent-editor').getByRole('button', { name: 'Remove from team' }).click();
   await page.getByTestId('agent-editor').getByRole('button', { name: 'Yes, remove' }).click();
   await projectNav(page, 'nav-team');

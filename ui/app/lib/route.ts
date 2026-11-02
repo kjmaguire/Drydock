@@ -45,6 +45,7 @@ export type WorkspaceRouteName =
   | 'my-tasks'
   | 'crew'
   | 'library'
+  | 'library-starters'
   | 'library-skills'
   | 'integrations'
   | 'agents'
@@ -58,7 +59,9 @@ export type WorkspaceRouteName =
   | 'data'
   | 'support'
   | 'license'
-  | 'settings';
+  | 'settings'
+  | 'settings-shortcuts'
+  | 'settings-about';
 
 /** Screens about the whole workspace, not one project. They open even when no project exists yet. */
 export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
@@ -68,6 +71,7 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'my-tasks',
   'crew',
   'library',
+  'library-starters',
   'library-skills',
   'integrations',
   'agents',
@@ -83,12 +87,14 @@ export const WORKSPACE_ROUTES: readonly WorkspaceRouteName[] = [
   'support',
   'license',
   'settings',
+  'settings-shortcuts',
+  'settings-about',
 ];
 
 // screens whose path is their name (Home is /home, the skill library /library/skills: they are parsed below)
 const SIMPLE = new Set<string>([
   'pulls', 'activity', 'plan', 'requirements', 'milestones', 'memory', 'skills', 'packs', 'mcp', 'budgets', 'evals', 'security', 'repo-map', 'rooms', 'knowledge',
-  ...WORKSPACE_ROUTES.filter((n) => n !== 'workspace' && n !== 'library-skills' && n !== 'needs-you'),
+  ...WORKSPACE_ROUTES.filter((n) => !['workspace', 'library-starters', 'library-skills', 'settings-shortcuts', 'settings-about', 'needs-you'].includes(n)),
 ]);
 
 export function isWorkspaceRoute(r: Route): boolean {
@@ -142,7 +148,12 @@ export function parseRoute(pathname: string): Route {
       return b && parts.length === 2 ? { name: a, key: b } : { name: 'not-found' };
     case 'library':
       if (parts.length === 1) return { name: 'library' };
-      return b === 'skills' && parts.length === 2 ? { name: 'library-skills' } : { name: 'not-found' };
+      if (parts.length !== 2) return { name: 'not-found' };
+      return b === 'skills' ? { name: 'library-skills' } : b === 'starters' ? { name: 'library-starters' } : { name: 'not-found' };
+    case 'settings':
+      if (parts.length === 1) return { name: 'settings' };
+      if (parts.length !== 2) return { name: 'not-found' };
+      return b === 'shortcuts' ? { name: 'settings-shortcuts' } : b === 'about' ? { name: 'settings-about' } : { name: 'not-found' };
     case 'team':
       if (parts.length === 1) return { name: 'team' };
       return b && parts.length === 2 ? { name: 'agent', id: b } : { name: 'not-found' };
@@ -191,84 +202,82 @@ export function redirectLegacyHash(loc: Pick<Location, 'hash' | 'search'>, histo
 }
 
 /**
- * The hub a screen belongs to (Crew HQ, decision P64): one of the five tabs of a project, the gear (settings), or a
- * workspace tab. The top bar marks the hub's tab current and a hub with sub-pages shows them as a row of pills. The gear
- * holds the workspace's and the app's pages only; Project settings and the project's Integrations are pills of its Overview.
+ * The hub a screen belongs to: one of a project's three tabs (decision P141: Work, Crew, Settings), or a workspace place (P140:
+ * Home, Inbox, Chats, the Agents library, Settings). The project's tab bar marks the hub's tab current; the project's Settings
+ * tab and the workspace's Settings show their sections in a rail, and a section of more than one page shows them as pills.
  */
 export type Hub =
-  | 'overview'
-  | 'tasks'
-  | 'rooms'
+  | 'work'
   | 'crew'
-  | 'knowledge'
+  | 'project-settings'
   | 'settings'
   | 'home'
   | 'inbox'
-  | 'workspace-crew'
   | 'chats'
   | 'library'
-  | 'skill-library'
-  | 'scan'
-  | 'models'
-  | 'agents'
-  | 'integrations'
   | 'project-new'
   | 'none';
 
 const HUB_OF: Record<Route['name'], Hub> = {
-  home: 'overview',
-  // the workspace's Inbox and the person's own tasks: every project's, no pills
+  // Work (decision P141): the project's tasks and chats in one list beside the one open; the board, a task's own page, the pull
+  // requests and the rooms are reached from it and keep their addresses
+  home: 'work',
+  tasks: 'work',
+  'task-new': 'work',
+  task: 'work',
+  run: 'work',
+  pulls: 'work',
+  room: 'work',
+  rooms: 'work',
+  // the workspace's Inbox; My tasks is its Mine tab (decision P140)
   'needs-you': 'inbox',
   'my-tasks': 'inbox',
-  activity: 'overview',
-  budgets: 'overview',
-  evals: 'overview',
-  security: 'overview',
-  tasks: 'tasks',
-  'task-new': 'tasks',
-  task: 'tasks',
-  run: 'tasks',
-  pulls: 'tasks',
-  plan: 'tasks',
-  milestones: 'tasks',
-  room: 'rooms',
-  rooms: 'rooms',
   team: 'crew',
   agent: 'crew',
-  knowledge: 'knowledge',
-  requirements: 'knowledge',
-  packs: 'knowledge',
-  skills: 'knowledge',
-  memory: 'knowledge',
-  'repo-map': 'knowledge',
-  // a project's settings and integrations are the project's own (its Overview hub), not the app's
-  project: 'overview',
-  'project-integrations': 'overview',
-  // the sidebar's own pages (decision P98): each lays out its own list, so none shows the Settings rail; GitHub is one of the
-  // integrations (its row opens its page) and the old addresses belong where they now lead
-  integrations: 'integrations',
-  mcp: 'integrations',
-  github: 'integrations',
-  agents: 'agents',
-  connections: 'agents',
-  providers: 'models',
+  // the project's Settings tab (decision P141): its own settings and integrations, and the pages that left the project's tabs, as
+  // sections (shell/project-sections.ts)
+  project: 'project-settings',
+  'project-integrations': 'project-settings',
+  activity: 'project-settings',
+  budgets: 'project-settings',
+  evals: 'project-settings',
+  security: 'project-settings',
+  plan: 'project-settings',
+  milestones: 'project-settings',
+  knowledge: 'project-settings',
+  requirements: 'project-settings',
+  packs: 'project-settings',
+  skills: 'project-settings',
+  memory: 'project-settings',
+  'repo-map': 'project-settings',
+  // one Settings (decision P140): every page that configures the workspace or the app is a section of it, under its old address
+  // (shell/settings-sections.ts); the old aliases belong where they lead
+  agents: 'settings',
+  connections: 'settings',
+  integrations: 'settings',
+  mcp: 'settings',
+  github: 'settings',
+  models: 'settings',
+  providers: 'settings',
   routing: 'settings',
+  'security-scan': 'settings',
   license: 'settings',
   backups: 'settings',
   data: 'settings',
   support: 'settings',
   settings: 'settings',
+  'settings-shortcuts': 'settings',
+  'settings-about': 'settings',
   workspace: 'home',
-  crew: 'workspace-crew',
   chats: 'chats',
   chat: 'chats',
+  // one Agents library (decision P140): My agents, Starters, Skills, and every project's crew
   library: 'library',
-  // Agent templates and Skills are two entries of the sidebar (decision P106), not one Library with pills
-  'library-skills': 'skill-library',
-  'security-scan': 'scan',
-  models: 'models',
+  'library-starters': 'library',
+  'library-skills': 'library',
+  crew: 'library',
   'project-new': 'project-new',
-  // the Guide is the "?" button's own help surface, not a page inside the Settings rail (UI review P1-8)
+  // the Guide is the help surface of its own (Settings > Help & about links it), not a page inside the Settings frame
   guide: 'none',
   'not-found': 'none',
 };
@@ -277,19 +286,32 @@ export function hubOf(r: Route): Hub {
   return HUB_OF[r.name];
 }
 
+/** The project's three tabs (decision P141). */
+export function isProjectHub(h: Hub): boolean {
+  return h === 'work' || h === 'crew' || h === 'project-settings';
+}
+
 /** Hubs that are the workspace's own (no project needed, nothing of a project shown). */
 export function isWorkspaceHub(h: Hub): boolean {
-  return (
-    h === 'home' ||
-    h === 'inbox' ||
-    h === 'workspace-crew' ||
-    h === 'chats' ||
-    h === 'library' ||
-    h === 'skill-library' ||
-    h === 'scan' ||
-    h === 'models' ||
-    h === 'agents' ||
-    h === 'integrations' ||
-    h === 'project-new'
-  );
+  return h === 'home' || h === 'inbox' || h === 'chats' || h === 'library' || h === 'settings' || h === 'project-new';
+}
+
+/** The item a project's Work view shows in its centre (decision P141): a task or a chat, named in the URL as ?item=task:<id>. */
+export interface WorkItemRef {
+  kind: 'task' | 'chat';
+  id: string;
+}
+
+/** The ?item= value of Work ("task:tsk_1", "chat:chat_2"), or undefined for none or a value that names neither. */
+export function parseWorkItem(v: string | null | undefined): WorkItemRef | undefined {
+  const m = /^(task|chat):(.+)$/.exec(v ?? '');
+  return m ? { kind: m[1] as WorkItemRef['kind'], id: m[2]! } : undefined;
+}
+
+/** The value of ?item= for an item ("task:tsk_1"). */
+export const workItemKey = (r: WorkItemRef): string => `${r.kind}:${r.id}`;
+
+/** Work with one item open: "/?item=task%3Atsk_1". Reload and Back keep it. */
+export function workItemHref(r: WorkItemRef): string {
+  return `/?item=${encodeURIComponent(workItemKey(r))}`;
 }

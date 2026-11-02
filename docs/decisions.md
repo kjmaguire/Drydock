@@ -2355,3 +2355,282 @@ Open, owner action:
   never appearing). After the claim, Send uses a context the caller's cancellation does not reach. Test:
   `internal/chats/send_cancel_test.go` (it fails without the change, naming `chat.turn_started`). Whether this was the only
   cause of that e2e failure is not proven: the run's trace could not be read from this environment.
+
+- **P137. An agent is edited in place, in a side panel; agents remember their template (2026-11-01).** The owner: "the ability to
+  edit existing agents when we add it to a project. As we don't seem to be able to change the agents when added like what effort
+  and model etc." The causes: Edit existed only on the agent's own page; its model and effort fields were disabled until the
+  adapter's capabilities had loaded and stayed disabled when the read failed; the editor and the add form had no permission mode.
+  (a) **The panel** (`ui/app/screens/team/agent-panel.tsx`, a `Dialog` with `side`) opens from the Crew card's model chip,
+  permission chip and "..." menu, the agent page's Edit (the old dialog is gone), `openAgentEditor(agentId)` on any page that
+  renders one `<AgentPanelHost />`, and `/team?edit=<agentId>`. It has Runs on (shown, not changed: another CLI is a new agent),
+  Model, Effort (segmented), Permissions (segmented: Read only = `plan`, Asks before edits = `default`, Edits freely =
+  `acceptEdits`; any other mode the CLI lists under "Other...", the skip-approvals confirmation as before), Skills and tools
+  (chips; project skills through `agent.update`, library MCP servers through `mcpserver.grant`), Instructions, This project |
+  Everywhere, and "More settings" (name, role, where it runs, best practices, routing, Save as a template, Remove). A save sends
+  only the fields that changed and says "Applies from its next turn". Model and effort are never disabled: while the
+  capabilities load, or when they cannot be read, the claude adapter's known lists are offered (`agent-edit.ts` `KNOWN_CAPS`), and
+  another CLI takes typed text; the same holds in the add form (`ModelEffortFields`), which also gained a permission mode. The
+  agent page's hero shows two lines of the instructions with "Show all". (b) **The template link:** `agents.template_id`
+  (migration 00171) is set by `agenttemplate.apply` (and so by `project.setup`, which applies templates through it) and by
+  `agenttemplate.fromAgent`; deleting a template clears it; it is not exported (templates belong to the workspace). (c)
+  **Everywhere** is `agent.update` with `everywhere: true` (one call, so the person confirms one save): the agent is changed, then
+  the fields the call set among instructions, model, effort and permission mode are saved to its template and to every other
+  agent made from that template, in any project (an agent that refuses the change is named in the answer; the others
+  still take it). An agent without a template, or whose template was deleted, is linked to the template of its
+  name and CLI when one exists, else saved as a new template (`fromAgent`'s spec) and linked; later "Everywhere" saves then
+  update it. Agents still do not follow their template on their own: only an Everywhere save carries a change. This is the
+  simplest behaviour that makes the switch mean what it says without silently changing other projects. Tests:
+  `internal/core/ext_agentdraft_test.go` (TestEverywhereSavesTheChangeToTheTemplateAndItsOtherAgents),
+  `internal/projectio` (the older-schema import), `ui/app/screens/team/agent-edit.test.ts`, `agent-panel.test.browser.tsx`, the
+  ported editor tests in `team-screen.test.browser.tsx` and `run-mode.test.browser.tsx`, `ui/e2e/agent-editing.spec.ts` (model,
+  effort and permission from the Crew card, kept after a reload; Everywhere saves a template), and `round3`, `round5`, `round14`.
+
+- **P138. Describe a new agent (2026-11-01).** New agent is one dialog with the tabs Describe (the default), Configure (the form)
+  and From a template (saved templates and the prebuilt gallery; the header's Templates opens it). Describe takes one sentence
+  (or a starter: Builder, Reviewer, Tester, Docs writer, Team lead, Planner), calls **`agent.draft`** `{description,
+  projectId?}` and shows the drafted agent as fields (name, CLI, model, effort, permissions, skills and tools, instructions)
+  with a one-line "why"; Create agent calls `agent.create` (and `mcpserver.grant` for its tools). Nothing is saved before that.
+  The core drafts through the app's own one-shot model path (the economics router picks the cheapest model for a `classify`
+  run, the LLM client calls it, as the expert packs' answers and summaries do) with a JSON-only prompt that lists what is
+  installed; the answer is clamped: the CLI must be one this PC has (the installed ones, Claude Code first; every registered one
+  when none is installed), a model, effort or permission mode the CLI does not list is dropped, a mode that skips approvals is
+  never drafted, skills must be accepted skills of the project and tools library MCP servers. With no model reachable, or an
+  answer that is not a usable draft, a **rules-based drafter** writes it from keywords (security, review, lead, plan, test, docs,
+  frontend, backend give the role and its Claude preset; "never edit", "read only", "just comment" give `plan`; "best model",
+  "hardest" the strongest model at high effort; "cheap", "fast" the smallest at low effort), so the feature works offline. The
+  description is never logged or put in an event, and the model call is not cached (`NoCache`); the created agent's
+  instructions are recorded as any agent's are. Tests: `internal/core/ext_agentdraft_internal_test.go` (a table of
+  descriptions for the rules; the model path with a labelled test double for the model call: a good answer, clamping, and the
+  fallbacks), `ext_agentdraft_test.go` (the RPC without a model, nothing saved, no event carries the description),
+  `ui/app/screens/team/agent-draft.test.ts`, `agent-panel.test.browser.tsx` (Describe, draft, edit, create) and
+  `ui/e2e/agent-editing.spec.ts` (a sentence drafted by the rules and created; a starter chip).
+
+- **P139. The calm chat (2026-11-01).** The owner approved the "simple UI" ideas ("simplifying how much text there is,
+  simplifying chat"); idea 3 and its mockup are built. (a) **Bursts:** consecutive tool calls between two pieces of the agent's
+  text are one line ("Read 2 files, edited 1 file, ran 1 command · 2.2 s"; reasoning before them folds into it as "Thought for
+  6 s", measured from the end of the row before, and nothing under a second is timed), opened to today's tool cards; a failed
+  call opens its line and its card by itself; a running line names its current step. Grouping is a pure function of the
+  message list, worked out again only when the feed replaces its list, so long histories and streaming cost no more (the
+  chat-perf budgets hold; 300 calls are one row). (b) **Changes:** the file edits of one turn (from one of the person's messages
+  to the next) roll up into one "Changed N files +A −D" card after the turn's last row, its Review changes a dialog of the diffs
+  made from the edit calls' inputs (Edit, MultiEdit, Write, ACP old/new text). A chat has no worktree, so the dock's Diff (a
+  task's) is not it. (c) **Header:** title, the folder chip (the project's name for a project chat, the folder in its tooltip),
+  one warning chip when the CLI is missing, not signed in or the last turn failed (it opens Properties to pick another CLI), and
+  ⋯: the CLI and its state, where the chat runs, its skills and servers, Allowed tools (a second view of the same panel),
+  Properties, Fork, Move to a project. The state's words stay in the header for screen readers (`chat-status`). (d)
+  **Composer:** chips for the agent CLI (Properties), model · effort and permission mode (today's popovers), attach files and
+  chats, Stop, Send (an accent button). (e) **Suggested replies:** after the final answer, when its last sentence is an offer or a
+  question, up to three chips derived on the page from the words (no model call); "Make it a task" is left out: a chat has no
+  path to create a task today. (f) **Empty states** are the composer with the cursor in it, and one line with New chat. (g)
+  **Ctrl+O** toggles verbose, kept per viewer in `localStorage` (read and written in try/catch). (h) `ChatConversation` renders
+  one chat without the list, for the project Work view to embed. (i) **"Starting..." fixed:** `chat.create` (and a CLI change in
+  `chat.update`) checked the CLI's notice with a full `Connections.Check`, which starts the CLI for its version and sign-in
+  (prerequisites, version and auth probes, each up to its timeout): seconds on Windows, and as long as the timeouts for a CLI
+  that hangs, so New chat sat on "Starting...". It now reads only the gates (`connections.Service.Gates`, no process started); a
+  refusal shows one line with "Choose another agent" (the new chat dialog). Tests: `ui/app/screens/chats/chat-groups.test.ts`
+  (grouping, changes, replies, verbose), `chats-screen.test.browser.tsx` ("The calm chat (P139)", ChatConversation),
+  `internal/connections/detect_test.go` `TestGatesStartNoCLI` (a hanging CLI: answered at once), e2e `ui/e2e/chats.spec.ts` (the
+  calm chat against the real core: the line, its cards, the changes card and its review, Ctrl+O across a reload, the replies, a
+  failed call open), and the chat specs moved to ⋯ (`chats`, `home-chat`, `knowledge`, `wsl`). Not verified: on Windows.
+
+- **P140. Six places in the sidebar: one Settings and one Agents library (2026-11-01).** The owner approved the "simple UI"
+  ideas 6 and 7 ("merging windows together, simplifying how much text there is"). (a) **Sidebar:** the Drydock name with search
+  and the fold, **New** (Ctrl+N; on Chats the key keeps making a new chat), **Home**, **Inbox** (with its count), **Chats**, the
+  **Projects** (the open one keeps its tabs under it for now), and at the foot **Agents** and **Settings** with the engine and
+  the event stream as one quiet line each. Running and My tasks became tabs of the Inbox (Running, and Mine); All crews, Security
+  scan, the agent CLIs, Integrations, Models, Agent templates, Skills and the Guide left the sidebar. The project switcher left
+  too: the Projects list opens a project, New starts one. What New opens is said in one place (`ui/app/shell/new.ts`, today
+  `/project/new`), so the coming start screen takes it over there. (b) **One Settings:** ten sections (General, Agent CLIs,
+  Models, Routing & budgets, Integrations, GitHub, Security scan, Backups & data, Shortcuts, Help & about) in a registry
+  (`ui/app/shell/settings-sections.ts`) that the Settings rail, its search, the section pills and the tests read. The existing
+  screens are rendered inside the frame, unchanged but for their titles and an intro line (the page Agents is titled **Agent
+  CLIs**, so only the library is called Agents); every old address opens its screen with its section marked (`/models`,
+  `/agents/claude`, `/integrations/linear`, `/connections`, `/providers`, `/mcp`, `/github`, `/data`...), and two sections got
+  addresses of their own (`/settings/shortcuts`, `/settings/about`). `/github` is now GitHub's own section instead of a redirect
+  to `/integrations/github`, which still shows it as an Integrations row. (c) **One Agents library:** `/library` is My agents
+  (the agent templates, as cards: avatar, name, one line of purpose, the model and effort chip, a ⋯ menu with Edit and Delete),
+  `/library/starters` the prebuilt agents read-only (Use opens the agent form filled from the starter and saves a new agent of
+  mine; the servers it names that are not in the library are left for Integrations), `/library/skills` the skill library, and
+  All crews (`/crew`) a pill set apart. "New agent" goes through one function of the library screen (`openNewAgent`), so the
+  Describe flow can take it over. (d) The command menu reaches every page that left the sidebar (Running, My tasks, All crews,
+  Starter agents, Keyboard shortcuts, Help and about, Agent CLIs, Models, Security scan...). Not done: "in N projects" on an
+  agent card (an agent does not record the template it came from; counting by name would guess). Tests:
+  `ui/app/shell/settings-sections.test.ts` (the registry, the route map, the search), `sidebar.test.browser.tsx`,
+  `hubnav.test.browser.tsx`, `palette-items.test.ts`, `lib/route.test.ts`, `screens/library/*`, `screens/settings/*`; e2e
+  `ui/e2e/navigation.spec.ts` (the sidebar's six places, every moved page from Settings and by its old address, the search,
+  the Agents tabs, Ctrl+K to Models and Security scan) and the specs whose navigation moved (`e2e/helpers.ts` opens a hub's hub).
+
+- **P141. A project is one workspace: Work · Crew · Settings (2026-11-01).** The owner approved the "simple UI" idea 2 ("merging
+  windows together, simplifying how much text there is"). (a) **One tab bar:** a project's pages have one bar, the project's name
+  then **Work** (`/`), **Crew** (`/team`) and **Settings** (`/project`), with New task on Work. It replaces the project's five
+  sidebar sub-items (Overview, Tasks, Rooms, Crew, Knowledge) and the Overview's pills (Activity, Budgets, Evals report, Security,
+  Project settings, Integrations); the sidebar's projects are one line each and open Work. `hubOf` gives each route its tab:
+  Work holds the board, a task (and its runs), new task, the pull requests and the rooms (rooms are conversations, so they stay
+  beside the work, with the Rooms rail, rather than in Settings); Crew holds `/team` and an agent's page, unchanged; Settings
+  holds the project's settings and Integrations and every page that left, as sections of a rail drawn by the workspace Settings'
+  own `SettingsRail` from a second registry (`ui/app/shell/project-sections.ts`: General, Integrations, Knowledge with its five
+  pages as pills, Plan & milestones, Activity, Budgets, Evals report, Security). Every old address keeps working and marks its
+  tab; the old test ids live on (`nav-overview` is Work, `nav-team` Crew, `nav-tasks`, `nav-pulls`, `nav-rooms` are links under
+  Work's list, `nav-project`, `nav-knowledge`, `nav-budgets`... are rail sections). (b) **Work** (`screens/work/`): the left
+  column is "Search this project", New chat (a chat of this project, opened in place) and one list of the project's tasks and
+  chats, grouped Needs you (an Inbox item names it, by urgency; or the task waits for a person), Running (newest first; a task not
+  yet started is there with a hollow dot, since it is open work) and Earlier, one line under each title ("Ready to merge · +42
+  −3", "Ada · 4 min", "Merged · yesterday", "Chat · Tue"), all from reads the app already had (`task.list`, `needsyou.list`,
+  `chat.list` with the project). The centre is the open item, named in the URL as `/?item=task:<id>` or `/?item=chat:<id>` (so
+  Reload, Back and a link from another page, such as the coming start screen, open it): a task's own page embedded (the same
+  `TaskDetailScreen`, its properties under the work; `/task/:id` still opens it alone) or the chat (`ChatConversation`, P139);
+  with nothing named, the first that needs you, else the first running, else one line and Describe a task. The open task is the
+  page's task for the shell (dock, details panel, Ctrl+K). The right column is the crew: avatar with its state, name, "Model ·
+  effort"; a click opens P137's editor in place (`openAgentEditor`; the one place that says so is `screens/work/edit-agent.ts`,
+  whose link is `/team?edit=<id>` for a new window), "+" goes to the Crew tab (the Crew page has no outside opener for New agent
+  yet); under it Spent so far, First check, Security and Merged this week, each linking its page. (c) **The Overview page is
+  removed**: its needs-you cards, crew cards, in-motion rows and rooms card are the list, the rail and Rooms; its Today and
+  Insights numbers are the rail's four lines (the counts of open tasks, working agents and items are the list itself). (d) The
+  start screen (P142) lands here through `lib/project-work.ts` (`/?item=task:<id>`, the same parameter), and its note of what it
+  could not do shows once as one line over the list. (e) **Two leaks found on the way** (the smoke test's memory rounds now pass
+  through Work): `/rooms` redirects with a replace navigation, and reached by a click inside a page that then unmounts it kept
+  that page's whole tree (about 800 nodes a visit), so Work's Rooms link goes straight to the project channel; and every Monaco
+  diff editor leaves about 3,000 detached nodes after its dispose (the task page's Diff part, on `/task/:id` too, before this
+  change), so the task embedded in Work leaves the Monaco diff to the dock (Open in the dock) and keeps the plain diff. The Monaco
+  leak itself is not fixed; a person opening many task pages in one session still pays it. Not done:
+  the mockup's branch and pull-request chip in the tab bar (no cheap read gives "2 open PRs" for the bar), and "Checks passing"
+  as one word (the rail shows the first-check rate the core measures instead). Tests: `ui/app/screens/work/work.test.ts`
+  (grouping, order, lines, search, the item opened by default), `work-screen.test.browser.tsx` (the list, the centre by URL, the
+  crew rail and its editor, the stats, New chat, the empty state), `lib/route.test.ts` (the tabs of every route, `?item=`),
+  `shell/hubnav.test.browser.tsx` (the tab bar, the project Settings rail and pills), `sidebar.test.browser.tsx`; e2e
+  `ui/e2e/work.spec.ts` (a started task under Needs you and open in the centre, a project chat in the list, Back and Reload, the
+  crew rail opening the editor, every old address under its tab) and the specs whose navigation moved (`e2e/helpers.ts`:
+  `projectNav` looks for the tab bar, `HUB_OF` maps the old ids to Work, Crew and Settings; a new project now lands on Work).
+
+- **P142. Home is the start screen (2026-11-01).** The owner: "make it really easy for me to start a project"; idea 1 and its
+  mockups (1-home-start, 1b-start-menus) are built. (a) **Home** (`/home`, and the first run, which no longer forces the wizard)
+  is a heading, one faint line, one box with chips, the "Or:" row (New folder, Clone from GitHub, Open a folder..., Just chat,
+  More options...) and "Pick up where you left off" (the three most recently active projects: colour, name, a pill "needs you",
+  "N running" or the last activity, and one line: what needs you, what a running task does, or the newest task's state; All
+  projects shows the rest). The old Home's chat card, project tiles and workspace tiles are gone (Settings and Ctrl+K reach every
+  page; Just chat starts a chat, its skills and servers are in the chat's Properties). (b) **Chips:** Where (New folder: the
+  usual code folder, `github.cloneDir`, and a slug of the description's first three words that say something, editable; Open a
+  folder... with the wizard's FolderField; Clone from GitHub... with RepoPicker; the Recent projects; More options... opens the
+  wizard), Who (Solo: the catalog's builder, `backend-engineer`, on its recommended CLI; Small team: the wizard's `suggestTeam`;
+  My agents...: saved templates; in a project its own crew or Solo; Describe a new agent...: P138's Describe, whose "Add to crew"
+  puts the draft in the new project's setup, or creates the agent in an existing project), model · effort and Permissions (Read
+  only `plan`, Asks before edits `default`, Edits freely `acceptEdits`, as P137 maps them; they start from the builder's model
+  and effort and set the builder Drydock adds, so they show only for Solo and Small team; saved agents and a project's crew keep
+  their own). The last choices are remembered per place (a project, a folder, a repository, "a new folder") in `localStorage`
+  `drydock.start`, read and written in try/catch. (c) **Enter** (Start; Shift+Enter is a new line): for a new place, one
+  `project.setup` exactly as the wizard defaults it (name from the folder or repository, brief = the description, a local
+  folder with "make a Git repository" for a new folder, local merge, no connectors, the agents' skills installed; a mode that
+  skips approvals keeps the wizard's rules, and the three chip modes never need the confirmation); then the first piece of work:
+  **a task when the project has a repository and the crew a worker and a different reviewer** (never the lead; the builder works,
+  the reviewer-role agent reviews), titled with the first sentence (cut at a word near 90 characters, within `tasks.MaxTitleLen`),
+  the whole text as its description, assigned and started; **otherwise a chat in the project** sent the description, on the
+  chips' CLI and settings (Solo, a project without a repository, or a crew without a pair: a task cannot start with one agent).
+  So Solo is always a chat, also for "just a question". A Recent project skips the setup. The box shows the steps ("Creating
+  project…", "Starting task…"), an error is one line under the box with the text kept, and a failure after the project exists
+  turns Where to that project so another try does not make a second one. Setup warnings are left as the flash of the next page
+  that reads it. (d) **Landing:** the project is selected and the page goes to its home with the item:
+  `projectWorkHref({kind, id})` in `ui/app/lib/project-work.ts` (`/?item=task:<id>`, P141's Work view) is the one place that
+  says so. Just chat makes a chat without a project (its private folder), sends the text when there is one, and opens it. (e)
+  **New / Ctrl+N** go to Home with the cursor in the box (`shell/new.ts`; on Chats the key still makes a chat); the wizard stays
+  at `/project/new`. While a start makes the project, the shell keeps the start screen on a first run (`setupOpen`), as it did
+  for the wizard. Not done: the Agents library's New agent still opens its template form (Describe makes a project agent, not a
+  template; repointing it needs more than a few lines). Tests: `ui/app/screens/workspace/start.test.ts` (names and slugs, crews,
+  what Enter does for each place and crew with a labelled test double of the client, remembered choices), `workspace.test.ts`
+  (pick up), `workspace-home.test.browser.tsx` (the box, chips, cards, Enter for a new folder and a Recent project, the error,
+  Just chat, remembered chips, Describe), `shell/shell-first-run.test.browser.tsx`, `sidebar.test.browser.tsx` (New and the
+  cursor); e2e `ui/e2e/start.spec.ts` (a new folder with Solo: a project and a chat; an opened folder with Small team: a task
+  assigned and started, then the Recent project again; Just chat; New and More options), and the specs whose Home moved
+  (`home-chat`, `workspace`, `security`, `layout`, `navigation`, `flow`; `e2e/helpers.ts` opens the wizard by its address).
+
+- **P143. New project on Home; a GitHub repository cloned where the person chooses and kept in step (2026-11-01).** The owner:
+  "on the main page there isn't a post of saying new project. when clicking on more options on the front page it brings you to a
+  new project which I don't think was intended ... when linking a github project, id like for us to sync it to the directory of our
+  choice, as well." (a) **New project** is a primary button at the right of Home's heading (`home-new-project`). It opens a small
+  dialog (`ui/app/screens/workspace/new-project.tsx`, the kit `Dialog`): **Project name**, and **Where its code lives** as one
+  segmented choice, New folder (the usual code folder and the name's slug, editable) / Open a folder (the folder field, P58) / Clone
+  from GitHub (the repository picker). The name follows the folder or repository until the person types one. **Create project** is
+  one `project.setup` with the start box's defaults (`newProjectSetup` in `start.ts`: the wizard's defaults through `buildSetup`,
+  Solo's builder as the crew, no brief, no connectors, local merge, the agents' skills installed) and starts no work; the person
+  lands on the project's Work (`projectWorkHref()`). No new RPC makes projects. (b) **The wizard is gone.** Both "More options..."
+  links of the start box (`start-more`, `where-more`) are removed; `/project/new` redirects to `/home?new=project` (Home opens the
+  dialog and takes the parameter off the address), and `newProjectHref()` in `shell/new.ts` is the one place that builds it (Ctrl+K's
+  "New project", the project switcher's "New project…", and the "Create a project" links of Skills, Project settings,
+  Integrations and GitHub). `project-create-screen.tsx`, `team-builder.tsx` (used by nothing else) and the wizard's browser test
+  are deleted; `wizard.ts` stays (the start box, the folder field and the picker use its helpers). The brief, connectors and crew
+  the wizard asked for are the project's Settings and Crew afterwards. The sidebar's New stays the start screen (P142), whose
+  heading now has New project beside it. The e2e helpers make a spec's stand-in project through `project.setup` with the
+  harness's token (what the wizard sent, with no agents) and open it from the sidebar (`createProject`,
+  `createProjectWithoutRepo`); the specs about making a project use the dialog. (c) **Clone into a chosen folder:** the repository
+  picker's **Clone into** has **Choose folder…** (`screens/shared/choose-folder.tsx`, `fs.pickFolder`, where the window has a folder
+  dialog), the full target path stays shown under it, and the core remembers the folder of the last clone that worked (setting
+  `github.lastCloneDir`, written by `GitHubClone`; `github.cloneDir` returns it, else `~/source/repos`), so the next clone (and
+  the start box's new folders, which use the same folder) starts there. (d) **Keeping it in sync** (`internal/git/sync.go`,
+  `internal/core/ext_reposync.go`): for a project whose repository has an `origin` remote (cloned by Drydock or attached; GitHub or
+  another host, named "origin" in the words then), Work's crew rail ends with one line: "Up to date with GitHub", "3 behind · 1
+  ahead", "Not checked yet", "Checking GitHub…" or "Could not reach GitHub", and **Sync now**. Sync now (`repo.sync`) is `git fetch`
+  of origin with the refspec on the command line (`+refs/heads/*:refs/remotes/origin/*`, so only remote-tracking branches move,
+  whatever the repository configures; `--no-recurse-submodules`, `--no-write-fetch-head`), then `git merge --ff-only` of the
+  project's default branch in the project's folder only when that branch is checked out, has no commits of its own and the tree has
+  no local changes (untracked files count, as for a task's merge), under the same lock as a task's merge into that folder; otherwise
+  nothing changes and one line says why (local changes / diverged / another branch checked out / nothing new, your commits stay
+  local). Nothing merges, rebases, resets, forces or pushes, and task worktrees and `drydock/*` branches are never touched (a test
+  says so). The background check fetches only: when a project is opened (`repo.syncState` with its last check over two minutes
+  old) and every 15 minutes for every project with a remote while the app runs; Settings > GitHub > Project folders > **Check for
+  new commits** turns it off (`repo.syncSettings.get/set`, setting `reposync.auto`). The fetch goes through `internal/git`'s
+  runner: the person's login environment is kept for a call that talks to a remote (`talksToARemote`), every call is hardened
+  (`proc.Harden`, no hooks, the repository's trusted-configuration guard), a fetch has a two-minute limit, and its error is scrubbed
+  (`Scanner.Redact`, and a login in a URL is cut) before it is kept in memory or shown; `repo.synced` carries counts and the outcome
+  only, never the remote's address or a path, and nothing about a sync is written to the database or the log. **Not gated by the
+  license:** read-only stops new projects and agent work; a sync is the person's own folder brought up to date with what they can
+  already read, as `git pull --ff-only` would, and starts no work. Not done: a real GitHub fetch is not exercised here (the tests
+  use local bare repositories; the clone e2e still has no gh in the harness, so the picker's Choose folder is covered by unit tests
+  only); the state of the last check is kept in memory, so after a restart a project says "Not checked yet" until its first check.
+  Tests: `internal/git/sync_test.go` (a clean fast-forward that a fetch alone does not make, local changes and an untracked file
+  refused, diverged and ahead refused, another branch refused, task branches and worktrees untouched, no remote, names that look
+  like options refused), `internal/core/reposync_test.go` (Sync now refusing then fast-forwarding with its event, the check on
+  opening only fetching, no remote or no repository, a failed fetch hiding the login, the remembered clone folder); UI
+  `screens/work/repo-sync.test.ts`, `work-screen.test.browser.tsx` (the line, Sync now, the event, no line without a remote),
+  `screens/workspace/start.test.ts` (names, folders, `newProjectSetup`), `new-project.test.browser.tsx` (the button, a new folder
+  creating with nothing started, a folder naming the project, `?new=project&where=clone`, an error, Cancel, read-only),
+  `repo-picker.test.browser.tsx` (Choose folder and the target path); e2e `ui/e2e/start.spec.ts` (New project with a new folder and
+  with an opened folder, `/project/new` and Ctrl+K open it, no "More options"), `ui/e2e/reposync.spec.ts` (a local bare remote:
+  "Up to date with origin" on opening, a pushed commit with a local edit gives "1 behind" and the reason, then Sync now brings it
+  in), and the specs that used the wizard (`workspace`, `flow`, `round4`, `round13`, `navigation`).
+- **P144. Said once, a step further, and the layout that held (2026-11-01).** The owner: "do another full review of the app, find
+  other ways to simplify it while keeping our good engineering of everything." Every route was opened against the real core
+  with a seeded workspace (two projects, two agents, a task waiting for approval, a project chat and a chat of its own) at
+  1440 x 900 and 1100 x 800, dark; no console error or failed request was seen. What was clearly better was built; what changes
+  how a whole area works is left as proposals. Nothing was removed: each change moves, folds or rewords. (a) **Two layout
+  defects.** Work's crew rail was meant to leave under 1180 px, but the rule sat in the grid's `css()` and lost to the rail's own,
+  later layer (README "Component rules"): at 1100 px the rail wrapped under the list and squeezed the open task to half the
+  height. The rail now hides itself (`crewCss`). A Settings section of more than one screen (Backups & data, Help & about; a
+  project's Knowledge, Plan & milestones) drew its pills over the rail, pushing the rail down a row on those sections only; the
+  pills are now `SectionPills`, drawn over the page beside the rail, and `SubNav` keeps the tab bar and the Agents library's
+  pills. (b) **Said twice, now once.** The Inbox's Needs you tab listed a task waiting for its approval twice, as its item and
+  under Running (the core counts it running); the Running group there leaves out a task with an item (`runningBesideNeeds`), and
+  disappears when nothing else runs; the Running tab and its count are unchanged. A Crew card said the model in its line
+  ("Claude Code · sonnet") and on its chip ("sonnet · medium"): the line is now the CLI and the role. The board's title repeated
+  the project's name under the tab bar that names it: it is "Tasks". Pull requests explained itself in the section's line and
+  again in the empty state: once now, with a link to Project settings where pull requests are turned on. (c) **Plain words.** A
+  chat without a project showed the core's data path in its header chip (`/…/data/chats/chat_e5b…`): "Own folder", the path in
+  the tooltip. The decision card's "Request kind: review" line is gone (the title says what is asked; the kind stays as
+  `data-kind`). The board's scheduler line ("up to 2 tasks in parallel; 0 runs executing, 0 agent slots in use (peak 1). Change
+  these under Project settings.") is "manual up to 2 tasks at once, 0 running now · Change", the agent slots in its tooltip. (d)
+  **A step further, with good defaults.** Settings > General shows the agents' environment and telemetry as before, but the box
+  of extra variables is "Pass more variables to agents" and sending to a collector is "Send to your own collector", each closed
+  until it is used (a variable passed; an endpoint set or sending on), then open by itself. A project's Agent tools by role
+  shows "Let agents act" and puts the 11-column table and its rules behind "Change what each role may use", open by itself once
+  a cell or a rule differs from Drydock's (`customized`), so a change is never out of sight. The safety switches and every
+  control are where they were, one click further. (e) Not built, proposed to the owner with mockups: project Settings from
+  eight sections to four (Budgets, Evals report and Security as one Insights section; the raw event log to Help & about; Plan
+  as "Plan a goal" on Work), the task page as one column with the properties under Details, the Inbox's Mine and Done today as
+  a filter and a section, Routing's empty wiring, the Agents library's second heading. Tests:
+  `ui/app/shell/hubnav.test.browser.tsx` (SectionPills, SubNav without them), `screens/needs-you/needs-you.test.ts` and
+  `needs-you-screen.test.browser.tsx` (the Running group beside the items), `screens/chats/chats.test.ts` and
+  `chats-screen.test.browser.tsx` (`folderChipText`), `screens/team/team-screen.test.browser.tsx` and
+  `run-mode.test.browser.tsx` (the card's line, the chip), `screens/tasks/task-list-screen.test.browser.tsx` (the title, the
+  scheduler line), `review-panel.test.browser.tsx`, `screens/pulls/pulls-screen.test.browser.tsx`,
+  `screens/integrations/role-tools.test.ts` and `role-tools.test.browser.tsx` (`customized`, the disclosure),
+  `screens/settings/settings-screen.test.browser.tsx` (both disclosures); e2e `narrow.spec.ts` (Work at 1100 px: no crew rail,
+  the centre's full height; the Backups pills beside the rail), `chats.spec.ts`, `crew.spec.ts`, `round5.spec.ts`,
+  `board.spec.ts`, `agent-tools.spec.ts`, `diagnostics.spec.ts`, `round3.spec.ts`, `round7.spec.ts`, `wsl.spec.ts`.

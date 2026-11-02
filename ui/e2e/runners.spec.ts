@@ -4,7 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { appUrl, workspaceNav } from './helpers';
 
-/** Opens GitHub the way a person does: Integrations, then its GitHub row, whose detail opens beside the list. */
+/** Opens GitHub the way a person does: Settings, then its GitHub section (decision P140). */
 const openGitHub = (page: Page): Promise<void> => workspaceNav(page, 'nav-github');
 
 test('CI runners: a public repository is refused; a Linux runner runs a job; a Windows one needs the person to accept it; off and remove unregister', async ({ page }) => {

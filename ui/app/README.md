@@ -33,13 +33,20 @@ app/
   lib/                pure helpers (format, composer, route, theme, graphLayout, permission, task-total, limits, poll, envname)
   ui/                 the design kit: tokens, icon, button, form, feedback, data, layout, dialog, tabs, menu, popover, markdown,
                       virtual-list (windowed feeds; its arithmetic in virtual.ts), windowed-list (long lists read from the top)
-  shell/              sidebar (with the project switcher), hub pills and rails, details panel, dock host, license banner, the command
+  shell/              sidebar (six places, P140; New in new.ts: the start screen, P142), a project's tab bar Work · Crew · Settings
+                      and its Settings sections (project-sections.ts, P141), hub pills and rails, the Settings sections (settings-sections.ts), details panel, dock host, license banner, the command
                       menu (palette.tsx, Ctrl+K: a chip for the task of the page, grouped options from palette-items.ts with the
                       prefixes > # @, the "What happens" panel from task.assignPreview; G then I, T or C goes to Inbox, Tasks, Crew)
   screens/<area>/     one folder per screen area, each with its tests
+  screens/workspace/  Home, the start screen (P142): the box and its chips (start-box.tsx), what Enter does (start.ts), the
+                      projects to pick up (workspace.ts), New project (new-project.tsx, P143: a name and where the code lives,
+                      nothing started; /home?new=project, shell/new.ts newProjectHref); lib/project-work.ts is where a flow lands
   screens/needs-you/  the workspace's Inbox (/needs-you: Needs you, Running, Done today in every project, the selected item's detail
                       with its answers; helpers in needs-you.ts) and My tasks (/my-tasks)
-  screens/overview/   the project's Overview (greeting, needs you, the crew, tasks in motion, rooms, Insights; helpers in overview.ts)
+  screens/work/       a project's Work ("/", decision P141): its tasks and chats in one list (work.ts), the open one in the centre
+                      (?item=task:<id>|chat:<id>), the crew rail (edit-agent.ts opens an agent's editor; repo-sync-line.tsx is
+                      where the folder stands against its remote, with Sync now, P143); overview/overview.ts keeps
+                      the Insights helpers it reads
   screens/tasks/      the project board (Board / List / Timeline of task.summaries; tasks.ts: columns, cards, checks bar, filters,
                       timeline), the task page with its step bar (steps.ts), the review panel
   screens/knowledge/  the Knowledge hub: ask box, source cards with counts, requirements coverage, recently learned (knowledge.ts)
@@ -47,8 +54,10 @@ app/
                       project): the header's figures, Templates and New agent (N) as dialogs, Today's timeline (crew-timeline.tsx; its
                       window, ticks and blocks in crew.ts) and a card per agent; an agent's own page (/team/:id, agent-screen.tsx: a
                       hero with chips, Inspect, Edit and Remove, then Overview (the lead's stand-up and interventions on the lead's
-                      page), Skills & tools, Memory and History); the inspector stays in the details panel
-  screens/agents/     Agents (/agents, /agents/<key>; decision P98, once Connections): the agent CLIs as a MasterDetail list (Installed,
+                      page), Skills & tools, Memory and History); the inspector stays in the details panel; the agent editor
+                      panel (agent-panel.tsx, P137: openAgentEditor(id) on a page with one <AgentPanelHost />, or /team?edit=<id>;
+                      helpers in agent-edit.ts) and New agent's tabs Describe | Configure | From a template (new-agent.tsx, P138)
+  screens/agents/     Agent CLIs (/agents, /agents/<key>; decision P98, once Connections; a section of Settings, P140): the agent CLIs as a MasterDetail list (Installed,
                       Not installed), the chosen one's header (Test connection, Sign in, Check again), one notice and the tabs
                       Overview (notices to accept, facts, the distro, the MCP gateway switch, Used by), Test results, Install and
                       update (helpers in agents.ts)
@@ -130,15 +139,16 @@ sizes are only 12, 12.5, 13, 15, 18 and 22 px (`t.text*`; `e2e/density.spec.ts` 
 The shell is the sidebar, the page (with the hub's pills, and a rail on Rooms and Settings), and the details panel beside a
 conversation:
 
-- **Sidebar** (`shell/sidebar.tsx`, landmark "Main"; the arrow keys, Home and End move through its links): the workspace
-  switcher ("Switch project", the kit `Menu`), search (Ctrl+K), **Inbox** (`/needs-you`, the count of what needs you in every
-  project), **Running**, **My tasks**, **Chats**, the projects (the open one shows its tabs **Overview, Tasks, Rooms, Crew,
-  Knowledge** under it; another is one line), the workspace's **Security**, **Agents**, **Integrations**, **Models** and
-  **Library** (decision P98), then **Settings**, the **Guide**, the local engine's state and the event stream. "[" (never while typing) or its
+- **Sidebar** (`shell/sidebar.tsx`, landmark "Main"; the arrow keys, Home and End move through its links): the Drydock
+  name with search (Ctrl+K) and the fold, **New** (Ctrl+N: the start screen, P142), **Home**, **Inbox** (`/needs-you`, the count
+  of what needs you in every project; Running and Mine are its tabs), **Chats**, the projects (one line each; a project's pages
+  have its tab bar **Work, Crew, Settings**, decision P141), and at the foot **Agents** (the library) and **Settings** (every
+  workspace page is one of its sections, P140), the local engine's state and the event stream. "[" (never while typing) or its
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
   (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.
 - **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
-  "Rooms", `data-rooms`); the Settings rail lists Routing and the app's pages (landmark "Settings"). The old test ids live on:
+  "Rooms", `data-rooms`); the Settings rail lists the sections (landmark "Settings"; a project's is "Project settings"), and a
+  section of more than one screen has its pills over the page beside it (`SectionPills`, P144). The old test ids live on:
   `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is
   not on the page.
 - **Rooms are named without "#"**: a small lucide icon (`roomIcon(kind)` in `ui/icon.tsx`), then the name; a direct

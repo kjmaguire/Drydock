@@ -7,9 +7,9 @@ import type { AgentTemplate, ClaudePractices } from '../../api/libraryClient.ts'
 import type { AdapterInfo, Agent, PrebuiltAgent, PresenceState, Project, TaskSummary } from '../../api/types.ts';
 import { SKIP_CONFIRM_LABEL } from '../../lib/permission.ts';
 import { expiredLicense, lic } from '../../test/fixtures.ts';
-import { byLabel, byText, cleanup, drain, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, drain, fromMenu, menuItems, mount, optionsOf, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { CATALOG, prebuilt } from '../project/wizard-fixtures.ts';
-import { AgentEditor } from './agent-forms.tsx';
+import { AgentEditor } from './agent-panel.tsx';
 import { TeamScreen, WorkspaceCrewScreen } from './team-screen.tsx';
 
 afterEach(cleanup);
@@ -106,6 +106,9 @@ async function openNew(r: ReturnType<typeof show>['r']) {
     return b;
   }, r);
   await r.act(() => btn.click());
+  // New agent opens on Describe; the full form is Configure (decision P138)
+  const tab = await waitFor(() => must(r.container.querySelector<HTMLElement>('dialog[open] [data-testid="new-agent-configure"]'), 'no tabs'), r);
+  await r.act(() => tab.click());
   await waitFor(() => must(r.container.querySelector('dialog[open] [data-testid="agent-form"]'), 'no form'), r);
   await waitAdapters(r);
 }
@@ -121,11 +124,11 @@ async function openTemplates(r: ReturnType<typeof show>['r']) {
   return waitFor(() => must(r.container.querySelector<HTMLElement>('dialog[open] [data-testid="crew-templates"]'), 'no dialog'), r);
 }
 
-/** The agent editor as the agent's page opens it (Edit), with the services the page has. */
+/** The agent editor panel's form as the Crew card or the agent's page opens it, with the services the page has. */
 function edit(a: Agent, client: Partial<Client> = {}, others: Agent[] = []) {
   const { s } = svc([a, ...others], client);
   let done = 0;
-  const r = mount(<AgentEditor agent={a} adapter={claude} onDone={() => done++} onCancel={() => {}} />, s);
+  const r = mount(<AgentEditor agent={a} adapter={claude} caps="ready" onDone={() => done++} onCancel={() => {}} />, s);
   return { r, s, done: () => done };
 }
 
@@ -169,13 +172,19 @@ describe('Team: purpose, model and effort', () => {
     const calls: unknown[] = [];
     const { r, done } = edit(agent(), { agentUpdate: async (u) => (calls.push(u), { ...agent(), ...u } as Agent) });
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
-    expect(ed.textContent).toContain('cannot change');
+    // the CLI is shown, not offered: a different CLI is a new agent
+    expect(must(ed.querySelector('[data-testid="agent-runs-on"]'), 'no Runs on').textContent).toBe('Claude Code');
     type(byLabel(ed, 'Model'), 'haiku');
-    type(byLabel<HTMLElement>(ed, 'Effort'), 'low');
-    type(byLabel<HTMLTextAreaElement>(ed, 'Purpose'), 'Billing only.');
+    // effort is a segmented choice of the CLI's levels, and the default
+    const effort = must(ed.querySelector<HTMLElement>('[role="radiogroup"][aria-label="Effort"]'), 'no Effort');
+    expect(Array.from(effort.querySelectorAll('[role="radio"]')).map((b) => b.textContent)).toEqual(['default', 'low', 'medium', 'high', 'xhigh', 'max']);
+    expect(effort.querySelector('[aria-checked="true"]')!.textContent).toBe('high');
+    await r.act(() => effort.querySelector<HTMLButtonElement>('[data-value="low"]')!.click());
+    type(byLabel<HTMLTextAreaElement>(ed, 'Instructions'), 'Billing only.');
     r.root.flush();
-    await r.act(() => byText(ed, 'button', 'Save changes').click());
-    await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', name: 'Pay', role: 'backend', purpose: 'Billing only.', model: 'haiku', effort: 'low', practices: true }]), r);
+    await r.act(() => byText(ed, 'button', 'Save').click());
+    // only what changed is sent (an Everywhere save carries exactly these)
+    await waitFor(() => expect(calls).toEqual([{ id: 'agt_1', purpose: 'Billing only.', model: 'haiku', effort: 'low' }]), r);
     await waitFor(() => expect(done()).toBe(1), r);
   });
 
@@ -186,7 +195,7 @@ describe('Team: purpose, model and effort', () => {
       },
     });
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
-    await r.act(() => byText(ed, 'button', 'Save changes').click());
+    await r.act(() => byText(ed, 'button', 'Save').click());
     await waitFor(() => expect(ed.querySelector('[role="alert"]')!.textContent).toContain('accepts these effort levels'), r);
     expect(done()).toBe(0);
   });
@@ -199,7 +208,7 @@ describe('Team: purpose, model and effort', () => {
     await r.act(() => routing.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     expect(valueOf(byLabel(ed, 'Routed model 1'))).toBe('haiku');
     expect(valueOf(byLabel(ed, 'Tier of routed model 2'))).toBe('premium');
-    await r.act(() => byText(ed, 'button', 'Save changes').click());
+    await r.act(() => byText(ed, 'button', 'Save').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]!.routeModels).toEqual([
       { model: 'haiku', tier: 'cheap' },
@@ -351,7 +360,7 @@ describe('Claude best practices', () => {
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
     await waitFor(() => must(ed.querySelector('[data-testid="claude-practices"]'), 'no box'), r);
     expect(valueOf(byLabel(ed, 'Model'))).toBe('opus');
-    expect(valueOf(byLabel(ed, 'Effort'))).toBe('max');
+    expect(ed.querySelector('[role="radiogroup"][aria-label="Effort"]')!.getAttribute('data-value')).toBe('max');
   });
 
   it('adds a prebuilt agent from the Templates dialog and re-reads the team', async () => {
@@ -449,7 +458,7 @@ describe('Team: skills', () => {
     expect('skills' in calls[0]!).toBe(false);
   });
 
-  it('the editor shows the skills the agent has and sends only what changed', async () => {
+  it('the editor shows the skills the agent has as chips, adds and takes away, and sends only what changed', async () => {
     const calls: unknown[] = [];
     const pay = agent();
     const mine = [
@@ -461,29 +470,17 @@ describe('Team: skills', () => {
     ];
     const { r } = edit(pay, { skillList: async () => mine, agentUpdate: async (u) => (calls.push(u), pay) }, [edge]);
     const ed = await waitFor(() => must(editor(r), 'no editor'), r);
-    await waitFor(() => skillBox(ed, 'docs'), r);
-    expect(skillBox(ed, 'react').input.checked).toBe(true);
-    expect(skillBox(ed, 'react').who).toBe('Not given to another agent.'); // it names Frontend; Pay is backend: no suggestion
-    expect(skillBox(ed, 'wrangler').input.checked).toBe(true);
-    expect(skillBox(ed, 'wrangler').who).toBe('Also given to Edge.');
-    expect(skillBox(ed, 'docs').input.checked).toBe(false);
-    expect(skillBox(ed, 'docs').who).toBe('Not given to another agent.');
-    expect(skillBox(ed, 'everyone').input.disabled).toBe(false);
-    await r.act(() => skillBox(ed, 'wrangler').input.click());
-    await r.act(() => skillBox(ed, 'docs').input.click());
-    await r.act(() => byText(ed, 'button', 'Save changes').click());
+    const chips = () => Array.from(ed.querySelectorAll('[data-testid="skill-chip"]')).map((c) => c.textContent!.trim());
+    await waitFor(() => expect(chips()).toEqual(['everyone', 'react', 'wrangler']), r);
+    await r.act(() => byText(ed, 'button', 'Take wrangler away').click());
+    expect(chips()).toEqual(['everyone', 'react']);
+    const add = byText<HTMLElement>(ed, 'button', 'Add a skill or tool');
+    expect(await menuItems(r, add)).toEqual(['wrangler', 'docs']);
+    await fromMenu(r, add, 'docs');
+    await waitFor(() => expect(chips()).toEqual(['everyone', 'react', 'docs']), r);
+    await r.act(() => byText(ed, 'button', 'Save').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
-    expect(calls[0]).toEqual({
-      id: 'agt_1',
-      name: 'Pay',
-      role: 'backend',
-      purpose: 'Own the payments service.',
-      model: 'sonnet',
-      effort: 'high',
-      practices: true,
-      addSkills: ['docs'],
-      removeSkills: ['wrangler'],
-    });
+    expect(calls[0]).toEqual({ id: 'agt_1', addSkills: ['docs'], removeSkills: ['wrangler'] });
   });
 });
 
@@ -831,7 +828,7 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     await waitFor(() => expect(a.getAttribute('data-state')).toBe('working'), r);
     expect(a.querySelector('[data-dot="true"]')).not.toBeNull();
     expect(a.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_1');
-    expect(a.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · sonnet');
+    expect(a.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · backend');
     expect(a.querySelector('[data-testid="presence"]')!.textContent).toBe('working');
     await waitFor(() => expect(a.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Running go test ./... on GOC-43 Fix the limiter. Next in its queue: GOC-44.'), r);
     expect(Array.from(a.querySelectorAll('[data-testid="agent-task"]')).map((k) => k.textContent)).toEqual(['GOC-43', 'GOC-44']);
@@ -844,7 +841,9 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     const b = await waitAgent(r, 'Bo');
     await waitFor(() => expect(b.getAttribute('data-state')).toBe('waiting-on-you'), r);
     expect(b.querySelector('[data-testid="presence"]')!.textContent).toBe('waiting on you');
-    expect(b.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · opus');
+    expect(b.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code · backend');
+    // the model is said once, on its chip (decision P144)
+    expect(b.querySelector('[data-testid="agent-model-chip"]')!.textContent).toContain('opus');
     await waitFor(() => expect(b.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Approve the plan on GOC-41. Open the Inbox to decide.'), r);
     expect(b.querySelector('[data-testid="agent-inbox"]')!.getAttribute('href')).toBe('/needs-you');
     expect(b.querySelector('[data-testid="agent-link"]')!.getAttribute('href')).toBe('/team/agt_2');
@@ -884,10 +883,10 @@ describe('Crew (graphite): the header, Today and the cards', () => {
       [wsl, loc],
     );
     const w = await waitAgent(r, 'Linux');
-    expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · default model');
+    expect(w.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Claude Code WSL · backend');
     expect(w.querySelector('[data-testid="agent-runs"]')!.getAttribute('title')).toBe('Role: backend. Runs inside the WSL distro Ubuntu');
     const l = await waitAgent(r, 'Local helper');
-    await waitFor(() => expect(l.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Models on this PC · gpt-oss-20b'), r);
+    await waitFor(() => expect(l.querySelector('[data-testid="agent-runs"]')!.textContent).toBe('Models on this PC · backend'), r);
     await waitFor(() => expect(l.querySelector('[data-testid="agent-doing"]')!.textContent).toBe('Editing format.go.'), r);
   });
 
@@ -905,7 +904,8 @@ describe('Crew (graphite): the header, Today and the cards', () => {
     s.ui.setPalette(false);
     expect(r.$('dialog[open]')).toBeNull();
     await key(window);
-    const form = await waitFor(() => must(r.$('dialog[open] [data-testid="agent-form"]'), 'no form'), r);
+    // it opens on Describe (decision P138)
+    const form = await waitFor(() => must(r.$('dialog[open] [data-testid="describe-agent"]'), 'no form'), r);
     expect(form.closest('dialog')!.textContent).toContain('New agent');
   });
 
@@ -974,6 +974,7 @@ describe("Crew (graphite): the workspace's page", () => {
     expect(valueOf(pick)).toBe('prj_2');
     type(pick, 'prj_1');
     r.root.flush();
+    await r.act(() => (must(r.$('dialog[open] [data-testid="new-agent-configure"]'), 'no tabs') as HTMLElement).click());
     await waitAdapters(r);
     type(byLabel(r.container, 'Agent name'), 'Pay');
     type(byLabel(r.container, 'Role'), 'backend');

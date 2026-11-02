@@ -779,6 +779,9 @@ type Agent struct {
 	// inside the WSL distro WSLDistro.
 	RunMode   string `json:"runMode"`
 	WSLDistro string `json:"wslDistro"`
+	// TemplateID is the agent template it was made from (decision P137), '' for none: the editor's "Everywhere" saves a change
+	// to that template too.
+	TemplateID string `json:"templateId,omitempty"`
 }
 
 // RouteModel is one model the router may choose for an agent, with the tier the router's ladder treats it as.
@@ -886,7 +889,7 @@ func (c *Core) AllAgents(ctx context.Context) ([]Agent, error) {
 }
 
 func (c *Core) agentsWhere(ctx context.Context, where string, args ...any) ([]Agent, error) {
-	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE `+where, args...)
+	rows, err := c.DB.Reader().QueryContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro,template_id FROM agents WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -896,7 +899,7 @@ func (c *Core) agentsWhere(ctx context.Context, where string, args ...any) ([]Ag
 		var a Agent
 		var archived, practices int64
 		var routes string
-		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro); err != nil {
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro, &a.TemplateID); err != nil {
 			return nil, err
 		}
 		a.Archived, a.Practices = archived != 0, practices != 0
@@ -910,8 +913,8 @@ func (c *Core) agent(ctx context.Context, id string) (Agent, error) {
 	var a Agent
 	var archived, practices int64
 	var routes string
-	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro FROM agents WHERE id=?`, id).
-		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro)
+	err := c.DB.Reader().QueryRowContext(ctx, `SELECT id,project_id,name,adapter,role,model,effort,provider_id,permission_mode,purpose,practices,status,archived_at,route_models,run_mode,wsl_distro,template_id FROM agents WHERE id=?`, id).
+		Scan(&a.ID, &a.ProjectID, &a.Name, &a.Adapter, &a.Role, &a.Model, &a.Effort, &a.ProviderID, &a.PermissionMode, &a.Purpose, &practices, &a.Status, &archived, &routes, &a.RunMode, &a.WSLDistro, &a.TemplateID)
 	a.Archived, a.Practices = archived != 0, practices != 0
 	a.RouteModels = parseRouteModels(routes)
 	return a, err
@@ -949,6 +952,9 @@ func (c *Core) agentConfig(t tasks.Task, role string) rt.Config {
 // starts from it, so a turn's checks (the sandbox+WSL refusal) see the run mode the runtime will start the CLI in.
 func (c *Core) agentRunSpec(ctx context.Context, a Agent) agents.RunSpec {
 	spec := agents.RunSpec{AgentID: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, PermissionMode: a.PermissionMode}
+	// an agent a person made "Read only" (mode plan, decision P137) runs read-only: the adapter then gives Claude Code its
+	// default mode with the writing tools denied, never its own plan mode (CLAUDE-PLAN-01)
+	spec.ReadOnly = a.PermissionMode == "plan"
 	spec.RunMode, spec.WSLDistro, spec.RunModeWhy = c.runPlacement(ctx, a)
 	return spec
 }

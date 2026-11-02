@@ -14,7 +14,7 @@ import { Checkbox, Field, formActions } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
-import { Done, Group, intro, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
+import { Done, Group, panelPad, plainList, settingsColumn, subhead, tableWrap, Warn } from '../settings/settings-kit.tsx';
 import { exportKey, exportProjectId, pendingRows } from './data.ts';
 import { RuleCounts } from './rule-counts.tsx';
 
@@ -399,9 +399,8 @@ function ImportSection(handle: Handle) {
 
 export function DataScreen(_handle: Handle) {
   return () => (
-    <Page title="Export and import" icon={ArrowDownUp} subtitle="Local files only">
+    <Page title="Export and import" icon={ArrowDownUp} subtitle="Local files only, in every license state">
       <div mix={settingsColumn}>
-        <p mix={intro}>Export and import work in every license state. Files are written to and read from this computer only.</p>
         <ExportSection />
         <ImportSection />
       </div>

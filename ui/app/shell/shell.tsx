@@ -1,15 +1,16 @@
 // The application shell (graphite, decision P97). The SPA router renders every route's content inside it (render transform
 // in router.tsx), and the same Shell instance stays mounted across navigations, so the sidebar (with the project switcher),
 // the dock (and a running terminal) and the details panel keep their state while the center changes. Beside the sidebar a
-// hub's pills (Tasks, Knowledge...), then the page, with the Rooms rail or the Settings rail beside it when the hub has one.
+// project's tab bar (Work, Crew, Settings) or a hub's pills, then the page, with the Rooms rail or a Settings rail beside it when
+// the hub has one.
 
 import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
 import { PanelLeftOpen, PlugZap } from 'lucide';
 import { projectHasRepo } from '../api/types.ts';
 import { ownsKeys, shellKey, shortcutOf } from '../lib/keys.ts';
-import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, type Route } from '../lib/route.ts';
+import { hubOf, isWorkspacePage, isWorkspaceRoute, parseRoute, parseWorkItem, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
-import { ProjectCreateScreen } from '../screens/project/project-create-screen.tsx';
+import { WorkspaceHomeScreen } from '../screens/workspace/workspace-home.tsx';
 import { query, services, watch } from '../state/services.tsx';
 import { Button } from '../ui/button.tsx';
 import { ErrorBoundary } from '../ui/error-boundary.tsx';
@@ -18,8 +19,9 @@ import { Page } from '../ui/layout.tsx';
 import { t } from '../ui/tokens.ts';
 import { Details } from './details.tsx';
 import { Dock } from './dock.tsx';
-import { RoomsRail, SettingsRail, SubNav } from './hubnav.tsx';
+import { RoomsRail, SectionPills, SettingsRail, SubNav } from './hubnav.tsx';
 import { LicenseBanner } from './license-banner.tsx';
+import { PROJECT_SECTIONS } from './project-sections.ts';
 import { TermsNotice } from './terms-notice.tsx';
 import { AgentConfigBanner } from './agent-config-banner.tsx';
 import { RepoConfigBanner } from './repo-config-banner.tsx';
@@ -174,9 +176,9 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
         </Page>
       );
     } else if ((!project || ws.setupOpen) && !isWorkspaceRoute(route) && route.name !== 'project-new') {
-      // pages that do not need a project open without one: a read-only install has to reach License and Backups. The
-      // first-run wizard stays while it shows what the setup did, until the person opens the new project.
-      center = <ProjectCreateScreen first />;
+      // pages that do not need a project open without one: a read-only install has to reach License and Backups. The first
+      // run is the start screen (decision P142); it stays while a start makes the project and its first work, until it lands.
+      center = <WorkspaceHomeScreen onNavigate={handle.props.onNavigate} />;
     } else {
       center = children;
     }
@@ -186,12 +188,22 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
     dockHere = inProject;
     // an agent's page, and a direct message: its agent (decision P130)
     agentHere = route.name === 'agent' ? route.id : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id && r.kind === 'dm')?.agentId : undefined;
+    // Work's open task (decision P141, /?item=task:<id>) is the task of the page, as its own page is
+    const workItem = route.name === 'home' ? parseWorkItem(url.searchParams.get('item')) : undefined;
     const taskContext =
-      route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
-    const fullRail = project && hub === 'rooms' ? <RoomsRail route={route} /> : hub === 'settings' ? <SettingsRail route={route} /> : null;
+      workItem?.kind === 'task' ? workItem.id : route.name === 'task' ? route.id : route.name === 'run' ? route.taskId : route.name === 'room' ? s.project.roomList.find((r) => r.id === route.id)?.taskId : undefined;
+    const roomsHere = route.name === 'room' || route.name === 'rooms';
+    const fullRail =
+      project && roomsHere ? (
+        <RoomsRail route={route} />
+      ) : hub === 'settings' ? (
+        <SettingsRail route={route} />
+      ) : project && hub === 'project-settings' ? (
+        <SettingsRail route={route} sections={PROJECT_SECTIONS} title="Project settings" />
+      ) : null;
     const narrow = s.ui.narrowRails;
     const rail = fullRail && narrow && !s.ui.drawerOpen ? null : fullRail;
-    const railName = hub === 'rooms' ? 'rooms' : 'settings pages';
+    const railName = roomsHere ? 'rooms' : 'settings sections';
 
     return (
       <div mix={rootCss}>
@@ -201,7 +213,7 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
             Skip to content
           </a>
         </nav>
-        <Sidebar route={route} />
+        <Sidebar route={route} onNavigate={handle.props.onNavigate} />
         <div mix={columnCss}>
         <LicenseBanner />
         <TermsNotice />
@@ -213,10 +225,11 @@ export function Shell(handle: Handle<{ url: URL; children?: RemixNode; onNavigat
             {fullRail && narrow ? (
               <div mix={drawerBar}>
                 <Button size="sm" variant="ghost" icon={PanelLeftOpen} aria-expanded={s.ui.drawerOpen ? 'true' : 'false'} mix={[on('click', () => s.ui.setDrawer(!s.ui.drawerOpen))]}>
-                  {hub === 'rooms' ? 'Rooms' : 'Settings pages'}
+                  {roomsHere ? 'Rooms' : 'Settings sections'}
                 </Button>
               </div>
             ) : null}
+            {hub === 'settings' || (project && hub === 'project-settings') ? <SectionPills route={route} /> : null}
             {dmError ? (
               <div style={{ padding: '8px 16px' }}>
                 <ErrorNote error={dmError} what="Could not open the direct message" />

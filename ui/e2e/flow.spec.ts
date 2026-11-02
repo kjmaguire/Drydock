@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { choose, appUrl, createAgent, createAndStartTask, createProject, showNewProjectForm, wizardNext, projectNav, openChecks } from './helpers';
+import { choose, appUrl, createAgent, createAndStartTask, createProject, openNewProject, projectNav, openChecks } from './helpers';
 
 /** What the page shows about the task, used to compare before and after a reload (the projection property). */
 async function snapshot(page: Page) {
@@ -134,22 +134,23 @@ test.describe('the product loop against the real Go core (scripted fake agent)',
     await expect(page.getByTestId('review-panel')).toHaveCount(0);
   });
 
-  test('the core says what is at a bad repository path and the wizard does not go on without a repository', async ({ page }) => {
+  test('the core says what is at a bad repository path and New project does not create without a repository', async ({ page }) => {
     await page.goto(appUrl());
-    await showNewProjectForm(page);
-    await wizardNext(page);
-    await page.getByRole('radiogroup', { name: 'Repository source' }).getByRole('radio', { name: 'Local folder' }).check();
+    await openNewProject(page);
+    const dialog = page.getByTestId('new-project-dialog');
+    await dialog.getByRole('radio', { name: 'Open a folder' }).click();
+    const field = dialog.getByLabel('Folder', { exact: true });
     // a full path on this system (Windows refuses /x as not a full path before it looks for a repository)
-    await page.getByLabel('Repository path').fill(process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo');
-    await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
-    await expect(page.getByTestId('folder-check')).toContainText('does not exist yet');
-    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
-    await expect(page.getByText('tick "Create a Git repository here"')).toBeVisible();
+    await field.fill(process.platform === 'win32' ? 'C:\\definitely\\not\\a\\repo' : '/definitely/not/a/repo');
+    await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'missing');
+    await expect(dialog.getByTestId('folder-check')).toContainText('does not exist yet');
+    await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
+    await expect(dialog.getByText('tick "Create a Git repository here"')).toBeVisible();
     // a relative path is refused with the core's reason
-    await page.getByLabel('Repository path').fill('not/a/full/path');
-    await expect(page.getByTestId('folder-check')).toHaveAttribute('data-state', 'invalid');
-    await expect(page.getByTestId('folder-check')).toContainText('must be a full path');
-    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+    await field.fill('not/a/full/path');
+    await expect(dialog.getByTestId('folder-check')).toHaveAttribute('data-state', 'invalid');
+    await expect(dialog.getByTestId('folder-check')).toContainText('must be a full path');
+    await expect(dialog.getByTestId('new-project-create')).toBeDisabled();
   });
 });
 
@@ -165,25 +166,22 @@ test('project delivery settings and the Pull Requests view show the core\'s hone
   await expect(page.getByRole('alert')).toContainText('origin');
 });
 
-test("the sidebar is keyboard navigable: the Drydock mark comes first (the way home), the arrows move along it, Enter opens the Inbox", async ({ page }) => {
+test("the sidebar is keyboard navigable: New comes first, then Home, the arrows move along it, Enter opens the Inbox", async ({ page }) => {
   await createProject(page, 'gocalc-keys');
   const items = page.locator('nav[aria-label=Main] [data-nav]');
   await expect(items.first()).toHaveAttribute('href', '/home');
-  await expect(items.nth(1)).toHaveAttribute('href', '/needs-you');
+  await expect(items.nth(1)).toHaveAttribute('href', '/home');
+  await expect(items.nth(2)).toHaveAttribute('href', '/needs-you');
   await page.getByTestId('nav-needs-you').focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.getByTestId('nav-running')).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.getByTestId('nav-my-tasks')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-chats')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('nav-project-item').first()).toBeFocused();
   await page.keyboard.press('End');
-  await expect(page.getByTestId('nav-guide-top')).toBeFocused();
-  await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-settings')).toBeFocused();
-  await page.getByTestId('nav-running').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByTestId('nav-library')).toBeFocused();
+  await page.getByTestId('nav-chats').focus();
   await page.keyboard.press('ArrowUp');
   await expect(page.getByTestId('nav-needs-you')).toBeFocused();
   await page.keyboard.press('Enter');

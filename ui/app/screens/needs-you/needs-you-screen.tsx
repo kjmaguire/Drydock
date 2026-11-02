@@ -28,6 +28,7 @@ import { Tabs } from '../../ui/tabs.tsx';
 import { t, tone, type Tone } from '../../ui/tokens.ts';
 import { adapterLabel } from '../shared/cli-name.ts';
 import { criterionLine, specPayload } from '../tasks/tasks.ts';
+import { MyTasksList } from './my-tasks-screen.tsx';
 import {
   answerOf,
   canAck,
@@ -40,6 +41,7 @@ import {
   needsRowTitle,
   needsSubtitle,
   needsTarget,
+  runningBesideNeeds,
   scanProgress,
   shortHash,
   startOfToday,
@@ -138,6 +140,8 @@ const keyCss = css({ color: t.textFaint, fontFamily: t.mono, fontSize: t.textXs,
 const tileCss = css({ display: 'inline-grid', placeItems: 'center', flex: 'none', width: '22px', height: '22px', borderRadius: '6px' });
 const dotCss = css({ display: 'inline-block', flex: 'none', width: '8px', height: '8px', borderRadius: '50%' });
 const barCss = css({ height: '4px', borderRadius: '2px', background: t.bgActive, overflow: 'hidden', '& > span': { display: 'block', height: '4px', borderRadius: '2px' } });
+// the Mine tab's list keeps its own card look (MyTasksList), set in from the edges like the groups
+const mineCss = css({ display: 'grid', gap: t.s2, padding: `0 20px ${t.s4}`, '& > h2': { padding: `${t.s3} 0 0` } });
 const emptyCss = css({ margin: '0', padding: `6px 20px ${t.s2}`, color: t.textMuted });
 const footCss = css({ display: 'flex', flexWrap: 'wrap', gap: t.s4, flex: 'none', padding: '12px 20px', borderTop: `1px solid ${t.border}`, color: t.textFaint, fontSize: t.textXs, '& > span': { display: 'inline-flex', alignItems: 'center', gap: '6px' } });
 
@@ -185,7 +189,7 @@ const quietCss = css({ margin: '0', padding: '0 24px 12px 16px', color: t.textFa
 const statusCss = css({ margin: '0', padding: '12px 24px 0 16px', color: t.textMuted });
 const noneCss = css({ margin: 'auto', padding: t.s6, color: t.textMuted, textAlign: 'center' });
 
-const TABS: InboxTab[] = ['needs', 'running', 'done'];
+const TABS: InboxTab[] = ['needs', 'running', 'done', 'mine'];
 const tabOf = (v: string | undefined): InboxTab | undefined => (TABS.includes(v as InboxTab) ? (v as InboxTab) : undefined);
 
 /** One row of the list: an item that needs you, a running task or scan, a task done today. Keys are unique across them. */
@@ -320,12 +324,15 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
     const doneList = done.data ?? [];
 
     const needsRows: Row[] = needs.map((item) => ({ key: `needs:${item.key}`, type: 'needs', item }));
-    const runRows: Row[] = [
-      ...runningTasks.map((summary): Row => ({ key: `task:${summary.taskId}`, type: 'task', summary })),
+    const runRowsOf = (tasks: readonly TaskSummary[]): Row[] => [
+      ...tasks.map((summary): Row => ({ key: `task:${summary.taskId}`, type: 'task', summary })),
       ...scans.map((scan): Row => ({ key: `scan:${scan.id}`, type: 'scan', scan })),
     ];
+    const runRows = runRowsOf(runningTasks);
+    // under the items on Needs you, a task is not listed again when it already has an item there (decision P144)
+    const runRowsHere = active === 'needs' ? runRowsOf(runningBesideNeeds(runningTasks, needs)) : runRows;
     const doneRows: Row[] = doneList.map((task) => ({ key: `done:${task.id}`, type: 'done', task }));
-    rows = active === 'needs' ? [...needsRows, ...runRows] : active === 'running' ? runRows : doneRows;
+    rows = active === 'needs' ? [...needsRows, ...runRowsHere] : active === 'running' ? runRows : active === 'done' ? doneRows : [];
     // the selection stays on its item; when the item leaves (it was answered), the one now in its place is selected
     const at = rows.findIndex((r) => r.key === selected);
     if (at >= 0) lastIndex = at;
@@ -338,6 +345,8 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
       { name: 'needs', label: <>Needs you <span style={{ color: needs.length ? t.warning : undefined }} data-testid="tab-count">{needs.length}</span></>, testId: 'inbox-tab-needs' },
       { name: 'running', label: <>Running <span data-testid="tab-count">{running}</span></>, testId: 'inbox-tab-running' },
       { name: 'done', label: <>Done today <span data-testid="tab-count">{doneList.length}</span></>, testId: 'inbox-tab-done' },
+      // the person's own tasks in every project (once the My tasks page, decision P140): each row opens its task
+      { name: 'mine', label: <>Mine</>, testId: 'inbox-tab-mine' },
     ];
 
     const needsRow = (r: Extract<Row, { type: 'needs' }>) => {
@@ -457,9 +466,9 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
         </h2>
         <ErrorNote error={ws.summaries.error} what="Could not load the running tasks" />
         {ws.summaries.data && running === 0 ? <p mix={emptyCss}>No agent is working on a task and no scan runs.</p> : null}
-        {running ? (
+        {runRowsHere.length ? (
           <ul mix={listCss} aria-label="Running now">
-            {runRows.map((r) => runRow(r as Extract<Row, { type: 'task' | 'scan' }>))}
+            {runRowsHere.map((r) => runRow(r as Extract<Row, { type: 'task' | 'scan' }>))}
           </ul>
         ) : null}
       </section>
@@ -497,12 +506,20 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
               {active === 'needs' ? (
                 <>
                   {needsSection}
-                  {runningSection}
+                  {/* every running task already has its item above: no second, empty-looking Running group */}
+                  {running > 0 && runRowsHere.length === 0 ? null : runningSection}
                 </>
               ) : active === 'running' ? (
                 runningSection
-              ) : (
+              ) : active === 'done' ? (
                 doneSection
+              ) : (
+                <section aria-labelledby="inbox-mine" data-testid="inbox-mine" mix={mineCss}>
+                  <h2 id="inbox-mine" mix={groupCss}>
+                    My tasks
+                  </h2>
+                  <MyTasksList />
+                </section>
               )}
             </div>
             <footer mix={footCss} aria-label="Keys">
@@ -522,7 +539,7 @@ export function NeedsYouScreen(handle: Handle<{ tab?: string; /** Where opening 
           </section>
           <aside mix={asideCss} aria-label="Selected item" data-testid="inbox-detail">
             {!sel ? (
-              <p mix={noneCss}>{rows.length ? 'Choose an item to see it here.' : 'Nothing to show here yet.'}</p>
+              <p mix={noneCss}>{active === 'mine' ? 'Open a task to see it.' : rows.length ? 'Choose an item to see it here.' : 'Nothing to show here yet.'}</p>
             ) : sel.type === 'needs' ? (
               <NeedsDetail
                 key={sel.key}

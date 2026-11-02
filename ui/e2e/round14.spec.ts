@@ -61,17 +61,18 @@ test('skills: given when an agent is made, who gets each one shown and changed, 
   await openAgentPage(page, 'Bob');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
-  const mine = editor.getByTestId('agent-skills').getByRole('checkbox', { name: /^go-style/ });
-  await expect(mine).toBeChecked();
-  await mine.uncheck();
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  // the panel shows it as a chip; its x takes it away
+  await expect(editor.getByTestId('skill-chip').filter({ hasText: 'go-style' })).toBeVisible();
+  await editor.getByRole('button', { name: 'Take go-style away' }).click();
+  await expect(editor.getByTestId('skill-chip')).toHaveCount(0);
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   card = await openSkill(page, 'go-style');
   await expect(card.getByTestId('skill-audience-text')).toHaveText('Nobody yet: give it to the agents that need it');
 
   // a template carries a registry skill (one a prebuilt agent comes with) and keeps it when it is edited
   await workspaceNav(page, 'nav-library');
-  await page.getByRole('button', { name: 'New agent template' }).click();
+  await page.getByTestId('library-new-agent').click();
   const tf = page.getByTestId('template-form');
   await tf.getByLabel('Template name').fill('UI dev');
   await tf.getByLabel('Role').fill('frontend');

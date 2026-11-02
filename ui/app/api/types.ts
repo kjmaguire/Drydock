@@ -166,6 +166,38 @@ export interface CloneResult {
   defaultBranch: string;
 }
 
+/** What Sync now did (internal/git/sync.go SyncOutcome). */
+export type SyncOutcome = 'updated' | 'up_to_date' | 'ahead' | 'local_changes' | 'diverged' | 'other_branch' | 'no_remote_branch' | 'agent_busy';
+
+/** A project's folder against its origin remote (repo.syncState, repo.sync; internal/core/ext_reposync.go, P143). */
+export interface RepoSync {
+  projectId: string;
+  /** "origin", or "" when there is nothing to sync with (no repository, no origin remote). */
+  remote: string;
+  /** The remote is on github.com. */
+  github: boolean;
+  branch: string;
+  /** The branch checked out in the project's folder. */
+  current: string;
+  /** False while the remote's copy of the branch is not known. */
+  tracked: boolean;
+  ahead: number;
+  behind: number;
+  /** When the remote was last fetched since the app started (ms); 0: not checked yet. */
+  checkedAt: number;
+  checking: boolean;
+  outcome?: SyncOutcome | '';
+  /** Why the last fetch or Sync now failed (scrubbed). */
+  error?: string;
+  /** Which step failed: reaching the remote, updating the folder, or the git configuration awaiting a person's trust. */
+  errorKind?: 'fetch' | 'update' | 'config' | '';
+}
+
+export interface RepoSyncSettings {
+  /** The background fetch: on opening a project and every 15 minutes. */
+  auto: boolean;
+}
+
 // ---- project.setup (internal/core/project_setup.go) ----
 
 export type SetupRepoKind = 'none' | 'local' | 'github';
@@ -344,6 +376,8 @@ export interface Agent {
   /** Where the CLI runs: '' follows the project, 'native' on Windows, 'wsl' inside the distro `wslDistro`. */
   runMode?: string;
   wslDistro?: string;
+  /** The agent template it was made from (decision P137); absent for none. */
+  templateId?: string;
 }
 
 export interface RouteModel {
@@ -390,6 +424,13 @@ export interface AgentUpdate {
   wslDistro?: string;
   /** The person's confirmation of a change into a permission mode that lets the agent act without asking (see SetupAgent). */
   confirmSkipsApprovals?: boolean;
+  /** Also save the change to the agent's template and the other agents made from it (decision P137). */
+  everywhere?: boolean;
+}
+
+/** agent.update's answer with `everywhere`: the agent, and where the change went beyond this project. */
+export interface UpdatedAgent extends Agent {
+  everywhere?: { templateId: string; templateName: string; created: boolean; agents: number; skipped: string[] };
 }
 
 /** agents.Capabilities. `false` means "not verified", never "impossible" (internal/agents/agents.go). */

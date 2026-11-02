@@ -93,9 +93,9 @@ describe('GitHub on the Integrations page', () => {
     expect(r.$('[data-testid="gh-crumb"]')).toBeNull();
     expect(r.$('nav[aria-label="Breadcrumb"]')).toBeNull();
     for (const part of ['access-sync', 'access-mcp', 'gh-tokens']) expect(r.$(`[data-testid="${part}"]`)).not.toBeNull();
-    // a GitHub repository into a folder of this PC, linked as a project: the new project wizard clones it
+    // a GitHub repository into a folder of this PC, linked as a project: New project clones it (P143)
     const clone = await find(r, '[data-testid="repos-clone"]');
-    expect([clone.textContent, clone.getAttribute('href')]).toEqual(['Clone a repository', '/project/new']);
+    expect([clone.textContent, clone.getAttribute('href')]).toEqual(['Clone a repository', '/home?new=project&where=clone']);
     // the old stacked boxes are gone
     for (const old of ['gh-connection', 'gh-integrations-link', 'gh-runners', 'integration-tile', 'gh-about']) expect(r.$(`[data-testid="${old}"]`)).toBeNull();
     expect(r.$('a[href="/connections"]')).toBeNull();
@@ -394,7 +394,7 @@ describe('the Repositories table', () => {
     const empty = show({ githubProjectRepos: async (refresh) => (asked.push(!!refresh), repos([])) });
     const box = await find(empty, '[data-testid="repos-empty"]');
     expect(box.textContent).toContain('No projects yet');
-    expect(box.querySelector('a')!.getAttribute('href')).toBe('/project/new');
+    expect(box.querySelector('a')!.getAttribute('href')).toBe('/home?new=project');
     expect(asked).toEqual([false]);
     await empty.act(() => (empty.$('[data-testid="repos-refresh"]') as HTMLButtonElement).click());
     await waitFor(() => expect(asked).toEqual([false, true]), empty);
@@ -422,3 +422,33 @@ describe('words', () => {
 function slot(repo: string, kind: 'windows' | 'linux', state: 'idle' | 'paused' | 'busy', job?: string): RunnersView['slots'][number] {
   return { key: `${repo}:${kind}`, repo, kind, enabled: state !== 'paused', state, job, jobs: 0, since: '' };
 }
+
+describe('Project folders: the check for new commits (decision P143)', () => {
+  it('shows the setting, turns it off with the core, and says when the core refuses', async () => {
+    const calls: boolean[] = [];
+    let fail = false;
+    const r = show({
+      repoSyncSettings: async () => ({ auto: true }),
+      repoSyncSettingsSet: async ({ auto }) => {
+        calls.push(!!auto);
+        if (fail) throw new Error('the database is read-only');
+        return { auto: !!auto };
+      },
+    });
+    const row = await find(r, '[data-testid="gh-folder-sync"] [data-testid="folder-sync-auto"]');
+    const sw = await waitFor(() => {
+      const b = row.querySelector('button[role="switch"]') as HTMLButtonElement | null;
+      if (!b) throw new Error('no switch');
+      return b;
+    }, r);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(row.textContent).toContain('files change only with Sync now');
+    await r.act(() => sw.click());
+    await waitFor(() => expect(sw.getAttribute('aria-checked')).toBe('false'), r);
+    expect(calls).toEqual([false]);
+    fail = true;
+    await r.act(() => sw.click());
+    await waitFor(() => expect(row.textContent).toContain('Could not change the check'), r);
+    expect(calls).toEqual([false, true]);
+  });
+});

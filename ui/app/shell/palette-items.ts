@@ -10,6 +10,7 @@ import { hubOf, parseRoute } from '../lib/route.ts';
 import { topicPath } from '../screens/guide/model.ts';
 import { GUIDE_TOPICS } from '../screens/guide/topics.ts';
 import { routes } from '../routes.ts';
+import { newProjectHref } from './new.ts';
 
 export type Group = 'Assign' | 'Actions' | 'Go to' | 'Navigate' | 'Chats' | 'Tasks' | 'Agents';
 /** The groups of the menu with nothing typed and no task in context (the order they are listed in). */
@@ -54,9 +55,11 @@ const chordOf = (href: string): string[] | undefined => {
 
 export const SCREENS: [string, string, string[]?][] = [
   [routes.workspace.href(), 'Home', ['workspace', 'projects', 'start']],
-  [routes.home.href(), 'Overview', ['project', 'crew', 'today', 'dashboard']],
+  [routes.home.href(), 'Work', ['overview', 'project', 'tasks and chats', 'today', 'dashboard']],
   [routes.needsYou.href(), 'Inbox', ['needs you', 'approvals', 'running', 'done today']],
-  [routes.myTasks.href(), 'My tasks', ['assigned', 'mine']],
+  // Running and My tasks are tabs of the Inbox (decision P140)
+  [`${routes.needsYou.href()}?tab=running`, 'Running', ['inbox', 'in progress', 'working', 'scans']],
+  [routes.myTasks.href(), 'My tasks', ['assigned', 'mine', 'inbox']],
   [routes.rooms.href(), 'Rooms', ['channels', 'chat', 'general']],
   [routes.knowledge.href(), 'Knowledge', ['requirements', 'packs', 'memory', 'repo map']],
   [routes.chats.href(), 'Chats', ['claude', 'conversation']],
@@ -69,7 +72,7 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.memory.href(), 'Memory'],
   [routes.repoMap.href(), 'Repo map', ['symbols', 'code map', 'tree-sitter', 'pagerank', 'definitions']],
   [routes.skills.href(), 'Project skills', ['skills']],
-  [routes.librarySkills.href(), 'Skill library', ['skills', 'registry', 'registries', 'library']],
+  [routes.librarySkills.href(), 'Skill library', ['skills', 'registry', 'registries', 'library', 'agents']],
   [routes.packs.href(), 'Expert packs'],
   [routes.budgets.href(), 'Budgets'],
   [routes.evals.href(), 'Evals'],
@@ -78,17 +81,23 @@ export const SCREENS: [string, string, string[]?][] = [
   [routes.securityScan.href(), 'Security scan of any repository', ['scan', 'audit', 'repository', 'download', 'import', 'secrets', 'vulnerabilities']],
   [routes.project.href(), 'Project settings'],
   [routes.projectIntegrations.href(), 'Project integrations', ['mcp servers', 'grants', 'approvals', 'app sync', 'assignments']],
-  [routes.library.href(), 'Agent templates', ['templates', 'prebuilt', 'agents', 'library']],
+  // the Agents library (decision P140): My agents (the templates), Starters, Skills (above) and every project's crew
+  [routes.library.href(), 'My agents', ['agents', 'agent templates', 'templates', 'library', 'new agent']],
+  [routes.libraryStarters.href(), 'Starter agents', ['agents', 'prebuilt', 'gallery', 'starters', 'library']],
+  [routes.crew.href(), 'All crews', ['agents', 'every project', 'crew', 'team']],
   [routes.integrations.href(), 'Integrations', ['mcp', 'connectors', 'agent tools', 'servers', 'linear', 'notion', 'sentry', 'aikido']],
-  [routes.agents.href(), 'Agents', ['connections', 'agent cli', 'claude code', 'codex', 'gemini', 'sign in', 'wsl', 'mcp gateway']],
+  // the agent CLIs, a section of Settings (decision P140; once the page Agents)
+  [routes.agents.href(), 'Agent CLIs', ['agents', 'connections', 'agent cli', 'claude code', 'codex', 'gemini', 'sign in', 'wsl', 'mcp gateway']],
   [routes.github.href(), 'GitHub', ['gh', 'sign-in', 'pull requests', 'runners', 'repository', 'repositories', 'ci']],
   [routes.models.href(), 'Models', ['providers', 'api keys', 'openrouter', 'endpoints', 'models on this pc', 'local models', 'gguf', 'hugging face', 'gpu', 'kv cache', 'turboquant', 'engine']],
-  [routes.routing.href(), 'Model routing'],
+  [routes.routing.href(), 'Model routing', ['routing and budgets', 'rules', 'turn limits']],
   [routes.backups.href(), 'Backups'],
   [routes.data.href(), 'Export and import'],
   [routes.support.href(), 'Support bundle'],
   [routes.license.href(), 'License'],
-  [routes.settings.href(), 'Settings and about', ['theme', 'preferences']],
+  [routes.settings.href(), 'Settings', ['general', 'theme', 'preferences', 'telemetry', 'diagnostics', 'updates']],
+  [routes.settingsShortcuts.href(), 'Keyboard shortcuts', ['keys', 'shortcuts', 'bindings', 'hotkeys']],
+  [routes.settingsAbout.href(), 'Help and about', ['about', 'version', 'licenses', 'help', 'session']],
   [routes.guide.href(), 'Guide', ['help', 'documentation', 'how to', 'learn']],
   // every Guide topic is found by its title and keywords: "how do I scan a repository" opens the topic
   ...GUIDE_TOPICS.map((g): [string, string, string[]] => [topicPath(g.id), `Guide: ${g.title}`, ['help', ...(g.keywords ?? [])]]),
@@ -245,7 +254,7 @@ export function buildItems(rooms: readonly Room[], tasks: readonly Task[], agent
     act('act:activity', 'Show model and token activity', 'dock:activity', 'Opens the dock on the model calls and their tokens.'),
     act('act:dock', 'Toggle the dock', 'dock:toggle', 'Shows or hides the dock under the page.', { hint: 'Ctrl+J' }),
     act('act:details', 'Toggle the details panel', 'details:toggle', 'Shows or hides the details panel beside the page.'),
-    { id: 'act:project', group: 'Actions', label: 'Add a project', href: routes.projectNew.href(), scope: '>', what: 'Opens the form for a new project.' },
+    { id: 'act:project', group: 'Actions', label: 'New project', href: newProjectHref(), scope: '>', what: 'Opens New project on Home: a name and where its code lives.' },
     act('act:theme-system', 'Theme: follow the system', 'theme:system', 'Follows the light or dark setting of Windows.'),
     act('act:theme-dark', 'Theme: dark', 'theme:dark', 'Switches Drydock to the dark theme.'),
     act('act:theme-light', 'Theme: light', 'theme:light', 'Switches Drydock to the light theme.'),

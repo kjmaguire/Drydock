@@ -9,6 +9,7 @@ import { lic } from '../../test/fixtures.ts';
 import { CommandPalette } from '../../shell/palette.tsx';
 import { query, services, watch } from '../../state/services.tsx';
 import { ChatsScreen } from './chats-screen.tsx';
+import { ChatConversation } from './chat-conversation.tsx';
 import { NewChatDialog } from './new-chat-dialog.tsx';
 import { RETRY_TEXT } from './chats.ts';
 import { OTHER_MODEL } from '../shared/model-field.tsx';
@@ -121,6 +122,19 @@ function dialogSetup(client: Partial<Client>, projectId = 'prj_1') {
 const rows = (r: R) => $$(r, '[data-testid="chat-row"]');
 const rowTitles = (r: R) => rows(r).map((e) => e.querySelector('.title > span')!.textContent);
 const messages = (r: R) => $$(r, '[data-testid="chat-message"]');
+
+/** Opens the chat's ⋯ panel (P139): its CLI, where it runs, its skills and servers, Allowed tools, Properties, Fork, Move. */
+async function openMore(r: R) {
+  const more = await waitFor(() => must$(r, '[data-testid="chat-more"]'), r);
+  if (more.getAttribute('aria-expanded') !== 'true') await r.act(() => more.click());
+  return waitFor(() => must$(r, '[data-testid="chat-more-panel"] [data-testid="chat-place"]'), r);
+}
+
+/** Opens a run of tool calls (P139) so its cards are drawn: every burst, or the one holding `seq`. */
+async function openBursts(r: R) {
+  await waitFor(() => expect($$(r, '[data-testid="chat-burst"]').length > 0).toBe(true), r);
+  for (const b of $$(r, '[data-testid="chat-burst"][data-expanded="false"] [data-testid="chat-burst-toggle"]')) await r.act(() => b.click());
+}
 
 async function pickMenu(r: R, rowTitle: string, label: string) {
   const trigger = await waitFor(() => byText(r.container, 'button', `Actions for ${rowTitle}`), r);
@@ -379,6 +393,17 @@ describe('New chat (decision P107)', () => {
     await r.act(() => btn.click());
     await waitFor(() => expect(must$(r, '[data-testid="new-chat-error"]').textContent).toContain('unacknowledged gates'), r);
     expect(navigated).toEqual([]);
+    // one way on (P139): Choose another agent opens the new chat dialog, where another CLI can start it
+    await r.act(() => must$(r, '[data-testid="new-chat-choose"]').click());
+    await waitFor(newChatDialog, r);
+    expect($(r, '[data-testid="new-chat-error"]')).toBeNull();
+  });
+
+  it('the empty Chats page is one line and New chat, no paragraph (P139)', async () => {
+    const { r } = setup({});
+    const btn = await waitFor(() => must$(r, '[data-testid="chats-empty-new"]'), r);
+    expect(btn.textContent).toBe('New chat');
+    expect(btn.parentElement!.querySelectorAll('p')).toHaveLength(1);
   });
 });
 
@@ -558,7 +583,7 @@ describe('Conversation', () => {
     const model = must$(r, '[data-testid="chip-model"]');
     expect([model.textContent, model.getAttribute('data-default')]).toEqual(['Opus 5.5', 'true']);
     const effort = must$(r, '[data-testid="chip-effort"]');
-    expect([effort.textContent, effort.getAttribute('data-default')]).toEqual(['medium effort', 'true']);
+    expect([effort.textContent, effort.getAttribute('data-default')]).toEqual(['· medium', 'true']);
     expect(must$(r, '[data-testid="chat-settings-open"]').getAttribute('title')).toContain("Opus 5.5 is the CLI's default");
     expect(must$(r, '[data-testid="chip-mode"]').textContent).toBe('Asks before commands');
     // the settings say what "none chosen" means, by name
@@ -574,13 +599,16 @@ describe('Conversation', () => {
     expect($(r, '[data-testid="chat-title"]')!.textContent).toBe('Where does Multiply go?');
     expect($(r, '[data-testid="chip-adapter"]')!.textContent).toContain('Claude Code');
     expect($(r, '[data-testid="chip-model"]')!.textContent).toBe('Sonnet');
-    expect($(r, '[data-testid="chip-effort"]')!.textContent).toBe('high effort');
+    expect($(r, '[data-testid="chip-effort"]')!.textContent).toBe('· high');
     expect($(r, '[data-testid="chip-mode"]')!.getAttribute('data-warn')).toBe('true');
     expect($(r, '[data-testid="chip-mode"]')!.textContent).toContain('skips approvals');
     expect($(r, '[data-testid="chat-status"]')!.textContent).toBe('Session kept');
     // the folder and the usage are in Properties, not in the header strip (UI review P1-2)
     const header = must$(r, '[data-testid="chat-status"]').parentElement!;
     expect([header.querySelector('[data-testid="chat-cwd"]'), header.querySelector('[data-testid="chat-usage"]')]).toEqual([null, null]);
+    // a CLI in a good state shows no warning chip (P139)
+    expect($(r, '[data-testid="chat-cli-warning"]')).toBeNull();
+    await openMore(r);
     await r.act(() => must$(r, '[data-testid="chat-properties-open"]').click());
     const props = await waitFor(() => must(document.querySelector<HTMLElement>('[data-testid="chat-properties-form"]'), 'properties'), r);
     expect(props.querySelector('[data-testid="chat-cwd"]')!.getAttribute('title')).toBe('C:\\repos\\gocalc');
@@ -624,6 +652,7 @@ describe('Conversation', () => {
   it('keeps every key typed into the allow-rule box, and allows the whole rule (H12)', async () => {
     const allowed: unknown[] = [];
     const { r } = conv(chat(), [], { chatAllowTool: async (id, tool) => (allowed.push([id, tool]), chat({ allowedTools: [tool] })) });
+    await openMore(r);
     const btn = await waitFor(() => byText(r.container, 'button', /^Allowed tools/), r);
     await r.act(() => btn.click());
     const box = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'Rule to allow'), r);
@@ -666,6 +695,11 @@ describe('Conversation', () => {
     // a tool call, then the stored block replaces the streamed text
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(4, 'tool', 'Read: calc.go', { toolName: 'Read', toolInput: { file_path: 'calc.go' }, turnId: 'turn_2', thinking: 'Multiply is next to Add.' }) } });
     s.emit({ type: 'chat.message', data: { chatId: 'chat_a', message: msg(5, 'assistant', 'Multiply goes in calc.go next to Add.', { turnId: 'turn_2' }) } });
+    // the tool call is one quiet line (P139), its reasoning on it; opened, its card is there
+    const burst = await waitFor(() => must$(r, '[data-testid="chat-burst"]'), r);
+    await waitFor(() => expect(burst.querySelector('[data-testid="chat-burst-toggle"]')!.textContent).toContain('Thought · read 1 file'), r);
+    expect(messages(r).map((m) => m.getAttribute('data-role'))).toEqual(['user', 'assistant', 'user', 'assistant']);
+    await openBursts(r);
     await waitFor(() => expect(messages(r).map((m) => m.getAttribute('data-role'))).toEqual(['user', 'assistant', 'user', 'tool', 'assistant']), r);
     // the person's own messages are a bubble on the right; the agent's answer is text on the left, neither with an avatar (P97)
     expect(messages(r).map((m) => m.getAttribute('data-mine'))).toEqual(['true', null, 'true', null, null]);
@@ -677,7 +711,7 @@ describe('Conversation', () => {
     expect(tool.open).toBe(false);
     await waitFor(() => expect($(r, '[data-testid="chat-thinking-live"]')).toBeNull(), r);
     const fold = must$(r, '[data-testid="chat-thinking"]') as HTMLDetailsElement;
-    expect([fold.open, fold.querySelector('summary')!.textContent, fold.textContent!.includes('Multiply is next to Add.')]).toEqual([false, 'Thinking', true]);
+    expect([fold.open, fold.querySelector('summary')!.textContent!.startsWith('Thought'), fold.textContent!.includes('Multiply is next to Add.')]).toEqual([false, true, true]);
     expect(fold.closest('[data-testid="chat-message"]')!.getAttribute('data-role')).toBe('tool');
     // an answer reads in a column, however wide the window
     expect(getComputedStyle(messages(r)[4]!.querySelector('.md, [class*="md"]')?.parentElement ?? messages(r)[4]!).maxWidth).toBe('720px');
@@ -686,6 +720,7 @@ describe('Conversation', () => {
     s.emit({ type: 'chat.turn', data: { chatId: 'chat_a', turnId: 'turn_2', status: 'done', usage: { inputTokens: 800, outputTokens: 40, costUsd: 0.01 } } });
     await waitFor(() => expect($(r, '[data-testid="chat-streaming"]')).toBeNull(), r);
     await waitFor(() => expect($(r, '[data-testid="chat-stop"]')).toBeNull(), r);
+    await openMore(r);
     await r.act(() => must$(r, '[data-testid="chat-properties-open"]').click());
     await waitFor(() => expect(must(document.querySelector('[data-testid="chat-properties-form"] [data-testid="chat-usage"]'), 'usage').textContent).toContain('2.0k in'), r);
     await r.act(() => byText(document.querySelector<HTMLElement>('[data-testid="chat-properties-form"]')!, 'button', 'Cancel').click());
@@ -738,11 +773,15 @@ describe('Conversation', () => {
     expect(callout.textContent).toContain('Bash(touch probe.txt)');
     // the newest refusal leads with Allow and retry (UI review P1-3); Only allow keeps the two steps apart
     expect(Array.from(callout.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Allow and retry', 'Only allow']);
+    await openMore(r);
     expect(byText(r.container, 'button', /Allowed tools/).getAttribute('aria-label')).toBe('Allowed tools');
+    await r.act(() => must$(r, '[data-testid="chat-more"]').click());
     await r.act(() => byText(callout, 'button', 'Only allow').click());
     await waitFor(() => expect(allowed).toEqual([['chat_a', 'Bash(touch probe.txt)']]), r);
     await waitFor(() => expect(callout.textContent).toContain('Allowed for this chat'), r);
+    await openMore(r);
     expect(byText(r.container, 'button', /Allowed tools/).getAttribute('aria-label')).toBe('Allowed tools (1)');
+    await r.act(() => must$(r, '[data-testid="chat-more"]').click());
     await r.act(() => byText(callout, 'button', 'Retry').click());
     await waitFor(() => expect(sent).toEqual([['chat_a', RETRY_TEXT, []]]), r);
   });
@@ -777,6 +816,11 @@ describe('Conversation', () => {
       msg(4, 'tool', 'echo: hello', { toolName: 'mcp__drydock__chatmcp__echo', toolInput: { text: 'hello' } }),
     ];
     const { r } = conv(chat({ status: 'running' }), msgs);
+    // a run with a failed call opens by itself, and so does the failed card (P139); the line names the failure and the step
+    const burst = await waitFor(() => must$(r, '[data-testid="chat-burst"]'), r);
+    await waitFor(() => expect(burst.getAttribute('data-expanded')).toBe('true'), r);
+    expect(burst.getAttribute('data-state')).toBe('failed');
+    expect(burst.querySelector('[data-testid="chat-burst-toggle"]')!.textContent).toContain('1 failed');
     const cards = await waitFor(() => {
       const c = $$(r, '[data-testid="chat-tool"]');
       if (c.length !== 3) throw new Error('three cards');
@@ -795,6 +839,7 @@ describe('Conversation', () => {
     expect(bash.querySelector('[data-testid="chat-tool-command"]')!.textContent).toBe('$ go test ./...');
     expect(bash.querySelector('[data-testid="chat-tool-result"]')!.textContent).toBe('FAIL: TestSubtract');
     expect(bash.querySelector('[data-testid="chat-tool-ms"]')!.textContent).toBe('1.2 s');
+    expect([(bash as HTMLDetailsElement).open, (edit as HTMLDetailsElement).open]).toEqual([true, false]);
     expect(echo.getAttribute('data-state')).toBe('running'); // no result yet and its turn runs
     expect(echo.querySelector('summary strong')!.textContent).toBe('chatmcp · echo');
     expect(echo.querySelector('[role="status"]')).not.toBeNull();
@@ -802,6 +847,7 @@ describe('Conversation', () => {
 
   it('a call that reported no result says so once its turn has ended', async () => {
     const { r } = conv(chat(), [msg(1, 'user', 'look'), msg(2, 'tool', 'Read: a.go', { toolName: 'Read', toolInput: { file_path: 'a.go' } })]);
+    await openBursts(r);
     const card = await waitFor(() => must$(r, '[data-testid="chat-tool"]'), r);
     expect(card.getAttribute('data-state')).toBe('unknown');
     expect(card.textContent).toContain('No result was reported for this call.');
@@ -898,6 +944,7 @@ describe('Conversation', () => {
   it('lists the allowed tools and removes one', async () => {
     const removed: unknown[] = [];
     const { r } = conv(chat({ allowedTools: ['Bash(npm test)', 'Edit'] }), [], { chatDisallowTool: async (id, tool) => (removed.push([id, tool]), chat({ allowedTools: ['Edit'] })) });
+    await openMore(r);
     const btn = await waitFor(() => byText(r.container, 'button', 'Allowed tools (2)'), r);
     await r.act(() => btn.click());
     const pop = await waitFor(() => {
@@ -907,6 +954,8 @@ describe('Conversation', () => {
     }, r);
     await r.act(() => byText(pop, 'button', 'Remove Bash(npm test)').click());
     await waitFor(() => expect(removed).toEqual([['chat_a', 'Bash(npm test)']]), r);
+    // Back shows the panel's actions, with the count
+    await r.act(() => byText(pop, 'button', 'Back').click());
     await waitFor(() => expect(byText(r.container, 'button', 'Allowed tools (1)')).toBeDefined(), r);
   });
 
@@ -917,7 +966,7 @@ describe('Conversation', () => {
     expect(btn.closest('[data-testid="chat-composer"]')).not.toBeNull(); // in the composer's row
     expect(btn.getAttribute('aria-label')).toBe('Model Sonnet, high effort: chat settings');
     expect(must$(r, '[data-testid="chip-model"]').textContent).toBe('Sonnet');
-    expect(must$(r, '[data-testid="chip-effort"]').textContent).toBe('high effort');
+    expect(must$(r, '[data-testid="chip-effort"]').textContent).toBe('· high');
     await r.act(() => btn.click());
     const pop = await waitFor(() => {
       const p = must$(r, '[data-testid="chat-settings"]');
@@ -1050,6 +1099,7 @@ describe('Conversation', () => {
     const forks: unknown[] = [];
     const { r, navigated } = conv(chat(), [msg(1, 'user', 'first'), msg(2, 'assistant', 'answer')], { chatFork: async (id, upto) => (forks.push([id, upto]), chat({ id: `fork${forks.length}` })) });
     await waitFor(() => expect(messages(r)).toHaveLength(2), r);
+    await openMore(r);
     await r.act(() => byText(r.container, 'button', 'Fork').click());
     await waitFor(() => expect(navigated).toEqual(['/chats/fork1']), r);
     await r.act(() => byText(messages(r)[0]!, 'button', 'Fork from here').click());
@@ -1158,7 +1208,7 @@ describe('Conversation', () => {
     expect(asked[1]).toEqual(['chat_a', 101, 100]);
     // the core says when the start was reached
     await waitFor(() => expect($(r, '[data-testid="chat-older"]')).toBeNull(), r);
-    expect(r.container.textContent).toContain('This is the start of');
+    expect(messages(r)[0]!.textContent).toContain('the very first');
   });
 
   it('counts only messages that arrive below as new, not older pages loaded above', async () => {
@@ -1460,21 +1510,26 @@ describe('The graphite Chats screen (P97)', () => {
     const { r } = conv(wsl, [msg(1, 'user', 'hi')], { connectionList: async () => [conn('Ubuntu')] });
     await waitFor(() => expect(must$(r, '[data-testid="chip-adapter"]').textContent).toBe('Claude Code WSL'), r);
     const header = must$(r, '[data-testid="chat-view"] > header');
-    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('~/.drydock/chats/chat_a');
+    // its private folder is "Own folder", the path in the tooltip (decision P144)
+    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('Own folder');
     expect(must$(r, '[data-testid="chat-folder"]').getAttribute('title')).toBe(wsl.cwd);
-    expect(must$(r, '[data-testid="chat-place"]').textContent).toBe('No project · runs inside the distro');
-    // the state is the dot (green: a session is kept); its words are for readers
+    // the state's words are for readers in the header; ⋯ shows the CLI with its dot (green: a session is kept) and where it runs
     const status = must$(r, '[data-testid="chat-status"]');
-    expect([status.textContent, status.className, status.parentElement!.getAttribute('data-state')]).toEqual(['Session kept', 'sr-only', 'session']);
+    expect([status.textContent, status.className]).toEqual(['Session kept', 'sr-only']);
     expect(header.contains(status)).toBe(true);
+    expect((await openMore(r)).textContent).toBe('No project · runs inside the distro');
+    const cli = must$(r, '[data-testid="chat-more-panel"] [data-testid="chat-cli"]');
+    expect([cli.textContent, cli.parentElement!.getAttribute('data-state')]).toEqual(['Claude Code WSL', 'session']);
   });
 
   it("a project chat runs in the project's folder; a running turn shows on the chip", async () => {
     const { r } = conv(chat({ status: 'running' }), [msg(1, 'user', 'long job')]);
-    await waitFor(() => expect(must$(r, '[data-testid="chat-place"]').textContent).toBe("gocalc · runs in the project's folder"), r);
-    expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('C:\\repos\\gocalc');
-    const status = must$(r, '[data-testid="chat-status"]');
-    expect([status.textContent, status.className, status.parentElement!.getAttribute('data-state')]).toEqual(['Running', '', 'running']);
+    // the folder chip names the project, its folder in the tooltip (P139)
+    await waitFor(() => expect(must$(r, '[data-testid="chat-folder"]').textContent).toBe('gocalc'), r);
+    expect(must$(r, '[data-testid="chat-folder"]').getAttribute('title')).toBe('C:\\repos\\gocalc');
+    expect(must$(r, '[data-testid="chat-status"]').textContent).toBe('Running');
+    expect((await openMore(r)).textContent).toBe("gocalc · runs in the project's folder");
+    expect(must$(r, '[data-testid="chat-more-panel"] .cli').getAttribute('data-state')).toBe('running');
   });
 
   it('the approval mode button says the mode in words and changes it, a mode that skips approvals only once confirmed', async () => {
@@ -1510,10 +1565,10 @@ describe('The graphite Chats screen (P97)', () => {
         return chat({ projectId: u.projectId, cwd: 'C:\\repos\\payments-api', sessionId: '' });
       },
     });
-    await waitFor(() => expect(must$(r, '[data-testid="chat-place"]').textContent).toBe('No project · runs in its own folder'), r);
+    expect((await openMore(r)).textContent).toBe('No project · runs in its own folder');
     const move = must$(r, '[data-testid="chat-move"]');
     expect(move.textContent).toBe('Move to a project');
-    expect(move.closest('[data-testid="chat-composer"]')).not.toBeNull();
+    expect(move.closest('[data-testid="chat-more-panel"]')).not.toBeNull(); // in ⋯ (P139)
     await r.act(() => move.click());
     const dlg = await waitFor(() => dialogWith('Move to a project'), r);
     const project = byLabel<HTMLElement>(dlg, 'Project');
@@ -1531,13 +1586,14 @@ describe('The graphite Chats screen (P97)', () => {
     await r.act(() => byText(dlg, 'button', 'Move').click());
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', projectId: 'prj_2' }, { id: 'chat_a', projectId: 'prj_2' }]), r);
     await waitFor(() => expect(doc$$('dialog[open]')).toHaveLength(0), r);
-    await waitFor(() => expect(must$(r, '[data-testid="chat-place"]').textContent).toBe("payments-api · runs in the project's folder"), r);
+    expect((await openMore(r)).textContent).toBe("payments-api · runs in the project's folder");
     expect(must$(r, '[data-testid="chat-move"]').textContent).toBe('Move to another project');
   });
 
   it('a chat in a project can be taken out of it, and nothing moves while a turn runs', async () => {
     const updates: unknown[] = [];
     const { r, s } = conv(chat(), [msg(1, 'user', 'hi')], { chatUpdate: async (u) => (updates.push(u), chat({ projectId: '' })) });
+    await openMore(r);
     const move = await waitFor(() => must$(r, '[data-testid="chat-move"]') as HTMLButtonElement, r);
     await r.act(() => move.click());
     const dlg = await waitFor(() => dialogWith('Move to another project'), r);
@@ -1549,16 +1605,18 @@ describe('The graphite Chats screen (P97)', () => {
     await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', projectId: '' }]), r);
     // a running turn: the button is off
     s.emit({ type: 'chat.updated', data: { chatId: 'chat_a', chat: chat({ projectId: '', status: 'running', version: 5 }) } });
+    await waitFor(() => expect(must$(r, '[data-testid="chat-status"]').textContent).toBe('Running'), r);
+    await openMore(r);
     await waitFor(() => expect((must$(r, '[data-testid="chat-move"]') as HTMLButtonElement).disabled).toBe(true), r);
   });
 
-  it('Enter sends, Shift+Enter is a new line; the send button reads "↵ send"', async () => {
+  it('Enter sends, Shift+Enter is a new line; the send button is named Send', async () => {
     const sent: unknown[] = [];
     const { r } = conv(chat(), [msg(1, 'user', 'hi'), msg(2, 'assistant', 'hello')], { chatSend: async (id, text) => (sent.push([id, text]), { turnId: 't2', version: 2 }) });
     const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
     expect(box.placeholder).toBe('Reply to Claude Code');
     const send = byText<HTMLButtonElement>(r.container, 'button', 'Send');
-    expect([send.textContent, send.getAttribute('aria-keyshortcuts'), send.querySelector('kbd')!.textContent]).toEqual(['↵send', 'Enter', '↵']);
+    expect([send.getAttribute('aria-label'), send.getAttribute('aria-keyshortcuts'), send.getAttribute('type')]).toEqual(['Send', 'Enter', 'submit']);
     type(box, 'first line');
     let shift: KeyboardEvent | undefined;
     await r.act(() => void (shift = press(box, 'Enter', { shiftKey: true })));
@@ -1566,5 +1624,141 @@ describe('The graphite Chats screen (P97)', () => {
     expect(sent).toEqual([]);
     await r.act(() => press(box, 'Enter'));
     await waitFor(() => expect(sent).toEqual([['chat_a', 'first line']]), r);
+  });
+});
+
+describe('The calm chat (P139)', () => {
+  const press = (target: EventTarget, key: string, init: KeyboardEventInit = {}) => {
+    const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+    target.dispatchEvent(e);
+    return e;
+  };
+  function conv(c: Chat, msgs: ChatMessage[], client: Partial<Client> = {}) {
+    return setup({ chatList: async () => [item(c)], chatGet: async () => ({ chat: c, messages: msgs, hasMore: false }), ...client }, { id: c.id });
+  }
+  const t0 = Date.now() - 600_000;
+  const at = (s_: number) => t0 + s_ * 1000;
+  const turn = [
+    msg(1, 'user', 'How is rounding done?', { createdAt: at(0) }),
+    msg(2, 'tool', 'Read: calc.go', { toolName: 'Read', toolInput: { file_path: 'calc.go' }, toolStatus: 'ok', toolMs: 100, createdAt: at(6), thinking: 'Look at calc.go first.' }),
+    msg(3, 'tool', 'Read: http.go', { toolName: 'Read', toolInput: { file_path: 'http.go' }, toolStatus: 'ok', toolMs: 100, createdAt: at(7) }),
+    msg(4, 'tool', 'Bash: go test ./...', { toolName: 'Bash', toolInput: { command: 'go test ./...' }, toolStatus: 'ok', toolMs: 2000, createdAt: at(8) }),
+    msg(5, 'tool', 'Edit: calc.go', { toolName: 'Edit', toolInput: { file_path: 'calc.go', old_string: 'return x', new_string: 'return Round(x)\n// rounded' }, toolStatus: 'ok', toolMs: 30, createdAt: at(11) }),
+    msg(6, 'assistant', 'Results are rounded in one place.\n\nWant me to route both through `calc.Round` and add a test?', { createdAt: at(12) }),
+  ];
+
+  it('folds a run of tool calls into one line that opens to the cards, and rolls the edits up into one card with Review changes', async () => {
+    try {
+      localStorage.removeItem('drydock.chat.verbose');
+    } catch {}
+    const { r } = conv(chat(), turn);
+    const burst = await waitFor(() => must$(r, '[data-testid="chat-burst"]'), r);
+    const toggle = must(burst.querySelector<HTMLElement>('[data-testid="chat-burst-toggle"]'), 'toggle');
+    expect(toggle.textContent).toBe('Thought for 6 s · read 2 files, edited 1 file, ran 1 command· 2.2 s');
+    expect([burst.getAttribute('data-expanded'), toggle.getAttribute('aria-expanded'), $$(r, '[data-testid="chat-tool"]').length]).toEqual(['false', 'false', 0]);
+    await r.act(() => toggle.click());
+    await waitFor(() => expect($$(r, '[data-testid="chat-tool"]')).toHaveLength(4), r);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    await r.act(() => toggle.click());
+    await waitFor(() => expect($$(r, '[data-testid="chat-tool"]')).toHaveLength(0), r);
+    // the edits of the turn: one card after its last row
+    const card = must$(r, '[data-testid="chat-changes"]');
+    expect(card.textContent).toContain('Changed 1 file');
+    expect(card.textContent).toContain('+2');
+    expect(card.textContent).toContain('−1');
+    await r.act(() => byText(card, 'button', 'Review changes').click());
+    const dlg = await waitFor(() => dialogWith('Changed 1 file'), r);
+    const file = must(dlg.querySelector<HTMLElement>('[data-testid="chat-changes-file"]'), 'file');
+    expect(file.getAttribute('data-path')).toBe('calc.go');
+    expect(Array.from(file.querySelectorAll('[data-kind]')).map((d) => d.textContent)).toEqual(['- return x', '+ return Round(x)', '+ // rounded']);
+  });
+
+  it('offers replies after an answer that ends with an offer; a reply is sent at once', async () => {
+    const sent: unknown[] = [];
+    const { r } = conv(chat(), turn, { chatSend: async (id, text) => (sent.push([id, text]), { turnId: 't2', version: 2 }) });
+    const replies = await waitFor(() => must$(r, '[data-testid="chat-replies"]'), r);
+    expect($$(r, '[data-testid="chat-reply"]').map((b) => b.textContent)).toEqual(['Yes, route it', 'Not now', 'Explain more']);
+    await r.act(() => byText(replies, 'button', 'Yes, route it').click());
+    await waitFor(() => expect(sent).toEqual([['chat_a', 'Yes, please route both through `calc.Round` and add a test.']]), r);
+    // a turn running: no replies
+    await waitFor(() => expect($(r, '[data-testid="chat-replies"]')).toBeNull(), r);
+  });
+
+  it('offers no replies after an answer that asks nothing, nor in an archived chat', async () => {
+    const plain = [msg(1, 'user', 'hi'), msg(2, 'assistant', 'All done.')];
+    const { r } = conv(chat(), plain);
+    await waitFor(() => expect(messages(r)).toHaveLength(2), r);
+    expect($(r, '[data-testid="chat-replies"]')).toBeNull();
+    cleanup();
+    const { r: r2 } = conv(chat({ archived: true }), turn);
+    await waitFor(() => must$(r2, '[data-testid="chat-burst"]'), r2);
+    expect($(r2, '[data-testid="chat-replies"]')).toBeNull();
+  });
+
+  it('Ctrl+O opens every run of tool calls and folds them again, and the choice is kept for the viewer', async () => {
+    try {
+      localStorage.removeItem('drydock.chat.verbose');
+    } catch {}
+    const { r } = conv(chat(), turn);
+    await waitFor(() => must$(r, '[data-testid="chat-burst"]'), r);
+    expect(must$(r, '[data-testid="chat-verbose-hint"]').textContent).toBe('Ctrl O shows every tool call');
+    let e: KeyboardEvent | undefined;
+    await r.act(() => void (e = press(document.body, 'o', { ctrlKey: true })));
+    expect(e!.defaultPrevented).toBe(true);
+    await waitFor(() => expect($$(r, '[data-testid="chat-tool"]')).toHaveLength(4), r);
+    expect(must$(r, '[data-testid="chat-view"]').getAttribute('data-verbose')).toBe('true');
+    expect(must$(r, '[data-testid="chat-verbose-hint"]').textContent).toBe('Ctrl O hides the tool calls');
+    expect(localStorage.getItem('drydock.chat.verbose')).toBe('1');
+    // another chat opened later starts verbose
+    cleanup();
+    const { r: r2 } = conv(chat(), turn);
+    await waitFor(() => expect($$(r2, '[data-testid="chat-tool"]')).toHaveLength(4), r2);
+    await r2.act(() => void press(document.body, 'o', { ctrlKey: true }));
+    await waitFor(() => expect($$(r2, '[data-testid="chat-tool"]')).toHaveLength(0), r2);
+    expect(localStorage.getItem('drydock.chat.verbose')).toBe(null);
+  });
+
+  it('a running run of calls says its current step on the line', async () => {
+    const running = [msg(1, 'user', 'test it'), msg(2, 'tool', 'Bash: npm test', { toolName: 'Bash', toolInput: { command: 'npm test' } })];
+    const { r } = conv(chat({ status: 'running' }), running);
+    const step = await waitFor(() => must$(r, '[data-testid="chat-burst-step"]'), r);
+    expect(step.textContent).toContain('Running npm test');
+    expect(must$(r, '[data-testid="chat-burst"]').getAttribute('data-state')).toBe('running');
+  });
+
+  it('a new chat is just the composer, with the cursor in it', async () => {
+    const { r } = conv(chat({ sessionId: '' }), []);
+    const box = await waitFor(() => byLabel<HTMLTextAreaElement>(r.container, 'Message'), r);
+    await waitFor(() => expect(document.activeElement).toBe(box), r);
+    expect(box.placeholder).toBe('Message Claude Code');
+    const log = must$(r, '[data-testid="chat-scroll"]');
+    expect([log.querySelectorAll('p').length, $(r, '[data-testid="chat-verbose-hint"]')]).toEqual([0, null]);
+  });
+
+  it('shows one warning chip when the CLI is not signed in, which opens Properties to pick another', async () => {
+    const out: AdapterInfo = { ...claude, detection: { ...claude.detection, status: 'unauthenticated' } };
+    const { r } = conv(chat(), [msg(1, 'user', 'hi')], { adapterList: async () => [out, gemini, cline] });
+    const warn = await waitFor(() => must$(r, '[data-testid="chat-cli-warning"]'), r);
+    expect(warn.textContent).toBe('Claude Code not signed in');
+    expect($$(r, '[data-testid="chat-cli-warning"]')).toHaveLength(1);
+    await r.act(() => warn.click());
+    await waitFor(() => must(document.querySelector('[data-testid="chat-properties-form"]'), 'properties'), r);
+  });
+});
+
+describe('ChatConversation (P139)', () => {
+  it('shows one chat without the list: header, feed and composer', async () => {
+    const s = testServices({
+      projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
+      licenseStatus: async () => lic(),
+      appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
+      adapterList: async () => [claude],
+      chatGet: async () => ({ chat: chat(), messages: [msg(1, 'user', 'embedded hello')], hasMore: false }),
+      chatAsks: async () => [],
+    });
+    s.workspace.start();
+    const r = mount(<ChatConversation chatId="chat_a" />, s);
+    await waitFor(() => expect(messages(r)).toHaveLength(1), r);
+    expect([$(r, '[data-testid="chat-row"]'), $(r, '[data-testid="chat-composer"]') !== null, must$(r, '[data-testid="chat-title"]').textContent]).toEqual([null, true, 'Where does Multiply go?']);
   });
 });

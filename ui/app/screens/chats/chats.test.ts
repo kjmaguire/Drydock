@@ -24,6 +24,7 @@ import {
   askHead,
   chatPlaceWords,
   chatRowLine,
+  folderChipText,
   folderText,
   inOwnFolder,
   listWhen,
@@ -124,6 +125,11 @@ describe('chats helpers', () => {
     expect(folderText({ cwd: '\\\\wsl$\\Debian\\srv\\app', wslDistro: 'Debian' })).toBe('/srv/app');
     expect(folderText({ cwd: '/home/kyle/notes', wslDistro: 'Ubuntu' })).toBe('~/notes');
     expect(folderText({ cwd: 'C:\\repos\\gocalc', wslDistro: '' })).toBe('C:\\repos\\gocalc');
+    // the header's chip (decision P144): the project, else "Own folder" for the private folder, else the folder chosen
+    expect(folderChipText(own, 'gocalc')).toBe('gocalc');
+    expect(folderChipText(own)).toBe('Own folder');
+    expect(folderChipText({ ...own, wslDistro: 'Ubuntu', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\kyle\\.drydock\\chats\\chat_a' })).toBe('Own folder');
+    expect(folderChipText({ ...own, cwd: 'C:\\work\\notes' })).toBe('C:\\work\\notes');
     expect(moveEffect({ projectId: '' }, 'p1', 'gocalc')).toContain('It joins gocalc and runs in the project\'s folder.');
     expect(moveEffect({ projectId: 'p1' }, 'p2', 'shop')).toContain('It moves to shop');
     expect(moveEffect({ projectId: 'p1' }, OUT_OF_PROJECT, '')).toBe('It leaves the project and keeps the folder it runs in, so its session continues.');

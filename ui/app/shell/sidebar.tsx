@@ -1,31 +1,22 @@
-// The sidebar (graphite, decision P97): the app's main navigation landmark, on the left of every page. It folds to a 56px
-// rail of icons (the toggle, or "[" outside a text field; a narrow window starts folded) and remembers the choice. From the
-// top: the Drydock mark (the way home), the project switcher, search (Ctrl+K), the person's own lists (Inbox with what waits
-// on them in every project, Running with what runs, My tasks, Chats), the projects (the open one shows its tabs under it), the workspace's pages, then Settings, the Guide, the
-// local engine's state and the event stream's. The test ids are the ones the top bar had, so the e2e helpers find the same
-// links (e2e/helpers.ts).
+// The sidebar (graphite, decision P97; six places since P140): the app's main navigation landmark, on the left of every page.
+// It folds to a 56px rail of icons (the toggle, or "[" outside a text field; a narrow window starts folded) and remembers the
+// choice. From the top: the Drydock mark with search (Ctrl+K) and the fold, New (Ctrl+N: shell/new.ts says what it opens), Home,
+// the Inbox (what waits on the person in every project; Running and My tasks are its tabs), Chats, the projects (one line each: a
+// project's Work, Crew and Settings are its tab bar, decision P141), and at the foot Agents (the library), Settings (every page that configures the workspace or the app
+// is one of its sections), the local engine's state and the event stream's. Every other page is in Settings, in Agents or in
+// the command menu. The test ids are the ones the links had, so the e2e helpers find the same links (e2e/helpers.ts).
 
-import { css, on, type Handle } from 'remix/component';
+import { css, navigate, on, type Handle } from 'remix/component';
 import {
-  Blocks,
-  BookOpen,
   Bot,
-  CircleHelp,
-  ClipboardList,
-  Clock,
-  Cpu,
   House,
   Inbox,
-  LayoutTemplate,
-  ListTodo,
   MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Search,
   Settings,
-  ShieldCheck,
-  Sparkles,
-  Users,
   type IconNode,
 } from 'lucide';
 import type { LocalView } from '../api/localClient.ts';
@@ -36,7 +27,7 @@ import { query, services, watch } from '../state/services.tsx';
 import { hueFor } from '../ui/data.tsx';
 import { Icon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
-import { ProjectSwitcher } from './project-switcher.tsx';
+import { focusStart, isNewKey, newHref, openNew } from './new.ts';
 
 const asideCss = css({
   display: 'flex',
@@ -81,11 +72,8 @@ const markCss = css({
   color: t.onAccent,
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
 });
-const switcherBox = css({
-  flex: '1',
-  minWidth: '0',
-  ':is([data-rail="true"]) &': { flex: 'none', '& [data-testid="project-switcher"]': { width: '36px', padding: '0', justifyContent: 'center' }, '& .name, & .chev': { display: 'none' } },
-});
+// the name beside the mark; the rail shows the mark alone
+const brandCss = css({ flex: '1', minWidth: '0', fontSize: t.textLg, fontWeight: '600', color: t.text, whiteSpace: 'nowrap', ':is([data-rail="true"]) &': { display: 'none' } });
 const foldCss = css({
   display: 'inline-grid',
   placeItems: 'center',
@@ -100,7 +88,8 @@ const foldCss = css({
   color: t.textFaint,
   '&:hover': { background: t.bgHover, color: t.text },
 });
-const searchCss = css({
+// New: the one way to start something (decision P140), with its key
+const newCss = css({
   display: 'flex',
   alignItems: 'center',
   gap: t.s2,
@@ -110,13 +99,14 @@ const searchCss = css({
   border: `1px solid ${t.border}`,
   borderRadius: t.rMd,
   background: t.bgSurface,
-  color: t.textFaint,
+  color: t.text,
   fontSize: t.textMd,
-  fontWeight: '400',
+  fontWeight: '500',
   justifyContent: 'flex-start',
   '& > .lbl': { flex: '1', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  '&:hover': { borderColor: t.borderStrong, color: t.textMuted, background: t.bgSurface },
-  ':is([data-rail="true"]) &': { width: '36px', margin: `0 0 ${t.s2}`, padding: '0', justifyContent: 'center', '& > .lbl, & > kbd': { display: 'none' } },
+  '&:hover': { borderColor: t.borderStrong, background: t.bgHover },
+  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+  ':is([data-rail="true"]) &': { width: '36px', margin: `0 auto ${t.s2}`, padding: '0', justifyContent: 'center', '& > .lbl, & > kbd': { display: 'none' } },
 });
 const groupHead = css({
   padding: `${t.s4} 10px 6px`,
@@ -142,12 +132,10 @@ const itemCss = css({
   '& > .lbl': { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& svg': { flex: 'none' },
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
-  '&[aria-current="page"]': { background: t.bgActive, color: t.text },
+  '&[aria-current="page"], &[aria-current="true"]': { background: t.bgActive, color: t.text },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
   ':is([data-rail="true"]) &': { justifyContent: 'center', padding: '0', width: '36px', height: '36px', margin: '0 auto', '& > .lbl, & > .count': { display: 'none' } },
 });
-// a project's own tabs, under the open project
-const subItemCss = css({ paddingLeft: '30px', height: '28px', ':is([data-rail="true"]) &': { paddingLeft: '0' } });
 const squareCss = css({ display: 'inline-block', flex: 'none', width: '9px', height: '9px', borderRadius: '3px' });
 const countCss = css({ flex: 'none', color: t.textFaint, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' });
 // the Inbox count: amber while something waits on the person, a quiet number otherwise (the e2e suite reads it either way)
@@ -168,18 +156,21 @@ const needsCss = css({
   ':is([data-rail="true"]) &': { position: 'absolute', top: '1px', right: '1px', minWidth: '16px', height: '16px', padding: '0 4px', lineHeight: '16px', '&[data-zero="true"]': { display: 'none' } },
 });
 const footCss = css({ display: 'grid', gap: '2px', flex: 'none', padding: `${t.s2} 10px ${t.s3}`, borderTop: `1px solid ${t.border}` });
+// the local engine's state, kept to one quiet line (its build is in the title)
 const engineCss = css({
-  display: 'grid',
-  gap: '2px',
-  margin: `${t.s2} 0 0`,
-  padding: '10px',
-  border: `1px solid ${t.border}`,
-  borderRadius: t.rLg,
-  color: t.text,
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  height: '24px',
+  margin: `${t.s1} 0 0`,
+  padding: '0 10px',
+  borderRadius: t.rMd,
+  color: t.textFaint,
+  fontSize: t.textSm,
   textDecoration: 'none',
-  '& > .line': { display: 'flex', alignItems: 'center', gap: t.s2, fontWeight: '500' },
-  '& > .sub': { color: t.textFaint, fontSize: t.textSm, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  '&:hover': { background: t.bgHover, textDecoration: 'none' },
+  whiteSpace: 'nowrap',
+  '& > .lbl': { overflow: 'hidden', textOverflow: 'ellipsis' },
+  '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
   ':is([data-rail="true"]) &': { display: 'none' },
 });
 const dotCss = css({ display: 'inline-block', flex: 'none', width: '7px', height: '7px', borderRadius: '50%' });
@@ -208,7 +199,8 @@ export function engineWords(v: LocalView | null | undefined): { running: boolean
   return { running, title: running ? 'Local engine running' : 'Local engine stopped', sub: build };
 }
 
-export function Sidebar(handle: Handle<{ route: Route }>) {
+/** `onNavigate` replaces the router's navigate for New's key (tests). */
+export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.project);
@@ -243,6 +235,18 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     { signal: handle.signal },
   );
 
+  // Ctrl+N is New everywhere but Chats, whose screen makes a new chat with it (decision P140)
+  let onChats = false;
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (onChats || !isNewKey(e)) return;
+      e.preventDefault();
+      openNew(handle.props.onNavigate ?? navigate);
+    },
+    { signal: handle.signal },
+  );
+
   // roving focus: the arrow keys move up and down the sidebar's links (the switcher's menu keeps its own keys)
   const onKey = (e: KeyboardEvent) => {
     if (e.altKey || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return; // Alt+arrows go to another room or chat
@@ -271,37 +275,38 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
     const ws = s.workspace;
     const project = ws.project;
     const hub = hubOf(route);
+    onChats = hub === 'chats';
     const workspace = workspaceView(route, !!project);
-    // the Inbox and Running count every project's (decision P97)
+    // the Inbox counts every project's (decision P97); Running and My tasks are its tabs (P140)
     const needs = ws.needsCount;
-    const running = ws.runningCount;
-    const inbox = route.name === 'needs-you';
+    const inbox = route.name === 'needs-you' || route.name === 'my-tasks';
     const status = s.store.getSnapshot().status;
     const live = status === 'open';
     const eng = engineWords(engine.data);
     const is = (h: Hub) => hub === h;
-
-    const projectTabs: Item[] = [
-      { id: 'nav-overview', label: 'Overview', icon: House, href: routes.home.href(), current: is('overview') },
-      { id: 'nav-tasks', label: 'Tasks', icon: ClipboardList, href: routes.tasks.href(), current: is('tasks') },
-      { id: 'nav-rooms', label: 'Rooms', icon: MessagesSquare, href: routes.rooms.href(), current: is('rooms') },
-      { id: 'nav-team', label: 'Crew', icon: Users, href: routes.team.href(), current: is('crew') },
-      { id: 'nav-knowledge', label: 'Knowledge', icon: BookOpen, href: routes.knowledge.href(), current: is('knowledge') },
-    ];
 
     return (
       <aside mix={asideCss} data-rail={rail ? 'true' : undefined} data-testid="sidebar" data-region="sidebar">
         <nav aria-label="Main" mix={[navCss, on<HTMLElement, 'keydown'>('keydown', onKey)]}>
           <div mix={scrollCss}>
           <div mix={headCss}>
-            <a href={routes.workspace.href()} mix={markCss} data-nav="" aria-label="Drydock home" title="Home" data-testid="nav-workspace" aria-current={route.name === 'workspace' ? 'page' : undefined}>
+            <span mix={markCss} aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
                 <path d="M3 17h18M6 17V8h12v9M9 8V5h6v3" />
               </svg>
-            </a>
-            <div mix={switcherBox}>
-              <ProjectSwitcher workspace={workspace} />
-            </div>
+            </span>
+            <span mix={brandCss} data-testid="brand">
+              Drydock
+            </span>
+            <button
+              type="button"
+              mix={[foldCss, on('click', () => s.ui.setPalette(true))]}
+              aria-label={`Search and jump (${comboFor('palette')})`}
+              title={`Search or run a command (${comboFor('palette')})`}
+              data-testid="sidebar-search"
+            >
+              <Icon icon={Search} size={15} />
+            </button>
             <button
               type="button"
               mix={[foldCss, on('click', () => s.ui.toggleSidebar())]}
@@ -313,13 +318,22 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
               <Icon icon={rail ? PanelLeftOpen : PanelLeftClose} size={15} />
             </button>
           </div>
-          <button type="button" mix={[searchCss, on('click', () => s.ui.setPalette(true))]} aria-label={`Search and jump (${comboFor('palette')})`} title={`Search or run a command (${comboFor('palette')})`}>
-            <Icon icon={Search} size={14} />
-            <span class="lbl">Search</span>
-            <kbd>{comboFor('palette').split('+').join(' ')}</kbd>
-          </button>
+          <a
+            href={newHref()}
+            mix={[newCss, on('click', () => void requestAnimationFrame(() => focusStart()))]}
+            data-nav=""
+            data-testid="nav-new"
+            title={`New (${comboFor('new-chat')})`}
+            aria-keyshortcuts={comboFor('new-chat').replace('Ctrl', 'Control')}
+            aria-current={route.name === 'project-new' ? 'page' : undefined}
+          >
+            <Icon icon={Plus} size={15} />
+            <span class="lbl">New</span>
+            <kbd>{comboFor('new-chat').split('+').join(' ')}</kbd>
+          </a>
 
           <ul mix={listCss} role="list">
+            {link({ id: 'nav-workspace', label: 'Home', icon: House, href: routes.workspace.href(), current: route.name === 'workspace' })}
             <li style={{ position: 'relative' }}>
               <a
                 href={routes.needsYou.href()}
@@ -328,7 +342,7 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 data-testid="nav-needs-you"
                 aria-label={`Inbox: ${needs} ${needs === 1 ? 'item needs' : 'items need'} you`}
                 title="Inbox"
-                aria-current={inbox && s.ui.inboxTab !== 'running' ? 'page' : undefined}
+                aria-current={inbox ? 'page' : undefined}
               >
                 <Icon icon={Inbox} size={15} />
                 <span class="lbl">Inbox</span>
@@ -337,24 +351,6 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 </span>
               </a>
             </li>
-            <li style={{ position: 'relative' }}>
-              <a
-                href={`${routes.needsYou.href()}?tab=running`}
-                mix={[itemCss, on('click', () => s.ui.setInboxTab('running'))]}
-                data-nav=""
-                data-testid="nav-running"
-                aria-label={`Running: ${running} ${running === 1 ? 'task or scan runs' : 'tasks and scans run'}`}
-                title="Running"
-                aria-current={inbox && s.ui.inboxTab === 'running' ? 'page' : undefined}
-              >
-                <Icon icon={Clock} size={15} />
-                <span class="lbl">Running</span>
-                <span class="count" mix={countCss} data-testid="running-count">
-                  {running}
-                </span>
-              </a>
-            </li>
-            {link({ id: 'nav-my-tasks', label: 'My tasks', icon: ListTodo, href: routes.myTasks.href(), current: route.name === 'my-tasks' })}
             {link({ id: 'nav-chats', label: 'Chats', icon: MessagesSquare, href: routes.chats.href(), current: is('chats') })}
           </ul>
 
@@ -368,65 +364,36 @@ export function Sidebar(handle: Handle<{ route: Route }>) {
                 <li key={p.id}>
                   <a
                     href={routes.home.href()}
-                    mix={[itemCss, on('click', (e) => {
+                    mix={[itemCss, on('click', () => {
+                      // a project opens on Work (decision P141), also the open one from its Crew or Settings
                       if (p.id !== ws.projectId) s.workspace.selectProject(p.id);
-                      if (open) e.preventDefault();
                     })]}
                     title={p.name}
                     data-nav=""
                     data-testid="nav-project-item"
                     data-project={p.id}
-                    aria-current={open && route.name === 'home' ? 'page' : undefined}
+                    aria-current={open && route.name === 'home' ? 'page' : open ? 'true' : undefined}
                     aria-expanded={open ? 'true' : 'false'}
                   >
                     <span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} />
                     <span class="lbl">{p.name}</span>
                     {open && s.project.taskTotal ? <span class="count" mix={countCss}>{s.project.taskTotal}</span> : null}
                   </a>
-                  {open ? (
-                    <ul mix={listCss} role="list" aria-label={`${p.name} pages`}>
-                      {projectTabs.map((it) => (
-                        <li key={it.id}>
-                          <a href={it.href} mix={[itemCss, subItemCss]} data-nav="" data-testid={it.id} title={it.label} aria-current={it.current ? 'page' : undefined}>
-                            <Icon icon={it.icon} size={14} />
-                            <span class="lbl">{it.label}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
                 </li>
               );
             })}
           </ul>
-
-          <div mix={groupHead}>
-            <span>Workspace</span>
-          </div>
-          <ul mix={listCss} role="list" aria-label="Workspace">
-            {/* named apart from the open project's Crew and its Security pill (the UI audit of 2026-10-26: two items read the same) */}
-            {link({ id: 'nav-crew', label: 'All crews', icon: Users, href: routes.crew.href(), current: route.name === 'crew' })}
-            {link({ id: 'nav-security-scan', label: 'Security scan', icon: ShieldCheck, href: routes.securityScan.href(), current: is('scan') })}
-            {link({ id: 'nav-side-agents', label: 'Agents', icon: Bot, href: routes.agents.href(), current: is('agents') })}
-            {link({ id: 'nav-side-integrations', label: 'Integrations', icon: Blocks, href: routes.integrations.href(), current: is('integrations') })}
-            {link({ id: 'nav-side-models', label: 'Models', icon: Cpu, href: routes.models.href(), current: is('models') })}
-            {/* the Library's two halves, each found in one click (decision P106) */}
-            {link({ id: 'nav-library', label: 'Agent templates', icon: LayoutTemplate, href: routes.library.href(), current: is('library') })}
-            {link({ id: 'nav-library-skills', label: 'Skills', icon: Sparkles, href: routes.librarySkills.href(), current: is('skill-library') })}
-          </ul>
           </div>
         <div mix={footCss}>
           <ul mix={listCss} role="list" aria-label="App">
-            {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: hub === 'settings' })}
-            {link({ id: 'nav-guide-top', label: 'Guide', icon: CircleHelp, href: routes.guide.href(), current: route.name === 'guide' })}
+            {/* one Agents library (decision P140): My agents, Starters, Skills and every project's crew */}
+            {link({ id: 'nav-library', label: 'Agents', icon: Bot, href: routes.library.href(), current: is('library') })}
+            {link({ id: 'nav-settings', label: 'Settings', icon: Settings, href: routes.settings.href(), current: is('settings') })}
           </ul>
           {eng ? (
             <a href={routes.models.href()} mix={engineCss} data-testid="engine-card" title={`${eng.title}: ${eng.sub}`}>
-              <span class="line">
-                <span mix={dotCss} aria-hidden="true" style={{ background: eng.running ? t.success : t.textFaint }} />
-                {eng.title}
-              </span>
-              <span class="sub">{eng.sub}</span>
+              <span mix={dotCss} aria-hidden="true" style={{ background: eng.running ? t.success : t.textFaint }} />
+              <span class="lbl">{eng.title}</span>
             </a>
           ) : null}
           <span mix={streamCss} data-testid="stream" data-state={status} title={`Event stream: ${status}`}>

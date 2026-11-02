@@ -60,9 +60,13 @@ export function SchedulerPanel(handle: Handle<{ projectId: string }>) {
             Scheduler
           </h2>
           {st ? (
-            <p class="facts">
-              <Badge tone={st.settings.autoSchedule ? 'info' : 'muted'}>{st.settings.autoSchedule ? 'automatic' : 'manual'}</Badge> up to {st.settings.maxParallel ? plural(st.settings.maxParallel, 'task') : 'the default number of tasks'} in
-              parallel; {plural(st.activeRuns, 'run')} executing, {plural(st.agentSlotsInUse, 'agent slot')} in use (peak {st.peakAgentSlots}). Change these under Project settings.
+            // one plain line (decision P144); the agent slots, a detail for diagnosis, are its tooltip
+            <p class="facts" data-testid="scheduler-facts" title={`${plural(st.agentSlotsInUse, 'agent slot')} in use (peak ${st.peakAgentSlots})`}>
+              <Badge tone={st.settings.autoSchedule ? 'info' : 'muted'}>{st.settings.autoSchedule ? 'automatic' : 'manual'}</Badge> up to{' '}
+              {st.settings.maxParallel ? plural(st.settings.maxParallel, 'task') : 'the default number of tasks'} at once, {st.activeRuns} running now ·{' '}
+              <a href={routes.project.href()} data-testid="scheduler-change">
+                Change
+              </a>
             </p>
           ) : (
             <span class="facts" />

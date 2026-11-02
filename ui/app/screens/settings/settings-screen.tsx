@@ -1,8 +1,10 @@
-// Settings and about: the theme, what this session is connected to, what agents inherit, telemetry, how updates work, the
-// version, licenses and keyboard map (About Drydock), and the features that are not built yet. A workspace screen: it works with no project.
+// Three sections of the one Settings page (decision P140), each at its own address: General (/settings: the theme, what agents
+// inherit, telemetry, diagnostics, how updates work, the features that are not built yet), Shortcuts (/settings/shortcuts: the
+// keys a person changes and the keyboard map) and About (/settings/about, under Help & about: what this session is connected
+// to, the version and the licenses). A workspace screen: it works with no project.
 
 import { css, on, type Handle } from 'remix/component';
-import { Check, Construction, Info, Palette, RefreshCw, Settings } from 'lucide';
+import { BadgeInfo, Check, Construction, Info, Keyboard, Palette, RefreshCw, Settings } from 'lucide';
 import type { ThemeChoice } from '../../lib/theme.ts';
 import { services, watch } from '../../state/services.tsx';
 import { kv, muted } from '../../ui/data.tsx';
@@ -10,7 +12,7 @@ import { Icon } from '../../ui/icon.tsx';
 import { Page } from '../../ui/layout.tsx';
 import { LearnMore } from '../../ui/learn-more.tsx';
 import { t } from '../../ui/tokens.ts';
-import { AboutDrydock } from './about.tsx';
+import { AboutDrydock, KeymapTable } from './about.tsx';
 import { KeyboardSection } from './keyboard.tsx';
 import { AgentEnvSection } from './agent-env.tsx';
 import { NOT_BUILT, THEMES } from './settings.ts';
@@ -217,25 +219,46 @@ function NotBuilt(_handle: Handle) {
   );
 }
 
-export function SettingsScreen(_handle: Handle) {
-  return () => (
-    <Page title="Settings and about" icon={Settings} subtitle="This computer">
-      <div mix={settingsColumn}>
-        <Group title="Appearance" icon={Palette} label="Appearance" description="Choose how Drydock looks. System follows the Windows light or dark setting.">
-          <ThemePicker />
-        </Group>
-        <Group title="About this session" icon={Info} label="About this session" description="What this window is connected to and where Drydock keeps its data.">
-          <AboutSession />
-        </Group>
-        <AgentEnvSection />
-        <TelemetryPanel />
-        <DiagnosticsPanel />
-        <UpdatesSection />
-        <KeyboardSection />
-        <AboutDrydock />
-        <NotBuilt />
-      </div>
-    </Page>
-  );
-}
+export type SettingsPart = 'general' | 'shortcuts' | 'about';
 
+export function SettingsScreen(handle: Handle<{ part?: SettingsPart }>) {
+  return () => {
+    const part = handle.props.part ?? 'general';
+    if (part === 'shortcuts') {
+      return (
+        <Page title="Shortcuts" icon={Keyboard}>
+          <div mix={settingsColumn}>
+            <KeyboardSection />
+            <KeymapTable />
+          </div>
+        </Page>
+      );
+    }
+    if (part === 'about') {
+      return (
+        <Page title="About" icon={BadgeInfo} subtitle="This computer">
+          <div mix={settingsColumn}>
+            <Group title="About this session" icon={Info} label="About this session" description="What this window is connected to and where Drydock keeps its data.">
+              <AboutSession />
+            </Group>
+            <AboutDrydock keymap={false} />
+          </div>
+        </Page>
+      );
+    }
+    return (
+      <Page title="General" icon={Settings} subtitle="This computer">
+        <div mix={settingsColumn}>
+          <Group title="Appearance" icon={Palette} label="Appearance" description="Choose how Drydock looks. System follows the Windows light or dark setting.">
+            <ThemePicker />
+          </Group>
+          <AgentEnvSection />
+          <TelemetryPanel />
+          <DiagnosticsPanel />
+          <UpdatesSection />
+          <NotBuilt />
+        </div>
+      </Page>
+    );
+  };
+}

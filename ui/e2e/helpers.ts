@@ -38,44 +38,74 @@ export function freshRepo(): string {
 export const sidebar = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' });
 
 /**
- * Which hub holds a link that is not in the top bar itself (Crew HQ, decision P64): the sub-pages of a tab are pills under
- * it (a project's settings and its Integrations are the last pills of Overview), and every workspace or app settings page is in
- * the Settings rail behind the gear.
+ * Which hub holds a link that is not in the sidebar itself (Crew HQ, decision P64; P140; P141): a project's pages are its tab bar
+ * (Work is nav-overview, Crew nav-team, Settings nav-project-settings); the board, the pull requests and the rooms are links under
+ * Work's list; a project's settings, its Integrations, Activity, Budgets, Evals, Security, Plan, Milestones and Knowledge are
+ * sections of its Settings tab (a section of more than one page shows them as pills); every workspace or app settings page is a
+ * section of Settings; My agents, Starters, Skills and All crews are the Agents library's pills; Running and My tasks are tabs of
+ * the Inbox. navTo opens the hubs in turn.
  */
 const HUB_OF: Record<string, string> = {
-  'nav-plan': 'nav-tasks',
-  'nav-pulls': 'nav-tasks',
-  'nav-milestones': 'nav-tasks',
-  'nav-activity': 'nav-overview',
-  'nav-budgets': 'nav-overview',
-  'nav-evals': 'nav-overview',
-  'nav-security': 'nav-overview',
-  'nav-project': 'nav-overview',
-  'nav-project-integrations': 'nav-overview',
+  'nav-tasks': 'nav-overview',
+  'nav-pulls': 'nav-overview',
+  'nav-rooms': 'nav-overview',
+  'nav-project': 'nav-project-settings',
+  'nav-project-integrations': 'nav-project-settings',
+  'nav-knowledge': 'nav-project-settings',
+  'nav-planning': 'nav-project-settings',
+  'nav-activity': 'nav-project-settings',
+  'nav-budgets': 'nav-project-settings',
+  'nav-evals': 'nav-project-settings',
+  'nav-security': 'nav-project-settings',
+  'nav-plan': 'nav-planning',
+  'nav-milestones': 'nav-planning',
   'nav-requirements': 'nav-knowledge',
   'nav-packs': 'nav-knowledge',
   'nav-skills': 'nav-knowledge',
   'nav-memory': 'nav-knowledge',
   'nav-repo-map': 'nav-knowledge',
+  // the sections of Settings (decision P140)
+  'nav-settings-about': 'nav-settings',
+  'nav-side-agents': 'nav-settings',
+  'nav-side-models': 'nav-settings',
   'nav-routing': 'nav-settings',
-  'nav-license': 'nav-settings',
+  'nav-side-integrations': 'nav-settings',
+  'nav-github': 'nav-settings',
+  'nav-security-scan': 'nav-settings',
   'nav-backups': 'nav-settings',
-  'nav-data': 'nav-settings',
-  'nav-support': 'nav-settings',
+  'nav-shortcuts': 'nav-settings',
+  'nav-help': 'nav-settings',
+  // the pages of a section
+  'nav-backups-page': 'nav-backups',
+  'nav-data': 'nav-backups',
+  'nav-about': 'nav-help',
+  'nav-support': 'nav-help',
+  'nav-license': 'nav-help',
+  'nav-guide': 'nav-help',
+  // the Agents library's pills
+  'nav-library-mine': 'nav-library',
+  'nav-library-starters': 'nav-library',
+  'nav-library-skills': 'nav-library',
+  'nav-crew': 'nav-library',
+  // the Inbox's tabs
+  'inbox-tab-needs': 'nav-needs-you',
+  'inbox-tab-running': 'nav-needs-you',
+  'inbox-tab-done': 'nav-needs-you',
+  'inbox-tab-mine': 'nav-needs-you',
 };
 
-/** Click a navigation link by test id: the tab or pill itself, or its hub first when the link is not on the page yet. */
+/** Click a navigation link by test id: the tab or pill itself, or its hub first (and the hub's hub) when it is not on the page. */
 async function navTo(page: Page, testId: string): Promise<void> {
   const link = page.getByTestId(testId);
   if (!(await link.isVisible())) {
     const hub = HUB_OF[testId];
-    if (hub) await page.getByTestId(hub).click();
+    if (hub) await navTo(page, hub);
   }
   await link.click();
 }
 
 /**
- * A room's link: in the Rooms rail, or in the Overview's rooms card. Rooms are named without a "#" (an icon, then the name,
+ * A room's link, in the Rooms rail. Rooms are named without a "#" (an icon, then the name,
  * then an unread count such as ", 3 unread"), so the accessible name starts with the room name and nothing word-like follows it.
  */
 export function roomLink(page: Page, name: string): Locator {
@@ -83,120 +113,91 @@ export function roomLink(page: Page, name: string): Locator {
   return page.locator('[data-rooms]').getByRole('link', { name: new RegExp(`^${escaped}(?![\\w-])`) });
 }
 
-/** Open a room: from the Overview's rooms card or the Rooms rail when one is on the page, else through the Rooms tab. */
+/** Open a room: from the Rooms rail when it is on the page, else through Rooms under Work's list (decision P141). */
 export async function openRoom(page: Page, name: string): Promise<void> {
   const link = roomLink(page, name);
   if (!(await link.isVisible())) {
-    const tab = sidebar(page).getByTestId('nav-rooms');
-    if (await tab.isVisible()) await tab.click();
-    else await page.goto(new URL('/', page.url()).toString());
+    if (!(await page.getByTestId('nav-overview').isVisible())) await page.goto(new URL('/', page.url()).toString());
+    await navTo(page, 'nav-rooms');
   }
   await link.click();
 }
 
 /**
- * Open a workspace page (Library, Integrations, Connections, Settings...). A settings page is behind the gear on any page;
- * the others are tabs (or pills) of the workspace bar, which a project's page reaches through the Drydock mark (Home).
+ * Open a workspace page (Agents, Settings and its sections, the Inbox's tabs...) from any page: every one is in the sidebar's
+ * foot (Agents, Settings), a section or pill under them, or a tab of the Inbox (decision P140). An old test id names where its
+ * page went.
  */
 export async function workspaceNav(page: Page, testId: string): Promise<void> {
-  // the pages that left the Settings rail (decision P98): Agents (once Connections), Integrations (with /mcp), Models (with
-  // Providers) are the sidebar's own; GitHub is the GitHub row of Integrations, whose detail opens beside the list (P106)
-  const id = OLD_NAV[testId] ?? testId;
-  if (HUB_OF[id] !== 'nav-settings' && id !== 'nav-settings' && !(await sidebar(page).getByTestId('nav-chats').isVisible())) {
-    await sidebar(page).getByTestId('nav-workspace').click();
-  }
-  if (testId === 'nav-github') {
-    await navTo(page, 'nav-side-integrations');
-    await page.getByRole('navigation', { name: 'All integrations' }).locator('[data-testid="integration-row"][data-key="github"]').click();
-    await expect(page.getByTestId('github-page')).toBeVisible();
-    return;
-  }
-  await navTo(page, id);
+  await navTo(page, OLD_NAV[testId] ?? testId);
 }
 
+/** The test ids of pages that moved (decisions P98, P140), and where they are now. */
 const OLD_NAV: Record<string, string> = {
   'nav-connections': 'nav-side-agents',
   'nav-integrations': 'nav-side-integrations',
   'nav-mcp': 'nav-side-integrations',
   'nav-providers': 'nav-side-models',
-  'nav-github': 'nav-side-integrations',
+  'nav-running': 'inbox-tab-running',
+  'nav-my-tasks': 'inbox-tab-mine',
+  'nav-guide-top': 'nav-guide',
 };
 
 /**
- * Open a page of a project (Crew, Tasks, Project settings...). On a workspace page the bar shows the workspace, so the
- * project is opened first: the one named (its card on Home), else the one the app remembers (its home, "/").
+ * Open a page of a project (Crew, Tasks, Project settings...). A project's pages have its tab bar (Work, Crew, Settings; decision
+ * P141); on a workspace page there is none, so the project is opened first: the one named (its line in the sidebar's Projects
+ * list), else the one the app remembers (its Work, "/").
  */
 export async function projectNav(page: Page, testId: string, project?: string): Promise<void> {
-  if (!(await sidebar(page).getByTestId('nav-overview').isVisible())) {
-    if (project) {
-      if (!(await page.getByTestId('home-project').first().isVisible())) await sidebar(page).getByTestId('nav-workspace').click();
-      await page.getByTestId('home-project').filter({ hasText: project }).click();
-    } else await page.goto(new URL('/', page.url()).toString());
+  if (!(await page.getByTestId('nav-overview').isVisible())) {
+    if (project) await projectItem(page, project).click();
+    else await page.goto(new URL('/', page.url()).toString());
   }
   await navTo(page, testId);
 }
 
-/** The project switcher at the top of the sidebar: opens the menu of Home, the projects, "New project…" and "App settings". */
-export const projectSwitcher = (page: Page): Locator => page.getByRole('button', { name: 'Switch project' });
+/** A project's line in the sidebar's Projects list (decision P140: the list is how a project is opened). */
+export const projectItem = (page: Page, name: string): Locator => sidebar(page).getByTestId('nav-project-item').filter({ has: page.getByText(name, { exact: true }) });
 
-/** Switch to a project through the switcher's menu (exact name: "gocalc-approve" must not match a button "Approve"). */
+/** Open a project from the sidebar's Projects list: its Work, with its tab bar (decision P141). */
 export async function switchProject(page: Page, name: string): Promise<void> {
-  await projectSwitcher(page).click();
-  await page.getByRole('menuitemradio', { name, exact: true }).click();
-  await expect(projectSwitcher(page)).toContainText(name);
+  await projectItem(page, name).click();
+  await expect(projectItem(page, name)).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The new-project wizard: the first run shows it directly; later runs open it from the switcher's "New project…". */
-export async function showNewProjectForm(page: Page): Promise<void> {
-  const field = page.getByLabel('Project name', { exact: true });
-  await field.or(projectSwitcher(page)).first().waitFor();
-  if (!(await field.isVisible())) {
-    await projectSwitcher(page).click();
-    // by the keyboard, as a person can: with many projects "New project…" is far down the menu's scroll, and on the
-    // Windows runner a click did not scroll it into view (End is App settings, the last item; New project… is above it)
-    const item = page.getByRole('menuitem', { name: 'New project…', exact: true });
-    await expect(page.getByRole('menu', { name: 'Projects' })).toBeVisible();
-    await page.keyboard.press('End');
-    await page.keyboard.press('ArrowUp');
-    await expect(item).toHaveAttribute('data-highlighted', 'true');
-    await page.keyboard.press('Enter');
-  }
-  await expect(field).toBeVisible();
-}
-
-/** The wizard's Next button. */
-export async function wizardNext(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+/** A call of the core's RPC with the harness's token (what the page itself sends), for a spec's setup. */
+export async function rpc<T = unknown>(page: Page, method: string, data: unknown = {}): Promise<T> {
+  const url = new URL(appUrl());
+  const r = await page.request.post(`${url.origin}/rpc/${method}`, { headers: { 'X-Drydock-Token': url.searchParams.get('token') ?? '' }, data });
+  if (!r.ok()) throw new Error(`${method}: ${await r.text()}`);
+  return ((await r.json()) as { result: T }).result;
 }
 
 /**
- * Walk the open wizard to its Review step: Basics (the name, when given), Repository (a local folder, or Later), no
- * connectors, and an empty team (the suggested agents are removed: tests add their own agents on the Crew page).
+ * Home's New project dialog (decision P143), opened from its button; the page is loaded first when the browser is not on the
+ * app yet. The old wizard's address (/project/new) opens the same dialog.
  */
-export async function wizardToReview(page: Page, opts: { name?: string; repo?: string; later?: boolean }): Promise<void> {
-  if (opts.name) await page.getByLabel('Project name', { exact: true }).fill(opts.name);
-  await wizardNext(page);
-  const source = page.getByRole('radiogroup', { name: 'Repository source' });
-  if (opts.later) {
-    await source.getByRole('radio', { name: 'Later' }).check();
-  } else {
-    await source.getByRole('radio', { name: 'Local folder' }).check();
-    await page.getByLabel('Repository path').fill(opts.repo ?? freshRepo());
-  }
-  await wizardNext(page); // Connectors
-  await wizardNext(page); // Team
-  await expect(page.getByTestId('team-list')).toHaveAttribute('data-ready', 'true');
-  const removeAll = page.getByRole('button', { name: 'Remove all', exact: true });
-  if (await removeAll.isVisible()) await removeAll.click();
-  await expect(page.getByTestId('team-member')).toHaveCount(0);
-  await wizardNext(page); // Review
-  await expect(page.locator('form[data-step="Review"]')).toBeVisible();
+export async function openNewProject(page: Page): Promise<void> {
+  const dialog = page.getByTestId('new-project-dialog');
+  if (await dialog.isVisible()) return;
+  if (!page.url().startsWith('http')) await page.goto(appUrl()); // a page already on an app (the licensed harness's too) stays on it
+  await sidebar(page).waitFor();
+  if (!(await page.getByTestId('home-new-project').isVisible())) await page.goto(new URL('/home', page.url()).toString());
+  await page.getByTestId('home-new-project').click();
+  await expect(dialog).toBeVisible();
 }
 
-/** Create from the Review step and open the new project. */
-export async function wizardCreate(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: 'Open project' }).click();
+/**
+ * Makes a project through the core, as the old wizard did with its defaults (project.setup: a local repository or none, no
+ * connectors, local merge) and no agents (specs add their own on the Crew page), then opens it on its Work. Specs that are about
+ * making a project use the New project dialog itself (start.spec.ts, workspace.spec.ts).
+ */
+async function setupProject(page: Page, req: { name: string; brief?: string; repo: { kind: 'local'; path: string } | { kind: 'none' } }): Promise<void> {
+  await rpc(page, 'project.setup', { name: req.name, brief: req.brief ?? '', repo: req.repo, mode: 'local_merge', libraryServers: [], catalogServers: [], agents: [], installSkills: true });
+  await page.goto(appUrl());
+  await switchProject(page, req.name);
+  // the new project opens on its Work (decision P141)
+  await expect(page.getByTestId('work')).toBeVisible();
 }
 
 /** A fresh repository whose baseline tests pass and that carries a repository skill (.aet/skills/go-style). */
@@ -208,26 +209,18 @@ export function freshGreenRepo(): string {
 /** A folder with one Markdown page, for an expert pack of type local_dir. */
 export const docsDir = (): string => process.env.DRYDOCK_E2E_DOCS ?? '';
 
-/** Open the app with the token, create a project for a fresh repo (or the one given), and return its name. */
+/** Open the app with the token, create a project for a fresh repo (or the one given), and open it. */
 export async function createProject(page: Page, name: string, repo?: string): Promise<void> {
-  await page.goto(appUrl());
-  await showNewProjectForm(page);
-  await wizardToReview(page, { name, repo: repo ?? freshRepo() });
-  await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+  await setupProject(page, { name, repo: { kind: 'local', path: repo ?? freshRepo() } });
 }
 
 /**
- * Open the app and create a project with no repository (the wizard's "Later"). It takes none of the harness's fresh repositories
- * (REPOS in global-setup.ts is a fixed pool), so a spec that only needs a project to stand in, to reach the shell and its pages
- * or to hold tasks that the core makes, does not use one up.
+ * Open the app and create a project with no repository (a repository is attached later in Project settings). It takes none of the
+ * harness's fresh repositories (REPOS in global-setup.ts is a fixed pool), so a spec that only needs a project to stand in, to
+ * reach the shell and its pages or to hold tasks that the core makes, does not use one up.
  */
-export async function createProjectWithoutRepo(page: Page, name: string): Promise<void> {
-  await page.goto(appUrl());
-  await showNewProjectForm(page);
-  await wizardToReview(page, { name, later: true });
-  await wizardCreate(page);
-  await expect(roomLink(page, 'general')).toBeVisible();
+export async function createProjectWithoutRepo(page: Page, name: string, brief = ''): Promise<void> {
+  await setupProject(page, { name, brief, repo: { kind: 'none' } });
 }
 
 /**
@@ -288,14 +281,40 @@ export async function optionsOf(control: Locator, value?: string): Promise<Locat
  * page, the dialog and reaching its first field is one step that is retried as a whole.
  */
 export async function openNewAgent(page: Page, nav = true): Promise<void> {
-  const form = page.locator('dialog[open]').getByTestId('agent-form');
+  const dialog = page.locator('dialog[open]');
+  const form = dialog.getByTestId('agent-form');
   await expect(async () => {
     if (!(await form.isVisible())) {
-      if (nav) await projectNav(page, 'nav-team');
-      await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+      if (!(await dialog.getByTestId('new-agent-configure').isVisible())) {
+        if (nav) await projectNav(page, 'nav-team');
+        await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+      }
+      // New agent opens on Describe (decision P138); the full form is the Configure tab
+      await dialog.getByTestId('new-agent-configure').click({ timeout: 5_000 });
     }
     await expect(form.getByLabel('Agent name')).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
+}
+
+/** Opens New agent on its Describe tab (decision P138). */
+export async function openDescribeAgent(page: Page, nav = true): Promise<void> {
+  const box = page.locator('dialog[open]').getByTestId('describe-agent');
+  await expect(async () => {
+    if (!(await box.isVisible())) {
+      if (nav) await projectNav(page, 'nav-team');
+      await page.getByRole('button', { name: /^New agent/ }).click({ timeout: 5_000 });
+    }
+    await expect(box.getByLabel('What should this agent do?')).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
+}
+
+/** Opens the agent editor panel from the model chip of an agent's Crew card (decision P137). */
+export async function openAgentPanel(page: Page, name: string, nav = true): Promise<Locator> {
+  if (nav) await projectNav(page, 'nav-team');
+  await page.locator(`[data-testid="agent"][data-name="${name}"]`).getByTestId('agent-model-chip').click();
+  const panel = page.locator('dialog[open]').getByTestId('agent-editor');
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
 /** On an agent's own page, opens the Inspector from the "..." menu beside Message and Edit. */

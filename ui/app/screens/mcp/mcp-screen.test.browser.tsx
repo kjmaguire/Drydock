@@ -321,7 +321,7 @@ describe("the MCP servers of one project, on the project's Integrations page", (
       if (!el) throw new Error('not yet');
       return el as HTMLElement;
     }, r);
-    expect(line.querySelector('a[href="/project/new"]')).not.toBeNull();
+    expect(line.querySelector('a[href="/home?new=project"]')).not.toBeNull();
     // connecting needs no project: the line points to the workspace's Integrations page
     expect(line.querySelector('a[href="/integrations"]')).not.toBeNull();
     expect(r.$('[data-testid="mcp-approvals"]')).toBeNull();

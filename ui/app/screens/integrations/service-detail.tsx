@@ -20,6 +20,7 @@ import type {
 } from '../../api/extTypes.ts';
 import { formatDateTime, plural } from '../../lib/format.ts';
 import { routes } from '../../routes.ts';
+import { newProjectHref } from '../../shell/new.ts';
 import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -844,7 +845,7 @@ function ConnectedService(
                 )}
               />
             ) : projects.length === 0 ? (
-              <a href={routes.projectNew.href()} mix={buttonStyle('ghost', 'sm')}>
+              <a href={newProjectHref()} mix={buttonStyle('ghost', 'sm')}>
                 Create a project
               </a>
             ) : undefined

@@ -117,12 +117,15 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: Task) => void }
     const current = list.find((x) => x.id === taskId);
     return (
       <Page title="Pull requests" icon={GitPullRequest} subtitle={list.length > 0 ? `${list.length} open from tasks` : undefined} guide="delivery">
-        <Section title="Pull requests of tasks" description="A finished task is pushed and a pull request opened. It merges after its CI passed and you approved.">
+        {/* said once (decision P144): the section's line while there are pull requests, the empty state's while there are none */}
+        <Section title="Pull requests of tasks" description={list.length > 0 ? 'A finished task is pushed and a pull request opened. It merges after its CI passed and you approved.' : undefined}>
           <ErrorNote error={s.project.tasks.error} what="Could not load tasks" />
           <TaskTotalNotice>The pull requests of older tasks are not listed here.</TaskTotalNotice>
           {list.length === 0 ? (
             <Empty title="No task has a pull request" icon={GitPullRequest}>
-              <p>In pull request mode (Project settings), a finished task is pushed and a PR is opened. It appears here with its CI and reviews.</p>
+              <p data-testid="pulls-empty-line">
+                A finished task opens one when the project delivers by pull request (<a href={routes.project.href()}>Project settings</a>).
+              </p>
             </Empty>
           ) : (
             <>

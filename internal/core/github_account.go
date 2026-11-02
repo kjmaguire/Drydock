@@ -185,6 +185,19 @@ func DefaultCloneDir() string {
 	return filepath.Join(home, "source", "repos")
 }
 
+// settingCloneDir is the folder the person last cloned a repository into (decision P143): the next clone starts there.
+const settingCloneDir = "github.lastCloneDir"
+
+// GitHubCloneDir is the folder a clone starts in: the one the person last cloned into, while it is a full path, else
+// DefaultCloneDir.
+func (c *Core) GitHubCloneDir(ctx context.Context) string {
+	var v string
+	if err := c.DB.Reader().QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, settingCloneDir).Scan(&v); err == nil && filepath.IsAbs(v) {
+		return v
+	}
+	return DefaultCloneDir()
+}
+
 // GitHubClone clones owner/name into parentDir/name with the user's own `gh` (their sign-in, nothing stored by Drydock) and
 // returns the new repository's path, ready for project.create or project.attachRepo.
 func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (CloneResult, error) {
@@ -235,6 +248,9 @@ func (c *Core) GitHubClone(ctx context.Context, fullName, parentDir string) (Clo
 	root, branch, err := c.openProjectRepo(ctx, dest)
 	if err != nil {
 		return CloneResult{}, err
+	}
+	if err := c.setSetting(ctx, settingCloneDir, parentDir); err != nil {
+		c.logf("remembering the clone folder: %v", err)
 	}
 	c.publish(ctx, "github.cloned", "", map[string]any{"repo": fullName})
 	return CloneResult{Path: root, DefaultBranch: branch}, nil

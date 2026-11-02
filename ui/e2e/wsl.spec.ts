@@ -12,7 +12,7 @@ test('Agents: Claude Code inside a WSL distro is its own row with its own sign-i
   test.skip(!distro(), 'the stand-in WSL runs only on a Linux host');
   await createProject(page, 'gocalc-wsl-conn');
   await workspaceNav(page, 'nav-connections');
-  await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent CLIs' })).toBeVisible();
   // a row of its own in the list, "Claude Code WSL" without the distro (the detail's Runs fact names it); the row opens its
   // detail beside the list and puts it in the address
   const row = page.locator(`[data-testid=agent-row][data-key="claude@wsl:${distro()}"]`);
@@ -115,6 +115,7 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   // New chat opens a chat with no project at once (decision P107); its agent CLI is chosen in the chat's Properties
   await page.getByTestId('chat-new').click();
   await expect(page).toHaveURL(/\/chats\/chat_/);
+  await page.getByTestId('chat-more').click();
   await page.getByRole('button', { name: 'Properties' }).click();
   const dialog = page.getByRole('dialog', { name: 'Chat properties' });
   // the distro's install is its own choice, named as on the Agents page
@@ -130,9 +131,11 @@ test('Chats: a chat with no project runs Claude Code inside the WSL distro, in a
   const chatId = page.url().split('/').pop() ?? '';
   await expect(page.getByTestId('chip-adapter')).toContainText('Claude Code WSL');
   await expect(page.getByTestId('chip-adapter')).toHaveAttribute('title', `Runs inside the WSL distro ${distro()}`);
-  // the header (graphite, P97): the folder as the distro names it (a Linux path, its middle cut when long: the stand-in's home is
-  // a temporary folder), and where the chat runs in words
-  await expect(page.getByTestId('chat-folder')).toHaveText(new RegExp(`^[~/][^\\\\]*/chats/${chatId}$`));
+  // the header (graphite, P97): its private folder is "Own folder" with the path in the tooltip (decision P144), and where the
+  // chat runs in words
+  await expect(page.getByTestId('chat-folder')).toHaveText('Own folder');
+  await expect(page.getByTestId('chat-folder')).toHaveAttribute('title', new RegExp(`chats[\\\\/]${chatId}$`));
+  await page.getByTestId('chat-more').click();
   await expect(page.getByTestId('chat-place')).toHaveText('No project · runs inside the distro');
   // the private folder inside the distro, named the Windows way
   await page.getByRole('button', { name: 'Properties' }).click();

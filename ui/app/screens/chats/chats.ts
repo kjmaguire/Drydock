@@ -365,6 +365,16 @@ export function folderText(c: Pick<Chat, 'cwd' | 'wslDistro'>, max = 48): string
   return shortPath(p, max);
 }
 
+/**
+ * The header's folder chip (decision P139): the project's name for a project chat; "Own folder" for a chat in its private
+ * folder, whose path (the core's data folder, chats/<id>) says nothing to the person (decision P144); else the folder chosen,
+ * as its CLI sees it. The full path is the chip's tooltip either way.
+ */
+export function folderChipText(c: Pick<Chat, 'id' | 'cwd' | 'wslDistro'>, projectName?: string): string {
+  if (projectName) return projectName;
+  return inOwnFolder(c) ? 'Own folder' : folderText(c);
+}
+
 /** The command a waiting request would run, or '' when it is not a shell command. */
 export function askCommandOf(a: { input?: unknown }): string {
   const f = a.input && typeof a.input === 'object' && !Array.isArray(a.input) ? (a.input as Record<string, unknown>) : {};
@@ -388,4 +398,17 @@ export function ruleWords(rule: string): string {
   const m = /^Bash\((.*)\)$/s.exec(rule);
   const w = m ? m[1]!.trim() : rule;
   return w.length > 40 ? `${w.slice(0, 39)}…` : w;
+}
+
+/**
+ * The one warning the chat's header shows about its CLI (decision P139), or '' when all is well: the CLI on this PC is missing,
+ * of a version that cannot run or not signed in, or the last turn failed. A chat in WSL is not judged by the Windows install.
+ */
+export function cliWarning(c: Pick<Chat, 'adapter' | 'wslDistro' | 'status'>, adapter: AdapterInfo | undefined): string {
+  if (adapter && !c.wslDistro) {
+    const why = adapterUnavailable(adapter);
+    if (why) return `${adapterLabel(c.adapter)} ${why}`;
+    if (adapter.detection.status === 'unauthenticated') return `${adapterLabel(c.adapter)} not signed in`;
+  }
+  return c.status === 'error' ? 'Last turn failed' : '';
 }

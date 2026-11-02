@@ -108,6 +108,22 @@ func (s *Service) Check(ctx context.Context, id string) (Connection, error) {
 	return c, nil
 }
 
+// Gates is the acknowledgement state of an adapter's gates, read from its manifest and the acknowledgements alone: unlike
+// Check it starts no CLI, so a caller that only needs to know whether a gate is owed (chat.create, chat.update) answers at
+// once even when the CLI is missing, slow to start or hangs (P139: New chat sat on "Starting..." while the CLI was probed).
+func (s *Service) Gates(id string) ([]GateStatus, error) {
+	m, ok := s.Registry.Set.Get(id)
+	if !ok {
+		return nil, fmt.Errorf("no manifest for adapter %q", id)
+	}
+	o := s.options()
+	g := gates(m, o)
+	for i := range g {
+		g[i].Changed = !g[i].Acked && o.Reasked[g[i].ID]
+	}
+	return g, nil
+}
+
 // Detect computes the Detection for one adapter id.
 func (s *Service) Detect(ctx context.Context, id string) (agents.Detection, error) {
 	c, err := s.Check(ctx, id)

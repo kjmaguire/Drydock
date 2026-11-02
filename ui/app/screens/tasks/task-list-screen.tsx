@@ -1,4 +1,4 @@
-// The project board (graphite, decision P97): the project's colour square and name, the views Board / List / Timeline, the
+// The project board (graphite, decision P97; titled Tasks under the project's tab bar, P144): the views Board / List / Timeline, the
 // filters Agent, Label and Needs me, what the crew is doing ("2 agents working · 1 waiting on you") and New task (C). The board
 // has five columns read off each task's step (task.summaries): Spec, Building, Checks, Review and Merged, with the tasks that
 // failed or were cancelled in a quiet Stopped list under Merged. A card is a link to its task: its key, a tag (waiting on you,
@@ -19,7 +19,7 @@ import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle, IconButton } from '../../ui/button.tsx';
-import { Avatar, hueFor, OriginBadge } from '../../ui/data.tsx';
+import { Avatar, OriginBadge } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { errorAttrs, Field, formActions } from '../../ui/form.tsx';
@@ -100,7 +100,6 @@ function isShortcut(e: KeyboardEvent, key: string): boolean {
 
 // --- the bar ---
 
-const squareCss = css({ display: 'inline-block', flex: 'none', width: '10px', height: '10px', borderRadius: '3px' });
 
 const chipsCss = css({ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' });
 
@@ -819,7 +818,6 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
   };
 
   return () => {
-    const project = s.workspace.project;
     const agents = s.project.agentList;
     const presence = s.project.presence.data;
     const data = summaries.data;
@@ -914,8 +912,9 @@ export function TaskListScreen(handle: Handle<{ onNavigate?: (href: string) => v
 
     return (
       <Page
-        title={project?.name ?? 'Tasks'}
-        mark={<span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(project?.id ?? pid())} 62% 62%)` }} />}
+        // "Tasks": the project's name and colour are the tab bar's, right above (decision P144: it was said twice)
+        title="Tasks"
+        icon={ClipboardList}
         bar={bar}
         actions={actions}
         wide

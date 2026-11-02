@@ -52,17 +52,25 @@ test("the Inbox approves a worker's permission request for its task, and the run
   await expect(page.locator('main')).toContainText('curl https://example.com');
 });
 
-test('the Running tab and My tasks are the workspace pages the sidebar links', async ({ page }) => {
+test('Running and Mine (My tasks) are tabs of the Inbox, and their old addresses open them (decision P140)', async ({ page }) => {
   await createProjectWithoutRepo(page, 'mine-inbox');
-  await sidebar(page).getByTestId('nav-running').click();
+  await expect(sidebar(page).getByTestId('nav-running')).toHaveCount(0);
+  await expect(sidebar(page).getByTestId('nav-my-tasks')).toHaveCount(0);
+  await sidebar(page).getByTestId('nav-needs-you').click();
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /^Running/ })).toHaveAttribute('aria-selected', 'true');
-  await expect(sidebar(page).getByTestId('nav-running')).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('tab', { name: /^Running/ }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Running' })).toBeVisible();
+  await expect(sidebar(page).getByTestId('nav-needs-you')).toHaveAttribute('aria-current', 'page');
   await page.getByRole('tab', { name: /^Done today/ }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Done today' })).toBeVisible();
-  await expect(sidebar(page).getByTestId('nav-needs-you')).toHaveAttribute('aria-current', 'page');
-  await sidebar(page).getByTestId('nav-my-tasks').click();
-  await expect(page.getByRole('heading', { level: 1, name: 'My tasks' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Mine' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'My tasks' })).toBeVisible();
   // another spec may have handed a task to the person: either the list or the plain empty state
   await expect(page.getByTestId('my-task').or(page.getByText('No task is assigned to you')).first()).toBeVisible();
+  // the old addresses open the same tabs
+  await page.goto(new URL('/my-tasks', page.url()).toString());
+  await expect(page.getByRole('tab', { name: 'Mine' })).toHaveAttribute('aria-selected', 'true');
+  await expect(sidebar(page).getByTestId('nav-needs-you')).toHaveAttribute('aria-current', 'page');
+  await page.goto(new URL('/needs-you?tab=running', page.url()).toString());
+  await expect(page.getByRole('tab', { name: /^Running/ })).toHaveAttribute('aria-selected', 'true');
 });

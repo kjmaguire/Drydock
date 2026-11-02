@@ -237,6 +237,16 @@ export function needsSubtitle(it: NeedsYouItem, projectName: string | undefined,
  */
 export const canAck = (it: Pick<NeedsYouItem, 'key'>): boolean => /^(question|check|watchdog|budget|mention|agent):/.test(it.key);
 
+/**
+ * The running tasks the Needs you tab lists under its items (decision P144): those without an item of their own there. A task
+ * waiting for the person's approval is still "running" for the core, so it was listed twice on one page. The Running tab and
+ * its count keep every running task.
+ */
+export function runningBesideNeeds<T extends Pick<TaskSummary, 'taskId'>>(running: readonly T[], needs: readonly Pick<NeedsYouItem, 'taskId'>[]): T[] {
+  const named = new Set(needs.map((n) => n.taskId).filter((id): id is string => !!id));
+  return running.filter((r) => !named.has(r.taskId));
+}
+
 /** The agent's latest step as a row says it after the title: "editing limiter.go". */
 export const doingWords = (doing: string | undefined): string => (doing ? doing.charAt(0).toLowerCase() + doing.slice(1) : '');
 

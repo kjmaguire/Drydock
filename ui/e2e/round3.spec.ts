@@ -87,7 +87,10 @@ test('economics: a budget is set and listed, the evals report renders, routing r
   await expect(tel.getByTestId('telemetry-status')).toHaveAttribute('data-tone', 'ok');
   await tel.getByRole('button', { name: 'Turn telemetry off' }).click();
   await expect(tel.getByRole('button', { name: 'Turn telemetry on' })).toBeVisible();
-  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core
+  // sending to a collector (decision P113): off with no endpoint; plain http to another computer is refused by the core. It is a
+  // step further until an endpoint is set (decision P144)
+  const more = tel.getByTestId('otlp-more');
+  if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
   const otlp = tel.getByTestId('otlp');
   await expect(otlp.getByTestId('otlp-status')).toContainText('Not sending: sending is off.');
   await expect(otlp.getByRole('button', { name: 'Send a test span' })).toBeDisabled();
@@ -375,12 +378,13 @@ test('every turn is routed: a routed agent answers in the room on the router\'s 
   await openAgentPage(page, 'Rita');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   const editor = page.getByTestId('agent-editor');
+  await editor.getByText('More settings').click();
   await editor.getByLabel("Let the router choose this agent's model for each turn").check();
   await choose(editor.getByLabel('Routed model 1', { exact: true }), 'haiku');
   await choose(editor.getByLabel('Tier of routed model 1', { exact: true }), 'cheap');
   await choose(editor.getByLabel('Routed model 2', { exact: true }), 'opus');
   await choose(editor.getByLabel('Tier of routed model 2', { exact: true }), 'premium');
-  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByTestId('agent-editor')).toHaveCount(0);
   await projectNav(page, 'nav-project');
   await page.getByLabel('Agents answer in channels and direct messages').check();

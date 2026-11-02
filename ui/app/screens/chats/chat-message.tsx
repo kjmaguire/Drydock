@@ -125,6 +125,10 @@ export interface ChatMessageProps {
   onEdit?: (seq: number, text: string) => Promise<boolean>;
   /** The newest answer can be asked for again (its question sent again unchanged). */
   onRegenerate?: () => void;
+  /** How long the agent thought before this row (0: not known), for its reasoning's line "Thought for 6 s" (P139). */
+  thoughtMs?: number;
+  /** A tool call's card is drawn open (a failed call in a burst, P139). */
+  toolOpen?: boolean;
 }
 
 const editCss = css({
@@ -169,7 +173,7 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
     void handle.update();
   };
   return () => {
-    const { m, head, adapter, allowedTools, latest, running, busy, ask, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate } = handle.props;
+    const { m, head, adapter, allowedTools, latest, running, busy, ask, onAllow, onRetry, onAllowAndRetry, onFork, onEdit, onRegenerate, thoughtMs, toolOpen } = handle.props;
     // the canned "continue" Drydock sends after an allow is a note of what happened, not words the person typed (P1-2)
     const retry = isRetryMessage(m);
     const role = retry ? 'system' : m.role;
@@ -201,9 +205,9 @@ export function ChatMessageRow(handle: Handle<ChatMessageProps>) {
           </div>
         ) : (
           <div mix={[contentCss, mine ? mineContent : undefined]}>
-            {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} /> : null}
+            {m.thinking && (role === 'tool' || role === 'assistant') ? <ThinkingFold text={m.thinking} ms={thoughtMs} /> : null}
             {role === 'tool' ? (
-              <ToolCard m={m} summary={summaryOf(m)} running={running && latest} />
+              <ToolCard m={m} summary={summaryOf(m)} running={running && latest} open={toolOpen} />
             ) : role === 'denied' ? (
               <DeniedCallout m={m} adapter={adapter} allowedTools={allowedTools} latest={latest} running={running} busy={busy} onAllow={onAllow} onRetry={onRetry} onAllowAndRetry={onAllowAndRetry} />
             ) : mine && editing ? (

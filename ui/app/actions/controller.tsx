@@ -4,6 +4,7 @@
 import { createController } from 'remix/router';
 import type { AppContext } from '../router.tsx';
 import { routes } from '../routes.ts';
+import { newProjectHref } from '../shell/new.ts';
 
 /** The Integrations page, or one integration on it (/integrations/<key>). */
 async function integrations({ render, params }: Pick<AppContext, 'render'> & { params: { key?: string } }) {
@@ -13,9 +14,10 @@ async function integrations({ render, params }: Pick<AppContext, 'render'> & { p
 
 export const controller = createController(routes, {
   actions: {
-    async home({ render }) {
-      const { OverviewScreen } = await import('../screens/overview/overview-screen.tsx');
-      return render(<OverviewScreen />);
+    // a project's Work (decision P141): its tasks and chats, the one named in ?item= open in the centre
+    async home({ render, url }) {
+      const { WorkScreen } = await import('../screens/work/work-screen.tsx');
+      return render(<WorkScreen item={url.searchParams.get('item') ?? undefined} />);
     },
     async rooms({ render }) {
       const { RoomsScreen } = await import('../screens/rooms/rooms-screen.tsx');
@@ -33,9 +35,10 @@ export const controller = createController(routes, {
       const { NeedsYouScreen } = await import('../screens/needs-you/needs-you-screen.tsx');
       return render(<NeedsYouScreen tab={url.searchParams.get('tab') ?? undefined} />);
     },
+    // My tasks is the Inbox's Mine tab (decision P140); its address opens the Inbox on that tab
     async myTasks({ render }) {
-      const { MyTasksScreen } = await import('../screens/needs-you/my-tasks-screen.tsx');
-      return render(<MyTasksScreen />);
+      const { NeedsYouScreen } = await import('../screens/needs-you/needs-you-screen.tsx');
+      return render(<NeedsYouScreen tab="mine" />);
     },
     async tasks({ render }) {
       const { TaskListScreen } = await import('../screens/tasks/task-list-screen.tsx');
@@ -81,9 +84,10 @@ export const controller = createController(routes, {
       const { ProjectIntegrationsScreen } = await import('../screens/integrations/project-integrations-screen.tsx');
       return render(<ProjectIntegrationsScreen />);
     },
+    // an old address: the five-step wizard became Home's New project dialog (decision P143)
     async projectNew({ render }) {
-      const { ProjectCreateScreen } = await import('../screens/project/project-create-screen.tsx');
-      return render(<ProjectCreateScreen />);
+      const { Redirect } = await import('../shell/redirect.tsx');
+      return render(<Redirect to={newProjectHref()} />);
     },
     async plan({ render }) {
       const { PlanScreen } = await import('../screens/plan/plan-screen.tsx');
@@ -143,9 +147,14 @@ export const controller = createController(routes, {
       const { WorkspaceHomeScreen } = await import('../screens/workspace/workspace-home.tsx');
       return render(<WorkspaceHomeScreen />);
     },
+    // the Agents library (decision P140): My agents and Starters are one screen (one key, so a tab change keeps it), Skills its own
     async library({ render }) {
       const { LibraryScreen } = await import('../screens/library/library-screen.tsx');
-      return render(<LibraryScreen />);
+      return render(<LibraryScreen key="library" tab="mine" />);
+    },
+    async libraryStarters({ render }) {
+      const { LibraryScreen } = await import('../screens/library/library-screen.tsx');
+      return render(<LibraryScreen key="library" tab="starters" />);
     },
     async librarySkills({ render }) {
       const { SkillLibraryScreen } = await import('../screens/skills/skill-library-screen.tsx');
@@ -162,10 +171,10 @@ export const controller = createController(routes, {
       const { Redirect } = await import('../shell/redirect.tsx');
       return render(<Redirect to={routes.agents.href()} />);
     },
-    // GitHub is a row of Integrations (decision P106): the list stays beside its detail
+    // GitHub is a section of Settings (decision P140), and still a row of Integrations (P106)
     async github({ render }) {
-      const { Redirect } = await import('../shell/redirect.tsx');
-      return render(<Redirect to={routes.integrations.href({ key: 'github' })} />);
+      const { GitHubScreen } = await import('../screens/github/github-screen.tsx');
+      return render(<GitHubScreen />);
     },
     async securityScan({ render }) {
       const { WorkspaceSecurityScreen } = await import('../screens/security/workspace-security-screen.tsx');
@@ -204,9 +213,18 @@ export const controller = createController(routes, {
       const { LicenseScreen } = await import('../screens/license/license-screen.tsx');
       return render(<LicenseScreen />);
     },
+    // General, Shortcuts and About: three sections of the one Settings (decision P140)
     async settings({ render }) {
       const { SettingsScreen } = await import('../screens/settings/settings-screen.tsx');
-      return render(<SettingsScreen />);
+      return render(<SettingsScreen key="general" part="general" />);
+    },
+    async settingsShortcuts({ render }) {
+      const { SettingsScreen } = await import('../screens/settings/settings-screen.tsx');
+      return render(<SettingsScreen key="shortcuts" part="shortcuts" />);
+    },
+    async settingsAbout({ render }) {
+      const { SettingsScreen } = await import('../screens/settings/settings-screen.tsx');
+      return render(<SettingsScreen key="about" part="about" />);
     },
   },
 });

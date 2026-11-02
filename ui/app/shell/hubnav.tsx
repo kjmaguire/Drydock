@@ -1,20 +1,23 @@
-// What a hub shows beside the sidebar (graphite, decision P97; first drawn for Crew HQ, P64): a row of pills for a hub's sub-pages (Overview, Tasks,
-// Knowledge, Library), the Settings rail (the workspace's and the app's settings pages, grouped), and the Rooms rail (the
-// project's channels, task rooms and direct messages). Every page the old sidebar linked is reached from one of these, with
-// the same test id. A project's own settings (Project settings, its Integrations) are pills of its Overview, set apart at the
-// end of the row: they are the project's, so they are found inside the project, not behind the gear.
+// What a hub shows beside the sidebar (graphite, decision P97; first drawn for Crew HQ, P64): a project's tab bar (decision P141:
+// Work, Crew, Settings), a row of pills for a hub's sub-pages (the Agents library, a Settings section of more than one screen),
+// the Settings rail (decision P140: a title, a search box and the sections of shell/settings-sections.ts; a project's Settings
+// tab draws the same rail with shell/project-sections.ts) and the Rooms rail (the project's channels, task rooms and direct
+// messages). Every page the old sidebar and tabs linked is reached from one of these, with the same test id.
 
-import { css, type Handle, type RemixNode } from 'remix/component';
-import { BellOff, Settings2 } from 'lucide';
+import { css, on, type Handle, type RemixNode } from 'remix/component';
+import { BellOff, Plus, Search, Settings2 } from 'lucide';
 import type { Room } from '../api/types.ts';
 import { roomLabel } from '../lib/format.ts';
-import { hubOf, type Route } from '../lib/route.ts';
+import { hubOf, isProjectHub, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
-import { Avatar, presenceColor } from '../ui/data.tsx';
+import { buttonStyle } from '../ui/button.tsx';
+import { Avatar, hueFor, presenceColor } from '../ui/data.tsx';
 import { Icon, roomIcon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
 import { tightList } from '../ui/layout.tsx';
+import { PROJECT_SECTIONS } from './project-sections.ts';
+import { SETTINGS_SECTIONS, searchSettings, sectionOf, type SettingsSection } from './settings-sections.ts';
 
 const subCss = css({
   display: 'flex',
@@ -58,48 +61,78 @@ interface Pill {
   icon?: typeof Settings2;
 }
 
+// the hub's name, before its pills, where the hub is a page of its own rather than a tab of a project (Agents)
+const TITLE_CSS = css({ flex: 'none', margin: `0 ${t.s3} 0 0`, fontSize: t.textLg, fontWeight: '600', color: t.text });
+
 const PILLS: Partial<Record<ReturnType<typeof hubOf>, Pill[]>> = {
-  overview: [
-    { label: 'Overview', href: routes.home.href(), testId: 'nav-overview-home', on: ['home'] },
-    { label: 'Activity', href: routes.activity.href(), testId: 'nav-activity', on: ['activity'] },
-    { label: 'Budgets', href: routes.budgets.href(), testId: 'nav-budgets', on: ['budgets'] },
-    { label: 'Evals report', href: routes.evals.href(), testId: 'nav-evals', on: ['evals'] },
-    { label: 'Security', href: routes.security.href(), testId: 'nav-security', on: ['security'] },
-    // the project's own settings: moved here from the Settings rail, so they are found inside the project
-    { label: 'Project settings', href: routes.project.href(), testId: 'nav-project', on: ['project'], trailing: true, icon: Settings2 },
-    { label: 'Integrations', href: routes.projectIntegrations.href(), testId: 'nav-project-integrations', on: ['project-integrations'], trailing: true },
-  ],
-  tasks: [
-    { label: 'Board', href: routes.tasks.href(), testId: 'nav-tasks-board', on: ['tasks', 'task', 'task-new', 'run'] },
-    { label: 'Plan', href: routes.plan.href(), testId: 'nav-plan', on: ['plan'] },
-    { label: 'Pull requests', href: routes.pulls.href(), testId: 'nav-pulls', on: ['pulls'] },
-    { label: 'Milestones', href: routes.milestones.href(), testId: 'nav-milestones', on: ['milestones'] },
-  ],
-  knowledge: [
-    { label: 'Overview', href: routes.knowledge.href(), testId: 'nav-knowledge-home', on: ['knowledge'] },
-    { label: 'Requirements', href: routes.requirements.href(), testId: 'nav-requirements', on: ['requirements'] },
-    { label: 'Expert packs', href: routes.packs.href(), testId: 'nav-packs', on: ['packs'] },
-    { label: 'Skills', href: routes.skills.href(), testId: 'nav-skills', on: ['skills'] },
-    { label: 'Memory', href: routes.memory.href(), testId: 'nav-memory', on: ['memory'] },
-    { label: 'Repo map', href: routes.repoMap.href(), testId: 'nav-repo-map', on: ['repo-map'] },
+  // one Agents library (decision P140): the person's own agents (the templates), the prebuilt starters, the skills; every
+  // project's crew is set apart at the end
+  library: [
+    { label: 'My agents', href: routes.library.href(), testId: 'nav-library-mine', on: ['library'] },
+    { label: 'Starters', href: routes.libraryStarters.href(), testId: 'nav-library-starters', on: ['library-starters'] },
+    { label: 'Skills', href: routes.librarySkills.href(), testId: 'nav-library-skills', on: ['library-skills'] },
+    { label: 'All crews', href: routes.crew.href(), testId: 'nav-crew', on: ['crew'], trailing: true },
   ],
 };
 
-/** The pills of the route's hub, or nothing when the hub has one page. The trailing pills come after a gap and a hairline. */
+const HUB_TITLES: Partial<Record<ReturnType<typeof hubOf>, string>> = { library: 'Agents' };
+
+/** A Settings section's screens as pills, when it has more than one (Backups & data, Help & about; a project's Knowledge). */
+function settingsPills(route: Route, sections: readonly SettingsSection[] = SETTINGS_SECTIONS): Pill[] | undefined {
+  const sec = sectionOf(route, sections);
+  if (!sec || sec.pages.length < 2) return undefined;
+  return sec.pages.map((p) => ({ label: p.label, href: p.href, testId: p.testId, on: [...p.on] }));
+}
+
+/** A pill: a link to one of the hub's pages, marked when the route is one of its pages. */
+function pillLink(p: Pill, route: Route): RemixNode {
+  return (
+    <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
+      {p.icon ? <Icon icon={p.icon} size={14} /> : null}
+      {p.label}
+    </a>
+  );
+}
+
+/**
+ * The screens of the open Settings section as pills, when it has more than one (Backups & data, Help & about; a project's
+ * Knowledge, Plan & milestones). The shell draws them over the page, beside the Settings rail, so the rail stays in the same
+ * place on every section (decision P144; above the rail, they pushed it down a row on those sections only).
+ */
+export function SectionPills(handle: Handle<{ route: Route }>) {
+  return () => {
+    const { route } = handle.props;
+    const hub = hubOf(route);
+    const pills = hub === 'settings' ? settingsPills(route) : hub === 'project-settings' ? settingsPills(route, PROJECT_SECTIONS) : undefined;
+    if (!pills) return null;
+    return (
+      <nav aria-label="Section" mix={subCss} data-testid="section-pills">
+        {pills.map((p) => pillLink(p, route))}
+      </nav>
+    );
+  };
+}
+
+/**
+ * What goes over the page and its rail: a project's tab bar, and the pills of a hub without a rail (the Agents library), or
+ * nothing when the hub has one page. The trailing pills come after a gap and a hairline. A Settings section's pills are
+ * SectionPills, beside the rail.
+ */
 export function SubNav(handle: Handle<{ route: Route }>) {
   return () => {
     const { route } = handle.props;
-    const pills = PILLS[hubOf(route)];
-    if (!pills) return null;
+    const hub = hubOf(route);
+    const tabs = isProjectHub(hub) ? <ProjectTabs route={route} /> : null;
+    const pills = PILLS[hub];
+    if (!pills) return tabs;
+    const title = HUB_TITLES[hub];
     const first = pills.findIndex((p) => p.trailing);
-    const pill = (p: Pill) => (
-      <a key={p.testId} href={p.href} mix={pillCss} data-testid={p.testId} aria-current={p.on.includes(route.name) ? 'page' : undefined}>
-        {p.icon ? <Icon icon={p.icon} size={14} /> : null}
-        {p.label}
-      </a>
-    );
+    const pill = (p: Pill) => pillLink(p, route);
     return (
+      <>
+      {tabs}
       <nav aria-label="Section" mix={subCss}>
+        {title ? <span mix={TITLE_CSS}>{title}</span> : null}
         {(first < 0 ? pills : pills.slice(0, first)).map(pill)}
         {first >= 0 ? (
           <>
@@ -107,6 +140,80 @@ export function SubNav(handle: Handle<{ route: Route }>) {
             <span mix={dividerCss} aria-hidden="true" />
             {pills.slice(first).map(pill)}
           </>
+        ) : null}
+      </nav>
+      </>
+    );
+  };
+}
+
+// --- a project's tab bar (decision P141) --------------------------------------------------------------------------------
+
+const tabBar = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '2px',
+  flex: 'none',
+  minHeight: '48px',
+  padding: `${t.s2} ${t.s5}`,
+  borderBottom: `1px solid ${t.border}`,
+  background: t.bgApp,
+  overflowX: 'auto',
+  '& > .name': { display: 'inline-flex', alignItems: 'center', gap: t.s2, flex: 'none', maxWidth: '240px', margin: `0 ${t.s4} 0 0`, fontSize: t.textLg, fontWeight: '600', color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  '& > .name > i': { display: 'inline-block', flex: 'none', width: '10px', height: '10px', borderRadius: '3px' },
+  '& > .end': { display: 'flex', alignItems: 'center', gap: t.s2, marginLeft: 'auto', paddingLeft: t.s3 },
+});
+const tabCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  height: '30px',
+  padding: `0 ${t.s3}`,
+  borderRadius: t.rMd,
+  color: t.textMuted,
+  fontSize: t.textMd,
+  fontWeight: '500',
+  textDecoration: 'none',
+  whiteSpace: 'nowrap',
+  '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
+  '&[aria-current="page"]': { background: t.bgActive, color: t.text },
+  '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
+});
+
+/**
+ * A project's one tab bar (decision P141): its name, then Work (the project's tasks and chats, "/"), Crew (/team) and Settings
+ * (/project and the pages that left the old tabs), and on Work's own page New task. The tabs keep the test ids the old project
+ * tabs had: nav-overview is Work, nav-team is Crew.
+ */
+export function ProjectTabs(handle: Handle<{ route: Route }>) {
+  const s = services(handle);
+  watch(handle, s.workspace);
+  return () => {
+    const { route } = handle.props;
+    const hub = hubOf(route);
+    const project = s.workspace.project;
+    const tab = (id: string, label: string, href: string, current: boolean) => (
+      <a href={href} mix={tabCss} data-testid={id} aria-current={current ? 'page' : undefined}>
+        {label}
+      </a>
+    );
+    return (
+      <nav aria-label="Project" mix={tabBar} data-testid="project-tabs">
+        {project ? (
+          <span class="name" title={project.name} data-testid="project-name">
+            <i aria-hidden="true" style={{ background: `hsl(${hueFor(project.id)} 62% 62%)` }} />
+            {project.name}
+          </span>
+        ) : null}
+        {tab('nav-overview', 'Work', routes.home.href(), hub === 'work')}
+        {tab('nav-team', 'Crew', routes.team.href(), hub === 'crew')}
+        {tab('nav-project-settings', 'Settings', routes.project.href(), hub === 'project-settings')}
+        {route.name === 'home' ? (
+          <span class="end">
+            <a href={routes.taskNew.href()} mix={buttonStyle('secondary', 'sm')} data-testid="work-new-task">
+              <Icon icon={Plus} size={14} />
+              New task
+            </a>
+          </span>
         ) : null}
       </nav>
     );
@@ -170,41 +277,99 @@ function Group(handle: Handle<{ title: string; children?: RemixNode }>) {
   );
 }
 
-function RailLink(handle: Handle<{ href: string; current: boolean; testId: string; label: string }>) {
-  return () => {
-    const { href, current, testId, label } = handle.props;
-    return (
-      <li>
-        <a href={href} mix={itemCss} data-testid={testId} aria-current={current ? 'page' : undefined}>
-          <span class="label">{label}</span>
-        </a>
-      </li>
-    );
-  };
-}
+const searchBox = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: t.s2,
+  height: '32px',
+  margin: `0 0 ${t.s3}`,
+  padding: `0 ${t.s2}`,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.rMd,
+  background: t.bgSurface,
+  color: t.textFaint,
+  '&:focus-within': { borderColor: t.accent, boxShadow: t.focus },
+  '& > input': { flex: '1', minWidth: '0', height: '30px', padding: '0', border: '0', background: 'transparent', color: t.text, fontSize: t.textMd, outline: 'none', boxShadow: 'none' },
+});
+const railTitle = css({ margin: `0 ${t.s2} ${t.s3}`, fontSize: t.textLg, fontWeight: '600' });
+const hitRows = css({ listStyle: 'none', margin: `0 0 ${t.s1}`, padding: '0' });
+const hitRow = css({
+  display: 'block',
+  padding: `3px ${t.s2} 3px ${t.s5}`,
+  borderRadius: t.rMd,
+  color: t.textFaint,
+  fontSize: t.textSm,
+  textDecoration: 'none',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
+});
+const noHit = css({ margin: `${t.s2}`, color: t.textMuted, fontSize: t.textSm });
 
 /**
- * The Settings rail: the workspace's pages and the app's. Nothing of one project is here: Project settings and a project's
- * Integrations are pills of the project's Overview.
+ * The Settings frame's left list (decision P140): "Settings", a search box that keeps the sections whose title or rows match
+ * (and lists the rows it found under each), then the sections (shell/settings-sections.ts). Every section keeps its old test
+ * id (nav-side-agents is Agent CLIs, nav-settings-about is General). Nothing of one project is here: Project settings and a
+ * project's Integrations are pills of the project's Overview.
  */
-export function SettingsRail(handle: Handle<{ route: Route }>) {
+export function SettingsRail(handle: Handle<{ route: Route; sections?: readonly SettingsSection[]; title?: string }>) {
+  let q = '';
   return () => {
-    const { route } = handle.props;
-    const at = (...names: Route['name'][]) => names.includes(route.name);
+    const { route, sections = SETTINGS_SECTIONS, title = 'Settings' } = handle.props;
+    const current = sectionOf(route, sections);
+    const hits = searchSettings(q, sections);
     return (
-      <nav aria-label="Settings" mix={[railCss, settingsRailCss]}>
-        <Group title="Workspace">
-          {/* Agents, Integrations (GitHub among them) and Models are the sidebar's own pages (decision P98) */}
-          <RailLink href={routes.routing.href()} current={at('routing')} testId="nav-routing" label="Routing" />
-        </Group>
-        <Group title="App">
-          <RailLink href={routes.settings.href()} current={at('settings')} testId="nav-settings-about" label="Settings and about" />
-          <RailLink href={routes.license.href()} current={at('license')} testId="nav-license" label="License" />
-          <RailLink href={routes.backups.href()} current={at('backups')} testId="nav-backups" label="Backups" />
-          <RailLink href={routes.data.href()} current={at('data')} testId="nav-data" label="Export and import" />
-          <RailLink href={routes.support.href()} current={at('support')} testId="nav-support" label="Support bundle" />
-          <RailLink href={routes.guide.href()} current={at('guide')} testId="nav-guide" label="Guide" />
-        </Group>
+      <nav aria-label={title} mix={[railCss, settingsRailCss]} data-testid={sections === SETTINGS_SECTIONS ? undefined : 'project-settings-rail'}>
+        <h2 mix={railTitle}>{title}</h2>
+        <label mix={searchBox}>
+          <Icon icon={Search} size={14} />
+          <input
+            type="search"
+            value={q}
+            placeholder={`Search ${title.toLowerCase()}`}
+            aria-label={`Search ${title.toLowerCase()}`}
+            data-testid="settings-search"
+            mix={[
+              on('input', (e) => {
+                q = (e.currentTarget as HTMLInputElement).value;
+                void handle.update();
+              }),
+              on('keydown', (e) => {
+                if (e.key === 'Escape' && q) {
+                  e.stopPropagation();
+                  q = '';
+                  void handle.update();
+                }
+              }),
+            ]}
+          />
+        </label>
+        {hits.length === 0 ? (
+          <p mix={noHit} data-testid="settings-no-match">
+            No setting matches "{q}".
+          </p>
+        ) : null}
+        <ul mix={listCss} aria-label="Sections">
+          {hits.map(({ section, rows }) => (
+            <li key={section.id} data-section={section.id}>
+              <a href={section.href} mix={itemCss} data-testid={section.testId} aria-current={current?.id === section.id ? 'page' : undefined}>
+                <span class="label">{section.title}</span>
+              </a>
+              {rows.length ? (
+                <ul mix={hitRows} aria-label={`${section.title}: what matches`}>
+                  {rows.map((row) => (
+                    <li key={row}>
+                      <a href={section.pages.find((p) => p.label === row)?.href ?? section.href} mix={hitRow} data-testid="settings-hit">
+                        {row}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       </nav>
     );
   };
@@ -212,7 +377,7 @@ export function SettingsRail(handle: Handle<{ route: Route }>) {
 
 /**
  * A room's link: an icon (or the agent's dot for a direct message), the name, and a quiet unread count. Rooms are named
- * without "#", so the link's accessible name starts with the room name. Shared by the Rooms rail and the Overview's rooms card.
+ * without "#", so the link's accessible name starts with the room name. Drawn by the Rooms rail.
  */
 export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
   const s = services(handle);
