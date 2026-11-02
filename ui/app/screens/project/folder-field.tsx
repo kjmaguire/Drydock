@@ -26,6 +26,8 @@ const checkCss = css({
   '&[data-state="inside"], &[data-state="no_branch"], &[data-state="not_folder"], &[data-state="invalid"]': { color: t.danger },
 });
 
+const clean = (path: string) => path.trim().replace(/^"+|"+$/g, '').trim();
+
 const noHints: FolderHints = { canPick: false, windows: false, devDrives: [] };
 
 export function FolderField(
@@ -51,6 +53,9 @@ export function FolderField(
     },
   });
   let checked = '';
+  // the folder whose answer last set the choice: a check of the same folder again (the dialog opened anew) keeps the person's
+  // tick or untick; a parent that kept the check across a remount keeps it too
+  let applied = handle.props.check?.path ?? '';
   let timer: ReturnType<typeof setTimeout> | undefined;
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
 
@@ -66,10 +71,13 @@ export function FolderField(
         .then(() => s.client.repoCheck(path))
         .then(
         (c) => {
-          if (!handle.signal.aborted && c.path === handle.props.value.trim().replace(/^"+|"+$/g, '').trim()) {
+          if (!handle.signal.aborted && c.path === clean(handle.props.value)) {
             handle.props.onCheck(c);
             // a new folder's answer sets the choice afresh: ticked where nothing of the person's is, else left to them
-            handle.props.onInitRepo(autoInit(c));
+            if (c.path !== applied) {
+              applied = c.path;
+              handle.props.onInitRepo(autoInit(c));
+            }
           }
         },
         () => undefined,
@@ -77,9 +85,17 @@ export function FolderField(
     }, wait);
   };
 
+  // another path: an earlier tick never carries over, not even in the moment before the new folder's check answers
+  const moved = (path: string) => {
+    if (clean(path) === clean(handle.props.value)) return;
+    applied = '';
+    if (handle.props.initRepo) handle.props.onInitRepo(false);
+  };
+
   const pick = async () => {
     const path = await act.run('pick', () => s.client.fsPickFolder("Choose the project's folder", handle.props.value.trim()));
     if (path) {
+      moved(path);
       checked = path;
       handle.props.onChange(path);
       schedule(path, 0);
@@ -105,7 +121,11 @@ export function FolderField(
                 placeholder={h?.canPick ? 'or type the full path, for example D:\\src\\my-app' : 'D:\\src\\my-app'}
                 spellcheck={false}
                 autocomplete="off"
-                mix={on('input', (e) => onChange(e.currentTarget.value))}
+                mix={on('input', (e) => {
+                  const v = e.currentTarget.value;
+                  moved(v);
+                  onChange(v);
+                })}
               />
               {h?.canPick ? (
                 <Button type="button" variant="secondary" size="sm" icon={FolderOpen} data-testid="folder-choose" disabled={!!act.busy} mix={on('click', () => void pick())}>

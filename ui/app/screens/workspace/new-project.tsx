@@ -20,7 +20,7 @@ import { Segmented } from '../../ui/segmented.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
-import { currentCheck, folderProblem } from '../project/wizard.ts';
+import { currentCheck, folderProblem, initChosen } from '../project/wizard.ts';
 import { defaultProjectName, newProjectFolder, newProjectSetup, type Where } from './start.ts';
 
 const bodyCss = css({
@@ -62,7 +62,7 @@ export function NewProjectDialog(handle: Handle<{ open: boolean; where?: NewProj
   const set = (f: () => void) => (f(), void handle.update());
 
   const where = (): Where => {
-    if (kind === 'folder') return { kind: 'folder', path: folder.path.trim().replace(/^"+|"+$/g, ''), init: folder.init };
+    if (kind === 'folder') return { kind: 'folder', path: folder.path.trim().replace(/^"+|"+$/g, ''), init: initChosen({ localPath: folder.path, localCheck: folder.check }, folder.init) };
     if (kind === 'clone') return { kind: 'clone', repo: clone.repo?.fullName ?? '', cloneDir: clone.cloneDir.trim() };
     return { kind: 'new', path: newPath ?? newProjectFolder(baseDir.data ?? '', name) };
   };

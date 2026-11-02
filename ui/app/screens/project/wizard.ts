@@ -157,6 +157,14 @@ export function autoInit(check: RepoFolder | undefined): boolean {
 }
 
 /**
+ * Whether the request asks Drydock to make the repository: only when the person's choice stands and the check of the folder as
+ * typed now says one can be made there (a choice left from another path, before its check answers, does not count).
+ */
+export function initChosen(s: Pick<WizardState, 'localPath' | 'localCheck'>, initRepo: boolean): boolean {
+  return initRepo && !!currentCheck(s)?.canInit;
+}
+
+/**
  * What the folder check says keeps a local folder from being used, in words; undefined when the folder is a repository, the
  * person asked Drydock to make one there, or the check has not answered (the core checks again when the project is made).
  */

@@ -239,6 +239,29 @@ describe('Home is the start screen (P142)', () => {
     expect(box(third.r).value).toBe('');
   });
 
+  it('Open a folder keeps an untick when the dialog is opened again on the same folder (B6)', async () => {
+    let checks = 0;
+    const { r } = show({
+      repoCheck: async (path: string) => (checks++, { path, state: 'missing', entries: 0, canInit: true, message: 'This folder does not exist yet.' }) as never,
+    });
+    await waitFor(() => expect(r.$('[data-testid="or-folder"]')).not.toBeNull(), r);
+    await r.act(() => click(r, '[data-testid="or-folder"]'));
+    const field = await waitFor(() => r.$('[data-testid="start-folder-dialog"] [data-testid="folder-field"] input') as HTMLInputElement, r);
+    await r.act(() => type(field, '/src/new'));
+    const tick = () => r.$('[data-testid="folder-init"] input') as HTMLInputElement;
+    await waitFor(() => expect(tick().checked).toBe(true), r, 3000);
+    await r.act(() => tick().click());
+    expect(tick().checked).toBe(false);
+    await r.act(() => byText(r.$('[data-testid="start-folder-dialog"]')!, 'button', 'Cancel').click());
+    await r.act(() => click(r, '[data-testid="or-folder"]'));
+    // the folder is checked again; the person's untick stands
+    await waitFor(() => expect(checks).toBe(2), r, 3000);
+    await drain();
+    r.root.flush();
+    expect(tick().checked).toBe(false);
+    expect((r.$('[data-testid="folder-use"]') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('remembers the chips per place and chooses them again', async () => {
     const setups: SetupRequest[] = [];
     const first = show({

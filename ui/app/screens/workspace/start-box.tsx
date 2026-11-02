@@ -22,7 +22,7 @@ import { Segmented } from '../../ui/segmented.tsx';
 import { t } from '../../ui/tokens.ts';
 import { FolderField } from '../project/folder-field.tsx';
 import { RepoPicker } from '../project/repo-picker.tsx';
-import { cloneTarget, folderProblem, currentCheck } from '../project/wizard.ts';
+import { cloneTarget, folderProblem, currentCheck, initChosen } from '../project/wizard.ts';
 import { DescribeAgent } from '../team/new-agent.tsx';
 import { pickPill, pickUp } from './workspace.ts';
 import { RUNNING_STATUSES } from '../../state/workspace.ts';
@@ -577,7 +577,7 @@ export function StartBox(handle: Handle<{ onNavigate?: (href: string) => void }>
                   title={fp}
                   mix={on('click', () => {
                     dialog = '';
-                    choose({ kind: 'folder', path: folder.path.trim().replace(/^"+|"+$/g, ''), init: folder.init });
+                    choose({ kind: 'folder', path: folder.path.trim().replace(/^"+|"+$/g, ''), init: initChosen({ localPath: folder.path, localCheck: folder.check }, folder.init) });
                   })}
                 >
                   Use this folder

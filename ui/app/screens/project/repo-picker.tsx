@@ -59,7 +59,7 @@ const itemCss = css({
 const targetCss = css({ fontFamily: t.mono, fontSize: t.textSm, color: t.text, overflowWrap: 'anywhere' });
 
 export function RepoPicker(
-  handle: Handle<{ selected: GitHubRepo | undefined; cloneDir: string; onSelect: (r: GitHubRepo) => void; onCloneDir: (dir: string) => void; unavailableHint?: RemixNode }>,
+  handle: Handle<{ selected: GitHubRepo | undefined; cloneDir: string; onSelect: (r: GitHubRepo | undefined) => void; onCloneDir: (dir: string) => void; unavailableHint?: RemixNode }>,
 ) {
   const s = services(handle);
   let owner = '';
@@ -68,6 +68,7 @@ export function RepoPicker(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let askedDir = false;
   let typed = ''; // a repository typed as owner/name or its address
+  let fromTyped = false; // the selection is the typed repository (not a row of the list)
 
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const listId = `repos-${handle.id}`;
@@ -118,7 +119,12 @@ export function RepoPicker(
       const full = typedRepo(v);
       if (full) {
         const [o, n] = full.split('/') as [string, string];
+        fromTyped = true;
         onSelect(list.find((r) => r.fullName.toLowerCase() === full.toLowerCase()) ?? { fullName: full, owner: o, name: n, description: '', private: false, archived: false, fork: false, defaultBranch: '', htmlUrl: '', pushedAt: '' });
+      } else if (fromTyped) {
+        // the field no longer names a repository: the one it named before is not cloned behind the person's back
+        fromTyped = false;
+        onSelect(undefined);
       }
       void handle.update();
     };
@@ -169,7 +175,7 @@ export function RepoPicker(
           <div mix={listCss} role="radiogroup" aria-label="Repositories">
             {list.map((r) => (
               <label key={r.fullName} mix={itemCss} data-testid="gh-repo" data-repo={r.fullName}>
-                <input type="radio" name={listId} checked={selected?.fullName === r.fullName} mix={on('change', () => ((typed = ''), onSelect(r)))} aria-label={r.fullName} />
+                <input type="radio" name={listId} checked={selected?.fullName === r.fullName} mix={on('change', () => ((typed = ''), (fromTyped = false), onSelect(r)))} aria-label={r.fullName} />
                 <span style={{ display: 'grid', gap: '2px', minWidth: '0' }}>
                   <span class="top">
                     <span class="n">{r.fullName}</span>

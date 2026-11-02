@@ -18,7 +18,7 @@ afterEach(cleanup);
 
 /** The picker inside a tiny holder that keeps the selection and folder like the wizard does. */
 function setup(client: Partial<Client>) {
-  const picked: GitHubRepo[] = [];
+  const picked: (GitHubRepo | undefined)[] = [];
   const state = { selected: undefined as GitHubRepo | undefined, dir: "" };
   const s = testServices(client);
   const r = mount(<Holder state={state} picked={picked} />, s);
@@ -28,7 +28,7 @@ function setup(client: Partial<Client>) {
 function Holder(
   handle: Handle<{
     state: { selected: GitHubRepo | undefined; dir: string };
-    picked: GitHubRepo[];
+    picked: (GitHubRepo | undefined)[];
   }>,
 ) {
   return () => {
@@ -85,6 +85,39 @@ describe("the GitHub repository picker", () => {
     await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
     expect(r.$('[data-testid="repos-retry"]')).toBeNull();
     expect(owners).toBe(2);
+  });
+
+  it("forgets a typed repository once the field no longer names one (W9)", async () => {
+    const { r, state } = setup({
+      ...signedIn,
+      githubOwners: async () => ["kyle"],
+      githubRepos: async () => [repo("kyle/pay")],
+      githubCloneDir: async () => "D:\\src",
+    });
+    await waitFor(() => expect(r.$$('[data-testid="gh-repo"]').length).toBe(1), r);
+    const field = byLabel<HTMLInputElement>(r.container, "Repository (owner/name or URL)");
+    type(field, "acme/billing-api");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("acme/billing-api");
+    // edited into something that is not a repository: nothing is selected
+    type(field, "acme/");
+    r.root.flush();
+    expect(state.selected).toBeUndefined();
+    expect(r.$('[data-testid="clone-target"]')).toBeNull();
+    // typed again, then cleared to choose from the list
+    type(field, "acme/billing-api");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("acme/billing-api");
+    type(field, "");
+    r.root.flush();
+    expect(state.selected).toBeUndefined();
+    // a row of the list stays chosen while the field is empty or edited
+    const row = r.$('[data-testid="gh-repo"] input') as HTMLInputElement;
+    await r.act(() => row.click());
+    expect(state.selected?.fullName).toBe("kyle/pay");
+    type(field, "x");
+    r.root.flush();
+    expect(state.selected?.fullName).toBe("kyle/pay");
   });
 
   it("explains, in the core words, when gh is not installed", async () => {
@@ -187,7 +220,7 @@ describe("the GitHub repository picker", () => {
     await r.act(() =>
       byLabel<HTMLInputElement>(r.container, "kyle/pay").click(),
     );
-    expect(picked.map((x) => x.fullName)).toEqual(["kyle/pay"]);
+    expect(picked.map((x) => x?.fullName)).toEqual(["kyle/pay"]);
     await waitFor(
       () =>
         expect(r.$('[data-testid="clone-target"]')!.textContent).toBe(

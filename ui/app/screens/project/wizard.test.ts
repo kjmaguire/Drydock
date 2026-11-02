@@ -2,7 +2,7 @@ import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { AdapterInfo } from '../../api/types.ts';
 import type { RepoFolder } from '../../api/folderClient.ts';
-import { adapterChoices, authNote, autoInit, typedRepo, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, memberFromPrebuilt, memberMode, pushedAgo, stepProblem, suggestTeam, uniqueName, type TeamMember } from './wizard.ts';
+import { adapterChoices, authNote, autoInit, typedRepo, buildSetup, canOpen, cloneTarget, currentCheck, effectiveMode, emptyWizard, firstIncomplete, folderHint, folderProblem, initChosen, memberFromPrebuilt, memberMode, pushedAgo, stepProblem, suggestTeam, uniqueName, type TeamMember } from './wizard.ts';
 import { prebuilt } from './wizard-fixtures.ts';
 
 const adapter = (id: string, installed: boolean): AdapterInfo => ({ id, detection: { adapter: id, installed, status: installed ? 'ready' : 'not_installed' }, capabilities: {} as never });
@@ -170,6 +170,16 @@ describe('new-project wizard rules', () => {
     expect(autoInit(c('repository'))).toBe(false);
     expect(autoInit(c('inside'))).toBe(false);
     expect(autoInit(undefined)).toBe(false);
+  });
+
+  it('asks for a repository only with a tick and a check of the folder as typed now that allows one (B6)', () => {
+    const missing: RepoFolder = { path: 'D:\\new', state: 'missing', entries: 0, canInit: true, message: '' };
+    expect(initChosen({ localPath: 'D:\\new', localCheck: missing }, true)).toBe(true);
+    expect(initChosen({ localPath: 'D:\\new', localCheck: missing }, false)).toBe(false);
+    // the tick was made for another path, whose check has not answered yet
+    expect(initChosen({ localPath: 'D:\\newer', localCheck: missing }, true)).toBe(false);
+    expect(initChosen({ localPath: 'D:\\x', localCheck: undefined }, true)).toBe(false);
+    expect(initChosen({ localPath: 'D:\\r', localCheck: { path: 'D:\\r', state: 'repository', canInit: false, message: '' } as RepoFolder }, true)).toBe(false);
   });
 
   it('reads a typed repository as owner/name or its github.com address (W9)', () => {
