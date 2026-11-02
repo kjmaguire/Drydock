@@ -3,6 +3,7 @@ package responder_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -635,6 +636,11 @@ func TestRepliesOffIsSaidOncePerRoomAndOffPeriod(t *testing.T) {
 	}
 	off := mk(on)
 	for i := 0; i < 3; i++ {
+		// agents keep posting while replies are off (a worker's STATUS, the lead's stand-up): that is not replies being on
+		if _, err := h.room.Post(h.ctx, room.PostParams{RoomID: ch.ID, Type: room.TypeStatus, Author: room.Agent(alice),
+			Body: "step " + strconv.Itoa(i) + " done"}); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := off.Handle(h.ctx, h.human(ch, "@alice hello").ID); err != nil {
 			t.Fatal(err)
 		}
@@ -642,9 +648,14 @@ func TestRepliesOffIsSaidOncePerRoomAndOffPeriod(t *testing.T) {
 	if notes() != 1 {
 		t.Fatalf("want one replies_off line, got %d: %s", notes(), authors(h.messages(ch)))
 	}
-	last := h.messages(ch)
-	if !strings.Contains(last[1].Body, "Agents do not answer in this project's rooms") {
-		t.Fatalf("line %q", last[1].Body)
+	var line room.Message
+	for _, m := range h.messages(ch) {
+		if m.Type == room.TypeSystem && strings.Contains(string(m.Payload), `"replies_off"`) {
+			line = m
+		}
+	}
+	if !strings.Contains(line.Body, "Agents do not answer in this project's rooms") {
+		t.Fatalf("line %q", line.Body)
 	}
 	// replies were on in between (an agent answered): the next off period says it again
 	if _, err := h.r.Handle(h.ctx, h.human(ch, "@alice hello").ID); err != nil {

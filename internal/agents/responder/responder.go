@@ -467,13 +467,15 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 const RepliesOffCode = "replies_off"
 
 // noteRepliesOff posts the "agents do not answer here" line once per room and off period: not again while the room has
-// such a line newer than its latest agent message (an agent message means replies were on in between).
+// such a line newer than the trigger of the room's latest agent turn. Only the responder writes room_turns, so a turn means
+// replies were on in between; an agent's own posts (a worker's STATUS or RESULT, the lead's stand-up) do not end the off
+// period, since agents keep posting while replies are off.
 func (r *Responder) noteRepliesOff(ctx context.Context, rm room.Room, trig room.Message) {
 	var lastNote, lastAgent int64
 	if err := r.d.DB.Reader().QueryRowContext(ctx, `SELECT
-		COALESCE(MAX(CASE WHEN type=? AND json_extract(payload,'$.code')=? THEN seq END),0),
-		COALESCE(MAX(CASE WHEN author<>'system' AND author NOT LIKE 'human:%' AND author NOT LIKE 'tool:%' THEN seq END),0)
-		FROM messages WHERE room_id=?`, room.TypeSystem, RepliesOffCode, rm.ID).Scan(&lastNote, &lastAgent); err != nil {
+		COALESCE((SELECT MAX(seq) FROM messages WHERE room_id=? AND type=? AND json_extract(payload,'$.code')=?),0),
+		COALESCE((SELECT MAX(m.seq) FROM room_turns t JOIN messages m ON m.id=t.trigger_id WHERE t.room_id=?),0)`,
+		rm.ID, room.TypeSystem, RepliesOffCode, rm.ID).Scan(&lastNote, &lastAgent); err != nil {
 		r.logf("replies off line: %v", err)
 		return
 	}
