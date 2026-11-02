@@ -29,7 +29,7 @@ export function RepoSyncLine(handle: Handle<{ projectId: string }>) {
   const st = query(handle, {
     key: () => handle.props.projectId,
     load: () => s.client.repoSyncState(handle.props.projectId),
-    when: (e) => (e.type === 'repo.synced' && e.projectId === handle.props.projectId) || e.type === 'repo.syncSettings' || e.type === 'project.updated' || e.type === 'security.repo_config_trusted',
+    when: (e) => (e.type === 'repo.synced' && e.projectId === handle.props.projectId) || e.type === 'repo.syncSettings' || e.type === 'project.updated' || (e.type === 'security.repo_config_trusted' && e.projectId === handle.props.projectId),
   });
   const sync = () =>
     act.run('sync', async () => {

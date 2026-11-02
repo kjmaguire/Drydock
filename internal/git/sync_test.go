@@ -71,7 +71,7 @@ func TestFetchThenFastForwardACleanBranch(t *testing.T) {
 		t.Fatalf("no fetch yet, behind %d", st.Behind)
 	}
 	before := head(t, f.local.Root, "HEAD")
-	if err := f.local.Fetch(ctx, "origin"); err != nil {
+	if err := f.local.Fetch(ctx, "origin", ""); err != nil {
 		t.Fatal(err)
 	}
 	st, _ = f.local.RemoteState(ctx, "origin", "main")
@@ -104,7 +104,7 @@ func TestFastForwardRefusesLocalChanges(t *testing.T) {
 	ctx := context.Background()
 	f := newSyncFixture(t)
 	f.push(t, "NEW.md", "new\n")
-	if err := f.local.Fetch(ctx, "origin"); err != nil {
+	if err := f.local.Fetch(ctx, "origin", ""); err != nil {
 		t.Fatal(err)
 	}
 	write(t, f.local.Root, "README.md", "# edited by the person\n")
@@ -135,7 +135,7 @@ func TestFastForwardRefusesADivergedBranch(t *testing.T) {
 	run(t, f.local.Root, "add", "-A")
 	run(t, f.local.Root, "commit", "-q", "-m", "local")
 	mine := head(t, f.local.Root, "HEAD")
-	if err := f.local.Fetch(ctx, "origin"); err != nil {
+	if err := f.local.Fetch(ctx, "origin", ""); err != nil {
 		t.Fatal(err)
 	}
 	out, st, err := f.local.FastForward(ctx, "origin", "main")
@@ -162,7 +162,7 @@ func TestFastForwardRefusesAnotherBranch(t *testing.T) {
 	ctx := context.Background()
 	f := newSyncFixture(t)
 	f.push(t, "NEW.md", "new\n")
-	if err := f.local.Fetch(ctx, "origin"); err != nil {
+	if err := f.local.Fetch(ctx, "origin", ""); err != nil {
 		t.Fatal(err)
 	}
 	run(t, f.local.Root, "checkout", "-q", "-b", "experiment")
@@ -189,7 +189,7 @@ func TestFetchAndFastForwardLeaveTaskBranchesAlone(t *testing.T) {
 	}
 	taskHead := head(t, f.local.Root, "refs/heads/"+w.Branch)
 	f.push(t, "NEW.md", "new\n")
-	if err := f.local.Fetch(ctx, "origin"); err != nil {
+	if err := f.local.Fetch(ctx, "origin", ""); err != nil {
 		t.Fatal(err)
 	}
 	if out, _, err := f.local.FastForward(ctx, "origin", "main"); err != nil || out != SyncUpdated {
@@ -206,7 +206,7 @@ func TestFetchAndFastForwardLeaveTaskBranchesAlone(t *testing.T) {
 func TestSyncWithoutARemote(t *testing.T) {
 	ctx := context.Background()
 	r, _ := newRepo(t)
-	if err := r.Fetch(ctx, "origin"); !errors.Is(err, ErrNoRemote) {
+	if err := r.Fetch(ctx, "origin", ""); !errors.Is(err, ErrNoRemote) {
 		t.Fatalf("fetch without a remote: %v", err)
 	}
 	st, err := r.RemoteState(ctx, "origin", "main")
@@ -217,7 +217,7 @@ func TestSyncWithoutARemote(t *testing.T) {
 		t.Fatalf("fast-forward without a remote: %s %v", out, err)
 	}
 	// names are names, never options
-	if err := r.Fetch(ctx, "--upload-pack=x"); err == nil {
+	if err := r.Fetch(ctx, "--upload-pack=x", ""); err == nil {
 		t.Fatal("an option was taken as a remote")
 	}
 	if _, err := r.RemoteState(ctx, "origin", "-x"); err == nil {
@@ -237,10 +237,10 @@ func TestFetchKeepsTheConfiguredRefspec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := local.fetchSpecs(ctx, "origin"); len(got) != 1 || got[0] != "+refs/heads/main:refs/remotes/origin/main" {
+	if got := local.fetchSpecs(ctx, "origin", ""); len(got) != 1 || got[0] != "+refs/heads/main:refs/remotes/origin/main" {
 		t.Fatalf("specs %v", got)
 	}
-	if err := local.Fetch(ctx, "origin"); err != nil {
+	if err := local.Fetch(ctx, "origin", ""); err != nil {
 		t.Fatal(err)
 	}
 	if out, _ := local.git(ctx, local.Root, nil, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/side"); strings.TrimSpace(out) != "" {
@@ -251,7 +251,45 @@ func TestFetchKeepsTheConfiguredRefspec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := local.fetchSpecs(ctx, "origin"); len(got) != 1 || got[0] != "+refs/heads/*:refs/remotes/origin/*" {
+	if got := local.fetchSpecs(ctx, "origin", ""); len(got) != 1 || got[0] != "+refs/heads/*:refs/remotes/origin/*" {
 		t.Fatalf("a refspec writing local branches was used: %v", got)
+	}
+}
+
+// A configured refspec is always forced (a branch the remote rewrote still comes in), and the project's branch is fetched
+// when the configuration leaves it out (a single-branch clone of another branch).
+func TestFetchForcesAndAddsTheProjectsBranch(t *testing.T) {
+	ctx := context.Background()
+	f := newSyncFixture(t)
+	run(t, f.upstream, "branch", "side")
+	run(t, f.upstream, "push", "-q", "origin", "side")
+	run(t, f.local.Root, "config", "--replace-all", "remote.origin.fetch", "refs/heads/main:refs/remotes/origin/main")
+	local, err := Open(ctx, f.local.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := local.fetchSpecs(ctx, "origin", "main"); len(got) != 1 || got[0] != "+refs/heads/main:refs/remotes/origin/main" {
+		t.Fatalf("not forced: %v", got)
+	}
+	got := local.fetchSpecs(ctx, "origin", "side")
+	if len(got) != 2 || got[1] != "+refs/heads/side:refs/remotes/origin/side" {
+		t.Fatalf("the project's branch was left out: %v", got)
+	}
+	if err := local.Fetch(ctx, "origin", "side"); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := local.git(ctx, local.Root, nil, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/side"); strings.TrimSpace(out) == "" {
+		t.Fatal("the project's branch was not fetched")
+	}
+	if err := local.Fetch(ctx, "origin", "-x"); err == nil {
+		t.Fatal("an option was taken as a branch")
+	}
+	for _, c := range []struct {
+		src, ref string
+		want     bool
+	}{{"refs/heads/*", "refs/heads/main", true}, {"refs/heads/main", "refs/heads/main", true}, {"refs/heads/rel-*", "refs/heads/main", false}, {"refs/heads/*", "refs/heads/", false}} {
+		if refspecMatches(c.src, c.ref) != c.want {
+			t.Fatalf("refspecMatches(%q, %q) != %v", c.src, c.ref, c.want)
+		}
 	}
 }

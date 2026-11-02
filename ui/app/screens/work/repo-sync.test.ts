@@ -32,7 +32,8 @@ describe('the sync line (P143)', () => {
     expect(syncLine(st({ error: 'fetch failed', errorKind: 'fetch' })).text).toBe('Could not reach GitHub');
     expect(syncLine(st({ error: 'index.lock exists', errorKind: 'update' }))).toEqual({ text: 'Could not update the folder', tone: 'bad', why: undefined });
     expect(syncLine(st({ error: 'configuration changed', errorKind: 'config' })).text).toBe('Git settings changed: review them first');
-    expect(syncWhy(st({ outcome: 'agent_busy' }))).toBe('Not updated: a chat is working in this folder. Try again when it finishes.');
+    expect(syncLine(st({ error: 'not a git repository', errorKind: 'folder' })).text).toBe('Could not open the folder');
+    expect(syncWhy(st({ outcome: 'agent_busy' }))).toBe('Not updated: an agent is working in this folder. Try again when it finishes.');
   });
 
   it('after Sync now left the files alone, says why in one line', () => {

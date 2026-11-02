@@ -94,8 +94,12 @@ func startChats(ctx context.Context, c *Core) (map[string]Method, func(), error)
 		ClaudeSources:  c.claudeSources,
 		ProjectFor:     c.chatProjectFor,
 		DrydockSession: c.drydockSession,
-		Licensed:       func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
-		Logf:           c.logf,
+		HoldFolders: func() func() {
+			c.folderSync.RLock()
+			return c.folderSync.RUnlock
+		},
+		Licensed: func(ctx context.Context) error { return c.RequireLicensed(ctx, "chat") },
+		Logf:     c.logf,
 	}, chats.Options{AskTTL: chatAskTTL})
 	if err := svc.Start(ctx); err != nil {
 		return nil, nil, err

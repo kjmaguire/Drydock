@@ -144,3 +144,13 @@ func SetLocalServeProbedForTests(f func()) func() {
 	localServeProbed.Store(&f)
 	return func() { localServeProbed.Store(nil) }
 }
+
+// TestRoomTurnRunning stores (or removes) a running room turn of the project, as an agent answering in its channel leaves.
+func (c *Core) TestRoomTurnRunning(projectID string, running bool) error {
+	if !running {
+		_, err := c.DB.Writer().Exec(`DELETE FROM room_turns WHERE id='rturn_test'`)
+		return err
+	}
+	_, err := c.DB.Writer().Exec(`INSERT INTO room_turns(id,room_id,project_id,trigger_id,agent_id,status,started_at) VALUES('rturn_test','room_test',?,'msg_test','agent_test','running',1)`, projectID)
+	return err
+}

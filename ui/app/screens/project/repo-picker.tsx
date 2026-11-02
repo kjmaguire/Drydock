@@ -28,6 +28,9 @@ const barCss = css({
 const searchCss = css({ position: 'relative', '& svg': { position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: t.textFaint }, '& input': { paddingLeft: '28px' } });
 const listCss = css({
   display: 'grid',
+  // each row as tall as its content: with the list's set height, auto rows shrink to their floor (app.css gives a label
+  // around a radio 28px) and run into each other
+  gridAutoRows: 'max-content',
   maxHeight: '300px',
   overflowY: 'auto',
   border: `1px solid ${t.border}`,

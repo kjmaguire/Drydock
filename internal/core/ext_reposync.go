@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kjmaguire/drydock/internal/events"
 	"github.com/kjmaguire/drydock/internal/git"
 	"github.com/kjmaguire/drydock/internal/safe"
 )
@@ -57,8 +58,9 @@ type RepoSync struct {
 	Outcome string `json:"outcome,omitempty"`
 	// Error is why the last fetch or Sync now failed, scrubbed; "" when it worked.
 	Error string `json:"error,omitempty"`
-	// ErrorKind says which step Error is from: "fetch" (reaching the remote), "update" (the fast-forward of the folder) or
-	// "config" (the repository's git configuration changed since a person trusted it: the project's banner reviews it).
+	// ErrorKind says which step Error is from: "folder" (the project's repository could not be opened), "fetch" (reaching the
+	// remote), "update" (the fast-forward of the folder) or "config" (the repository's git configuration changed since a person
+	// trusted it: the project's banner reviews it; trusting it clears the error).
 	ErrorKind string `json:"errorKind,omitempty"`
 }
 
@@ -76,8 +78,8 @@ type repoSyncMem struct {
 	errKind   string
 }
 
-// syncAgentBusy is Sync now's outcome while a chat of the project is mid-turn: the folder is left alone so the files do not change
-// under an agent working in it.
+// syncAgentBusy is Sync now's outcome while an agent works in the project's folder (a chat mid-turn, an agent answering in a
+// channel, a recommendation turn): the folder is left alone so the files do not change under it.
 const syncAgentBusy = "agent_busy"
 
 type repoSyncer struct {
@@ -94,6 +96,7 @@ func init() {
 		ctx, cancel := context.WithCancel(ctx)
 		y := &repoSyncer{c: c, ctx: ctx, mem: map[string]*repoSyncMem{}}
 		safe.Go("reposync.loop", func() { y.loop(ctx) })
+		safe.Go("reposync.trust", func() { y.onTrust(ctx) })
 		m := map[string]Method{
 			"repo.syncState": bind(func(ctx context.Context, p struct {
 				ProjectID string `json:"projectId"`
@@ -188,18 +191,6 @@ func (y *repoSyncer) state(ctx context.Context, projectID string) (RepoSync, err
 	st.Branch, st.Current, st.Tracked, st.Ahead, st.Behind = rs.Branch, rs.Current, rs.Tracked, rs.Ahead, rs.Behind
 	y.mu.Lock()
 	m := y.memOf(projectID)
-	kind := m.errKind
-	y.mu.Unlock()
-	if kind == "config" { // a refusal by the configuration guard lasts only until a person trusts the configuration
-		if changed, _, err := repo.ConfigStatus(ctx); err == nil && len(changed) == 0 {
-			y.mu.Lock()
-			if m.errKind == "config" {
-				m.err, m.errKind = "", ""
-			}
-			y.mu.Unlock()
-		}
-	}
-	y.mu.Lock()
 	st.CheckedAt, st.Checking, st.Outcome, st.Error, st.ErrorKind = m.checkedAt, m.checking, m.outcome, m.err, m.errKind
 	y.mu.Unlock()
 	return st, nil
@@ -219,23 +210,24 @@ func (y *repoSyncer) fetch(ctx context.Context, projectID string) error {
 	y.memOf(projectID).checking = true
 	y.mu.Unlock()
 	var ferr error
+	kind := "fetch"
 	repo, err := y.c.repo(ctx, projectID)
 	if err == nil {
+		branch := ""
+		if p, perr := y.c.GetProject(ctx, projectID); perr == nil {
+			branch = p.DefaultBranch
+		}
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		ferr = repo.Fetch(ctx, syncRemote)
+		ferr = repo.Fetch(ctx, syncRemote, branch)
 		cancel()
 	} else {
-		ferr = err
+		ferr, kind = err, "folder"
 	}
 	y.mu.Lock()
 	m := y.memOf(projectID)
 	m.checking = false
 	if ferr != nil {
-		m.err, m.errKind = y.scrub(ferr), "fetch"
-		var cc *git.ConfigChangedError
-		if errors.As(ferr, &cc) {
-			m.errKind = "config"
-		}
+		m.err, m.errKind = y.scrub(ferr), errKindOf(ferr, kind)
 	} else {
 		m.err, m.errKind, m.outcome = "", "", ""
 		m.checkedAt = time.Now().UnixMilli()
@@ -305,7 +297,11 @@ func (y *repoSyncer) syncNow(ctx context.Context, projectID string) (RepoSync, e
 			unlock()
 			return st, err
 		}
-		if busy, err := y.chatBusy(ctx, projectID); err != nil || busy {
+		// no agent turn may start in the folder between the check and the fast-forward (a chat's claim waits: folderSync)
+		y.c.folderSync.Lock()
+		busy, err := y.agentBusy(ctx, projectID, repo.Root)
+		if err != nil || busy {
+			y.c.folderSync.Unlock()
 			unlock()
 			if err != nil {
 				return st, err
@@ -317,15 +313,12 @@ func (y *repoSyncer) syncNow(ctx context.Context, projectID string) (RepoSync, e
 			return y.state(ctx, projectID)
 		}
 		out, _, err := repo.FastForward(ctx, syncRemote, st.Branch)
+		y.c.folderSync.Unlock()
 		if err != nil {
 			unlock()
 			y.mu.Lock()
 			m := y.memOf(projectID)
-			m.err, m.errKind = y.scrub(err), "update"
-			var cc *git.ConfigChangedError
-			if errors.As(err, &cc) {
-				m.errKind = "config"
-			}
+			m.err, m.errKind = y.scrub(err), errKindOf(err, "update")
 			y.mu.Unlock()
 			y.announce(ctx, projectID)
 			return y.state(ctx, projectID)
@@ -340,11 +333,84 @@ func (y *repoSyncer) syncNow(ctx context.Context, projectID string) (RepoSync, e
 	return y.state(ctx, projectID)
 }
 
-// chatBusy reports whether a chat of the project is mid-turn: a project chat works in the project's folder.
-func (y *repoSyncer) chatBusy(ctx context.Context, projectID string) (bool, error) {
+// errKindOf is the ErrorKind of a failed step: "config" when the configuration guard refused it, else the step's own kind.
+func errKindOf(err error, step string) string {
+	var cc *git.ConfigChangedError
+	if errors.As(err, &cc) {
+		return "config"
+	}
+	return step
+}
+
+// agentBusy reports whether an agent works in the project's folder now: a chat of the project mid-turn, a chat without a
+// project whose folder is in it, or an agent turn of the project outside a workflow run (runningTurns, project_delete.go).
+// Task runs work in their own worktrees and do not count.
+func (y *repoSyncer) agentBusy(ctx context.Context, projectID, folder string) (bool, error) {
+	db := y.c.DB.Reader()
 	var n int
-	err := y.c.DB.Reader().QueryRowContext(ctx, `SELECT COUNT(*) FROM chats WHERE project_id=? AND status='running'`, projectID).Scan(&n)
-	return n > 0, err
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chats WHERE project_id=? AND status='running'`, projectID).Scan(&n); err != nil || n > 0 {
+		return n > 0, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT cwd FROM chats WHERE project_id='' AND status='running' AND cwd<>''`)
+	if err != nil {
+		return false, err
+	}
+	var cwds []string
+	for rows.Next() {
+		var cwd string
+		if rows.Scan(&cwd) == nil {
+			cwds = append(cwds, cwd)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	for _, cwd := range cwds {
+		if withinFolder(cwd, folder) {
+			return true, nil
+		}
+	}
+	turns, err := runningTurns(ctx, db, projectID)
+	return len(turns) > 0, err
+}
+
+// onTrust clears a refusal by the configuration guard when a person trusts the project's configuration
+// (security.repo_config_trusted, gitguard.go) and announces the project again, so its line drops the error at once.
+func (y *repoSyncer) onTrust(ctx context.Context) {
+	f := events.Filter{Types: []string{"security.repo_config_trusted"}}
+	for ctx.Err() == nil {
+		ch, cancel := y.c.Bus.Subscribe(f)
+		y.trusted(ctx, ch)
+		cancel()
+		select { // the bus closed a lagging subscription: subscribe again while the app runs
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+func (y *repoSyncer) trusted(ctx context.Context, ch <-chan events.Event) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e, ok := <-ch:
+			if !ok {
+				return
+			}
+			y.mu.Lock()
+			m := y.mem[e.ProjectID]
+			cleared := m != nil && m.errKind == "config"
+			if cleared {
+				m.err, m.errKind = "", ""
+			}
+			y.mu.Unlock()
+			if cleared {
+				y.announce(ctx, e.ProjectID)
+			}
+		}
+	}
 }
 
 // loop is the background check: every project with a remote is fetched (never changed) each period while it is on.

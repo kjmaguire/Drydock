@@ -427,9 +427,11 @@ branch is the one checked out and it has no commits of its own; otherwise nothin
 the folder has local changes.", "...both sides have new commits. Drydock does not merge them.", "...experiment is checked out, not
 main."). Opening the project (`repo.syncState` when its last check is over two minutes old) and every 15 minutes the core fetches
 only, so the count stays fresh; Settings > GitHub > Project folders > **Check for new commits** turns that off. `repo.synced`
-re-reads the line. The line says which step failed ("Could not reach GitHub", "Could not update the folder", "Git settings
-changed: review them first" while the project's banner holds a changed git configuration); Sync now leaves the folder alone while
-a chat of the project is mid-turn; a fetch forgets the last Sync now's reason; the fetch keeps a single-branch clone's own refspec;
+re-reads the line. The line says which step failed ("Could not open the folder", "Could not reach GitHub", "Could not update the
+folder", "Git settings changed: review them first" while the project's banner holds a changed git configuration; trusting it
+clears that at once); Sync now leaves the folder alone while an agent works in it (a chat mid-turn, an agent answering in a
+channel, a recommendation turn), and a chat's turn cannot start between that check and the fast-forward; a fetch forgets the last
+Sync now's reason; the fetch keeps a single-branch clone's own refspec, forced, and adds the project's branch when it leaves it out;
 New project's New folder starts in the usual code folder (`github.cloneDir` with `default`), not the last clone's.
 
 **Said once (as built, decision P144).** A second review of every screen took out what was shown twice and folded what few

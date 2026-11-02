@@ -67,40 +67,62 @@ func checkSyncArgs(remote, branch string) error {
 }
 
 // Fetch brings the remote's branches into refs/remotes/<remote>/* (the person's own login reaches the remote: a call that
-// talks to a remote keeps the environment that says how). Local branches, worktrees and files are not changed: the refspec is
-// given on the command line, so a configured one that writes local branches is not used (fetchSpecs).
-func (r *Repo) Fetch(ctx context.Context, remote string) error {
+// talks to a remote keeps the environment that says how), always including branch when it is named (the project's default
+// branch). Local branches, worktrees and files are not changed: the refspec is given on the command line, so a configured one
+// that writes local branches is not used (fetchSpecs).
+func (r *Repo) Fetch(ctx context.Context, remote, branch string) error {
 	if err := checkRemote(remote); err != nil {
 		return err
+	}
+	if branch != "" {
+		if err := checkSyncArgs(remote, branch); err != nil {
+			return err
+		}
 	}
 	if _, err := r.RemoteURL(ctx, remote); err != nil {
 		return err
 	}
-	args := append([]string{"fetch", "--quiet", "--no-recurse-submodules", "--no-write-fetch-head", remote}, r.fetchSpecs(ctx, remote)...)
+	args := append([]string{"fetch", "--quiet", "--no-recurse-submodules", "--no-write-fetch-head", remote}, r.fetchSpecs(ctx, remote, branch)...)
 	_, err := r.git(ctx, r.Root, nil, args...)
 	return err
 }
 
 // fetchSpecs is what Fetch asks for: the remote's configured refspecs (a single-branch clone fetches its one branch) when every
-// one of them writes only under refs/remotes/<remote>/; else, or with none configured, all its branches there.
-func (r *Repo) fetchSpecs(ctx context.Context, remote string) []string {
+// one of them writes only under refs/remotes/<remote>/; else, or with none configured, all its branches there. Each is forced
+// (a branch the remote rewrote is still brought in: only remote-tracking refs are written), and branch is added when none
+// of them fetches it.
+func (r *Repo) fetchSpecs(ctx context.Context, remote, branch string) []string {
 	all := []string{"+refs/heads/*:refs/remotes/" + remote + "/*"}
 	out, err := r.git(ctx, r.Root, nil, "config", "--get-all", "remote."+remote+".fetch")
 	if err != nil {
 		return all
 	}
 	var specs []string
+	covered := branch == ""
 	for _, s := range strings.Fields(out) {
-		_, dst, ok := strings.Cut(strings.TrimPrefix(s, "+"), ":")
+		src, dst, ok := strings.Cut(strings.TrimPrefix(s, "+"), ":")
 		if !ok || strings.HasPrefix(s, "^") || !strings.HasPrefix(dst, "refs/remotes/"+remote+"/") || strings.Contains(dst, "..") {
 			return all
 		}
-		specs = append(specs, s)
+		specs = append(specs, "+"+src+":"+dst)
+		covered = covered || refspecMatches(src, "refs/heads/"+branch)
 	}
 	if len(specs) == 0 {
 		return all
 	}
+	if !covered {
+		specs = append(specs, "+refs/heads/"+branch+":refs/remotes/"+remote+"/"+branch)
+	}
 	return specs
+}
+
+// refspecMatches reports whether a refspec's source (a ref, or a pattern with one '*') names ref.
+func refspecMatches(src, ref string) bool {
+	pre, suf, glob := strings.Cut(src, "*")
+	if !glob {
+		return src == ref
+	}
+	return len(ref) > len(pre)+len(suf) && strings.HasPrefix(ref, pre) && strings.HasSuffix(ref, suf)
 }
 
 // RemoteState reads where branch stands against remote's copy of it, from the refs the last fetch left (no network).

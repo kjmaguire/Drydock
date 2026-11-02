@@ -236,7 +236,10 @@ type Deps struct {
 	// DrydockSession reports whether a Claude Code session is one Drydock started (an agent's run, a session in a folder
 	// Drydock made), so the import does not list it. Optional.
 	DrydockSession func(ctx context.Context, sessionID, cwd string) bool
-	Logf           func(format string, args ...any)
+	// HoldFolders, when set, is held while a turn claims its chat; the release it returns ends the hold. The core's Sync now
+	// takes it exclusively around its check that no chat is mid-turn and the fast-forward, so a turn never starts between them.
+	HoldFolders func() (release func())
+	Logf        func(format string, args ...any)
 }
 
 // Options tune the service. The zero value is valid.

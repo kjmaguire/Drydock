@@ -22,7 +22,14 @@ export function syncLine(st: RepoSync): SyncLine {
   const r = remoteWord(st);
   const why = syncWhy(st);
   if (st.error) {
-    const text = st.errorKind === 'update' ? 'Could not update the folder' : st.errorKind === 'config' ? 'Git settings changed: review them first' : `Could not reach ${r}`;
+    const text =
+      st.errorKind === 'folder'
+        ? 'Could not open the folder'
+        : st.errorKind === 'update'
+          ? 'Could not update the folder'
+          : st.errorKind === 'config'
+            ? 'Git settings changed: review them first'
+            : `Could not reach ${r}`;
     return { text, tone: 'bad', why };
   }
   if (!st.checkedAt) return { text: st.checking ? `Checking ${r}…` : 'Not checked yet', tone: 'quiet', why };
@@ -44,7 +51,7 @@ export function syncWhy(st: Pick<RepoSync, 'outcome' | 'branch' | 'current' | 'b
     case 'ahead':
       return 'Nothing new to bring in. Your commits stay local.';
     case 'agent_busy':
-      return 'Not updated: a chat is working in this folder. Try again when it finishes.';
+      return 'Not updated: an agent is working in this folder. Try again when it finishes.';
     default:
       return undefined;
   }

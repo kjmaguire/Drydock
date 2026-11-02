@@ -183,6 +183,10 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 	aj, _ := json.Marshal(attachedIDs)
 	var claimed, changed bool
 	var dropped []string // files of the messages a resend removes
+	unhold := func() {}
+	if s.d.HoldFolders != nil {
+		unhold = s.d.HoldFolders()
+	}
 	err = s.d.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		dropped, changed = nil, false
 		// claimed only as it was read: a change committed since (its adapter, folder, project or session, chat.update) would
@@ -238,6 +242,7 @@ func (s *Service) Send(ctx context.Context, r SendReq) (SendResult, error) {
 		_, err = tx.ExecContext(ctx, `INSERT INTO chat_turns(id,chat_id,status,attached,started_at) VALUES(?,?,?,?,?)`, turnID, c.ID, TurnRunning, string(aj), storage.Now())
 		return err
 	})
+	unhold()
 	if err != nil || !claimed {
 		release()
 		if err == nil && changed {

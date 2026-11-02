@@ -189,8 +189,8 @@ export interface RepoSync {
   outcome?: SyncOutcome | '';
   /** Why the last fetch or Sync now failed (scrubbed). */
   error?: string;
-  /** Which step failed: reaching the remote, updating the folder, or the git configuration awaiting a person's trust. */
-  errorKind?: 'fetch' | 'update' | 'config' | '';
+  /** Which step failed: opening the folder's repository, reaching the remote, updating the folder, or the git configuration awaiting a person's trust. */
+  errorKind?: 'folder' | 'fetch' | 'update' | 'config' | '';
 }
 
 export interface RepoSyncSettings {

@@ -32,8 +32,10 @@ export interface SetupClient {
   /** The signed-in account first, then its organizations. */
   githubOwners(): Promise<string[]>;
   githubRepos(owner?: string, query?: string): Promise<GitHubRepo[]>;
-  /** Where a clone starts: the folder the person last cloned into, else the usual one (~/source/repos; P143). */
-  /** The folder a clone starts in (the last one cloned into); with `usual`, the usual code folder for a new project's folder. */
+  /**
+   * The folder a clone starts in: the one the person last cloned into, else the usual one (~/source/repos; P143). With `usual`,
+   * always the usual code folder (a new project's folder).
+   */
   githubCloneDir(usual?: boolean): Promise<string>;
   githubClone(repo: string, dir: string): Promise<CloneResult>;
   /**

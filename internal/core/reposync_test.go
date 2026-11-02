@@ -242,6 +242,32 @@ func TestRepoSyncNowWaitsForAChatAndNamesAFailedUpdate(t *testing.T) {
 	if _, err := a.c.DB.Writer().Exec(`UPDATE chats SET status='idle' WHERE id='chat_busy'`); err != nil {
 		t.Fatal(err)
 	}
+	// a chat without a project, working in the folder, and an agent answering in the project's channel count too
+	if _, err := a.c.DB.Writer().Exec(`INSERT INTO chats(id,project_id,cwd,adapter,status,created_at,updated_at) VALUES('chat_loose','',?,'claude','running',0,0)`, filepath.Join(folder, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	st = core.RepoSync{}
+	a.call("repo.sync", map[string]any{"projectId": p.ID}, &st)
+	if st.Outcome != "agent_busy" {
+		t.Fatalf("a chat without a project in the folder: %+v", st)
+	}
+	if _, err := a.c.DB.Writer().Exec(`UPDATE chats SET cwd=? WHERE id='chat_loose'`, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.c.TestRoomTurnRunning(p.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	st = core.RepoSync{}
+	a.call("repo.sync", map[string]any{"projectId": p.ID}, &st)
+	if st.Outcome != "agent_busy" {
+		t.Fatalf("an agent answering in a channel: %+v", st)
+	}
+	if err := a.c.TestRoomTurnRunning(p.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if gitRun(t, folder, "rev-parse", "HEAD") != before {
+		t.Fatal("the folder moved under a working agent")
+	}
 
 	// git cannot update the folder (its index is locked): the fetch worked, the update failed
 	lock := filepath.Join(folder, ".git", "index.lock")
@@ -273,5 +299,36 @@ func TestGitHubCloneDirDefaultIsTheUsualFolder(t *testing.T) {
 	a.call("github.cloneDir", map[string]any{"default": true}, &dir)
 	if dir != core.DefaultCloneDir() {
 		t.Fatalf("default: %q, want %q", dir, core.DefaultCloneDir())
+	}
+}
+
+// A fetch the configuration guard refused says so until a person trusts the configuration; trusting it clears the error at once.
+func TestRepoSyncConfigRefusalClearsOnTrust(t *testing.T) {
+	a := open(t, "")
+	_, _, folder := syncWorld(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "guarded", "repoPath": folder}, &p)
+	var set core.RepoSyncSettings
+	a.call("repo.syncSettings.set", map[string]any{"auto": false}, &set)
+	gitRun(t, folder, "config", "core.sshCommand", "ssh -o ProxyCommand=evil")
+	st := core.RepoSync{}
+	a.call("repo.sync", map[string]any{"projectId": p.ID}, &st)
+	if st.ErrorKind != "config" || st.Error == "" {
+		t.Fatalf("a changed configuration: %+v", st)
+	}
+	var gc core.GitConfig
+	a.call("project.gitConfig", map[string]any{"id": p.ID}, &gc)
+	a.call("project.trustGitConfig", map[string]any{"id": p.ID, "fingerprint": gc.Fingerprint}, &gc)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		st = core.RepoSync{}
+		a.call("repo.syncState", map[string]any{"projectId": p.ID}, &st)
+		if st.Error == "" && st.ErrorKind == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("still refused after the trust: %+v", st)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
