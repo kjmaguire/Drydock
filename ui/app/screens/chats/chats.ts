@@ -426,11 +426,12 @@ export const isFolderRefusal = (e: Error | undefined): boolean => !!e && /folder
  * What the first seconds of a turn say before any text arrives (D12): the CLI starting, then thinking, then the step it is on.
  * `phase` is undefined when the view did not see the turn start (opened mid-turn). After `slowMs` still starting says how long.
  */
-export function turnPhaseText(who: string, phase: { since: number; cli: boolean; step: string } | undefined, now: number, slowMs = 20_000): { text: string; slow: boolean } {
+export function turnPhaseText(who: string, phase: { since: number; cli: boolean; step: string } | undefined, now: number, slowMs = 20_000): { text: string; slow: boolean; seconds?: number } {
   if (!phase) return { text: 'Working…', slow: false };
   if (!phase.cli) {
     const ms = now - phase.since;
-    return ms >= slowMs ? { text: `Still starting (${Math.floor(ms / 1000)} s)`, slow: true } : { text: `Starting ${who}…`, slow: false };
+    // the seconds are shown beside the words, not in them: the words are what a screen reader announces
+    return ms >= slowMs ? { text: 'Still starting', slow: true, seconds: Math.floor(ms / 1000) } : { text: `Starting ${who}…`, slow: false };
   }
   return { text: phase.step ? `Using ${phase.step}…` : 'Thinking…', slow: false };
 }

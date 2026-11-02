@@ -664,7 +664,7 @@ describe('Batch B3: next steps, first seconds, coming back', () => {
   it('names the first seconds of a turn: starting the CLI, then thinking, then the step; slow starts say how long (D12)', () => {
     expect(turnPhaseText('Claude Code', undefined, 0)).toEqual({ text: 'Working…', slow: false });
     expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 5000)).toEqual({ text: 'Starting Claude Code…', slow: false });
-    expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 25_500)).toEqual({ text: 'Still starting (24 s)', slow: true });
+    expect(turnPhaseText('Claude Code', { since: 1000, cli: false, step: '' }, 25_500)).toEqual({ text: 'Still starting', slow: true, seconds: 24 });
     expect(turnPhaseText('Claude Code', { since: 1000, cli: true, step: '' }, 60_000)).toEqual({ text: 'Thinking…', slow: false });
     expect(turnPhaseText('Claude Code', { since: 1000, cli: true, step: 'Read' }, 60_000)).toEqual({ text: 'Using Read…', slow: false });
   });

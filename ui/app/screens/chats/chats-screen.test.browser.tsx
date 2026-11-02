@@ -1006,6 +1006,28 @@ describe('Conversation', () => {
     await waitFor(() => expect(updates.at(-1)).toEqual({ id: 'chat_a', readHistory: false }), r);
   });
 
+  it('a model typed in the settings is saved only with "Use this model": clearing the field or spelling an alias saves nothing (D3)', async () => {
+    const updates: unknown[] = [];
+    let cur = chat({ model: 'claude-x-2025' });
+    const { r } = conv(cur, [], { chatUpdate: async (u) => (updates.push(u), (cur = chat({ ...cur, ...u, version: cur.version + 1 } as Partial<Chat>))) });
+    await r.act(async () => (await waitFor(() => must$(r, '[data-testid="chat-settings-open"]'), r)).click());
+    const pop = await waitFor(() => {
+      const p = must$(r, '[data-testid="chat-settings"]');
+      if (!p.querySelector('form')) throw new Error('closed');
+      return p;
+    }, r);
+    const field = () => must(pop.querySelector<HTMLInputElement>('[data-testid="model-typed"]'), 'typed model field');
+    await r.act(() => type(field(), ''));
+    await r.act(() => type(field(), 'opus'));
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(updates).toEqual([]);
+    expect(field().disabled).toBe(false);
+    expect(pop.querySelector('[data-testid="chat-settings-saved"]')?.textContent ?? '').not.toContain('Saved');
+    await r.act(() => type(field(), 'opus-something'));
+    await r.act(() => byText(pop, 'button', 'Use this model').click());
+    await waitFor(() => expect(updates).toEqual([{ id: 'chat_a', model: 'opus-something' }]), r);
+  });
+
   it('the settings popover takes the focus on its model field when it opens and Escape closes it', async () => {
     const { r } = conv(chat(), []);
     const btn = await waitFor(() => must$(r, '[data-testid="chat-settings-open"]') as HTMLButtonElement, r);
@@ -1824,6 +1846,23 @@ describe('Next steps, the first seconds of a turn, coming back to Chats (B3)', (
     await waitFor(() => expect(resent).toEqual([['chat_a', 1, undefined], ['chat_a', 1, undefined]]), r);
   });
 
+  it("the header chip's Try again sends once: a second click while the resend is answered does nothing (D4)", async () => {
+    const resent: unknown[] = [];
+    let answer: () => void = () => {};
+    const { r } = conv(chat({ status: 'error', lastError: 'the CLI exited with code 1' }), [msg(1, 'user', 'hi'), msg(2, 'error', 'the CLI exited with code 1')], {
+      chatResend: (id, seq, text) => (resent.push([id, seq, text]), new Promise((ok) => (answer = () => ok({ turnId: 'turn_r1', version: 5 })))),
+    });
+    const chip = await waitFor(() => must(r.container.querySelector<HTMLButtonElement>('[data-testid="chat-cli-warning"]'), 'chip'), r);
+    expect(chip.getAttribute('data-action')).toBe('retry');
+    await r.act(() => chip.click());
+    await waitFor(() => expect(chip.disabled).toBe(true), r);
+    await r.act(() => chip.click());
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(resent).toEqual([['chat_a', 1, undefined]]);
+    expect(doc$$('dialog[open]')).toHaveLength(0); // nor Properties
+    await r.act(() => answer());
+  });
+
   it('an error that is not the end of a failed turn offers nothing (D4)', async () => {
     const { r } = conv(chat(), [msg(1, 'user', 'hi'), msg(2, 'error', 'a warning'), msg(3, 'assistant', 'done anyway')]);
     await waitFor(() => expect(messages(r)).toHaveLength(3), r);
@@ -1882,6 +1921,9 @@ describe('Next steps, the first seconds of a turn, coming back to Chats (B3)', (
     try {
       Date.now = () => real() + 24_500;
       await waitFor(() => expect(phase().textContent).toMatch(/Still starting \(\d+ s\)/), r);
+      // the live region keeps the steady words; the ticking seconds sit outside it, hidden from screen readers
+      expect(must(phase().querySelector('[role="status"]'), 'status').textContent).toBe('Still starting');
+      expect(must(phase().querySelector('[role="status"] + [aria-hidden="true"]'), 'seconds').textContent).toMatch(/^ \(\d+ s\)$/);
       await r.act(() => must$(r, '[data-testid="chat-phase-stop"]').click());
       await waitFor(() => expect(stopped).toEqual(['chat_a']), r);
     } finally {
@@ -1909,6 +1951,83 @@ describe('Next steps, the first seconds of a turn, coming back to Chats (B3)', (
     // a chat opened is the one to come back to
     run = setup({ chatList: async () => list, chatGet: async () => ({ chat: chat({ id: 'c_new' }), messages: [], hasMore: false }) }, { id: 'c_new' });
     await waitFor(() => expect(localStorage.getItem('drydock.chat.last')).toBe('c_new'), run.r);
+  });
+
+  /** The screen as the router keeps it: one instance for /chats and /chats/:id, its id following each navigation. */
+  function routed(client: Partial<Client>) {
+    const s = testServices({
+      projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
+      licenseStatus: async () => lic(),
+      appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
+      adapterList: async () => [claude],
+      skillLibraryList: async () => [],
+      mcpLibList: async () => [],
+      mcpApprovalList: async () => [],
+      chatAsks: async () => [],
+      ...client,
+    });
+    s.workspace.start();
+    const navigated: string[] = [];
+    const nav = new EventTarget();
+    let id: string | undefined;
+    const go = (h: string) => {
+      navigated.push(h);
+      id = h.split('/')[2] || undefined;
+      nav.dispatchEvent(new Event('change'));
+    };
+    function Router(handle: Handle) {
+      watch(handle, nav);
+      return () => <ChatsScreen key="chats" id={id} onNavigate={go} />;
+    }
+    const r = mount(<Router />, s);
+    return { s, r, navigated, go };
+  }
+
+  it('coming back to /chats in the same screen reads the last chat and the list again, never a deleted chat (D7)', async () => {
+    let list = [item({ id: 'c1', title: 'One', updatedAt: Date.now() - 900_000 }), item({ id: 'c5', title: 'Five', updatedAt: Date.now() - 600_000 }), item({ id: 'c3', title: 'Three', updatedAt: Date.now() - 1000 })];
+    localStorage.setItem('drydock.chat.last', 'c1');
+    const deleted: string[] = [];
+    const { r, navigated, go } = routed({
+      chatList: async () => list,
+      chatGet: async (id) => ({ chat: chat({ id }), messages: [], hasMore: false }),
+      chatDelete: async (id) => {
+        deleted.push(id);
+        list = list.filter((c) => c.id !== id);
+      },
+    });
+    await waitFor(() => expect(navigated).toEqual(['/chats/c1']), r);
+    // the person opens Five, then Chats in the sidebar: back to Five, the chat they were in
+    await r.act(() => go('/chats/c5'));
+    await waitFor(() => expect(localStorage.getItem('drydock.chat.last')).toBe('c5'), r);
+    await r.act(() => go('/chats'));
+    await waitFor(() => expect(navigated.at(-1)).toBe('/chats/c5'), r);
+    // they delete Five from its row: /chats opens the newest remaining chat, not the first visit's
+    await waitFor(() => expect(rowTitles(r)).toContain('Five'), r);
+    await pickMenu(r, 'Five', 'Delete…');
+    const dlg = await waitFor(() => dialogWith('Delete chat'), r);
+    await r.act(() => byText(dlg, 'button', 'Delete chat').click());
+    await waitFor(() => expect(navigated.at(-1)).toBe('/chats/c3'), r);
+    expect(deleted).toEqual(['c5']);
+    expect(navigated).toEqual(['/chats/c1', '/chats/c5', '/chats', '/chats/c5', '/chats', '/chats/c3']);
+  });
+
+  it('a new chat asked for while /chats reads the list opens the new chat, not the last one (D7)', async () => {
+    let made: (c: Chat) => void = () => {};
+    let listed = false;
+    const { r, navigated } = setup(
+      {
+        chatList: async () => ((listed = true), [item({ id: 'c1', title: 'One' })]),
+        chatCreate: () => new Promise<Chat>((ok) => (made = ok)),
+      },
+      { newChat: true },
+    );
+    // the list answers while the new chat is still being made
+    await waitFor(() => expect(listed).toBe(true), r);
+    await new Promise((ok) => setTimeout(ok, 30));
+    await r.act(() => made(chat({ id: 'c_new' })));
+    await waitFor(() => expect(navigated).toEqual(['/chats/c_new']), r);
+    await new Promise((ok) => setTimeout(ok, 30));
+    expect(navigated).toEqual(['/chats/c_new']);
   });
 
   it("the list's filter is kept for the next visit (D7)", async () => {

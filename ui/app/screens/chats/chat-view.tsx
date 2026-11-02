@@ -714,6 +714,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
             <button
               type="button"
               mix={[headChip, warnChip, on('click', chipRetry ? chipRetry : openProps)]}
+              // as the row's Try again: one resend at a time (a second, refused while the first turn runs, would show an error)
+              disabled={!!chipRetry && !!act.busy}
               title={chipRetry ? `Try again${chat.lastError ? `: ${chat.lastError}` : ''}` : chat.status === 'error' && chat.lastError ? chat.lastError : 'Open Properties to pick another agent CLI'}
               data-testid="chat-cli-warning"
               data-action={chipRetry ? 'retry' : 'properties'}
@@ -930,7 +932,10 @@ function PhaseLine(handle: Handle<{ who: string; feed: ChatFeed; onStop: () => v
           <i />
           <i />
         </span>
+        {/* the live region holds the steady words; the seconds of a slow start tick outside it, so a screen reader is not
+            told every second */}
         <span role="status">{p.text}</span>
+        {p.seconds ? <span aria-hidden="true"> ({p.seconds} s)</span> : null}
         {p.slow ? (
           <>
             <span aria-hidden="true">·</span>
@@ -986,6 +991,7 @@ const modeListCss = css({
  */
 function ChatSettings(handle: Handle<{ chat: Chat; adapter: AdapterInfo | undefined; busy: string; error: Error | undefined; onSave: (u: SettingsUpdate) => Promise<boolean>; onClose: () => void }>) {
   let model = handle.props.chat.model;
+  let modelTyped = false; // the model field holds a name typed (or cleared) and not yet saved with "Use this model"
   let pendingMode = ''; // a mode that skips approvals, chosen and waiting for its confirmation
   let confirmed = '';
   let saved = false;
@@ -1021,16 +1027,18 @@ function ChatSettings(handle: Handle<{ chat: Chat; adapter: AdapterInfo | undefi
               emptyLabel={defaultModelLabel}
               placeholder={defaultModelLabel}
               disabled={!!busy}
-              onChange={(v) => {
+              onChange={(v, picked) => {
                 model = v;
-                // a name from the list (or the default) is saved at once; one typed waits for "Use this model"
-                if ((v === '' || models.includes(v)) && v !== c.model) void save({ model: v });
+                modelTyped = !picked;
+                // a pick from the list (an alias or the default) is saved at once; a name typed, or the field cleared, waits
+                // for "Use this model", however it reads on the way
+                if (picked && v !== c.model) void save({ model: v });
                 else void handle.update();
               }}
             />
           )}
         </Field>
-        {(typed || models.length === 0) && model.trim() !== c.model ? (
+        {(typed || models.length === 0 || modelTyped) && model.trim() !== c.model ? (
           <Button size="sm" variant="secondary" disabled={!!busy} mix={on('click', () => void save({ model: model.trim() }))}>
             Use this model
           </Button>
