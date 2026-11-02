@@ -10,7 +10,7 @@ import { ReadOnlyNote } from '../../shell/license-banner.tsx';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge, muted } from '../../ui/data.tsx';
-import { Empty, ErrorNote } from '../../ui/feedback.tsx';
+import { Empty, ErrorNote, Notice } from '../../ui/feedback.tsx';
 import { Field, Switch, formActions, formGrid } from '../../ui/form.tsx';
 import { Select } from '../../ui/select.tsx';
 import { Icon } from '../../ui/icon.tsx';
@@ -19,7 +19,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { plural } from '../../lib/format.ts';
 import { newAgentHref } from '../work/edit-agent.ts';
-import { acceptLabel, assignable, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, planTone, stageText, startedText, STEPS, stepStates, toggle, type StepState } from './plan.ts';
+import { acceptLabel, andList, assignable, dependencyWaits, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, planTone, stageText, startedText, STEPS, stepStates, toggle, type StepState } from './plan.ts';
 
 // --- stepper ---
 
@@ -306,7 +306,7 @@ const createdLink = css({
 });
 
 /** A proposed plan: the task graph, a dependency-closed selection, edits, and Accept / Reject. All text is the planner's (untrusted). */
-export function PlanReview(handle: Handle<{ plan: Plan; onDone: (answer?: Plan) => void; started?: TickResult }>) {
+export function PlanReview(handle: Handle<{ plan: Plan; onDone: (answer?: Plan) => void; started?: TickResult; startError?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
@@ -525,7 +525,7 @@ export function PlanReview(handle: Handle<{ plan: Plan; onDone: (answer?: Plan) 
             </div>
           </div>
         ) : null}
-        {plan.status === 'ACCEPTED' && Object.keys(created).length > 0 ? <AfterAccept plan={plan} started={handle.props.started} /> : null}
+        {plan.status === 'ACCEPTED' && Object.keys(created).length > 0 ? <AfterAccept plan={plan} started={handle.props.started} startError={handle.props.startError} /> : null}
       </article>
     );
   };
@@ -548,17 +548,19 @@ const afterCss = css({
  * rest as each one finishes (the project's own automatic scheduling switch, shown as it is and changed only here by the person),
  * and gather the plan's tasks in a milestone.
  */
-export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult }>) {
+export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult; startError?: string }>) {
   const s = services(handle);
   watch(handle, s.workspace);
   const act = action(handle);
   const dev = query(handle, { load: () => s.client.projectdevGet(handle.props.plan.projectId), key: () => handle.props.plan.projectId });
   let tick: TickResult | undefined = handle.props.started;
+  // an Accept and start whose scheduler pass failed: the tasks exist, only starting them did not happen
+  let startError: string | undefined = handle.props.startError;
   let milestone: Milestone | undefined;
 
   const start = async () => {
     const r = await act.run('tick', () => s.client.schedulerTick(handle.props.plan.projectId));
-    if (r) (tick = r), void handle.update();
+    if (r) (tick = r), (startError = undefined), void handle.update();
   };
   const setAuto = async (cur: DevSettings, on_: boolean) => {
     const r = await act.run('auto', () => s.client.projectdevSet(handle.props.plan.projectId, { ...cur, autoSchedule: on_ }));
@@ -575,6 +577,7 @@ export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult }>
     const d = dev.data;
     const busy = act.busy !== '';
     const max = d?.maxParallel ?? 0;
+    const waits = tick ? dependencyWaits(handle.props.plan, tick) : [];
     return (
       <div mix={afterCss} data-testid="plan-after">
         <ErrorNote error={act.error ?? dev.error} />
@@ -600,14 +603,24 @@ export function AfterAccept(handle: Handle<{ plan: Plan; started?: TickResult }>
             onChange={(v) => void setAuto(d, v)}
           />
         ) : null}
+        {startError && !tick ? (
+          <Notice tone="warn" role="status" testId="plan-start-failed">
+            The tasks were created; starting them failed: {startError}
+          </Notice>
+        ) : null}
         {tick ? (
           <div class="tick" role="status" data-testid="plan-started">
-            <p>{startedText(tick)}</p>
-            {(tick.skipped ?? []).length > 0 ? (
+            <p>{startedText(tick, waits.length)}</p>
+            {(tick.skipped ?? []).length + waits.length > 0 ? (
               <ul>
                 {(tick.skipped ?? []).map((sk) => (
                   <li key={sk.taskId}>
                     <a href={routes.task.href({ id: sk.taskId })}>{taskName(handle.props.plan, sk.taskId)}</a> <span mix={muted}>{sk.reason}</span>
+                  </li>
+                ))}
+                {waits.map((w) => (
+                  <li key={w.taskId} data-testid="plan-waits-for">
+                    <a href={routes.task.href({ id: w.taskId })}>{w.title}</a> <span mix={muted}>waits for {andList(w.after)}</span>
                   </li>
                 ))}
               </ul>
@@ -677,9 +690,9 @@ export function PlanScreen(handle: Handle) {
   let planner = '';
   let sel: string | undefined;
   // the scheduler pass of the last "Accept and start", shown on that plan's accepted card
-  let started: { planId: string; tick: TickResult } | undefined;
+  let started: { planId: string; tick?: TickResult; error?: string } | undefined;
   const onDone = (answer?: Plan) => {
-    if (answer?.start) started = { planId: answer.id, tick: answer.start };
+    if (answer?.start || answer?.startError) started = { planId: answer.id, tick: answer.start ?? undefined, error: answer.startError };
     q.reload();
   };
 
@@ -734,7 +747,7 @@ export function PlanScreen(handle: Handle) {
                     <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
                   </div>
                 ) : (
-                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} />
+                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} startError={started?.planId === current.id ? started.error : undefined} />
                 )
               ) : q.data ? (
                 <div mix={card}>
@@ -858,7 +871,7 @@ export function PlanScreen(handle: Handle) {
                     <p role="status">The planner is working on &quot;{current.goal}&quot;...</p>
                   </div>
                 ) : (
-                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} />
+                  <PlanReview key={current.id + current.status} plan={current} onDone={onDone} started={started?.planId === current.id ? started.tick : undefined} startError={started?.planId === current.id ? started.error : undefined} />
                 )
               ) : q.data ? (
                 <div mix={card}>

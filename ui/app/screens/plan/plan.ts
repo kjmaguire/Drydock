@@ -113,10 +113,34 @@ export function acceptLabel(selected: number, nobody: number): string {
   return nobody > 0 ? `${base} · ${nobody} ${nobody === 1 ? 'has' : 'have'} nobody` : base;
 }
 
-/** The scheduler's pass in a sentence: what started and what waits. */
-export function startedText(tick: TickResult): string {
+/**
+ * The plan's created tasks the pass neither started nor looked at because they wait in the backlog for other planned tasks
+ * (the scheduler's skipped list holds only ready tasks): each with the titles of the planned tasks it depends on.
+ */
+export function dependencyWaits(plan: Plan, tick: TickResult): { taskId: string; title: string; after: string[] }[] {
+  const created = plan.createdTasks ?? {};
+  const seen = new Set([...(tick.started ?? []), ...(tick.skipped ?? []).map((x) => x.taskId)]);
+  const all = plan.proposal?.tasks ?? [];
+  const title = new Map(all.map((t) => [t.key, t.title]));
+  const out: { taskId: string; title: string; after: string[] }[] = [];
+  for (const t of all) {
+    const id = created[t.key];
+    const deps = (t.dependsOn ?? []).filter((d) => title.has(d));
+    if (!id || seen.has(id) || deps.length === 0) continue;
+    out.push({ taskId: id, title: t.title, after: deps.map((d) => title.get(d)!) });
+  }
+  return out;
+}
+
+/** "Multiply", "Multiply and Add", "Multiply, Add and Sum". */
+export function andList(xs: readonly string[]): string {
+  return xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+}
+
+/** The scheduler's pass in a sentence: what started and what waits (the skipped ready tasks plus `alsoWaiting` others). */
+export function startedText(tick: TickResult, alsoWaiting = 0): string {
   const started = (tick.started ?? []).length;
-  const waiting = (tick.skipped ?? []).length;
+  const waiting = (tick.skipped ?? []).length + alsoWaiting;
   const first = started === 0 ? 'Nothing started.' : `Started ${plural(started, 'task')}.`;
   return waiting > 0 ? `${first} ${plural(waiting, 'task')} ${waiting === 1 ? 'waits' : 'wait'}:` : first;
 }

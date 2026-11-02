@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import type { Plan, ProposedTask } from '../../api/extTypes.ts';
-import { acceptLabel, assignable, closure, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle } from './plan.ts';
+import { acceptLabel, andList, assignable, closure, dependencyWaits, deselect, editsFor, lines, milestoneTitle, newestFirst, nobodyCount, startedText, stepStates, toggle } from './plan.ts';
 
 const pt = (key: string, deps: string[] = []): ProposedTask => ({
   key,
@@ -84,8 +84,39 @@ describe('who can take a task, and the words around starting', () => {
     expect(acceptLabel(5, 1)).toBe('Accept 5 tasks · 1 has nobody');
     expect(startedText({ promoted: [], started: [], skipped: null, active: 0, capacity: 0, max: 1 })).toBe('Nothing started.');
     expect(startedText({ promoted: [], started: ['a'], skipped: [{ taskId: 'b', reason: 'x' }, { taskId: 'c', reason: 'y' }], active: 1, capacity: 0, max: 1 })).toBe('Started 1 task. 2 tasks wait:');
+    expect(startedText({ promoted: [], started: ['a'], skipped: [], active: 1, capacity: 0, max: 1 }, 1)).toBe('Started 1 task. 1 task waits:');
+    expect([andList([]), andList(['A']), andList(['A', 'B']), andList(['A', 'B', 'C'])]).toEqual(['', 'A', 'A and B', 'A, B and C']);
     expect(milestoneTitle('First line\nmore')).toBe('First line');
     expect(new TextEncoder().encode(milestoneTitle('é'.repeat(150))).length).toBeLessThanOrEqual(200);
     expect(milestoneTitle('  ')).toBe('Plan');
+  });
+});
+
+describe('dependencyWaits (X47)', () => {
+  const t = (key: string, title: string, dependsOn: string[] = []) => ({ key, title, description: '', role: 'backend', dependsOn, acceptance: [] });
+  const p = {
+    id: 'p',
+    projectId: 'prj',
+    runId: 'r',
+    goal: 'g',
+    status: 'ACCEPTED',
+    plannerAgent: '',
+    createdAt: 1,
+    proposal: { tasks: [t('mul', 'Multiply'), t('div', 'Divide', ['mul']), t('mod', 'Modulo', ['mul', 'div']), t('doc', 'Docs')], notes: '' },
+    createdTasks: { mul: 'task_mul', div: 'task_div', mod: 'task_mod', doc: 'task_doc' },
+  };
+
+  it("names each planned task the pass did not look at because it waits for the plan's other tasks", () => {
+    const tick = { promoted: ['task_mul'], started: ['task_mul'], skipped: [{ taskId: 'task_doc', reason: 'at the limit' }], active: 1, capacity: 1, max: 1 };
+    expect(dependencyWaits(p, tick)).toEqual([
+      { taskId: 'task_div', title: 'Divide', after: ['Multiply'] },
+      { taskId: 'task_mod', title: 'Modulo', after: ['Multiply', 'Divide'] },
+    ]);
+  });
+
+  it('claims nothing for tasks that started, were skipped with a reason, were not created, or have no dependencies', () => {
+    const tick = { promoted: [], started: ['task_mul', 'task_div'], skipped: [{ taskId: 'task_mod', reason: 'x' }], active: 2, capacity: 2, max: 2 };
+    expect(dependencyWaits(p, tick)).toEqual([]);
+    expect(dependencyWaits({ ...p, createdTasks: { mul: 'task_mul' } }, { ...tick, started: [], skipped: [] })).toEqual([]);
   });
 });

@@ -935,6 +935,8 @@ export interface Plan {
   plannedBy?: string;
   /** plan.accept with start: the scheduler pass that followed. */
   start?: TickResult | null;
+  /** plan.accept with start: the pass failed (the plan was accepted and its tasks exist). */
+  startError?: string;
 }
 export interface SchedulerStatus {
   settings: DevSettings;

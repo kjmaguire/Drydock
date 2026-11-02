@@ -536,13 +536,25 @@ func (a *agentsDev) proposePlan(ctx context.Context, projectID, goal, requiremen
 
 // planView is a stored plan as the Plan screen reads it: per proposed task whether anyone on the crew has its role (what the
 // create step's Assign needs), the crew's plan roles (to judge a role the person edits), and the planner's name. Start is the
-// scheduler pass of an "Accept and start".
+// scheduler pass of an "Accept and start"; StartError says that pass failed (the plan was accepted and its tasks exist).
 type planView struct {
 	pipeline.Plan
 	Assignable map[string]bool      `json:"assignable"`
 	CrewRoles  []string             `json:"crewRoles"`
 	PlannedBy  string               `json:"plannedBy,omitempty"`
 	Start      *pipeline.TickResult `json:"start,omitempty"`
+	StartError string               `json:"startError,omitempty"`
+}
+
+// withStart folds the scheduler pass that follows an accepted plan into its view. The accept already happened and created the
+// tasks, so a failed pass is reported beside them rather than as a failed accept (which would read as "nothing was sent").
+func withStart(v planView, tick pipeline.TickResult, err error) planView {
+	if err != nil {
+		v.Start, v.StartError = nil, err.Error()
+		return v
+	}
+	v.Start = &tick
+	return v
 }
 
 func planViewOf(p pipeline.Plan, team []pipeline.TeamMember) planView {
@@ -803,10 +815,7 @@ func (a *agentsDev) methods() map[string]Method {
 			v := planViewOf(pl, team)
 			if p.Start && pl.Status == "ACCEPTED" {
 				tick, err := a.sched.Tick(ctx, pl.ProjectID)
-				if err != nil {
-					return nil, err
-				}
-				v.Start = &tick
+				v = withStart(v, tick, err)
 			}
 			return v, nil
 		}),

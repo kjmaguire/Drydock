@@ -262,14 +262,15 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
   let newText = '';
   let taskId = '';
   let criteria = '';
-  // the chosen task's criteria the person keeps ticked (by index); the box for other criteria opens when the task has none
+  // the chosen task's criteria the person keeps ticked (by index); the box for other criteria opens when the task has none,
+  // and stays open while it holds typed lines, so Link never sends lines the person cannot see
   let ticked = new Set<number>();
   let otherOpen = false;
   const choose = (v: string) => {
     taskId = v;
     const crit = handle.props.tasks.find((x) => x.id === v)?.acceptance ?? [];
     ticked = new Set(crit.map((c, i) => (isGWT(c) ? i : -1)).filter((i) => i >= 0));
-    otherOpen = !!v && crit.length === 0;
+    otherOpen = (!!v && crit.length === 0) || criteria.trim() !== '';
   };
   const set = (fn: () => void) => {
     fn();

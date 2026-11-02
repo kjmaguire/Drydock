@@ -178,6 +178,37 @@ describe('RequirementsScreen', () => {
     await waitFor(() => expect(linked).toEqual([['req_1', 't2', ['AC1: Given a cart, when paid, then an order exists']]]), r);
   });
 
+  it('keeps typed criteria in sight when the person switches to a task that has its own (X42)', async () => {
+    const t2 = {
+      ...task,
+      id: 't2',
+      seq: 12,
+      title: 'Pay',
+      acceptance: ['Given a cart, when paid, then an order exists', 'Given an order, when shipped, then mail goes out'],
+    } as Task;
+    const r = mount(<RequirementsScreen />, servicesWith({ taskList: async () => [task, t2] }));
+    const row = await waitFor(() => need(r.$('[data-testid="requirement"]')), r);
+    await r.act(() => byText(row, 'button', 'Open').click());
+    await waitFor(() => byText(r.container, '[role="option"]', '#12 Pay'), r);
+    type(byLabel<HTMLElement>(r.container, 'Task to link'), 't1');
+    r.root.flush();
+    type(byLabel<HTMLTextAreaElement>(r.container, /^Criteria \(one per line/), 'Given a, when b, then c\nGiven d, when e, then f');
+    r.root.flush();
+    type(byLabel<HTMLElement>(r.container, 'Task to link'), 't2');
+    r.root.flush();
+    // the typed lines count toward Link, so the box that holds them stays open
+    expect((r.$('[data-testid="req-other-criteria"]') as HTMLDetailsElement).open).toBe(true);
+    byText(r.container, 'button', 'Link 4 criteria of #12');
+    // with nothing typed, a task with its own criteria folds the box
+    type(byLabel<HTMLTextAreaElement>(r.container, /^Criteria \(one per line/), '');
+    r.root.flush();
+    type(byLabel<HTMLElement>(r.container, 'Task to link'), 't1');
+    r.root.flush();
+    type(byLabel<HTMLElement>(r.container, 'Task to link'), 't2');
+    r.root.flush();
+    expect((r.$('[data-testid="req-other-criteria"]') as HTMLDetailsElement).open).toBe(false);
+  });
+
   it('says the task choice for linking criteria holds only the newest tasks while the project has more (M21)', async () => {
     const open = async (total: number) => {
       const r = mount(<RequirementsScreen />, servicesWith({ taskCount: async () => ({ total }) }));

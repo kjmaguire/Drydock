@@ -233,6 +233,35 @@ describe('Accept and start (X47)', () => {
     expect(r.$('[data-testid="plan-started"]')!.textContent).toContain('Started 2 tasks.');
   });
 
+  it("names the planned tasks that wait for their dependencies, not only the skipped ready ones", () => {
+    const all = plan({ status: 'ACCEPTED', createdTasks: { a: 'task_a', b: 'task_b', c: 'task_c', d: 'task_d' } });
+    const r = mount(
+      <AfterAccept plan={all} started={{ promoted: [], started: ['task_a'], skipped: [{ taskId: 'task_d', reason: 'at the limit' }], active: 1, capacity: 1, max: 1 }} />,
+      testServices({ projectdevGet: async () => dev }),
+    );
+    r.root.flush();
+    const st = must(r.$('[data-testid="plan-started"]'));
+    expect(st.textContent).toContain('Started 1 task. 3 tasks wait:');
+    expect(st.textContent).toContain('at the limit');
+    expect(Array.from(r.$$('[data-testid="plan-waits-for"]')).map((li) => li.textContent)).toEqual(['Task b waits for Task a', 'Task c waits for Task b']);
+  });
+
+  it('a failed pass after Accept and start says the tasks were created, and Start now tries again', async () => {
+    const ticks: string[] = [];
+    const s = testServices({
+      projectdevGet: async () => dev,
+      schedulerTick: async (p) => (ticks.push(p), { promoted: [], started: ['task_a'], skipped: [], active: 1, capacity: 2, max: 2 }),
+    });
+    const r = mount(<AfterAccept plan={accepted} startError="database is locked" />, s);
+    r.root.flush();
+    expect(must(r.$('[data-testid="plan-start-failed"]')).textContent).toContain('The tasks were created; starting them failed: database is locked');
+    expect(r.$('[data-testid="plan-started"]')).toBe(null);
+    await r.act(() => byText(r.container, 'button', 'Start now').click());
+    await waitFor(() => must(r.$('[data-testid="plan-started"]')), r);
+    expect(ticks).toEqual(['prj_1']);
+    expect(r.$('[data-testid="plan-start-failed"]')).toBe(null);
+  });
+
   it('creates a milestone from the plan with its created tasks (X49)', async () => {
     const made: unknown[][] = [];
     const s = testServices({
@@ -333,6 +362,46 @@ describe('PlanScreen', () => {
     const goal2 = byLabel<HTMLTextAreaElement>(r.container, 'Goal');
     expect(goal2.closest('details')).toBeNull();
     expect(r.$('[data-testid="plan"]')!.compareDocumentPosition(goal2) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it('Accept and start hands its pass to the accepted card the screen remounts, with no second click (X47)', async () => {
+    let status = 'PROPOSED';
+    const ticks: string[] = [];
+    const tick: TickResult = { promoted: ['task_a'], started: ['task_a', 'task_d'], skipped: [], active: 2, capacity: 2, max: 2 };
+    const createdTasks = { a: 'task_a', b: 'task_b', c: 'task_c', d: 'task_d' };
+    const s = servicesWith({
+      agentList: async () => [agent],
+      projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true }) as DevSettings,
+      schedulerTick: async (p) => (ticks.push(p), tick),
+      planList: async () => [plan({ status, ...(status === 'ACCEPTED' ? { createdTasks } : {}) })],
+      planAccept: async () => ((status = 'ACCEPTED'), plan({ status, createdTasks, start: tick })),
+    });
+    const r = mount(<PlanScreen />, s);
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('PROPOSED'), r);
+    await r.act(() => byText(r.container, 'button', 'Accept and start').click());
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('ACCEPTED'), r, 3000);
+    const st = await waitFor(() => must(r.$('[data-testid="plan-started"]')), r);
+    expect(st.textContent).toContain('Started 2 tasks. 2 tasks wait:');
+    expect(st.textContent).toContain('Task b');
+    expect(ticks).toEqual([]);
+  });
+
+  it("an Accept and start whose pass failed shows the accepted card and the failure, not 'Not sent' (X47)", async () => {
+    let status = 'PROPOSED';
+    const createdTasks = { a: 'task_a', b: 'task_b', c: 'task_c', d: 'task_d' };
+    const s = servicesWith({
+      agentList: async () => [agent],
+      projectdevGet: async () => ({ maxParallel: 2, autoSchedule: false, respond: true }) as DevSettings,
+      planList: async () => [plan({ status, ...(status === 'ACCEPTED' ? { createdTasks } : {}) })],
+      planAccept: async () => ((status = 'ACCEPTED'), plan({ status, createdTasks, startError: 'database is locked' })),
+    });
+    const r = mount(<PlanScreen />, s);
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('PROPOSED'), r);
+    await r.act(() => byText(r.container, 'button', 'Accept and start').click());
+    await waitFor(() => expect(r.$('[data-testid="plan"]')!.getAttribute('data-status')).toBe('ACCEPTED'), r, 3000);
+    const failed = await waitFor(() => must(r.$('[data-testid="plan-start-failed"]')), r);
+    expect(failed.textContent).toContain('The tasks were created; starting them failed: database is locked');
+    expect(r.container.textContent).not.toContain('Not sent');
   });
 
   it('read-only turns Propose off', async () => {
