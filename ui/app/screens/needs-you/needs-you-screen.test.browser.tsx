@@ -5,7 +5,8 @@ import type { ApprovalDetail } from '../../api/inboxClient.ts';
 import type { RunningScan } from '../../api/securityTypes.ts';
 import type { NeedsYouItem, Task, TaskSummary } from '../../api/types.ts';
 import { cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
-import { NeedsYouScreen } from './needs-you-screen.tsx';
+import type { Handle } from 'remix/component';
+import { ACK_CHUNK, NeedsYouScreen } from './needs-you-screen.tsx';
 import { startOfToday } from './needs-you.ts';
 
 afterEach(cleanup);
@@ -372,6 +373,62 @@ describe('the Inbox', () => {
     await waitFor(() => expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 3 done'), r);
     await r.act(() => (r.$('[data-testid="mark-many"]') as HTMLButtonElement).click());
     await waitFor(() => expect(many[1]).toEqual(['check:m1', 'watchdog:9', 'mention:5']), r);
+  });
+
+  it('marks more than the core takes in one call in turns of at most ACK_CHUNK', async () => {
+    expect(ACK_CHUNK).toBe(200);
+    const items: NeedsYouItem[] = Array.from({ length: 230 }, (_, i) => ({ ...failed, key: `check:m${i}`, title: `Tests failed ${i}` }));
+    const many: string[][] = [];
+    const { s } = servicesWith({ needsYouAckMany: async (keys) => (many.push(keys), keys.length) }, items);
+    const r = mount(<NeedsYouScreen />, s);
+    await waitFor(() => expect(r.$('[data-testid="mark-many"]')?.textContent).toBe('Mark 230 done'), r);
+    await r.act(() => (r.$('[data-testid="mark-many"]') as HTMLButtonElement).click());
+    await waitFor(() => expect(many.map((k) => k.length)).toEqual([200, 30]), r);
+    expect([...many[0]!, ...many[1]!]).toEqual(items.map((it) => it.key));
+  });
+
+  // the Inbox's keys ignore any press with Ctrl, Alt or the Windows key (lib/keys.ts typing): Ctrl+Shift+K only opens the Inbox
+  it('Ctrl+Shift+K (open the Inbox) neither moves the selection nor picks rows', async () => {
+    const check2: NeedsYouItem = { key: 'watchdog:9', kind: 'watchdog_pause', severity: 1, title: 'Paused: no progress', projectId: 'p1', taskId: 't1', taskSeq: 41, createdAt: iso(NOW - 30 * 60_000) };
+    const { r } = await open({}, [permission, failed, check2]);
+    await r.act(() => press('j'));
+    expect(selectedKey(r)).toBe('needs:check:m1');
+    for (const mods of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      await r.act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', shiftKey: true, ...mods, bubbles: true, cancelable: true })));
+      expect(selectedKey(r)).toBe('needs:check:m1');
+      expect(r.$$('[data-picked="true"]').length).toBe(0);
+    }
+    expect(r.$('[data-testid="mark-many"]')!.textContent).toBe('Mark 2 done');
+  });
+
+  it('a link back to the item it opened on selects it again after the selection moved', async () => {
+    const check2: NeedsYouItem = { key: 'watchdog:9', kind: 'watchdog_pause', severity: 1, title: 'Paused: no progress', projectId: 'p1', taskId: 't1', taskSeq: 41, createdAt: iso(NOW - 30 * 60_000) };
+    const { s } = servicesWith({}, [permission, failed, check2]);
+    const before = location.pathname + location.search;
+    let item = 'needs:check:m1';
+    let host!: Handle;
+    function Host(h: Handle) {
+      host = h;
+      return () => <NeedsYouScreen item={item} onNavigate={() => {}} />;
+    }
+    try {
+      window.history.replaceState(window.history.state, '', `/needs-you?item=${encodeURIComponent(item)}`);
+      const r = mount(<Host />, s);
+      await waitFor(() => expect(selectedKey(r)).toBe('needs:check:m1'), r);
+      await r.act(() => press('j'));
+      expect(selectedKey(r)).toBe('needs:watchdog:9');
+      await waitFor(() => expect(new URLSearchParams(location.search).get('item')).toBe('needs:watchdog:9'), r);
+      // other updates keep the selection where it moved (the prop still names the first item)
+      await r.act(() => host.update());
+      expect(selectedKey(r)).toBe('needs:watchdog:9');
+      // the sidebar's count links to needs:check:m1 again: the address and the prop name it
+      window.history.pushState(window.history.state, '', `/needs-you?item=${encodeURIComponent('needs:check:m1')}`);
+      item = 'needs:check:m1';
+      await r.act(() => host.update());
+      await waitFor(() => expect(selectedKey(r)).toBe('needs:check:m1'), r);
+    } finally {
+      window.history.replaceState(window.history.state, '', before);
+    }
   });
 
   it('says plainly when nothing waits and nothing runs, with or without a project', async () => {

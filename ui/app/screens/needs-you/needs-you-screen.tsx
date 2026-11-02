@@ -75,6 +75,9 @@ const LOOK: Record<NeedsLook, { icon: IconNode; tone: Tone }> = {
 };
 
 // the page: the list on the left and the selected item beside it; a narrow page puts the item under the list
+/** The most keys one needsyou.ackMany call takes (MaxAckKeys in internal/core/ext_inbox.go). */
+export const ACK_CHUNK = 200;
+
 const frameCss = css({ height: '100%', minHeight: '0', containerType: 'inline-size' });
 const gridCss = css({
   display: 'grid',
@@ -229,7 +232,8 @@ export function NeedsYouScreen(
   let lastIndex = 0;
   // the rows Shift+J/K picked to mark done together (row keys); a plain move or click clears them
   let picked = new Set<string>();
-  // the ?item= of the address, once applied (null: not yet), and the item last written into the address
+  // the ?item= last applied or written into the address (null: none yet): a link to an item counts as new when it names
+  // another one, also the one the Inbox opened on before the selection moved (the sidebar's project count links there again)
   let propItem: string | undefined | null = null;
   let written: string | undefined;
   // the address's item until its row is listed (its list may still be loading, its tab not yet shown)
@@ -313,7 +317,9 @@ export function NeedsYouScreen(
   const markMany = (items: NeedsYouItem[]) => {
     if (!items.length || ack.busy) return;
     void ack.run('ack', async () => {
-      await s.client.needsYouAckMany(items.map((it) => it.key));
+      // the core takes at most ACK_CHUNK keys a call (MaxAckKeys in internal/core/ext_inbox.go): more go in turn
+      const keys = items.map((it) => it.key);
+      for (let i = 0; i < keys.length; i += ACK_CHUNK) await s.client.needsYouAckMany(keys.slice(i, i + ACK_CHUNK));
       picked = new Set();
       await s.workspace.needs.reload();
     });
@@ -362,9 +368,13 @@ export function NeedsYouScreen(
     const ws = s.workspace;
     // the sidebar's Running link and a link with ?tab= choose the tab when the address changes
     // without one, the Inbox opens on the tab it was left on (remembered), or the one its ?item= is on
-    if (handle.props.tab !== propTab || handle.props.item !== propItem) {
+    // the item prop is the address's at the last navigation; once the selection is written into the address it is stale,
+    // so it counts only while the address still names it
+    const onInbox = location.pathname === routes.needsYou.href();
+    const itemNew = handle.props.item !== propItem && (!onInbox || propItem === null || new URLSearchParams(location.search).get('item') === (handle.props.item ?? null));
+    if (handle.props.tab !== propTab || itemNew) {
       propTab = handle.props.tab;
-      if (handle.props.item !== propItem) {
+      if (itemNew) {
         propItem = handle.props.item;
         if (propItem) {
           wanted = propItem;
@@ -414,6 +424,7 @@ export function NeedsYouScreen(
         if (location.pathname !== routes.needsYou.href()) return;
         const href = inboxAddress(location.pathname, location.search, written);
         if (href !== location.pathname + location.search) window.history.replaceState(window.history.state, '', href);
+        propItem = written;
       });
     }
     const bulk = active === 'needs' ? bulkItems() : [];

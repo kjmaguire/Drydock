@@ -94,6 +94,7 @@ export const KEYMAP: readonly KeyLine[] = [
   { keys: ['@', '#', '/'], action: 'Suggest agents, tasks and commands', where: "A room's message box" },
   { keys: ['/'], action: 'Search the list', where: 'Agents, Integrations, Models' },
   { keys: ['J', 'K'], action: 'Next and previous item (Enter opens it, E marks it done)', where: 'Inbox' },
+  { keys: ['Shift', 'J', 'K'], action: 'Pick the rows passed (E marks them done, Esc lets them go)', where: 'Inbox' },
   { keys: ['N'], action: 'New agent', where: 'Crew' },
   { keys: ['C'], action: 'New task', where: 'Tasks' },
   { keys: ['Esc'], action: 'Close a dialog, a menu or a popover', where: 'Everywhere' },

@@ -134,7 +134,9 @@ const itemCss = css({
   '&:hover': { background: t.bgHover, color: t.text, textDecoration: 'none' },
   '&[aria-current="page"], &[aria-current="true"]': { background: t.bgActive, color: t.text },
   '&:focus-visible': { boxShadow: t.focus, outline: 'none' },
-  ':is([data-rail="true"]) &': { justifyContent: 'center', padding: '0', width: '36px', height: '36px', margin: '0 auto', '& > .lbl, & > .count': { display: 'none' } },
+  // room for a project's amber count beside its name (the count sits over the square's corner on the rail)
+  '&[data-needs="true"]': { paddingRight: '44px' },
+  ':is([data-rail="true"]) &': { justifyContent: 'center', padding: '0', width: '36px', height: '36px', margin: '0 auto', '& > .lbl, & > .count': { display: 'none' }, '&[data-needs="true"]': { paddingRight: '0' } },
 });
 const squareCss = css({ display: 'inline-block', flex: 'none', width: '9px', height: '9px', borderRadius: '3px' });
 const countCss = css({ flex: 'none', color: t.textFaint, fontSize: t.textSm, fontVariantNumeric: 'tabular-nums' });
@@ -387,7 +389,7 @@ export function Sidebar(handle: Handle<{ route: Route; onNavigate?: (href: strin
                     data-project={p.id}
                     aria-current={open && route.name === 'home' ? 'page' : open ? 'true' : undefined}
                     aria-expanded={open ? 'true' : 'false'}
-                    style={waiting.length ? { paddingRight: '44px' } : undefined}
+                    data-needs={waiting.length ? 'true' : undefined}
                   >
                     <span mix={squareCss} aria-hidden="true" style={{ background: `hsl(${hueFor(p.id)} 62% 62%)` }} />
                     <span class="lbl">{p.name}</span>

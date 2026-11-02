@@ -120,6 +120,19 @@ describe('the sidebar', () => {
     expect(pill.getAttribute('href')).toBe('/needs-you?item=needs%3Acheck%3Am1');
     // the Inbox counts every one, the one of no project too
     expect(r.$('[data-testid="needs-count"]')!.textContent).toBe('3');
+    // the line leaves room for the count; on the rail the square stays centred in its 36px button like the others
+    const lines = Array.from(r.$$('[data-testid="nav-project-item"]')) as HTMLElement[];
+    const q = lines.find((e) => e.getAttribute('data-project') === 'q')!;
+    expect(q.getAttribute('data-needs')).toBe('true');
+    expect(q.getAttribute('style')).toBeNull();
+    expect(getComputedStyle(q).paddingRight).toBe('44px');
+    await r.act(() => (r.$('[data-testid="sidebar-fold"]') as HTMLButtonElement).click());
+    expect(r.$('[data-testid="sidebar"]')!.getAttribute('data-rail')).toBe('true');
+    expect(getComputedStyle(q).paddingRight).toBe('0px');
+    expect(getComputedStyle(q).width).toBe('36px');
+    const box = q.getBoundingClientRect();
+    const sq = q.querySelector('span')!.getBoundingClientRect();
+    expect(Math.abs(sq.left + sq.width / 2 - (box.left + box.width / 2)) < 1).toBe(true);
   });
 
   it('marks the open project on every page of it, its Work as the page itself (decision P141)', async () => {
