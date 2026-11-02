@@ -16,10 +16,22 @@ export type DockTab = 'terminal' | 'diff' | 'logs' | 'activity';
  */
 export type DetailsPage = 'conversation' | 'other';
 
+/**
+ * What the dock showed for one task (effort review X22): the Diff tab's Live or Recorded choice (only once the person clicked one),
+ * its file, and the Logs tab's log. Read when the panel mounts again, so closing the dock or switching tabs loses nothing.
+ */
+export interface DockView {
+  live?: boolean;
+  file?: string;
+  log?: string;
+}
+
 interface DockState {
   open: boolean;
   tab: DockTab;
   height: number;
+  /** Per task, the most recently used last; at most DOCK_VIEWS_MAX tasks are kept. */
+  views?: Record<string, DockView>;
 }
 
 const DOCK_KEY = 'drydock.dock';
@@ -30,6 +42,9 @@ const INBOX_KEY = 'drydock.inbox';
 const DOCK_TABS: readonly DockTab[] = ['terminal', 'diff', 'logs', 'activity'];
 const DOCK_DEFAULT: DockState = { open: false, tab: 'diff', height: 280 };
 const DOCK_MIN_HEIGHT = 120;
+/** How many tasks' dock views a project keeps: the oldest is dropped (a closed task is not opened again for long). */
+export const DOCK_VIEWS_MAX = 30;
+const DOCK_TEXT_MAX = 1024;
 const DOCK_MAX_HEIGHT = 2400;
 const DETAILS_DEFAULT = { open: true, other: false };
 
@@ -78,6 +93,26 @@ export function parseDock(raw: unknown): Record<string, DockState> {
       tab: DOCK_TABS.includes(v.tab as DockTab) ? (v.tab as DockTab) : DOCK_DEFAULT.tab,
       height: typeof v.height === 'number' && Number.isFinite(v.height) ? Math.min(DOCK_MAX_HEIGHT, Math.max(DOCK_MIN_HEIGHT, Math.round(v.height))) : DOCK_DEFAULT.height,
     };
+    const views = parseDockViews(v.views);
+    if (views) out[id]!.views = views;
+  }
+  return out;
+}
+
+/** A project's per-task dock views as stored: a field of the wrong type is left out, and only the newest DOCK_VIEWS_MAX stay. */
+export function parseDockViews(raw: unknown): Record<string, DockView> | undefined {
+  if (!isRecord(raw)) return undefined;
+  const out: Record<string, DockView> = Object.create(null);
+  const text = (x: unknown) => (typeof x === 'string' && x !== '' && x.length <= DOCK_TEXT_MAX ? x : undefined);
+  for (const [task, v] of Object.entries(raw).slice(-DOCK_VIEWS_MAX)) {
+    if (!isRecord(v)) continue;
+    const view: DockView = {};
+    if (typeof v.live === 'boolean') view.live = v.live;
+    const file = text(v.file);
+    if (file) view.file = file;
+    const log = text(v.log);
+    if (log) view.log = log;
+    out[task] = view;
   }
   return out;
 }
@@ -329,6 +364,26 @@ export class UiModel extends Model {
     this.#dock[this.#project] = { ...this.dock, ...p };
     if (persist) writeJSON(DOCK_KEY, this.#dock);
     this.changed();
+  }
+
+  /** What the dock last showed for a task in this project (X22): read when the Diff or Logs panel mounts. */
+  dockView(taskId: string): DockView {
+    return { ...this.#dock[this.#project]?.views?.[taskId] };
+  }
+
+  /**
+   * Remember a choice the person made in the dock for a task (a file, Live or Recorded, a log). Stored with the dock state; the
+   * task becomes the newest, and the oldest beyond DOCK_VIEWS_MAX is dropped. Nothing on screen depends on it, so nothing redraws.
+   */
+  setDockView(taskId: string, p: DockView): void {
+    const cur = this.dock;
+    const views: Record<string, DockView> = Object.create(null);
+    for (const [k, v] of Object.entries(cur.views ?? {})) if (k !== taskId) views[k] = v;
+    views[taskId] = { ...cur.views?.[taskId], ...p };
+    const keys = Object.keys(views);
+    for (const k of keys.slice(0, Math.max(0, keys.length - DOCK_VIEWS_MAX))) delete views[k];
+    this.#dock[this.#project] = { ...cur, views };
+    if (this.#persist) writeJSON(DOCK_KEY, this.#dock);
   }
 
   /** Open the dock on a tab (the task view, the command palette, Ctrl+Shift+D). */

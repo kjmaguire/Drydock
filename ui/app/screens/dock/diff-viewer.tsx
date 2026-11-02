@@ -1,5 +1,7 @@
 // A task's changes, file by file, in Monaco's read-only diff editor (docs/ui.md 6.1). "Recorded" is the diff of the last
 // finished attempt; "Live" is the worktree as it is now, while an agent works. Used in the dock and on the task page.
+// While an agent works on the task the viewer shows Live, and Recorded once the run stops, until the person picks one (X21);
+// that pick and the file are remembered per task (UiModel.dockView, X22).
 
 import { css, on, ref, type Handle } from 'remix/component';
 import { ChevronDown, ChevronUp, Columns2, FileDiff, Rows2 } from 'lucide';
@@ -58,9 +60,12 @@ const noteSlot = css({ padding: `${t.s2} ${t.s3} 0` });
 
 export function DiffViewer(handle: Handle<{ taskId: string }>) {
   const s = services(handle);
-  let live = false;
+  const view = s.ui.dockView(handle.props.taskId);
+  // the person's pick of Live or Recorded; undefined follows the run (Live while an agent works)
+  let choice = view.live;
+  let live = choice ?? false;
   let side = loadSide();
-  let selected: string | undefined;
+  let selected = view.file;
   const list = query<DiffFiles>(handle, {
     load: () => s.client.taskDiffFiles(handle.props.taskId, live),
     when: (e) => e.taskId === handle.props.taskId,
@@ -69,6 +74,8 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
   });
   const setLive = (v: boolean) => {
     live = v;
+    choice = v;
+    s.ui.setDockView(handle.props.taskId, { live: v });
     void handle.update();
   };
   const setSide = (v: boolean) => {
@@ -78,13 +85,18 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
   };
   const select = (path: string) => {
     selected = path;
+    s.ui.setDockView(handle.props.taskId, { file: path });
     void handle.update();
   };
 
   return () => {
     const taskId = handle.props.taskId;
-    // the worktree went away: back to the recorded diff
-    if (live && list.data && !list.data.liveAvailable) live = false;
+    // Live while an agent works (or when the person chose it) and the worktree is there; Recorded otherwise. Changing it reads
+    // the other diff: the read of this one starts again (list.data is empty until it answers).
+    if (list.data) {
+      const want = list.data.liveAvailable && (choice ?? !!list.data.runActive);
+      if (want !== live) live = want;
+    }
     const d = list.data;
     if (!d && list.error) return <div mix={noteSlot}><ErrorNote error={list.error} what="Could not load the diff" /></div>;
     if (!d) return <Loading label="Loading the diff..." />;
@@ -146,7 +158,12 @@ export function DiffViewer(handle: Handle<{ taskId: string }>) {
         ) : null}
         {d.source === 'none' ? (
           <Empty title="No diff yet" icon={FileDiff}>
-            <p>No diff has been recorded yet. {d.liveAvailable ? 'Choose Live to see the worktree now.' : ''}</p>
+            <p>No diff has been recorded yet.</p>
+            {d.liveAvailable ? (
+              <Button size="sm" mix={on('click', () => setLive(true))}>
+                Show the worktree now
+              </Button>
+            ) : null}
           </Empty>
         ) : files.length === 0 ? (
           <Empty title="No changes" icon={FileDiff}>

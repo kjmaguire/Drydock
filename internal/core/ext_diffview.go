@@ -52,6 +52,9 @@ type DiffFiles struct {
 	Files  []DiffFile `json:"files"`
 	// LiveAvailable says the task still has a worktree, so a live diff can be asked for.
 	LiveAvailable bool `json:"liveAvailable"`
+	// RunActive says an agent is working on the task now (its run is being driven, not waiting for a person or paused): the
+	// viewer then opens on the live diff, and goes back to the recorded one when the run stops, unless the person chose.
+	RunActive bool `json:"runActive,omitempty"`
 }
 
 // DiffFileContent is both versions of one file. Partial means only the changed regions are known (the commits are gone);
@@ -154,6 +157,9 @@ func (c *Core) TaskDiffFiles(ctx context.Context, id string, live bool) (DiffFil
 		return DiffFiles{}, err
 	}
 	out := DiffFiles{Source: src.kind, Base: src.base, Head: src.head, Files: []DiffFile{}, LiveAvailable: worktreeExists(t)}
+	if info, ok := c.activeRun(ctx, t); ok && executing(info.Status) {
+		out.RunActive = true
+	}
 	if src.kind == "none" {
 		return out, nil
 	}

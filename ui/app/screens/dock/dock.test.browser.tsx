@@ -1,7 +1,8 @@
 import { expect } from 'remix/assert';
 import { afterEach, beforeEach, describe, it } from 'remix/test';
 import type { DiffFileContent, DiffFiles, LogSource, TerminalChunk, TerminalInfo } from '../../api/dockClient.ts';
-import type { UsageRow } from '../../api/types.ts';
+import type { Agent, Project, UsageRow } from '../../api/types.ts';
+import { lic } from '../../test/fixtures.ts';
 import { byText, cleanup, drain, mount, testServices, waitFor } from '../../test/render.tsx';
 import { ActivityPanel } from './activity-panel.tsx';
 import { DiffViewer } from './diff-viewer.tsx';
@@ -214,10 +215,74 @@ describe('the diff viewer', () => {
     expect(inDock!.closest('[data-testid="diff-viewer"]')!.getBoundingClientRect().height).toBe(200);
   });
 
+  it('shows the worktree while an agent works and the recorded diff once it stops, unless the person chose (X21)', async () => {
+    let active = true;
+    const calls: (boolean | undefined)[] = [];
+    const s = testServices({
+      taskDiffFiles: async (_id, live) => {
+        calls.push(live);
+        return files(live ? { source: 'live', head: undefined, runActive: active } : { runActive: active });
+      },
+      taskDiffFile: async (_id, path, live) => ({ path, status: 'modified', original: 'a', modified: live ? 'live' : 'recorded' }),
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => has(r.container, 'Live worktree'), r);
+    expect(byText(r.container, 'button', 'Live').getAttribute('aria-pressed')).toBe('true');
+    // the run stops: back to the recorded diff
+    active = false;
+    s.emit({ type: 'task.updated', taskId: 't1' });
+    await waitFor(() => has(r.container, 'Recorded with the last attempt'), r);
+    // the person picks Live: it stays, whatever the run does
+    await r.act(() => byText(r.container, 'button', 'Live').click());
+    await waitFor(() => has(r.container, 'Live worktree'), r);
+    s.emit({ type: 'task.updated', taskId: 't1' });
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(5), r);
+    await drain();
+    has(r.container, 'Live worktree');
+    expect(s.ui.dockView('t1')).toEqual({ live: true });
+  });
+
+  it('keeps the file and the Live or Recorded pick of a task when it is mounted again (X22)', async () => {
+    const s = testServices({
+      taskDiffFiles: async (_id, live) => files(live ? { source: 'live', head: undefined, runActive: true } : { runActive: true }),
+      taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: `old ${path}`, modified: `new ${path}` }),
+    });
+    const r = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => has(r.container, 'Live worktree'), r);
+    await r.act(() => byText(r.container, 'button', 'Recorded').click());
+    await waitFor(() => has(r.container, 'Recorded with the last attempt'), r);
+    await r.act(() => byText(r.container, 'button', 'Next file').click());
+    await waitFor(() => expect(text(r.$('[data-testid="mod"]'))).toContain('new img.png'), r);
+    cleanup();
+    const again = mount(<DiffViewer taskId="t1" />, s);
+    await waitFor(() => expect(text(again.$('[data-testid="mod"]'))).toContain('new img.png'), again);
+    has(again.container, 'Recorded with the last attempt');
+    expect(byText(again.container, 'button', /img\.png/).getAttribute('aria-current')).toBe('true');
+  });
+
+  it('offers the worktree from the empty state when nothing is recorded yet (X21)', async () => {
+    const calls: (boolean | undefined)[] = [];
+    const r = mount(
+      <DiffViewer taskId="t1" />,
+      testServices({
+        taskDiffFiles: async (_id, live) => {
+          calls.push(live);
+          return live ? files({ source: 'live', head: undefined }) : files({ source: 'none', files: [] });
+        },
+        taskDiffFile: async (_id, path) => ({ path, status: 'modified', original: 'a', modified: 'b' }),
+      }),
+    );
+    await waitFor(() => has(r.container, 'No diff has been recorded yet.'), r);
+    await r.act(() => byText(r.container, 'button', 'Show the worktree now').click());
+    await waitFor(() => has(r.container, 'Live worktree'), r);
+    expect(calls[calls.length - 1]).toBe(true);
+  });
+
   it('says so when nothing is recorded, and Live is off without a worktree', async () => {
     const r = mount(<DiffViewer taskId="t1" />, testServices({ taskDiffFiles: async () => files({ source: 'none', files: [], liveAvailable: false }) }));
     await waitFor(() => has(r.container, /No diff has been recorded yet/), r);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Live').disabled).toBe(true);
+    expect(r.container.textContent).not.toContain('Show the worktree now');
   });
 
   it('marks a partial diff whose commits are gone', async () => {
@@ -261,7 +326,7 @@ describe('the diff viewer', () => {
 });
 
 describe('the logs panel', () => {
-  it('lists check logs and agent streams, opens the newest at its tail, and reads earlier output on request', async () => {
+  it('lists check logs and agent streams, opens the failed check at its tail, and reads earlier output on request', async () => {
     const reads: [string, { from?: number; limit?: number; tail?: boolean } | undefined][] = [];
     const r = mount(
       <LogsPanel taskId="t1" />,
@@ -278,12 +343,16 @@ describe('the logs panel', () => {
         },
       }),
     );
-    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
-    expect(reads[0]).toEqual(['nx:r|work|2|1', { tail: true, limit: 64 << 10 }]);
+    // the failed check is what matters when nothing runs (X23), not the newest stream
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of ev:1'), r);
+    expect(reads[0]).toEqual(['ev:1', { tail: true, limit: 64 << 10 }]);
+    expect(byText(r.container, 'button', /Check:\s*test/).getAttribute('aria-current')).toBe('true');
     has(r.container, 'failed');
     const logList = r.$('ul[aria-label="Logs"]')!;
     expect(logList.classList.contains('two-line')).toBe(true);
     expect(logList.classList.length).toBeGreaterThan(1);
+    await r.act(() => byText(r.container, 'button', /Agent:\s*work/).click());
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
     expect(r.$('[data-testid="log-text"]')!.getAttribute('aria-label')).toBe('work (step 2) log');
     // a named, focusable log that does not read its whole buffer out on every poll (F7)
     expect(r.$('[data-testid="log-text"]')!.getAttribute('aria-live')).toBe('off');
@@ -292,8 +361,91 @@ describe('the logs panel', () => {
     await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toMatch(/^the beginning\ntail of/), r);
     expect(reads[reads.length - 1]).toEqual(['nx:r|work|2|1', { from: 0, limit: 100 }]);
     has(r.container, 'From the beginning');
-    await r.act(() => byText(r.container, 'button', /Check:\s*test/).click());
+  });
+
+  it('opens the running stream first, and keeps the log the person picked per task (X22, X23)', async () => {
+    const s = testServices({
+      logsList: async () => [
+        { id: 'ev:1', kind: 'check', title: 'test', size: 10, passed: false, created: 1 },
+        { id: 'nx:r|work|2|1', kind: 'agent', title: 'work (step 2)', size: 10, created: 2, running: true },
+        { id: 'ev:2', kind: 'check', title: 'lint', size: 10, passed: true, created: 3 },
+      ],
+      logsRead: async (_t, id) => ({ text: `tail of ${id}\n`, start: 0, next: 10, size: 10 }),
+    });
+    const r = mount(<LogsPanel taskId="t1" />, s);
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), r);
+    await r.act(() => byText(r.container, 'button', /Check:\s*lint/).click());
+    await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of ev:2'), r);
+    cleanup();
+    // the dock's panel unmounts when it is closed or another tab is shown; mounted again, it opens where it was
+    const again = mount(<LogsPanel taskId="t1" />, s);
+    await waitFor(() => expect(text(again.$('[data-testid="log-text"]'))).toContain('tail of ev:2'), again);
+    cleanup();
+    const other = mount(<LogsPanel taskId="t2" />, s);
+    await waitFor(() => expect(text(other.$('[data-testid="log-text"]'))).toContain('tail of nx:r|work|2|1'), other);
+  });
+
+  it('shows every log or only the failed checks (X25)', async () => {
+    const r = mount(
+      <LogsPanel taskId="t1" />,
+      testServices({
+        logsList: async () => [
+          { id: 'ev:1', kind: 'check', title: 'test', size: 10, passed: false, created: 1 },
+          { id: 'nx:r|work|2|1', kind: 'agent', title: 'work (step 2)', size: 10, created: 2 },
+          { id: 'ev:2', kind: 'check', title: 'lint', size: 10, passed: true, created: 3 },
+        ],
+        logsRead: async (_t, id) => ({ text: `tail of ${id}\n`, start: 0, next: 10, size: 10 }),
+      }),
+    );
+    await waitFor(() => expect(r.$$('ul[aria-label="Logs"] li').length).toBe(3), r);
+    expect(byText(r.container, 'button', 'All').getAttribute('aria-pressed')).toBe('true');
+    await r.act(() => byText(r.container, 'button', 'Failed (1)').click());
+    expect(r.$$('ul[aria-label="Logs"] li').length).toBe(1);
+    expect(byText(r.container, 'button', 'Failed (1)').getAttribute('aria-pressed')).toBe('true');
     await waitFor(() => expect(text(r.$('[data-testid="log-text"]'))).toContain('tail of ev:1'), r);
+  });
+
+  it('says when no check failed under Failed (X25)', async () => {
+    const r = mount(
+      <LogsPanel taskId="t1" />,
+      testServices({
+        logsList: async () => [{ id: 'ev:2', kind: 'check', title: 'lint', size: 10, passed: true, created: 3 }],
+        logsRead: async (_t, id) => ({ text: `tail of ${id}\n`, start: 0, next: 10, size: 10 }),
+      }),
+    );
+    await waitFor(() => expect(r.$$('ul[aria-label="Logs"] li').length).toBe(1), r);
+    await r.act(() => byText(r.container, 'button', 'Failed').click());
+    has(r.container, 'No check has failed.');
+  });
+
+  it("names an agent stream by its agent, with the agent's avatar (X210)", async () => {
+    const s = testServices({
+      projectList: async () => [{ id: 'prj_1', name: 'gocalc' } as Project],
+      licenseStatus: async () => lic(),
+      appInfo: async () => ({ name: 'Drydock', user: 'u', human: 'h', dataDir: '/d' }),
+      agentList: async () => [{ id: 'a1', name: 'Ada' } as Agent],
+      presenceList: async () => [],
+      roomList: async () => [],
+      roomUnread: async () => [],
+      needsYouList: async () => [],
+      taskList: async () => [],
+      logsList: async () => [
+        { id: 'nx:r|work|2|1', kind: 'agent', title: 'work (step 2)', size: 10, created: 2, agentId: 'a1' },
+        { id: 'nx:r|review|3|1', kind: 'agent', title: 'review (step 3)', size: 10, created: 3, agentId: 'gone' },
+      ],
+      logsRead: async (_t, id) => ({ text: `tail of ${id}\n`, start: 0, next: 10, size: 10 }),
+    });
+    s.workspace.start();
+    s.project.start();
+    const r = mount(<LogsPanel taskId="t1" />, s);
+    await waitFor(() => has(r.container, 'Ada · work (step 2)'), r);
+    const ada = byText(r.container, 'button', /Ada · work/);
+    expect(ada.querySelector('[data-letters="A"]')).toBeTruthy();
+    // an agent the project no longer has: the step's name alone, with the generic icon
+    const review = byText(r.container, 'button', /Agent:\s*review/);
+    expect(review.querySelector('[data-letters]')).toBeNull();
+    await r.act(() => ada.click());
+    await waitFor(() => expect(r.$('[data-testid="log-text"]')!.getAttribute('aria-label')).toBe('Ada · work (step 2) log'), r);
   });
 
   it('tails a running source, joining a line split across reads', async () => {

@@ -27,7 +27,8 @@ test('the dock: Monaco diff, logs and a terminal in the task worktree', async ({
   const logs = page.getByTestId('logs-panel');
   await logs.getByRole('button', { name: /Check:\s*test/ }).click();
   await expect(logs.getByTestId('log-text')).toContainText('ok');
-  await logs.getByRole('button', { name: /Agent:\s*work/ }).first().click();
+  // an agent stream is named by its agent (X210)
+  await logs.getByRole('button', { name: /Agent:\s*Worker One · work/ }).first().click();
   await expect(logs.getByTestId('log-text')).toContainText('implemented Subtract');
   await expect(logs.getByTestId('log-text')).not.toContainText('"kind"');
 

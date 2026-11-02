@@ -234,6 +234,10 @@ versions of one file: the base and task commits from git, or the file on disk fo
 worktree); a recorded diff whose commits git has collected falls back to the patch's hunks, marked partial. Files over 2 MB wait
 for "Show it anyway"; binary files are not shown. Monaco's editor worker is bundled by Vite and served from the app's own origin
 (the CSP's `default-src 'self'` covers it); not yet run under the Wails asset server.
+Which diff it shows (2026-11-02, effort review X21): `task.diffFiles` also says `runActive` (an agent is working on the task now: its
+run is being driven, not waiting for a person or paused); while it is, and the worktree is there, the viewer shows Live, and it goes
+back to Recorded when the run stops. Once the person clicks Live or Recorded that choice holds. With nothing recorded yet the empty
+state offers "Show the worktree now". The choice and the file are kept per task with the dock's state (X22, below).
 
 ### 6.2 Workflow graph with checkpoint timeline (Slice 1C; planned with React Flow, built as our own SVG)
 - Nodes by kind (brief 4): `agent_task`, `check`, `request`, `route`, `subworkflow` (a subworkflow node expands into a nested graph view). Edge kinds: direct, conditional, fan-out, fan-in (barrier), loop (drawn with iteration count and the limit, default five for Iterate Until Verified).
@@ -375,10 +379,15 @@ output straight into xterm. Up to 8 terminals at once. **Unverified on Windows:*
 shell (pwsh when installed), the job assignment race for children started in the first instant.
 
 The Logs tab (`ui/app/screens/dock/logs-panel.tsx`) lists a task's check logs (evidence rows with a log file) and agent streams (the
-`stream.jsonl` of each node execution that streamed something) through `logs.list`, and reads them by byte range through
+`stream.jsonl` of each node execution that streamed something) through `logs.list`. It opens on the log that matters until the person
+picks one: a stream still being written, else the newest failed check no later run of the same check passed, else the newest log
+(`pickLogSource`, X23). All and Failed filter the list (X25). An agent stream is named by its agent, "Ada · work (step 2)" with the
+agent's avatar, from the turn's context manifest (`LogSource.agentId`, X210). The tab reads them by byte range through
 `logs.read` (the tail first, earlier output on request, new output followed while running). The log is one `<pre>` holding at most 5,000 lines in memory (not virtualized); it is a named, focusable `role="log"` with `aria-live="off"`, because its text is replaced on every poll and would otherwise be read out whole each time. An agent stream is rendered as
 readable lines (text as it streamed, `[tool]`, `[result]`, `[usage]`, `[error]`); a log is named by an id Drydock gave it, never
-by a path. The dock's open state, tab and height are kept per project; Ctrl+J toggles it and Ctrl+Shift+D opens the Diff tab (neither fires while focus is in the terminal or the diff editor, where Ctrl+J and Ctrl+K are the widget's own keys). The resize handle is a focusable `separator` with its range and value (Arrow Up and Down resize by 40 px).
+by a path. The dock's open state, tab and height are kept per project, and with them, per task, what the Diff and Logs tabs
+showed (the file, a Live or Recorded the person clicked, the log they picked; `UiModel.dockView`, the 30 most recent tasks), so
+closing the dock or switching tabs loses nothing (X22); Ctrl+J toggles it and Ctrl+Shift+D opens the Diff tab (neither fires while focus is in the terminal or the diff editor, where Ctrl+J and Ctrl+K are the widget's own keys). The resize handle is a focusable `separator` with its range and value (Arrow Up and Down resize by 40 px).
 
 ### 6.6 Other components
 Markdown renderer (sanitized, incremental for streaming), code block with copy, presence dot, usage badge (`reported`/`estimated`/`not reported`), approval card, toast and OS notification bridge (Wails ships a notifications service in `pkg/services/notifications`; behavior on Windows unverified), empty-state panel, error boundary per region, resizable splitter.

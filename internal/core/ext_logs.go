@@ -53,6 +53,8 @@ type LogSource struct {
 	Attempt int    `json:"attempt,omitempty"`
 	Created int64  `json:"created"`
 	Running bool   `json:"running,omitempty"`
+	// AgentID is the agent whose stream this is (an agent stream whose turn recorded a context manifest), so the list can name it.
+	AgentID string `json:"agentId,omitempty"`
 }
 
 // LogText is a range of a log as text. Next is the byte offset to continue from; Start is where this text began (after a
@@ -85,6 +87,11 @@ func (c *Core) TaskLogs(ctx context.Context, taskID string) ([]LogSource, error)
 		return nil, err
 	}
 	defer rows.Close()
+	type stream struct {
+		LogSource
+		run, node string
+	}
+	var streams []stream
 	for rows.Next() {
 		var run, node, status, ref string
 		var step, attempt int
@@ -96,10 +103,25 @@ func (c *Core) TaskLogs(ctx context.Context, taskID string) ([]LogSource, error)
 		if !ok || (size == 0 && status != "started") {
 			continue // a node that streamed nothing (prepare, guard, finalize) has no log to show
 		}
-		out = append(out, LogSource{ID: fmt.Sprintf("nx:%s|%s|%d|%d", run, node, step, attempt), Kind: "agent", Title: node + " (step " + strconv.Itoa(step) + ")",
-			Size: size, Attempt: attempt, Created: started, Running: status == "started"})
+		streams = append(streams, stream{LogSource: LogSource{ID: fmt.Sprintf("nx:%s|%s|%d|%d", run, node, step, attempt), Kind: "agent",
+			Title: node + " (step " + strconv.Itoa(step) + ")", Size: size, Attempt: attempt, Created: started, Running: status == "started"}, run: run, node: node})
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	// who ran each turn is in its run's context manifests (as run.explain reads them), read once per run after the list is read
+	manifests := map[string]map[manifestKey]manifestRow{}
+	for _, s := range streams {
+		m, ok := manifests[s.run]
+		if !ok {
+			m = c.runManifests(ctx, s.run)
+			manifests[s.run] = m
+		}
+		s.AgentID = m[manifestKey{s.node, s.Attempt}].agentID
+		out = append(out, s.LogSource)
+	}
+	return out, nil
 }
 
 // evidenceLogPath returns the log file of an evidence row: a check's absolute log path. A diff, a screenshot or a reference

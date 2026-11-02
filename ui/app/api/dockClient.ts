@@ -19,6 +19,8 @@ export interface DiffFiles {
   head?: string;
   files: DiffFile[];
   liveAvailable: boolean;
+  /** An agent works on the task now: the viewer opens on the live diff (until the run stops, unless the person chose). */
+  runActive?: boolean;
 }
 
 export interface DiffFileContent {
@@ -65,6 +67,8 @@ export interface LogSource {
   attempt?: number;
   created: number;
   running?: boolean;
+  /** The agent whose stream this is, when its turn recorded who ran it. */
+  agentId?: string;
 }
 
 export interface LogText {
