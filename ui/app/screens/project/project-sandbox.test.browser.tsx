@@ -63,6 +63,68 @@ describe('Sandbox settings', () => {
     const e = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-engine"]')), r);
     expect(e.textContent).toContain('not installed');
     expect(e.textContent).toContain('Install Docker Desktop');
+    // a link to Docker Desktop's page, opened outside the app (A7)
+    const get = r.container.querySelector<HTMLAnchorElement>('a[data-testid="sandbox-get-docker"]')!;
+    expect(get.textContent).toBe('Get Docker Desktop');
+    expect(get.getAttribute('href')).toBe('https://www.docker.com/products/docker-desktop/');
+    expect(get.getAttribute('target')).toBe('_blank');
+    expect(get.hasAttribute('data-rmx-document')).toBe(true);
+  });
+
+  it('notices Docker starting: Check again, the window getting the focus back and a poll while the engine is missing (A7)', async () => {
+    let reads = 0;
+    let current: SandboxStatus = { ...ready, engine: undefined, engineError: 'no container engine is reachable' };
+    const r = mount(<SandboxPanel projectId="p1" enginePollMs={30} />, testServices({ sandboxStatus: async () => (reads++, current) }));
+    const box = () => byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task");
+    await waitFor(() => expect(box().disabled).toBe(true), r);
+    // the poll reads again while the engine is missing
+    const before = reads;
+    await waitFor(() => expect(reads).toBeGreaterThan(before + 1), r, 3000);
+    // Check again reads now
+    const n = reads;
+    await r.act(() => need(r.container.querySelector<HTMLButtonElement>('[data-testid="sandbox-check-again"]')).click());
+    await waitFor(() => expect(reads).toBeGreaterThan(n), r);
+    // Docker started: the next read (here the window's focus) finds it and the switch can go on, with no reload of the page
+    current = ready;
+    await r.act(() => window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(r.container.querySelector('[data-testid="sandbox-engine"]')!.textContent).toContain('docker 29.8.2'), r);
+    expect(box().disabled).toBe(false);
+    expect(r.container.querySelector('[data-testid="sandbox-check-again"]')).toBe(null);
+    // and the poll stops once it is there
+    const settled = reads;
+    await new Promise((res) => setTimeout(res, 200));
+    expect(reads).toBe(settled);
+  });
+
+  it('names the agents in WSL before the switch is flipped, with a way to move them to Windows (X312)', async () => {
+    const runModes: [string, string][] = [];
+    let current: SandboxStatus = {
+      ...ready,
+      wslAgents: [
+        { id: 'agt_1', name: 'Ada', followsProject: true },
+        { id: 'agt_2', name: 'Ben' },
+      ],
+    };
+    const r = panel({
+      sandboxStatus: async () => current,
+      projectSetRunMode: async (p, mode) => {
+        runModes.push([p, mode]);
+        current = { ...ready, wslAgents: [{ id: 'agt_2', name: 'Ben' }] };
+        return { runMode: mode };
+      },
+    });
+    const note = await waitFor(() => need(r.container.querySelector<HTMLElement>('[data-testid="sandbox-wsl"]')), r);
+    expect(note.textContent).toContain('Ada, Ben run in WSL');
+    expect(byLabel<HTMLInputElement>(r.container, "Run the agents' commands in a container for each task").disabled).toBe(true);
+    // a chip per agent opens its editor
+    expect(r.container.querySelector('a[data-testid="sandbox-wsl-agent-agt_2"]')!.getAttribute('href')).toBe('/team?edit=agt_2');
+    await r.act(() => need(r.container.querySelector<HTMLButtonElement>('[data-testid="sandbox-wsl-native"]')).click());
+    await waitFor(() => expect(r.container.querySelector('[data-testid="sandbox-wsl"]')!.textContent).toContain('Ben runs in WSL'), r);
+    expect(runModes).toEqual([['p1', 'native']]);
+    // only Ben's own setting keeps him there: no project-wide button any more
+    expect(r.container.querySelector('[data-testid="sandbox-wsl-native"]')).toBe(null);
+    expect(sandboxReady(current)).toBe(false);
+    expect(sandboxReady({ ...current, wslAgents: [] })).toBe(true);
   });
 
   it('switches on through the core and then says who did it', async () => {

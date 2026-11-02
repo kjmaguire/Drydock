@@ -161,6 +161,8 @@ export interface ExtClient {
   sandboxForwardClose(taskId: string, port: number): Promise<void>;
   /** Shows a forwarded port in Drydock's own isolated window, never in a browser (a person only). */
   sandboxForwardView(taskId: string, port: number): Promise<void>;
+  /** "Open the app": forwards the port (one already forwarded stays as it is) and shows it in Drydock's own window (a person only). */
+  sandboxForwardShow(taskId: string, port: number): Promise<SandboxForward>;
   telemetryStatus(): Promise<TelemetryStatus>;
   telemetryEnable(enabled: boolean): Promise<TelemetryStatus>;
   telemetryPreview(limit?: number): Promise<TelemetryDocument>;
@@ -387,6 +389,7 @@ export function createExtClient(t: Transport): ExtClient {
     sandboxForwardOpen: (taskId, port) => call('sandbox.forward.open', { taskId, port }),
     sandboxForwardClose: (taskId, port) => voidCall('sandbox.forward.close', { taskId, port }),
     sandboxForwardView: (taskId, port) => voidCall('sandbox.forward.view', { taskId, port }),
+    sandboxForwardShow: (taskId, port) => call('sandbox.forward.show', { taskId, port }),
     telemetryStatus: () => call('telemetry.status'),
     telemetryEnable: (enabled) => call('telemetry.enable', { enabled }),
     telemetryPreview: async (limit = 0) => {

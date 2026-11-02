@@ -1486,6 +1486,12 @@ export interface SandboxStatus {
    * was ever confirmed. Text from the repository's definition: shown as text.
    */
   changes?: string[];
+  /**
+   * The project's agents that run in WSL (decision P41): while there is one, sandbox.set refuses to switch the sandbox on.
+   * followsProject: it runs there because of the project's default run mode (project.setRunMode moves it); otherwise its own
+   * setting does. Absent when there is none.
+   */
+  wslAgents?: { id: string; name: string; followsProject?: boolean }[];
 }
 /** A port of a task's sandbox forwarded to this computer's loopback address (decision P134). */
 export interface SandboxForward {

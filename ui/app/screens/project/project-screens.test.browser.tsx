@@ -284,7 +284,9 @@ describe('Check settings and development flow', () => {
     r.root.flush();
     await r.act(() => byLabel<HTMLInputElement>(r.container, /^Start ready tasks automatically/).click());
     await r.act(() => byLabel<HTMLInputElement>(r.container, /^Run e2e tests/).click());
-    type(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty/), 'npx\nplaywright\ntest');
+    type(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty detects Taskfile/), 'npx\nplaywright\ntest');
+    // the preview command's label says what an empty one does, as the e2e command's does (X310)
+    expect(byLabel<HTMLTextAreaElement>(r.container, /^Command \(one argument per line; empty detects a Taskfile target or package\.json script named preview\)$/)).toBeTruthy();
     r.root.flush();
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);

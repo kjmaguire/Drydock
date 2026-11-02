@@ -19,6 +19,7 @@ import { errorAttrs } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Menu } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
+import { topicPath } from '../guide/model.ts';
 import { cliName } from '../shared/cli-name.ts';
 import { SourceTag, distinctSources } from '../shared/usage.tsx';
 import { clockText } from './activity-steps.ts';
@@ -380,7 +381,17 @@ export function TaskProperties(handle: Handle<PropertiesProps>) {
           {where ? (
             <>
               <dt>Runs on</dt>
-              <dd data-testid="task-runs-on">{where}</dd>
+              <dd data-testid="task-runs-on">
+                {where}
+                {d.sandboxed && !task.assignee?.startsWith('human:') ? (
+                  <>
+                    {' · '}
+                    <a href={topicPath('project-settings')} title="How the sandbox works" data-testid="task-runs-in-sandbox">
+                      in a sandbox
+                    </a>
+                  </>
+                ) : null}
+              </dd>
             </>
           ) : null}
           <dt>Model</dt>

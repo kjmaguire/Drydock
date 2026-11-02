@@ -191,17 +191,35 @@ func (c *Core) agentRunMode(ctx context.Context, agentID string) (string, string
 
 // projectHasWSLAgents names the project's agents that run in WSL (their own choice or the project's default).
 func (c *Core) projectWSLAgents(ctx context.Context, projectID string) []string {
+	var names []string
+	for _, a := range c.projectWSLAgentList(ctx, projectID) {
+		names = append(names, a.Name)
+	}
+	return names
+}
+
+// WSLAgent is an agent of a project that runs in WSL, which keeps the project's sandbox off (sandbox.status shows them before the
+// switch is flipped). FollowsProject is true when it runs there because the project's default run mode says so: switching the
+// project's default to Windows moves it; otherwise its own setting does, and only its editor changes that.
+type WSLAgent struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	FollowsProject bool   `json:"followsProject,omitempty"`
+}
+
+// projectWSLAgentList is every agent of the project whose CLI runs in WSL (effectiveRunMode), in the project's agent order.
+func (c *Core) projectWSLAgentList(ctx context.Context, projectID string) []WSLAgent {
 	ags, err := c.Agents(ctx, projectID)
 	if err != nil {
 		return nil
 	}
-	var names []string
+	var out []WSLAgent
 	for _, a := range ags {
 		if m, _ := c.effectiveRunMode(ctx, a); m == agents.RunModeWSL {
-			names = append(names, a.Name)
+			out = append(out, WSLAgent{ID: a.ID, Name: a.Name, FollowsProject: a.RunMode != agents.RunModeWSL})
 		}
 	}
-	return names
+	return out
 }
 
 // wslPaths is the path mapping of distro, from the last probe of it (probing it now when there is none).

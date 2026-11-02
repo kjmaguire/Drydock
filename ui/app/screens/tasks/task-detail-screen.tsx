@@ -307,7 +307,7 @@ export function TaskDetailScreen(handle: Handle<{ id: string; embedded?: boolean
                   {handle.props.embedded ? null : <DiffViewer taskId={task.id} />}
                   <DiffView key={task.id} taskId={task.id} diffId={newestDiffId(d.evidence)} />
                 </Part>
-                <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} />
+                <PreviewControls taskId={task.id} hasWorktree={!!task.worktree} sandboxed={!!d.sandboxed} />
                 <SandboxApp key={`sandbox-app-${task.id}`} taskId={task.id} />
                 <Part title="Usage">
                   <ErrorNote error={usage.error} what="Could not load usage" />

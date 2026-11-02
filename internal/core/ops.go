@@ -295,6 +295,9 @@ type TaskDetail struct {
 	// are absent while the task has not failed or been cancelled, so the task page offers it where the failure is shown.
 	RunAgain    bool   `json:"runAgain,omitempty"`
 	RunAgainWhy string `json:"runAgainWhy,omitempty"`
+	// Sandboxed says the task's project runs its commands in a sandbox (sandbox.set): the preview on demand does not run on this
+	// machine there (errSandboxedHere), so the task page does not offer it.
+	Sandboxed bool `json:"sandboxed,omitempty"`
 }
 
 // GetTask returns the task with its evidence, reviews, run and pending human requests.
@@ -303,7 +306,7 @@ func (c *Core) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 	if err != nil {
 		return TaskDetail{}, err
 	}
-	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}}
+	d := TaskDetail{Task: t, Pending: []workflow.PendingRequest{}, AllowRules: []security.TaskAllowRule{}, Sandboxed: c.sandboxSwitch(ctx, t.ProjectID).Enabled}
 	if t.Status == tasks.Failed || t.Status == tasks.Cancelled {
 		d.RunAgainWhy = runAgainRefusal(t)
 		d.RunAgain = d.RunAgainWhy == ""

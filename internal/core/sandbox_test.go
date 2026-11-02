@@ -239,3 +239,23 @@ func TestTheSandboxSwitchIsHumanOnly(t *testing.T) {
 		t.Fatalf("no definition: found=%v err=%v", found, err)
 	}
 }
+
+// The task page hides the preview the core refuses in a sandboxed project (X33): task.get says the project is sandboxed.
+func TestTaskGetSaysTheProjectIsSandboxed(t *testing.T) {
+	a := open(t, "")
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": newRepo(t)}, &p)
+	var task tasks.Task
+	a.call("task.create", tasks.CreateReq{ProjectID: p.ID, Title: "Serve the app", Description: "x"}, &task)
+	var d core.TaskDetail
+	a.call("task.get", map[string]string{"id": task.ID}, &d)
+	if d.Sandboxed {
+		t.Fatal("a project without the sandbox is not sandboxed")
+	}
+	a.call("sandbox.set", map[string]any{"projectId": p.ID, "enabled": true}, nil)
+	var d2 core.TaskDetail
+	a.call("task.get", map[string]string{"id": task.ID}, &d2)
+	if !d2.Sandboxed {
+		t.Fatal("task.get does not say the project runs its commands in a sandbox")
+	}
+}

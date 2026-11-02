@@ -249,9 +249,11 @@ app on 127.0.0.1, cookies are not separated by port, and the page is code an age
   engine (`Manager.Forwards`), survives a restart of Drydock, and goes with the sandbox: the task's end, `Remove` and the cleanup
   at start remove it and its network with everything else of the task. Nothing is kept in the database.
 - **Methods** (a person only; an agent has no way to open a port or a window): `sandbox.forward.list` (`running`, the forwards,
-  `canView`, the limit), `sandbox.forward.open`, `sandbox.forward.close`, `sandbox.forward.view`. Opening, closing and showing
-  are in the audit log (`sandbox.forward.opened`, `.closed`, `.viewed`, by the person, with the port) and are task events.
-  `sandbox.forward.view` takes the address from the engine's record of the forward, never from the caller.
+  `canView`, the limit), `sandbox.forward.open`, `sandbox.forward.close`, `sandbox.forward.view`, and `sandbox.forward.show`
+  (the task page's one **Open the app**: open, then view, each recorded as itself; a window with no viewer is refused before
+  anything is forwarded). Opening, closing and showing are in the audit log (`sandbox.forward.opened`, `.closed`, `.viewed`, by
+  the person, with the port) and are task events. `sandbox.forward.view` takes the address from the engine's record of the
+  forward, never from the caller.
 - **The window** (`app/sandboxview_windows.go`, `internal/sandboxview`) is a second process of `drydock.exe` started as
   `sandbox-view --url http://127.0.0.1:<port>/ --title ...`: it takes no single-instance lock, opens no core, registers no
   service (nothing of Drydock's to call) and serves no UI: its asset server answers 403 to every request, so the page cannot use

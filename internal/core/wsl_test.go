@@ -480,3 +480,38 @@ func TestTheEndOfASignInChecksTheConnectionAgainPastTheProbeCache(t *testing.T) 
 		t.Fatal("an unknown Connection is an error")
 	}
 }
+
+// The sandbox settings name the agents that keep the switch off before it is flipped (X312): an agent that follows the project's
+// default into WSL is moved by "Run this project's agents on Windows" (project.setRunMode), one whose own setting says WSL only
+// by its editor, and the list empties when none is left.
+func TestTheSandboxStatusNamesTheAgentsInWSL(t *testing.T) {
+	a, _ := openWSL(t)
+	p, _ := a.setup("wsl-sandbox-status")
+	a.call("project.setRunMode", map[string]any{"projectId": p.ID, "runMode": "wsl", "wslDistro": "Ubuntu"}, nil)
+	var follows, own, native core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Follows", Adapter: "claude", Role: "backend"}, &follows)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Own", Adapter: "claude", Role: "backend", RunMode: "wsl", WSLDistro: "Ubuntu"}, &own)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Native", Adapter: "claude", Role: "backend", RunMode: "native"}, &native)
+	var st core.SandboxStatus
+	a.call("sandbox.status", map[string]string{"projectId": p.ID}, &st)
+	got := map[string]core.WSLAgent{}
+	for _, w := range st.WSLAgents {
+		got[w.ID] = w
+	}
+	if len(got) != 2 || got[follows.ID].Name != "Follows" || !got[follows.ID].FollowsProject || got[own.ID].Name != "Own" || got[own.ID].FollowsProject {
+		t.Fatalf("the agents in WSL: %+v", st.WSLAgents)
+	}
+	a.call("project.setRunMode", map[string]any{"projectId": p.ID, "runMode": "native"}, nil)
+	var st2 core.SandboxStatus
+	a.call("sandbox.status", map[string]string{"projectId": p.ID}, &st2)
+	if len(st2.WSLAgents) != 1 || st2.WSLAgents[0].ID != own.ID {
+		t.Fatalf("after the project's agents moved to Windows: %+v", st2.WSLAgents)
+	}
+	nat := "native"
+	a.call("agent.update", core.AgentUpdate{ID: own.ID, RunMode: &nat}, nil)
+	var st3 core.SandboxStatus
+	a.call("sandbox.status", map[string]string{"projectId": p.ID}, &st3)
+	if len(st3.WSLAgents) != 0 {
+		t.Fatalf("none is left: %+v", st3.WSLAgents)
+	}
+}

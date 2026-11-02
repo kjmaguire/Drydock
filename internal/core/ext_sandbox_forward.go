@@ -183,7 +183,7 @@ func (c *Core) SandboxForwardClose(ctx context.Context, taskID string, port int,
 // forward, never from the caller. Only a person may; a build with no window says so.
 func (c *Core) SandboxForwardView(ctx context.Context, taskID string, port int, by string) error {
 	if c.cfg.OpenSandboxApp == nil {
-		return errors.New("this window cannot open the viewer for a sandbox's app: it only opens in Drydock's own window, never in a browser, which would share its cookies with your other local apps")
+		return errNoSandboxViewer
 	}
 	if !isHuman(by) {
 		return errors.New("only a person may open a forwarded port")
@@ -211,6 +211,22 @@ func (c *Core) SandboxForwardView(ctx context.Context, taskID string, port int, 
 	}
 	return fmt.Errorf("port %d of this task is not forwarded", port)
 }
+
+// SandboxForwardShow is the task page's one "Open the app": it forwards the port (a port already forwarded stays as it is) and
+// shows it in Drydock's viewer window, recording both as SandboxForwardOpen and SandboxForwardView do. A window with no viewer is
+// refused before anything is forwarded, so the click never leaves a port open that nobody can look at. Only a person may.
+func (c *Core) SandboxForwardShow(ctx context.Context, taskID string, port int, by string) (sandbox.Forward, error) {
+	if c.cfg.OpenSandboxApp == nil {
+		return sandbox.Forward{}, errNoSandboxViewer
+	}
+	f, err := c.SandboxForwardOpen(ctx, taskID, port, by)
+	if err != nil {
+		return sandbox.Forward{}, err
+	}
+	return f, c.SandboxForwardView(ctx, taskID, f.Port, by)
+}
+
+var errNoSandboxViewer = errors.New("this window cannot open the viewer for a sandbox's app: it only opens in Drydock's own window, never in a browser, which would share its cookies with your other local apps")
 
 // recordForward keeps what the person did in the audit log and the task's events: the port and where it went, nothing the app
 // served.

@@ -252,11 +252,13 @@ describe('typed client', () => {
     expect(await c.sandboxForwards('t')).toEqual({ running: true, forwards: [], canView: true, max: 5 });
     expect(await c.sandboxForwardOpen('t', 3000)).toMatchObject({ port: 3000, hostPort: 49153 });
     await c.sandboxForwardView('t', 3000);
+    await c.sandboxForwardShow('t', 3000);
     await c.sandboxForwardClose('t', 3000);
     expect(sent(f)).toEqual([
       ['/rpc/sandbox.forward.list', { taskId: 't' }],
       ['/rpc/sandbox.forward.open', { taskId: 't', port: 3000 }],
       ['/rpc/sandbox.forward.view', { taskId: 't', port: 3000 }],
+      ['/rpc/sandbox.forward.show', { taskId: 't', port: 3000 }],
       ['/rpc/sandbox.forward.close', { taskId: 't', port: 3000 }],
     ]);
   });

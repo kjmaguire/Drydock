@@ -23,6 +23,16 @@ function double(opts: { running?: boolean; canView?: boolean; max?: number } = {
     sandboxForwardView: async (_t, port) => {
       calls.push(`view ${port}`);
     },
+    // sandbox.forward.show: forwards (the same forward for a port already forwarded), then opens the viewer
+    sandboxForwardShow: async (taskId, port) => {
+      calls.push(`show ${port}`);
+      let f = forwards.find((x) => x.port === port);
+      if (!f) {
+        f = { taskId, port, hostPort: 49000 + port, address: `127.0.0.1:${49000 + port}` };
+        forwards.push(f);
+      }
+      return f;
+    },
     sandboxForwardClose: async (_t, port) => {
       calls.push(`close ${port}`);
       forwards.splice(0, forwards.length, ...forwards.filter((f) => f.port !== port));
@@ -39,6 +49,28 @@ describe("A task's sandbox app (P134)", () => {
     expect(r.container.textContent ?? '').not.toContain('Forward port');
   });
 
+  it('"Open the app" forwards the typed port and opens it in one click, then offers the same port again (X32)', async () => {
+    const { client, calls } = double();
+    const r = mount(<SandboxApp taskId="t1" />, testServices(client));
+    await waitFor(() => expect(r.$('[data-testid="sandbox-app"]')).not.toBe(null), r);
+    const add = () => r.$('[data-testid="sandbox-forward-add"]') as HTMLButtonElement;
+    expect(add().textContent).toBe('Open the app');
+    expect(add().disabled).toBe(true);
+    const input = byLabel<HTMLInputElement>(r.container, 'Port in the sandbox');
+    await r.act(() => {
+      input.value = '3000';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await r.act(() => add().click());
+    await waitFor(() => expect(calls).toEqual(['show 3000']), r);
+    // the forwarded ports fold under it, and the field holds the port forwarded last: opening it again is one click
+    await waitFor(() => expect(r.$('[data-testid="sandbox-forwards"] summary')!.textContent).toBe('Forwarded ports (1)'), r);
+    expect((r.$('[data-testid="sandbox-forwards"]') as HTMLDetailsElement).open).toBe(false);
+    expect(byLabel<HTMLInputElement>(r.container, 'Port in the sandbox').value).toBe('3000');
+    await r.act(() => add().click());
+    await waitFor(() => expect(calls).toEqual(['show 3000', 'show 3000']), r);
+  });
+
   it('forwards a port, opens it in the Drydock window and stops it', async () => {
     const { client, calls } = double();
     const r = mount(<SandboxApp taskId="t1" />, testServices(client));
@@ -52,9 +84,9 @@ describe("A task's sandbox app (P134)", () => {
     await r.act(() => (r.$('[data-testid="sandbox-forward-add"]') as HTMLButtonElement).click());
     await waitFor(() => expect(r.$('[data-testid="sandbox-forward-3000"]')!.textContent).toContain('127.0.0.1:52000'), r);
     await r.act(() => (r.$('[data-testid="sandbox-forward-open-3000"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(calls).toEqual(['open 3000', 'view 3000']), r);
+    await waitFor(() => expect(calls).toEqual(['show 3000', 'view 3000']), r);
     await r.act(() => (r.$('[data-testid="sandbox-forward-stop-3000"]') as HTMLButtonElement).click());
-    await waitFor(() => expect(calls).toEqual(['open 3000', 'view 3000', 'close 3000']), r);
+    await waitFor(() => expect(calls).toEqual(['show 3000', 'view 3000', 'close 3000']), r);
     await waitFor(() => expect(r.$('[data-testid="sandbox-forward-3000"]')).toBe(null), r);
   });
 
@@ -80,13 +112,20 @@ describe("A task's sandbox app (P134)", () => {
     expect((r.$('[data-testid="sandbox-forward-open-3000"]') as HTMLButtonElement).disabled).toBe(true);
     expect(r.container.textContent).toContain('use the Drydock desktop app');
     expect(byText(r.container, 'button', 'Stop')).not.toBe(null);
+    // without a viewer the button only forwards
+    expect((r.$('[data-testid="sandbox-forward-add"]') as HTMLButtonElement).textContent).toBe('Forward port');
   });
 
-  it('stops offering ports at the limit', async () => {
-    const { client } = double({ max: 1 });
+  it('stops offering new ports at the limit; with a viewer the forwarded one still opens', async () => {
+    const { client } = double({ max: 1, canView: false });
     await client.sandboxForwardOpen!('t1', 3000);
     const r = mount(<SandboxApp taskId="t1" />, testServices(client));
     await waitFor(() => expect(r.container.textContent).toContain('1 ports are forwarded, the most a task can have'), r);
     expect(r.$('[data-testid="sandbox-forward-add"]')).toBe(null);
+    const viewer = double({ max: 1 });
+    await viewer.client.sandboxForwardOpen!('t1', 3000);
+    const r2 = mount(<SandboxApp taskId="t1" />, testServices(viewer.client));
+    await waitFor(() => expect((r2.$('[data-testid="sandbox-forward-add"]') as HTMLButtonElement).disabled).toBe(false), r2);
+    expect(byLabel<HTMLInputElement>(r2.container, 'Port in the sandbox').value).toBe('3000');
   });
 });

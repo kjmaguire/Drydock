@@ -4,12 +4,19 @@
 // task runs (the network, the allowed hosts, the image, the setup commands): switching the sandbox on records the definition
 // the person saw, and one that differs does not run until they confirm it here (audit 2026-10-16, M7). The confirmation is for
 // exactly the definition that was on screen (its fingerprint), so a definition that changed again meanwhile is refused.
+//
+// Without a container engine the row links Docker Desktop's page and offers Check again; the status is also read again when the
+// window gets the focus back and every ten seconds while the engine is missing and the panel is open, so Docker starting is noticed
+// without a reload. An agent of the project that runs in WSL keeps the switch off (decision P41): the panel names them before the
+// click, with a way to move each to Windows.
 
 import { css, on, type Handle } from 'remix/component';
 import type { SandboxStatus, SandboxTestStep } from '../../api/extTypes.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { pollWhile } from '../../lib/poll.ts';
 import { action, query, services } from '../../state/services.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, buttonStyle } from '../../ui/button.tsx';
+import { editAgentHref } from '../work/edit-agent.ts';
 import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
 import { SettingRow, SettingsGroup, ToggleRow, errorPad, noteRow } from './settings-kit.tsx';
@@ -49,17 +56,42 @@ export function sandboxSummary(st: SandboxStatus): string {
   return parts.join('; ');
 }
 
-/** Whether the switch may be turned on now (it can always be turned off). */
+/** Whether the switch may be turned on now (it can always be turned off): an agent in WSL keeps it off until it runs on Windows. */
 export function sandboxReady(st: SandboxStatus): boolean {
-  return !!st.engine && st.found && !st.configError && !st.egressError;
+  return !!st.engine && st.found && !st.configError && !st.egressError && (st.wslAgents ?? []).length === 0;
 }
 
-export function SandboxPanel(handle: Handle<{ projectId: string }>) {
+/** Where Docker Desktop is downloaded; opened in the person's browser (lib/external-links.ts hands it to the shell). */
+export const DOCKER_DESKTOP_URL = 'https://www.docker.com/products/docker-desktop/';
+/** How often the status is read again while no container engine answers. */
+export const ENGINE_POLL_MS = 10_000;
+
+const engineCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, justifyContent: 'flex-end' });
+const wslCss = css({ '& .row': { display: 'flex', gap: t.s2, alignItems: 'center', flexWrap: 'wrap', marginTop: t.s2 } });
+
+export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: number }>) {
   const s = services(handle);
   const q = query(handle, { load: () => s.client.sandboxStatus(handle.props.projectId), key: () => handle.props.projectId, when: (e) => e.type.startsWith('sandbox.') });
   const act = action(handle);
+  // an engine that appears sends no event: read again when the window gets the focus back, and now and then while it is missing
+  window.addEventListener('focus', () => void q.reload(), { signal: handle.signal });
+  let engineMissing = false;
+  let polling = false;
+  const syncPoll = (missing: boolean) => {
+    engineMissing = missing;
+    if (!missing || polling) return;
+    polling = true;
+    const ms = handle.props.enginePollMs ?? ENGINE_POLL_MS;
+    void pollWhile({ read: () => q.reload(), wanted: () => engineMissing, signal: handle.signal, minMs: ms, maxMs: Math.max(ms, 30_000) }).finally(() => {
+      polling = false;
+    });
+  };
   let steps: SandboxTestStep[] | undefined;
   let lastAction = ''; // what a failure is a failure of (the action's busy label is cleared by the time its error shows)
+  const moveToWindows = async () => {
+    lastAction = 'set';
+    if (await act.run('runmode', () => s.client.projectSetRunMode(handle.props.projectId, 'native'))) q.reload();
+  };
   const toggle = async (enabled: boolean) => {
     lastAction = 'set';
     if (await act.run('set', () => s.client.sandboxSet(handle.props.projectId, enabled))) q.reload();
@@ -82,6 +114,8 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
   };
   return () => {
     const st = q.data;
+    if (st) handle.queueTask(() => syncPoll(!st.engine));
+    const wslAgents = st?.wslAgents ?? [];
     return (
       <SettingsGroup
         title="Sandbox"
@@ -107,9 +141,17 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
                   {st.engine.client} {st.engine.version} ({st.engine.os}/{st.engine.arch})
                 </span>
               ) : (
-                <span mix={[valueCss, warnCss]} data-testid="sandbox-engine">
-                  {st.engineError}. Install Docker Desktop, start it, and use Linux containers.
-                </span>
+                <div mix={engineCss}>
+                  <span mix={[valueCss, warnCss]} data-testid="sandbox-engine">
+                    {st.engineError}. Install Docker Desktop, start it, and use Linux containers.
+                  </span>
+                  <a href={DOCKER_DESKTOP_URL} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="sandbox-get-docker">
+                    Get Docker Desktop
+                  </a>
+                  <Button size="sm" disabled={q.loading} data-testid="sandbox-check-again" mix={on('click', () => void q.reload())}>
+                    {q.loading ? 'Checking...' : 'Check again'}
+                  </Button>
+                </div>
               )}
             </SettingRow>
             <SettingRow label="Definition">
@@ -151,6 +193,26 @@ export function SandboxPanel(handle: Handle<{ projectId: string }>) {
                     </div>
                   </div>
                 </Notice>
+              </div>
+            ) : null}
+            {!st.switch.enabled && wslAgents.length > 0 ? (
+              <div mix={[noteRow, wslCss]} data-testid="sandbox-wsl">
+                <p mix={warnCss}>
+                  The sandbox needs this project&apos;s agents to run on Windows, and {wslAgents.map((a) => a.name).join(', ')}{' '}
+                  {wslAgents.length === 1 ? 'runs' : 'run'} in WSL.
+                </p>
+                <div class="row">
+                  {wslAgents.some((a) => a.followsProject) ? (
+                    <Button size="sm" disabled={act.busy === 'runmode'} data-testid="sandbox-wsl-native" mix={on('click', () => void moveToWindows())}>
+                      {act.busy === 'runmode' ? 'Moving...' : "Run this project's agents on Windows"}
+                    </Button>
+                  ) : null}
+                  {wslAgents.map((a) => (
+                      <a key={a.id} href={editAgentHref(a.id)} mix={buttonStyle('secondary', 'sm')} data-testid={`sandbox-wsl-agent-${a.id}`} title={`Open ${a.name}'s settings`}>
+                        {a.name}
+                      </a>
+                    ))}
+                </div>
               </div>
             ) : null}
             <ToggleRow

@@ -682,6 +682,8 @@ export interface TaskDetail {
   /** A failed or cancelled task can be run again as a new task (taskRunAgain), runAgainWhy why not; absent before it ended. */
   runAgain?: boolean;
   runAgainWhy?: string;
+  /** The task's project runs its commands in a sandbox: the preview on demand does not run on this machine there. Absent otherwise. */
+  sandboxed?: boolean;
 }
 
 /**

@@ -335,13 +335,16 @@ type SandboxStatus struct {
 	Fingerprint string   `json:"fingerprint,omitempty"`
 	Trusted     bool     `json:"trusted"`
 	Changes     []string `json:"changes,omitempty"`
+	// WSLAgents are the project's agents that run in WSL (decision P41): while there is one, sandbox.set refuses to switch the
+	// sandbox on, so the settings say so before the click.
+	WSLAgents []WSLAgent `json:"wslAgents,omitempty"`
 }
 
 func (c *Core) sandboxStatus(ctx context.Context, projectID string) (SandboxStatus, error) {
 	if _, err := c.GetProject(ctx, projectID); err != nil {
 		return SandboxStatus{}, err
 	}
-	st := SandboxStatus{Switch: c.sandboxSwitch(ctx, projectID), ConfigPath: sandbox.ConfigPath}
+	st := SandboxStatus{Switch: c.sandboxSwitch(ctx, projectID), ConfigPath: sandbox.ConfigPath, WSLAgents: c.projectWSLAgentList(ctx, projectID)}
 	ectx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if info, err := c.sandboxes().Info(ectx); err != nil {
@@ -507,6 +510,13 @@ func startSandbox(ctx context.Context, c *Core) (map[string]Method, func(), erro
 			Port   int    `json:"port"`
 		}) (any, error) {
 			return map[string]any{}, c.SandboxForwardClose(ctx, p.TaskID, p.Port, c.Human())
+		}),
+		// the task page's "Open the app": forward the port and show it in the viewer, in one click of the person's
+		"sandbox.forward.show": bind(func(ctx context.Context, p struct {
+			TaskID string `json:"taskId"`
+			Port   int    `json:"port"`
+		}) (any, error) {
+			return c.SandboxForwardShow(ctx, p.TaskID, p.Port, c.Human())
 		}),
 		"sandbox.forward.view": bind(func(ctx context.Context, p struct {
 			TaskID string `json:"taskId"`

@@ -137,6 +137,14 @@ describe('Task view: header, properties and content', () => {
     expect(taskAssignPreview.calls[0]).toEqual(['t1', 'a1']);
   });
 
+  it('Runs on says a sandboxed project runs its commands in a sandbox, with the Guide linked, and the preview is not offered (X33)', async () => {
+    const d = detail({ task: task({ status: 'IN_PROGRESS', iteration: 1, worktree: '/w/t1' }), sandboxed: true });
+    const r = mount(<TaskDetailScreen id="t1" />, svc({ taskGet: async () => d }));
+    await waitFor(() => expect(r.$('[data-testid="task-runs-on"]')!.textContent).toBe('Claude Code · in a sandbox'), r);
+    expect(r.$('a[data-testid="task-runs-in-sandbox"]')!.getAttribute('href')).toBe('/guide/project-settings');
+    expect(r.$('section[aria-label="Preview"]')).toBe(null);
+  });
+
   it('the Checks grid shows the check kinds of the task with their state, from task.summaries', async () => {
     const taskSummaries = recorder(async () => ({
       summaries: [
