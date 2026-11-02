@@ -414,19 +414,20 @@ test('room modes, the scheduler and previews report what the core says', async (
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   const panel = page.getByTestId('room-agents');
+  // choosing a mode applies it (X14), and the order the core uses is said in words
   await choose(panel.getByLabel('Mode', { exact: true }), 'sequential');
   await expect(panel.getByTestId('mode-text')).toContainText('one turn each per round');
-  await panel.getByRole('button', { name: 'Add Dana' }).click();
-  await panel.getByRole('button', { name: 'Save mode' }).click();
   await expect(panel).toContainText('Current mode: sequential');
+  await expect(panel.getByTestId('speaking-order')).toContainText('Order: Dana (the order they joined)');
+  await expect(page.getByTestId('room-mode')).toHaveText('Agents take turns');
   await page.reload();
   await openRoom(page, 'general');
   await page.getByTestId('room-mode').click();
   await expect(page.getByTestId('room-agents')).toContainText('Current mode: sequential');
-  // moderator mode needs a moderator: the core refuses and says so
+  // a moderator room starts with the lead, or with you when there is none: the core accepts it
   await choose(page.getByTestId('room-agents').getByLabel('Mode', { exact: true }), 'moderator');
-  await page.getByTestId('room-agents').getByRole('button', { name: 'Save mode' }).click();
-  await expect(page.getByRole('alert')).toContainText('moderator');
+  await expect(page.getByTestId('room-agents')).toContainText('Current mode: moderator');
+  await expect(page.getByTestId('room-mode')).toHaveText('You pick who answers');
 
   await projectNav(page, 'nav-tasks');
   await expect(page.getByTestId('scheduler')).toContainText('manual');

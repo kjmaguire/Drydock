@@ -61,6 +61,10 @@ type Deps struct {
 	Budget func(ctx context.Context, s BudgetScope, a Agent) error
 	// Enabled reports whether agents answer in this project (default true).
 	Enabled func(ctx context.Context, projectID string) bool
+	// RepliesOn reports the project's own "agents answer in channels and direct messages" switch (Enabled also covers an
+	// expired license). While it is off, a person's message gets one SYSTEM line (code replies_off) per room and off period,
+	// so a mention is never swallowed in silence. Nil: no line.
+	RepliesOn func(ctx context.Context, projectID string) bool
 	// OnCost receives the cost of a turn in a task room so it counts toward the task (cost per accepted task).
 	OnCost func(ctx context.Context, taskID string, usd float64)
 	// Brief returns the project's brief (the human's description of the project), shown to the agent before the conversation.
@@ -404,6 +408,9 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 	}
 	if r.d.Enabled != nil && !r.d.Enabled(ctx, rm.ProjectID) {
 		out.Stopped = "agent replies are switched off for this project"
+		if r.d.RepliesOn != nil && !r.d.RepliesOn(ctx, rm.ProjectID) {
+			r.noteRepliesOff(ctx, rm, trig)
+		}
 		return out, nil
 	}
 	queue := []room.Message{trig}
@@ -454,6 +461,30 @@ func (r *Responder) handle(ctx context.Context, messageID string) (Outcome, erro
 		}
 	}
 	return out, nil
+}
+
+// RepliesOffCode is the payload code of the SYSTEM line that says agents do not answer in the project's rooms.
+const RepliesOffCode = "replies_off"
+
+// noteRepliesOff posts the "agents do not answer here" line once per room and off period: not again while the room has
+// such a line newer than its latest agent message (an agent message means replies were on in between).
+func (r *Responder) noteRepliesOff(ctx context.Context, rm room.Room, trig room.Message) {
+	var lastNote, lastAgent int64
+	if err := r.d.DB.Reader().QueryRowContext(ctx, `SELECT
+		COALESCE(MAX(CASE WHEN type=? AND json_extract(payload,'$.code')=? THEN seq END),0),
+		COALESCE(MAX(CASE WHEN author<>'system' AND author NOT LIKE 'human:%' AND author NOT LIKE 'tool:%' THEN seq END),0)
+		FROM messages WHERE room_id=?`, room.TypeSystem, RepliesOffCode, rm.ID).Scan(&lastNote, &lastAgent); err != nil {
+		r.logf("replies off line: %v", err)
+		return
+	}
+	if lastNote > 0 && lastNote > lastAgent {
+		return
+	}
+	if _, err := r.d.Room.Post(ctx, room.PostParams{RoomID: rm.ID, Type: room.TypeSystem, Author: room.System, ReplyToID: trig.ID,
+		Body:    "Agents do not answer in this project's rooms. Turn on agent replies in the project's settings, under Development flow.",
+		Payload: map[string]any{"code": RepliesOffCode}}); err != nil {
+		r.logf("post replies off line: %v", err)
+	}
 }
 
 // beginTurn inserts the turn row. false means this (trigger, agent) already had a turn.

@@ -607,3 +607,64 @@ func TestNewHumanMessagePreemptsARunningChain(t *testing.T) {
 		t.Fatalf("after the new human message bob must not be woken by alice's now-stale mention: %+v", ts)
 	}
 }
+
+// X13: with agent replies switched off for the project, a person's message gets one SYSTEM line saying so (not a silent
+// drop), once per room and off period; an expired license alone posts nothing.
+func TestRepliesOffIsSaidOncePerRoomAndOffPeriod(t *testing.T) {
+	h := newHarness(t, responder.Options{})
+	alice := h.agent("alice", "Alice", "backend", say("A"))
+	ch := h.channel("dev", alice)
+	on := false
+	mk := func(setting bool) *responder.Responder {
+		return responder.New(responder.Deps{Room: h.room, Runtime: h.rt, DB: h.db, Bus: h.bus,
+			Enabled:   func(context.Context, string) bool { return false },
+			RepliesOn: func(context.Context, string) bool { return setting },
+			LookupAgent: func(context.Context, string) (responder.Agent, error) {
+				return responder.Agent{}, errors.New("unreachable")
+			},
+			Cwd: func(context.Context, room.Room) (string, error) { return h.dir, nil }}, responder.Options{})
+	}
+	notes := func() int {
+		n := 0
+		for _, m := range h.messages(ch) {
+			if m.Type == room.TypeSystem && strings.Contains(string(m.Payload), `"replies_off"`) {
+				n++
+			}
+		}
+		return n
+	}
+	off := mk(on)
+	for i := 0; i < 3; i++ {
+		if _, err := off.Handle(h.ctx, h.human(ch, "@alice hello").ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if notes() != 1 {
+		t.Fatalf("want one replies_off line, got %d: %s", notes(), authors(h.messages(ch)))
+	}
+	last := h.messages(ch)
+	if !strings.Contains(last[1].Body, "Agents do not answer in this project's rooms") {
+		t.Fatalf("line %q", last[1].Body)
+	}
+	// replies were on in between (an agent answered): the next off period says it again
+	if _, err := h.r.Handle(h.ctx, h.human(ch, "@alice hello").ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := off.Handle(h.ctx, h.human(ch, "@alice again").ID); err != nil {
+		t.Fatal(err)
+	}
+	if notes() != 2 {
+		t.Fatalf("want a second line after replies were on, got %d", notes())
+	}
+	// the switch is on but the license is not: nothing is said here (the license banner says it)
+	lic := mk(true)
+	ch2 := h.channel("ops", alice)
+	if _, err := lic.Handle(h.ctx, h.human(ch2, "@alice hi").ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range h.messages(ch2) {
+		if m.Type == room.TypeSystem && strings.Contains(string(m.Payload), "replies_off") {
+			t.Fatal("license-only refusal posted a replies_off line")
+		}
+	}
+}

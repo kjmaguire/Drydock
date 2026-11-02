@@ -193,4 +193,12 @@ describe('attachments on a message', () => {
     expect(img.getAttribute('src')!.startsWith('data:image/png;base64,')).toBe(true);
     expect(img.alt).toBe('logo.png');
   });
+
+  it('/mode moderator makes you the moderator when no lead is in the room (X14)', async () => {
+    const modes: unknown[] = [];
+    const { r, box } = setup({ roomSetMode: async (req: unknown) => (modes.push(req), room) as never });
+    await r.act(() => type(box, '/mode moderator'));
+    await r.act(() => key(box, 'Enter', { ctrlKey: true }));
+    await waitFor(() => expect(modes).toEqual([{ roomId: 'room_1', mode: 'moderator', moderator: 'human:kyle' }]), r);
+  });
 });

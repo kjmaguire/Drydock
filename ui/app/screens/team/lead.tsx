@@ -13,6 +13,7 @@ import { action, query, services, watch } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
 import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Select } from '../../ui/select.tsx';
 import { t } from '../../ui/tokens.ts';
 
 /** The project's team lead: the first agent whose role names the lead ("lead", "team lead", "manager", ...), as the core's
@@ -32,7 +33,7 @@ export const TRIGGER_LABEL: Record<string, string> = {
 const doneCss = css({ display: 'inline-flex', alignItems: 'center', gap: t.s2, color: t.textMuted, fontSize: t.textSm, '& a': { fontWeight: '500' } });
 
 /** "Run stand-up": lead.standup, then a status line with a link to #general. */
-export function RunStandup(handle: Handle<{ projectId: string; lead: Agent; size?: 'sm' | 'md' }>) {
+export function RunStandup(handle: Handle<{ projectId: string; lead: Agent; size?: 'sm' | 'md'; schedule?: boolean }>) {
   const s = services(handle);
   watch(handle, s.project);
   watch(handle, s.workspace);
@@ -69,6 +70,88 @@ export function RunStandup(handle: Handle<{ projectId: string; lead: Agent; size
             {general ? <a href={routes.room.href({ id: general.id })}>Open general</a> : null}
           </span>
         ) : null}
+        {handle.props.schedule ? <StandupScheduleLine projectId={handle.props.projectId} lead={lead} /> : null}
+      </div>
+    );
+  };
+}
+
+const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`;
+const HOURS = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }));
+const scheduleCss = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: t.s2, color: t.textMuted, fontSize: t.textSm });
+
+/**
+ * The stand-up on a schedule (H11), under Run stand-up: off until the person turns it on; then the lead posts by itself each
+ * weekday from the hour chosen, while the project has active tasks. Each one is a paid lead turn, and the line says so.
+ */
+export function StandupScheduleLine(handle: Handle<{ projectId: string; lead: Agent }>) {
+  const s = services(handle);
+  const q = query(handle, {
+    load: () => s.client.leadStandupScheduleGet(handle.props.projectId),
+    when: (e) => e.type === 'lead.standup_schedule' && e.projectId === handle.props.projectId,
+    key: () => handle.props.projectId,
+  });
+  const act = action(handle);
+  let editing = false;
+  let on_ = false;
+  let hour = 9;
+  const save = async () => {
+    const r = await act.run('schedule', () => s.client.leadStandupScheduleSet({ projectId: handle.props.projectId, enabled: on_, hourLocal: hour }));
+    if (r) {
+      q.set(r);
+      editing = false;
+    }
+    void handle.update();
+  };
+  return () => {
+    const cur = q.data;
+    if (!cur) return <ErrorNote error={q.error} what="Could not read the stand-up schedule" />;
+    if (!editing) {
+      return (
+        <p mix={scheduleCss} data-testid="standup-schedule" style={{ margin: '0' }}>
+          {cur.enabled ? `Also every weekday at ${hourLabel(cur.hourLocal)}, posted by schedule` : 'Not on a schedule'}
+          {' · '}
+          <Button
+            variant="link"
+            size="sm"
+            mix={on('click', () => {
+              editing = true;
+              on_ = cur.enabled;
+              hour = cur.hourLocal;
+              void handle.update();
+            })}
+          >
+            {cur.enabled ? 'Change' : 'Set a schedule'}
+          </Button>
+        </p>
+      );
+    }
+    return (
+      <div style={{ display: 'grid', gap: 'var(--space-2)' }} data-testid="standup-schedule-form">
+        <label mix={scheduleCss}>
+          <input
+            type="checkbox"
+            checked={on_}
+            mix={on('change', (e) => {
+              on_ = (e.currentTarget as HTMLInputElement).checked;
+              void handle.update();
+            })}
+          />
+          Post a stand-up every weekday
+        </label>
+        <div mix={scheduleCss}>
+          <Select label="Stand-up time" value={String(hour)} options={HOURS} disabled={!on_} onChange={(v) => ((hour = Number(v)), void handle.update())} />
+          <span>Each one is a paid turn of {handle.props.lead.name}, only on days with active tasks.</span>
+        </div>
+        <ErrorNote error={act.error} what="Not saved" />
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Button size="sm" variant="primary" disabled={!!act.busy} mix={on('click', () => void save())}>
+            {act.busy ? 'Saving...' : 'Save schedule'}
+          </Button>
+          <Button size="sm" variant="ghost" mix={on('click', () => ((editing = false), void handle.update()))}>
+            Cancel
+          </Button>
+        </div>
       </div>
     );
   };

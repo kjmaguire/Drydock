@@ -147,7 +147,8 @@ conversation:
   button folds it to a 56 px rail of icons whose labels stay the links' names (`title` and accessible name); the choice is kept
   (`drydock.sidebar`, `UiModel.sidebarRail`), and a window under 1200 px starts folded, a phone-sized one with a 44 px rail.
 - **Hubs** (`shell/hubnav.tsx`): a tab's sub-pages are pills (landmark "Section"); the Rooms rail lists the rooms (landmark
-  "Rooms", `data-rooms`); the Settings rail lists the sections (landmark "Settings"; a project's is "Project settings"), and a
+  "Rooms", `data-rooms`; every crew agent under Direct messages, a click starting a conversation that does not exist yet; a row's
+  bell mutes it); the Settings rail lists the sections (landmark "Settings"; a project's is "Project settings"), and a
   section of more than one screen has its pills over the page beside it (`SectionPills`, P144). The old test ids live on:
   `nav-tasks` is the tab, `nav-pulls` its pill, `nav-license` a rail link; `e2e/helpers.ts` opens the hub first when a link is
   not on the page.

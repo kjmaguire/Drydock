@@ -251,5 +251,6 @@ var ExcludedTables = map[string]string{
 
 // ExcludedSettings documents settings keys that exist for a project but are deliberately not exported.
 var ExcludedSettings = map[string]string{
-	"mcp.actTools:<project>": "which MCP tools may act is a permission grant; the human grants it again after import",
+	"mcp.actTools:<project>":          "which MCP tools may act is a permission grant; the human grants it again after import",
+	"lead.standup.schedule:<project>": "a schedule of paid team lead turns is the person's choice on this installation; they set it again after import",
 }

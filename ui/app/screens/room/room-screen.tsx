@@ -10,12 +10,11 @@ import { routes } from '../../routes.ts';
 import { starts } from '../../state/live.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
 import { buttonStyle } from '../../ui/button.tsx';
-import { Button } from '../../ui/button.tsx';
+import { Button, IconButton } from '../../ui/button.tsx';
 import { Badge } from '../../ui/data.tsx';
-import { Empty, ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { Empty, ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Icon, roomIcon } from '../../ui/icon.tsx';
 import { Page, actionsEnd } from '../../ui/layout.tsx';
-import { MoreMenu } from '../../ui/menu.tsx';
 import { t } from '../../ui/tokens.ts';
 import { VirtualList } from '../../ui/virtual-list.tsx';
 import { Composer } from './composer.tsx';
@@ -24,6 +23,7 @@ import { CheckGroup, MessageItem } from './message-item.tsx';
 import { buildRows, replyCounts, type Row } from './messages.ts';
 import { RoomExports } from './room-exports.tsx';
 import { RoomMembers } from './room-members.tsx';
+import { modeWords } from './turn-taking.ts';
 
 export function RoomScreen(handle: Handle<{ id: string }>) {
   const s = services(handle);
@@ -178,7 +178,20 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     key: () => handle.props.room.id,
     enabled: () => !handle.props.room.archived,
   });
+  // the project's own "agents answer" switch (not Enabled, which also covers the license): while it is off the room says so
+  // with Turn on, and nothing promises an answer to a mention (X13)
+  const dev = query(handle, {
+    load: () => s.client.projectdevGet(handle.props.room.projectId),
+    when: (e) => e.type === 'project.dev_settings' && e.projectId === handle.props.room.projectId,
+    key: () => handle.props.room.projectId,
+    enabled: () => !handle.props.room.archived,
+  });
   const act = action(handle);
+  const turnOn = () =>
+    void act.run('replies', async () => {
+      const cur = dev.data ?? (await s.client.projectdevGet(handle.props.room.projectId));
+      dev.set(await s.client.projectdevSet(handle.props.room.projectId, { ...cur, respond: true }));
+    });
   const stop = () =>
     void act.run('stop', async () => {
       await s.client.roomStop(handle.props.room.id);
@@ -253,6 +266,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
     const label = roomLabel(room, agents);
     const mem = members.data ?? [];
     const muted = !!s.project.unread.data?.find((u) => u.roomId === room.id)?.muted;
+    const repliesOff = !room.archived && dev.data?.respond === false;
     const answering = (turns.data ?? [])
       .filter((x) => x.status === 'running')
       .map((x) => agents.find((a) => a.id === x.agentId)?.name || x.agentId)
@@ -306,17 +320,25 @@ export function Conversation(handle: Handle<{ room: Room }>) {
               ) : null}
             </div>
             <div mix={topicCss} title={room.topic || undefined}>
-              {room.topic || (room.kind === 'dm' ? 'A direct conversation' : room.kind === 'task' ? "The task's own room: reports, check results and reviews" : 'The whole crew and you; agents answer when you mention them')}
+              {room.topic ||
+                (room.kind === 'dm'
+                  ? 'A direct conversation'
+                  : room.kind === 'task'
+                    ? "The task's own room: reports, check results and reviews"
+                    : repliesOff
+                      ? 'The whole crew and you'
+                      : 'The whole crew and you; agents answer when you mention them')}
             </div>
           </div>
           <div mix={actionsCss}>
-            {room.archived ? (
+            {/* a direct message has one agent: no turn-taking, so no mode chip (X16) */}
+            {room.kind === 'dm' ? null : room.archived ? (
               <span mix={modeCss} title="How agents took turns in this room">
-                {room.mode} mode
+                {modeWords(room, agents)}
               </span>
             ) : (
-              <button type="button" mix={[modeCss, modeBtn, on('click', () => s.ui.openRoomPanel())]} data-testid="room-mode" title="Who answers in this room and how: opens the Room tab on the right">
-                {room.mode} mode
+              <button type="button" mix={[modeCss, modeBtn, on('click', () => s.ui.openRoomPanel())]} data-testid="room-mode" title={`${room.mode} mode: who answers in this room and how. Opens the Room tab on the right`}>
+                {repliesOff ? 'Agents do not answer' : modeWords(room, agents)}
               </button>
             )}
             {room.kind === 'task' && room.taskId ? (
@@ -328,15 +350,13 @@ export function Conversation(handle: Handle<{ room: Room }>) {
             <RoomMembers members={mem} agents={agents} />
             <RoomExports room={room} />
             {room.archived ? null : (
-              <MoreMenu
-                label="Room actions"
-                testId="room-menu"
-                items={[
-                  muted
-                    ? { name: 'unmute', label: 'Unmute room', icon: Bell }
-                    : { name: 'mute', label: 'Mute room', icon: BellOff },
-                ]}
-                onSelect={(name) => setMuted(name === 'mute')}
+              <IconButton
+                icon={muted ? BellOff : Bell}
+                label={muted ? 'Unmute room' : 'Mute room'}
+                title={muted ? 'Muted: only messages that name you count. Click to unmute' : 'Mute room: only messages that name you will count'}
+                data-testid="room-mute"
+                disabled={act.busy === 'mute'}
+                mix={[on('click', () => setMuted(!muted))]}
               />
             )}
           </div>
@@ -344,6 +364,16 @@ export function Conversation(handle: Handle<{ room: Room }>) {
         {act.error ? (
           <div mix={notesCss} style={{ paddingTop: '12px' }}>
             <ErrorNote error={act.error} what="Not done" />
+          </div>
+        ) : null}
+        {repliesOff ? (
+          <div mix={notesCss} style={{ paddingTop: '12px' }}>
+            <Notice tone="warn" testId="replies-off">
+              Agents do not answer in this project's rooms ·{' '}
+              <Button variant="link" size="sm" disabled={act.busy === 'replies'} mix={[on('click', turnOn)]}>
+                {act.busy === 'replies' ? 'Turning on...' : 'Turn on'}
+              </Button>
+            </Notice>
           </div>
         ) : null}
         {feed.error ? (
@@ -425,6 +455,7 @@ export function Conversation(handle: Handle<{ room: Room }>) {
           rooms={s.project.roomList}
           disabled={room.archived}
           answering={answering}
+          repliesOff={repliesOff}
           stopping={act.busy === 'stop'}
           onStop={stop}
           onSent={() => {

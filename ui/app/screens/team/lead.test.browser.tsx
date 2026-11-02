@@ -4,7 +4,7 @@ import type { Client } from '../../api/client.ts';
 import type { LeadIntervention } from '../../api/leadClient.ts';
 import type { Agent, Room } from '../../api/types.ts';
 import { lic } from '../../test/fixtures.ts';
-import { byText, cleanup, mount, testServices, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { Interventions, leadOf, RunStandup } from './lead.tsx';
 
 afterEach(cleanup);
@@ -83,6 +83,35 @@ describe('the team lead', () => {
     const r = mount(<RunStandup projectId="p1" lead={lead} />, svc({ leadStandup: async () => Promise.reject(new Error('the team lead is already busy')) }));
     await r.act(() => byText(r.container, 'button', 'Run stand-up').click());
     await waitFor(() => expect(r.$('[role="alert"]')!.textContent).toContain('already busy'), r);
+  });
+
+  it('sets the stand-up on a schedule under Run stand-up: off until the person turns it on, then said in words (H11)', async () => {
+    const sets: unknown[] = [];
+    let cur = { projectId: 'p1', enabled: false, hourLocal: 9 };
+    const s = svc({
+      leadStandupScheduleGet: async () => cur,
+      leadStandupScheduleSet: async (v) => (sets.push(v), (cur = v), v),
+    });
+    const r = mount(<RunStandup projectId="p1" lead={lead} schedule />, s);
+    const line = () => r.$('[data-testid="standup-schedule"]');
+    await waitFor(() => expect(line()!.textContent).toContain('Not on a schedule'), r);
+    await r.act(() => byText(line()!, 'button', 'Set a schedule').click());
+    const form = r.$('[data-testid="standup-schedule-form"]')!;
+    expect(form.textContent).toContain('Each one is a paid turn of Team Lead');
+    await r.act(() => {
+      const box = form.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      box.checked = true;
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await r.act(() => type(byLabel<HTMLElement>(r.container, 'Stand-up time'), '8'));
+    await r.act(() => byText(r.container, 'button', 'Save schedule').click());
+    await waitFor(() => expect(sets).toEqual([{ projectId: 'p1', enabled: true, hourLocal: 8 }]), r);
+    await waitFor(() => expect(line()!.textContent).toContain('Also every weekday at 08:00, posted by schedule'), r);
+  });
+
+  it('the details panel\'s Run stand-up has no schedule line', async () => {
+    const r = mount(<RunStandup projectId="p1" lead={lead} />, svc());
+    expect(r.$('[data-testid="standup-schedule"]')).toBeNull();
   });
 
   it('lists interventions newest first, with the trigger, the action, the target, created tasks and invalid ones; re-reads on lead.intervened', async () => {

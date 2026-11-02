@@ -4,14 +4,14 @@
 // tab draws the same rail with shell/project-sections.ts) and the Rooms rail (the project's channels, task rooms and direct
 // messages). Every page the old sidebar and tabs linked is reached from one of these, with the same test id.
 
-import { css, on, type Handle, type RemixNode } from 'remix/component';
-import { BellOff, Plus, Search, Settings2 } from 'lucide';
-import type { Room } from '../api/types.ts';
+import { css, navigate, on, type Handle, type RemixNode } from 'remix/component';
+import { Bell, BellOff, Plus, Search, Settings2 } from 'lucide';
+import type { Agent, Room } from '../api/types.ts';
 import { roomLabel } from '../lib/format.ts';
 import { hubOf, isProjectHub, type Route } from '../lib/route.ts';
 import { routes } from '../routes.ts';
 import { services, watch } from '../state/services.tsx';
-import { buttonStyle } from '../ui/button.tsx';
+import { buttonStyle, IconButton } from '../ui/button.tsx';
 import { Avatar, hueFor, presenceColor } from '../ui/data.tsx';
 import { Icon, roomIcon } from '../ui/icon.tsx';
 import { t } from '../ui/tokens.ts';
@@ -265,6 +265,19 @@ const itemCss = css({
   '&:focus-visible': { boxShadow: `inset ${t.focus}`, outline: 'none' },
 });
 const mutedCss = css({ flex: 'none', color: t.textFaint, lineHeight: '0' });
+// a room's row holds its link and, on hover or focus, a bell that mutes or unmutes it in one click (X111)
+const rowCss = css({ position: 'relative', '&:hover > a, &:focus-within > a': { paddingRight: '34px' } });
+const bellCss = css({
+  position: 'absolute',
+  right: '4px',
+  top: '5px',
+  width: '24px',
+  height: '24px',
+  minHeight: '0',
+  opacity: '0',
+  ':is(li:hover, li:focus-within) > &': { opacity: '1' },
+  '&:focus-visible': { opacity: '1' },
+});
 // the unread count is a quiet number, read once ("general, 3 unread")
 const countCss = css({ minWidth: '18px', height: '18px', padding: '0 5px', borderRadius: t.rFull, background: t.accent, color: t.onAccent, fontSize: t.textXs, fontWeight: '700', lineHeight: '18px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' });
 
@@ -382,6 +395,21 @@ export function SettingsRail(handle: Handle<{ route: Route; sections?: readonly 
 export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
   const s = services(handle);
   watch(handle, s.project);
+  let busy = false;
+  const setMuted = async (roomId: string, muted: boolean) => {
+    if (busy) return;
+    busy = true;
+    void handle.update();
+    try {
+      await s.client.roomSetMuted(roomId, muted);
+      await s.project.unread.reload();
+    } catch {
+      // the bell stays as it was: the core did not change the room
+    } finally {
+      busy = false;
+      void handle.update();
+    }
+  };
   return () => {
     const { room: r, current } = handle.props;
     const p = s.project;
@@ -395,7 +423,7 @@ export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
     const agent = agentId ? agents.find((a) => a.id === agentId) : undefined;
     const label = roomLabel(r, agents);
     return (
-      <li>
+      <li mix={rowCss}>
         <a
           href={routes.room.href({ id: r.id })}
           mix={itemCss}
@@ -428,13 +456,64 @@ export function RoomLink(handle: Handle<{ room: Room; current: boolean }>) {
             </span>
           ) : null}
         </a>
+        <IconButton
+          icon={muted ? BellOff : Bell}
+          size={13}
+          label={muted ? `Unmute ${label}` : `Mute ${label}`}
+          data-testid="room-bell"
+          disabled={busy}
+          mix={[bellCss, on('click', () => void setMuted(r.id, !muted))]}
+        />
       </li>
     );
   };
 }
 
+/** A crew agent with no direct message yet: a click starts the conversation and opens it (X112). */
+function StartDM(handle: Handle<{ agent: Agent; projectId: string; onNavigate?: (href: string) => void }>) {
+  const s = services(handle);
+  let busy = false;
+  let failed = false;
+  const open = async () => {
+    if (busy) return;
+    busy = true;
+    failed = false;
+    void handle.update();
+    try {
+      const room = await s.project.openDM(handle.props.projectId, handle.props.agent.id);
+      const href = routes.room.href({ id: room.id });
+      if (handle.props.onNavigate) handle.props.onNavigate(href);
+      else void navigate(href);
+    } catch {
+      failed = true;
+    } finally {
+      busy = false;
+      void handle.update();
+    }
+  };
+  return () => {
+    const { agent } = handle.props;
+    return (
+      <li>
+        <button
+          type="button"
+          mix={[itemCss, dmStart, on('click', () => void open())]}
+          data-testid="dm-start"
+          disabled={busy}
+          title={failed ? `Could not open a conversation with ${agent.name}. Try again.` : `Message ${agent.name}`}
+        >
+          <Avatar id={agent.id} name={agent.name} size={24} kind="agent" />
+          <span class="label">{agent.name}</span>
+          {failed ? <span class="sr-only">, could not open, try again</span> : null}
+        </button>
+      </li>
+    );
+  };
+}
+const dmStart = css({ width: '100%', border: '0', background: 'transparent', cursor: 'pointer', textAlign: 'left', font: 'inherit' });
+
 /** The Rooms rail: team rooms, task rooms and direct messages of the open project. */
-export function RoomsRail(handle: Handle<{ route: Route }>) {
+export function RoomsRail(handle: Handle<{ route: Route; onNavigate?: (href: string) => void }>) {
   const s = services(handle);
   watch(handle, s.project);
   return () => {
@@ -442,11 +521,23 @@ export function RoomsRail(handle: Handle<{ route: Route }>) {
     const rooms = s.project.roomList.filter((r) => !r.archived);
     const current = (r: Room) => route.name === 'room' && route.id === r.id;
     const of = (kind: Room['kind']) => rooms.filter((r) => r.kind === kind).map((r) => <RoomLink key={r.id} room={r} current={current(r)} />);
+    // every crew agent is under Direct messages (X112): its conversation when there is one, otherwise a row that starts it
+    const dms = rooms.filter((r) => r.kind === 'dm');
+    const dmAgent = (r: Room) => r.agentId || r.name.slice(r.name.lastIndexOf('+') + 1);
+    const projectId = s.project.id;
+    const without = projectId ? s.project.agentList.filter((a) => !dms.some((r) => dmAgent(r) === a.id)) : [];
     return (
       <nav aria-label="Rooms" mix={railCss} data-rooms="">
         <Group title="Team rooms">{of('channel')}</Group>
         {rooms.some((r) => r.kind === 'task') ? <Group title="Task rooms">{of('task')}</Group> : null}
-        {rooms.some((r) => r.kind === 'dm') ? <Group title="Direct messages">{of('dm')}</Group> : null}
+        {dms.length || without.length ? (
+          <Group title="Direct messages">
+            {of('dm')}
+            {without.map((a) => (
+              <StartDM key={`start-${a.id}`} agent={a} projectId={projectId!} onNavigate={handle.props.onNavigate} />
+            ))}
+          </Group>
+        ) : null}
       </nav>
     );
   };

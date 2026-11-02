@@ -3,7 +3,7 @@ import { afterEach, describe, it } from 'remix/test';
 import type { Client } from '../../api/client.ts';
 import type { Agent, Message, Room } from '../../api/types.ts';
 import { roomMessagesDouble } from '../../test/fakes.ts';
-import { byLabel, byText, cleanup, fromMenu, menuItems, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
 import { Conversation, RoomScreen } from './room-screen.tsx';
 
 afterEach(cleanup);
@@ -473,7 +473,7 @@ describe('Stopping and muting a room (P130)', () => {
     expect([ev.defaultPrevented, stops, q(r, '[data-testid="room-stop"]'), q(r, '[data-testid="room-esc-again"]')]).toEqual([false, [], null, null]);
   });
 
-  it("mutes and unmutes the room from the room's menu", async () => {
+  it("mutes and unmutes the room with one click on the header's bell (X111)", async () => {
     const calls: unknown[] = [];
     let muted = false;
     const s = servicesWith({
@@ -485,13 +485,43 @@ describe('Stopping and muting a room (P130)', () => {
       },
     });
     const r = mount(<Conversation room={general} />, s);
-    const menu = await waitFor(() => q<HTMLButtonElement>(r, '[data-testid="room-menu"]')!, r);
-    expect(menu.getAttribute('aria-label')).toBe('Room actions');
-    await fromMenu(r, menu, 'Mute room');
+    const bell = () => q<HTMLButtonElement>(r, '[data-testid="room-mute"]')!;
+    await waitFor(() => expect(bell().getAttribute('aria-label')).toBe('Mute room'), r);
+    expect(q(r, '[data-testid="room-menu"]')).toBeNull();
+    await r.act(() => bell().click());
     await waitFor(() => expect(calls).toEqual([['r', true]]), r);
-    await waitFor(() => expect(s.project.unread.data?.[0]?.muted).toBe(true), r);
-    expect(await menuItems(r, menu)).toEqual(['Unmute room']);
-    await fromMenu(r, menu, 'Unmute room');
+    await waitFor(() => expect(bell().getAttribute('aria-label')).toBe('Unmute room'), r);
+    await r.act(() => bell().click());
     await waitFor(() => expect(calls).toEqual([['r', true], ['r', false]]), r);
+  });
+
+  it("with agent replies off for the project, the room says so with Turn on and nothing promises an answer to a mention (X13)", async () => {
+    const sets: unknown[] = [];
+    const settings = { maxParallel: 2, respond: false, autoSchedule: false, e2e: {}, preview: {} } as never;
+    const s = servicesWith({
+      projectdevGet: async () => settings,
+      projectdevSet: async (projectId: string, v: unknown) => (sets.push([projectId, v]), { ...(v as object) }) as never,
+    });
+    const r = mount(<Conversation room={general} />, s);
+    const notice = await waitFor(() => {
+      const n = q(r, '[data-testid="replies-off"]');
+      if (!n) throw new Error('no notice yet');
+      return n;
+    }, r);
+    expect(notice.textContent).toContain("Agents do not answer in this project's rooms");
+    expect(q(r, 'header')!.textContent).not.toContain('agents answer when you mention them');
+    expect(r.container.textContent).not.toContain('@ to mention');
+    await r.act(() => byText<HTMLButtonElement>(notice, 'button', 'Turn on').click());
+    await waitFor(() => expect(sets).toEqual([['p', { maxParallel: 2, respond: true, autoSchedule: false, e2e: {}, preview: {} }]]), r);
+    await waitFor(() => expect(q(r, '[data-testid="replies-off"]')).toBeNull(), r);
+    expect(q(r, 'header')!.textContent).toContain('agents answer when you mention them');
+    expect(r.container.textContent).toContain('@ to mention');
+  });
+
+  it('a direct message has no mode chip (X16)', async () => {
+    const dm: Room = { ...general, kind: 'dm', name: 'dm:human:kyle+agt1', agentId: 'agt1' };
+    const r = mount(<Conversation room={dm} />, servicesWith({}));
+    await waitFor(() => q(r, '[data-testid="room-mute"]')!, r);
+    expect(q(r, '[data-testid="room-mode"]')).toBeNull();
   });
 });

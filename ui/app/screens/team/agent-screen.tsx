@@ -544,7 +544,7 @@ export function AgentScreen(handle: Handle<{ id: string; onNavigate?: (href: str
           <section mix={[panelCss, leadCss]} aria-label="Team lead" data-testid="agent-lead">
             <h2>Team lead</h2>
             <p class="quiet">{a.name} supervises the team: it steps in when a task loops, stalls or trips the watchdog, and can post a stand-up.</p>
-            <RunStandup projectId={pid()} lead={lead} size="sm" />
+            <RunStandup projectId={pid()} lead={lead} size="sm" schedule />
             <Interventions projectId={pid()} limit={20} />
           </section>
         ) : null}

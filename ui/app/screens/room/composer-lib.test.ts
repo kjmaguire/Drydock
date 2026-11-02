@@ -48,7 +48,9 @@ describe('composer typing aids', () => {
     expect(parseSlash('/mode sequential')).toEqual({ kind: 'mode', mode: 'sequential' });
     expect(parseSlash('/help')).toEqual({ kind: 'help' });
     expect(parseSlash('/task').kind).toBe('error');
-    expect(parseSlash('/mode moderator').kind).toBe('error');
+    // X14: /mode moderator works too (the composer gives it the lead or you as the moderator)
+    expect(parseSlash('/mode moderator')).toEqual({ kind: 'mode', mode: 'moderator' });
+    expect(parseSlash('/mode chaos').kind).toBe('error');
     expect(parseSlash('/rm -rf').kind).toBe('error');
   });
 });
