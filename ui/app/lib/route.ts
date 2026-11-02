@@ -315,3 +315,9 @@ export const workItemKey = (r: WorkItemRef): string => `${r.kind}:${r.id}`;
 export function workItemHref(r: WorkItemRef): string {
   return `/?item=${encodeURIComponent(workItemKey(r))}`;
 }
+
+/** Requirements with one requirement open: "/requirements?open=req_1"; with `focus` "link" its Link criteria panel takes the keyboard. Reload and Back keep it (X414). */
+export function requirementHref(id?: string, focus?: 'link'): string {
+  if (!id) return '/requirements';
+  return `/requirements?open=${encodeURIComponent(id)}${focus ? `&focus=${focus}` : ''}`;
+}

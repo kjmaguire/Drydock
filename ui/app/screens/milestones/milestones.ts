@@ -9,6 +9,9 @@ export function progressText(p: Milestone['progress']): string {
   return `${p.completed} of ${p.total} completed; ${p.inProgress} in progress, ${p.blocked} blocked, ${p.open} not started, ${p.failed} failed, ${p.cancelled} cancelled.`;
 }
 
+/** Tasks of a milestone still to finish, as the core counts them when it is closed: not completed, cancelled or failed. */
+export const unfinishedOf = (p: Milestone['progress']): number => Math.max(0, p.total - p.completed - p.cancelled - p.failed);
+
 /** A date input's yyyy-mm-dd as the ISO time the core stores (midnight UTC); '' means no due date. */
 export const dueISO = (date: string): string | undefined => (date ? new Date(`${date}T00:00:00Z`).toISOString() : undefined);
 

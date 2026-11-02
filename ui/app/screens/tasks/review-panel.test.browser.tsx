@@ -200,7 +200,7 @@ describe('Merge gates of a pull request', () => {
       expect(gate.getAttribute('data-reason')).toBe('none');
       expect(gate.textContent).toContain('no CI tested');
       expect(gate.textContent).toContain('recorded with your name');
-      expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'Stop']);
+      expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'No CI in this repository, remember it', 'Stop']);
       expect(Array.from(r.$$('a')).map((a) => a.getAttribute('href'))).toEqual(['https://github.test/o/r/pull/7']);
       expect(() => byLabel(r.container, 'Your answer')).toThrow(); // not the free-text question
       await r.act(() => byText(r.container, 'button', label).click());
@@ -228,7 +228,30 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(r.$('[data-testid="readonly-note"]')).toBeTruthy(), r);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Check CI again').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Merge without CI this time').disabled).toBe(true);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'No CI in this repository, remember it').disabled).toBe(true);
     expect(byText<HTMLButtonElement>(r.container, 'button', 'Stop').disabled).toBe(false);
+  });
+
+  // H13: "this repository has no CI, remember it" is asked a second time, says what changes, and only Yes answers
+  it('the CI gate remembers that the repository has no CI only after a second click', async () => {
+    const runRespond = recorder(() => undefined);
+    const r = mount(<ReviewPanel detail={ciQuestion(noCI)} onChanged={() => undefined} />, svc({ runRespond }));
+    await r.act(() => byText(r.container, 'button', 'No CI in this repository, remember it').click());
+    const ask = r.$('[data-testid="ci-gate-remember-confirm"]')!;
+    expect(ask.textContent).toContain('set this project to no CI');
+    expect(ask.textContent).toContain('recorded with your name');
+    expect(runRespond.calls).toEqual([]);
+    await r.act(() => byText(ask, 'button', 'Go back').click());
+    expect(r.$('[data-testid="ci-gate-remember-confirm"]')).toBe(null);
+    expect(runRespond.calls).toEqual([]);
+    await r.act(() => byText(r.container, 'button', 'No CI in this repository, remember it').click());
+    await r.act(() => byText(r.container, 'button', 'Yes, this repository has no CI').click());
+    await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'ci-1', 'approved', { waive_ci: true, ci_none: true }]]), r);
+  });
+
+  it('the CI gate offers to remember no CI only when no CI ran at all', () => {
+    const r = mount(<ReviewPanel detail={ciQuestion({ ...noCI, reason: 'missing', missing: ['deploy'] })} onChanged={() => undefined} />, svc());
+    expect(buttons(r.container)).toEqual(['Check CI again', 'Merge without CI this time', 'Stop']);
   });
 
   it('the merge gate explains the GitHub state and offers check again or stop', async () => {

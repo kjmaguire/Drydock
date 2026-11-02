@@ -1,7 +1,7 @@
 // Milestones: groups of tasks with a due date and progress the core computes from the tasks' states.
 
 import { css, on, type Handle } from 'remix/component';
-import { CalendarDays, Flag, Plus, Trash2 } from 'lucide';
+import { CalendarDays, Check, Flag, Plus, Trash2 } from 'lucide';
 import type { Milestone, Plan } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
 import { formatDateTime, plural } from '../../lib/format.ts';
@@ -14,8 +14,9 @@ import { Field, formActions, formGrid } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
+import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { dueISO, matchesFilter, progressText, segments, taskGroups, taskLabel, zeroTime } from './milestones.ts';
+import { dueISO, matchesFilter, progressText, segments, taskGroups, taskLabel, unfinishedOf, zeroTime } from './milestones.ts';
 
 const gridCss = css({
   display: 'grid',
@@ -148,6 +149,7 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan
     const shown = free.filter((x) => matchesFilter(x, filter));
     const groups = taskGroups(free, handle.props.plans);
     const chosen = [...picked].filter((id) => free.some((x) => x.id === id));
+    const unfinished = unfinishedOf(p);
     return (
       <article mix={cardCss} data-testid="milestone" data-title={m.title} data-status={m.status}>
         <header>
@@ -271,13 +273,35 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan
           </div>
         )}
         <div mix={footer}>
-          <Button
-            size="sm"
-            disabled={act.busy !== ''}
-            mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, m.status === 'open' ? 'closed' : 'open', false)))}
-          >
-            {m.status === 'open' ? 'Close milestone' : 'Reopen'}
-          </Button>
+          {m.status !== 'open' ? (
+            <Button size="sm" disabled={act.busy !== ''} mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, 'open', false)))}>
+              Reopen
+            </Button>
+          ) : unfinished > 0 ? (
+            // the core refuses to close with unfinished tasks unless told to: the person is asked, and Yes sends force
+            <ConfirmAction
+              label="Close milestone"
+              variant="secondary"
+              yes="Close anyway"
+              yesName={`Close "${m.title}" anyway`}
+              keepName={`Keep "${m.title}" open`}
+              question={`${plural(unfinished, 'task')} in "${m.title}" ${unfinished === 1 ? 'is' : 'are'} not finished. Close anyway? Reopen undoes it.`}
+              disabled={act.busy !== ''}
+              testId="milestone-close"
+              onConfirm={() => run('status', () => s.client.milestoneSetStatus(m.id, 'closed', true))}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant={p.total > 0 ? 'primary' : 'secondary'}
+              icon={p.total > 0 ? Check : undefined}
+              disabled={act.busy !== ''}
+              data-testid="milestone-close"
+              mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, 'closed', false)))}
+            >
+              {p.total > 0 ? 'All done · Close milestone' : 'Close milestone'}
+            </Button>
+          )}
           <span mix={spacer} />
           {confirm ? (
             <>

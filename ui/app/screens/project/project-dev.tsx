@@ -88,7 +88,8 @@ export function CheckSettingsPanel(handle: Handle<{ projectId: string }>) {
 
 export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
   const s = services(handle);
-  const q = query(handle, { load: () => s.client.projectdevGet(handle.props.projectId), key: () => handle.props.projectId });
+  // projectdev.changed: a person answered a pull request's CI question with "this repository has no CI" (H13)
+  const q = query(handle, { load: () => s.client.projectdevGet(handle.props.projectId), key: () => handle.props.projectId, when: (e) => e.type === 'projectdev.changed' && e.projectId === handle.props.projectId });
   const act = action(handle);
   let cur: DevSettings | undefined;
   let loaded: DevSettings | undefined;

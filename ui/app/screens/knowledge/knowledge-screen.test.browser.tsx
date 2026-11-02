@@ -87,7 +87,9 @@ describe('the Knowledge hub', () => {
     const chips = rows.map((x) => x.querySelector('[data-testid="knowledge-coverage"]')!);
     expect(chips.map((x) => x.textContent?.trim())).toEqual(['in progress · #12', 'verified · #9', 'no task yet']);
     expect(chips[0]!.getAttribute('href')).toBe(routes.task.href({ id: 't12' }));
-    expect(chips[2]!.tagName).toBe('SPAN');
+    // X414: the title opens that requirement; a requirement with no task yet opens with its Link criteria panel ready
+    expect(chips[2]!.getAttribute('href')).toBe('/requirements?open=rq3&focus=link');
+    expect(rows.map((x) => x.querySelector('a.title')!.getAttribute('href'))).toEqual(['/requirements?open=rq1', '/requirements?open=rq2', '/requirements?open=rq3']);
     expect(rows[0]!.textContent).toContain('Webhooks are retried with backoff');
     expect(r.container.textContent).not.toContain('An old one');
   });

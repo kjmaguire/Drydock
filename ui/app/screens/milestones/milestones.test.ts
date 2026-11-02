@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { dueISO, matchesFilter, progressText, segments, taskGroups, zeroTime } from './milestones.ts';
+import { dueISO, matchesFilter, progressText, segments, taskGroups, unfinishedOf, zeroTime } from './milestones.ts';
 
 const p = {
   total: 4,
@@ -14,6 +14,12 @@ const p = {
 };
 
 describe('Milestone helpers', () => {
+  it('counts the unfinished tasks as the core does when a milestone is closed (X410)', () => {
+    expect(unfinishedOf(p)).toBe(2);
+    expect(unfinishedOf({ ...p, completed: 3, open: 0, inProgress: 0, cancelled: 1 })).toBe(0);
+    expect(unfinishedOf({ ...p, total: 0, completed: 0, inProgress: 0, open: 0 })).toBe(0);
+  });
+
   it('describes progress in words', () => {
     expect(progressText(p)).toBe('2 of 4 completed; 1 in progress, 0 blocked, 1 not started, 0 failed, 0 cancelled.');
   });

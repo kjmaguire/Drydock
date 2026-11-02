@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
 import { routes } from '../routes.ts';
-import { hashToPath, hubOf, isProjectHub, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, parseWorkItem, redirectLegacyHash, workItemHref } from './route.ts';
+import { hashToPath, hubOf, isProjectHub, isWorkspaceHub, isWorkspacePage, isWorkspaceRoute, parseRoute, parseWorkItem, redirectLegacyHash, requirementHref, workItemHref } from './route.ts';
 
 describe('routes', () => {
   it('builds the paths the screens link to', () => {
@@ -227,5 +227,14 @@ describe('routes', () => {
     const u = new URL(href, 'http://x');
     expect(parseRoute(u.pathname)).toEqual({ name: 'home' });
     expect(parseWorkItem(u.searchParams.get('item'))).toEqual({ kind: 'task', id: 'tsk 1' });
+  });
+
+  it('names the open requirement in the URL (X414): ?open=<id>, with &focus=link for its Link criteria panel', () => {
+    expect(requirementHref()).toBe('/requirements');
+    expect(requirementHref('req 1')).toBe('/requirements?open=req%201');
+    const u = new URL(requirementHref('req_1', 'link'), 'http://x');
+    expect(u.pathname).toBe('/requirements');
+    expect(u.searchParams.get('open')).toBe('req_1');
+    expect(u.searchParams.get('focus')).toBe('link');
   });
 });

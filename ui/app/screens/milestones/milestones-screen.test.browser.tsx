@@ -159,12 +159,36 @@ describe('MilestonesScreen', () => {
     expect(card.textContent).not.toContain('overdue');
     await r.act(() => byText(card, 'button', 'Remove').click());
     await waitFor(() => expect(calls).toEqual(['set ms_1 + -t1']), r);
+    // one task is not finished: Close asks first, and only "Close anyway" closes it, with force (X410)
     await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Close milestone').click());
-    await waitFor(() => expect(calls[1]).toBe('status ms_1 closed false'), r);
+    expect(calls.length).toBe(1);
+    expect(r.$('[data-testid="milestone"] [role="group"]')!.getAttribute('aria-label')).toBe('1 task in "Beta" is not finished. Close anyway? Reopen undoes it.');
+    await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Close "Beta" anyway').click());
+    await waitFor(() => expect(calls[1]).toBe('status ms_1 closed true'), r);
     await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Delete').click());
     expect(calls.length).toBe(2);
     await r.act(() => byText(r.$('[data-testid="milestone"]')!, 'button', 'Yes, delete').click());
     await waitFor(() => expect(calls[2]).toBe('delete ms_1'), r);
+  });
+
+  // X410: a milestone whose tasks are all finished offers to close in one click, without force; a closed one reopens
+  it('a finished milestone offers "All done · Close milestone"; a closed one offers Reopen', async () => {
+    const calls: string[] = [];
+    const done = { total: 2, completed: 1, inProgress: 0, blocked: 0, open: 0, cancelled: 1, failed: 0, percent: 100 };
+    const r = mount(
+      <MilestonesScreen />,
+      servicesWith({
+        milestoneList: async () => [ms({ progress: done }), ms({ id: 'ms_2', title: 'Old', status: 'closed', progress: done })],
+        milestoneSetStatus: async (id, status, force) => (calls.push(`status ${id} ${status} ${force}`), ms()),
+      }),
+    );
+    const beta = await waitFor(() => need(r.$('[data-testid="milestone"][data-title="Beta"]')), r);
+    await r.act(() => byText(beta, 'button', 'All done · Close milestone').click());
+    await waitFor(() => expect(calls).toEqual(['status ms_1 closed false']), r);
+    const old = r.$('[data-testid="milestone"][data-title="Old"]')!;
+    expect(() => byText(old, 'button', 'Close milestone')).toThrow();
+    await r.act(() => byText(old, 'button', 'Reopen').click());
+    await waitFor(() => expect(calls[1]).toBe('status ms_2 open false'), r);
   });
 
   // audit 2026-10-16, M27: a task the team lead split off says so wherever it is a row

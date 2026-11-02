@@ -292,6 +292,19 @@ describe('Check settings and development flow', () => {
     await waitFor(() => expect(r.container.querySelector('[role="status"]')!.textContent).toBe('Saved.'), r);
   });
 
+  // H13: a person answered a pull request's CI question with "this repository has no CI": the page shows it without a reload
+  it('shows "no CI" declared from a CI question as soon as the core says the settings changed', async () => {
+    let cur: DevSettings = dev;
+    const svc = testServices({ projectdevGet: async () => cur });
+    const r = mount(<DevSettingsPanel projectId="prj_1" />, svc);
+    const none = await waitFor(() => byLabel<HTMLInputElement>(r.container, 'This repository has no CI: merge after the review alone'), r);
+    expect(none.checked).toBe(false);
+    cur = { ...dev, ciMode: 'none', ciNoneBy: 'human:kyle', ciNoneAt: Date.UTC(2026, 10, 2) };
+    svc.emit({ type: 'projectdev.changed', projectId: 'prj_1' });
+    await waitFor(() => expect(r.$('[data-testid="ci-none-note"]')!.textContent).toContain('Declared by human:kyle on '), r);
+    expect(byLabel<HTMLInputElement>(r.container, 'This repository has no CI: merge after the review alone').checked).toBe(true);
+  });
+
   it('the collision guard is on unless the human switches it off', async () => {
     const calls: DevSettings[] = [];
     const r = mountDev(async (_p, x) => (calls.push(x), x));

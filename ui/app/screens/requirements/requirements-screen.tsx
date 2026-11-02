@@ -2,11 +2,12 @@
 // tasks' test evidence. The text is outside text: stored with secrets redacted, shown inert, and passages that look like
 // instructions to an agent are quarantined until the human releases them. "Verified" is the core's judgement only.
 
-import { css, on, type Handle } from 'remix/component';
+import { css, on, ref, type Handle } from 'remix/component';
 import { Archive, ArchiveRestore, Check, ChevronRight, FileText, Link2, Search, ShieldAlert, Upload } from 'lucide';
 import type { Requirement, RequirementHit, RequirementTrace } from '../../api/extTypes.ts';
 import type { Task } from '../../api/types.ts';
 import { formatDateTime, plural } from '../../lib/format.ts';
+import { requirementHref } from '../../lib/route.ts';
 import { visible } from '../../lib/visible.ts';
 import { routes } from '../../routes.ts';
 import { action, query, services, watch } from '../../state/services.tsx';
@@ -232,7 +233,41 @@ function passageName(headingPath: string): string {
 }
 const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onChanged: () => void }>) {
+/**
+ * Reads a chosen, dropped or pasted file the way Add requirements always has: a PDF or DOCX by the core (requirement.extract,
+ * its pages as "## Page N"), anything else as text here. The text lands in a box to be read before it is sent. A refusal before
+ * reading is returned as `error`; the core's refusal is shown by the action. Undefined: nothing to show.
+ */
+async function readRequirementFile(
+  client: ReturnType<typeof services>['client'],
+  act: ReturnType<typeof action>,
+  f: File,
+): Promise<{ text: string; title: string } | { error: string } | undefined> {
+  const doc = isDocument(f.name);
+  const error = doc ? documentProblem(f.size) : fileProblem(f.size);
+  if (error) return { error };
+  if (doc) return act.run('read', async () => client.requirementExtract(f.name, new Uint8Array(await f.arrayBuffer())));
+  return { text: await f.text(), title: titleFromFile(f.name) };
+}
+
+/** The drop and paste handlers of a text box that also takes a file (text dropped or pasted goes in as usual). */
+const takesFiles = (onFile: (f: File) => void) => [
+  on<HTMLTextAreaElement, 'dragover'>('dragover', (e) => {
+    if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault();
+  }),
+  on<HTMLTextAreaElement, 'drop'>('drop', (e) => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) (e.preventDefault(), onFile(f));
+  }),
+  on<HTMLTextAreaElement, 'paste'>('paste', (e) => {
+    const f = e.clipboardData?.files?.[0];
+    if (f) (e.preventDefault(), onFile(f));
+  }),
+];
+
+const ACCEPT = '.md,.markdown,.txt,.pdf,.docx,text/plain,text/markdown';
+
+function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onChanged: () => void; focusLink?: boolean }>) {
   const s = services(handle);
   const act = action(handle);
   const key = () => [handle.props.r.id, handle.props.r.version];
@@ -260,6 +295,19 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
     when: (e) => e.type.startsWith('requirement.'),
   });
   let newText = '';
+  let newFile = '';
+  let newErr = '';
+  let focused = false;
+  const onNewFile = async (f: File) => {
+    newErr = '';
+    newFile = '';
+    void handle.update();
+    const x = await readRequirementFile(s.client, act, f);
+    if (!x) return;
+    if ('error' in x) newErr = x.error;
+    else (newText = x.text), (newFile = f.name);
+    void handle.update();
+  };
   let taskId = '';
   let criteria = '';
   // the chosen task's criteria the person keeps ticked (by index); the box for other criteria opens when the task has none,
@@ -354,7 +402,22 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
         </div>
 
         <div mix={twoCol}>
-          <div mix={subForm}>
+          <div
+            mix={[
+              subForm,
+              ref((node) => {
+                // opened from Knowledge's "no task yet": the keyboard goes to the task to link, once
+                if (!handle.props.focusLink || focused) return;
+                focused = true;
+                handle.queueTask(() => {
+                  const el = node as HTMLElement;
+                  el.scrollIntoView?.({ block: 'center' });
+                  el.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+                });
+              }),
+            ]}
+            data-testid="req-link-panel"
+          >
             <h3>Link criteria to a task</h3>
             <form
               mix={[
@@ -486,13 +549,35 @@ function RequirementDetail(handle: Handle<{ r: Requirement; tasks: Task[]; onCha
                   const x = await act.run('update', () => s.client.requirementUpdate(r.id, newText));
                   if (x) {
                     newText = '';
+                    newFile = '';
                     done();
                   }
                 }),
               ]}
             >
+              <div mix={uploadCss}>
+                <label mix={buttonStyle('secondary', 'sm')}>
+                  <Icon icon={Upload} size={14} />
+                  Choose a file
+                  <input
+                    type="file"
+                    class="sr-only"
+                    accept={ACCEPT}
+                    aria-label={`Upload a new version of "${r.title}" (its text is shown here before it is saved)`}
+                    data-testid="req-version-file"
+                    mix={on('change', (e) => {
+                      const f = e.currentTarget.files?.[0];
+                      if (f) void onNewFile(f);
+                    })}
+                  />
+                </label>
+                <span class="hint">
+                  {act.busy === 'read' ? 'Reading the file...' : newFile ? `Read ${newFile}. Check the text before you save it.` : 'A revised file, or paste the new text.'}
+                </span>
+              </div>
+              {newErr ? <ErrorNote error={newErr} /> : null}
               <Field label="Replacement text">
-                {(fid) => <textarea id={fid} rows={4} value={newText} mix={on('input', (e) => set(() => (newText = e.currentTarget.value)))} />}
+                {(fid) => <textarea id={fid} rows={4} value={newText} mix={[on('input', (e) => set(() => (newText = e.currentTarget.value))), ...takesFiles((f) => void onNewFile(f))]} />}
               </Field>
               <div mix={formActions}>
                 <Button type="submit" disabled={busy || !newText.trim()}>
@@ -583,7 +668,14 @@ const hitsCss = css({
   },
 });
 
-export function RequirementsScreen(handle: Handle) {
+export interface RequirementsScreenProps {
+  /** The ?open= value: the requirement shown open (X414). */
+  open?: string;
+  /** The ?focus= value: "link" puts the keyboard in the open requirement's Link criteria panel. */
+  focus?: string;
+}
+
+export function RequirementsScreen(handle: Handle<RequirementsScreenProps>) {
   const s = services(handle);
   watch(handle, s.workspace);
   watch(handle, s.project);
@@ -599,7 +691,19 @@ export function RequirementsScreen(handle: Handle) {
   let text = '';
   let fileErr = '';
   let fileName = '';
-  let open: string | undefined;
+  // the open requirement is in the address (?open=<id>), so Reload, Back and a link from Knowledge open it (X414)
+  let open: string | undefined = handle.props.open;
+  let named = handle.props.open;
+  let focusLink = handle.props.focus === 'link';
+  const setOpen = (id: string | undefined) => {
+    open = id;
+    focusLink = false;
+    try {
+      if (window.location.pathname === requirementHref()) window.history.replaceState(window.history.state, '', requirementHref(id));
+    } catch {
+      /* the address is a convenience */
+    }
+  };
   let search = '';
   let hits: RequirementHit[] | undefined;
   const set = (fn: () => void) => {
@@ -607,23 +711,14 @@ export function RequirementsScreen(handle: Handle) {
     void handle.update();
   };
 
-  const onFile = async (input: HTMLInputElement) => {
-    const f = input.files?.[0];
-    if (!f) return;
-    const doc = isDocument(f.name);
-    fileErr = doc ? documentProblem(f.size) : fileProblem(f.size);
+  const onFile = async (f: File) => {
+    fileErr = '';
     fileName = '';
-    if (fileErr) return set(() => undefined);
-    if (doc) {
-      // the core reads a PDF's or DOCX's text (pages as "## Page N"); it lands in the box to be read before it is added
-      const x = await act.run('read', async () => s.client.requirementExtract(f.name, new Uint8Array(await f.arrayBuffer())));
-      if (!x) return;
-      text = x.text;
-      if (!title.trim()) title = x.title;
-    } else {
-      text = await f.text();
-      if (!title.trim()) title = titleFromFile(f.name);
-    }
+    const x = await readRequirementFile(s.client, act, f);
+    if (!x) return set(() => undefined);
+    if ('error' in x) return set(() => (fileErr = x.error));
+    text = x.text;
+    if (!title.trim()) title = x.title;
     fileName = f.name;
     void handle.update();
   };
@@ -635,13 +730,19 @@ export function RequirementsScreen(handle: Handle) {
       title = '';
       text = '';
       fileName = '';
-      open = r.id;
+      setOpen(r.id);
       q.reload();
       void handle.update();
     }
   };
 
   return () => {
+    if (handle.props.open !== named) {
+      // the address changed while the page stayed (a link to another requirement)
+      named = handle.props.open;
+      open = named;
+      focusLink = handle.props.focus === 'link';
+    }
     const list = q.data ?? [];
     const sel = list.find((r) => r.id === open);
     const busy = act.busy !== '';
@@ -682,7 +783,7 @@ export function RequirementsScreen(handle: Handle) {
                   size="sm"
                   variant="ghost"
                   aria-expanded={open === r.id ? 'true' : 'false'}
-                  mix={on('click', () => set(() => (open = open === r.id ? undefined : r.id)))}
+                  mix={on('click', () => set(() => setOpen(open === r.id ? undefined : r.id)))}
                 >
                   {open === r.id ? 'Close' : 'Open'}
                   <Icon icon={ChevronRight} size={13} />
@@ -691,7 +792,7 @@ export function RequirementsScreen(handle: Handle) {
             ))}
           </ul>
         ) : null}
-        {sel ? <RequirementDetail key={sel.id} r={sel} tasks={s.project.taskList} onChanged={() => q.reload()} /> : null}
+        {sel ? <RequirementDetail key={sel.id} r={sel} tasks={s.project.taskList} focusLink={focusLink} onChanged={() => q.reload()} /> : null}
 
         <Section title="Add requirements">
           <form
@@ -700,11 +801,13 @@ export function RequirementsScreen(handle: Handle) {
               formCss,
               on('submit', (e) => {
                 e.preventDefault();
-                if (!busy && title.trim() && text.trim()) void add();
+                if (!busy && text.trim()) void add();
               }),
             ]}
           >
-            <Field label="Title">{(id) => <input id={id} value={title} mix={on('input', (e) => set(() => (title = e.currentTarget.value)))} />}</Field>
+            <Field label="Title" hint="Optional: without one, the document's first heading is its title.">
+              {(id) => <input id={id} value={title} placeholder="From the document's first heading" mix={on('input', (e) => set(() => (title = e.currentTarget.value)))} />}
+            </Field>
             <div mix={uploadCss}>
               <label mix={buttonStyle('secondary', 'sm')}>
                 <Icon icon={Upload} size={14} />
@@ -712,9 +815,12 @@ export function RequirementsScreen(handle: Handle) {
                 <input
                   type="file"
                   class="sr-only"
-                  accept=".md,.markdown,.txt,.pdf,.docx,text/plain,text/markdown"
+                  accept={ACCEPT}
                   aria-label="Upload a PDF, DOCX, text or Markdown file (its text is shown here before it is added)"
-                  mix={on('change', (e) => void onFile(e.currentTarget))}
+                  mix={on('change', (e) => {
+                    const f = e.currentTarget.files?.[0];
+                    if (f) void onFile(f);
+                  })}
                 />
               </label>
               <span class="hint">
@@ -722,13 +828,15 @@ export function RequirementsScreen(handle: Handle) {
                   ? 'Reading the file...'
                   : fileName
                     ? `Read ${fileName}. Check the text before you add it.`
-                    : 'A PDF, DOCX, text or Markdown file. Its text is shown below before it is added; a scanned PDF has none.'}
+                    : 'A PDF, DOCX, text or Markdown file, chosen, dropped on the text box or pasted into it. Its text is shown below before it is added; a scanned PDF has none.'}
               </span>
             </div>
             {fileErr ? <ErrorNote error={fileErr} /> : null}
-            <Field label="Text">{(id) => <textarea id={id} rows={8} value={text} mix={on('input', (e) => set(() => (text = e.currentTarget.value)))} />}</Field>
+            <Field label="Text">
+              {(id) => <textarea id={id} rows={8} value={text} mix={[on('input', (e) => set(() => (text = e.currentTarget.value))), ...takesFiles((f) => void onFile(f))]} />}
+            </Field>
             <div mix={formActions}>
-              <Button type="submit" variant="primary" disabled={busy || !title.trim() || !text.trim()}>
+              <Button type="submit" variant="primary" disabled={busy || !text.trim()}>
                 Add requirement
               </Button>
             </div>

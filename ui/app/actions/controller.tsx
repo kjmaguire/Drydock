@@ -93,9 +93,9 @@ export const controller = createController(routes, {
       const { PlanScreen } = await import('../screens/plan/plan-screen.tsx');
       return render(<PlanScreen />);
     },
-    async requirements({ render }) {
+    async requirements({ render, url }) {
       const { RequirementsScreen } = await import('../screens/requirements/requirements-screen.tsx');
-      return render(<RequirementsScreen />);
+      return render(<RequirementsScreen open={url.searchParams.get('open') ?? undefined} focus={url.searchParams.get('focus') ?? undefined} />);
     },
     async milestones({ render }) {
       const { MilestonesScreen } = await import('../screens/milestones/milestones-screen.tsx');

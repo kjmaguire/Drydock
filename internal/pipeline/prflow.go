@@ -241,6 +241,13 @@ func CI(d Deps, src PRSource) workflow.NodeHandler {
 			return workflow.NodeOutput{}, fmt.Errorf("CI of pull request #%d: stopped by %s", n, ans.by)
 		case ans.waive && isHuman(ans.by):
 			waivedBy = ans.by
+			if ans.ciNone {
+				// "this repository has no CI, remember it": the same declaration Project settings records (CIMode none),
+				// made by the person who answered, so the question is asked once per project
+				if note := declareNoCI(ctx, d, t, ans.by); note != "" {
+					notes = append(notes, note)
+				}
+			}
 		case ans.waive:
 			notes = append(notes, fmt.Sprintf("%s asked to merge without CI; only a person can decide that, so CI was checked again", ans.by))
 		}
@@ -367,6 +374,25 @@ func pendingChecks(st host.CIState) []string {
 type ciAnswer struct {
 	decision, by string
 	waive        bool // {"waive_ci": true}: merge without CI this time
+	// ciNone: {"ci_none": true} to a question about no CI at all: the person also declares that the repository has no CI
+	// (it implies the waiver for this commit)
+	ciNone bool
+}
+
+// declareNoCI records a person's answer "this repository has no CI, remember it" as the project's CI setting (CIMode none,
+// with that person and the time recorded by SaveDevSettings), and says so on the event stream. A project already declared
+// is left as it is. It returns a note when the setting could not be saved: the waiver for this commit still stands.
+func declareNoCI(ctx context.Context, d Deps, t tasks.Task, by string) string {
+	dev := LoadDevSettings(ctx, d.Tasks.DB, t.ProjectID)
+	if dev.CIMode == CINone {
+		return ""
+	}
+	dev.CIMode = CINone
+	if err := SaveDevSettings(ctx, d.Tasks.DB, t.ProjectID, dev, by); err != nil {
+		return "the project could not be set to no CI (" + oneLine(err.Error()) + "), so the next pull request asks again"
+	}
+	d.emit(ctx, "projectdev.changed", t, map[string]any{"ciMode": CINone, "by": by})
+	return ""
 }
 
 // ciAnswerFor reads the answer to the CI node's latest question in this run, when that question was about head. The CI node
@@ -379,20 +405,26 @@ func ciAnswerFor(ctx context.Context, d Deps, in workflow.NodeInput, head string
 		return ciAnswer{}
 	}
 	var q struct {
-		Head string `json:"head"`
+		Head   string `json:"head"`
+		Reason string `json:"reason"`
 	}
 	if json.Unmarshal(payload, &q) != nil || q.Head != head {
 		return ciAnswer{} // the question was about an earlier commit
 	}
 	var data struct {
 		WaiveCI bool `json:"waive_ci"`
+		CINone  bool `json:"ci_none"`
 	}
 	_ = json.Unmarshal(resp, &data)
-	return ciAnswer{decision: decision, by: by, waive: data.WaiveCI && decision != "rejected"}
+	// "no CI here" answers only the question about no CI at all: a required check that did not report or one still running
+	// is not a repository without CI
+	none := data.CINone && q.Reason == "none" && decision != "rejected"
+	return ciAnswer{decision: decision, by: by, waive: (data.WaiveCI || none) && decision != "rejected", ciNone: none}
 }
 
 // ciQuestion asks the human about a commit CI gave no answer for. The node runs again after the answer (Retry) and reads
-// it with ciAnswerFor: "answered" checks CI again, {"waive_ci": true} merges without CI this time, "rejected" stops the run.
+// it with ciAnswerFor: "answered" checks CI again, {"waive_ci": true} merges without CI this time, {"ci_none": true} (to a
+// question about no CI at all) also declares that the repository has no CI, "rejected" stops the run.
 func ciQuestion(ctx context.Context, d Deps, t tasks.Task, n int, head, reason string, st host.CIState, w host.CIWait, notes []string) workflow.NodeOutput {
 	running := pendingChecks(st)
 	var what string

@@ -115,6 +115,9 @@ const CI_REASON: Record<string, string> = {
   running: 'CI started but did not finish in time.',
 };
 
+const CI_NONE_QUESTION =
+  "Merge this commit without CI and set this project to no CI? Later pull requests then merge after the review alone, without this question. Checks that do report must still pass. It is recorded with your name, and you can change it in the project's Development flow settings.";
+
 const MERGE_HINT: Record<string, string> = {
   blocked: 'A required review or check is missing or has not passed. The pull request on GitHub shows which.',
   behind: 'The base branch moved on and its protection wants the branch up to date first. A commit added to the branch on GitHub was not reviewed, so Drydock will not merge it unseen.',
@@ -147,8 +150,19 @@ function GitHubLink(handle: Handle<{ url?: string; pr: number }>) {
   };
 }
 
-/** The CI gate: check again, merge without CI this time, or stop. */
+/**
+ * The CI gate: check again, merge without CI this time, or stop. When no CI ran at all, a fourth answer: "this repository has
+ * no CI, remember it" (H13), asked a second time in words that say what changes; yes merges this commit without CI and sets
+ * the project's "CI before merge" to none with the person's name ({waive_ci: true, ci_none: true}).
+ */
 export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
+  let remembering = false;
+  let rememberBtn: HTMLElement | undefined;
+  const setRemembering = async (v: boolean) => {
+    remembering = v;
+    await handle.update();
+    if (!v) rememberBtn?.focus();
+  };
   return () => {
     const { payload: p, busy, readOnly, onRespond } = handle.props;
     const missing = p.missing ?? [];
@@ -187,10 +201,31 @@ export function CIGatePanel(handle: Handle<{ payload: CIGatePayload; busy: boole
           <Button icon={ShieldOff} disabled={busy || readOnly} mix={on('click', () => void onRespond('approved', { waive_ci: true }))}>
             Merge without CI this time
           </Button>
+          {p.reason === 'none' ? (
+            <Button
+              icon={ShieldOff}
+              disabled={busy || readOnly || remembering}
+              data-testid="ci-gate-remember"
+              mix={[ref((n) => (rememberBtn = n as HTMLElement)), on('click', () => void setRemembering(true))]}
+            >
+              No CI in this repository, remember it
+            </Button>
+          ) : null}
           <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
             Stop
           </Button>
         </div>
+        {remembering && p.reason === 'none' ? (
+          <div mix={confirmCss} role="group" aria-label={CI_NONE_QUESTION} data-testid="ci-gate-remember-confirm">
+            <p>{CI_NONE_QUESTION}</p>
+            <div mix={formActions}>
+              <Button variant="danger" disabled={busy || readOnly} mix={on('click', () => void onRespond('approved', { waive_ci: true, ci_none: true }))}>
+                Yes, this repository has no CI
+              </Button>
+              <Button mix={[ref((n) => (n as HTMLElement).focus()), on('click', () => void setRemembering(false))]}>Go back</Button>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   };
