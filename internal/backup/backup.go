@@ -45,9 +45,12 @@ type Verified struct {
 	RestorableHere bool `json:"restorableHere"`
 }
 
-// verifiedFile is what the .verified sidecar holds: the check's result and the hash it was made against.
+// verifiedFile is what the .verified sidecar holds: the check's result and the file it was made against (its hash, size and
+// modification time; the hash alone is the .sha256 sidecar's, which a file replaced or cut afterwards leaves as it was).
 type verifiedFile struct {
 	SHA256        string    `json:"sha256"`
+	Size          int64     `json:"size"`
+	ModTime       int64     `json:"modTime"` // Unix nanoseconds
 	SchemaVersion int64     `json:"schemaVersion"`
 	At            time.Time `json:"at"`
 }
@@ -110,8 +113,10 @@ func Create(ctx context.Context, db *storage.DB, dir, label string, now time.Tim
 	info = Info{Path: final, Name: name, Size: size, SHA256: sum, Created: now.UTC(), Label: label}
 	// the snapshot passed its integrity check above and its hash is recorded: keep that result, with its schema, so the list
 	// shows it as verified without a click. A failure here only leaves the backup unmarked (Verify still works on it).
-	if v, verr := storage.FileSchemaVersion(ctx, final); verr == nil {
-		if b, merr := json.Marshal(verifiedFile{SHA256: sum, SchemaVersion: v, At: now.UTC()}); merr == nil && writeAtomic(final+".verified", b) == nil {
+	st, serr := os.Stat(final)
+	if v, verr := storage.FileSchemaVersion(ctx, final); verr == nil && serr == nil && st.Size() == size {
+		vf := verifiedFile{SHA256: sum, Size: size, ModTime: st.ModTime().UnixNano(), SchemaVersion: v, At: now.UTC()}
+		if b, merr := json.Marshal(vf); merr == nil && writeAtomic(final+".verified", b) == nil {
 			info.Verified = &Verified{SchemaVersion: v, At: now.UTC(), RestorableHere: v <= storage.LatestVersion()}
 		}
 	}
@@ -265,7 +270,7 @@ func List(dir string) ([]Info, error) {
 		}
 		_, kerr := os.Stat(in.Path + ".keep")
 		in.Keep = kerr == nil
-		in.Verified = readVerified(in)
+		in.Verified = readVerified(in, st.ModTime())
 		out = append(out, in)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
@@ -273,8 +278,9 @@ func List(dir string) ([]Info, error) {
 }
 
 // readVerified reads the stored check of a backup: only when it was made against the hash the sidecar records now and the file
-// still has the size it was listed with (a file changed since then is not shown as verified).
-func readVerified(in Info) *Verified {
+// still has the size and modification time it had when it was checked (a file replaced or cut since then is not shown as
+// verified, even with its .sha256 sidecar left as it was).
+func readVerified(in Info, mod time.Time) *Verified {
 	if in.SHA256 == "" {
 		return nil
 	}
@@ -283,7 +289,7 @@ func readVerified(in Info) *Verified {
 		return nil
 	}
 	var f verifiedFile
-	if json.Unmarshal(b, &f) != nil || f.SHA256 != in.SHA256 || f.SchemaVersion <= 0 {
+	if json.Unmarshal(b, &f) != nil || f.SHA256 != in.SHA256 || f.SchemaVersion <= 0 || f.Size != in.Size || f.ModTime != mod.UnixNano() {
 		return nil
 	}
 	return &Verified{SchemaVersion: f.SchemaVersion, At: f.At, RestorableHere: f.SchemaVersion <= storage.LatestVersion()}

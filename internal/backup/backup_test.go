@@ -408,6 +408,42 @@ func TestABackupKeepsItsCheckInTheList(t *testing.T) {
 	if v == nil || v.SchemaVersion != storage.LatestVersion() || !v.RestorableHere || !v.At.Equal(t0) {
 		t.Fatalf("listed: %+v", v)
 	}
+	// the file cut, or replaced by one of the same size, after it was checked (its .sha256 sidecar left as it was): not verified
+	orig, err := os.ReadFile(in.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st0, err := os.Stat(in.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(in.Path, int64(len(orig)/2)); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified != nil {
+		t.Fatalf("a cut backup is shown as verified: %+v", list[0].Verified)
+	}
+	same := append([]byte(nil), orig...)
+	same[len(same)-1] ^= 0xff
+	if err := os.WriteFile(in.Path, same, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(in.Path, st0.ModTime(), st0.ModTime().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified != nil {
+		t.Fatalf("a replaced backup is shown as verified: %+v", list[0].Verified)
+	}
+	// put back as it was checked (same bytes, same time): verified again
+	if err := os.WriteFile(in.Path, orig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(in.Path, st0.ModTime(), st0.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = backup.List(bdir); list[0].Verified == nil {
+		t.Fatal("the backup as it was checked lost its check")
+	}
 	// a sidecar made against another hash (the backup was replaced) is not shown as verified
 	if err := os.WriteFile(in.Path+".verified", []byte(`{"sha256":"`+strings.Repeat("0", 64)+`","schemaVersion":5}`), 0o644); err != nil {
 		t.Fatal(err)

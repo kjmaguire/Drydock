@@ -222,13 +222,14 @@ export function applyPreset(v: ProviderFormValues, preset: ProviderPreset): Prov
 const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/;
 
 /**
- * The attestations the address needs (P9): billing for a Google AI Studio address, plain http on the private network for an http
+ * The attestations the address needs (P9): billing for a Google AI Studio address or a flavor set to gemini under Advanced (the
+ * core asks for it whenever the flavor is gemini and the route is private), plain http on the private network for an http
  * address that is not this PC. The form shows only these, and sends only these.
  */
-export function attestationsFor(url: string): string[] {
+export function attestationsFor(url: string, flavor = ''): string[] {
   const h = hostname(url);
   const out: string[] = [];
-  if (h === 'generativelanguage.googleapis.com') out.push('billing_enabled');
+  if (h === 'generativelanguage.googleapis.com' || flavor === 'gemini') out.push('billing_enabled');
   if (h && /^http:\/\//i.test(url.trim()) && !LOOPBACK.test(h)) out.push('lan_attested');
   return out;
 }

@@ -15,7 +15,7 @@ import { action, query, services, watch } from '../../state/services.tsx';
 import { Button, IconButton } from '../../ui/button.tsx';
 import { faint, mono, muted } from '../../ui/data.tsx';
 import { Dialog } from '../../ui/dialog.tsx';
-import { ErrorNote, Loading } from '../../ui/feedback.tsx';
+import { ErrorNote, Loading, Notice } from '../../ui/feedback.tsx';
 import { Checkbox } from '../../ui/form.tsx';
 import { Icon } from '../../ui/icon.tsx';
 import { tableCard } from '../../ui/layout.tsx';
@@ -173,7 +173,8 @@ export function runnerRepoOptions(rows: ProjectRepoRow[]): SelectOption[] {
 
 /**
  * The CI runners section. `request` opens Add a runner with that repository chosen (a Repositories row's "Run its CI on this PC");
- * a new `n` opens it again.
+ * a new `n` opens it again. When no runner can be added (no kind available, the runners full, read-only), the dialog stays closed
+ * and the section says why, scrolled into view.
  */
 export function CiRunners(handle: Handle<{ request?: { repo: string; n: number } }>) {
   const s = services(handle);
@@ -185,6 +186,8 @@ export function CiRunners(handle: Handle<{ request?: { repo: string; n: number }
   const projectRepos = query(handle, { load: () => s.client.githubProjectRepos(false), enabled: () => adding });
   let picked = ''; // the chosen repository, or OTHER_REPO for a typed one
   let seenRequest = 0;
+  let refusedFor = ''; // the repository a request could not open Add a runner for (the reason shows in the section)
+  let sectionEl: HTMLElement | undefined;
   let repo = '';
   let kind: RunnerKindName | '' = '';
   let accept = false;
@@ -261,14 +264,6 @@ export function CiRunners(handle: Handle<{ request?: { repo: string; n: number }
   };
 
   return () => {
-    const req = handle.props.request;
-    if (req && req.n !== seenRequest) {
-      seenRequest = req.n;
-      adding = true;
-      picked = req.repo;
-      repo = req.repo; // the typed field's, when there is no list to pick from
-      if (act.error) act.clear();
-    }
     const { readOnly } = s.workspace.license;
     const data = v.data;
     const busy = readOnly || act.busy !== '';
@@ -280,6 +275,23 @@ export function CiRunners(handle: Handle<{ request?: { repo: string; n: number }
     if (!kind && avail.length === 1) kind = avail[0]!.kind;
     const full = slots.length >= (data?.max ?? 8);
     const canOpen = !!data && avail.length > 0 && !full && !readOnly;
+    const addTitle = readOnly ? s.workspace.license.reason : avail.length === 0 ? 'No kind of runner can run on this PC now' : full ? `At most ${data?.max ?? 8} runners` : undefined;
+    // a request is answered once the runners are read: it opens the dialog only when a runner can be added
+    const req = handle.props.request;
+    if (req && req.n !== seenRequest && data) {
+      seenRequest = req.n;
+      if (canOpen) {
+        adding = true;
+        refusedFor = '';
+        picked = req.repo;
+        repo = req.repo; // the typed field's, when there is no list to pick from
+        if (act.error) act.clear();
+      } else {
+        refusedFor = req.repo;
+        handle.queueTask(() => sectionEl?.scrollIntoView?.({ block: 'nearest' }));
+      }
+    }
+    if (refusedFor && canOpen) refusedFor = '';
     const canAdd = !busy && chosenRepo().trim() !== '' && kind !== '' && (kind !== 'windows' || accept) && !full;
     const winOn = slots.some((x) => x.kind === 'windows' && x.enabled);
     const rootTyped = root ?? '';
@@ -292,9 +304,8 @@ export function CiRunners(handle: Handle<{ request?: { repo: string; n: number }
             ? "in Drydock's own folder"
             : "in Drydock's own folder (no Dev Drive was found)";
     const devDriveReason = data?.rootSource === 'default' ? data.devDriveReason : undefined;
-    const addTitle = readOnly ? s.workspace.license.reason : avail.length === 0 ? 'No kind of runner can run on this PC now' : full ? `At most ${data?.max ?? 8} runners` : undefined;
     return (
-      <section mix={sectionCss} aria-labelledby={`runners-${handle.id}`} data-testid="ci-runners-section">
+      <section mix={[sectionCss, ref((n: HTMLElement) => (sectionEl = n))]} aria-labelledby={`runners-${handle.id}`} data-testid="ci-runners-section">
         <div mix={barCss}>
           <h2 id={`runners-${handle.id}`}>CI runners</h2>
           <ul aria-label="Where jobs can run" mix={chipListCss}>
@@ -311,6 +322,11 @@ export function CiRunners(handle: Handle<{ request?: { repo: string; n: number }
           </span>
         </div>
         <ErrorNote error={v.error ?? (adding ? undefined : act.error)} what="CI runners" />
+        {refusedFor ? (
+          <Notice tone="warn" role="status" testId="runner-request-refused" title={`No runner can be added for ${refusedFor} now.`}>
+            {addTitle ?? ''}
+          </Notice>
+        ) : null}
         {v.loading && !data ? <Loading label="Reading the runners" /> : null}
         {kinds
           .filter((k) => !k.available && k.reason)

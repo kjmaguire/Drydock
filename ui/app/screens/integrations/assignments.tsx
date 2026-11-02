@@ -513,22 +513,33 @@ export function AssignForm(
   let cfg: Record<string, string> = { ...(handle.props.existing?.config ?? {}) };
   const choices: Record<string, IntegrationChoice[]> = {};
   const typed = new Set<string>(); // settings the person chose to type
-  const reading = new Set<string>(); // lists being read
+  const reading = new Map<string, number>(); // lists being read, with the pass reading each
   let gen = 0; // a newer pass of reads replaces an older one
   const listed = () => (handle.props.info?.settings ?? []).filter((st) => st.choices);
   /** Reads the lists of the settings after index `from` (all of them on open), one after another. */
   const readLists = async (from: number) => {
     const g = ++gen;
-    for (const st of listed().slice(from)) {
+    const all = listed();
+    // a list an older pass is still reading is read again by this one (that pass's answer is dropped)
+    for (const k of reading.keys()) {
+      const i = all.findIndex((x) => x.key === k);
+      if (i >= 0) from = Math.min(from, i);
+    }
+    for (const st of all.slice(from)) {
       if (handle.signal.aborted || g !== gen) return;
-      reading.add(st.key);
+      reading.set(st.key, g);
       void handle.update();
+      let got: IntegrationChoice[] | undefined;
       try {
-        choices[st.key] = await s.client.integrationChoices(handle.props.conn.id, st.key, cfg);
+        got = await s.client.integrationChoices(handle.props.conn.id, st.key, cfg);
       } catch {
-        delete choices[st.key]; // the typed field stays, with List from <service> to try again
+        got = undefined; // the typed field stays, with List from <service> to try again
       }
-      reading.delete(st.key);
+      if (reading.get(st.key) === g) reading.delete(st.key);
+      // a newer pass read (or is reading) with the settings as they are now: this older answer is dropped
+      if (handle.signal.aborted || g !== gen) return void handle.update();
+      if (got) choices[st.key] = got;
+      else delete choices[st.key];
       void handle.update();
     }
   };

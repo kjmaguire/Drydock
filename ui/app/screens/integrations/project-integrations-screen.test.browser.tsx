@@ -168,6 +168,33 @@ describe("a project's Integrations page: app sync", () => {
     await waitFor(() => expect(assigns).toEqual([[{ integrationId: 'int_1', projectId: 'prj_1', config: { team: 'XYZ' }, version: undefined }]]), r);
   });
 
+  it('a late answer read with an older choice does not replace the list read with the newer one (F10)', async () => {
+    // TEST DOUBLE: the project lists answer when the test says, so the two reads can be answered out of order
+    const waiting: { team: string; answer: (c: { value: string; label: string }[]) => void }[] = [];
+    const r = show({
+      integrationList: async () => [conn({ assignments: [] })],
+      integrationChoices: (async (_id: string, key: string, config: Record<string, string>) => {
+        if (key === 'team') return [{ value: 'ENG', label: 'ENG · Engineering' }, { value: 'OPS', label: 'OPS · Operations' }];
+        return new Promise((answer) => waiting.push({ team: config.team ?? '', answer }));
+      }) as never,
+    });
+    const card = await open(r, 'linear');
+    await waitFor(() => expect(card.textContent).toContain('Not assigned to gocalc.'), r);
+    await r.act(() => byText(card, 'button', 'Assign to gocalc').click());
+    const form = await find(r, '[data-testid="assign-form"]');
+    const team = await waitFor(() => form.querySelector('[data-testid="assign-choice-team"]') as HTMLElement, r);
+    await waitFor(() => expect(waiting.length).toBe(1), r); // the open-time read of the projects, with no team
+    await r.act(() => choose(team, 'ENG'));
+    await waitFor(() => expect(waiting.map((w) => w.team)).toEqual(['', 'ENG']), r);
+    await r.act(() => waiting[1]!.answer([{ value: 'eng-app', label: 'ENG app' }]));
+    const proj = await waitFor(() => form.querySelector('[data-testid="assign-choice-project"]') as HTMLElement, r);
+    await r.act(() => waiting[0]!.answer([{ value: 'all-1', label: 'Some other team' }]));
+    await r.act(() => undefined);
+    expect(optionsOf(form.querySelector('[data-testid="assign-choice-project"]') as HTMLElement).map((o) => o.value)).toEqual(['', 'eng-app', TYPED_VALUE]);
+    expect(proj.isConnected).toBe(true);
+    expect(form.textContent).not.toContain('Loading...');
+  });
+
   it('an assignment syncs, edits its scope with its version, and unassigns after asking', async () => {
     const syncs: Calls = [];
     const assigns: Calls = [];

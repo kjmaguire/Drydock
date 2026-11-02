@@ -1,7 +1,7 @@
 import { expect } from 'remix/assert';
 import { afterEach, describe, it } from 'remix/test';
 import type { NewProvider } from '../../api/types.ts';
-import { byLabel, byText, cleanup, mount, testServices, type, waitFor } from '../../test/render.tsx';
+import { byLabel, byText, choose, cleanup, mount, testServices, type, valueOf, waitFor } from '../../test/render.tsx';
 import { ProviderForm } from './provider-form.tsx';
 
 afterEach(cleanup);
@@ -60,5 +60,42 @@ describe('Add a provider: pick the vendor, paste the key (A8)', () => {
     await r.act(() => byText(form, 'button', 'Add provider').click());
     await waitFor(() => expect(calls.length).toBe(1), r);
     expect(calls[0]).toEqual({ Name: 'Groq', Kind: 'direct', BaseURL: 'https://api.groq.com/openai/v1', DataClass: 'private', Tier: 'cheap', Attestations: {} });
+  });
+
+  it('a data class changed by hand stays when the address of the same vendor is edited again', async () => {
+    const { r, calls } = show();
+    const form = await waitFor(() => r.$('form[aria-label="Add a provider"]') as HTMLElement, r);
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://api.openai.com/v1'));
+    await waitFor(() => expect(valueOf(byLabel(form, 'Data class'))).toBe('private'), r);
+    await r.act(() => choose(byLabel(form, 'Data class'), 'trainable'));
+    await r.act(() => choose(byLabel(form, 'Tier'), 'cheap'));
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://api.openai.com/v1/'));
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://api.openai.com/v2'));
+    expect(valueOf(byLabel(form, 'Data class'))).toBe('trainable');
+    expect(valueOf(byLabel(form, 'Tier'))).toBe('cheap');
+    // another vendor's address fills from that vendor again
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://api.groq.com/openai/v1'));
+    await waitFor(() => expect(valueOf(byLabel(form, 'Data class'))).toBe('private'), r);
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://api.openai.com/v1'));
+    await r.act(() => choose(byLabel(form, 'Data class'), 'trainable'));
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://api.openai.com/v1/'));
+    await r.act(() => byText(form, 'button', 'Add provider').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ BaseURL: 'https://api.openai.com/v1/', DataClass: 'trainable', Tier: 'premium' });
+  });
+
+  it('a flavor set to gemini under Advanced asks for the billing attestation and sends it when ticked', async () => {
+    const { r, calls } = show();
+    const form = await waitFor(() => r.$('form[aria-label="Add a provider"]') as HTMLElement, r);
+    await r.act(() => type(byLabel(form, 'Provider name'), 'My gateway'));
+    await r.act(() => type(byLabel(form, 'Base URL'), 'https://llm.example.com/v1'));
+    expect(form.querySelector('[data-testid="provider-attestations"]')).toBeNull();
+    await r.act(() => choose(byLabel(form, 'Flavor'), 'gemini'));
+    const att = await waitFor(() => r.$('[data-testid="provider-attestations"]') as HTMLElement, r);
+    expect(att.textContent).toContain('billing enabled');
+    await r.act(() => (att.querySelector('input[type="checkbox"]') as HTMLInputElement).click());
+    await r.act(() => byText(form, 'button', 'Add provider').click());
+    await waitFor(() => expect(calls.length).toBe(1), r);
+    expect(calls[0]).toMatchObject({ Flavor: 'gemini', DataClass: 'private', Attestations: { billing_enabled: true } });
   });
 });

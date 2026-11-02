@@ -48,11 +48,13 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
   let v = fresh();
   let preset = ''; // the vendor chip picked ('' none: every field shows, as for "Other")
   let changing = false; // "Change": the picked vendor's fields are shown
+  let autoPreset = ''; // the vendor a typed address last filled the form from: it fills again only when the address's vendor changes
   let keyInput: HTMLInputElement | undefined;
   const pick = (id: string) => {
     const p = PROVIDER_PRESETS.find((x) => x.id === id);
     if (!p) return;
     preset = id;
+    autoPreset = '';
     changing = false;
     v = applyPreset(v, p);
     redraw();
@@ -63,7 +65,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
     const apiKey = keyInput?.value ?? '';
     if (keyInput) keyInput.value = '';
     // only the attestations the address needs are shown, and only those are sent (a box ticked for another address is not)
-    const needed = attestationsFor(v.baseUrl);
+    const needed = attestationsFor(v.baseUrl, v.flavor);
     const body = newProviderRequest({ ...v, att: Object.fromEntries(Object.entries(v.att).filter(([k]) => needed.includes(k))) }, apiKey);
     let ok = false;
     let made: Provider | undefined;
@@ -78,6 +80,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
       v.baseUrl = f.baseUrl;
       v.att = f.att;
       preset = '';
+      autoPreset = '';
       changing = false;
       redraw();
       handle.props.onCreated(made);
@@ -96,11 +99,15 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
           spellcheck={opts.mono ? false : undefined}
           mix={on('input', (e) => {
             v[key] = e.currentTarget.value;
-            // a known vendor's address typed in: the rest is filled from it (its name only when none is typed)
-            const known = key === 'baseUrl' && !preset ? presetForUrl(v.baseUrl) : undefined;
-            if (known) {
-              const name = v.name;
-              v = { ...v, ...known.values, baseUrl: v.baseUrl, name: name.trim() ? name : (known.values.name ?? '') };
+            // a known vendor's address typed in: the rest is filled from it (its name only when none is typed), once per vendor,
+            // so a data class, kind or tier changed by hand stays when the address is edited again
+            if (key === 'baseUrl' && !preset) {
+              const known = presetForUrl(v.baseUrl);
+              if (known && known.id !== autoPreset) {
+                const name = v.name;
+                v = { ...v, ...known.values, baseUrl: v.baseUrl, name: name.trim() ? name : (known.values.name ?? '') };
+              }
+              autoPreset = known?.id ?? '';
             }
             redraw();
           })}
@@ -127,7 +134,7 @@ export function ProviderForm(handle: Handle<{ onCreated: (p?: Provider) => void;
 
   return () => {
     const ro = s.workspace.license;
-    const needed = attestationsFor(v.baseUrl);
+    const needed = attestationsFor(v.baseUrl, v.flavor);
     return (
       <form
         autocomplete="off"

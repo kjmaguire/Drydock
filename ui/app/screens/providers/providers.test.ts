@@ -205,5 +205,8 @@ describe('vendor presets (A8)', () => {
     expect(attestationsFor('http://127.0.0.1:8080/v1')).toEqual([]);
     expect(attestationsFor('https://api.openai.com/v1')).toEqual([]);
     expect(attestationsFor('')).toEqual([]);
+    // the core asks for billing whenever the flavor is gemini, whatever the address (registry.go)
+    expect(attestationsFor('https://llm.example.com/v1', 'gemini')).toEqual(['billing_enabled']);
+    expect(attestationsFor('https://llm.example.com/v1', 'openai')).toEqual([]);
   });
 });

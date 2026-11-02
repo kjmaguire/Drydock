@@ -330,6 +330,39 @@ describe('the Repositories table', () => {
     expect(pick.getAttribute('data-value')).toBe('kyle/gocalc');
   });
 
+  it('"Run its CI on this PC" leaves Add a runner closed and says why when no runner can be added (F5)', async () => {
+    const r = show({
+      githubProjectRepos: async () => repos([row({ projectId: 'prj_1', state: 'github', repo: 'kyle/gocalc', private: true })]),
+      runnersGet: async () =>
+        runners({
+          kinds: [
+            { kind: 'windows', available: false, reason: 'not set up', where: 'on this PC', runsOn: '[self-hosted, windows, drydock]' },
+            { kind: 'linux', available: false, reason: 'no container engine', where: 'in a container', runsOn: '[self-hosted, linux, drydock]' },
+          ],
+        }),
+    });
+    const run = await find(r, '[data-testid="repo-run-ci"]');
+    await waitFor(() => expect(r.$$('[data-testid="runner-kind"]').length).toBe(2), r);
+    await r.act(() => (run as HTMLButtonElement).click());
+    const note = await find(r, '[data-testid="runner-request-refused"]');
+    expect(note.textContent).toBe('No runner can be added for kyle/gocalc now. No kind of runner can run on this PC now');
+    expect(r.$('dialog[open]')).toBeNull();
+  });
+
+  it('"Run its CI on this PC" says the runners are full instead of opening a dialog that cannot add one (F5)', async () => {
+    const slots = Array.from({ length: 8 }, (_, i) => slot(`kyle/r${i}`, 'windows', 'idle'));
+    const r = show({
+      githubProjectRepos: async () => repos([row({ projectId: 'prj_1', state: 'github', repo: 'kyle/gocalc', private: true })]),
+      runnersGet: async () => runners({ slots }),
+    });
+    const run = await find(r, '[data-testid="repo-run-ci"]');
+    await waitFor(() => expect(r.$$('[data-testid="runner-kind"]').length).toBe(2), r);
+    await r.act(() => (run as HTMLButtonElement).click());
+    const note = await find(r, '[data-testid="runner-request-refused"]');
+    expect(note.textContent).toContain('At most 8 runners');
+    expect(r.$('dialog[open]')).toBeNull();
+  });
+
   const all = (): ProjectRepoRow[] => [
     row({ projectId: 'prj_1', project: 'gocalc', state: 'github', repo: 'kyle/gocalc', url: 'https://github.com/kyle/gocalc', defaultBranch: 'main', ci: 'passing', openPullRequests: 2, checkedAt: 1 }),
     row({ projectId: 'prj_2', project: 'website', state: 'github', repo: 'kyle/website', url: 'https://github.com/kyle/website', defaultBranch: 'trunk', ci: 'failing', openPullRequests: 1 }),
