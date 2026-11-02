@@ -406,6 +406,45 @@ describe('RequirementsScreen', () => {
     expect(r.container.textContent).toContain('Read refunds.md. Check the text before you add it.');
   });
 
+  // X41 review: copying cells from Excel puts an image on the clipboard beside the text; the text is what lands in the box
+  it('a paste carrying text and an image keeps the text; an image alone is not read as text', async () => {
+    const r = mount(<RequirementsScreen />, servicesWith({ requirementList: async () => [] }));
+    await waitFor(() => byText(r.container, 'h2', 'No requirements yet.'), r);
+    const box = byLabel<HTMLTextAreaElement>(r.container, 'Text');
+    const both = new DataTransfer();
+    both.setData('text/plain', 'Given a cart\twhen paid');
+    both.items.add(new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])], 'image.png', { type: 'image/png' }));
+    const paste = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: both });
+    box.dispatchEvent(paste);
+    expect(paste.defaultPrevented).toBe(false);
+    const image = new DataTransfer();
+    image.items.add(new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'image.png', { type: 'image/png' }));
+    const paste2 = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: image });
+    box.dispatchEvent(paste2);
+    expect(paste2.defaultPrevented).toBe(false);
+    await new Promise((res) => setTimeout(res, 30));
+    expect(byLabel<HTMLTextAreaElement>(r.container, 'Text').value).toBe('');
+    expect(r.container.textContent).not.toContain('Read image.png');
+    // a Markdown file pasted on its own is read as a chosen one is
+    const md = new DataTransfer();
+    md.items.add(new File(['# Refunds\n- Given a refund'], 'refunds.md', { type: 'text/markdown' }));
+    const paste3 = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: md });
+    box.dispatchEvent(paste3);
+    expect(paste3.defaultPrevented).toBe(true);
+    await waitFor(() => expect(byLabel<HTMLTextAreaElement>(r.container, 'Text').value).toContain('Given a refund'), r);
+  });
+
+  it('a dropped image or spreadsheet is refused, not read as text', async () => {
+    const r = mount(<RequirementsScreen />, servicesWith({ requirementList: async () => [] }));
+    await waitFor(() => byText(r.container, 'h2', 'No requirements yet.'), r);
+    const box = byLabel<HTMLTextAreaElement>(r.container, 'Text');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], 'table.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    box.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    await waitFor(() => expect(r.container.textContent).toContain('Choose a PDF, DOCX, text or Markdown file.'), r);
+    expect(byLabel<HTMLTextAreaElement>(r.container, 'Text').value).toBe('');
+  });
+
   // X41: a revised document is a new version from its file, read the same way (a PDF by the core)
   it('a new version takes a file: its text lands in the box to be checked, then is saved', async () => {
     const calls: string[] = [];

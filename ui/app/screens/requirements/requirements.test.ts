@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, linkCriteria, linkedTaskIds, linkLabel, titleFromFile } from './requirements.ts';
+import { criteriaLines, documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, isReadable, linkCriteria, linkedTaskIds, linkLabel, titleFromFile } from './requirements.ts';
 
 describe('Requirements helpers', () => {
   it('refuses a file over 1 MB before reading it and titles a file by its name', () => {
@@ -14,6 +14,18 @@ describe('Requirements helpers', () => {
     expect([isDocument('spec.PDF'), isDocument('spec.docx'), isDocument('spec.md'), isDocument('pdf')]).toEqual([true, true, false, false]);
     expect(documentProblem(32 << 20)).toBe('');
     expect(documentProblem((32 << 20) + 1)).toBe('That file is larger than 32 MB.');
+  });
+
+  it('reads documents, Markdown and text, never an image or a spreadsheet as text', () => {
+    expect([isReadable('a.pdf'), isReadable('a.DOCX'), isReadable('a.md'), isReadable('a.markdown'), isReadable('a.txt'), isReadable('notes', 'text/plain')]).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([isReadable('image.png', 'image/png'), isReadable('table.xlsx'), isReadable('slides.pptx', 'application/octet-stream')]).toEqual([false, false, false]);
   });
 
   it('criteria are one per line, trimmed', () => {

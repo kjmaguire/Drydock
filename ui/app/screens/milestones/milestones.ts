@@ -12,6 +12,10 @@ export function progressText(p: Milestone['progress']): string {
 /** Tasks of a milestone still to finish, as the core counts them when it is closed: not completed, cancelled or failed. */
 export const unfinishedOf = (p: Milestone['progress']): number => Math.max(0, p.total - p.completed - p.cancelled - p.failed);
 
+/** Whether every task was completed or cancelled and at least one was completed: only then does the footer say "All done". A
+ * failed task counts as finished for closing (the core closes without force), but not as done. */
+export const allDoneOf = (p: Milestone['progress']): boolean => p.completed > 0 && p.completed + p.cancelled === p.total;
+
 /** A date input's yyyy-mm-dd as the ISO time the core stores (midnight UTC); '' means no due date. */
 export const dueISO = (date: string): string | undefined => (date ? new Date(`${date}T00:00:00Z`).toISOString() : undefined);
 

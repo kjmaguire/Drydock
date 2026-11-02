@@ -11,6 +11,13 @@ export const fileProblem = (size: number): string => (size > MAX_FILE_BYTES ? 'T
 /** Whether a file is a document the core reads the text of (requirement.extract) rather than text read here. */
 export const isDocument = (name: string): boolean => /\.(pdf|docx)$/i.test(name);
 
+/** Whether a file is one Add requirements reads: a PDF or DOCX (by the core), or Markdown or plain text (here). An image or a
+ * spreadsheet is not, so it is never read as text. */
+export const isReadable = (name: string, type = ''): boolean => isDocument(name) || /\.(md|markdown|txt)$/i.test(name) || type.startsWith('text/');
+
+/** Shown when a file of another kind is chosen or dropped. */
+export const UNREADABLE = 'Choose a PDF, DOCX, text or Markdown file.';
+
 const MAX_DOCUMENT_BYTES = 32 << 20;
 
 /** Why a PDF or DOCX is not sent to be read ('' when it is): the core reads one up to 32 MB. */

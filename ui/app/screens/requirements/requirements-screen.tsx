@@ -22,7 +22,7 @@ import { Markdown } from '../../ui/markdown.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, linkCriteria, linkedTaskIds, linkLabel, titleFromFile } from './requirements.ts';
+import { documentProblem, evidenceOutcome, fileProblem, isDocument, isGWT, isReadable, linkCriteria, linkedTaskIds, linkLabel, titleFromFile, UNREADABLE } from './requirements.ts';
 
 // --- trace ---
 
@@ -243,6 +243,7 @@ async function readRequirementFile(
   act: ReturnType<typeof action>,
   f: File,
 ): Promise<{ text: string; title: string } | { error: string } | undefined> {
+  if (!isReadable(f.name, f.type)) return { error: UNREADABLE };
   const doc = isDocument(f.name);
   const error = doc ? documentProblem(f.size) : fileProblem(f.size);
   if (error) return { error };
@@ -250,7 +251,12 @@ async function readRequirementFile(
   return { text: await f.text(), title: titleFromFile(f.name) };
 }
 
-/** The drop and paste handlers of a text box that also takes a file (text dropped or pasted goes in as usual). */
+/**
+ * The drop and paste handlers of a text box that also takes a file (text dropped or pasted goes in as usual). A dropped file is
+ * always handled (one of another kind is refused by readRequirementFile, never read as text). A paste takes a file only when the
+ * clipboard holds no text and the file is one this box reads: copying cells from Excel or a slide from PowerPoint also puts an
+ * image on the clipboard, and the text is what the person meant.
+ */
 const takesFiles = (onFile: (f: File) => void) => [
   on<HTMLTextAreaElement, 'dragover'>('dragover', (e) => {
     if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault();
@@ -260,8 +266,10 @@ const takesFiles = (onFile: (f: File) => void) => [
     if (f) (e.preventDefault(), onFile(f));
   }),
   on<HTMLTextAreaElement, 'paste'>('paste', (e) => {
-    const f = e.clipboardData?.files?.[0];
-    if (f) (e.preventDefault(), onFile(f));
+    const cd = e.clipboardData;
+    if (!cd || Array.from(cd.types ?? []).includes('text/plain')) return;
+    const f = cd.files?.[0];
+    if (f && isReadable(f.name, f.type)) (e.preventDefault(), onFile(f));
   }),
 ];
 

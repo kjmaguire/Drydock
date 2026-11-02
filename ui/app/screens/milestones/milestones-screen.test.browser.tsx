@@ -191,6 +191,25 @@ describe('MilestonesScreen', () => {
     await waitFor(() => expect(calls[1]).toBe('status ms_2 open false'), r);
   });
 
+  // X410 review: a milestone whose tasks failed is not "All done"; it still closes without force, under a plain Close milestone
+  it('a milestone with failed tasks offers a plain Close milestone, not "All done"', async () => {
+    const calls: string[] = [];
+    const failed = { total: 3, completed: 0, inProgress: 0, blocked: 0, open: 0, cancelled: 0, failed: 3, percent: 0 };
+    const r = mount(
+      <MilestonesScreen />,
+      servicesWith({
+        milestoneList: async () => [ms({ progress: failed })],
+        milestoneSetStatus: async (id, status, force) => (calls.push(`status ${id} ${status} ${force}`), ms()),
+      }),
+    );
+    const beta = await waitFor(() => need(r.$('[data-testid="milestone"][data-title="Beta"]')), r);
+    expect(beta.textContent).not.toContain('All done');
+    const close = byText<HTMLButtonElement>(beta, 'button', 'Close milestone');
+    expect(close.getAttribute('data-testid')).toBe('milestone-close');
+    await r.act(() => close.click());
+    await waitFor(() => expect(calls).toEqual(['status ms_1 closed false']), r);
+  });
+
   // audit 2026-10-16, M27: a task the team lead split off says so wherever it is a row
   it('marks a task the team lead split off in the milestone, and no other', async () => {
     const r = mount(

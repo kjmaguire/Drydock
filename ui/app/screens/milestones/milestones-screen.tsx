@@ -16,7 +16,7 @@ import { Page, Section, card, spacer } from '../../ui/layout.tsx';
 import { t } from '../../ui/tokens.ts';
 import { ConfirmAction } from '../shared/confirm-action.tsx';
 import { TaskTotalNotice } from '../shared/task-total.tsx';
-import { dueISO, matchesFilter, progressText, segments, taskGroups, taskLabel, unfinishedOf, zeroTime } from './milestones.ts';
+import { allDoneOf, dueISO, matchesFilter, progressText, segments, taskGroups, taskLabel, unfinishedOf, zeroTime } from './milestones.ts';
 
 const gridCss = css({
   display: 'grid',
@@ -150,6 +150,8 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan
     const groups = taskGroups(free, handle.props.plans);
     const chosen = [...picked].filter((id) => free.some((x) => x.id === id));
     const unfinished = unfinishedOf(p);
+    // "All done" only when nothing failed; failed tasks still close without force, under a plain "Close milestone"
+    const allDone = allDoneOf(p);
     return (
       <article mix={cardCss} data-testid="milestone" data-title={m.title} data-status={m.status}>
         <header>
@@ -293,13 +295,13 @@ function MilestoneCard(handle: Handle<{ m: Milestone; tasks: Task[]; plans: Plan
           ) : (
             <Button
               size="sm"
-              variant={p.total > 0 ? 'primary' : 'secondary'}
-              icon={p.total > 0 ? Check : undefined}
+              variant={allDone ? 'primary' : 'secondary'}
+              icon={allDone ? Check : undefined}
               disabled={act.busy !== ''}
               data-testid="milestone-close"
               mix={on('click', () => void run('status', () => s.client.milestoneSetStatus(m.id, 'closed', false)))}
             >
-              {p.total > 0 ? 'All done · Close milestone' : 'Close milestone'}
+              {allDone ? 'All done · Close milestone' : 'Close milestone'}
             </Button>
           )}
           <span mix={spacer} />

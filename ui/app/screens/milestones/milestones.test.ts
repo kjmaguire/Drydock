@@ -1,6 +1,6 @@
 import { expect } from 'remix/assert';
 import { describe, it } from 'remix/test';
-import { dueISO, matchesFilter, progressText, segments, taskGroups, unfinishedOf, zeroTime } from './milestones.ts';
+import { allDoneOf, dueISO, matchesFilter, progressText, segments, taskGroups, unfinishedOf, zeroTime } from './milestones.ts';
 
 const p = {
   total: 4,
@@ -18,6 +18,15 @@ describe('Milestone helpers', () => {
     expect(unfinishedOf(p)).toBe(2);
     expect(unfinishedOf({ ...p, completed: 3, open: 0, inProgress: 0, cancelled: 1 })).toBe(0);
     expect(unfinishedOf({ ...p, total: 0, completed: 0, inProgress: 0, open: 0 })).toBe(0);
+  });
+
+  it('says "All done" only when every task was completed or cancelled, not when some failed', () => {
+    expect(allDoneOf({ ...p, completed: 3, open: 0, inProgress: 0, cancelled: 1 })).toBe(true);
+    expect(allDoneOf({ ...p, total: 3, completed: 0, inProgress: 0, open: 0, failed: 3 })).toBe(false);
+    expect(allDoneOf({ ...p, total: 3, completed: 2, inProgress: 0, open: 0, failed: 1 })).toBe(false);
+    expect(allDoneOf({ ...p, total: 2, completed: 0, inProgress: 0, open: 0, cancelled: 2 })).toBe(false);
+    expect(allDoneOf({ ...p, total: 0, completed: 0, inProgress: 0, open: 0 })).toBe(false);
+    expect(allDoneOf(p)).toBe(false);
   });
 
   it('describes progress in words', () => {
