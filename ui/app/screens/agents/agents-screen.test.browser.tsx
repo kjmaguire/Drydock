@@ -7,7 +7,7 @@ import type { AdapterInfo, Agent, Connection, ConnectionHistory, ConnectionRepor
 import { byLabel, byText, cleanup, mount, renderPlain, testServices, waitFor } from '../../test/render.tsx';
 import { setTerminalLoader, type TerminalFactory } from '../dock/widgets.ts';
 import { adapterInfo } from '../project/wizard-fixtures.ts';
-import { AgentsScreen, ReportView } from './agents-screen.tsx';
+import { AgentsScreen, commandOnly, ReportView } from './agents-screen.tsx';
 import { focusRereadGap, FOCUS_REREAD_MS } from '../../lib/focus.ts';
 
 interface TestTerminal {
@@ -262,7 +262,7 @@ describe('Agents page', () => {
           signIn: 'claude auth login',
           problems: ['Claude Code 2.1.309 has not been verified by Drydock yet; run Test connection', 'something else to know'],
           warnings: ['a terms warning'],
-          installHint: 'irm https://claude.ai/install.ps1 | iex',
+          installHint: 'powershell: irm https://claude.ai/install.ps1 | iex',
         }),
       ],
     });
@@ -303,7 +303,8 @@ describe('Agents page', () => {
     await waitFor(() => expect(d.querySelector('[data-testid="test-results"]')!.textContent).toContain('No test of Claude Code in this session yet.'), r);
     await tab(r, d, 'install');
     const install = await find(r, '[data-testid="install-tab"]', d);
-    expect(install.querySelector('[data-testid="install-hint"]')!.textContent).toBe('irm https://claude.ai/install.ps1 | iex');
+    // the page keeps the shell label; the clipboard gets the command alone, which a shell runs as pasted
+    expect(install.querySelector('[data-testid="install-hint"]')!.textContent).toBe('powershell: irm https://claude.ai/install.ps1 | iex');
     expect(install.textContent).toContain('Drydock never runs this for you');
     // Copy puts the command on the clipboard (a test double of it), and says when the window refused it (P129)
     const copied: string[] = [];
@@ -1110,5 +1111,15 @@ describe('conformance history and the capability matrix (decision P132)', () => 
     expect(w.querySelector('[data-testid="test-history"]')).toBe(null);
     expect(w.textContent).toContain('in this session yet');
     expect(asked).toEqual(['claude:', 'claude:', 'claude:Ubuntu']);
+  });
+});
+
+describe('commandOnly (the copied install command)', () => {
+  it('drops the shell label the core shows and keeps a command without one as it is', () => {
+    expect(commandOnly('powershell: irm https://claude.ai/install.ps1 | iex')).toBe('irm https://claude.ai/install.ps1 | iex');
+    expect(commandOnly('cmd: winget install Anthropic.ClaudeCode')).toBe('winget install Anthropic.ClaudeCode');
+    expect(commandOnly('inside the distro: curl -fsSL https://claude.ai/install.sh | bash')).toBe('curl -fsSL https://claude.ai/install.sh | bash');
+    expect(commandOnly('winget install Block.Goose')).toBe('winget install Block.Goose');
+    expect(commandOnly('powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"')).toBe('powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"');
   });
 });

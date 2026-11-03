@@ -291,6 +291,14 @@ function DistroFacts(handle: Handle<{ f: WSLFacts }>) {
 }
 
 /**
+ * The command of an install hint without its display label: the core shows which shell a line is for ("powershell: ...",
+ * "cmd: ...", "inside the distro: ..."), and no shell runs that label as typed, so the clipboard gets the command alone.
+ */
+export function commandOnly(hint: string): string {
+  return hint.replace(/^\s*(?:powershell|pwsh|cmd|sh|bash|inside the distro):\s+/i, '').trim();
+}
+
+/**
  * A command to copy: Drydock shows install guidance, it never runs it. The window may refuse the clipboard (a page that is not
  * focused, a WebView2 without the permission): the button then says to copy the command by hand, which stays on the page.
  */
@@ -300,7 +308,7 @@ export function CopyCommand(handle: Handle<{ text: string }>) {
   handle.signal.addEventListener('abort', () => clearTimeout(timer));
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(handle.props.text);
+      await navigator.clipboard.writeText(commandOnly(handle.props.text));
       state = 'copied';
     } catch {
       state = 'refused';
