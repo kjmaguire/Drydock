@@ -249,6 +249,9 @@ Section "Uninstall"
   ; (Software\Classes\AppUserModelId\Drydock, whose CustomActivator names the activation class), that class
   ; (Software\Classes\CLSID\{GUID}; go-toast writes drydock.exe under its built-in class too, below) and the icon it shows
   ; (%TEMP%\Drydock{GUID}.png). A CustomActivator that is not a {GUID} is left alone rather than used in a path.
+  ; The uninstaller is a 32-bit program: Windows redirects its Software\Classes\CLSID to Wow6432Node, while 64-bit drydock.exe
+  ; wrote the classes in the 64-bit view, so the class keys are read and deleted in that view.
+  SetRegView 64
   ReadRegStr $0 HKCU "${TOAST_KEY}" "CustomActivator"
   StrCpy $1 $0 1
   StrCpy $2 $0 1 -1
@@ -266,6 +269,7 @@ Section "Uninstall"
   DeleteRegKey HKCU "${TOAST_KEY}"
   DeleteRegKey HKCU "Software\${APP}\NotificationCategories"
   DeleteRegKey /ifempty HKCU "Software\${APP}"
+  SetRegView Default
 
   ; Drydock never deletes data (brief section 21): the data folder stays unless the person says otherwise here. The default
   ; answer, and the only answer in a silent uninstall, is No.

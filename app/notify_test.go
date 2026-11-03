@@ -127,6 +127,20 @@ func TestTheUninstallerRemovesTheNotificationRegistration(t *testing.T) {
 			t.Errorf("the uninstaller does not %s", want)
 		}
 	}
+	// The uninstaller is 32-bit: Software\Classes\CLSID is redirected to Wow6432Node unless it uses the 64-bit view, where the
+	// 64-bit drydock.exe registered the classes (the release install-test caught the key left behind).
+	at := func(re string) int {
+		if loc := regexp.MustCompile(`(?m)^\s*` + re + `\s*$`).FindStringIndex(un); loc != nil {
+			return loc[0]
+		}
+		return -1
+	}
+	on, off := at(`SetRegView 64`), at(`SetRegView Default`)
+	del := strings.Index(un, `DeleteRegKey HKCU "Software\Classes\CLSID\$0"`)
+	def := strings.Index(un, `DeleteRegKey HKCU "Software\Classes\CLSID\${TOAST_DEFAULT_CLSID}"`)
+	if on < 0 || off < 0 || del < on || del > off || def < on || def > off {
+		t.Errorf("the activation classes are not deleted in the 64-bit registry view (SetRegView 64 at %d, Default at %d, deletes at %d and %d)", on, off, del, def)
+	}
 }
 
 // frontDouble is a labelled test double of the app's window: it records what windowToFront asked of it.
