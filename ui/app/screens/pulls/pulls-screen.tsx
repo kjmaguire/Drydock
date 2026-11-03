@@ -53,9 +53,9 @@ function issueCacheOf(client: object): Map<string, { at: number; list: GitHubIss
 /** The section's line: what Import and start does with whom, or what it needs. */
 function importDescription(pair: { workerName: string; reviewerName: string } | undefined): string {
   const start = pair
-    ? `Import and start gives the issue to ${pair.workerName}, who builds it, and ${pair.reviewerName}, who reviews it, and starts it.`
-    : 'Import and start needs a worker and a different reviewer in the crew.';
-  return `The open issues of this repository's GitHub origin. ${start} Import as task makes a backlog task. The issue text is quoted as data.`;
+    ? `Import and start has ${pair.workerName} build it and ${pair.reviewerName} review it.`
+    : 'Import and start needs a worker and a different reviewer.';
+  return `Open issues of the GitHub origin, their text quoted as data. ${start} Import as task makes a backlog task.`;
 }
 
 const issuesCss = css({ margin: '0', padding: '0', listStyle: 'none', border: `1px solid ${t.border}`, borderRadius: t.rLg, background: t.bgSurface, overflow: 'hidden' });
@@ -85,6 +85,8 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
   let labels = '';
   let issueError: Error | undefined;
   let loadingIssues = false;
+  // the project's repository has no origin on github.com: there are no issues to read, so none are asked for
+  let noOrigin = false;
   let importing: number | 'all' | undefined;
   let importError: Error | undefined;
   let status: { text: string; task?: { id: string; seq: number } } | undefined;
@@ -103,6 +105,7 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
       issueError = undefined;
       importError = undefined;
       status = undefined;
+      noOrigin = false;
     }
     issuesFor = projectId;
     const cache = issueCacheOf(s.client);
@@ -116,6 +119,16 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
     issueError = undefined;
     void handle.update();
     try {
+      // read the remote first: without a GitHub origin the core can only refuse (a 400 for nothing)
+      const remote = await Promise.resolve()
+        .then(() => s.client.repoSyncState(projectId))
+        .catch(() => undefined);
+      if (s.project.id !== projectId) return;
+      noOrigin = !!remote && (!remote.remote || !remote.github);
+      if (noOrigin) {
+        issues = undefined;
+        return;
+      }
       const list = await s.client.githubIssues(projectId);
       cache.set(projectId, { at: Date.now(), list });
       if (s.project.id === projectId) issues = list;
@@ -271,7 +284,12 @@ export function PullsScreen(handle: Handle<{ onImported?: (task: TaskCreateResul
               </Button>
             ) : null}
           </form>
-          <ErrorNote error={issueError} what="Could not list issues" />
+          {noOrigin ? (
+            <p mix={muted} data-testid="gh-issues-no-origin">
+              This repository has no origin remote on GitHub, so it has no issues to import.
+            </p>
+          ) : null}
+          <ErrorNote error={issueError} retry={() => loadIssues(true)} what="Could not list issues" />
           <ErrorNote error={importError} what="Import failed" />
           {status ? (
             <p role="status" mix={statusCss} data-testid="gh-import-status">

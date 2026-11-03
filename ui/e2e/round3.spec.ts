@@ -361,20 +361,24 @@ test('a budget pause stops the next agent turn, appears in Needs you, and only t
   await expect(pause).toBeVisible({ timeout: 90_000 });
   await expect(pause).toContainText('Budget limit reached');
   await expect(page.getByTestId('pending-request').first()).toHaveAttribute('data-kind', 'approval');
+  const taskPage = page.url();
   await projectNav(page, 'nav-needs-you');
   const budgetItem = page.getByTestId('needs-item').filter({ hasText: 'gocalc-budget' }).filter({ hasText: 'Budget limit' });
   // a budget item of its own (P118), not a plain approval
   await expect(budgetItem).toHaveAttribute('data-kind', 'budget');
   await budgetItem.getByRole('button').click();
-  // the Inbox does not answer a budget pause: it says where, and opens the task
+  // the Inbox answers a budget pause with the task page's own panel (C3), never with a plain Approve
   const pane = page.getByRole('complementary', { name: 'Selected item' });
-  await expect(pane.getByTestId('needs-hint')).toContainText('budget stopped the next agent turn');
+  const panel = pane.getByTestId('budget-pause');
+  await expect(panel).toContainText('Budget limit reached');
   await expect(pane.getByTestId('detail-approve')).toHaveCount(0);
-  await pane.getByTestId('detail-open').click();
 
-  // raise the limit and resume: the run continues to the review panel
-  await page.getByLabel('New turn limit').fill('10');
-  await page.getByRole('button', { name: 'Resume' }).click();
+  // raise the limit and resume from the Inbox: the run continues to the review panel on the task's page
+  await panel.getByLabel('New turn limit').fill('10');
+  await panel.getByRole('button', { name: 'Resume' }).click();
+  // answered: the item leaves the Inbox
+  await expect(budgetItem).toHaveCount(0, { timeout: 30_000 });
+  await page.goto(taskPage);
   await expect(page.getByTestId('review-panel').getByRole('button', { name: 'Approve' })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId('budget-pause')).toHaveCount(0);
   await projectNav(page, 'nav-budgets');

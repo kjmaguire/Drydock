@@ -94,3 +94,23 @@ func TestJSONCKeepsStringsAndDropsCommentsAndTrailingCommas(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+// StarterFiles lists every file the starter reads: a file read but not listed would never be found (the core reads only the
+// listed files that exist).
+func TestStarterFilesNameEveryFileTheStarterReads(t *testing.T) {
+	listed := map[string]bool{}
+	for _, f := range StarterFiles {
+		listed[f] = true
+	}
+	read := map[string]bool{}
+	StarterFrom(func(name string) (string, bool) { read[name] = true; return "", false }) // no file: every branch is asked
+	Starter(func(name string) bool { read[name] = true; return name == "package.json" })  // a Node project: its lock files
+	for name := range read {
+		if !listed[name] {
+			t.Errorf("the starter reads %s, which StarterFiles does not list", name)
+		}
+	}
+	if len(read) != len(listed) {
+		t.Errorf("the starter read %d files, StarterFiles lists %d", len(read), len(listed))
+	}
+}

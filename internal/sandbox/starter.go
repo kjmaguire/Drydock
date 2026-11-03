@@ -17,6 +17,14 @@ import (
 // It is still a suggestion the person reads and commits; the values are the repository's text copied as they are, and what lands in
 // env is visible to the agent, so the settings say so beside it. A value that names a variable of the machine (${...}) is left out:
 // it would mean nothing in the sandbox, or carry a secret from elsewhere.
+// StarterFiles are every file Starter and StarterFrom may read, so a caller can ask once which of them exist (git ls-tree)
+// before reading only those.
+var StarterFiles = []string{
+	"package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "go.mod", "requirements.txt", "pyproject.toml",
+	".devcontainer/devcontainer.json", ".devcontainer.json", "Dockerfile",
+	"compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml",
+}
+
 func StarterFrom(read func(name string) (string, bool)) (Config, []string) {
 	c := Starter(func(name string) bool { _, ok := read(name); return ok })
 	var sources []string

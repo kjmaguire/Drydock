@@ -162,6 +162,15 @@ describe('PullsScreen', () => {
     expect(githubIssues.calls).toEqual([['prj_1']]);
   });
 
+  it('asks GitHub for no issues when the repository has no origin on github.com, and says so', async () => {
+    const githubIssues = recorder<[string, string?], GitHubIssue[]>(() => []);
+    const noRemote = { projectId: 'prj_1', remote: '', github: false, branch: '', current: 'main', tracked: false, ahead: 0, behind: 0, checkedAt: 0, checking: false };
+    const r = mount(<PullsScreen />, svc({ githubIssues, repoSyncState: async () => noRemote }));
+    await waitFor(() => expect(r.$('[data-testid="gh-issues-no-origin"]')!.textContent).toContain('no origin remote on GitHub'), r);
+    expect(githubIssues.calls).toEqual([]);
+    expect(r.$('[role="alert"]')).toBeNull();
+  });
+
   it('asks for a GitHub repository when the project has none', async () => {
     const r = mount(<PullsScreen />, svc({ projectList: async () => [{ id: 'prj_1', name: 'later', repoPath: '', hasRepo: false } as never] }));
     await waitFor(() => expect(r.$('[data-testid="pulls-no-repo"]')!.textContent).toContain('Attach a GitHub repository to see pull requests'), r);
@@ -242,7 +251,7 @@ describe('PullsScreen', () => {
       const githubImportIssue = recorder(() => task({ id: 't9', seq: 9 }));
       const r = mount(<PullsScreen />, svc({ githubIssues: async () => issues, githubImportIssue, agentList: async () => agents as never }));
       await waitFor(() => expect(r.$$('[data-testid="gh-issue"]').length).toBe(3), r);
-      await waitFor(() => expect(r.container.textContent).toContain('gives the issue to Ada, who builds it, and Rex, who reviews it'), r);
+      await waitFor(() => expect(r.container.textContent).toContain('Import and start has Ada build it and Rex review it.'), r);
       await r.act(() => byText(r.container, 'button', 'Import issue #12 and start it').click());
       await waitFor(() => expect(githubImportIssue.calls).toEqual([['prj_1', 12, { assignee: 'a1', reviewer: 'a2', start: true }]]), r);
       await waitFor(() => expect(r.$('[data-testid="gh-import-status"]')!.textContent).toContain('Issue #12 is task #9. Ada builds it and Rex reviews it; it has started.'), r);

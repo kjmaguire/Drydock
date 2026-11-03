@@ -60,3 +60,28 @@ func TestAFileInACommitIsReadOnlyWhenItIsNoLargerThanAllowed(t *testing.T) {
 		t.Fatalf("a file over a smaller limit: %v", err)
 	}
 }
+
+// The sandbox's starter asks which of a few files a commit has in one call, nested paths included (X35's read on Windows).
+func TestExistingPathsNamesTheFilesACommitHasInOneCall(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRepo(t)
+	write(t, r.Root, ".devcontainer/devcontainer.json", "{}\n")
+	write(t, r.Root, "go.mod", "module x\n")
+	if _, err := r.Commit(ctx, Worktree{Path: r.Root}, "add files"); err != nil {
+		t.Fatal(err)
+	}
+	head, err := r.Head(ctx, Worktree{Path: r.Root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	have, err := r.ExistingPaths(ctx, head, "go.mod", "package.json", ".devcontainer/devcontainer.json", ".devcontainer.json", "src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !have["go.mod"] || !have[".devcontainer/devcontainer.json"] || have["package.json"] || have[".devcontainer.json"] {
+		t.Fatalf("existing paths: %v", have)
+	}
+	if _, err := r.ExistingPaths(ctx, "0000000000000000000000000000000000000000", "go.mod"); err == nil {
+		t.Fatal("a commit that is not there must be an error")
+	}
+}

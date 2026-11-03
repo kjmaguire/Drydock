@@ -555,7 +555,15 @@ func (c *Core) sandboxStarter(ctx context.Context, projectID, branch string) (st
 	if err != nil || branch == "" {
 		return "", nil
 	}
+	// one git call says which of the files exist; only those are read (four git calls each, slow to start on Windows)
+	have, err := repo.ExistingPaths(ctx, branch, sandbox.StarterFiles...)
+	if err != nil {
+		return "", nil
+	}
 	read := func(name string) (string, bool) {
+		if !have[name] {
+			return "", false
+		}
 		text, ok, err := repo.ShowFile(ctx, branch, name)
 		return text, err == nil && ok
 	}
