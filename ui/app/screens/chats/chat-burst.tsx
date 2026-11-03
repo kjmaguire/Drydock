@@ -22,10 +22,10 @@ const burstCss = css({
   '& > .line': {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '8px',
     width: 'fit-content',
     maxWidth: '100%',
-    minHeight: '24px',
+    minHeight: '28px', // a 28 px target with 8 px between its parts (the density budget)
     padding: '0 4px 0 0',
     margin: '0',
     border: '0',

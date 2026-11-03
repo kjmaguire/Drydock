@@ -501,7 +501,8 @@ export function ChatView(handle: Handle<{ id: string; adapters: AdapterInfo[]; o
                 {modelText}
               </span>
               {effort.text ? (
-                <span data-testid="chip-effort" data-default={effort.chosen ? undefined : 'true'} style={{ color: 'var(--text-faint)' }}>
+                // 8 px from the model with the chip's gap (the density budget)
+                <span data-testid="chip-effort" data-default={effort.chosen ? undefined : 'true'} style={{ color: 'var(--text-faint)', marginLeft: '3px' }}>
                   · {effort.text}
                 </span>
               ) : null}

@@ -79,7 +79,8 @@ const tableCss = css({
   '& td.type code': { display: 'inline-flex', alignItems: 'center', gap: '6px' },
   // one id per line, never broken inside: a squeezed column broke them a character per line (task_ / 945cb / a6343 ...)
   '& td.scope': { color: t.textMuted, fontFamily: t.mono, fontSize: t.textXs, width: '1%' },
-  '& td.scope > span, & td.scope > a': { display: 'block', whiteSpace: 'nowrap' },
+  // each on its own line, as tall as a 28 px target now that the task, run and agent are links (X52, the density budget)
+  '& td.scope > span, & td.scope > a': { display: 'flex', alignItems: 'center', minHeight: '28px', whiteSpace: 'nowrap' },
   '& td.more': { width: '1%' },
   '& td.data': { color: t.textMuted, maxWidth: '0', width: '50%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   '& td.data .peek': { display: 'block', width: '100%', minHeight: '28px', lineHeight: '28px', padding: '0', border: '0', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },

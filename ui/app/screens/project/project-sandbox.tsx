@@ -23,6 +23,7 @@ import { SettingRow, SettingsGroup, ToggleRow, errorPad, noteRow } from './setti
 
 const warnCss = css({ color: t.warning });
 const valueCss = css({ fontSize: t.textMd, overflowWrap: 'anywhere' });
+const linkTargetCss = css({ display: 'inline-flex', alignItems: 'center', minHeight: '28px' });
 const preCss = css({ margin: '0', padding: t.s3, background: t.bgSurface, border: `1px solid ${t.border}`, borderRadius: t.rMd, fontFamily: t.mono, fontSize: t.textSm, whiteSpace: 'pre-wrap', overflowX: 'auto' });
 const stepsCss = css({ margin: '0', padding: `0 ${t.s4} ${t.s3}`, listStyle: 'none', display: 'grid', gap: '4px', fontSize: t.textSm, '& .ok': { color: t.success }, '& .fail': { color: t.danger } });
 const actionsCss = css({ display: 'flex', gap: t.s2, alignItems: 'center', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}` });
@@ -150,7 +151,7 @@ export function SandboxPanel(handle: Handle<{ projectId: string; enginePollMs?: 
                   <span mix={[valueCss, warnCss]} data-testid="sandbox-engine">
                     {st.engineError}. Install Docker Desktop, start it, and use Linux containers.
                   </span>
-                  <a href={DOCKER_DESKTOP_URL} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="sandbox-get-docker">
+                  <a href={DOCKER_DESKTOP_URL} target="_blank" rel="noopener noreferrer" data-rmx-document data-testid="sandbox-get-docker" mix={linkTargetCss}>
                     Get Docker Desktop
                   </a>
                   <Button size="sm" disabled={q.loading} data-testid="sandbox-check-again" mix={on('click', () => void q.reload())}>
