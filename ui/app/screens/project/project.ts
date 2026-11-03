@@ -45,3 +45,9 @@ export const ceilingOff = (n: number | undefined): boolean => !!n && (n < CONTEX
 
 /** A CI wait the core refuses: below 0 or above CI_WAITS.max minutes (0 or empty means the default). */
 export const ciWaitOff = (n: number | undefined): boolean => !!n && (n < 0 || n > CI_WAITS.max);
+
+/**
+ * The wait for CI to start is longer than the wait for running checks (both after their defaults), which the core refuses: it
+ * checks the longest wait first, so no CI at all would be reported as checks still running.
+ */
+export const ciGraceTooLong = (grace: number | undefined, maxWait: number | undefined): boolean => (grace || CI_WAITS.grace) > (maxWait || CI_WAITS.maxWait);

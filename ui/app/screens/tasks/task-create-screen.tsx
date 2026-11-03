@@ -1,11 +1,12 @@
 // New task: a title, a Markdown description and acceptance criteria (one per line). Creating opens the task page. The crew pair
 // is chosen for you as Home chooses it (pickPair: a builder and a different reviewer, never the lead), shown as a chip with Change:
 // "Create and start" makes, assigns and starts the task in one core call (task.create with assignee, reviewer and start; the
-// person's click is the start), "Create only" makes it unassigned and waiting (its page preselects the same pair).
+// person's click is the start), "Create only" makes it unassigned and waiting (its page preselects the same pair). Enter in the
+// form is "Create only": paid work starts only on the named button.
 
 import { css, navigate, on, type Handle } from 'remix/component';
 import { SquarePen } from 'lucide';
-import { projectHasRepo, type Agent, type Task } from '../../api/types.ts';
+import { projectHasRepo, type Agent, type Task, type TaskCreateResult } from '../../api/types.ts';
 import { routes } from '../../routes.ts';
 import { action, services, watch } from '../../state/services.tsx';
 import { Button, buttonStyle } from '../../ui/button.tsx';
@@ -63,6 +64,8 @@ export function TaskCreateScreen(handle: Handle<{ onCreated?: (task: Task) => vo
   let worker: string | undefined;
   let reviewer: string | undefined;
   let changing = false;
+  // a task made whose start then failed (task.create's startError)
+  let made: TaskCreateResult | undefined;
   const set = (fn: () => void) => {
     fn();
     void handle.update();
@@ -71,6 +74,7 @@ export function TaskCreateScreen(handle: Handle<{ onCreated?: (task: Task) => vo
   const submit = async (start: boolean) => {
     const projectId = s.workspace.projectId;
     if (!projectId || !title.trim()) return;
+    made = undefined;
     const pair = crewPair(s.project.agentList, worker, reviewer);
     // Create only makes the task as it always did, unassigned: its page then has the same pair preselected for one Start
     const crew = start && pair.worker && pair.reviewer && pair.worker !== pair.reviewer ? { assignee: pair.worker, reviewer: pair.reviewer, start: true } : {};
@@ -78,6 +82,13 @@ export function TaskCreateScreen(handle: Handle<{ onCreated?: (task: Task) => vo
       s.client.taskCreate({ projectId, title: title.trim(), description, acceptance: parseAcceptance(acceptance), ...crew }),
     );
     if (!created) return;
+    if (created.startError) {
+      // the task exists but did not start: say so with a link to it, and clear the form so it cannot be made a second time
+      made = created;
+      title = description = acceptance = '';
+      void handle.update();
+      return;
+    }
     if (handle.props.onCreated) handle.props.onCreated(created);
     else void navigate(routes.task.href({ id: created.id }));
   };
@@ -104,12 +115,18 @@ export function TaskCreateScreen(handle: Handle<{ onCreated?: (task: Task) => vo
               formCss,
               on('submit', (e) => {
                 e.preventDefault();
-                // Enter does what the primary button says
-              void submit(hasPair && !blocked);
+                // Enter (and "Create task") only creates: paid work starts only on a click on "Create and start"
+                void submit(false);
               }),
             ]}
           >
             <ErrorNote error={act.error} what="Task not created" />
+            {made ? (
+              <p role="status" data-testid="task-made-not-started">
+                {made.startError}.{' '}
+                <a href={routes.task.href({ id: made.id })}>Open task #{made.seq}</a> to start it from its page.
+              </p>
+            ) : null}
             <Field label="Task title">
               {(id) => (
                 <input id={id} class="title-input" required autofocus placeholder="Add Multiply to the calculator" value={title} mix={on('input', (e) => set(() => (title = e.currentTarget.value)))} />
@@ -158,10 +175,10 @@ export function TaskCreateScreen(handle: Handle<{ onCreated?: (task: Task) => vo
             <div mix={formActions}>
               {hasPair ? (
                 <>
-                  <Button type="submit" variant="primary" disabled={off || !!blocked} title={blocked}>
+                  <Button variant="primary" disabled={off || !!blocked} title={blocked} mix={on('click', () => void submit(true))}>
                     {act.busy === 'start' ? 'Starting...' : 'Create and start'}
                   </Button>
-                  <Button disabled={off} mix={on('click', () => void submit(false))}>
+                  <Button type="submit" disabled={off} title="Enter does this too">
                     Create only
                   </Button>
                 </>

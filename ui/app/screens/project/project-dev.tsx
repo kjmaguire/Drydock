@@ -8,7 +8,7 @@ import { action, query, services } from '../../state/services.tsx';
 import { Button } from '../../ui/button.tsx';
 import { ErrorNote, Loading } from '../../ui/feedback.tsx';
 import { t } from '../../ui/tokens.ts';
-import { ceilingOff, ciWaitOff, devBody, numOrUndef, parallelWarn } from './project.ts';
+import { ceilingOff, ciGraceTooLong, ciWaitOff, devBody, numOrUndef, parallelWarn } from './project.ts';
 import { SettingRow, SettingsGroup, ToggleRow, errorPad, footerCss, noteRow, subhead } from './settings-kit.tsx';
 
 const stackRow = css({ display: 'grid', gap: '6px', padding: `${t.s3} ${t.s4}`, borderTop: `1px solid ${t.border}`, '& label': { fontSize: t.textMd, fontWeight: '500' }, '& textarea': { fontFamily: t.mono, fontSize: t.textSm } });
@@ -318,6 +318,11 @@ export function DevSettingsPanel(handle: Handle<{ projectId: string }>) {
             {ciWaitOff(d.ciGraceMinutes) || ciWaitOff(d.ciMaxWaitMinutes) ? (
               <p mix={[noteRow, warnNote]} data-testid="ci-wait-note">
                 {`The CI waits are between 0 (the defaults) and ${CI_WAITS.max} minutes.`}
+              </p>
+            ) : null}
+            {ciGraceTooLong(d.ciGraceMinutes, d.ciMaxWaitMinutes) ? (
+              <p mix={[noteRow, warnNote]} data-testid="ci-grace-note">
+                The wait for CI to start cannot be longer than the wait for running checks.
               </p>
             ) : null}
             {ciNone ? (

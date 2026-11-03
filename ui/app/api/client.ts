@@ -60,6 +60,7 @@ import type {
   Task,
   TaskCount,
   TaskCreateReq,
+  TaskCreateResult,
   TaskDetail,
   TaskFilter,
   Unread,
@@ -111,7 +112,7 @@ export interface Client extends ExtClient, PkgClient, McpClient, LibraryClient, 
   /** Removes an agent from the team; its history stays. Refused while it owns unfinished tasks. */
   agentArchive(id: string): Promise<Agent>;
   agentList(projectId: string): Promise<Agent[]>;
-  taskCreate(req: TaskCreateReq): Promise<Task>;
+  taskCreate(req: TaskCreateReq): Promise<TaskCreateResult>;
   /**
    * The newest TASK_LIST_LIMIT tasks (newest first), whatever the project has in all: ask taskCount how many there are. An empty
    * projectId is every project; `filter` narrows to an agent's tasks, a label, or the tasks that ended since a time.

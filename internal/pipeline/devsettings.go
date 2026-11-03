@@ -162,6 +162,10 @@ func (s *DevSettings) Validate() error {
 	if s.CIGraceMinutes < 0 || s.CIGraceMinutes > MaxCIWaitMinutes || s.CIMaxWaitMinutes < 0 || s.CIMaxWaitMinutes > MaxCIWaitMinutes {
 		return fmt.Errorf("devloop: the CI waits must be 0 (the defaults, %d and %d minutes) to %d minutes", DefaultCIGraceMinutes, DefaultCIMaxWaitMinutes, MaxCIWaitMinutes)
 	}
+	if s.CIGrace() > s.CIMaxWait() {
+		// host.WaitCI checks the longest wait before the grace: a longer grace would report "no CI" as "still running"
+		return fmt.Errorf("devloop: the wait for CI to start (%s) must not be longer than the wait for running checks (%s)", plainDuration(s.CIGrace()), plainDuration(s.CIMaxWait()))
+	}
 	switch s.CIMode {
 	case "":
 		s.CIMode = CIRequired

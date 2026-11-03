@@ -69,3 +69,30 @@ func TestTaskCreateAndStartWithoutARepositoryMakesNothing(t *testing.T) {
 		t.Fatalf("%d tasks were made", len(list))
 	}
 }
+
+// C1 review: a start the engine refuses once the task exists (here a Security template with no security agent on the team) is
+// not an error of task.create: the task comes back with startError, so the page can say so and open it instead of offering to
+// make it again.
+func TestTaskCreateAndStartRefusedAfterCreationReturnsTheTask(t *testing.T) {
+	a := open(t, "")
+	repo := newRepo(t)
+	var p core.Project
+	a.call("project.create", map[string]any{"name": "gocalc", "repoPath": repo}, &p)
+	var worker, reviewer core.Agent
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Ada", Adapter: "claude", Role: "backend", Model: "fake-1"}, &worker)
+	a.call("agent.create", core.AgentSpec{ProjectID: p.ID, Name: "Rex", Adapter: "claude", Role: "reviewer", Model: "fake-1"}, &reviewer)
+
+	var res core.CreateTaskResult
+	a.call("task.create", map[string]any{"projectId": p.ID, "title": "Harden login", "template": "security", "assignee": worker.ID, "reviewer": reviewer.ID, "start": true}, &res)
+	if res.ID == "" || res.Assignee != worker.ID || res.RunID != "" {
+		t.Fatalf("task = %+v", res.Task)
+	}
+	if !strings.Contains(res.StartError, "was created but did not start") || !strings.Contains(res.StartError, "security") {
+		t.Fatalf("startError = %q", res.StartError)
+	}
+	var list []tasks.Task
+	a.call("task.list", map[string]any{"projectId": p.ID}, &list)
+	if len(list) != 1 {
+		t.Fatalf("%d tasks, want the one made", len(list))
+	}
+}

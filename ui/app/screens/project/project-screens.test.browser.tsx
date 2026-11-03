@@ -455,8 +455,13 @@ describe('Check settings and development flow', () => {
     expect([grace.value, grace.placeholder, running.value, running.placeholder]).toEqual(['', '5', '', '60']);
     type(running, '999');
     await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')!.textContent).toContain('360'), r);
+    type(running, '');
+    type(grace, '120');
+    // C7 review: 120 minutes to start against the 60-minute default for running checks
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-grace-note"]')!.textContent).toContain('cannot be longer'), r);
     type(running, '90');
     type(grace, '10');
+    await waitFor(() => expect(r.container.querySelector('[data-testid="ci-grace-note"]')).toBe(null), r);
     await waitFor(() => expect(r.container.querySelector('[data-testid="ci-wait-note"]')).toBe(null), r);
     await r.act(() => byText(r.container, 'button', 'Save development settings').click());
     await waitFor(() => expect(calls.length).toBe(1), r);

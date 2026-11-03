@@ -565,6 +565,11 @@ export interface TaskCreateReq {
   start?: boolean;
 }
 
+/** task.create's answer (core.CreateTaskResult): startError when the task was made but its assignment or start then failed. */
+export interface TaskCreateResult extends Task {
+  startError?: string;
+}
+
 /** tasks.MaxLabels and tasks.MaxLabelLen */
 export const TASK_LABELS_MAX = 8;
 export const TASK_LABEL_LEN = 24;

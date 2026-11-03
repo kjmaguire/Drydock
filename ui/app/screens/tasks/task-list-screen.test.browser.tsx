@@ -581,6 +581,37 @@ describe('TaskCreateScreen', () => {
     expect(taskCreate.calls[1]).toEqual([{ projectId: 'prj_1', title: 'Add Multiply', description: '', acceptance: [] }]);
   });
 
+  it('Enter in the form only creates, even with a pair that could start (C1 review)', async () => {
+    const taskCreate = recorder(() => task({ id: 't9' }));
+    const created: Task[] = [];
+    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')).toBeTruthy(), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Add Multiply'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(false), r);
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').type).toBe('button');
+    // implicit submission (Enter in the title) submits the form with no submitter
+    await r.act(() => (r.$('form') as HTMLFormElement).requestSubmit());
+    await waitFor(() => expect(created.length).toBe(1), r);
+    expect(taskCreate.calls[0]).toEqual([{ projectId: 'prj_1', title: 'Add Multiply', description: '', acceptance: [] }]);
+  });
+
+  it('a task made whose start then failed is named with a link, and the form is cleared (C1 review)', async () => {
+    const taskCreate = recorder(() => ({ ...task({ id: 't12', seq: 12 }), startError: 'task #12 was created but did not start: no security agent' }));
+    const created: Task[] = [];
+    const r = mount(<TaskCreateScreen onCreated={(x) => created.push(x)} />, svc({ taskCreate }));
+    await waitFor(() => expect(r.$('[data-testid="task-crew-pair"]')).toBeTruthy(), r);
+    await r.act(() => type(byLabel(r.container, 'Task title'), 'Harden login'));
+    await waitFor(() => expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(false), r);
+    await r.act(() => byText(r.container, 'button', 'Create and start').click());
+    await waitFor(() => expect(r.$('[data-testid="task-made-not-started"]')).toBeTruthy(), r);
+    const note = r.$('[data-testid="task-made-not-started"]')!;
+    expect(note.textContent).toContain('task #12 was created but did not start: no security agent');
+    expect(note.querySelector('a')!.getAttribute('href')).toBe('/task/t12');
+    expect(byLabel<HTMLInputElement>(r.container, 'Task title').value).toBe('');
+    expect(byText<HTMLButtonElement>(r.container, 'button', 'Create and start').disabled).toBe(true);
+    expect(created).toEqual([]);
+  });
+
   it('Change picks another pair; the same agent twice cannot start', async () => {
     const taskCreate = recorder(() => task({ id: 't9' }));
     const agents = [agent('a1', 'Dana', 'backend'), agent('a2', 'Rex', 'reviewer'), agent('a3', 'Ivy', 'frontend')];

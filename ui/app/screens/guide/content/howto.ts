@@ -208,7 +208,7 @@ export const HOWTO: readonly Topic[] = [
         ul: [
           '**Maximum parallel agent turns:** how many agent turns may run at the same time in this project. Start with 3 to 5.',
           '**Team lead stall time:** minutes without progress before the lead checks a task. Empty or 0 means 15; at most 1440 (a day).',
-          '**CI before merge:** a pull request is merged only after CI passed on the reviewed commit. When no CI reports within 2 minutes you are asked to check again, merge without CI this time, or stop.',
+          '**CI before merge:** a pull request is merged only after CI passed on the reviewed commit. When no CI reports within 5 minutes, or checks still run after 60 minutes, you are asked to keep waiting, merge without CI this time, or stop (both waits are set per project in Development flow).',
           '**Repository has no CI:** only for a repository that really has none. A pull request nothing reports on is merged after the review and your approval; checks that do report still have to pass, and GitHub’s branch protection still applies. Your name and the time are recorded.',
           '**Skills for Claude agents:** *relevant only* loads the repository’s own skills and path-matched imports into each turn and lists the rest; *all* loads every skill into every turn. See [Skills](guide:skills).',
         ],

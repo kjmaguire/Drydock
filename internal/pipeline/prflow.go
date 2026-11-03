@@ -467,6 +467,11 @@ func ciWindow(cfg PRConfig, dev func() DevSettings) host.CIWait {
 			w.MaxWait = s.CIMaxWait()
 		}
 	}
+	// the grace never outlasts the longest wait: host.WaitCI checks MaxWait first, so a longer grace would ask "still running"
+	// about a repository where no CI reported (settings saved before Validate refused that)
+	if w.Grace > w.MaxWait {
+		w.Grace = w.MaxWait
+	}
 	return w
 }
 

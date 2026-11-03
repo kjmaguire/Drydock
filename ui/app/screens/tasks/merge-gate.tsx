@@ -78,8 +78,9 @@ export function githubTroublePayload(p: PendingRequest): GitHubTroublePayload | 
 /** What fixes a GitHub failure, in words, by the core's fix. */
 export const GITHUB_FIX: Record<string, string> = {
   gh_signin: 'GitHub refused the sign-in. Run gh auth login in a terminal (the GitHub page checks it), then try again.',
-  network: 'GitHub or the network did not answer, also after three tries. Try again in a while.',
-  review_again: 'The branch changed after the review. Look at the new commits on GitHub before anything is merged, then try again or stop.',
+  network: 'GitHub or the network did not answer. Try again in a while.',
+  review_again:
+    'The branch changed after the review, so it is not merged. Stop, then run the task again so the new commits are reviewed. Try again only helps once the branch is back at the reviewed commit.',
 };
 
 /** One check that gave no verdict, as the core lists it (pipeline.unjudged). */
@@ -294,6 +295,7 @@ export function MergeGatePanel(handle: Handle<{ payload: MergeGatePayload; busy:
 export function GitHubTroublePanel(handle: Handle<{ payload: GitHubTroublePayload; busy: boolean; readOnly: boolean; onRespond: Respond }>) {
   return () => {
     const { payload: p, busy, readOnly, onRespond } = handle.props;
+    const again = p.fix === 'review_again';
     return (
       <div mix={gateCss} data-testid="github-trouble" data-fix={p.fix}>
         <p class="what">
@@ -301,7 +303,8 @@ export function GitHubTroublePanel(handle: Handle<{ payload: GitHubTroublePayloa
         </p>
         <p data-testid="github-trouble-fix">{GITHUB_FIX[p.fix] ?? 'Fix the cause, then try again: only this step runs again.'}</p>
         <div mix={formActions}>
-          <Button variant="primary" icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
+          {/* a changed branch is not fixed by trying again (the new commits need a review): Stop leads there */}
+          <Button variant={again ? 'secondary' : 'primary'} icon={RefreshCw} disabled={busy || readOnly} mix={on('click', () => void onRespond('answered', {}))}>
             Try again
           </Button>
           {p.fix === 'gh_signin' ? (
@@ -309,7 +312,7 @@ export function GitHubTroublePanel(handle: Handle<{ payload: GitHubTroublePayloa
               Open GitHub settings
             </a>
           ) : null}
-          <Button variant="danger" icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
+          <Button variant={again ? 'primary' : 'danger'} icon={Octagon} disabled={busy} mix={on('click', () => void onRespond('rejected'))}>
             Stop
           </Button>
         </div>

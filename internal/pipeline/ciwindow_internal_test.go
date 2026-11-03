@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,5 +33,24 @@ func TestDevSettingsRefuseCIWaitsOutOfRange(t *testing.T) {
 	ok := DevSettings{CIGraceMinutes: 15, CIMaxWaitMinutes: MaxCIWaitMinutes}
 	if err := ok.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// C7 review: a grace longer than the longest wait would make "no CI" read as "still running"; Validate refuses it (after the
+// defaults: 120 minutes with the running-checks wait empty is 120 > 60) and ciWindow clamps what was saved before.
+func TestCIGraceNeverOutlastsTheLongestWait(t *testing.T) {
+	for _, s := range []DevSettings{{CIGraceMinutes: 120}, {CIGraceMinutes: 30, CIMaxWaitMinutes: 20}, {CIMaxWaitMinutes: 3}} {
+		if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "must not be longer") {
+			t.Errorf("%+v: %v", s, err)
+		}
+	}
+	for _, s := range []DevSettings{{CIGraceMinutes: 60}, {CIGraceMinutes: 20, CIMaxWaitMinutes: 20}, {CIMaxWaitMinutes: 5}} {
+		if err := s.Validate(); err != nil {
+			t.Errorf("%+v: %v", s, err)
+		}
+	}
+	w := ciWindow(PRConfig{}, func() DevSettings { return DevSettings{CIGraceMinutes: 120} })
+	if w.Grace != 60*time.Minute || w.MaxWait != 60*time.Minute {
+		t.Fatalf("clamped %+v", w)
 	}
 }

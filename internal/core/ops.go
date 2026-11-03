@@ -61,9 +61,35 @@ type CreateTaskReq struct {
 	Start    bool   `json:"start"`
 }
 
-// CreateTaskWith is task.create: CreateTask, then the assignment and the start the request asks for. A start that fails once the
-// task exists (the engine refused it) returns the task with an error that names it, so the person can start it from its page.
-func (c *Core) CreateTaskWith(ctx context.Context, req CreateTaskReq) (tasks.Task, error) {
+// CreateTaskResult is task.create's answer: the task, and StartError when the task was made but its assignment or start then
+// failed (the engine refused it). That is not an error of the call: the task exists, so the page opens it (or says it was made)
+// instead of offering to make it a second time.
+type CreateTaskResult struct {
+	tasks.Task
+	StartError string `json:"startError,omitempty"`
+}
+
+// CreateTaskWith is task.create: CreateTask, then the assignment and the start the request asks for. An assignment or start that
+// fails once the task exists returns the task with StartError naming it, so the person can start it from its page.
+func (c *Core) CreateTaskWith(ctx context.Context, req CreateTaskReq) (CreateTaskResult, error) {
+	t, err := c.createTaskWith(ctx, req)
+	var made *madeButNotStarted
+	if errors.As(err, &made) {
+		return CreateTaskResult{Task: made.task, StartError: made.Error()}, nil
+	}
+	return CreateTaskResult{Task: t}, err
+}
+
+// madeButNotStarted is createTaskWith's failure after the task was made.
+type madeButNotStarted struct {
+	task tasks.Task
+	err  error
+}
+
+func (e *madeButNotStarted) Error() string { return e.err.Error() }
+func (e *madeButNotStarted) Unwrap() error { return e.err }
+
+func (c *Core) createTaskWith(ctx context.Context, req CreateTaskReq) (tasks.Task, error) {
 	if req.Assignee == "" && req.Reviewer == "" && !req.Start {
 		return c.CreateTask(ctx, req.CreateReq)
 	}
@@ -101,7 +127,7 @@ func (c *Core) CreateTaskWith(ctx context.Context, req CreateTaskReq) (tasks.Tas
 		return t, err
 	}
 	if nt, err := c.AssignTask(ctx, t.ID, req.Assignee, reviewer); err != nil {
-		return t, fmt.Errorf("task #%d was created but not assigned: %w", t.Seq, err)
+		return t, &madeButNotStarted{t, fmt.Errorf("task #%d was created but not assigned: %w", t.Seq, err)}
 	} else {
 		t = nt
 	}
@@ -109,7 +135,7 @@ func (c *Core) CreateTaskWith(ctx context.Context, req CreateTaskReq) (tasks.Tas
 		return t, nil
 	}
 	if _, err := c.StartTask(ctx, t.ID); err != nil {
-		return t, fmt.Errorf("task #%d was created but did not start: %w", t.Seq, err)
+		return t, &madeButNotStarted{t, fmt.Errorf("task #%d was created but did not start: %w", t.Seq, err)}
 	}
 	if nt, err := c.Tasks.Get(ctx, t.ID); err == nil {
 		t = nt

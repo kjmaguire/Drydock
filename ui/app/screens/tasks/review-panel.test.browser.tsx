@@ -316,6 +316,30 @@ describe('Merge gates of a pull request', () => {
     await waitFor(() => expect(runRespond.calls).toEqual([['run-7', 'gh-1', 'answered', {}]]), r);
   });
 
+  it('the GitHub fix says only what is true: no tries claimed, and a changed branch leads to Stop and a new run (C4 review)', async () => {
+    const trouble = (fix: string) =>
+      detail({
+        pending: [
+          {
+            id: 'gh-2',
+            nodeId: 'merge',
+            step: 9,
+            spec: { kind: 'question', title: 'Could not merge the pull request on GitHub.', payload: { gate: 'github', step: 'merge the pull request', error: 'github 502', fix } },
+          },
+        ],
+      });
+    let r = mount(<ReviewPanel detail={trouble('network')} onChanged={() => undefined} />, svc({}));
+    const net = r.$('[data-testid="github-trouble-fix"]')!.textContent!;
+    expect(net).toContain('did not answer');
+    expect(net).not.toContain('tries');
+    cleanup();
+    r = mount(<ReviewPanel detail={trouble('review_again')} onChanged={() => undefined} />, svc({}));
+    const again = r.$('[data-testid="github-trouble-fix"]')!.textContent!;
+    expect(again).toContain('Stop, then run the task again so the new commits are reviewed');
+    expect(again).not.toContain('Look at the new commits');
+    expect(buttons(r.container)).toEqual(['Try again', 'Stop']);
+  });
+
   const repoConfig = (changed: unknown =['filter.evil.clean', 'hooks/post-commit', 'info/attributes']) =>
     detail({
       pending: [
