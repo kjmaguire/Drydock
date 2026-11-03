@@ -63,6 +63,8 @@ func init() {
 				if err := crashreport.Delete(c.cfg.DataDir, p.Name); err != nil {
 					return nil, fmt.Errorf("delete the crash report: %w", err)
 				}
+				// the Inbox's crash item goes with the report: tell the pages to read the Inbox again (the name only)
+				c.publish(ctx, "app.crash_deleted", "", map[string]any{"name": p.Name})
 				return map[string]bool{"deleted": true}, nil
 			}),
 		}, nil, nil

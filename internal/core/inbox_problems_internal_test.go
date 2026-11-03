@@ -119,7 +119,12 @@ func TestInboxProblemItemsAppearAndClearThemselves(t *testing.T) {
 	if _, ok := problemKinds(t, c)[room.NeedsIntegration]; ok {
 		t.Fatal("two failed syncs already reached the Inbox")
 	}
-	exec(`UPDATE integration_cursors SET consecutive_failures=3 WHERE integration_id='int_1' AND scope='asg_1'`)
+	// three in a row held back by the service's rate limit wait and retry by themselves: Reconnect would not help
+	exec(`UPDATE integration_cursors SET consecutive_failures=3, last_error_code='rate_limited' WHERE integration_id='int_1' AND scope='asg_1'`)
+	if it, ok := problemKinds(t, c)[room.NeedsIntegration]; ok {
+		t.Fatalf("rate-limited syncs reached the Inbox: %+v", it)
+	}
+	exec(`UPDATE integration_cursors SET consecutive_failures=3, last_error_code='network' WHERE integration_id='int_1' AND scope='asg_1'`)
 	if it := problemKinds(t, c)[room.NeedsIntegration]; !strings.Contains(it.Title, "sync failed 3 times") || it.Detail != "timeout" {
 		t.Fatalf("sync item %+v", it)
 	}

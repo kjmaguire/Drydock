@@ -219,13 +219,20 @@ func TestMonitorRefreshProbesANewProviderOnce(t *testing.T) {
 		"/v1/models": jsonBody(map[string]any{"data": []map[string]any{{"id": "m"}}}),
 	})
 	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{Interval: time.Hour})
+	passes := make(chan struct{}, 4)
+	m.onPass = func() { passes <- struct{}{} }
 	m.Refresh("not-started") // nothing runs while the loop is stopped
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	m.Start(ctx)
+	select { // the first pass (no providers yet) is over before the person saves one
+	case <-passes:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the first pass did not finish")
+	}
 	p := e.create(t, NewProvider{Name: "new", Kind: KindDirect, BaseURL: f.URL + "/v1"})
 	m.Refresh(p.ID)
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for len(e.events(t, "provider.probe_completed")) == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -238,6 +245,89 @@ func TestMonitorRefreshProbesANewProviderOnce(t *testing.T) {
 	}
 	if st, _ := m.Status(e.ctx, p.ID); st.Health != HealthUp {
 		t.Fatalf("monitor state %+v", st)
+	}
+}
+
+// A provider saved while a pass is reading it is read once: Refresh waits for the pass's read and does not repeat it, and
+// a pass that comes round while a read is in flight skips the provider.
+func TestMonitorNeverReadsAProviderTwiceAtOnce(t *testing.T) {
+	e := newEnv(t)
+	arrived := make(chan struct{}, 8)
+	release := make(chan struct{})
+	f := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1/models": func(w http.ResponseWriter, r *http.Request) {
+			arrived <- struct{}{}
+			<-release
+			jsonBody(map[string]any{"data": []map[string]any{{"id": "m"}}})(w, r)
+		},
+	})
+	p := e.create(t, NewProvider{Name: "new", Kind: KindDirect, BaseURL: f.URL + "/v1"})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{Interval: time.Hour})
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	m.Start(ctx) // the first pass finds no catalog and reads the provider in full
+	select {
+	case <-arrived:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the first pass did not read the provider")
+	}
+	m.Refresh(p.ID)   // saved while the pass is reading it
+	m.CheckAll(e.ctx) // the next tick while the read is in flight
+	close(release)
+	deadline := time.Now().Add(30 * time.Second)
+	for len(e.events(t, "provider.probe_completed")) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	m.Stop()
+	if got := f.seen("/v1/models"); len(got) != 1 {
+		t.Fatalf("listing requests %d, want 1", len(got))
+	}
+	if n := len(e.events(t, "provider.catalog_refreshed")); n > 1 {
+		t.Fatalf("catalog refreshed %d times", n)
+	}
+	if st, _ := m.Status(e.ctx, p.ID); st.Health != HealthUp {
+		t.Fatalf("monitor state %+v", st)
+	}
+}
+
+// The cheap check asks the same listing as the full read, so an Anthropic provider (either base form) and a Gemini provider
+// whose compat endpoint has no listing stay up between catalog reads.
+func TestHealthCheckUsesTheProbeListingPerFlavor(t *testing.T) {
+	e := newEnv(t)
+	ant := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1/models": jsonBody(map[string]any{"data": []map[string]any{{"id": "claude-x"}}}),
+	})
+	gem := newFixture(t, map[string]func(http.ResponseWriter, *http.Request){
+		"/v1beta/models": jsonBody(map[string]any{"models": []map[string]any{{"name": "models/gemini-2.5-pro", "supportedGenerationMethods": []string{"generateContent"}}}}),
+	})
+	root := e.create(t, NewProvider{Name: "ant", BaseURL: ant.URL, Flavor: FlavorAnthropic, Tier: TierPremium, APIKey: "sk-ant"})
+	preset := e.create(t, NewProvider{Name: "ant2", BaseURL: ant.URL + "/v1", Flavor: FlavorAnthropic, Tier: TierPremium, APIKey: "sk-ant"})
+	native := e.create(t, NewProvider{Name: "gem", BaseURL: gem.URL + "/v1beta/openai", Flavor: FlavorGemini, DataClass: DataTrainable, Tier: TierFree, APIKey: "g"})
+	m := NewMonitor(e.reg, e.pr, e.bus, MonitorOptions{})
+	now := time.Now().UTC()
+	m.now = func() time.Time { return now }
+	m.jitter = func(time.Duration) time.Duration { return 0 }
+	m.CheckAll(e.ctx) // full reads: no catalog yet
+	for i := 0; i < 3; i++ {
+		now = now.Add(16 * time.Minute)
+		m.CheckAll(e.ctx) // cheap checks
+	}
+	for _, p := range []Provider{root, preset, native} {
+		st, _ := m.Status(e.ctx, p.ID)
+		g, _ := e.reg.Get(e.ctx, p.ID)
+		ms, _ := e.reg.Models(e.ctx, p.ID)
+		if st.Health != HealthUp || !st.Available || g.Status != string(HealthUp) || len(ms) != 1 {
+			t.Fatalf("%s: monitor %+v, registry %q, models %d", p.Name, st, g.Status, len(ms))
+		}
+	}
+	if got := ant.seen("/v1/models"); len(got) != 8 || got[7].APIKey != "sk-ant" {
+		t.Fatalf("anthropic listings %d %+v", len(got), got)
+	}
+	if got := ant.seen("/v1/v1/models"); len(got) != 0 {
+		t.Fatalf("the preset base was doubled: %d", len(got))
+	}
+	if got := gem.seen("/v1beta/models"); len(got) != 4 || got[3].GoogKey != "g" || got[3].Auth != "" {
+		t.Fatalf("gemini native listings %+v", got)
 	}
 }
 

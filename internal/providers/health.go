@@ -55,6 +55,13 @@ type Monitor struct {
 	extra  sync.WaitGroup // Refresh calls in flight; Stop waits for them
 	now    func() time.Time
 	jitter func(max time.Duration) time.Duration
+	onPass func() // tests: called after each pass of the loop
+}
+
+func (m *Monitor) passed() {
+	if m.onPass != nil {
+		m.onPass()
+	}
 }
 
 type hostState struct {
@@ -67,7 +74,11 @@ type hostState struct {
 	next      time.Time // the loop checks the provider again from this time on (zero: at the next pass)
 	catalog   time.Time // a cloud provider's catalog is read again from this time on (zero: not worked out yet)
 	inUse     int
-	freed     chan struct{} // closed and replaced whenever a slot is released or the limit may have changed
+	// busy is non-nil while a check or a full read of the provider is in flight (closed when it ends): the loop skips the
+	// provider then, and Refresh waits for it, so the same provider is never read twice at the same time.
+	busy  chan struct{}
+	reads int           // full reads (Probe) finished so far: Refresh skips its own read when one finished while it waited
+	freed chan struct{} // closed and replaced whenever a slot is released or the limit may have changed
 }
 
 // NewMonitor builds a Monitor. bus may be nil.
@@ -136,12 +147,14 @@ func (m *Monitor) Start(ctx context.Context) {
 		t := time.NewTicker(m.o.Interval)
 		defer t.Stop()
 		m.CheckAll(ctx)
+		m.passed()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-t.C:
 				m.CheckAll(ctx)
+				m.passed()
 			}
 		}
 	})
@@ -170,6 +183,7 @@ func (m *Monitor) Refresh(id string) {
 		return
 	}
 	m.extra.Add(1)
+	reads := m.state(id).reads
 	m.mu.Unlock()
 	safe.Go("providers.Monitor.Refresh", func() {
 		defer m.extra.Done()
@@ -177,8 +191,41 @@ func (m *Monitor) Refresh(id string) {
 		if err != nil || !p.Enabled {
 			return
 		}
+		for {
+			m.mu.Lock()
+			h := m.state(id)
+			if h.reads != reads {
+				// the loop read this provider in full while Refresh waited: that read is the one asked for
+				m.mu.Unlock()
+				return
+			}
+			wait := h.busy
+			if wait == nil {
+				h.busy = make(chan struct{})
+				m.mu.Unlock()
+				break
+			}
+			m.mu.Unlock()
+			select {
+			case <-wait:
+			case <-ctx.Done():
+				return
+			}
+		}
+		defer m.idle(id)
 		m.refresh(ctx, p)
 	})
+}
+
+// idle marks the provider as no longer being checked or read.
+func (m *Monitor) idle(id string) {
+	m.mu.Lock()
+	h := m.state(id)
+	if h.busy != nil {
+		close(h.busy)
+		h.busy = nil
+	}
+	m.mu.Unlock()
 }
 
 // CheckAll checks every enabled provider that is due, concurrently: a host every Interval, a cloud provider every
@@ -196,7 +243,11 @@ func (m *Monitor) CheckAll(ctx context.Context) {
 			continue
 		}
 		m.mu.Lock()
-		due := !now.Before(m.state(p.ID).next)
+		h := m.state(p.ID)
+		due := !now.Before(h.next) && h.busy == nil // a provider already being read (Refresh, a slow check) is skipped
+		if due {
+			h.busy = make(chan struct{})
+		}
 		m.mu.Unlock()
 		if !due {
 			continue
@@ -205,6 +256,7 @@ func (m *Monitor) CheckAll(ctx context.Context) {
 		safe.Go("providers.Monitor.CheckAll", func() {
 			func(p Provider) {
 				defer wg.Done()
+				defer m.idle(p.ID)
 				if p.Kind != KindHost && m.catalogDue(ctx, p, now) {
 					m.refresh(ctx, p)
 					return
@@ -239,6 +291,39 @@ func (m *Monitor) catalogDue(ctx context.Context, p Provider, now time.Time) boo
 	return !now.Before(at)
 }
 
+// Test reads one provider in full now and waits for the answer (Check now, Check again): the same Probe as provider.test,
+// with its outcome recorded as a check, so the loop's state (what the router uses) and the saved status (what the pages and
+// the Inbox show) always agree afterwards. It waits for a check or read of the provider already in flight.
+func (m *Monitor) Test(ctx context.Context, id string) (ProbeResult, error) {
+	p, err := m.reg.Get(ctx, id)
+	if err != nil {
+		return ProbeResult{}, err
+	}
+	for {
+		m.mu.Lock()
+		h := m.state(id)
+		wait := h.busy
+		if wait == nil {
+			h.busy = make(chan struct{})
+			m.mu.Unlock()
+			break
+		}
+		m.mu.Unlock()
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return ProbeResult{}, ctx.Err()
+		}
+	}
+	defer m.idle(id)
+	res, err := m.pr.Probe(ctx, id)
+	if err != nil {
+		return res, err
+	}
+	m.recordRead(ctx, p, res)
+	return res, nil
+}
+
 // refresh reads the provider in full (Probe: listing, catalog, prices the person set kept, provider.catalog_refreshed) and
 // records the outcome as a check.
 func (m *Monitor) refresh(ctx context.Context, p Provider) HealthEvent {
@@ -246,10 +331,18 @@ func (m *Monitor) refresh(ctx context.Context, p Provider) HealthEvent {
 	if err != nil {
 		return HealthEvent{}
 	}
+	return m.recordRead(ctx, p, res)
+}
+
+// recordRead records a full read as a check. Probe has already saved its own verdict, so the monitor's state is saved again
+// even without a transition: the saved status never stays at what Probe wrote while the monitor thinks otherwise.
+func (m *Monitor) recordRead(ctx context.Context, p Provider, res ProbeResult) HealthEvent {
 	m.mu.Lock()
-	m.state(p.ID).catalog = m.now().Add(m.o.CatalogEvery + m.jitter(m.o.CatalogJitter))
+	h := m.state(p.ID)
+	h.catalog = m.now().Add(m.o.CatalogEvery + m.jitter(m.o.CatalogJitter))
+	h.reads++
 	m.mu.Unlock()
-	return m.record(ctx, p, CheckResult{OK: res.OK, Latency: res.Latency, Detail: res.Error})
+	return m.recordAs(ctx, p, CheckResult{OK: res.OK, Latency: res.Latency, Detail: res.Error}, true)
 }
 
 // CheckNow checks one provider of any kind immediately and returns the transition (To equals the new state).
@@ -267,6 +360,11 @@ func (m *Monitor) check(ctx context.Context, p Provider) HealthEvent {
 
 // record turns one check's result into the provider's health, persists and publishes a change, and schedules the next check.
 func (m *Monitor) record(ctx context.Context, p Provider, r CheckResult) HealthEvent {
+	return m.recordAs(ctx, p, r, false)
+}
+
+// recordAs is record; persist saves the state even when it did not change (after a Probe, which saves its own verdict).
+func (m *Monitor) recordAs(ctx context.Context, p Provider, r CheckResult, persist bool) HealthEvent {
 	now := m.now()
 	m.mu.Lock()
 	h := m.state(p.ID)
@@ -299,6 +397,9 @@ func (m *Monitor) record(ctx context.Context, p Provider, r CheckResult) HealthE
 	}
 	ev := HealthEvent{ProviderID: p.ID, From: from, To: to, At: now, Latency: r.Latency, Detail: h.lastErr}
 	m.mu.Unlock()
+	if persist && to == from && to != HealthUnknown {
+		_ = m.reg.setStatus(ctx, p.ID, to, time.Time{}, "", nil) // last_seen is Probe's to set
+	}
 	if to != from {
 		// Persist and publish before notifying subscribers, so a subscriber that reacts to the channel event can already
 		// replay it from the bus.

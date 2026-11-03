@@ -79,10 +79,12 @@ func (c *Core) integrationProblems(ctx context.Context, day string) []room.Needs
 		case integrations.StatusDegraded:
 			state, title, detail = "degraded", name+" answers in a way Drydock does not read", v.StatusDetail
 		default:
-			worst := v.Sync
-			for _, a := range v.Assignments {
-				if a.Sync.ConsecutiveFailures > worst.ConsecutiveFailures {
-					worst = a.Sync
+			// a sync held back by the service's rate limit is not a problem the person can fix: it waits and tries again by
+			// itself, so it never counts here (Reconnect would not help)
+			var worst integrations.SyncStatus
+			for _, st := range append([]integrations.SyncStatus{v.Sync}, assignmentSyncs(v.Assignments)...) {
+				if st.LastErrorCode != integrations.CodeRateLimited && st.ConsecutiveFailures > worst.ConsecutiveFailures {
+					worst = st
 				}
 			}
 			if worst.ConsecutiveFailures < syncFailuresBeforeInbox {
@@ -97,6 +99,14 @@ func (c *Core) integrationProblems(ctx context.Context, day string) []room.Needs
 		}
 		out = append(out, room.NeedsYouItem{Key: "integration:" + v.ID + ":" + state + ":" + day, Kind: room.NeedsIntegration, Severity: 1,
 			Title: inboxLine(title, 160), Detail: inboxLine(detail, 200), Subject: v.Kind, CreatedAt: time.UnixMilli(v.Updated).UTC()})
+	}
+	return out
+}
+
+func assignmentSyncs(as []integrations.AssignmentView) []integrations.SyncStatus {
+	out := make([]integrations.SyncStatus, 0, len(as))
+	for _, a := range as {
+		out = append(out, a.Sync)
 	}
 	return out
 }
@@ -145,8 +155,8 @@ func (c *Core) mcpSignInProblems(ctx context.Context) []room.NeedsYouItem {
 		ms, _ := strconv.ParseInt(at, 10, 64)
 		name := firstNonEmpty(display, id)
 		out = append(out, room.NeedsYouItem{Key: "mcp-sign-in:" + id + ":" + at, Kind: room.NeedsMCPSignIn, Severity: 1,
-			Title:  inboxLine(name+" needs you to sign in again", 160),
-			Detail: "Its sign-in expired or was revoked, so agents' calls to its tools fail. Sign in again; your browser opens the server's own page.",
+			Title:   inboxLine(name+" needs you to sign in again", 160),
+			Detail:  "Its sign-in expired or was revoked, so agents' calls to its tools fail. Sign in again; your browser opens the server's own page.",
 			Subject: id, CreatedAt: time.UnixMilli(ms).UTC()})
 	}
 	return out

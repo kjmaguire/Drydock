@@ -268,7 +268,7 @@ describe('the Inbox items of P130', () => {
 
   it('reads the Inbox again when a background problem may have come or gone', () => {
     const ev = (type: string) => ({ type }) as DrydockEvent;
-    for (const t of ['integration.sync.failed', 'integration.auth_expired', 'provider.down', 'provider.up', 'mcp.server_oauth_expired', 'adapter.drift', 'security.settings', 'app.crashed'])
+    for (const t of ['integration.sync.failed', 'integration.auth_expired', 'provider.down', 'provider.up', 'mcp.server_oauth_expired', 'adapter.drift', 'security.settings', 'app.crashed', 'app.crash_deleted'])
       expect(needsChanged(ev(t))).toBe(true);
     expect(needsChanged(ev('integration.item.upserted'))).toBe(false);
   });

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/kjmaguire/drydock/internal/crashreport"
+	"github.com/kjmaguire/drydock/internal/events"
 )
 
 // What an earlier run printed as it died becomes a crash report at the next start: logged, listed, readable, in the support
@@ -83,5 +84,10 @@ func TestACrashOfAnEarlierRunIsReportedAtTheNextStart(t *testing.T) {
 	call("crash.list", map[string]any{}, &list)
 	if len(list.Reports) != 0 {
 		t.Fatalf("after delete: %+v", list.Reports)
+	}
+	// the pages read the Inbox again, so its crash item goes with the report (H7)
+	evs, err := c.Replay(ctx, 0, events.Filter{Types: []string{"app.crash_deleted"}}, 10)
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("app.crash_deleted events %d %v", len(evs), err)
 	}
 }

@@ -411,8 +411,19 @@ func (pr *Prober) OpenRouterKey(ctx context.Context, providerID string) (OpenRou
 	return pr.openRouterKey(ctx, p, key)
 }
 
+// anthropicModelsURL is the Messages API's model listing for a base URL written either way: the API root
+// (https://api.anthropic.com, as in the docs) or with the version (https://api.anthropic.com/v1, the Settings preset).
+func anthropicModelsURL(baseURL string) string {
+	return strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1") + "/v1/models"
+}
+
+// geminiNativeModelsURL is the native Gemini listing used when the OpenAI-compat /models answers 404.
+func geminiNativeModelsURL(baseURL string) string {
+	return origin(baseURL) + "/v1beta/models?pageSize=1000"
+}
+
 func (pr *Prober) probeAnthropic(ctx context.Context, p Provider, key string, res *ProbeResult) {
-	status, body, _, err := pr.httpGet(ctx, p, key, p.BaseURL+"/v1/models")
+	status, body, _, err := pr.httpGet(ctx, p, key, anthropicModelsURL(p.BaseURL))
 	if !listStatus(res, status, body, err, "GET /v1/models") {
 		return
 	}
@@ -452,7 +463,7 @@ func (pr *Prober) probeGemini(ctx context.Context, p Provider, key string, res *
 }
 
 func (pr *Prober) probeGeminiNative(ctx context.Context, p Provider, key string, res *ProbeResult) {
-	status, body, _, err := pr.httpGetAs(ctx, p, key, origin(p.BaseURL)+"/v1beta/models?pageSize=1000", "goog")
+	status, body, _, err := pr.httpGetAs(ctx, p, key, geminiNativeModelsURL(p.BaseURL), "goog")
 	if !listStatus(res, status, body, err, "GET /v1beta/models") {
 		return
 	}
@@ -598,14 +609,20 @@ type CheckResult struct {
 func (pr *Prober) Check(ctx context.Context, p Provider) CheckResult {
 	key, _ := pr.reg.APIKey(ctx, p) // /health is unauthenticated on vLLM and SGLang; a missing key must not mask liveness
 	start := time.Now()
+	// The same listing Probe reads, so the cheap check and the daily catalog read never disagree about a provider.
 	target := p.BaseURL + "/models"
-	if p.Kind == KindHost {
+	switch {
+	case p.Kind == KindHost && p.Flavor == FlavorOllama:
+		target = origin(p.BaseURL) + "/api/version"
+	case p.Kind == KindHost:
 		target = origin(p.BaseURL) + "/health"
-		if p.Flavor == FlavorOllama {
-			target = origin(p.BaseURL) + "/api/version"
-		}
+	case p.Flavor == FlavorAnthropic:
+		target = anthropicModelsURL(p.BaseURL)
 	}
 	status, _, hdr, err := pr.httpGet(ctx, p, key, target)
+	if p.Kind != KindHost && p.Flavor == FlavorGemini && err == nil && status == http.StatusNotFound {
+		status, _, hdr, err = pr.httpGetAs(ctx, p, key, geminiNativeModelsURL(p.BaseURL), "goog")
+	}
 	lat := time.Since(start)
 	switch {
 	case err != nil:

@@ -356,7 +356,8 @@ func (c *Core) Methods() map[string]Method {
 		}) (any, error) {
 			return nil, c.Providers.SetEnabled(ctx, p.ID, p.Enabled)
 		}),
-		"provider.test":   bind(func(ctx context.Context, p idParam) (any, error) { return c.Prober.Probe(ctx, p.ID) }),
+		// through the health loop, so the router's view and the saved status (pages, Inbox) agree after Check now / Check again
+		"provider.test":   bind(func(ctx context.Context, p idParam) (any, error) { return c.Health.Test(ctx, p.ID) }),
 		"provider.models": bind(func(ctx context.Context, p idParam) (any, error) { return c.Providers.Models(ctx, p.ID) }),
 
 		"events.replay": bind(func(ctx context.Context, p struct {

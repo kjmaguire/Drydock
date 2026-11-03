@@ -18,7 +18,7 @@ import { Group, panelPad } from '../settings/settings-kit.tsx';
 /** `onReport` takes the person to the support bundle, which carries every report. */
 export function CrashReports(handle: Handle<{ onReport?: () => void }>) {
   const s = services(handle);
-  const list = query(handle, { load: () => s.client.crashList(), when: (e) => starts(e, 'app.crashed') });
+  const list = query(handle, { load: () => s.client.crashList(), when: (e) => starts(e, 'app.crashed', 'app.crash_deleted') });
   const act = action(handle);
   /** The texts read so far, by report name, and the reports open now. */
   const texts = new Map<string, string>();
